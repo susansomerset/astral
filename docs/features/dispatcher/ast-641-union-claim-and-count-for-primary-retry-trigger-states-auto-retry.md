@@ -1157,3 +1157,122 @@ no plan-stage scores attached (F3 validate-plan fix mode not triggered; Joan fix
 
 **Docs-Acceptance (AST-1805):** product tip only; `[board-betty] TESTS: REVISE` is owned by gap sibling AST-1807. No merge-tests on this tip. Touched-area suites: 195 failures on origin/dev and on the tip, identical sets (verified by Chuckles).
 
+
+## Bug: AST-1806 — purge explicit `_RETRY` states from entity-state registries (Stage B of AST-1805)
+
+Parent AST-1804. Stacks on AST-1805 (Stage A, merged on `ftr/AST-1804-fetch-avail-retry`): validators already resolve `{base}_RETRY` through the base via `is_registered_state` / `registered_base` / `state_prior_states`. Susan's binding rule: *no explicit `_RETRY` state in config.*
+
+### As-is
+- `config.py` still declares 18 `*_RETRY` registry keys:
+  - `JOB_STATES` (13): ~2543–2615
+  - `COMPANY_STATES` (3): 1269, 1280, 1282
+  - `CANDIDATE_STATES` (2): 1349, 1386
+- `*_RETRY` entries still sit in `prior_states` lists across `JOB_STATES` (~2545–2613) and `CANDIDATE_STATES` (1343, 1354, 1360, 1375, 1391, 1397).
+- There are ~45 more `"X_RETRY"` string literals in config (inventory under **Proposed change**).
+- Code literals outside config: `consult._INPUT_STATE_TO_TASK` (6 entries), `consult.py` ~1858, `roster.py` ~886.
+- These consumers look up a runtime state directly by its full key, so they depend on the explicit keys existing:
+  - `roster.claim_company_batch` (~1419)
+  - `database.save_company` (~1127)
+  - `candidate.check_context_complete` (~2459)
+  - `candidate._requested_stage_failure_target` (~3611)
+  - `api_system._progress_rank` (~46)
+- Carried from AST-1805: `_requested_stage_failure_target(bare_trigger, …)` indexes `CANDIDATE_STATES[primary]["retry_state"]`. A **retry-only** candidate dispatch row (`REQUESTED_*_RETRY` trigger) already raises `KeyError` there, because the legacy retry keys carry no `retry_state` / `error_state`.
+
+### To-be
+- The three registries hold **bases only**, and no `prior_states` list names a `*_RETRY`: `state_prior_states` derives them.
+- Every remaining retry reference in config is written as `retry_of("<BASE>")`. No `"X_RETRY"` state literal remains in config, consult, or roster code.
+- Consumers that look up a runtime state resolve through `registered_base`, so behavior is identical.
+- A retry-only candidate row routes its failure to `error_state` (AST-642: failing while on retry goes to terminal) instead of raising `KeyError`.
+- Claim is unchanged: `dispatch_claim_states`, AST-1800 `states=`, and the AST-892 filter all stay as they are.
+
+### Repro
+```python
+from src.utils.config import JOB_STATES, COMPANY_STATES, CANDIDATE_STATES
+sum(k.endswith("_RETRY") for r in (JOB_STATES, COMPANY_STATES, CANDIDATE_STATES) for k in r)  # → 18 (want 0)
+# KeyError carry-over (today, retry-only candidate row):
+from src.core.candidate import _requested_stage_failure_target
+_requested_stage_failure_target("REQUESTED_ARTIFACTS_RETRY", "REQUESTED_ARTIFACTS_RETRY")  # → KeyError 'retry_state'
+```
+
+### Root cause
+Stage A made the explicit keys redundant for validation, but the data is still declared, and five consumers still depend on the retry key existing because they look up the runtime state directly.
+
+### Proposed change
+
+**Gate first — the purge only proceeds if this passes before and after the deletion.** Run this in the worktree (`~/astral-tests/.venv/bin/python`) once on the pre-change tip and once after steps B1–B2. The two snapshots must be **identical**. A dry run in memory (keys and retry priors stripped from copies) already gives **0 diffs** across 110 job / 62 company / 38 candidate targets.
+```python
+import src.utils.config as C
+def snap(R):
+    bases = [k for k in R if not k.endswith(C.RETRY_SUFFIX)]
+    out = {}
+    for t in bases + [C.retry_of(b) for b in bases]:
+        P = C.state_prior_states(R, t)
+        out[t] = None if P is None else frozenset(p for p in P if not p.endswith("_RETRY_RETRY"))
+    return out
+{n: snap(getattr(C, n)) for n in ("JOB_STATES", "COMPANY_STATES", "CANDIDATE_STATES")}
+```
+Any diff means stop and don't publish; comment the diff on the ticket.
+
+**B1. `src/utils/config.py` — registries**
+- Delete the 18 keys: `VALID_TITLE_RETRY`, `NEW_RETRY`, `JD_READY_RETRY`, `PASSED_JD_RETRY`, `PASSED_DO_RETRY`, `CULTURE_READY_RETRY`, `PASSED_LIKE_RETRY`, `METEORITE_{NEW,QUALIFIED,PASSED_JD,PASSED_DO,PASSED_GET,PASSED_LIKE}_RETRY`, `WEBSITE_FOUND_RETRY`, `JOBLIST_IDENTIFIED_RETRY`, `PREFILTER_PASSED_RETRY`, `REQUESTED_RESUME_RETRY`, `REQUESTED_ARTIFACTS_RETRY`. Move each deleted key's trailing `# …` comment (e.g. "grade_do incomplete-grade holding (AST-1155)") onto its base's line as `# retry_of: …` so the history stays.
+- Remove every `*_RETRY` element from every `prior_states` list: job ~2545–2613, candidate 1343, 1360, 1375, 1397. The two retry-key entries at 1354/1391 go away with their keys.
+- Registry `retry_state` values become `retry_of("<BASE>")`, keeping cross-base values as-is: `VALID_TITLE` → `retry_of("NEW")`, and `HOMEPAGE_READY` (1272) → `retry_of("WEBSITE_FOUND")`.
+
+**B2. `src/utils/config.py` — other literals → `retry_of("<BASE>")`**, same value, only the spelling changes:
+- Task configs:
+  - `error_state` 904 (`PASSED_LIKE`), 969 (`METEORITE_PASSED_LIKE`)
+  - `retry_state` 2110, 2127, 2137, 2324
+  - `pass_states` 2126
+  - `retry_trigger_state` 2135
+  - `fetch_job_pages_trigger_states` 2330
+- `IN_REVIEW_STATES` 3563–3569, and the `JOBS_IN_REVIEW_UI_SECTIONS` `"state"` values 3995–4020 (labels unchanged).
+- Keys of `JOBS_IN_REVIEW_GRADE_FIELD` 4114–4133 and `JOBS_UI_STATE_RUBRIC_OVERRIDE` 4158. Keep the explicit keys: `NEW_RETRY → joblist_grades` is cross-base, so no comprehension.
+- `inflight_hide_states` 4249.
+- `company_state_transitions` pairs 4557–4616.
+- Docstrings/comments that mention a retry by name (e.g. 3643 `WEBSITE_FOUND_RETRY`) stay as prose.
+
+**B3. `src/utils/config.py` — asserts that would fail once keys are gone**
+- ~6559 TASK_CONFIG outcome assert: `assert is_registered_state(JOB_STATES, _outcome.strip())`. Required because `analysis_upshot` / `meteorite_upshot` `error_state` is a retry.
+- ~4251 `inflight_hide_states` and ~4262 `grade_field` asserts: `all(is_registered_state(REG, s) …)`.
+- ~2040 candidate `retry_state` assert: already `is_registered_state` (AST-1805).
+
+**B4. Consumers that look up a runtime state directly — resolve through the base** (each is a one-expression change):
+- `src/core/roster.py`
+  - `claim_company_batch` (~1419): the single-state gate becomes `if states is None and not is_registered_state(COMPANY_STATES, state): raise ValueError(<same message>)`, and `state_config = COMPANY_STATES.get(registered_base(COMPANY_STATES, state) or state, {})`. Base and retry `batch_criteria` are identical today.
+  - ~886: `input_state in ("WEBSITE_FOUND", retry_of("WEBSITE_FOUND"))`.
+- `src/data/database.py` `save_company` (~1127): `if not is_registered_state(COMPANY_STATES, state): raise ValueError(<same message>)`. Needed because `roster._parse_dispatch_failure_state` saves `JOBLIST_IDENTIFIED_RETRY` through `_save_company` (~1122). Import `is_registered_state` from config.
+- `src/core/candidate.py`
+  - `check_context_complete` (~2459): `CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, current_state) or "")`. Retry ranks equal their base (4 / 6).
+  - `_requested_stage_failure_target` (~3611), the carried fix. Resolve first, compare against the resolved base:
+    ```python
+    primary = registered_base(CANDIDATE_STATES, primary_state) or primary_state
+    cfg = CANDIDATE_STATES[primary]
+    if current_state == primary:
+        return cfg["retry_state"]
+    return cfg["error_state"]
+    ```
+    A retry-only row gives `current == REQUESTED_*_RETRY` ≠ primary, so it returns `error_state`, never `retry` (no retry loop).
+- `src/core/consult.py`
+  - `_INPUT_STATE_TO_TASK`: delete the 6 retry entries; right after the dict add `_INPUT_STATE_TO_TASK.update({retry_of(k): v for k, v in list(_INPUT_STATE_TO_TASK.items())})`. Every retry maps like its base; this is a legacy map with no `src/` consumer.
+  - ~1858: the tuple becomes `("VALID_TITLE", retry_of("VALID_TITLE"), retry_of("NEW"))`.
+- **`src/ui/api/api_system.py` `_progress_rank` (~46): `CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, state) or "")`.** This one is outside the ticket's `## Scope` — see `[scope-gate]` on AST-1806. Without it, a candidate in `REQUESTED_*_RETRY` drops from rank 4 / 6 to −1, and nav gating (`_is_at_or_past`) closes items.
+- **Must stay direct** (retry of retry goes to terminal; don't resolve through the base): `consult._consult_batch_fail_dest` (~1526), `roster._prefilter_batch_fail_dest` (~1871), `candidate.age_stale_candidate_states` (~2482, no stale on retry either way), and the `gazer` `cfg["retry_state"]` reads. `dispatcher` / `database` claim/count are verify only.
+
+**B5. Done check:** `rg -n '"[A-Z_]+_RETRY"' src/utils/config.py src/core/consult.py src/core/roster.py` returns nothing. Config imports cleanly, and the gate snapshot is identical.
+
+### Estimate
+**5**: one mechanical config pass (B1–B3), 7 one-line consumer edits (B4), and the gate script. Stays within the ≤5 the ticket asked for; no further split.
+
+### Blast radius
+- **Admin / UI key lists** (`api_admin` `state_options`, `api_candidate` state list, `tracker._JOB_STATE_LIST` / `roster._COMPANY_STATE_LIST` error text) lose the 18 retry names.
+- **`legal_job_successor_states`** stops offering retry targets for manual Jobs moves (accepted in AST-1805's blast radius).
+- **In Review** retry buckets, grade/rubric columns, and task routing are unchanged (same strings via `retry_of`).
+- **Tests (Betty / AST-1807)** will break wherever they assert retry keys exist in the registries, explicit `prior_states` contents, full `state_options` lists, or `_requested_stage_failure_target` raising for a retry primary. `test_consult` `_INPUT_STATE_TO_TASK` retry asserts stay green.
+- **Shared modules:** `config`, `roster`, `candidate`, `consult`, `database` (`save_company` gate only), and `api_system` (pending scope).
+
+### What must still hold
+- AST-641 / AST-1798 / AST-1800: claim/count lists are byte-identical, and the AST-892 second-strike filter is unchanged.
+- AST-642: a primary failure goes to retry holding; a failure while in retry goes to terminal/error. No new routing into retry substates.
+- Every legal transition today stays legal: the gate snapshot is identical before and after.
+- Candidate `progress_rank` for `REQUESTED_*_RETRY` stays 4 / 6 everywhere it's read.
+- Config imports with every module assert passing.
