@@ -66,8 +66,8 @@ from src.utils.config import (
     PLAYWRIGHT_CONFIG,
     ROSTER_CONFIG,
     TASK_CONFIG,
+    is_registered_state,
     roster_scrape_readiness_config,
-    validate_value,
 )
 from src.utils.formatting import (
     collapse_consecutive_blank_lines,
@@ -232,7 +232,9 @@ def transition_company_state(short_name: str, to_state: str) -> None:
     """Record company state transition (mirrors tracker.transition_job_state).
     Appends to state_history; updates state. Validates to_state against COMPANY_STATES.
     Raises ValueError if invalid or company not found."""
-    validate_value(_COMPANY_STATE_LIST, to_state)
+    # Implicit {base}_RETRY validates via its base (AST-1805); message kept for callers/tests.
+    if not is_registered_state(COMPANY_STATES, to_state):
+        raise ValueError(f"Value {to_state!r} not in allowed list: {_COMPANY_STATE_LIST}")
     company = get_company(short_name)
     if not company:
         raise ValueError(f"Company not found: {short_name}")

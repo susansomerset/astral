@@ -92,9 +92,11 @@ from src.utils.config import (
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     dispatch_claim_states,
     dispatch_hop_label,
+    is_registered_state,
     is_valid_candidate_batch_claim_state,
     parse_dispatch_hop_label,
     rubric_owner_task_key,
+    state_prior_states,
 )
 from src.utils.formatting import value_to_str
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
@@ -2214,10 +2216,9 @@ class IllegalCandidateTransition(ValueError):
 
 
 def _candidate_prior_states(to_state: str):
-    cfg = CANDIDATE_STATES.get(to_state)
-    if cfg is None:
+    if not is_registered_state(CANDIDATE_STATES, to_state):
         raise ValueError(f"Unknown candidate state: {to_state}")
-    return cfg.get("prior_states")
+    return state_prior_states(CANDIDATE_STATES, to_state)
 
 
 def _candidate_state_allowed(from_state: str, to_state: str) -> bool:
@@ -2357,7 +2358,7 @@ def transition_candidate_state(
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         raise ValueError(f"Candidate not found: {candidate_id}")
-    if to_state not in CANDIDATE_STATES:
+    if not is_registered_state(CANDIDATE_STATES, to_state):
         raise ValueError(f"Unknown candidate state: {to_state}")
     from_state = candidate["state"]
     # One prior_states check: gate when not force; INFO when force bypasses.
@@ -3667,7 +3668,7 @@ async def run_requested_artifacts_dispatch(
         parsed = parse_dispatch_hop_label(after)
         if parsed and parsed[0] == bare_trigger:
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-        if bare_trigger not in CANDIDATE_STATES:
+        if not is_registered_state(CANDIDATE_STATES, bare_trigger):
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
         target = _requested_stage_failure_target(bare_trigger, current)
         try:

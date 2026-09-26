@@ -191,6 +191,70 @@ _CRAFT_RESUME_NORMALIZE_TASK_KEYS = frozenset({
 })
 
 # ---------------------------------------------------------------------------
+# Implicit retry substate (AST-1804): {base}_RETRY is valid wherever {base} is a
+# registry key. Validators resolve through the base — never the full _RETRY string.
+# Defined above TASK_CONFIG so registries/task configs can build names via retry_of.
+# ---------------------------------------------------------------------------
+RETRY_SUFFIX = "_RETRY"
+
+
+def retry_of(base: str) -> str:
+    """Implicit retry substate name for a registered base state."""
+    return f"{base}{RETRY_SUFFIX}"
+
+
+def retry_base(state: Optional[str]) -> Optional[str]:
+    """Base of an implicit retry substate, or None when state has no _RETRY suffix."""
+    s = (state or "").strip()
+    if s.endswith(RETRY_SUFFIX) and len(s) > len(RETRY_SUFFIX):
+        return s[: -len(RETRY_SUFFIX)]
+    return None
+
+
+def registered_base(registry: Dict[str, Any], state: Optional[str]) -> Optional[str]:
+    """Registry key that owns state: itself, or the base of {base}_RETRY; None when neither is registered."""
+    s = (state or "").strip()
+    if s in registry:
+        return s
+    base = retry_base(s)
+    return base if base is not None and base in registry else None
+
+
+def is_registered_state(registry: Dict[str, Any], state: Optional[str]) -> bool:
+    """True for registry keys and implicit {base}_RETRY of a registry key."""
+    return registered_base(registry, state) is not None
+
+
+def state_prior_states(registry: Dict[str, Any], to_state: str) -> Optional[List[str]]:
+    """Effective prior_states for to_state, with retry edges derived from the base (AST-1805).
+
+    Into retry_of(B): B, retry_of(B) (re-entry), and every S whose retry_state routes to retry_of(B)
+    (cross-base, e.g. VALID_TITLE → NEW_RETRY). Always derived, even while a legacy explicit key exists.
+    Into base T with priors P (None = unrestricted): P, retry_of(p) and R[p].retry_state for each p in P,
+    plus retry_of(T) (a retry drains back to its base).
+    Raises KeyError when to_state is not registered.
+    """
+    ts = (to_state or "").strip()
+    base = retry_base(ts)
+    if base is not None and base in registry:
+        feeders = [s for s, cfg in registry.items() if (cfg or {}).get("retry_state") == ts]
+        return list(dict.fromkeys([base, ts, *feeders]))
+    if ts not in registry:
+        raise KeyError(f"unregistered state: {ts!r}")
+    prior = (registry[ts] or {}).get("prior_states")
+    if prior is None:
+        return None
+    out: List[str] = list(prior)
+    for p in prior:
+        out.append(retry_of(p))
+        rs = (registry.get(p) or {}).get("retry_state")
+        if rs:
+            out.append(rs)
+    out.append(retry_of(ts))
+    return list(dict.fromkeys(out))
+
+
+# ---------------------------------------------------------------------------
 # TASK_CONFIG: code-owned task definitions. Prompt content (system_prompt,
 # task_prompt, cached_blocks, uncached_blocks) now lives in the agent_task
 # table, managed via the Manage Tasks admin screen.
@@ -1973,7 +2037,7 @@ for _name, _cfg in CANDIDATE_STATES.items():
         assert _stale in CANDIDATE_STATES and "stale_after_hours" in _cfg, _name
     _retry = _cfg.get("retry_state")
     if _retry is not None:
-        assert _retry in CANDIDATE_STATES, _name
+        assert is_registered_state(CANDIDATE_STATES, _retry), _name
     _err = _cfg.get("error_state")
     if _err is not None:
         assert _err in CANDIDATE_STATES, _name
@@ -3725,11 +3789,12 @@ def _dispatch_sort_by_for(entity_type: str, trigger_state: str) -> str:
             isinstance(trigger_state, str) and trigger_state.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX)
         ):
             return "state_changed_at"
-        if trigger_state not in JOB_STATES:
+        if not is_registered_state(JOB_STATES, trigger_state):
             raise KeyError(f"dispatch sort_by: unknown job trigger_state {trigger_state!r}")
         return "updated_at"
     if entity_type == "company":
-        bc = (COMPANY_STATES.get(trigger_state) or {}).get("batch_criteria") or {}
+        # Implicit {base}_RETRY shares the base's batch_criteria.
+        bc = (COMPANY_STATES.get(registered_base(COMPANY_STATES, trigger_state) or trigger_state) or {}).get("batch_criteria") or {}
         sort_by = bc.get("sort_by")
         if not sort_by:
             raise KeyError(f"dispatch sort_by: company state {trigger_state!r} missing batch_criteria.sort_by")
@@ -6285,7 +6350,7 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
     s = (state or "").strip()
     if not s:
         return False
-    if s in JOB_STATES:
+    if is_registered_state(JOB_STATES, s):
         return True
     if legacy_build_artifacts_hop(s) is not None:
         return True
@@ -6300,7 +6365,7 @@ def is_valid_candidate_batch_claim_state(state: str) -> bool:
     s = (state or "").strip()
     if not s:
         return False
-    if s in CANDIDATE_STATES:
+    if is_registered_state(CANDIDATE_STATES, s):
         return True
     parsed = parse_dispatch_hop_label(s)
     if parsed is None:
