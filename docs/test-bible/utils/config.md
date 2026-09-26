@@ -4379,3 +4379,24 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
   tests/component/utils/test_config.py::TestAst1788ManageListAndProfileSlackChannelShapes \
   -q
 ```
+
+
+### AST-1807 · AST-1805 (implicit _RETRY substate)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1807-implicit-retry-tests`. Product: **AST-1805** (`{base}_RETRY` validates through its registered base; retry priors derived by `state_prior_states`). Probe retries are never registry keys, so these stay green through **AST-1806**'s purge. Unregistered base (`NOPE_RETRY`) is still rejected everywhere.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helpers `retry_of` / `retry_base` / `registered_base` / `is_registered_state` / `state_prior_states` (cross-base feeders, self-drain, `None` stays unrestricted, `KeyError` on unregistered) | `src/utils/config.py` | **`TestAst1807ImplicitRetryHelpers`** |
+| `is_valid_{job,candidate}_batch_claim_state`, `_dispatch_sort_by_for` job + company (base `batch_criteria`) | `src/utils/config.py` | **`TestAst1807ImplicitRetryConfigValidators`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1807ImplicitRetryHelpers \
+  tests/component/utils/test_config.py::TestAst1807ImplicitRetryConfigValidators \
+  -q
+```

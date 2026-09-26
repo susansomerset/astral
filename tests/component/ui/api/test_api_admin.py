@@ -949,6 +949,19 @@ class TestAst773UpdateDispatchTaskTaskKey:
         assert err is not None and "grade_do" in err
         assert admin_mod._dispatch_task_key_trigger_error("qualify_job_listings", "VALID_TITLE") is None
 
+    def test_ast1807_trigger_error_accepts_implicit_retry(self) -> None:
+        # AST-1807 / AST-1805: {base}_RETRY validates through its registered base at both sites.
+        # General (job) branch.
+        assert admin_mod._dispatch_task_key_trigger_error("fetch_jd", "PASSED_JOBLIST_RETRY") is None
+        assert admin_mod._dispatch_task_key_trigger_error("fetch_jd", "NOPE_RETRY") == (
+            "task_key 'fetch_jd' (job) is not valid for trigger_state 'NOPE_RETRY'"
+        )
+        # Mailbox candidate branch.
+        assert admin_mod._dispatch_task_key_trigger_error("stage_email_meteorite", "RESUME_READY_RETRY") is None
+        assert admin_mod._dispatch_task_key_trigger_error("stage_email_meteorite", "NOPE_RETRY") == (
+            "task_key 'stage_email_meteorite' (candidate) is not valid for trigger_state 'NOPE_RETRY'"
+        )
+
     def test_dispatch_chain_hop_label_must_match_task_key(self) -> None:
         hop_ts = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
         err = admin_mod._dispatch_task_key_trigger_error("contemplate_job", hop_ts)

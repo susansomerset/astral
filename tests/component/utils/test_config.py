@@ -6941,3 +6941,67 @@ class TestAst1788ManageListAndProfileSlackChannelShapes:
         keys = [f["key"] for f in section["fields"]]
         assert keys.index("contact.slack_channel_id") == keys.index("contact.slack_username") + 1
         assert keys.index("contact.slack_channel_name") == keys.index("contact.slack_channel_id") + 1
+
+
+# AST-1807 · AST-1805: implicit {base}_RETRY substate helpers + derived-prior rule.
+# Probe states (PASSED_GET_RETRY, RESUME_READY_RETRY, …) are never registry keys, so these
+# stay green through AST-1806's purge of the explicit *_RETRY keys.
+class TestAst1807ImplicitRetryHelpers:
+    def test_retry_of(self) -> None:
+        assert cfg.retry_of("PASSED_GET") == "PASSED_GET_RETRY"
+
+    def test_retry_base(self) -> None:
+        assert cfg.retry_base("PASSED_GET_RETRY") == "PASSED_GET"
+        assert cfg.retry_base(" PASSED_GET_RETRY ") == "PASSED_GET"
+        assert cfg.retry_base("PASSED_GET") is None
+        # Bare suffix has no base.
+        assert cfg.retry_base("_RETRY") is None
+        assert cfg.retry_base(None) is None
+
+    def test_registered_base_and_is_registered_state(self) -> None:
+        js = cfg.JOB_STATES
+        assert cfg.registered_base(js, "PASSED_GET") == "PASSED_GET"
+        assert cfg.registered_base(js, "PASSED_GET_RETRY") == "PASSED_GET"
+        # Suffix alone never validates: the base must be registered.
+        assert cfg.registered_base(js, "NOPE_RETRY") is None
+        assert cfg.is_registered_state(js, "PASSED_GET") is True
+        assert cfg.is_registered_state(js, "PASSED_GET_RETRY") is True
+        assert cfg.is_registered_state(js, "NOPE_RETRY") is False
+
+    def test_state_prior_states_cross_base_feeders(self) -> None:
+        # VALID_TITLE.retry_state == NEW_RETRY; HOMEPAGE_READY.retry_state == WEBSITE_FOUND_RETRY.
+        assert cfg.state_prior_states(cfg.JOB_STATES, "NEW_RETRY") == ["NEW", "NEW_RETRY", "VALID_TITLE"]
+        assert cfg.state_prior_states(cfg.COMPANY_STATES, "WEBSITE_FOUND_RETRY") == [
+            "WEBSITE_FOUND",
+            "WEBSITE_FOUND_RETRY",
+            "HOMEPAGE_READY",
+        ]
+        assert cfg.state_prior_states(cfg.JOB_STATES, "PASSED_GET_RETRY") == ["PASSED_GET", "PASSED_GET_RETRY"]
+
+    def test_state_prior_states_self_drain_and_unrestricted(self) -> None:
+        assert "JD_READY_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "JD_READY")
+        assert "REQUESTED_RESUME_RETRY" in cfg.state_prior_states(cfg.CANDIDATE_STATES, "REQUESTED_RESUME")
+        # prior_states None stays None (unrestricted entry).
+        assert cfg.state_prior_states(cfg.JOB_STATES, "NEW") is None
+
+    def test_state_prior_states_rejects_unregistered(self) -> None:
+        for state in ("NOPE", "NOPE_RETRY"):
+            with pytest.raises(KeyError, match="unregistered state"):
+                cfg.state_prior_states(cfg.JOB_STATES, state)
+
+
+# AST-1807 · AST-1805: config validators resolve {base}_RETRY through the base.
+class TestAst1807ImplicitRetryConfigValidators:
+    def test_batch_claim_state_validators(self) -> None:
+        assert cfg.is_valid_job_batch_claim_state("PASSED_GET_RETRY") is True
+        assert cfg.is_valid_job_batch_claim_state("NOPE_RETRY") is False
+        assert cfg.is_valid_candidate_batch_claim_state("RESUME_READY_RETRY") is True
+        assert cfg.is_valid_candidate_batch_claim_state("NOPE_RETRY") is False
+
+    def test_dispatch_sort_by_for_job_retry(self) -> None:
+        assert cfg._dispatch_sort_by_for("job", "PASSED_JOBLIST_RETRY") == "updated_at"
+        with pytest.raises(KeyError, match="unknown job trigger_state"):
+            cfg._dispatch_sort_by_for("job", "NOPE_RETRY")
+
+    def test_dispatch_sort_by_for_company_retry_reads_base_criteria(self) -> None:
+        assert cfg._dispatch_sort_by_for("company", "TO_WATCH_RETRY") == "updated_at"

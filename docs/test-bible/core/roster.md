@@ -830,3 +830,24 @@ Canonical external map: [`external/telescope.md`](../external/telescope.md).
   tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi::test_states_list_allows_registry_absent_companion \
   -q
 ```
+
+
+### AST-1807 · AST-1805 (implicit _RETRY substate)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1807-implicit-retry-tests`. Product: **AST-1805** (`{base}_RETRY` validates through its registered base; retry priors derived by `state_prior_states`). Probe retries are never registry keys, so these stay green through **AST-1806**'s purge. Unregistered base (`NOPE_RETRY`) is still rejected everywhere.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `PREFILTER_FAILED_RETRY` accepted via base | `src/core/roster.py` `transition_company_state` | **`TestTransitionCompanyState::test_ast1807_accepts_implicit_retry_of_registered_base`** |
+| `NOPE_RETRY` rejected | same | **`…::test_ast1807_rejects_unregistered_base_retry`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestTransitionCompanyState::test_ast1807_accepts_implicit_retry_of_registered_base \
+  tests/component/core/test_roster.py::TestTransitionCompanyState::test_ast1807_rejects_unregistered_base_retry \
+  -q
+```
