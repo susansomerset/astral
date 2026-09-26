@@ -105,6 +105,7 @@ from src.utils.config import (
     dispatch_task_admin_defaults,
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
+    is_registered_state,
     fetch_website_prefilter_second_strike_filter,
     dispatch_chain_claim_states_for_row,
     is_dispatch_chain_trigger,
@@ -1125,7 +1126,8 @@ def save_company(
     if not state or not state.strip():
         raise ValueError("state is required and cannot be empty")
     allowed = list(COMPANY_STATES.keys()) if COMPANY_STATES else []
-    if not allowed or state not in allowed:
+    # Implicit {base}_RETRY (e.g. parse failure → JOBLIST_IDENTIFIED retry) validates via its base (AST-1806).
+    if not is_registered_state(COMPANY_STATES, state):
         raise ValueError(f"Invalid state '{state}'. Must be one of: {allowed}")
 
     if state == ASTRAL_CONFIG.get("company_state_clear_posting_jobs", "NEW"):
