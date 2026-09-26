@@ -287,6 +287,20 @@ class TestBatchApi:
         assert companies == []
         assert claim.call_args.kwargs["states"] == states
 
+    def test_ast1808_single_state_retry_claims_with_base_criteria(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1808 / AST-1806: WEBSITE_FOUND_RETRY is not a key; gate + batch_criteria resolve via the base.
+        assert "WEBSITE_FOUND_RETRY" not in COMPANY_STATES
+        claim = MagicMock()
+        monkeypatch.setattr(roster_mod, "claim_company_batch", claim)
+        monkeypatch.setattr(roster_mod, "get_company_batch", MagicMock(return_value=[]))
+        roster_mod.get_new_company_batch("WEBSITE_FOUND_RETRY", context="roster")
+        crit = COMPANY_STATES["WEBSITE_FOUND"].get("batch_criteria", {})
+        assert claim.call_args.args[1] == "WEBSITE_FOUND_RETRY"
+        assert claim.call_args.args[2] == crit.get("limit", 10)
+        assert claim.call_args.kwargs["sort_by"] == crit.get("sort_by", "updated_at")
+        with pytest.raises(ValueError, match="state must be one of"):
+            roster_mod.get_new_company_batch("NOPE_RETRY", context="roster")
+
     def test_get_new_company_batch_claims_and_returns_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
         claim = MagicMock()
         monkeypatch.setattr(roster_mod, "claim_company_batch", claim)

@@ -4400,3 +4400,40 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
   tests/component/utils/test_config.py::TestAst1807ImplicitRetryConfigValidators \
   -q
 ```
+
+
+### AST-1808 · AST-1806 (explicit _RETRY registry purge)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1808-purge-retry-tests`. Product: **AST-1806** (18 `*_RETRY` registry keys + declared retry priors deleted; retries are implicit substates, priors derived by `state_prior_states`). Green only once AST-1806 is on the tree (ftr `2a419fbf`+); pre-purge `65e3ca6f` is red.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** zero `*_RETRY` keys / declared retry priors in JOB/COMPANY/CANDIDATE registries | `src/utils/config.py` | **`TestAst1808RetryRegistryPurge::test_no_explicit_retry_keys_in_entity_registries`** |
+| Effective priors identical to pre-purge (AST-1806 gate snapshot; `*_RETRY_RETRY` stripped both sides — they only exist while legacy keys do) | `src/utils/config.py` + fixture `tests/component/utils/fixtures/ast1806_prior_snapshot.json` (captured on `65e3ca6f`) | **`…::test_prior_snapshot_pinned`** |
+| AST-642 consult fail-dest for retry job states (Radia ask on AST-1806): primary → holding, holding → terminal, `PASSED_LIKE_RETRY` → `FAILED_TECHNICAL` | `src/core/consult.py` `_consult_batch_fail_dest` | **`…::test_consult_fail_dest_for_retry_job_states`** |
+| `database.save_company` accepts implicit retry (existing real-DB anchors — `save_company(state="WEBSITE_FOUND_RETRY")`; `tests/component/data/**` + `docs/test-bible/data/**` are blocked for agent edits by the `data/` rule in `.cursorignore`, so no new node there) | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst641UnionClaimCount` · `::TestAst882HomepageReadyClaimsWfr::test_claim_company_batch_homepage_ready_and_wfr` |
+
+**Broken / obsolete → revised (14, same file):** AST-721 `test_parse_states_and_transitions`; AST-720 `test_selection_states_and_transitions`; AST-507 `test_company_states_and_transitions`; AST-874 `test_job_states_and_like_priors`; AST-898 `test_registry_retry_pointers_and_drain`; AST-1339 `test_registry_retry_pointer_no_nested`; AST-1253 `test_requested_artifacts_priors_include_regenerate_states`; AST-1375 `test_inflight_hide_states_exact_membership`; AST-1053 `test_job_states_priors` + `test_non_meteorite_gdl_and_recommended_untouched`; AST-1195 `test_bot_blocked_registry_and_skipped_ui`; AST-1197 `test_task_config_email_and_bot_knobs`; AST-1055 `test_recommended_priors_include_meteorite_like_states`; AST-1155 `test_retry_state_and_dispatch_claim_companions`. Membership → `is_registered_state` / `registered_base` + key absence; effective priors → `state_prior_states` (`in` / `set`, never exact derived list); raw `prior_states` equality keeps checking the declared base-only list. Earlier prior rows naming explicit retry priors (AST-1053 / AST-1195 / AST-1339 notes above) are superseded by this block.
+
+**Pre-existing failures (not AST-1808):** `TestAst882HomepageReadyClaimsWfr::test_count_eligible_homepage_ready_unions_wfr` (count 1 ≠ 2, red on `65e3ca6f` too) and 19 unrelated `test_config.py` cases.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge \
+  tests/component/utils/test_config.py::TestAst721ParseJobListConfig \
+  tests/component/utils/test_config.py::TestAst720SelectJobPageConfig \
+  tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst1339MeteoriteNewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst1253GenerateRegenerateHandoffConfig \
+  tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  tests/component/utils/test_config.py::TestAst1195SchemaNullsAndBotBlocked \
+  tests/component/utils/test_config.py::TestAst1197QualifyMeteoriteApplyKnobs \
+  tests/component/utils/test_config.py::TestAst1055MeteoriteLikeUpshotTasks::test_recommended_priors_include_meteorite_like_states \
+  tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
+  -q
+```

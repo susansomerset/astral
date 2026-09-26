@@ -851,3 +851,22 @@ Canonical external map: [`external/telescope.md`](../external/telescope.md).
   tests/component/core/test_roster.py::TestTransitionCompanyState::test_ast1807_rejects_unregistered_base_retry \
   -q
 ```
+
+
+### AST-1808 · AST-1806 (explicit _RETRY registry purge)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1808-purge-retry-tests`. Product: **AST-1806** (18 `*_RETRY` registry keys + declared retry priors deleted; retries are implicit substates, priors derived by `state_prior_states`). Green only once AST-1806 is on the tree (ftr `2a419fbf`+); pre-purge `65e3ca6f` is red.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single-state `WEBSITE_FOUND_RETRY` claim: gate + `batch_criteria` resolve via base; `NOPE_RETRY` still raises | `src/core/roster.py` `get_new_company_batch` | **`TestBatchApi::test_ast1808_single_state_retry_claims_with_base_criteria`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestBatchApi::test_ast1808_single_state_retry_claims_with_base_criteria \
+  -q
+```

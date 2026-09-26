@@ -238,6 +238,28 @@ class TestNormalizeRubricArtifactsOnSave:
             candidate_mod.normalize_rubric_artifacts_on_save({"company_prefilter": "bad"})
 
 
+class TestAst1808RetryResolvesViaBase:
+    """AST-1808 / AST-1806: consumers resolve {base}_RETRY through the base (no explicit retry keys)."""
+
+    @pytest.mark.parametrize("base", ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"])
+    def test_requested_stage_failure_target_retry_only_row(self, base: str) -> None:
+        cfg_b = candidate_mod.CANDIDATE_STATES[base]
+        retry = f"{base}_RETRY"
+        # Retry-only dispatch row: failing while on retry → error_state (no KeyError, no retry loop).
+        assert candidate_mod._requested_stage_failure_target(retry, retry) == cfg_b["error_state"]
+        # Primary row on its base still routes to the retry holding.
+        assert candidate_mod._requested_stage_failure_target(base, base) == cfg_b["retry_state"]
+
+    def test_check_context_complete_retry_matches_base(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _run(state: str) -> bool:
+            monkeypatch.setattr(
+                candidate_mod.database, "get_candidate", lambda candidate_id: {"state": state, "candidate_data": {}}
+            )
+            return candidate_mod.check_context_complete("somerset")
+
+        assert _run("REQUESTED_ARTIFACTS_RETRY") == _run("REQUESTED_ARTIFACTS")
+
+
 class TestCheckContextComplete:
     def test_returns_false_when_context_incomplete(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
