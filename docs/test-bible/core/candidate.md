@@ -2263,3 +2263,26 @@ Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (l
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/core/candidate.md`
+
+
+### AST-1807 · AST-1805 (implicit _RETRY substate)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1807-implicit-retry-tests`. Product: **AST-1805** (`{base}_RETRY` validates through its registered base; retry priors derived by `state_prior_states`). Probe retries are never registry keys, so these stay green through **AST-1806**'s purge. Unregistered base (`NOPE_RETRY`) is still rejected everywhere.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `RESUME_READY → RESUME_READY_RETRY` saves | `src/core/candidate.py` `transition_candidate_state` / `_candidate_prior_states` | **`TestTransitionCandidateState::test_ast1807_accepts_implicit_retry_of_registered_base`** |
+| Derived priors gate `NEW_CANDIDATE → RESUME_READY_RETRY` | same | **`…::test_ast1807_derived_priors_still_gate_retry`** |
+| `NOPE_RETRY` → `Unknown candidate state` | same | **`…::test_ast1807_rejects_unregistered_base_retry`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestTransitionCandidateState::test_ast1807_accepts_implicit_retry_of_registered_base \
+  tests/component/core/test_candidate.py::TestTransitionCandidateState::test_ast1807_derived_priors_still_gate_retry \
+  tests/component/core/test_candidate.py::TestTransitionCandidateState::test_ast1807_rejects_unregistered_base_retry \
+  -q
+```

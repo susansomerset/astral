@@ -206,6 +206,31 @@ class TestTransitionCandidateState:
         with pytest.raises(ValueError, match="Candidate not found"):
             candidate_mod.transition_candidate_state("missing", "INTAKE_INITIATED")
 
+    def test_ast1807_accepts_implicit_retry_of_registered_base(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1807 / AST-1805: RESUME_READY_RETRY is not a registry key; validates via base.
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "RESUME_READY", "state_history": []}
+        )
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "RESUME_READY_RETRY")
+        assert save.call_args.kwargs["state"] == "RESUME_READY_RETRY"
+
+    def test_ast1807_derived_priors_still_gate_retry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Derived priors for RESUME_READY_RETRY are [RESUME_READY, RESUME_READY_RETRY].
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW_CANDIDATE"}
+        )
+        with pytest.raises(candidate_mod.IllegalCandidateTransition):
+            candidate_mod.transition_candidate_state("somerset", "RESUME_READY_RETRY")
+
+    def test_ast1807_rejects_unregistered_base_retry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW_CANDIDATE"}
+        )
+        with pytest.raises(ValueError, match="Unknown candidate state"):
+            candidate_mod.transition_candidate_state("somerset", "NOPE_RETRY")
+
 
 class TestNormalizeRubricArtifactsOnSave:
     def test_rejects_non_list_artifact(self) -> None:

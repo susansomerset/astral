@@ -247,6 +247,18 @@ class TestTransitionCompanyState:
         with pytest.raises(ValueError, match="Company not found"):
             roster_mod.transition_company_state("acme", "TO_WATCH")
 
+    def test_ast1807_accepts_implicit_retry_of_registered_base(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1807 / AST-1805: PREFILTER_FAILED_RETRY is not a registry key; validates via base.
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company()))
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        roster_mod.transition_company_state("acme", "PREFILTER_FAILED_RETRY")
+        assert update.call_args.kwargs["state"] == "PREFILTER_FAILED_RETRY"
+
+    def test_ast1807_rejects_unregistered_base_retry(self) -> None:
+        with pytest.raises(ValueError, match="not in allowed list"):
+            roster_mod.transition_company_state("acme", "NOPE_RETRY")
+
 
 class TestBatchApi:
     def test_get_new_company_batch_requires_batch_id_or_context(self) -> None:
