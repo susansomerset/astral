@@ -107,7 +107,14 @@ class RailwayJsonHandler(logging.Handler):
             }
             if _worker_label:
                 payload["worker"] = _worker_label
-            payload.update(_context_fields())
+            ctx = _context_fields()
+            payload.update(ctx)
+            if record.levelno < logging.INFO and _worker_label:
+                # Debug text carries the replica (and job) so a text filter on the
+                # worker id finds the walk-through, not only the structured field.
+                job = ctx.get("job")
+                prefix = f"{_worker_label} {job}" if job else _worker_label
+                payload["message"] = f"{prefix} | {payload['message']}"
             if record.exc_info:
                 payload["exception"] = self.formatException(record.exc_info)
             for key, value in record.__dict__.items():
