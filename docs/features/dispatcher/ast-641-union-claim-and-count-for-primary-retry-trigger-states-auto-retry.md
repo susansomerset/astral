@@ -1255,7 +1255,7 @@ Any diff means stop and don't publish; comment the diff on the ticket.
 - `src/core/consult.py`
   - `_INPUT_STATE_TO_TASK`: delete the 6 retry entries; right after the dict add `_INPUT_STATE_TO_TASK.update({retry_of(k): v for k, v in list(_INPUT_STATE_TO_TASK.items())})`. Every retry maps like its base; this is a legacy map with no `src/` consumer.
   - ~1858: the tuple becomes `("VALID_TITLE", retry_of("VALID_TITLE"), retry_of("NEW"))`.
-- **`src/ui/api/api_system.py` `_progress_rank` (~46): `CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, state) or "")`.** This one is outside the ticket's `## Scope` — see `[scope-gate]` on AST-1806. Without it, a candidate in `REQUESTED_*_RETRY` drops from rank 4 / 6 to −1, and nav gating (`_is_at_or_past`) closes items.
+- **`src/ui/api/api_system.py` `_progress_rank` (~46): `CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, state) or "")`.** This file was added to the ticket's `## Scope` after the `[scope-gate]` on AST-1806. Without it, a candidate in `REQUESTED_*_RETRY` drops from rank 4 / 6 to −1, and nav gating (`_is_at_or_past`) closes items.
 - **Must stay direct** (retry of retry goes to terminal; don't resolve through the base): `consult._consult_batch_fail_dest` (~1526), `roster._prefilter_batch_fail_dest` (~1871), `candidate.age_stale_candidate_states` (~2482, no stale on retry either way), and the `gazer` `cfg["retry_state"]` reads. `dispatcher` / `database` claim/count are verify only.
 
 **B5. Done check:** `rg -n '"[A-Z_]+_RETRY"' src/utils/config.py src/core/consult.py src/core/roster.py` returns nothing. Config imports cleanly, and the gate snapshot is identical.
@@ -1268,7 +1268,7 @@ Any diff means stop and don't publish; comment the diff on the ticket.
 - **`legal_job_successor_states`** stops offering retry targets for manual Jobs moves (accepted in AST-1805's blast radius).
 - **In Review** retry buckets, grade/rubric columns, and task routing are unchanged (same strings via `retry_of`).
 - **Tests (Betty / AST-1807)** will break wherever they assert retry keys exist in the registries, explicit `prior_states` contents, full `state_options` lists, or `_requested_stage_failure_target` raising for a retry primary. `test_consult` `_INPUT_STATE_TO_TASK` retry asserts stay green.
-- **Shared modules:** `config`, `roster`, `candidate`, `consult`, `database` (`save_company` gate only), and `api_system` (pending scope).
+- **Shared modules:** `config`, `roster`, `candidate`, `consult`, `database` (`save_company` gate only), and `api_system` (`_progress_rank` only).
 
 ### What must still hold
 - AST-641 / AST-1798 / AST-1800: claim/count lists are byte-identical, and the AST-892 second-strike filter is unchanged.
