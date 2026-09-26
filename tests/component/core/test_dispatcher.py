@@ -320,11 +320,12 @@ class TestRunUnified:
         assert out["total_processed"] == 1
         clear.assert_called_once_with(batch_id)
 
+    @pytest.mark.parametrize("batch_call_mode, full", [(1, True), (0, False)])
     @pytest.mark.asyncio
-    async def test_ast891_parse_job_list_full_batch_despite_batch_call_mode_zero(
-        self, monkeypatch: pytest.MonkeyPatch, batch_id: str,
+    async def test_parse_job_list_follows_the_rows_batch_call_mode(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str, batch_call_mode: int, full: bool,
     ) -> None:
-        """AST-891: parse_job_list always full-list consult — never _warm_then_gather fan-out."""
+        """The dispatch row decides Full vs Each — no task_key override (was AST-891's forced full)."""
         monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
         companies = [{"short_name": "co-a"}, {"short_name": "co-b"}]
         claim = MagicMock(return_value=(batch_id, companies))
@@ -334,7 +335,7 @@ class TestRunUnified:
         run = AsyncMock(
             return_value={"total_processed": 2, "total_passed": 2, "total_failed": 0, "total_errors": 0},
         )
-        warm = AsyncMock()
+        warm = AsyncMock(return_value=[])
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
         monkeypatch.setattr(dispatcher_mod, "_warm_then_gather", warm)
         task = {
@@ -342,14 +343,15 @@ class TestRunUnified:
             "trigger_state": "JOBLIST_IDENTIFIED",
             "task_key": "parse_job_list",
             "batch_size": 20,
-            "batch_call_mode": 0,
+            "batch_call_mode": batch_call_mode,
         }
-        out = await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
-        assert out["total_processed"] == 2
-        run.assert_awaited_once()
-        assert run.await_args.args[2] == companies
-        assert run.await_args.kwargs["dispatch_task_key"] == "parse_job_list"
-        warm.assert_not_awaited()
+        await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
+        if full:
+            run.assert_awaited_once()
+            assert run.await_args.args[2] == companies
+            warm.assert_not_awaited()
+        else:
+            warm.assert_awaited_once()
         clear.assert_called_once_with(batch_id)
 
     @pytest.mark.asyncio

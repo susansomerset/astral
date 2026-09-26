@@ -3594,7 +3594,7 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
-    "meteorite_like", "vet_inflow_discovery",
+    "meteorite_like", "vet_inflow_discovery", "parse_job_list",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
