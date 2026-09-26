@@ -1276,3 +1276,58 @@ Any diff means stop and don't publish; comment the diff on the ticket.
 - Every legal transition today stays legal: the gate snapshot is identical before and after.
 - Candidate `progress_rank` for `REQUESTED_*_RETRY` stays 4 / 6 everywhere it's read.
 - Config imports with every module assert passing.
+
+### Board-joan findings (AST-1806)
+
+## Fix-board Joan pass — AST-1806
+
+**Ticket:** AST-1806 (Stage B purge) · parent AST-1804 · publish ref `origin/sub/AST-1804/AST-1806-retry-registry-purge` (@ `9e5bc738+`)  
+**Read:** `plan-fix` § Bug: AST-1806 (As-is / To-be / Repro / Root cause / Proposed change B1–B5 / Blast radius / What must still hold); fix-board § Joan pass; active corpus skim (`patt.task.dispatch-retry`, `astral.state.job-prior-states-enforced`, `astral.dispatch.entity-state-bound`, `astral.batch.claim-process-release`, `astral.config.config-source-of-truth`); grep for explicit `_RETRY` / registry-key requirements in `canon/statutes` and `canon/directives/active`.
+
+**The one question:** Does this product purge conflict with or **require** updating any directive in force?
+
+**Answer:** No mandatory canon work for this board pass. The purge **implements** canon that already treats `_RETRY` as an implicit suffix substate, not a separate registry instance. Susan’s AST-1804 rule matches **`patt.task.dispatch-retry`** Arc 1–2 (no separate retry instance; validation via registered base; claim union unchanged).
+
+### Your explicit sub-questions
+
+**Any statute naming explicit `_RETRY` registry states?**  
+**No.** Active statutes in `canon/statutes` do not require 18 `*_RETRY` dict keys or `"X_RETRY"` literals in `JOB_STATES` / `COMPANY_STATES` / `CANDIDATE_STATES`. Stale **product/docs** (e.g. archived AST-641 “companion exists in registry”, bible rows) are not in-force directives; AST-1806 does not amend them in this ticket.
+
+**`JOB_STATES.prior_states` wording in `astral.state.job-prior-states-enforced`?**  
+The Statement says transitions enforce **`JOB_STATES.prior_states` via tracker**. After AST-1805, enforcement already goes through **`state_prior_states`**; AST-1806 only removes redundant explicit retry keys and retry-named entries from config lists. The **invariant** (illegal jumps raise; priors gate transitions) is unchanged; the gate snapshot in the plan is meant to prove effective priors are identical.  
+
+That wording is **imprecise as config documentation** (priors for retry targets are derived, not only literal list fields), but it was already imprecise after Stage A. It does **not** contradict the purge: the statute describes the enforcement outcome, not “every allowed edge must appear literally in `prior_states`.” No **conflict** and no **blocking** canon edit—same read Joan used for AST-1805 Stage A.
+
+**Optional housekeeping (not fix-board REVISE):** Archie could later tighten `astral.state.job-prior-states-enforced` and/or **`astral.dispatch.entity-state-bound`** (“real state” = registered base or implicit `{base}_RETRY`) for Radia/comparability. That is F3/clarity, not a prerequisite to `make-fix` here.
+
+### Overlap table (Stage B)
+
+| Directive | vs AST-1806 purge |
+|-----------|-------------------|
+| **`patt.task.dispatch-retry`** | **Conforming.** Arc 1: no separate registry instance; Arc 2: suffixed states need not be registry keys; B1–B2 remove the legacy contradiction. |
+| **`astral.dispatch.entity-state-bound`** | **Conforming** with AST-1805 validators + B4 `registered_base` reads; trigger/claim states stay honest. |
+| **`astral.batch.claim-process-release`** / AST-641 / AST-1798 / AST-1800 | **Unchanged** claim/count paths per plan. |
+| **`astral.config.config-source-of-truth`** | **Conforming.** `retry_of` / helpers stay in `config.py`; mechanical literal → `retry_of("BASE")` is SSOT, not scatter. |
+| **`stat.config.derive-dont-restate`** (corpus roster) | **Improved conformity**, not a required statute edit—fewer duplicated `"X_RETRY"` literals. |
+| **AST-642 routing** | B4 `_requested_stage_failure_target` fix aligns retry-only rows with terminal-on-retry; no new retry loop—pattern Arc 4, not new precedent. |
+
+**ESCALATE:** Not warranted. Susan’s binding rule, gate script, and accepted blast radius (UI key lists, `legal_job_successor_states`) are bounded product choices, not ambiguous statute intent.
+
+**F3 (`validate-plan` fix mode):** Not triggered from this board pass.
+
+---
+
+**Machine-readable upshot (Chuckles posts `--as joan`):**
+
+```
+[board-joan]  CANON: OK
+```
+
+**Stdout:**
+
+```text
+[board-joan]  CANON: OK
+AST-1806 board-joan done — CANON: OK.
+```
+
+context_tokens≈32000
