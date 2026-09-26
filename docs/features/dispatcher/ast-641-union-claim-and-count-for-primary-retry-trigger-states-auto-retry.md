@@ -1561,3 +1561,95 @@ AST-1807 board-joan done — CANON: OK.
 ```
 
 context_tokens≈24000
+
+### Review-fix findings (AST-1807)
+
+[code-rubric]
+**Ticket:** AST-1807  
+**Publish ref:** e398249244438d8913319b09bd33042125d794be  
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3  
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK  
+- **Node:** `tests/component/core/test_tracker.py::TestTransitionJobState::test_ast1807_bug_repro_base_to_implicit_retry` — first-line comment tags `[bug-repro] AST-1807 / AST-1805`.  
+- **Body pins To-be:** job in `PASSED_GET`, target `PASSED_GET_RETRY`; asserts `save_job` receives `state="PASSED_GET_RETRY"` and history `to_state == "PASSED_GET_RETRY"`. That is the corrected plan repro (not the obsolete `PASSED_DO → PASSED_GET_RETRY` path, which correctly stays illegal and is covered by `test_ast1807_derived_priors_still_gate_retry`).  
+- **Pre-fix contract:** would fail on pre–AST-1805 product with `ValueError` / `not in allowed list` (full-string registry validation) — matches plan § Repro and Betty’s `[bug-repro]` handoff; not tautological (exercises real `transition_job_state`, not helper mirrors).  
+- **Companion negatives in same class:** `NOPE_RETRY` → `not in allowed list`; derived-prior gate `PASSED_DO → PASSED_GET_RETRY` → `Invalid transition` — satisfy plan “suffix alone not enough” and **What must still hold**.
+
+**`## What must still hold`:** OK  
+- **`NOPE_RETRY` rejected:** asserted in T1 helpers, T2 batch/sort validators, T3–T6 validator tests.  
+- **Derived priors still gate:** tracker + candidate negative cases in diff.  
+- **AST-1806-flipping `test_config.py` ~3080–3110:** no hunks in that region (append-only at ~6942).  
+- **Fail-dest / consult coverage:** no edits to `test_consult` fail-dest tests in diff.  
+- **No `src/`:** zero lines under `src/` in ftr…sub diff.
+
+## Canon scores
+
+(no frozen canon list on Linear Description — gap-ticket pattern; zero ids locked at Plan Approved; scored set empty)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (F3 not triggered; Joan fix-board `[board-joan] CANON: OK` only)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list on gap ticket (same pattern as AST-1802 / AST-1808 / AST-1805 product tips). Joan board OK only.  
+  **Recommendation:** No Canon Scope amendment required; tests lock AST-1805 behavior that already matches `patt.task.dispatch-retry` Arc 1–2.
+
+- **Location:** Plan-fix § Proposed change header vs landing path  
+  **Finding:** Plan states engineers do not edit `tests/` (Betty qa-fix ownership); Betty landed `[bug-repro]` + manifest @ `6d47880e`, then `merge-tests` / Ada test-fix @ `e3982492` — normal fix-lane gap shape (same family as AST-1802).  
+  **Recommendation:** None for resolve-child.
+
+### advisory
+
+- **Location:** Betty `[bug-repro]` thread vs Ada test-fix  
+  **Finding:** Betty cited “35/35 pass”; Ada manifest lists **18/18** nodes for `### AST-1807` — count mismatch only; both agree repro red→green and manifest green on tip with AST-1806 on branch.  
+  **Recommendation:** Optional thread hygiene; not fix-now.
+
+- **Location:** Tip commit message  
+  **Finding:** HEAD `e3982492` is `sync(ftr)` (AST-1806 merged on branch); test/bible payload lives in `d72c8c7b` + `merge-tests` — review substance is the ftr…sub diff, not the sync commit alone.  
+  **Recommendation:** Chuckles doc append uses tip SHA `e3982492` as publish ref under review.
+
+## Notes (informal board overlap — not scored)
+
+| Directive | vs test/bible diff |
+|-----------|-------------------|
+| `patt.task.dispatch-retry` | Tests assert implicit `{base}_RETRY` via base + derived priors; no claim-shape edits. |
+| `astral.state.job-prior-states-enforced` | Negative transitions prove priors still gate; does not rewrite raw `prior_states` tables (AST-1808). |
+| `astral.dispatch.entity-state-bound` | Admin trigger tests accept registered-base retries. |
+| `astral.config.config-source-of-truth` | Helper/validator tests target `config.py` API only. |
+| `astral.standards.in-scope-only` | Tests + bible + plan doc only; no product drift. |
+
+## What's solid
+
+- **T1–T2:** `TestAst1807ImplicitRetryHelpers` + `TestAst1807ImplicitRetryConfigValidators` — values match plan (feeders, self-drain, `NEW` unrestricted, KeyError on unregistered, batch/sort validators).  
+- **T3–T6:** Tracker repro + negatives; roster `PREFILTER_FAILED_RETRY`; candidate `RESUME_READY_RETRY` + prior gate; admin both trigger branches — all present in diff.  
+- **T7:** Five bible pages include `### AST-1807 · AST-1805` with tables, **Broken / obsolete:** none, narrowed `run_component_tests.sh` commands; tracker marks repro node explicitly.  
+- **AST-1805 board bar:** Closes Betty `TESTS: REVISE` on **AST-1805** (not AST-1808 purge rewrites). Probe retries documented as never registry keys — compatible with AST-1806 purge on merged ftr.  
+- **Estimate 3** fits (~385 LOC tests/bible/plan).  
+- **Parent AST-1804** — normal fix-lane shape; diff base includes AST-1805 (+ ftr now carries AST-1806 per sync).
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-1804; diff base `origin/ftr/AST-1804-fetch-avail-retry`) | → **Review Posted** → append artifact + `docs(AST-1807): Radia review — clean` on publish ref → post slim upshot `--as radia` → §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+| — | **AST-1805** | Docs-Acceptance on product can close once this lands (Betty REVISE for helpers/validators satisfied here). |
+| — | **AST-1808** | Separate purge test gap — do not conflate. |
+
+**Chuckles note:** `[bug-repro]` present and substantive. Ada’s 18/18 manifest green with AST-1806 merged on tip — aligns with spawn prompt; baseline 195-debt parity out of scope.
+
+context_tokens≈42000
+
+```
+[code-rubric] PROCEED (Commit: e398249244438d8913319b09bd33042125d794be) Implicit retry tests OK
+```
