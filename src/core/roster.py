@@ -67,6 +67,8 @@ from src.utils.config import (
     ROSTER_CONFIG,
     TASK_CONFIG,
     is_registered_state,
+    registered_base,
+    retry_of,
     roster_scrape_readiness_config,
 )
 from src.utils.formatting import (
@@ -885,7 +887,7 @@ async def run_company_task(
                 return {**zero, "total_passed": 1}
             return {**zero, "total_failed": 1}
 
-        elif input_state in ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"):
+        elif input_state in ("WEBSITE_FOUND", retry_of("WEBSITE_FOUND")):
             tk = (dispatch_task_key or "").strip()
             _warn_company(
                 short_name, "-",
@@ -1418,9 +1420,10 @@ def get_new_company_batch(
     # AST-1798 suffix-always may include keys absent from COMPANY_STATES.
     allowed = list(COMPANY_STATES.keys()) if COMPANY_STATES else []
     if states is None:
-        if not allowed or state not in allowed:
+        if not is_registered_state(COMPANY_STATES, state):
             raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
-    state_config = (COMPANY_STATES or {}).get(state, {})
+    # Implicit {base}_RETRY shares the base's batch_criteria (AST-1806).
+    state_config = (COMPANY_STATES or {}).get(registered_base(COMPANY_STATES, state) or state, {})
     batch_criteria = state_config.get("batch_criteria", {})
     limit_val = limit if limit is not None else batch_criteria.get("limit", 10)
     default_sort = batch_criteria.get("sort_by", "updated_at")

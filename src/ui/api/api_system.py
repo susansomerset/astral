@@ -28,6 +28,7 @@ from src.utils.config import (
     COVER_FROM_BLOCK_CONFIG,
     JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS,
     build_artifacts_discussion_hop_task_keys,
+    registered_base,
     build_state_ui_manifest,
     dispatch_hop_label,
     get_auth_session_policy,
@@ -43,7 +44,8 @@ _log = get_logger(__name__)
 
 
 def _progress_rank(state: str) -> int:
-    cfg = CANDIDATE_STATES.get(state) or {}
+    # {base}_RETRY ranks with its base (AST-1806).
+    cfg = CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, state) or "") or {}
     return int(cfg.get("progress_rank", -1))
 
 
