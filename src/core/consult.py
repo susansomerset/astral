@@ -29,6 +29,7 @@ from src.utils.config import (
     TASK_CONFIG,
     TRACKER_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
+    retry_of,
     JOB_STATES,
     ASTRAL_CONFIG,
     CONFIDENCE_MULTIPLIERS,
@@ -124,21 +125,17 @@ def _consult_job_identifier(job: Dict[str, Any]) -> str:
 _INPUT_STATE_TO_TASK = {
     "NEW":                "qualify_job_listings",
     "VALID_TITLE":        "qualify_job_listings",
-    "VALID_TITLE_RETRY":  "qualify_job_listings",
-    "NEW_RETRY":          "qualify_job_listings",
     "PASSED_JOBLIST":     "fetch_jd",
     "JD_READY":           "evaluate_jd",
-    "JD_READY_RETRY":     "evaluate_jd",
     "PASSED_JD":          "grade_do",
-    "PASSED_JD_RETRY":    "grade_do",
     "PASSED_DO":          "grade_get",
-    "PASSED_DO_RETRY":    "grade_get",
     "PASSED_GET":         "grade_like",
     "PASSED_LIKE":        "analysis_upshot",
-    "PASSED_LIKE_RETRY":  "analysis_upshot",
     "BUILD_ARTIFACTS":    "contemplate_job",
     "CANDIDATE_REVIEW":   "draft_cover_letter",
 }
+# Implicit {base}_RETRY routes like its base (AST-1806).
+_INPUT_STATE_TO_TASK.update({retry_of(k): v for k, v in list(_INPUT_STATE_TO_TASK.items())})
 
 
 def _consult_orchestration(task_key: str) -> Dict[str, Any]:
@@ -1855,7 +1852,7 @@ async def qualify_job_listings(
                     j["state"] = fresh.get("state")
     ai_jobs = [
         j for j in jobs
-        if (j.get("state") or "") in ("VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY")
+        if (j.get("state") or "") in ("VALID_TITLE", retry_of("VALID_TITLE"), retry_of("NEW"))
     ]
     if not ai_jobs:
         return {

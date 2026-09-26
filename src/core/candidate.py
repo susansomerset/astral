@@ -95,6 +95,7 @@ from src.utils.config import (
     is_registered_state,
     is_valid_candidate_batch_claim_state,
     parse_dispatch_hop_label,
+    registered_base,
     rubric_owner_task_key,
     state_prior_states,
 )
@@ -2456,7 +2457,8 @@ def check_context_complete(candidate_id: str) -> bool:
     if not candidate:
         return False
     current_state = candidate.get("state", "")
-    rank = int((CANDIDATE_STATES.get(current_state) or {}).get("progress_rank", -1))
+    # {base}_RETRY carries its base's rank (AST-1806).
+    rank = int((CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, current_state) or "") or {}).get("progress_rank", -1))
     ready_rank = int(CANDIDATE_STATES["ALL_TOPICS_READY"]["progress_rank"])
     if rank >= ready_rank and rank >= 0:
         return True
@@ -3608,12 +3610,13 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
 
 def _requested_stage_failure_target(primary_state: str, current_state: str) -> str:
     """Primary → retry_state; already on retry (or other) → error_state."""
-    cfg = CANDIDATE_STATES[primary_state]
-    retry = cfg["retry_state"]
-    error = cfg["error_state"]
-    if current_state == primary_state:
-        return retry
-    return error
+    # Retry-only dispatch rows pass {base}_RETRY; resolve to the base, then compare against it
+    # so a failure while on retry lands on error_state, never back into retry (AST-642).
+    primary = registered_base(CANDIDATE_STATES, primary_state) or primary_state
+    cfg = CANDIDATE_STATES[primary]
+    if current_state == primary:
+        return cfg["retry_state"]
+    return cfg["error_state"]
 
 
 async def run_requested_artifacts_dispatch(
