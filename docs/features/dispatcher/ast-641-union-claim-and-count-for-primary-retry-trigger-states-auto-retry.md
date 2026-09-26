@@ -1157,3 +1157,102 @@ no plan-stage scores attached (F3 validate-plan fix mode not triggered; Joan fix
 
 **Docs-Acceptance (AST-1805):** product tip only; `[board-betty] TESTS: REVISE` is owned by gap sibling AST-1807. No merge-tests on this tip. Touched-area suites: 195 failures on origin/dev and on the tip, identical sets (verified by Chuckles).
 
+
+## Bug: AST-1807 — gap: tests + bible for implicit `_RETRY` helpers and validator acceptance (AST-1805)
+
+Parent AST-1804. Test-gap sibling from fix-board `[board-betty] TESTS: REVISE` on AST-1805. **Betty lands everything here (qa-fix); engineers do not edit `tests/` or `docs/test-bible/**`.** No product `src/` change.
+
+### As-is
+AST-1805 (`d088edfd`, merged on `ftr/AST-1804-fetch-avail-retry`) added five config helpers (`retry_of`, `retry_base`, `registered_base`, `is_registered_state`, `state_prior_states`) and a `{base}_RETRY` acceptance branch in eight validators:
+- `tracker.transition_job_state`
+- `roster.transition_company_state`
+- `candidate.transition_candidate_state` / `_candidate_prior_states`
+- `config.is_valid_job_batch_claim_state` / `is_valid_candidate_batch_claim_state`
+- `config._dispatch_sort_by_for` (job and company)
+- the two `api_admin._dispatch_task_key_trigger_error` sites (mailbox candidate branch and general branch)
+
+None of these branches has a component test or a bible row.
+
+### To-be
+Every helper and every acceptance branch has a component test. For each validator, a registered `{base}_RETRY` is accepted, while an unregistered base with the suffix (`NOPE_RETRY`) is still rejected. There is one repro test that is red on the pre-fix tree (`9f6536ce`) and green on `ftr`. The five bible pages named in scope each get an AST-1807 section.
+
+### Repro
+**Correction to the ticket and to § Bug: AST-1805 Repro:** the repro transition is **`PASSED_GET → PASSED_GET_RETRY`**, not `PASSED_DO → PASSED_GET_RETRY`. Under AST-1805's derived rule, `state_prior_states(JOB_STATES, "PASSED_GET_RETRY") == ["PASSED_GET", "PASSED_GET_RETRY"]`, so `PASSED_DO → PASSED_GET_RETRY` correctly still raises `Invalid transition` after the fix. That becomes the negative companion test.
+
+Probed on both trees (this pass, `~/astral-tests/.venv/bin/python`):
+
+| Call | Pre-fix `9f6536ce` | `ftr` (AST-1805) |
+|---|---|---|
+| `transition_job_state` from `PASSED_GET` → `PASSED_GET_RETRY` | `ValueError: Value 'PASSED_GET_RETRY' not in allowed list` | saves `state="PASSED_GET_RETRY"` |
+| from `PASSED_DO` → `PASSED_GET_RETRY` | `ValueError … not in allowed list` | `ValueError: Invalid transition: PASSED_DO -> PASSED_GET_RETRY` |
+
+### Root cause
+The fix-board flagged that AST-1805's new helpers and branches landed without coverage. There is no product defect here.
+
+### Proposed change
+All expected values below were probed on `ftr` tip `65e3ca6f`. Every "pre-fix" value was probed with the five AST-1805 product files checked out at `9f6536ce`. Use the existing fixture idioms in each file (`monkeypatch` on `database.get_job` / `save_job`, `roster_mod.get_company` / `update_company`, `candidate_mod.database.get_candidate` / `save_candidate`).
+
+**T1. `tests/component/utils/test_config.py` — new `class TestAst1807ImplicitRetryHelpers`**
+- `retry_of("PASSED_GET") == "PASSED_GET_RETRY"`.
+- `retry_base`: `"PASSED_GET_RETRY"` → `"PASSED_GET"`; `" PASSED_GET_RETRY "` → `"PASSED_GET"` (strips); `"PASSED_GET"` → `None`; `"_RETRY"` → `None`; `None` → `None`.
+- `registered_base(JOB_STATES, …)`: `"PASSED_GET"` → `"PASSED_GET"`; `"PASSED_GET_RETRY"` → `"PASSED_GET"`; `"NOPE_RETRY"` → `None`. `is_registered_state` mirrors this (True, True, False).
+- `state_prior_states`, the derived-prior rule:
+  - `(JOB_STATES, "NEW_RETRY") == ["NEW", "NEW_RETRY", "VALID_TITLE"]` (cross-base feeder: `VALID_TITLE.retry_state`).
+  - `(COMPANY_STATES, "WEBSITE_FOUND_RETRY") == ["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY", "HOMEPAGE_READY"]` (cross-base feeder: `HOMEPAGE_READY.retry_state`).
+  - `(JOB_STATES, "PASSED_GET_RETRY") == ["PASSED_GET", "PASSED_GET_RETRY"]`.
+  - Self-drain: `"JD_READY_RETRY" in state_prior_states(JOB_STATES, "JD_READY")`, and `"REQUESTED_RESUME_RETRY" in state_prior_states(CANDIDATE_STATES, "REQUESTED_RESUME")`.
+  - Unrestricted stays unrestricted: `state_prior_states(JOB_STATES, "NEW") is None`.
+  - `pytest.raises(KeyError, match="unregistered state")` for both `"NOPE"` and `"NOPE_RETRY"`.
+- **Do not** touch `TestAst… ` asserts on raw `JOB_STATES[…]["prior_states"]` / explicit `*_RETRY` keys (~3080–3110). Those flip with AST-1806.
+
+**T2. `tests/component/utils/test_config.py` — new `class TestAst1807ImplicitRetryConfigValidators`**
+- `is_valid_job_batch_claim_state("PASSED_GET_RETRY") is True`; `("NOPE_RETRY") is False`. Pre-fix: False / False.
+- `is_valid_candidate_batch_claim_state("RESUME_READY_RETRY") is True`; `("NOPE_RETRY") is False`. Pre-fix: False / False.
+- `_dispatch_sort_by_for("job", "PASSED_JOBLIST_RETRY") == "updated_at"`. Pre-fix: `KeyError "unknown job trigger_state"`.
+- `_dispatch_sort_by_for("job", "NOPE_RETRY")` raises `KeyError`, match `"unknown job trigger_state"`.
+- `_dispatch_sort_by_for("company", "TO_WATCH_RETRY") == "updated_at"`, resolved from the base's `batch_criteria`. Pre-fix: `KeyError "missing batch_criteria"`.
+
+**T3. `tests/component/core/test_tracker.py` — extend `TestTransitionJobState` (or new `TestAst1807ImplicitRetryJobTransition`)**
+- **Repro (`[bug-repro]`):** `get_job` returns `{"state": "PASSED_GET", "state_history": []}`. `transition_job_state(["job-1"], "PASSED_GET_RETRY")` saves `state="PASSED_GET_RETRY"`, and history's last `to_state == "PASSED_GET_RETRY"`. Red on `9f6536ce` (`not in allowed list`).
+- Negative: from `PASSED_DO` → `PASSED_GET_RETRY` raises `ValueError`, match `"Invalid transition"`.
+- Unregistered: `transition_job_state(["job-1"], "NOPE_RETRY")` raises `ValueError`, match `"not in allowed list"` (message text preserved).
+
+**T4. `tests/component/core/test_roster.py` — extend `TestTransitionCompanyState`**
+- `transition_company_state("acme", "PREFILTER_FAILED_RETRY")` calls `update_company` with `state="PREFILTER_FAILED_RETRY"`. This is an unregistered retry of a registered base. Pre-fix: `ValueError`.
+- `"NOPE_RETRY"` raises `ValueError`, match `"not in allowed list"`.
+
+**T5. `tests/component/core/test_candidate.py` — extend `TestTransitionCandidateState`**
+- From `RESUME_READY` → `RESUME_READY_RETRY` saves `state="RESUME_READY_RETRY"`. Pre-fix: `ValueError "Unknown candidate state"`.
+- From `NEW_CANDIDATE` → `RESUME_READY_RETRY` raises `IllegalCandidateTransition` (the derived prior gate still enforces).
+- `→ "NOPE_RETRY"` raises `ValueError`, match `"Unknown candidate state"`.
+
+**T6. `tests/component/ui/api/test_api_admin.py` — extend the class holding `test_dispatch_task_key_trigger_error_helper` (~947)**
+- General branch: `_dispatch_task_key_trigger_error("fetch_jd", "PASSED_JOBLIST_RETRY") is None`. Pre-fix returns `"task_key 'fetch_jd' (job) is not valid for trigger_state 'PASSED_JOBLIST_RETRY'"`. `("fetch_jd", "NOPE_RETRY")` returns that same error shape for `'NOPE_RETRY'`.
+- Mailbox candidate branch: `_dispatch_task_key_trigger_error("stage_email_meteorite", "RESUME_READY_RETRY") is None`. Pre-fix returns an error. `("stage_email_meteorite", "NOPE_RETRY")` returns `"task_key 'stage_email_meteorite' (candidate) is not valid for trigger_state 'NOPE_RETRY'"`.
+
+**T7. Bible — add an `### AST-1807 · AST-1805 (implicit _RETRY substate)` section** (the format of recent entries, e.g. `config.md` § AST-1788) to each page, with a table naming source → test class/nodes, `**Broken / obsolete:** none`, `**Integration:** none — do not invent`, and the narrowed `run_component_tests.sh` command:
+- `docs/test-bible/utils/config.md`: T1, T2
+- `docs/test-bible/core/tracker.md`: T3 (mark the repro node `[bug-repro]`)
+- `docs/test-bible/core/roster.md`: T4
+- `docs/test-bible/core/candidate.md`: T5
+- `docs/test-bible/ui/api/api_admin.md`: T6
+
+**Red→green check for Betty:** check out the five product files at `9f6536ce`:
+```bash
+git checkout 9f6536ce -- src/utils/config.py src/core/tracker.py src/core/roster.py src/core/candidate.py src/ui/api/api_admin.py
+```
+The T3 repro and every "Pre-fix" row above must fail (T1 fails on import-level `AttributeError`, since the helpers don't exist yet). Restore with `git checkout HEAD -- <same files>`, and everything must pass. Use `~/astral-tests/.venv/bin/python -m pytest` (that venv has `asyncpg`).
+
+### Estimate
+**3**: roughly 30 assertions across 4 test files plus 5 bible sections, all read-only against the existing product.
+
+### Blast radius
+- Test-tree and bible only.
+- Nothing asserts on the purged state of the registries: these tests use unregistered retries (`PASSED_GET_RETRY`, `PREFILTER_FAILED_RETRY`, `RESUME_READY_RETRY`, `TO_WATCH_RETRY`, `PASSED_JOBLIST_RETRY`) and helper outputs that are identical before and after AST-1806. The exception is `NEW_RETRY` / `WEBSITE_FOUND_RETRY` priors; AST-1806's gate proves those are unchanged. So the suite stays green through the purge.
+- The 123 pre-existing failures in these files (identical pre/post AST-1805; see the AST-1805 Tests Passed comment) are out of scope here.
+
+### What must still hold
+- `NOPE_RETRY` (unregistered base) is rejected by every validator; the fix does not validate the suffix alone.
+- Derived priors still gate: `PASSED_DO → PASSED_GET_RETRY` and `NEW_CANDIDATE → RESUME_READY_RETRY` are rejected.
+- The AST-1806-flipping asserts in `test_config.py` (~3080–3110) are untouched.
+- Fail-destination must-not-resolve coverage already in `test_consult` / `test_roster` is untouched.
