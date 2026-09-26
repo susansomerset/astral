@@ -1273,149 +1273,147 @@ async def ingest_meteorite_jobs_from_email_html(
     if links:
         mode = "links"
         n = len(links)
-        sem = asyncio.Semaphore(int(cfg["playwright_concurrency"]))
 
         async def _one(i: int, url: str) -> None:
-            async with sem:
-                try:
-                    text, final_url = await _meteorite_fetch_link_visible_text(url, debug=debug)
-                except Exception as e:
-                    log.warning("[gazer] meteorite email Playwright failed url=%s: %s", url[:120], e)
-                    skipped.append({
-                        "reason": "playwright_error",
-                        "url": url,
-                        "matched_company_job_id": None,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=url[:80],
-                            outcome="skipped-error",
-                        )
-                        log.debug_detail(f"reason=playwright_error error={e!s}")
-                    return
+            try:
+                text, final_url = await _meteorite_fetch_link_visible_text(url, debug=debug)
+            except Exception as e:
+                log.warning("[gazer] meteorite email Playwright failed url=%s: %s", url[:120], e)
+                skipped.append({
+                    "reason": "playwright_error",
+                    "url": url,
+                    "matched_company_job_id": None,
+                })
+                if debug:
+                    log.debug_index(
+                        func="gazer.meteorite_email_ingest",
+                        index=i,
+                        total=n,
+                        identifier=url[:80],
+                        outcome="skipped-error",
+                    )
+                    log.debug_detail(f"reason=playwright_error error={e!s}")
+                return
 
-                link = (final_url or url).strip() or url
-                # AST-1132 Gate A: final URL may redirect onto excluded hosts/paths.
-                low_link = link.casefold()
-                excludes = tuple(s.casefold() for s in cfg["link_exclude_substrings"])
-                if any(frag in low_link for frag in excludes):
-                    skipped.append({
-                        "reason": "excluded_link",
-                        "url": link,
-                        "matched_company_job_id": None,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=link[:80],
-                            outcome="skipped-excluded",
-                        )
-                        log.debug_detail("reason=excluded_link")
-                    return
-
-                # AST-1132 Gate B: long-enough SVG/spec pages still skip create.
-                markers = tuple(s.casefold() for s in cfg["non_job_visible_substrings"])
-                hay_vis = (text or "").casefold()
-                if markers and any(m in hay_vis for m in markers):
-                    skipped.append({
-                        "reason": "non_job_page",
-                        "url": link,
-                        "matched_company_job_id": None,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=link[:80],
-                            outcome="skipped-non-job",
-                        )
-                        log.debug_detail("reason=non_job_page")
-                    return
-
-                haystack = f"{link}\n{text}"
-                if job_link_exists_for_candidate(candidate_id, link):
-                    skipped.append({
-                        "reason": "known_job_link",
-                        "url": link,
-                        "matched_company_job_id": None,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=link[:80],
-                            outcome="skipped-duplicate",
-                        )
-                        log.debug_detail("reason=known_job_link")
-                    return
-
-                matched = text_matches_known_company_job_id_for_candidate(
-                    candidate_id, haystack
-                )
-                if matched:
-                    skipped.append({
-                        "reason": "known_company_job_id",
-                        "url": link,
-                        "matched_company_job_id": matched,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=link[:80],
-                            outcome="skipped-duplicate",
-                        )
-                        log.debug_detail(f"reason=known_company_job_id matched={matched}")
-                    return
-
-                if len((text or "").strip()) < min_chars:
-                    skipped.append({
-                        "reason": "jd_too_short",
-                        "url": link,
-                        "matched_company_job_id": None,
-                    })
-                    if debug:
-                        log.debug_index(
-                            func="gazer.meteorite_email_ingest",
-                            index=i,
-                            total=n,
-                            identifier=link[:80],
-                            outcome="skipped-short",
-                        )
-                        log.debug_detail(f"reason=jd_too_short len={len((text or '').strip())}")
-                    return
-
+            link = (final_url or url).strip() or url
+            # AST-1132 Gate A: final URL may redirect onto excluded hosts/paths.
+            low_link = link.casefold()
+            excludes = tuple(s.casefold() for s in cfg["link_exclude_substrings"])
+            if any(frag in low_link for frag in excludes):
+                skipped.append({
+                    "reason": "excluded_link",
+                    "url": link,
+                    "matched_company_job_id": None,
+                })
                 if debug:
                     log.debug_index(
                         func="gazer.meteorite_email_ingest",
                         index=i,
                         total=n,
                         identifier=link[:80],
-                        outcome="found",
+                        outcome="skipped-excluded",
                     )
-                    log.debug_detail(f"visible_text_len={len(text or '')}")
+                    log.debug_detail("reason=excluded_link")
+                return
 
-                result = create_meteorite_job(
-                    candidate_id, text, job_link=link, debug=debug
-                )
-                created.append(result)
+            # AST-1132 Gate B: long-enough SVG/spec pages still skip create.
+            markers = tuple(s.casefold() for s in cfg["non_job_visible_substrings"])
+            hay_vis = (text or "").casefold()
+            if markers and any(m in hay_vis for m in markers):
+                skipped.append({
+                    "reason": "non_job_page",
+                    "url": link,
+                    "matched_company_job_id": None,
+                })
                 if debug:
                     log.debug_index(
                         func="gazer.meteorite_email_ingest",
                         index=i,
                         total=n,
                         identifier=link[:80],
-                        outcome="recorded",
+                        outcome="skipped-non-job",
                     )
-                    log.debug_detail(f"astral_job_id={result.get('astral_job_id')}")
+                    log.debug_detail("reason=non_job_page")
+                return
+
+            haystack = f"{link}\n{text}"
+            if job_link_exists_for_candidate(candidate_id, link):
+                skipped.append({
+                    "reason": "known_job_link",
+                    "url": link,
+                    "matched_company_job_id": None,
+                })
+                if debug:
+                    log.debug_index(
+                        func="gazer.meteorite_email_ingest",
+                        index=i,
+                        total=n,
+                        identifier=link[:80],
+                        outcome="skipped-duplicate",
+                    )
+                    log.debug_detail("reason=known_job_link")
+                return
+
+            matched = text_matches_known_company_job_id_for_candidate(
+                candidate_id, haystack
+            )
+            if matched:
+                skipped.append({
+                    "reason": "known_company_job_id",
+                    "url": link,
+                    "matched_company_job_id": matched,
+                })
+                if debug:
+                    log.debug_index(
+                        func="gazer.meteorite_email_ingest",
+                        index=i,
+                        total=n,
+                        identifier=link[:80],
+                        outcome="skipped-duplicate",
+                    )
+                    log.debug_detail(f"reason=known_company_job_id matched={matched}")
+                return
+
+            if len((text or "").strip()) < min_chars:
+                skipped.append({
+                    "reason": "jd_too_short",
+                    "url": link,
+                    "matched_company_job_id": None,
+                })
+                if debug:
+                    log.debug_index(
+                        func="gazer.meteorite_email_ingest",
+                        index=i,
+                        total=n,
+                        identifier=link[:80],
+                        outcome="skipped-short",
+                    )
+                    log.debug_detail(f"reason=jd_too_short len={len((text or '').strip())}")
+                return
+
+            if debug:
+                log.debug_index(
+                    func="gazer.meteorite_email_ingest",
+                    index=i,
+                    total=n,
+                    identifier=link[:80],
+                    outcome="found",
+                )
+                log.debug_detail(f"visible_text_len={len(text or '')}")
+
+            result = create_meteorite_job(
+                candidate_id, text, job_link=link, debug=debug
+            )
+            created.append(result)
+            if debug:
+                log.debug_index(
+                    func="gazer.meteorite_email_ingest",
+                    index=i,
+                    total=n,
+                    identifier=link[:80],
+                    outcome="recorded",
+                )
+                log.debug_detail(f"astral_job_id={result.get('astral_job_id')}")
 
         await asyncio.gather(*[_one(i, url) for i, url in enumerate(links, start=1)])
     else:

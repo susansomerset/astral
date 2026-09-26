@@ -662,12 +662,62 @@ class TestTelescopeWake:
         await pw_mod._TelescopeQueue()._ping_wake("http://x/wake")  # no raise
 
     @pytest.mark.asyncio
-    async def test_healthy_means_queue_reachable_and_wakes(self, monkeypatch) -> None:
+    async def test_healthy_means_queue_reachable_and_does_not_wake(self, monkeypatch) -> None:
         q, ping = self._queue(monkeypatch, live=0)
         monkeypatch.setattr(q, "_get_db", AsyncMock(return_value=MagicMock()))
         assert await q.healthy() is True  # no live worker is fine: Telescope may be asleep
         await asyncio.sleep(0)
-        ping.assert_awaited_once()
+        ping.assert_not_awaited()  # only an enqueue wakes it
+
+    @staticmethod
+    def _dns(monkeypatch, infos):
+        import socket
+
+        async def fake_getaddrinfo(host, port, **_kw):
+            if infos is None:
+                raise socket.gaierror("no such host")
+            return [(fam, socket.SOCK_STREAM, 6, "", (addr, port)) for fam, addr in infos]
+
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(loop, "getaddrinfo", fake_getaddrinfo)
+
+    @pytest.mark.asyncio
+    async def test_wake_targets_every_replica_ipv4_preferred(self, monkeypatch) -> None:
+        import socket
+
+        self._dns(monkeypatch, [
+            (socket.AF_INET, "10.0.0.2"), (socket.AF_INET, "10.0.0.1"),
+            (socket.AF_INET6, "fd12::1"), (socket.AF_INET, "10.0.0.2"),
+        ])
+        targets = await pw_mod._wake_targets("http://astral-telescope.railway.internal:8080/wake")
+        assert targets == ["http://10.0.0.1:8080/wake", "http://10.0.0.2:8080/wake"]
+
+    @pytest.mark.asyncio
+    async def test_wake_targets_ipv6_only_are_bracketed(self, monkeypatch) -> None:
+        import socket
+
+        self._dns(monkeypatch, [(socket.AF_INET6, "fd12::1"), (socket.AF_INET6, "fd12::2")])
+        targets = await pw_mod._wake_targets("http://t.railway.internal:8080/wake")
+        assert targets == ["http://[fd12::1]:8080/wake", "http://[fd12::2]:8080/wake"]
+
+    @pytest.mark.asyncio
+    async def test_wake_targets_fall_back_to_the_name(self, monkeypatch) -> None:
+        import socket
+
+        url = "http://t.railway.internal:8080/wake"
+        self._dns(monkeypatch, [(socket.AF_INET, "10.0.0.1")])
+        assert await pw_mod._wake_targets(url) == [url]  # one replica
+        self._dns(monkeypatch, None)
+        assert await pw_mod._wake_targets(url) == [url]  # DNS failure
+
+    @pytest.mark.asyncio
+    async def test_ping_wake_hits_every_target(self, monkeypatch) -> None:
+        q = pw_mod._TelescopeQueue()
+        monkeypatch.setattr(pw_mod, "_wake_targets", AsyncMock(return_value=["http://a/wake", "http://b/wake"]))
+        one = AsyncMock()
+        monkeypatch.setattr(q, "_ping_one", one)
+        await q._ping_wake("http://t/wake")
+        assert sorted(c.args[0] for c in one.await_args_list) == ["http://a/wake", "http://b/wake"]
 
 
 
