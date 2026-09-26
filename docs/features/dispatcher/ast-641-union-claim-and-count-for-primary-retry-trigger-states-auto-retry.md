@@ -1564,3 +1564,102 @@ AST-1808 board-joan done — CANON: OK.
 ```
 
 context_tokens≈35000
+
+### Review-fix findings (AST-1808)
+
+[code-rubric]
+**Ticket:** AST-1808  
+**Publish ref:** 0435671d644a4ab4e9e3217c7035f3b6fe59ae28  
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3  
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK  
+- **Node:** `tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_no_explicit_retry_keys_in_entity_registries` — comment tags `[bug-repro] AST-1808`.  
+- **Body matches plan § Repro:** for each of `JOB_STATES`, `COMPANY_STATES`, `CANDIDATE_STATES`, asserts no registry key ending in `RETRY_SUFFIX` and no `prior_states` entry ending in `RETRY_SUFFIX`. That pins Susan’s “no explicit `_RETRY` in config” after AST-1806 — not tautological (would fail with 18 keys on pre-purge `65e3ca6f`; green on purged tree).  
+- **Companion T2:** `test_prior_snapshot_pinned` uses checked-in fixture + **`_RETRY_RETRY` strip on both sides** (comment + compare line match Betty’s design note and AST-1806 gate script behavior).  
+- **Consult pin (Radia ask on AST-1806):** `test_consult_fail_dest_for_retry_job_states` asserts primary → holding via `_PAIRS`, holding → terminal `err`, and `PASSED_LIKE_RETRY` / `PASSED_LIKE_RETRY` → `FAILED_TECHNICAL` — concrete post-purge routing when retry keys are absent from `JOB_STATES`.
+
+**`## What must still hold`:** OK  
+- **No `src/`:** zero `src/` hunks in ftr…sub diff.  
+- **14 rewrites:** diff touches `test_config.py` at the Betty + Ada line sites; pattern is key absence + `is_registered_state` / `registered_base` / `state_prior_states` with `in` / `set` for derived priors (e.g. AST-1155 companions, AST-898 feeders) while raw `prior_states` lists drop explicit retry names.  
+- **AST-1807 preserved:** `TestAst1807*` block in `test_config.py` is append-only relative to AST-1807 work; AST-1808 adds after it.  
+- **`dispatch_claim_states`:** AST-1155 rewrite keeps both companion asserts unchanged.  
+- **Fail-dest tests elsewhere:** no edits to `test_consult.py` AST-642 matrix in this diff; new consult coverage lives in `TestAst1808RetryRegistryPurge` only.
+
+## Canon scores
+
+(no frozen canon list on Linear Description — gap-ticket pattern; zero ids locked at Plan Approved; scored set empty)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (F3 not triggered; Joan fix-board `[board-joan] CANON: OK` only)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list on gap ticket (same pattern as AST-1807 / AST-1802). Joan board OK only.  
+  **Recommendation:** No Canon Scope amendment required; tests lock AST-1806 purge aligned with `patt.task.dispatch-retry`.
+
+- **Location:** Plan T3 / T4 vs landed artifact — `save_company`  
+  **Finding:** Plan named new `tests/component/data/database/test_companies.py`; Betty documented **`.cursorignore` `data/`** blocks agent edits — bible **`### AST-1808`** in `config.md` points `save_company` retry acceptance at existing **`test_dispatch_tasks.py`** anchors (×4 `WEBSITE_FOUND_RETRY` saves). No new DB-layer test node; coverage is indirect but documented.  
+  **Recommendation:** Accept as known gap (spawn prompt acknowledged); optional follow-up if Susan wants a dedicated `JOBLIST_IDENTIFIED_RETRY` save assert outside blocked paths — not fix-now on this tip.
+
+- **Location:** Plan T4 — `docs/test-bible/data/database.md`  
+  **Finding:** Board listed five bible pages including `data/database.md`; landed **`### AST-1808`** blocks are in `utils/config`, `core/roster`, `core/candidate`, `ui/api/api_system` (save_company row lives under config § AST-1808).  
+  **Recommendation:** Optional bible file split later; not a product or repro blocker.
+
+### advisory
+
+- **Location:** `git diff` three-dot base  
+  **Finding:** Git warns **multiple merge bases** (`2a419fbf`); ftr…sub diff can include hunks already on `origin/ftr` (e.g. duplicate-looking `+ast1807_*` in `test_candidate.py` when merge-base lags ftr tip). Review substance is AST-1808 commits (`5a1becb6` / `e0c39e85` / `merge-tests`).  
+  **Recommendation:** Chuckles use publish ref `0435671d` + manifest, not raw diff line count alone.
+
+- **Location:** Manifest **42/45** (spawn: **3** pre-existing also red on `65e3ca6f`)  
+  **Finding:** Bible documents additional pre-existing failures (`test_count_eligible_homepage_ready_unions_wfr`, other `test_config` debt). Matches fix-lane “manifest green for AST-1808 scope, baseline debt out of scope.”  
+  **Recommendation:** Do not block UT on unrelated reds; Chuckles parity check as noted.
+
+- **Location:** `test_consult_fail_dest_for_retry_job_states`  
+  **Finding:** Post-purge, holding states have no registry row; test encodes current `_consult_batch_fail_dest` behavior (direct `get(st)` + terminal paths). Matches AST-1806 Radia advisory on fail-dest — now locked in tests.  
+  **Recommendation:** None for resolve-child.
+
+## Notes (informal board overlap — not scored)
+
+| Directive | vs test/bible diff |
+|-----------|-------------------|
+| `patt.task.dispatch-retry` | Zero explicit keys repro + implicit-state consumer tests. |
+| `astral.state.job-prior-states-enforced` | Rewrites separate declared vs derived priors; snapshot pins gate identity. |
+| `astral.config.config-source-of-truth` | Fixture + helper-derived asserts only. |
+| `astral.standards.in-scope-only` | Tests, bible, fixture JSON, plan doc — no product. |
+
+## What's solid
+
+- **T1:** Fourteen purge-break sites rewritten in `test_config.py` (Betty’s seven + Ada’s seven), including AST-721/720/507, AST-898/1339, AST-1053/1055, AST-1155 companions, inflight hide `is_registered_state`, etc.  
+- **T2:** `TestAst1808RetryRegistryPurge` with repro + pinned `tests/component/utils/fixtures/ast1806_prior_snapshot.json` (936 lines) + consult fail-dest matrix.  
+- **T3:** `TestAst1808RetryResolvesViaBase` (candidate), `test_ast1808_single_state_retry_claims_with_base_criteria` (roster), `TestAst1808ProgressRankRetry` (api_system).  
+- **T4:** Bible sections with **Broken / obsolete → revised** list, repro node, manifest command, pre-existing failure callout.  
+- **Boundary with AST-1807:** Derived-prior **equality** tests stay in `TestAst1807*`; AST-1808 uses membership/`set` for purge rewrites — matches plan.  
+- **Estimate ~3** fits (~1.6k LOC tests/bible/fixture/plan).  
+- Closes Betty **`TESTS: REVISE`** on **AST-1806** product tip.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-1804; diff base `origin/ftr/AST-1804-fetch-avail-retry`) | → **Review Posted** → append artifact + `docs(AST-1808): Radia review — clean` on publish ref → post slim upshot `--as radia` → §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+| — | **AST-1806** | Product docs-acceptance closes once this lands (Betty REVISE bar for purge tests). |
+
+**Chuckles note:** `[bug-repro]` present and substantive. Manifest 42/45 with three known pre-existing failures — align with Ada/Betty threads; do not merge-block AST-1806 UT on unrelated baseline.
+
+context_tokens≈45000
+
+```
+[code-rubric] PROCEED (Commit: 0435671d644a4ab4e9e3217c7035f3b6fe59ae28) Purge test gap clean
+```
