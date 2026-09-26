@@ -1078,3 +1078,82 @@ Mechanical rule for `src/utils/config.py`, with zero behavior change given Stage
 **F3 (`validate-plan` fix mode):** Not triggered from this board pass.
 
 ---
+
+
+## Review-fix findings (AST-1805)
+
+**`[bug-repro]`:** not applicable — `[board-betty] TESTS: REVISE` on sibling **AST-1807**; qa-fix did not run; no `[bug-repro]` on tip (spawn prompt confirmed). Same product-only + gap-sibling split as AST-1798 / AST-1801 / AST-1802.
+
+**`## What must still hold`:** OK  
+- **AST-641 / AST-1798:** `dispatch_claim_states` has no hunks in the ftr…sub diff; suffix-always pairing unchanged.  
+- **AST-1800:** `dispatcher.py`, `database.py`, and multi-state claim wrappers untouched — `states=` relaxation not regressed.  
+- **AST-892:** `fetch_website_prefilter_second_strike_filter` / gazer claim filter paths not in diff.  
+- **AST-642 routing:** Plan § “must NOT resolve through the base” fail-dest paths (`consult`, `gazer`, roster/candidate failure targets) unchanged; only validator / prior expansion paths updated.  
+- **Transition legality:** Stage A intentionally applies derived priors via `state_prior_states` (accepted loosening in plan-fix); no evidence in diff of removed enforcement gates beyond that plan.  
+- **Config load:** Module asserts updated (`retry_state` assert uses `is_registered_state`); helpers placed above `TASK_CONFIG` as planned.
+
+## Canon scores
+
+(no frozen canon list on Linear Description — fix-lane pattern; zero ids locked at Plan Approved; scored set empty)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (F3 validate-plan fix mode not triggered; Joan fix-board `[board-joan] CANON: OK` only)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list on bug ticket. Joan fix-board overlap table cites `patt.task.dispatch-retry`, `astral.batch.claim-process-release`, `astral.dispatch.entity-state-bound`, `astral.state.job-prior-states-enforced`, `astral.config.config-source-of-truth`, `astral.standards.in-scope-only` informally only — same process pattern as AST-1798 / AST-1801 / AST-1802.  
+  **Recommendation:** No in-flight Canon Scope amendment required unless Archie wants Radia comparability on every fix-lane bug; product aligns with board narrative.
+
+- **Location:** `[board-betty] TESTS: REVISE` / sibling **AST-1807**  
+  **Finding:** No component test on this tip pins `transition_job_state` → `{base}_RETRY`, derived-prior helpers, or per-validator `{base}_RETRY` branches Betty named. Expected on Stage A product tip; AST-1807 owns repro-first coverage.  
+  **Recommendation:** Chuckles: **Docs-Acceptance** on AST-1805 (mirror AST-1801). Do not block product UT on AST-1807; land AST-1807 before expecting new implicit-retry contracts green on ftr.
+
+### advisory
+
+- **Location:** Linear `## Component scope` vs diff  
+  **Finding:** Description still lists `consult.py` / `gazer.py` as modified; Stage A plan and tip touch only `config.py`, `tracker.py`, `roster.py`, `candidate.py`, `api_admin.py` (+ plan doc). Matches Stage A split (“no deletions yet”; fail-dest paths unchanged).  
+  **Recommendation:** Optional Description hygiene when AST-1806 lands; not fix-now.
+
+- **Location:** Board-cited law (informal, not frozen)  
+  **Finding:** Diff implements Arc 1–2 of `patt.task.dispatch-retry`: `registered_base` / `is_registered_state` resolve `{base}_RETRY` through the base; `dispatch_claim_states` untouched; fail-routing still uses direct `retry_state` reads where plan forbade base resolution.  
+  **Recommendation:** None for resolve-child.
+
+## Notes (informal board overlap — not scored)
+
+| Directive | vs Stage A diff |
+|-----------|-----------------|
+| `patt.task.dispatch-retry` | Aligns — validators + derived priors; claim helper unchanged. |
+| `astral.batch.claim-process-release` | Unchanged claim/SQL/dispatcher shape in diff. |
+| `astral.dispatch.entity-state-bound` | Admin + batch claim validators accept implicit retries via base. |
+| `astral.state.job-prior-states-enforced` | Still enforced via `state_prior_states` + `_job_state_matches_prior`. |
+| `astral.config.config-source-of-truth` | Helpers live in `config.py` as specified. |
+| `astral.standards.in-scope-only` | Diff stays inside Stage A file set; no registry purge (AST-1806 scope). |
+
+## What's solid
+
+- Diff isolates plan-fix § Proposed change — Stage A (A1 helpers + A2 validators): `retry_of` / `retry_base` / `registered_base` / `is_registered_state` / `state_prior_states`; `transition_*` and admin trigger checks; batch-claim and `_dispatch_sort_by_for` company branch via `registered_base`.  
+- Susan binding rule honored: no explicit `_RETRY` registry purge on this tip; validation resolves through base, not full retry string membership.  
+- Boundaries honored: `dispatch_claim_states` byte-identical; no `consult`/`gazer`/`dispatcher`/`database` product edits.  
+- Plan fidelity: Stage A only — 18 explicit keys remain; derived priors exercised even while legacy keys exist (Stage B safe).  
+- Estimate **3** fits footprint (five `src/` modules + plan-fix patch).  
+- Parent **AST-1804** with `origin/ftr/AST-1804-fetch-avail-retry` present — **normal** fix-lane parent shape (not orphaned merge-to-dev).
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-1804; diff base `origin/ftr/AST-1804-fetch-avail-retry`) | → **Review Posted** → append artifact + `docs(AST-1805): Radia review — clean` on publish ref → post slim upshot `--as radia` → §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+| — | Sibling **AST-1807** | Parallel: close Betty `TESTS: REVISE` bar (test/bible only). **AST-1806** remains blocked until UT on Stage A. |
+
+**Chuckles note:** `[board-betty] TESTS: REVISE` owned by sibling gap **AST-1807**. Product tip docs-acceptance — no merge-tests on AST-1805. Chuckles verified 195 baseline failures parity (zero new / zero fixed) — not re-litigated here.
+
+**Docs-Acceptance (AST-1805):** product tip only; `[board-betty] TESTS: REVISE` is owned by gap sibling AST-1807. No merge-tests on this tip. Touched-area suites: 195 failures on origin/dev and on the tip, identical sets (verified by Chuckles).
+
