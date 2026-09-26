@@ -552,66 +552,77 @@ class TestPlaywrightModuleGone:
             __import__("src.external.playwright")
 
 
-class TestFetchCareersListTextAndDom:
-    """parse_job_list scrape: one Telescope job for body text + body html."""
+class TestScrapePage:
+    """One Telescope job per page: scrape_page fetches every requested field, body-scoped."""
 
-    @pytest.mark.asyncio
-    async def test_one_body_scoped_job_for_text_and_html(self, monkeypatch) -> None:
+    @staticmethod
+    def _submit(monkeypatch, payload):
         calls: list[dict] = []
 
         async def fake_submit(body, priority=None):
             calls.append(body)
-            return {
-                "final_url": "https://acme.com/careers/",
-                "text": ["Engineer", "Designer"],
-                "html": ["<body><div class='jobs'>x</div></body>"],
-            }
+            return payload
 
         monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
-        monkeypatch.setattr(pw_mod, "_cull_html", lambda h: f"CULLED:{h}")
-        page = pw_mod.PageHandle("https://acme.com/careers", session=pw_mod.BrowserSession())
-
-        text, dom, meta = await pw_mod.fetch_careers_list_text_and_dom(
-            page, {"run_load_all_jobs": True}
-        )
-
-        assert len(calls) == 1
-        assert calls[0]["fields"] == ["text", "html"]
-        assert calls[0]["selector"] == "body"
-        assert calls[0]["wait_ready"] is True and calls[0]["expand"] is True
-        assert text == "Engineer\n\nDesigner"
-        assert dom == "CULLED:<body><div class='jobs'>x</div></body>"
-        assert meta["ready"] is True and meta["visible_chars"] == len(text)
-        assert page.url == "https://acme.com/careers/"
+        return calls
 
     @pytest.mark.asyncio
-    async def test_empty_text_is_not_ready_and_cull_can_be_off(self, monkeypatch) -> None:
-        async def fake_submit(body, priority=None):
-            return {"text": "", "html": "<body></body>"}
+    async def test_one_body_scoped_job_then_helpers_read_the_cache(self, monkeypatch) -> None:
+        calls = self._submit(monkeypatch, {
+            "final_url": "https://acme.com/careers/",
+            "text": ["Engineer", "Designer"],
+            "links": [{"href": "https://acme.com/jobs/1", "text": ["Engineer"]}],
+            "html": "<body><div class='jobs'>x</div></body>",
+        })
+        monkeypatch.setattr(pw_mod, "_cull_html", lambda h: f"CULLED:{h}")
 
-        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
-        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "cull_html_default", False)
-        page = pw_mod.PageHandle("https://acme.com/careers", session=pw_mod.BrowserSession())
-        text, dom, meta = await pw_mod.fetch_careers_list_text_and_dom(
-            page, {"run_load_all_jobs": False}
+        pg = await pw_mod.scrape_page(
+            "https://acme.com/careers", fields=("html", "text", "links"), careers_list=True
         )
-        assert (text, dom) == ("", "<body></body>")
-        assert meta["outcome"] == "empty" and meta["ready"] is False
+        vt = await pw_mod.extract_visible_text(pg)
+        dom = await pw_mod.extract_page_dom(pg)
+        links = await pw_mod.extract_site_page_list(page=pg)
+        contract = await pw_mod.extract_page_scrape_contract(pg)
+
+        assert len(calls) == 1  # every helper above read the cache
+        assert calls[0]["fields"] == ["text", "links", "html"]
+        assert calls[0]["selector"] == "body"
+        assert calls[0]["wait_ready"] is True and calls[0]["expand"] is True
+        assert vt["text"] == "Engineer\n\nDesigner"
+        assert dom == "CULLED:<body><div class='jobs'>x</div></body>"
+        assert links == ["https://acme.com/jobs/1"]
+        assert contract["nav_urls"] == ["https://acme.com/jobs/1"]
+        assert pg.url == "https://acme.com/careers/"
+        assert pg.readiness["ready"] is True and pg.readiness["load_all_jobs_ran"] is True
+
+    @pytest.mark.asyncio
+    async def test_empty_text_is_not_ready_and_plain_scrape_skips_wait(self, monkeypatch) -> None:
+        calls = self._submit(monkeypatch, {"text": "", "links": []})
+        pg = await pw_mod.scrape_page("https://acme.com", fields=("text", "links"))
+        assert calls[0]["wait_ready"] is False
+        assert pg.readiness["outcome"] == "empty" and pg.readiness["ready"] is False
+
+    @pytest.mark.asyncio
+    async def test_unrequested_field_warns_about_the_extra_load(self, monkeypatch, caplog) -> None:
+        calls = self._submit(monkeypatch, {"text": "hi", "html": "<body/>"})
+        pg = await pw_mod.scrape_page("https://acme.com", fields=("text",))
+        with caplog.at_level("WARNING", logger="src.external.telescope"):
+            await pw_mod.extract_page_dom(pg)
+        assert len(calls) == 2
+        assert any("extra page load for html" in r.getMessage() for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_blank_url_skips_telescope(self, monkeypatch) -> None:
         submit = AsyncMock()
         monkeypatch.setattr(pw_mod._pool, "submit", submit)
-        page = pw_mod.PageHandle("", session=pw_mod.BrowserSession())
-        assert (await pw_mod.fetch_careers_list_text_and_dom(page, {}))[:2] == ("", "")
+        pg = await pw_mod.scrape_page("", fields=("text",))
+        assert pg._text == ""
         submit.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_closed_page_raises(self) -> None:
-        page = pw_mod.PageHandle("https://acme.com", session=pw_mod.BrowserSession())
-        await page.close()
-        with pytest.raises(pw_mod.PlaywrightInfraError):
-            await pw_mod.fetch_careers_list_text_and_dom(page, {})
+    async def test_no_fields_is_an_error(self) -> None:
+        with pytest.raises(ValueError):
+            await pw_mod.scrape_page("https://acme.com", fields=())
 
 
 class TestTelescopeWake:
@@ -662,12 +673,62 @@ class TestTelescopeWake:
         await pw_mod._TelescopeQueue()._ping_wake("http://x/wake")  # no raise
 
     @pytest.mark.asyncio
-    async def test_healthy_means_queue_reachable_and_wakes(self, monkeypatch) -> None:
+    async def test_healthy_means_queue_reachable_and_does_not_wake(self, monkeypatch) -> None:
         q, ping = self._queue(monkeypatch, live=0)
         monkeypatch.setattr(q, "_get_db", AsyncMock(return_value=MagicMock()))
         assert await q.healthy() is True  # no live worker is fine: Telescope may be asleep
         await asyncio.sleep(0)
-        ping.assert_awaited_once()
+        ping.assert_not_awaited()  # only an enqueue wakes it
+
+    @staticmethod
+    def _dns(monkeypatch, infos):
+        import socket
+
+        async def fake_getaddrinfo(host, port, **_kw):
+            if infos is None:
+                raise socket.gaierror("no such host")
+            return [(fam, socket.SOCK_STREAM, 6, "", (addr, port)) for fam, addr in infos]
+
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(loop, "getaddrinfo", fake_getaddrinfo)
+
+    @pytest.mark.asyncio
+    async def test_wake_targets_every_replica_ipv4_preferred(self, monkeypatch) -> None:
+        import socket
+
+        self._dns(monkeypatch, [
+            (socket.AF_INET, "10.0.0.2"), (socket.AF_INET, "10.0.0.1"),
+            (socket.AF_INET6, "fd12::1"), (socket.AF_INET, "10.0.0.2"),
+        ])
+        targets = await pw_mod._wake_targets("http://astral-telescope.railway.internal:8080/wake")
+        assert targets == ["http://10.0.0.1:8080/wake", "http://10.0.0.2:8080/wake"]
+
+    @pytest.mark.asyncio
+    async def test_wake_targets_ipv6_only_are_bracketed(self, monkeypatch) -> None:
+        import socket
+
+        self._dns(monkeypatch, [(socket.AF_INET6, "fd12::1"), (socket.AF_INET6, "fd12::2")])
+        targets = await pw_mod._wake_targets("http://t.railway.internal:8080/wake")
+        assert targets == ["http://[fd12::1]:8080/wake", "http://[fd12::2]:8080/wake"]
+
+    @pytest.mark.asyncio
+    async def test_wake_targets_fall_back_to_the_name(self, monkeypatch) -> None:
+        import socket
+
+        url = "http://t.railway.internal:8080/wake"
+        self._dns(monkeypatch, [(socket.AF_INET, "10.0.0.1")])
+        assert await pw_mod._wake_targets(url) == [url]  # one replica
+        self._dns(monkeypatch, None)
+        assert await pw_mod._wake_targets(url) == [url]  # DNS failure
+
+    @pytest.mark.asyncio
+    async def test_ping_wake_hits_every_target(self, monkeypatch) -> None:
+        q = pw_mod._TelescopeQueue()
+        monkeypatch.setattr(pw_mod, "_wake_targets", AsyncMock(return_value=["http://a/wake", "http://b/wake"]))
+        one = AsyncMock()
+        monkeypatch.setattr(q, "_ping_one", one)
+        await q._ping_wake("http://t/wake")
+        assert sorted(c.args[0] for c in one.await_args_list) == ["http://a/wake", "http://b/wake"]
 
 
 

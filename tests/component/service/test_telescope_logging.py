@@ -62,8 +62,18 @@ class TestRailwayJsonLogging:
         logging.getLogger("scrape").debug("hidden: job without debug")
         joblog.end_job(tokens)
         out = lines()
-        assert [p["message"] for p in out] == ["shown: debug job"]
+        assert [p["message"] for p in out] == ["rep12345 aaaaaaaa | shown: debug job"]
         assert out[0]["level"] == "debug" and out[0]["job"] == "aaaaaaaa"
+
+    def test_debug_outside_a_job_is_prefixed_with_worker(self, lines, monkeypatch) -> None:
+        import logging_util
+
+        monkeypatch.setattr(logging_util, "_job_debug", lambda: True)
+        logging.getLogger("browser").debug("Context closed")
+        logging.getLogger("worker").info("worker line")
+        debug, info = lines()
+        assert debug["message"] == "rep12345 | Context closed"
+        assert info["message"] == "worker line"  # info text unchanged
 
     def test_settings_log_level_from_env(self, monkeypatch) -> None:
         import importlib

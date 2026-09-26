@@ -3723,7 +3723,7 @@ class TestAst1061MeteoriteEmailIngestConfig:
             "/email-settings",
         ):
             assert frag in excludes
-        assert int(cfg["playwright_concurrency"]) == 3
+        assert "playwright_concurrency" not in cfg  # Telescope's queue caps concurrency
         assert int(cfg["min_jd_chars"]) == 40
 
 

@@ -2880,8 +2880,6 @@ METEORITE_EMAIL_INGEST_CONFIG = {
         "xml schema",
         "svg namespace",
     ),
-    # Max concurrent Playwright fetches for a link list (same idea as gazer JD scrape caps).
-    "playwright_concurrency": 3,
     # Skip create when visible/body text length is below this after strip/fetch.
     "min_jd_chars": 40,
     # AST-1146: inverted company_job_id match ignores null/empty (already) and values
@@ -3630,7 +3628,7 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
-    "meteorite_like", "vet_inflow_discovery",
+    "meteorite_like", "vet_inflow_discovery", "parse_job_list",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
@@ -4858,7 +4856,7 @@ TELESCOPE_CONFIG = {
     "base_url_envs": ("TELESCOPE_BASE_URL", "TELESCOPE_BASE_URLS"),
     "wake_path": "/wake",
     "wake_throttle_seconds": 30,
-    "wake_timeout_seconds": 5,
+    "wake_timeout_seconds": 60,  # /wake answers after Firefox is up (~20s cold)
     "cull_html_default": True,
     "default_expand": True,
     "default_wait_ready": False,

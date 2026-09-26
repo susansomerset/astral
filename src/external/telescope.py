@@ -13,20 +13,26 @@ import asyncio
 import json
 import os
 import re
+import socket
 import threading
 import time
 import uuid
 import zlib
 from contextlib import asynccontextmanager
 from html.parser import HTMLParser
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypedDict
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 import asyncpg
 import httpx
 from bs4 import BeautifulSoup
 
-from src.utils.config import ASTRAL_CONFIG, PLAYWRIGHT_CONFIG, TELESCOPE_CONFIG
+from src.utils.config import (
+    ASTRAL_CONFIG,
+    PLAYWRIGHT_CONFIG,
+    TELESCOPE_CONFIG,
+    roster_scrape_readiness_config,
+)
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.logging import get_logger, log_debug
 
@@ -123,6 +129,9 @@ class PageHandle:
         self._links: Optional[List[Dict[str, str]]] = None
         self._final_url: Optional[str] = None
         self._closed = False
+        # Set by scrape_page: fields fetched in its one job, and the careers-list readiness meta.
+        self._prefetched: Optional[frozenset] = None
+        self.readiness: Dict[str, Any] = {}
 
     def _invalidate(self) -> None:
         self._html = None
@@ -456,25 +465,63 @@ class _TelescopeQueue:
         task.add_done_callback(st.wake_tasks.discard)
 
     async def _ping_wake(self, url: str) -> None:
-        _log.debug("Calling telescope wake: %s", url)
+        """GET /wake on every Telescope replica — one request wakes only the replica it lands on."""
+        targets = await _wake_targets(url)
+        _log.debug("Calling telescope wake: %s replica(s) %s", len(targets), targets)
+        await asyncio.gather(*[self._ping_one(t) for t in targets])
+
+    async def _ping_one(self, url: str) -> None:
         try:
             async with httpx.AsyncClient(timeout=float(TELESCOPE_CONFIG["wake_timeout_seconds"])) as client:
                 resp = await client.get(url)
-            _log.debug("Response from telescope wake: %s %s", resp.status_code, resp.text[:200])
+            _log.debug("Response from telescope wake: %s %s %s", url, resp.status_code, resp.text[:200])
         except Exception as e:
             # Expected while a slept container boots (502 / timeout); the job waits in the queue.
-            _log.debug("Response from telescope wake: %s: %s", type(e).__name__, e)
+            _log.debug("Response from telescope wake: %s %s: %s", url, type(e).__name__, e)
 
     async def healthy(self) -> bool:
-        """Queue reachable. Wakes a sleeping Telescope so it boots before the batch."""
-        db = await self._get_db()
-        await self._maybe_wake(db, self._state())
+        """Queue reachable. Does not wake Telescope — only an enqueue does, so an empty
+        dispatch run doesn't start Firefox for nothing."""
+        await self._get_db()
         return True
+
+
+async def _wake_targets(url: str) -> List[str]:
+    """One wake URL per replica address behind the private hostname.
+
+    Railway's private DNS returns every replica's address; a request to the name hits
+    just one. Prefers IPv4 when present (Telescope listens on 0.0.0.0), else IPv6.
+    Falls back to the original URL when resolution fails or there is one address.
+    """
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except Exception as e:
+        _log.debug("telescope wake: resolving %s failed, pinging the name: %s", host, e)
+        return [url]
+    v4 = sorted({i[4][0] for i in infos if i[0] == socket.AF_INET})
+    v6 = sorted({i[4][0] for i in infos if i[0] == socket.AF_INET6})
+    addrs = v4 or v6
+    if len(addrs) <= 1:
+        return [url]
+    return [
+        urlunsplit((
+            parts.scheme,
+            f"[{a}]:{port}" if ":" in a else f"{a}:{port}",
+            parts.path,
+            parts.query,
+            "",
+        ))
+        for a in addrs
+    ]
 
 
 _pool = _TelescopeQueue()
 
 CAPTURE_FIELDS = frozenset({"text", "links", "html"})
+CAPTURE_FIELDS_ORDER = ("text", "links", "html")
 
 
 async def _post_telescope(
@@ -590,7 +637,9 @@ async def admin_telescope_scrape(
     return data
 
 
-async def _ensure_fields(page: PageHandle, *fields: str) -> None:
+async def _ensure_fields(
+    page: PageHandle, *fields: str, selector: Optional[str] = None
+) -> None:
     """Fetch any missing capture fields in one Telescope POST."""
     if page._closed:
         raise PlaywrightInfraError("context_closed", "page is closed")
@@ -606,6 +655,7 @@ async def _ensure_fields(page: PageHandle, *fields: str) -> None:
             need.append("html")
     if not need:
         return
+    _warn_unprefetched(page, need)
     if not (page.url or "").strip():
         if "text" in need:
             page._text = ""
@@ -617,6 +667,7 @@ async def _ensure_fields(page: PageHandle, *fields: str) -> None:
     data = await _post_telescope(
         page.url,
         fields=need,
+        selector=selector,
         expand=page.expand,
         wait_ready=page.wait_ready,
     )
@@ -654,6 +705,8 @@ async def _ensure_html(
     # Re-fetch when selector changes or cache empty
     if page._html is not None and selector is None:
         return page._html
+    if selector is None:
+        _warn_unprefetched(page, ["html"])
     if not (page.url or "").strip():
         page._html = ""
         return ""
@@ -674,6 +727,58 @@ async def _ensure_html(
         page._final_url = final
         page.url = final
     return html
+
+
+def _warn_unprefetched(page: PageHandle, need: List[str]) -> None:
+    """A scrape_page handle asked for a field it didn't fetch — that's a second page load."""
+    if page._prefetched is not None:
+        _log.warning(
+            "telescope extra page load for %s on %s — add it to scrape_page(fields=...)",
+            ",".join(need),
+            page.url,
+        )
+
+
+async def scrape_page(
+    url: str,
+    *,
+    fields: Sequence[str] = ("text", "links"),
+    careers_list: bool = False,
+    session: Optional[BrowserSession] = None,
+) -> PageHandle:
+    """Load `url` once in Telescope; return a handle holding every requested field.
+
+    One Telescope job per page: name everything you'll read (text, links, html).
+    extract_visible_text / extract_page_dom / extract_site_page_list /
+    extract_page_scrape_contract on the handle then read the cache — no second load.
+    Scoped to <body>: same text and links as the whole document, and html without
+    <head> (the cull keeps only the body anyway).
+    careers_list: wait for the page to settle, and expand Load More / infinite scroll
+    per ROSTER_CONFIG scrape_readiness.run_load_all_jobs. Readiness meta → page.readiness.
+    """
+    want = [f for f in CAPTURE_FIELDS_ORDER if f in set(fields)]
+    if not want:
+        raise ValueError("scrape_page fields must include at least one of: text, links, html")
+    pg = PageHandle(url or "", session=session or BrowserSession())
+    load_all_jobs_ran = False
+    if careers_list:
+        cfg = roster_scrape_readiness_config()
+        pg.wait_ready = True
+        load_all_jobs_ran = bool(cfg.get("run_load_all_jobs", True))
+        if load_all_jobs_ran:
+            pg.expand = True
+    started = time.monotonic()
+    await _ensure_fields(pg, *want, selector="body")
+    pg._prefetched = frozenset(want)
+    visible_chars = len(pg._text or "")
+    pg.readiness = {
+        "outcome": "ready" if visible_chars or "text" not in want else "empty",
+        "wait_ms": int((time.monotonic() - started) * 1000),
+        "visible_chars": visible_chars,
+        "load_all_jobs_ran": load_all_jobs_ran,
+        "ready": bool(visible_chars) or "text" not in want,
+    }
+    return pg
 
 
 # ---------------------------------------------------------------------------
@@ -919,88 +1024,6 @@ async def load_all_jobs(page: PageHandle, short_name: str = "unknown") -> None:
     _log.debug("load_all_jobs: flag expand on handle short_name=%s", short_name)
     page.expand = True
     page._invalidate()
-
-
-async def wait_for_careers_list_readiness(
-    page: PageHandle,
-    cfg: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Map readiness to Telescope wait_ready (+ expand); listing selectors unavailable remotely."""
-    started = time.monotonic()
-    page.wait_ready = True
-    if bool(cfg.get("run_load_all_jobs", True)):
-        page.expand = True
-    page._invalidate()
-    load_all_jobs_ran = bool(cfg.get("run_load_all_jobs", True))
-    await _ensure_text(page, links=False)
-    visible_chars = len(page._text or "")
-    wait_ms = int((time.monotonic() - started) * 1000)
-    if visible_chars == 0:
-        outcome = "empty"
-    else:
-        outcome = "ready"
-    return {
-        "outcome": outcome,
-        "wait_ms": wait_ms,
-        "visible_chars": visible_chars,
-        "listing_hits": 0,
-        "load_all_jobs_ran": load_all_jobs_ran,
-        "ready": outcome == "ready",
-    }
-
-
-async def fetch_careers_list_text_and_dom(
-    page: PageHandle,
-    cfg: Dict[str, Any],
-    element: str = "body",
-) -> Tuple[str, str, Dict[str, Any]]:
-    """One Telescope job: rendered text + culled html of `element`, with careers-list readiness.
-
-    Same readiness flags as wait_for_careers_list_readiness (wait_ready on, expand when
-    run_load_all_jobs), but text and html come from a single page load.
-    Returns (text, culled_html, readiness_meta).
-    """
-    if page._closed:
-        raise PlaywrightInfraError("context_closed", "page is closed")
-    started = time.monotonic()
-    page.wait_ready = True
-    load_all_jobs_ran = bool(cfg.get("run_load_all_jobs", True))
-    if load_all_jobs_ran:
-        page.expand = True
-    page._invalidate()
-    if not (page.url or "").strip():
-        return "", "", {"outcome": "empty", "wait_ms": 0, "visible_chars": 0,
-                        "load_all_jobs_ran": load_all_jobs_ran, "ready": False}
-    data = await _post_telescope(
-        page.url,
-        fields=["text", "html"],
-        selector=element,
-        expand=page.expand,
-        wait_ready=page.wait_ready,
-    )
-    text = data.get("text")
-    if isinstance(text, list):
-        text = "\n\n".join(t for t in text if t)
-    text = text or ""
-    html = data.get("html") or ""
-    if isinstance(html, list):
-        html = html[0] if html else ""
-    page._text = text
-    final = data.get("final_url")
-    if final:
-        page._final_url = final
-        page.url = final
-    if html and TELESCOPE_CONFIG.get("cull_html_default", True):
-        html = _cull_html(html)
-    visible_chars = len(text)
-    meta = {
-        "outcome": "ready" if visible_chars else "empty",
-        "wait_ms": int((time.monotonic() - started) * 1000),
-        "visible_chars": visible_chars,
-        "load_all_jobs_ran": load_all_jobs_ran,
-        "ready": bool(visible_chars),
-    }
-    return text, html, meta
 
 
 async def get_page_with_artifacts(context: BrowserSession, url: str) -> PageLoadArtifacts:

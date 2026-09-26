@@ -98,7 +98,10 @@ class TestRunJob:
         assert done[0]["message"].startswith("00000000 | telescope job done: https://example.com -> https://example.com/")
         assert done[0]["job"] == "00000000" and done[0]["attempt"] == "1/4"
         assert done[0]["url"] == "https://example.com"
-        assert any(p["level"] == "debug" and p["message"].startswith("Claimed job") for p in out)
+        assert any(
+            p["level"] == "debug" and p["message"].startswith("w-1 00000000 | Claimed job")
+            for p in out
+        )
 
     async def test_no_debug_lines_without_debug_flag(self, monkeypatch, capsys) -> None:
         monkeypatch.setattr(

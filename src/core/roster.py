@@ -25,14 +25,12 @@ from src.external.telescope import (
     extract_visible_text,
     extract_page_dom,
     get_visible_text,
-    get_page,
     close_page,
     create_browser_context,
     create_batch_browser_session,
     BrowserSession,
     normalize_url,
-    wait_for_careers_list_readiness,
-    fetch_careers_list_text_and_dom,
+    scrape_page,
     PlaywrightInfraError,
     classify_playwright_failure,
     is_playwright_infra_failure,
@@ -69,7 +67,6 @@ from src.utils.config import (
     is_registered_state,
     registered_base,
     retry_of,
-    roster_scrape_readiness_config,
 )
 from src.utils.formatting import (
     collapse_consecutive_blank_lines,
@@ -1061,23 +1058,15 @@ async def _scrape_list_page_dom_for_parse(
 ) -> str:
     """DOM reload for parse_job_list — careers-list readiness (AST-689).
 
-    One Telescope job returns body text + body html together (no second page load,
-    no <head> shipped); the html comes back culled.
+    One Telescope job (scrape_page) returns body text + body html; the html comes back culled.
     """
-    _ = debug
+    _ = debug, batch_session
     try:
-        if batch_session is not None:
-            pg = await get_page(batch_session=batch_session, url=url)
-        else:
-            pg = await get_page(browser_context, url)
+        logger.debug("Calling scrape_page: [url=%s fields=text,html careers_list=True]", url)
+        pg = await scrape_page(url, fields=("text", "html"), careers_list=True, session=browser_context)
         try:
-            readiness_cfg = roster_scrape_readiness_config()
-            logger.debug("Calling fetch_careers_list_text_and_dom: [url=%s element=body]", url)
-            _text, dom_html, ready_meta = await fetch_careers_list_text_and_dom(
-                pg, readiness_cfg, element="body"
-            )
-            logger.debug("Response from fetch_careers_list_text_and_dom: %s", ready_meta)
-            return dom_html or ""
+            logger.debug("Response from scrape_page: %s", pg.readiness)
+            return (await extract_page_dom(pg)) or ""
         finally:
             await close_page(pg)
     except Exception as scrape_err:
@@ -1593,26 +1582,13 @@ async def scrape_company_homepage_content(
         "enumerated_nav_links": "",
         "error": None,
     }
+    _ = batch_session
     try:
-        if batch_session is not None:
-            pg = await get_page(batch_session=batch_session, url=company_website)
-            try:
-                contract = await scrape_loaded_page_contract(pg, debug=False)
-            finally:
-                await close_page(pg)
-        elif browser_context is not None:
-            pg = await get_page(browser_context, company_website)
-            try:
-                contract = await scrape_loaded_page_contract(pg, debug=False)
-            finally:
-                await close_page(pg)
-        else:
-            async with create_browser_context() as ctx:
-                pg = await get_page(ctx, company_website)
-                try:
-                    contract = await scrape_loaded_page_contract(pg, debug=False)
-                finally:
-                    await close_page(pg)
+        pg = await scrape_page(company_website, fields=("text", "links"), session=browser_context)
+        try:
+            contract = await scrape_loaded_page_contract(pg, debug=False)
+        finally:
+            await close_page(pg)
     except Exception as scrape_err:
         if isinstance(scrape_err, PlaywrightInfraError):
             fc = scrape_err.failure_class
@@ -2384,11 +2360,12 @@ async def _scrape_pjl_page(
         fetch_url = f"https://{fetch_url.lstrip('/')}"
     out: Dict[str, Any] = {"url": fetch_url, "visible_text": "", "page_links": []}
     try:
-        pg = await get_page(browser_context, fetch_url)
+        pg = await scrape_page(
+            fetch_url, fields=("text", "links"), careers_list=True, session=browser_context
+        )
         try:
-            readiness_cfg = roster_scrape_readiness_config()
-            ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
-            logger.debug("Response from wait_for_careers_list_readiness: %s", ready_meta)
+            ready_meta = pg.readiness
+            logger.debug("Response from scrape_page: %s", ready_meta)
             contract = await scrape_loaded_page_contract(pg, debug=debug)
             out["visible_text"] = (contract.get("visible_text") or "").strip()
             out["page_links"] = contract.get("nav_urls") or []
@@ -2567,12 +2544,12 @@ async def _fetch_job_links_content(
             continue
         page_url_map[page_num] = url
         try:
-            # Single page load — extract text, DOM, and links from the same navigation
-            pg = await get_page(browser_context, url)
+            # One Telescope job: text, DOM and links from the same page load.
+            pg = await scrape_page(
+                url, fields=("text", "links", "html"), careers_list=True, session=browser_context
+            )
             try:
-                readiness_cfg = roster_scrape_readiness_config()
-                ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
-                logger.debug("Response from wait_for_careers_list_readiness: %s", ready_meta)
+                logger.debug("Response from scrape_page: %s", pg.readiness)
                 vt_result = await extract_visible_text(pg)
                 visible_text = vt_result.get("text", "") or ""
                 dom_html = await extract_page_dom(pg)
