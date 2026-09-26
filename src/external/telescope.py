@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import re
+import socket
 import threading
 import time
 import uuid
@@ -20,7 +21,7 @@ import zlib
 from contextlib import asynccontextmanager
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 import asyncpg
 import httpx
@@ -456,20 +457,57 @@ class _TelescopeQueue:
         task.add_done_callback(st.wake_tasks.discard)
 
     async def _ping_wake(self, url: str) -> None:
-        _log.debug("Calling telescope wake: %s", url)
+        """GET /wake on every Telescope replica — one request wakes only the replica it lands on."""
+        targets = await _wake_targets(url)
+        _log.debug("Calling telescope wake: %s replica(s) %s", len(targets), targets)
+        await asyncio.gather(*[self._ping_one(t) for t in targets])
+
+    async def _ping_one(self, url: str) -> None:
         try:
             async with httpx.AsyncClient(timeout=float(TELESCOPE_CONFIG["wake_timeout_seconds"])) as client:
                 resp = await client.get(url)
-            _log.debug("Response from telescope wake: %s %s", resp.status_code, resp.text[:200])
+            _log.debug("Response from telescope wake: %s %s %s", url, resp.status_code, resp.text[:200])
         except Exception as e:
             # Expected while a slept container boots (502 / timeout); the job waits in the queue.
-            _log.debug("Response from telescope wake: %s: %s", type(e).__name__, e)
+            _log.debug("Response from telescope wake: %s %s: %s", url, type(e).__name__, e)
 
     async def healthy(self) -> bool:
-        """Queue reachable. Wakes a sleeping Telescope so it boots before the batch."""
-        db = await self._get_db()
-        await self._maybe_wake(db, self._state())
+        """Queue reachable. Does not wake Telescope — only an enqueue does, so an empty
+        dispatch run doesn't start Firefox for nothing."""
+        await self._get_db()
         return True
+
+
+async def _wake_targets(url: str) -> List[str]:
+    """One wake URL per replica address behind the private hostname.
+
+    Railway's private DNS returns every replica's address; a request to the name hits
+    just one. Prefers IPv4 when present (Telescope listens on 0.0.0.0), else IPv6.
+    Falls back to the original URL when resolution fails or there is one address.
+    """
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except Exception as e:
+        _log.debug("telescope wake: resolving %s failed, pinging the name: %s", host, e)
+        return [url]
+    v4 = sorted({i[4][0] for i in infos if i[0] == socket.AF_INET})
+    v6 = sorted({i[4][0] for i in infos if i[0] == socket.AF_INET6})
+    addrs = v4 or v6
+    if len(addrs) <= 1:
+        return [url]
+    return [
+        urlunsplit((
+            parts.scheme,
+            f"[{a}]:{port}" if ":" in a else f"{a}:{port}",
+            parts.path,
+            parts.query,
+            "",
+        ))
+        for a in addrs
+    ]
 
 
 _pool = _TelescopeQueue()
