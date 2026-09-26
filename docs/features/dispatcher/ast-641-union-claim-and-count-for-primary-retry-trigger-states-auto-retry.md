@@ -1430,3 +1430,47 @@ The 7 the ticket Scope missed (same file, same kind of rewrite; flagged on AST-1
 - Every rewritten case keeps its original non-retry asserts; only the retry-key/prior reads change.
 - Derived-prior asserts use `in` / `set` membership, never exact derived-list equality. The derived set deliberately includes retry-of-priors and self-drain (AST-1805 rule), which AST-1807 owns.
 - AST-641 / AST-1798 / AST-1800 claim asserts (`dispatch_claim_states`) are unchanged.
+
+### Board-joan findings (AST-1808)
+
+## Fix-board Joan pass — AST-1808
+
+**Ticket:** AST-1808 (test gap) · parent AST-1804 · publish ref `origin/sub/AST-1804/AST-1808-purge-retry-tests`  
+**Read:** `plan-fix` § Bug: AST-1808 (As-is / To-be / Repro / Root cause / Proposed change T1–T4 / Blast radius / What must still hold); fix-board § Joan pass; roster skim (`patt.task.dispatch-retry`, `astral.state.job-prior-states-enforced`, `astral.dispatch.entity-state-bound`, `astral.batch.claim-process-release`, `astral.config.config-source-of-truth`).
+
+**Scope:** Test tree + `docs/test-bible/**` + one pinned JSON fixture only. **No `src/` edits.** Product assumption: AST-1806 purge on the tree under test.
+
+**The one question:** Does this proposed change conflict with or require updating any directive in force?
+
+**Answer:** No. This ticket re-expresses tests and bible rows so they lock **Susan’s implicit `_RETRY` model** and AST-1806 behavior already aligned with **`patt.task.dispatch-retry`** (Arc 1: no separate registry instance; Arc 2: validation via base). It does not introduce new product policy or carve-outs.
+
+| Area | Assessment |
+|------|------------|
+| **T1 rewrites (14 cases)** | Move from raw `*_RETRY` keys / literal `prior_states` lists to `is_registered_state`, `registered_base`, `state_prior_states`, and key absence. That matches in-force retry law; it does not require amending statutes that still say `JOB_STATES.prior_states` in shorthand (enforcement outcome unchanged—same point as AST-1806 board OK). |
+| **T2 repro + snapshot fixture** | `[bug-repro]` pins zero explicit retry keys; snapshot pins pre/post gate identity. Documentation of product contract, not a canon corpus change. |
+| **T3 consumer tests** | Cover B4 sites (`_requested_stage_failure_target`, claim, `save_company`, `_progress_rank`) in terms of implicit substates and AST-642 terminal-on-retry—consistent with active pattern, not a new precedent. |
+| **T4 bible** | Test-bible hygiene only. |
+| **Boundary with AST-1807** | Plan avoids duplicating full derived-prior equality work; uses membership/`in` where appropriate—no canon tension. |
+
+**ESCALATE:** Not warranted—no architectural ambiguity; Susan rule and AST-1806 plan already decided the model.
+
+**F3 (`validate-plan` fix mode):** Not triggered from this board pass.
+
+**Precedent:** Same shape as AST-1807 / AST-1802—test/bible-only gap, **CANON: OK**.
+
+---
+
+**Machine-readable upshot (Chuckles posts `--as joan`):**
+
+```
+[board-joan]  CANON: OK
+```
+
+**Stdout:**
+
+```text
+[board-joan]  CANON: OK
+AST-1808 board-joan done — CANON: OK.
+```
+
+context_tokens≈35000
