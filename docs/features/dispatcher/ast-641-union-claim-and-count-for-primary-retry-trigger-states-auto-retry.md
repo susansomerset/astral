@@ -1331,3 +1331,93 @@ AST-1806 board-joan done — CANON: OK.
 ```
 
 context_tokens≈32000
+
+### Review-fix findings (AST-1806)
+
+[code-rubric]
+**Ticket:** AST-1806  
+**Publish ref:** cfcf3c273512386e6b2fcd9c2e059b158229b4fb  
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3  
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**`[bug-repro]`:** not applicable — `[board-betty] TESTS: REVISE` routed to sibling **AST-1808**; qa-fix did not run; no `[bug-repro]` on tip (spawn prompt confirmed). Product-only + gap-sibling split matches AST-1805 / AST-1801 pattern.
+
+**`## What must still hold`:** OK  
+- **AST-641 / AST-1798 / AST-1800:** `dispatch_claim_states` has no hunks in the ftr…sub diff; `dispatcher.py` unchanged; multi-state claim wrappers on ftr already AST-1800/1805 shape — not regressed by Stage B.  
+- **AST-892:** No diff hunks on `fetch_website_prefilter_second_strike_filter` / gazer claim filter paths in this range.  
+- **AST-642 routing:** `_consult_batch_fail_dest`, `_prefilter_batch_fail_dest`, and gazer direct `retry_state` reads unchanged in diff; `_requested_stage_failure_target` now resolves primary via `registered_base` so retry-only rows land on `error_state` (plan carried fix). Fail-dest paths remain direct full-string lookups as required by plan B4.  
+- **Prior / transition legality:** Plan gate (identical `state_prior_states` snapshots pre/post purge) asserted at make-fix; diff implements B1–B2 deletion + derived priors only — no contradicting product change in diff.  
+- **Candidate progress_rank:** `check_context_complete` and `api_system._progress_rank` use `registered_base` — matches plan B4 and amended scope.  
+- **Config load:** Asserts updated to `is_registered_state` where purge would break raw-key checks (inflight_hide, grade_field, TASK_CONFIG outcome).
+
+## Canon scores
+
+(no frozen canon list on Linear Description — fix-lane pattern; zero ids locked at Plan Approved; scored set empty)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (F3 validate-plan fix mode not triggered; Joan fix-board `[board-joan] CANON: OK` only)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list on bug ticket. Joan fix-board cites `patt.task.dispatch-retry`, entity-state-bound, config-source-of-truth, job-prior-states-enforced, claim-process-release informally — same process pattern as AST-1805 / AST-1801.  
+  **Recommendation:** No in-flight Canon Scope amendment required unless Archie wants comparability on every fix-lane bug; purge aligns with Susan’s implicit-substate rule and board narrative.
+
+- **Location:** `[board-betty] TESTS: REVISE` / sibling **AST-1808**  
+  **Finding:** Betty-flagged `test_config.py` raw-registry / explicit-prior asserts break on this tip by design (14 expected failures per Ada test-fix vs ftr `65e3ca6f`); B4 consumer fixes and gate snapshot have no tests yet. No `tests/` changes on this tip — correct ownership split.  
+  **Recommendation:** Chuckles: **Docs-Acceptance** on AST-1806 (mirror AST-1805). Do not block product UT on AST-1808; land AST-1808 before expecting purge + consumer contracts green on ftr.
+
+### advisory
+
+- **Location:** `src/core/consult.py` `_consult_batch_fail_dest` (unchanged; post-purge behavior)  
+  **Finding:** Retry-holding job states no longer have registry dict entries; routing for `*_RETRY` failures leans on `JOB_STATES.get(st)` miss plus `st == error_state` terminal branch (e.g. analysis_upshot). Plan explicitly kept fail-dest direct; strings unchanged via `retry_of`.  
+  **Recommendation:** AST-1808 repro tests should pin this path; not fix-now on product tip.
+
+- **Location:** Plan fidelity — scope gate  
+  **Finding:** `[scope-gate]` caught missing `api_system.py`; Chuckles amended scope; tip includes `_progress_rank` fix — regression closed.  
+  **Recommendation:** None for resolve-child.
+
+## Notes (informal board overlap — not scored)
+
+| Directive | vs Stage B diff |
+|-----------|-----------------|
+| `patt.task.dispatch-retry` | Registries bases-only; retry names via `retry_of`; claim helper untouched. |
+| `astral.config.config-source-of-truth` | Mechanical literal → `retry_of` in `config.py`; helpers from AST-1805 reused. |
+| `astral.state.job-prior-states-enforced` | Enforcement still via `state_prior_states` (on ftr from AST-1805); explicit retry priors stripped. |
+| `astral.dispatch.entity-state-bound` | Runtime states validated/resolved via `registered_base` / `is_registered_state` in B4 sites. |
+| `astral.batch.claim-process-release` | Claim SQL/dispatcher unchanged; `save_company` gate widened for implicit retry saves only. |
+| `astral.standards.in-scope-only` | Diff matches plan B1–B5 file set (+ scope-amended `api_system.py`); no `tests/` edits. |
+
+## What's solid
+
+- **B1/B2 delivered:** Remote tip shows **0** explicit `*_RETRY` registry dict keys; B5-style `rg '"…_RETRY"'` on `config.py` / `consult.py` / `roster.py` clean (prose/docstrings only).  
+- **B3 asserts:** TASK_CONFIG outcome, inflight_hide, grade_field use `is_registered_state`.  
+- **B4 consumers:** roster `claim_company_batch` + WEBSITE_FOUND branch, `database.save_company`, candidate rank + `_requested_stage_failure_target`, consult map derive + qualify filter tuple — match plan snippets.  
+- **Boundaries:** `gazer`, `dispatcher`, `api_admin`, `tracker` product files untouched in diff; fail-dest functions not “resolved through base.”  
+- **Stacking:** Diff base `origin/ftr/AST-1804-fetch-avail-retry` includes merged AST-1805 validators — Stage B builds on Stage A correctly.  
+- **Estimate 5** fits footprint (~300 LOC mechanical config + seven consumer touchpoints + plan doc).  
+- Parent **AST-1804** — **normal** fix-lane shape.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-1804; diff base `origin/ftr/AST-1804-fetch-avail-retry`) | → **Review Posted** → append artifact + `docs(AST-1806): Radia review — clean` on publish ref → post slim upshot `--as radia` → §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+| — | Sibling **AST-1808** | Parallel: close Betty `TESTS: REVISE` bar (test/bible only). **merge-child** can roll AST-1806 onto ftr after UT. |
+
+**Chuckles note:** `[board-betty] TESTS: REVISE` owned by **AST-1808**. Product tip docs-acceptance — no merge-tests on AST-1806. Ada’s 14 `test_config` breaks + 4 baseline fixes are expected purge fallout; Chuckles re-verifies parity independently — not re-litigated here beyond ownership split.
+
+context_tokens≈38000
+
+```
+[code-rubric] PROCEED (Commit: cfcf3c273512386e6b2fcd9c2e059b158229b4fb) Registry purge clean
+```
