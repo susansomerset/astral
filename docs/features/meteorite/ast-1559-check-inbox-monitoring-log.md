@@ -521,6 +521,145 @@ Concrete enough for make-fix; stay inside AST-1608 `## Scope`.
 
 Overall DISCUSS/REVIEW (no fix-now). Plan-faithful Avail live counts + Land→ingest. Discuss-only: per-candidate Avail may re-list Gmail; Land pre-check outcome strings changed for check_inbox parity. Sibling AST-1611 holds [bug-repro]. Clean §3h shortcut → User Testing.
 
+## Bug: AST-1617 — check_inbox total_errors without ERROR/WARNING logs
+
+UAT-batch bug under [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). Publish ref: `sub/AST-1555/AST-1617-check-inbox-total-errors-without-errorwarning-logs`. Scope bound: parent AST-1555 Component scope — `src/core/meteorite.py` (**modified** — transition handlers + monitoring). No other file changes.
+
+**Live wiring on tip `12edd9b3` (differs from this doc's original Stage 3/4):**
+
+- Scheduled dispatch mailbox runner is `inbox.check_email` (AST-1714), which calls `stage_meteorite` **directly**, not via `ingest_candidate_email_message`.
+- Manage Email Land: `api_inbox.inbox_land_meteorite` → `ingest_candidate_email_message` → `stage_meteorite`.
+- Contact land: `contact.contact_land_meteorite` → `stage_meteorite`.
+- `meteorite.check_inbox` has no remaining callers.
+
+So every `counter=error` / `errors += 1` caused by a stage error goes through `stage_meteorite`. That function is the single place where each such error can be logged once for every caller.
+
+### As-is
+
+`stage_meteorite` has two return paths that give the caller `error` with **no** always-on WARNING/ERROR line, but only when the ERROR-row insert inside `_save_error` succeeds. When that insert fails, `_save_error` already calls `logger.exception` or `_warn_item`.
+
+1. **Classify-fail fallthrough** (end of function): `err = classify.get("error") or "stage failed"` → `_save_error(err, outcome, batch_id=batch_id)` returns `None` → `return _err(err, …)`. Silent.
+2. **Map error** (landable outcome whose jobs don't map): `_save_error(str(map_err), outcome, batch_id=batch_id)` returns `None` → `return _err(str(map_err), …)`. Silent.
+
+Callers then count the mid as an error without logging anything themselves. `inbox.check_email` does `errors += 1; continue`. `ingest_candidate_email_message` does `return _row(err_key, counter="error", …)`. The batch shows `total_errors > 0`, and the only trace of why is Style D debug output (`debug=True`).
+
+Every other error return in `stage_meteorite` already logs at WARNING or above before it returns: missing `candidate_id`, bad source, candidate not found, classify exception, insert exception, and count mismatch. So do the other `counter=error` exits in ingest.
+
+### To-be
+
+Every stage error that ends in a caller error count emits exactly **one** always-on `logger.warning` via `_warn_item` (the module's existing always-on warn helper, the same pattern the other error exits here use). The line carries the candidate id, source kind, source id (the Gmail mid for email), and the error string. This works for all three callers (scheduled `check_email`, Manage Email Land, and contact) without `debug=True`. Classify/land semantics, returned dicts, ERROR-row inserts, and the Style D contract stay unchanged.
+
+### Repro
+
+Component fixture (no DB; monkeypatch in `tests/component/core/test_meteorite.py` style):
+
+```python
+# common
+monkeypatch.setattr(meteorite_mod, "get_candidate", lambda cid: {"astral_candidate_id": "c1"})
+monkeypatch.setattr(meteorite_mod, "_insert_stage_rows", lambda rows: ([101], None))  # ERROR row insert OK
+
+# Path 1 — classify-fail fallthrough
+async def _classify_fail(*a, **k):
+    return {"success": False, "outcome": "", "jobs": [], "error": "llm timeout", "batch_id": "b1"}
+monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify_fail)
+with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+    out = asyncio.run(meteorite_mod.stage_meteorite("c1", "blob", source_kind="email", source_id="mid-1"))
+assert out["error"] == "llm timeout"
+# As-is: no WARNING record mentions "mid-1" / "llm timeout"
+
+# Path 2 — map error on a landable outcome
+landable = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+async def _classify_ok(*a, **k):
+    return {"success": True, "outcome": landable, "jobs": [{}], "error": None, "batch_id": "b2"}
+monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify_ok)
+monkeypatch.setattr(meteorite_mod, "_map_classify_jobs_to_meteorite_rows",
+                    lambda *a, **k: ([], "jobs[0] missing content"))
+with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+    out = asyncio.run(meteorite_mod.stage_meteorite("c1", "blob", source_kind="email", source_id="mid-2"))
+assert out["error"] == "jobs[0] missing content"
+# As-is: no WARNING record mentions "mid-2" / "missing content"
+```
+
+Live repro: run `stage_email_meteorite` (dispatcher → `inbox.check_email`) for a candidate whose inbox mail makes Ruth classify fail. Execution History then shows `total_errors ≥ 1`, and the Railway log has no WARNING/ERROR for that mid.
+
+### Root cause
+
+`_save_error` only logs when **its own** ERROR-row insert fails. On a successful insert it returns `None`, and the two call sites above return `_err(...)` without logging the original classify or map error. The callers assume `stage_meteorite` already reported the error, as it does on every other error path, so none of them log it.
+
+### Proposed change
+
+All edits are in `src/core/meteorite.py`, in `stage_meteorite` only. Neither new call adds a helper or a config key, and neither changes a return value.
+
+1. **Map-error branch** (inside `if classify.get("success") and outcome in (*text_outcomes, *url_outcomes):`), replace:
+
+   ```python
+   if map_err:
+       failed = _save_error(str(map_err), outcome, batch_id=batch_id)
+       return failed or _err(str(map_err), batch_id=batch_id, stage_outcome=outcome)
+   ```
+
+   with:
+
+   ```python
+   if map_err:
+       failed = _save_error(str(map_err), outcome, batch_id=batch_id)
+       if not failed:
+           # _save_error only logs its own insert failure; surface the map error once here.
+           _warn_item(
+               cid,
+               f"{kind} {sid} classify jobs did not map ({outcome}): {map_err}",
+               "Recorded as an ERROR meteorite row; no job rows were staged",
+           )
+       return failed or _err(str(map_err), batch_id=batch_id, stage_outcome=outcome)
+   ```
+
+2. **Classify-fail fallthrough** (last lines of `stage_meteorite`), replace:
+
+   ```python
+   err = classify.get("error") or "stage failed"
+   failed = _save_error(err, outcome, batch_id=batch_id)
+   return failed or _err(err, batch_id=batch_id, stage_outcome=outcome)
+   ```
+
+   with:
+
+   ```python
+   err = classify.get("error") or "stage failed"
+   failed = _save_error(err, outcome, batch_id=batch_id)
+   if not failed:
+       # _save_error only logs its own insert failure; surface the classify error once here.
+       _warn_item(
+           cid,
+           f"{kind} {sid} classify failed ({outcome or 'no outcome'}): {err}",
+           "Recorded as an ERROR meteorite row; no job rows were staged",
+       )
+   return failed or _err(err, batch_id=batch_id, stage_outcome=outcome)
+   ```
+
+3. **No change** to `ingest_candidate_email_message`, `inbox.check_email`, `contact.py`, `_save_error`, or `_warn_item`.
+
+⚠️ **Decision — warn at the source, not in ingest.** The ticket's `## Remaining gap` names `ingest_candidate_email_message` on `stage["error"]` as one of the two targets. It was written assuming the mailbox runner goes through ingest. On this tip the scheduled runner is `inbox.check_email`, which calls `stage_meteorite` directly, so an ingest-only warn would miss the dispatch path the bug was filed against. A warn in ingest **plus** one in stage would also log twice for every stage error on the Land path, because the other stage error paths already warn. Putting the warn inside `stage_meteorite` covers all three callers with exactly one line per mid. If fix-board or Susan wants the literal ingest warn anyway, add `_warn_item(cid, f"message {mid} stage error: {stage.get('error')}", "This message is not being ingested")` before the `return _row(err_key, counter="error", …)` in ingest, and accept the duplicate lines.
+
+⚠️ **Decision — include the map-error path.** The ticket lists two gaps. The map-error branch is a third silent path with the same root cause, in the same function, and needs the same one-call fix. The ticket's Expected section says "on every mid that ends `counter=error`, always-on log", so leaving it silent would leave that Expected unmet. It is folded in here and flagged for fix-board. Drop step 1 if the board wants the ticket's literal two paths only.
+
+**How this answers Susan's 2026-09-10 question** ("How are we logging errors for other task work like this?"): other always-on error exits in `meteorite.py`, `inbox.py`, and the transition runners use `_warn_item(who, why, next_step)` (always-on `logger.warning`) or `logger.exception` for caught exceptions, both through the module `get_logger`. This fix reuses `_warn_item` and adds no new logging mechanism.
+
+### Blast radius
+
+- **Callers of `stage_meteorite`:** `inbox.check_email` (scheduled `stage_email_meteorite` dispatch), `meteorite.ingest_candidate_email_message` (Manage Email Land via `api_inbox`), `contact.contact_land_meteorite` (Slack/contact land). All three gain one WARNING line on these two error paths. Return shapes don't change, and no caller branches on log output.
+- **Tests (Betty's call at qa-fix / fix-board):** `tests/component/core/test_meteorite.py` has stage classify-fail fixtures (e.g. `"error": "llm timeout"` ~L1816, `"ruth down"` ~L3039, `"do_task failed"` ~L263) and `_map_classify_jobs_to_meteorite_rows` cases. Any `caplog` assertion that expects **no** WARNING on those paths would now fail. `tests/component/core/test_contact.py` ~L774 (`"success": False`) and `test_inbox.py` `check_email` error-count tests are the same risk. No product test-tree edits in make-fix.
+- **Log volume:** one extra WARNING per failed-classify or unmappable mid per run. Bounded by mailbox batch size.
+- **Dead code, noted only:** `meteorite.check_inbox` has no callers on this tip. It is out of this bug's scope and left untouched.
+
+### What must still hold
+
+- AST-1559 AC1: classify LLM failure → zero job rows, mid stays in INBOX (no archive on stage error). This fix only adds a log line before the existing return.
+- AST-1559 AC3 / parent AST-1555 monitoring contract: `log_meteorite_inbox_classify` always-on info lines are unchanged, with no new info-level format.
+- Style D (`debug=True`) output stays exactly as it is. The new warnings are always-on WARNING, not debug-gated, so there is no double-count in Style D.
+- ERROR-row inserts via `_save_error` still happen on both paths, and a failed insert still takes the existing `logger.exception` / mismatch `_warn_item` path with no extra warn (the `if not failed` guard).
+- `stage_meteorite` return dict (`outcome`, `stage_outcome`, `skipped`, `jobs`, `error`, `batch_id`) is byte-identical for every path.
+- No SKIPPED rows are introduced; classify/land semantics are unchanged (ticket Boundaries).
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
