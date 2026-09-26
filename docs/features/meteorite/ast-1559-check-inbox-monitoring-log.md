@@ -681,3 +681,12 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1611 | sub/AST-1606/AST-1611-gap-tests-avail-land |
 
 **Epic worktree:** `astral-AST-1606/` — one active sub checked out at a time.
+
+
+## Joan fix-board (AST-1617)
+
+[board-joan]  CANON: OK
+
+**Rationale:** The plan-fix patch only adds two guarded `_warn_item` calls inside `stage_meteorite` — the same always-on `logger.warning` path already used on other error exits in `meteorite.py`. It goes through `get_logger` (`astral.standards.logging-via-utils`), leaves Style D gated on `debug=True` (`astral.standards.debug-contract-gated`), and does not add config literals, monitoring format strings, or a new logging mechanism. Parent AST-1555 always-on **info** classify monitoring (`log_meteorite_inbox_classify`) stays untouched; supplemental WARNING on error counters is consistent with existing core practice, not a conflict with the monitoring contract. No statute or pattern text needs amending; choosing WARNING over `logger.error`/`exception` is an in-file precedent call, not a canon gap.
+
+AST-1617 board-joan done — CANON: OK.
