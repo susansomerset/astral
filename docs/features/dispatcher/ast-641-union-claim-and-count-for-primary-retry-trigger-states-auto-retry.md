@@ -1049,3 +1049,32 @@ Mechanical rule for `src/utils/config.py`, with zero behavior change given Stage
 - AST-642 routing: a primary failure goes to its retry holding state; a failure while in `*_RETRY` goes to terminal/error. There is no new routing into retry substates.
 - Every transition legal today stays legal (verified by the derived-rule script above).
 - Config still imports cleanly, with all module asserts passing, after each stage.
+
+
+## Fix-board Joan findings (AST-1805) — AST-1805 (Stage A only)
+
+**Ticket:** AST-1805 · parent AST-1804 · publish ref `origin/sub/AST-1804/AST-1805-fetch-avail-retry`  
+**Read:** `plan-fix` § Bug: AST-1805 (As-is / To-be / Repro / Root cause / Proposed change Stage A / Blast radius / What must still hold); roster skim from `canon/statutes/README.md` + overlapping active directives; Susan binding rule on implicit `_RETRY`.
+
+**The one question:** Does Stage A’s proposed product change conflict with or require updating any directive in force?
+
+**Answer:** No. Stage A closes the gap between today’s explicit-registry validators and canon that already treats `_RETRY` as a suffix substate, not a separate registry instance.
+
+### Overlap review (not R1–R7)
+
+| Directive | Overlap | vs Stage A |
+|-----------|---------|------------|
+| **`patt.task.dispatch-retry`** | Retry suffix, claim union, validation via base | **Aligns.** Arc 1–2: no separate retry instance; suffixed states need not be registry keys; validation uses the non-suffixed root. Stage A’s `registered_base` / `is_registered_state` and derived priors implement that. `dispatch_claim_states` stays byte-identical (AST-641 / AST-1798). |
+| **`astral.batch.claim-process-release`** | Claim → process → release | **Unchanged shape.** Blast radius names shared modules; dispatcher/database unchanged. |
+| **`astral.dispatch.entity-state-bound`** | `trigger_state` must be a real claim/dispatch state | **Aligns** once validators accept `{base}_RETRY` via registered base (Susan rule). “Real state” reads as dispatch-valid for that entity registry, not “must be a literal dict key.” |
+| **`astral.state.job-prior-states-enforced`** | Prior gating on job transitions | **Still holds.** Tracker uses `state_prior_states` instead of raw `JOB_STATES[to]["prior_states"]`; plan verifies derived rule reproduces today’s edges (accepted loosening documented in plan-fix, not a new precedent). |
+| **`astral.config.config-source-of-truth`** | Helpers in `config.py` | **Conforming.** `RETRY_SUFFIX`, `retry_of`, `retry_base`, `registered_base`, `state_prior_states` live in the registry module as planned. |
+| **`astral.standards.in-scope-only`** | Touch named layers only | **Conforming.** Stage A scopes validators + config helpers; explicitly excludes fail-routing paths that must keep direct `retry_state` reads. |
+
+**Out of scope for this pass (AST-1806):** purging 18 explicit keys and ~40 `"X_RETRY"` literals is Stage B; that is mechanical follow-on, not a canon amendment requirement for Stage A. Remaining explicit keys during Stage A are legacy surface until the sibling lands; they do not override `patt.task.dispatch-retry`’s “no separate instance” model.
+
+**ESCALATE bar:** Susan’s AST-1804 binding rule already decides architecture (implicit substate, claim always base+suffix, never validate full `_RETRY` string). Derived-prior loosening is accepted in the plan-fix patch. No ambiguous statute intent that needs Archie before `make-fix`.
+
+**F3 (`validate-plan` fix mode):** Not triggered from this board pass.
+
+---
