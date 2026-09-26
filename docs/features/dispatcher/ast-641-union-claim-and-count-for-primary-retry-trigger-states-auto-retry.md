@@ -1256,3 +1256,44 @@ The T3 repro and every "Pre-fix" row above must fail (T1 fails on import-level `
 - Derived priors still gate: `PASSED_DO → PASSED_GET_RETRY` and `NEW_CANDIDATE → RESUME_READY_RETRY` are rejected.
 - The AST-1806-flipping asserts in `test_config.py` (~3080–3110) are untouched.
 - Fail-destination must-not-resolve coverage already in `test_consult` / `test_roster` is untouched.
+
+### Board-joan findings (AST-1807)
+
+## Fix-board Joan pass — AST-1807
+
+**Ticket:** AST-1807 (gap) · parent AST-1804 · publish ref `origin/sub/AST-1804/AST-1807-implicit-retry-tests`  
+**Read:** `plan-fix` § Bug: AST-1807 (As-is / To-be / Repro / Root cause / Proposed change T1–T7 / Blast radius / What must still hold); fix-board § Joan pass; roster skim (`patt.task.dispatch-retry`, `astral.state.job-prior-states-enforced`, `astral.batch.claim-process-release`, `astral.dispatch.entity-state-bound`, `astral.config.config-source-of-truth`, `astral.standards.in-scope-only`).
+
+**Scope of this pass:** Tests + `docs/test-bible/**` only. **No product `src/` edits.** AST-1805 behavior is assumed on `ftr`; this ticket locks it in component tests and bible rows.
+
+**The one question:** Does the proposed change conflict with or require updating any directive in force?
+
+**Answer:** No. This is documentation and regression coverage for product behavior that already matches active canon (especially **`patt.task.dispatch-retry`**: suffix substate, claim union unchanged elsewhere, validation via registered base). The plan explicitly avoids registry-purge assertions that AST-1806 will flip (~3080–3110 in `test_config.py`) and avoids inventing integration scenarios.
+
+| Area | Assessment |
+|------|------------|
+| **Proposed change (T1–T7)** | Asserts helpers and validator branches Betty listed; negative cases preserve “suffix alone is not enough” (`NOPE_RETRY`) and derived-prior gates (`PASSED_DO → PASSED_GET_RETRY`). That matches Susan’s AST-1804 binding rule and the pattern’s Arc 1–2, without restating new product policy. |
+| **Blast radius** | Test-tree + bible only; no statute/pattern text touched. |
+| **Canon gap vs product gap** | Any tension between literal `JOB_STATES.prior_states` wording in **`astral.state.job-prior-states-enforced`** and derived `state_prior_states` was introduced by AST-1805 product, not by this test gap. Locking behavior in tests does not *require* a canon amendment to proceed (optional clarity edit remains F3 material on the product ticket if Archie wants it, not fix-board on AST-1807). |
+| **ESCALATE bar** | No new precedent, no ambiguous architectural call — repro documents pre-fix vs `ftr` only. |
+
+**F3 (`validate-plan` fix mode):** Not triggered from this board pass.
+
+**Precedent:** Same shape as AST-1802 in this feature doc — test/bible-only gap, **CANON: OK**.
+
+---
+
+**Machine-readable upshot (Chuckles posts `--as joan`):**
+
+```
+[board-joan]  CANON: OK
+```
+
+**Stdout:**
+
+```text
+[board-joan]  CANON: OK
+AST-1807 board-joan done — CANON: OK.
+```
+
+context_tokens≈24000
