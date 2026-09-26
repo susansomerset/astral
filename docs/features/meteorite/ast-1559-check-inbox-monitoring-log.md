@@ -690,3 +690,123 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 **Rationale:** The plan-fix patch only adds two guarded `_warn_item` calls inside `stage_meteorite` — the same always-on `logger.warning` path already used on other error exits in `meteorite.py`. It goes through `get_logger` (`astral.standards.logging-via-utils`), leaves Style D gated on `debug=True` (`astral.standards.debug-contract-gated`), and does not add config literals, monitoring format strings, or a new logging mechanism. Parent AST-1555 always-on **info** classify monitoring (`log_meteorite_inbox_classify`) stays untouched; supplemental WARNING on error counters is consistent with existing core practice, not a conflict with the monitoring contract. No statute or pattern text needs amending; choosing WARNING over `logger.error`/`exception` is an in-file precedent call, not a canon gap.
 
 AST-1617 board-joan done — CANON: OK.
+
+
+## Radia review-fix (AST-1617)
+
+# Radia review-fix — AST-1617
+
+`[code-rubric]`  
+**Ticket:** AST-1617 — check_inbox total_errors without ERROR/WARNING logs  
+**Parent:** AST-1555 (normal — not orphaned; `ftr` live @ `12edd9b3`)  
+**Publish ref:** `sub/AST-1555/AST-1617-check-inbox-total-errors-without-errorwarning-logs` @ `21de0e95f720088e5fa91ab3d185c7b058b6a648`  
+**Diff base:** `origin/ftr/AST-1555-meteorite-ingress-staging-table-inbox-meteorite-consolidation...origin/sub/AST-1555/AST-1617-check-inbox-total-errors-without-errorwarning-logs`  
+**Plan-fix patch:** `docs/features/meteorite/ast-1559-check-inbox-monitoring-log.md` § Bug: AST-1617  
+**Corpus:** No explicit frozen-canon block on Linear; scored Joan fix-board statutes + parent AST-1559 plan citations (`astral.agent.do-task-delegation`, `astral.standards.logging-via-utils`, `astral.standards.debug-contract-gated`, `astral.state.no-daisy-chain-in-run`, `astral.standards.in-scope-only`)  
+**Overall:** DISCUSS (product CLEAN; publish-ref merge hygiene)
+
+---
+
+## Fix-specific checks
+
+### `[bug-repro]` — OK
+
+`TestAst1617StageErrorWarns` is tagged in the class docstring and matches qa-fix / plan repro.
+
+| Test | Verdict |
+|------|---------|
+| `test_classify_fail_warns_once` | Pins `out["error"] == "llm timeout"`, exactly **one** WARNING on `src.core.meteorite` containing `mid-1617-a`, `c1617`, `email`, `llm timeout`. Would be 0 warnings pre-fix. |
+| `test_map_error_warns_once` | Pins map error string, one WARNING with `mid-1617-b`, candidate, kind, `missing content`. Would be silent pre-fix. |
+| `test_error_row_insert_failure_logs_once_no_extra_warn` | Guards `if not failed`: insert raises → single ERROR (`logger.exception`), no second `_warn_item`. |
+
+Not tautological; tied to **To-be** (one always-on warn per mid when ERROR-row insert succeeds).
+
+### `## What must still hold` — OK
+
+| Item | Check |
+|------|--------|
+| AST-1559 AC1 (no archive on stage error; zero job rows) | Only `_warn_item` before existing `_err` return; no archive/classify semantic change. |
+| AST-1559 AC3 / always-on info monitoring | No edits to `log_meteorite_inbox_classify` or monitoring config strings. |
+| Style D unchanged | New lines use `_warn_item` (always-on WARNING), not debug-gated emission. |
+| `_save_error` + insert-fail path | `if not failed` guard preserves single `logger.exception` on insert failure (test covered). |
+| Return dict unchanged | Same `return failed or _err(...)` branches; no new keys or outcome changes. |
+| No SKIPPED rows / boundaries | No classify/land logic touched beyond logging. |
+
+---
+
+## Canon scores
+
+| id | verdict | one-line |
+|----|---------|----------|
+| astral.agent.do-task-delegation | conforms | Logging only; no new consult/classify delegation |
+| astral.standards.logging-via-utils | conforms | `_warn_item` → module `logger.warning` via existing helper |
+| astral.standards.debug-contract-gated | conforms | Supplemental WARNING; Style D paths untouched |
+| astral.state.no-daisy-chain-in-run | conforms | No new dispatch hops |
+| astral.standards.in-scope-only | needs-discussion | **Make-fix** (`21de0e95`) is `meteorite.py` only per plan; **publish tip** also carries `sync(dev)` telescope/roster/gazer/dispatcher/config deltas vs `ftr` (see Frame diff) |
+
+**Joan fix-board:** CANON: OK — aligns with scored statutes above.
+
+---
+
+## Column diff vs plan stage
+
+| Plan-fix step | Diff match |
+|---------------|------------|
+| Map-error `_warn_item` when `not failed` | Matches proposed patch (lines ~1016–1023 on tip) |
+| Classify-fail fallthrough `_warn_item` when `not failed` | Matches proposed patch (lines ~1061–1068) |
+| No ingest / inbox / contact / `_save_error` edits | Conforms |
+| Map-error path included (board decision) | Conforms |
+
+**Plan decision (warn at `stage_meteorite`, not ingest):** Implemented; covers `inbox.check_email`, Land ingest, and contact land with one line per mid.
+
+---
+
+## Findings
+
+### discuss — `sync(dev)` on publish ref smuggles non–AST-1617 work vs `ftr`
+
+- **Location:** Commit `5455cfe3` on `origin/sub/...AST-1617...`; full `ftr...sub` diff (+16 files: telescope, roster, gazer, dispatcher, config, many tests)
+- **Finding:** `ftr` remains @ `12edd9b3`; sub tip adds AST-1617 fix **plus** merged `origin/dev` work unrelated to the bug. `merge-child` into `ftr` would land telescope/roster changes on the epic branch, not just the 14-line fix.
+- **Recommendation (Chuckles, pre–merge-child):** Rebase or cherry-pick only `04bd6c3d`…`21de0e95` (plan + `948ebc3a` + `21de0e95` + merge-tests/docs) onto `ftr`, **or** merge then revert non-bug paths. Do **not** treat full three-dot stat as the bug footprint for merge approval.
+
+### advisory — Ticket title vs fix locus
+
+- **Finding:** Linear title references `check_inbox`; fix correctly targets `stage_meteorite` per plan-fix live-wiring note (AST-1714 `check_email` → `stage_meteorite`).
+- **Recommendation:** None for code; optional Linear title/clarification for operators.
+
+### advisory — WARNING vs `logger.error` in ticket Expected
+
+- **Finding:** Ticket Expected prefers `logger.exception` / `logger.error`; plan-fix chose `_warn_item` (WARNING) to match sibling error exits in `stage_meteorite`.
+- **Recommendation:** Accept per plan-fix decision and Joan board; Susan already asked precedent question in plan.
+
+---
+
+## What's solid
+
+- Root cause and fix match plan-fix: silent paths were post–`_save_error` success returns; guarded `_warn_item` closes the gap.
+- Exactly two call sites; comments explain `if not failed`.
+- Betty `[bug-repro]` satisfies fix-board TESTS: REVISE bar (classify-fail + map-error + insert-fail guard).
+- Engineer commit scope: **only** `src/core/meteorite.py` (+ Betty tests/bible/docs).
+
+---
+
+## Frame diff
+
+| Area | vs `ftr` | Verdict |
+|------|----------|---------|
+| AST-1617 product | `src/core/meteorite.py` (+14 lines) | In-scope; plan-faithful |
+| AST-1617 tests/docs | `test_meteorite.py::TestAst1617StageErrorWarns`, bible § AST-1617, plan-fix section | In-scope |
+| Dev merge on sub | `gazer.py`, `roster.py`, `telescope.py`, `dispatcher.py`, `config.py`, telescope/roster tests | **Out of bug scope** — discuss before `merge-child` |
+| `ingest_candidate_email_message` ingest-only warn | Not changed | Intentional per plan decision |
+
+---
+
+## Notes for Chuckles (§8 branching)
+
+- **Parent shape:** Normal (AST-1555 UAT-batch; revived `ftr`).
+- **Product gate:** CLEAN — **§3h clean-review shortcut eligible** for the fix itself (no `resolve-child` product work).
+- **Merge gate:** Address **discuss** dev bleed on `sub` before `merge-child` → `prep-uat`; otherwise epic `ftr` absorbs unrelated dev commits.
+- **Board:** `[board-betty] TESTS: REVISE` cleared by qa-fix; `[board-joan] CANON: OK`.
+- No fix-now product findings on `21de0e95`.
+
+**Chuckles disposition (discuss — dev bleed):** verified `git diff origin/dev...origin/sub/...` = 4 in-scope files only (plan doc, bible, `src/core/meteorite.py`, `test_meteorite.py`). Extra paths vs `ftr` are commits already on `origin/dev` (revived `ftr` sits at older dev tip `12edd9b3`); merge-child brings `ftr` level with dev, net PR-to-dev footprint unchanged. No rebase.
