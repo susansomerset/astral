@@ -910,3 +910,142 @@ AST-1801 removes the multi-state registry gate that caused the live hop failure.
 | Gate | Parent shape | Next action |
 |------|--------------|-------------|
 | **PROCEED** (C7 complete) | Normal (AST-1800 In Progress) | → **Review Posted** → append artifact + `docs(AST-1802): Radia review — clean` on publish ref → post slim upshot `--as radia` → §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+
+## Bug: AST-1805 — `_RETRY` as implicit substate (no explicit `_RETRY` registry states; validators accept `{base}_RETRY`)
+
+Parent AST-1804 (orphaned mini-parent). Binding rule (Susan, AST-1804): *"There should be NO explicit _RETRY state in config. It is an implicit substate for exactly this purpose. Always query for _RETRY when claiming a batch with the base state, but don't validate the full RETRY string."*
+
+### As-is
+- The entity registries declare **18 explicit `*_RETRY` keys**: 13 in `JOB_STATES`, 3 in `COMPANY_STATES`, 2 in `CANDIDATE_STATES`. **~60 `prior_states` entries** name them. `config.py` also carries ~40 more `"X_RETRY"` literals, in `retry_state` / `error_state` / `retry_trigger_state` / `pass_states` / `fetch_job_pages_trigger_states`, `IN_REVIEW_STATES`, `JOBS_IN_REVIEW_UI_SECTIONS`, `JOBS_IN_REVIEW_GRADE_FIELD`, `JOBS_UI_STATE_RUBRIC_OVERRIDE`, `inflight_hide_states`, and `company_state_transitions`. Outside config there are literals in `consult._INPUT_STATE_TO_TASK`, `consult.py:1858`, and `roster.py:886`.
+- Validators accept a `_RETRY` state only when its **full string** is a registry key:
+  - `tracker.transition_job_state` → `validate_value(_JOB_STATE_LIST, …)` + `JOB_STATES[to]["prior_states"]`
+  - `roster.transition_company_state` → `validate_value(_COMPANY_STATE_LIST, …)`
+  - `candidate.transition_candidate_state` / `_candidate_prior_states` → `CANDIDATE_STATES[to]`
+  - `config.is_valid_job_batch_claim_state` / `is_valid_candidate_batch_claim_state`
+  - `config._dispatch_sort_by_for`
+  - `api_admin` dispatch-row trigger validation (`registry_ts not in registry`, two sites)
+  - the candidate `retry_state` assert (`config.py` ~1976)
+- Claim/count (`dispatch_claim_states`) already pairs `[base, base_RETRY]` without registry lookup (AST-1798/AST-1800). Only the modelling and validation are explicit.
+
+### To-be
+- Registries hold **bases only**. `{base}_RETRY` is valid wherever `{base}` is registered. Validators check the base, never the full `_RETRY` string.
+- Prior rules for retries are **derived from the base** (rule below). There are no `*_RETRY` entries in `prior_states`.
+- Every remaining reference to a retry substate in config is built from its base via `retry_of("<BASE>")`. There are no `"X_RETRY"` string literals in config.
+- Claim is unchanged: `dispatch_claim_states(ts)` → `[ts, f"{ts}_RETRY"]`.
+
+### Repro
+Deterministic against current config (`python3` in the worktree, tip `51d4f793`):
+```python
+from src.utils.config import JOB_STATES, COMPANY_STATES, CANDIDATE_STATES
+[k for r in (JOB_STATES, COMPANY_STATES, CANDIDATE_STATES) for k in r if k.endswith("_RETRY")]
+# → 18 keys (VALID_TITLE_RETRY … METEORITE_PASSED_LIKE_RETRY, WEBSITE_FOUND_RETRY,
+#   JOBLIST_IDENTIFIED_RETRY, PREFILTER_PASSED_RETRY, REQUESTED_RESUME_RETRY, REQUESTED_ARTIFACTS_RETRY)
+"PASSED_GET_RETRY" in JOB_STATES   # False — yet dispatch_claim_states("PASSED_GET","job") claims it
+from src.core import tracker
+tracker.transition_job_state([<job in PASSED_DO>], "PASSED_GET_RETRY")
+# → ValueError "not in allowed list" (full string validated; base PASSED_GET is registered)
+```
+
+### Root cause
+Retry was modelled as **explicit registry states** (AST-630/898/1155/1338 era). Claim moved to suffix-always pairing (AST-1798), but the registries, prior tables, and transition validators still treat every `*_RETRY` as a separately declared state. The two models disagree: claim counts retries that validators can only accept when explicitly declared.
+
+### Derived prior rule (verified)
+Let `R = registry`, `feeders(B) = {B} ∪ {S ∈ R : R[S].retry_state == retry_of(B)}`. This covers cross-base routing: `VALID_TITLE → NEW_RETRY`, `HOMEPAGE_READY → WEBSITE_FOUND_RETRY`.
+- **Into `retry_of(B)`**: effective priors = `feeders(B) ∪ {retry_of(B)}`, where `retry_of(B)` covers re-entry (candidate `REQUESTED_*_RETRY`, company `WFR → WFR`).
+- **Into base `T`** with `R[T].prior_states = P` (`None` stays `None`): effective priors = `P ∪ {retry_of(p) : p ∈ P} ∪ {R[p].retry_state : p ∈ P, set} ∪ {retry_of(T)}`, where `retry_of(T)` covers the retry draining back to its base (candidate `REQUESTED_RESUME_RETRY → REQUESTED_RESUME`).
+
+I checked this rule by script against every explicit edge in today's `JOB_STATES` and `CANDIDATE_STATES`, and it reproduces **all** of them. `FAILED_JOBLIST ← NEW_RETRY` is covered via `VALID_TITLE.retry_state`. **Loosening (accepted):**
+- It allows `retry_of(p)` edges for bases that never route into retry today, e.g. `BOT_BLOCKED_RETRY → PASSED_JOBLIST`. No writer produces those states.
+- It allows `retry_of(T) → T` self-drain for job bases, e.g. `JD_READY_RETRY → JD_READY`.
+
+Company transitions: `transition_company_state` has no prior gate, and `ASTRAL_CONFIG["company_state_transitions"]` has **no consumer** in `src/`. Only literal cleanup applies there.
+
+### Estimate & split
+Honest size: **8 points**. That's over 5, so this splits into two sibling children. Stage A is behavior-neutral (retry keys still present) and Stage B is a mechanical purge on top of it. Chuckles files Stage B as a sibling under AST-1804, **blockedBy AST-1805**.
+
+| Child | Stage | Est |
+|-------|-------|-----|
+| **AST-1805** (this ticket) | A — implicit-retry helpers + every validator resolves through the base | 3 |
+| **new sibling** (`AST-1804` child, e.g. `fix: purge explicit _RETRY registry keys and literals`) | B — delete registry keys, strip retry priors, derive every literal via `retry_of` | 5 |
+
+### Proposed change — Stage A (AST-1805)
+
+**A1. `src/utils/config.py` — new helpers, defined above `TASK_CONFIG` (line ~198) so Stage B can use `retry_of` inside every dict:**
+```python
+RETRY_SUFFIX = "_RETRY"
+
+def retry_of(base: str) -> str:
+    """Implicit retry substate name for a registered base state."""
+    return f"{base}{RETRY_SUFFIX}"
+
+def retry_base(state: Optional[str]) -> Optional[str]:
+    """Base of an implicit retry substate, or None when state has no _RETRY suffix."""
+    s = (state or "").strip()
+    return s[: -len(RETRY_SUFFIX)] if s.endswith(RETRY_SUFFIX) and len(s) > len(RETRY_SUFFIX) else None
+
+def registered_base(registry: Dict[str, Any], state: Optional[str]) -> Optional[str]:
+    """Registry key that owns state: itself, or the base of {base}_RETRY. Never validates the full retry string."""
+
+def is_registered_state(registry: Dict[str, Any], state: Optional[str]) -> bool:
+    return registered_base(registry, state) is not None
+
+def state_prior_states(registry: Dict[str, Any], to_state: str) -> Optional[List[str]]:
+    """Effective prior_states per the derived prior rule above (retry targets always derived, even if a legacy key exists)."""
+```
+- `registered_base` returns `s` when `s in registry`, else `retry_base(s)` when that base is in the registry, else `None`.
+- `state_prior_states` raises `KeyError` when `to_state` is not registered. Retry targets **always** use the derived rule, even while legacy keys still exist, so Stage A exercises the derivation and Stage B's key deletion changes nothing.
+- `dispatch_claim_states` is **untouched** (AST-1798 boundary).
+
+**A2. Validators — each swaps a full-string membership check for `is_registered_state` / `registered_base`, and each `…["prior_states"]` read for `state_prior_states`:**
+- `src/core/tracker.py`
+  - `transition_job_state`: replace `validate_value(_JOB_STATE_LIST, to_state)` with `if not is_registered_state(JOB_STATES, to_state): raise ValueError(f"Value {to_state!r} not in allowed list: {_JOB_STATE_LIST}")`. The message text stays the same. `prior_states = state_prior_states(JOB_STATES, to_state)`.
+  - `legal_job_successor_states`: use `state_prior_states(JOB_STATES, name)` per key.
+  - `_job_state_matches_prior`: unchanged, because the expansion happens in the prior list.
+- `src/core/roster.py` `transition_company_state`: same replacement as tracker, against `COMPANY_STATES` / `_COMPANY_STATE_LIST`.
+- `src/core/candidate.py`
+  - `_candidate_prior_states`: `if not is_registered_state(CANDIDATE_STATES, to_state): raise ValueError(...)`, then `return state_prior_states(CANDIDATE_STATES, to_state)`.
+  - `transition_candidate_state`: use `not is_registered_state(CANDIDATE_STATES, to_state)` in place of `not in CANDIDATE_STATES`.
+  - `run_requested_artifacts_dispatch` bare-trigger guard (~3670): same swap.
+- `src/utils/config.py`
+  - `is_valid_job_batch_claim_state` / `is_valid_candidate_batch_claim_state`: use `registered_base(...) is not None` in place of `s in REG`.
+  - `_dispatch_sort_by_for`: job branch uses `not is_registered_state(JOB_STATES, trigger_state)`; company branch reads `COMPANY_STATES.get(registered_base(COMPANY_STATES, trigger_state) or trigger_state)`. Base and retry `batch_criteria` are identical today.
+  - Candidate `retry_state` assert (~1976): `is_registered_state(CANDIDATE_STATES, _retry)`.
+- `src/ui/api/api_admin.py` dispatch-task trigger validation, both sites (mailbox candidate branch and the general branch): `if not is_registered_state(registry, registry_ts)`. `state_options` needs no code change; it lists bases once Stage B lands.
+- **Must NOT resolve through the base** (retry-of-retry routes to terminal): `consult._consult_batch_fail_dest`, `roster._prefilter_batch_fail_dest`, `candidate._requested_stage_failure_target`, `gazer` retry checks. They keep their direct `REG.get(st, {}).get("retry_state")` / equality reads.
+- Verify only, no change: `database.count_eligible_for_dispatch_task` / `_state_in_sql` (no registry validation) and `dispatcher._run_unified` (uses `dispatch_claim_states`).
+
+### Proposed change — Stage B (sibling, blockedBy AST-1805)
+Mechanical rule for `src/utils/config.py`, with zero behavior change given Stage A:
+1. **Delete** the 18 `*_RETRY` registry keys (13 `JOB_STATES`, 3 `COMPANY_STATES`, 2 `CANDIDATE_STATES`).
+2. **Remove** every `*_RETRY` entry from every `prior_states` list, since they're now derived by `state_prior_states`.
+3. **Replace** every remaining `"X_RETRY"` string literal with `retry_of("X")`. That covers:
+   - registry `retry_state` fields;
+   - task-config `retry_state` / `error_state` / `retry_trigger_state` / `pass_states` / `fetch_job_pages_trigger_states` (~840, 905, 1208, 1281, 1318, 2046, 2062–2073, 2260, 2266);
+   - the UI lists `IN_REVIEW_STATES`, `JOBS_IN_REVIEW_UI_SECTIONS`, `JOBS_IN_REVIEW_GRADE_FIELD`, `JOBS_UI_STATE_RUBRIC_OVERRIDE`, and `inflight_hide_states`;
+   - the `company_state_transitions` pairs.
+   Cross-base mappings keep their explicit key (e.g. `retry_of("NEW"): "joblist_grades"`). Do **not** derive those maps by comprehension from base keys: `NEW` has no grade field, but `NEW_RETRY` does.
+4. Asserts that check retry names against a registry switch to `is_registered_state`: the `grade_field` assert (~4197) and the `inflight_hide_states` assert (~4186).
+5. `src/core/consult.py`:
+   - `_INPUT_STATE_TO_TASK` drops its 6 retry literals and adds `_INPUT_STATE_TO_TASK.update({retry_of(k): v for k, v in list(_INPUT_STATE_TO_TASK.items())})`. Every retry maps the same as its base today, and this is a legacy map with no `src/` consumer.
+   - Line ~1858: the tuple becomes `("VALID_TITLE", retry_of("VALID_TITLE"), retry_of("NEW"))`.
+6. `src/core/roster.py` ~886: the tuple becomes `("WEBSITE_FOUND", retry_of("WEBSITE_FOUND"))`.
+7. `grep -n '_RETRY"' src/utils/config.py` must return no state literals. Only the `RETRY_SUFFIX` definition and docstrings remain.
+
+### Blast radius
+- **Admin**
+  - `state_options` loses 18 retry entries once Stage B lands, so admin trigger dropdowns show bases only.
+  - Existing dispatch rows with a `*_RETRY` trigger still validate via `is_registered_state`.
+- **Jobs UI**
+  - `legal_next_states` (via `api_jobs` → `legal_job_successor_states`) stops offering retry targets once keys are gone, because it iterates registry keys. Manual moves into retry are no longer offered.
+  - In Review retry buckets stay, via `retry_of` entries.
+- **Transition gates loosen slightly** per the derived rule (never-produced retry states, plus job self-drain `X_RETRY → X`).
+- **Tests (Betty's)** that assert retry keys exist in the registries, assert explicit `prior_states` contents, or equality-check `state_options` / registry key lists will break in Stage B. `tests/component/core/test_consult.py` `_INPUT_STATE_TO_TASK` retry asserts stay green (derived keys). Expect fix-board **TESTS: REVISE** → gap sibling.
+- **Shared modules:** `tracker`, `roster`, `candidate`, `api_admin`, and `config` claim/sort helpers. `dispatcher` and `database` are unchanged.
+
+### What must still hold
+- AST-641 / AST-1798: a primary claims and counts `[ts, f"{ts}_RETRY"]`; a retry-only row claims `[ts]`; Available and claim use the same list. `dispatch_claim_states` is byte-identical.
+- AST-1800: the `states=` claim path does not registry-validate the companion.
+- AST-892: `fetch_website` excludes prefilter second-strike `WEBSITE_FOUND_RETRY` rows with homepage text (claim and count).
+- AST-642 routing: a primary failure goes to its retry holding state; a failure while in `*_RETRY` goes to terminal/error. There is no new routing into retry substates.
+- Every transition legal today stays legal (verified by the derived-rule script above).
+- Config still imports cleanly, with all module asserts passing, after each stage.
