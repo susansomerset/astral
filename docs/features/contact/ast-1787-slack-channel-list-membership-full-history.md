@@ -212,3 +212,85 @@ context_tokens≈32000
 
 context_tokens≈58000
 ```
+
+## Bug: AST-1816 — Gap: cover Slack needed/provided on conversations.list errors
+
+**Linear:** [AST-1816](https://linear.app/astralcareermatch/issue/AST-1816) · **Mini-parent:** [AST-1814](https://linear.app/astralcareermatch/issue/AST-1814) · **Product sibling:** [AST-1815](https://linear.app/astralcareermatch/issue/AST-1815) (its `## Bug: AST-1815` section lives on `sub/AST-1814/AST-1815-…`; both sections meet on `ftr/AST-1814-slack-channel-list-isnt-working`)  
+**Publish ref:** `sub/AST-1814/AST-1816-gap-slack-scope-error-tests`  
+**Origin:** `[board-betty] TESTS: REVISE` on AST-1815 — test/bible coverage only. **No `src/` on this sub**; AST-1815's `src/external/slack.py` change arrives via `ftr` after AST-1815 merges — never cherry-picked or stacked here.
+
+### As-is
+
+`tests/component/external/test_slack.py` covers `conversations.list` `ok:false` only via `TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises` and `TestAst1667WorkspacePosterPool::test_hard_failures_raise`, both with `{"ok": False, "error": "invalid_auth"}` and `match="conversations.list"`. No case feeds `missing_scope` + `needed`/`provided`, so AST-1815's enriched message is unpinned, and nothing pins the exact plain text when those fields are absent. `docs/test-bible/external/slack.md` has no AST-1815 entry.
+
+### To-be
+
+A new class pins AST-1815 AC1–3: `needed` and `provided` appear in the raised message for both `list_bot_channels` and `_iter_conversations`, and a payload without them raises exactly `conversations.list failed: missing_scope`. The bible lists the class plus the two existing hard-fail tests as the AST-1815 manifest.
+
+### Repro
+
+Fixture (mocked `requests.get` JSON via existing `_slack_get_resp`; no DB):
+
+```python
+{"ok": False, "error": "missing_scope", "needed": "channels:read", "provided": "groups:read,groups:history"}
+```
+
+On the pre-fix tree (this sub's tip, `ftr` before AST-1815 merges) `list_bot_channels()` raises `conversations.list failed: missing_scope`: `"channels:read" in str(exc)` is False, so the new assertion fails (red). Once AST-1815 is on the tip, the message is `conversations.list failed: missing_scope (needed: channels:read; provided: groups:read,groups:history)` and the test passes (green).
+
+### Root cause
+
+AST-1815's fix-board found no test asserting on Slack error-message content beyond the method-name prefix. The existing `match="conversations.list"` checks pass whether or not `needed`/`provided` are surfaced.
+
+### Proposed change
+
+Files: `tests/component/external/test_slack.py` and `docs/test-bible/external/slack.md` only (AST-1816 Technical scope). Betty's tree. No `src/`, no other test files.
+
+**1. `tests/component/external/test_slack.py`: append a new class at end of file**, after `TestAst1787ChannelListMembershipFullHistory`, with a branch comment in the file's existing style:
+
+```python
+# Branches: conversations.list ok:false message carries Slack needed/provided when
+# present (list_bot_channels + _iter_conversations); plain text unchanged when absent (AST-1815).
+class TestAst1815SlackScopeErrorDetail:
+```
+
+Shared module-level constant inside the class (or at class top) for the fixture above: `_MISSING_SCOPE = {"ok": False, "error": "missing_scope", "needed": "channels:read", "provided": "groups:read,groups:history"}`.
+
+Every case sets up the environment the same way as existing AST-1787 cases: `monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")`, `monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")`, and `monkeypatch.setattr(slack_mod.requests, "get", MagicMock(return_value=_slack_get_resp(<payload>)))`.
+
+| Case | Tag | Call | Assert |
+|------|-----|------|--------|
+| `test_list_bot_channels_missing_scope_names_needed_and_provided` | **`[bug-repro]`** (AC1) | `slack_mod.list_bot_channels()` under `pytest.raises(RuntimeError) as exc` | `msg = str(exc.value)`; `"conversations.list failed: missing_scope" in msg`; `"channels:read" in msg`; `"groups:read,groups:history" in msg` |
+| `test_iter_conversations_missing_scope_names_needed_and_provided` | **`[bug-repro]`** (AC2) | `slack_mod._iter_conversations()` directly (private; no gate of its own, so env token is enough) | same three substring asserts |
+| `test_conversations_list_error_without_scope_fields_is_plain` | regression pin (AC3) | payload `{"ok": False, "error": "missing_scope"}`; call `list_bot_channels()` then `_iter_conversations()` (reset mock between is unnecessary — same `MagicMock` return) | `str(exc.value) == "conversations.list failed: missing_scope"` for **both** calls (exact equality, not `match=`) |
+
+- Use plain substring `in` / `==` on `str(exc.value)`, not `pytest.raises(match=…)`, so `:` / `,` in scope strings need no regex escaping.
+- Expected state on this sub before AST-1815 merges: cases 1–2 **red**, case 3 **green**. After AST-1815 is on `ftr` and this sub re-syncs, all three are green.
+- Do **not** edit `test_list_bot_channels_ok_false_raises` or `test_hard_failures_raise`; they stay as-is (AC2 of AST-1816).
+
+**2. `docs/test-bible/external/slack.md`: append a new block at end of file** after the AST-1787 block, preceded by `---`, matching that block's layout:
+
+- Heading `### AST-1815 · AST-1814`.
+- `**Parent:**` line linking [AST-1814 — Slack channel list isn't working](https://linear.app/astralcareermatch/issue/AST-1814). `**Publish:**` `origin/sub/AST-1814/AST-1815-surface-slack-scopes-on-conversations-list-errors` (product), tests landed by AST-1816 on `origin/sub/AST-1814/AST-1816-gap-slack-scope-error-tests`.
+- One-paragraph summary: `conversations.list` `ok:false` raises in `list_bot_channels` / `_iter_conversations` append Slack `needed` / `provided` when present, and the plain `"<method> failed: <error>"` text stays the same when they are absent. No change to pagination, types, sort, soft-skip.
+- Area table row: `conversations.list ok:false needed/provided detail` | `src/external/slack.py` | **`TestAst1815SlackScopeErrorDetail`**; second row: `Existing hard-fail prefix checks` | `src/external/slack.py` | existing **`TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`**, **`TestAst1667WorkspacePosterPool::test_hard_failures_raise`**.
+- `**Broken / obsolete this pass:** none — existing asserts use \`match="conversations.list"\` (prefix unchanged).`
+- `**Integration:** no existing scenario exercises Slack channel list errors — no revision; do not invent.`
+- `## QA test manifest` listing:
+  1. `[bug-repro]` + AC3 pin (new): `tests/component/external/test_slack.py::TestAst1815SlackScopeErrorDetail`
+  2. Existing regression: `tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`
+  3. Existing regression: `tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool::test_hard_failures_raise`
+
+  with the same `./scripts/testing/run_component_tests.sh <those three node ids> -q` block, `**Pass criterion:**` line, and `**Bible shasum (publish tip):**` placeholder as prior blocks.
+
+### Blast radius
+
+- **Test file only additive:** new class at end; the shared helpers `_slack_get_resp` / `_method_from_url` are reused, not changed. No other class touched.
+- **Bible additive:** new block at EOF; prior AST-1069/1070/1105/1667/1787 blocks untouched.
+- **Sequencing:** `test-fix` for AST-1816 can only go green on cases 1–2 after AST-1815's `sub` merges into `ftr/AST-1814-slack-channel-list-isnt-working` and this sub re-syncs (`sync-child.sh --ftr`). Before that, red on 1–2 is the expected `[bug-repro]` evidence, not a failure to fix here.
+- **Doc merge:** this sub and AST-1815's sub each append a `## Bug:` section at EOF of this feature doc. Expect a trivial keep-both conflict at `ftr` rollup; order the sections AST-1815 then AST-1816.
+
+### What must still hold
+
+- `test_list_bot_channels_ok_false_raises` and `test_hard_failures_raise` unchanged and green (prefix `conversations.list` still matched).
+- No `src/` change on `sub/AST-1814/AST-1816-gap-slack-scope-error-tests`; AST-1815's product commits never cherry-picked here.
+- AST-1787 / AST-1667 test classes and bible blocks unmodified. AC9 (no `conversations.members` in poster pool) still covered by the existing `TestAst1667WorkspacePosterPool`.
