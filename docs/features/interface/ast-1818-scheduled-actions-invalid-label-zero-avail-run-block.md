@@ -222,3 +222,86 @@ context_tokens≈18500
 ```
 
 context_tokens≈28000
+
+## Bug: AST-1819 — Invalid button needs a tooltip listing the missing prompt tokens
+
+Publish ref: `sub/AST-1817/AST-1819-invalid-button-missing-token-tooltip`. Scope: the parent AST-1817 Component/Technical scope as amended for AST-1819 (`api_admin.py` `list_dtasks` row field + Invalid tooltip; parent ACs 9, 12, 13). Canon Scope: none, same as AST-1818.
+
+### As-is
+On Scheduled Actions, an `empty_render` row shows the disabled **Invalid** button (AST-1818 Stage 2) with no tooltip. `GET /api/admin/dispatch_tasks` rows carry only the `empty_render` boolean, so the UI has no way to say which tokens failed.
+
+### To-be
+Hovering the Invalid control shows the row's missing prompt tokens comma-separated (e.g. `FIRST_NAME, GET_RUBRIC`). When the list is empty (prompts could not be validated), it reads `Could not validate prompts`. The button stays `disabled` and unclickable.
+
+### Repro
+Fixture row from `GET /api/admin/dispatch_tasks` (frontend mock), not running, AUTO off:
+
+```json
+{ "id": 1, "task_key": "scan_jobs", "entity_type": "job", "trigger_state": "NEW",
+  "auto_mode": 0, "available_count": 3, "empty_render": true, "candidate_id": "c1" }
+```
+
+Expand its section and hover the **Invalid** button: no tooltip. API side: with `_evaluate_dispatch_empty_render` monkeypatched to return `{"empty_render": True, "empty_tokens": ["FIRST_NAME"]}`, the `list_dtasks` output row has no `empty_tokens` key.
+
+### Root cause
+1. `src/ui/api/api_admin.py` `list_dtasks` (lines 966–968) calls `_evaluate_dispatch_empty_render`, which returns `{"empty_render": bool, "empty_tokens": list[str]}`. The loop stamps only `row["empty_render"]`; `empty_tokens` feeds the AUTO-forced-off log line (line 972) and is then dropped.
+2. `AdminScheduledActions.tsx` never sets a tooltip on the Invalid control. The button itself can't host a hover tooltip because it has `pointer-events: none` (AST-1818), which suppresses hover on the button.
+
+### Proposed change
+
+**A. API — `src/ui/api/api_admin.py`, `list_dtasks` only.** Directly after line 968 (`row["empty_render"] = bool(er.get("empty_render"))`), add:
+
+```python
+        # AST-1819: missing prompt tokens for the Invalid tooltip ([] when valid or unvalidatable).
+        row["empty_tokens"] = list(er.get("empty_tokens") or [])
+```
+
+Do not change `_evaluate_dispatch_empty_render`, the AUTO force-off `if` block, its `tokens`/`why` locals, or the `logger.warning` line. There is no new evaluation, since `er` is already computed per row. Every return path of `_evaluate_dispatch_empty_render` yields a list (early returns `[]`; `empty_render_for_prompts` returns a deduped `list[str]`), and `list(... or [])` guarantees the list type for AC 12.
+
+**B. Frontend — `src/ui/frontend/src/pages/AdminScheduledActions.tsx`.**
+
+1. In the `DispatchTask` interface, directly after `empty_render?: boolean` (line 92), add `empty_tokens?: string[]`.
+2. In `ScheduledPhaseTable`'s `rows.map` body, directly after `const runBlocked = …` (line 209), add:
+
+   ```tsx
+   // AST-1819: Invalid tooltip — missing tokens, or a fallback when prompts could not be validated.
+   const invalidTitle = emptyRender && !isRunning
+     ? (row.empty_tokens?.length ? row.empty_tokens.join(", ") : "Could not validate prompts")
+     : undefined
+   ```
+
+3. On the Run cell wrapper at line 245, change `<div style={{ position: "relative", display: "inline-block" }}>` to:
+
+   ```tsx
+   <div title={invalidTitle} style={{ position: "relative", display: "inline-block" }}>
+   ```
+
+   Leave the Invalid/Run `<button>` itself unchanged (class, style, `disabled`, `pointer-events: none`, label). Because the button has `pointer-events: none`, hover lands on the wrapper and the browser shows the wrapper's native `title`. Adding `title` to the button instead would never show, and loosening its pointer-events would make it hoverable/clickable again, so both are rejected.
+
+⚠️ **Decision:** Use a native `title` on the existing wrapper `<div>`. The amended Technical scope names this option, it needs no new component, CSS class, or `App.css` edit, and it's the smallest diff. Rejected alternatives: a custom tooltip component (new UI surface, out of scope); toggling pointer-events (reopens clicks, breaks AST-1818 AC 1).
+
+⚠️ **Decision:** No tooltip while the row is running (`!isRunning`). In that state the Invalid button is at opacity 0 under the Stop/Draining overlay, so a token tooltip over Stop would describe a control the user can't see. `title` is `undefined` for every non-Invalid row, so the wrapper renders no `title` attribute there.
+
+⚠️ **Decision:** Join with `", "` (comma + space). This matches Susan's example `FIRST_NAME, GET_RUBRIC` and parent AC 13's literal text. Tokens render in API order (first-seen order across prompt texts), with no client-side sort.
+
+**Compile / lint / checks (make-fix):** `python3 -m py_compile src/ui/api/api_admin.py`; in `src/ui/frontend`, `npm run build` and `npm run lint`. Lint must stay at the 33-problem baseline, with nothing new.
+- **Parent AC 9:** `git diff origin/dev -- src/ui/frontend/src/App.css src/ui/frontend/src/lib/listTableLayout.ts src/utils/config.py` is empty, and `git diff origin/dev -- src/ui/api` shows only the two added `list_dtasks` lines.
+- **Colour literals:** the AST-1818 AC 10 grep on `AdminScheduledActions.tsx` stays empty.
+
+Commits: `code(AST-1819): list_dtasks empty_tokens row field` (A), then `code(AST-1819): Invalid tooltip lists missing tokens` (B), each built/linted before commit.
+
+### Blast radius
+- **`list_dtasks` consumers:** only `AdminScheduledActions.tsx` reads `empty_render`, and no other frontend file references either field. The extra key is additive JSON; no test asserts an exact row key set (`test_api_admin.py` AST-1780 cases check `out[0]["empty_render"]` and monkeypatch `_evaluate_dispatch_empty_render`, which already returns `empty_tokens`).
+- **Untouched:** `_candidate_dispatch_empty_render_error` (create/PUT/run 400 gates) and the `/run` server gate.
+- **Tests (Betty, `qa-fix`/`qa-child`):**
+  - `test_api_admin.py` list-enrich cases gain an `empty_tokens` assertion (parent AC 12).
+  - `test_AdminScheduledActions.test.tsx` gains tooltip cases (AC 13), e.g. `getByTitle("FIRST_NAME, GET_RUBRIC")` and `getByTitle("Could not validate prompts")`.
+  - The AST-1782/1818 Invalid-button assertions (accessible name **Invalid**, `btn secondary in-row`, `disabled`, no `/run` POST) are unaffected: `title` is on the wrapper, so the button's accessible name stays "Invalid".
+  - Bible: `docs/test-bible/ui/api/api_admin.md` and `frontend/pages.md`.
+
+### What must still hold
+- **AST-1818 AC 1–2:** the Invalid button keeps accessible name **Invalid**, classes `btn secondary in-row`, `disabled`, `pointer-events: none`, and full opacity (no 0.25), and a click (including `fireEvent.click`) sends no `/run` POST.
+- **AST-1818 AC 3–5:** zero-avail Run stays muted/disabled, avail > 0 Run still POSTs, and a running row's Stop still POSTs.
+- **AST-1818 AC 6–8:** Avail default All, `> 0` still filters, only Task is frozen.
+- **AUTO force-off:** the `list_dtasks` force-off for `empty_render` rows and its warning log text are unchanged.
+- **No other changes:** no new CSS class, no inline colour literal, no `App.css` / `listTableLayout.ts` / `config.py` diff.
