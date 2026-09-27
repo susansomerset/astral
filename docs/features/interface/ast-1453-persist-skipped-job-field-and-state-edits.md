@@ -766,3 +766,78 @@ Spawn/Chuckles bar met: manifest **8 red → green** on `tracker.py` @ pre-fix b
 |------|----------------|
 | **PROCEED** (C7 complete) | AST-1809 mini-parent → **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). With AST-1811 + AST-1813 paths, roll **ftr** when all fix siblings UT. |
 
+---
+
+## Bug: AST-1812 — tests for skipped-job any-state override
+
+**Mini-parent:** AST-1809. **Sibling product:** AST-1811 (`## Bug: AST-1811` above). **Sibling canon:** AST-1813.  
+**Publish ref:** `sub/AST-1809/AST-1812-skipped-any-state-tests`  
+**Test gap from `[board-betty] TESTS: REVISE` on AST-1811.** Retroactive plan-fix block: the gap was filed at Plan Approved, and Betty's delivery (`8ee5a27d`, merged via `merge-tests(AST-1812)` `b84b95ee`) predates this block. It records that contract. It is not new work.
+
+### As-is
+
+Before this gap, `tests/component/core/test_tracker.py`, `tests/component/ui/api/test_api_jobs.py` and their bible pages pinned the pre-AST-1811 contract:
+
+- **Successor list:** `TestAst1453LegalJobSuccessorStates::test_excludes_self_includes_unrestricted_and_listed_priors` asserted the prior-filtered list.
+- **Transition stub:** `TestAst1453PersistSkippedJobEdits::test_writes_title_link_jd_then_transition` stubbed `transition_job_state(ids, to_state)` without the keyword-only flag. Once persist passes `enforce_prior_states=False`, it raises TypeError.
+- **Illegal-hop premise:** `test_field_writes_before_illegal_transition_propagates` (core) and `test_put_illegal_transition_409` (API) assumed an illegal hop on a registry key. That scenario is no longer reachable on the skipped-edit path.
+- **No coverage** for the `enforce_prior_states` bypass, or for persist rejecting non-`JOB_STATES` targets. `src/core/tracker.py` is `LOCKED_AT_100`.
+
+### To-be
+
+The component tests and bible pin AST-1811's To-be:
+
+1. **Successor list:** every `JOB_STATES` key except current, in registry order, with no `prior_states` filter.
+2. **Persist hop:** a skipped job moves to any `JOB_STATES` key via `transition_job_state(..., enforce_prior_states=False)`. History and `state_changed_at` are written.
+3. **Default enforcement:** `transition_job_state` with the default (or explicit `True`) still raises `Invalid transition`.
+4. **What `False` waives:** only priors. Registration is still checked.
+5. **Non-key targets:** persist rejects implicit `*_RETRY` and runtime hop labels with "not in allowed list" before any hop, keeping field edits.
+6. **API:** PUT maps that rejection to 409.
+
+### Repro
+
+Betty's `[bug-repro]` on AST-1812: `origin/sub/AST-1809/AST-1812-skipped-any-state-tests` @ `b84b95ee` — "8 red pre-fix, green on AST-1811 `57b178d8`". The manifest is in `docs/test-bible/core/tracker.md` § AST-1812:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestTransitionJobState \
+  tests/component/core/test_tracker.py::TestAst1453LegalJobSuccessorStates \
+  tests/component/core/test_tracker.py::TestAst1453PersistSkippedJobEdits \
+  tests/component/ui/api/test_api_jobs.py::TestAst1453SkippedEditMetaAndPut \
+  -q
+```
+
+The engineer test-fix pass on AST-1812 @ `2d6b6e6e` confirmed it. With `tracker.py` @ `origin/dev` (pre-fix): 8 failed / 21 passed, including both primary `[bug-repro]` nodes. At tip: 29 passed.
+
+### Root cause
+
+These tests were written against AST-1453's original contract. They became obsolete when Susan's AST-1809 product call replaced that contract with the skipped-edit operator override. The product change lives on AST-1811. Test-tree ownership (`astral.git.engineer-test-tree-ban`) routes the rewrite to Betty, not the product engineer.
+
+### Proposed change
+
+Test tree and bible only. All of it was delivered by Betty in `8ee5a27d`, exactly 4 paths:
+
+1. **`tests/component/core/test_tracker.py`:**
+   - `TestAst1453LegalJobSuccessorStates`: replace `test_excludes_self_includes_unrestricted_and_listed_priors` with `test_every_key_except_self_ignores_prior_states` (tiny registry; priors do not narrow the list). Add `[bug-repro]` `test_ast1811_bug_repro_real_registry_candidate_skipped` (real registry; `CANDIDATE_SKIPPED` list = every other key; `PASSED_JD` ∈ list).
+   - `TestAst1453PersistSkippedJobEdits`: the `test_writes_title_link_jd_then_transition` stub accepts and asserts `enforce_prior_states is False`. Rename `test_field_writes_before_illegal_transition_propagates` → `test_field_writes_before_unregistered_target_rejected`, parametrized over `PASSED_GET_RETRY` / `PASSED_JD.x`. Fields are kept, "not in allowed list" is raised, and no transition call is made. Add `[bug-repro]` `test_ast1811_bug_repro_any_job_state_key_bypasses_prior` (real persist + transition, `CANDIDATE_SKIPPED` → `PASSED_JD`, asserting `state`, `state_history[-1].to_state`, `state_changed_at`).
+   - `TestTransitionJobState`: add `test_ast1811_enforce_prior_states_false_skips_prior_check` (default/`True` raise on `PASSED_JD` → `VALID_TITLE`; `False` writes with history) and `test_ast1811_enforce_prior_states_false_still_checks_registration` (`False` still rejects unregistered `NOPE`). The existing `test_rejects_invalid_prior_state` stays as default-enforcement coverage.
+2. **`tests/component/ui/api/test_api_jobs.py`:** `test_put_illegal_transition_409` → `test_put_unregistered_state_409` (persist raises "not in allowed list" → 409). The `_detail_wire` hydrate mock accepts `astral_job_id=`, which fixes pre-existing drift against `detail()`.
+3. **`docs/test-bible/core/tracker.md`:** AST-1453 entry updated to the new contract, plus a new § AST-1812 (area table, obsolete list, narrowed manifest, pre-existing-reds note).
+4. **`docs/test-bible/ui/api/api_jobs.md`:** PUT 409 entry now reads "unregistered non-`JOB_STATES` target"; AST-1812 obsolete-test note.
+
+No `src/**` change on this ref. The product is AST-1811 and reaches this ref via `sync(ftr)`. There is no engineer code step, hence the empty `code(AST-1812)` marker commit.
+
+### Blast radius
+
+- **Only test nodes in 4 classes** (`TestTransitionJobState`, `TestAst1453LegalJobSuccessorStates`, `TestAst1453PersistSkippedJobEdits`, `TestAst1453SkippedEditMetaAndPut`) plus two bible pages.
+- **Whole files:** `test_tracker.py` + `test_api_jobs.py` show 19 failed / 199 passed at `2d6b6e6e`. All 19 are pre-existing unrelated reds on `origin/dev` (bible § AST-1812), with 0 new. Three prior `TestAst1453SkippedEditMetaAndPut` reds are now green via the `_detail_wire` fix.
+- **Carry, not footprint:** the three-dot diff vs `ftr` includes other tickets' `merge-tests` carry (meteorite AST-1617, telescope split, roster, dispatcher). That's not AST-1812 footprint (Radia advisory).
+
+### What must still hold
+
+- There are no `src/**` or `canon/**` edits on this ref beyond what `ftr` carries. Product stays on AST-1811 and the carve-out on AST-1813.
+- Tests pin AST-1811's To-be exactly: any `JOB_STATES` key, the bypass on the skipped-edit path only, default enforcement unchanged, `False` still checks registration, non-key targets rejected with field edits kept, and API 409.
+- The `[bug-repro]` nodes stay red against pre-fix product and green at tip. They must not be neutered into presence-only checks.
+- `test_rejects_invalid_prior_state` still guards default prior-state enforcement for every other caller.
+- The pre-existing unrelated reds are neither absorbed nor masked by this gap.
+
