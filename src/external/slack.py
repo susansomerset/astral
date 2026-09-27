@@ -189,6 +189,14 @@ def fetch_user_profile(user_id: str) -> dict:
     }
 
 
+def _slack_error(method: str, payload: dict) -> str:
+    """Format a Slack ok:false payload; append needed/provided scopes when present."""
+    msg = f"{method} failed: {payload.get('error')}"
+    # missing_scope payloads name the scope required vs the token's scopes.
+    extra = [f"{k}: {payload[k]}" for k in ("needed", "provided") if payload.get(k)]
+    return f"{msg} ({'; '.join(extra)})" if extra else msg
+
+
 def _slack_bot_get(method: str, params: Dict[str, Any]) -> dict:
     """GET a Slack Web API method with the bot token. Caller checks ``ok``."""
     token = os.environ[CONTACT_CONFIG["bot_token_env"]]
@@ -218,7 +226,7 @@ def _iter_conversations() -> List[str]:
             params["cursor"] = cursor
         payload = _slack_bot_get("conversations.list", params)
         if not payload.get("ok"):
-            raise RuntimeError(f"conversations.list failed: {payload.get('error')}")
+            raise RuntimeError(_slack_error("conversations.list", payload))
         channels = payload.get("channels") or []
         if isinstance(channels, list):
             for ch in channels:
@@ -446,7 +454,7 @@ def list_bot_channels() -> list[dict]:
             params["cursor"] = cursor
         payload = _slack_bot_get("conversations.list", params)
         if not payload.get("ok"):
-            raise RuntimeError(f"conversations.list failed: {payload.get('error')}")
+            raise RuntimeError(_slack_error("conversations.list", payload))
         channels = payload.get("channels") or []
         if isinstance(channels, list):
             for ch in channels:
