@@ -697,7 +697,7 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-746|AST-647"
 ```
 
-**Manual UAT (Susan):** Scheduled Actions with multiple phase sections — expand each; confirm no gap between Candidate/Task, Entity does not cover State, horizontal scroll keeps three frozen columns aligned.
+**Manual UAT (Susan):** Scheduled Actions with multiple phase sections — expand each; confirm no gap between Candidate/Task, Entity does not cover State, horizontal scroll keeps three frozen columns aligned. *(Superseded by **AST-1818**: only Task is frozen.)*
 
 **Pass criterion:** Vitest green on narrowed run (items above) + Susan manual multi-phase UAT.
 
@@ -844,7 +844,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-887 · AST-885
 
-Scheduled Actions: **Avail** filter control (`All` / `> 0`) on the existing client-side filter bar; when `gt0`, `filteredRows` keeps only `(available_count ?? 0) > 0` (excludes em-dash Avail: `0` or `null`). ANDs with Candidate / Section/Group / Task / Floor / AUTO / Debug / Freq / Min count / Batch size / Run counts. Empty sections omit via existing `filteredRows` bucketing; section AUTO summaries inherit. **Default engaged as `gt0` (AST-894)** — was All under AST-887 alone. No API / Available math / column-format change.
+Scheduled Actions: **Avail** filter control (`All` / `> 0`) on the existing client-side filter bar; when `gt0`, `filteredRows` keeps only `(available_count ?? 0) > 0` (excludes em-dash Avail: `0` or `null`). ANDs with Candidate / Section/Group / Task / Floor / AUTO / Debug / Freq / Min count / Batch size / Run counts. Empty sections omit via existing `filteredRows` bucketing; section AUTO summaries inherit. **Default engaged as `gt0` (AST-894)** — was All under AST-887 alone. *(Superseded by **AST-1818**: default is All again.)* No API / Available math / column-format change.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -987,7 +987,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-894 · AST-888
 
-Scheduled Actions landing defaults: Avail filter initial state `"gt0"`; one-shot `expandAllSections()` behind `didAutoOpenSectionRef` (replaces AST-785 first-section-only auto-open). Operator collapse after landing is not overwritten. Avail → All restores zero/empty Avail rows; empty-section omission follows the filtered set. Frontend-only; reuses AST-886/893 Expand All policy.
+Scheduled Actions landing defaults: Avail filter initial state `"gt0"` *(superseded by **AST-1818**: `""` / All)*; one-shot `expandAllSections()` behind `didAutoOpenSectionRef` (replaces AST-785 first-section-only auto-open). Operator collapse after landing is not overwritten. Avail → All restores zero/empty Avail rows; empty-section omission follows the filtered set. Frontend-only; reuses AST-886/893 Expand All policy.
 
 | # | Scenario | Sources | Manifest tests |
 | --- | --- | --- | --- |
@@ -1577,7 +1577,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
 
-Scheduled Actions Avail **gt0** keeps rows where API `always_visible_under_avail_gt0` is true (mailbox shell with intentional zero avail); other zero-avail rows still omitted. Default remains `gt0` (AST-894). Candidate cell is null-safe (`candidate_id || "—"`) so shared mailbox rows do not crash. No React `"gaze_email"` set.
+Scheduled Actions Avail **gt0** keeps rows where API `always_visible_under_avail_gt0` is true (mailbox shell with intentional zero avail); other zero-avail rows still omitted. Default remains `gt0` (AST-894) *(superseded by **AST-1818**: default All)*. Candidate cell is null-safe (`candidate_id || "—"`) so shared mailbox rows do not crash. No React `"gaze_email"` set.
 
 | # | Area | Source | Component tests |
 | --- | --- | --- | --- |
@@ -3052,3 +3052,41 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+---
+
+### AST-1818 · AST-1817 (Scheduled Actions Invalid label, zero-avail Run block, Avail All default, Task-only freeze)
+
+**Parent:** [AST-1817 — Invalid vs 0 Avail scheduled actions](https://linear.app/astralcareermatch/issue/AST-1817). **Publish:** `origin/sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block`.
+
+Routed page **`AdminScheduledActions.tsx`** only: `empty_render` rows show a full-opacity disabled **`btn secondary in-row`** button named **Invalid** (wins over Run/Sweep); valid rows with `available_count` 0 get the muted (0.25) disabled Run; Avail filter initial state `""` (All) — `> 0` predicate unchanged; `FROZEN_DATA_COLUMNS` 3 → 1 (Task only; shared `list_table_frozen_data_columns` untouched). No API / config / `listTableLayout.ts` / `App.css` change.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1–2 Invalid button (name, classes, disabled, no 0.25, no `/run` POST) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1782 … > blocks AUTO toggle and shows disabled Invalid button when empty_render is true`** (revised) |
+| AC3 zero-avail Run muted/disabled, no POST | same | **`AST-1818 zero-avail Run block > valid row with available_count 0 …`** (new) |
+| AC4 avail > 0 Run POSTs | same | **`AST-1782 … > allows AUTO toggle and Run when empty_render is false`** (existing) |
+| AC5 running zero-avail row Stop POSTs | same | **`AST-1818 zero-avail Run block > running row with available_count 0 …`** (new) |
+| AC6–7 Avail default All; `> 0` still filters | same | **`AST-887 Avail > 0 filter`** (4, revised); **`AST-894 expand-all on landing (Avail default All per AST-1818)`** (revised); **`test_AdminScheduledActions_AST1104.test.tsx`** landing value (revised) |
+| AC8 only Task frozen, no sticky `left` on Entity/State | same | **`AST-647: phase table freezes only the Task column`** (renamed); **`AST-746`**, **`AST-760`** (revised) |
+
+**Broken / obsolete this pass (revised, not deleted):** AST-647 / AST-746 / AST-760 (three frozen columns + measured `left` on Entity/State); AST-887 ×4, AST-894 ×2, AST-1104 landing (default `gt0`); AST-1782 `blocks…` (button named Run). **Pre-existing drift fixed:** AST-751 + AST-768 default-sort cases read Candidate at `cells[11]` — Mode column (`fabcf747`) shifted it; now `cells[length - 3]`.
+
+**Integration:** none — no existing scenario exercises Scheduled Actions frontend; do not invent.
+
+## QA test manifest
+
+1. Full Scheduled Actions routed-page suite (§6c; AC 11): both `test_AdminScheduledActions*.test.tsx` files — 71 cases.
+2. AC 9 / AC 10 gates (product diff shape).
+3. `npm run build` + `npm run lint` (lint: no new problems vs `origin/dev`; engineer baseline 33).
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts test_AdminScheduledActions
+git diff origin/dev -- src/ui/frontend/src/App.css src/ui/frontend/src/lib/listTableLayout.ts src/ui/api src/utils/config.py
+git diff origin/dev -- src/ui/frontend/src/pages/AdminScheduledActions.tsx | rg -n '^\+.*(#[0-9a-fA-F]{3,6}|rgb\()'
+cd src/ui/frontend && npm run build && npm run lint
+```
+
+**Pass criterion:** 71/71 Vitest green; both diffs/greps empty; build green; lint count unchanged — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** see issue doc `## QA test manifest`.
