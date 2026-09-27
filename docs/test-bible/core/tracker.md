@@ -372,7 +372,7 @@ Editable `job_resume` / `cover_letter` persist via `database.save_artifact("job"
 
 **Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits`.
 
-`legal_job_successor_states` lists `JOB_STATES` keys `transition_job_state` would accept from `from_state` (excludes self; includes unrestricted `prior_states is None`). `persist_skipped_job_edits` gates on `SKIPPED_STATES`, writes title/link/`job_description` before optional `transition_job_state`, allows empty JD, rejects empty title/link. API wrap: **`docs/test-bible/ui/api/api_jobs.md`**.
+`legal_job_successor_states` lists every `JOB_STATES` key except `from_state`, registry order, no `prior_states` filter (**AST-1811** operator override — was prior-filtered pre-1811; see § AST-1812). `persist_skipped_job_edits` gates on `SKIPPED_STATES`, writes title/link/`job_description` before optional `transition_job_state`, allows empty JD, rejects empty title/link. API wrap: **`docs/test-bible/ui/api/api_jobs.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -397,6 +397,35 @@ Editable `job_resume` / `cover_letter` persist via `database.save_artifact("job"
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1812 · AST-1809 (gap — skipped-job any-state override)
+
+**Parent:** [AST-1809](https://linear.app/astralcareermatch/issue/AST-1809). **Sibling product:** AST-1811 (`sub/AST-1809/AST-1811-skipped-any-state`). **Publish:** `origin/sub/AST-1809/AST-1812-skipped-any-state-tests`.
+
+Skipped-edit path is an operator override: successors = every `JOB_STATES` key except current; `persist_skipped_job_edits` rejects non-`JOB_STATES` targets (implicit `*_RETRY`, runtime hop labels) with "not in allowed list" before any hop, then calls `transition_job_state(..., enforce_prior_states=False)`. `transition_job_state` default (and explicit `True`) still enforces `prior_states`; `False` waives priors only — registration still checked; history + `state_changed_at` still written.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Successor list | `src/core/tracker.py` | **`[bug-repro]`** `TestAst1453LegalJobSuccessorStates::test_ast1811_bug_repro_real_registry_candidate_skipped`, `::test_every_key_except_self_ignores_prior_states` |
+| Persist hop | `src/core/tracker.py` | **`[bug-repro]`** `TestAst1453PersistSkippedJobEdits::test_ast1811_bug_repro_any_job_state_key_bypasses_prior`, `::test_writes_title_link_jd_then_transition` (asserts `enforce_prior_states=False`), `::test_field_writes_before_unregistered_target_rejected` (was `…_illegal_transition_propagates`) |
+| `enforce_prior_states` flag | `src/core/tracker.py` | `TestTransitionJobState::test_ast1811_enforce_prior_states_false_skips_prior_check`, `::test_ast1811_enforce_prior_states_false_still_checks_registration`; default enforcement stays `::test_rejects_invalid_prior_state` |
+
+**Broken / obsolete (rewritten this pass):** prior-filtered successor assertion; transition mock without the keyword-only flag; "illegal hop" premise → unregistered-target premise (core + API `test_put_unregistered_state_409`).
+
+**Pre-existing unrelated reds** in `test_tracker.py` / `test_api_jobs.py` on `origin/dev` (e.g. `company.candidate_id` schema drift, `TestAst562*`, `TestInitializeJob`) — not this ticket; run the narrowed manifest, not whole files.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestTransitionJobState \
+  tests/component/core/test_tracker.py::TestAst1453LegalJobSuccessorStates \
+  tests/component/core/test_tracker.py::TestAst1453PersistSkippedJobEdits \
+  tests/component/ui/api/test_api_jobs.py::TestAst1453SkippedEditMetaAndPut \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines (8 AST-1811 nodes red pre-fix → green post-fix) — not zero-arg harness / branch-lock gate.
 
 ---
 
