@@ -208,3 +208,91 @@ Sibling **AST-461** covers locate/`parse_job_list` split and **JOBS_FOUND** veri
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+## Bug: AST-1822 — recheck_no_openings failure-stamp + Avail window tests (AST-1821 board)
+
+Test-gap sibling of AST-1821. It answers AST-1821's `[board-betty] TESTS: REVISE`. **Test and bible only:** Betty lands every item below at qa-fix, and there are no product edits. The product change under test is AST-1821's § "Bug: AST-1821 — recheck_no_openings Avail honors last_scan_at frequency window" in this doc. That section and the code live on `origin/sub/AST-1820/AST-1821-recheck-no-openings-avail-count` @ `4dd0af80` until merge-child rolls them into `origin/ftr/AST-1820-recheck-no-openings-avail-count`.
+
+### As-is
+
+- `TestProcessRecheckNoOpenings::test_guards_missing_fields` and `::test_playwright_failure_no_state_change` (`tests/component/core/test_roster.py`) **pass** on the AST-1821 tip, but they don't patch `roster_mod.update_company_last_scan_at` and assert nothing about it. The new failure-path stamp goes unverified, and the real helper runs against the test DB.
+- There's no `test_dispatch_tasks.py` coverage for: (a) company Avail with `score_floor` set that still honors the `last_scan_at` window, (b) a `{base}_RETRY` trigger resolving `batch_criteria` through the base state, (c) Avail equal to the claim under `score_floor` + window, and (d) the new `scan_interval_hours` kwarg on `count_companies_in_state_with_score_floor`.
+- The bible rows for recheck (`docs/test-bible/core/roster.md` § AST-463 · AST-460) and for company Avail (`docs/test-bible/data/database.md`) don't mention any of this.
+
+### To-be
+
+Every AST-1821 behavior has a named test that **fails against pre-AST-1821 product** (`4dd0af80~1`) and **passes on `4dd0af80`**. The bible names those nodes.
+
+### Repro
+
+Run the nodes below against `4dd0af80~1`: each fails as noted per case. Run them against `4dd0af80`: all pass. Seed rules for every database case:
+
+- `candidate_id = "c1821"`. All companies are created with `db.save_company(short_name, state=..., candidate_id="c1821", company_name=short_name, company_data={"prefilter_score": 5.0, "no_jobs_message": "none"}, last_scan_at=...)`. `save_company` accepts `last_scan_at`, and implicit `NO_OPENINGS_RETRY` passes its `is_registered_state` check.
+- **`last_scan_at` must use the SQLite text format `YYYY-MM-DD HH:MM:SS` (space, no `T`, no offset)**, the same as `database._utc_now()`. The window compares text against `datetime('now', '-N hours')`, and an ISO `T` value always sorts after a same-day space value, which silently breaks the window. Use a local helper in the class: `_ago(h) = (datetime.now(timezone.utc) - timedelta(hours=h)).strftime("%Y-%m-%d %H:%M:%S")`.
+- Fixture `sqlite_in_memory`, the same one used by `TestAst508PrefilterPassedEligible`.
+
+### Root cause
+
+AST-1821 changed behavior (failure paths stamp; count composes window + `score_floor`; base-state `batch_criteria`; a new kwarg) without corresponding assertions. The existing recheck failure tests predate the stamp and never mocked it.
+
+### Proposed change
+
+**1. `tests/component/core/test_roster.py`, class `TestProcessRecheckNoOpenings` (revise two nodes, keep their names)**
+
+- `test_guards_missing_fields`: at the top, `bump = MagicMock()` and `monkeypatch.setattr(roster_mod, "update_company_last_scan_at", bump)`.
+  - After the `short_name=""` call: `bump.assert_not_called()`. The short_name guard stays unstamped.
+  - After the `job_site=""` call: `bump.assert_called_once_with("co")`.
+  - After the `company_data={}` call: `assert bump.call_count == 2` and `bump.call_args == call("co")`. `call` is already imported from `unittest.mock`.
+  - Existing `success` / `message` assertions stay.
+  - Pre-fix: fails on the `job_site` assertion (not called).
+- `test_playwright_failure_no_state_change`: add `bump = MagicMock()`, `tran = MagicMock()`, patched onto `roster_mod.update_company_last_scan_at` / `roster_mod.transition_company_state`. After the call, keep the existing asserts, then add `bump.assert_called_once_with("acme")` and `tran.assert_not_called()`. Pre-fix: fails on `bump` (not called).
+- Update the class docstring to add: "failed attempts (missing job_site / no_jobs_message / Playwright error) stamp last_scan_at; missing short_name does not (AST-1821)."
+
+**2. `tests/component/data/database/test_dispatch_tasks.py`: new class `TestAst1821CompanyAvailWindow`**
+
+Place it after `TestAst508PrefilterPassedEligible`. Docstring: "AST-1821: company Avail honors last_scan_at window with score_floor, via base-state batch_criteria; equals claim."
+
+Seed helper `_seed(db)`, all in state `NO_OPENINGS`: `never` (`last_scan_at=None`), `stale` (`_ago(48)`), `fresh` (`_ago(1)`).
+
+The task dict for the cases below is `{"entity_type": "company", "trigger_state": "NO_OPENINGS", "task_key": "recheck_no_openings", "candidate_id": "c1821", "score_floor": 0.0, "freq_hrs": <per case>}`.
+
+| Node | Setup / call | Assert | Pre-fix result |
+|---|---|---|---|
+| `test_score_floor_default_window_excludes_recent` | `_seed`; task `freq_hrs=0` | `count_eligible_for_dispatch_task(task) == 2` (never, stale; 24h default) | 3 → fails |
+| `test_score_floor_window_follows_freq_hrs` | `_seed`; `freq_hrs=72`, then the same task with `freq_hrs=0.5` | `== 1` (never), then `== 3` | first assert 3 → fails |
+| `test_score_floor_count_equals_claim` | `_seed`; `n_avail` = count with `freq_hrs=0`; then `db.claim_company_batch("b1821", "NO_OPENINGS", 10, candidate_id="c1821", scan_interval_hours=24, score_floor=0.0, states=["NO_OPENINGS", "NO_OPENINGS_RETRY"])` | `n_avail == n_claimed == 2`; `{r["short_name"] for r in db.get_company_batch("b1821")} == {"never", "stale"}` | `n_avail` 3 ≠ 2 → fails |
+| `test_retry_trigger_uses_base_batch_criteria` | Seed `r_fresh` (`_ago(1)`) and `r_stale` (`_ago(48)`) in state `NO_OPENINGS_RETRY`; task `trigger_state="NO_OPENINGS_RETRY"`, **no** `score_floor` key, `freq_hrs=0` | `== 1` (r_stale only; base NO_OPENINGS 24h) | 2 → fails |
+| `test_score_floor_helper_scan_interval_kwarg` | `_seed`; call `count_companies_in_state_with_score_floor("c1821", "NO_OPENINGS", 0.0, states=["NO_OPENINGS", "NO_OPENINGS_RETRY"])` with no kwarg, then `scan_interval_hours=24`, then `scan_interval_hours=72` | `3`, `2`, `1` | `TypeError` on the kwarg → fails |
+
+Unchanged and still required green: `TestAst508PrefilterPassedEligible` (all three nodes). PREFILTER_PASSED has no `scan_interval_hours` and isn't WATCH, so its Avail doesn't change.
+
+**3. `docs/test-bible/core/roster.md`, § AST-463 · AST-460**
+
+- Add a sentence to the paragraph: "**AST-1821:** failed attempts (missing **`job_site`**, missing **`no_jobs_message`**, Playwright exception) also stamp **`last_scan_at`**; missing **`short_name`** does not."
+- In the table row for `process_recheck_no_openings`, append to the tests cell: "(**AST-1821** stamp asserts in **`test_guards_missing_fields`**, **`test_playwright_failure_no_state_change`**)".
+
+**4. `docs/test-bible/data/database.md`: new section `### AST-1821 · AST-1820`, appended after the last section**
+
+One-line summary: company **`count_eligible_for_dispatch_task`** composes the **`last_scan_at`** window with **`score_floor`**, resolves **`batch_criteria`** through **`registered_base`**, and equals **`claim_company_batch`**; **`count_companies_in_state_with_score_floor(scan_interval_hours=)`**. Then a table `| Area | Source | Component tests |` with one row: `src/data/database.py` (**`count_eligible_for_dispatch_task`**, **`count_companies_in_state_with_score_floor`**) → `tests/component/data/database/test_dispatch_tasks.py::TestAst1821CompanyAvailWindow` (all five nodes) + **`TestAst508PrefilterPassedEligible`** regression.
+
+**Manifest (for test-fix):**
+
+```bash
+pytest -q tests/component/core/test_roster.py::TestProcessRecheckNoOpenings \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1821CompanyAvailWindow \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst508PrefilterPassedEligible
+```
+
+### Blast radius
+
+- Test tree and bible only; no product files.
+- The `test_guards_missing_fields` revision stops a real `update_company_last_scan_at` write to the test DB (currently unmocked).
+- The new class is self-contained (`c1821` candidate, its own batch id). It doesn't touch the shared seeds of other `test_dispatch_tasks.py` classes.
+- Pre-existing failures in `test_roster.py` / `test_dispatch_tasks.py` (18 at `4dd0af80`, identical at `4dd0af80~1` per AST-1821 test-fix) are unrelated and not in this manifest.
+
+### What must still hold
+
+- The recheck success-path nodes (`test_message_present_updates_scan_only`, `test_message_absent_to_jobs_found`, `test_redirect_normalizes_job_site`) are unchanged and green.
+- `TestAst508PrefilterPassedEligible` stays green unchanged: no `score_floor` Avail regression for states without a window.
+- `TestRunCompanyTask::test_no_openings_routes_to_recheck_not_find_job_page` is unchanged: NO_OPENINGS still routes to the recheck.
+- Every new or revised node fails on `4dd0af80~1` and passes on `4dd0af80`. That is the repro bar for qa-fix.
