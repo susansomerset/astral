@@ -2031,3 +2031,103 @@ AST-1810 board-joan done — CANON: OK.
 ```
 
 context_tokens≈38000
+
+### Radia — code-rubric.v1 (AST-1810)
+
+`[code-rubric] REVIEW (Commit: d7af2340ef4e3b8487e62256368c7cc0532d0966) Sibling product on sub`
+
+#### Fix-specific checks
+
+**`[bug-repro]`:** OK  
+- **Node:** `tests/component/data/database/test_dispatch_tasks.py::TestAst892FetchWebsiteExcludesSecondStrike::test_count_includes_every_wfr_row` — comment tags `[bug-repro] AST-1810`.  
+- **Body pins To-be:** four seeded companies (fresh + bare retry + **second** `WEBSITE_FOUND_RETRY` with non-empty `homepage_text` + `WEBSITE_FOUND`); `count_eligible_for_dispatch_task(fetch_website) == 4` with narrative that pre-fix was **3** (homepage_text row excluded). That is concrete, tied to dropping the AST-892 SQL/`NOT (state=WFR AND homepage_text…)` carve-out — not tautological.  
+- **Companion asserts in same class:** claim takes `{"second","retry","fresh"}` (3 unclaimed in claim set); prefilter Avail **0** (suffix-always owns `HOMEPAGE_READY(_RETRY)`, not `WEBSITE_FOUND_RETRY`) — matches plan ownership story.  
+- **Gazer:** `test_scrapes_wfr_even_when_homepage_text_present` flips skip→scrape with `skipped=0`, `total=1`, transition + merge save on `homepage_text` — aligns with P5.
+
+**`## What must still hold`:** OK **for AST-1810 product commit `d7af2340` only**  
+- **AST-641 / AST-1798:** `dispatch_claim_states` untouched; generic `count_entities_in_state(..., states=claim_states)` path for fetch_website after P1.  
+- **AST-1800 / AST-1801:** `exclude_prefilter_second_strike` removed; multi-state `states=` still passes through unchanged.  
+- **AST-1041:** meteorite `NOT LIKE` clause unchanged in `set_company_batch`.  
+- **AST-642:** fail-routing helpers not edited in P1–P5; gazer still transitions pass/retry/fail states.  
+- **`save_company_data` merge:** repro asserts fresh `homepage_text` on scrape pass.  
+- **`fetch_website_batch` shape:** `skipped` remains in return dict, initialized 0, no increment path after P5.
+
+#### Canon scores
+
+(no frozen canon list on Linear Description — UAT fix-lane pattern; zero ids locked at Plan Approved; scored set empty)
+
+#### Column diff vs plan stage
+
+no plan-stage scores attached (F3 not triggered; Joan fix-board `[board-joan] CANON: OK` only)
+
+#### Frame diff
+
+(none)
+
+#### Findings
+
+### fix-now
+
+- **Location:** `origin/ftr/AST-1804-fetch-avail-retry...origin/sub/AST-1804/AST-1810-fetch-website-retry-all` — **`src/core/tracker.py`**  
+  **Finding:** Diff vs ftr includes **AST-1811** product (`enforce_prior_states` on `transition_job_state`, `legal_job_successor_states` registry-only list, `persist_skipped_job_edits` bypass) from commit `57b178d8` on this sub’s ancestry — **not** in AST-1810 plan P1–P5 or Component scope. Isolated product commit `d7af2340` does **not** touch `tracker.py`.  
+  **Recommendation:** Before merge-child / UT as “AST-1810 only,” split or rebase so this publish ref’s tree matches the ticket scope (1810 five-file product + Betty’s 1810 tests), or get explicit Susan batch-stack approval and separate ticket sign-offs for 1811 on the same ref.
+
+- **Location:** Same diff — **`canon/statutes/astral/state/astral.state.job-prior-states-enforced.md`**  
+  **Finding:** **AST-1813** statute carve-out text lands on the AST-1810 sub (approved_at bump, skipped-job carve-out) — not AST-1810 work; couples canon corpus change to the wrong merge unit.  
+  **Recommendation:** Land statute with AST-1813’s publish ref / process, not piggyback on AST-1810 merge-child.
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list; Joan informal OK. Removing AST-892 dual ownership aligns with `patt.task.dispatch-retry` / claim-count parity (plan + board table).  
+  **Recommendation:** No canon amendment required for the **1810** product change itself.
+
+- **Location:** `merge-tests(AST-1810)` @ `c30c17a9` — commit **`ad58775f` `test(AST-1816)`** on `origin/tests` ancestry  
+  **Finding:** Betty’s tests merge carries **AST-1816** slack/telescope-scope tests onto this sub without AST-1810 scope gate. Product `src/` on tip is not 1816, but merge-child rolls the **whole** sub tip (tests + any stacked product above).  
+  **Recommendation:** Chuckles: confirm merge-child / ftr rollup order — avoid closing AST-1810 UT while unintentionally shipping 1811 product + 1813 statute + 1816 tests; optional re-cut sub from ftr + `d7af2340` + `20a9dd5a` only.
+
+- **Location:** Full branch diff vs ftr — **`tests/component/utils/test_config.py` `TestAst1726TelescopeConfig`** (and service/telescope test moves from `origin/tests` resync)  
+  **Finding:** Unrelated test-tree churn from dev/tests resync, not AST-1810 plan. Ada’s parity note (161→160, none new) addresses manifest scope, not this noise.  
+  **Recommendation:** Do not attribute telescope manifest deltas to AST-1810; keep Betty manifest scoped to AST-892 / gazer / dispatch_tasks rewrites.
+
+### advisory
+
+- **Location:** Plan § Repro vs Betty seed  
+  **Finding:** Plan prose still says count **2→3** with three seeded rows; landed repro uses **four** rows and **3→4** with accurate comment — improvement, not regression.  
+  **Recommendation:** Optional plan-doc wording hygiene; not blocking once scope is clean.
+
+- **Location:** Feature-doc historical “AST-892 filter unchanged” on older children  
+  **Finding:** AST-1810 explicitly reverses that **for fetch_website** under Susan’s UAT call; Joan board already framed prior lines as other tickets’ boundaries.  
+  **Recommendation:** None for resolve-child on 1810 product.
+
+#### Notes (informal board overlap — not scored; **AST-1810 product only**)
+
+| Directive | vs P1–P5 |
+|-----------|----------|
+| `patt.task.dispatch-retry` | Single owner for all `WEBSITE_FOUND_RETRY` in claim/count/handler. |
+| `astral.batch.claim-process-release` | Count/claim path unified; no fetch_website-only counter. |
+| `astral.dispatch.entity-state-bound` | P5 stops claim-then-skip. |
+| `astral.config.config-source-of-truth` | Dead helper removed; comments updated. |
+
+#### What's solid
+
+- **`d7af2340` product:** Exactly P1–P5 — database count/claim SQL, dispatcher/roster kwargs, config helper deletion + comments, gazer skip block removed, `skipped` semantics documented.  
+- **`20a9dd5a` tests:** Dispatch_tasks repro + claim flip, gazer scrape flips, helper class deleted, roster kwarg assert dropped, bible rows per plan blast radius.  
+- **Plan fidelity (isolated):** Susan verbatim To-be; “any other exceptions” reviewed and flagged without silent scope creep in **1810** files.  
+- **Estimate** fits isolated product footprint.
+
+#### Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (fix-now cross-ticket on publish ref tree, C7 complete) | Normal (AST-1804 UAT batch) | → **Review Posted** → **`resolve-child`** (or rebase/split sub to drop 1811/1813 from `AST-1810` ref) → re-review or UT only after tree matches scope. |
+| — | **Do not** treat `d7af2340` alone as merge-child-safe | Whole sub tip still contains **1811** `tracker.py` + **1813** statute vs ftr. |
+
+**Chuckles note:** `[bug-repro]` is substantive (4-row count, claim names, gazer scrape). Manifest 42/45 with three pre-existing reds on `65e3ca6f` — accept per spawn; not re-litigated. **Flag AST-1816 test commit** for merge-child hygiene as above.
+
+
+#### Chuckles disposition
+
+- **fix-now (AST-1811 `tracker.py`, AST-1813 statute):** false positive. Both already shipped on `origin/dev` (AST-1809, #158) and `ftr/AST-1804-fetch-avail-retry` was cut before that. `git diff origin/dev...origin/sub/AST-1804/AST-1810-fetch-website-retry-all` shows neither file.
+- **AST-1816 tests (via `origin/tests`):** the only non-1810 delta against dev. `TestAst1815SlackScopeErrorDetail` is red on this tip until AST-1814 lands. That is the normal test-ahead-of-product state of the shared `origin/tests` trunk, not an AST-1810 defect.
+- Product commit `d7af2340` + Betty's `20a9dd5a` are in scope, and `[bug-repro]` / What-must-still-hold are OK, so this is cleared to User Testing with no resolve pass (§3h).
