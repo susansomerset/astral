@@ -316,3 +316,45 @@ AST-1819 board-joan done — CANON: OK.
 **Read:** `plan-fix` § Bug: AST-1819 on `origin/sub/AST-1817/AST-1819-invalid-button-missing-token-tooltip` (`As-is` / `To-be` / `Repro` / `Root cause` / `Proposed change` A–B / `Blast radius` / `What must still hold`). Roster skim: `stat.logging.info.api` (no new route completion info on this GET enrich), `stat.dispatch.entity-state-bound` (paths include `api_admin.py` but law is entity_type/trigger_state binding — unchanged), dispatch/batch patterns (claim/count shape untouched). Canon Scope on the patch: **none** (same as AST-1818).
 
 **Why OK:** Proposed change surfaces data `_evaluate_dispatch_empty_render` already computes; it does not contradict any in-force statute or pattern, and it does not need a roster carve-out or new directive. Wrapper `title` is presentation-only; draft `pattern.ui.shared-button-roles` is not law. `What must still hold` preserves AST-1818 button contract without loosening `pointer-events` on the button itself.
+
+
+## Radia review (AST-1819)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Scope note:** Parent AST-1817 AC 9 originally forbade `src/ui/api` changes; Susan’s confirmed bug intake widens scope to the single `list_dtasks` row field — plan-fix documents this; diff matches **Proposed change A**, not scope creep vs sibling AST-1818.
+- **Plan doc location:** `plan-fix` patch lives under `docs/features/interface/ast-1818-scheduled-actions-invalid-label-zero-avail-run-block.md` § **Bug: AST-1819** (expected fix-lane pattern on shared parent/child doc).
+- **Board context:** Betty **TESTS: REVISE** at F2; qa-fix `[bug-repro]` @ `57c3f343`; make-fix/test-fix landed on tip `4ef31239`. **Tests Passed** implies manifest green; Radia did not re-run suites in Ask mode.
+- **Estimate:** Linear **2** still fits (2-line API enrich + small TS + targeted repro/regression tests).
+
+## What’s solid
+
+- Implementation matches plan verbatim: `list(er.get("empty_tokens") or [])`, `invalidTitle` with `join(", ")`, wrapper-native `title`, no `title` while running.
+- Repro tests assert values tied to **To-be**, not presence-only.
+
+## Chuckles branching (read-only)
+
+| Gate | Action |
+|------|--------|
+| **PROCEED** (clean, artifact complete) | → **Review Posted** → fix-lane clean shortcut → **User Testing** directly; **`resolve-child` skipped**. |
+| Merge | Normal parent — **not** orphaned; do **not** merge straight to `dev` from this review alone. |
+
+---
+
+**Slim Linear upshot:**
+
+```
+[code-rubric] PROCEED (Commit: 4ef31239) Tooltip repro OK, holds OK
+```
+
+context_tokens≈32000
