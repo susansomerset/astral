@@ -21,6 +21,7 @@ from src.core.candidate import (
     filter_base_resume_to_structure,
     ingest_legacy_label_content_base_resume,
     get_candidate,
+    get_candidate_id_for_query,
     get_pending_craft_generation,
     hydrate_operative_base_resume_for_response,
     hydrate_operative_bio_summary_for_response,
@@ -139,6 +140,18 @@ def list_candidates():
 @require_auth
 def get_candidate_states():
     return jsonify(list(CANDIDATE_STATES.keys()))
+
+
+# Must be registered before the /<candidate_id> catch-all
+@candidate_bp.route("/by_email")
+@require_auth
+def get_candidate_by_email():
+    """AST-1768: unique candidate id whose profile emails match ?email= (login bind)."""
+    email = (request.args.get("email") or "").strip()
+    if "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    # Unique hit only; no/ambiguous match → null so the SPA keeps its stored selection.
+    return jsonify({"candidate_id": get_candidate_id_for_query(email)})
 
 
 @candidate_bp.route("/<candidate_id>/resume_structure")
