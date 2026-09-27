@@ -453,3 +453,54 @@ Leave `## Rationale` unchanged.
 **Routing:** With Betty’s pass (if any) and Joan OK, Chuckles can treat AST-1813 as board-cleared for **make-fix** on canon-only scope; merge-child ordering vs AST-1811 remains as the plan’s blast-radius note (carve-out on `ftr` before/with product sibling for `review-fix`).
 
 context_tokens≈22000
+
+
+## Radia review (AST-1813)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out (`[board-betty] TESTS: OK`; canon-only; Betty: no bible/statute walker; behavioral coverage on AST-1812)
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| Original Statement sentence verbatim; enforcement remains default | OK — opening sentence unchanged; carve-out appended after blank line only |
+| Exactly one caller (`persist_skipped_job_edits`), `SKIPPED_STATES` gate, `JOB_STATES` keys, via `transition_job_state` | OK — diff paragraph matches plan-fix verbatim |
+| `astral.state.core-decides-transitions` / `astral.standards.no-hardcoded-sets` untouched | OK — no `src/**` in diff |
+| Frontmatter: `approved_by: Archie`, `status`/`tier`/`applies_when` unchanged; `approved_at` landing date | OK — `approved_at: "2026-09-27"`; other fields unchanged |
+| Product scope: only `canon/statutes/astral/state/astral.state.job-prior-states-enforced.md` for make-fix | OK — product diff is statute only; `docs/features/...` append is plan-fix/board artifact on same ref (expected) |
+
+## Findings
+
+### advisory
+
+- **Draft mirror lag:** `canon/directives/draft/stat.state.job-prior-states-enforced.md` left pre-carve-out (plan Decision + fix-board Accept). Intentional; statute is in-force source.
+- **Merge-child:** Chuckles must land AST-1813 carve-out on `ftr` before/with AST-1811 so sibling `review-fix` sees the exception (plan blast radius).
+- **Sibling test carry:** none in this diff.
+
+### discuss
+
+- **Location:** Linear Description § Component scope vs landed plan  
+  **Finding:** Description still says draft copy may be modified “to keep the two in agreement”; plan-fix Decision + Joan fix-board Accept leave draft untouched when `canon-index` absent.  
+  **Default:** Follow landed plan and board — do not mirror draft unless Archie amends scope.
+
+### Notes (Canon Scope process)
+
+- Frozen list empty on ticket; not a product ESCALATE — same class as other canon-gap siblings (e.g. AST-1503). Fix-board cleared canon; plan-fix patch is the contract.
+- **Canon Scope observation (do not score):** `orch.roles.archie-approves-statutes` plainly governs the statute edit; frontmatter `approved_by: Archie` + `approved_at` bump matches Joan’s conforming read (Susan/AST-1809 substance). Not on frozen list — no grade row.
+
+## What's solid
+
+- Carve-out text matches plan-fix and `astral.seed.archie-catalog-wins` house style (bold label, bounded caller, conforming/violating example bullets).
+- `approved_at` landing date; Statement + Examples align with AST-1811 board REVISE bounds.
+- No product or test scope smuggled; estimate **1** fits footprint.
+
+## Chuckles branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | AST-1809 mini-parent with `ftr/AST-1809-skipped-any-state` → **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Preserve merge-child ordering vs AST-1811 on `ftr`. |
+
+
+**docs-acceptance:** canon-only gap; no test-tree delivery (behavioral coverage on AST-1812).
