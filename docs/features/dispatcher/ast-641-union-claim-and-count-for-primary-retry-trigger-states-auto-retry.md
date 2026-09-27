@@ -1897,3 +1897,237 @@ context_tokens≈45000
 ```
 [code-rubric] PROCEED (Commit: 0435671d644a4ab4e9e3217c7035f3b6fe59ae28) Purge test gap clean
 ```
+
+## Bug: AST-1810 — fetch_website counts and claims every `WEBSITE_FOUND_RETRY` row (drop the AST-892 `homepage_text` exclusion)
+
+Parent AST-1804 (UAT batch; AST-1805–1808 shipped to dev). Susan (verbatim): *"The deliberate exception is a bug. Please remove the exception and include the RETRY rows regardless of homepage text."* The ticket's To-be adds: *"Any other exceptions are also removed."*
+
+### As-is
+- fetch_website's trigger is `WEBSITE_FOUND`. It claims `dispatch_claim_states("WEBSITE_FOUND", "company") == ["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"]`.
+- Three places carve out `WEBSITE_FOUND_RETRY` rows with non-empty `company_data.homepage_text` (AST-892, "prefilter second strike"):
+  1. **Count:** `database.count_eligible_for_dispatch_task` (~8989) sends fetch_website to its own helper, `count_companies_eligible_for_fetch_website` (~9041), which adds `AND NOT (state = ? AND homepage_text non-empty)`.
+  2. **Claim:** `dispatcher._run_unified` (~749) passes `exclude_prefilter_second_strike=(dispatch_task_key == "fetch_website")`. `roster.get_new_company_batch` (~1397/1430) passes it through `database.claim_company_batch` (~226/246) to `set_company_batch` (~984/1025), which adds the same `NOT (…)` clause.
+  3. **Handler:** `gazer.fetch_website_batch` (~527–541). If an already-claimed row is `WEBSITE_FOUND_RETRY` with `homepage_text`, it does `skipped += 1; return`: no scrape, no transition, not counted in `total`.
+- The clause keys come from `config.fetch_website_prefilter_second_strike_filter()` (~3610). Comments at config ~1268 and ~2308 describe the "dual ownership".
+
+### To-be
+- fetch_website's Avail count and its claim both take **every** unclaimed `WEBSITE_FOUND` / `WEBSITE_FOUND_RETRY` row, whatever `homepage_text` holds, and the two stay in step.
+- The handler scrapes every claimed row: no second-strike skip.
+- The count uses the same generic company path as every other company task: `count_entities_in_state(entity_type, state, candidate_id, states=claim_states)`.
+
+### Repro
+There's no live-DB repro: the local `astral.db` has 0 companies and no fetch_website dispatch row (probed read-only). The code-level repro is the existing pinned test, which is green today and pins the exclusion:
+- `tests/component/data/database/test_dispatch_tasks.py` ~1197 (AST-892 class).
+- It seeds one `WEBSITE_FOUND_RETRY` row with `homepage_text`, one without, and one `WEBSITE_FOUND`.
+- Today: the fetch_website count is 2, the claim is 2 (`{"retry", "fresh"}`), and the second-strike row is left out. To-be: count and claim are both 3.
+- Handler: `tests/component/core/test_gazer.py` ~423 `test_skips_wfr_when_homepage_text_present` asserts `skipped == 1` and no scrape. To-be: the row is scraped.
+
+### Root cause
+AST-892 split `WEBSITE_FOUND_RETRY` into two owners by `homepage_text` (fetch_website for empty rows, prefilter for rows with text) and enforced the split in the count, the claim and the handler. Susan ruled the split itself is the bug: under AST-1804, `{base}_RETRY` is an implicit substate of `WEBSITE_FOUND`, so fetch_website owns all of it.
+
+### Proposed change
+
+**P1. `src/data/database.py`**
+- `count_eligible_for_dispatch_task` (~8989): delete the `if (task_key or "").strip() == "fetch_website": return count_companies_eligible_for_fetch_website(...)` branch. fetch_website then falls through to the existing score-floor check (its row has no `score_floor`) and on to `count_entities_in_state(..., states=claim_states)`, like every other company task.
+- Delete `count_companies_eligible_for_fetch_website` (~9041–9068).
+- `set_company_batch`: delete the `exclude_prefilter_second_strike` parameter and its `if exclude_prefilter_second_strike:` block (~1025–1033).
+- `claim_company_batch`: delete the `exclude_prefilter_second_strike` parameter, its docstring line (~232) and the passthrough (~246).
+- Drop `fetch_website_prefilter_second_strike_filter` from the config import (~109).
+
+**P2. `src/core/dispatcher.py`** `_run_unified` (~749): delete the `exclude_prefilter_second_strike=(dispatch_task_key == "fetch_website"),` kwarg.
+
+**P3. `src/core/roster.py`** `get_new_company_batch`: delete the `exclude_prefilter_second_strike` parameter (~1397) and the passthrough (~1430).
+
+**P4. `src/utils/config.py`**
+- Delete `fetch_website_prefilter_second_strike_filter` (~3610–3619). After P1 it has no `src/` caller.
+- Reword the two AST-892 comments to say there is a single owner:
+  - ~1268: `# retry_of("WEBSITE_FOUND"): fetch_website scrape retry for every row (AST-1810; AST-892 split removed).`
+  - ~2308: `# Shared retry holding; fetch_website claims all of it (AST-1810).`
+
+**P5. `src/core/gazer.py`** `fetch_website_batch` (~527–541): delete the second-strike skip block, and remove `skipped` from the counter set if nothing else increments it. Keep the returned dict shape `{"passed", "failed", "errors", "skipped", "total"}` with `skipped` fixed at 0, so `consult`'s work-only total mapping is unchanged. Update the docstring (~494–498) to drop the AST-892 skip wording.
+- **In scope** (AST-1804 Component/Technical scope amended after the `[scope-gate]` on AST-1810: "`fetch_website_batch` drops its AST-892 second-strike skip (the `skipped` count stays, always 0)"). P5 is required: without it, P1–P3 claim the rows and the handler skips them, so they're released unprocessed and reclaimed on every run.
+
+**Re-fetching prefilter second-strike rows (knowingly overwriting `homepage_text`):**
+- These rows reach `WEBSITE_FOUND_RETRY` from `HOMEPAGE_READY` on a prefilter technical failure (`COMPANY_STATES["HOMEPAGE_READY"]["retry_state"]`).
+- fetch_website now re-scrapes them. On pass, `save_company_data(short_name, {"homepage_text": …, "nav_links": …})` **merges**: only `homepage_text` (and `nav_links` when the new scrape found any) are replaced. `prefilter_score`, `prefilter_company_notes`, `possible_joblist_links` and the rest are kept. The row then goes to `HOMEPAGE_READY`, and prefilter runs on fresh text.
+- On an infra error while on the retry, the row goes to `CANNOT_READ_WEBSITE` (`_fetch_website_fail_destination`: retry re-fail → terminal); a site error also goes to `CANNOT_READ_WEBSITE`. This is accepted per Susan's ruling; no code guards the overwrite.
+- **Flagged, not changed (no limit added without Susan's approval):**
+  - `HOMEPAGE_READY` →(prefilter technical fail)→ `WEBSITE_FOUND_RETRY` →(fetch_website pass)→ `HOMEPAGE_READY` can repeat for as long as prefilter keeps failing technically and the scrape keeps succeeding.
+  - Under AST-1798 suffix-always, prefilter's `HOMEPAGE_READY` row claims `HOMEPAGE_READY(_RETRY)`, not `WEBSITE_FOUND_RETRY`. So the old second-strike → `ERROR_PREFILTER` exit only fires if an admin-created retry-only prefilter row on `WEBSITE_FOUND_RETRY` claims the row first.
+  - Bounding the cycle is a product decision for Susan.
+
+**Other count/claim differences reviewed for "any other exceptions".** Neither is fetch_website-specific, so both are **not changed** and flagged for Susan:
+- **Meteorite placeholders:** `set_company_batch` always skips `short_name LIKE 'meteorite-%'` (AST-1041), but `count_entities_in_state` doesn't, for every company task. Local DB: 0 meteorite rows in `WEBSITE_FOUND*`.
+- **Scan interval:** the dispatcher turns a company row's `freq_hrs > 0` into a claim-only `scan_interval_hours` (a gaze cadence knob), and count ignores it. It only applies to fetch_website if its dispatch row has `freq_hrs` set.
+- `require_empty_website` (resolve only) and `score_floor` (fetch_website isn't scored) don't apply.
+
+### Blast radius
+- **Product:** P1–P5 as listed. Nothing else in `src/` reads the flag or the helper (grep: only these sites).
+  - `roster.prefilter_company_batch`'s not-ready branch (~2086–2096) still leaves `WEBSITE_FOUND_RETRY` rows without text for fetch_website.
+  - `_prefilter_batch_fail_dest` still routes a retry re-fail to `error_state`. Both unchanged.
+- **Ownership:** a retry-only prefilter dispatch row on `WEBSITE_FOUND_RETRY`, if one exists, now competes with fetch_website for the same rows. Whoever claims first wins; batch claim is atomic, so there's no double-processing.
+- **Tests that pin AST-892 (Betty; the engineer does not edit them):**
+  - `test_dispatch_tasks.py` ~1197–1300: `test_count_excludes_second_strike_includes_scrape_retry` (count becomes 3), `test_claim_skips_second_strike_keeps_bare_wfr` (the kwarg is gone; claim is 3), `test_prefilter_claim_still_takes_second_strike` (drop the kwarg; the prefilter claim is unchanged).
+  - `test_gazer.py` ~423–500: `test_skips_wfr_when_homepage_text_present` and `test_mixed_skip_and_scrape_excludes_skips_from_total` flip to scrape.
+  - `test_config.py` ~2181 helper test: delete it.
+  - `test_roster.py` ~329: the `exclude_prefilter_second_strike=False` call-kwarg assert goes.
+  - `test_consult.py` ~1864 (work-only total → `total_processed=0`): still valid in shape; review.
+- **Bible:** `docs/test-bible/{data/database/dispatch_tasks,core/gazer,core/roster,core/consult,utils/config}.md` AST-892 rows.
+- **Canon:** grep of `canon/` for second-strike / AST-892 / `homepage_text` finds nothing, so there's no directive to amend.
+
+### What must still hold
+- AST-641 / AST-1798: `dispatch_claim_states("WEBSITE_FOUND", "company")` is unchanged, and count and claim use the same `claim_states`.
+- AST-1800 / AST-1801: a multi-state claim is still not registry-gated.
+- AST-1041: meteorite placeholders are still never claimed.
+- AST-642 routing: fetch_website infra fail on base → retry; re-fail on retry → `CANNOT_READ_WEBSITE`. Prefilter's retry re-fail → `ERROR_PREFILTER`.
+- `save_company_data` merge semantics: re-fetching never wipes prefilter-owned `company_data` keys.
+- The `fetch_website_batch` return dict keeps its keys, so `consult`'s total mapping is unchanged.
+
+### Board-joan findings (AST-1810)
+
+## Fix-board Joan pass — AST-1810
+
+**Ticket:** AST-1810 · parent AST-1804 · publish ref `origin/sub/AST-1804/AST-1810-fetch-website-retry-all`  
+**Read:** `plan-fix` § Bug: AST-1810 (As-is / To-be / Repro / Root cause / Proposed change P1–P5 / Blast radius / What must still hold); fix-board § Joan pass; `canon/` grep for second-strike, AST-892, `homepage_text`, `fetch_website` ownership.
+
+**The one question:** Does removing the AST-892 `homepage_text` carve-out conflict with or **require** updating any directive in force?
+
+**Answer:** No. Susan’s ruling matches active retry and dispatch law. AST-892’s dual ownership was **product** behavior (count helper, claim flag, gazer skip), not anything encoded in `canon/statutes` or `canon/directives/active`. The plan’s own canon grep is consistent with that.
+
+### Canon overlap
+
+| Directive | vs AST-1810 |
+|-----------|-------------|
+| **`patt.task.dispatch-retry`** | **Aligns.** Arc 3: primary claim expands to trigger + suffixed companion; Arc 1–2: `{base}_RETRY` is one implicit substate of `WEBSITE_FOUND`, not a second queue split by `company_data`. Removing the homepage_text exclusion restores “folded into ordinary claim,” not a bespoke retry lane. |
+| **`astral.batch.claim-process-release`** | **Improves conformity.** Count and claim both use the same `claim_states` via the generic company path; deleting `count_companies_eligible_for_fetch_website` and `exclude_prefilter_second_strike` removes a fetch_website-only pool skew. |
+| **`astral.dispatch.entity-state-bound`** | **Aligns.** `fetch_website` on `WEBSITE_FOUND` honestly owns all eligible `WEBSITE_FOUND` / `WEBSITE_FOUND_RETRY` rows; P5 avoids claim-then-skip lying in the handler. |
+| **`astral.config.config-source-of-truth`** | **Conforming.** Deletes dead helper `fetch_website_prefilter_second_strike_filter`; comment reword only. |
+| **AST-642 / prefilter fail routing** | **Unchanged** per plan (`_prefilter_batch_fail_dest`, terminal on retry re-fail). Re-scrape overwrite and possible `HOMEPAGE_READY` ↔ `WEBSITE_FOUND_RETRY` loop are **Susan-accepted product** tradeoffs flagged in the plan, not statute amendments. |
+
+### What is *not* canon
+
+- Prior tickets’ “What must still hold: AST-892 filter unchanged” lines in the **feature doc** were fix-lane boundaries for **other** children (AST-1798, AST-1806, etc.), not frozen statutes. AST-1810 explicitly reverses that product rule under Susan’s UAT call—no F3 canon patch required to proceed.
+- Betty’s test/bible updates for AST-892 pins are called out in blast radius; that is test corpus, not directive corpus.
+
+**ESCALATE:** Not warranted. The architectural call (drop second-strike split) is Susan’s verbatim ruling on AST-1804; remaining flags (meteorite count vs claim, scan interval, unbounded technical-fail loop) are scoped product follow-ups, not ambiguous statute intent.
+
+**F3 (`validate-plan` fix mode):** Not triggered from this board pass.
+
+Optional **non-blocking** clarity: a one-line note in **`patt.task.dispatch-retry`** that retry claim pools must not be subdivided by payload fields (e.g. `homepage_text`) would mirror Susan’s ruling for future readers—Archie housekeeping only, not fix-board **REVISE**.
+
+---
+
+**Machine-readable upshot (Chuckles posts `--as joan`):**
+
+```
+[board-joan]  CANON: OK
+```
+
+**Stdout:**
+
+```text
+[board-joan]  CANON: OK
+AST-1810 board-joan done — CANON: OK.
+```
+
+context_tokens≈38000
+
+### Radia — code-rubric.v1 (AST-1810)
+
+`[code-rubric] REVIEW (Commit: d7af2340ef4e3b8487e62256368c7cc0532d0966) Sibling product on sub`
+
+#### Fix-specific checks
+
+**`[bug-repro]`:** OK  
+- **Node:** `tests/component/data/database/test_dispatch_tasks.py::TestAst892FetchWebsiteExcludesSecondStrike::test_count_includes_every_wfr_row` — comment tags `[bug-repro] AST-1810`.  
+- **Body pins To-be:** four seeded companies (fresh + bare retry + **second** `WEBSITE_FOUND_RETRY` with non-empty `homepage_text` + `WEBSITE_FOUND`); `count_eligible_for_dispatch_task(fetch_website) == 4` with narrative that pre-fix was **3** (homepage_text row excluded). That is concrete, tied to dropping the AST-892 SQL/`NOT (state=WFR AND homepage_text…)` carve-out — not tautological.  
+- **Companion asserts in same class:** claim takes `{"second","retry","fresh"}` (3 unclaimed in claim set); prefilter Avail **0** (suffix-always owns `HOMEPAGE_READY(_RETRY)`, not `WEBSITE_FOUND_RETRY`) — matches plan ownership story.  
+- **Gazer:** `test_scrapes_wfr_even_when_homepage_text_present` flips skip→scrape with `skipped=0`, `total=1`, transition + merge save on `homepage_text` — aligns with P5.
+
+**`## What must still hold`:** OK **for AST-1810 product commit `d7af2340` only**  
+- **AST-641 / AST-1798:** `dispatch_claim_states` untouched; generic `count_entities_in_state(..., states=claim_states)` path for fetch_website after P1.  
+- **AST-1800 / AST-1801:** `exclude_prefilter_second_strike` removed; multi-state `states=` still passes through unchanged.  
+- **AST-1041:** meteorite `NOT LIKE` clause unchanged in `set_company_batch`.  
+- **AST-642:** fail-routing helpers not edited in P1–P5; gazer still transitions pass/retry/fail states.  
+- **`save_company_data` merge:** repro asserts fresh `homepage_text` on scrape pass.  
+- **`fetch_website_batch` shape:** `skipped` remains in return dict, initialized 0, no increment path after P5.
+
+#### Canon scores
+
+(no frozen canon list on Linear Description — UAT fix-lane pattern; zero ids locked at Plan Approved; scored set empty)
+
+#### Column diff vs plan stage
+
+no plan-stage scores attached (F3 not triggered; Joan fix-board `[board-joan] CANON: OK` only)
+
+#### Frame diff
+
+(none)
+
+#### Findings
+
+### fix-now
+
+- **Location:** `origin/ftr/AST-1804-fetch-avail-retry...origin/sub/AST-1804/AST-1810-fetch-website-retry-all` — **`src/core/tracker.py`**  
+  **Finding:** Diff vs ftr includes **AST-1811** product (`enforce_prior_states` on `transition_job_state`, `legal_job_successor_states` registry-only list, `persist_skipped_job_edits` bypass) from commit `57b178d8` on this sub’s ancestry — **not** in AST-1810 plan P1–P5 or Component scope. Isolated product commit `d7af2340` does **not** touch `tracker.py`.  
+  **Recommendation:** Before merge-child / UT as “AST-1810 only,” split or rebase so this publish ref’s tree matches the ticket scope (1810 five-file product + Betty’s 1810 tests), or get explicit Susan batch-stack approval and separate ticket sign-offs for 1811 on the same ref.
+
+- **Location:** Same diff — **`canon/statutes/astral/state/astral.state.job-prior-states-enforced.md`**  
+  **Finding:** **AST-1813** statute carve-out text lands on the AST-1810 sub (approved_at bump, skipped-job carve-out) — not AST-1810 work; couples canon corpus change to the wrong merge unit.  
+  **Recommendation:** Land statute with AST-1813’s publish ref / process, not piggyback on AST-1810 merge-child.
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list; Joan informal OK. Removing AST-892 dual ownership aligns with `patt.task.dispatch-retry` / claim-count parity (plan + board table).  
+  **Recommendation:** No canon amendment required for the **1810** product change itself.
+
+- **Location:** `merge-tests(AST-1810)` @ `c30c17a9` — commit **`ad58775f` `test(AST-1816)`** on `origin/tests` ancestry  
+  **Finding:** Betty’s tests merge carries **AST-1816** slack/telescope-scope tests onto this sub without AST-1810 scope gate. Product `src/` on tip is not 1816, but merge-child rolls the **whole** sub tip (tests + any stacked product above).  
+  **Recommendation:** Chuckles: confirm merge-child / ftr rollup order — avoid closing AST-1810 UT while unintentionally shipping 1811 product + 1813 statute + 1816 tests; optional re-cut sub from ftr + `d7af2340` + `20a9dd5a` only.
+
+- **Location:** Full branch diff vs ftr — **`tests/component/utils/test_config.py` `TestAst1726TelescopeConfig`** (and service/telescope test moves from `origin/tests` resync)  
+  **Finding:** Unrelated test-tree churn from dev/tests resync, not AST-1810 plan. Ada’s parity note (161→160, none new) addresses manifest scope, not this noise.  
+  **Recommendation:** Do not attribute telescope manifest deltas to AST-1810; keep Betty manifest scoped to AST-892 / gazer / dispatch_tasks rewrites.
+
+### advisory
+
+- **Location:** Plan § Repro vs Betty seed  
+  **Finding:** Plan prose still says count **2→3** with three seeded rows; landed repro uses **four** rows and **3→4** with accurate comment — improvement, not regression.  
+  **Recommendation:** Optional plan-doc wording hygiene; not blocking once scope is clean.
+
+- **Location:** Feature-doc historical “AST-892 filter unchanged” on older children  
+  **Finding:** AST-1810 explicitly reverses that **for fetch_website** under Susan’s UAT call; Joan board already framed prior lines as other tickets’ boundaries.  
+  **Recommendation:** None for resolve-child on 1810 product.
+
+#### Notes (informal board overlap — not scored; **AST-1810 product only**)
+
+| Directive | vs P1–P5 |
+|-----------|----------|
+| `patt.task.dispatch-retry` | Single owner for all `WEBSITE_FOUND_RETRY` in claim/count/handler. |
+| `astral.batch.claim-process-release` | Count/claim path unified; no fetch_website-only counter. |
+| `astral.dispatch.entity-state-bound` | P5 stops claim-then-skip. |
+| `astral.config.config-source-of-truth` | Dead helper removed; comments updated. |
+
+#### What's solid
+
+- **`d7af2340` product:** Exactly P1–P5 — database count/claim SQL, dispatcher/roster kwargs, config helper deletion + comments, gazer skip block removed, `skipped` semantics documented.  
+- **`20a9dd5a` tests:** Dispatch_tasks repro + claim flip, gazer scrape flips, helper class deleted, roster kwarg assert dropped, bible rows per plan blast radius.  
+- **Plan fidelity (isolated):** Susan verbatim To-be; “any other exceptions” reviewed and flagged without silent scope creep in **1810** files.  
+- **Estimate** fits isolated product footprint.
+
+#### Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (fix-now cross-ticket on publish ref tree, C7 complete) | Normal (AST-1804 UAT batch) | → **Review Posted** → **`resolve-child`** (or rebase/split sub to drop 1811/1813 from `AST-1810` ref) → re-review or UT only after tree matches scope. |
+| — | **Do not** treat `d7af2340` alone as merge-child-safe | Whole sub tip still contains **1811** `tracker.py` + **1813** statute vs ftr. |
+
+**Chuckles note:** `[bug-repro]` is substantive (4-row count, claim names, gazer scrape). Manifest 42/45 with three pre-existing reds on `65e3ca6f` — accept per spawn; not re-litigated. **Flag AST-1816 test commit** for merge-child hygiene as above.
+
+
+#### Chuckles disposition
+
+- **fix-now (AST-1811 `tracker.py`, AST-1813 statute):** false positive. Both already shipped on `origin/dev` (AST-1809, #158) and `ftr/AST-1804-fetch-avail-retry` was cut before that. `git diff origin/dev...origin/sub/AST-1804/AST-1810-fetch-website-retry-all` shows neither file.
+- **AST-1816 tests (via `origin/tests`):** the only non-1810 delta against dev. `TestAst1815SlackScopeErrorDetail` is red on this tip until AST-1814 lands. That is the normal test-ahead-of-product state of the shared `origin/tests` trunk, not an AST-1810 defect.
+- Product commit `d7af2340` + Betty's `20a9dd5a` are in scope, and `[bug-repro]` / What-must-still-hold are OK, so this is cleared to User Testing with no resolve pass (§3h).
