@@ -1982,3 +1982,52 @@ AST-892 split `WEBSITE_FOUND_RETRY` into two owners by `homepage_text` (fetch_we
 - AST-642 routing: fetch_website infra fail on base → retry; re-fail on retry → `CANNOT_READ_WEBSITE`. Prefilter's retry re-fail → `ERROR_PREFILTER`.
 - `save_company_data` merge semantics: re-fetching never wipes prefilter-owned `company_data` keys.
 - The `fetch_website_batch` return dict keeps its keys, so `consult`'s total mapping is unchanged.
+
+### Board-joan findings (AST-1810)
+
+## Fix-board Joan pass — AST-1810
+
+**Ticket:** AST-1810 · parent AST-1804 · publish ref `origin/sub/AST-1804/AST-1810-fetch-website-retry-all`  
+**Read:** `plan-fix` § Bug: AST-1810 (As-is / To-be / Repro / Root cause / Proposed change P1–P5 / Blast radius / What must still hold); fix-board § Joan pass; `canon/` grep for second-strike, AST-892, `homepage_text`, `fetch_website` ownership.
+
+**The one question:** Does removing the AST-892 `homepage_text` carve-out conflict with or **require** updating any directive in force?
+
+**Answer:** No. Susan’s ruling matches active retry and dispatch law. AST-892’s dual ownership was **product** behavior (count helper, claim flag, gazer skip), not anything encoded in `canon/statutes` or `canon/directives/active`. The plan’s own canon grep is consistent with that.
+
+### Canon overlap
+
+| Directive | vs AST-1810 |
+|-----------|-------------|
+| **`patt.task.dispatch-retry`** | **Aligns.** Arc 3: primary claim expands to trigger + suffixed companion; Arc 1–2: `{base}_RETRY` is one implicit substate of `WEBSITE_FOUND`, not a second queue split by `company_data`. Removing the homepage_text exclusion restores “folded into ordinary claim,” not a bespoke retry lane. |
+| **`astral.batch.claim-process-release`** | **Improves conformity.** Count and claim both use the same `claim_states` via the generic company path; deleting `count_companies_eligible_for_fetch_website` and `exclude_prefilter_second_strike` removes a fetch_website-only pool skew. |
+| **`astral.dispatch.entity-state-bound`** | **Aligns.** `fetch_website` on `WEBSITE_FOUND` honestly owns all eligible `WEBSITE_FOUND` / `WEBSITE_FOUND_RETRY` rows; P5 avoids claim-then-skip lying in the handler. |
+| **`astral.config.config-source-of-truth`** | **Conforming.** Deletes dead helper `fetch_website_prefilter_second_strike_filter`; comment reword only. |
+| **AST-642 / prefilter fail routing** | **Unchanged** per plan (`_prefilter_batch_fail_dest`, terminal on retry re-fail). Re-scrape overwrite and possible `HOMEPAGE_READY` ↔ `WEBSITE_FOUND_RETRY` loop are **Susan-accepted product** tradeoffs flagged in the plan, not statute amendments. |
+
+### What is *not* canon
+
+- Prior tickets’ “What must still hold: AST-892 filter unchanged” lines in the **feature doc** were fix-lane boundaries for **other** children (AST-1798, AST-1806, etc.), not frozen statutes. AST-1810 explicitly reverses that product rule under Susan’s UAT call—no F3 canon patch required to proceed.
+- Betty’s test/bible updates for AST-892 pins are called out in blast radius; that is test corpus, not directive corpus.
+
+**ESCALATE:** Not warranted. The architectural call (drop second-strike split) is Susan’s verbatim ruling on AST-1804; remaining flags (meteorite count vs claim, scan interval, unbounded technical-fail loop) are scoped product follow-ups, not ambiguous statute intent.
+
+**F3 (`validate-plan` fix mode):** Not triggered from this board pass.
+
+Optional **non-blocking** clarity: a one-line note in **`patt.task.dispatch-retry`** that retry claim pools must not be subdivided by payload fields (e.g. `homepage_text`) would mirror Susan’s ruling for future readers—Archie housekeeping only, not fix-board **REVISE**.
+
+---
+
+**Machine-readable upshot (Chuckles posts `--as joan`):**
+
+```
+[board-joan]  CANON: OK
+```
+
+**Stdout:**
+
+```text
+[board-joan]  CANON: OK
+AST-1810 board-joan done — CANON: OK.
+```
+
+context_tokens≈38000
