@@ -354,6 +354,92 @@ class TestAst508PrefilterPassedEligible:
         assert db.count_eligible_for_dispatch_task(task) == 2
 
 
+class TestAst1821CompanyAvailWindow:
+    """AST-1821: company Avail honors last_scan_at window with score_floor, via base-state batch_criteria; equals claim."""
+
+    CID = "c1821"
+    STATES = ["NO_OPENINGS", "NO_OPENINGS_RETRY"]
+
+    @staticmethod
+    def _ago(hours: float) -> str:
+        # SQLite text format (space, no T/offset) — must sort against datetime('now', '-N hours').
+        return (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _save(self, db, short_name: str, state: str, last_scan_at) -> None:
+        db.save_company(
+            short_name,
+            state=state,
+            candidate_id=self.CID,
+            company_name=short_name,
+            company_data={"prefilter_score": 5.0, "no_jobs_message": "none"},
+            last_scan_at=last_scan_at,
+        )
+
+    def _seed(self, db) -> None:
+        self._save(db, "never", "NO_OPENINGS", None)
+        self._save(db, "stale", "NO_OPENINGS", self._ago(48))
+        self._save(db, "fresh", "NO_OPENINGS", self._ago(1))
+
+    def _task(self, freq_hrs: float) -> dict:
+        return {
+            "entity_type": "company",
+            "trigger_state": "NO_OPENINGS",
+            "task_key": "recheck_no_openings",
+            "candidate_id": self.CID,
+            "score_floor": 0.0,
+            "freq_hrs": freq_hrs,
+        }
+
+    def test_score_floor_default_window_excludes_recent(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        # freq_hrs=0 → NO_OPENINGS 24h default: never + stale.
+        assert db.count_eligible_for_dispatch_task(self._task(0)) == 2
+
+    def test_score_floor_window_follows_freq_hrs(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        assert db.count_eligible_for_dispatch_task(self._task(72)) == 1
+        assert db.count_eligible_for_dispatch_task(self._task(0.5)) == 3
+
+    def test_score_floor_count_equals_claim(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        n_avail = db.count_eligible_for_dispatch_task(self._task(0))
+        n_claimed = db.claim_company_batch(
+            "b1821",
+            "NO_OPENINGS",
+            10,
+            candidate_id=self.CID,
+            scan_interval_hours=24,
+            score_floor=0.0,
+            states=self.STATES,
+        )
+        assert n_avail == n_claimed == 2
+        assert {r["short_name"] for r in db.get_company_batch("b1821")} == {"never", "stale"}
+
+    def test_retry_trigger_uses_base_batch_criteria(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._save(db, "r_fresh", "NO_OPENINGS_RETRY", self._ago(1))
+        self._save(db, "r_stale", "NO_OPENINGS_RETRY", self._ago(48))
+        task = {
+            "entity_type": "company",
+            "trigger_state": "NO_OPENINGS_RETRY",
+            "task_key": "recheck_no_openings",
+            "candidate_id": self.CID,
+            "freq_hrs": 0,
+        }
+        # Base NO_OPENINGS 24h window applies to the implicit _RETRY trigger.
+        assert db.count_eligible_for_dispatch_task(task) == 1
+
+    def test_score_floor_helper_scan_interval_kwarg(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        count = db.count_companies_in_state_with_score_floor
+        assert count(self.CID, "NO_OPENINGS", 0.0, states=self.STATES) == 3
+        assert count(self.CID, "NO_OPENINGS", 0.0, states=self.STATES, scan_interval_hours=24) == 2
+        assert count(self.CID, "NO_OPENINGS", 0.0, states=self.STATES, scan_interval_hours=72) == 1
+
 class TestAst535DispatchTaskTripleUnique:
     """AST-535: UNIQUE(candidate_id, task_key, trigger_state); TO_WATCH trio rows."""
 
