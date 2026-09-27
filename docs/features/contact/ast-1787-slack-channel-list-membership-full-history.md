@@ -350,3 +350,7 @@ no plan-stage scores attached (no `validate-plan` / `[plan-rubric]` artifact for
 
 - Append artifact, `docs(AST-1815): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.
 - Ensure **AST-1816** follows AST-1815 onto `ftr` before treating the epic as test-complete.
+
+### Resolution — AST-1815
+
+**2026-09-27** — Radia PROCEED (`e0be3c65`). Product-only sub (`src/external/slack.py`). Test tree delivered on sibling gap **AST-1816** (`TestAst1815SlackScopeErrorDetail` + `docs/test-bible/external/slack.md` AST-1815 block) — Docs-Acceptance for this sub. §3h clean-review shortcut → User Testing.
