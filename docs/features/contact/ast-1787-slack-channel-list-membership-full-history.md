@@ -212,3 +212,74 @@ context_tokens≈32000
 
 context_tokens≈58000
 ```
+
+## Bug: AST-1815 — Surface Slack needed/provided scopes on conversations.list errors
+
+**Linear:** [AST-1815](https://linear.app/astralcareermatch/issue/AST-1815) · **Mini-parent:** [AST-1814](https://linear.app/astralcareermatch/issue/AST-1814) — Slack channel list isn't working  
+**Publish ref:** `sub/AST-1814/AST-1815-surface-slack-scopes-on-conversations-list-errors` (merges to `ftr/AST-1814-slack-channel-list-isnt-working`)
+
+**Out of this fix (Susan's action, not code):** Slack app → OAuth & Permissions → confirm **Bot Token Scopes** include `channels:read` + `groups:read` (and `channels:history` / `groups:history`), reinstall the app, refresh the bot token env var if Slack issued a new one (AST-1814 Proposed step 1). This fix is the diagnostic only.
+
+### As-is
+
+`list_bot_channels()` (Stage 1 step 3 above) and the AST-1667 poster-pool loop `_iter_conversations()` both call `conversations.list`; on `ok:false` each raises `RuntimeError(f"conversations.list failed: {payload.get('error')}")`. Slack's `missing_scope` payload also carries `needed` (scope the call required) and `provided` (scopes the token has), but both raises discard them. Manage Candidates' diagnostic (via `api_contact.contact_get_slack_channels`, which returns `str(e)`) therefore shows only `conversations.list failed: missing_scope` — Susan cannot tell which scope is missing.
+
+### To-be
+
+On `ok:false`, both `conversations.list` raises produce a message carrying Slack's `error`, plus `needed` and `provided` when Slack sent them, e.g. `conversations.list failed: missing_scope (needed: channels:read; provided: groups:read,groups:history)`. Payloads without those fields raise exactly the current text (`conversations.list failed: missing_scope`).
+
+### Repro
+
+Fixture (no DB — mocked `_slack_bot_get` / `requests.get` JSON, same style as `TestAst1787ChannelListMembershipFullHistory`):
+
+```python
+{"ok": False, "error": "missing_scope", "needed": "channels:read", "provided": "groups:read,groups:history"}
+```
+
+1. Patch `require_controlled_external_io` to no-op and `requests.get` to return the fixture above.
+2. Call `list_bot_channels()` → today raises `RuntimeError("conversations.list failed: missing_scope")` — neither `channels:read` nor `groups:read,groups:history` appears.
+3. Same fixture through `_iter_conversations()` → same stripped message.
+
+### Root cause
+
+Both `ok:false` branches format only `payload.get('error')`; the rest of the Slack error payload is dropped at the raise site (`src/external/slack.py` `_iter_conversations` and `list_bot_channels`). `_slack_bot_get` intentionally returns the raw payload ("Caller checks `ok`"), so the loss is purely in the message formatting.
+
+### Proposed change
+
+File: `src/external/slack.py` only (Technical scope — `ok:false` handling in `list_bot_channels` and `_iter_conversations` via one small private formatter).
+
+1. Add private helper, placed directly above `_slack_bot_get`:
+
+   ```python
+   def _slack_error(method: str, payload: dict) -> str:
+       """Format a Slack ok:false payload; append needed/provided scopes when present."""
+       msg = f"{method} failed: {payload.get('error')}"
+       # missing_scope payloads name the scope required vs the token's scopes.
+       extra = [f"{k}: {payload[k]}" for k in ("needed", "provided") if payload.get(k)]
+       return f"{msg} ({'; '.join(extra)})" if extra else msg
+   ```
+
+   - Keys in fixed order `needed`, then `provided`; each included only when truthy (missing / `None` / `""` omitted).
+   - Values rendered as Slack sent them (`str` via f-string — Slack sends comma-separated strings); no parsing, no truncation.
+   - Neither present → returns the exact pre-fix text (AC3).
+2. `_iter_conversations`: replace `raise RuntimeError(f"conversations.list failed: {payload.get('error')}")` with `raise RuntimeError(_slack_error("conversations.list", payload))`.
+3. `list_bot_channels`: same one-line replacement.
+4. Nothing else changes: params (`types`, `exclude_archived`, `limit`, cursor), sorting, return shapes, debug lines, `_SOFT_SKIP_ERRORS`, and every other `ok:false` raise.
+
+⚠️ **Decision — only the two `conversations.list` raises.** Component scope says "ideally all Web API calls going through `_slack_bot_get`", but Technical scope names only `list_bot_channels` and `_iter_conversations` as modified functions. The other raises (`_paginate_messages`, `users.list` ×2, `conversations.members`, `fetch_conversation_history`, `users.info`, `apps.connections.open`) stay as-is; widening to them is a follow-up only if Susan / Chuckles amend Technical scope.
+
+⚠️ **Decision — no new debug lines for `_slack_error`.** Pure string formatter on the raise path: no I/O, no loop, not a callee whose in/out adds information beyond the raised message itself (`stat.logging.debug`). External still raises and does not log; `api_contact` logs once (`stat.logging.error`).
+
+### Blast radius
+
+- **Callers of `list_bot_channels`:** `src/core/contact.py` `list_admin_slack_channels` → `api_contact.contact_get_slack_channels` (logs `%s` of the exception, returns `{"error": str(e)}` 502). They pass the text through unchanged — richer message reaches the Manage Candidates diagnostic with no caller edit.
+- **Callers of `_iter_conversations`:** `list_workspace_posters` (AST-1667 poster pool) — raises propagate unchanged in type; only message text grows when `needed`/`provided` are present.
+- **Tests:** existing `tests/component/external/test_slack.py` asserts use `pytest.raises(RuntimeError, match="conversations.list")` (substring/regex search) — still pass since the prefix is unchanged. No test or source matches the exact full string. New case (Betty's tree, per Component scope): fixture above through `list_bot_channels` and `_iter_conversations` asserts `missing_scope`, `channels:read`, and `groups:read,groups:history` in the message; a no-`needed`/`provided` payload asserts the message equals `conversations.list failed: missing_scope`.
+- **Sibling tickets:** AST-1788 (admin route) and AST-1789 (UI) untouched.
+
+### What must still hold
+
+- AST-1787 Stage 1: `list_bot_channels` types `public_channel,private_channel`, `{id, name}` rows sorted by `(name.lower(), id)`, hard-fail (no soft-skip) on `ok:false` / HTTP; debug begin/end + Calling/Response lines unchanged.
+- AC9 / AST-1667: `conversations.members` still only in `is_channel_member`; `_iter_conversations` types (`public_channel,private_channel,im,mpim`) and poster-pool semantics unchanged.
+- `_SOFT_SKIP_ERRORS` unchanged (still includes `missing_scope` for per-channel history soft-skip).
+- Exception type stays `RuntimeError`; no `logger.info` / log-and-re-raise added in `slack.py`.
