@@ -90,6 +90,7 @@ interface DispatchTask {
   available_count: number
   always_visible_under_avail_gt0?: boolean
   empty_render?: boolean
+  empty_tokens?: string[]
 }
 
 interface ThreadEntry {
@@ -102,7 +103,7 @@ interface ThreadEntry {
 
 type SortDir = "asc" | "desc"
 
-const FROZEN_DATA_COLUMNS = 3
+const FROZEN_DATA_COLUMNS = 1 // AST-1818: only Task pinned; Entity/State scroll with the rest
 
 const DATA_COL_KEYS = [
   "task_key", "entity_type", "trigger_state", "score_floor",
@@ -204,7 +205,13 @@ function ScheduledPhaseTable({
             const isSweep = !!row.auto_mode && avail > 0
             const sweepDisabled = !!row.auto_mode && avail >= (row.min_count || 1)
             const emptyRender = !!row.empty_render
-            const runBlocked = isRunning || sweepDisabled || emptyRender
+            // AST-1818: a valid task with nothing to claim gets the same muted, unclickable Run treatment.
+            const zeroAvail = !emptyRender && avail === 0
+            const runBlocked = isRunning || sweepDisabled || emptyRender || zeroAvail
+            // AST-1819: Invalid tooltip — missing tokens, or a fallback when prompts could not be validated.
+            const invalidTitle = emptyRender && !isRunning
+              ? (row.empty_tokens?.length ? row.empty_tokens.join(", ") : "Could not validate prompts")
+              : undefined
             return (
               <tr
                 key={row.id}
@@ -240,14 +247,17 @@ function ScheduledPhaseTable({
                   </button>
                 </td>
                 <td style={{ textAlign: "center" }}>
-                  <div style={{ position: "relative", display: "inline-block" }}>
+                  <div title={invalidTitle} style={{ position: "relative", display: "inline-block" }}>
                     <button
-                      className="btn primary in-row"
-                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (runBlocked ? 0.25 : 1), pointerEvents: runBlocked ? "none" : "auto" }}
+                      // AST-1818: Invalid reuses the shared secondary role (no new class / colour literal).
+                      className={emptyRender ? "btn secondary in-row" : "btn primary in-row"}
+                      // Invalid stays full opacity so the secondary styling is readable; other blocked rows fade to 0.25.
+                      // isRunning still hides it (0) so the Stop/Draining overlay shows through.
+                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (runBlocked && !emptyRender ? 0.25 : 1), pointerEvents: runBlocked ? "none" : "auto" }}
                       disabled={runBlocked}
                       onClick={e => handleRun(e, row)}
                     >
-                      {isSweep ? "Sweep" : "Run"}
+                      {emptyRender ? "Invalid" : (isSweep ? "Sweep" : "Run")}
                     </button>
                     {isRunning && (
                       <button
@@ -358,7 +368,7 @@ export default function ScheduledActions() {
   const [floorMax, setFloorMax] = useState("")
   const [autoFilter, setAutoFilter] = useState("")
   const [debugFilter, setDebugFilter] = useState("")
-  const [availGtZeroFilter, setAvailGtZeroFilter] = useState("gt0") // "" | "gt0"
+  const [availGtZeroFilter, setAvailGtZeroFilter] = useState("") // "" (All, AST-1818 default) | "gt0"
   const [freqFilter, setFreqFilter] = useState("")
   const [minCountFilter, setMinCountFilter] = useState("")
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
