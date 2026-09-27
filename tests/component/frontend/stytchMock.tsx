@@ -22,6 +22,8 @@ export const stytchTestState = {
   sessionAuthenticateImpl: async (_opts: {
     session_duration_minutes: number
   }) => ({} as unknown),
+  /** Stytch user for useStytchUser (AST-1768 login-email bind). null = no user (passthrough / logged out). */
+  user: null as { emails: Array<{ email: string; verified?: boolean }> } | null,
 }
 
 export function resetStytchTestState(): void {
@@ -31,9 +33,12 @@ export function resetStytchTestState(): void {
   stytchTestState.parseAuthenticateUrlResult = null
   stytchTestState.authenticateByUrlImpl = async () => ({ handled: true, tokenType: "oauth" })
   stytchTestState.sessionAuthenticateImpl = async () => ({})
+  stytchTestState.user = null
   lastStytchLoginConfig = null
   try {
     sessionStorage.clear()
+    // AST-1768: auth return path lives in localStorage (survives magic-link new tab).
+    localStorage.removeItem("astral-auth-return-path")
   } catch {
     /* jsdom private mode */
   }
@@ -69,6 +74,10 @@ export function useStytchSession() {
     session: stytchTestState.session,
     isInitialized: stytchTestState.isInitialized,
   }
+}
+
+export function useStytchUser() {
+  return { user: stytchTestState.user, isInitialized: stytchTestState.isInitialized }
 }
 
 /** Last config passed to StytchLogin — for Login page redirect assertions (AST-613). */

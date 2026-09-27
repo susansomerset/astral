@@ -538,7 +538,11 @@ class TestAst721ParseDispatchRouting:
 
 
 class TestProcessRecheckNoOpenings:
-    """AST-463 NO_OPENINGS Playwright-only recheck; JOBS_FOUND when no_jobs_message absent from visible text."""
+    """AST-463 NO_OPENINGS Playwright-only recheck; JOBS_FOUND when no_jobs_message absent from visible text.
+
+    AST-1821: failed attempts (missing job_site / no_jobs_message / Playwright error) stamp last_scan_at;
+    missing short_name does not.
+    """
 
     @staticmethod
     def _browser_cm():
@@ -550,22 +554,33 @@ class TestProcessRecheckNoOpenings:
 
     @pytest.mark.asyncio
     async def test_guards_missing_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        bump = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company_last_scan_at", bump)
         base: Dict[str, Any] = {"short_name": "", "job_site": "https://x", "company_data": {"no_jobs_message": "no"}}
         r = await roster_mod.process_recheck_no_openings(base, "b")
         assert r["success"] is False and "short_name" in r["message"]
+        # No row key → nothing to stamp.
+        bump.assert_not_called()
 
         base["short_name"] = "co"
         base["job_site"] = ""
         r2 = await roster_mod.process_recheck_no_openings(base, "b")
         assert r2["success"] is False and "job_site" in r2["message"]
+        bump.assert_called_once_with("co")
 
         entity = {"short_name": "co", "job_site": "https://j", "company_data": {}}
         r3 = await roster_mod.process_recheck_no_openings(entity, "b")
         assert r3["success"] is False and r3["message"] == "no_jobs_message missing"
+        assert bump.call_count == 2
+        assert bump.call_args == call("co")
 
     @pytest.mark.asyncio
     async def test_playwright_failure_no_state_change(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "create_browser_context", TestProcessRecheckNoOpenings._browser_cm())
+        bump = MagicMock()
+        tran = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company_last_scan_at", bump)
+        monkeypatch.setattr(roster_mod, "transition_company_state", tran)
 
         async def boom(*_a, **_k):
             raise RuntimeError("net down")
@@ -580,6 +595,8 @@ class TestProcessRecheckNoOpenings:
         out = await roster_mod.process_recheck_no_openings(ent, "bid")
         assert out["success"] is False
         assert "playwright scrape" in out["message"]
+        bump.assert_called_once_with("acme")
+        tran.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_message_present_updates_scan_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
