@@ -208,3 +208,109 @@ Sibling **AST-461** covers locate/`parse_job_list` split and **JOBS_FOUND** veri
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+## Bug: AST-1821 — recheck_no_openings Avail honors last_scan_at frequency window
+
+Parent bug: AST-1820 (orphaned mini-parent). Susan approved stamping `last_scan_at` on failed recheck attempts, which overturns AST-463's Stage-2 "do not bump `last_scan_at` on exception" line (`docs/features/roster/ast-463-recheck-no-openings-jobs-found-state-and-playwright-recheck-batch.md`).
+
+### As-is
+
+The `recheck_no_openings` dispatch row (entity `company`, trigger `NO_OPENINGS`) shows an Available count that doesn't move when `freq_hrs` changes. Three defects cause it:
+
+1. `process_recheck_no_openings` (`src/core/roster.py`) stamps `company.last_scan_at` only on its two success paths (`no_jobs_message_present`, `no_jobs_message_absent`). Three attempted-but-failed returns leave `last_scan_at` as it was: `missing job_site`, `no_jobs_message missing`, and the Playwright `except Exception` branch. The dispatcher does no failure routing for company rows, so these companies stay in `NO_OPENINGS` with a NULL or stale `last_scan_at`. They count at every frequency and get reclaimed on every run.
+2. In `count_eligible_for_dispatch_task` (`src/data/database.py`), the company branch returns `count_companies_in_state_with_score_floor(...)` as soon as `task["score_floor"]` is non-null. That return skips the `last_scan_at` staleness filter entirely. The claim (`set_company_batch`, via `get_new_company_batch`) applies **both** filters, so Avail is greater than or equal to the claim.
+3. The same branch reads `COMPANY_STATES.get(state)` with the literal trigger. For a `{base}_RETRY` trigger (such as `NO_OPENINGS_RETRY`), that returns `{}`, so `scan_interval_hours` is None and the staleness filter is dropped. `get_new_company_batch` resolves `batch_criteria` through `registered_base` (AST-1806), so its claim keeps the 24h default.
+
+`freq_hrs` 0 and 24 are equivalent on this row by design: 0 falls back to `COMPANY_STATES["NO_OPENINGS"]["batch_criteria"]["scan_interval_hours"] = 24`. That is not a defect and stays unchanged.
+
+### To-be
+
+A `NO_OPENINGS` company whose last recheck **attempt** (success or failure) falls within the row's window is neither counted nor claimed. The window is `freq_hrs` when > 0, otherwise the 24h state default. Changing `freq_hrs` changes Available to exactly the unclaimed companies whose `last_scan_at` is NULL or older than the window. Every count path (admin dispatch list `api_admin.py`, `get_due_tasks`, and the dispatcher loop's `count_eligible_for_dispatch_task` calls) returns the same set that `set_company_batch` would claim for the row, with and without `score_floor`, and for primary and `_RETRY` triggers.
+
+### Repro
+
+SQLite fixture (company table, one candidate `c1821`), with the `recheck_no_openings` dispatch row: `entity_type=company`, `trigger_state=NO_OPENINGS`, `candidate_id=c1821`, `freq_hrs=48`, `score_floor=NULL`.
+
+| short_name | state | job_site | company_data.no_jobs_message | last_scan_at |
+|---|---|---|---|---|
+| `acme` | NO_OPENINGS | `https://acme.test/jobs` | `No open positions` | NULL |
+| `beta` | NO_OPENINGS | NULL | `No open positions` | NULL |
+| `gamma` | NO_OPENINGS | `https://gamma.test/jobs` | `No open positions` | now − 1h |
+
+1. `count_eligible_for_dispatch_task(row)` returns 2 (`acme`, `beta`). Correct today.
+2. Run the row once. `beta` hits `missing job_site`, and `acme` raises in Playwright (unreachable host).
+3. Count again. **As-is:** still 2, because neither `last_scan_at` moved. Changing `freq_hrs` to 1 or 168 also leaves 2. **To-be:** 0, because both were stamped just now. `freq_hrs=1` still gives 0 until an hour passes, and `gamma` joins once its `last_scan_at` falls outside the window.
+4. Set `score_floor=0` on the row and give all three companies `company_data.prefilter_score=5`. **As-is:** count returns 3 (`gamma` included despite scanning 1h ago), while the claim takes only the stale ones. **To-be:** count equals the claim.
+5. Set `trigger_state=NO_OPENINGS_RETRY` with a company in `NO_OPENINGS_RETRY`, `last_scan_at` = now − 1h, `freq_hrs=0`. **As-is:** counted, because `COMPANY_STATES.get("NO_OPENINGS_RETRY")` has no `batch_criteria`. **To-be:** not counted (24h base default), matching `get_new_company_batch`.
+
+### Root cause
+
+- `roster.py`: AST-463 deliberately tied the cadence stamp to success. With no failure routing for company rows, a failed company never leaves the eligible pool.
+- `database.py`: the company branch of `count_eligible_for_dispatch_task` treats the `score_floor` count and the staleness count as mutually exclusive early returns, while the claim ANDs them. It also resolves `batch_criteria` by the literal trigger rather than the registered base state.
+
+### Proposed change
+
+**1. `src/core/roster.py` — `process_recheck_no_openings`**
+
+Call `update_company_last_scan_at(short_name)` immediately before each of the three failure returns:
+
+- `if not job_site:` → stamp, then `return {"success": False, "message": "missing job_site", "new_state": ""}`.
+- `if not no_jobs_message:` → stamp, then return `"no_jobs_message missing"` unchanged.
+- `except Exception as ex:` → keep `logger.exception(...)` as is, stamp, then return `f"playwright scrape: {ex}"` unchanged.
+
+The `if not short_name:` return is **not** stamped, because there's no row key to stamp. The return payloads, `success: False`, state (stays `NO_OPENINGS`), and the two success paths are unchanged. Add a short comment above the first stamp: failed attempts stamp too, so the frequency window covers every attempt (AST-1821 overturns AST-463's no-bump-on-failure rule). Update the docstring's first line to mention that every attempted recheck stamps `last_scan_at`.
+
+**2. `src/data/database.py` — `count_eligible_for_dispatch_task`, company branch**
+
+Reorder the branch so that the window is resolved first and both filters compose:
+
+```python
+if entity_type == "company":
+    # Implicit {base}_RETRY shares the base's batch_criteria (same lookup as get_new_company_batch, AST-1806).
+    bc = (COMPANY_STATES.get(registered_base(COMPANY_STATES, state) or state) or {}).get("batch_criteria") or {}
+    freq = float(task.get("freq_hrs") or 0)
+    scan_from_state = bc.get("scan_interval_hours")
+    scan_h = freq if freq > 0 else scan_from_state
+    use_stale = scan_h is not None and float(scan_h) > 0 and (state == "WATCH" or scan_from_state is not None)
+    floor_raw = task.get("score_floor")
+    if floor_raw is not None:
+        # Claim ANDs score_floor with the last_scan_at window; Avail must too.
+        return count_companies_in_state_with_score_floor(
+            candidate_id, state, float(floor_raw), states=claim_states,
+            scan_interval_hours=float(scan_h) if use_stale else None,
+        )
+    if use_stale:
+        ...  # existing staleness COUNT query, unchanged
+```
+
+- Add `registered_base` to the existing `from src.utils.config import (...)` block at the top of `database.py`. It isn't imported there today.
+- The `use_stale` predicate is carried over **unchanged**. The only difference is that `bc` now comes from the base state.
+- Update the function docstring's company sentence: the staleness filter applies with or without `score_floor`, and `batch_criteria` resolves through the registered base.
+
+**3. `src/data/database.py` — `count_companies_in_state_with_score_floor`**
+
+Add a keyword-only `scan_interval_hours: Optional[float] = None`. When it is not None, append `AND (last_scan_at IS NULL OR last_scan_at < datetime('now', '-' || ? || ' hours'))` to the WHERE clause and bind `scan_interval_hours`. This is the same fragment `set_company_batch` uses. The default None keeps the existing call shape and result (its only other caller is the component test `test_count_companies_in_state_with_score_floor`).
+
+**4. `src/data/database.py` — `update_company_last_scan_at` docstring**
+
+The docstring currently says "Called on success paths only". Change it to "Set last_scan_at = now for company (cadence stamp)." This is a comment-only change; the behavior stays the same.
+
+No new table, column, config key, or state. NO_OPENINGS → JOBS_FOUND routing is untouched.
+
+### Blast radius
+
+- **Other company dispatch rows with `score_floor` set** (such as PREFILTER_PASSED-family rows): their base states define no `scan_interval_hours` and aren't WATCH, so `use_stale` stays False and their Avail doesn't change. Only rows whose base defines `scan_interval_hours` (NO_OPENINGS, WATCH) gain the filter.
+- **`WATCH_RETRY` rows:** with the base lookup, Avail now applies the WATCH 24h/`freq_hrs` window. This matches the claim, which already did.
+- **Gaze (`gazer.py`)** keeps calling `update_company_last_scan_at` on its own paths; only the docstring changes.
+- **Consumers of the count:** `get_due_tasks` (auto-mode due gate: a row with only recently failed companies stops being due), the admin dispatch list (`api_admin.py`), and the dispatcher's Avail calls. After this change their values drop to the claimable set, which is intended.
+- **Tests (Betty's call):** `tests/component/core/test_roster.py` (recheck routing test; recheck failure paths now call `update_company_last_scan_at`, so a real DB or unpatched helper will see the write), `tests/component/data/database/test_dispatch_tasks.py` (score-floor and company Avail counts), and `tests/component/ui/api/test_api_admin.py` / `test_dispatcher.py` (Avail values for company rows).
+- **Known and left alone:** for a company row whose base has no `scan_interval_hours` and isn't WATCH, the claim still applies `freq_hrs > 0` as a window but the count doesn't. That gap predates this bug, is outside AST-1820's approved steps, and doesn't affect `recheck_no_openings`. It needs its own ticket if wanted.
+
+### What must still hold
+
+- AST-460 AC 1: a NO_OPENINGS company with `last_scan_at` inside the window (24h default) is not claimed. It is now also not counted, and "inside the window" includes failed attempts.
+- AST-460 AC 2–5: Playwright loads `job_site` only, message present → stays NO_OPENINGS + stamp, message absent → JOBS_FOUND + stamp, no Anthropic calls. All unchanged.
+- AST-460 AC 6: TO_WATCH locate and WATCH gaze behavior are unchanged, and WATCH Avail for primary triggers is identical.
+- `freq_hrs=0` on the recheck row still means the 24h state default.
+- Company Avail for rows with no `score_floor` and a primary trigger is identical to today.
+- `count_companies_in_state_with_score_floor(cid, state, floor)` with no new kwarg returns the same result as today.
