@@ -703,3 +703,66 @@ no plan-stage scores attached
 
 
 **docs-acceptance:** test/bible delivery for this fix lives on sibling gap AST-1812 (Betty qa-fix); no test() on this product sub.
+
+
+## Radia review (AST-1812)
+
+## Fix-specific checks
+
+**[bug-repro] — OK**
+
+Betty landed `[bug-repro]` on AST-1812 (`b84b95ee`; manifest in `docs/test-bible/core/tracker.md` § AST-1812). Tagged nodes assert **concrete To-be** tied to AST-1811, not presence-only:
+
+| Node | What it pins | Pre-fix plausibility |
+|------|----------------|----------------------|
+| `test_ast1811_bug_repro_real_registry_candidate_skipped` | `legal_job_successor_states("CANDIDATE_SKIPPED")` equals every `JOB_STATES` key except self; **`PASSED_JD` ∈ list** | Fails when list was prior-filtered |
+| `test_ast1811_bug_repro_any_job_state_key_bypasses_prior` | **Real** `persist_skipped_job_edits` + `transition_job_state`; `CANDIDATE_SKIPPED` → **`PASSED_JD`**; `state`, `state_history[-1].to_state`, `state_changed_at` | Fails with `Invalid transition` pre-fix |
+
+Supporting (not all first-line `[bug-repro]`, but non-tautological):
+
+- `test_every_key_except_self_ignores_prior_states` — tiny registry proves priors do **not** narrow list.
+- `test_ast1811_enforce_prior_states_false_skips_prior_check` — default/`True` raise on `PASSED_JD`→`VALID_TITLE`; **`False` writes** with history.
+- `test_ast1811_enforce_prior_states_false_still_checks_registration` — `False` still rejects unregistered `NOPE`.
+- `test_writes_title_link_jd_then_transition` — **`assert enforce_prior_states is False`** on mock (fixes TypeError / contract).
+- `test_field_writes_before_unregistered_target_rejected` — `PASSED_GET_RETRY` / hop label; fields kept; **no** transition call.
+- `test_put_unregistered_state_409` — API maps **"not in allowed list"** (not illegal hop on registry key).
+
+Spawn/Chuckles bar met: manifest **8 red → green** on `tracker.py` @ pre-fix baseline; **0 new reds** in whole `test_tracker.py` + `test_api_jobs.py` vs `origin/dev` for this delta (19 pre-existing unrelated unchanged).
+
+**## What must still hold — OK** (inferred from ticket Boundaries + AST-1811 plan; no dedicated plan-fix `## What must still hold` block for AST-1812 — see discuss)
+
+| Item | Verdict |
+|------|---------|
+| No `src/**` on this sub vs **ftr** | OK — product stays on AST-1811 |
+| Tests/bible only for skipped-edit contract | OK — engineer commit `8ee5a27d` is 4 paths; tip adds `merge-tests` + `sync(ftr)` only |
+| Repro targets AST-1811 To-be (any `JOB_STATES` key, bypass, default enforces, non-key rejected) | OK |
+
+## Findings
+
+### advisory
+
+- **sibling test carry:** Three-dot diff vs **ftr** includes `merge-tests(AST-1812)` / `origin/tests` noise (meteorite AST-1617, telescope suite split, roster/dispatcher, etc.) — **not** AST-1812 engineer footprint; §5.4 carry, not scope violation.
+- **Bible vs comment tags:** § AST-1812 table marks some nodes `[bug-repro]` whose test bodies use AST-1811 comments only on the two primary repro tests — hygiene only.
+
+### discuss
+
+- **Location:** Issue doc — no `## Bug: AST-1812` plan-fix block with `## What must still hold`  
+  **Finding:** Process gap; Boundaries + bible § AST-1812 + Betty thread are the contract.  
+  **Default:** Score hold items from ticket Boundaries (no product; align with AST-1811 To-be) — no recall unless Chuckles wants a doc patch.
+
+### fix-now
+
+(none)
+
+## What's solid
+
+- Betty `[bug-repro]` gate satisfied; repro-first contract credible.
+- Manifest narrowed to AST-1811 nodes; bible honest about pre-existing unrelated reds.
+- `_detail_wire` `astral_job_id=` hydrate mock — fixes pre-existing `TestAst1453SkippedEditMetaAndPut` drift (in scope for PUT/meta tests).
+
+## Chuckles branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | AST-1809 mini-parent → **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). With AST-1811 + AST-1813 paths, roll **ftr** when all fix siblings UT. |
+
