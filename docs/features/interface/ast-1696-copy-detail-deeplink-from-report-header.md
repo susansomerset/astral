@@ -357,3 +357,80 @@ No active statute or pattern needs text changed, and the proposed product change
 ```
 AST-1768 board-joan done — CANON: OK.
 ```
+
+### Radia review-fix — AST-1768
+
+[code-rubric]
+**Ticket:** AST-1768
+**Publish ref:** `2e537f49d0f0700d18d2673b5fd9debaa981b03b` (`origin/sub/AST-1687/AST-1768-copied-job-detail-link-bind-candidate-open-modal`)
+**Diff base:** `origin/ftr/AST-1687-copy-single-page-access-link-from-recommended-job-modal` (`cd7ca619`)
+**Corpus:** a0bc2f0e5b
+**Overall:** CLEAN
+**Parent shape:** Normal (AST-1687 not Done) → clean **PROCEED** → Review Posted → §3h shortcut to User Testing (skip `resolve-child`).
+
+## Canon scores
+
+(empty frozen list on the bug ticket / parent Citations pattern — fix-board Joan F2 already swept in-force overlap @ `a0bc2f0e5b` and posted **CANON: OK**)
+
+**Spot-check (board bar, not a second rubric):** `GET /api/candidates/by_email` is `@require_auth`, thin `jsonify` handler with no `logger.info` progress line — matches `get_candidate_states()` and **stat.logging.info.api** intent Joan cited.
+
+## Column diff vs plan stage
+
+no plan-stage Joan validate scores for the fix patch — fix-board Joan F2 artifact attached; implementation matches that pass.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** OK — repro tests pin **## To-be** behavior, not tautologies:
+- `test_sessionAuthMark.test.ts`: `/jobs/detail/j-jolane` survives `sessionStorage.clear()` (new-tab magic link) — fails pre-fix (`sessionStorage` backend).
+- `test_Authenticate.test.tsx`: after wipe, `postAuthNavigate` → `/jobs/detail/j-jolane`.
+- `test_CandidateContext.test.tsx`: stored `c1` + login email → `by_email` call with normalized email → `selectedId` `c2`; verified-first email; once-per-login (refresh/picker not overridden); null/fail/unknown-id/passthrough covered in same describe (non–`[bug-repro]` but manifest-listed).
+- `test_JobsJobDetail.test.tsx`: non-admin holds **Loading job…** until `/api/candidates` gate releases, then report shell — pins Part D.
+- `test_api_candidate.py::TestAst1768CandidateByEmailApi`: `test_bug_repro_*` asserts auth, trim+lookup, null ambiguous, 400 without `@`, non-admin allowed — would fail pre-fix (404 on `by_email`).
+
+**## What must still hold** OK — traced against diff:
+- **AST-1687 AC 1–5:** No change to Copy Link components on this fix diff (zero diff vs ftr for `RecommendedJobReportHeader` / `JobAnalysisReportModal`); deeplink host unchanged except hydration gate.
+- **AST-1481:** `alignSelectedCandidateForJobCompany` still runs after `candidatesHydrated` for all users; only guard broadened from `isAdmin && !hydrated` to `!hydrated`. Existing AST-1481 suite retained on branch (manifest regression).
+- **AST-1482:** `isSafeAuthReturnPath` unchanged; `clearSessionAuthMarks` still does not touch return path — asserted in `test_sessionAuthMark.test.ts`.
+- **Local passthrough:** `loginEmail` `""` → no `by_email` call — tested.
+- **No/ambiguous match:** API returns `null`; SPA keeps stored/first — tested (API + context).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+**ftr…sub diff includes non–AST-1768 commits from `origin/dev` sync**
+**Location:** e.g. `src/external/slack.py`, `docs/features/.../ast-719-...`, core/gazer/roster test deltas
+**Finding:** Product fix for AST-1768 is five files (`sessionAuthMark.ts`, `api_candidate.py`, `CandidateContext.tsx`, `JobsJobDetail.tsx`, plus tests/bible). Slack AST-1814 and other merged dev work ride the same tip via `sync(dev)` / merge-tests — not implemented by the `code(AST-1768)` commit.
+**Recommendation:** Chuckles attributes those paths to their tickets in doc writeback; do not treat as AST-1768 scope defect.
+
+**No single component test for admin bind-then-align**
+**Location:** Part C + D interaction (plan § Proposed change D.2)
+**Finding:** Reasoning matches plan (bind before align; admin job-owner align still wins for another candidate’s job); manifest relies on AST-1481 regression + bind tests separately.
+**Recommendation:** UAT Susan path (Jolane email + copied deeplink) remains the integration proof; optional future test only.
+
+## What's solid
+
+- Parts **A–D** match plan-fix **Proposed change** line-for-line (localStorage scoped to `AUTH_RETURN_PATH_KEY`, route ordering before `/<candidate_id>`, async `load()` with bind-before-hydrate, non-admin hydration gate).
+- Threat model documented (client email, UI-only selection); route stays authenticated.
+- Betty manifest in `docs/test-bible/frontend/lib.md` § AST-1768 aligns with landed tests.
+
+## Recommended actions (Chuckles)
+
+- Append artifact; `docs(AST-1768): Radia review-fix — clean`; post slim upshot; **Review Posted** → **User Testing** (§3h).
+- Do not route to `resolve-child` on this pass.
+
+
+[code-rubric] PROCEED (Commit: 2e537f49) magic-link deeplink bind fixed
+VERDICT: CLEAN
