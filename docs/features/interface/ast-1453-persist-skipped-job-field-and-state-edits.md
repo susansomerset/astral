@@ -474,3 +474,37 @@ def transition_job_state(
 - Unregistered / non-`JOB_STATES` targets are rejected with 409. Empty `state` is 400.
 - `transition_job_state` default behavior is byte-for-byte unchanged for every existing caller (dispatcher, bulk Retry, Skip, chain graduation, gazer, consult, agent).
 - No dispatch, scrape, or consult is triggered by save. No logging added. `PUT` remains `@require_auth`.
+
+
+## Fix-board Joan findings (AST-1811)
+
+```
+[board-joan]  CANON: REVISE
+What: astral.state.job-prior-states-enforced — record skipped-job operator-edit carve-out (`enforce_prior_states=False` / unfiltered `JOB_STATES` targets) — Susan product call already in plan; statute text still universal
+```
+
+```text
+AST-1811 board-joan done — CANON: REVISE — statute carve-out needed.
+```
+
+### Triage notes
+
+**Question (fix-board):** Does the `## Proposed change` conflict with or require updating any directive in force?
+
+**Yes — canon update required before this is “clean” against corpus**, not an Archie-scale architectural fork.
+
+- **`astral.state.job-prior-states-enforced`** (active, scoped to `src/core/**` / tracker transitions) states unconditionally that job transitions enforce `JOB_STATES.prior_states` via tracker and lists conforming behavior as `transition_job_state` raising on violation. The violating example is any shortcut that skips prior checks. AST-1811 adds `enforce_prior_states=False` on the skipped persist hop and makes `legal_job_successor_states` return every `JOB_STATES` key except current — that is exactly the waiver the plan’s **Canon note** documents. Issue-doc prose does not amend the statute; **F3 (`validate-plan` fix mode)** should land a bounded carve-out (same style as `run_next` / `dispatch_task` notes elsewhere): **only** `persist_skipped_job_edits` → `transition_job_state(..., enforce_prior_states=False)` when current state ∈ `SKIPPED_STATES`; all other callers keep default enforcement.
+
+- **`astral.state.core-decides-transitions`** — still satisfied: hops stay on `transition_job_state`; core still owns the transition API and registry membership check.
+
+- **`astral.standards.no-hardcoded-sets`** — still satisfied: targets derived from `JOB_STATES` keys only (explicit rejection of `_RETRY` / hop labels in persist).
+
+- **`pattern.state.entity-state-transitions`** — no mandatory pattern rewrite if the statute carries the carve-out; optional one-line cross-ref in pattern “Solution shape” if F3 wants parity with `related_statutes` linkage.
+
+- **Not ESCALATE:** Product intent is explicit (Susan: filter only by entity type / registry keys). Blast radius is bounded in plan (**Blast radius** / **What must still hold**). Remaining work is **recording** the exception in canon, not choosing whether the override exists.
+
+**Chuckles routing:** Betty likely **REVISE** on tests/bible per plan; Joan **REVISE** ⇒ spawn **validate-plan fix mode (F3)** before **make-fix**, per fix-board table (if Betty also REVISE, F3 then F4).
+
+context_tokens≈18500
+
+**Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: REVISE → sibling canon gap child. AST-1811 proceeds to make-fix on product only.
