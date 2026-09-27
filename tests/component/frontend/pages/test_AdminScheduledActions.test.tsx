@@ -1712,4 +1712,38 @@ describe("AdminScheduledActions", () => {
     }, 20000)
   })
 
+  describe("AST-1819 Invalid tooltip lists missing tokens", () => {
+    // Tooltip is a native title on the Run-cell wrapper: the button has pointer-events none, so it can't host hover.
+    async function renderInvalid(row: Record<string, unknown>, threads: Record<number, ThreadEntry> = {}) {
+      mockApi(false, { tasks: [{ ...dispatchTask, empty_render: true, auto_mode: 0, ...row }], threads, taskKeysPayload: taskKeysConfig })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await selectAllCandidatesFilter()
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+      const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+      return within(tbody).getByRole("button", { name: "Invalid" })
+    }
+
+    it("wrapper title is the comma-separated token list; button stays Invalid and disabled", async () => {
+      const invalidBtn = await renderInvalid({ empty_tokens: ["FIRST_NAME", "GET_RUBRIC"] })
+      expect(invalidBtn.parentElement).toHaveAttribute("title", "FIRST_NAME, GET_RUBRIC")
+      expect(invalidBtn).not.toHaveAttribute("title")
+      expect(invalidBtn).toBeDisabled()
+    }, 20000)
+
+    it("empty token list falls back to 'Could not validate prompts'", async () => {
+      const invalidBtn = await renderInvalid({ empty_tokens: [] })
+      expect(invalidBtn.parentElement).toHaveAttribute("title", "Could not validate prompts")
+    }, 20000)
+
+    it("no tooltip while the Invalid row is running (Stop overlay shows)", async () => {
+      const invalidBtn = await renderInvalid(
+        { empty_tokens: ["FIRST_NAME"] },
+        { 1: { running: true, draining: false, task_key: "scan_jobs", candidate_id: "c1", is_auto: false } },
+      )
+      await waitFor(() => expect(within(invalidBtn.parentElement as HTMLElement).getByRole("button", { name: "Stop" })).toBeInTheDocument())
+      expect(invalidBtn.parentElement).not.toHaveAttribute("title")
+    }, 20000)
+  })
+
 })
