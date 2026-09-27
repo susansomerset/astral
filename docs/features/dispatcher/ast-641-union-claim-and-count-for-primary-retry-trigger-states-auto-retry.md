@@ -1945,7 +1945,7 @@ AST-892 split `WEBSITE_FOUND_RETRY` into two owners by `homepage_text` (fetch_we
   - ~2308: `# Shared retry holding; fetch_website claims all of it (AST-1810).`
 
 **P5. `src/core/gazer.py`** `fetch_website_batch` (~527–541): delete the second-strike skip block, and remove `skipped` from the counter set if nothing else increments it. Keep the returned dict shape `{"passed", "failed", "errors", "skipped", "total"}` with `skipped` fixed at 0, so `consult`'s work-only total mapping is unchanged. Update the docstring (~494–498) to drop the AST-892 skip wording.
-- **Outside the amended scope:** `gazer.py` is in AST-1804's Component scope only "if it transitions to a literal `*_RETRY`". Without P5, P1–P3 claim the rows and the handler skips them. They are then released unprocessed and reclaimed on every run: a hot loop, and the To-be doesn't hold. See `[scope-gate]` on AST-1810.
+- **In scope** (AST-1804 Component/Technical scope amended after the `[scope-gate]` on AST-1810: "`fetch_website_batch` drops its AST-892 second-strike skip (the `skipped` count stays, always 0)"). P5 is required: without it, P1–P3 claim the rows and the handler skips them, so they're released unprocessed and reclaimed on every run.
 
 **Re-fetching prefilter second-strike rows (knowingly overwriting `homepage_text`):**
 - These rows reach `WEBSITE_FOUND_RETRY` from `HOMEPAGE_READY` on a prefilter technical failure (`COMPANY_STATES["HOMEPAGE_READY"]["retry_state"]`).
