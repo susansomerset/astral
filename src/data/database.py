@@ -84,6 +84,7 @@ from src.utils.config import (
     CANDIDATE_STATES,
     is_valid_candidate_batch_claim_state,
     remap_legacy_candidate_state,
+    registered_base,
     COMPANY_STATES,
     METEORITE_CONFIG,
     METEORITE_EMAIL_INGEST_CONFIG,
@@ -247,7 +248,7 @@ def clear_company_batch(batch_id: str) -> int:
     return set_company_batch(batch_id, clear=True)
 
 def update_company_last_scan_at(short_name: str) -> None:
-    """Set last_scan_at = now for company. Called on success paths only. TODO: use update_company directly."""
+    """Set last_scan_at = now for company (cadence stamp). TODO: use update_company directly."""
     now = _utc_now()
     update_company(short_name, last_scan_at=now)
 
@@ -8934,6 +8935,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     Company/job/meteorite Avail use trigger_state + claim_states aligned with claim batches.
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
+    Staleness applies with or without score_floor; batch_criteria resolves through the registered
+    base state so {base}_RETRY triggers keep the base cadence (AST-1821).
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
     entity_type=meteorite counts this row's candidate via count_meteorites_unclaimed_in_states
     (stat.dispatch.entity-state-bound — meteorite is candidate-bound like job/company, not a pool).
@@ -8971,17 +8974,20 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     if entity_type == "company":
         # Company Avail follows dispatch row trigger_state + claim_states (same as claim_*_batch).
         # Custom Avail helpers are reserved for entity_type=candidate only (inflow_discovery above).
-        floor_raw = task.get("score_floor")
-        if floor_raw is not None:
-            return count_companies_in_state_with_score_floor(
-                candidate_id, state, float(floor_raw), states=claim_states,
-            )
-        bc = (COMPANY_STATES.get(state) or {}).get("batch_criteria") or {}
+        # Implicit {base}_RETRY shares the base's batch_criteria (same lookup as get_new_company_batch, AST-1806).
+        bc = (COMPANY_STATES.get(registered_base(COMPANY_STATES, state) or state) or {}).get("batch_criteria") or {}
         freq = float(task.get("freq_hrs") or 0)
         scan_from_state = bc.get("scan_interval_hours")
         scan_h = freq if freq > 0 else scan_from_state
         # Match claim_company_batch: only WATCH (gaze) uses last_scan_at cadence unless a state defines scan_interval_hours.
         use_stale = scan_h is not None and float(scan_h) > 0 and (state == "WATCH" or scan_from_state is not None)
+        floor_raw = task.get("score_floor")
+        if floor_raw is not None:
+            # Claim ANDs score_floor with the last_scan_at window; Avail must too.
+            return count_companies_in_state_with_score_floor(
+                candidate_id, state, float(floor_raw), states=claim_states,
+                scan_interval_hours=float(scan_h) if use_stale else None,
+            )
         if use_stale:
             hours = str(float(scan_h))
 
@@ -9027,8 +9033,13 @@ def count_companies_in_state_with_score_floor(
     score_floor: float,
     *,
     states: Optional[List[str]] = None,
+    scan_interval_hours: Optional[float] = None,
 ) -> int:
-    """Unclaimed companies in state with company_data.prefilter_score >= score_floor (AST-508)."""
+    """Unclaimed companies in state with company_data.prefilter_score >= score_floor (AST-508).
+
+    scan_interval_hours: when set, also require last_scan_at NULL or older than the window
+    (same fragment as set_company_batch).
+    """
     score_key = ROSTER_CONFIG["company_data_keys"]["prefilter_score"]
 
     def _with_conn() -> int:
@@ -9037,13 +9048,18 @@ def count_companies_in_state_with_score_floor(
             _ensure_company_schema(conn)
             claim_states = states if states is not None else [state]
             state_sql, state_params = _state_in_sql(claim_states)
+            params: List[Any] = [*state_params, candidate_id, float(score_floor)]
+            stale_sql = ""
+            if scan_interval_hours is not None:
+                stale_sql = " AND (last_scan_at IS NULL OR last_scan_at < datetime('now', '-' || ? || ' hours'))"
+                params.append(scan_interval_hours)
             row = conn.execute(
                 f"""SELECT COUNT(*) FROM company
                     WHERE {state_sql} AND candidate_id = ?
                       AND (batch_id IS NULL OR batch_id = '')
                       AND json_extract(company_data, '$.{score_key}') IS NOT NULL
-                      AND CAST(json_extract(company_data, '$.{score_key}') AS REAL) >= ?""",
-                (*state_params, candidate_id, float(score_floor)),
+                      AND CAST(json_extract(company_data, '$.{score_key}') AS REAL) >= ?{stale_sql}""",
+                tuple(params),
             ).fetchone()
             return int(row[0])
         finally:

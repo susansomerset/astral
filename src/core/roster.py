@@ -1339,6 +1339,7 @@ async def process_recheck_no_openings(
 ) -> Dict[str, Any]:
     """NO_OPENINGS: load job_site, visible text via Playwright only (no Anthropic).
 
+    Every attempted recheck (success or failure) stamps last_scan_at.
     Mirrors prefilter_company redirect normalization. ctx/debug reserved for dispatcher parity.
     """
     _ = (batch_id, ctx, debug)
@@ -1346,12 +1347,17 @@ async def process_recheck_no_openings(
     job_site = str(entity.get("job_site") or "").strip()
     if not short_name:
         return {"success": False, "message": "missing short_name", "new_state": ""}
+    # Failed attempts stamp too, so the freq_hrs window covers every attempt — a failed
+    # company stays NO_OPENINGS and would otherwise be counted/reclaimed every run
+    # (AST-1821 overturns AST-463's no-bump-on-failure rule).
     if not job_site:
+        update_company_last_scan_at(short_name)
         return {"success": False, "message": "missing job_site", "new_state": ""}
 
     cdata = entity.get("company_data") if isinstance(entity.get("company_data"), dict) else {}
     no_jobs_message = str((cdata or {}).get("no_jobs_message") or "").strip()
     if not no_jobs_message:
+        update_company_last_scan_at(short_name)
         return {"success": False, "message": "no_jobs_message missing", "new_state": ""}
 
     try:
@@ -1366,6 +1372,7 @@ async def process_recheck_no_openings(
             type(ex).__name__,
             ex,
         )
+        update_company_last_scan_at(short_name)
         return {"success": False, "message": f"playwright scrape: {ex}", "new_state": ""}
 
     if final_url and final_url != job_site:

@@ -209,6 +209,205 @@ Sibling **AST-461** covers locate/`parse_job_list` split and **JOBS_FOUND** veri
 
 _Implementation detail may live in git history on `origin/dev`._
 
+## Bug: AST-1821 — recheck_no_openings Avail honors last_scan_at frequency window
+
+Parent bug: AST-1820 (orphaned mini-parent). Susan approved stamping `last_scan_at` on failed recheck attempts, which overturns AST-463's Stage-2 "do not bump `last_scan_at` on exception" line (`docs/features/roster/ast-463-recheck-no-openings-jobs-found-state-and-playwright-recheck-batch.md`).
+
+### As-is
+
+The `recheck_no_openings` dispatch row (entity `company`, trigger `NO_OPENINGS`) shows an Available count that doesn't move when `freq_hrs` changes. Three defects cause it:
+
+1. `process_recheck_no_openings` (`src/core/roster.py`) stamps `company.last_scan_at` only on its two success paths (`no_jobs_message_present`, `no_jobs_message_absent`). Three attempted-but-failed returns leave `last_scan_at` as it was: `missing job_site`, `no_jobs_message missing`, and the Playwright `except Exception` branch. The dispatcher does no failure routing for company rows, so these companies stay in `NO_OPENINGS` with a NULL or stale `last_scan_at`. They count at every frequency and get reclaimed on every run.
+2. In `count_eligible_for_dispatch_task` (`src/data/database.py`), the company branch returns `count_companies_in_state_with_score_floor(...)` as soon as `task["score_floor"]` is non-null. That return skips the `last_scan_at` staleness filter entirely. The claim (`set_company_batch`, via `get_new_company_batch`) applies **both** filters, so Avail is greater than or equal to the claim.
+3. The same branch reads `COMPANY_STATES.get(state)` with the literal trigger. For a `{base}_RETRY` trigger (such as `NO_OPENINGS_RETRY`), that returns `{}`, so `scan_interval_hours` is None and the staleness filter is dropped. `get_new_company_batch` resolves `batch_criteria` through `registered_base` (AST-1806), so its claim keeps the 24h default.
+
+`freq_hrs` 0 and 24 are equivalent on this row by design: 0 falls back to `COMPANY_STATES["NO_OPENINGS"]["batch_criteria"]["scan_interval_hours"] = 24`. That is not a defect and stays unchanged.
+
+### To-be
+
+A `NO_OPENINGS` company whose last recheck **attempt** (success or failure) falls within the row's window is neither counted nor claimed. The window is `freq_hrs` when > 0, otherwise the 24h state default. Changing `freq_hrs` changes Available to exactly the unclaimed companies whose `last_scan_at` is NULL or older than the window. Every count path (admin dispatch list `api_admin.py`, `get_due_tasks`, and the dispatcher loop's `count_eligible_for_dispatch_task` calls) returns the same set that `set_company_batch` would claim for the row, with and without `score_floor`, and for primary and `_RETRY` triggers.
+
+### Repro
+
+SQLite fixture (company table, one candidate `c1821`), with the `recheck_no_openings` dispatch row: `entity_type=company`, `trigger_state=NO_OPENINGS`, `candidate_id=c1821`, `freq_hrs=48`, `score_floor=NULL`.
+
+| short_name | state | job_site | company_data.no_jobs_message | last_scan_at |
+|---|---|---|---|---|
+| `acme` | NO_OPENINGS | `https://acme.test/jobs` | `No open positions` | NULL |
+| `beta` | NO_OPENINGS | NULL | `No open positions` | NULL |
+| `gamma` | NO_OPENINGS | `https://gamma.test/jobs` | `No open positions` | now − 1h |
+
+1. `count_eligible_for_dispatch_task(row)` returns 2 (`acme`, `beta`). Correct today.
+2. Run the row once. `beta` hits `missing job_site`, and `acme` raises in Playwright (unreachable host).
+3. Count again. **As-is:** still 2, because neither `last_scan_at` moved. Changing `freq_hrs` to 1 or 168 also leaves 2. **To-be:** 0, because both were stamped just now. `freq_hrs=1` still gives 0 until an hour passes, and `gamma` joins once its `last_scan_at` falls outside the window.
+4. Set `score_floor=0` on the row and give all three companies `company_data.prefilter_score=5`. **As-is:** count returns 3 (`gamma` included despite scanning 1h ago), while the claim takes only the stale ones. **To-be:** count equals the claim.
+5. Set `trigger_state=NO_OPENINGS_RETRY` with a company in `NO_OPENINGS_RETRY`, `last_scan_at` = now − 1h, `freq_hrs=0`. **As-is:** counted, because `COMPANY_STATES.get("NO_OPENINGS_RETRY")` has no `batch_criteria`. **To-be:** not counted (24h base default), matching `get_new_company_batch`.
+
+### Root cause
+
+- `roster.py`: AST-463 deliberately tied the cadence stamp to success. With no failure routing for company rows, a failed company never leaves the eligible pool.
+- `database.py`: the company branch of `count_eligible_for_dispatch_task` treats the `score_floor` count and the staleness count as mutually exclusive early returns, while the claim ANDs them. It also resolves `batch_criteria` by the literal trigger rather than the registered base state.
+
+### Proposed change
+
+**1. `src/core/roster.py` — `process_recheck_no_openings`**
+
+Call `update_company_last_scan_at(short_name)` immediately before each of the three failure returns:
+
+- `if not job_site:` → stamp, then `return {"success": False, "message": "missing job_site", "new_state": ""}`.
+- `if not no_jobs_message:` → stamp, then return `"no_jobs_message missing"` unchanged.
+- `except Exception as ex:` → keep `logger.exception(...)` as is, stamp, then return `f"playwright scrape: {ex}"` unchanged.
+
+The `if not short_name:` return is **not** stamped, because there's no row key to stamp. The return payloads, `success: False`, state (stays `NO_OPENINGS`), and the two success paths are unchanged. Add a short comment above the first stamp: failed attempts stamp too, so the frequency window covers every attempt (AST-1821 overturns AST-463's no-bump-on-failure rule). Update the docstring's first line to mention that every attempted recheck stamps `last_scan_at`.
+
+**2. `src/data/database.py` — `count_eligible_for_dispatch_task`, company branch**
+
+Reorder the branch so that the window is resolved first and both filters compose:
+
+```python
+if entity_type == "company":
+    # Implicit {base}_RETRY shares the base's batch_criteria (same lookup as get_new_company_batch, AST-1806).
+    bc = (COMPANY_STATES.get(registered_base(COMPANY_STATES, state) or state) or {}).get("batch_criteria") or {}
+    freq = float(task.get("freq_hrs") or 0)
+    scan_from_state = bc.get("scan_interval_hours")
+    scan_h = freq if freq > 0 else scan_from_state
+    use_stale = scan_h is not None and float(scan_h) > 0 and (state == "WATCH" or scan_from_state is not None)
+    floor_raw = task.get("score_floor")
+    if floor_raw is not None:
+        # Claim ANDs score_floor with the last_scan_at window; Avail must too.
+        return count_companies_in_state_with_score_floor(
+            candidate_id, state, float(floor_raw), states=claim_states,
+            scan_interval_hours=float(scan_h) if use_stale else None,
+        )
+    if use_stale:
+        ...  # existing staleness COUNT query, unchanged
+```
+
+- Add `registered_base` to the existing `from src.utils.config import (...)` block at the top of `database.py`. It isn't imported there today.
+- The `use_stale` predicate is carried over **unchanged**. The only difference is that `bc` now comes from the base state.
+- Update the function docstring's company sentence: the staleness filter applies with or without `score_floor`, and `batch_criteria` resolves through the registered base.
+
+**3. `src/data/database.py` — `count_companies_in_state_with_score_floor`**
+
+Add a keyword-only `scan_interval_hours: Optional[float] = None`. When it is not None, append `AND (last_scan_at IS NULL OR last_scan_at < datetime('now', '-' || ? || ' hours'))` to the WHERE clause and bind `scan_interval_hours`. This is the same fragment `set_company_batch` uses. The default None keeps the existing call shape and result (its only other caller is the component test `test_count_companies_in_state_with_score_floor`).
+
+**4. `src/data/database.py` — `update_company_last_scan_at` docstring**
+
+The docstring currently says "Called on success paths only". Change it to "Set last_scan_at = now for company (cadence stamp)." This is a comment-only change; the behavior stays the same.
+
+No new table, column, config key, or state. NO_OPENINGS → JOBS_FOUND routing is untouched.
+
+### Blast radius
+
+- **Other company dispatch rows with `score_floor` set** (such as PREFILTER_PASSED-family rows): their base states define no `scan_interval_hours` and aren't WATCH, so `use_stale` stays False and their Avail doesn't change. Only rows whose base defines `scan_interval_hours` (NO_OPENINGS, WATCH) gain the filter.
+- **`WATCH_RETRY` rows:** with the base lookup, Avail now applies the WATCH 24h/`freq_hrs` window. This matches the claim, which already did.
+- **Gaze (`gazer.py`)** keeps calling `update_company_last_scan_at` on its own paths; only the docstring changes.
+- **Consumers of the count:** `get_due_tasks` (auto-mode due gate: a row with only recently failed companies stops being due), the admin dispatch list (`api_admin.py`), and the dispatcher's Avail calls. After this change their values drop to the claimable set, which is intended.
+- **Tests (Betty's call):** `tests/component/core/test_roster.py` (recheck routing test; recheck failure paths now call `update_company_last_scan_at`, so a real DB or unpatched helper will see the write), `tests/component/data/database/test_dispatch_tasks.py` (score-floor and company Avail counts), and `tests/component/ui/api/test_api_admin.py` / `test_dispatcher.py` (Avail values for company rows).
+- **Known and left alone:** for a company row whose base has no `scan_interval_hours` and isn't WATCH, the claim still applies `freq_hrs > 0` as a window but the count doesn't. That gap predates this bug, is outside AST-1820's approved steps, and doesn't affect `recheck_no_openings`. It needs its own ticket if wanted.
+
+### What must still hold
+
+- AST-460 AC 1: a NO_OPENINGS company with `last_scan_at` inside the window (24h default) is not claimed. It is now also not counted, and "inside the window" includes failed attempts.
+- AST-460 AC 2–5: Playwright loads `job_site` only, message present → stays NO_OPENINGS + stamp, message absent → JOBS_FOUND + stamp, no Anthropic calls. All unchanged.
+- AST-460 AC 6: TO_WATCH locate and WATCH gaze behavior are unchanged, and WATCH Avail for primary triggers is identical.
+- `freq_hrs=0` on the recheck row still means the 24h state default.
+- Company Avail for rows with no `score_floor` and a primary trigger is identical to today.
+- `count_companies_in_state_with_score_floor(cid, state, floor)` with no new kwarg returns the same result as today.
+
+### Fix board — AST-1821
+
+[board-betty] TESTS: REVISE: failure-path stamp tests (`TestProcessRecheckNoOpenings::test_guards_missing_fields` / `test_playwright_failure_no_state_change`) leave `update_company_last_scan_at` unpatched; no coverage for Avail with `score_floor` + the `last_scan_at` window, `{base}_RETRY` base-state `batch_criteria` lookup, or the new `scan_interval_hours` kwarg. Filed as a sibling gap child (orphaned branch).
+
+[board-joan] CANON: OK
+
+**Findings (AST-1821 — fix-board Joan pass)**
+
+**Roster:** `canon/docs/DIRECTIVES-DIRECTORY.md` (no `docs/canon-index.md` on publish ref; same resolution as prior fix-board passes).
+
+**Plan-fix read:** `docs/features/roster/ast-460-recheck-no-openings-24h-playwright-recheck-for-no-openings.md` § Bug: AST-1821 (`origin/sub/AST-1820/AST-1821-recheck-no-openings-avail-count`). Parent AST-1820 has no Canon Scope list; triage is overlap against the directive roster only (not R1–R7).
+
+**`patt.entity.batch-criteria` — conforming, no edit required**
+
+- **Arc 2:** `freq_hrs` and `score_floor` are eligibility predicates composed into the same claim shape as `last_scan_at` staleness. Today’s bug is exactly that the company **count** path skips staleness when `score_floor` is set and resolves `batch_criteria` on the literal `_RETRY` trigger instead of the registered base. The proposed `count_eligible_for_dispatch_task` / `count_companies_in_state_with_score_floor` work **implements** this pattern; it does not carve around it.
+- **Arc 4 (`last_scan_at` on “completion”):** Stamping failed `process_recheck_no_openings` attempts so the frequency window applies is cadence enforcement for rows that remain in `NO_OPENINGS`, consistent with arc 2’s eligibility story. Susan’s overturn of AST-463’s feature-plan “no bump on failure” is product/plan authority (ticket + plan-fix), not an in-force statute. No new exception text is required for F5 to proceed.
+
+**`astral.dispatch.entity-state-bound` — conforming**
+
+- `registered_base` for `_RETRY` triggers in the **count** path matches the claim path (AST-1806 shape). Avail for `NO_OPENINGS_RETRY` / `WATCH_RETRY` moving to match `set_company_batch` is count/claim honesty, not a registry violation.
+
+**`stat.batch.claim-process-release` / `patt.entity.batch-processing` — no impact**
+
+- No change to claim → process → release or batch locking; only eligibility counting and when `update_company_last_scan_at` runs inside an existing company batch handler.
+
+**`patt.task.dispatch-retry` — pre-existing tension, not introduced by this fix**
+
+- Arc 5 (“failure does not persist in state”) still disagrees with **already-shipped** behavior: failed recheck returns stay in `NO_OPENINGS` without `_RETRY` routing. AST-1821 does not change that routing; it only stamps `last_scan_at` and fixes count/claim parity. Routing failures through retry states would be a **different** product decision (parent step 2 alternative), not a canon patch required by this plan-fix. Not ESCALATE here — Susan already chose throttle-via-stamp on AST-1820.
+
+**Blast radius (canon lens)**
+
+- `get_due_tasks` / admin Avail dropping to the claimable set is intended alignment with batch-criteria, not a new dispatch precedent.
+- Plan’s known left-alone gap (company rows with `freq_hrs > 0` but no state `scan_interval_hours` and not WATCH) is explicitly out of AST-1820 scope; no statute touch.
+
+### Radia review-fix — AST-1821
+
+[code-rubric] PROCEED (Commit: 4dd0af80): clean.
+
+#### Fix-specific checks
+
+- **[bug-repro]** not applicable — clean board opt-out: `[board-betty] TESTS: REVISE` is owned by sibling **AST-1822**; qa-fix did not run on this tip; no `[bug-repro]` expected here.
+- **## What must still hold — OK** — Traced all six bullets against the tip diff: success paths and JOBS_FOUND routing untouched; `freq_hrs=0` → state default unchanged; `count_companies_in_state_with_score_floor` default kwarg preserves prior SQL; primary-trigger Avail without `score_floor` unchanged for `NO_OPENINGS` (base lookup is identity); intentional `WATCH_RETRY` / `NO_OPENINGS_RETRY` count alignment matches plan blast radius without altering primary WATCH claim behavior.
+
+#### Canon scores
+
+**Notes:** Linear Description has no **Canon Scope (frozen at plan)** block (same as fix-board Joan read). Scored the overlap Joan triaged in the issue doc § Fix board — AST-1821 (`patt.entity.batch-criteria`, `astral.dispatch.entity-state-bound`, `patt.entity.batch-processing`, `astral.batch.claim-process-release`, `patt.task.dispatch-retry`). Process gap for Archie if fix bugs should carry explicit frozen lists; not product **ESCALATE**.
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+| astral.dispatch.entity-state-bound | A | | |
+| patt.entity.batch-processing | X | | diff does not touch claim/process/release |
+| astral.batch.claim-process-release | X | | diff does not touch claim/process/release |
+| patt.task.dispatch-retry | A | | stamp-only; arc-5 routing tension pre-existing on ftr |
+
+#### Column diff vs plan stage
+
+no plan-stage scores attached (fix-board Joan narrative only; no validate-plan F3 score table)
+
+#### Frame diff
+
+(none)
+
+#### Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Canon Scope on ticket:** Description lacks a frozen canon list; scored board overlap per `docs/features/meteorite/ast-1784-…` precedent.
+- **`patt.task.dispatch-retry` arc 5:** Failed recheck still leaves companies in `NO_OPENINGS` without `_RETRY` routing — unchanged by this diff; Susan already chose throttle-via-`last_scan_at` on AST-1820; not introduced here.
+- **Test gap:** Failure-path stamp and Avail composition assertions land on **AST-1822**; existing `TestProcessRecheckNoOpenings` nodes still pass unpatched (per Hedy test-fix comment).
+
+#### What's solid
+
+- `process_recheck_no_openings` stamps `update_company_last_scan_at` on the three failure returns, not on `missing short_name`, matching plan-fix.
+- Company branch resolves `batch_criteria` via `registered_base`, composes `score_floor` with the same `use_stale` / `scan_h` logic as the non-floor path, and threads `scan_interval_hours` into `count_companies_in_state_with_score_floor` with SQL bind order matching placeholders.
+- Docstring-only `update_company_last_scan_at` update matches behavior.
+
+#### Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned** mini-parent AST-1820 | → **Review Posted** → skip `resolve-child` / `merge-child` / `prep-uat` → merge `sub/AST-1820/AST-1821-recheck-no-openings-avail-count` **straight to `origin/dev`** (finish-up-style) once Susan’s lane allows. |
+
+**Plan fidelity:** Diff implements plan-fix § Bug: AST-1821 **Proposed change** (roster stamps + database count composition + kwarg). **Estimate 3** footprint fits (two modules, no schema). **Cross-ticket scope:** Product diff is AST-1821-only; no sibling product smuggle.
+
+#### Chuckles disposition
+
+Clean review: Review Posted → User Testing (resolve-child skipped). Docs-acceptance on this tip: the test/bible delivery is sibling gap AST-1822. merge-child goes into this bug's own `ftr/AST-1820-recheck-no-openings-avail-count` (orphaned mini-parent), not straight to dev.
+
 ## Bug: AST-1822 — recheck_no_openings failure-stamp + Avail window tests (AST-1821 board)
 
 Test-gap sibling of AST-1821. It answers AST-1821's `[board-betty] TESTS: REVISE`. **Test and bible only:** Betty lands every item below at qa-fix, and there are no product edits. The product change under test is AST-1821's § "Bug: AST-1821 — recheck_no_openings Avail honors last_scan_at frequency window" in this doc. That section and the code live on `origin/sub/AST-1820/AST-1821-recheck-no-openings-avail-count` @ `4dd0af80` until merge-child rolls them into `origin/ftr/AST-1820-recheck-no-openings-avail-count`.
