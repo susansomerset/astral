@@ -371,3 +371,68 @@ context_tokens≈92000
 ```
 [code-rubric] PROCEED (Commit: 23a69171) skipped-job persist clean
 ```
+
+---
+
+## Bug: AST-1813 — statute carve-out for skipped-job prior-state bypass (AST-1811 board REVISE)
+
+**Mini-parent:** AST-1809. **Sibling:** AST-1811 (product fix, `sub/AST-1809/AST-1811-skipped-any-state`); its `## Bug: AST-1811` block and `## Fix-board Joan findings (AST-1811)` live on that ref and reach this doc via `ftr` at merge-child.  
+**Publish ref:** `sub/AST-1809/AST-1813-skipped-any-state-canon`  
+**Canon-only gap:** no product code, no tests.
+
+### As-is
+
+`canon/statutes/astral/state/astral.state.job-prior-states-enforced.md` (active, scoped `src/core/**`) states without exception that job transitions enforce `JOB_STATES.prior_states` via tracker and raise when the current state may not enter the target. Its Violating example is any shortcut that sets job state "without prior_states checks." AST-1811 adds exactly such a bypass: `persist_skipped_job_edits` → `transition_job_state(..., enforce_prior_states=False)`. So the product diff reads as a violation of the corpus (Joan `[board-joan] CANON: REVISE`).
+
+### To-be
+
+The statute records one bounded carve-out for the skipped-job operator edit, and restates that every other caller keeps default enforcement. The AST-1811 diff then conforms to the corpus as written, and any other `enforce_prior_states=False` caller is still a violation.
+
+### Repro
+
+Read the statute as a reviewer would against the AST-1811 diff (`origin/sub/AST-1809/AST-1811-skipped-any-state` @ `57b178d8`, `src/core/tracker.py` `persist_skipped_job_edits`). The Statement has no exception clause, and the Violating example ("sets job state without prior_states checks") matches the new call. The corpus has no carve-out text naming `enforce_prior_states` (`rg -n enforce_prior_states canon/` → no hits).
+
+### Root cause
+
+The statute predates Susan's AST-1809 product call. It was written as a universal rule, and the corpus has no mechanism other than statute text to record an approved exception. Issue-doc prose (AST-1811's Canon note) does not amend canon (Joan triage).
+
+### Proposed change
+
+**One file:** `canon/statutes/astral/state/astral.state.job-prior-states-enforced.md`. Leave everything else in the file unchanged, and change only what the three steps below name.
+
+1. **Frontmatter:** set `approved_at: "<landing date, YYYY-MM-DD>"`. Leave `approved_by: Archie` and every other field unchanged: `id`, `tier`, `checkable`, `status`, `applies_when`, `source_docs`, `supersedes`, `superseded_by`.
+
+2. **`# Statement`:** keep the existing sentence verbatim, then append one blank line and this paragraph (house style matches the `dispatch_task` carve-out in `astral.seed.archie-catalog-wins`):
+
+```markdown
+**Skipped-job operator edit carve-out (AST-1809 / AST-1811):** exactly one caller may skip the prior_states check — `persist_skipped_job_edits` in `src/core/tracker.py`, which calls `transition_job_state(..., enforce_prior_states=False)` only when the job's current state is in `SKIPPED_STATES` and the target is a `JOB_STATES` key (not an implicit `{base}_RETRY`, not a runtime dispatch-hop label). The hop still goes through `transition_job_state` (registry check, `state_history`, `state_changed_at`). Every other caller uses the default `enforce_prior_states=True`; passing `False` anywhere else is a violation.
+```
+
+3. **`## Examples`:** append one bullet to each list, after the existing bullet:
+
+   - `### Conforming`: `` - `persist_skipped_job_edits` on a job in `SKIPPED_STATES` moves it to any `JOB_STATES` key via `transition_job_state(..., enforce_prior_states=False)` (the carve-out above). ``
+   - `### Violating`: `` - Any caller other than `persist_skipped_job_edits` passes `enforce_prior_states=False`, or the skipped-edit path accepts a target that is not a `JOB_STATES` key. ``
+
+Leave `## Rationale` unchanged.
+
+⚠️ **Decision — draft directive copy untouched.** `canon/directives/draft/stat.state.job-prior-states-enforced.md` is in scope only "if `docs/canon-index.md` § Resolving ids resolves the id through this directive copy." `docs/canon-index.md` does not exist on this branch, on `origin/dev`, or anywhere in git history, so I resolved the id from the corpus's own rules instead. First, `canon/statutes/README.md` § Harvested corpus maps `astral.state.job-prior-states-enforced` to `astral/state/astral.state.job-prior-states-enforced.md`. Second, `canon/docs/DIRECTIVE-ANATOMY.md` says a directive under `directives/draft/` is not in force. The id therefore resolves to the statute, the condition is false, and the draft stays as-is. Consequence: the two copies (byte-identical today) will diverge. If fix-board or Joan wants them mirrored anyway, the same Statement paragraph and example bullets apply verbatim to the draft, with no frontmatter change there.
+
+⚠️ **Decision — `approved_at` bump rests on Susan's AST-1809 approval.** `orch.roles.archie-approves-statutes` requires Archie approval recorded in frontmatter for any amendment. Archie is Susan's alias. She approved AST-1809's To-be ("Should not be filtered beyond the entity type"), and its Canon note names this waiver explicitly. Joan ruled "Not ESCALATE — product intent explicit; remaining work is recording the exception." make-fix therefore keeps `approved_by: Archie` and sets `approved_at` to the landing date. If Chuckles or Joan judge that the AST-1809 approval does not cover statute text, this needs Archie's confirmation before merge-child, not an engineer-authored approval.
+
+⚠️ **Decision — pattern untouched.** `pattern.state.entity-state-transitions` lists this id in `related_statutes`. DIRECTIVE-ANATOMY says patterns "Cite, never restate," so the carve-out reaches the pattern through the citation. No `related_statutes` or "Solution shape" edit is required (ticket Boundary: "only if … linkage requires it").
+
+### Blast radius
+
+- **Consumers of the statute:** Joan (`validate-plan`, fix-board) and Radia (`review-child` / `review-fix` code-rubric full active-set sweep). After this lands, AST-1811's `review-fix` scores `astral.state.job-prior-states-enforced` as **conforms** instead of violating. Future reviews must flag any other `enforce_prior_states=False` caller.
+- **Registry / harvest tables:** `canon/statutes/README.md`, `canon/statutes/HARVEST.md`, `canon/docs/HARVEST-statutes.md`, and `canon/docs/DIRECTIVES-DIRECTORY.md` carry id, tier, checkable and path only. None changes, so no edit is needed.
+- **Draft copy:** diverges from the statute (see Decision).
+- **Merge-child ordering:** AST-1811 and AST-1813 both append a `## Bug:` block to the end of this doc from the same base (`ed02c7f9`), so their `ftr` merges conflict textually at EOF. Resolve by keeping both blocks: AST-1811 block, its Joan findings, then AST-1813. AST-1813 must merge before or with AST-1811, so `review-fix` on the rolled-up `ftr` sees the carve-out.
+- **No product or test impact.** Betty's sibling test gap AST-1812 is unaffected.
+
+### What must still hold
+
+- The original Statement sentence stays verbatim. Prior-state enforcement remains the rule for every job transition except the one named carve-out.
+- The carve-out names exactly one caller, `persist_skipped_job_edits`, and all three bounds: current state ∈ `SKIPPED_STATES`, target ∈ `JOB_STATES` keys, and the hop goes through `transition_job_state`. It never grants a general "operator override."
+- `astral.state.core-decides-transitions` and `astral.standards.no-hardcoded-sets` are not touched. They stay satisfied because the carve-out routes through the tracker and the registry.
+- Frontmatter: `approved_by: Archie` is present, `status: active` and `tier: scoped` are unchanged, and `applies_when` is unchanged.
+- No files outside `canon/statutes/astral/state/astral.state.job-prior-states-enforced.md` are edited by make-fix, unless the draft-mirror Decision is overturned at fix-board.
