@@ -153,3 +153,15 @@ AC 1–5, 9–10 → Stage 2; AC 6–8 → Stage 1; AC 11 → per-stage build/li
 context_tokens≈18500
 
 [plan-rubric] PROCEED (Commit: efe85d0a) Plan faithful, empty canon OK
+
+## Review
+
+- **Branch:** `origin/sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block`
+- **Stage 1:** `2c1f8416` — Task-only freeze, Avail default All
+- **Stage 2:** `0a723a3a` — Invalid label, zero-avail Run block
+- **Build:** `npm run build` green. AC 9 diff empty; AC 10 grep empty.
+- **Lint (AC 11):** `npm run lint` reports 33 problems both before and after this change (same count on `origin/dev`). None are new. Two are in this file: `no-extra-boolean-cast` on the pre-existing `if (!!row.empty_render) return` guards in `toggleAutoMode` / `handleRun`. Those guards are outside plan scope and were left alone.
+- **Suite (for Betty, `qa-child`):** `test_AdminScheduledActions*.test.tsx` → 13 failed / 56 passed.
+  - **11 expected** (behaviour changed by this ticket): AST-647, AST-746, AST-760 (frozen columns); AST-887 ×4 and AST-894 ×2 (Avail default was `gt0`); AST-1104 landing (Avail default); AST-1782 `blocks AUTO toggle and Run when empty_render is true` (button is now named Invalid).
+  - **2 pre-existing, also red on unmodified `origin/dev`:** AST-751 `All-candidate default sort orders same task by available count descending` and AST-768 `with Candidate All, group filter narrows sections and default sort by avail desc`. Both read `cells[11]` (Runs, `∞`) where they expect the Candidate column.
+- **Missing cases (AC 1–3):** Invalid button name/classes/full opacity; valid zero-avail row Run disabled at 0.25 with no `/run` POST.
