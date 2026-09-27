@@ -58,7 +58,8 @@ export default function JobsJobDetail() {
 
   useEffect(() => {
     if (!jobId || company === undefined) return
-    if (isAdmin && !candidatesHydrated) return
+    // All users wait: the login-email bind (AST-1768) may change selection during hydration.
+    if (!candidatesHydrated) return
     if (readyJobIdRef.current === jobId) return
     let cancelled = false
     void (async () => {
