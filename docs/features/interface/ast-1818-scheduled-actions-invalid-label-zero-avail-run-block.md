@@ -305,3 +305,14 @@ Commits: `code(AST-1819): list_dtasks empty_tokens row field` (A), then `code(AS
 - **AST-1818 AC 6–8:** Avail default All, `> 0` still filters, only Task is frozen.
 - **AUTO force-off:** the `list_dtasks` force-off for `empty_render` rows and its warning log text are unchanged.
 - **No other changes:** no new CSS class, no inline colour literal, no `App.css` / `listTableLayout.ts` / `config.py` diff.
+
+
+## Joan fix-board (AST-1819)
+
+[board-joan]  CANON: OK
+
+AST-1819 board-joan done — CANON: OK.
+
+**Read:** `plan-fix` § Bug: AST-1819 on `origin/sub/AST-1817/AST-1819-invalid-button-missing-token-tooltip` (`As-is` / `To-be` / `Repro` / `Root cause` / `Proposed change` A–B / `Blast radius` / `What must still hold`). Roster skim: `stat.logging.info.api` (no new route completion info on this GET enrich), `stat.dispatch.entity-state-bound` (paths include `api_admin.py` but law is entity_type/trigger_state binding — unchanged), dispatch/batch patterns (claim/count shape untouched). Canon Scope on the patch: **none** (same as AST-1818).
+
+**Why OK:** Proposed change surfaces data `_evaluate_dispatch_empty_render` already computes; it does not contradict any in-force statute or pattern, and it does not need a roster carve-out or new directive. Wrapper `title` is presentation-only; draft `pattern.ui.shared-button-roles` is not law. `What must still hold` preserves AST-1818 button contract without loosening `pointer-events` on the button itself.
