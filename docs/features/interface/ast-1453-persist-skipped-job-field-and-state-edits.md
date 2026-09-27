@@ -641,3 +641,65 @@ context_tokens≈22000
 
 
 **docs-acceptance:** canon-only gap; no test-tree delivery (behavioral coverage on AST-1812).
+
+## Radia review (AST-1811)
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.state.job-prior-states-enforced | A | | Sole `enforce_prior_states=False` from `persist_skipped_job_edits` after `SKIPPED_STATES` gate; targets `JOB_STATES` keys only; hop still via `transition_job_state` — matches amended statute on ftr |
+
+**Notes (Canon Scope):** Linear Description has no frozen **Canon Scope** block. Spawn directs scoring **`astral.state.job-prior-states-enforced`** against the **ftr** statute text (post–AST-1813). Fix-board Joan also cited **`astral.state.core-decides-transitions`** and **`astral.standards.no-hardcoded-sets`** as still satisfied — not on a frozen list; diff behavior aligns (core-owned `transition_job_state`; list from `JOB_STATES` keys). No ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached
+
+(Board context: Joan **CANON: REVISE** at F2 was statute-gap, not plan-stage column; cleared by AST-1813 on **ftr** + this product tip.)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — Betty **TESTS: REVISE** routed to sibling gap **AST-1812** (not merged); no `qa-fix` / `[bug-repro]` on AST-1811. Spawn: +2 failing old-contract tests on tip are **expected** and owned by AST-1812 (`TestAst1453LegalJobSuccessorStates`, `test_writes_title_link_jd_then_transition` mock missing `enforce_prior_states` kwarg).
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| `SKIPPED_STATES` gate; non-skipped GET `legal_next_states=[]` | OK — gate unchanged at top of `persist_skipped_job_edits`; `api_jobs` unchanged |
+| Every hop via `transition_job_state`; `state_history` / `state_changed_at` on non-no-op | OK — persist still calls `transition_job_state`; write path unchanged |
+| Same-state no-op | OK — `if to_state != current` before transition |
+| Field edits before hop; persist on reject | OK — column/JD block before state branch |
+| Unregistered / non-`JOB_STATES` → 409; empty `state` → 400 | OK — `to_state not in JOB_STATES` + `is_registered_state` in `transition_job_state` |
+| Default `transition_job_state` for all other callers | OK — `enforce_prior_states: bool = True`; repo has only one `False` call site |
+| No dispatch/consult trigger, no new logging, PUT `@require_auth` | OK — diff limited to tracker successor/persist/transition |
+
+## Findings
+
+### advisory
+
+- **Test / bible debt:** AST-1812 owns Betty board items (successor-list contract, kwargs-aware mocks, bypass/default/reject coverage, bible rows). Do not **fix-now** AST-1811 for red tests on old contract.
+- **`legal_job_successor_states` in-place rename of semantics:** plan Decision; sole product caller `_attach_skipped_edit_meta` only when skipped-editable — acceptable.
+
+### discuss
+
+(none requiring `@susan`)
+
+## What's solid
+
+- Implementation matches plan-fix **Proposed change** (successor list, keyword-only flag, persist guard + `enforce_prior_states=False`).
+- Product now **conforms** to carved-out statute: bounded caller, `SKIPPED_STATES` + `JOB_STATES` bounds, no second `enforce_prior_states=False` in `src/`.
+- `api_jobs.py` untouched per scope.
+
+## Chuckles branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | AST-1809 mini-parent + `ftr/AST-1809-skipped-any-state` → **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Test gap **AST-1812** proceeds on its own sub; do not block UT on AST-1811 for the two expected reds. |
+
+
+**docs-acceptance:** test/bible delivery for this fix lives on sibling gap AST-1812 (Betty qa-fix); no test() on this product sub.
