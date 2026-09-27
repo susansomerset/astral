@@ -7,8 +7,11 @@ from flask import Blueprint, jsonify, request
 
 from ui.auth import require_admin
 from src.core.contact import (
+    check_admin_slack_channel_membership,
     contact_is_production_deploy,
     contact_skills,
+    get_admin_slack_channel_snapshot,
+    list_admin_slack_channels,
     list_estelle_activity,
     list_unbound_slack_users,
     run_contact_skill,
@@ -143,6 +146,88 @@ def contact_get_unbound_slack_users():
         )
         return jsonify({"error": str(e)}), 502
     return jsonify({"users": users}), 200
+
+
+@contact_bp.route("/slack_channels", methods=["GET"])
+@require_admin
+def contact_get_slack_channels():
+    # Idempotent GET — no progress info line (stat.logging.info.api).
+    explicit = request.args.get("debug", "").lower() in ("1", "true", "yes")
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        channels = list_admin_slack_channels(debug=debug)
+    except Exception as e:
+        logger.exception(
+            "- | api /api/admin/contact/slack_channels failed: %s: %s\n"
+            "  Channel list was not returned",
+            type(e).__name__,
+            e,
+        )
+        return jsonify({"error": str(e)}), 502
+    return jsonify({"channels": channels}), 200
+
+
+@contact_bp.route("/slack_channel_membership", methods=["GET"])
+@require_admin
+def contact_get_slack_channel_membership():
+    # Idempotent GET — no progress info line (stat.logging.info.api).
+    cid = (request.args.get("astral_candidate_id") or "").strip()
+    channel = (request.args.get("channel") or "").strip()
+    if not cid:
+        return jsonify({"error": "astral_candidate_id is required"}), 400
+    if not channel:
+        return jsonify({"error": "channel is required"}), 400
+    explicit = request.args.get("debug", "").lower() in ("1", "true", "yes")
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        payload = check_admin_slack_channel_membership(
+            astral_candidate_id=cid, channel=channel, debug=debug
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg == "candidate not found":
+            return jsonify({"error": msg}), 404
+        return jsonify({"error": msg}), 400
+    except Exception as e:
+        logger.exception(
+            "%s | api /api/admin/contact/slack_channel_membership failed: %s: %s\n"
+            "  Membership check was not returned",
+            cid or "-",
+            type(e).__name__,
+            e,
+        )
+        return jsonify({"error": str(e)}), 502
+    return jsonify(payload), 200
+
+
+@contact_bp.route("/slack_channel_snapshot", methods=["GET"])
+@require_admin
+def contact_get_slack_channel_snapshot():
+    # Idempotent GET — no progress info line (stat.logging.info.api).
+    cid = (request.args.get("astral_candidate_id") or "").strip()
+    if not cid:
+        return jsonify({"error": "astral_candidate_id is required"}), 400
+    explicit = request.args.get("debug", "").lower() in ("1", "true", "yes")
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        payload = get_admin_slack_channel_snapshot(
+            astral_candidate_id=cid, debug=debug
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg == "candidate not found":
+            return jsonify({"error": msg}), 404
+        return jsonify({"error": msg}), 400
+    except Exception as e:
+        logger.exception(
+            "%s | api /api/admin/contact/slack_channel_snapshot failed: %s: %s\n"
+            "  Channel snapshot was not returned",
+            cid or "-",
+            type(e).__name__,
+            e,
+        )
+        return jsonify({"error": str(e)}), 502
+    return jsonify(payload), 200
 
 
 @contact_bp.route("/skills", methods=["GET"])

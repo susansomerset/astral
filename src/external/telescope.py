@@ -2,7 +2,7 @@
 Platform Telescope client + Surfer-ready post-render helpers (AST-1726).
 
 Drop-in replacement for the former playwright module: same public names/params.
-Headless scrape I/O goes to the Telescope HTTP service; post-render helpers
+Headless scrape I/O goes through the Telescope Postgres job queue; post-render helpers
 (cull, delimiter splits, extract-from-HTML, etc.) stay in this file.
 No in-process Firefox.
 """
@@ -10,20 +10,31 @@ No in-process Firefox.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
+import socket
+import threading
 import time
+import uuid
+import zlib
 from contextlib import asynccontextmanager
 from html.parser import HTMLParser
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypedDict
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
+import asyncpg
 import httpx
 from bs4 import BeautifulSoup
 
-from src.utils.config import ASTRAL_CONFIG, PLAYWRIGHT_CONFIG, TELESCOPE_CONFIG
+from src.utils.config import (
+    ASTRAL_CONFIG,
+    PLAYWRIGHT_CONFIG,
+    TELESCOPE_CONFIG,
+    roster_scrape_readiness_config,
+)
 from src.utils.integration_io import require_controlled_external_io
-from src.utils.logging import get_logger
+from src.utils.logging import get_logger, log_debug
 
 _log = get_logger(__name__)
 
@@ -34,7 +45,7 @@ PLAYWRIGHT_INFRA_FAILURE_CLASSES = frozenset({
     "context_closed",
     "connectivity_failure",
     "telescope_timeout",
-    "telescope_http_error",
+    "telescope_job_failed",
 })
 
 
@@ -53,14 +64,14 @@ def classify_playwright_failure(exc: BaseException) -> str:
         return "launch_timeout"
     if "could not launch firefox" in msg:
         return "launch_failure"
-    if isinstance(exc, httpx.TimeoutException) or "telescope_timeout" in msg:
+    if isinstance(exc, asyncio.TimeoutError) or "telescope_timeout" in msg:
         return "telescope_timeout"
     if "timeout" in msg and ("goto" in msg or "navigation" in msg or "telescope" in msg):
         return "telescope_timeout"
     if "connect" in msg or "connection" in msg:
         return "connectivity_failure"
-    if "telescope_http" in msg or " 5" in msg and "http" in msg:
-        return "telescope_http_error"
+    if "telescope_job_failed" in msg:
+        return "telescope_job_failed"
     return "unknown"
 
 
@@ -69,7 +80,7 @@ def is_playwright_infra_failure(failure_class: str) -> bool:
 
 
 class PlaywrightInfraError(Exception):
-    """Raised when Telescope HTTP or former browser-infra I/O fails (infra, not site)."""
+    """Raised when the Telescope queue or former browser-infra I/O fails (infra, not site)."""
 
     def __init__(self, failure_class: str, detail: str) -> None:
         self.failure_class = failure_class
@@ -118,6 +129,9 @@ class PageHandle:
         self._links: Optional[List[Dict[str, str]]] = None
         self._final_url: Optional[str] = None
         self._closed = False
+        # Set by scrape_page: fields fetched in its one job, and the careers-list readiness meta.
+        self._prefetched: Optional[frozenset] = None
+        self.readiness: Dict[str, Any] = {}
 
     def _invalidate(self) -> None:
         self._html = None
@@ -165,161 +179,349 @@ class BatchBrowserSession:
 
 
 # ---------------------------------------------------------------------------
-# HTTP pool
+# Postgres job queue client
 # ---------------------------------------------------------------------------
 
+# Contract mirror: service/telescope/jobqueue.py owns the schema (created by the
+# worker on startup). Import fence forbids sharing code — change both sides together.
+_JOB_TABLE = "telescope_job"
+_WORKER_TABLE = "telescope_worker"
+_CHANNEL_NEW = "telescope_job_new"
+_CHANNEL_DONE = "telescope_job_done"
+_TERMINAL = ("done", "failed", "cancelled")
 
-class _TelescopePool:
+
+def _decode_result(blob: Optional[bytes]) -> Any:
+    if blob is None:
+        return None
+    return json.loads(zlib.decompress(blob).decode("utf-8"))
+
+
+def _telescope_wake_url() -> str:
+    """Telescope's private base url + wake path, or "" when no base url is set."""
+    for env_key in TELESCOPE_CONFIG["base_url_envs"]:
+        first = (os.environ.get(env_key) or "").split(",")[0].strip()
+        if first:
+            return first.rstrip("/") + TELESCOPE_CONFIG["wake_path"]
+    return ""
+
+
+class _LoopState:
+    """Everything bound to one event loop: pool, listener, waiters, poller."""
+
     def __init__(self) -> None:
-        self._rr = 0
-        self._lock = asyncio.Lock()
-        self._in_flight: Dict[str, int] = {}
-        self._client: Optional[httpx.AsyncClient] = None
-        # Loop-bound resources (client/lock/sem) must be rebuilt when the running
-        # loop changes — admin uses asyncio.run() per request (fresh loop each time),
-        # which otherwise reuses a client tied to a closed loop → "Event loop is closed".
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self.db: Optional[asyncpg.Pool] = None
+        self.listener: Optional[asyncpg.Connection] = None
+        self.waiters: Dict[str, asyncio.Future] = {}
+        self.wake = asyncio.Event()
+        self.poller: Optional[asyncio.Task] = None
+        self.init_lock = asyncio.Lock()
+        self.wake_tasks: set = set()
 
-    def _bases(self) -> List[str]:
-        return list(TELESCOPE_CONFIG.get("base_urls") or [])
 
-    def _bearer(self) -> str:
-        env_key = TELESCOPE_CONFIG["bearer_env"]
-        tok = (os.environ.get(env_key) or "").strip()
-        if not tok:
-            raise PlaywrightInfraError(
-                "connectivity_failure", f"{env_key} not set"
-            )
-        return tok
+class _TelescopeQueue:
+    """Enqueue a scrape job and await its result.
 
-    def _ensure_loop(self) -> None:
+    One shared poller per event loop resolves every waiting caller with a single
+    query; LISTEN telescope_job_done only wakes it early, so a dropped notification
+    costs at most poll_interval_seconds, never a lost result.
+
+    State is kept per event loop: dispatch tasks each run their own long-lived loop
+    on their own thread (dispatcher._task_thread_target) and admin/intake paths use
+    asyncio.run, so several loops use this client at the same time. asyncpg
+    connections, Events and Futures must never cross loops.
+    """
+
+    def __init__(self) -> None:
+        self._states: Dict[asyncio.AbstractEventLoop, _LoopState] = {}
+        self._states_lock = threading.Lock()
+        # Serverless wake throttle — process-wide, shared across loops/threads.
+        self._last_wake = float("-inf")
+        self._wake_lock = threading.Lock()
+
+    def _dsn(self) -> str:
+        env_key = TELESCOPE_CONFIG["database_url_env"]
+        dsn = (os.environ.get(env_key) or "").strip()
+        if not dsn:
+            raise PlaywrightInfraError("connectivity_failure", f"{env_key} not set")
+        return dsn
+
+    def _state(self) -> _LoopState:
         loop = asyncio.get_running_loop()
-        if self._loop is None:
-            # First use — adopt this loop; keep any preexisting client (incl. injected).
-            self._loop = loop
-            if self._client is None:
-                self._client = httpx.AsyncClient(
-                    timeout=float(TELESCOPE_CONFIG["request_timeout_seconds"])
-                )
-            return
-        if self._loop is loop:
-            return
-        # Loop actually changed (e.g. new asyncio.run) → rebuild loop-bound state.
-        self._loop = loop
-        self._client = httpx.AsyncClient(
-            timeout=float(TELESCOPE_CONFIG["request_timeout_seconds"])
-        )
-        self._lock = asyncio.Lock()
-        self._in_flight = {}
+        with self._states_lock:
+            st = self._states.get(loop)
+            if st is None:
+                # Forget closed loops (finished asyncio.run calls, exited task threads).
+                for old in [lp for lp in self._states if lp.is_closed()]:
+                    del self._states[old]
+                st = self._states[loop] = _LoopState()
+            return st
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        self._ensure_loop()
-        assert self._client is not None
-        return self._client
-
-    async def _pick_bases(self) -> List[str]:
-        bases = self._bases()
-        if not bases:
-            raise PlaywrightInfraError(
-                "connectivity_failure", "TELESCOPE_BASE_URL(S) not configured"
-            )
-        async with self._lock:
-            start = self._rr % len(bases)
-            self._rr += 1
-        # round-robin primary, then remaining in order (least-in-flight soft preference)
-        ordered = bases[start:] + bases[:start]
-        if TELESCOPE_CONFIG.get("retry_other_node") and len(ordered) > 1:
-            # sort secondary by current in-flight
-            primary = ordered[0]
-            rest = sorted(ordered[1:], key=lambda b: self._in_flight.get(b, 0))
-            return [primary] + rest
-        return ordered
-
-    async def request(
-        self,
-        method: str,
-        path: str,
-        *,
-        json_body: Optional[dict] = None,
-    ) -> httpx.Response:
-        require_controlled_external_io("telescope.request")
-        self._ensure_loop()  # rebuild loop-bound client/lock/sem before use
-        bases = await self._pick_bases()
-        token = self._bearer()
-        headers = {"Authorization": f"Bearer {token}"}
-        max_attempts = min(
-            int(TELESCOPE_CONFIG["max_node_attempts"]),
-            len(bases),
-        )
-        last_err: Optional[BaseException] = None
-        client = await self._get_client()
-        for attempt, base in enumerate(bases[:max_attempts]):
-            url = base.rstrip("/") + path
-            self._in_flight[base] = self._in_flight.get(base, 0) + 1
-            try:
-                resp = await client.request(
-                    method, url, headers=headers, json=json_body
-                )
-                if resp.status_code in (401, 403):
-                    _log.error(
-                        "telescope auth failed status=%s base=%s path=%s",
-                        resp.status_code,
-                        base,
-                        path,
+    async def _get_db(self) -> asyncpg.Pool:
+        st = self._state()
+        async with st.init_lock:
+            if st.db is None:
+                try:
+                    st.db = await asyncpg.create_pool(
+                        self._dsn(),
+                        min_size=1,
+                        max_size=int(TELESCOPE_CONFIG["db_pool_max_size"]),
                     )
+                except PlaywrightInfraError:
+                    raise
+                except Exception as e:
                     raise PlaywrightInfraError(
-                        "connectivity_failure",
-                        f"telescope auth {resp.status_code}",
-                    )
-                if resp.status_code >= 500:
-                    _log.warning(
-                        "telescope 5xx status=%s base=%s path=%s",
-                        resp.status_code,
-                        base,
-                        path,
-                    )
-                    last_err = PlaywrightInfraError(
-                        "telescope_http_error",
-                        f"HTTP {resp.status_code} from {base}",
-                    )
-                    if attempt + 1 < max_attempts:
-                        continue
-                    raise last_err
-                return resp
-            except PlaywrightInfraError:
+                        "connectivity_failure", f"telescope queue db: {e}"
+                    ) from e
+            if st.poller is None or st.poller.done():
+                st.poller = asyncio.create_task(
+                    self._poll_loop(st), name="telescope-result-poller"
+                )
+        return st.db
+
+    async def _ensure_listener(self, st: _LoopState) -> None:
+        if st.listener is not None and not st.listener.is_closed():
+            return
+        try:
+            st.listener = await asyncpg.connect(self._dsn())
+            await st.listener.add_listener(_CHANNEL_DONE, lambda *_a: st.wake.set())
+        except Exception as e:
+            st.listener = None
+            _log.warning("telescope result listener unavailable (polling only): %s", e)
+
+    async def _poll_loop(self, st: _LoopState) -> None:
+        interval = float(TELESCOPE_CONFIG["poll_interval_seconds"])
+        while True:
+            try:
+                try:
+                    await asyncio.wait_for(st.wake.wait(), timeout=interval)
+                except asyncio.TimeoutError:
+                    pass
+                st.wake.clear()
+                ids = [i for i, f in st.waiters.items() if not f.done()]
+                if not ids:
+                    continue
+                await self._ensure_listener(st)
+                rows = await st.db.fetch(
+                    f"""
+                    SELECT id, status, result, error, error_class FROM {_JOB_TABLE}
+                    WHERE id = ANY($1::uuid[]) AND status = ANY($2::text[])
+                    """,
+                    ids,
+                    list(_TERMINAL),
+                )
+            except asyncio.CancelledError:
                 raise
-            except httpx.TimeoutException as e:
+            except Exception as e:
+                # Never let the poller die: every waiter on this loop depends on it.
+                _log.warning("telescope result poll failed: %s: %s", type(e).__name__, e)
+                await asyncio.sleep(interval)
+                continue
+            for row in rows:
+                fut = st.waiters.get(str(row["id"]))
+                if fut is not None and not fut.done():
+                    fut.set_result(row)
+
+    async def submit(
+        self, request: Dict[str, Any], *, priority: Optional[int] = None
+    ) -> dict:
+        """Enqueue one scrape and wait for its result dict (or raise PlaywrightInfraError)."""
+        require_controlled_external_io("telescope.request")
+        db = await self._get_db()
+        st = self._state()
+        deadline = float(TELESCOPE_CONFIG["job_deadline_seconds"])
+        job_id = str(uuid.uuid4())
+        # job_id[:8] is the `job` field on the worker's log lines for this scrape.
+        _log.debug("Calling telescope job %s: %s", job_id, request)
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
+        st.waiters[job_id] = fut
+        try:
+            try:
+                async with db.acquire() as conn:
+                    async with conn.transaction():
+                        await conn.execute(
+                            f"""
+                            INSERT INTO {_JOB_TABLE}
+                                (id, request, priority, max_attempts, expires_at)
+                            VALUES ($1, $2::jsonb, $3, $4,
+                                    now() + make_interval(secs => $5))
+                            """,
+                            job_id,
+                            json.dumps(request),
+                            int(
+                                TELESCOPE_CONFIG["default_priority"]
+                                if priority is None
+                                else priority
+                            ),
+                            int(TELESCOPE_CONFIG["max_attempts"]),
+                            deadline,
+                        )
+                        await conn.execute("SELECT pg_notify($1, '')", _CHANNEL_NEW)
+                # After the insert commits (the order the worker's sleep race guard
+                # relies on): wake a sleeping Telescope if no worker is live.
+                await self._maybe_wake(db, st)
+            except asyncpg.UndefinedTableError as e:
+                raise PlaywrightInfraError(
+                    "connectivity_failure",
+                    f"{_JOB_TABLE} missing — has the Telescope worker ever started? {e}",
+                ) from e
+            except Exception as e:
+                raise PlaywrightInfraError(
+                    "connectivity_failure", f"telescope enqueue failed: {e}"
+                ) from e
+            try:
+                row = await asyncio.wait_for(asyncio.shield(fut), timeout=deadline)
+            except asyncio.TimeoutError:
+                await self._cancel(db, job_id)
                 _log.warning(
-                    "telescope timeout base=%s path=%s: %s", base, path, e
+                    "%s | telescope job cancelled: deadline %ss exceeded url=%s",
+                    job_id[:8],
+                    deadline,
+                    request.get("url"),
                 )
-                last_err = PlaywrightInfraError(
-                    "telescope_timeout", f"timeout talking to {base}: {e}"
-                )
-                if attempt + 1 < max_attempts:
-                    continue
-                raise last_err from e
-            except httpx.HTTPError as e:
-                _log.warning(
-                    "telescope connect error base=%s path=%s: %s", base, path, e
-                )
-                last_err = PlaywrightInfraError(
-                    "connectivity_failure", f"connect {base}: {e}"
-                )
-                if attempt + 1 < max_attempts:
-                    continue
-                raise last_err from e
-            finally:
-                self._in_flight[base] = max(
-                    0, self._in_flight.get(base, 1) - 1
-                )
-        raise last_err or PlaywrightInfraError(
-            "connectivity_failure", "telescope request failed"
+                raise PlaywrightInfraError(
+                    "telescope_timeout", f"job {job_id} exceeded {deadline}s"
+                ) from None
+            except asyncio.CancelledError:
+                await asyncio.shield(self._cancel(db, job_id))
+                raise
+        finally:
+            st.waiters.pop(job_id, None)
+        status = row["status"]
+        if status == "done":
+            data = _decode_result(row["result"])
+            _log.info(
+                "%s | telescope job done: %s -> %s fields:%s",
+                job_id[:8],
+                request.get("url"),
+                (data or {}).get("final_url"),
+                ",".join(request.get("fields") or []),
+            )
+            return data
+        error_class = row["error_class"] or "unknown"
+        detail = f"job {job_id} {status} ({error_class}): {row['error'] or ''}"
+        if error_class in ("timeout", "expired"):
+            raise PlaywrightInfraError("telescope_timeout", detail)
+        if error_class == "bad_request":
+            raise PlaywrightInfraError("telescope_bad_request", detail)
+        raise PlaywrightInfraError("telescope_job_failed", detail)
+
+    async def _cancel(self, db: Any, job_id: str) -> None:
+        """Best effort: stop a worker spending Firefox time on a result nobody wants."""
+        try:
+            await db.execute(
+                f"""
+                UPDATE {_JOB_TABLE}
+                SET status = 'cancelled', error_class = 'cancelled',
+                    error = 'caller gave up', finished_at = now()
+                WHERE id = $1 AND status IN ('queued', 'running')
+                """,
+                job_id,
+            )
+        except Exception as e:
+            _log.warning("telescope cancel job=%s failed: %s", job_id, e)
+
+    async def _live_workers(self, db: Any) -> int:
+        return int(
+            await db.fetchval(
+                f"""
+                SELECT count(*) FROM {_WORKER_TABLE}
+                WHERE last_seen > now() - make_interval(secs => $1)
+                """,
+                float(TELESCOPE_CONFIG["worker_stale_seconds"]),
+            )
+            or 0
         )
 
+    async def _maybe_wake(self, db: Any, st: _LoopState) -> None:
+        """Throttled fire-and-forget GET /wake when no Telescope worker is live.
 
-_pool = _TelescopePool()
+        Telescope is Railway Serverless: it sleeps when idle and wakes on a
+        private-network request. The ping only starts it; queued jobs wait safely.
+        """
+        url = _telescope_wake_url()
+        throttle = float(TELESCOPE_CONFIG["wake_throttle_seconds"])
+        with self._wake_lock:
+            if time.monotonic() - self._last_wake < throttle:
+                return
+        try:
+            if await self._live_workers(db):
+                return
+        except Exception as e:
+            _log.debug("telescope wake check failed, pinging anyway: %s", e)
+        with self._wake_lock:
+            if time.monotonic() - self._last_wake < throttle:
+                return
+            self._last_wake = time.monotonic()
+        if not url:
+            _log.warning(
+                "telescope wake skipped: no live Telescope worker and %s is not set; "
+                "queued jobs wait until a worker starts",
+                " / ".join(TELESCOPE_CONFIG["base_url_envs"]),
+            )
+            return
+        task = asyncio.create_task(self._ping_wake(url))
+        st.wake_tasks.add(task)
+        task.add_done_callback(st.wake_tasks.discard)
+
+    async def _ping_wake(self, url: str) -> None:
+        """GET /wake on every Telescope replica — one request wakes only the replica it lands on."""
+        targets = await _wake_targets(url)
+        _log.debug("Calling telescope wake: %s replica(s) %s", len(targets), targets)
+        await asyncio.gather(*[self._ping_one(t) for t in targets])
+
+    async def _ping_one(self, url: str) -> None:
+        try:
+            async with httpx.AsyncClient(timeout=float(TELESCOPE_CONFIG["wake_timeout_seconds"])) as client:
+                resp = await client.get(url)
+            _log.debug("Response from telescope wake: %s %s %s", url, resp.status_code, resp.text[:200])
+        except Exception as e:
+            # Expected while a slept container boots (502 / timeout); the job waits in the queue.
+            _log.debug("Response from telescope wake: %s %s: %s", url, type(e).__name__, e)
+
+    async def healthy(self) -> bool:
+        """Queue reachable. Does not wake Telescope — only an enqueue does, so an empty
+        dispatch run doesn't start Firefox for nothing."""
+        await self._get_db()
+        return True
+
+
+async def _wake_targets(url: str) -> List[str]:
+    """One wake URL per replica address behind the private hostname.
+
+    Railway's private DNS returns every replica's address; a request to the name hits
+    just one. Prefers IPv4 when present (Telescope listens on 0.0.0.0), else IPv6.
+    Falls back to the original URL when resolution fails or there is one address.
+    """
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except Exception as e:
+        _log.debug("telescope wake: resolving %s failed, pinging the name: %s", host, e)
+        return [url]
+    v4 = sorted({i[4][0] for i in infos if i[0] == socket.AF_INET})
+    v6 = sorted({i[4][0] for i in infos if i[0] == socket.AF_INET6})
+    addrs = v4 or v6
+    if len(addrs) <= 1:
+        return [url]
+    return [
+        urlunsplit((
+            parts.scheme,
+            f"[{a}]:{port}" if ":" in a else f"{a}:{port}",
+            parts.path,
+            parts.query,
+            "",
+        ))
+        for a in addrs
+    ]
+
+
+_pool = _TelescopeQueue()
 
 CAPTURE_FIELDS = frozenset({"text", "links", "html"})
+CAPTURE_FIELDS_ORDER = ("text", "links", "html")
 
 
 async def _post_telescope(
@@ -332,11 +534,14 @@ async def _post_telescope(
     id: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
+    debug: Optional[bool] = None,
+    priority: Optional[int] = None,
 ) -> dict:
-    """One POST /telescope — one page load, only requested capture keys in response."""
+    """One Telescope job — one page load, only requested capture keys in the result."""
     want = [f for f in fields if f in CAPTURE_FIELDS]
     if not want:
         raise ValueError("fields must include at least one of: text, links, html")
+    scrape_debug = log_debug.get() if debug is None else bool(debug)
     body: Dict[str, Any] = {
         "url": url,
         "fields": want,
@@ -346,6 +551,7 @@ async def _post_telescope(
             if wait_ready is None
             else wait_ready
         ),
+        "debug": scrape_debug,
     }
     if selector is not None:
         body["selector"] = selector
@@ -355,37 +561,15 @@ async def _post_telescope(
         body["class_name"] = class_name
     if id is not None:
         body["id"] = id
-    path = TELESCOPE_CONFIG["telescope_path"]
-    _log.debug("Calling _post_telescope: [path=%s, body=%s]", path, body)
-    resp = await _pool.request("POST", path, json_body=body)
-    if resp.status_code >= 400:
-        _log.debug(
-            "Response from _post_telescope: status=%s path=%s body=%s",
-            resp.status_code,
-            path,
-            resp.text,
-        )
-        raise PlaywrightInfraError(
-            "telescope_http_error",
-            f"POST /telescope HTTP {resp.status_code}: {resp.text[:200]}",
-        )
-    data = resp.json()
+    _log.debug("Calling _post_telescope: [body=%s]", body)
+    data = await _pool.submit(body, priority=priority)
     _log.debug("Response from _post_telescope: %s", data)
-    _log.info(
-        "telescope ok path=/telescope fields=%s final_url=%s",
-        want,
-        data.get("final_url"),
-    )
     return data
 
 
 async def _get_healthz() -> bool:
     try:
-        resp = await _pool.request("GET", TELESCOPE_CONFIG["healthz_path"])
-        if resp.status_code != 200:
-            return False
-        body = resp.json()
-        return (body.get("status") or "").lower() == "ok"
+        return await _pool.healthy()
     except Exception as e:
         fc = classify_playwright_failure(e)
         _log.warning("check_connectivity failed failure_class=%s: %s", fc, e)
@@ -404,6 +588,7 @@ async def admin_telescope_scrape(
     class_name: Optional[str] = None,
     id: Optional[str] = None,
     cull: bool = False,
+    debug: bool = False,
 ) -> dict:
     """Admin workbench scrape — returns full Telescope JSON (incl. scrape_meta)."""
     rt = (response_type or "").strip().lower()
@@ -422,6 +607,8 @@ async def admin_telescope_scrape(
             id=id,
             expand=expand,
             wait_ready=wait_ready,
+            debug=debug,
+            priority=TELESCOPE_CONFIG["admin_priority"],
         )
     else:
         data = await _post_telescope(
@@ -433,6 +620,8 @@ async def admin_telescope_scrape(
             id=id,
             expand=expand,
             wait_ready=wait_ready,
+            debug=debug,
+            priority=TELESCOPE_CONFIG["admin_priority"],
         )
         if cull and "html" in data:
             raw_html = data["html"]
@@ -448,7 +637,9 @@ async def admin_telescope_scrape(
     return data
 
 
-async def _ensure_fields(page: PageHandle, *fields: str) -> None:
+async def _ensure_fields(
+    page: PageHandle, *fields: str, selector: Optional[str] = None
+) -> None:
     """Fetch any missing capture fields in one Telescope POST."""
     if page._closed:
         raise PlaywrightInfraError("context_closed", "page is closed")
@@ -464,6 +655,7 @@ async def _ensure_fields(page: PageHandle, *fields: str) -> None:
             need.append("html")
     if not need:
         return
+    _warn_unprefetched(page, need)
     if not (page.url or "").strip():
         if "text" in need:
             page._text = ""
@@ -475,6 +667,7 @@ async def _ensure_fields(page: PageHandle, *fields: str) -> None:
     data = await _post_telescope(
         page.url,
         fields=need,
+        selector=selector,
         expand=page.expand,
         wait_ready=page.wait_ready,
     )
@@ -512,6 +705,8 @@ async def _ensure_html(
     # Re-fetch when selector changes or cache empty
     if page._html is not None and selector is None:
         return page._html
+    if selector is None:
+        _warn_unprefetched(page, ["html"])
     if not (page.url or "").strip():
         page._html = ""
         return ""
@@ -532,6 +727,58 @@ async def _ensure_html(
         page._final_url = final
         page.url = final
     return html
+
+
+def _warn_unprefetched(page: PageHandle, need: List[str]) -> None:
+    """A scrape_page handle asked for a field it didn't fetch — that's a second page load."""
+    if page._prefetched is not None:
+        _log.warning(
+            "telescope extra page load for %s on %s — add it to scrape_page(fields=...)",
+            ",".join(need),
+            page.url,
+        )
+
+
+async def scrape_page(
+    url: str,
+    *,
+    fields: Sequence[str] = ("text", "links"),
+    careers_list: bool = False,
+    session: Optional[BrowserSession] = None,
+) -> PageHandle:
+    """Load `url` once in Telescope; return a handle holding every requested field.
+
+    One Telescope job per page: name everything you'll read (text, links, html).
+    extract_visible_text / extract_page_dom / extract_site_page_list /
+    extract_page_scrape_contract on the handle then read the cache — no second load.
+    Scoped to <body>: same text and links as the whole document, and html without
+    <head> (the cull keeps only the body anyway).
+    careers_list: wait for the page to settle, and expand Load More / infinite scroll
+    per ROSTER_CONFIG scrape_readiness.run_load_all_jobs. Readiness meta → page.readiness.
+    """
+    want = [f for f in CAPTURE_FIELDS_ORDER if f in set(fields)]
+    if not want:
+        raise ValueError("scrape_page fields must include at least one of: text, links, html")
+    pg = PageHandle(url or "", session=session or BrowserSession())
+    load_all_jobs_ran = False
+    if careers_list:
+        cfg = roster_scrape_readiness_config()
+        pg.wait_ready = True
+        load_all_jobs_ran = bool(cfg.get("run_load_all_jobs", True))
+        if load_all_jobs_ran:
+            pg.expand = True
+    started = time.monotonic()
+    await _ensure_fields(pg, *want, selector="body")
+    pg._prefetched = frozenset(want)
+    visible_chars = len(pg._text or "")
+    pg.readiness = {
+        "outcome": "ready" if visible_chars or "text" not in want else "empty",
+        "wait_ms": int((time.monotonic() - started) * 1000),
+        "visible_chars": visible_chars,
+        "load_all_jobs_ran": load_all_jobs_ran,
+        "ready": bool(visible_chars) or "text" not in want,
+    }
+    return pg
 
 
 # ---------------------------------------------------------------------------
@@ -777,34 +1024,6 @@ async def load_all_jobs(page: PageHandle, short_name: str = "unknown") -> None:
     _log.debug("load_all_jobs: flag expand on handle short_name=%s", short_name)
     page.expand = True
     page._invalidate()
-
-
-async def wait_for_careers_list_readiness(
-    page: PageHandle,
-    cfg: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Map readiness to Telescope wait_ready (+ expand); listing selectors unavailable remotely."""
-    started = time.monotonic()
-    page.wait_ready = True
-    if bool(cfg.get("run_load_all_jobs", True)):
-        page.expand = True
-    page._invalidate()
-    load_all_jobs_ran = bool(cfg.get("run_load_all_jobs", True))
-    await _ensure_text(page, links=False)
-    visible_chars = len(page._text or "")
-    wait_ms = int((time.monotonic() - started) * 1000)
-    if visible_chars == 0:
-        outcome = "empty"
-    else:
-        outcome = "ready"
-    return {
-        "outcome": outcome,
-        "wait_ms": wait_ms,
-        "visible_chars": visible_chars,
-        "listing_hits": 0,
-        "load_all_jobs_ran": load_all_jobs_ran,
-        "ready": outcome == "ready",
-    }
 
 
 async def get_page_with_artifacts(context: BrowserSession, url: str) -> PageLoadArtifacts:

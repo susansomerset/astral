@@ -21,8 +21,16 @@ interface Candidate {
 }
 
 type UnboundSlackUser = { slack_user_id: string; username: string }
+type SlackChannelOption = { id: string; name: string }
 
-const EMPTY_ADD_FORM = { first: "", last: "", contact_email: "", pronouns: "", slack_user_id: "" }
+const EMPTY_ADD_FORM = {
+  first: "", last: "", contact_email: "", pronouns: "", slack_user_id: "", slack_channel_id: "",
+}
+
+const UNBOUND_CHANNEL_WARN =
+  "Warning: no Slack user is bound for this candidate. Channel assignment may be wrong."
+const NOT_MEMBER_CHANNEL_WARN =
+  "Warning: the bound Slack user is not a member of this channel."
 
 function slackBindFromSelection(
   selectedId: string,
@@ -35,6 +43,23 @@ function slackBindFromSelection(
   return { slack_user_id: row.slack_user_id, slack_username: row.username }
 }
 
+function slackChannelFromSelection(
+  selectedId: string,
+  options: SlackChannelOption[],
+): { slack_channel_id: string; slack_channel_name: string } | null {
+  const cid = selectedId.trim()
+  if (!cid) return null
+  const row = options.find(c => c.id === cid)
+  if (!row) return null
+  return { slack_channel_id: row.id, slack_channel_name: row.name }
+}
+
+/** Select label: real name, or (unnamed) when API returned empty name (Joan discuss). */
+function channelOptionLabel(c: SlackChannelOption): string {
+  const n = c.name.trim()
+  return n || "(unnamed)"
+}
+
 function flattenCandidate(c: Candidate): Candidate & Record<string, unknown> {
   const cd = c.candidate_data || {}
   const contact = (cd.contact || {}) as Record<string, unknown>
@@ -43,6 +68,7 @@ function flattenCandidate(c: Candidate): Candidate & Record<string, unknown> {
     first: c.first ?? "",
     last: c.last ?? "",
     contact_email: contact.contact_email ?? "",
+    slack_username: typeof contact.slack_username === "string" ? contact.slack_username : "",
     api_key_status: c.has_api_key ? "Set" : "Not set",
   }
 }
@@ -116,6 +142,7 @@ export default function ManageCandidates() {
   const [allCandidates, setAllCandidates] = useState<Candidate[]>([])
   const [dispatchTaskCounts, setDispatchTaskCounts] = useState<Record<string, number>>({})
   const [settingCandidateId, setSettingCandidateId] = useState<string | null>(null)
+  const [snapshottingId, setSnapshottingId] = useState<string | null>(null)
   const [validStates, setValidStates] = useState<string[]>([])
   const [viewing, setViewing] = useState<Candidate | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -123,9 +150,12 @@ export default function ManageCandidates() {
   const [editOpen, setEditOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Candidate | null>(null)
   const [editForm, setEditForm] = useState({
-    first: "", last: "", contact_email: "", pronouns: "", state: "", api_key: "", slack_user_id: "",
+    first: "", last: "", contact_email: "", pronouns: "", state: "", api_key: "",
+    slack_user_id: "", slack_channel_id: "",
   })
   const [unboundSlackUsers, setUnboundSlackUsers] = useState<UnboundSlackUser[]>([])
+  const [slackChannels, setSlackChannels] = useState<SlackChannelOption[]>([])
+  const [channelMembershipWarn, setChannelMembershipWarn] = useState<string | null>(null)
   const [showKey, setShowKey] = useState(false)
   const [clearKey, setClearKey] = useState(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -190,6 +220,84 @@ export default function ManageCandidates() {
       })
   }, [])
 
+  // Sibling AST-1788 — bot-visible channels (filter id only; empty name → "(unnamed)" label).
+  const loadSlackChannels = useCallback(() => {
+    return api("/api/admin/contact/slack_channels")
+      .then(async r => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}))
+          throw new Error((body as { error?: string }).error || "Failed to load Slack channels")
+        }
+        return r.json()
+      })
+      .then(data => {
+        const raw = Array.isArray(data?.channels) ? data.channels : []
+        const channels: SlackChannelOption[] = []
+        for (const row of raw) {
+          if (!row || typeof row !== "object") continue
+          const id = typeof row.id === "string" ? row.id.trim() : ""
+          if (!id) continue
+          const name = typeof row.name === "string" ? row.name : ""
+          channels.push({ id, name })
+        }
+        setSlackChannels(channels)
+      })
+      .catch(e => {
+        setSlackChannels([])
+        setToast({
+          text: e instanceof Error ? e.message : "Failed to load Slack channels",
+          variant: "error",
+        })
+      })
+  }, [])
+
+  async function runChannelMembershipCheck(
+    channelId: string,
+    ctx:
+      | { mode: "add"; formSlackUserId: string }
+      | { mode: "edit"; astral_candidate_id: string; formSlackUserId: string },
+  ) {
+    const ch = channelId.trim()
+    if (!ch) {
+      setChannelMembershipWarn(null)
+      return
+    }
+    const formUid = ctx.formSlackUserId.trim()
+    // Add has no candidate id; edit with empty form bind → local unbound warn (no membership GET).
+    if (ctx.mode === "add" || !formUid) {
+      setChannelMembershipWarn(UNBOUND_CHANNEL_WARN)
+      return
+    }
+    try {
+      const q = new URLSearchParams({
+        astral_candidate_id: ctx.astral_candidate_id,
+        channel: ch,
+      })
+      const r = await api(`/api/admin/contact/slack_channel_membership?${q}`)
+      const body = await r.json().catch(() => ({} as Record<string, unknown>))
+      if (!r.ok) {
+        setToast({
+          text: String((body as { error?: string }).error || "Membership check failed"),
+          variant: "error",
+        })
+        return
+      }
+      if ((body as { warn?: boolean }).warn) {
+        const reason = (body as { warn_reason?: string | null }).warn_reason
+        setChannelMembershipWarn(
+          reason === "unbound" ? UNBOUND_CHANNEL_WARN : NOT_MEMBER_CHANNEL_WARN,
+        )
+      } else {
+        setChannelMembershipWarn(null)
+      }
+    } catch (e) {
+      setToast({
+        text: e instanceof Error ? e.message : "Membership check failed",
+        variant: "error",
+      })
+    }
+  }
+
   useEffect(() => {
     api("/api/shapes/candidates").then(r => r.json()).then(s => setShapes(s))
     api("/api/candidates/states").then(r => r.json()).then(s => setValidStates(Array.isArray(s) ? s : []))
@@ -198,7 +306,7 @@ export default function ManageCandidates() {
   }, [loadAll, loadDispatchTaskCounts])
 
   function handleAddSave() {
-    const { first, last, contact_email, pronouns, slack_user_id } = addForm
+    const { first, last, contact_email, pronouns, slack_user_id, slack_channel_id } = addForm
     if (!first.trim() || !last.trim()) {
       setToast({ text: "First and last name are required", variant: "error" })
       return
@@ -211,6 +319,11 @@ export default function ManageCandidates() {
     if (bind) {
       contact.slack_user_id = bind.slack_user_id
       contact.slack_username = bind.slack_username
+    }
+    const ch = slackChannelFromSelection(slack_channel_id, slackChannels)
+    if (ch) {
+      contact.slack_channel_id = ch.slack_channel_id
+      contact.slack_channel_name = ch.slack_channel_name
     }
     api("/api/candidates", {
       method: "POST",
@@ -230,6 +343,7 @@ export default function ManageCandidates() {
       .then(() => {
         setAddOpen(false)
         setAddForm(EMPTY_ADD_FORM)
+        setChannelMembershipWarn(null)
         setToast({ text: `Candidate "${first} ${last}" created`, variant: "success" })
         loadAll()
         loadDispatchTaskCounts()
@@ -243,6 +357,7 @@ export default function ManageCandidates() {
     const cd = c.candidate_data || {}
     const contact = (cd.contact || {}) as Record<string, unknown>
     const boundId = String(contact.slack_user_id ?? "").trim()
+    const channelId = String(contact.slack_channel_id ?? "").trim()
     setEditTarget(c)
     setEditForm({
       first: String(c.first ?? ""),
@@ -252,11 +367,21 @@ export default function ManageCandidates() {
       state: c.state || "",
       api_key: "",
       slack_user_id: boundId,
+      slack_channel_id: channelId,
     })
     setShowKey(false)
     setClearKey(false)
+    setChannelMembershipWarn(null)
     setEditOpen(true)
     void loadUnboundSlackUsers()
+    void loadSlackChannels()
+    if (channelId) {
+      void runChannelMembershipCheck(channelId, {
+        mode: "edit",
+        astral_candidate_id: c.astral_candidate_id,
+        formSlackUserId: boundId,
+      })
+    }
   }
 
   // Edit options = unbound pool + this candidate's current bind when not already unbound.
@@ -272,7 +397,7 @@ export default function ManageCandidates() {
 
   async function handleEditSave() {
     if (!editTarget) return
-    const { first, last, contact_email, pronouns, state, api_key, slack_user_id } = editForm
+    const { first, last, contact_email, pronouns, state, api_key, slack_user_id, slack_channel_id } = editForm
     const contact: Record<string, string> = {
       contact_email: contact_email.trim(),
     }
@@ -281,6 +406,11 @@ export default function ManageCandidates() {
     if (bind) {
       contact.slack_user_id = bind.slack_user_id
       contact.slack_username = bind.slack_username
+    }
+    const ch = slackChannelFromSelection(slack_channel_id, slackChannels)
+    if (ch) {
+      contact.slack_channel_id = ch.slack_channel_id
+      contact.slack_channel_name = ch.slack_channel_name
     }
     const payload: Record<string, unknown> = {
       first: first.trim(),
@@ -300,6 +430,7 @@ export default function ManageCandidates() {
     const finishOk = () => {
       setEditOpen(false)
       setEditTarget(null)
+      setChannelMembershipWarn(null)
       setToast({ text: "Candidate updated", variant: "success" })
       loadAll()
       loadDispatchTaskCounts()
@@ -406,6 +537,38 @@ export default function ManageCandidates() {
       .finally(() => setSettingCandidateId(null))
   }
 
+  async function handleSlackChannelSnapshot(row: Candidate) {
+    const contact = ((row.candidate_data || {}).contact || {}) as Record<string, unknown>
+    const stored = String(contact.slack_channel_id ?? "").trim()
+    if (!stored) {
+      setToast({ text: "No Slack channel stored for this candidate", variant: "error" })
+      return
+    }
+    const id = row.astral_candidate_id
+    setSnapshottingId(id)
+    try {
+      const q = new URLSearchParams({ astral_candidate_id: id })
+      const r = await api(`/api/admin/contact/slack_channel_snapshot?${q}`)
+      const body = await r.json().catch(() => ({} as Record<string, unknown>))
+      if (!r.ok) {
+        setToast({
+          text: String((body as { error?: string }).error || "Slack channel snapshot failed"),
+          variant: "error",
+        })
+        return
+      }
+      await navigator.clipboard.writeText(JSON.stringify(body, null, 2))
+      setToast({ text: "Slack channel snapshot copied", variant: "success" })
+    } catch (e) {
+      setToast({
+        text: e instanceof Error ? e.message : "Slack channel snapshot failed",
+        variant: "error",
+      })
+    } finally {
+      setSnapshottingId(null)
+    }
+  }
+
   if (!shapes) return <p style={{ padding: 20, color: "#fff" }}>Loading...</p>
 
   const rows = allCandidates.map(c => {
@@ -432,6 +595,15 @@ export default function ManageCandidates() {
       return {
         ...col,
         render: (val: unknown) => <>{Number(val ?? 0)}</>,
+      }
+    }
+    if (col.key === "slack_username") {
+      return {
+        ...col,
+        render: (val: unknown) => {
+          const s = typeof val === "string" ? val.trim() : ""
+          return <>{s || "—"}</>
+        },
       }
     }
     return col
@@ -462,10 +634,29 @@ export default function ManageCandidates() {
           >
             T
           </button>
+          <button
+            type="button"
+            className="icon-control"
+            title="Snapshot Slack channel"
+            aria-label={`Snapshot Slack channel for ${row.astral_candidate_id}`}
+            disabled={snapshottingId === row.astral_candidate_id}
+            onClick={e => { e.stopPropagation(); void handleSlackChannelSnapshot(row) }}
+          >
+            S
+          </button>
         </span>
       ),
     },
   ]
+
+  const channelWarnBlock = channelMembershipWarn ? (
+    <div
+      role="alert"
+      style={{ color: "var(--warning, #ff9800)", fontWeight: 600, fontSize: 13, marginTop: 6 }}
+    >
+      {channelMembershipWarn}
+    </div>
+  ) : null
 
   return (
     <>
@@ -478,8 +669,10 @@ export default function ManageCandidates() {
             className="btn primary"
             onClick={() => {
               setAddForm(EMPTY_ADD_FORM)
+              setChannelMembershipWarn(null)
               setAddOpen(true)
               void loadUnboundSlackUsers()
+              void loadSlackChannels()
             }}
           >
             + Add Candidate
@@ -504,6 +697,7 @@ export default function ManageCandidates() {
         onClose={() => {
           setAddOpen(false)
           setAddForm(EMPTY_ADD_FORM)
+          setChannelMembershipWarn(null)
         }}
         title="Add Candidate"
         onSave={handleAddSave}
@@ -533,6 +727,27 @@ export default function ManageCandidates() {
             ))}
           </select>
         </div>
+        <div className="dep-field">
+          <label className="dep-field-label">Slack channel</label>
+          <select
+            className="dep-input dep-select"
+            value={addForm.slack_channel_id}
+            onChange={e => {
+              const v = e.target.value
+              setAddForm(p => ({ ...p, slack_channel_id: v }))
+              void runChannelMembershipCheck(v, {
+                mode: "add",
+                formSlackUserId: addForm.slack_user_id,
+              })
+            }}
+          >
+            <option value="">— none —</option>
+            {slackChannels.map(c => (
+              <option key={c.id} value={c.id}>{channelOptionLabel(c)}</option>
+            ))}
+          </select>
+          {channelWarnBlock}
+        </div>
         {pronounField && (
           <PronounSelect
             field={pronounField}
@@ -543,7 +758,16 @@ export default function ManageCandidates() {
       </Modal>
 
       {/* Edit modal */}
-      <Modal open={editOpen} onClose={() => { setEditOpen(false); setEditTarget(null) }} title={editTarget ? `Edit: ${editTarget.astral_candidate_id}` : ""} onSave={() => { void handleEditSave() }}>
+      <Modal
+        open={editOpen}
+        onClose={() => {
+          setEditOpen(false)
+          setEditTarget(null)
+          setChannelMembershipWarn(null)
+        }}
+        title={editTarget ? `Edit: ${editTarget.astral_candidate_id}` : ""}
+        onSave={() => { void handleEditSave() }}
+      >
         <div className="dep-field">
           <label className="dep-field-label">First Name</label>
           <input className="dep-input" type="text" value={editForm.first} onChange={e => setEditForm(p => ({ ...p, first: e.target.value }))} />
@@ -568,6 +792,29 @@ export default function ManageCandidates() {
               <option key={u.slack_user_id} value={u.slack_user_id}>{u.username}</option>
             ))}
           </select>
+        </div>
+        <div className="dep-field">
+          <label className="dep-field-label">Slack channel</label>
+          <select
+            className="dep-input dep-select"
+            value={editForm.slack_channel_id}
+            onChange={e => {
+              const v = e.target.value
+              setEditForm(p => ({ ...p, slack_channel_id: v }))
+              if (!editTarget) return
+              void runChannelMembershipCheck(v, {
+                mode: "edit",
+                astral_candidate_id: editTarget.astral_candidate_id,
+                formSlackUserId: editForm.slack_user_id,
+              })
+            }}
+          >
+            <option value="">— none —</option>
+            {slackChannels.map(c => (
+              <option key={c.id} value={c.id}>{channelOptionLabel(c)}</option>
+            ))}
+          </select>
+          {channelWarnBlock}
         </div>
         {pronounField && (
           <PronounSelect

@@ -2,3 +2,4 @@ playwright==1.49.1
 fastapi>=0.115.0,<1
 uvicorn[standard]>=0.30.0,<1
 pydantic>=2,<3
+asyncpg>=0.30.0,<1

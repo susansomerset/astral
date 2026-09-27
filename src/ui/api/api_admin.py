@@ -86,6 +86,7 @@ from src.utils.config import (
     dispatch_score_floor_option_labels,
     is_dispatch_chain_trigger,
     parse_dispatch_hop_label,
+    is_registered_state,
     get_active_llm_provider,
     infer_brain_setting_from_legacy_model_code,
     resolve_brain_setting_to_anthropic_agent_key,
@@ -895,6 +896,7 @@ _DISPATCH_TASK_COLUMNS = [
     {"key": "score_floor",    "label": "Score >= ",   "type": "float"},
     {"key": "min_count",      "label": "Min Count",   "type": "int"},
     {"key": "batch_size",     "label": "Batch Size",  "type": "int"},
+    {"key": "batch_call_mode","label": "Batch Mode",  "type": "int"},
     {"key": "freq_hrs",       "label": "Freq (hrs)",  "type": "float"},
     {"key": "auto_mode",      "label": "AUTO",        "type": "str"},
     {"key": "debug",          "label": "Debug",       "type": "str"},
@@ -1032,10 +1034,19 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
             trigger_state = _dispatch_trigger_state_for_task_key(catalog_key) or ""
         except KeyError:
             pass
+    batch_call_mode = 0
+    if catalog_key in TASK_CONFIG or is_meteorite_email_mailbox_task_key(catalog_key):
+        try:
+            batch_call_mode = int(
+                dispatch_task_admin_defaults(catalog_key)["batch_call_mode"]
+            )
+        except KeyError:
+            pass
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
         "is_scored": dispatch_task_key_is_scored(catalog_key),
+        "batch_call_mode": batch_call_mode,
         **_catalog_task_grouping_meta(grouping_key),
     }
 
@@ -1173,6 +1184,8 @@ def create_dtask():
         return jsonify({"error": str(e)}), 500
     if data.get("skip_daisy_chain"):
         update_dispatch_task(task_id, skip_daisy_chain=1)
+    if "batch_call_mode" in data and data.get("batch_call_mode") is not None:
+        update_dispatch_task(task_id, batch_call_mode=int(bool(data["batch_call_mode"])))
     return jsonify({"id": task_id}), 201
 
 
@@ -1202,7 +1215,7 @@ def _dispatch_task_key_trigger_error(
         parsed = parse_dispatch_hop_label(ts)
         if parsed:
             registry_ts = parsed[0]
-        if registry_ts not in registry:
+        if not is_registered_state(registry, registry_ts):
             return f"task_key {tk!r} (candidate) is not valid for trigger_state {ts!r}"
         return None
     # Optional override from admin form; else catalog entity for task_key.
@@ -1230,7 +1243,7 @@ def _dispatch_task_key_trigger_error(
     parsed_registry = parse_dispatch_hop_label(ts)
     if parsed_registry:
         registry_ts = parsed_registry[0]
-    if registry_ts not in registry:
+    if not is_registered_state(registry, registry_ts):
         return f"task_key {tk!r} ({et}) is not valid for trigger_state {ts!r}"
     if is_dispatch_chain_trigger(registry_ts):
         parsed = parse_dispatch_hop_label(ts)
@@ -1249,8 +1262,9 @@ def update_dtask(task_id):
     if row.get("auto_mode") and (set(data.keys()) - {"auto_mode"}):
         return jsonify({"error": "Turn AUTO mode off before editing this row"}), 400
     allowed = {
-        "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "skip_daisy_chain", "freq_hrs",
-        "max_runs", "score_floor", "trigger_state", "task_key", "entity_type",
+        "min_count", "batch_size", "batch_call_mode", "auto_mode", "debug", "skip_cache",
+        "skip_daisy_chain", "freq_hrs", "max_runs", "score_floor", "trigger_state", "task_key",
+        "entity_type",
     }
     updates: Dict[str, Any] = {}
     # JSON null on entity_type mirrors create — treat as omitted (Joan discuss).
@@ -1319,7 +1333,7 @@ def update_dtask(task_id):
         if k in data and k not in ("task_key", "entity_type"):
             if k in ("min_count", "batch_size", "max_runs"):
                 updates[k] = int(data[k]) if data[k] is not None else None
-            elif k in ("auto_mode", "debug", "skip_cache", "skip_daisy_chain"):
+            elif k in ("auto_mode", "debug", "skip_cache", "skip_daisy_chain", "batch_call_mode"):
                 updates[k] = int(bool(data[k]))
             elif k == "freq_hrs":
                 updates[k] = float(data[k])
@@ -1989,15 +2003,9 @@ def _evaluate_dispatch_empty_render(
     cd = build_candidate_token_view(cand)
     try:
         texts = _dispatch_empty_render_prompt_texts(tk)
-    except ValueError as exc:
-        # No agent_task / prompts to score → nothing expected missing (AST-1791).
-        logger.warning(
-            "%s | dispatch empty_render task_key=%r — %s; "
-            "no prompts to validate, empty_render false",
-            cid,
-            tk,
-            exc,
-        )
+    except ValueError:
+        # No agent_task / prompts to score → intentional soft-miss pass (AST-1791);
+        # silent — do not warn (AST-1794: n/a agent is not a misconfiguration).
         return {"empty_render": False, "empty_tokens": []}
     except Exception as exc:
         logger.exception(
@@ -2204,6 +2212,7 @@ def admin_telescope():
     wait_ready = body.get("wait_ready", False)
     links = body.get("links", True)
     cull = body.get("cull", False)
+    debug = body.get("debug", False)
     selector = body.get("selector")
     if selector is not None:
         selector = str(selector).strip() or None
@@ -2229,6 +2238,7 @@ def admin_telescope():
                 class_name=class_name,
                 id=element_id,
                 cull=bool(cull),
+                debug=bool(debug),
             )
         )
     except ValueError as e:

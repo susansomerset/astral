@@ -2,7 +2,9 @@
 
 Production: signature verify, URL challenge parse, chat.postMessage, users.info,
 workspace poster pool (``list_workspace_posters``), workspace members
-(``list_workspace_members`` for Manage Candidates bind).
+(``list_workspace_members`` for Manage Candidates bind), bot-visible channel
+list (``list_bot_channels``), membership check (``is_channel_member``), and
+full ascending channel history (``fetch_full_conversation_history``).
 Local/dev only: Socket Mode websocket helper (scripts/slack_socket_mode_dev.py).
 
 Secrets from ``os.environ[CONTACT_CONFIG[…_env]]`` at **call time** (strict) —
@@ -51,6 +53,9 @@ __all__ = [
     "fetch_user_profile",
     "list_workspace_posters",
     "list_workspace_members",
+    "list_bot_channels",
+    "is_channel_member",
+    "fetch_full_conversation_history",
     "open_socket_mode_connection",
 ]
 
@@ -418,6 +423,126 @@ def list_workspace_members() -> list[dict]:
     logger.debug("End users.list members loop after %s items", len(rows))
     logger.debug("Response from list_workspace_members: %s", rows)
     return rows
+
+
+def list_bot_channels() -> list[dict]:
+    """Return bot-visible public/private channels as ``{id, name}`` for picker.
+
+    Types are public_channel + private_channel only (no im/mpim). Sorted by
+    name then id. Does not soft-skip — ok:false / HTTP failures raise.
+    """
+    require_controlled_external_io("slack.list_bot_channels")
+    logger.debug("Calling list_bot_channels: []")
+    rows: List[dict] = []
+    cursor = ""
+    logger.debug("Beginning conversations.list channels loop on unknown items")
+    while True:
+        params: Dict[str, Any] = {
+            "types": "public_channel,private_channel",
+            "exclude_archived": True,
+            "limit": _PAGE_LIMIT,
+        }
+        if cursor:
+            params["cursor"] = cursor
+        payload = _slack_bot_get("conversations.list", params)
+        if not payload.get("ok"):
+            raise RuntimeError(f"conversations.list failed: {payload.get('error')}")
+        channels = payload.get("channels") or []
+        if isinstance(channels, list):
+            for ch in channels:
+                if not isinstance(ch, dict):
+                    continue
+                cid = ch.get("id")
+                if not isinstance(cid, str) or not cid.strip():
+                    continue
+                rows.append(
+                    {
+                        "id": cid.strip(),
+                        "name": str(ch.get("name") or "").strip(),
+                    }
+                )
+        meta = payload.get("response_metadata") or {}
+        cursor = str(meta.get("next_cursor") or "").strip() if isinstance(meta, dict) else ""
+        if not cursor:
+            break
+    rows.sort(key=lambda r: (str(r.get("name") or "").lower(), str(r.get("id") or "")))
+    logger.debug("End conversations.list channels loop after %s items", len(rows))
+    logger.debug("Response from list_bot_channels: %s", rows)
+    return rows
+
+
+def is_channel_member(*, channel: str, slack_user_id: str) -> bool:
+    """True when ``slack_user_id`` is in ``conversations.members`` for ``channel``.
+
+    Membership check only — not a poster/user pool. Hard-fail on ok:false / HTTP.
+    """
+    require_controlled_external_io("slack.is_channel_member")
+    ch = (channel or "").strip()
+    uid = (slack_user_id or "").strip()
+    if not ch:
+        raise ValueError("channel is required")
+    if not uid:
+        raise ValueError("slack_user_id is required")
+    logger.debug("Calling is_channel_member: channel=%s slack_user_id=%s", ch, uid)
+    cursor = ""
+    seen = 0
+    logger.debug("Beginning conversations.members loop on unknown items")
+    while True:
+        params: Dict[str, Any] = {"channel": ch, "limit": _PAGE_LIMIT}
+        if cursor:
+            params["cursor"] = cursor
+        payload = _slack_bot_get("conversations.members", params)
+        if not payload.get("ok"):
+            raise RuntimeError(f"conversations.members failed: {payload.get('error')}")
+        members = payload.get("members") or []
+        if isinstance(members, list):
+            for mid in members:
+                if not isinstance(mid, str):
+                    continue
+                seen += 1
+                if mid.strip() == uid:
+                    logger.debug("End conversations.members loop after %s items", seen)
+                    logger.debug("Response from is_channel_member: %s", True)
+                    return True
+        meta = payload.get("response_metadata") or {}
+        cursor = str(meta.get("next_cursor") or "").strip() if isinstance(meta, dict) else ""
+        if not cursor:
+            break
+    logger.debug("End conversations.members loop after %s items", seen)
+    logger.debug("Response from is_channel_member: %s", False)
+    return False
+
+
+def fetch_full_conversation_history(*, channel: str) -> list[dict]:
+    """Paginate conversations.history for one channel; return oldest→newest.
+
+    Complements limited ``fetch_conversation_history`` (single page). Hard-fail
+    on ok:false / HTTP — no soft-skip for a stored-channel snapshot.
+    """
+    require_controlled_external_io("slack.fetch_full_conversation_history")
+    ch = (channel or "").strip()
+    if not ch:
+        raise ValueError("channel is required")
+    logger.debug("Calling fetch_full_conversation_history: channel=%s", ch)
+    messages = _paginate_messages(
+        "conversations.history",
+        {"channel": ch, "limit": _PAGE_LIMIT},
+        soft_skip=False,
+    )
+    # soft_skip=False → list or raise; never None
+    msgs = messages if isinstance(messages, list) else []
+    logger.debug("Beginning ascending sort loop on %s items", len(msgs))
+
+    def _ts_key(m: dict) -> tuple:
+        ts = m.get("ts")
+        if isinstance(ts, str) and ts:
+            return (0, ts)
+        return (1, "")
+
+    sorted_msgs = sorted(msgs, key=_ts_key)
+    logger.debug("End ascending sort loop after %s items", len(sorted_msgs))
+    logger.debug("Response from fetch_full_conversation_history: %s", sorted_msgs)
+    return sorted_msgs
 
 
 def open_socket_mode_connection(handler: Callable[[dict], None]) -> None:

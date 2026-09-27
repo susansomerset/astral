@@ -25,13 +25,12 @@ from src.external.telescope import (
     extract_visible_text,
     extract_page_dom,
     get_visible_text,
-    get_page,
     close_page,
     create_browser_context,
     create_batch_browser_session,
     BrowserSession,
     normalize_url,
-    wait_for_careers_list_readiness,
+    scrape_page,
     PlaywrightInfraError,
     classify_playwright_failure,
     is_playwright_infra_failure,
@@ -65,8 +64,9 @@ from src.utils.config import (
     PLAYWRIGHT_CONFIG,
     ROSTER_CONFIG,
     TASK_CONFIG,
-    roster_scrape_readiness_config,
-    validate_value,
+    is_registered_state,
+    registered_base,
+    retry_of,
 )
 from src.utils.formatting import (
     collapse_consecutive_blank_lines,
@@ -231,7 +231,9 @@ def transition_company_state(short_name: str, to_state: str) -> None:
     """Record company state transition (mirrors tracker.transition_job_state).
     Appends to state_history; updates state. Validates to_state against COMPANY_STATES.
     Raises ValueError if invalid or company not found."""
-    validate_value(_COMPANY_STATE_LIST, to_state)
+    # Implicit {base}_RETRY validates via its base (AST-1805); message kept for callers/tests.
+    if not is_registered_state(COMPANY_STATES, to_state):
+        raise ValueError(f"Value {to_state!r} not in allowed list: {_COMPANY_STATE_LIST}")
     company = get_company(short_name)
     if not company:
         raise ValueError(f"Company not found: {short_name}")
@@ -882,7 +884,7 @@ async def run_company_task(
                 return {**zero, "total_passed": 1}
             return {**zero, "total_failed": 1}
 
-        elif input_state in ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"):
+        elif input_state in ("WEBSITE_FOUND", retry_of("WEBSITE_FOUND")):
             tk = (dispatch_task_key or "").strip()
             _warn_company(
                 short_name, "-",
@@ -1054,17 +1056,16 @@ async def _scrape_list_page_dom_for_parse(
     batch_session=None,
     short_name: str = "",
 ) -> str:
-    """Playwright DOM reload for parse_job_list — careers-list readiness (AST-689)."""
-    _ = debug
+    """DOM reload for parse_job_list — careers-list readiness (AST-689).
+
+    One Telescope job (scrape_page) returns body text + body html; the html comes back culled.
+    """
+    _ = debug, batch_session
     try:
-        if batch_session is not None:
-            pg = await get_page(batch_session=batch_session, url=url)
-        else:
-            pg = await get_page(browser_context, url)
+        logger.debug("Calling scrape_page: [url=%s fields=text,html careers_list=True]", url)
+        pg = await scrape_page(url, fields=("text", "html"), careers_list=True, session=browser_context)
         try:
-            readiness_cfg = roster_scrape_readiness_config()
-            ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
-            logger.debug("Response from wait_for_careers_list_readiness: %s", ready_meta)
+            logger.debug("Response from scrape_page: %s", pg.readiness)
             return (await extract_page_dom(pg)) or ""
         finally:
             await close_page(pg)
@@ -1404,15 +1405,14 @@ def get_new_company_batch(
     batch_id: when provided, uses this batch_id instead of generating a new one.
     context: prefix for auto-generated batch_id (required when batch_id is not provided).
     """
+    # Multi-state claim (states=): do not registry-gate companions — AST-1801 /
+    # AST-1798 suffix-always may include keys absent from COMPANY_STATES.
     allowed = list(COMPANY_STATES.keys()) if COMPANY_STATES else []
     if states is None:
-        if not allowed or state not in allowed:
+        if not is_registered_state(COMPANY_STATES, state):
             raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
-    else:
-        for s in states:
-            if not allowed or s not in allowed:
-                raise ValueError(f"state must be one of {allowed!r}, got {s!r}")
-    state_config = (COMPANY_STATES or {}).get(state, {})
+    # Implicit {base}_RETRY shares the base's batch_criteria (AST-1806).
+    state_config = (COMPANY_STATES or {}).get(registered_base(COMPANY_STATES, state) or state, {})
     batch_criteria = state_config.get("batch_criteria", {})
     limit_val = limit if limit is not None else batch_criteria.get("limit", 10)
     default_sort = batch_criteria.get("sort_by", "updated_at")
@@ -1582,26 +1582,13 @@ async def scrape_company_homepage_content(
         "enumerated_nav_links": "",
         "error": None,
     }
+    _ = batch_session
     try:
-        if batch_session is not None:
-            pg = await get_page(batch_session=batch_session, url=company_website)
-            try:
-                contract = await scrape_loaded_page_contract(pg, debug=False)
-            finally:
-                await close_page(pg)
-        elif browser_context is not None:
-            pg = await get_page(browser_context, company_website)
-            try:
-                contract = await scrape_loaded_page_contract(pg, debug=False)
-            finally:
-                await close_page(pg)
-        else:
-            async with create_browser_context() as ctx:
-                pg = await get_page(ctx, company_website)
-                try:
-                    contract = await scrape_loaded_page_contract(pg, debug=False)
-                finally:
-                    await close_page(pg)
+        pg = await scrape_page(company_website, fields=("text", "links"), session=browser_context)
+        try:
+            contract = await scrape_loaded_page_contract(pg, debug=False)
+        finally:
+            await close_page(pg)
     except Exception as scrape_err:
         if isinstance(scrape_err, PlaywrightInfraError):
             fc = scrape_err.failure_class
@@ -2373,11 +2360,12 @@ async def _scrape_pjl_page(
         fetch_url = f"https://{fetch_url.lstrip('/')}"
     out: Dict[str, Any] = {"url": fetch_url, "visible_text": "", "page_links": []}
     try:
-        pg = await get_page(browser_context, fetch_url)
+        pg = await scrape_page(
+            fetch_url, fields=("text", "links"), careers_list=True, session=browser_context
+        )
         try:
-            readiness_cfg = roster_scrape_readiness_config()
-            ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
-            logger.debug("Response from wait_for_careers_list_readiness: %s", ready_meta)
+            ready_meta = pg.readiness
+            logger.debug("Response from scrape_page: %s", ready_meta)
             contract = await scrape_loaded_page_contract(pg, debug=debug)
             out["visible_text"] = (contract.get("visible_text") or "").strip()
             out["page_links"] = contract.get("nav_urls") or []
@@ -2556,12 +2544,12 @@ async def _fetch_job_links_content(
             continue
         page_url_map[page_num] = url
         try:
-            # Single page load — extract text, DOM, and links from the same navigation
-            pg = await get_page(browser_context, url)
+            # One Telescope job: text, DOM and links from the same page load.
+            pg = await scrape_page(
+                url, fields=("text", "links", "html"), careers_list=True, session=browser_context
+            )
             try:
-                readiness_cfg = roster_scrape_readiness_config()
-                ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
-                logger.debug("Response from wait_for_careers_list_readiness: %s", ready_meta)
+                logger.debug("Response from scrape_page: %s", pg.readiness)
                 vt_result = await extract_visible_text(pg)
                 visible_text = vt_result.get("text", "") or ""
                 dom_html = await extract_page_dom(pg)

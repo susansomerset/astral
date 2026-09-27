@@ -13,13 +13,19 @@ _log = get_logger(__name__)
 
 async def navigate(page, url: str) -> None:
     _log.debug("Calling navigate: [url=%s]", url)
-    await page.goto(
+    started = time.monotonic()
+    response = await page.goto(
         url,
         wait_until="domcontentloaded",
         timeout=settings.page_goto_timeout_ms,
     )
     await page.wait_for_timeout(500)
-    _log.debug("Response from navigate: final_url=%s", page.url)
+    _log.debug(
+        "Response from navigate: status=%s final_url=%s load_s=%.1f",
+        response.status if response is not None else "-",
+        page.url,
+        time.monotonic() - started,
+    )
 
 
 async def _try_dismiss_cookie_banner(page) -> bool:
