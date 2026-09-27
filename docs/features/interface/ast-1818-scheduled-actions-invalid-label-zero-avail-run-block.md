@@ -165,3 +165,60 @@ context_tokens≈18500
   - **11 expected** (behaviour changed by this ticket): AST-647, AST-746, AST-760 (frozen columns); AST-887 ×4 and AST-894 ×2 (Avail default was `gt0`); AST-1104 landing (Avail default); AST-1782 `blocks AUTO toggle and Run when empty_render is true` (button is now named Invalid).
   - **2 pre-existing, also red on unmodified `origin/dev`:** AST-751 `All-candidate default sort orders same task by available count descending` and AST-768 `with Candidate All, group filter narrows sections and default sort by avail desc`. Both read `cells[11]` (Runs, `∞`) where they expect the Candidate column.
 - **Missing cases (AC 1–3):** Invalid button name/classes/full opacity; valid zero-avail row Run disabled at 0.25 with no `/run` POST.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1818  
+**Publish ref:** `cedb7ac7814b728e87a91cb65237813d893e5b2d` (`origin/sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block`)  
+**Corpus:** `a0bc2f0e5b5810448cf465ebeff84ffb6f1d60b6`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+*(Frozen list empty — Linear **Citations:** none; parent Architectural definition records no applicable statutes/patterns. Nothing to score.)*
+
+## Column diff vs plan stage
+
+(aligned) — Joan’s plan-stage column also used an empty frozen list; no per-id grades to compare.
+
+## Frame diff
+
+(none) — Product and Betty’s test/bible updates cover AC 1–11; no Description checklist rows need adding for `resolve-child` beyond what the engineer will tick at UT.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `origin/dev...origin/sub/...` also includes merge-tests baggage from `origin/tests` (not AST-1818 product scope): `docs/test-bible/frontend/lib.md`, `docs/test-bible/ui/api/api_candidate.md`, `tests/component/frontend/contexts/test_CandidateContext.test.tsx`, `tests/component/frontend/lib/test_sessionAuthMark.test.ts`, `tests/component/frontend/pages/test_Authenticate.test.tsx`, `tests/component/frontend/pages/test_JobsJobDetail.test.tsx`, `tests/component/frontend/stytchMock.tsx`, `tests/component/ui/api/test_api_candidate.py`. Score only `AdminScheduledActions.tsx` + this ticket’s Scheduled Actions test/bible rows; do not treat those paths as cross-ticket product scope.
+- **Plan fidelity:** Three-dot diff matches Stages 1–2 verbatim (`FROZEN_DATA_COLUMNS` 1 + comment, `useState("")` for Avail, `zeroAvail` / Invalid secondary label / opacity split). AC 9 verified empty on shared paths; AC 10 no new colour literals on added lines. **Tests Passed** + manifest on tip implies AC 11 (71-case suite, build, lint baseline 33) — Radia did not re-run Vitest in Ask mode.
+- **Estimate footprint:** Confirm **2** still fits (single product file + expected assertion churn + two new zero-avail/Invalid cases + AST-751/768 column-index drift fix).
+- **Lint:** Two pre-existing `no-extra-boolean-cast` hits on `!!row.empty_render` in `toggleAutoMode` / `handleRun` remain out of plan scope (engineer note in issue doc stands).
+
+## What’s solid
+
+- Invalid vs zero-avail split matches plan decisions: `emptyRender ? "Invalid"` + `btn secondary in-row` at full opacity; `zeroAvail` reuses muted primary Run at 0.25 with `pointer-events: none`; Stop overlay untouched (AC 5 covered in new describe block).
+- Betty’s revisions align with AC 6–8 (Avail default, frozen Task-only, AST-1782 Invalid assertions) and document superseded AST-894/887/1104 defaults in `pages.md`.
+
+## Recommended actions (downstream — not executed by Radia)
+
+(none) — Chuckles: append this artifact, `docs(AST-1818): Radia review — clean`, post slim upshot `--as radia`, move **Review Posted**; datt **§3h** **PROCEED** → **User Testing** (no `resolve-child` unless Susan wants the optional Joan self-assessment discuss, which was plan-only).
+
+---
+
+**Slim Linear upshot (Chuckles posts via `linear_proxy --as radia`):**
+
+```
+[code-rubric] PROCEED (Commit: cedb7ac7) Plan-faithful, empty canon OK
+```
+
+context_tokens≈28000
