@@ -420,18 +420,28 @@ class TestFetchWebsiteFailRouting:
 
 
 class TestAst882HomepageReadyWfrSkip:
-    """AST-882/AST-892: WFR+homepage_text skip; work-only total excludes skips; bare WFR still scrapes."""
+    """AST-882 / AST-1810: every WEBSITE_FOUND_RETRY row is scraped (AST-892 second-strike skip removed).
+    The return dict keeps its "skipped" key, always 0."""
 
     @pytest.mark.asyncio
-    async def test_skips_wfr_when_homepage_text_present(
+    async def test_scrapes_wfr_even_when_homepage_text_present(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # [AST-1810] Pre-fix this row was skipped (skipped=1, total=0, no scrape).
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_batch_browser_session(monkeypatch)
         transition = MagicMock()
-        scrape = AsyncMock()
+        save = MagicMock()
+        scrape = AsyncMock(
+            return_value={
+                "company_website": "https://acme.com",
+                "visible_text": "fresh homepage body",
+                "nav_links": [],
+                "error": None,
+            }
+        )
         monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
-        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
         monkeypatch.setattr(gazer_mod, "scrape_company_homepage_content", scrape)
         companies = [
             {
@@ -442,9 +452,11 @@ class TestAst882HomepageReadyWfrSkip:
             },
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
-        assert out == {"passed": 0, "failed": 0, "errors": 0, "skipped": 1, "total": 0}
-        transition.assert_not_called()
-        scrape.assert_not_called()
+        assert out == {"passed": 1, "failed": 0, "errors": 0, "skipped": 0, "total": 1}
+        scrape.assert_awaited_once()
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY")
+        # Re-fetch replaces homepage_text via the merge save (prefilter-owned keys untouched).
+        assert save.call_args.args[1]["homepage_text"] == "fresh homepage body"
 
     @pytest.mark.asyncio
     async def test_infra_retry_without_homepage_text_still_routes(
@@ -479,10 +491,10 @@ class TestAst882HomepageReadyWfrSkip:
         transition.assert_called_once_with("acme", "CANNOT_READ_WEBSITE")
 
     @pytest.mark.asyncio
-    async def test_mixed_skip_and_scrape_excludes_skips_from_total(
+    async def test_mixed_second_strike_and_fresh_both_scrape(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """AST-892: skipped second-strike rows do not inflate batch total / loop counters."""
+        """AST-1810: a second-strike row and a fresh row are both work; nothing is skipped."""
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_batch_browser_session(monkeypatch)
         transition = MagicMock()
@@ -515,8 +527,8 @@ class TestAst882HomepageReadyWfrSkip:
             },
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies, debug=True)
-        assert out == {"passed": 1, "failed": 0, "errors": 0, "skipped": 1, "total": 1}
-        transition.assert_called_once_with("need", "HOMEPAGE_READY")
+        assert out == {"passed": 2, "failed": 0, "errors": 0, "skipped": 0, "total": 2}
+        assert {c.args for c in transition.call_args_list} == {("already", "HOMEPAGE_READY"), ("need", "HOMEPAGE_READY")}
 
 
 class TestFetchJobPagesBatch:

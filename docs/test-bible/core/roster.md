@@ -677,6 +677,8 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 | --- | --- | --- |
 | `_prefilter_fail` first/second strike | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError::{test_prefilter_fail_first_strike_retries,test_prefilter_fail_second_strike_errors}` |
 | Batch do_task fail from WFR → error | `src/core/roster.py` | `::TestAst882PrefilterOneRetryThenError::test_batch_do_task_failure_second_strike_to_error` |
+
+**AST-1810:** `get_new_company_batch` no longer takes/passes `exclude_prefilter_second_strike` — `TestBatchApi::test_get_new_company_batch_claims_and_returns_rows` drops the kwarg from its `claim_company_batch` call assert. Prefilter second-strike routing rows above are unchanged. Primary manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-1810**).
 | Not-ready WFR leave-alone | `src/core/roster.py` | `::TestAst882PrefilterOneRetryThenError::test_not_ready_wfr_left_alone_for_fetch_website` |
 | Monolithic fail uses current state | `src/core/roster.py` | `::TestPrefilterCompany::test_api_failure_and_missing_parsed_response` (revised) |
 
