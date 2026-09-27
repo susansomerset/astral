@@ -853,3 +853,21 @@ Keep AST-1780 / AST-1792 rows; do not mark them obsolete.
   tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey::test_ast1807_trigger_error_accepts_implicit_retry \
   -q
 ```
+
+### AST-1819 · AST-1817 (qa-fix bug-repro — list_dtasks `empty_tokens` row field)
+
+**Parent:** [AST-1817](https://linear.app/astralcareermatch/issue/AST-1817). **Publish:** `origin/sub/AST-1817/AST-1819-invalid-button-missing-token-tooltip`.
+
+`GET /api/admin/dispatch_tasks` rows carry `empty_tokens: list[str]` (from the already-computed `_evaluate_dispatch_empty_render`) for the Scheduled Actions Invalid tooltip. Additive key; AUTO force-off unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Row `empty_tokens` = token list `[bug-repro]` | `src/ui/api/api_admin.py` | **`TestAst1780EmptyRenderListGatesForceOff::test_list_sets_empty_render_and_forces_auto_off`** (revised: asserts `["FIRST_NAME"]`) |
+| Row `empty_tokens` = `[]` when valid `[bug-repro]` | same | **`…::test_list_empty_render_false_keeps_auto`** (revised) |
+
+Red on pre-fix tree: `KeyError: 'empty_tokens'`. Pre-existing unrelated reds in this file (5, also red without AST-1819 edits): AST-781 legacy board_search, `TestDispatchTasks::test_list_dispatch_tasks_and_keys`, `TestApiAdminBranchGaps::test_dispatch_task_keys_db_row_adds_orphan_key`, AST-783 repo_json revert, AST-1214 mailbox wording — not in this manifest.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff -q
+```

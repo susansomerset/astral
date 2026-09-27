@@ -90,6 +90,7 @@ interface DispatchTask {
   available_count: number
   always_visible_under_avail_gt0?: boolean
   empty_render?: boolean
+  empty_tokens?: string[]
 }
 
 interface ThreadEntry {
@@ -207,6 +208,10 @@ function ScheduledPhaseTable({
             // AST-1818: a valid task with nothing to claim gets the same muted, unclickable Run treatment.
             const zeroAvail = !emptyRender && avail === 0
             const runBlocked = isRunning || sweepDisabled || emptyRender || zeroAvail
+            // AST-1819: Invalid tooltip — missing tokens, or a fallback when prompts could not be validated.
+            const invalidTitle = emptyRender && !isRunning
+              ? (row.empty_tokens?.length ? row.empty_tokens.join(", ") : "Could not validate prompts")
+              : undefined
             return (
               <tr
                 key={row.id}
@@ -242,7 +247,7 @@ function ScheduledPhaseTable({
                   </button>
                 </td>
                 <td style={{ textAlign: "center" }}>
-                  <div style={{ position: "relative", display: "inline-block" }}>
+                  <div title={invalidTitle} style={{ position: "relative", display: "inline-block" }}>
                     <button
                       // AST-1818: Invalid reuses the shared secondary role (no new class / colour literal).
                       className={emptyRender ? "btn secondary in-row" : "btn primary in-row"}
