@@ -348,3 +348,62 @@ No new table, column, config key, or state. NO_OPENINGS → JOBS_FOUND routing i
 
 - `get_due_tasks` / admin Avail dropping to the claimable set is intended alignment with batch-criteria, not a new dispatch precedent.
 - Plan’s known left-alone gap (company rows with `freq_hrs > 0` but no state `scan_interval_hours` and not WATCH) is explicitly out of AST-1820 scope; no statute touch.
+
+### Radia review-fix — AST-1821
+
+[code-rubric] PROCEED (Commit: 4dd0af80): clean.
+
+#### Fix-specific checks
+
+- **[bug-repro]** not applicable — clean board opt-out: `[board-betty] TESTS: REVISE` is owned by sibling **AST-1822**; qa-fix did not run on this tip; no `[bug-repro]` expected here.
+- **## What must still hold — OK** — Traced all six bullets against the tip diff: success paths and JOBS_FOUND routing untouched; `freq_hrs=0` → state default unchanged; `count_companies_in_state_with_score_floor` default kwarg preserves prior SQL; primary-trigger Avail without `score_floor` unchanged for `NO_OPENINGS` (base lookup is identity); intentional `WATCH_RETRY` / `NO_OPENINGS_RETRY` count alignment matches plan blast radius without altering primary WATCH claim behavior.
+
+#### Canon scores
+
+**Notes:** Linear Description has no **Canon Scope (frozen at plan)** block (same as fix-board Joan read). Scored the overlap Joan triaged in the issue doc § Fix board — AST-1821 (`patt.entity.batch-criteria`, `astral.dispatch.entity-state-bound`, `patt.entity.batch-processing`, `astral.batch.claim-process-release`, `patt.task.dispatch-retry`). Process gap for Archie if fix bugs should carry explicit frozen lists; not product **ESCALATE**.
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+| astral.dispatch.entity-state-bound | A | | |
+| patt.entity.batch-processing | X | | diff does not touch claim/process/release |
+| astral.batch.claim-process-release | X | | diff does not touch claim/process/release |
+| patt.task.dispatch-retry | A | | stamp-only; arc-5 routing tension pre-existing on ftr |
+
+#### Column diff vs plan stage
+
+no plan-stage scores attached (fix-board Joan narrative only; no validate-plan F3 score table)
+
+#### Frame diff
+
+(none)
+
+#### Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Canon Scope on ticket:** Description lacks a frozen canon list; scored board overlap per `docs/features/meteorite/ast-1784-…` precedent.
+- **`patt.task.dispatch-retry` arc 5:** Failed recheck still leaves companies in `NO_OPENINGS` without `_RETRY` routing — unchanged by this diff; Susan already chose throttle-via-`last_scan_at` on AST-1820; not introduced here.
+- **Test gap:** Failure-path stamp and Avail composition assertions land on **AST-1822**; existing `TestProcessRecheckNoOpenings` nodes still pass unpatched (per Hedy test-fix comment).
+
+#### What's solid
+
+- `process_recheck_no_openings` stamps `update_company_last_scan_at` on the three failure returns, not on `missing short_name`, matching plan-fix.
+- Company branch resolves `batch_criteria` via `registered_base`, composes `score_floor` with the same `use_stale` / `scan_h` logic as the non-floor path, and threads `scan_interval_hours` into `count_companies_in_state_with_score_floor` with SQL bind order matching placeholders.
+- Docstring-only `update_company_last_scan_at` update matches behavior.
+
+#### Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned** mini-parent AST-1820 | → **Review Posted** → skip `resolve-child` / `merge-child` / `prep-uat` → merge `sub/AST-1820/AST-1821-recheck-no-openings-avail-count` **straight to `origin/dev`** (finish-up-style) once Susan’s lane allows. |
+
+**Plan fidelity:** Diff implements plan-fix § Bug: AST-1821 **Proposed change** (roster stamps + database count composition + kwarg). **Estimate 3** footprint fits (two modules, no schema). **Cross-ticket scope:** Product diff is AST-1821-only; no sibling product smuggle.
+
+#### Chuckles disposition
+
+Clean review: Review Posted → User Testing (resolve-child skipped). Docs-acceptance on this tip: the test/bible delivery is sibling gap AST-1822. merge-child goes into this bug's own `ftr/AST-1820-recheck-no-openings-avail-count` (orphaned mini-parent), not straight to dev.
