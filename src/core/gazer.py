@@ -493,9 +493,8 @@ async def fetch_website_batch(
 ) -> Dict[str, int]:
     """Scrape homepage + nav_links for WEBSITE_FOUND companies (AST-701).
     Transitions each company to HOMEPAGE_READY (pass), WEBSITE_FOUND_RETRY (infra retry),
-    or CANNOT_READ_WEBSITE (fail). Returns {"passed", "failed", "errors", "skipped", "total"}
-    where total is work attempted (excludes intentional second-strike skips); claim-time
-    exclusion (AST-892) is the primary ownership fix for those skips."""
+    or CANNOT_READ_WEBSITE (fail). Returns {"passed", "failed", "errors", "skipped", "total"};
+    every claimed row is scraped, so skipped stays 0 (AST-1810 removed the AST-892 split)."""
     if not await check_connectivity():
         raise ConnectionError(
             f"fetch_website_batch: no internet connectivity, aborting batch {batch_id} "
@@ -522,25 +521,9 @@ async def fetch_website_batch(
     async with create_batch_browser_session() as batch_session:
 
         async def _fetch_one_inner(company: Dict[str, Any], company_index: int) -> None:
-            nonlocal passed, failed, skipped
+            nonlocal passed, failed
             short_name = company.get("short_name") or ""
             company_state = (company.get("state") or "").strip()
-            # Prefilter second-strike pool: already scraped homepage — leave for prefilter.
-            cd = company.get("company_data") or {}
-            if (
-                company_state == cfg["retry_state"]
-                and len((cd.get("homepage_text") or "").strip()) > 0
-            ):
-                skipped += 1
-                if debug:
-                    _log.debug_index(
-                        func="gazer.fetch_website_batch",
-                        index=company_index,
-                        total=company_total,
-                        identifier=_gazer_company_identifier(company),
-                        outcome="skip — homepage_text present; leave for prefilter second strike",
-                    )
-                return
             original_website = (company.get("company_website") or "").strip()
             if not original_website:
                 if debug:
