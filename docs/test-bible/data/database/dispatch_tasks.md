@@ -215,6 +215,8 @@ Config claim helper: **`docs/test-bible/utils/config.md`** (**AST-882**).
 
 ### AST-892
 
+**Superseded by AST-1810** (split removed — see **`### AST-1810`** below). Rows naming `TestAst892FetchWebsiteSecondStrikeFilter`, `test_ast892_fetch_website_excludes_prefilter_second_strike`, and `test_get_new_company_batch_passes_exclude_prefilter_second_strike` are obsolete (the latter two were already absent from the test tree).
+
 **AST-892:** `fetch_website` claim/count exclude `WEBSITE_FOUND_RETRY` rows with non-empty `homepage_text` (prefilter second strike). Bare WFR without homepage text and `WEBSITE_FOUND` still claim. Defense-in-depth: `fetch_website_batch` returns work-only `total` (excludes intentional skips) so a pure-skip race cannot inflate dispatch `total_processed`.
 
 | Area | Source | Component tests |
@@ -539,3 +541,30 @@ Board REVISE on AST-1432: pool-2 on a bound row was wrong; two-candidate bound A
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/data/database/dispatch_tasks.md`
 - `docs/test-bible/core/candidate.md`
+
+### AST-1810 · AST-1804 (fetch_website takes every WEBSITE_FOUND_RETRY row)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1810-fetch-website-retry-all`. Susan ruled the AST-892 `homepage_text` second-strike split a bug: fetch_website count, claim, and handler take every unclaimed `WEBSITE_FOUND` / `WEBSITE_FOUND_RETRY` row. Count uses the generic `count_entities_in_state(..., states=claim_states)` path; `exclude_prefilter_second_strike` and `fetch_website_prefilter_second_strike_filter` are deleted.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** fetch_website count includes every WFR row (3 → 4); prefilter `HOMEPAGE_READY` count takes no WFR rows (AST-1798 suffix-always → 0) | `src/data/database.py` `count_eligible_for_dispatch_task` | `tests/component/data/database/test_dispatch_tasks.py::TestAst892FetchWebsiteExcludesSecondStrike::test_count_includes_every_wfr_row` |
+| Claim takes second-strike + bare WFR + fresh (kwarg removed) | `src/data/database.py` `claim_company_batch` / `set_company_batch` | `::TestAst892FetchWebsiteExcludesSecondStrike::test_claim_takes_second_strike_and_bare_wfr` |
+| Explicit multi-state prefilter claim still takes WFR (kwarg removed) | same | `::TestAst892FetchWebsiteExcludesSecondStrike::test_prefilter_claim_still_takes_second_strike` |
+| Handler scrapes WFR + `homepage_text` (`skipped` key kept, always 0) | `src/core/gazer.py` `fetch_website_batch` | `tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip::{test_scrapes_wfr_even_when_homepage_text_present,test_mixed_second_strike_and_fresh_both_scrape}` |
+| Roster claim call has no `exclude_prefilter_second_strike` | `src/core/roster.py` `get_new_company_batch` | `tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_claims_and_returns_rows` |
+
+**Broken / obsolete → revised:** the three `TestAst892FetchWebsiteExcludesSecondStrike` cases (renamed count/claim cases above); `TestAst882HomepageReadyWfrSkip::test_skips_wfr_when_homepage_text_present` → `test_scrapes_wfr_even_when_homepage_text_present`; `::test_mixed_skip_and_scrape_excludes_skips_from_total` → `test_mixed_second_strike_and_fresh_both_scrape`; `TestBatchApi::test_get_new_company_batch_claims_and_returns_rows` drops the kwarg. **Deleted:** `tests/component/utils/test_config.py::TestAst892FetchWebsiteSecondStrikeFilter`. **Unchanged:** `test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_pure_skip_zero_processed` (dict-shape mapping still valid); `test_roster` prefilter second-strike → `ERROR_PREFILTER` routing.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst892FetchWebsiteExcludesSecondStrike \
+  tests/component/core/test_gazer.py::TestAst882HomepageReadyWfrSkip \
+  tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_claims_and_returns_rows \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_website_batch_pure_skip_zero_processed \
+  -q
+```
+
+**Pass criterion:** pytest green once AST-1810 product (P1–P5) is on the tree; red on the pre-fix tree (count 3 ≠ 4, gazer skip, roster extra kwarg).

@@ -106,7 +106,6 @@ from src.utils.config import (
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
     is_registered_state,
-    fetch_website_prefilter_second_strike_filter,
     dispatch_chain_claim_states_for_row,
     is_dispatch_chain_trigger,
     is_valid_candidate_batch_claim_state,
@@ -223,13 +222,11 @@ def claim_company_batch(
     require_empty_website: bool = False,
     score_floor: Optional[float] = None,
     states: Optional[List[str]] = None,
-    exclude_prefilter_second_strike: bool = False,
     ) -> int:
     """Set batch_id, batch_created_at on company rows WHERE state=? AND batch_id IS NULL [AND scan_interval] LIMIT ?.
     Parameter order: batch_id first (caller owns it). When scan_interval_hours is set (gazer), only rows with
     last_scan_at NULL or stale. candidate_id scopes to a single candidate's companies. Returns count updated.
     score_floor: when set, only companies with company_data.prefilter_score >= floor are claimed (AST-508).
-    exclude_prefilter_second_strike: when True, skip WEBSITE_FOUND_RETRY rows with homepage_text (AST-892).
     Claim excludes short names matching METEORITE_CONFIG["short_name_prefix"] (AST-1041).
     """
     return set_company_batch(
@@ -243,7 +240,6 @@ def claim_company_batch(
         require_empty_website=require_empty_website,
         score_floor=score_floor,
         states=states,
-        exclude_prefilter_second_strike=exclude_prefilter_second_strike,
     )
 
 def clear_company_batch(batch_id: str) -> int:
@@ -981,7 +977,6 @@ def set_company_batch(
     require_empty_website: bool = False,
     score_floor: Optional[float] = None,
     states: Optional[List[str]] = None,
-    exclude_prefilter_second_strike: bool = False,
     ) -> int:
     """Set batch_id on company rows: populate (claim) or clear.
 
@@ -1022,16 +1017,6 @@ def set_company_batch(
                         f" AND CAST(json_extract(company_data, '$.{score_key}') AS REAL) >= ?"
                     )
                     params.append(float(score_floor))
-                if exclude_prefilter_second_strike:
-                    retry_state, ht_key = fetch_website_prefilter_second_strike_filter()
-                    where_base += (
-                        f" AND NOT ("
-                        f" state = ?"
-                        f" AND json_extract(company_data, '$.{ht_key}') IS NOT NULL"
-                        f" AND TRIM(json_extract(company_data, '$.{ht_key}')) != ''"
-                        f" )"
-                    )
-                    params.append(retry_state)
                 # AST-1041: never claim meteorite placeholder companies
                 meteorite_prefix = METEORITE_CONFIG["short_name_prefix"]
                 where_base += " AND short_name NOT LIKE ?"
@@ -8986,8 +8971,6 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     if entity_type == "company":
         # Company Avail follows dispatch row trigger_state + claim_states (same as claim_*_batch).
         # Custom Avail helpers are reserved for entity_type=candidate only (inflow_discovery above).
-        if (task_key or "").strip() == "fetch_website":
-            return count_companies_eligible_for_fetch_website(candidate_id, claim_states)
         floor_raw = task.get("score_floor")
         if floor_raw is not None:
             return count_companies_in_state_with_score_floor(
@@ -9036,36 +9019,6 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
                 conn.close()
         return _run_with_retry(_with_conn)
     return count_entities_in_state(entity_type, state, candidate_id, states=claim_states)
-
-
-def count_companies_eligible_for_fetch_website(
-    candidate_id: str,
-    states: List[str],
-) -> int:
-    """Unclaimed companies for fetch_website: exclude prefilter second-strike WFR rows (AST-892)."""
-    retry_state, ht_key = fetch_website_prefilter_second_strike_filter()
-
-    def _with_conn() -> int:
-        conn = _get_connection()
-        try:
-            _ensure_company_schema(conn)
-            state_sql, state_params = _state_in_sql(states)
-            row = conn.execute(
-                f"""SELECT COUNT(*) FROM company
-                    WHERE {state_sql} AND candidate_id = ?
-                      AND (batch_id IS NULL OR batch_id = '')
-                      AND NOT (
-                        state = ?
-                        AND json_extract(company_data, '$.{ht_key}') IS NOT NULL
-                        AND TRIM(json_extract(company_data, '$.{ht_key}')) != ''
-                      )""",
-                (*state_params, candidate_id, retry_state),
-            ).fetchone()
-            return int(row[0])
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
 
 
 def count_companies_in_state_with_score_floor(

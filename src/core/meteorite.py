@@ -1013,6 +1013,13 @@ async def stage_meteorite(
         )
         if map_err:
             failed = _save_error(str(map_err), outcome, batch_id=batch_id)
+            if not failed:
+                # _save_error only logs its own insert failure; surface the map error once here.
+                _warn_item(
+                    cid,
+                    f"{kind} {sid} classify jobs did not map ({outcome}): {map_err}",
+                    "Recorded as an ERROR meteorite row; no job rows were staged",
+                )
             return failed or _err(str(map_err), batch_id=batch_id, stage_outcome=outcome)
         # AST-1785: state from final link scheme — http → SCRAPE_LINK even on text outcomes
         job_dicts = [j for j in (classify.get("jobs") or []) if isinstance(j, dict)]
@@ -1051,6 +1058,13 @@ async def stage_meteorite(
 
     err = classify.get("error") or "stage failed"
     failed = _save_error(err, outcome, batch_id=batch_id)
+    if not failed:
+        # _save_error only logs its own insert failure; surface the classify error once here.
+        _warn_item(
+            cid,
+            f"{kind} {sid} classify failed ({outcome or 'no outcome'}): {err}",
+            "Recorded as an ERROR meteorite row; no job rows were staged",
+        )
     return failed or _err(err, batch_id=batch_id, stage_outcome=outcome)
 
 

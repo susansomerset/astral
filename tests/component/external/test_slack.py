@@ -578,3 +578,58 @@ class TestAst1787ChannelListMembershipFullHistory:
         with pytest.raises(RuntimeError, match="conversations.history"):
             slack_mod.fetch_full_conversation_history(channel="C1")
 
+
+# Branches: conversations.list ok:false message carries Slack needed/provided when
+# present (list_bot_channels + _iter_conversations); plain text unchanged when absent (AST-1815).
+class TestAst1815SlackScopeErrorDetail:
+    _MISSING_SCOPE = {
+        "ok": False,
+        "error": "missing_scope",
+        "needed": "channels:read",
+        "provided": "groups:read,groups:history",
+    }
+
+    @staticmethod
+    def _stub(monkeypatch: pytest.MonkeyPatch, payload: dict) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        monkeypatch.setattr(
+            slack_mod.requests, "get", MagicMock(return_value=_slack_get_resp(payload))
+        )
+
+    # [bug-repro] AC1 — plain `in` asserts so `:` / `,` in scope strings need no regex escaping.
+    def test_list_bot_channels_missing_scope_names_needed_and_provided(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub(monkeypatch, self._MISSING_SCOPE)
+        with pytest.raises(RuntimeError) as exc:
+            slack_mod.list_bot_channels()
+        msg = str(exc.value)
+        assert "conversations.list failed: missing_scope" in msg
+        assert "channels:read" in msg
+        assert "groups:read,groups:history" in msg
+
+    # [bug-repro] AC2 — private poster-pool loop has no gate of its own; env token is enough.
+    def test_iter_conversations_missing_scope_names_needed_and_provided(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub(monkeypatch, self._MISSING_SCOPE)
+        with pytest.raises(RuntimeError) as exc:
+            slack_mod._iter_conversations()
+        msg = str(exc.value)
+        assert "conversations.list failed: missing_scope" in msg
+        assert "channels:read" in msg
+        assert "groups:read,groups:history" in msg
+
+    # AC3 regression pin — exact equality, not match=, so any extra suffix fails.
+    def test_conversations_list_error_without_scope_fields_is_plain(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub(monkeypatch, {"ok": False, "error": "missing_scope"})
+        with pytest.raises(RuntimeError) as exc:
+            slack_mod.list_bot_channels()
+        assert str(exc.value) == "conversations.list failed: missing_scope"
+        with pytest.raises(RuntimeError) as exc:
+            slack_mod._iter_conversations()
+        assert str(exc.value) == "conversations.list failed: missing_scope"
+

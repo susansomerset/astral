@@ -212,3 +212,310 @@ context_tokens≈32000
 
 context_tokens≈58000
 ```
+
+## Bug: AST-1815 — Surface Slack needed/provided scopes on conversations.list errors
+
+**Linear:** [AST-1815](https://linear.app/astralcareermatch/issue/AST-1815) · **Mini-parent:** [AST-1814](https://linear.app/astralcareermatch/issue/AST-1814) — Slack channel list isn't working  
+**Publish ref:** `sub/AST-1814/AST-1815-surface-slack-scopes-on-conversations-list-errors` (merges to `ftr/AST-1814-slack-channel-list-isnt-working`)
+
+**Out of this fix (Susan's action, not code):** Slack app → OAuth & Permissions → confirm **Bot Token Scopes** include `channels:read` + `groups:read` (and `channels:history` / `groups:history`), reinstall the app, refresh the bot token env var if Slack issued a new one (AST-1814 Proposed step 1). This fix is the diagnostic only.
+
+### As-is
+
+`list_bot_channels()` (Stage 1 step 3 above) and the AST-1667 poster-pool loop `_iter_conversations()` both call `conversations.list`; on `ok:false` each raises `RuntimeError(f"conversations.list failed: {payload.get('error')}")`. Slack's `missing_scope` payload also carries `needed` (scope the call required) and `provided` (scopes the token has), but both raises discard them. Manage Candidates' diagnostic (via `api_contact.contact_get_slack_channels`, which returns `str(e)`) therefore shows only `conversations.list failed: missing_scope` — Susan cannot tell which scope is missing.
+
+### To-be
+
+On `ok:false`, both `conversations.list` raises produce a message carrying Slack's `error`, plus `needed` and `provided` when Slack sent them, e.g. `conversations.list failed: missing_scope (needed: channels:read; provided: groups:read,groups:history)`. Payloads without those fields raise exactly the current text (`conversations.list failed: missing_scope`).
+
+### Repro
+
+Fixture (no DB — mocked `_slack_bot_get` / `requests.get` JSON, same style as `TestAst1787ChannelListMembershipFullHistory`):
+
+```python
+{"ok": False, "error": "missing_scope", "needed": "channels:read", "provided": "groups:read,groups:history"}
+```
+
+1. Patch `require_controlled_external_io` to no-op and `requests.get` to return the fixture above.
+2. Call `list_bot_channels()` → today raises `RuntimeError("conversations.list failed: missing_scope")` — neither `channels:read` nor `groups:read,groups:history` appears.
+3. Same fixture through `_iter_conversations()` → same stripped message.
+
+### Root cause
+
+Both `ok:false` branches format only `payload.get('error')`; the rest of the Slack error payload is dropped at the raise site (`src/external/slack.py` `_iter_conversations` and `list_bot_channels`). `_slack_bot_get` intentionally returns the raw payload ("Caller checks `ok`"), so the loss is purely in the message formatting.
+
+### Proposed change
+
+File: `src/external/slack.py` only (Technical scope — `ok:false` handling in `list_bot_channels` and `_iter_conversations` via one small private formatter).
+
+1. Add private helper, placed directly above `_slack_bot_get`:
+
+   ```python
+   def _slack_error(method: str, payload: dict) -> str:
+       """Format a Slack ok:false payload; append needed/provided scopes when present."""
+       msg = f"{method} failed: {payload.get('error')}"
+       # missing_scope payloads name the scope required vs the token's scopes.
+       extra = [f"{k}: {payload[k]}" for k in ("needed", "provided") if payload.get(k)]
+       return f"{msg} ({'; '.join(extra)})" if extra else msg
+   ```
+
+   - Keys in fixed order `needed`, then `provided`; each included only when truthy (missing / `None` / `""` omitted).
+   - Values rendered as Slack sent them (`str` via f-string — Slack sends comma-separated strings); no parsing, no truncation.
+   - Neither present → returns the exact pre-fix text (AC3).
+2. `_iter_conversations`: replace `raise RuntimeError(f"conversations.list failed: {payload.get('error')}")` with `raise RuntimeError(_slack_error("conversations.list", payload))`.
+3. `list_bot_channels`: same one-line replacement.
+4. Nothing else changes: params (`types`, `exclude_archived`, `limit`, cursor), sorting, return shapes, debug lines, `_SOFT_SKIP_ERRORS`, and every other `ok:false` raise.
+
+⚠️ **Decision — only the two `conversations.list` raises.** Component scope says "ideally all Web API calls going through `_slack_bot_get`", but Technical scope names only `list_bot_channels` and `_iter_conversations` as modified functions. The other raises (`_paginate_messages`, `users.list` ×2, `conversations.members`, `fetch_conversation_history`, `users.info`, `apps.connections.open`) stay as-is; widening to them is a follow-up only if Susan / Chuckles amend Technical scope.
+
+⚠️ **Decision — no new debug lines for `_slack_error`.** Pure string formatter on the raise path: no I/O, no loop, not a callee whose in/out adds information beyond the raised message itself (`stat.logging.debug`). External still raises and does not log; `api_contact` logs once (`stat.logging.error`).
+
+### Blast radius
+
+- **Callers of `list_bot_channels`:** `src/core/contact.py` `list_admin_slack_channels` → `api_contact.contact_get_slack_channels` (logs `%s` of the exception, returns `{"error": str(e)}` 502). They pass the text through unchanged — richer message reaches the Manage Candidates diagnostic with no caller edit.
+- **Callers of `_iter_conversations`:** `list_workspace_posters` (AST-1667 poster pool) — raises propagate unchanged in type; only message text grows when `needed`/`provided` are present.
+- **Tests:** existing `tests/component/external/test_slack.py` asserts use `pytest.raises(RuntimeError, match="conversations.list")` (substring/regex search) — still pass since the prefix is unchanged. No test or source matches the exact full string. New case (Betty's tree, per Component scope): fixture above through `list_bot_channels` and `_iter_conversations` asserts `missing_scope`, `channels:read`, and `groups:read,groups:history` in the message; a no-`needed`/`provided` payload asserts the message equals `conversations.list failed: missing_scope`.
+- **Sibling tickets:** AST-1788 (admin route) and AST-1789 (UI) untouched.
+
+### What must still hold
+
+- AST-1787 Stage 1: `list_bot_channels` types `public_channel,private_channel`, `{id, name}` rows sorted by `(name.lower(), id)`, hard-fail (no soft-skip) on `ok:false` / HTTP; debug begin/end + Calling/Response lines unchanged.
+- AC9 / AST-1667: `conversations.members` still only in `is_channel_member`; `_iter_conversations` types (`public_channel,private_channel,im,mpim`) and poster-pool semantics unchanged.
+- `_SOFT_SKIP_ERRORS` unchanged (still includes `missing_scope` for per-channel history soft-skip).
+- Exception type stays `RuntimeError`; no `logger.info` / log-and-re-raise added in `slack.py`.
+
+### Fix board — AST-1815
+
+**[board-betty] TESTS: REVISE** — existing `conversations.list` ok:false tests (`TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`, poster-pool hard-failure test) only assert the `conversations.list` prefix and stay green; no coverage feeds `missing_scope` + `needed`/`provided` through `list_bot_channels` / `_iter_conversations`, none pins the exact plain message when those fields are absent, and `docs/test-bible/external/slack.md` has no AST-1815 entry. Routed to a sibling test-gap child (orphaned branch — no inline qa-fix on this ticket).
+
+**[board-joan] CANON: OK** — canon roster lives at `canon/docs/DIRECTIVES-DIRECTORY.md` (not `docs/canon-index.md`). Change only enriches `RuntimeError` text at existing raise sites; external raise / handler log-once unchanged. No debug on `_slack_error` matches `stat.logging.debug` (formatter on the raise path, not a callee joint). `stat.logging.error` allows facts on the exception at detection without logging there. `stat.errors.raise-once-log-once` (draft) respected. No statute or pattern needs an update or carve-out.
+
+
+### Radia review-fix — AST-1815
+
+**[code-rubric] PROCEED (Commit: e0be3c65)** — clean; §3h shortcut → User Testing (resolve-child skipped).
+
+#### Canon scores
+
+**Notes (frozen list):** Linear Description has no **Canon Scope (frozen at Plan Approved)** table. Scored only `stat.logging.debug` and `stat.logging.error` — the directives fix-board Joan named for this `src/external/slack.py` change and the AST-1787 slack surface they extend. Not scored: `stat.errors.raise-once-log-once` (draft / not in force).
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+#### Column diff vs plan stage
+
+no plan-stage scores attached (no `validate-plan` / `[plan-rubric]` artifact for AST-1815 in the issue doc; fix-board `[board-joan] CANON: OK` only)
+
+#### Frame diff
+
+(none)
+
+#### Fix-specific checks
+
+**[bug-repro]** not applicable on this publish ref — clean board opt-out (`[board-betty] TESTS: REVISE` → sibling **AST-1816**). Judged on `origin/sub/AST-1814/AST-1816-gap-slack-scope-error-tests`: **OK** — `TestAst1815SlackScopeErrorDetail` `[bug-repro]` cases assert `channels:read` and `groups:read,groups:history` in `str(exc.value)` for both `list_bot_channels` and `_iter_conversations`; AC3 case uses exact equality on the plain message. Those assertions would fail on pre-fix `ftr` (message lacked scope fields); they are not tautologies or prefix-only `match=` checks.
+
+**## What must still hold** — OK — `_slack_error` only changes raise message text at the two `conversations.list` sites; `types`, pagination, sorting, `{id,name}` shape, `_SOFT_SKIP_ERRORS`, `RuntimeError` (no log-and-re-raise in external), and existing debug loops/lines in `list_bot_channels` / `_iter_conversations` are untouched.
+
+#### Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **dev sync carry:** `docs/features/interface/ast-1453-persist-skipped-job-field-and-state-edits.md` (AST-1809 epic registry Threads mirror, commit `cd7ca619` / `sync(dev)`) appears in the `ftr…sub` diff but is unrelated to AST-1815 product; expected merge-from-dev noise, not scored as canon violation.
+- **Test split:** No `tests/**` on this sub; coverage lands on **AST-1816**. `ftr` rollup needs AST-1815 + AST-1816 (and re-sync) before the bible manifest is green end-to-end.
+- **Linear Component scope** still mentions `test_slack.py`; plan-fix + board explicitly routed tests to AST-1816 — intentional, not a product miss on this tip.
+
+#### What's solid
+
+- `_slack_error` matches plan-fix: `needed` then `provided`, truthy-only, semicolon join; plain message unchanged when extras absent (AC3).
+- Implements **To-be** / AC1–4 for the two call sites only, per the documented narrow-scope decision.
+- Plan fidelity: `src/external/slack.py` only for product; boundaries respected (no API/UI/core edits).
+
+#### Chuckles branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (clean, C7 complete) | Mini-parent **AST-1814** with `ftr/AST-1814-slack-channel-list-isnt-working` — **not** orphaned-to-dev. → **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Merge this sub to `ftr` when ready; pair with **AST-1816** on `ftr` for manifest green.
+
+#### Recommended actions (downstream — not executed here)
+
+- Append artifact, `docs(AST-1815): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.
+- Ensure **AST-1816** follows AST-1815 onto `ftr` before treating the epic as test-complete.
+
+### Resolution — AST-1815
+
+**2026-09-27** — Radia PROCEED (`e0be3c65`). Product-only sub (`src/external/slack.py`). Test tree delivered on sibling gap **AST-1816** (`TestAst1815SlackScopeErrorDetail` + `docs/test-bible/external/slack.md` AST-1815 block) — Docs-Acceptance for this sub. §3h clean-review shortcut → User Testing.
+
+## Bug: AST-1816 — Gap: cover Slack needed/provided on conversations.list errors
+
+**Linear:** [AST-1816](https://linear.app/astralcareermatch/issue/AST-1816) · **Mini-parent:** [AST-1814](https://linear.app/astralcareermatch/issue/AST-1814) · **Product sibling:** [AST-1815](https://linear.app/astralcareermatch/issue/AST-1815) (its `## Bug: AST-1815` section lives on `sub/AST-1814/AST-1815-…`; both sections meet on `ftr/AST-1814-slack-channel-list-isnt-working`)  
+**Publish ref:** `sub/AST-1814/AST-1816-gap-slack-scope-error-tests`  
+**Origin:** `[board-betty] TESTS: REVISE` on AST-1815 — test/bible coverage only. **No `src/` on this sub**; AST-1815's `src/external/slack.py` change arrives via `ftr` after AST-1815 merges — never cherry-picked or stacked here.
+
+### As-is
+
+`tests/component/external/test_slack.py` covers `conversations.list` `ok:false` only via `TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises` and `TestAst1667WorkspacePosterPool::test_hard_failures_raise`, both with `{"ok": False, "error": "invalid_auth"}` and `match="conversations.list"`. No case feeds `missing_scope` + `needed`/`provided`, so AST-1815's enriched message is unpinned, and nothing pins the exact plain text when those fields are absent. `docs/test-bible/external/slack.md` has no AST-1815 entry.
+
+### To-be
+
+A new class pins AST-1815 AC1–3: `needed` and `provided` appear in the raised message for both `list_bot_channels` and `_iter_conversations`, and a payload without them raises exactly `conversations.list failed: missing_scope`. The bible lists the class plus the two existing hard-fail tests as the AST-1815 manifest.
+
+### Repro
+
+Fixture (mocked `requests.get` JSON via existing `_slack_get_resp`; no DB):
+
+```python
+{"ok": False, "error": "missing_scope", "needed": "channels:read", "provided": "groups:read,groups:history"}
+```
+
+On the pre-fix tree (this sub's tip, `ftr` before AST-1815 merges) `list_bot_channels()` raises `conversations.list failed: missing_scope`: `"channels:read" in str(exc)` is False, so the new assertion fails (red). Once AST-1815 is on the tip, the message is `conversations.list failed: missing_scope (needed: channels:read; provided: groups:read,groups:history)` and the test passes (green).
+
+### Root cause
+
+AST-1815's fix-board found no test asserting on Slack error-message content beyond the method-name prefix. The existing `match="conversations.list"` checks pass whether or not `needed`/`provided` are surfaced.
+
+### Proposed change
+
+Files: `tests/component/external/test_slack.py` and `docs/test-bible/external/slack.md` only (AST-1816 Technical scope). Betty's tree. No `src/`, no other test files.
+
+**1. `tests/component/external/test_slack.py`: append a new class at end of file**, after `TestAst1787ChannelListMembershipFullHistory`, with a branch comment in the file's existing style:
+
+```python
+# Branches: conversations.list ok:false message carries Slack needed/provided when
+# present (list_bot_channels + _iter_conversations); plain text unchanged when absent (AST-1815).
+class TestAst1815SlackScopeErrorDetail:
+```
+
+Shared module-level constant inside the class (or at class top) for the fixture above: `_MISSING_SCOPE = {"ok": False, "error": "missing_scope", "needed": "channels:read", "provided": "groups:read,groups:history"}`.
+
+Every case sets up the environment the same way as existing AST-1787 cases: `monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")`, `monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")`, and `monkeypatch.setattr(slack_mod.requests, "get", MagicMock(return_value=_slack_get_resp(<payload>)))`.
+
+| Case | Tag | Call | Assert |
+|------|-----|------|--------|
+| `test_list_bot_channels_missing_scope_names_needed_and_provided` | **`[bug-repro]`** (AC1) | `slack_mod.list_bot_channels()` under `pytest.raises(RuntimeError) as exc` | `msg = str(exc.value)`; `"conversations.list failed: missing_scope" in msg`; `"channels:read" in msg`; `"groups:read,groups:history" in msg` |
+| `test_iter_conversations_missing_scope_names_needed_and_provided` | **`[bug-repro]`** (AC2) | `slack_mod._iter_conversations()` directly (private; no gate of its own, so env token is enough) | same three substring asserts |
+| `test_conversations_list_error_without_scope_fields_is_plain` | regression pin (AC3) | payload `{"ok": False, "error": "missing_scope"}`; call `list_bot_channels()` then `_iter_conversations()` (reset mock between is unnecessary — same `MagicMock` return) | `str(exc.value) == "conversations.list failed: missing_scope"` for **both** calls (exact equality, not `match=`) |
+
+- Use plain substring `in` / `==` on `str(exc.value)`, not `pytest.raises(match=…)`, so `:` / `,` in scope strings need no regex escaping.
+- Expected state on this sub before AST-1815 merges: cases 1–2 **red**, case 3 **green**. After AST-1815 is on `ftr` and this sub re-syncs, all three are green.
+- Do **not** edit `test_list_bot_channels_ok_false_raises` or `test_hard_failures_raise`; they stay as-is (AC2 of AST-1816).
+
+**2. `docs/test-bible/external/slack.md`: append a new block at end of file** after the AST-1787 block, preceded by `---`, matching that block's layout:
+
+- Heading `### AST-1815 · AST-1814`.
+- `**Parent:**` line linking [AST-1814 — Slack channel list isn't working](https://linear.app/astralcareermatch/issue/AST-1814). `**Publish:**` `origin/sub/AST-1814/AST-1815-surface-slack-scopes-on-conversations-list-errors` (product), tests landed by AST-1816 on `origin/sub/AST-1814/AST-1816-gap-slack-scope-error-tests`.
+- One-paragraph summary: `conversations.list` `ok:false` raises in `list_bot_channels` / `_iter_conversations` append Slack `needed` / `provided` when present, and the plain `"<method> failed: <error>"` text stays the same when they are absent. No change to pagination, types, sort, soft-skip.
+- Area table row: `conversations.list ok:false needed/provided detail` | `src/external/slack.py` | **`TestAst1815SlackScopeErrorDetail`**; second row: `Existing hard-fail prefix checks` | `src/external/slack.py` | existing **`TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`**, **`TestAst1667WorkspacePosterPool::test_hard_failures_raise`**.
+- `**Broken / obsolete this pass:** none — existing asserts use \`match="conversations.list"\` (prefix unchanged).`
+- `**Integration:** no existing scenario exercises Slack channel list errors — no revision; do not invent.`
+- `## QA test manifest` listing:
+  1. `[bug-repro]` + AC3 pin (new): `tests/component/external/test_slack.py::TestAst1815SlackScopeErrorDetail`
+  2. Existing regression: `tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`
+  3. Existing regression: `tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool::test_hard_failures_raise`
+
+  with the same `./scripts/testing/run_component_tests.sh <those three node ids> -q` block, `**Pass criterion:**` line, and `**Bible shasum (publish tip):**` placeholder as prior blocks.
+
+### Blast radius
+
+- **Test file only additive:** new class at end; the shared helpers `_slack_get_resp` / `_method_from_url` are reused, not changed. No other class touched.
+- **Bible additive:** new block at EOF; prior AST-1069/1070/1105/1667/1787 blocks untouched.
+- **Sequencing:** `test-fix` for AST-1816 can only go green on cases 1–2 after AST-1815's `sub` merges into `ftr/AST-1814-slack-channel-list-isnt-working` and this sub re-syncs (`sync-child.sh --ftr`). Before that, red on 1–2 is the expected `[bug-repro]` evidence, not a failure to fix here.
+- **Doc merge:** this sub and AST-1815's sub each append a `## Bug:` section at EOF of this feature doc. Expect a trivial keep-both conflict at `ftr` rollup; order the sections AST-1815 then AST-1816.
+
+### What must still hold
+
+- `test_list_bot_channels_ok_false_raises` and `test_hard_failures_raise` unchanged and green (prefix `conversations.list` still matched).
+- No `src/` change on `sub/AST-1814/AST-1816-gap-slack-scope-error-tests`; AST-1815's product commits never cherry-picked here.
+- AST-1787 / AST-1667 test classes and bible blocks unmodified. AC9 (no `conversations.members` in poster pool) still covered by the existing `TestAst1667WorkspacePosterPool`.
+
+### Fix board — AST-1816
+
+**[board-betty] TESTS: REVISE** — this ticket is the test landing: plan checks out (`_iter_conversations` directly callable; `slack.py` not on the 100%-branch list). Expected red before AST-1815 merges to ftr on the two `needed`/`provided` cases; the exact-text case passes either way. Existing `match="conversations.list"` tests untouched. → `qa-fix` (Betty) on this ticket; no nested gap.
+
+**[board-joan] CANON: OK** — tests + `docs/test-bible/external/slack.md` only, no `src/`. Pins behavior already conforming to `stat.logging.error` (facts on the exception at the raise site); `stat.logging.debug` untouched; `orch.roles.betty-owns-test-tree` satisfied by landing in Betty's tree in the fix lane. No roster change.
+
+
+### Radia review-fix — AST-1816
+
+**[code-rubric] PROCEED (Commit: 8e27202f)** — clean; §3h shortcut → User Testing (resolve-child skipped).
+
+#### Canon scores
+
+**Notes (frozen list):** Linear Description has no **Canon Scope (frozen at Plan Approved)** table. Scored per fix-board Joan + test-gap shape: `orch.roles.betty-owns-test-tree` (Betty `qa-fix` / `merge-tests(AST-1816)` + bible); `stat.logging.debug` / `stat.logging.error` **id-only** (no `src/` on this sub — tests pin exception text, not logging call sites).
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| orch.roles.betty-owns-test-tree | A | | |
+| stat.logging.debug | X | | no `src/`; no new debug joints in diff |
+| stat.logging.error | X | | no `src/`; tests assert `RuntimeError` message content only |
+
+#### Column diff vs plan stage
+
+no plan-stage scores attached (no `validate-plan` / `[plan-rubric]` for AST-1816 in the issue doc; fix-board `[board-joan] CANON: OK` only)
+
+#### Frame diff
+
+(none)
+
+#### Fix-specific checks
+
+**[bug-repro] — OK**
+
+Betty’s thread (`[bug-repro]` @ `e52c39d7`; engineer tip `8e27202f` confirms **2 failed / 3 passed** on pre-fix product + tip tests, **5/5** on manifest after `sync(ftr)` with AST-1815 `_slack_error` on base). Tagged cases are not tautologies:
+
+| Node | What it pins | Pre-fix plausibility |
+|------|----------------|----------------------|
+| `test_list_bot_channels_missing_scope_names_needed_and_provided` | `missing_scope` prefix plus fixture `channels:read` and `groups:read,groups:history` in `str(exc.value)` | Fails when message is plain `conversations.list failed: missing_scope` (Ada comment / Betty repro) |
+| `test_iter_conversations_missing_scope_names_needed_and_provided` | Same three substring checks on `_iter_conversations` | Same |
+
+Supporting: `test_conversations_list_error_without_scope_fields_is_plain` — **exact** equality on plain message for both entry points (AC3 pin; green pre- and post-fix). Existing `test_list_bot_channels_ok_false_raises` / `test_hard_failures_raise` untouched in the `ftr…sub` diff.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| No `src/**` on this sub vs **ftr** | OK — three-dot diff is plan doc + `test_slack.py` + `slack.md` only |
+| AST-1815 product not cherry-picked here | OK — `_slack_error` comes from **ftr** after `sync(AST-1816): merge origin/ftr` (`72be2488`) |
+| Prior AST-1787 / AST-1667 tests & bible blocks unchanged | OK — additive class at EOF only |
+| `match="conversations.list"` regressions preserved | OK — no edits to those methods |
+
+#### Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Empty `code(AST-1816)` marker (`8e27202f`):** zero file delta — matches **AST-1812** test-gap precedent (product on sibling + **ftr**; engineer `test-fix` / publish marker only). Intended, not a missing implementation commit.
+- **Bible `**Bible shasum (publish tip):**` placeholders** still `*(filled after publish)*` in the new AST-1815 block — same hygiene as sibling blocks; optional fill on publish, not a canon defect.
+- **Naming:** class `TestAst1815SlackScopeErrorDetail` on AST-1816 ticket — deliberate tie to product AC / bible heading `### AST-1815 · AST-1814`.
+
+#### What's solid
+
+- Plan-fix delivered verbatim: branch comment, `_MISSING_SCOPE` fixture, `_stub` parity with AST-1787 env/mocks, bible manifest + `run_component_tests.sh` trio.
+- **ftr…sub** diff is partition-clean (no unrelated `merge-tests` file noise in the three-dot stat — only the gap’s three paths).
+- Repro-first gate credibly exercised (Betty red → post-**ftr** sync green).
+
+#### Chuckles branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (clean, C7 complete) | Mini-parent **AST-1814** + `ftr/AST-1814-slack-channel-list-isnt-working` (AST-1815 product already on **ftr**). → **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Roll this sub into **ftr** when UT complete; then parent can move toward finish-up / **dev** per fix-lane rollup.
+
+#### Recommended actions (downstream — not executed here)
+
+- Append artifact, `docs(AST-1816): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.

@@ -1265,7 +1265,7 @@ COMPANY_STATES = {
     # AST-1672: pre-vet inflow land state (discovery → DISCOVERED; vet/CSE claim here).
     "DISCOVERED": {"batch_criteria": {"sort_by": "updated_at"}},
     "WEBSITE_FOUND": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
-    # retry_of("WEBSITE_FOUND") dual ownership (AST-892): empty homepage_text → fetch_website scrape retry; non-empty → prefilter second strike.
+    # retry_of("WEBSITE_FOUND"): fetch_website scrape retry for every row (AST-1810; AST-892 split removed).
     "HOMEPAGE_READY": {
         "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
         "retry_state": retry_of("WEBSITE_FOUND"),
@@ -2305,7 +2305,7 @@ GAZER_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "HOMEPAGE_READY",
         "fail_state": "CANNOT_READ_WEBSITE",
-        # Shared with prefilter; subset ownership via homepage_text (AST-892).
+        # Shared retry holding; fetch_website claims all of it (AST-1810).
         "retry_state": retry_of("WEBSITE_FOUND"),
     },
     "fetch_job_pages": {
@@ -3605,18 +3605,6 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
     if ts.endswith("_RETRY"):
         return [ts]
     return [ts, f"{ts}_RETRY"]
-
-
-def fetch_website_prefilter_second_strike_filter() -> tuple[str, str]:
-    """(retry_state, homepage_text_company_data_key) for AST-892 claim/count exclusion.
-
-    ``WEBSITE_FOUND_RETRY`` is shared: rows with non-empty homepage_text are owned by
-    prefilter second strike; rows without are owned by fetch_website infra retry.
-    """
-    return (
-        GAZER_CONFIG["fetch_website"]["retry_state"],
-        ROSTER_CONFIG["company_data_keys"]["homepage_text"],
-    )
 
 
 DISPATCH_RETIRED_TASK_KEYS = frozenset({
