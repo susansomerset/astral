@@ -442,3 +442,80 @@ Every case sets up the environment the same way as existing AST-1787 cases: `mon
 **[board-betty] TESTS: REVISE** — this ticket is the test landing: plan checks out (`_iter_conversations` directly callable; `slack.py` not on the 100%-branch list). Expected red before AST-1815 merges to ftr on the two `needed`/`provided` cases; the exact-text case passes either way. Existing `match="conversations.list"` tests untouched. → `qa-fix` (Betty) on this ticket; no nested gap.
 
 **[board-joan] CANON: OK** — tests + `docs/test-bible/external/slack.md` only, no `src/`. Pins behavior already conforming to `stat.logging.error` (facts on the exception at the raise site); `stat.logging.debug` untouched; `orch.roles.betty-owns-test-tree` satisfied by landing in Betty's tree in the fix lane. No roster change.
+
+
+### Radia review-fix — AST-1816
+
+**[code-rubric] PROCEED (Commit: 8e27202f)** — clean; §3h shortcut → User Testing (resolve-child skipped).
+
+#### Canon scores
+
+**Notes (frozen list):** Linear Description has no **Canon Scope (frozen at Plan Approved)** table. Scored per fix-board Joan + test-gap shape: `orch.roles.betty-owns-test-tree` (Betty `qa-fix` / `merge-tests(AST-1816)` + bible); `stat.logging.debug` / `stat.logging.error` **id-only** (no `src/` on this sub — tests pin exception text, not logging call sites).
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| orch.roles.betty-owns-test-tree | A | | |
+| stat.logging.debug | X | | no `src/`; no new debug joints in diff |
+| stat.logging.error | X | | no `src/`; tests assert `RuntimeError` message content only |
+
+#### Column diff vs plan stage
+
+no plan-stage scores attached (no `validate-plan` / `[plan-rubric]` for AST-1816 in the issue doc; fix-board `[board-joan] CANON: OK` only)
+
+#### Frame diff
+
+(none)
+
+#### Fix-specific checks
+
+**[bug-repro] — OK**
+
+Betty’s thread (`[bug-repro]` @ `e52c39d7`; engineer tip `8e27202f` confirms **2 failed / 3 passed** on pre-fix product + tip tests, **5/5** on manifest after `sync(ftr)` with AST-1815 `_slack_error` on base). Tagged cases are not tautologies:
+
+| Node | What it pins | Pre-fix plausibility |
+|------|----------------|----------------------|
+| `test_list_bot_channels_missing_scope_names_needed_and_provided` | `missing_scope` prefix plus fixture `channels:read` and `groups:read,groups:history` in `str(exc.value)` | Fails when message is plain `conversations.list failed: missing_scope` (Ada comment / Betty repro) |
+| `test_iter_conversations_missing_scope_names_needed_and_provided` | Same three substring checks on `_iter_conversations` | Same |
+
+Supporting: `test_conversations_list_error_without_scope_fields_is_plain` — **exact** equality on plain message for both entry points (AC3 pin; green pre- and post-fix). Existing `test_list_bot_channels_ok_false_raises` / `test_hard_failures_raise` untouched in the `ftr…sub` diff.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| No `src/**` on this sub vs **ftr** | OK — three-dot diff is plan doc + `test_slack.py` + `slack.md` only |
+| AST-1815 product not cherry-picked here | OK — `_slack_error` comes from **ftr** after `sync(AST-1816): merge origin/ftr` (`72be2488`) |
+| Prior AST-1787 / AST-1667 tests & bible blocks unchanged | OK — additive class at EOF only |
+| `match="conversations.list"` regressions preserved | OK — no edits to those methods |
+
+#### Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Empty `code(AST-1816)` marker (`8e27202f`):** zero file delta — matches **AST-1812** test-gap precedent (product on sibling + **ftr**; engineer `test-fix` / publish marker only). Intended, not a missing implementation commit.
+- **Bible `**Bible shasum (publish tip):**` placeholders** still `*(filled after publish)*` in the new AST-1815 block — same hygiene as sibling blocks; optional fill on publish, not a canon defect.
+- **Naming:** class `TestAst1815SlackScopeErrorDetail` on AST-1816 ticket — deliberate tie to product AC / bible heading `### AST-1815 · AST-1814`.
+
+#### What's solid
+
+- Plan-fix delivered verbatim: branch comment, `_MISSING_SCOPE` fixture, `_stub` parity with AST-1787 env/mocks, bible manifest + `run_component_tests.sh` trio.
+- **ftr…sub** diff is partition-clean (no unrelated `merge-tests` file noise in the three-dot stat — only the gap’s three paths).
+- Repro-first gate credibly exercised (Betty red → post-**ftr** sync green).
+
+#### Chuckles branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (clean, C7 complete) | Mini-parent **AST-1814** + `ftr/AST-1814-slack-channel-list-isnt-working` (AST-1815 product already on **ftr**). → **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Roll this sub into **ftr** when UT complete; then parent can move toward finish-up / **dev** per fix-lane rollup.
+
+#### Recommended actions (downstream — not executed here)
+
+- Append artifact, `docs(AST-1816): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.
