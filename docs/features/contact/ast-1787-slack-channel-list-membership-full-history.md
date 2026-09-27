@@ -294,3 +294,9 @@ Every case sets up the environment the same way as existing AST-1787 cases: `mon
 - `test_list_bot_channels_ok_false_raises` and `test_hard_failures_raise` unchanged and green (prefix `conversations.list` still matched).
 - No `src/` change on `sub/AST-1814/AST-1816-gap-slack-scope-error-tests`; AST-1815's product commits never cherry-picked here.
 - AST-1787 / AST-1667 test classes and bible blocks unmodified. AC9 (no `conversations.members` in poster pool) still covered by the existing `TestAst1667WorkspacePosterPool`.
+
+### Fix board — AST-1816
+
+**[board-betty] TESTS: REVISE** — this ticket is the test landing: plan checks out (`_iter_conversations` directly callable; `slack.py` not on the 100%-branch list). Expected red before AST-1815 merges to ftr on the two `needed`/`provided` cases; the exact-text case passes either way. Existing `match="conversations.list"` tests untouched. → `qa-fix` (Betty) on this ticket; no nested gap.
+
+**[board-joan] CANON: OK** — tests + `docs/test-bible/external/slack.md` only, no `src/`. Pins behavior already conforming to `stat.logging.error` (facts on the exception at the raise site); `stat.logging.debug` untouched; `orch.roles.betty-owns-test-tree` satisfied by landing in Betty's tree in the fix lane. No roster change.
