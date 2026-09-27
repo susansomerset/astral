@@ -371,3 +371,106 @@ context_tokens≈92000
 ```
 [code-rubric] PROCEED (Commit: 23a69171) skipped-job persist clean
 ```
+
+---
+
+## Bug: AST-1811 — skipped-job state edit allows any registered job state (no prior-state filter)
+
+**Mini-parent:** AST-1809 (orphaned bug; no ancestor approved — this doc is the historical home of the code, per Stage 1 above).  
+**Publish ref:** `sub/AST-1809/AST-1811-skipped-any-state`  
+**Canon note:** deliberately waives `astral.state.job-prior-states-enforced` for this one operator path (Susan: "Should not be filtered beyond the entity type"). Supersedes, for the skipped-edit path only, Stage 1 ⚠️ Decision, AC4 ("lists only legal successors … illegal target is rejected (409)"), and Boundary "Does not waive prior-state law". fix-board / Joan judges canon impact.
+
+### As-is
+
+For a job whose `state` is in `SKIPPED_STATES`, `GET /api/jobs/<id>` returns `legal_next_states = legal_job_successor_states(state)`, which keeps only the `JOB_STATES` keys whose `prior_states` accept the current state. So the Job Detail dropdown offers only prior-state-legal successors. `PUT /api/jobs/<id>` → `persist_skipped_job_edits` → `transition_job_state([id], to_state)` re-checks `_job_state_matches_prior`. An illegal target raises `ValueError("Invalid transition: …")`, which maps to a 409.
+
+### To-be
+
+For a job whose `state` is in `SKIPPED_STATES`, `legal_next_states` is every `JOB_STATES` key except the current state, in registry order. PUT with any of those keys moves the job there with no prior-state validation. The transition still appends `state_history` and sets `state_changed_at`. The list is bounded only by entity type: it is `JOB_STATES` keys only. It never includes `CANDIDATE_STATES` / `METEORITE_STATES`, runtime dispatch-hop labels, or implicit `{base}_RETRY` states that are not registry keys. Every other `transition_job_state` caller keeps prior-state enforcement unchanged.
+
+### Repro
+
+Fixture (component-test shape; persistence is SQLite via `database`, so a fixture job row, not a seeded prod DB):
+
+```python
+job = {"astral_job_id": "J1", "state": "CANDIDATE_SKIPPED", "state_history": [], "batch_id": None}
+```
+
+1. `legal_job_successor_states("CANDIDATE_SKIPPED")` returns only states whose `prior_states` include `CANDIDATE_SKIPPED` (e.g. `CANDIDATE_REVIEW`) plus the unrestricted-entry states (`NEW`, `FAILED_TECHNICAL`, `METEORITE_NEW`, `ERROR_QUALIFY_JOB_LISTINGS`, `ERROR_EVALUATE_JD`). `PASSED_JD` is absent.
+2. `persist_skipped_job_edits("J1", {"state": "PASSED_JD"})` raises `ValueError("Invalid transition: CANDIDATE_SKIPPED -> PASSED_JD")`; `PUT /api/jobs/J1 {"state": "PASSED_JD"}` returns 409; job stays `CANDIDATE_SKIPPED`.
+
+Expected after fix: step 1 includes `PASSED_JD` (and every other `JOB_STATES` key except `CANDIDATE_SKIPPED`); step 2 succeeds, `state == "PASSED_JD"`, `state_history[-1]["to_state"] == "PASSED_JD"`.
+
+### Root cause
+
+AST-1453 Stage 1 defined the skipped-edit successor list as "exactly what `transition_job_state` would accept" (`legal_job_successor_states` filters through `_job_state_matches_prior`). It also routed the persist hop through `transition_job_state`, which always enforces `prior_states`. That was correct under AST-1453's AC4 and Boundary "Does not waive prior-state law". Susan's new product rule makes the skipped-edit path an operator override, but the enforcement is baked into both the list and the transition, and there is no opt-out.
+
+### Proposed change
+
+All edits in `src/core/tracker.py`. `src/ui/api/api_jobs.py` is **not** touched: `_attach_skipped_edit_meta` keeps calling `legal_job_successor_states`, the `legal_next_states` response key is unchanged (JobDetailModal reads it), and the PUT error mapping already sends `"not in allowed list"` to 409.
+
+1. **`legal_job_successor_states(from_state)`** — replace the body so it no longer consults `prior_states`:
+
+```python
+def legal_job_successor_states(from_state: str) -> List[str]:
+    """Skipped-edit targets: every JOB_STATES key except from_state (operator override; no prior_states filter)."""
+    current = (from_state or "").strip()
+    return [name for name in JOB_STATES if name != current]
+```
+
+   Iterate `JOB_STATES` keys only (not `is_registered_state`), so implicit `{base}_RETRY` states and hop labels never appear. Keep registry order and do not sort. Keep the function name and signature.
+
+2. **`transition_job_state`** — add a keyword-only flag, default preserving enforcement:
+
+```python
+def transition_job_state(
+    job_ids: List[str], to_state: str, score: Optional[float] = None, *, enforce_prior_states: bool = True
+) -> None:
+```
+
+   - Keep the `is_registered_state(JOB_STATES, to_state)` check unconditionally (runs regardless of the flag).
+   - Wrap only the existing `_job_state_matches_prior` check: `if enforce_prior_states and not _job_state_matches_prior(...)`: raise the same `ValueError(f"Invalid transition: …")`.
+   - `state_prior_states(...)` lookup may stay where it is (harmless when the flag is False) — no other behavior change; history/`state_changed_at`/`latest_score` writes unchanged.
+   - Add one line to the docstring: `enforce_prior_states=False skips the prior_states check (skipped-job operator edit only).`
+
+3. **`persist_skipped_job_edits`** — in the `"state" in fields` branch, after the empty check and before the same-state comparison, add a registry-key guard, then pass the flag:
+
+```python
+        if to_state not in JOB_STATES:
+            raise ValueError(f"Value {to_state!r} not in allowed list: {_JOB_STATE_LIST}")
+        if to_state != (job.get("state") or ""):
+            transition_job_state([astral_job_id], to_state, enforce_prior_states=False)
+```
+
+   The message reuses `transition_job_state`'s existing "not in allowed list" wording, so the PUT's existing mapping sends it to 409. Everything else in the function stays unchanged: the `SKIPPED_STATES` current-state gate, field-before-hop ordering, same-state no-op, and the return value.
+
+   Update the "Column + JD writes first so an illegal hop still keeps field edits" comment to say "an unregistered target".
+
+⚠️ **Decision:** Modify `legal_job_successor_states` in place rather than add a sibling. Its only product caller is `_attach_skipped_edit_meta`, so there's nothing else to keep on the old contract. In-place keeps `api_jobs.py` untouched (scope: "probably untouched"), and the API tests that monkeypatch `jobs_mod.legal_job_successor_states` keep working. The rejected alternative was a new `skipped_job_edit_target_states` plus an import swap in `api_jobs.py`. That would leave `legal_job_successor_states` as dead product code and break those monkeypatches.
+
+⚠️ **Decision:** `persist_skipped_job_edits` accepts `JOB_STATES` keys only, even though `transition_job_state`'s registration check also admits implicit `{base}_RETRY`. This makes the server-side accept set exactly equal to the dropdown list (To-be: "every JOB_STATES key except current"). An API caller can't reach a retry-holding state the UI never offers.
+
+⚠️ **Decision:** The flag is named `enforce_prior_states` rather than `force`, which would imply skipping registration too. It is keyword-only with default `True`. No other caller passes it.
+
+### Blast radius
+
+- **Product callers of `transition_job_state`:** `gazer.py` (14), `consult.py` (4), `agent.py` (1), `api_jobs.py` (3: bulk_state / skip paths), `tracker.py` (`graduate_job_from_dispatch_chain`, persist). All call without the new kwarg, so enforcement is unchanged. Only `persist_skipped_job_edits` passes `enforce_prior_states=False`.
+- **Product callers of `legal_job_successor_states`:** `api_jobs._attach_skipped_edit_meta` only. It is attached only when current state ∈ `SKIPPED_STATES`, so non-skipped jobs still get `[]`.
+- **Frontend:** `JobDetailModal.tsx` renders `legal_next_states` as the dropdown. The list gets longer (every `JOB_STATES` key except the current one), with no shape change. AST-1454's dropdown ordering follows registry order (Radia's AST-1453 advisory on sorting still stands; not in this scope).
+- **Tests that assume the old behavior (Betty — fix-board decides):**
+  - `tests/component/core/test_tracker.py` ~1926–1928 (`TestAst1453LegalJobSuccessorStates`): asserts prior-state-filtered successors and will fail.
+  - `test_field_writes_before_illegal_transition_propagates` (~2032): mocks `transition_job_state` to raise, so it still passes mechanically, but its premise ("illegal hop") is gone for registry keys.
+  - `tests/component/ui/api/test_api_jobs.py` `test_put_illegal_transition_409` (~958): mocks persist to raise, so it passes mechanically, but the scenario is no longer reachable for registry keys.
+  - Bible entries in `docs/test-bible/core/tracker.md` / `ui/api/api_jobs.md` describe the old contract.
+  - New coverage worth considering: `enforce_prior_states=False` bypass; default still enforces; persist rejects a non-key `_RETRY` / hop label with "not in allowed list".
+- **Canon:** `astral.state.job-prior-states-enforced` is waived for this path only (see Canon note). `astral.state.core-decides-transitions` still holds because the hop still goes through `transition_job_state`. `astral.standards.no-hardcoded-sets` still holds because the list is derived from `JOB_STATES`.
+
+### What must still hold
+
+- The current-state gate is unchanged. Only jobs whose `state` ∈ `SKIPPED_STATES` are editable (`"Job is not in a skipped state"` → 409). Non-skipped GET gives `fields_editable=false` and `legal_next_states=[]` (AST-1453 AC6).
+- Every state hop goes through `transition_job_state`, and `state_history` entry plus `state_changed_at` are written on every non-no-op save (AC4 "history recorded").
+- Same-state save is a no-op with no `state_history` append.
+- Field edits (title / link / JD) are applied before the hop and persist even when the state value is rejected (AST-1453 Stage 1 ordering).
+- Unregistered / non-`JOB_STATES` targets are rejected with 409. Empty `state` is 400.
+- `transition_job_state` default behavior is byte-for-byte unchanged for every existing caller (dispatcher, bulk Retry, Skip, chain graduation, gazer, consult, agent).
+- No dispatch, scrape, or consult is triggered by save. No logging added. `PUT` remains `@require_auth`.
