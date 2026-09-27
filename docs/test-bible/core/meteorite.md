@@ -823,3 +823,31 @@ Text-outcome map prefers http(s) `job_link` over `_email_breadcrumb_link`; `stag
 **Bible path shasums (record after publish):**
 - `docs/test-bible/core/meteorite.md`
 - `docs/test-bible/core/repo_admin_json.md`
+
+---
+
+### AST-1617 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1617-check-inbox-total-errors-without-errorwarning-logs`.
+
+**qa-fix:** `stage_meteorite` classify-fail fallthrough and map-error branch must emit exactly one always-on WARNING (candidate id, source kind, source id, error) when the ERROR-row insert succeeds. Callers (`inbox.check_email`, `ingest_candidate_email_message`, `contact_land_meteorite`) count these as errors and log nothing themselves. A failed ERROR-row insert keeps its single `logger.exception` line (no extra warn).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Classify-fail + map-error warn once; insert-fail no double log | `src/core/meteorite.py` | **`TestAst1617StageErrorWarns`** (bug-repro: `test_classify_fail_warns_once`, `test_map_error_warns_once`; guard: `test_error_row_insert_failure_logs_once_no_extra_warn`) |
+
+**Broken / obsolete this pass:** none. No existing test in `test_meteorite.py`, `test_contact.py`, `test_inbox.py`, or `test_api_inbox.py` asserts that there is no warning on these paths.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. Bug-repro: `tests/component/core/test_meteorite.py::TestAst1617StageErrorWarns`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1617StageErrorWarns \
+  -q
+```
+
+**Pass criterion (test-fix):** `test_classify_fail_warns_once` and `test_map_error_warns_once` are red pre-fix and must go green after make-fix; the guard test stays green throughout.
