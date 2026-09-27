@@ -495,3 +495,60 @@ pytest -q tests/component/core/test_roster.py::TestProcessRecheckNoOpenings \
 - `TestAst508PrefilterPassedEligible` stays green unchanged: no `score_floor` Avail regression for states without a window.
 - `TestRunCompanyTask::test_no_openings_routes_to_recheck_not_find_job_page` is unchanged: NO_OPENINGS still routes to the recheck.
 - Every new or revised node fails on `4dd0af80~1` and passes on `4dd0af80`. That is the repro bar for qa-fix.
+
+### Radia review-fix — AST-1822
+
+[code-rubric] REVIEW (Commit: 9d554fcd): strip the AST-1768 carry before dev.
+
+#### Fix-specific checks
+
+- **[bug-repro] OK** — Betty’s `[bug-repro]` comment documents the repro gate: pre-fix product `0d08e9b1` → 7 failed / 6 passed on the plan manifest; post-fix `origin/ftr/...` @ `c9819bc6` → 13/13 green. In-diff assertions pin concrete **To-be** values (e.g. `bump.assert_called_once_with("co")` / `("acme")`, Avail `== 2` / `== 1` / `== 3`, claim parity, `scan_interval_hours` kwarg counts `3→2→1`), not tautologies; they would fail on pre-AST-1821 product for the reasons in the plan table. **Advisory:** roster/dispatch nodes lack a first-line `# [bug-repro]` / docstring tag (thread + class name carry the gate); optional convention polish only.
+- **#### What must still hold — OK** — Success-path recheck tests untouched aside from the two revised failure nodes; `TestAst508PrefilterPassedEligible` not modified; routing test not touched; new `TestAst1821CompanyAvailWindow` is additive and self-contained (`c1821` / `b1821`).
+
+#### Canon scores
+
+**Notes:** No **Canon Scope (frozen at plan)** on Linear Description (same pattern as AST-1821). Scored Joan’s fix-board overlap: **`patt.entity.batch-criteria`** (tests lock AST-1821 batch-criteria / Avail parity). Process gap for Archie if gap children should carry explicit frozen lists.
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+
+#### Column diff vs plan stage
+
+no plan-stage scores attached (fix-board Joan: CANON OK narrative only)
+
+#### Frame diff
+
+(none)
+
+#### Findings
+
+**fix-now**
+
+- **Cross-ticket test/bible carry (AST-1768 · AST-1687)** — `merge-tests(AST-1822): origin/tests` (`93b10c43`) adds ~430 lines outside plan-fix § Bug: AST-1822: `tests/component/frontend/**`, `tests/component/ui/api/test_api_candidate.py` (`TestAst1768CandidateByEmailApi`), `docs/test-bible/frontend/lib.md`, `docs/test-bible/ui/api/api_candidate.md`, `stytchMock.tsx`. Not AST-1820 epic scope; **`origin/dev` has no `by_email` route** (product not on dev). Orphaned finish-up merge of this publish ref **as-is** risks new reds on dev for API/frontend suites. **resolve-child / Chuckles:** land only the four-file Betty core (`d443b774`: `test_roster.py`, `test_dispatch_tasks.py`, bible roster + database) + AST-1822 plan doc on the sub tip, or revert the AST-1768 paths before merge to `origin/dev`. AST-1768 should ride its own `sub/AST-1687/...` with product.
+
+**discuss:** (none)
+
+**advisory**
+
+- **merge-tests wide carry:** Expected for same-parent siblings; **not** applicable to AST-1768 (different parent). Note once for epic PR hygiene.
+- **Plan fidelity (in-scope slice):** `d443b774` matches plan **Proposed change** items 1–4 and manifest shape; tip doc adds § Bug: AST-1822 only (+88 lines vs ftr).
+- **Estimate 2:** In-scope footprint fits; tip also carries unrelated AST-1768 bible/tests (not in ticket scope).
+
+#### What's solid
+
+- Failure-path mocks assert stamp vs no-stamp on `short_name` guard; Playwright failure stamps without state transition.
+- `TestAst1821CompanyAvailWindow` uses SQLite `_ago()` text format per plan; five nodes cover `score_floor`+window, `freq_hrs`, claim parity, `NO_OPENINGS_RETRY` base lookup, and kwarg.
+- Bible rows updated for roster + database as specified.
+
+#### Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (fix-now carry, C7 complete) | Orphaned AST-1820 | → **Review Posted** → **resolve-child** on `sub/AST-1820/AST-1822-recheck-no-openings-avail-count-tests` to drop AST-1768 hunks (or rebase sub to Betty-only test commit + plan doc) → re-run test-fix manifest → Radia re-pass if needed → then merge **AST-1821 ftr + cleaned AST-1822 sub** to `origin/dev` per orphaned fix-lane path (no `merge-child` / `prep-uat`). |
+
+**Sibling:** AST-1821 product is already on `origin/ftr/AST-1820-recheck-no-openings-avail-count` @ `c9819bc6`; this review assumes test-fix green against that ftr base for the 13-node manifest Betty cited.
+
+#### Chuckles disposition
+
+fix-now accepted → Review Posted → resolve by Betty (test-tree owner): restore the 8 leaked AST-1768 paths to ftr content on this sub (same drop as 4a9d769f on AST-1818). Then re-run the test-fix manifest → User Testing → merge-child into `ftr/AST-1820-recheck-no-openings-avail-count`.
