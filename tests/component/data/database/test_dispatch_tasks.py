@@ -1194,9 +1194,12 @@ class TestAst882HomepageReadyClaimsWfr:
         assert {r["short_name"] for r in rows} == {"hr", "wfr"}
 
 class TestAst892FetchWebsiteExcludesSecondStrike:
-    """AST-892: fetch_website claim/count exclude WFR + homepage_text; prefilter still claims them."""
+    """AST-892 split removed (AST-1810): fetch_website counts + claims every WEBSITE_FOUND_RETRY row,
+    whatever homepage_text holds; count and claim stay in step."""
 
-    def test_count_excludes_second_strike_includes_scrape_retry(self, sqlite_in_memory) -> None:
+    def test_count_includes_every_wfr_row(self, sqlite_in_memory) -> None:
+        # [bug-repro] AST-1810: pre-fix the fetch_website count was 3 (the "second" row with
+        # homepage_text was excluded); to-be all 4 rows count.
         db = sqlite_in_memory
         cid = "c892"
         db.save_company(
@@ -1232,16 +1235,18 @@ class TestAst892FetchWebsiteExcludesSecondStrike:
             "task_key": "fetch_website",
             "candidate_id": cid,
         }
-        assert db.count_eligible_for_dispatch_task(fetch_task) == 3
+        assert db.count_eligible_for_dispatch_task(fetch_task) == 4
         prefilter_task = {
             "entity_type": "company",
             "trigger_state": "HOMEPAGE_READY",
             "task_key": "prefilter_company",
             "candidate_id": cid,
         }
-        assert db.count_eligible_for_dispatch_task(prefilter_task) == 3
+        # AST-1798 suffix-always: prefilter's HOMEPAGE_READY row claims HOMEPAGE_READY(_RETRY),
+        # never WEBSITE_FOUND_RETRY — fetch_website is the single owner.
+        assert db.count_eligible_for_dispatch_task(prefilter_task) == 0
 
-    def test_claim_skips_second_strike_keeps_bare_wfr(self, sqlite_in_memory) -> None:
+    def test_claim_takes_second_strike_and_bare_wfr(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         cid = "c892b"
         db.save_company(
@@ -1270,11 +1275,10 @@ class TestAst892FetchWebsiteExcludesSecondStrike:
             10,
             candidate_id=cid,
             states=["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"],
-            exclude_prefilter_second_strike=True,
         )
-        assert n == 2
+        assert n == 3
         names = {r["short_name"] for r in db.get_company_batch("batch-892")}
-        assert names == {"retry", "fresh"}
+        assert names == {"second", "retry", "fresh"}
 
     def test_prefilter_claim_still_takes_second_strike(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1292,7 +1296,6 @@ class TestAst892FetchWebsiteExcludesSecondStrike:
             10,
             candidate_id=cid,
             states=["HOMEPAGE_READY", "WEBSITE_FOUND_RETRY"],
-            exclude_prefilter_second_strike=False,
         )
         assert n == 1
         rows = db.get_company_batch("batch-892-pre")

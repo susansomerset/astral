@@ -272,6 +272,8 @@ External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/telesco
 
 **AST-892 revision:** skip path returns `skipped` + work-only `total` (pure skip → `total=0`); claim/count exclusion is primary — see **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-892**).
 
+**AST-1810 (supersedes the skip above):** the second-strike skip is removed — every claimed `WEBSITE_FOUND_RETRY` row is scraped; the return dict keeps `skipped`, always 0. Revised nodes: `::test_scrapes_wfr_even_when_homepage_text_present` (was `test_skips_wfr_when_homepage_text_present`) and `::test_mixed_second_strike_and_fresh_both_scrape` (was `test_mixed_skip_and_scrape_excludes_skips_from_total`). Primary manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-1810**).
+
 Roster + claim: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/utils/config.md`** (**AST-882**).
 
 ### AST-1014 · AST-952
