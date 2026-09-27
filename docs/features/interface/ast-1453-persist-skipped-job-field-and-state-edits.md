@@ -841,3 +841,25 @@ No `src/**` change on this ref. The product is AST-1811 and reaches this ref via
 - `test_rejects_invalid_prior_state` still guards default prior-state enforcement for every other caller.
 - The pre-existing unrelated reds are neither absorbed nor masked by this gap.
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/e7ba4c7a793d60933a074cb028b61f90/59241f55-de34-4bd3-aa81-b8eb0025b780/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/9f9961f6-153f-47fd-92e0-d3a1ed5c16b4/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/e7ba4c7a793d60933a074cb028b61f90/e3614295-d19c-4944-94b2-190b177725fd/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1809 (parent) | ftr/AST-1809-skipped-any-state |
+| AST-1811 | sub/AST-1809/AST-1811-skipped-any-state |
+| AST-1812 | sub/AST-1809/AST-1812-skipped-any-state-tests |
+| AST-1813 | sub/AST-1809/AST-1813-skipped-any-state-canon |
+
+**Epic worktree:** `astral-AST-1809/` — one active sub checked out at a time.

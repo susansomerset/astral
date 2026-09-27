@@ -138,3 +138,39 @@ Three public helpers on `src/external/slack.py`: `list_bot_channels` (public/pri
 **Bible shasum (publish tip):**
 - `docs/test-bible/external/slack.md` — *(filled after publish)*
 
+---
+
+### AST-1815 · AST-1814
+
+**Parent:** [AST-1814 — Slack channel list isn't working](https://linear.app/astralcareermatch/issue/AST-1814). **Publish:** `origin/sub/AST-1814/AST-1815-surface-slack-scopes-on-conversations-list-errors` (product); tests landed by **AST-1816** on `origin/sub/AST-1814/AST-1816-gap-slack-scope-error-tests`.
+
+`conversations.list` `ok:false` raises in `list_bot_channels` / `_iter_conversations` append Slack `needed` / `provided` when present; the plain `"<method> failed: <error>"` text stays the same when they are absent. No change to pagination, types, sort, or soft-skip.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `conversations.list` ok:false needed/provided detail | `src/external/slack.py` | **`TestAst1815SlackScopeErrorDetail`** |
+| Existing hard-fail prefix checks | `src/external/slack.py` | existing **`TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`**, **`TestAst1667WorkspacePosterPool::test_hard_failures_raise`** |
+
+**Broken / obsolete this pass:** none — existing asserts use `match="conversations.list"` (prefix unchanged).
+
+**Integration:** no existing scenario exercises Slack channel list errors — no revision; do not invent.
+
+## QA test manifest
+
+1. `[bug-repro]` + AC3 pin (new): `tests/component/external/test_slack.py::TestAst1815SlackScopeErrorDetail` — `test_list_bot_channels_missing_scope_names_needed_and_provided` and `test_iter_conversations_missing_scope_names_needed_and_provided` are red on the pre-fix tree and flip green once AST-1815 is on the tip; `test_conversations_list_error_without_scope_fields_is_plain` is green on both.
+2. Existing regression: `tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`
+3. Existing regression: `tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool::test_hard_failures_raise`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_slack.py::TestAst1815SlackScopeErrorDetail \
+  tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises \
+  tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool::test_hard_failures_raise \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines after AST-1815 lands on the tip — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/external/slack.md` — *(filled after publish)*
+
