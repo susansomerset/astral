@@ -289,3 +289,64 @@ File: `src/external/slack.py` only (Technical scope — `ok:false` handling in `
 **[board-betty] TESTS: REVISE** — existing `conversations.list` ok:false tests (`TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`, poster-pool hard-failure test) only assert the `conversations.list` prefix and stay green; no coverage feeds `missing_scope` + `needed`/`provided` through `list_bot_channels` / `_iter_conversations`, none pins the exact plain message when those fields are absent, and `docs/test-bible/external/slack.md` has no AST-1815 entry. Routed to a sibling test-gap child (orphaned branch — no inline qa-fix on this ticket).
 
 **[board-joan] CANON: OK** — canon roster lives at `canon/docs/DIRECTIVES-DIRECTORY.md` (not `docs/canon-index.md`). Change only enriches `RuntimeError` text at existing raise sites; external raise / handler log-once unchanged. No debug on `_slack_error` matches `stat.logging.debug` (formatter on the raise path, not a callee joint). `stat.logging.error` allows facts on the exception at detection without logging there. `stat.errors.raise-once-log-once` (draft) respected. No statute or pattern needs an update or carve-out.
+
+
+### Radia review-fix — AST-1815
+
+**[code-rubric] PROCEED (Commit: e0be3c65)** — clean; §3h shortcut → User Testing (resolve-child skipped).
+
+#### Canon scores
+
+**Notes (frozen list):** Linear Description has no **Canon Scope (frozen at Plan Approved)** table. Scored only `stat.logging.debug` and `stat.logging.error` — the directives fix-board Joan named for this `src/external/slack.py` change and the AST-1787 slack surface they extend. Not scored: `stat.errors.raise-once-log-once` (draft / not in force).
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+#### Column diff vs plan stage
+
+no plan-stage scores attached (no `validate-plan` / `[plan-rubric]` artifact for AST-1815 in the issue doc; fix-board `[board-joan] CANON: OK` only)
+
+#### Frame diff
+
+(none)
+
+#### Fix-specific checks
+
+**[bug-repro]** not applicable on this publish ref — clean board opt-out (`[board-betty] TESTS: REVISE` → sibling **AST-1816**). Judged on `origin/sub/AST-1814/AST-1816-gap-slack-scope-error-tests`: **OK** — `TestAst1815SlackScopeErrorDetail` `[bug-repro]` cases assert `channels:read` and `groups:read,groups:history` in `str(exc.value)` for both `list_bot_channels` and `_iter_conversations`; AC3 case uses exact equality on the plain message. Those assertions would fail on pre-fix `ftr` (message lacked scope fields); they are not tautologies or prefix-only `match=` checks.
+
+**## What must still hold** — OK — `_slack_error` only changes raise message text at the two `conversations.list` sites; `types`, pagination, sorting, `{id,name}` shape, `_SOFT_SKIP_ERRORS`, `RuntimeError` (no log-and-re-raise in external), and existing debug loops/lines in `list_bot_channels` / `_iter_conversations` are untouched.
+
+#### Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **dev sync carry:** `docs/features/interface/ast-1453-persist-skipped-job-field-and-state-edits.md` (AST-1809 epic registry Threads mirror, commit `cd7ca619` / `sync(dev)`) appears in the `ftr…sub` diff but is unrelated to AST-1815 product; expected merge-from-dev noise, not scored as canon violation.
+- **Test split:** No `tests/**` on this sub; coverage lands on **AST-1816**. `ftr` rollup needs AST-1815 + AST-1816 (and re-sync) before the bible manifest is green end-to-end.
+- **Linear Component scope** still mentions `test_slack.py`; plan-fix + board explicitly routed tests to AST-1816 — intentional, not a product miss on this tip.
+
+#### What's solid
+
+- `_slack_error` matches plan-fix: `needed` then `provided`, truthy-only, semicolon join; plain message unchanged when extras absent (AC3).
+- Implements **To-be** / AC1–4 for the two call sites only, per the documented narrow-scope decision.
+- Plan fidelity: `src/external/slack.py` only for product; boundaries respected (no API/UI/core edits).
+
+#### Chuckles branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (clean, C7 complete) | Mini-parent **AST-1814** with `ftr/AST-1814-slack-channel-list-isnt-working` — **not** orphaned-to-dev. → **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Merge this sub to `ftr` when ready; pair with **AST-1816** on `ftr` for manifest green.
+
+#### Recommended actions (downstream — not executed here)
+
+- Append artifact, `docs(AST-1815): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.
+- Ensure **AST-1816** follows AST-1815 onto `ftr` before treating the epic as test-complete.
