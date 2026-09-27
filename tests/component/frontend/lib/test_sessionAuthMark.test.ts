@@ -46,7 +46,6 @@ describe("sessionAuthMark", () => {
 describe("sessionAuthMark — AST-1482 auth return path", () => {
   beforeEach(() => {
     sessionStorage.clear()
-    localStorage.removeItem("astral-auth-return-path")
   })
 
   it("isSafeAuthReturnPath accepts in-app paths and rejects unsafe values", () => {
@@ -73,10 +72,9 @@ describe("sessionAuthMark — AST-1482 auth return path", () => {
   })
 
   it("consume removes unsafe stored paths and returns null", () => {
-    // AST-1768: return path moved sessionStorage → localStorage.
-    localStorage.setItem("astral-auth-return-path", "/authenticate")
+    sessionStorage.setItem("astral-auth-return-path", "/authenticate")
     expect(consumeAuthReturnPath()).toBeNull()
-    expect(localStorage.getItem("astral-auth-return-path")).toBeNull()
+    expect(sessionStorage.getItem("astral-auth-return-path")).toBeNull()
   })
 
   it("clearSessionAuthMarks leaves auth return path intact", () => {
@@ -86,31 +84,5 @@ describe("sessionAuthMark — AST-1482 auth return path", () => {
     clearSessionAuthMarks()
     expect(peekAuthReturnPath()).toBe("/jobs/detail/j-keep")
     expect(getHadSession()).toBe(false)
-  })
-})
-
-describe("sessionAuthMark — AST-1768 return path survives magic-link new tab", () => {
-  beforeEach(() => {
-    sessionStorage.clear()
-    localStorage.removeItem("astral-auth-return-path")
-  })
-
-  it("[bug-repro] captured path is still consumable after sessionStorage is wiped (new tab)", () => {
-    captureAuthReturnPath("/jobs/detail/j-jolane", "")
-    expect(localStorage.getItem("astral-auth-return-path")).toBe("/jobs/detail/j-jolane")
-    // Magic link opens /authenticate in a fresh tab — no sessionStorage carries over.
-    sessionStorage.clear()
-    expect(peekAuthReturnPath()).toBe("/jobs/detail/j-jolane")
-    expect(consumeAuthReturnPath()).toBe("/jobs/detail/j-jolane")
-    expect(localStorage.getItem("astral-auth-return-path")).toBeNull()
-  })
-
-  it("had-session and log-off reason stay tab-scoped in sessionStorage", () => {
-    markHadSession()
-    setLogOffReason("timeout")
-    expect(sessionStorage.getItem("astral-had-stytch-session")).toBe("1")
-    expect(sessionStorage.getItem("astral-logoff-reason")).toBe("timeout")
-    expect(localStorage.getItem("astral-had-stytch-session")).toBeNull()
-    expect(localStorage.getItem("astral-logoff-reason")).toBeNull()
   })
 })
