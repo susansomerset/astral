@@ -117,3 +117,39 @@ The pre-commit hook blocks engineer commits to `tests/` and `docs/test-bible/**`
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1818
+**Overall:** APPROVED
+**Corpus:** a0bc2f0e5b5810448cf465ebeff84ffb6f1d60b6
+**Publish ref:** `sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block` @ `efe85d0a`
+
+## Canon scores
+
+Frozen directive list is **empty** (child **Citations:** none; parent **Architectural definition** records no applicable statutes/patterns in the active catalog). No ids to score — not a missing Canon Scope: the parent already locked that decision at definition time, and Radia’s column will use the same empty list.
+
+## Traceability
+
+AC 1–5, 9–10 → Stage 2; AC 6–8 → Stage 1; AC 11 → per-stage build/lint, Betty `qa-child` test/bible updates, then `test-child` green suite (per plan AC table and Stages 1–2).
+
+### Findings
+
+**acceptable** — `## Scope gate` + Files Changed align with the child `## Scope` and parent Component/Technical scope; engineer product touch is only `AdminScheduledActions.tsx`; test/bible rows correctly attributed to Betty.
+
+**acceptable** — Verified codebase facts match `origin/dev` in the epic worktree (`FROZEN_DATA_COLUMNS = 3`, `useState("gt0")`, Run button at 244–251, `handleRun` `empty_render` guard). Stage 2 JSX matches AC 1–3 opacity/label/class split (`emptyRender` → secondary **Invalid** full opacity; `zeroAvail` → existing muted Run).
+
+**acceptable** — No `## Self-assessment` / conf block; Estimate confirm only. Low risk for this footprint; not `!!-NONE`.
+
+**discuss** — Optional: a one-line self-assessment (`minor` conf) would match larger interface plans; not required for approval.
+
+### R6 (summary)
+
+- Definition fidelity: all four parent functional capabilities and all 11 child ACs are staged; no scope creep into API/config/`listTableLayout.ts`/`App.css`.
+- DRY / scope: single-file conditional change; rejected alternatives documented; Betty owns assertion churn explicitly.
+- Plan Discuss: status **Plan Ready**, assignee Joan; no `[plan-discuss]` rounds in thread.
+
+context_tokens≈18500
+
+[plan-rubric] PROCEED (Commit: efe85d0a) Plan faithful, empty canon OK
