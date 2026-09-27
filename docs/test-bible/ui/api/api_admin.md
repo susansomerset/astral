@@ -834,3 +834,22 @@ Keep AST-1780 / AST-1792 rows; do not mark them obsolete.
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/ui/api/api_admin.md`
+
+
+### AST-1807 · AST-1805 (implicit _RETRY substate)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1807-implicit-retry-tests`. Product: **AST-1805** (`{base}_RETRY` validates through its registered base; retry priors derived by `state_prior_states`). Probe retries are never registry keys, so these stay green through **AST-1806**'s purge. Unregistered base (`NOPE_RETRY`) is still rejected everywhere.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `_dispatch_task_key_trigger_error` general (job) + mailbox candidate branches accept `{base}_RETRY`, reject `NOPE_RETRY` | `src/ui/api/api_admin.py` | **`TestAst773UpdateDispatchTaskTaskKey::test_ast1807_trigger_error_accepts_implicit_retry`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey::test_ast1807_trigger_error_accepts_implicit_retry \
+  -q
+```

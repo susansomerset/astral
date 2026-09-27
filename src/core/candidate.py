@@ -92,9 +92,12 @@ from src.utils.config import (
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     dispatch_claim_states,
     dispatch_hop_label,
+    is_registered_state,
     is_valid_candidate_batch_claim_state,
     parse_dispatch_hop_label,
+    registered_base,
     rubric_owner_task_key,
+    state_prior_states,
 )
 from src.utils.formatting import value_to_str
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
@@ -2214,10 +2217,9 @@ class IllegalCandidateTransition(ValueError):
 
 
 def _candidate_prior_states(to_state: str):
-    cfg = CANDIDATE_STATES.get(to_state)
-    if cfg is None:
+    if not is_registered_state(CANDIDATE_STATES, to_state):
         raise ValueError(f"Unknown candidate state: {to_state}")
-    return cfg.get("prior_states")
+    return state_prior_states(CANDIDATE_STATES, to_state)
 
 
 def _candidate_state_allowed(from_state: str, to_state: str) -> bool:
@@ -2357,7 +2359,7 @@ def transition_candidate_state(
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         raise ValueError(f"Candidate not found: {candidate_id}")
-    if to_state not in CANDIDATE_STATES:
+    if not is_registered_state(CANDIDATE_STATES, to_state):
         raise ValueError(f"Unknown candidate state: {to_state}")
     from_state = candidate["state"]
     # One prior_states check: gate when not force; INFO when force bypasses.
@@ -2455,7 +2457,8 @@ def check_context_complete(candidate_id: str) -> bool:
     if not candidate:
         return False
     current_state = candidate.get("state", "")
-    rank = int((CANDIDATE_STATES.get(current_state) or {}).get("progress_rank", -1))
+    # {base}_RETRY carries its base's rank (AST-1806).
+    rank = int((CANDIDATE_STATES.get(registered_base(CANDIDATE_STATES, current_state) or "") or {}).get("progress_rank", -1))
     ready_rank = int(CANDIDATE_STATES["ALL_TOPICS_READY"]["progress_rank"])
     if rank >= ready_rank and rank >= 0:
         return True
@@ -3607,12 +3610,13 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
 
 def _requested_stage_failure_target(primary_state: str, current_state: str) -> str:
     """Primary → retry_state; already on retry (or other) → error_state."""
-    cfg = CANDIDATE_STATES[primary_state]
-    retry = cfg["retry_state"]
-    error = cfg["error_state"]
-    if current_state == primary_state:
-        return retry
-    return error
+    # Retry-only dispatch rows pass {base}_RETRY; resolve to the base, then compare against it
+    # so a failure while on retry lands on error_state, never back into retry (AST-642).
+    primary = registered_base(CANDIDATE_STATES, primary_state) or primary_state
+    cfg = CANDIDATE_STATES[primary]
+    if current_state == primary:
+        return cfg["retry_state"]
+    return cfg["error_state"]
 
 
 async def run_requested_artifacts_dispatch(
@@ -3667,7 +3671,7 @@ async def run_requested_artifacts_dispatch(
         parsed = parse_dispatch_hop_label(after)
         if parsed and parsed[0] == bare_trigger:
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-        if bare_trigger not in CANDIDATE_STATES:
+        if not is_registered_state(CANDIDATE_STATES, bare_trigger):
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
         target = _requested_stage_failure_target(bare_trigger, current)
         try:

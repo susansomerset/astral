@@ -39,9 +39,11 @@ from src.utils.config import (
     dispatch_hop_label,
     parse_dispatch_hop_label,
     is_build_artifacts_in_progress,
+    is_registered_state,
     is_valid_job_batch_claim_state,
     legacy_build_artifacts_hop,
     source_entity_type_transition_allowed,
+    state_prior_states,
     validate_source_entity_type,
     validate_value,
 )
@@ -1356,10 +1358,10 @@ def legal_job_successor_states(from_state: str) -> List[str]:
     """JOB_STATES keys that transition_job_state would accept from from_state, excluding from_state."""
     current = (from_state or "").strip()
     out: List[str] = []
-    for name, cfg in JOB_STATES.items():
+    for name in JOB_STATES:
         if name == current:
             continue
-        if _job_state_matches_prior(current, cfg.get("prior_states")):
+        if _job_state_matches_prior(current, state_prior_states(JOB_STATES, name)):
             out.append(name)
     return out
 
@@ -1455,8 +1457,10 @@ def transition_job_state(job_ids: List[str], to_state: str, score: Optional[floa
     """Record state transition for jobs (AST-77). Appends to state_history; updates state.
     score: when provided, recorded in the state_history entry and written to latest_score column (AST-350).
     Validates to_state against JOB_STATES and prior_states rules. Raises ValueError if invalid."""
-    validate_value(_JOB_STATE_LIST, to_state)
-    prior_states = JOB_STATES[to_state].get("prior_states")
+    # Implicit {base}_RETRY validates via its base (AST-1805); message kept for callers/tests.
+    if not is_registered_state(JOB_STATES, to_state):
+        raise ValueError(f"Value {to_state!r} not in allowed list: {_JOB_STATE_LIST}")
+    prior_states = state_prior_states(JOB_STATES, to_state)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     for job_id in job_ids:
         job = database.get_job(job_id)

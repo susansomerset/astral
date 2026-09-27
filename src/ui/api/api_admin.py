@@ -86,6 +86,7 @@ from src.utils.config import (
     dispatch_score_floor_option_labels,
     is_dispatch_chain_trigger,
     parse_dispatch_hop_label,
+    is_registered_state,
     get_active_llm_provider,
     infer_brain_setting_from_legacy_model_code,
     resolve_brain_setting_to_anthropic_agent_key,
@@ -1214,7 +1215,7 @@ def _dispatch_task_key_trigger_error(
         parsed = parse_dispatch_hop_label(ts)
         if parsed:
             registry_ts = parsed[0]
-        if registry_ts not in registry:
+        if not is_registered_state(registry, registry_ts):
             return f"task_key {tk!r} (candidate) is not valid for trigger_state {ts!r}"
         return None
     # Optional override from admin form; else catalog entity for task_key.
@@ -1242,7 +1243,7 @@ def _dispatch_task_key_trigger_error(
     parsed_registry = parse_dispatch_hop_label(ts)
     if parsed_registry:
         registry_ts = parsed_registry[0]
-    if registry_ts not in registry:
+    if not is_registered_state(registry, registry_ts):
         return f"task_key {tk!r} ({et}) is not valid for trigger_state {ts!r}"
     if is_dispatch_chain_trigger(registry_ts):
         parsed = parse_dispatch_hop_label(ts)
