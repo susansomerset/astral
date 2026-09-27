@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
-import zlib
-from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 from src.external import telescope as pw_mod
@@ -176,7 +172,7 @@ class TestClassifyPlaywrightFailure:
         ) == "launch_failure"
 
     def test_telescope_timeout_is_infra(self) -> None:
-        fc = pw_mod.classify_playwright_failure(asyncio.TimeoutError("telescope timeout"))
+        fc = pw_mod.classify_playwright_failure(httpx.TimeoutException("telescope timeout"))
         assert fc == "telescope_timeout"
         assert pw_mod.is_playwright_infra_failure(fc)
 
@@ -210,106 +206,76 @@ class TestGetPageDropIn:
             await pw_mod.get_page(url="https://example.com")
 
 
-# Branches: Postgres queue client — enqueue, await, failure mapping, deadline.
-class _FakeConn:
-    def __init__(self) -> None:
-        self.execute = AsyncMock()
-
-    @asynccontextmanager
-    async def transaction(self):
-        yield
-
-
-class _FakeDb:
-    def __init__(self) -> None:
-        self.conn = _FakeConn()
-        self.execute = AsyncMock()
-
-    @asynccontextmanager
-    async def acquire(self):
-        yield self.conn
-
-
-def _queue_with_fake_db(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
-    q = pw_mod._TelescopeQueue()
-    db = _FakeDb()
-
-    async def fake_get_db():
-        q._state().db = db
-        return db
-
-    monkeypatch.setattr(q, "_get_db", fake_get_db)
-    return q, db
-
-
-async def _submit_and_resolve(q, row: dict) -> Any:
-    task = asyncio.create_task(q.submit({"url": "https://example.com", "fields": ["text"]}))
-    while not q._state().waiters:
-        await asyncio.sleep(0)
-    next(iter(q._state().waiters.values())).set_result(row)
-    return await task
-
-
-class TestTelescopeQueueClient:
+# Branches: HTTP pool failover / timeout → PlaywrightInfraError (AST-1726).
+class TestTelescopePoolHttp:
     @pytest.mark.asyncio
-    async def test_done_returns_decoded_result_and_notifies_worker(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    async def test_5xx_retries_other_node_then_ok(
+        self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        q, db = _queue_with_fake_db(monkeypatch)
-        payload = {"final_url": "https://example.com/", "text": "hi \x00"}
-        blob = zlib.compress(json.dumps(payload).encode())
-        with caplog.at_level("INFO", logger="src.external.telescope"):
-            out = await _submit_and_resolve(q, {"status": "done", "result": blob})
-        assert out == payload
-        done = [r.getMessage() for r in caplog.records if "telescope job done" in r.getMessage()]
-        assert len(done) == 1 and done[0].endswith(
-            "telescope job done: https://example.com -> https://example.com/ fields:text"
+        monkeypatch.setitem(
+            pw_mod.TELESCOPE_CONFIG,
+            "base_urls",
+            ["http://node-a.test", "http://node-b.test"],
         )
-        sql = " ".join(str(c.args[0]) for c in db.conn.execute.await_args_list)
-        assert "INSERT INTO telescope_job" in sql and "pg_notify" in sql
-        assert q._state().waiters == {}
-
-    @pytest.mark.parametrize(
-        "error_class, failure_class",
-        [
-            ("timeout", "telescope_timeout"),
-            ("expired", "telescope_timeout"),
-            ("bad_request", "telescope_bad_request"),
-            ("scrape_failed", "telescope_job_failed"),
-            ("lease_expired", "telescope_job_failed"),
-        ],
-    )
-    @pytest.mark.asyncio
-    async def test_failed_job_maps_to_failure_class(
-        self, monkeypatch: pytest.MonkeyPatch, error_class: str, failure_class: str,
-    ) -> None:
-        q, _db = _queue_with_fake_db(monkeypatch)
-        row = {"status": "failed", "result": None, "error": "x", "error_class": error_class}
-        with pytest.raises(pw_mod.PlaywrightInfraError) as exc_info:
-            await _submit_and_resolve(q, row)
-        assert exc_info.value.failure_class == failure_class
-
-    @pytest.mark.asyncio
-    async def test_deadline_cancels_job_and_raises_timeout(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        q, db = _queue_with_fake_db(monkeypatch)
-        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "job_deadline_seconds", 0.05)
-        with pytest.raises(pw_mod.PlaywrightInfraError) as exc_info:
-            await q.submit({"url": "https://example.com", "fields": ["text"]})
-        assert exc_info.value.failure_class == "telescope_timeout"
-        assert "status = 'cancelled'" in db.execute.await_args.args[0]
-        assert q._state().waiters == {}
-
-    @pytest.mark.asyncio
-    async def test_missing_database_url_raises_connectivity(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "max_node_attempts", 2)
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "retry_other_node", True)
+        monkeypatch.setenv("TELESCOPE_BEARER_TOKEN", "tok")
         monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
-        monkeypatch.delenv("ASTRAL_DATABASE_URL", raising=False)
+
+        calls: list[str] = []
+
+        class _Resp:
+            def __init__(self, status: int, body: dict | None = None) -> None:
+                self.status_code = status
+                self._body = body or {}
+
+            def json(self) -> dict:
+                return self._body
+
+        async def fake_request(method, url, headers=None, json=None):
+            calls.append(url)
+            if "node-a" in url:
+                return _Resp(502)
+            return _Resp(200, {"ok": True})
+
+        client = MagicMock()
+        client.request = AsyncMock(side_effect=fake_request)
+        pool = pw_mod._TelescopePool()
+        pool._client = client
+        monkeypatch.setattr(pw_mod, "_pool", pool)
+
+        resp = await pool.request("GET", "/healthz")
+        assert resp.status_code == 200
+        assert any("node-a" in u for u in calls)
+        assert any("node-b" in u for u in calls)
+
+    @pytest.mark.asyncio
+    async def test_timeout_raises_telescope_timeout(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "base_urls", ["http://solo.test"])
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "max_node_attempts", 1)
+        monkeypatch.setenv("TELESCOPE_BEARER_TOKEN", "tok")
+        monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
+
+        client = MagicMock()
+        client.request = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
+        pool = pw_mod._TelescopePool()
+        pool._client = client
+
         with pytest.raises(pw_mod.PlaywrightInfraError) as exc_info:
-            await pw_mod._TelescopeQueue().submit({"url": "https://example.com"})
+            await pool.request("GET", "/healthz")
+        assert exc_info.value.failure_class == "telescope_timeout"
+
+    @pytest.mark.asyncio
+    async def test_missing_bearer_raises_connectivity(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "base_urls", ["http://solo.test"])
+        monkeypatch.delenv("TELESCOPE_BEARER_TOKEN", raising=False)
+        pool = pw_mod._TelescopePool()
+        with pytest.raises(pw_mod.PlaywrightInfraError) as exc_info:
+            await pool.request("GET", "/healthz")
         assert exc_info.value.failure_class == "connectivity_failure"
 
 
@@ -381,7 +347,7 @@ class TestAst1745CullPreservesRootSvgLogo:
 
 
 class TestAst1750PostTelescopeDebugDump:
-    """AST-1750 bug-repro — _post_telescope debug dumps request body + response (truncated)."""
+    """AST-1750 bug-repro — _post_telescope debug dumps full request body + response."""
 
     @pytest.mark.asyncio
     async def test_post_telescope_debug_emits_request_body_and_full_response(
@@ -397,17 +363,21 @@ class TestAst1750PostTelescopeDebugDump:
             "scrape_meta": {"bot_blocked": False, "content_chars": 40},
         }
 
-        async def fake_submit(body, priority=None):
-            return payload
+        async def fake_request(method, path, json_body=None, **_kwargs):
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json = MagicMock(return_value=payload)
+            resp.text = '{"final_url":"https://example.com/final"}'
+            return resp
 
-        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
+        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
         token = log_debug.set(True)
         try:
             with caplog.at_level(logging.DEBUG, logger="src.external.telescope"):
                 out = await pw_mod._post_telescope(
                     "https://example.com/job",
-                    fields=["text"],
                     expand=False,
+                    links=False,
                 )
         finally:
             log_debug.reset(token)
@@ -421,128 +391,17 @@ class TestAst1750PostTelescopeDebugDump:
             "AST-1750: debug callee-in must include request body fields"
         )
         assert "no longer available" in msgs or "final_url" in msgs, (
-            "AST-1750: debug callee-out must include response fields"
+            "AST-1750: debug callee-out must dump full response (no truncation)"
         )
-
-    @pytest.mark.asyncio
-    async def test_post_telescope_debug_truncates_long_response_text(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        import logging
-
-        from src.utils.logging import DEBUG_STRING_HEAD_CHARS, DEBUG_STRING_TAIL_CHARS, log_debug
-
-        head = "H" * DEBUG_STRING_HEAD_CHARS
-        tail = "T" * DEBUG_STRING_TAIL_CHARS
-        payload = {
-            "final_url": "https://example.com/final",
-            "text": head + ("M" * 500) + tail,
-            "scrape_meta": {"bot_blocked": False},
-        }
-
-        async def fake_request(method, path, json_body=None, **_kwargs):
-            resp = MagicMock()
-            resp.status_code = 200
-            resp.json = MagicMock(return_value=payload)
-            resp.text = '{"final_url":"https://example.com/final"}'
-            return resp
-
-        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
-        token = log_debug.set(True)
-        try:
-            with caplog.at_level(logging.DEBUG, logger="src.external.telescope"):
-                await pw_mod._post_telescope(
-                    "https://example.com/job",
-                    fields=["text"],
-                    expand=False,
-                )
-        finally:
-            log_debug.reset(token)
-
-        msgs = "\n".join(r.getMessage() for r in caplog.records)
-        assert "chars omitted>" in msgs
-        assert "M" not in msgs
-        assert "final_url" in msgs
-        assert head[:100] in msgs
-        assert tail[-100:] in msgs
         assert any(
             "Calling" in r.getMessage() or "body" in r.getMessage().lower()
             or "request" in r.getMessage().lower()
             for r in caplog.records
-        ), "AST-1750: missing ungated logger.debug callee-in before _pool.submit"
+        ), "AST-1750: missing ungated logger.debug callee-in before _pool.request"
         assert any(
             "Response" in r.getMessage() or "final_url" in r.getMessage()
             for r in caplog.records
         ), "AST-1750: missing ungated logger.debug callee-out with full JSON"
-
-
-class TestPostTelescopeDebugFlag:
-    """Platform client passes debug in the job request (service scrape_debug events)."""
-
-    @pytest.mark.asyncio
-    async def test_post_telescope_debug_false_by_default(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from src.utils.logging import log_debug
-
-        seen: dict = {}
-
-        async def fake_submit(body, priority=None):
-            seen["body"] = body
-            return {"final_url": "https://example.com", "text": "x"}
-
-        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
-        token = log_debug.set(False)
-        try:
-            await pw_mod._post_telescope("https://example.com", fields=["text"])
-        finally:
-            log_debug.reset(token)
-
-        assert seen["body"]["debug"] is False
-
-    @pytest.mark.asyncio
-    async def test_post_telescope_debug_follows_log_debug(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from src.utils.logging import log_debug
-
-        seen: dict = {}
-
-        async def fake_submit(body, priority=None):
-            seen["body"] = body
-            return {"final_url": "https://example.com", "text": "x"}
-
-        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
-        token = log_debug.set(True)
-        try:
-            await pw_mod._post_telescope("https://example.com", fields=["text"])
-        finally:
-            log_debug.reset(token)
-
-        assert seen["body"]["debug"] is True
-
-    @pytest.mark.asyncio
-    async def test_post_telescope_debug_explicit_overrides_log_debug(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from src.utils.logging import log_debug
-
-        seen: dict = {}
-
-        async def fake_submit(body, priority=None):
-            seen["body"] = body
-            return {"final_url": "https://example.com", "text": "x"}
-
-        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
-        token = log_debug.set(True)
-        try:
-            await pw_mod._post_telescope(
-                "https://example.com", fields=["text"], debug=False
-            )
-        finally:
-            log_debug.reset(token)
-
-        assert seen["body"]["debug"] is False
 
 
 # Branches: no platform playwright module (AST-1726 AC6).
@@ -550,259 +409,3 @@ class TestPlaywrightModuleGone:
     def test_src_external_playwright_import_fails(self) -> None:
         with pytest.raises(ModuleNotFoundError):
             __import__("src.external.playwright")
-
-
-class TestScrapePage:
-    """One Telescope job per page: scrape_page fetches every requested field, body-scoped."""
-
-    @staticmethod
-    def _submit(monkeypatch, payload):
-        calls: list[dict] = []
-
-        async def fake_submit(body, priority=None):
-            calls.append(body)
-            return payload
-
-        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
-        return calls
-
-    @pytest.mark.asyncio
-    async def test_one_body_scoped_job_then_helpers_read_the_cache(self, monkeypatch) -> None:
-        calls = self._submit(monkeypatch, {
-            "final_url": "https://acme.com/careers/",
-            "text": ["Engineer", "Designer"],
-            "links": [{"href": "https://acme.com/jobs/1", "text": ["Engineer"]}],
-            "html": "<body><div class='jobs'>x</div></body>",
-        })
-        monkeypatch.setattr(pw_mod, "_cull_html", lambda h: f"CULLED:{h}")
-
-        pg = await pw_mod.scrape_page(
-            "https://acme.com/careers", fields=("html", "text", "links"), careers_list=True
-        )
-        vt = await pw_mod.extract_visible_text(pg)
-        dom = await pw_mod.extract_page_dom(pg)
-        links = await pw_mod.extract_site_page_list(page=pg)
-        contract = await pw_mod.extract_page_scrape_contract(pg)
-
-        assert len(calls) == 1  # every helper above read the cache
-        assert calls[0]["fields"] == ["text", "links", "html"]
-        assert calls[0]["selector"] == "body"
-        assert calls[0]["wait_ready"] is True and calls[0]["expand"] is True
-        assert vt["text"] == "Engineer\n\nDesigner"
-        assert dom == "CULLED:<body><div class='jobs'>x</div></body>"
-        assert links == ["https://acme.com/jobs/1"]
-        assert contract["nav_urls"] == ["https://acme.com/jobs/1"]
-        assert pg.url == "https://acme.com/careers/"
-        assert pg.readiness["ready"] is True and pg.readiness["load_all_jobs_ran"] is True
-
-    @pytest.mark.asyncio
-    async def test_empty_text_is_not_ready_and_plain_scrape_skips_wait(self, monkeypatch) -> None:
-        calls = self._submit(monkeypatch, {"text": "", "links": []})
-        pg = await pw_mod.scrape_page("https://acme.com", fields=("text", "links"))
-        assert calls[0]["wait_ready"] is False
-        assert pg.readiness["outcome"] == "empty" and pg.readiness["ready"] is False
-
-    @pytest.mark.asyncio
-    async def test_unrequested_field_warns_about_the_extra_load(self, monkeypatch, caplog) -> None:
-        calls = self._submit(monkeypatch, {"text": "hi", "html": "<body/>"})
-        pg = await pw_mod.scrape_page("https://acme.com", fields=("text",))
-        with caplog.at_level("WARNING", logger="src.external.telescope"):
-            await pw_mod.extract_page_dom(pg)
-        assert len(calls) == 2
-        assert any("extra page load for html" in r.getMessage() for r in caplog.records)
-
-    @pytest.mark.asyncio
-    async def test_blank_url_skips_telescope(self, monkeypatch) -> None:
-        submit = AsyncMock()
-        monkeypatch.setattr(pw_mod._pool, "submit", submit)
-        pg = await pw_mod.scrape_page("", fields=("text",))
-        assert pg._text == ""
-        submit.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_no_fields_is_an_error(self) -> None:
-        with pytest.raises(ValueError):
-            await pw_mod.scrape_page("https://acme.com", fields=())
-
-
-class TestTelescopeWake:
-    """Serverless Telescope: throttled fire-and-forget GET /wake when no worker is live."""
-
-    def _queue(self, monkeypatch, *, live: int, url: str = "http://telescope.railway.internal:8080"):
-        monkeypatch.delenv("TELESCOPE_BASE_URLS", raising=False)
-        if url:
-            monkeypatch.setenv("TELESCOPE_BASE_URL", url)
-        else:
-            monkeypatch.delenv("TELESCOPE_BASE_URL", raising=False)
-        q = pw_mod._TelescopeQueue()
-        monkeypatch.setattr(q, "_live_workers", AsyncMock(return_value=live))
-        ping = AsyncMock()
-        monkeypatch.setattr(q, "_ping_wake", ping)
-        return q, ping
-
-    @pytest.mark.asyncio
-    async def test_pings_once_when_no_worker_then_throttles(self, monkeypatch) -> None:
-        q, ping = self._queue(monkeypatch, live=0)
-        for _ in range(50):
-            await q._maybe_wake(MagicMock(), q._state())
-        await asyncio.sleep(0)
-        ping.assert_awaited_once_with("http://telescope.railway.internal:8080/wake")
-
-    @pytest.mark.asyncio
-    async def test_no_ping_when_a_worker_is_live(self, monkeypatch) -> None:
-        q, ping = self._queue(monkeypatch, live=2)
-        await q._maybe_wake(MagicMock(), q._state())
-        await asyncio.sleep(0)
-        ping.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_no_ping_without_wake_url(self, monkeypatch) -> None:
-        q, ping = self._queue(monkeypatch, live=0, url="")
-        await q._maybe_wake(MagicMock(), q._state())
-        await asyncio.sleep(0)
-        ping.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_ping_errors_are_swallowed(self, monkeypatch) -> None:
-        class _Boom:
-            def __init__(self, *a, **k): ...
-            async def __aenter__(self): raise OSError("502 while booting")
-            async def __aexit__(self, *a): return False
-
-        monkeypatch.setattr(pw_mod.httpx, "AsyncClient", _Boom)
-        await pw_mod._TelescopeQueue()._ping_wake("http://x/wake")  # no raise
-
-    @pytest.mark.asyncio
-    async def test_healthy_means_queue_reachable_and_does_not_wake(self, monkeypatch) -> None:
-        q, ping = self._queue(monkeypatch, live=0)
-        monkeypatch.setattr(q, "_get_db", AsyncMock(return_value=MagicMock()))
-        assert await q.healthy() is True  # no live worker is fine: Telescope may be asleep
-        await asyncio.sleep(0)
-        ping.assert_not_awaited()  # only an enqueue wakes it
-
-    @staticmethod
-    def _dns(monkeypatch, infos):
-        import socket
-
-        async def fake_getaddrinfo(host, port, **_kw):
-            if infos is None:
-                raise socket.gaierror("no such host")
-            return [(fam, socket.SOCK_STREAM, 6, "", (addr, port)) for fam, addr in infos]
-
-        loop = asyncio.get_running_loop()
-        monkeypatch.setattr(loop, "getaddrinfo", fake_getaddrinfo)
-
-    @pytest.mark.asyncio
-    async def test_wake_targets_every_replica_ipv4_preferred(self, monkeypatch) -> None:
-        import socket
-
-        self._dns(monkeypatch, [
-            (socket.AF_INET, "10.0.0.2"), (socket.AF_INET, "10.0.0.1"),
-            (socket.AF_INET6, "fd12::1"), (socket.AF_INET, "10.0.0.2"),
-        ])
-        targets = await pw_mod._wake_targets("http://astral-telescope.railway.internal:8080/wake")
-        assert targets == ["http://10.0.0.1:8080/wake", "http://10.0.0.2:8080/wake"]
-
-    @pytest.mark.asyncio
-    async def test_wake_targets_ipv6_only_are_bracketed(self, monkeypatch) -> None:
-        import socket
-
-        self._dns(monkeypatch, [(socket.AF_INET6, "fd12::1"), (socket.AF_INET6, "fd12::2")])
-        targets = await pw_mod._wake_targets("http://t.railway.internal:8080/wake")
-        assert targets == ["http://[fd12::1]:8080/wake", "http://[fd12::2]:8080/wake"]
-
-    @pytest.mark.asyncio
-    async def test_wake_targets_fall_back_to_the_name(self, monkeypatch) -> None:
-        import socket
-
-        url = "http://t.railway.internal:8080/wake"
-        self._dns(monkeypatch, [(socket.AF_INET, "10.0.0.1")])
-        assert await pw_mod._wake_targets(url) == [url]  # one replica
-        self._dns(monkeypatch, None)
-        assert await pw_mod._wake_targets(url) == [url]  # DNS failure
-
-    @pytest.mark.asyncio
-    async def test_ping_wake_hits_every_target(self, monkeypatch) -> None:
-        q = pw_mod._TelescopeQueue()
-        monkeypatch.setattr(pw_mod, "_wake_targets", AsyncMock(return_value=["http://a/wake", "http://b/wake"]))
-        one = AsyncMock()
-        monkeypatch.setattr(q, "_ping_one", one)
-        await q._ping_wake("http://t/wake")
-        assert sorted(c.args[0] for c in one.await_args_list) == ["http://a/wake", "http://b/wake"]
-
-
-
-class TestTelescopeQueuePerLoopState:
-    """Dispatch tasks run their own event loops on their own threads, concurrently."""
-
-    def test_concurrent_loops_get_separate_state(self) -> None:
-        import threading
-
-        q = pw_mod._TelescopeQueue()
-        seen: dict = {}
-        barrier = threading.Barrier(2)
-
-        def run(name: str) -> None:
-            async def body():
-                st = q._state()
-                barrier.wait()  # both loops alive at once
-                await asyncio.sleep(0.01)
-                st.wake.set()
-                await st.wake.wait()  # would raise if the Event belonged to another loop
-                seen[name] = (st, q._state())
-
-            asyncio.run(body())
-
-        threads = [threading.Thread(target=run, args=(n,)) for n in ("a", "b")]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        assert seen["a"][0] is seen["a"][1] and seen["b"][0] is seen["b"][1]
-        assert seen["a"][0] is not seen["b"][0]
-
-    def test_closed_loops_are_pruned(self) -> None:
-        q = pw_mod._TelescopeQueue()
-
-        async def touch():
-            q._state()
-
-        asyncio.run(touch())
-        asyncio.run(touch())
-        assert len(q._states) == 1  # the first, closed loop was dropped
-
-    @pytest.mark.asyncio
-    async def test_poller_survives_a_failed_poll(self, monkeypatch) -> None:
-        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "poll_interval_seconds", 0.01)
-        q = pw_mod._TelescopeQueue()
-        st = q._state()
-        monkeypatch.setattr(q, "_ensure_listener", AsyncMock())
-        row = {"id": "j1", "status": "done"}
-        st.db = MagicMock(fetch=AsyncMock(side_effect=[OSError("blip"), [row]]))
-        fut = asyncio.get_running_loop().create_future()
-        st.waiters["j1"] = fut
-        poller = asyncio.create_task(q._poll_loop(st))
-        try:
-            assert await asyncio.wait_for(fut, 1.0) == row
-        finally:
-            poller.cancel()
-
-    @pytest.mark.asyncio
-    async def test_missing_wake_url_warns_when_no_worker(self, monkeypatch, caplog) -> None:
-        monkeypatch.delenv("TELESCOPE_BASE_URL", raising=False)
-        monkeypatch.delenv("TELESCOPE_BASE_URLS", raising=False)
-        q = pw_mod._TelescopeQueue()
-        monkeypatch.setattr(q, "_live_workers", AsyncMock(return_value=0))
-        with caplog.at_level("WARNING", logger="src.external.telescope"):
-            await q._maybe_wake(MagicMock(), q._state())
-        assert any("TELESCOPE_BASE_URL / TELESCOPE_BASE_URLS is not set" in r.getMessage() for r in caplog.records)
-
-
-    def test_wake_url_from_base_url_or_first_of_list(self, monkeypatch) -> None:
-        monkeypatch.setenv("TELESCOPE_BASE_URL", "http://telescope.railway.internal:8080/")
-        assert pw_mod._telescope_wake_url() == "http://telescope.railway.internal:8080/wake"
-        monkeypatch.delenv("TELESCOPE_BASE_URL")
-        monkeypatch.setenv("TELESCOPE_BASE_URLS", " http://a.internal:8080 , http://b.internal:8080")
-        assert pw_mod._telescope_wake_url() == "http://a.internal:8080/wake"
-        monkeypatch.delenv("TELESCOPE_BASE_URLS")
-        assert pw_mod._telescope_wake_url() == ""

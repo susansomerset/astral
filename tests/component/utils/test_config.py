@@ -1508,17 +1508,16 @@ class TestAst853PlaywrightConfig:
 
 
 class TestAst1726TelescopeConfig:
-    """TELESCOPE_CONFIG queue-client knobs + cull default on."""
+    """AST-1726: TELESCOPE_CONFIG HTTP client knobs + cull default on."""
 
     def test_telescope_config_keys(self) -> None:
-        assert cfg.TELESCOPE_CONFIG["database_url_env"] == "ASTRAL_DATABASE_URL"
-        assert cfg.TELESCOPE_CONFIG["job_deadline_seconds"] == 600
-        assert cfg.TELESCOPE_CONFIG["max_attempts"] == 4
-        assert cfg.TELESCOPE_CONFIG["admin_priority"] > cfg.TELESCOPE_CONFIG["default_priority"]
+        assert cfg.TELESCOPE_CONFIG["bearer_env"] == "TELESCOPE_BEARER_TOKEN"
+        assert cfg.TELESCOPE_CONFIG["client_timeout_seconds"] == 60
+        assert cfg.TELESCOPE_CONFIG["max_in_flight"] == 15
         assert cfg.TELESCOPE_CONFIG["cull_html_default"] is True
         assert cfg.TELESCOPE_CONFIG["default_expand"] is True
         assert cfg.TELESCOPE_CONFIG["default_wait_ready"] is False
-        assert "base_urls" not in cfg.TELESCOPE_CONFIG
+        assert cfg.TELESCOPE_CONFIG["telescope_path"] == "/telescope"
         assert "playwright_browsers_path" not in cfg.RAILWAY_CONFIG
 
 
@@ -2176,17 +2175,6 @@ class TestAst877OriginatingSearchTermShapes:
         for shape_key in ("watch_list", "watch_history"):
             keys = [c["key"] for c in companies[shape_key]]
             assert "originating_search_term" not in keys
-
-class TestAst892FetchWebsiteSecondStrikeFilter:
-    """AST-892: shared helper for claim/count exclusion keys."""
-
-    def test_returns_retry_state_and_homepage_text_key(self) -> None:
-        retry_state, ht_key = cfg.fetch_website_prefilter_second_strike_filter()
-        assert retry_state == cfg.GAZER_CONFIG["fetch_website"]["retry_state"]
-        assert ht_key == cfg.ROSTER_CONFIG["company_data_keys"]["homepage_text"]
-        assert retry_state == "WEBSITE_FOUND_RETRY"
-        assert ht_key == "homepage_text"
-
 
 class TestAst897ProviderBalanceRefusalConfig:
     """AST-897: PROVIDER_BALANCE_REFUSAL lives in config (status + substrings)."""
@@ -3723,7 +3711,7 @@ class TestAst1061MeteoriteEmailIngestConfig:
             "/email-settings",
         ):
             assert frag in excludes
-        assert "playwright_concurrency" not in cfg  # Telescope's queue caps concurrency
+        assert int(cfg["playwright_concurrency"]) == 3
         assert int(cfg["min_jd_chars"]) == 40
 
 

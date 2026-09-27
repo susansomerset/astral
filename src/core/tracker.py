@@ -1355,15 +1355,10 @@ def _job_state_matches_prior(current_state: str, prior_states: Optional[List[str
 
 
 def legal_job_successor_states(from_state: str) -> List[str]:
-    """JOB_STATES keys that transition_job_state would accept from from_state, excluding from_state."""
+    """Skipped-edit targets: every JOB_STATES key except from_state (operator override; no prior_states filter)."""
     current = (from_state or "").strip()
-    out: List[str] = []
-    for name in JOB_STATES:
-        if name == current:
-            continue
-        if _job_state_matches_prior(current, state_prior_states(JOB_STATES, name)):
-            out.append(name)
-    return out
+    # Registry keys only — never implicit {base}_RETRY or dispatch-hop labels
+    return [name for name in JOB_STATES if name != current]
 
 
 def persist_skipped_job_edits(astral_job_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
@@ -1374,7 +1369,7 @@ def persist_skipped_job_edits(astral_job_id: str, fields: Dict[str, Any]) -> Dic
     if (job.get("state") or "") not in SKIPPED_STATES:
         raise ValueError("Job is not in a skipped state")
 
-    # Column + JD writes first so an illegal hop still keeps field edits
+    # Column + JD writes first so an unregistered target still keeps field edits
     col: Dict[str, Any] = {}
     if "job_title" in fields:
         title = fields["job_title"] if fields["job_title"] is not None else ""
@@ -1405,8 +1400,12 @@ def persist_skipped_job_edits(astral_job_id: str, fields: Dict[str, Any]) -> Dic
         to_state = str(fields["state"] or "").strip()
         if not to_state:
             raise ValueError("state required")
+        # Server accept set == dropdown list; "not in allowed list" maps to 409 in the PUT
+        if to_state not in JOB_STATES:
+            raise ValueError(f"Value {to_state!r} not in allowed list: {_JOB_STATE_LIST}")
         if to_state != (job.get("state") or ""):
-            transition_job_state([astral_job_id], to_state)
+            # Operator override on skipped jobs: registry check only, no prior_states
+            transition_job_state([astral_job_id], to_state, enforce_prior_states=False)
 
     out = get_job(astral_job_id)
     if not out:
@@ -1453,10 +1452,13 @@ def graduate_job_from_dispatch_chain(job_id: str, trigger_state: str) -> str:
     return to_state
 
 
-def transition_job_state(job_ids: List[str], to_state: str, score: Optional[float] = None) -> None:
+def transition_job_state(
+    job_ids: List[str], to_state: str, score: Optional[float] = None, *, enforce_prior_states: bool = True
+) -> None:
     """Record state transition for jobs (AST-77). Appends to state_history; updates state.
     score: when provided, recorded in the state_history entry and written to latest_score column (AST-350).
-    Validates to_state against JOB_STATES and prior_states rules. Raises ValueError if invalid."""
+    Validates to_state against JOB_STATES and prior_states rules. Raises ValueError if invalid.
+    enforce_prior_states=False skips the prior_states check (skipped-job operator edit only)."""
     # Implicit {base}_RETRY validates via its base (AST-1805); message kept for callers/tests.
     if not is_registered_state(JOB_STATES, to_state):
         raise ValueError(f"Value {to_state!r} not in allowed list: {_JOB_STATE_LIST}")
@@ -1466,7 +1468,7 @@ def transition_job_state(job_ids: List[str], to_state: str, score: Optional[floa
         job = database.get_job(job_id)
         if not job:
             raise ValueError(f"Job not found: {job_id}")
-        if not _job_state_matches_prior(job.get("state") or "", prior_states):
+        if enforce_prior_states and not _job_state_matches_prior(job.get("state") or "", prior_states):
             raise ValueError(f"Invalid transition: {job.get('state')} -> {to_state}")
         history = job.get("state_history", [])
         entry: Dict[str, Any] = {"to_state": to_state, "timestamp": now, "batch_id": job.get("batch_id")}
