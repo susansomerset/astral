@@ -436,3 +436,20 @@ Leave `## Rationale` unchanged.
 - `astral.state.core-decides-transitions` and `astral.standards.no-hardcoded-sets` are not touched. They stay satisfied because the carve-out routes through the tracker and the registry.
 - Frontmatter: `approved_by: Archie` is present, `status: active` and `tier: scoped` are unchanged, and `applies_when` is unchanged.
 - No files outside `canon/statutes/astral/state/astral.state.job-prior-states-enforced.md` are edited by make-fix, unless the draft-mirror Decision is overturned at fix-board.
+
+
+## Fix-board Joan findings (AST-1813)
+
+### Triage notes
+
+**Fix-board question:** Does the `## Proposed change` conflict with or still require amending any directive in force?
+
+**Verdict:** No further canon work beyond this single statute file as written. The carve-out text matches AST-1811 board REVISE (one caller, `SKIPPED_STATES` gate, `JOB_STATES` keys only, still via `transition_job_state`). Pattern left alone is consistent with DIRECTIVE-ANATOMY (“cite, never restate”) and `related_statutes` on `pattern.state.entity-state-transitions`.
+
+**`approved_at` / `orch.roles.archie-approves-statutes` (second Decision):** **Conforming — not ESCALATE.** That statute requires Archie approval in frontmatter (`approved_by: Archie`, `approved_at` set) and states explicitly that **Archie is the architect alias and Linear assignee Susan is the approval gate**. Susan’s AST-1809 approval of the To-be plus a Canon note that names this `astral.state.job-prior-states-enforced` waiver is architect approval of the **substance** of the amendment; AST-1813 is the scoped landing of that already-approved exception. make-fix updating `approved_at` to the landing date while keeping `approved_by: Archie` matches the conforming example (draft on branch → Archie approved → merged file carries fresh `approved_at`). What would violate the role statute is an engineer setting approval without that gate — not Susan’s prior AST-1809 call followed by a plan that quotes the exact Statement carve-out. No separate “Archie must comment on AST-1813 before merge” step is required unless AST-1809 never actually carried Susan/Archie sign-off on the named waiver (spawn assumes it did).
+
+**Draft directive copy untouched (first Decision):** **Accept.** `docs/canon-index.md` is absent; id resolution via `canon/statutes/README.md` § Harvested corpus + DIRECTIVE-ANATOMY (only `directives/active/` in force) is sound. Leaving `canon/directives/draft/stat.state.job-prior-states-enforced.md` unchanged matches existing practice (e.g. `astral.seed.archie-catalog-wins` statute carries AST-1456 carve-out; the draft sibling stayed pre-carve-out). Divergence is a known mirror lag, not an in-force corpus gap. Optional mirror is hygiene only; fix-board does not require REVISE for it.
+
+**Routing:** With Betty’s pass (if any) and Joan OK, Chuckles can treat AST-1813 as board-cleared for **make-fix** on canon-only scope; merge-child ordering vs AST-1811 remains as the plan’s blast-radius note (carve-out on `ftr` before/with product sibling for `review-fix`).
+
+context_tokens≈22000
