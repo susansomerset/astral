@@ -1508,17 +1508,16 @@ class TestAst853PlaywrightConfig:
 
 
 class TestAst1726TelescopeConfig:
-    """TELESCOPE_CONFIG queue-client knobs + cull default on."""
+    """AST-1726: TELESCOPE_CONFIG HTTP client knobs + cull default on."""
 
     def test_telescope_config_keys(self) -> None:
-        assert cfg.TELESCOPE_CONFIG["database_url_env"] == "ASTRAL_DATABASE_URL"
-        assert cfg.TELESCOPE_CONFIG["job_deadline_seconds"] == 600
-        assert cfg.TELESCOPE_CONFIG["max_attempts"] == 4
-        assert cfg.TELESCOPE_CONFIG["admin_priority"] > cfg.TELESCOPE_CONFIG["default_priority"]
+        assert cfg.TELESCOPE_CONFIG["bearer_env"] == "TELESCOPE_BEARER_TOKEN"
+        assert cfg.TELESCOPE_CONFIG["client_timeout_seconds"] == 60
+        assert cfg.TELESCOPE_CONFIG["max_in_flight"] == 15
         assert cfg.TELESCOPE_CONFIG["cull_html_default"] is True
         assert cfg.TELESCOPE_CONFIG["default_expand"] is True
         assert cfg.TELESCOPE_CONFIG["default_wait_ready"] is False
-        assert "base_urls" not in cfg.TELESCOPE_CONFIG
+        assert cfg.TELESCOPE_CONFIG["telescope_path"] == "/telescope"
         assert "playwright_browsers_path" not in cfg.RAILWAY_CONFIG
 
 
@@ -3723,7 +3722,7 @@ class TestAst1061MeteoriteEmailIngestConfig:
             "/email-settings",
         ):
             assert frag in excludes
-        assert "playwright_concurrency" not in cfg  # Telescope's queue caps concurrency
+        assert int(cfg["playwright_concurrency"]) == 3
         assert int(cfg["min_jd_chars"]) == 40
 
 

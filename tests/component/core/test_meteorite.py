@@ -3300,3 +3300,107 @@ class TestAst1796ComboBlankJdTextHttpJobLinkSkipsIngressBlob:
         content = (rows[0].get("content") or "").strip()
         assert content != self._BLOB.strip()
         assert content == ""
+
+
+# Branches: classify-fail fallthrough + map-error both warn once when the ERROR-row
+# insert succeeds; a failed ERROR-row insert keeps its own single log (no extra warn).
+class TestAst1617StageErrorWarns:
+    """[bug-repro] AST-1617: stage errors that callers count must emit an always-on WARNING."""
+
+    @staticmethod
+    def _stage_common(monkeypatch: pytest.MonkeyPatch, *, insert=None) -> None:
+        monkeypatch.setattr(
+            meteorite_mod, "get_candidate", lambda _cid: {"astral_candidate_id": "c1617"}
+        )
+        monkeypatch.setattr(
+            meteorite_mod, "_insert_stage_rows", insert or (lambda _rows: ([101], None))
+        )
+        monkeypatch.setattr(meteorite_mod, "_candidate_contact_timezone", lambda _cid: None)
+
+    @staticmethod
+    def _warns_for(caplog: pytest.LogCaptureFixture, sid: str) -> list:
+        import logging
+
+        return [
+            r
+            for r in caplog.records
+            if r.name == "src.core.meteorite"
+            and r.levelno >= logging.WARNING
+            and sid in r.getMessage()
+        ]
+
+    @pytest.mark.asyncio
+    async def test_classify_fail_warns_once(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        self._stage_common(monkeypatch)
+
+        async def _classify_fail(*_a, **_k):
+            return {"success": False, "outcome": "", "jobs": [], "error": "llm timeout", "batch_id": "b1"}
+
+        monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify_fail)
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.stage_meteorite(
+                "c1617", "blob", source_kind="email", source_id="mid-1617-a"
+            )
+        assert out["error"] == "llm timeout"
+        warns = self._warns_for(caplog, "mid-1617-a")
+        assert len(warns) == 1
+        msg = warns[0].getMessage()
+        assert "c1617" in msg and "email" in msg and "llm timeout" in msg
+
+    @pytest.mark.asyncio
+    async def test_map_error_warns_once(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        self._stage_common(monkeypatch)
+        landable = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+
+        async def _classify_ok(*_a, **_k):
+            return {"success": True, "outcome": landable, "jobs": [{}], "error": None, "batch_id": "b2"}
+
+        monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify_ok)
+        monkeypatch.setattr(
+            meteorite_mod,
+            "_map_classify_jobs_to_meteorite_rows",
+            lambda *_a, **_k: ([], "jobs[0] missing content"),
+        )
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.stage_meteorite(
+                "c1617", "blob", source_kind="email", source_id="mid-1617-b"
+            )
+        assert out["error"] == "jobs[0] missing content"
+        warns = self._warns_for(caplog, "mid-1617-b")
+        assert len(warns) == 1
+        msg = warns[0].getMessage()
+        assert "c1617" in msg and "email" in msg and "missing content" in msg
+
+    @pytest.mark.asyncio
+    async def test_error_row_insert_failure_logs_once_no_extra_warn(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        def _insert_boom(_rows):
+            raise RuntimeError("insert boom")
+
+        self._stage_common(monkeypatch, insert=_insert_boom)
+
+        async def _classify_fail(*_a, **_k):
+            return {"success": False, "outcome": "", "jobs": [], "error": "llm timeout", "batch_id": "b3"}
+
+        monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify_fail)
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.stage_meteorite(
+                "c1617", "blob", source_kind="email", source_id="mid-1617-c"
+            )
+        assert out["error"] == "llm timeout"
+        warns = self._warns_for(caplog, "mid-1617-c")
+        assert len(warns) == 1
+        assert warns[0].levelno == logging.ERROR

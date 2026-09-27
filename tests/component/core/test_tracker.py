@@ -309,6 +309,31 @@ class TestTransitionJobState:
         with pytest.raises(ValueError, match="not in allowed list"):
             tracker_mod.transition_job_state(["job-1"], "NOPE_RETRY")
 
+    def test_ast1811_enforce_prior_states_false_skips_prior_check(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # PASSED_JD -> VALID_TITLE is prior-illegal: default + explicit True raise; False writes.
+        save = MagicMock()
+        monkeypatch.setattr(tracker_mod.database, "get_job", lambda job_id: {"state": "PASSED_JD", "state_history": []})
+        monkeypatch.setattr(tracker_mod.database, "save_job", save)
+        with pytest.raises(ValueError, match="Invalid transition"):
+            tracker_mod.transition_job_state(["job-1"], "VALID_TITLE")
+        with pytest.raises(ValueError, match="Invalid transition"):
+            tracker_mod.transition_job_state(["job-1"], "VALID_TITLE", enforce_prior_states=True)
+        save.assert_not_called()
+
+        tracker_mod.transition_job_state(["job-1"], "VALID_TITLE", enforce_prior_states=False)
+
+        _, kwargs = save.call_args
+        assert kwargs["state"] == "VALID_TITLE"
+        assert kwargs["state_history"][-1]["to_state"] == "VALID_TITLE"
+        assert kwargs["state_changed_at"]
+
+    def test_ast1811_enforce_prior_states_false_still_checks_registration(self) -> None:
+        # The flag waives prior_states only — unregistered targets still raise.
+        with pytest.raises(ValueError, match="not in allowed list"):
+            tracker_mod.transition_job_state(["job-1"], "NOPE", enforce_prior_states=False)
+
 
 # Branches: generated batch_id vs provided; missing context/batch_id error.
 class TestBatchApi:
@@ -1908,12 +1933,12 @@ class TestAst1420AssembleJobCopySnapshot:
 
 
 class TestAst1453LegalJobSuccessorStates:
-    """AST-1453: successors == JOB_STATES keys transition would accept, minus from_state."""
+    """AST-1811: successors == every JOB_STATES key except from_state (no prior_states filter)."""
 
-    def test_excludes_self_includes_unrestricted_and_listed_priors(
+    def test_every_key_except_self_ignores_prior_states(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Tiny registry: None prior = unrestricted; listed prior must match current.
+        # Tiny registry: prior_states must NOT narrow the list; registry order kept.
         monkeypatch.setattr(
             tracker_mod,
             "JOB_STATES",
@@ -1923,9 +1948,16 @@ class TestAst1453LegalJobSuccessorStates:
                 "C": {"prior_states": ["Z"]},
             },
         )
-        assert tracker_mod.legal_job_successor_states("A") == ["B"]
-        assert set(tracker_mod.legal_job_successor_states("X")) == {"A"}
-        assert tracker_mod.legal_job_successor_states("B") == ["A"]
+        assert tracker_mod.legal_job_successor_states("A") == ["B", "C"]
+        assert tracker_mod.legal_job_successor_states("X") == ["A", "B", "C"]
+        assert tracker_mod.legal_job_successor_states("B") == ["A", "C"]
+
+    def test_ast1811_bug_repro_real_registry_candidate_skipped(self) -> None:
+        # [bug-repro] AST-1811: pre-fix list omits PASSED_JD (priors JD_READY/FAILED_DO/...).
+        # Equality to registry keys also proves no implicit *_RETRY / hop labels leak in.
+        out = tracker_mod.legal_job_successor_states("CANDIDATE_SKIPPED")
+        assert out == [k for k in tracker_mod.JOB_STATES if k != "CANDIDATE_SKIPPED"]
+        assert "PASSED_JD" in out
 
 
 class TestAst1453PersistSkippedJobEdits:
@@ -1980,9 +2012,13 @@ class TestAst1453PersistSkippedJobEdits:
             order.append("save_job_data")
             assert patch == {self._JD_KEY: "pasted JD"}
 
-        def _transition(ids: List[str], to_state: str) -> None:
+        def _transition(
+            ids: List[str], to_state: str, *, enforce_prior_states: bool = True
+        ) -> None:
             order.append("transition")
             assert ids == ["job-1453"] and to_state == "NEW"
+            # AST-1811: skipped-edit hop is the operator override path.
+            assert enforce_prior_states is False
             jobs["job-1453"] = {**jobs["job-1453"], "state": to_state}
 
         monkeypatch.setattr(tracker_mod, "get_job", _get)
@@ -2029,24 +2065,45 @@ class TestAst1453PersistSkippedJobEdits:
         tracker_mod.persist_skipped_job_edits("job-1453", {"state": self._SKIP})
         transition.assert_not_called()
 
-    def test_field_writes_before_illegal_transition_propagates(
-        self, monkeypatch: pytest.MonkeyPatch
+    # Implicit retry (registered via base, not a key) and runtime hop label: both off the dropdown.
+    @pytest.mark.parametrize("bad_state", ["PASSED_GET_RETRY", "PASSED_JD.x"])
+    def test_field_writes_before_unregistered_target_rejected(
+        self, monkeypatch: pytest.MonkeyPatch, bad_state: str
     ) -> None:
         save = MagicMock(return_value=True)
+        transition = MagicMock()
         monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
         monkeypatch.setattr(tracker_mod, "save_job", save)
         monkeypatch.setattr(tracker_mod, "save_job_data", MagicMock())
-        monkeypatch.setattr(
-            tracker_mod,
-            "transition_job_state",
-            MagicMock(side_effect=ValueError("Invalid transition: CANDIDATE_SKIPPED -> PASSED_JD")),
-        )
-        with pytest.raises(ValueError, match="Invalid transition"):
+        monkeypatch.setattr(tracker_mod, "transition_job_state", transition)
+        with pytest.raises(ValueError, match="not in allowed list"):
             tracker_mod.persist_skipped_job_edits(
-                "job-1453", {"job_title": "Kept", "state": "PASSED_JD"}
+                "job-1453", {"job_title": "Kept", "state": bad_state}
             )
+        # Persist's own JOB_STATES-key guard rejects before any hop.
+        transition.assert_not_called()
         save.assert_called_once()
         assert save.call_args.kwargs["job_title"] == "Kept"
+
+    def test_ast1811_bug_repro_any_job_state_key_bypasses_prior(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # [bug-repro] AST-1811: real transition_job_state; pre-fix raises
+        # "Invalid transition: CANDIDATE_SKIPPED -> PASSED_JD".
+        jobs = {"job-1453": self._job()}
+
+        def _save(jid: str, **kw: Any) -> bool:
+            jobs[jid] = {**jobs[jid], **kw}
+            return True
+
+        # persist reads tracker.get_job; transition reads database.get_job/save_job — same store.
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: jobs.get(jid))
+        monkeypatch.setattr(tracker_mod.database, "get_job", lambda jid: jobs.get(jid))
+        monkeypatch.setattr(tracker_mod.database, "save_job", _save)
+        out = tracker_mod.persist_skipped_job_edits("job-1453", {"state": "PASSED_JD"})
+        assert out["state"] == "PASSED_JD"
+        assert out["state_history"][-1]["to_state"] == "PASSED_JD"
+        assert out["state_changed_at"]
 
 
 # Branches: pattern match / ownership refuse / hydrate / Style D (AST-1518).
