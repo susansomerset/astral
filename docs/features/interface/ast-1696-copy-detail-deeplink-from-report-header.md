@@ -295,3 +295,65 @@ Returns `{"candidate_id": "<id>"}` on a unique match, `{"candidate_id": null}` o
 - AST-1482: `isSafeAuthReturnPath` rejects `/authenticate*` and `//…`; `clearSessionAuthMarks` does not clear the return path.
 - Local passthrough: no Stytch user → no bind call; selection behaves as today.
 - No match / ambiguous email (more than one candidate) → no bind; today's stored/first selection stays.
+
+### Fix board — Joan (canon)
+
+## Fix-board Joan pass — AST-1768
+
+**Ticket:** AST-1768 (bug child of AST-1687)  
+**Read:** `plan-fix` patch on `origin/sub/AST-1687/AST-1768-copied-job-detail-link-bind-candidate-open-modal` in `docs/features/interface/ast-1696-copy-detail-deeplink-from-report-header.md` (sections As-is → What must still hold)  
+**Roster:** `canon/canon_clerk.py index` — 21 directives in force @ `a0bc2f0e5b` (up from 12 at AST-1696 plan validate; no `DIRTY` flag observed on this pass)  
+**Question (F2):** Does the proposed fix conflict with or require updating any directive **in force**?
+
+### Proposed change (summary)
+
+| Part | Layer / files | Shape |
+|------|----------------|--------|
+| **A** | `sessionAuthMark.ts` | Move `AUTH_RETURN_PATH_KEY` only from `sessionStorage` → `localStorage`; other keys unchanged |
+| **B** | `api_candidate.py` | New `@require_auth` `GET /api/candidates/by_email?email=` wrapping existing `get_candidate_id_for_query` |
+| **C** | `CandidateContext.tsx` | Once-per-login-email bind via Stytch verified email + new API |
+| **D** | `JobsJobDetail.tsx` | Wait on `candidatesHydrated` for all users, not only admins |
+
+Blast radius is mostly tests/mocks (Betty’s lane). Product surface: auth return-path storage, one read-only API route, candidate hydration ordering.
+
+### Roster overlap (in-force only)
+
+**Entity / dispatch / batch (`astral.batch.*`, `astral.dispatch.*`, `astral.entity.*`, `patt.entity.*`, `patt.task.*`)** — No batch claim, dispatch_task, or entity-schema work. **No canon impact.**
+
+**Artifact patterns (`patt.artifact.*`)** — No catalog, operative read/write, or editor consistency changes. **No canon impact.**
+
+**Logging — `stat.logging.info.api`** (`src/ui/api/**`, add/modify)  
+The new route is an authenticated idempotent GET that returns current lookup state (`candidate_id` or `null`). The statute explicitly says idempotent GETs that only return current state are **not** progress — **no** `logger.info` at the route. The plan does not require an API progress line; implementation should mirror `get_candidate_states()` (jsonify, no info). That is **conformance**, not a carve-out or statute edit.
+
+**Logging — `stat.logging.error`**  
+Planned handler is a thin wrapper with 400 on bad email and JSON otherwise; no log-and-rethrow pattern proposed. Aligns with existing list/state GET routes in the same file. **No canon update required** (make-fix should still avoid introducing duplicate exception logging if core ever raises).
+
+**Logging — `stat.logging.info.contact`, `stat.logging.info.entity`, `stat.logging.info.dispatcher`, `stat.logging.debug`, `stat.logging.warning`, `stat.logging.info`** — No contact-listen, entity-pipe, dispatcher, or new warning/error rollup in the patch. **No canon impact.**
+
+**Draft / retired law (not in roster)** — Parent/child “Citations: none” and items like `astral.idioms.require-auth-on-protected-endpoints`, `astral.standards.in-scope-only`, UI placement statutes remain **draft**; fix-board does not score them. Part **B** uses `@require_auth` like neighboring routes — consistent with product practice, not an active-statute gap.
+
+### Conflicts / carve-outs / new precedent?
+
+- **localStorage for return path:** No in-force statute defines tab vs origin storage for auth return paths. AST-1482 guards (`isSafeAuthReturnPath`, `clearSessionAuthMarks` not clearing return path) are preserved in **What must still hold**. Storage backend change is product behavior, not a corpus amendment.
+- **Client-supplied email on authenticated lookup:** Plan documents threat model (UI selection only; no new data vs `GET /api/candidates`). That is an implementation/security judgment for make-fix and review, not “update canon” unless Archie wants a new **in-force** idiom — fix-board does not treat that as REVISE without an active directive being contradicted.
+- **Login-email → candidate bind:** Reuses server matcher already in core; no new matching algorithm in callers (would matter for `patt.entity.batch-criteria` if literals appeared in dispatch paths — they do not).
+
+### What must still hold (canon-relevant)
+
+- New route stays **`@require_auth`** (draft idiom honored in code; satisfies “no new unauthenticated route” in the patch).
+- **`GET /by_email`** should not emit **`stat.logging.info.api`** progress lines.
+- No change to entity/batch/dispatch/artifact statutes.
+
+### Verdict rationale
+
+No active statute or pattern needs text changed, and the proposed product change does not force a documented exception in the in-force corpus. Engineer guidance at build time: implement **B** like other idempotent candidate GETs (no API info log); keep **A** scoped to `AUTH_RETURN_PATH_KEY` only.
+
+---
+
+```
+[board-joan]  CANON: OK
+```
+
+```
+AST-1768 board-joan done — CANON: OK.
+```
