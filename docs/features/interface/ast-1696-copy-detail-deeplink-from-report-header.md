@@ -206,3 +206,92 @@ Tests deferred to Betty (`qa-child`).
 - Chuckles: append this verdict to issue doc, commit `docs(AST-1696): Radia review — clean`, post slim upshot, move to Review Posted.
 - datt: **PROCEED** → User Testing (no canon fix-now items; empty frozen list).
 
+
+## Bug: AST-1768 — Copied job detail link does not bind login email to candidate or open job modal
+
+### As-is
+
+Susan opens a copied `/jobs/detail/<id>` link while logged out, signs in as `soosomerset@gmail.com` (an email on Jolane Abrams's profile), and lands on `/` with candidate **Susan Somerset** selected — no Recommended Job Report modal for the linked job.
+
+### To-be
+
+After sign-in the app returns to that same `/jobs/detail/<id>` URL, `JobsJobDetail` opens the Recommended Job Report modal for the job, and the selected candidate is the one whose profile emails uniquely match the login email (Jolane Abrams).
+
+### Repro
+
+1. Deployed (non-local) env. Candidate row fixture — Jolane Abrams: `candidate_data.contact.contact_email = "soosomerset@gmail.com"` (or listed in `contact.extra_emails`); a second candidate Susan Somerset is first in `/api/candidates` order / stored in `localStorage["astral_selected_candidate"]`.
+2. Logged out, open `https://<host>/jobs/detail/<jolane_job_id>` → `RequireAuth` renders `Login` and captures the return path into **sessionStorage** (`astral-auth-return-path`).
+3. Choose email magic link, enter `soosomerset@gmail.com`, click the link in the email → it opens a **new tab** at `/authenticate?token=…`.
+4. New tab's sessionStorage has no return path → `consumeAuthReturnPath()` returns `null` → navigate to `/`.
+5. `CandidateContext.load()` keeps the stored/first candidate (Susan Somerset); nothing consults the login email.
+
+### Root cause
+
+1. **Return path is tab-scoped.** `sessionAuthMark.ts` stores `astral-auth-return-path` in `sessionStorage`. Magic-link sign-in completes in a different tab from the one that captured it, so `Authenticate.postAuthNavigate` finds nothing and goes to `/`. (Google OAuth redirects in the same tab and already works.)
+2. **No login-email → candidate bind exists.** `CandidateContext.load()` picks the stored or first candidate; `setSelectedId` is admin-only; no code path matches the authenticated email against profile email homes. The server-side matcher already exists (`get_candidate_id_for_query` in `src/core/candidate.py`, unique hit over `CANDIDATE_LOOKUP_CONFIG` email paths incl. `contact.extra_emails`) but is not exposed to the SPA.
+3. **Host does not wait for candidate resolution for non-admins.** `JobsJobDetail` only waits on `candidatesHydrated` when `isAdmin`, so a late candidate change would remount the modal's candidate-scoped loads.
+
+### Proposed change
+
+**A. Return path survives the magic-link tab — `src/ui/frontend/src/lib/sessionAuthMark.ts`**
+
+1. In `captureAuthReturnPath`, `peekAuthReturnPath`, and `consumeAuthReturnPath`, replace `sessionStorage` with `localStorage` for `AUTH_RETURN_PATH_KEY` only. `HAD_SESSION_KEY` and `LOGOFF_REASON_KEY` stay in `sessionStorage` (unchanged).
+2. Keep the same `try { … } catch { /* private mode */ }` wrappers and `isSafeAuthReturnPath` checks. No other API change.
+
+⚠️ **Decision:** `localStorage`, no expiry/TTL. A stale path cannot leak: every Login render re-captures the current path (`RequireAuth` effect overwrites the key, including `/`), and `consumeAuthReturnPath` removes it on sign-in. No limit is added.
+
+`RequireAuth.tsx` and `Authenticate.tsx` — **no change**; they already call capture/consume.
+
+**B. Server email → candidate lookup — `src/ui/api/api_candidate.py`**
+
+1. Import `get_candidate_id_for_query` from `src.core.candidate` (add to the existing import block).
+2. Add a route **directly after** `get_candidate_states` (before any `/<candidate_id>` route):
+
+```python
+@candidate_bp.route("/by_email")
+@require_auth
+def get_candidate_by_email():
+    """AST-1768: unique candidate id whose profile emails match ?email= (login bind)."""
+    email = (request.args.get("email") or "").strip()
+    if "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    return jsonify({"candidate_id": get_candidate_id_for_query(email)})
+```
+
+Returns `{"candidate_id": "<id>"}` on a unique match, `{"candidate_id": null}` on no/ambiguous match.
+
+⚠️ **Decision:** The email comes from the client's Stytch user, not `g.user` — `normalize_user` (`src/utils/auth.py`) drops email and that file is outside AST-1687 scope. This is safe: the lookup only drives UI selection, and `GET /api/candidates` already returns every candidate to any authenticated user, so no new data is exposed and no authorization changes.
+
+**C. Bind selection once per login — `src/ui/frontend/src/contexts/CandidateContext.tsx`**
+
+1. Import `useStytchUser` from `@stytch/react`. In `CandidateProvider`: `const { user: stytchUser } = useStytchUser()` and derive `loginEmail`: first `stytchUser.emails` entry with `verified === true`, else `emails[0]`, `.email.trim().toLowerCase()`; `""` when no user (local passthrough). Same verified-first rule as `src/external/stytch.py` `_primary_email`.
+2. Add `const boundEmailRef = useRef<string | null>(null)`.
+3. Rewrite `load()` so hydration completes **after** the bind check:
+   - Fetch `/api/candidates` as today and compute `next` (stored-if-present else first) as today.
+   - If `loginEmail` is non-empty **and** `boundEmailRef.current !== loginEmail`: set `boundEmailRef.current = loginEmail`, then call `api` on the path `/api/candidates/by_email?email=` + `encodeURIComponent(loginEmail)` (template literal). If `res.ok` and the body's `candidate_id` is a non-empty string present in the fetched list, use it as `next`. Any failure/null → keep `next`.
+   - Call `_setSelectedId(next)` + `localStorage.setItem(STORAGE_KEY, next)` (bypasses the admin-only `setSelectedId` guard, same as today's `load()`).
+   - `setCandidatesHydrated(true)` in `finally`, after the above.
+4. Add `loginEmail` to the effect that calls `load()`: `[authLoading, loginEmail]`.
+
+⚠️ **Decision:** The bind runs **once per login email** (ref guard), for admins and non-admins alike. Later `refresh()` calls (profile saves) and the admin picker are not overridden.
+
+**D. Host waits for candidate resolution — `src/ui/frontend/src/pages/JobsJobDetail.tsx`**
+
+1. In the align effect, change `if (isAdmin && !candidatesHydrated) return` to `if (!candidatesHydrated) return`. Leave the dependency array unchanged.
+2. No other change. For admins, `alignSelectedCandidateForJobCompany` still runs after the bind. When the job's company owner is the bound candidate (Susan's case) it is a no-op; when an admin opens another candidate's job, AST-1481 behavior (select the job owner) still applies. For non-admins, align stays a no-op, so the bind stands.
+
+### Blast radius
+
+- `sessionAuthMark.ts` is used by `RequireAuth`, `Authenticate`, `LogOffScreen` (`clearSessionAuthMarks`, unchanged). Existing test `tests/component/frontend/lib/test_sessionAuthMark.test.ts` asserts `sessionStorage` directly for `astral-auth-return-path` (lines ~75–77), and several suites clear only `sessionStorage` in setup (`stytchMock.tsx`, `test_Authenticate`, `test_RequireAuth`, `test_LogOffScreen`) → return-path tests need `localStorage` expectations and cleanup (Betty).
+- `CandidateContext` is mounted app-wide; the new `useStytchUser` call needs a mock in `tests/component/frontend/stytchMock.tsx` for suites that render `CandidateProvider` (Betty).
+- `JobsJobDetail` non-admin path now waits for hydration → `test_JobsJobDetail.test.tsx` non-admin cases must resolve `/api/candidates` before the modal appears (Betty).
+- `api_candidate.py` gains one route before the `/<candidate_id>` catch-all. No change to existing routes or `get_candidate_id_for_query`.
+- AST-1482 return-path behavior (same-tab / OAuth) stays the same, just backed by `localStorage`.
+
+### What must still hold
+
+- AST-1687 AC 1–5: Copy Link writes the absolute `/jobs/detail/<id>` URL; Copied→idle; the link opens the same report modal when authenticated; diagnostic Copy / email / LinkedIn / print unchanged; **no new unauthenticated route** (`/api/candidates/by_email` is `@require_auth`).
+- AST-1481: admin with multiple candidates opening another candidate's job deeplink still selects the job owner; unknown id still shows the error + back link; close → `/jobs/recommended`.
+- AST-1482: `isSafeAuthReturnPath` rejects `/authenticate*` and `//…`; `clearSessionAuthMarks` does not clear the return path.
+- Local passthrough: no Stytch user → no bind call; selection behaves as today.
+- No match / ambiguous email (more than one candidate) → no bind; today's stored/first selection stays.
