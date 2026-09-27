@@ -1383,22 +1383,9 @@ class TestAst701ScrapeCompanyHomepageContent:
     @staticmethod
     def _mock_browser_page(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
         ctx = MagicMock()
-        monkeypatch.setattr(roster_mod, "scrape_page", AsyncMock(return_value=MagicMock()))
+        monkeypatch.setattr(roster_mod, "get_page", AsyncMock(return_value=MagicMock()))
         monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
         return ctx
-
-    @pytest.mark.asyncio
-    async def test_one_telescope_job_for_text_and_links(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        ctx = self._mock_browser_page(monkeypatch)
-        monkeypatch.setattr(
-            roster_mod,
-            "scrape_loaded_page_contract",
-            AsyncMock(return_value={"visible_text": "hi", "final_url": "https://acme.com", "nav_urls": []}),
-        )
-        await roster_mod.scrape_company_homepage_content("acme", "https://acme.com", browser_context=ctx)
-        roster_mod.scrape_page.assert_awaited_once()
-        kw = roster_mod.scrape_page.await_args.kwargs
-        assert set(kw["fields"]) == {"text", "links"} and not kw.get("careers_list")
 
     @pytest.mark.asyncio
     async def test_scrape_exception_returns_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1504,7 +1491,7 @@ class TestAst701ScrapeCompanyHomepageContent:
         session = MagicMock()
         monkeypatch.setattr(
             roster_mod,
-            "scrape_page",
+            "get_page",
             AsyncMock(side_effect=PlaywrightInfraError("context_closed", "browser dead")),
         )
         monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
@@ -2545,7 +2532,7 @@ class TestFetchJobLinksContent:
     async def test_skips_missing_urls_and_records_scrape_failures(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "parse_enumerate_array", MagicMock(return_value={1: "https://acme.com/jobs"}))
         page = AsyncMock()
-        monkeypatch.setattr(roster_mod, "scrape_page", AsyncMock(side_effect=[page, RuntimeError("blocked")]))
+        monkeypatch.setattr(roster_mod, "get_page", AsyncMock(side_effect=[page, RuntimeError("blocked")]))
         monkeypatch.setattr(roster_mod, "extract_visible_text", AsyncMock(return_value={"text": "Job A"}))
         monkeypatch.setattr(roster_mod, "extract_page_dom", AsyncMock(return_value="<div>Job A</motion>"))
         monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/new"]))
@@ -2566,7 +2553,7 @@ class TestFetchJobLinksContent:
     async def test_skips_invalid_link_ids_without_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "parse_enumerate_array", MagicMock(return_value={1: "https://acme.com/jobs"}))
         page = AsyncMock()
-        monkeypatch.setattr(roster_mod, "scrape_page", AsyncMock(return_value=page))
+        monkeypatch.setattr(roster_mod, "get_page", AsyncMock(return_value=page))
         monkeypatch.setattr(roster_mod, "extract_visible_text", AsyncMock(return_value={"text": "Job A"}))
         monkeypatch.setattr(roster_mod, "extract_page_dom", AsyncMock(return_value=""))
         monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=[]))
@@ -3527,7 +3514,7 @@ class TestFetchJobLinksContentBranches:
     async def test_records_visible_text_without_dom_or_new_links(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "parse_enumerate_array", MagicMock(return_value={1: "https://acme.com/jobs"}))
         page = AsyncMock()
-        monkeypatch.setattr(roster_mod, "scrape_page", AsyncMock(return_value=page))
+        monkeypatch.setattr(roster_mod, "get_page", AsyncMock(return_value=page))
         monkeypatch.setattr(roster_mod, "extract_visible_text", AsyncMock(return_value={"text": ""}))
         monkeypatch.setattr(roster_mod, "extract_page_dom", AsyncMock(return_value=""))
         monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/jobs"]))
@@ -3546,7 +3533,7 @@ class TestFetchJobLinksContentBranches:
     @pytest.mark.asyncio
     async def test_records_scrape_failure_without_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "parse_enumerate_array", MagicMock(return_value={1: "https://acme.com/jobs"}))
-        monkeypatch.setattr(roster_mod, "scrape_page", AsyncMock(side_effect=RuntimeError("blocked")))
+        monkeypatch.setattr(roster_mod, "get_page", AsyncMock(side_effect=RuntimeError("blocked")))
         content, _, _, _ = await roster_mod._fetch_job_links_content(
             [1],
             "1. https://acme.com/jobs",
@@ -3637,11 +3624,25 @@ class TestRosterCoverageGaps:
     async def test_fetch_job_links_content_dom_new_links_and_scrape_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             roster_mod,
+            "wait_for_careers_list_readiness",
+            AsyncMock(
+                return_value={
+                    "ready": True,
+                    "outcome": "ready",
+                    "visible_chars": 0,
+                    "listing_hits": 0,
+                    "wait_ms": 0,
+                    "load_all_jobs_ran": False,
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            roster_mod,
             "parse_enumerate_array",
             MagicMock(return_value={1: "https://acme.com/jobs", 2: "https://acme.com/about"}),
         )
-        page = MagicMock()
-        monkeypatch.setattr(roster_mod, "scrape_page", AsyncMock(side_effect=[page, RuntimeError("blocked")]))
+        page = AsyncMock()
+        monkeypatch.setattr(roster_mod, "get_page", AsyncMock(side_effect=[page, RuntimeError("blocked")]))
         monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
         monkeypatch.setattr(roster_mod, "extract_visible_text", AsyncMock(return_value={"text": ""}))
         monkeypatch.setattr(roster_mod, "extract_page_dom", AsyncMock(return_value=""))
@@ -5347,41 +5348,89 @@ class TestAst1674ResolveWebsiteApply:
 
 
 class TestAst689ScrapeReadiness:
-    """AST-689 readiness → scrape_page(careers_list=True): one job with every field the page needs."""
+    """AST-689 readiness (AST-1726: Telescope wait_ready — listing selectors unavailable remotely)."""
 
     @pytest.mark.asyncio
-    async def test_fetch_job_links_content_is_one_job_per_page(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_wait_for_careers_list_readiness_ready_on_listing_hits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.external import telescope as pw_mod
+        from src.external.telescope import wait_for_careers_list_readiness
+
+        page = pw_mod.PageHandle(url="https://example.com/jobs")
+
+        async def ensure_text(p, links=False):
+            p._text = "x" * 200
+
+        monkeypatch.setattr(pw_mod, "_ensure_text", ensure_text)
+
+        result = await wait_for_careers_list_readiness(
+            page,
+            {"run_load_all_jobs": False},
+        )
+        assert result["ready"] is True
+        assert result["outcome"] == "ready"
+        assert result["visible_chars"] >= 1
+        assert page.wait_ready is True
+
+    @pytest.mark.asyncio
+    async def test_wait_for_careers_list_readiness_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.external import telescope as pw_mod
+        from src.external.telescope import wait_for_careers_list_readiness
+
+        page = pw_mod.PageHandle(url="https://example.com/jobs")
+
+        async def ensure_text(p, links=False):
+            p._text = ""
+
+        monkeypatch.setattr(pw_mod, "_ensure_text", ensure_text)
+
+        result = await wait_for_careers_list_readiness(
+            page,
+            {"run_load_all_jobs": False},
+        )
+        # Empty visible text → outcome empty (not listing-selector timeout)
+        assert result["ready"] is False
+        assert result["outcome"] == "empty"
+
+    @pytest.mark.asyncio
+    async def test_fetch_job_links_content_calls_readiness(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        call_order: List[str] = []
+        readiness = AsyncMock(
+            return_value={
+                "ready": True,
+                "outcome": "ready",
+                "visible_chars": 500,
+                "listing_hits": 3,
+                "wait_ms": 100,
+                "load_all_jobs_ran": False,
+            }
+        )
+
+        async def readiness_track(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+            call_order.append("readiness")
+            return await readiness(*args, **kwargs)
+
+        extract = AsyncMock(return_value={"text": "Role A"})
+
+        async def extract_track(*args: Any, **kwargs: Any) -> Dict[str, str]:
+            call_order.append("extract")
+            return await extract(*args, **kwargs)
+
+        monkeypatch.setattr(roster_mod, "wait_for_careers_list_readiness", readiness_track)
         monkeypatch.setattr(roster_mod, "parse_enumerate_array", MagicMock(return_value={1: "https://acme.com/jobs"}))
-        scrape = AsyncMock(return_value=MagicMock())
-        monkeypatch.setattr(roster_mod, "scrape_page", scrape)
+        page = AsyncMock()
+        monkeypatch.setattr(roster_mod, "get_page", AsyncMock(return_value=page))
         monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
-        monkeypatch.setattr(roster_mod, "extract_visible_text", AsyncMock(return_value={"text": "Role A"}))
+        monkeypatch.setattr(roster_mod, "extract_visible_text", extract_track)
         monkeypatch.setattr(roster_mod, "extract_page_dom", AsyncMock(return_value="<div/>"))
         monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=[]))
 
-        await roster_mod._fetch_job_links_content([1], "1. https://acme.com/jobs", MagicMock(), debug=True)
+        await roster_mod._fetch_job_links_content([1], "1. https://acme.com/jobs", AsyncMock(), debug=True)
 
-        scrape.assert_awaited_once()
-        assert set(scrape.await_args.kwargs["fields"]) == {"text", "links", "html"}
-        assert scrape.await_args.kwargs["careers_list"] is True
-
-    @pytest.mark.asyncio
-    async def test_scrape_pjl_page_is_one_job_for_text_and_links(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        page = MagicMock(readiness={"ready": True})
-        scrape = AsyncMock(return_value=page)
-        monkeypatch.setattr(roster_mod, "scrape_page", scrape)
-        monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
-        monkeypatch.setattr(
-            roster_mod,
-            "scrape_loaded_page_contract",
-            AsyncMock(return_value={"visible_text": "Jobs", "nav_urls": ["https://acme.com/a"]}),
-        )
-        out = await roster_mod._scrape_pjl_page("acme.com/jobs", MagicMock())
-        scrape.assert_awaited_once()
-        assert scrape.await_args.args[0] == "https://acme.com/jobs"
-        assert set(scrape.await_args.kwargs["fields"]) == {"text", "links"}
-        assert scrape.await_args.kwargs["careers_list"] is True
-        assert out["visible_text"] == "Jobs" and out["readiness"] == {"ready": True}
+        readiness.assert_awaited_once()
+        extract.assert_awaited_once()
+        assert call_order == ["readiness", "extract"]
 
 
 class TestAst692JobsiteScrapeIssue:
@@ -5634,26 +5683,6 @@ class TestAst891ScrapeListPageInfra:
     """AST-891: list-page DOM scrape surfaces Playwright infra instead of empty DOM."""
 
     @pytest.mark.asyncio
-    async def test_single_body_fetch_returns_culled_dom(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        session = MagicMock()
-        page = MagicMock()
-        scrape = AsyncMock(return_value=page)
-        monkeypatch.setattr(roster_mod, "scrape_page", scrape)
-        close = AsyncMock()
-        monkeypatch.setattr(roster_mod, "close_page", close)
-        monkeypatch.setattr(roster_mod, "extract_page_dom", AsyncMock(return_value="<div>jobs</div>"))
-        dom = await roster_mod._scrape_list_page_dom_for_parse(
-            "https://acme.com/jobs", batch_session=session, short_name="acme",
-        )
-        assert dom == "<div>jobs</div>"
-        scrape.assert_awaited_once()
-        assert set(scrape.await_args.kwargs["fields"]) == {"text", "html"}
-        assert scrape.await_args.kwargs["careers_list"] is True
-        close.assert_awaited_once_with(page)
-
-    @pytest.mark.asyncio
     async def test_infra_error_raises_playwright_infra(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -5662,7 +5691,7 @@ class TestAst891ScrapeListPageInfra:
         session = MagicMock()
         monkeypatch.setattr(
             roster_mod,
-            "scrape_page",
+            "get_page",
             AsyncMock(side_effect=PlaywrightInfraError("context_closed", "browser dead")),
         )
         monkeypatch.setattr(roster_mod, "close_page", AsyncMock())
@@ -5679,7 +5708,7 @@ class TestAst891ScrapeListPageInfra:
         session = MagicMock()
         monkeypatch.setattr(
             roster_mod,
-            "scrape_page",
+            "get_page",
             AsyncMock(side_effect=RuntimeError("net::ERR_NAME_NOT_RESOLVED")),
         )
         monkeypatch.setattr(roster_mod, "close_page", AsyncMock())

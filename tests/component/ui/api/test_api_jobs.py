@@ -869,7 +869,7 @@ class TestAst1453SkippedEditMetaAndPut:
         monkeypatch.setattr(
             jobs_mod,
             "hydrate_job_artifacts_for_display",
-            lambda art, debug=False: art or {},
+            lambda art, debug=False, astral_job_id=None: art or {},
         )
         monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda job: [])
         monkeypatch.setattr(jobs_mod, "get_job_artifacts", lambda job: {})
@@ -955,9 +955,10 @@ class TestAst1453SkippedEditMetaAndPut:
         assert resp.status_code == 409
         assert resp.get_json()["error"] == "Job is not in a skipped state"
 
-    def test_put_illegal_transition_409(
+    def test_put_unregistered_state_409(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-1811: registry keys never 409 on the skipped path; non-JOB_STATES targets do.
         monkeypatch.setattr(
             jobs_mod,
             "get_job",
@@ -966,15 +967,15 @@ class TestAst1453SkippedEditMetaAndPut:
         monkeypatch.setattr(
             jobs_mod,
             "persist_skipped_job_edits",
-            MagicMock(side_effect=ValueError("Invalid transition: CANDIDATE_SKIPPED -> PASSED_JD")),
+            MagicMock(side_effect=ValueError("Value 'PASSED_GET_RETRY' not in allowed list: [...]")),
         )
         resp = jobs_client.put(
             "/api/jobs/job-1453",
-            json={"state": "PASSED_JD"},
+            json={"state": "PASSED_GET_RETRY"},
             headers=auth_headers,
         )
         assert resp.status_code == 409
-        assert "Invalid transition" in resp.get_json()["error"]
+        assert "not in allowed list" in resp.get_json()["error"]
 
     def test_put_empty_title_400(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch

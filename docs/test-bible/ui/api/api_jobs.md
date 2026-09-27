@@ -139,13 +139,13 @@ After stored-trio lift, `_flatten_grades` derives missing `{jd,do,get,like}_scor
 
 **Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits`.
 
-GET detail attaches `fields_editable` + `legal_next_states` (empty when not skipped). Authenticated `PUT /api/jobs/<id>` persists via `persist_skipped_job_edits` (409 not-skipped / illegal hop / identity collision; 400 empty title/link/state/body; 404 missing). Core contract: **`docs/test-bible/core/tracker.md`**. Form chrome: AST-1454.
+GET detail attaches `fields_editable` + `legal_next_states` (empty when not skipped). Authenticated `PUT /api/jobs/<id>` persists via `persist_skipped_job_edits` (409 not-skipped / unregistered non-`JOB_STATES` target — "not in allowed list" (**AST-1811**: registry keys no longer 409 on this path; see core § AST-1812) / identity collision; 400 empty title/link/state/body; 404 missing). Core contract: **`docs/test-bible/core/tracker.md`**. Form chrome: AST-1454.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | GET meta + PUT status map | `src/ui/api/api_jobs.py` | **`TestAst1453SkippedEditMetaAndPut`** |
 
-**Broken / obsolete:** none — additive keys on GET detail; existing story/hydrate suites still hold.
+**Broken / obsolete:** none — additive keys on GET detail; existing story/hydrate suites still hold. **AST-1812:** `test_put_illegal_transition_409` → `test_put_unregistered_state_409`; `_detail_wire` hydrate mock accepts `astral_job_id=` (pre-existing drift vs `origin/dev` `detail()`).
 
 **Integration:** none — no existing jobs detail/persist scenario to revise.
 
