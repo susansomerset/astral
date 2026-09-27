@@ -283,3 +283,9 @@ File: `src/external/slack.py` only (Technical scope — `ok:false` handling in `
 - AC9 / AST-1667: `conversations.members` still only in `is_channel_member`; `_iter_conversations` types (`public_channel,private_channel,im,mpim`) and poster-pool semantics unchanged.
 - `_SOFT_SKIP_ERRORS` unchanged (still includes `missing_scope` for per-channel history soft-skip).
 - Exception type stays `RuntimeError`; no `logger.info` / log-and-re-raise added in `slack.py`.
+
+### Fix board — AST-1815
+
+**[board-betty] TESTS: REVISE** — existing `conversations.list` ok:false tests (`TestAst1787ChannelListMembershipFullHistory::test_list_bot_channels_ok_false_raises`, poster-pool hard-failure test) only assert the `conversations.list` prefix and stay green; no coverage feeds `missing_scope` + `needed`/`provided` through `list_bot_channels` / `_iter_conversations`, none pins the exact plain message when those fields are absent, and `docs/test-bible/external/slack.md` has no AST-1815 entry. Routed to a sibling test-gap child (orphaned branch — no inline qa-fix on this ticket).
+
+**[board-joan] CANON: OK** — canon roster lives at `canon/docs/DIRECTIVES-DIRECTORY.md` (not `docs/canon-index.md`). Change only enriches `RuntimeError` text at existing raise sites; external raise / handler log-once unchanged. No debug on `_slack_error` matches `stat.logging.debug` (formatter on the raise path, not a callee joint). `stat.logging.error` allows facts on the exception at detection without logging there. `stat.errors.raise-once-log-once` (draft) respected. No statute or pattern needs an update or carve-out.
