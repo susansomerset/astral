@@ -966,6 +966,8 @@ def list_dtasks():
         # AST-1780: empty-render flag + force AUTO off when non-executable.
         er = _evaluate_dispatch_empty_render(row.get("candidate_id"), row.get("task_key") or "")
         row["empty_render"] = bool(er.get("empty_render"))
+        # AST-1819: missing prompt tokens for the Invalid tooltip ([] when valid or unvalidatable).
+        row["empty_tokens"] = list(er.get("empty_tokens") or [])
         if row["empty_render"] and row.get("auto_mode"):
             update_dispatch_task(row["id"], auto_mode=0)
             row["auto_mode"] = 0
