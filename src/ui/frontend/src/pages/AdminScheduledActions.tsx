@@ -102,7 +102,7 @@ interface ThreadEntry {
 
 type SortDir = "asc" | "desc"
 
-const FROZEN_DATA_COLUMNS = 3
+const FROZEN_DATA_COLUMNS = 1 // AST-1818: only Task pinned; Entity/State scroll with the rest
 
 const DATA_COL_KEYS = [
   "task_key", "entity_type", "trigger_state", "score_floor",
@@ -358,7 +358,7 @@ export default function ScheduledActions() {
   const [floorMax, setFloorMax] = useState("")
   const [autoFilter, setAutoFilter] = useState("")
   const [debugFilter, setDebugFilter] = useState("")
-  const [availGtZeroFilter, setAvailGtZeroFilter] = useState("gt0") // "" | "gt0"
+  const [availGtZeroFilter, setAvailGtZeroFilter] = useState("") // "" (All, AST-1818 default) | "gt0"
   const [freqFilter, setFreqFilter] = useState("")
   const [minCountFilter, setMinCountFilter] = useState("")
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
