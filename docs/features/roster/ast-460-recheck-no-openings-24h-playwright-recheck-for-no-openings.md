@@ -314,3 +314,37 @@ No new table, column, config key, or state. NO_OPENINGS → JOBS_FOUND routing i
 - `freq_hrs=0` on the recheck row still means the 24h state default.
 - Company Avail for rows with no `score_floor` and a primary trigger is identical to today.
 - `count_companies_in_state_with_score_floor(cid, state, floor)` with no new kwarg returns the same result as today.
+
+### Fix board — AST-1821
+
+[board-betty] TESTS: REVISE: failure-path stamp tests (`TestProcessRecheckNoOpenings::test_guards_missing_fields` / `test_playwright_failure_no_state_change`) leave `update_company_last_scan_at` unpatched; no coverage for Avail with `score_floor` + the `last_scan_at` window, `{base}_RETRY` base-state `batch_criteria` lookup, or the new `scan_interval_hours` kwarg. Filed as a sibling gap child (orphaned branch).
+
+[board-joan] CANON: OK
+
+**Findings (AST-1821 — fix-board Joan pass)**
+
+**Roster:** `canon/docs/DIRECTIVES-DIRECTORY.md` (no `docs/canon-index.md` on publish ref; same resolution as prior fix-board passes).
+
+**Plan-fix read:** `docs/features/roster/ast-460-recheck-no-openings-24h-playwright-recheck-for-no-openings.md` § Bug: AST-1821 (`origin/sub/AST-1820/AST-1821-recheck-no-openings-avail-count`). Parent AST-1820 has no Canon Scope list; triage is overlap against the directive roster only (not R1–R7).
+
+**`patt.entity.batch-criteria` — conforming, no edit required**
+
+- **Arc 2:** `freq_hrs` and `score_floor` are eligibility predicates composed into the same claim shape as `last_scan_at` staleness. Today’s bug is exactly that the company **count** path skips staleness when `score_floor` is set and resolves `batch_criteria` on the literal `_RETRY` trigger instead of the registered base. The proposed `count_eligible_for_dispatch_task` / `count_companies_in_state_with_score_floor` work **implements** this pattern; it does not carve around it.
+- **Arc 4 (`last_scan_at` on “completion”):** Stamping failed `process_recheck_no_openings` attempts so the frequency window applies is cadence enforcement for rows that remain in `NO_OPENINGS`, consistent with arc 2’s eligibility story. Susan’s overturn of AST-463’s feature-plan “no bump on failure” is product/plan authority (ticket + plan-fix), not an in-force statute. No new exception text is required for F5 to proceed.
+
+**`astral.dispatch.entity-state-bound` — conforming**
+
+- `registered_base` for `_RETRY` triggers in the **count** path matches the claim path (AST-1806 shape). Avail for `NO_OPENINGS_RETRY` / `WATCH_RETRY` moving to match `set_company_batch` is count/claim honesty, not a registry violation.
+
+**`stat.batch.claim-process-release` / `patt.entity.batch-processing` — no impact**
+
+- No change to claim → process → release or batch locking; only eligibility counting and when `update_company_last_scan_at` runs inside an existing company batch handler.
+
+**`patt.task.dispatch-retry` — pre-existing tension, not introduced by this fix**
+
+- Arc 5 (“failure does not persist in state”) still disagrees with **already-shipped** behavior: failed recheck returns stay in `NO_OPENINGS` without `_RETRY` routing. AST-1821 does not change that routing; it only stamps `last_scan_at` and fixes count/claim parity. Routing failures through retry states would be a **different** product decision (parent step 2 alternative), not a canon patch required by this plan-fix. Not ESCALATE here — Susan already chose throttle-via-stamp on AST-1820.
+
+**Blast radius (canon lens)**
+
+- `get_due_tasks` / admin Avail dropping to the claimable set is intended alignment with batch-criteria, not a new dispatch precedent.
+- Plan’s known left-alone gap (company rows with `freq_hrs > 0` but no state `scan_interval_hours` and not WATCH) is explicitly out of AST-1820 scope; no statute touch.
