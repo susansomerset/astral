@@ -578,6 +578,23 @@ AST-1842 board-joan done — CANON: OK.
 [board-joan]  CANON: OK
 ```
 
+## Bug: AST-1842 — Build stub (Ada / make-fix)
+
+**Publish ref:** `origin/sub/AST-1825/AST-1842-agent-data-writes-off-event-loop`
+
+| Step | Commit | Summary |
+|------|--------|---------|
+| 1 | `49a6eaed` | `ASTRAL_CONFIG["db_connection"]` — `busy_timeout_seconds: 10.0`, `journal_mode: "WAL"` |
+| 2 | `48b1ae31` | `_get_connection` — `sqlite3.connect(..., timeout=...)` + `PRAGMA journal_mode` from config |
+| 3 | `259ed6be` | `do_task` — 1 prompt + 12 RESPONSE stores via `await asyncio.to_thread(...)`; `import asyncio` |
+| 4 | — | Verified: `rg -nP "(?<![\w.])_store_(response_block\|prompt_blocks)\(" src/core/agent.py` → only `run_adhoc_workbench_test` (out of scope); no bare store call left in `do_task`. `_run_with_retry` unchanged |
+| 5 | `b198975c` | `_find_job_page_from_assembled` — `provider_call_timeout` joins balance-refusal hold (`PJL_READY`, `state_held`) |
+| 6 | — | Host 30+ company re-run not performed here (operator / test-fix / UAT) |
+
+**Sanity (temp DB):** `_get_connection` → `journal_mode=wal`, `busy_timeout=10000`; a write commits in ~0s while another connection holds an open read transaction.
+
+**Touched-area suites (Python 3.14 venv):** `tests/component/core/test_agent.py` + `test_agent_ast1448.py` + `TestAst984…test_list_latest_per_task_key`, `tests/component/core/test_roster.py`, `tests/component/data/**` — failure sets identical before vs after this fix (41 / 50 / 51 failed + 2 collection errors, zero new). Pre-existing reds include `TestAst1448PersistPromptBeforeProvider::test_do_task_debug_emits_prompt_found_recorded_before_provider` (expects a `prompt-found` event), `no such table: company`, and `SURFER_BATCH_CONFIG` import errors — for Betty/test-fix, not product changes here.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
