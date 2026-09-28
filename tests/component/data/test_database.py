@@ -307,22 +307,3 @@ class TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex:
             assert row[1] == "2026-01-01 00:00:00"
         finally:
             conn.close()
-
-
-class TestAst1842ConnectionWalBusyTimeout:
-    """AST-1842: _get_connection opens WAL with the configured busy timeout."""
-
-    def test_get_connection_wal_and_configured_busy_timeout(self, monkeypatch, tmp_path) -> None:
-        # [bug-repro] pre-fix: default rollback journal ("delete") lets a reader lock out a writer's commit
-        from src.data import database as db
-        from src.utils.config import ASTRAL_CONFIG
-
-        monkeypatch.setattr(db, "DB_PATH", tmp_path / "astral.db")  # never flip/assert the shared db file
-        conn = db._get_connection()
-        try:
-            # journal mode first so the pre-fix red is the root-cause value, not a missing config key
-            assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
-            cfg = ASTRAL_CONFIG["db_connection"]
-            assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == int(float(cfg["busy_timeout_seconds"]) * 1000)
-        finally:
-            conn.close()

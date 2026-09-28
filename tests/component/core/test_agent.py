@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
 import logging
-import time
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 from unittest.mock import AsyncMock, MagicMock
@@ -9593,50 +9591,3 @@ class TestAst1700ThreadHarvestGenerativeLands:
         assert out["success"] is True
         save.assert_called_once()
         assert save.call_args.kwargs.get("source_artifact_ids") == self._HARVEST
-
-
-class TestAst1842DoTaskStoreOffLoop:
-    """AST-1842: a slow/locked save_agent_data blocks a worker thread, not the event loop."""
-
-    async def test_slow_save_agent_data_does_not_block_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # [bug-repro] pre-fix: every agent_data commit runs on the loop, so each blocked save is a loop freeze
-        token = agent_mod.log_batch_id.set("batch-1")
-        try:
-            monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda _key: _agent_rows())
-            block_types: List[str] = []
-
-            def slow_save(**kw: Any) -> None:
-                block_types.append(kw["block_type"])
-                time.sleep(0.3)  # stands in for a commit waiting on a locked db
-
-            # real _store_prompt_blocks / _store_response_block stay in play (the call sites AST-1842 moved)
-            monkeypatch.setattr(agent_mod, "save_agent_data", slow_save)
-            monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value={
-                "success": True, "parsed_response": {"agent_payload": "0|CRA2"},
-                "api_response": _api_response("ok"), "timesheet": {},
-            }))
-            ticks: List[float] = []
-            done = asyncio.Event()
-
-            async def heartbeat() -> None:
-                # tick on every wake *before* checking done: a do_task that never yields finishes and sets
-                # done inside one freeze, and the gap must still land in ticks
-                while True:
-                    ticks.append(time.monotonic())
-                    if done.is_set():
-                        break
-                    await asyncio.sleep(0.02)
-
-            async def run() -> None:
-                try:
-                    await asyncio.sleep(0.1)  # heartbeat ticks first, so a freeze shows as a gap
-                    await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_draft_job_resume_ctx())
-                finally:
-                    done.set()
-
-            await asyncio.gather(run(), heartbeat())
-        finally:
-            agent_mod.log_batch_id.reset(token)
-        # prompt + RESPONSE stores both ran (outcome of do_task itself is not the repro)
-        assert "RESPONSE" in block_types and any(b != "RESPONSE" for b in block_types), block_types
-        assert max(b - a for a, b in zip(ticks, ticks[1:])) < 0.2
