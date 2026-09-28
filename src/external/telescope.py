@@ -1016,7 +1016,8 @@ async def extract_page_dom(page: PageHandle, element: Optional[str] = None) -> s
     if not raw_html:
         return ""
     if TELESCOPE_CONFIG.get("cull_html_default", True):
-        return _cull_html(raw_html)
+        # AST-1840: CPU-bound cull off the event loop
+        return await asyncio.to_thread(_cull_html, raw_html)
     return raw_html
 
 
@@ -1486,11 +1487,17 @@ def _cull_html(html: str) -> str:  # pragma: no cover
         raise ValueError("ASTRAL_CONFIG['html_cull']['strip_attributes'] is missing")
     if "strip_on_attrs" not in html_cull_config:
         raise ValueError("ASTRAL_CONFIG['html_cull']['strip_on_attrs'] is missing")
+    if "max_html_tag_length" not in html_cull_config:
+        raise ValueError("ASTRAL_CONFIG['html_cull']['max_html_tag_length'] is missing")
+    if "max_length_placeholder" not in html_cull_config:
+        raise ValueError("ASTRAL_CONFIG['html_cull']['max_length_placeholder'] is missing")
     # Get configuration values directly from config
     allowed_tags = set(html_cull_config["allowed_tags"])  # Use set for O(1) lookup
     banner_patterns = html_cull_config["banner_patterns"]
     strip_attrs_list = html_cull_config["strip_attributes"]
     strip_on_attrs = html_cull_config["strip_on_attrs"]
+    max_attr_len = int(html_cull_config["max_html_tag_length"])
+    snip_placeholder = html_cull_config["max_length_placeholder"]
     
     soup = BeautifulSoup(html, 'html.parser')
     
@@ -1515,11 +1522,16 @@ def _cull_html(html: str) -> str:  # pragma: no cover
         for child in list(soup.children):
             if getattr(child, "name", None) == "svg":
                 preserve_root_svgs.add(child)
+    # AST-1840: compare by id() only — bs4 Tag.__hash__ serializes the whole subtree,
+    # which made every membership test O(document) and the cull quadratic.
+    preserve_root_ids = {id(s) for s in preserve_root_svgs}
 
     def _in_preserved_svg(elem) -> bool:
-        if elem in preserve_root_svgs:
+        if not preserve_root_ids:
+            return False
+        if id(elem) in preserve_root_ids:
             return True
-        return any(p in preserve_root_svgs for p in getattr(elem, "parents", []))
+        return any(id(p) in preserve_root_ids for p in getattr(elem, "parents", []))
     
     # Remove script tags (including JSON blobs like __NEXT_DATA__)
     for script in soup.find_all('script'):
@@ -1668,6 +1680,11 @@ def _cull_html(html: str) -> str:  # pragma: no cover
         
         for attr in attrs_to_strip:
             del elem.attrs[attr]
+        # AST-1840: over-long values (inline binary/base64 payloads) → visible placeholder
+        for attr, val in list(elem.attrs.items()):
+            flat = " ".join(val) if isinstance(val, list) else str(val)
+            if len(flat) > max_attr_len:
+                elem.attrs[attr] = snip_placeholder
     
     # Return the culled soup as string
     return str(soup)

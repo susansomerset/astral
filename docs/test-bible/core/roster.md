@@ -872,3 +872,25 @@ Canonical external map: [`external/telescope.md`](../external/telescope.md).
   tests/component/core/test_roster.py::TestBatchApi::test_ast1808_single_state_retry_claims_with_base_criteria \
   -q
 ```
+
+### AST-1840 · AST-1844 (qa-fix bug-repro — `_culled_dom_for_parse` off the event loop)
+
+**Parent:** [AST-1838](https://linear.app/astralcareermatch/issue/AST-1838) (orphaned-bug mini-parent). Product: **AST-1840**; test/bible delivery on gap sibling **AST-1844** (`origin/sub/AST-1838/AST-1844-parse-job-list-event-loop-block-tests`). The three async cull sites now `await asyncio.to_thread(_culled_dom_for_parse, …)`; proven by thread identity (no timers). `[bug-repro]`: red on pre-fix `31846c28`, green on AST-1840 (`fb472a98`). `make_locate_parse_resolver` stays sync (not asserted).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse dispatch cull off loop (real cull, reaches `WATCH`) | `src/core/roster.py` (`run_parse_job_list_dispatch`) | **`tests/component/core/test_roster.py::TestAst1840CullOffEventLoop::test_parse_dispatch_culls_off_event_loop`** (**bug-repro**) |
+| JOBS_FOUND chain finalize cull off loop | `_finalize_joblist_titles_after_chain` | **`TestAst1840CullOffEventLoop::test_finalize_after_chain_culls_off_event_loop`** (**bug-repro**) |
+| Select-only finalize cull off loop | `_finalize_joblist_titles_select_only` | **`TestAst1840CullOffEventLoop::test_finalize_select_only_culls_off_event_loop`** (**bug-repro**) |
+| AST-827 handoff regression | same | existing **`TestAst827TitleHandoffDomCull`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1840CullOffEventLoop \
+  tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull \
+  -q
+```
