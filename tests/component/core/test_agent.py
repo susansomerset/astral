@@ -9640,3 +9640,87 @@ class TestAst1842DoTaskStoreOffLoop:
         # prompt + RESPONSE stores both ran (outcome of do_task itself is not the repro)
         assert "RESPONSE" in block_types and any(b != "RESPONSE" for b in block_types), block_types
         assert max(b - a for a, b in zip(ticks, ticks[1:])) < 0.2
+
+
+class TestAst1846DoTaskAgentFailureFlag:
+    """AST-1846 bug-repro (AST-1839): rubric-encoded envelope status=failure → agent_failure (prefilter routing input)."""
+
+    @staticmethod
+    async def _run(monkeypatch: pytest.MonkeyPatch, envelope: Dict[str, Any]) -> Dict[str, Any]:
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_deepseek",
+            AsyncMock(return_value={
+                "success": True, "parsed_response": envelope, "api_response": _api_response("env"), "timesheet": {},
+            }),
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {"vendor_model": "deepseek-v4-flash", "thinking": False},
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        return await agent_mod.do_task(
+            "prefilter_company",
+            index="prefilter_company_batch_b1846",
+            ctx={
+                "astral_candidate_id": "somerset",
+                "candidate_data": {},
+                "batch_entities": [{"company_id": "acme_com", "short_name": "acme_com"}],
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_rubric_envelope_failure_sets_agent_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        envelope = {"agent_performance": {"status": "failure", "failure_note": "parked domain"}, "agent_payload": "000|RCA5"}
+        out = await self._run(monkeypatch, envelope)
+        assert out.get("agent_failure") is True
+        assert out["success"] is False
+        assert out["error"] == "Agent failure: parked domain"
+        assert out["parsed_response"] is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("perf", "top_note", "want"),
+        [
+            # String status (not a dict) falls back to the top-level failure_note.
+            ("failure", "top note", "Agent failure: top note"),
+            # Dict status with no note anywhere → fixed default.
+            ({"status": "failure"}, None, "Agent failure: Agent returned status=failure with no note"),
+        ],
+    )
+    async def test_failure_note_fallbacks(
+        self, monkeypatch: pytest.MonkeyPatch, perf: Any, top_note: Any, want: str,
+    ) -> None:
+        envelope: Dict[str, Any] = {"agent_performance": perf, "agent_payload": "000|RCA5"}
+        if top_note is not None:
+            envelope["failure_note"] = top_note
+        out = await self._run(monkeypatch, envelope)
+        assert out.get("agent_failure") is True
+        assert out["error"] == want
+
+    @pytest.mark.asyncio
+    async def test_failure_response_store_exception_is_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        # batch_token → _should_store; a failing response store must not mask agent_failure.
+        store = MagicMock(side_effect=RuntimeError("db locked"))
+        monkeypatch.setattr(agent_mod, "_store_response_block", store)
+        envelope = {"agent_performance": {"status": "failure", "failure_note": "parked domain"}, "agent_payload": "000|RCA5"}
+        out = await self._run(monkeypatch, envelope)
+        store.assert_called_once()
+        assert out.get("agent_failure") is True
+        assert out["error"] == "Agent failure: parked domain"
+
+    @pytest.mark.asyncio
+    async def test_non_rubric_task_does_not_set_agent_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Guard: the flag is scoped to rubric-encoded tasks; others keep their existing schema path.
+        monkeypatch.setitem(
+            agent_mod.TASK_CONFIG, "prefilter_company", {**agent_mod.TASK_CONFIG["prefilter_company"], "rubric_artifact": None},
+        )
+        envelope = {"agent_performance": {"status": "failure", "failure_note": "parked domain"}, "agent_payload": "000|RCA5"}
+        out = await self._run(monkeypatch, envelope)
+        assert out.get("agent_failure") is not True

@@ -4437,3 +4437,14 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
   tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
   -q
 ```
+
+### AST-1846 · AST-1828 (flips — prefilter retry holding is `HOMEPAGE_READY_RETRY`)
+
+**Primary manifest:** **`docs/test-bible/core/roster.md`** § AST-1846. AST-1839 config: `HOMEPAGE_READY.retry_state` / prefilter `retry_state` = `HOMEPAGE_READY_RETRY` (implicit registration); `envelope_retry_state` = `WEBSITE_FOUND_RETRY`; edges HR → HR_RETRY and HR → WFR; HR_RETRY → 7 destinations; WFR priors drop HR.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Flipped | `src/utils/config.py` | `TestAst702PrefilterBatchConfig::test_prefilter_input_state_and_retry_on_homepage_ready` · `TestAst507EncodedPrefilterConfig::test_company_states_and_transitions` · `TestAst1807ImplicitRetryHelpers::test_state_prior_states_cross_base_feeders` · `TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` |
+| Fixture re-pin | `tests/component/utils/fixtures/ast1806_prior_snapshot.json` | `COMPANY_STATES["WEBSITE_FOUND_RETRY"]` → `["WEBSITE_FOUND","WEBSITE_FOUND_RETRY"]` |
+
+**Integration:** none.

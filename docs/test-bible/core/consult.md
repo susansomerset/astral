@@ -1405,3 +1405,17 @@ Scored Analysis apply: complete grade set of all literal `X` raises `AllLiteralX
 **Pass criterion:** pytest green on the class — not zero-arg harness / branch-lock gate.
 
 **Bible path shasum (record after publish):** `git show origin/sub/AST-1759/AST-1760-all-x-scored-grades-retry-holding:docs/test-bible/core/consult.md | shasum`
+
+### AST-1846 · AST-1828 (bug-repro — per-entity retry WARNING, uncounted)
+
+**Primary manifest:** **`docs/test-bible/core/roster.md`** § AST-1846. AST-1839 contract here: `run_consult_task` subtracts **`retried`** from `total_errors`; `_log_fail_dest` logs WARNING into a `retry_base` holding, ERROR otherwise (terminal or no dest); upshot `PASSED_LIKE_RETRY` → `FAILED_TECHNICAL` counts.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Primary hydrate fail → `NEW_RETRY`, WARNING, `total_errors == 0` | `src/core/consult.py` | **`TestAst1846ConsultRetryWarnThenError::test_hydrate_fail_from_primary_warns_into_holding`** (**bug-repro**) |
+| Holding hydrate fail → `ERROR_QUALIFY_JOB_LISTINGS`, ERROR, counted | same | **`…::test_hydrate_fail_from_holding_errors_into_error_state`** (**bug-repro**) |
+| Single-entity grade: holding uncounted, held/terminal counted | `grade_get` batch | **`…::test_single_entity_grade_counts_holding_not_held_or_terminal`** (**bug-repro**) |
+| Upshot terminal + no-dest sites log ERROR (4 sites × 2) | `analysis_upshot` batch | **`…::test_upshot_terminal_and_no_dest_sites_log_error`** (branch lock) |
+| Flipped (`total_errors` 0 into holding; parametrized primary/holding) | same | `TestAnalysisUpshotPrepAndBatch480::test_batch_company_missing_moves_to_retry` · `TestAnalysisUpshotPrepAndBatch480ExtraBranches::{test_batch_missing_company_transitions_and_counts_error,test_batch_do_task_failure_transitions_error}` · `TestAst642PerEntityBatchRetry::test_analysis_upshot_primary_failure_to_retry_holding` |
+
+**Integration:** none.

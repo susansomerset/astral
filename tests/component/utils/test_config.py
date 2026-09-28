@@ -1239,7 +1239,10 @@ class TestAst702PrefilterBatchConfig:
     def test_prefilter_input_state_and_retry_on_homepage_ready(self) -> None:
         pf = cfg.ROSTER_CONFIG["prefilter"]
         assert pf["input_state"] == "HOMEPAGE_READY"
-        assert cfg.COMPANY_STATES["HOMEPAGE_READY"]["retry_state"] == "WEBSITE_FOUND_RETRY"
+        # AST-1839: parsing holding is prefilter's own HR_RETRY; envelope failures still re-scrape via WFR.
+        assert cfg.COMPANY_STATES["HOMEPAGE_READY"]["retry_state"] == "HOMEPAGE_READY_RETRY"
+        assert pf["retry_state"] == "HOMEPAGE_READY_RETRY"
+        assert pf["envelope_retry_state"] == "WEBSITE_FOUND_RETRY"
 
     def test_homepage_ready_evaluate_transitions(self) -> None:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
@@ -1531,7 +1534,11 @@ class TestAst507EncodedPrefilterConfig:
         # AST-1808: implicit retry substate.
         assert cfg.is_registered_state(cfg.COMPANY_STATES, "WEBSITE_FOUND_RETRY")
         assert "WEBSITE_FOUND_RETRY" not in cfg.COMPANY_STATES
-        assert cfg.ROSTER_CONFIG["prefilter"]["retry_state"] == "WEBSITE_FOUND_RETRY"
+        # AST-1839: HOMEPAGE_READY_RETRY registers implicitly through its base (no literal key).
+        assert cfg.COMPANY_STATES["HOMEPAGE_READY"]["retry_state"] == "HOMEPAGE_READY_RETRY"
+        assert cfg.is_registered_state(cfg.COMPANY_STATES, "HOMEPAGE_READY_RETRY")
+        assert "HOMEPAGE_READY_RETRY" not in cfg.COMPANY_STATES
+        assert cfg.ROSTER_CONFIG["prefilter"]["retry_state"] == "HOMEPAGE_READY_RETRY"
         assert cfg.ROSTER_CONFIG["prefilter"]["no_pjl_state"] == "NO_PREFILTER_JOBLISTS"
         assert cfg.ROSTER_CONFIG["prefilter"]["pjl_url_data_key"] == "possible_joblist_links"
         assert (
@@ -1545,6 +1552,14 @@ class TestAst507EncodedPrefilterConfig:
         assert ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY") in transitions
         assert ("WEBSITE_FOUND", "ERROR_PREFILTER") in transitions
         assert ("HOMEPAGE_READY", "NO_PREFILTER_JOBLISTS") in transitions
+        # AST-1839: HR → HR_RETRY first strike; out of HR_RETRY to every evaluate/terminal outcome; envelope HR → WFR kept.
+        assert ("HOMEPAGE_READY", "HOMEPAGE_READY_RETRY") in transitions
+        assert ("HOMEPAGE_READY", "WEBSITE_FOUND_RETRY") in transitions
+        for dest in (
+            "PREFILTER_PASSED", "PREFILTER_FAILED", "NO_PREFILTER_JOBLISTS", "TO_WATCH",
+            "IGNORE", "ERROR_PREFILTER", "CANNOT_READ_WEBSITE",
+        ):
+            assert ("HOMEPAGE_READY_RETRY", dest) in transitions, dest
         assert "NO_PREFILTER_JOBLISTS" not in cfg.ROSTER_CONFIG["prefilter"]["pass_states"]
 
     def test_prefilter_company_grades_encoded(self) -> None:
@@ -6962,13 +6977,14 @@ class TestAst1807ImplicitRetryHelpers:
         assert cfg.is_registered_state(js, "NOPE_RETRY") is False
 
     def test_state_prior_states_cross_base_feeders(self) -> None:
-        # VALID_TITLE.retry_state == NEW_RETRY; HOMEPAGE_READY.retry_state == WEBSITE_FOUND_RETRY.
+        # VALID_TITLE.retry_state == NEW_RETRY (cross-base). AST-1839: HOMEPAGE_READY.retry_state is its own
+        # HOMEPAGE_READY_RETRY, so HOMEPAGE_READY no longer feeds WEBSITE_FOUND_RETRY.
         assert cfg.state_prior_states(cfg.JOB_STATES, "NEW_RETRY") == ["NEW", "NEW_RETRY", "VALID_TITLE"]
         assert cfg.state_prior_states(cfg.COMPANY_STATES, "WEBSITE_FOUND_RETRY") == [
             "WEBSITE_FOUND",
             "WEBSITE_FOUND_RETRY",
-            "HOMEPAGE_READY",
         ]
+        assert "HOMEPAGE_READY" in cfg.state_prior_states(cfg.COMPANY_STATES, "HOMEPAGE_READY_RETRY")
         assert cfg.state_prior_states(cfg.JOB_STATES, "PASSED_GET_RETRY") == ["PASSED_GET", "PASSED_GET_RETRY"]
 
     def test_state_prior_states_self_drain_and_unrestricted(self) -> None:
