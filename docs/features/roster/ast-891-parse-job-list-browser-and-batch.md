@@ -479,3 +479,19 @@ No limits, caps, or truncation added (Susan 2026-09-28). No new table or column 
 - AST-1839 classification: retry holding is not an error; terminal fail / `result["error"]` / unexpected state are errors — same buckets for partial and final counts.
 - Normal (non-timeout) completion: `parse_job_list_batch` return dict, `consult` mapping, `_run_unified` `s`, and COMPLETED ledger values are byte-for-byte unchanged; no double counting across multi-run (`max_runs`) loops.
 - Timeout still yields `final_status="INTERRUPTED"` and the `+1` timeout error.
+
+## Joan fix-board — AST-1847
+
+Fix-board Joan triage for **AST-1847** against the plan-fix patch on `origin/sub/AST-1845/AST-1847-parse-job-list-timeout-partial-counts` and the in-force corpus via `canon/docs/DIRECTIVES-DIRECTORY.md` (no `docs/canon-index.md` on this ref).
+
+**Overlap skim:** `patt.entity.batch-processing` (ledger keyed by `batch_id` — fix makes `total_*` match work done, no text change), `patt.task.dispatch-retry` / AST-1839 buckets (plan keeps classification; only tally timing), `astral.batch.claim-process-release` (`clear_company_batch` in `finally` unchanged), `stat.logging.info.dispatcher` (COMPLETED info line untouched), `stat.logging.error` (single `logger.exception` on timeout gains inline partial-progress facts before “Truncating the batch” — not a second rollup line; distinct from the Don’t `batch finished FAILED | processed=…` summary pattern). `ctx["dispatch_partial"]` is dispatcher-owned bookkeeping on an existing ctx reference; no active statute forbids it. No Canon Scope on ticket; not ESCALATE (scope decisions are Susan/plan-fix, not Archie precedent).
+
+BEGIN-VERDICT
+```
+[board-joan]  CANON: OK
+```
+END-VERDICT
+
+```text
+AST-1847 board-joan done — CANON: OK.
+```
