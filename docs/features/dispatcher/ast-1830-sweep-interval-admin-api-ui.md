@@ -210,3 +210,60 @@ context_tokens≈32000
 - **Stage 1:** `0f3f2428` — `code(AST-1830): admin API sweep_hrs create/update/columns`
 - **Stage 2:** `9d93d03d` — `code(AST-1830): Scheduled Actions sweep_hrs modal input + list column`
 - **Build notes:** `py_compile` clean on `api_admin.py`; `_parse_sweep_hrs` smoke-checked in isolation (None/""/whitespace → NULL, 2.5/"4"/0 accepted, -1/"abc"/list → 400 message). `tsc -b --noEmit` clean, `npm run build` succeeds. `eslint` on the page reports only two pre-existing `no-extra-boolean-cast` errors (`!!row.empty_render` in the Run/toggle handlers) — present on the pre-change file, untouched per plan. `grep -n "sweepDisabled"` still shows `!!row.auto_mode && avail >= (row.min_count || 1)`. `tests/component/ui/api/test_api_admin.py` does not collect in this env (`ModuleNotFoundError: asyncpg`, same on the clean tree) — flag for Betty.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1830
+**Publish ref:** `a41038c0a8bbd0d0813893d94d17766f104d52c0` (`origin/sub/AST-1824/AST-1830-sweep-interval-admin-api-ui`)
+**Corpus:** a0bc2f0e5b5810448cf465ebeff84ffb6f1d60b6
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | B | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan **APPROVED** with **B** on `patt.entity.batch-criteria` (narrow API validation vs Arc 1 “validated through execution”); tip implements the documented Stage 1 step 2 Decision and AC 11 gate.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Three-dot diff vs `origin/dev` includes sibling AST-1829 product work** (`src/data/database.py`, `src/core/dispatcher.py`) and AST-1829/merge-tests carry — expected while #1 is not on `dev`; **AST-1830’s own code commits** (`0f3f2428`, `9d93d03d`) touch only `src/ui/api/api_admin.py` and `AdminScheduledActions.tsx`, matching **## Scope**.
+- **sibling test carry:** same sub tip bundles `TestAst1829*`, frontend candidate/session tests, `test_api_candidate.py`, etc. — Betty merge-tests; not AST-1830 product scope.
+- **`_parse_sweep_hrs` and `NaN`:** `float("nan")` is non-negative in Python and would pass the helper; AC 11 does not require rejecting it. **Default (if ever tightened):** reject non-finite floats in `_parse_sweep_hrs` only — no UI change unless Susan wants client-side guards too.
+- **Build notes (issue doc):** `test_api_admin.py` collection may fail locally without `asyncpg` — environment flag from implementer, not a canon finding.
+
+## What's solid
+
+- Frozen **`sweep_hrs`** key end-to-end: `_DISPATCH_TASK_COLUMNS`, shared `_parse_sweep_hrs`, create → `save_dispatch_task(sweep_hrs=...)`, update `allowed` + parse-before-loop branch, AUTO-on edit lock unchanged (`test_update_auto_row_edit_lock_unchanged`).
+- UI: types, `DATA_COL_KEYS` / header / cell order after Freq, modal input (create + edit), PUT/POST bodies with blank → `null`; list shows value or `—` (0/NULL off).
+- **AC 13:** `sweepDisabled` still `!!row.auto_mode && avail >= (row.min_count || 1)` (lines 209–213); no `handleRun` / dispatcher edits in this ticket.
+- Tests on tip: `TestAst1830SweepHrsAdminApi` and `AST-1830 sweep_hrs modal input + list column` Vitest block cover AC 11–12 paths described in the plan.
+
+## Recommended actions (downstream only)
+
+- Chuckles: append artifact, `docs()` on sub, post slim upshot `--as radia`, **Review Posted**; **PROCEED** → UT when datt routes after sibling #1 is already UT-safe on ftr.
+- No canon-scope or Archie escalation unless you want Arc 1 vs API-validation policy written into canon (Joan already marked optional at plan).
+
+```
+[code-rubric] PROCEED (Commit: a41038c0) admin sweep_hrs UI+API
+```
+
+context_tokens≈22000
