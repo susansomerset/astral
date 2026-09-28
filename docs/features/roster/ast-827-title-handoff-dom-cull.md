@@ -636,3 +636,20 @@ Verified with a `/tmp` prototype of exactly this body:
 - **AST-1189:** per-call provider budgets fire on schedule, because the loop is never held by a cull.
 - **No DOM/page size cap, no truncation, no limit** beyond the 500-char attribute snip (Susan, 2026-09-28). The existing `max_passes = 10` unwrap loop in `_cull_html` is pre-existing and untouched.
 - `html_cull` keys stay required config. Missing `max_html_tag_length` / `max_length_placeholder` raises `ValueError`, same as the other keys.
+
+
+## Joan fix-board (AST-1840)
+
+Fix-board Joan triage for **AST-1840** against the plan-fix patch on `origin/sub/AST-1838/AST-1840-parse-job-list-event-loop-block` and the in-force corpus via `canon/docs/DIRECTIVES-DIRECTORY.md` (no `docs/canon-index.md` on this ref).
+
+**Assessment:** The change adds `html_cull` keys in `config.py` with required-key `ValueError` checks (`astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`). DOM work moves to `asyncio.to_thread` in external/core without crossing the core/external I/O line. `find_job_containers` semantics stay a product/plan contract (AST-827 / AST-1840 scope), not a harvested statute. HARVEST notes §3.4 html-cull has no statute beyond config-source-of-truth. AST-1745 SVG behavior is feature AC in “What must still hold,” not an active directive; Susan already chose global attribute snip over a preserved-svg carve-out in the patch. No statute update or Archie precedent gate.
+
+BEGIN-VERDICT
+```
+[board-joan]  CANON: OK
+```
+END-VERDICT
+
+```text
+AST-1840 board-joan done — CANON: OK.
+```
