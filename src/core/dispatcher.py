@@ -1475,8 +1475,10 @@ async def _run_dispatch_loop(
     max_runs = task.get("max_runs")
     is_auto = bool(task.get("auto_mode"))
     ui_initiated = bool(task.get("_ui_initiated"))
-    # Sweep = UI click on an AUTO row: one batch. Run (CLICK) and AUTO ticks honour row max_runs.
-    if ui_initiated and is_auto:
+    scheduled_sweep = bool(task.get("_scheduled_sweep"))
+    # Sweep = UI click or tick-scheduled sweep (AST-1829) on an AUTO row: one batch, min 1.
+    # Run (CLICK) and normal AUTO ticks honour row max_runs.
+    if (ui_initiated or scheduled_sweep) and is_auto:
         max_runs = 1
     cid = task.get("candidate_id") or ctx.get("astral_candidate_id") or "-"
     run_count = 0
@@ -1484,9 +1486,9 @@ async def _run_dispatch_loop(
         et = task.get("entity_type")
         available = database.count_eligible_for_dispatch_task(task)
         logger.debug("Beginning dispatch loop on %s items", available)
-        # min_count gate only applies to unattended AUTO ticks — CLICK and manual
-        # Sweep (UI-initiated run on an AUTO row) bypass it and run whatever's available.
-        effective_min = (task.get("min_count") or 1) if (is_auto and not ui_initiated) else 1
+        # min_count gate only applies to normal unattended AUTO ticks — CLICK, manual Sweep
+        # (UI-initiated on AUTO) and scheduled sweep (AST-1829) run whatever's available.
+        effective_min = (task.get("min_count") or 1) if (is_auto and not ui_initiated and not scheduled_sweep) else 1
         if available < effective_min:
             reason = ""
             if task_key == INFLOW_CONFIG["discovery"]["task_key"] and run_count == 0:
@@ -1580,7 +1582,7 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
         )
 
 
-def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
+def run_task(task_id: int, *, ui_initiated: bool = False, scheduled_sweep: bool = False) -> bool:
     """Spawn a daemon thread for task_id if not already running. Returns True if started."""
     with _registry_lock:
         if task_id in _task_registry:
@@ -1613,6 +1615,7 @@ def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
     else:
         task["available_count"] = database.count_eligible_for_dispatch_task(task) if et and ts else 0
     task["_ui_initiated"] = ui_initiated
+    task["_scheduled_sweep"] = scheduled_sweep  # AST-1829: tick-spawned sweep; row is re-read above so the due mark must be passed in
 
     with _registry_lock:
         _task_registry[task_id] = {
@@ -1737,7 +1740,7 @@ def _debug_log_auto_off_stage_skips() -> None:
 
 
 def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
-    """AUTO candidate-bound inbox mailbox rows with live Avail ≥ min_count and freq allowing."""
+    """AUTO candidate-bound inbox mailbox rows with live Avail ≥ min_count (or a due sweep, AST-1829) and freq allowing."""
     # late: keep inbox/Gmail off module-top load (peer late imports in this file)
     from src.core.inbox import count_inbox_bound_by_candidate
 
@@ -1764,10 +1767,16 @@ def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
         if not meteorite_mailbox_trigger_allows(task):
             continue
         avail = int(bound_counts.get(cid, 0))
-        if avail < (task.get("min_count") or 1):
+        min_count = task.get("min_count") or 1
+        sweep = avail < min_count
+        # AST-1829: below min_count only proceeds as a sweep (Avail > 0 and sweep interval elapsed)
+        if sweep and not (avail > 0 and database.dispatch_task_sweep_due(task)):
             continue
+        # freq_hrs row cadence still gates both the normal and the sweep branch
         if not database.dispatch_task_freq_allows(task):
             continue
+        if sweep:
+            task["_scheduled_sweep"] = True  # sweep-due debug line is logged once in _tick_loop
         task["available_count"] = avail
         due.append(task)
     return due
@@ -1794,6 +1803,14 @@ def _tick_loop() -> None:
                 )
             # Claim-queue AUTO rows from data; mailbox AUTO merged via live bind Avail (AST-1135).
             due = list(database.get_due_tasks()) + _meteorite_email_due_tasks()
+            # AST-1829: one sweep-due debug site for claim-queue and mailbox (no debug in src/data/)
+            for t in due:
+                if t.get("_scheduled_sweep"):
+                    logger.debug(
+                        "sweep due task_id=%s task_key=%s available=%s min_count=%s sweep_hrs=%s last_run_at=%s",
+                        t.get("id"), t.get("task_key"), t.get("available_count"), t.get("min_count"),
+                        t.get("sweep_hrs"), t.get("last_run_at"),
+                    )
             # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
             # Mailbox has no claim queue — AUTO cadence uses dispatch_task_freq_allows on the row.
             _debug_log_auto_off_stage_skips()
@@ -1810,7 +1827,7 @@ def _tick_loop() -> None:
                     tid = task["id"]
                     if tid in running_ids:
                         continue  # already running
-                    if run_task(tid):
+                    if run_task(tid, scheduled_sweep=bool(task.get("_scheduled_sweep"))):
                         spawned += 1
                         slots -= 1
             logger.debug("End AUTO spawn loop after %s items", spawned)

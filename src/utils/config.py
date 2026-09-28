@@ -1265,10 +1265,10 @@ COMPANY_STATES = {
     # AST-1672: pre-vet inflow land state (discovery → DISCOVERED; vet/CSE claim here).
     "DISCOVERED": {"batch_criteria": {"sort_by": "updated_at"}},
     "WEBSITE_FOUND": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
-    # retry_of("WEBSITE_FOUND"): fetch_website scrape retry for every row (AST-1810; AST-892 split removed).
+    # retry_of("HOMEPAGE_READY"): prefilter parsing-failure holding (AST-1839); prefilter claims it via dispatch_claim_states.
     "HOMEPAGE_READY": {
         "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
-        "retry_state": retry_of("WEBSITE_FOUND"),
+        "retry_state": retry_of("HOMEPAGE_READY"),
     },
     "NO_WEBSITE": {},
     # AST-1672: waiting between CSE fetch and resolve_website AI hop — need sort_by for admin defaults.
@@ -2092,7 +2092,9 @@ ROSTER_CONFIG = {
         "legacy_pass_state": "TO_WATCH",
         "legacy_fail_state": "IGNORE",
         "legacy_pass_states": ["TO_WATCH"],
-        "retry_state": retry_of("WEBSITE_FOUND"),
+        "retry_state": retry_of("HOMEPAGE_READY"),
+        # Agent-envelope failure (bad source content) → one fetch_website re-scrape (AST-1839)
+        "envelope_retry_state": retry_of("WEBSITE_FOUND"),
         "error_state": "ERROR_PREFILTER",
         "no_pjl_state": "NO_PREFILTER_JOBLISTS",
         "pjl_url_data_key": "possible_joblist_links",
@@ -4434,6 +4436,8 @@ ASTRAL_CONFIG = {
         "hidden_class_patterns": ['hide', 'hidden', 'd-none', 'visually-hidden', 'sr-only'],
         "strip_attributes": ['style', 'srcset'],
         "strip_on_attrs": True,
+        "max_html_tag_length": 500,            # AST-1840: attribute values longer than this are snipped
+        "max_length_placeholder": "(snipped)", # AST-1840: replacement text, so snipped spots stay visible
     },
     "cookie_dismiss_selectors": [
         'button:has-text("Accept All")',
@@ -4456,6 +4460,12 @@ ASTRAL_CONFIG = {
         "max_attempts": 3,
         "base_delay_seconds": 0.5,
         "max_delay_seconds": 5.0,
+    },
+    # sqlite connection settings (AST-1842): busy wait on locked writes + WAL so readers
+    # never block a writer's commit. journal_mode is persistent in the db file once set.
+    "db_connection": {
+        "busy_timeout_seconds": 10.0,
+        "journal_mode": "WAL",
     },
 
     # --- Gazer (gazer) ---
@@ -4531,8 +4541,17 @@ ASTRAL_CONFIG = {
         ("HOMEPAGE_READY", "TO_WATCH"),
         ("HOMEPAGE_READY", "IGNORE"),
         ("HOMEPAGE_READY", retry_of("WEBSITE_FOUND")),
+        ("HOMEPAGE_READY", retry_of("HOMEPAGE_READY")),
         ("HOMEPAGE_READY", "ERROR_PREFILTER"),
         ("HOMEPAGE_READY", "CANNOT_READ_WEBSITE"),
+        # AST-1839: prefilter parsing-failure holding → pass/fail/error
+        (retry_of("HOMEPAGE_READY"), "PREFILTER_PASSED"),
+        (retry_of("HOMEPAGE_READY"), "PREFILTER_FAILED"),
+        (retry_of("HOMEPAGE_READY"), "NO_PREFILTER_JOBLISTS"),
+        (retry_of("HOMEPAGE_READY"), "TO_WATCH"),
+        (retry_of("HOMEPAGE_READY"), "IGNORE"),
+        (retry_of("HOMEPAGE_READY"), "ERROR_PREFILTER"),
+        (retry_of("HOMEPAGE_READY"), "CANNOT_READ_WEBSITE"),
         ("TO_WATCH", "WATCH"),
         ("TO_WATCH", "HARD_PARSE"),
         ("TO_WATCH", "CANNOT_PARSE_JOB_SITE"),

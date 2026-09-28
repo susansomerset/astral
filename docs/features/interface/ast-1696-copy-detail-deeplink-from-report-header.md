@@ -206,3 +206,231 @@ Tests deferred to Betty (`qa-child`).
 - Chuckles: append this verdict to issue doc, commit `docs(AST-1696): Radia review — clean`, post slim upshot, move to Review Posted.
 - datt: **PROCEED** → User Testing (no canon fix-now items; empty frozen list).
 
+
+## Bug: AST-1768 — Copied job detail link does not bind login email to candidate or open job modal
+
+### As-is
+
+Susan opens a copied `/jobs/detail/<id>` link while logged out, signs in as `soosomerset@gmail.com` (an email on Jolane Abrams's profile), and lands on `/` with candidate **Susan Somerset** selected — no Recommended Job Report modal for the linked job.
+
+### To-be
+
+After sign-in the app returns to that same `/jobs/detail/<id>` URL, `JobsJobDetail` opens the Recommended Job Report modal for the job, and the selected candidate is the one whose profile emails uniquely match the login email (Jolane Abrams).
+
+### Repro
+
+1. Deployed (non-local) env. Candidate row fixture — Jolane Abrams: `candidate_data.contact.contact_email = "soosomerset@gmail.com"` (or listed in `contact.extra_emails`); a second candidate Susan Somerset is first in `/api/candidates` order / stored in `localStorage["astral_selected_candidate"]`.
+2. Logged out, open `https://<host>/jobs/detail/<jolane_job_id>` → `RequireAuth` renders `Login` and captures the return path into **sessionStorage** (`astral-auth-return-path`).
+3. Choose email magic link, enter `soosomerset@gmail.com`, click the link in the email → it opens a **new tab** at `/authenticate?token=…`.
+4. New tab's sessionStorage has no return path → `consumeAuthReturnPath()` returns `null` → navigate to `/`.
+5. `CandidateContext.load()` keeps the stored/first candidate (Susan Somerset); nothing consults the login email.
+
+### Root cause
+
+1. **Return path is tab-scoped.** `sessionAuthMark.ts` stores `astral-auth-return-path` in `sessionStorage`. Magic-link sign-in completes in a different tab from the one that captured it, so `Authenticate.postAuthNavigate` finds nothing and goes to `/`. (Google OAuth redirects in the same tab and already works.)
+2. **No login-email → candidate bind exists.** `CandidateContext.load()` picks the stored or first candidate; `setSelectedId` is admin-only; no code path matches the authenticated email against profile email homes. The server-side matcher already exists (`get_candidate_id_for_query` in `src/core/candidate.py`, unique hit over `CANDIDATE_LOOKUP_CONFIG` email paths incl. `contact.extra_emails`) but is not exposed to the SPA.
+3. **Host does not wait for candidate resolution for non-admins.** `JobsJobDetail` only waits on `candidatesHydrated` when `isAdmin`, so a late candidate change would remount the modal's candidate-scoped loads.
+
+### Proposed change
+
+**A. Return path survives the magic-link tab — `src/ui/frontend/src/lib/sessionAuthMark.ts`**
+
+1. In `captureAuthReturnPath`, `peekAuthReturnPath`, and `consumeAuthReturnPath`, replace `sessionStorage` with `localStorage` for `AUTH_RETURN_PATH_KEY` only. `HAD_SESSION_KEY` and `LOGOFF_REASON_KEY` stay in `sessionStorage` (unchanged).
+2. Keep the same `try { … } catch { /* private mode */ }` wrappers and `isSafeAuthReturnPath` checks. No other API change.
+
+⚠️ **Decision:** `localStorage`, no expiry/TTL. A stale path cannot leak: every Login render re-captures the current path (`RequireAuth` effect overwrites the key, including `/`), and `consumeAuthReturnPath` removes it on sign-in. No limit is added.
+
+`RequireAuth.tsx` and `Authenticate.tsx` — **no change**; they already call capture/consume.
+
+**B. Server email → candidate lookup — `src/ui/api/api_candidate.py`**
+
+1. Import `get_candidate_id_for_query` from `src.core.candidate` (add to the existing import block).
+2. Add a route **directly after** `get_candidate_states` (before any `/<candidate_id>` route):
+
+```python
+@candidate_bp.route("/by_email")
+@require_auth
+def get_candidate_by_email():
+    """AST-1768: unique candidate id whose profile emails match ?email= (login bind)."""
+    email = (request.args.get("email") or "").strip()
+    if "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    return jsonify({"candidate_id": get_candidate_id_for_query(email)})
+```
+
+Returns `{"candidate_id": "<id>"}` on a unique match, `{"candidate_id": null}` on no/ambiguous match.
+
+⚠️ **Decision:** The email comes from the client's Stytch user, not `g.user` — `normalize_user` (`src/utils/auth.py`) drops email and that file is outside AST-1687 scope. This is safe: the lookup only drives UI selection, and `GET /api/candidates` already returns every candidate to any authenticated user, so no new data is exposed and no authorization changes.
+
+**C. Bind selection once per login — `src/ui/frontend/src/contexts/CandidateContext.tsx`**
+
+1. Import `useStytchUser` from `@stytch/react`. In `CandidateProvider`: `const { user: stytchUser } = useStytchUser()` and derive `loginEmail`: first `stytchUser.emails` entry with `verified === true`, else `emails[0]`, `.email.trim().toLowerCase()`; `""` when no user (local passthrough). Same verified-first rule as `src/external/stytch.py` `_primary_email`.
+2. Add `const boundEmailRef = useRef<string | null>(null)`.
+3. Rewrite `load()` so hydration completes **after** the bind check:
+   - Fetch `/api/candidates` as today and compute `next` (stored-if-present else first) as today.
+   - If `loginEmail` is non-empty **and** `boundEmailRef.current !== loginEmail`: set `boundEmailRef.current = loginEmail`, then call `api` on the path `/api/candidates/by_email?email=` + `encodeURIComponent(loginEmail)` (template literal). If `res.ok` and the body's `candidate_id` is a non-empty string present in the fetched list, use it as `next`. Any failure/null → keep `next`.
+   - Call `_setSelectedId(next)` + `localStorage.setItem(STORAGE_KEY, next)` (bypasses the admin-only `setSelectedId` guard, same as today's `load()`).
+   - `setCandidatesHydrated(true)` in `finally`, after the above.
+4. Add `loginEmail` to the effect that calls `load()`: `[authLoading, loginEmail]`.
+
+⚠️ **Decision:** The bind runs **once per login email** (ref guard), for admins and non-admins alike. Later `refresh()` calls (profile saves) and the admin picker are not overridden.
+
+**D. Host waits for candidate resolution — `src/ui/frontend/src/pages/JobsJobDetail.tsx`**
+
+1. In the align effect, change `if (isAdmin && !candidatesHydrated) return` to `if (!candidatesHydrated) return`. Leave the dependency array unchanged.
+2. No other change. For admins, `alignSelectedCandidateForJobCompany` still runs after the bind. When the job's company owner is the bound candidate (Susan's case) it is a no-op; when an admin opens another candidate's job, AST-1481 behavior (select the job owner) still applies. For non-admins, align stays a no-op, so the bind stands.
+
+### Blast radius
+
+- `sessionAuthMark.ts` is used by `RequireAuth`, `Authenticate`, `LogOffScreen` (`clearSessionAuthMarks`, unchanged). Existing test `tests/component/frontend/lib/test_sessionAuthMark.test.ts` asserts `sessionStorage` directly for `astral-auth-return-path` (lines ~75–77), and several suites clear only `sessionStorage` in setup (`stytchMock.tsx`, `test_Authenticate`, `test_RequireAuth`, `test_LogOffScreen`) → return-path tests need `localStorage` expectations and cleanup (Betty).
+- `CandidateContext` is mounted app-wide; the new `useStytchUser` call needs a mock in `tests/component/frontend/stytchMock.tsx` for suites that render `CandidateProvider` (Betty).
+- `JobsJobDetail` non-admin path now waits for hydration → `test_JobsJobDetail.test.tsx` non-admin cases must resolve `/api/candidates` before the modal appears (Betty).
+- `api_candidate.py` gains one route before the `/<candidate_id>` catch-all. No change to existing routes or `get_candidate_id_for_query`.
+- AST-1482 return-path behavior (same-tab / OAuth) stays the same, just backed by `localStorage`.
+
+### What must still hold
+
+- AST-1687 AC 1–5: Copy Link writes the absolute `/jobs/detail/<id>` URL; Copied→idle; the link opens the same report modal when authenticated; diagnostic Copy / email / LinkedIn / print unchanged; **no new unauthenticated route** (`/api/candidates/by_email` is `@require_auth`).
+- AST-1481: admin with multiple candidates opening another candidate's job deeplink still selects the job owner; unknown id still shows the error + back link; close → `/jobs/recommended`.
+- AST-1482: `isSafeAuthReturnPath` rejects `/authenticate*` and `//…`; `clearSessionAuthMarks` does not clear the return path.
+- Local passthrough: no Stytch user → no bind call; selection behaves as today.
+- No match / ambiguous email (more than one candidate) → no bind; today's stored/first selection stays.
+
+### Fix board — Joan (canon)
+
+## Fix-board Joan pass — AST-1768
+
+**Ticket:** AST-1768 (bug child of AST-1687)  
+**Read:** `plan-fix` patch on `origin/sub/AST-1687/AST-1768-copied-job-detail-link-bind-candidate-open-modal` in `docs/features/interface/ast-1696-copy-detail-deeplink-from-report-header.md` (sections As-is → What must still hold)  
+**Roster:** `canon/canon_clerk.py index` — 21 directives in force @ `a0bc2f0e5b` (up from 12 at AST-1696 plan validate; no `DIRTY` flag observed on this pass)  
+**Question (F2):** Does the proposed fix conflict with or require updating any directive **in force**?
+
+### Proposed change (summary)
+
+| Part | Layer / files | Shape |
+|------|----------------|--------|
+| **A** | `sessionAuthMark.ts` | Move `AUTH_RETURN_PATH_KEY` only from `sessionStorage` → `localStorage`; other keys unchanged |
+| **B** | `api_candidate.py` | New `@require_auth` `GET /api/candidates/by_email?email=` wrapping existing `get_candidate_id_for_query` |
+| **C** | `CandidateContext.tsx` | Once-per-login-email bind via Stytch verified email + new API |
+| **D** | `JobsJobDetail.tsx` | Wait on `candidatesHydrated` for all users, not only admins |
+
+Blast radius is mostly tests/mocks (Betty’s lane). Product surface: auth return-path storage, one read-only API route, candidate hydration ordering.
+
+### Roster overlap (in-force only)
+
+**Entity / dispatch / batch (`astral.batch.*`, `astral.dispatch.*`, `astral.entity.*`, `patt.entity.*`, `patt.task.*`)** — No batch claim, dispatch_task, or entity-schema work. **No canon impact.**
+
+**Artifact patterns (`patt.artifact.*`)** — No catalog, operative read/write, or editor consistency changes. **No canon impact.**
+
+**Logging — `stat.logging.info.api`** (`src/ui/api/**`, add/modify)  
+The new route is an authenticated idempotent GET that returns current lookup state (`candidate_id` or `null`). The statute explicitly says idempotent GETs that only return current state are **not** progress — **no** `logger.info` at the route. The plan does not require an API progress line; implementation should mirror `get_candidate_states()` (jsonify, no info). That is **conformance**, not a carve-out or statute edit.
+
+**Logging — `stat.logging.error`**  
+Planned handler is a thin wrapper with 400 on bad email and JSON otherwise; no log-and-rethrow pattern proposed. Aligns with existing list/state GET routes in the same file. **No canon update required** (make-fix should still avoid introducing duplicate exception logging if core ever raises).
+
+**Logging — `stat.logging.info.contact`, `stat.logging.info.entity`, `stat.logging.info.dispatcher`, `stat.logging.debug`, `stat.logging.warning`, `stat.logging.info`** — No contact-listen, entity-pipe, dispatcher, or new warning/error rollup in the patch. **No canon impact.**
+
+**Draft / retired law (not in roster)** — Parent/child “Citations: none” and items like `astral.idioms.require-auth-on-protected-endpoints`, `astral.standards.in-scope-only`, UI placement statutes remain **draft**; fix-board does not score them. Part **B** uses `@require_auth` like neighboring routes — consistent with product practice, not an active-statute gap.
+
+### Conflicts / carve-outs / new precedent?
+
+- **localStorage for return path:** No in-force statute defines tab vs origin storage for auth return paths. AST-1482 guards (`isSafeAuthReturnPath`, `clearSessionAuthMarks` not clearing return path) are preserved in **What must still hold**. Storage backend change is product behavior, not a corpus amendment.
+- **Client-supplied email on authenticated lookup:** Plan documents threat model (UI selection only; no new data vs `GET /api/candidates`). That is an implementation/security judgment for make-fix and review, not “update canon” unless Archie wants a new **in-force** idiom — fix-board does not treat that as REVISE without an active directive being contradicted.
+- **Login-email → candidate bind:** Reuses server matcher already in core; no new matching algorithm in callers (would matter for `patt.entity.batch-criteria` if literals appeared in dispatch paths — they do not).
+
+### What must still hold (canon-relevant)
+
+- New route stays **`@require_auth`** (draft idiom honored in code; satisfies “no new unauthenticated route” in the patch).
+- **`GET /by_email`** should not emit **`stat.logging.info.api`** progress lines.
+- No change to entity/batch/dispatch/artifact statutes.
+
+### Verdict rationale
+
+No active statute or pattern needs text changed, and the proposed product change does not force a documented exception in the in-force corpus. Engineer guidance at build time: implement **B** like other idempotent candidate GETs (no API info log); keep **A** scoped to `AUTH_RETURN_PATH_KEY` only.
+
+---
+
+```
+[board-joan]  CANON: OK
+```
+
+```
+AST-1768 board-joan done — CANON: OK.
+```
+
+### Radia review-fix — AST-1768
+
+[code-rubric]
+**Ticket:** AST-1768
+**Publish ref:** `2e537f49d0f0700d18d2673b5fd9debaa981b03b` (`origin/sub/AST-1687/AST-1768-copied-job-detail-link-bind-candidate-open-modal`)
+**Diff base:** `origin/ftr/AST-1687-copy-single-page-access-link-from-recommended-job-modal` (`cd7ca619`)
+**Corpus:** a0bc2f0e5b
+**Overall:** CLEAN
+**Parent shape:** Normal (AST-1687 not Done) → clean **PROCEED** → Review Posted → §3h shortcut to User Testing (skip `resolve-child`).
+
+## Canon scores
+
+(empty frozen list on the bug ticket / parent Citations pattern — fix-board Joan F2 already swept in-force overlap @ `a0bc2f0e5b` and posted **CANON: OK**)
+
+**Spot-check (board bar, not a second rubric):** `GET /api/candidates/by_email` is `@require_auth`, thin `jsonify` handler with no `logger.info` progress line — matches `get_candidate_states()` and **stat.logging.info.api** intent Joan cited.
+
+## Column diff vs plan stage
+
+no plan-stage Joan validate scores for the fix patch — fix-board Joan F2 artifact attached; implementation matches that pass.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** OK — repro tests pin **## To-be** behavior, not tautologies:
+- `test_sessionAuthMark.test.ts`: `/jobs/detail/j-jolane` survives `sessionStorage.clear()` (new-tab magic link) — fails pre-fix (`sessionStorage` backend).
+- `test_Authenticate.test.tsx`: after wipe, `postAuthNavigate` → `/jobs/detail/j-jolane`.
+- `test_CandidateContext.test.tsx`: stored `c1` + login email → `by_email` call with normalized email → `selectedId` `c2`; verified-first email; once-per-login (refresh/picker not overridden); null/fail/unknown-id/passthrough covered in same describe (non–`[bug-repro]` but manifest-listed).
+- `test_JobsJobDetail.test.tsx`: non-admin holds **Loading job…** until `/api/candidates` gate releases, then report shell — pins Part D.
+- `test_api_candidate.py::TestAst1768CandidateByEmailApi`: `test_bug_repro_*` asserts auth, trim+lookup, null ambiguous, 400 without `@`, non-admin allowed — would fail pre-fix (404 on `by_email`).
+
+**## What must still hold** OK — traced against diff:
+- **AST-1687 AC 1–5:** No change to Copy Link components on this fix diff (zero diff vs ftr for `RecommendedJobReportHeader` / `JobAnalysisReportModal`); deeplink host unchanged except hydration gate.
+- **AST-1481:** `alignSelectedCandidateForJobCompany` still runs after `candidatesHydrated` for all users; only guard broadened from `isAdmin && !hydrated` to `!hydrated`. Existing AST-1481 suite retained on branch (manifest regression).
+- **AST-1482:** `isSafeAuthReturnPath` unchanged; `clearSessionAuthMarks` still does not touch return path — asserted in `test_sessionAuthMark.test.ts`.
+- **Local passthrough:** `loginEmail` `""` → no `by_email` call — tested.
+- **No/ambiguous match:** API returns `null`; SPA keeps stored/first — tested (API + context).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+**ftr…sub diff includes non–AST-1768 commits from `origin/dev` sync**
+**Location:** e.g. `src/external/slack.py`, `docs/features/.../ast-719-...`, core/gazer/roster test deltas
+**Finding:** Product fix for AST-1768 is five files (`sessionAuthMark.ts`, `api_candidate.py`, `CandidateContext.tsx`, `JobsJobDetail.tsx`, plus tests/bible). Slack AST-1814 and other merged dev work ride the same tip via `sync(dev)` / merge-tests — not implemented by the `code(AST-1768)` commit.
+**Recommendation:** Chuckles attributes those paths to their tickets in doc writeback; do not treat as AST-1768 scope defect.
+
+**No single component test for admin bind-then-align**
+**Location:** Part C + D interaction (plan § Proposed change D.2)
+**Finding:** Reasoning matches plan (bind before align; admin job-owner align still wins for another candidate’s job); manifest relies on AST-1481 regression + bind tests separately.
+**Recommendation:** UAT Susan path (Jolane email + copied deeplink) remains the integration proof; optional future test only.
+
+## What's solid
+
+- Parts **A–D** match plan-fix **Proposed change** line-for-line (localStorage scoped to `AUTH_RETURN_PATH_KEY`, route ordering before `/<candidate_id>`, async `load()` with bind-before-hydrate, non-admin hydration gate).
+- Threat model documented (client email, UI-only selection); route stays authenticated.
+- Betty manifest in `docs/test-bible/frontend/lib.md` § AST-1768 aligns with landed tests.
+
+## Recommended actions (Chuckles)
+
+- Append artifact; `docs(AST-1768): Radia review-fix — clean`; post slim upshot; **Review Posted** → **User Testing** (§3h).
+- Do not route to `resolve-child` on this pass.
+
+
+[code-rubric] PROCEED (Commit: 2e537f49) magic-link deeplink bind fixed
+VERDICT: CLEAN
