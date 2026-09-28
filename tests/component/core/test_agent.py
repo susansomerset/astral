@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import logging
+import time
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 from unittest.mock import AsyncMock, MagicMock
@@ -9591,3 +9593,134 @@ class TestAst1700ThreadHarvestGenerativeLands:
         assert out["success"] is True
         save.assert_called_once()
         assert save.call_args.kwargs.get("source_artifact_ids") == self._HARVEST
+
+
+class TestAst1842DoTaskStoreOffLoop:
+    """AST-1842: a slow/locked save_agent_data blocks a worker thread, not the event loop."""
+
+    async def test_slow_save_agent_data_does_not_block_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] pre-fix: every agent_data commit runs on the loop, so each blocked save is a loop freeze
+        token = agent_mod.log_batch_id.set("batch-1")
+        try:
+            monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda _key: _agent_rows())
+            block_types: List[str] = []
+
+            def slow_save(**kw: Any) -> None:
+                block_types.append(kw["block_type"])
+                time.sleep(0.3)  # stands in for a commit waiting on a locked db
+
+            # real _store_prompt_blocks / _store_response_block stay in play (the call sites AST-1842 moved)
+            monkeypatch.setattr(agent_mod, "save_agent_data", slow_save)
+            monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value={
+                "success": True, "parsed_response": {"agent_payload": "0|CRA2"},
+                "api_response": _api_response("ok"), "timesheet": {},
+            }))
+            ticks: List[float] = []
+            done = asyncio.Event()
+
+            async def heartbeat() -> None:
+                # tick on every wake *before* checking done: a do_task that never yields finishes and sets
+                # done inside one freeze, and the gap must still land in ticks
+                while True:
+                    ticks.append(time.monotonic())
+                    if done.is_set():
+                        break
+                    await asyncio.sleep(0.02)
+
+            async def run() -> None:
+                try:
+                    await asyncio.sleep(0.1)  # heartbeat ticks first, so a freeze shows as a gap
+                    await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_draft_job_resume_ctx())
+                finally:
+                    done.set()
+
+            await asyncio.gather(run(), heartbeat())
+        finally:
+            agent_mod.log_batch_id.reset(token)
+        # prompt + RESPONSE stores both ran (outcome of do_task itself is not the repro)
+        assert "RESPONSE" in block_types and any(b != "RESPONSE" for b in block_types), block_types
+        assert max(b - a for a, b in zip(ticks, ticks[1:])) < 0.2
+
+
+class TestAst1846DoTaskAgentFailureFlag:
+    """AST-1846 bug-repro (AST-1839): rubric-encoded envelope status=failure → agent_failure (prefilter routing input)."""
+
+    @staticmethod
+    async def _run(monkeypatch: pytest.MonkeyPatch, envelope: Dict[str, Any]) -> Dict[str, Any]:
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_deepseek",
+            AsyncMock(return_value={
+                "success": True, "parsed_response": envelope, "api_response": _api_response("env"), "timesheet": {},
+            }),
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {"vendor_model": "deepseek-v4-flash", "thinking": False},
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        return await agent_mod.do_task(
+            "prefilter_company",
+            index="prefilter_company_batch_b1846",
+            ctx={
+                "astral_candidate_id": "somerset",
+                "candidate_data": {},
+                "batch_entities": [{"company_id": "acme_com", "short_name": "acme_com"}],
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_rubric_envelope_failure_sets_agent_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        envelope = {"agent_performance": {"status": "failure", "failure_note": "parked domain"}, "agent_payload": "000|RCA5"}
+        out = await self._run(monkeypatch, envelope)
+        assert out.get("agent_failure") is True
+        assert out["success"] is False
+        assert out["error"] == "Agent failure: parked domain"
+        assert out["parsed_response"] is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("perf", "top_note", "want"),
+        [
+            # String status (not a dict) falls back to the top-level failure_note.
+            ("failure", "top note", "Agent failure: top note"),
+            # Dict status with no note anywhere → fixed default.
+            ({"status": "failure"}, None, "Agent failure: Agent returned status=failure with no note"),
+        ],
+    )
+    async def test_failure_note_fallbacks(
+        self, monkeypatch: pytest.MonkeyPatch, perf: Any, top_note: Any, want: str,
+    ) -> None:
+        envelope: Dict[str, Any] = {"agent_performance": perf, "agent_payload": "000|RCA5"}
+        if top_note is not None:
+            envelope["failure_note"] = top_note
+        out = await self._run(monkeypatch, envelope)
+        assert out.get("agent_failure") is True
+        assert out["error"] == want
+
+    @pytest.mark.asyncio
+    async def test_failure_response_store_exception_is_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        # batch_token → _should_store; a failing response store must not mask agent_failure.
+        store = MagicMock(side_effect=RuntimeError("db locked"))
+        monkeypatch.setattr(agent_mod, "_store_response_block", store)
+        envelope = {"agent_performance": {"status": "failure", "failure_note": "parked domain"}, "agent_payload": "000|RCA5"}
+        out = await self._run(monkeypatch, envelope)
+        store.assert_called_once()
+        assert out.get("agent_failure") is True
+        assert out["error"] == "Agent failure: parked domain"
+
+    @pytest.mark.asyncio
+    async def test_non_rubric_task_does_not_set_agent_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Guard: the flag is scoped to rubric-encoded tasks; others keep their existing schema path.
+        monkeypatch.setitem(
+            agent_mod.TASK_CONFIG, "prefilter_company", {**agent_mod.TASK_CONFIG["prefilter_company"], "rubric_artifact": None},
+        )
+        envelope = {"agent_performance": {"status": "failure", "failure_note": "parked domain"}, "agent_payload": "000|RCA5"}
+        out = await self._run(monkeypatch, envelope)
+        assert out.get("agent_failure") is not True

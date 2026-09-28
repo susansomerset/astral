@@ -16,6 +16,8 @@ applies_when:
 canonical_refs:
   - path: src/utils/logging.py
     symbol: get_logger
+  - path: src/utils/logging.py
+    symbol: log_llm_batch_summary
   - path: src/core/dispatcher.py
     symbol: _dispatch_one
 ---
@@ -25,18 +27,27 @@ canonical_refs:
 An exception means the code did not take a configured fail path — a runner
 crashed, a provider blew up, a constraint fired. `print(exc)` never reaches
 `app_log`. Logging at the data layer *and* in the dispatcher triples the same
-fault. The handler that decides the response logs once, through utils, at
-`logger.exception`: live facts **and** the full traceback, plus what the
-code is doing next. Error is never a tally.
+fault. The handler that decides the response logs once, through utils, at the
+right level: `logger.exception` (or `logger.error` with live facts) for
+**terminal or unrouted** faults; **retry-routed** dispatch batch catches defer
+the per-item line to `stat.logging.warning` and the traceback to debug. Provider
+hop summaries from `log_llm_batch_summary(..., error=...)` are **WARNING**; the
+caller logs **ERROR** only when the entity lands in an error or terminal state.
+Error is never a tally.
 
 # Statement
 
-When an exception is thrown, the layer that handles it emits
-`logger.exception` through `get_logger(__name__)` from `src.utils.logging`.
-One record: live facts, an affirmative next step, then the traceback
-(`exc_info`). Data raises and does not log. Do not `print`. Do not
-log-and-re-raise. Soft-fails with no throw are `stat.logging.warning`, not
-`error`. Do not emit a pass/fail/error rollup at `error`.
+When an exception is thrown, the layer that handles it logs once through
+`get_logger(__name__)` from `src.utils.logging`. **Unrouted** exceptions,
+dispatcher batch crashes, and handlers that leave the entity in an **error or
+terminal state** emit `logger.exception` (or `logger.error` with equivalent
+live facts): one record with an affirmative next step and the traceback
+(`exc_info`). **Retry-routed** dispatch batch catches (`retry_base(dest)` is not
+`None`) use `stat.logging.warning` for the per-item line and `stat.logging.debug`
+for the traceback — not `logger.exception` at error for that item. Data raises
+and does not log. Do not `print`. Do not log-and-re-raise. Soft-fails with no
+throw are `stat.logging.warning`, not `error`. Do not emit a pass/fail/error
+rollup at `error`.
 
 # Scenario
 
@@ -47,7 +58,9 @@ truncated, and the stack. A `[%s/%s] crashed` line is stack-true and
 fact-poor. A second `batch finished FAILED` count line is a summary —
 wrong level and a duplicate. If `database.py` already logged "row missing"
 and then raised, Execution History shows three copies. If the dispatcher
-`print`s the exc, `app_log` never sees it.
+`print`s the exc, `app_log` never sees it. A provider returns `400 Content Exists
+Risk`: `log_llm_batch_summary` logs one WARNING line; consult/roster logs ERROR
+only if the job or company lands in `error_state`, not in a `*_RETRY` holding.
 
 # Do
 
@@ -89,6 +102,7 @@ logger.error(
     "[%s/%s] batch finished FAILED | processed=%s passed=%s failed=%s errors=%s",
     task_key, batch_id, processed, passed, failed, errors,
 )  # summary — counts belong on info COMPLETED
+logger.error("LLM deepseek task=prefilter ...")  # provider line — log_llm_batch_summary WARNING
 ```
 
 # Resolution
@@ -99,10 +113,14 @@ The fault looks like both an item fail and a crash.
    skip with no API key)? `stat.logging.warning` — not this statute.
 2. **Who logs, who raises?** `stat.errors.raise-once-log-once`. This statute
    picks the **level**, the **channel** (`get_logger`, not `print`), and
-   the **body** (facts + next step + traceback).
+   the **body** (facts + next step + traceback) for **terminal and unrouted**
+   faults. Retry-routed dispatch batch items defer to `stat.logging.warning`
+   (per-item line) plus debug traceback.
 3. **LLM call failed and `log_batch_id` is set?** `log_llm_batch_summary(...,
-   error=...)` is the error line for that hop — do not add a second `error`
-   for the same fault.
+   error=...)` is the per-call **provider** line at **WARNING** — not ERROR.
+   The caller (consult, roster, agent batch path) logs **ERROR** only when the
+   entity lands in an error or terminal state (not a retry holding). Do not
+   add a second `error` for the same fault when retry-routed.
 4. **Detection site wants to be helpful?** Put facts on the exception; do not
    log there.
 

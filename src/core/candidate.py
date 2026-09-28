@@ -96,6 +96,7 @@ from src.utils.config import (
     is_valid_candidate_batch_claim_state,
     parse_dispatch_hop_label,
     registered_base,
+    retry_base,
     rubric_owner_task_key,
     state_prior_states,
 )
@@ -3665,18 +3666,25 @@ async def run_requested_artifacts_dispatch(
             transition_candidate_state(candidate_id, pass_state)
         return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
     except Exception as e:
-        logger.error("run_requested_artifacts_dispatch failed candidate_id=%s error=%s", candidate_id, e)
+        msg = "run_requested_artifacts_dispatch failed candidate_id=%s error=%s"
         # AST-1388: leave last successful compound hop label; bare trigger still → retry/error.
         after = ((database.get_candidate(candidate_id) or {}).get("state") or "").strip()
         parsed = parse_dispatch_hop_label(after)
+        # Held on a hop label / unregistered trigger: still claimable, not an error (AST-1839).
         if parsed and parsed[0] == bare_trigger:
+            logger.warning(msg, candidate_id, e)
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
         if not is_registered_state(CANDIDATE_STATES, bare_trigger):
+            logger.warning(msg, candidate_id, e)
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
         target = _requested_stage_failure_target(bare_trigger, current)
+        # AST-1839: retry holding → WARNING, uncounted; error_state (out of the holding) → ERROR, counted.
+        (logger.warning if retry_base(target) else logger.error)(msg + " -> %s", candidate_id, e, target)
         try:
             transition_candidate_state(candidate_id, target)
         except ValueError:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        if not retry_base(target):
             return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
         return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
 

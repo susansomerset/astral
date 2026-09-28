@@ -253,13 +253,14 @@ def log_llm_batch_summary(
     response: Any = None,
     error: Optional[str] = None,
 ) -> None:
-    """One INFO/ERROR per LLM call when log_batch_id is set (Execution History / app_log)."""
+    """One INFO/WARNING per LLM call when log_batch_id is set (Execution History / app_log)."""
     if not log_batch_id.get():
         return
-    # error is not None (incl. "") → ERROR path; never fake a healthy stop=? / zero-token INFO (AST-1190).
+    # error is not None (incl. "") → WARNING path; never fake a healthy stop=? / zero-token INFO (AST-1190).
+    # WARNING, not ERROR: the caller logs ERROR only when the entity lands in an error state (AST-1839).
     if error is not None:
         display_error = error if str(error).strip() else "(empty error)"
-        logger.error(
+        logger.warning(
             "LLM %s task=%s %.1fs error=%s",
             provider,
             prompt_label,

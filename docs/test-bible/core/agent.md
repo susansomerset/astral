@@ -1515,3 +1515,16 @@ Thread AST-1698 harvest into generative lands: `do_task` passes `list(source_art
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/agent.md` — *(filled after publish)*
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
+
+### AST-1846 · AST-1828 (bug-repro — `agent_failure` flag on rubric envelope failure)
+
+**Primary manifest:** **`docs/test-bible/core/roster.md`** § AST-1846. AST-1839: `do_task` on a rubric-encoded task whose envelope reports `agent_performance.status == "failure"` returns `{"success": False, "agent_failure": True, "error": "Agent failure: <note>"}` so prefilter can route the envelope first strike to WFR.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Envelope failure sets `agent_failure` | `src/core/agent.py` (`do_task`) | **`TestAst1846DoTaskAgentFailureFlag::test_rubric_envelope_failure_sets_agent_failure`** (**bug-repro**) |
+| Note fallback: top-level `failure_note` → default text | same | **`…::test_failure_note_fallbacks`** (branch lock, 2 params) |
+| Response-block store exception swallowed | same | **`…::test_failure_response_store_exception_is_swallowed`** (branch lock) |
+| Non-rubric task never sets the flag | same | **`…::test_non_rubric_task_does_not_set_agent_failure`** (guard — green at base and tip) |
+
+**Integration:** none.
