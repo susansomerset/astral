@@ -88,3 +88,24 @@ Gazer batch + roster scrape manifests: **`docs/test-bible/core/gazer.md`** · **
   tests/component/external/test_telescope.py::TestAst1750PostTelescopeDebugDump -q
 ```
 
+---
+
+### AST-1840 · AST-1844 (qa-fix bug-repro — linear `_cull_html`, attribute snip, off-loop cull)
+
+**Board REVISE:** nothing exercised the 2h event-loop freeze (`_in_preserved_svg` hashing bs4 Tags → quadratic `Tag.decode`; sync cull inside async `extract_page_dom`) or the new `html_cull` attribute snip (`max_html_tag_length` / `max_length_placeholder`). Product: **AST-1840**; tests on gap sibling **AST-1844**. `[bug-repro]` nodes red on pre-fix `31846c28`, green on AST-1840 (`fb472a98`). No wall-clock asserts, no size caps.
+
+| Area | Component tests |
+| --- | --- |
+| Full `<body>` page cull never hashes a Tag (linear-time guard) | `test_telescope.py::TestAst1840CullHtmlLinearAndSnip::test_cull_html_full_page_never_hashes_tag` (**bug-repro**) |
+| Snip: 500 kept, 501 → `(snipped)`, list `class` by joined length | `test_telescope.py::TestAst1840CullHtmlLinearAndSnip::test_cull_html_snips_attr_over_max_length` |
+| Missing snip key → `ValueError` (both keys) | `test_telescope.py::TestAst1840CullHtmlLinearAndSnip::test_cull_html_missing_snip_key_raises` |
+| `extract_page_dom` runs `_cull_html` off the loop thread | `test_telescope.py::TestAst1840CullHtmlLinearAndSnip::test_extract_page_dom_culls_off_event_loop` (**bug-repro**) |
+
+**Broken / obsolete:** none — `TestCullHtmlDefault` and AST-1745 stay unchanged (monkeypatched `_cull_html` resolves at call time inside `to_thread`).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_telescope.py::TestAst1840CullHtmlLinearAndSnip \
+  tests/component/external/test_telescope.py::TestCullHtmlDefault \
+  tests/component/external/test_telescope.py::TestAst1745CullPreservesRootSvgLogo -q
+```

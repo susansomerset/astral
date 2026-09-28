@@ -3697,6 +3697,8 @@ class TestAst1780EmptyRenderListGatesForceOff:
         assert resp.status_code == 200
         out = resp.get_json()
         assert out[0]["empty_render"] is True
+        # AST-1819: token list rides on the row for the Invalid tooltip.
+        assert out[0]["empty_tokens"] == ["FIRST_NAME"]
         assert out[0]["auto_mode"] == 0
         assert updates == [(7, {"auto_mode": 0})]
 
@@ -3727,6 +3729,7 @@ class TestAst1780EmptyRenderListGatesForceOff:
         )
         out = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
         assert out[0]["empty_render"] is False
+        assert out[0]["empty_tokens"] == []  # AST-1819: always a list
         assert out[0]["auto_mode"] == 1
         assert updates == []
 

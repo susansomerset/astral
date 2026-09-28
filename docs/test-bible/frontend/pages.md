@@ -3090,3 +3090,21 @@ cd src/ui/frontend && npm run build && npm run lint
 **Pass criterion:** 71/71 Vitest green; both diffs/greps empty; build green; lint count unchanged — not zero-arg harness / branch-lock gate.
 
 **Bible shasum (publish tip):** see issue doc `## QA test manifest`.
+
+---
+
+### AST-1819 · AST-1817 (qa-fix bug-repro — Invalid tooltip lists missing tokens)
+
+**Parent:** [AST-1817](https://linear.app/astralcareermatch/issue/AST-1817). **Publish:** `origin/sub/AST-1817/AST-1819-invalid-button-missing-token-tooltip`.
+
+Scheduled Actions: native `title` on the Run-cell wrapper `<div>` of an `empty_render` row — `empty_tokens.join(", ")`, or `Could not validate prompts` when the list is empty; no `title` while the row is running. The Invalid button itself is unchanged (AST-1818 AC 1–2 still hold).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Token-list title; button keeps name Invalid, disabled, no own title `[bug-repro]` | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1819 Invalid tooltip lists missing tokens > wrapper title is the comma-separated token list…`** |
+| Empty list fallback `[bug-repro]` | same | **`… > empty token list falls back to 'Could not validate prompts'`** |
+| No title while running (guard, green pre-fix) | same | **`… > no tooltip while the Invalid row is running…`** |
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts test_AdminScheduledActions
+```

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, call
@@ -538,7 +539,11 @@ class TestAst721ParseDispatchRouting:
 
 
 class TestProcessRecheckNoOpenings:
-    """AST-463 NO_OPENINGS Playwright-only recheck; JOBS_FOUND when no_jobs_message absent from visible text."""
+    """AST-463 NO_OPENINGS Playwright-only recheck; JOBS_FOUND when no_jobs_message absent from visible text.
+
+    AST-1821: failed attempts (missing job_site / no_jobs_message / Playwright error) stamp last_scan_at;
+    missing short_name does not.
+    """
 
     @staticmethod
     def _browser_cm():
@@ -550,22 +555,33 @@ class TestProcessRecheckNoOpenings:
 
     @pytest.mark.asyncio
     async def test_guards_missing_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        bump = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company_last_scan_at", bump)
         base: Dict[str, Any] = {"short_name": "", "job_site": "https://x", "company_data": {"no_jobs_message": "no"}}
         r = await roster_mod.process_recheck_no_openings(base, "b")
         assert r["success"] is False and "short_name" in r["message"]
+        # No row key → nothing to stamp.
+        bump.assert_not_called()
 
         base["short_name"] = "co"
         base["job_site"] = ""
         r2 = await roster_mod.process_recheck_no_openings(base, "b")
         assert r2["success"] is False and "job_site" in r2["message"]
+        bump.assert_called_once_with("co")
 
         entity = {"short_name": "co", "job_site": "https://j", "company_data": {}}
         r3 = await roster_mod.process_recheck_no_openings(entity, "b")
         assert r3["success"] is False and r3["message"] == "no_jobs_message missing"
+        assert bump.call_count == 2
+        assert bump.call_args == call("co")
 
     @pytest.mark.asyncio
     async def test_playwright_failure_no_state_change(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "create_browser_context", TestProcessRecheckNoOpenings._browser_cm())
+        bump = MagicMock()
+        tran = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company_last_scan_at", bump)
+        monkeypatch.setattr(roster_mod, "transition_company_state", tran)
 
         async def boom(*_a, **_k):
             raise RuntimeError("net down")
@@ -580,6 +596,8 @@ class TestProcessRecheckNoOpenings:
         out = await roster_mod.process_recheck_no_openings(ent, "bid")
         assert out["success"] is False
         assert "playwright scrape" in out["message"]
+        bump.assert_called_once_with("acme")
+        tran.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_message_present_updates_scan_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1376,6 +1394,91 @@ class TestAst827TitleHandoffDomCull:
         assert out["state"] == "JOBLIST_IDENTIFIED_RETRY"
         assert out["response_type"] == "PARSE_DISPATCH_NO_CONTAINERS"
         assert save_co.call_args.kwargs.get("state") == "JOBLIST_IDENTIFIED_RETRY"
+
+
+class TestAst1840CullOffEventLoop:
+    """AST-1840 bug-repro — _culled_dom_for_parse runs off the event loop at all three async sites."""
+
+    @pytest.mark.asyncio
+    async def test_parse_dispatch_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        t827 = TestAst827TitleHandoffDomCull
+        company = _company(
+            state="JOBLIST_IDENTIFIED",
+            company_website="https://acme.com",
+            company_data={
+                "selected_pjl_url": "https://acme.com/jobs",
+                "job_titles": t827._TWO_TITLES,
+            },
+        )
+        seen: Dict[str, int] = {}
+        real_cull = roster_mod._culled_dom_for_parse
+
+        def spy_cull(dom_html: str, job_titles: List[str]) -> Any:
+            # Records the calling thread, keeps the real cull result
+            seen["tid"] = threading.get_ident()
+            return real_cull(dom_html, job_titles)
+
+        monkeypatch.setattr(roster_mod, "_culled_dom_for_parse", spy_cull)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "create_browser_context", t827._browser_cm())
+        monkeypatch.setattr(
+            roster_mod, "_scrape_list_page_dom_for_parse",
+            AsyncMock(return_value=t827._SIBLING_DOM),
+        )
+        monkeypatch.setattr(
+            roster_mod, "_fetch_parse_job_list",
+            AsyncMock(return_value={"job_container": "a", "job_tag": "a", "job_ids": ["j1", "j2"]}),
+        )
+        monkeypatch.setattr(
+            roster_mod, "_validate_parse_job_list_raw_job_listings",
+            MagicMock(return_value=(None, [], [])),
+        )
+        out = await roster_mod.run_parse_job_list_dispatch(company, "batch-1840")
+        assert out["state"] == "WATCH"
+        assert seen["tid"] != threading.get_ident()
+
+    @staticmethod
+    def _miss_spy(monkeypatch: pytest.MonkeyPatch, seen: Dict[str, int]) -> None:
+        # Finalize paths: stub saves, force cull_miss, record the cull's thread
+        def spy_cull(dom_html: str, job_titles: List[str]) -> Any:
+            seen["tid"] = threading.get_ident()
+            return ("", [], "cull_miss")
+
+        monkeypatch.setattr(roster_mod, "_culled_dom_for_parse", spy_cull)
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+
+    @pytest.mark.asyncio
+    async def test_finalize_after_chain_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: Dict[str, int] = {}
+        self._miss_spy(monkeypatch, seen)
+        out = await roster_mod._finalize_joblist_titles_after_chain(
+            {"job_titles": ["A", "B"], "selected_page": 0}, {"parsed_response": {}},
+            "acme", "https://acme.com", "https://acme.com/jobs",
+            {0: "<div>A B</div>"}, {0: "A B"}, 0, "JOBLIST_TITLES", False, None,
+        )
+        assert out["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert seen["tid"] != threading.get_ident()
+
+    @pytest.mark.asyncio
+    async def test_finalize_select_only_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: Dict[str, int] = {}
+        self._miss_spy(monkeypatch, seen)
+        out = await roster_mod._finalize_joblist_titles_select_only(
+            {"job_titles": ["A", "B"], "selected_page": 0},
+            "acme", "https://acme.com", "https://acme.com/jobs",
+            {0: "<div>A B</div>"}, 0, "JOBLIST_TITLES", False, None, {0: "A B"},
+        )
+        assert out["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert seen["tid"] != threading.get_ident()
 
 
 class TestAst701ScrapeCompanyHomepageContent:

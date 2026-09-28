@@ -519,3 +519,25 @@ Supporting: `test_conversations_list_error_without_scope_fields_is_plain` — **
 #### Recommended actions (downstream — not executed here)
 
 - Append artifact, `docs(AST-1816): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/578d38d40ac2b2c4a8a8e51bb96aa29c/dd2b4d49-eaef-4d7f-9ea3-652bc026a408/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/76f0f2ad-8c5a-4689-acb4-82c867aadd83/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/578d38d40ac2b2c4a8a8e51bb96aa29c/9a02c67b-6b0e-4b74-8f96-402371ac16f6/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1814 (parent) | ftr/AST-1814-slack-channel-list-isnt-working |
+| AST-1815 | sub/AST-1814/AST-1815-surface-slack-scopes-on-conversations-list-errors |
+| AST-1816 | sub/AST-1814/AST-1816-gap-slack-scope-error-tests |
+
+**Epic worktree:** `astral-AST-1814/` — one active sub checked out at a time.

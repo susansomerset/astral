@@ -4434,6 +4434,8 @@ ASTRAL_CONFIG = {
         "hidden_class_patterns": ['hide', 'hidden', 'd-none', 'visually-hidden', 'sr-only'],
         "strip_attributes": ['style', 'srcset'],
         "strip_on_attrs": True,
+        "max_html_tag_length": 500,            # AST-1840: attribute values longer than this are snipped
+        "max_length_placeholder": "(snipped)", # AST-1840: replacement text, so snipped spots stay visible
     },
     "cookie_dismiss_selectors": [
         'button:has-text("Accept All")',
@@ -4452,11 +4454,16 @@ ASTRAL_CONFIG = {
     "cookie_selfheal_url_threshold": 5,
 
     # --- DB (database) ---
-    "db_busy_timeout_ms": 30000,
     "db_retry": {
         "max_attempts": 5,
         "base_delay_seconds": 0.5,
         "max_delay_seconds": 5.0,
+    },
+    # sqlite connection settings (AST-1842): busy wait on locked writes + WAL so readers
+    # never block a writer's commit. journal_mode is persistent in the db file once set.
+    "db_connection": {
+        "busy_timeout_seconds": 10.0,
+        "journal_mode": "WAL",
     },
 
     # --- Gazer (gazer) ---
@@ -4478,7 +4485,7 @@ ASTRAL_CONFIG = {
     "template_candidate_id": "somerset",
 
     # --- Monitor (monitor) ---
-    "support_email": "susan+astral@susansomerset.com",
+    "support_email": "runtime-dispatch-error-498a58685f26@intake.linear.app",
 
     # --- Prompt prefix (anthropic) ---
     # Prepended to the user prompt on every API call. Tells agents the date/time

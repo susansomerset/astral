@@ -62,6 +62,7 @@ from src.utils.config import (
     COMPANY_STATES,
     INFLOW_CONFIG,
     PLAYWRIGHT_CONFIG,
+    PROVIDER_CALL_BUDGET,
     ROSTER_CONFIG,
     TASK_CONFIG,
     is_registered_state,
@@ -1208,7 +1209,8 @@ async def run_parse_job_list_dispatch(
                 short_name, company_website, list_url, input_state,
                 notes="empty dom after reload", response_type="PARSE_DISPATCH_EMPTY_DOM",
             )
-        dom_joined, containers, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
+        # AST-1840: CPU-bound cull off the event loop
+        dom_joined, containers, cull_outcome = await asyncio.to_thread(_culled_dom_for_parse, dom_html, job_titles)
         logger.debug(
             "Response from _culled_dom_for_parse: titles=%s containers=%s cull_outcome=%r dom_joined=%s",
             job_titles, containers, cull_outcome, dom_joined,
@@ -1339,6 +1341,7 @@ async def process_recheck_no_openings(
 ) -> Dict[str, Any]:
     """NO_OPENINGS: load job_site, visible text via Playwright only (no Anthropic).
 
+    Every attempted recheck (success or failure) stamps last_scan_at.
     Mirrors prefilter_company redirect normalization. ctx/debug reserved for dispatcher parity.
     """
     _ = (batch_id, ctx, debug)
@@ -1346,12 +1349,17 @@ async def process_recheck_no_openings(
     job_site = str(entity.get("job_site") or "").strip()
     if not short_name:
         return {"success": False, "message": "missing short_name", "new_state": ""}
+    # Failed attempts stamp too, so the freq_hrs window covers every attempt — a failed
+    # company stays NO_OPENINGS and would otherwise be counted/reclaimed every run
+    # (AST-1821 overturns AST-463's no-bump-on-failure rule).
     if not job_site:
+        update_company_last_scan_at(short_name)
         return {"success": False, "message": "missing job_site", "new_state": ""}
 
     cdata = entity.get("company_data") if isinstance(entity.get("company_data"), dict) else {}
     no_jobs_message = str((cdata or {}).get("no_jobs_message") or "").strip()
     if not no_jobs_message:
+        update_company_last_scan_at(short_name)
         return {"success": False, "message": "no_jobs_message missing", "new_state": ""}
 
     try:
@@ -1366,6 +1374,7 @@ async def process_recheck_no_openings(
             type(ex).__name__,
             ex,
         )
+        update_company_last_scan_at(short_name)
         return {"success": False, "message": f"playwright scrape: {ex}", "new_state": ""}
 
     if final_url and final_url != job_site:
@@ -2155,10 +2164,12 @@ async def _find_job_page_from_assembled(
         )
         logger.debug("Response from agent.do_task: %s", res)
         if not res.get("success"):  # pragma: no branch
-            if is_provider_balance_refusal(res):
+            # Balance refusal (AST-897) and provider-call-budget timeout (AST-1189) are not model
+            # verdicts: hold the loop-eligible state so the next select_job_page dispatch retries (AST-1842).
+            if is_provider_balance_refusal(res) or res.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]:
                 current_state = (get_company(short_name) or {}).get("state")
                 logger.debug(
-                    "Response from agent.do_task: provider_balance_refusal failure_class=%r error=%r current_state=%r",
+                    "Response from agent.do_task: state held failure_class=%r error=%r current_state=%r",
                     res.get("failure_class"), res.get("error"), current_state,
                 )
                 return {
@@ -2671,7 +2682,8 @@ async def _finalize_joblist_titles_after_chain(
                            state="NO_JOBLIST", page_option_url=company_website, raw_response=select_parsed)
         return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
 
-    dom_joined, _, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
+    # AST-1840: CPU-bound cull off the event loop
+    dom_joined, _, cull_outcome = await asyncio.to_thread(_culled_dom_for_parse, dom_html, job_titles)
     if cull_outcome == "cull_miss" or not dom_joined.strip():
         logger.debug("Response from _culled_dom_for_parse: cull_miss possible bot block")
         _save_company(short_name=short_name, company_website=company_website,
@@ -2736,7 +2748,8 @@ async def _finalize_joblist_titles_select_only(
                            state="NO_JOBLIST", page_option_url=company_website, raw_response=select_parsed)
         return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
 
-    dom_joined, _, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
+    # AST-1840: CPU-bound cull off the event loop
+    dom_joined, _, cull_outcome = await asyncio.to_thread(_culled_dom_for_parse, dom_html, job_titles)
     if cull_outcome == "cull_miss" or not dom_joined.strip():
         logger.debug("Response from _culled_dom_for_parse: cull_miss possible bot block")
         _save_company(short_name=short_name, company_website=company_website,

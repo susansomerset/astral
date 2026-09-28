@@ -84,6 +84,7 @@ from src.utils.config import (
     CANDIDATE_STATES,
     is_valid_candidate_batch_claim_state,
     remap_legacy_candidate_state,
+    registered_base,
     COMPANY_STATES,
     METEORITE_CONFIG,
     METEORITE_EMAIL_INGEST_CONFIG,
@@ -247,7 +248,7 @@ def clear_company_batch(batch_id: str) -> int:
     return set_company_batch(batch_id, clear=True)
 
 def update_company_last_scan_at(short_name: str) -> None:
-    """Set last_scan_at = now for company. Called on success paths only. TODO: use update_company directly."""
+    """Set last_scan_at = now for company (cadence stamp). TODO: use update_company directly."""
     now = _utc_now()
     update_company(short_name, last_scan_at=now)
 
@@ -263,13 +264,14 @@ def _get_connection() -> sqlite3.Connection:
     """
     # Ensure data directory exists (DB_PATH already set above)
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # Many dispatch threads write concurrently: wait for locks instead of failing fast, and
-    # use WAL so readers do not block on the writer.
-    busy_ms = int(ASTRAL_CONFIG.get("db_busy_timeout_ms", 30000))
-    conn = sqlite3.connect(str(DB_PATH), timeout=busy_ms / 1000.0)
-    conn.execute(f"PRAGMA busy_timeout={busy_ms}")
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    cfg = ASTRAL_CONFIG.get("db_connection", {}) or {}
+    # busy timeout: locked writers wait instead of raising "database is locked" (AST-1842)
+    conn = sqlite3.connect(str(DB_PATH), timeout=float(cfg.get("busy_timeout_seconds", 5.0)))
+    # WAL is persistent per db file; re-issuing on an already-WAL db is a no-op read
+    if cfg.get("journal_mode"):
+        conn.execute(f"PRAGMA journal_mode={cfg['journal_mode']}")
+        # NORMAL is safe under WAL (durable on checkpoint) and skips fsync on every commit.
+        conn.execute("PRAGMA synchronous=NORMAL")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -7841,6 +7843,7 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
                 skip_daisy_chain INTEGER NOT NULL DEFAULT 0,
                 max_runs INTEGER DEFAULT 1,
                 score_floor REAL,
+                sweep_hrs REAL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(candidate_id, task_key, trigger_state)
             )
@@ -7959,6 +7962,7 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
             "sort_by":        "TEXT",
             "batch_call_mode": "INTEGER DEFAULT 0",
             "score_floor":    "REAL",
+            "sweep_hrs":      "REAL",  # AST-1829: scheduled sweep interval (hours); NULL/0 = off, no backfill
         }
         for col, col_type in _migrate_cols.items():
             if col not in cols:
@@ -8214,6 +8218,7 @@ def save_dispatch_task(
     trigger_state: Optional[str] = None,
     batch_size: Optional[int] = None, freq_hrs: float = 0,
     score_floor: Optional[float] = None,
+    sweep_hrs: Optional[float] = None,
 ) -> int:
     """Insert a new dispatch_task. Returns the new row id.
     Fills entity_type, trigger_state, sort_by, batch_call_mode from config defaults when omitted.
@@ -8268,10 +8273,10 @@ def save_dispatch_task(
             cur = conn.execute(
                 """INSERT INTO dispatch_task
                    (candidate_id, task_key, entity_type, trigger_state, sort_by, batch_call_mode,
-                    freq_hrs, min_count, batch_size, auto_mode, score_floor, last_run_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    freq_hrs, min_count, batch_size, auto_mode, score_floor, sweep_hrs, last_run_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (cid_val, tk, entity_type, trigger_state, sort_by, batch_call_mode,
-                 freq_hrs, min_count, batch_size, int(auto_mode), score_floor, now, now),
+                 freq_hrs, min_count, batch_size, int(auto_mode), score_floor, sweep_hrs, now, now),
             )
             conn.commit()
             return cur.lastrowid
@@ -8600,7 +8605,7 @@ def get_dispatch_row_or_seed_preview_meta(task_key: str) -> Optional[Dict[str, A
 _DISPATCH_TASK_UPDATE_COLS = {
     "min_count", "batch_size", "auto_mode", "last_run_at", "entity_type", "trigger_state",
     "debug", "skip_cache", "skip_daisy_chain", "freq_hrs", "max_runs", "score_floor",
-    "task_key", "sort_by", "batch_call_mode",
+    "task_key", "sort_by", "batch_call_mode", "sweep_hrs",
 }
 
 # Schedule columns mirrored from a template candidate row (AST-875). Runtime fields excluded.
@@ -8608,7 +8613,7 @@ _DISPATCH_TASK_TEMPLATE_COPY_COLS = frozenset({
     "task_key", "entity_type", "trigger_state", "sort_by", "batch_call_mode",
     "freq_hrs", "min_count", "batch_size", "auto_mode", "debug", "skip_cache",
     "skip_daisy_chain",
-    "max_runs", "score_floor",
+    "max_runs", "score_floor", "sweep_hrs",
 })
 
 
@@ -8678,7 +8683,7 @@ def _dispatch_task_schedule_assign(template_row: Dict[str, Any]) -> Dict[str, An
             assign[col] = int(val) if val is not None else None
         elif col == "freq_hrs":
             assign[col] = float(val or 0)
-        elif col == "score_floor":
+        elif col in ("score_floor", "sweep_hrs"):
             assign[col] = float(val) if val is not None else None
         else:
             assign[col] = val
@@ -8771,6 +8776,8 @@ def get_due_tasks() -> List[Dict[str, Any]]:
     merged in core dispatcher (AST-1135) — this helper skips null entity/trigger shells.
     Meteorite AUTO rows may have NULL candidate_id and still due when eligible count meets
     min_count (global unclaimed pool).
+    Rows with 0 < Avail < min_count are also due when dispatch_task_sweep_due is true (AST-1829);
+    those carry _scheduled_sweep=True.
     """
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
@@ -8793,8 +8800,14 @@ def get_due_tasks() -> List[Dict[str, Any]]:
         if not cid and et != "meteorite":
             continue
         avail = count_eligible_for_dispatch_task(task)
-        if avail >= (task.get("min_count") or 1):  # match runner threshold (or 1) to avoid noisy zero-work runs
+        min_count = task.get("min_count") or 1  # match runner threshold (or 1) to avoid noisy zero-work runs
+        if avail >= min_count:
             task["available_count"] = avail
+            due.append(task)
+        elif avail > 0 and dispatch_task_sweep_due(task):
+            # AST-1829: partial remainder + sweep interval elapsed → one-batch sweep via the tick
+            task["available_count"] = avail
+            task["_scheduled_sweep"] = True
             due.append(task)
     return due
 
@@ -8932,6 +8945,19 @@ def dispatch_task_freq_allows(task: Dict[str, Any]) -> bool:
     return age.total_seconds() >= freq * 3600
 
 
+def dispatch_task_sweep_due(task: Dict[str, Any]) -> bool:
+    """True when sweep_hrs > 0 and last_run_at is missing or at least sweep_hrs old (AST-1829).
+
+    last_run_at is any run (AUTO batch, manual Run/Sweep, earlier scheduled sweep)."""
+    sweep = float(task.get("sweep_hrs") or 0)
+    if sweep <= 0:
+        return False
+    last = _parse_dispatch_last_run_at(task.get("last_run_at"))
+    if last is None:
+        return True
+    return (datetime.now(timezone.utc) - last).total_seconds() >= sweep * 3600
+
+
 def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     """Count eligible entities for this dispatch row (unclaimed + scan cadence for WATCH).
 
@@ -8940,6 +8966,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     Company/job/meteorite Avail use trigger_state + claim_states aligned with claim batches.
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
+    Staleness applies with or without score_floor; batch_criteria resolves through the registered
+    base state so {base}_RETRY triggers keep the base cadence (AST-1821).
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
     entity_type=meteorite counts this row's candidate via count_meteorites_unclaimed_in_states
     (stat.dispatch.entity-state-bound — meteorite is candidate-bound like job/company, not a pool).
@@ -8977,17 +9005,20 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     if entity_type == "company":
         # Company Avail follows dispatch row trigger_state + claim_states (same as claim_*_batch).
         # Custom Avail helpers are reserved for entity_type=candidate only (inflow_discovery above).
-        floor_raw = task.get("score_floor")
-        if floor_raw is not None:
-            return count_companies_in_state_with_score_floor(
-                candidate_id, state, float(floor_raw), states=claim_states,
-            )
-        bc = (COMPANY_STATES.get(state) or {}).get("batch_criteria") or {}
+        # Implicit {base}_RETRY shares the base's batch_criteria (same lookup as get_new_company_batch, AST-1806).
+        bc = (COMPANY_STATES.get(registered_base(COMPANY_STATES, state) or state) or {}).get("batch_criteria") or {}
         freq = float(task.get("freq_hrs") or 0)
         scan_from_state = bc.get("scan_interval_hours")
         scan_h = freq if freq > 0 else scan_from_state
         # Match claim_company_batch: only WATCH (gaze) uses last_scan_at cadence unless a state defines scan_interval_hours.
         use_stale = scan_h is not None and float(scan_h) > 0 and (state == "WATCH" or scan_from_state is not None)
+        floor_raw = task.get("score_floor")
+        if floor_raw is not None:
+            # Claim ANDs score_floor with the last_scan_at window; Avail must too.
+            return count_companies_in_state_with_score_floor(
+                candidate_id, state, float(floor_raw), states=claim_states,
+                scan_interval_hours=float(scan_h) if use_stale else None,
+            )
         if use_stale:
             hours = str(float(scan_h))
 
@@ -9033,8 +9064,13 @@ def count_companies_in_state_with_score_floor(
     score_floor: float,
     *,
     states: Optional[List[str]] = None,
+    scan_interval_hours: Optional[float] = None,
 ) -> int:
-    """Unclaimed companies in state with company_data.prefilter_score >= score_floor (AST-508)."""
+    """Unclaimed companies in state with company_data.prefilter_score >= score_floor (AST-508).
+
+    scan_interval_hours: when set, also require last_scan_at NULL or older than the window
+    (same fragment as set_company_batch).
+    """
     score_key = ROSTER_CONFIG["company_data_keys"]["prefilter_score"]
 
     def _with_conn() -> int:
@@ -9043,13 +9079,18 @@ def count_companies_in_state_with_score_floor(
             _ensure_company_schema(conn)
             claim_states = states if states is not None else [state]
             state_sql, state_params = _state_in_sql(claim_states)
+            params: List[Any] = [*state_params, candidate_id, float(score_floor)]
+            stale_sql = ""
+            if scan_interval_hours is not None:
+                stale_sql = " AND (last_scan_at IS NULL OR last_scan_at < datetime('now', '-' || ? || ' hours'))"
+                params.append(scan_interval_hours)
             row = conn.execute(
                 f"""SELECT COUNT(*) FROM company
                     WHERE {state_sql} AND candidate_id = ?
                       AND (batch_id IS NULL OR batch_id = '')
                       AND json_extract(company_data, '$.{score_key}') IS NOT NULL
-                      AND CAST(json_extract(company_data, '$.{score_key}') AS REAL) >= ?""",
-                (*state_params, candidate_id, float(score_floor)),
+                      AND CAST(json_extract(company_data, '$.{score_key}') AS REAL) >= ?{stale_sql}""",
+                tuple(params),
             ).fetchone()
             return int(row[0])
         finally:

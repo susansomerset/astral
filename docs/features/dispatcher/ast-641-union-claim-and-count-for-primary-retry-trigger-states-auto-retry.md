@@ -653,6 +653,7 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1806 | sub/AST-1804/AST-1806-retry-registry-purge |
 | AST-1807 | sub/AST-1804/AST-1807-implicit-retry-tests |
 | AST-1808 | sub/AST-1804/AST-1808-purge-retry-tests |
+| AST-1810 | sub/AST-1804/AST-1810-fetch-website-retry-all |
 
 **Epic worktree:** `astral-AST-1804/` — one active sub checked out at a time.
 

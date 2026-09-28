@@ -898,6 +898,7 @@ _DISPATCH_TASK_COLUMNS = [
     {"key": "batch_size",     "label": "Batch Size",  "type": "int"},
     {"key": "batch_call_mode","label": "Batch Mode",  "type": "int"},
     {"key": "freq_hrs",       "label": "Freq (hrs)",  "type": "float"},
+    {"key": "sweep_hrs",      "label": "Sweep (hrs)", "type": "float"},
     {"key": "auto_mode",      "label": "AUTO",        "type": "str"},
     {"key": "debug",          "label": "Debug",       "type": "str"},
     {"key": "available_count","label": "Available",   "type": "int"},
@@ -966,6 +967,8 @@ def list_dtasks():
         # AST-1780: empty-render flag + force AUTO off when non-executable.
         er = _evaluate_dispatch_empty_render(row.get("candidate_id"), row.get("task_key") or "")
         row["empty_render"] = bool(er.get("empty_render"))
+        # AST-1819: missing prompt tokens for the Invalid tooltip ([] when valid or unvalidatable).
+        row["empty_tokens"] = list(er.get("empty_tokens") or [])
         if row["empty_render"] and row.get("auto_mode"):
             update_dispatch_task(row["id"], auto_mode=0)
             row["auto_mode"] = 0
@@ -1123,6 +1126,20 @@ def set_dispatch_tasks_from_template():
     return jsonify(result)
 
 
+def _parse_sweep_hrs(raw: Any) -> tuple[float | None, str | None]:
+    """sweep_hrs from admin JSON (AST-1830): None/"" → NULL; else a non-negative float.
+    Returns (value, error); error is a 400 message. 0 is kept as 0.0 (off, same as NULL)."""
+    if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+        return None, None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None, "sweep_hrs must be a non-negative number"
+    if val < 0:
+        return None, "sweep_hrs must be a non-negative number"
+    return val, None
+
+
 @admin_bp.route("/dispatch_tasks", methods=["POST"])
 @require_admin
 def create_dtask():
@@ -1147,6 +1164,9 @@ def create_dtask():
     is_scored = dispatch_claim_uses_score_floor(data.get("trigger_state"))
     raw_score_floor = data.get("score_floor", None)
     score_floor = float(raw_score_floor) if (is_scored and raw_score_floor is not None) else (1.0 if is_scored else None)
+    sweep_hrs, sweep_err = _parse_sweep_hrs(data.get("sweep_hrs"))
+    if sweep_err:
+        return jsonify({"error": sweep_err}), 400
     if bool(data.get("auto_mode", False)):
         err = _candidate_dispatch_api_key_error(data.get("candidate_id"))
         if err:
@@ -1172,6 +1192,7 @@ def create_dtask():
             batch_size=int(data["batch_size"]) if data.get("batch_size") else None,
             freq_hrs=float(data.get("freq_hrs", 0)),
             score_floor=score_floor,
+            sweep_hrs=sweep_hrs,
         )
     except Exception as e:
         if "UNIQUE" in str(e):
@@ -1264,7 +1285,7 @@ def update_dtask(task_id):
     allowed = {
         "min_count", "batch_size", "batch_call_mode", "auto_mode", "debug", "skip_cache",
         "skip_daisy_chain", "freq_hrs", "max_runs", "score_floor", "trigger_state", "task_key",
-        "entity_type",
+        "entity_type", "sweep_hrs",
     }
     updates: Dict[str, Any] = {}
     # JSON null on entity_type mirrors create — treat as omitted (Joan discuss).
@@ -1327,6 +1348,10 @@ def update_dtask(task_id):
                 )
             except KeyError as exc:
                 return jsonify({"error": str(exc)}), 400
+    if "sweep_hrs" in data:
+        sweep_hrs, sweep_err = _parse_sweep_hrs(data["sweep_hrs"])
+        if sweep_err:
+            return jsonify({"error": sweep_err}), 400
     trigger_state = data.get("trigger_state", row.get("trigger_state"))
     is_scored = dispatch_claim_uses_score_floor(trigger_state)
     for k in allowed:
@@ -1339,6 +1364,8 @@ def update_dtask(task_id):
                 updates[k] = float(data[k])
             elif k == "trigger_state":
                 updates[k] = str(data[k]) if data[k] else None
+            elif k == "sweep_hrs":
+                updates[k] = sweep_hrs
             elif k == "score_floor":  # pragma: no branch
                 updates[k] = float(data[k]) if (is_scored and data[k] is not None) else (1.0 if is_scored else None)
     if not updates:
