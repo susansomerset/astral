@@ -219,6 +219,73 @@ class TestFindJobContainers:
         assert joined.count("<a ") >= 2
 
 
+# Branches (AST-1840 linear rewrite): whitespace-only string 345→350; comment/non-main string
+# 356→353; special-string-container fallback 375→377; Phase 2 sibling union; large DOM.
+# Structural asserts only — bs4 whitespace serialization varies across the >=4.12 floor.
+class TestAst1840FindJobContainersEquivalence:
+    _TITLES = ["Senior Engineer", "Nurse"]
+
+    @pytest.mark.parametrize(
+        ("dom", "prefix"),
+        [
+            pytest.param(
+                '<div id="w"><section>\n  <!-- Nurse -->\n  <p>Senior Engineer</p>\n</section>'
+                "<p>Nurse</p></div>",
+                '<div id="w">',
+                id="comment_ws",
+            ),
+            pytest.param(
+                "<main><div><p>Senior Engineer</p><script>Nurse</script></div><p>Nurse</p></main>",
+                "<main>",
+                id="script",
+            ),
+            pytest.param(
+                "<main><div><p>Senior Engineer</p><style>Nurse</style></div><p>Nurse</p></main>",
+                "<main>",
+                id="style",
+            ),
+            pytest.param(
+                '<div id="r"><p><ruby>Senior Engineer<rt>Nurse</rt></ruby></p><p>Nurse</p></div>',
+                '<div id="r">',
+                id="ruby_rt",
+            ),
+            pytest.param(
+                '<div id="q"><p><ruby>Lead<rp>(Nurse)</rp></ruby> Senior Engineer</p>'
+                "<p>Nurse</p></div>",
+                '<div id="q">',
+                id="ruby_rp",
+            ),
+        ],
+    )
+    def test_single_deepest_container(self, dom: str, prefix: str) -> None:
+        # Text a parent's get_text excludes (comments, special strings) must not make a child all-match
+        out = fmt.find_job_containers(dom, self._TITLES)
+        assert len(out) == 1
+        assert out[0].startswith(prefix)
+
+    def test_template_sibling_union(self) -> None:
+        dom = "<ul><li>Senior Engineer</li><template><li>Nurse</li></template></ul>"
+        out = fmt.find_job_containers(dom, self._TITLES)
+        assert len(out) == 2
+        assert "<li>Senior Engineer</li>" in out
+        assert any(chunk.startswith("<template>") for chunk in out)
+
+    def test_large_dom_same_containers(self) -> None:
+        # Equivalence only — no timing assertion, no size cap
+        dom = (
+            '<div id="app"><ul>'
+            + "".join(
+                '<li class="job-row"><div class="c1"><h3><a href="/job/E_%d">Engineer %d</a></h3>'
+                "</div><span>Pittsburgh</span></li>" % (i, i)
+                for i in range(8000)
+            )
+            + "</ul></div>"
+        )
+        out = fmt.find_job_containers(dom, ["Engineer 7999", "Engineer 12"])
+        assert len(out) == 1
+        assert out[0].startswith('<ul><li class="job-row">')
+
+
 # Branches: invalid input; missing key; closed string; truncated payload; fence stripping.
 class TestHealAgentPayloadEnvelope:
     def test_returns_none_for_non_string_or_blank(self) -> None:

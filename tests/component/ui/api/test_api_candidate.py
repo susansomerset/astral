@@ -2858,3 +2858,58 @@ class TestAst1679ResumeStructureOperativeApi:
             "/api/candidates/c1679d/resume_structure", headers=auth_headers
         )
         assert hit_rs.status_code == 200
+
+
+# Branches: auth gate; unique hit; no/ambiguous → null; bad email → 400; non-admin allowed (AST-1768).
+class TestAst1768CandidateByEmailApi:
+    """AST-1768: GET /api/candidates/by_email — login-email → candidate id for SPA bind."""
+
+    @pytest.fixture(autouse=True)
+    def _no_catch_all(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Pre-fix the path falls through to /<candidate_id>; pin that to a clean 404.
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: None)
+
+    def _lookup(self, monkeypatch: pytest.MonkeyPatch, result: str | None) -> MagicMock:
+        spy = MagicMock(return_value=result)
+        monkeypatch.setattr(candidate_mod, "get_candidate_id_for_query", spy, raising=False)
+        return spy
+
+    def test_requires_auth(self, candidate_client: FlaskClient) -> None:
+        assert candidate_client.get("/api/candidates/by_email?email=a@b.c").status_code == 401
+
+    def test_bug_repro_unique_match_returns_candidate_id(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = self._lookup(monkeypatch, "c-jolane")
+        resp = candidate_client.get(
+            "/api/candidates/by_email?email=%20soosomerset@gmail.com%20", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.get_json() == {"candidate_id": "c-jolane"}
+        spy.assert_called_once_with("soosomerset@gmail.com")
+
+    def test_bug_repro_no_or_ambiguous_match_returns_null(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._lookup(monkeypatch, None)
+        resp = candidate_client.get("/api/candidates/by_email?email=shared@ex.com", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == {"candidate_id": None}
+
+    def test_bug_repro_missing_or_invalid_email_is_400(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = self._lookup(monkeypatch, "c1")
+        for qs in ("", "?email=", "?email=%20%20", "?email=not-an-email"):
+            resp = candidate_client.get(f"/api/candidates/by_email{qs}", headers=auth_headers)
+            assert resp.status_code == 400, qs
+            assert resp.get_json() == {"error": "email required"}
+        spy.assert_not_called()
+
+    def test_bug_repro_non_admin_allowed(
+        self, candidate_client: FlaskClient, non_admin_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._lookup(monkeypatch, "c-jolane")
+        resp = candidate_client.get("/api/candidates/by_email?email=soosomerset@gmail.com", headers=non_admin_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == {"candidate_id": "c-jolane"}
