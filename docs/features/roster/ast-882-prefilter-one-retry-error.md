@@ -872,3 +872,25 @@ Betty’s `[bug-repro]` on Linear (`b6207dc6`) matches the plan gate and the tes
 #### Chuckles disposition
 
 Clean PROCEED → Review Posted → User Testing (resolve-child skipped). merge-child into `ftr/AST-1828-auto-retry-warn-then-error`; all children done → prep-uat.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/e000ddc7f242b6e9b47d3df58312fbe7/9c2624eb-57b6-4ed2-8b65-6cf9ff6fb038/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/12212c79-09cc-4799-95c9-0bcd19cfa8c6/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/e000ddc7f242b6e9b47d3df58312fbe7/ea56a33b-0ef9-403f-946b-2939a8646b2f/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1828 (parent) | ftr/AST-1828-auto-retry-warn-then-error |
+| AST-1839 | sub/AST-1828/AST-1839-auto-retry-warn-then-error |
+| AST-1846 | sub/AST-1828/AST-1846-auto-retry-warn-then-error-gap |
+
+**Epic worktree:** `astral-AST-1828/` — one active sub checked out at a time.
