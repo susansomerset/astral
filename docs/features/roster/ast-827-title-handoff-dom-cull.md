@@ -415,3 +415,224 @@ No conflicts requiring escalation.
 | advisory | `debug_index` `cull=` omission left as-is (Radia advisory only); single-title `_culled_dom_for_parse` path retained. |
 
 **Publish tip at resolve:** `origin/sub/AST-824/AST-827-title-handoff-dom-cull` @ Radia review `40e774a`; §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-824-get-parse-job-list-to-work`.
+
+---
+
+## Bug: AST-1840 — parse_job_list DOM cull blocks event loop on oversized pages; snip long attributes
+
+**Parent:** AST-1838 (orphaned bug mini-parent, `ftr/AST-1838-parse-job-list-event-loop-block`). **Publish ref:** `origin/sub/AST-1838/AST-1840-parse-job-list-event-loop-block`. **Scope:** AST-1840 `## Scope`, amended by Susan 2026-09-28 ("amend as written") after the `[scope-gate]` finding below.
+
+### As-is
+
+A production `parse_job_list` batch (candidate abrams, 20 companies) froze the dispatcher's event loop for 2h05m. Telescope returned `jobs.volvogroup.com` (raw HTML ≈ 7.4MB, `visible_chars` 3,149,938) at 10:28:04, and the next log line was at 12:33:26. The 3600s dispatch `wait_for` fired an hour late at 12:34:30, and the batch ended INTERRUPTED with 0 processed. Volvo's first `Response from _culled_dom_for_parse` is logged at 12:33:26, so the block sits between `scrape_page` returning and the end of the title cull.
+
+### To-be
+
+One oversized careers page cannot freeze the dispatcher. Neither the html cull (`_cull_html`) nor the title cull (`_culled_dom_for_parse` → `find_job_containers`) runs on the event loop, and both are roughly linear on large DOMs. Dispatch timeouts and provider budgets (AST-1189) fire on schedule, and the rest of the batch still gets processed. The heavy company either culls or fails through the existing `_save_parse_dispatch_failure` / retry-strike path (AST-891). Attribute values longer than 500 chars are replaced with `(snipped)`. **No DOM-size guard** (Susan, 2026-09-28).
+
+### Repro
+
+No stored Volvo HTML exists; the log omits the 7.4MB body. Use a synthetic listing fixture (bs4 4.15, real `html_cull` config):
+
+```python
+row = ('<li class="job-row" data-automation-id="job"><div class="c1"><div class="c2">'
+       '<h3><a href="/job/E_%d" data-x="%s">Engineer %d</a></h3></div>'
+       '<button><i>x</i></button><span class="loc">Pittsburgh</span>'
+       '<svg viewBox="0 0 10 10"><g><path d="M0 0L10 10"></path></g></svg></div></li>')
+html = ('<html><body><div id="app"><ul>'
+        + ''.join(row % (i, 'A' * 200, i) for i in range(N)) + '</ul></div></body></html>')
+_cull_html(html)
+```
+
+| N rows | chars | `_cull_html` today | after the `_in_preserved_svg` fix |
+|---|---|---|---|
+| 100 | ~45K | 1.5s | — |
+| 400 | ~180K | 23.5s | — |
+| 1,000 | 450K | **144s** | 0.57s |
+| ~14,000–16,000 | ~7MB | **> 15 min (killed)** | 9.6s |
+
+`find_job_containers` on a 1.1MB listing takes 1.4s today (about the same at depth 5 or depth 30). Estimated about 10s for Volvo: slow and on the loop, but not the 2h.
+
+### Root cause
+
+1. **`_cull_html` is quadratic, and it runs on the event loop.** `_in_preserved_svg` (AST-1745, `a830d0f0`) tests `elem in preserve_root_svgs` and `p in preserve_root_svgs for p in elem.parents`. bs4's `Tag.__hash__` is `hash(str(self))`, so every membership test serializes that ancestor's whole subtree, the document root included, **even when the set is empty**. It is called once per `<svg>` and once per non-allowed tag in each of the up-to-10 unwrap passes, so a page with thousands of icons or buttons pays O(document size) for each one. Profile: ~99% of the time is in `Tag.decode`. It runs synchronously inside async `extract_page_dom`, which is called from `_scrape_list_page_dom_for_parse` before `_culled_dom_for_parse`. **This is the 2h freeze.**
+2. **`_culled_dom_for_parse` runs synchronously inside three coroutines.** `find_job_containers` calls `el.get_text()` for every descendant in Phase 1 and Phase 2, plus descendant scans for "deepest" and "leaves", costing O(n × depth). That is seconds per MB on the loop.
+3. Contributing: large inline attribute payloads inflate the DOM that both culls walk and that reaches the LLM (Susan's read, 2026-09-28).
+
+### Proposed change
+
+Five edits, all inside AST-1840 `## Scope`. `make-fix` runs them in order and compiles and lints after each.
+
+**1. `src/utils/config.py` — `ASTRAL_CONFIG["html_cull"]`:** add two keys after `"strip_on_attrs": True,`:
+
+```python
+        "max_html_tag_length": 500,            # AST-1840: attribute values longer than this are snipped
+        "max_length_placeholder": "(snipped)", # AST-1840: replacement text, so snipped spots stay visible
+```
+
+**2. `src/external/telescope.py` — `_cull_html`:**
+
+- (a) Fail fast, same pattern as the existing required keys (no in-code defaults):
+  ```python
+  if "max_html_tag_length" not in html_cull_config:
+      raise ValueError("ASTRAL_CONFIG['html_cull']['max_html_tag_length'] is missing")
+  if "max_length_placeholder" not in html_cull_config:
+      raise ValueError("ASTRAL_CONFIG['html_cull']['max_length_placeholder'] is missing")
+  ```
+  Read both into locals next to `strip_on_attrs`: `max_attr_len = int(html_cull_config["max_html_tag_length"])` and `snip_placeholder = html_cull_config["max_length_placeholder"]`.
+- (b) Identity-based `_in_preserved_svg`. Keep `preserve_root_svgs` as the collection of root svg Tags, but build `preserve_root_ids = {id(s) for s in preserve_root_svgs}` right after it is filled, and replace the helper body:
+  ```python
+  def _in_preserved_svg(elem) -> bool:
+      # id() only: bs4 Tag.__hash__ serializes the subtree, which made this quadratic
+      if not preserve_root_ids:
+          return False
+      if id(elem) in preserve_root_ids:
+          return True
+      return any(id(p) in preserve_root_ids for p in getattr(elem, "parents", []))
+  ```
+  Using ids is safe because preserved roots stay attached to the tree for the whole call, and are never decomposed or unwrapped. The output was verified byte-identical to today on a 150-row listing and on the AST-1745 root `svg.logo` fragment.
+- (c) Snip. In the final `for elem in elements_to_process:` loop, directly after `for attr in attrs_to_strip: del elem.attrs[attr]`:
+  ```python
+  # AST-1840: over-long values (inline binary/base64 payloads) → visible placeholder
+  for attr, val in list(elem.attrs.items()):
+      flat = " ".join(val) if isinstance(val, list) else str(val)
+      if len(flat) > max_attr_len:
+          elem.attrs[attr] = snip_placeholder
+  ```
+  Multi-valued attributes (bs4 lists, e.g. `class`) are measured by their serialized `" "`-joined length and replaced by the plain placeholder string. The check is strictly greater than: a 500-char value is kept, a 501-char value is snipped.
+
+**3. `src/external/telescope.py` — `extract_page_dom`:** replace `return _cull_html(raw_html)` with:
+
+```python
+        return await asyncio.to_thread(_cull_html, raw_html)
+```
+
+`asyncio` is already imported. The global name is looked up at call time, so monkeypatched `_cull_html` in tests still applies. The admin workbench `_cull_html` calls (~lines 629/631) **stay out of scope** (Susan, 2026-09-28).
+
+**4. `src/core/roster.py` — three call sites.** `_culled_dom_for_parse` stays a pure sync function. Each call becomes:
+
+- `run_parse_job_list_dispatch._scrape_and_parse`: `dom_joined, containers, cull_outcome = await asyncio.to_thread(_culled_dom_for_parse, dom_html, job_titles)`. The `nonlocal cull_outcome` still binds through tuple unpacking.
+- `_finalize_joblist_titles_after_chain`: `dom_joined, _, cull_outcome = await asyncio.to_thread(_culled_dom_for_parse, dom_html, job_titles)`
+- `_finalize_joblist_titles_select_only`: same as the previous line.
+- `make_locate_parse_resolver.resolve_run_next_live` **stays sync** (it's a sync callback inside `agent.do_task`, per scope).
+
+**5. `src/utils/formatting.py` — `find_job_containers`:** same signature, same docstring contract, same return values. Add `from bisect import bisect_left` to the module imports, and extend the lazy import to `from bs4 import BeautifulSoup, CData, NavigableString, Tag`. The body is replaced as follows. Everything from the `if not job_titles` guard through `titles_set` is unchanged, as is everything from `checked: set = set()` (the Phase 2 walk-up) through the final `return [dom_html]`, Phase 2b included. The only change inside the walk-up is that `_titles_in` is now a cached lookup. Keep the existing `# pragma: no cover` markers on the Phase 2 / 2b lines.
+
+```python
+    # One ordered walk: every stripped main-content string, lowercased, " "-joined into `text`.
+    # Each Tag gets a [start, end) char span so text[start:end] == el.get_text(" ", strip=True).lower().
+    # Tags whose own get_text reads a special string type (script/style/template/rt/rp) fall back below.
+    special = set(getattr(soup.builder, "string_containers", {}) or {})
+    pieces: List[str] = []
+    offset = 0
+    span: dict = {}
+    stack: list = [("enter", soup)]
+    while stack:
+        op, node = stack.pop()
+        if op == "exit":
+            span[id(node)] = (span[id(node)], offset)
+            continue
+        if op == "str":
+            txt = node.strip().lower()
+            if txt:
+                if pieces:
+                    offset += 1  # the joining " "
+                pieces.append(txt)
+                offset += len(txt)
+            continue
+        span[id(node)] = offset + (1 if pieces else 0)  # where this tag's first piece would start
+        stack.append(("exit", node))
+        for child in reversed(node.contents):
+            if isinstance(child, Tag):
+                stack.append(("enter", child))
+            elif type(child) in (NavigableString, CData):  # exact types: get_text's default filter
+                stack.append(("str", child))
+    text = " ".join(pieces)
+
+    # Every (overlapping) occurrence start of each title in `text`, ascending.
+    occ = {}
+    for t in titles_set:
+        hits, p = [], text.find(t)
+        while p != -1:
+            hits.append(p)
+            p = text.find(t, p + 1)
+        occ[t] = hits
+
+    cache: dict = {}
+
+    def _titles_in(el: Tag) -> set:
+        key = id(el)
+        if key in cache:
+            return cache[key]
+        if el.name in special:
+            txt = el.get_text(" ", strip=True).lower()
+            found = {t for t in titles_set if t in txt}
+        else:
+            s, e = span[key]
+            found = set()
+            for t, hits in occ.items():
+                i = bisect_left(hits, s)
+                if i < len(hits) and hits[i] + len(t) <= e:
+                    found.add(t)
+        cache[key] = found
+        return found
+
+    tags = [el for el in soup.descendants if isinstance(el, Tag)]
+
+    # Reverse pre-order visits every descendant before its ancestor → O(n) "any match below" flags.
+    all_below: dict = {}
+    any_below: dict = {}
+    for el in reversed(tags):
+        kids = [ch for ch in el.children if isinstance(ch, Tag)]
+        all_below[id(el)] = any(_titles_in(ch) == titles_set or all_below[id(ch)] for ch in kids)
+        any_below[id(el)] = any(bool(_titles_in(ch)) or any_below[id(ch)] for ch in kids)
+
+    # Phase 1: single element containing ALL titles → filter to deepest
+    all_match = [el for el in tags if _titles_in(el) == titles_set]
+    if all_match:
+        deepest = [c for c in all_match if not all_below[id(c)]]
+        if deepest:  # pragma: no branch
+            return [str(el) for el in deepest]
+
+    # Phase 2: accumulate across siblings
+    partial = [(el, _titles_in(el)) for el in tags if _titles_in(el)]  # pragma: no cover
+    if not partial:  # pragma: no cover
+        return [dom_html]  # pragma: no cover
+    leaves = [(el, ts) for el, ts in partial if not any_below[id(el)]]  # pragma: no cover
+    # ... existing walk-up + Phase 2b unchanged from `checked: set = set()` onward ...
+```
+
+Why this is exact, not an approximation:
+- `get_text(" ", strip=True)` joins the stripped, non-empty strings of the allowed types in document order. A tag's strings are a contiguous run of that document-wide sequence, so its text is exactly `text[start:end]`.
+- Substring membership (`t in text`) becomes "some occurrence starts at or after `start` and ends at or before `end`". Titles that span child boundaries or contain spaces still match.
+- Lowercasing each piece separately equals lowercasing the joined text, because pieces are space-separated. This also avoids offset drift from characters whose lowercase form is longer, such as `İ`.
+- The "deepest" and "leaves" checks use exact descendant flags, not a monotonicity shortcut. `template`, `rt`, and `rp` can match titles their parent's text excludes, and a children-only shortcut failed 19 of 6,000 fuzz cases because of that.
+
+Verified with a `/tmp` prototype of exactly this body:
+- 30,000 random DOMs (nested `script`/`style`/`template`/`rt`/`rp`, comments, CDATA, Unicode such as `İ`/`ΟΔΟΣ`/`Straße`, blank titles, overlapping titles): **0 mismatches** against today's function.
+- The medicarerights sibling-anchor shape and a 4.5MB depth-30 listing return identical containers.
+- The existing `TestFindJobContainers` tests: 6/6 pass with the prototype swapped in.
+
+⚠️ **Decision — the gain is modest; being off the loop is what matters.** On shallow synthetic DOMs, today's function is already about 1.3–1.6s per MB, and the rewrite is about 1.2s per MB (both dominated by bs4 parsing). The rewrite removes the O(n × depth) term, which matters on deep real-world DOMs. The actual protection is edit 4 (`to_thread`).
+
+### Blast radius
+
+- **`extract_page_dom` callers:** `roster._scrape_list_page_dom_for_parse` (parse hop), `roster.py` ~2560, `gazer.py` ~875 (JD body scrape), and telescope's own `get_page_dom` wrappers (~997–1009). All are async and already `await` it, so offloading the cull changes nothing about their contract. They all get the linear `_cull_html` and the snip.
+- **Every `_cull_html` consumer gets the snip,** including the gazer JD DOM and the admin path (the admin *call sites* are untouched, but the function is shared). Any stored or cached culled HTML produced before the fix differs from what new culls produce, only where an attribute value was longer than 500 chars.
+- ⚠️ **Decision (applied as Susan specified, not exempted):** AST-1745 preserved root `svg.logo` fragments also go through the attribute loop. A real logo whose `<path d="…">` is longer than 500 chars will have that `d` replaced with `(snipped)`, and the logo will no longer render from the captured outerHTML. The AST-1745 test fixtures only use short paths, so those tests stay green. I have **not** added an exemption for preserved-svg subtrees, because Susan's rule is "any tag attribute value" and no-heuristics-without-confirmation applies. If fix-board or Susan wants logos kept whole, the one-line exemption is `if _in_preserved_svg(elem): continue` before the snip loop.
+- **Threads:** a timed-out dispatch cancels the awaiting coroutine immediately. The worker thread keeps running until the cull returns (Python threads can't be killed). With both culls linear, that's seconds, and the GIL switch interval keeps the loop responsive meanwhile. `_cull_html` and `_culled_dom_for_parse` share no mutable state across calls, so running them concurrently in threads is safe.
+- **Tests that may need Betty** (not touched here):
+  - `tests/component/core/test_roster.py`: tests that monkeypatch `find_job_containers` / `_culled_dom_for_parse` keep working, because names are resolved at call time inside the thread. Scope also asks for one new non-blocking assertion there.
+  - `tests/component/utils/test_formatting.py`: needs the large-DOM equivalence/performance case.
+  - `tests/component/external/test_telescope.py`: may need snip coverage; `extract_page_dom` tests that assert a sync call to `_cull_html` would need awaiting.
+- **Out of scope — poller "Task was destroyed but it is pending" (investigate-only):** this **survives** this fix. It fired at 10:25:55, *before* the freeze, together with an orphaned `to_thread` task. `dispatcher._task_thread_target` calls `loop.close()` without cancelling pending tasks, so the per-loop `telescope-result-poller` (`telescope.py:278`) and any AST-1189 budget-timeout orphan (`llm_external.py` deliberately doesn't await it) are garbage-collected while still pending. Chuckles files this separately.
+
+### What must still hold
+
+- **AST-827:** `_culled_dom_for_parse` return shape `(dom_joined, containers, outcome_label)` and labels `no_titles | full_dom | culled | cull_miss` are unchanged. Coverage gate, `PARSE_DISPATCH_NO_CONTAINERS`, `CANNOT_PARSE_JOB_SITE` / `NO_JOBLIST` branches, and the JOBS_FOUND chain via `make_locate_parse_resolver` are all unchanged.
+- **`find_job_containers` returns the same containers as today** on every existing fixture: Phase 1 deepest, Phase 2 sibling union, Phase 2b sibling anchors, and the `[dom_html]` fallback. Only cost changes, not semantics (AST-1840 scope).
+- **AST-1745:** a root `svg.logo` class-scoped fragment keeps its outerHTML (short attributes). Nested decorative svgs under page content are still stripped.
+- **AST-891:** a batch finishes every claimed company. A slow or failing company fails through `_save_parse_dispatch_failure` / retry-strike, and the dispatch timeout never sits an extra hour.
+- **AST-1189:** per-call provider budgets fire on schedule, because the loop is never held by a cull.
+- **No DOM/page size cap, no truncation, no limit** beyond the 500-char attribute snip (Susan, 2026-09-28). The existing `max_passes = 10` unwrap loop in `_cull_html` is pre-existing and untouched.
+- `html_cull` keys stay required config. Missing `max_html_tag_length` / `max_length_placeholder` raises `ValueError`, same as the other keys.
