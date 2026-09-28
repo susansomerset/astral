@@ -1009,3 +1009,5 @@ AST-1849 board-joan done — CANON: OK.
 
 context_tokens≈0
 ```
+
+**Docs-acceptance (AST-1849):** no test-tree delivery on this tip. Betty's [board-betty] TESTS: REVISE is owned by sibling gap AST-1850.
