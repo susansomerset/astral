@@ -552,3 +552,54 @@ no plan-stage scores attached (fix-board Joan: CANON OK narrative only)
 #### Chuckles disposition
 
 fix-now accepted → Review Posted → resolve by Betty (test-tree owner): restore the 8 leaked AST-1768 paths to ftr content on this sub (same drop as 4a9d769f on AST-1818). Then re-run the test-fix manifest → User Testing → merge-child into `ftr/AST-1820-recheck-no-openings-avail-count`.
+
+## Bug: AST-1831 — recheck_no_openings runs one batch of 10 regardless of batch_size / max_runs
+
+**Status: Plan Discuss (`[scope-gate]` + live-row question).** Nothing in code treats `recheck_no_openings` differently. The one concrete defect found is generic and lives outside AST-1820's declared scope.
+
+### As-is
+
+A `recheck_no_openings` run (company, trigger `NO_OPENINGS`) claims 10 companies, processes them, and stops, whatever `batch_size` / `max_runs` show in Admin → Scheduled Actions.
+
+### To-be
+
+Like every other dispatch row: each batch claims `batch_size`, and the loop repeats until `max_runs` is reached (0 = until drained) or Available runs out. A manual or scheduled Sweep on an AUTO row stays at one batch by design (AST-1829).
+
+### Repro
+
+Needs the live row. The local `data/astral.db` has one `dispatch_task` row (`gaze_email`) and no NO_OPENINGS companies, so it's not the environment the bug was seen in. Minimal code repro for the defect below: POST `/api/admin/dispatch_tasks` with `{"task_key": "recheck_no_openings", "trigger_state": "NO_OPENINGS", "entity_type": "company", "min_count": 1, "max_runs": 0, ...}`. `GET` the row and it shows `max_runs = 1`.
+
+### Root cause (code, traced from tick/click to claim)
+
+These paths are generic, with no `recheck_no_openings` branch:
+
+- **Dispatcher, `src/core/dispatcher.py`:**
+  - `_run_task` → `_run_unified` company branch: `limit = int(task["batch_size"])` when set, passed to `get_new_company_batch(limit=...)`.
+  - `_run_dispatch_loop` honors `max_runs` (None → one run, 0 → drain). It forces 1 only for a UI Sweep or a scheduled sweep on an AUTO row.
+- **Batch shape:** `recheck_no_openings` defaults to `batch_call_mode = 0` (not in `_DISPATCH_BATCH_CALL_MODE_ONE`), so it goes per-entity through `_warm_then_gather`.
+- **Consult / roster:** `consult.run_consult_task` company → `roster.run_company_task` NO_OPENINGS returns `total_processed = 1` per company, so the zero-progress stop doesn't fire early.
+- **Claim limit fallback:** `roster.get_new_company_batch` uses `COMPANY_STATES["NO_OPENINGS"].batch_criteria.limit = 10` **only when `batch_size` is NULL**.
+- **Tick scheduling:** `database.get_due_tasks` and the `dispatch_task_sweep_due` sweep path are generic.
+- **Startup / seed:** `_ensure_dispatch_task_schema` does no recurring row writes (AST-1496). The historical `recheck_no_openings` rows came from retargeting `find_job_page` NO_OPENINGS rows (removed in AST-1496), which kept those rows' `batch_size` / `max_runs`. Template copy (`_dispatch_task_schedule_assign`) and PUT (`update_dt`) persist both fields as given.
+
+So "10 per batch, one run" means the row's **stored** values are `batch_size = NULL` and `max_runs ∈ {NULL, 1}`, or the runs were Sweeps. Paths that can store those values when the UI shows something else:
+
+1. **Confirmed defect: admin create drops `max_runs`.** `api_admin` POST `/dispatch_tasks` calls `save_dispatch_task(...)`, which has **no `max_runs` parameter**, and it never follows up with `update_dispatch_task(max_runs=...)`, unlike `skip_daisy_chain` / `batch_call_mode`. Every row created from the Add form gets the column DEFAULT `1`, whatever the form sent. This affects all task keys, not just recheck. It matches Susan's symptom if the recheck row was (re)created from the form: `batch_size` left blank ("default" placeholder → NULL → 10) plus `max_runs` dropped (→ 1).
+2. **Edits to an AUTO row are rejected.** PUT returns 400 "Turn AUTO mode off before editing this row" whenever `row.auto_mode` is set and the body has any other key. The modal always sends every field, so an AUTO row's `batch_size` / `max_runs` can't change until AUTO is turned off first. This is by design and shows a toast, but it's easy to miss.
+3. **Sweeps:** the Sweep button, and a tick sweep when `0 < Avail < min_count` and `sweep_hrs` has elapsed, run exactly one batch.
+
+### Proposed change (pending scope amendment + live-row confirmation)
+
+- **`src/ui/api/api_admin.py`, create handler (POST `/dispatch_tasks`):** after `save_dispatch_task(...)`, when `"max_runs" in data and data["max_runs"] is not None`, call `update_dispatch_task(task_id, max_runs=int(data["max_runs"]))`. This mirrors the existing `skip_daisy_chain` / `batch_call_mode` follow-ups. It's one guarded call with no schema change. **Outside AST-1820 scope** (`api_admin.py` isn't declared). See the `[scope-gate]` comment.
+- No dispatcher, roster, or claim change: none of them special-case recheck.
+- If the live row shows `batch_size` / `max_runs` already set to Susan's values and the ledger shows `Calling get_new_company_batch: [... limit=10 ...]` on a non-Sweep run, this root cause is wrong. Re-plan from that log line.
+
+### Blast radius
+
+The create fix touches every task key's Add-form create: `max_runs` is persisted as sent instead of 1. Rows created before the fix keep their stored value (no backfill). Existing tests that create via POST and assume `max_runs == 1` after sending another value would change; none is known.
+
+### What must still hold
+
+- A Sweep (UI or scheduled, AST-1829) on an AUTO row is still one batch.
+- A NULL `batch_size` still falls back to the state `batch_criteria.limit`.
+- AST-1821 count/claim parity and failure stamping are unchanged.
