@@ -1119,3 +1119,93 @@ The plan adds four component nodes that lock AST-1849 Repro 1–4 (including `[b
 **Verdict:** no in-force statute or pattern needs an update or carve-out; F3 (`validate-plan` fix mode) not indicated.
 
 `[board-joan]  CANON: OK`
+
+
+### Radia review — AST-1850
+
+**Diff scope check:** three-dot diff touches **only**  
+`tests/component/external/test_telescope.py`,  
+`docs/test-bible/external/telescope.md`,  
+`docs/features/foundation/ast-1726-platform-telescope-py-drop-in-playwright-decommission.md` (AST-1850 plan-fix block). **Zero bytes under `src/**`.** Tip commit `code(AST-1850): no product src — test gap; product fix AST-1849 on tip via ftr` is a publish marker, not a product delta.
+
+---
+
+```
+[code-rubric]
+**Ticket:** AST-1850
+**Publish ref:** `06d68e26` (`origin/sub/AST-1841/AST-1850-asyncio-run-telescope-loop-teardown-tests`)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on this ref)
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-1841-asyncio-run-telescope-loop-teardown...origin/sub/AST-1841/AST-1850-asyncio-run-telescope-loop-teardown-tests` — plan-fix + Joan board + qa-fix test/bible + merge-tests/sync/marker commits; **net delta:** 211 lines across the three paths above only. Sub stacked on ftr with AST-1849 (`run_one_shot`) already merged.
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — gap test sibling pattern (cf. AST-1848). Joan fix-board `[board-joan] CANON: OK` for tests/bible-only; Betty post-qa `[board-betty] TESTS: OK`. Off-list statutes not graded per §5.3.)*
+
+| (no frozen ids) | — | — | — |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (fix-board Joan + Betty only; no `validate-plan` fix-mode score table).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`** — **OK**
+
+Primary repro: `TestAst1849OneShotLoopTeardown::test_run_one_shot_releases_loop_state` (docstring opens with `[bug-repro]`; Betty’s Linear `[bug-repro]` @ `41a1c634` names this node).
+
+- **Not tautological:** asserts AST-1849 **To-be** teardown — return `"ok"`, then `_assert_released`: `seen["st"].db is fake_db`, `seen["loop"] not in q._states` and `q._states == {}`, `fake_db.close.await_count == 1`, `seen["listener"].close.await_count == 1`, `seen["st"].poller.done()`, `seen["loop"].is_closed()`. These are concrete post-conditions, not “no exception.”
+- **Repro-first plausible:** pre-fix product @ `83a0c352` (ftr before AST-1849 merge) → nodes 1–3 fail `AttributeError: no run_one_shot`; control green (Hedy attestation @ tip). On ftr `0877d286` all four green — matches plan **Repro** / qa-fix contract.
+- **Would catch a fake-green runner:** a `run_one_shot` that only `asyncio.run(coro)` without awaiting `close_loop_resources()` would still fail `_assert_released` (open `_states`, `close` not awaited, poller not `done()`). Betty board reached the same conclusion; control node `test_bare_asyncio_run_leaves_loop_state_control` pins the as-is leak shape (`loop in q._states`, `fake_db.close.await_count == 0`) so green on the bug-repro is not vacuous setup.
+
+**Companion nodes (plan Repro 3–4 + control 1):**
+
+| Node | Verdict |
+|------|---------|
+| `test_run_one_shot_reraises_and_still_releases` | OK — `pytest.raises(ValueError, match="boom")` then same `_assert_released` |
+| `test_run_one_shot_passthrough_without_telescope` | OK — `== 42`, `q._states == {}`, `create_pool.assert_not_awaited()` |
+| `test_bare_asyncio_run_leaves_loop_state_control` | OK — required docstring; proves fixture models AST-1849 as-is |
+
+**`## What must still hold` (AST-1850 plan-fix + AST-1849 cross-refs)** — **OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-1849: return/exception pass-through unchanged | OK — nodes 1–3 |
+| No-op when loop never touches Telescope | OK — passthrough node |
+| AST-1726 per-loop isolation in tests | OK — class `fresh_queue` fixture; new `_TelescopeQueue` per node; plain `def` + outer `asyncio.run` / `run_one_shot` |
+| No timing/wall-clock asserts | OK |
+| Plan files only (`test_telescope.py`, `telescope.md`) | OK — no other test file edits in diff |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Known residual (documented):** bible + Betty **TESTS: OK** — reverting a **call site** to bare `asyncio.run` would not fail this class; plan and bible state that explicitly. Product decision already flagged for Susan; not a blocker for this gap ticket.
+- **`[bug-repro]` tag shape:** tag lives in the test **docstring** first line, not a `# [bug-repro]` comment (same minor convention drift as AST-1848); Betty thread + bible manifest still key the node — not fix-now.
+- **Betty qa-fix ops:** `[bug-repro]` comment notes `origin/tests-clean-base` missing, cherry-pick to `origin/tests` @ `b3c7f256`, and **marker still needs restoring** — Chuckles/process, not a defect in the published sub diff vs ftr.
+- **Pre-existing suite noise:** four failing `test_telescope.py` nodes (`TestTelescopePoolHttp` ×3, `TestAst1750PostTelescopeDebugDump`) on retired `_TelescopePool`; Hedy documented identical on `origin/dev` — out of gap scope per plan **Blast radius**.
+
+## What’s solid
+
+- Strict gap-child footprint: tests + test-bible + plan-fix doc only; no product smuggle.
+- Implementation matches plan-fix **Proposed change** (fixture, `_touch`, `_assert_released`, four nodes, bible section + manifest command).
+- Repro class would go red if `run_one_shot` existed but skipped `close_loop_resources`, not only on missing symbol.
+- ftr now carries AST-1849; engineer red→green gate (`83a0c352` → tip on ftr) satisfied per thread.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned mini-parent AST-1841** | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). After UT: merge gap sub into **`origin/ftr/AST-1841-…`** (tests green on ftr without scratch overlay), then finish-up-style **`origin/dev`** for the orphaned mini-parent per fix-lane §8 — not `prep-uat` rollup. Restore **`origin/tests`** marker per Betty if still open. |
+
+context_tokens≈0
+```
