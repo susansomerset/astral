@@ -175,4 +175,24 @@ describe("Authenticate page (AST-830 / AST-1374 / AST-1441)", () => {
       expect(navigate).toHaveBeenCalledWith("/jobs/detail/j-notoken", { replace: true }),
     )
   })
+
+  it("[bug-repro] AST-1768: magic link in a new tab still returns to the captured deeplink", async () => {
+    // Tab A (Login gate) captured the deeplink; magic link opens /authenticate in tab B.
+    captureAuthReturnPath("/jobs/detail/j-jolane", "")
+    sessionStorage.clear()
+    stytchTestState.session = null
+    stytchTestState.parseAuthenticateUrlResult = {
+      token: "abc",
+      tokenType: "magic_links",
+      handled: true,
+    }
+    stytchTestState.authenticateByUrlImpl = async () => ({
+      handled: true,
+      tokenType: "magic_links",
+    })
+    renderAuthenticate()
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith("/jobs/detail/j-jolane", { replace: true }),
+    )
+  })
 })
