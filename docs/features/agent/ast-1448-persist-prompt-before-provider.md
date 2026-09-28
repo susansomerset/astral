@@ -953,6 +953,22 @@ AST-1843 board-joan done — CANON: OK.
 [board-joan]  CANON: OK
 ```
 
+## Bug: AST-1843 — Build stub (Ada / make-fix)
+
+**Publish ref:** `origin/sub/AST-1825/AST-1843-repro-coverage` · synced tip `870e2a0f` (`merge-tests(AST-1843): origin/tests 7c40f2c4`)
+
+**Product absorbed from ftr, no product edits here.** AST-1842's four product commits reached this sub through `origin/ftr/AST-1825-select-job-page-db-lock-loop-stall`. `git diff --stat origin/ftr/AST-1825-select-job-page-db-lock-loop-stall HEAD -- src` is empty, so this sub carries no product delta of its own. Present on tip: `do_task` stores via `asyncio.to_thread` (12 RESPONSE + 1 prompt), `ASTRAL_CONFIG["db_connection"]` + `_get_connection` WAL/busy timeout, and the roster `PROVIDER_CALL_BUDGET["failure_class"]` hold.
+
+**`[bug-repro]` gate (Betty `7c40f2c4`):**
+
+| Node id | Tip `870e2a0f` | Pre-fix product (`31846c28` src swapped in) |
+|---------|----------------|---------------------------------------------|
+| `tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold::test_find_job_page_provider_call_timeout_holds_pjl_ready` | PASSED | FAILED |
+| `tests/component/core/test_agent.py::TestAst1842DoTaskStoreOffLoop::test_slow_save_agent_data_does_not_block_loop` | PASSED | FAILED |
+| `tests/component/data/test_database.py::TestAst1842ConnectionWalBusyTimeout::test_get_connection_wal_and_configured_busy_timeout` | PASSED | FAILED |
+
+**Regression classes from the manifest:** `TestAst897HoldStateOnBalanceRefusal` all green. `TestAst1448PersistPromptBeforeProvider` 14 passed / 3 failed, and all 3 failures are the known pre-existing reds recorded in § Bug: AST-1842 build stub (`…debug_emits_prompt_found…`, `…prompt_only_batch_is_not_latest_ref…`, `…bare_run_adhoc…`). Nothing new.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
