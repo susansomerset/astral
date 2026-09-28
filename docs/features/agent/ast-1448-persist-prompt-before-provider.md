@@ -863,6 +863,96 @@ Red check: the three `TestAst1842*` node ids against `origin/dev` product (pre-A
 - AST-1842's contract as merged: prompt persist completes before the provider await; timeout hold returns the AST-897 shape; `db_connection` config drives `_get_connection`. Tests assert that contract; they do not re-specify it.
 - No product code on this publish ref (engineer and Betty hooks both enforce; plan-fix doc edit is the only engineer commit here).
 
+## Bug: AST-1843 — Fix board (Joan)
+
+## Fix-board Joan pass — AST-1843
+
+**Ticket:** AST-1843 (test/bible gap sibling of AST-1842; mini-parent AST-1825)  
+**Read:** `origin/sub/AST-1825/AST-1843-repro-coverage:docs/features/agent/ast-1448-persist-prompt-before-provider.md` § Bug: AST-1843 (As-is / To-be / Repro / Root cause / Proposed change / Blast radius / What must still hold)  
+**Canon Scope:** None on AST-1843 or AST-1825 — roster overlap triage only (not R1–R7).  
+**Roster:** No `docs/canon-index.md` on publish ref (same resolution as AST-1842 / prior fix-board passes: `canon/statutes/README.md`, `canon/docs/HARVEST-patterns.md`, active `canon/directives/active/*`).
+
+### Plan-fix summary (canon lens)
+
+| Deliverable | Paths | Product? |
+|-------------|--------|----------|
+| Three `[bug-repro]` tests | `test_roster.py`, `test_agent.py`, `test_database.py` | No |
+| Bible nodes + manifest rows | `docs/test-bible/core/roster.md`, `core/agent.md`, `data/database.md` | No |
+
+Root cause is **coverage gap only** (AST-1842 fix-board Betty `TESTS: REVISE` → gap child, same lane shape as AST-1822 / AST-1767 / AST-1743). Betty lands at `qa-fix` on `astral-tests`; explicit scope forbids product files.
+
+**Behaviors under test** (already merged on ftr via AST-1842; Joan **CANON: OK** on product fix):
+
+1. `provider_call_timeout` on `select_job_page` holds `PJL_READY` (AST-897-shaped hold, no `NO_JOBLIST`).
+2. Slow `save_agent_data` during `do_task` does not freeze the event loop (`asyncio.to_thread` at store call sites).
+3. `_get_connection` applies `ASTRAL_CONFIG["db_connection"]` (WAL + configured busy timeout).
+
+Tests **pin** that contract; they do not redefine product law or edit `canon/**`.
+
+---
+
+### Overlap review
+
+**`orch.roles.betty-owns-test-tree` / `astral.git.engineer-test-tree-ban` / `astral.git.betty-no-src-or-features`**  
+- Proposed change is exactly Betty-owned paths; no `src/` or `docs/features/` product commits on this ref.  
+- **Judgment:** Conforming workflow; no canon impact.
+
+**`astral.standards.names-not-ticket-ids`**  
+- `applies_when` is `src/**` and `scripts/**` only. `TestAst1842*` / bible headings citing AST-1842 are test-bible convention (parallel `TestAst897`, `TestAst1448`, bible `### AST-…` sections).  
+- **Judgment:** Out of scope for this statute; no REVISE.
+
+**`pattern.agent.prompt-persist-before-provider` (HARVEST proposed)**  
+- Test 2 exercises prompt + RESPONSE stores with blocking I/O off the loop while preserving call order; does not weaken AST-1448 manifest tests in the narrowed manifest.  
+- **Judgment:** Documents behavior Joan already treated as conforming on AST-1842; no catalog edit.
+
+**`patt.task.dispatch-retry` (arc 5)**  
+- Test 1 asserts timeout **hold**, not “failure stays in state” as a new dispatch-retry rule. Product precedent (AST-897 hold) was already accepted on AST-1842 board pass; tests mirror shipped ftr behavior.  
+- **Judgment:** Pre-existing arc-5 tension vs holds is not **introduced** by this test-only ticket; no F3 trigger.
+
+**`astral.config.config-source-of-truth`**  
+- Test 1 imports `PROVIDER_CALL_BUDGET["failure_class"]` (plan forbids hard-coding `"provider_call_timeout"`). Test 3 reads `ASTRAL_CONFIG["db_connection"]` — asserts product config ownership, does not scatter literals in `src/`.  
+- **Judgment:** Conforming test style; no statute change.
+
+**`astral.standards.data-raises-caller-logs` / `astral.standards.debug-contract-gated`**  
+- No `src/data` or debug-contract product edits; tests stub/measure only.  
+- **Judgment:** No impact.
+
+**`astral.standards.database-header-inventory`**  
+- Test 3 uses temp `DB_PATH`; no new tables or header drift.  
+- **Judgment:** No impact.
+
+**`orch.roles.archie-approves-statutes`**  
+- Plan does not touch `canon/statutes`, `canon/patterns`, or active directives.  
+- **Judgment:** N/A.
+
+**Blast radius (canon)**  
+- Timing-based test (~2–3s), isolated WAL temp DB, pre-existing suite reds called out — operational/test-tree concerns for Betty, not corpus updates.  
+- Bible prose describes **where** tests live; that is not directive authoring.
+
+---
+
+### ESCALATE check
+
+- No new architectural precedent beyond AST-1842 (already board-cleared).  
+- No ambiguous statute blocking Betty’s three repros + bible rows.  
+- Bounded scope: three classes, three bible sections, no conftest/product.
+
+---
+
+### Verdict rationale
+
+AST-1843 is a **test/bible gap** child. The proposed patch does not modify, contradict, or require carving exceptions in any active statute or pattern. It encodes the AST-1842 product contract Joan already rated **CANON: OK**. Precedent: gap siblings such as AST-1767 (`test/bible gap only; no product or active canon impact`).
+
+F3 (`validate-plan` fix mode) is **not** triggered from this board pass.
+
+```text
+AST-1843 board-joan done — CANON: OK.
+```
+
+```
+[board-joan]  CANON: OK
+```
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
