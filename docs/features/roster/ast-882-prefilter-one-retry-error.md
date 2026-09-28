@@ -752,3 +752,42 @@ Joan authors the literal patch; Chuckles applies it verbatim. No new directive i
 - The AST-1839 contract as shipped (§ Bug: AST-1839 → Proposed change / What must still hold). Tests pin it and don't re-shape it.
 - Pre-existing, non-AST-1839 assertions in the touched classes (balance-refusal hold, clean evaluate outcomes, AST-1810 fetch_website re-scrape of every WFR row, AST-1155/1760 holding → `FAILED_TECHNICAL_*`) stay asserted.
 - The canon carve-out stays scoped to retry-routed dispatch batch failures and the `log_llm_batch_summary` level. It doesn't loosen ERROR for terminal or unrouted exceptions.
+
+### Fix board — AST-1846
+
+#### Betty
+
+[board-betty] TESTS: REVISE
+What: docs/test-bible/README.md §6a/§7.12 (`LOCKED_AT_100`) — missing coverage — the plan's manifest is narrowed node ids only, so `check_per_file_coverage.py` never runs on the five locked files AST-1839 touched (`roster.py`, `consult.py`, `agent.py`, `candidate.py`, `config.py`), and the 13 repro nodes leave new 36f385a2 branches unexercised. Add to §2/§3: a branch-lock check on those five files at `2eac54b5`, plus a node for each uncovered AST-1839 branch it reports. Likely uncovered: `agent.py` `failure_note` fallbacks (non-dict perf / top-level note / no note) and `_should_store` store-exception; `candidate.py` hop-label hold + unregistered-trigger WARNING returns; `consult.py` process_fn-exception `_log_fail_dest`, upshot no-company / no-live-content / non-dict-parse holding-vs-terminal branches, `if error_state else 0` false branch. The rest of the test plan (19 flips verified present at tip, 13 repro nodes, red-at-base-on-assertion gate, bible pages) is right as written.
+
+#### Joan
+
+```text
+[board-joan]  CANON: REVISE
+What: stat.logging.warning + stat.logging.error — AST-1839 destination carve-out (§4 intent) — F3 literal patch
+```
+
+**Findings (fix-board Joan — AST-1846 only)**
+
+**Read:** `## AST-1846 plan-fix` on `origin/sub/AST-1828/AST-1846-auto-retry-warn-then-error-gap` (As-is / To-be / Repro / Root cause / Proposed change §1–§4 / Blast radius / What must still hold). No product `src/**`; Joan scope is **§4 only** (Betty §1–§3 is Betty’s board, not re-scored here).
+
+**Confirm REVISE intent (correct):** On this gap child, **`CANON: REVISE` is the expected board outcome**, not a plan defect. It matches AST-1839 fix-board Joan (“logging Resolution §2/§3 pending **AST-1846**”) and records that **in-force canon still contradicts shipped AST-1839** until F3 lands. **`validate-plan` fix mode** is where you **author the literal** `stat.logging.warning` / `stat.logging.error` text; Chuckles applies it verbatim per plan §4 and ticket Boundaries. **`make-fix`** on this ref stays empty product + canon commit after F3. Do **not** read REVISE as ESCALATE or as “replan the carve-out”—§4 intent already matches Susan To-be and `_log_fail_dest` / `retry_base(dest)`.
+
+**Directives touched (canon):** Only these two, as scoped in plan §4 and Linear Boundaries:
+
+| Id | Plan §4 intent |
+|----|----------------|
+| `stat.logging.warning` | Statement + Resolution §2: **carve-out** — caught batch failure routed to a **retry holding** (`retry_base(dest)` not `None`) → **WARNING** per item (`who → dest [why]`); traceback **`logger.debug(..., exc_info=True)`**, not `logger.exception`. §2 “thrown → error” **unchanged** for all other paths (terminal dest, unrouted throw, dispatcher crash). |
+| `stat.logging.error` | Statement/Do + Resolution §3: ERROR + traceback for **terminal/error destination** or **unrouted** exception; **`log_llm_batch_summary(..., error=...)`** at **WARNING**; caller **ERROR** only when the entity lands terminal/error. Replace “the hop error line” wording accordingly. |
+
+**No other directive ids in scope:** Plan explicitly excludes new ids and other `stat.logging.*` files. **No `patt.*` or config statute amend** on this ticket—`patt.task.dispatch-retry` alignment is product/tests (Betty §1–§2), not canon text here.
+
+**Advisory for F3 (not separate board REVISE ids):** After §3 moves provider summary to WARNING, skim **`stat.logging.info`** Resolution §3 (“exception → error”) and **`stat.logging.debug`** Notes on `log_llm_batch_summary` for stale “error-only hop” implications. If a one-line **cross-reference** in Notes avoids reader confusion, add it in F3 **only if** it stays inside the two-file boundary; otherwise leave them untouched per Boundaries.
+
+**ESCALATE:** No. Carve-out is bounded (retry-routed dispatch batch + provider summary level); Susan/AST-1839 product already shipped; no new precedent beyond amending the two logging statutes.
+
+**Chuckles branch (Joan half):** REVISE → Plan Discuss optional only if F3 finds wording gaps; then **`validate-plan` fix mode (F3)** before **`make-fix`** on AST-1846. Parallel **Betty `qa-fix` (F4)** for §1–§3 is independent; board matrix REVISE|REVISE runs both F3 and F4 (F3 before F4 per fix-lane table).
+
+#### Chuckles disposition
+
+Both REVISE. AST-1846 is the gap child, so both run inline (no gap-of-a-gap): F3 validate-plan fix mode (Joan writes the literal `stat.logging.warning` / `stat.logging.error` patch, Chuckles applies it verbatim), then F4 qa-fix (Betty), with her branch-lock addendum (a `check_per_file_coverage.py` run on the five locked files at `2eac54b5`, plus a node for each uncovered AST-1839 branch) added to §2/§3 scope. make-fix = empty `code(AST-1846)` after sync.
