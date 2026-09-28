@@ -946,3 +946,66 @@ END-VERDICT
 ```text
 AST-1849 board-joan done — CANON: OK.
 ```
+
+
+### Radia review — AST-1849
+
+**Diff reviewed:** `origin/ftr/AST-1841-asyncio-run-telescope-loop-teardown...origin/sub/AST-1841/AST-1849-asyncio-run-telescope-loop-teardown` — commits through `bf470756` (plan-fix, Joan board, product); product delta `src/external/telescope.py`, `src/ui/api/api_admin.py`, `api_meteorite.py`, `api_inbox.py`, `src/core/gazer.py`, `src/core/contact.py` (+ plan-fix doc block, unrelated doc carry below).
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — same as sibling orphaned fixes; no directive ids to score. Joan fix-board overlap skim in issue doc records `[board-joan] CANON: OK` including `astral.layers.import-direction` / `astral.layers.core-vs-external-bright-line`. Off-list statutes not graded per §5.3.)*
+
+| (no frozen ids) | — | — | — |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **fix-board** `[board-joan] CANON: OK` only; no `validate-plan` fix-mode score table for AST-1849).
+
+## Frame diff
+
+- [ ] **Description · What this implements:** still says “four confirmed … call sites” while Component/Technical scope and plan-fix list **five** (post `[scope-gate]` `contact.py`). Tick after aligning Linear text to five sites.
+
+## Fix-specific checks
+
+**`[bug-repro]`** — **not applicable — board REVISE owned by sibling AST-1850.** Betty `[board-betty] TESTS: REVISE` on AST-1849; repro nodes and `[bug-repro]` live on **AST-1850** per issue doc and spawn prompt. No `[bug-repro]` on this tip — expected, not fix-now.
+
+**`## What must still hold`** — **OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-1726 Stage 2: per-loop state; no cross-loop asyncpg/Events/Futures; `_state()` forgets closed loops as fallback | OK — `_TelescopeQueue` / `aclose_current_loop` untouched; `run_one_shot` only calls existing `close_loop_resources()` on the owning loop before `asyncio.run` exits |
+| `c86d8b5c`: `dispatcher._task_thread_target` teardown unchanged | OK — zero diff on `src/core/dispatcher.py`; sub tip still `close_loop_resources()` → `_cancel_pending_tasks` → `loop.close()` |
+| Five sites: same return values and exception types; HTTP mappings unchanged; contact per-task `try/except` unchanged | OK — thin `asyncio.run` → `run_one_shot` swap; handlers/wrappers unchanged; `run_one_shot` re-raises after `finally` |
+| AST-1728 admin Telescope **response shape** unchanged | OK — only execution wrapper in `admin_telescope()`; workbench `asyncio.run` at ~1679 untouched |
+| No new depth/output/timeout limits; no new logging | OK — diff adds no limits or log lines |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Sibling test gap:** AST-1850 owns Betty’s REVISE manifest (`run_one_shot` / Repro 1–4); this tip is product-only by design — merge order per plan (tests red on ftr until AST-1849 lands).
+- **Stray doc carry:** commit `3998536e` appends **AST-1845** epic-registry **Threads** to `docs/features/roster/ast-891-parse-job-list-browser-and-batch.md` — unrelated to AST-1849. Harmless to product; Chuckles may omit from dev merge narrative or strip on doc commit.
+- **Linear copy drift:** “four confirmed sites” in **What this implements** vs five in scope/plan — cosmetic; frame diff above.
+- **UI → external imports:** `api_inbox.py` / `api_meteorite.py` gain first `src.external.telescope` import (runner only); follows existing `api_admin` Telescope import pattern named in plan.
+- **Test baseline noise:** Hedy Tests Passed comment — 28 component failures identical with fix reverted; not introduced here.
+
+## What’s solid
+
+- `run_one_shot` matches plan-fix verbatim (placement, `try`/`finally`, no extra logging, no `_cancel_pending_tasks`).
+- All **five** binding sites switched; `contact.py` only the `iscoroutinefunction(handler)` branch; `:572` / `:1153` / `:1202` `asyncio.run` left bare.
+- Plan fidelity to **To-be** and **Proposed change** (six files, dispatcher/queue internals out) satisfied on the product diff.
+- Estimate **2** footprint still fits (wrapper + five call-site swaps).
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned mini-parent AST-1841** (spawn: finish-up-style **`origin/dev`**, not `merge-child`/`prep-uat`) | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). When Susan accepts UT, merge **`sub/AST-1841/AST-1849-…`** straight to **`origin/dev`** (single bug), not via parent UAT rollup. |
+
+context_tokens≈0
+```
