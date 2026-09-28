@@ -595,6 +595,85 @@ AST-1842 board-joan done — CANON: OK.
 
 **Touched-area suites (Python 3.14 venv):** `tests/component/core/test_agent.py` + `test_agent_ast1448.py` + `TestAst984…test_list_latest_per_task_key`, `tests/component/core/test_roster.py`, `tests/component/data/**` — failure sets identical before vs after this fix (41 / 50 / 51 failed + 2 collection errors, zero new). Pre-existing reds include `TestAst1448PersistPromptBeforeProvider::test_do_task_debug_emits_prompt_found_recorded_before_provider` (expects a `prompt-found` event), `no such table: company`, and `SURFER_BATCH_CONFIG` import errors — for Betty/test-fix, not product changes here.
 
+## Bug: AST-1842 — Radia review-fix
+
+[code-rubric]
+
+**Ticket:** AST-1842  
+**Publish ref:** `b43b7bf9832357371c678f474289ece5b12d50c0` (`origin/sub/AST-1825/AST-1842-agent-data-writes-off-event-loop`)  
+**Diff base:** `origin/ftr/AST-1825-select-job-page-db-lock-loop-stall...origin/sub/AST-1825/AST-1842-agent-data-writes-off-event-loop` (5 paths: `src/core/agent.py`, `src/core/roster.py`, `src/data/database.py`, `src/utils/config.py`, plan-fix doc append)  
+**Corpus:** `a0bc2f0e5b5810448cf465ebeff84ffb6f1d60b6`  
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen canon list on AST-1842 is **empty** (no `Canon Scope` / directive ids locked at Plan Approved; fix-board Joan: overlap triage only, `CANON: OK`, no `validate-plan` fix-mode rubric). Per `review-child` §5, **no directive rows to score** — roll-up from canon grades is vacuously clean. `docs/canon-index.md` remains absent on publish ref (same resolution path as fix-board: harvested statutes + patterns via `canon_clerk`).
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (no Joan `validate-plan` column on this bug; fix-board narrative only).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** N/A — routed to sibling **AST-1843** (Betty `[board-betty] TESTS: REVISE`; repro coverage not in this diff; not a miss on AST-1842).
+
+**## What must still hold** — OK
+
+| Item | Verdict |
+|------|---------|
+| AST-1448 AC1–AC8 (prompt before provider; RESPONSE after; swallow does not skip provider; `store_agent_data` gate; sequencing) | `await asyncio.to_thread(_store_prompt_blocks, …)` completes before `send_to_*` (agent.py ~2155–2218); RESPONSE stores remain after provider return with same `_should_store` / swallow pattern; no change to `store_agent_data=False` logic. |
+| AST-1189 (`PROVIDER_CALL_BUDGET`, budget machinery) | Config block untouched; roster compares `failure_class` to `PROVIDER_CALL_BUDGET["failure_class"]` only. |
+| AST-897 balance-refusal hold | Same return dict shape; timeout shares the branch. |
+| Healthy `select_job_page` / non-timeout failures → `NO_JOBLIST` | Success path and fall-through `_save_company(… NO_JOBLIST …)` unchanged after the widened hold branch. |
+| Data layer contract | `_run_with_retry` unchanged; `save_agent_data` path unchanged aside from caller thread; no new tables/migrations/logging in `src/data/`. |
+| Boundaries | No edits to `PROVIDER_CALL_BUDGET` values, `dispatch_timeout_seconds`, dispatcher gather, or prompts. |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Plan fidelity:** Diff matches plan-fix steps 1–5 (config `db_connection`, `_get_connection` WAL + busy timeout, all `do_task` store sites via `asyncio.to_thread`, roster timeout hold). Step 6 (30+ company host re-run) explicitly operator/UAT — still open per build stub; not a code defect on this tip.
+- **Sibling test carry / coverage gap:** Betty flagged missing repro coverage at fix-board; ownership on **AST-1843**, not this publish ref (product-only diff).
+- **Blast radius (WAL):** `download_db` / unchecked WAL pages — already documented in plan-fix; no new regression introduced by this diff beyond the accepted WAL flip.
+- **Stale ticket Technical scope** mentioned a possible async `_run_with_retry` variant; **plan-fix Step 4** chose verify-only — implementation follows the patch, not the looser intake bullet.
+
+## What's solid
+
+- Surgical footprint: four production modules, aligned with declared scope; no sibling product smuggle.
+- Ordering invariant preserved: prompt persist still gates provider await; failure-class hold mirrors AST-897 instead of inventing new roster states.
+- Config-driven sqlite settings (`db_connection`) rather than hard-coded PRAGMA/timeouts in `database.py`.
+
+## Notes for Chuckles (post-review branching)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (C7 complete) | Normal mini-parent **AST-1825** (live `ftr`, not orphaned-to-dev) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+Do **not** treat AST-1842 as orphaned merge-to-dev despite plan doc wording “orphaned bug” in the INTERRUPTED sense — spawn prompt confirms live `ftr/AST-1825-select-job-page-db-lock-loop-stall`.
+
+## Recommended actions (downstream only — not performed here)
+
+- Append this artifact to `docs/features/agent/ast-1448-persist-prompt-before-provider.md` § Bug: AST-1842 and `docs()` push on sub branch.
+- Post slim upshot via `linear_proxy.py --as radia save-comment`.
+- Move **Review Posted** then §3h → **User Testing** if Susan/Chuckles accept CLEAN.
+- Track **AST-1843** for Betty repro tests; **AST-1842** does not block on `[bug-repro]` presence.
+
+`context_tokens≈28000`
+
+---
+
+```
+[code-rubric] PROCEED (Commit: b43b7bf9832357371c678f474289ece5b12d50c0) Off-loop writes WAL hold
+```
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
