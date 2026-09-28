@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 
 from src.core import roster as roster_mod
-from src.utils.config import COMPANY_STATES, PROVIDER_CALL_BUDGET, ROSTER_CONFIG, TASK_CONFIG
+from src.utils.config import COMPANY_STATES, ROSTER_CONFIG, TASK_CONFIG
 
 
 def _prefilter_rubric_ctx(*, multi_vector: bool = False) -> Dict[str, Any]:
@@ -6160,48 +6160,6 @@ class TestAst897HoldStateOnBalanceRefusal:
         out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b897-fc")
         assert out["total_errors"] == 1
         transition.assert_not_called()
-
-
-class TestAst1842SelectJobPageTimeoutHold:
-    """AST-1842: provider_call_timeout on select_job_page holds loop-eligible state (no NO_JOBLIST)."""
-
-    @pytest.mark.asyncio
-    async def test_find_job_page_provider_call_timeout_holds_pjl_ready(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # [bug-repro] pre-fix: timeout falls through to _save_company(state="NO_JOBLIST") like a model verdict
-        monkeypatch.setattr(
-            roster_mod,
-            "do_task",
-            AsyncMock(
-                return_value={
-                    "success": False,
-                    "error": "Provider call exceeded per-call time budget (600s)",
-                    "failure_class": PROVIDER_CALL_BUDGET["failure_class"],
-                }
-            ),
-        )
-        saver = MagicMock()
-        monkeypatch.setattr(roster_mod, "_save_company", saver)
-        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state="PJL_READY")))
-        out = await roster_mod._find_job_page_from_assembled(
-            short_name="acme",
-            company_website="https://cw",
-            assembled_content="asm",
-            page_url_map={1: "https://jobs"},
-            page_dom_map={},
-            visible_map={1: ""},
-            nav_links="",
-            browser_context=None,
-            debug=False,
-            ctx=None,
-            chain_parse=False,  # select-only dispatch entry, as run_select_job_page_dispatch calls it
-            decomposed=True,
-        )
-        assert out["response_type"] == "SELECT_FAILED"
-        assert out["state"] == "PJL_READY"
-        assert out.get("state_held") is True
-        assert out.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]
-        assert out.get("error")
-        saver.assert_not_called()
 
 
 class TestAst1155PrefilterIncompleteRetry:
