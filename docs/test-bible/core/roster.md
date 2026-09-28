@@ -714,6 +714,8 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 
 Consult / dispatcher / config: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/utils/config.md`** (**AST-891**).
 
+Timeout partial counts: § AST-1847 · AST-1848.
+
 **AST-891** narrowed run:
 
 ```bash
@@ -986,3 +988,38 @@ Sibling pages: **`core/consult.md`**, **`core/agent.md`**, **`core/candidate.md`
 **Pass criterion:** pytest green on items 1–2 (50 node runs incl. params) — not the zero-arg harness / whole-file branch-lock gate (host drift; AST-1839 lines are fully covered, see Branch lock above).
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1828/AST-1846-auto-retry-warn-then-error-gap:docs/test-bible/core/roster.md | shasum`
+
+### AST-1847 · AST-1848 (qa-fix bug-repro — parse_job_list timeout partial counts in ledger)
+
+**Parent:** [AST-1845](https://linear.app/astralcareermatch/issue/AST-1845) (orphaned-bug mini-parent). Product: **AST-1847** (`ba60f8e4`, not yet on ftr); test/bible delivery on gap sibling **AST-1848**. `parse_job_list_batch` tallies each finished company into `ctx["dispatch_partial"]` in place (`_tally(key)` alongside every local counter, same AST-1839 buckets; retry → processed only); `_counted` tallies an escaping `Exception` as an error and re-raises; a `CancelledError` company is never tallied. `ctx=None` or a ctx without the key → no-op; return dict unchanged. Dispatcher half (set / pop / timeout fold-in, real-chain repro): **`docs/test-bible/core/dispatcher.md`** § AST-1847 · AST-1848.
+
+**Red / green:** red at ftr base `8e7b77a5` (partial stays zeros), green with `ba60f8e4`'s `roster.py` + `dispatcher.py` overlaid (scratch worktree, not committed). Node `test_ctx_without_dispatch_partial_is_noop` is a guard — green both.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| All four `_one` outcomes tally in place (`_tally(key)` + `_tally(None)`); return shape unchanged | `parse_job_list_batch` | **`tests/component/core/test_roster.py::TestAst1847ParseJobListBatchPartialTally::test_tallies_every_outcome_into_ctx_dispatch_partial`** (**bug-repro**) |
+| `_counted` except path: tallied once, post-gather count not doubled | same | **`…::test_counted_tallies_escaping_exception_once`** (branch lock) |
+| Cancelled company not tallied (`except Exception` excludes `CancelledError`) | same | **`…::test_cancelled_company_is_not_tallied`** (branch lock) |
+| Real ctx without the key → `partial is None` no-op, no key invented | same | **`…::test_ctx_without_dispatch_partial_is_noop`** (guard) |
+
+**Branch lock:** see dispatcher.md § AST-1847 · AST-1848 — 0 missing lines / branches on the 23 lines `ba60f8e4` added to `roster.py`; whole-file 78.2% (base 78.1%) from pre-existing host drift.
+
+**Broken / obsolete (pre-existing, not AST-1847, left as-is):** `TestAst891ParseJobListBatch::test_scrape_timeout_labeled_infra_and_counts_passed` (see § AST-1846) and `TestAst891ParseJobListBatch::test_debug_emits_per_company_index` (`debug_index` never captured — `assert []`; fails identically at `8e7b77a5` and with the overlay). Both excluded from the manifest below.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **Tally nodes + AST-891 regression** (**[bug-repro]** red at `8e7b77a5`, green with AST-1847; AST-891 lines green both):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1847ParseJobListBatchPartialTally \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_unhandled_gather_exception_increments_errors_and_continues \
+  -q
+```
+
+2. **Dispatcher half + branch lock:** **`docs/test-bible/core/dispatcher.md`** § AST-1847 · AST-1848 manifest items 1–2.
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests:docs/test-bible/core/roster.md | shasum`
