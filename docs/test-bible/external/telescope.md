@@ -109,3 +109,23 @@ Gazer batch + roster scrape manifests: **`docs/test-bible/core/gazer.md`** · **
   tests/component/external/test_telescope.py::TestCullHtmlDefault \
   tests/component/external/test_telescope.py::TestAst1745CullPreservesRootSvgLogo -q
 ```
+
+---
+
+### AST-1849 · AST-1850 (qa-fix bug-repro — one-shot loop teardown)
+
+**Board REVISE:** no test referenced `close_loop_resources` / `aclose_current_loop` / `_LoopState` / `_pool._states`; one-shot `asyncio.run` callers leaked the per-loop asyncpg pool, LISTEN connection and `telescope-result-poller`. Product: **AST-1849** (`run_one_shot`); tests on gap sibling **AST-1850**. `[bug-repro]` node red on pre-fix `83a0c352` (`AttributeError`: no `run_one_shot`), green on ftr `0877d286` (AST-1849 `bf470756` merged). Control node green on both.
+
+| Area | Component tests |
+| --- | --- |
+| `run_one_shot` releases loop state (pool + listener closed once, poller done, `_states` empty) | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_run_one_shot_releases_loop_state` (**bug-repro**) |
+| Exception re-raised unchanged, cleanup still done | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_run_one_shot_reraises_and_still_releases` |
+| No Telescope touch → value returned, no pool, `_states` unchanged | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_run_one_shot_passthrough_without_telescope` |
+| Control: bare `asyncio.run` leaves loop state open | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_bare_asyncio_run_leaves_loop_state_control` |
+
+**Broken / obsolete:** none. Call-site swaps (`api_admin`, `api_meteorite`, `api_inbox`, `gazer`, `contact`) need no new nodes; no test patches `asyncio.run` on those modules. Known residual: a single call site reverting to bare `asyncio.run` is not caught by these nodes.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_telescope.py::TestAst1849OneShotLoopTeardown -q
+```
