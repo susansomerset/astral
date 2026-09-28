@@ -4477,7 +4477,7 @@ ASTRAL_CONFIG = {
     "template_candidate_id": "somerset",
 
     # --- Monitor (monitor) ---
-    "support_email": "susan+astral@susansomerset.com",
+    "support_email": "runtime-dispatch-error-498a58685f26@intake.linear.app",
 
     # --- Prompt prefix (anthropic) ---
     # Prepended to the user prompt on every API call. Tells agents the date/time
