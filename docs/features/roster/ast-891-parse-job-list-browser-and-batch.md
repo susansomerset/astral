@@ -495,3 +495,142 @@ END-VERDICT
 ```text
 AST-1847 board-joan done — CANON: OK.
 ```
+
+---
+
+## Bug: AST-1848 — parse_job_list timeout partial-count repro + tally/fold-in branch tests (AST-1847 board)
+
+Gap sibling of **AST-1847** under mini-parent AST-1845. Answers AST-1847's `[board-betty] TESTS: REVISE`. **Test + bible only**. Betty lands every node below at `qa-fix`; no product code on this ref. Scope: `tests/component/core/test_dispatcher.py`, `tests/component/core/test_roster.py`, `docs/test-bible/core/dispatcher.md`, `docs/test-bible/core/roster.md`. Existing tests stay unchanged. No limits or caps.
+
+### As-is
+
+No test reaches the AST-1847 contract. `TestDispatchOne::test_auto_dispatch_uses_timeout` mocks `asyncio.wait_for` to raise immediately and only asserts it was awaited (no ledger, no log). Every `TestAst891ParseJobListBatch` case calls `parse_job_list_batch` with `ctx=None`. AST-1847's new branches on the two `LOCKED_AT_100` files (`_tally`, `_counted`, `_run_unified` set/pop, timeout fold-in) have no nodes.
+
+### To-be
+
+One `[bug-repro]` node drives a real `parse_job_list` dispatch into the timeout after some companies finished. It is **red at the ftr base** `8e7b77a5` (ledger `total_processed=0`, log without counts) and **green at AST-1847** `ba60f8e4` (ledger and timeout log carry the partial counts). Branch-lock nodes cover every line AST-1847 added. Bible pages gain one block each.
+
+### Repro
+
+The `[bug-repro]` node below **is** the repro: the Proposed change §1 fixture. It was already proven by engineer dry-run outside `tests/` (scratch script mirroring §1, not committed). Base gives `{'status': 'INTERRUPTED', 'total_processed': 0, 'total_passed': 0, 'total_failed': 0, 'total_errors': 1}`. `ba60f8e4` gives `total_processed=3, total_passed=2, total_failed=0, total_errors=1`, and the log shows `dispatch timeout after 0.5s batch=… processed=3 passed=2 failed=0 errors=1`.
+
+### Root cause
+
+Coverage gap. The AST-1847 behaviour lives on the cancel path (`asyncio.wait_for` timeout mid-gather) and on a `ctx` key. Existing tests stub both away (`wait_for` raises synchronously; `ctx=None`).
+
+### Proposed change
+
+**Sequencing (AST-1844 / AST-1846 precedent):** product landed first on `origin/sub/AST-1845/AST-1847-parse-job-list-timeout-partial-counts` @ `ba60f8e4`, which is not yet on ftr. This gap ref carries AST-1847's **doc-only** tip (`3dd75285`, merged at `7a88d238`) and no product. Prove red on this ref / ftr base `8e7b77a5`. Prove green with the product files from `ba60f8e4` (e.g. scratch worktree + `git checkout ba60f8e4 -- src/core/roster.py src/core/dispatcher.py`, not committed here). How to overlay is Betty's call.
+
+#### `tests/component/core/test_dispatcher.py`, new class `TestAst1847TimeoutPartialCounts` (after `TestAst841DispatchTerminalLogging`)
+
+Common stubs (same idiom as `TestDispatchOne` / `TestAst841…`): `database.get_candidate` → `{"astral_candidate_id": cid, "candidate_api_key": "key"}`; `database.save_dispatch_ledger` `MagicMock`; `database.update_dispatch_ledger` `MagicMock` (captured); `compute_batch_cost` → `0.0`; `flush_log_buffer`, `_db_update_dispatch_task`, `_check_circuit_breaker`, `monitor.auto_run_error` → `MagicMock`; register the task id in `_task_registry`; `caplog.at_level("ERROR", logger="src.core.dispatcher")`.
+
+1. **`test_parse_job_list_timeout_ledger_and_log_carry_partial_counts`** (**bug-repro**). Real `_dispatch_one → _run_dispatch_loop → _run_task → _run_unified → consult.run_consult_task → roster.parse_job_list_batch`. Nothing in that chain is mocked.
+   - Extra stubs: `dispatcher_mod.check_internet_reachable` → `True`; `dispatcher_mod._current_agent_task_run_next` → `None` (ledger owned by dispatch); `database.count_eligible_for_dispatch_task` → `4`; `monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "dispatch_timeout_seconds", 0.2)`; `src.core.roster.get_new_company_batch` → `lambda *a, **k: (k["batch_id"], companies)`; `src.core.roster.clear_company_batch` → `MagicMock` (captured); `roster_mod.create_batch_browser_session` → `asynccontextmanager` yielding a `MagicMock` (inline; `_mock_parse_batch_browser_session` lives in `test_roster.py`); `roster_mod.get_company` → `{}`.
+   - Companies `a, b, c, d` (`state="JOBLIST_IDENTIFIED"`). `roster_mod.run_parse_job_list_dispatch` fake: `a`, `b` → `{"state": "WATCH"}`; `c` → `{"state": "JOBLIST_IDENTIFIED_RETRY"}`; `d` → `await asyncio.sleep(3600)`. Pass/retry state literals come from `ROSTER_CONFIG["parse_job_list"]["pass_state"/"retry_state"]`.
+   - Task: `{"id": 1847, "task_key": "parse_job_list", "candidate_id": "cand-1", "entity_type": "company", "trigger_state": "JOBLIST_IDENTIFIED", "auto_mode": 1, "batch_call_mode": 1, "max_runs": 1}`.
+   - Assert last `update_dispatch_ledger.call_args.kwargs`: `status == "INTERRUPTED"`, `total_processed == 3`, `total_passed == 2`, `total_failed == 0`, `total_errors == 1` (the 1 is the timeout; `d` cancelled, uncounted).
+   - Assert one caplog record contains `"dispatch timeout after"` **and** `"processed=3 passed=2 failed=0 errors=1"`.
+   - Assert `clear_company_batch` called once with the batch id (AST-891 AC2 invariant: `_run_unified` `finally` still releases on cancel).
+   - Base: ledger `0/0/0/1`, log lacks counts → **red**. `ba60f8e4` → **green**. The 0.2s is only the timeout trigger, not a timing assertion. `a`–`c` finish with no awaits on I/O.
+
+2. **`test_timeout_folds_partial_on_top_of_prior_runs`** (branch lock: fold-in loop with items + log order). Patch `dispatcher_mod._run_dispatch_loop` with `AsyncMock(side_effect=_hang)`, where `_hang(ctx, task, task_key, batch_id, accumulated, dispatch_ledger_id=None)`:
+   - captures `ctx`;
+   - sets `accumulated` to `processed=5, passed=4, failed=0, errors=1` (completed prior runs);
+   - sets `ctx["dispatch_partial"] = {"total_processed": 2, "total_passed": 1, "total_failed": 0, "total_errors": 1}`;
+   - `await asyncio.sleep(3600)`.
+
+   `dispatch_timeout_seconds` → `0.05`; task `auto_mode=1`, `task_key="evaluate_jd"`. Assert:
+   - ledger kwargs `total_processed == 7, total_passed == 5, total_failed == 0, total_errors == 3` (1 + 1 + timeout);
+   - a caplog record contains `"processed=7 passed=5 failed=0 errors=3"` (proves `+1` lands before the log);
+   - `"dispatch_partial" not in captured_ctx` (popped).
+
+   Base: `5/4/0/2`, no counts in log → red.
+
+3. **Empty-partial path** (`ctx.pop(...) or {}` → zero iterations): already hit by existing `TestDispatchOne::test_auto_dispatch_uses_timeout` (`wait_for` raises before `_run_unified` sets the key). **No new node; leave that test unchanged.**
+
+#### `tests/component/core/test_dispatcher.py`, `TestRunUnified` (append)
+
+Stubs as `test_claims_jobs_and_clears_batch`, company flavour: `check_internet_reachable` → `True`; `src.core.roster.get_new_company_batch` → `(batch_id, [{"short_name": "co-1", "state": "JOBLIST_IDENTIFIED"}])`; `src.core.roster.clear_company_batch` `MagicMock`; task `{"entity_type": "company", "trigger_state": "JOBLIST_IDENTIFIED", "task_key": "parse_job_list", "batch_call_mode": 1}`.
+
+4. **`test_ast1847_sets_fresh_dispatch_partial_and_pops_on_return`**. `ctx = {"astral_candidate_id": "cand-1", "dispatch_partial": {"total_processed": 9, "total_passed": 9, "total_failed": 0, "total_errors": 0}}` (stale). `src.core.consult.run_consult_task` = `AsyncMock(side_effect=_seen)`, where `_seen` records `dict(ctx["dispatch_partial"])` and `ctx["dispatch_partial"] is dispatcher_mod._SUMMARY_ZERO`, then returns `{"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}`. Assert:
+   - seen partial `== dispatcher_mod._SUMMARY_ZERO` (fresh per run, stale 9s gone);
+   - seen identity is **not** `_SUMMARY_ZERO` (copy, so the module constant is never mutated);
+   - `"dispatch_partial" not in ctx` after return;
+   - `out["total_processed"] == 1`.
+
+   Base: stale 9s seen / key still present → red.
+
+5. **`test_ast1847_cancel_keeps_dispatch_partial_and_clears_batch`**. `ctx = {"astral_candidate_id": "cand-1"}`. `run_consult_task` side effect does `ctx["dispatch_partial"]["total_processed"] += 1; ctx["dispatch_partial"]["total_passed"] += 1`, then `raise asyncio.CancelledError()`. `with pytest.raises(asyncio.CancelledError)`. Assert:
+   - `ctx["dispatch_partial"] == {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}` (pop not reached on cancel);
+   - `clear_company_batch.assert_called_once_with(batch_id)`.
+
+   Base: `KeyError` in side effect → red.
+
+#### `tests/component/core/test_roster.py`, new class `TestAst1847ParseJobListBatchPartialTally` (after `TestAst891ParseJobListBatch`)
+
+Reuse `_mock_parse_batch_browser_session(monkeypatch)` and `TestAst891ParseJobListBatch._co`-style company dicts. `partial = dict(total_processed=0, total_passed=0, total_failed=0, total_errors=0)`; `ctx = {"dispatch_partial": partial}`.
+
+6. **`test_tallies_every_outcome_into_ctx_dispatch_partial`** (covers `_tally(key)` and `_tally(None)`, all four `_one` branches). Companies and their `run_parse_job_list_dispatch` results:
+   - `co-ok` → `{"state": "WATCH"}`
+   - `co-retry` → `{"state": "JOBLIST_IDENTIFIED_RETRY"}`
+   - `co-err` → `{"error": "boom", "state": "JOBLIST_IDENTIFIED_RETRY"}`
+   - `co-term` (`state="JOBLIST_IDENTIFIED_RETRY"`) → `{"state": "COULD_NOT_PARSE_JOBLIST"}`
+
+   Assert:
+   - `partial == {"total_processed": 4, "total_passed": 1, "total_failed": 0, "total_errors": 2}`;
+   - `ctx["dispatch_partial"] is partial` (mutated in place);
+   - return dict `== {"passed": 1, "failed": 0, "total": 4, "errors": 2, "retried": 1}` (normal-return shape unchanged).
+
+   Base: `partial` stays zeros → red.
+
+7. **`test_counted_tallies_escaping_exception_once`** (covers `_counted` except path). Companies `co-ok` → `WATCH`, `co-boom` → `raise RuntimeError("boom")`. Assert:
+   - `partial == {"total_processed": 2, "total_passed": 1, "total_failed": 0, "total_errors": 1}`;
+   - return `passed == 1, errors == 1` (post-gather count unchanged, not doubled).
+
+   Base: zeros → red.
+
+8. **`test_cancelled_company_is_not_tallied`** (`except Exception` excludes `CancelledError`). Companies `co-ok` → `WATCH`, `co-hang` → `await asyncio.sleep(3600)`. `with pytest.raises(asyncio.TimeoutError): await asyncio.wait_for(roster_mod.parse_job_list_batch("batch-1847", companies, ctx=ctx), 0.1)`. Assert `partial == {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}`. Base: processed `0` → red.
+
+9. **`test_ctx_without_dispatch_partial_is_noop`** (key absent with a real ctx; `partial is None` early return). `ctx = {"entity_batch_id": "batch-1847"}`, one `co-ok` → `WATCH`. Assert return `== {"passed": 1, "failed": 0, "total": 1, "errors": 0, "retried": 0}` and `ctx == {"entity_batch_id": "batch-1847"}` (no key invented). Green at base and tip (branch lock, not repro). Existing `ctx=None` cases also keep hitting this branch.
+
+#### Bible
+
+- **`docs/test-bible/core/dispatcher.md`**: new block `### AST-1847 · AST-1848 (qa-fix bug-repro — parse_job_list timeout partial counts in ledger)` appended after the last coverage block (`### AST-1561 · AST-1555`). Same shape as roster.md's `AST-1840 · AST-1844` block:
+  - `**Parent:**` line (AST-1845 mini-parent; product AST-1847 `ba60f8e4`; gap AST-1848; red at `8e7b77a5`, green at `ba60f8e4`);
+  - Area / Source / Component tests table rows for nodes 1, 2, 4, 5 (1 marked **bug-repro**, the rest branch lock), plus a row naming existing `TestDispatchOne::test_auto_dispatch_uses_timeout` as the empty-partial path;
+  - `**Broken / obsolete:** none.`;
+  - `**Integration:** none — do not invent.`;
+  - narrowed `run_component_tests.sh` command.
+- **`docs/test-bible/core/roster.md`**: new block with the same heading, appended after `### AST-1846 · AST-1828` (before `## QA test manifest`). Table rows for nodes 6–9, cross-link to `core/dispatcher.md` § AST-1847, same Broken/Integration lines, narrowed command.
+- **AST-891 blocks** in both pages (ticket says "AST-891 block"): add one pointer line only — `Timeout partial counts: § AST-1847 · AST-1848.` Don't rewrite the existing table.
+- Narrowed manifest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1847TimeoutPartialCounts \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast1847_sets_fresh_dispatch_partial_and_pops_on_return \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast1847_cancel_keeps_dispatch_partial_and_clears_batch \
+  tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_dispatch_uses_timeout \
+  tests/component/core/test_roster.py::TestAst1847ParseJobListBatchPartialTally \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch \
+  -q
+```
+
+⚠️ **Decision (bible placement):** the ticket says "(AST-891 block)", but fix-lane precedent (AST-1840 · AST-1844, AST-1846 · AST-1828) is one block per bug. Plan: follow precedent, with a one-line pointer from each AST-891 block. Betty owns the bible and may fold it in instead.
+
+⚠️ **Decision (repro depth):** node 1 runs the real dispatcher → consult → roster chain rather than stubbing `_run_dispatch_loop`. It's the only node that proves the `ctx` reference actually survives consult. Node 2 is the cheap unit-level fold-in.
+
+### Blast radius
+
+- Test-tree only. Two new classes and two appended `TestRunUnified` methods. No existing test edited. `test_auto_dispatch_uses_timeout` is reused as-is for the empty-partial path.
+- The nodes are red on this ref until AST-1847 merges to `origin/ftr/AST-1845-parse-job-list-timeout-partial-counts`. `merge-child` must land AST-1847 before or with AST-1848 (blockedBy order) so ftr isn't red.
+- Pre-existing stale `TestAst891ParseJobListBatch::test_scrape_timeout_labeled_infra_and_counts_passed` (already recorded under roster.md § AST-1846 as failing at base) is untouched. It's in the manifest's class run, so expect that one pre-existing failure. Or Betty narrows the class line to exclude it.
+
+### What must still hold
+
+- Node 1 must be red at `8e7b77a5` on the ledger/log assertions (not on an import/setup error), and green at `ba60f8e4`.
+- Every line AST-1847 added in `src/core/roster.py` and `src/core/dispatcher.py` is covered (`LOCKED_AT_100`): `_tally` (present / None key / absent partial), `_counted` (normal / except), `_run_unified` set + pop + pop-skipped-on-cancel, timeout fold-in (items / empty) + counts in log.
+- AST-891 AC2/AC4 invariants asserted where cheap: `clear_company_batch` on cancel (nodes 1, 5); normal-return dict shape unchanged (nodes 6, 9).
+- No timing assertions and no size caps. Sub-second `dispatch_timeout_seconds` / `wait_for` values only trigger the cancel.
