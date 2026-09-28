@@ -406,3 +406,92 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | **advisory** — nested debug indices / timeout `list_url` / gather `errors`-only | Left as-is for UAT; optional polish, not blocking. |
 
 **§9a:** dry-run `origin/sub/AST-890/AST-891-parse-job-list-browser-and-batch` into `origin/dev` and `origin/ftr/AST-890-parse-job-list-infinite-loop` — recorded at resolve commit.
+
+---
+
+## Bug: AST-1847 — parse_job_list timeout keeps partial passed/error counts in dispatch ledger
+
+Parent bug: AST-1845 (orphaned mini-parent). Explicit scope: `src/core/roster.py` `parse_job_list_batch`; `src/core/dispatcher.py` `_run_unified` + `_dispatch_one_body` timeout branch. No Canon Scope listed on the ticket. Delta against AST-891 Stage 3 only (batch runner + dispatcher wiring); nothing in Stages 1–3 is re-planned.
+
+### As-is
+
+When `asyncio.wait_for` in `_dispatch_one_body` fires (`dispatch_timeout_seconds`, 3600s) during a `parse_job_list` run, the ledger row goes `INTERRUPTED` with `total_processed=0 / total_passed=0 / total_errors=1`, and the timeout log line carries no counts — even when companies (e.g. `psychiatry_ucsf_edu`, `JOBLIST_IDENTIFIED → WATCH`) already finished in that run.
+
+### To-be
+
+An `INTERRUPTED`-by-timeout row records reality: `total_processed` / `total_passed` / `total_failed` / `total_errors` include every company of the cancelled run that reached an outcome before the cancel (e.g. `12 processed`), plus the existing `+1` timeout error. The timeout log line prints the same four numbers the ledger gets.
+
+### Repro
+
+Fixture (no DB seed — ledger writes are observed via a patched `database.update_dispatch_ledger`):
+
+- Task row: `{"id": 1, "task_key": "parse_job_list", "candidate_id": "abrams", "entity_type": "company", "trigger_state": "JOBLIST_IDENTIFIED", "auto_mode": 1, "batch_call_mode": 1}`; `ASTRAL_CONFIG["dispatch_timeout_seconds"] = 0.5`.
+- Claim returns 4 companies `a, b, c, d`. Patched `roster.run_parse_job_list_dispatch`: `a`, `b` → `{"state": "WATCH"}` immediately; `c` → `{"state": "JOBLIST_IDENTIFIED_RETRY"}` immediately; `d` → `await asyncio.sleep(3600)`.
+- Run `_dispatch_one_body(task, debug=False)`.
+- **Today:** final `update_dispatch_ledger(..., status="INTERRUPTED", total_processed=0, total_passed=0, total_failed=0, total_errors=1)`.
+- **After fix:** `status="INTERRUPTED", total_processed=3, total_passed=2, total_failed=0, total_errors=1` (the 1 is the timeout; `d` was cancelled, not counted). Timeout log line contains `processed=3 passed=2 failed=0 errors=1`.
+
+### Root cause
+
+Counts only flow upward by **return value**: `parse_job_list_batch` keeps `passed/errors/retried` in closure locals and returns them at the end → `consult.run_consult_task` maps them to `total_*` → `_run_unified` sums into local `s` → `_run_dispatch_loop` adds `s` into `accumulated`. The timeout cancels that whole stack before any of those returns happen, so `accumulated` holds only runs that returned normally (zero for a single-run batch) and the per-company progress is discarded.
+
+### Proposed change
+
+Mechanism: a **dispatcher-owned running summary** carried on `ctx` (the same dict object already threads `_dispatch_one_body → _run_dispatch_loop → _run_task → _run_unified → consult.run_consult_task → roster.parse_job_list_batch(ctx=ctx)` by reference — verified no rebinding/copy on that path, so `consult.py` is **not** touched). Key: `ctx["dispatch_partial"]`, shape = `_SUMMARY_ZERO` (`total_processed/passed/failed/errors`). Always mutated in place, never reassigned below the dispatcher.
+
+1. **`src/core/dispatcher.py` `_run_unified`**
+   - Immediately before the `try:` that dispatches to consult (after the empty-claim early `return s`), add `ctx["dispatch_partial"] = dict(_SUMMARY_ZERO)` — fresh per run, so it only ever covers the in-flight run.
+   - Immediately before the final `return s` (after the `finally` that calls `clear_company_batch`), add `ctx.pop("dispatch_partial", None)`. This line is reached only on normal return; on a completed run the counts travel by return value as today, so popping prevents double counting if the timeout then fires in a later iteration (e.g. during the next claim). No await point exists between this pop and `_run_dispatch_loop`'s `accumulated += summary`, so there is no window in which a completed run is in neither.
+   - Leave the `finally` body untouched (`clear_company_batch` on cancel stays as-is).
+
+2. **`src/core/roster.py` `parse_job_list_batch`**
+   - After the existing counter init, bind `partial = (ctx or {}).get("dispatch_partial")` and a tiny inner helper `_tally(key)`: if `partial is not None`, `partial["total_processed"] += 1` and, when `key` is given, `partial[key] += 1`. `ctx=None` or no key (non-dispatcher callers, existing tests) → no-op.
+   - In `_one`, alongside each existing local increment (same branch, same classification — AST-1839 semantics unchanged):
+     - `result.get("error")` → `errors += 1` **and** `_tally("total_errors")`
+     - `state == pass_state` → `passed += 1` **and** `_tally("total_passed")`
+     - `state == retry_state` → `retried += 1` **and** `_tally(None)` (processed, neither pass nor error — matches normal return where `total_processed = total` includes retried)
+     - else → `errors += 1` **and** `_tally("total_errors")`
+   - Exceptions escaping `_one` are today only counted after `gather` returns (never reached on cancel). Add inner `async def _counted(company, company_index)` that `await _one(...)` inside `try/except Exception: _tally("total_errors"); raise`, and pass `_counted(c, ci)` to `asyncio.gather` instead of `_one(c, ci)`. `except Exception` deliberately excludes `CancelledError` (BaseException) — a company cancelled mid-flight is **not** counted.
+   - Return value, local counters, and the post-`gather` exception loop are unchanged; `total_failed` stays 0 (this runner never sets `failed`).
+
+3. **`src/core/dispatcher.py` `_dispatch_one_body` — `except asyncio.TimeoutError` branch only**
+   - First, fold in the partial: `for k, v in (ctx.pop("dispatch_partial", None) or {}).items(): accumulated[k] = accumulated.get(k, 0) + v`.
+   - Then the existing `accumulated["total_errors"] += 1` — **moved above** the `logger.exception` call so the log shows the same numbers the ledger gets.
+   - Extend the existing timeout message with the counts, e.g. `"...TimeoutError: dispatch timeout after %ss batch=%s processed=%d passed=%d failed=%d errors=%d\n  Truncating the batch"` fed from `accumulated`.
+   - The `finally` ledger write (`**accumulated`, `entity_cost` divisor) then records the real counts with no further change.
+
+⚠️ **Decision (scope):** the admin-kill `except asyncio.CancelledError` branch has the same loss but is outside declared scope (`_dispatch_one_body` *timeout branch*). Not touched; the stale `dispatch_partial` it leaves on the discarded `ctx` is harmless (ctx is per-dispatch and dropped when the body returns). Follow-up only if Susan wants it.
+
+⚠️ **Decision (generality):** `dispatch_partial` is set for every `_run_unified` run, but only `parse_job_list_batch` writes to it. Other task keys fold in zeros on timeout — identical to today. No other runner is changed.
+
+No limits, caps, or truncation added (Susan 2026-09-28). No new table or column — ledger `total_*` columns already exist.
+
+### Blast radius
+
+- **Ledger consumers:** INTERRUPTED rows for `parse_job_list` now show nonzero `total_*`; `entity_cost` divides by real `total_processed`. `monitor.auto_run_error(..., accumulated, ...)` receives the real counts (alert text reflects them). `_check_circuit_breaker` reads COMPLETED rows only — unaffected.
+- **Tests that may assume current behaviour (Betty's call):** anything asserting the exact timeout log text in `_dispatch_one_body`; anything asserting INTERRUPTED ledger kwargs == `total_errors=1` with zero counts; `_run_unified` tests that compare `ctx` contents after a run (key is added then popped on normal return, so equal afterward); `parse_job_list_batch` tests pass `ctx=None` or a ctx without the key → no-op path.
+- **Shared code:** `_run_unified` is used by every consult-dispatched task; the change there is two lines (set / pop), with no effect on return values.
+- **Not touched:** `consult.py`, `_run_dispatch_loop`, meteorite branch, CLICK path (no `wait_for` → no timeout branch), AST-1840 cull code.
+
+### What must still hold
+
+- AST-891 AC2 / AC4: every finished company's state write persists as it finishes; successful parses still reach `WATCH`; `_run_unified`'s `finally` still runs `clear_company_batch(bid)` on cancel, so unfinished companies are reclaimable.
+- AST-1839 classification: retry holding is not an error; terminal fail / `result["error"]` / unexpected state are errors — same buckets for partial and final counts.
+- Normal (non-timeout) completion: `parse_job_list_batch` return dict, `consult` mapping, `_run_unified` `s`, and COMPLETED ledger values are byte-for-byte unchanged; no double counting across multi-run (`max_runs`) loops.
+- Timeout still yields `final_status="INTERRUPTED"` and the `+1` timeout error.
+
+## Joan fix-board — AST-1847
+
+Fix-board Joan triage for **AST-1847** against the plan-fix patch on `origin/sub/AST-1845/AST-1847-parse-job-list-timeout-partial-counts` and the in-force corpus via `canon/docs/DIRECTIVES-DIRECTORY.md` (no `docs/canon-index.md` on this ref).
+
+**Overlap skim:** `patt.entity.batch-processing` (ledger keyed by `batch_id` — fix makes `total_*` match work done, no text change), `patt.task.dispatch-retry` / AST-1839 buckets (plan keeps classification; only tally timing), `astral.batch.claim-process-release` (`clear_company_batch` in `finally` unchanged), `stat.logging.info.dispatcher` (COMPLETED info line untouched), `stat.logging.error` (single `logger.exception` on timeout gains inline partial-progress facts before “Truncating the batch” — not a second rollup line; distinct from the Don’t `batch finished FAILED | processed=…` summary pattern). `ctx["dispatch_partial"]` is dispatcher-owned bookkeeping on an existing ctx reference; no active statute forbids it. No Canon Scope on ticket; not ESCALATE (scope decisions are Susan/plan-fix, not Archie precedent).
+
+BEGIN-VERDICT
+```
+[board-joan]  CANON: OK
+```
+END-VERDICT
+
+```text
+AST-1847 board-joan done — CANON: OK.
+```
