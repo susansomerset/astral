@@ -17,6 +17,7 @@ uses the existing schema path — no new decode helper.
 Layer: core → data, external, utils  (never ← ui)
 """
 
+import asyncio
 import functools
 import hashlib
 import inspect
@@ -2153,7 +2154,9 @@ async def do_task(
     _should_store = store_agent_data and batch_id and entity_type
     if _should_store:
         try:
-            prompt_blocks = _store_prompt_blocks(
+            # Off the loop: a locked DB must not stall other companies' provider timers (AST-1842)
+            prompt_blocks = await asyncio.to_thread(
+                _store_prompt_blocks,
                 entity_type=entity_type,
                 task_key=task_key,
                 batch_id=batch_id,
@@ -2243,7 +2246,7 @@ async def do_task(
         )
         if _should_store:
             try:
-                _store_response_block(
+                await asyncio.to_thread(_store_response_block,
                     entity_type, task_key, batch_id, _failure_response_block_data(index, audit_body), index=index,
                     debug=debug)
             except Exception as exc:
@@ -2298,7 +2301,7 @@ async def do_task(
         _warn_hop_no_success(task_key, envelope_err)
         if _should_store:
             try:
-                _store_response_block(
+                await asyncio.to_thread(_store_response_block,
                     entity_type,
                     task_key,
                     batch_id,
@@ -2330,7 +2333,7 @@ async def do_task(
                 flush_log_buffer()
             if _should_store:
                 try:
-                    _store_response_block(
+                    await asyncio.to_thread(_store_response_block,
                         entity_type,
                         task_key,
                         batch_id,
@@ -2353,7 +2356,7 @@ async def do_task(
                     flush_log_buffer()
                 if _should_store:
                     try:
-                        _store_response_block(
+                        await asyncio.to_thread(_store_response_block,
                             entity_type,
                             task_key,
                             batch_id,
@@ -2375,7 +2378,7 @@ async def do_task(
                 _warn_hop_no_success(task_key, conf_err)
                 if _should_store:
                     try:
-                        _store_response_block(
+                        await asyncio.to_thread(_store_response_block,
                             entity_type,
                             task_key,
                             batch_id,
@@ -2398,7 +2401,7 @@ async def do_task(
                     _warn_hop_no_success(task_key, grade_err)
                     if _should_store:
                         try:
-                            _store_response_block(
+                            await asyncio.to_thread(_store_response_block,
                                 entity_type,
                                 task_key,
                                 batch_id,
@@ -2452,7 +2455,7 @@ async def do_task(
                     body = _audit_response_body(raw_text, None, str(exc))
                     if isinstance(parsed, str) and parsed.strip():
                         body = f"{body}\n--- agent_payload ---\n{parsed}"
-                    _store_response_block(
+                    await asyncio.to_thread(_store_response_block,
                         entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index,
                     debug=debug)
                 except Exception:
@@ -2484,7 +2487,7 @@ async def do_task(
                     # parsed is still the agent_payload string that failed decode
                     if isinstance(parsed, str) and parsed.strip():
                         body = f"{body}\n--- agent_payload ---\n{parsed}"
-                    _store_response_block(
+                    await asyncio.to_thread(_store_response_block,
                         entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index,
                     debug=debug)
                 except Exception:
@@ -2510,7 +2513,7 @@ async def do_task(
                 flush_log_buffer()
             if _should_store:
                 try:
-                    _store_response_block(
+                    await asyncio.to_thread(_store_response_block,
                         entity_type,
                         task_key,
                         batch_id,
@@ -2532,7 +2535,7 @@ async def do_task(
                     flush_log_buffer()
                 if _should_store:
                     try:
-                        _store_response_block(
+                        await asyncio.to_thread(_store_response_block,
                             entity_type,
                             task_key,
                             batch_id,
@@ -2552,7 +2555,7 @@ async def do_task(
                 _warn_hop_no_success(task_key, conf_err)
                 if _should_store:
                     try:
-                        _store_response_block(
+                        await asyncio.to_thread(_store_response_block,
                             entity_type,
                             task_key,
                             batch_id,
@@ -2596,7 +2599,7 @@ async def do_task(
     if _should_store and raw_text:
         try:
             store_content = json.dumps(parsed) if isinstance(parsed, (dict, list)) else (parsed or raw_text)
-            resp_id = _store_response_block(entity_type, task_key, batch_id, store_content, index=index, debug=debug)
+            resp_id = await asyncio.to_thread(_store_response_block, entity_type, task_key, batch_id, store_content, index=index, debug=debug)
             prompt_blocks.append({"type": "RESPONSE", "id": resp_id})
         except Exception:
             _log_swallowed_agent_data(index, task_key)

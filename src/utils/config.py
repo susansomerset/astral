@@ -4457,6 +4457,12 @@ ASTRAL_CONFIG = {
         "base_delay_seconds": 0.5,
         "max_delay_seconds": 5.0,
     },
+    # sqlite connection settings (AST-1842): busy wait on locked writes + WAL so readers
+    # never block a writer's commit. journal_mode is persistent in the db file once set.
+    "db_connection": {
+        "busy_timeout_seconds": 10.0,
+        "journal_mode": "WAL",
+    },
 
     # --- Gazer (gazer) ---
     "gazer": {
