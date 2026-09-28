@@ -51,6 +51,7 @@ from src.data.contact_listen import (
     load_contact_listen_enabled,
     save_contact_listen_enabled,
 )
+from src.external.telescope import run_one_shot
 from src.external.slack import (
     fetch_conversation_history,
     fetch_full_conversation_history,
@@ -991,7 +992,7 @@ def run_contact_task_dispatch(
 
         try:
             if asyncio.iscoroutinefunction(handler):
-                raw_result = asyncio.run(handler(cid, param, debug=debug))
+                raw_result = run_one_shot(handler(cid, param, debug=debug))
             else:
                 raw_result = handler(cid, param, debug=debug)
             if isinstance(raw_result, dict):
