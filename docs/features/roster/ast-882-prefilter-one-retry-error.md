@@ -561,3 +561,75 @@ What: stat.logging.error + stat.logging.warning — destination-based batch/LLM 
 #### Chuckles disposition
 
 Both REVISE. Orphaned-bug rule: both verdicts go to one sibling gap child (tests + bible from Betty, and the `stat.logging.*` carve-out that Joan authors in validate-plan fix mode and Chuckles applies verbatim), not to qa-fix / F3 inline on AST-1839. AST-1839 → Plan Approved → make-fix now.
+
+### Radia review-fix — AST-1839
+
+[code-rubric] PROCEED (Commit: 36f385a2) destination logging + retry counts
+
+**Ticket:** AST-1839  
+**Publish ref:** `36f385a2` (`origin/sub/AST-1828/AST-1839-auto-retry-warn-then-error`)  
+**Diff reviewed:** `origin/ftr/AST-1828-auto-retry-warn-then-error...origin/sub/AST-1828/AST-1839-auto-retry-warn-then-error` (tip = single product commit `36f385a2` for `src/**`; wider three-dot includes `sync(dev)` @ `eaf40dda` and other landed history — see advisory)  
+**Corpus:** `canon/docs/DIRECTIVES-DIRECTORY.md` + active `canon/directives/**` on tip (no `docs/canon-index.md` on ref)  
+**Overall:** CLEAN  
+
+#### Canon scores
+
+Frozen **Canon Scope** on AST-1839 is empty (Linear Description + fix-board Joan). No directive rows to score; roll-up from canon grades is vacuously clean.
+
+**Board overlap (informational only — not on frozen list):**
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| `patt.task.dispatch-retry` / AST-641 shape | A | | `HOMEPAGE_READY.retry_state` → `retry_of("HOMEPAGE_READY")`, transitions + `envelope_retry_state`; history-gated envelope WFR |
+| `stat.general.registry-not-literals` | A | | routing/`retry_base` in `config.py`; no new dispatch rows |
+| `patt.entity.batch-processing` | A | | `retried` keys; consult `total_errors` math; claim/process/release unchanged |
+| `stat.agent` / `do_task` | A | | rubric `agent_failure` envelope branch in `agent.py` only |
+| `stat.logging.warning` | B | | matches Susan To-be + Joan’s **destination-based** carve-out (per-item who/why at WARNING on retry holdings); in-force Resolution §2 (except → error) not amended until **AST-1846** — **not fix-now here** |
+| `stat.logging.error` | B | | terminal/out-of-holding via `_log_fail_dest` → ERROR; `log_llm_batch_summary` WARNING + caller ERROR; §3 LLM hop wording pending **AST-1846** — **not fix-now here** |
+
+#### Column diff vs plan stage
+
+`no plan-stage validate-plan scores attached` — fix-board Joan REVISE on logging is explicitly deferred to **AST-1846** carve-out; Radia aligns with that disposition, not re-litigating F3.
+
+#### Frame diff
+
+(none)
+
+#### Fix-specific checks
+
+- **`[bug-repro]`:** not applicable — clean board opt-out (Betty TESTS: REVISE → sibling **AST-1846**; no qa-fix / no `[bug-repro]` on this tip per spawn).
+- **`## What must still hold`:** OK — traced on `36f385a2` product diff:
+  - AST-882 AC restated: parsing first strike → `HOMEPAGE_READY_RETRY`; envelope first strike → `WEBSITE_FOUND_RETRY` with history gate; any failure not from primary `HOMEPAGE_READY` → `ERROR_PREFILTER`; evaluate pass/fail/no-PJL paths untouched.
+  - Hard non-retryable `_prefilter_fail` still → `error_state`.
+  - AST-1810: no `gazer.py` change; not-ready skip uses `envelope_retry_state` (WFR left for fetch).
+  - Consult grade/upshot/candidate paths: holding vs terminal severity and counting via `retry_base` / `retried`.
+  - Balance refusal / `state_held` paths unchanged.
+  - Terminal failures still increment `total_errors` (prefilter `retried` excluded; candidate `error_state` → `total_errors: 1`; parse_job_list terminal out of holding → `errors`).
+
+#### Findings
+
+**fix-now:** none  
+
+**discuss:** none  
+
+**advisory:**
+- Three-dot `ftr...sub` includes non–AST-1839 product from `sync(dev)` and prior merges (e.g. `dispatcher.py` AST-1829, telescope/formatting/admin). **AST-1839 product footprint** is commit `36f385a2` only: `agent.py`, `candidate.py`, `consult.py`, `roster.py`, `config.py`, `logging.py`.
+- In-force `stat.logging.*` text still reads strict on `except` + `log_llm_batch_summary`; canon amendment tracked on **AST-1846** (Joan board REVISE). Shipped code follows approved plan-fix / Susan To-be.
+- Betty’s broken/missing test nodes (incl. Ada’s 19-node list) remain **AST-1846**; not gated on this review.
+
+#### What’s solid
+
+- `_log_fail_dest` + `retry_base(dest)` applied consistently on consult batch/upshot and prefilter transitions.
+- `run_consult_task` prefilter branch: `errors = max(0, total - passed - failed - skipped - r.get("retried", 0))`; single-entity grade respects `retry_base(to_state)`.
+- `do_task` rubric envelope `agent_failure` before unwrap enables WFR vs HR_RETRY routing.
+- `parse_job_list_batch` separates `retried` vs terminal `errors`; `log_llm_batch_summary` provider line downgraded to WARNING per plan §7.
+
+#### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship product) | 0 fix-now · 0 discuss · 0 advisory blocking |
+
+#### Chuckles disposition
+
+Clean PROCEED → Review Posted → User Testing (resolve-child skipped). Orphaned mini-parent: merge-child into `ftr/AST-1828-auto-retry-warn-then-error`. The statute carve-out and the 19 test nodes stay on gap AST-1846.
