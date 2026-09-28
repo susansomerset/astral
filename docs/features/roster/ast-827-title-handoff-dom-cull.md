@@ -415,3 +415,124 @@ No conflicts requiring escalation.
 | advisory | `debug_index` `cull=` omission left as-is (Radia advisory only); single-title `_culled_dom_for_parse` path retained. |
 
 **Publish tip at resolve:** `origin/sub/AST-824/AST-827-title-handoff-dom-cull` @ Radia review `40e774a`; §9a dry-run clean vs `origin/dev` and `origin/ftr/AST-824-get-parse-job-list-to-work`.
+
+---
+
+## Bug: AST-1844 — test gap: `_cull_html` linear-time repro, attribute snip, `find_job_containers` equivalence, off-loop culls
+
+**Parent:** AST-1838. **Answers:** `[board-betty] TESTS: REVISE` on AST-1840. **Product under test:** AST-1840 @ `fb472a98` on `origin/sub/AST-1838/AST-1840-parse-job-list-event-loop-block` (its plan section `## Bug: AST-1840` lands in this doc when that sub merges to ftr). **Publish ref:** `origin/sub/AST-1838/AST-1844-parse-job-list-event-loop-block-tests`. **Test and bible only:** Betty lands every node at qa-fix; no product code here.
+
+### As-is
+
+Nothing in the component suite exercises the 2h event-loop freeze or the new attribute snip. `TestCullHtmlDefault`, AST-1745, AST-827, and `TestFindJobContainers` all pass on both the pre-fix and post-fix trees, so they can't tell the fix happened. On `fb472a98`, three branches of the rewritten `find_job_containers` are uncovered in `src/utils/formatting.py` (a LOCKED_AT_100 file): `345→350` (whitespace-only string), `356→353` (comment / non-main string node), and `375→376/377` (special-string-container fallback).
+
+### To-be
+
+A deterministic `[bug-repro]` set that is **red on the pre-fix product** (`origin/ftr/AST-1838-parse-job-list-event-loop-block` @ `31846c28`) and **green on `fb472a98`**. It pins the root cause (Tag hashing in `_cull_html`) and all four off-loop call sites. Snip and missing-key behavior are covered. `find_job_containers` equivalence fixtures are **green on both trees** (same containers, cost-only change) and close the three uncovered branches. No timing or wall-clock assertions, and no size caps.
+
+### Repro
+
+Every node below was verified with a throwaway probe (`/tmp`, not a test file) that ran the planned assertions against both trees, using `/home/susan/astral/.venv/bin/python` (bs4 4.15):
+
+| Probe check | `31846c28` (pre-fix) | `fb472a98` |
+|---|---|---|
+| Full-page `_cull_html` with `Tag.__hash__` patched to raise | FAIL (`Tag.__hash__ called`) | PASS |
+| Snip 500 kept / 501 snipped / list `class` snipped | FAIL | PASS |
+| Missing `max_html_tag_length` / `max_length_placeholder` → `ValueError` | FAIL (`KeyError` at `delitem`) | PASS |
+| `extract_page_dom` runs `_cull_html` off the loop thread | FAIL | PASS |
+| `run_parse_job_list_dispatch` runs `_culled_dom_for_parse` off the loop thread | FAIL | PASS |
+| `_finalize_joblist_titles_after_chain` off the loop thread | FAIL | PASS |
+| `_finalize_joblist_titles_select_only` off the loop thread | FAIL | PASS |
+| 6 `find_job_containers` fixtures + 8,000-row DOM | same output | same output |
+| `formatting.py` 330–400 coverage from those fixtures | — | 0 missing lines, 0 missing branches |
+
+### Root cause
+
+The test gap follows from the fix, as the board noted. The two things that caused the freeze, bs4 `Tag.__hash__` = `hash(str(self))` inside `_in_preserved_svg` and synchronous culls inside coroutines, both only show up as wall-clock cost. Existing tests are tiny and stub the culls, so none of them can observe either one. `_cull_html` and the two finalize functions carry whole-function `# pragma: no cover`, so the coverage gate never forced tests there.
+
+### Proposed change
+
+The test nodes are exact. Follow the existing class and fixture idioms in each file (`pw_mod`, `roster_mod`, `fmt`, `_company`, `TestAst827TitleHandoffDomCull._browser_cm` / `_SIBLING_DOM` / `_TWO_TITLES`). The `[bug-repro]` tag marks the nodes that must flip red→green.
+
+**1. `tests/component/external/test_telescope.py` — new class `TestAst1840CullHtmlLinearAndSnip`**, placed after `TestAst1745CullPreservesRootSvgLogo`:
+
+- `test_cull_html_full_page_never_hashes_tag` **[bug-repro]**
+  - Fixture: `'<html><body><div id="app"><ul>' + ''.join(ROW % (i, i) for i in range(40)) + '</ul></div></body></html>'`, where `ROW = '<li class="job-row" data-automation-id="job"><div class="c1"><h3><a href="/job/E_%d">Engineer %d</a></h3></div><button><i>x</i></button><span class="loc">Pittsburgh</span><svg viewBox="0 0 10 10"><g><path d="M0 0L10 10"></path></g></svg></li>'`.
+  - `monkeypatch.setattr(bs4.element.Tag, "__hash__", boom)`, where `boom` raises `AssertionError("Tag.__hash__ called during _cull_html")`.
+  - Assert `"Engineer 39" in out` and `"<svg" not in out`.
+  - Why it's the linear-time guard: any Tag hash serializes a subtree, and zero hashes on a `<body>` page means no O(document) work per element. It's deterministic and needs no timer. The fixture must include `<body>`, because root-svg fragments legitimately `add()` their root svg to the preserve set.
+- `test_cull_html_snips_attr_over_max_length`
+  - Input: `'<div data-a="%s" data-b="%s" class="%s">Job</div>' % ("x"*500, "y"*501, " ".join(["c"*50]*11))`.
+  - Assert `'data-a="' + "x"*500 + '"' in out`, `'data-b="(snipped)"' in out`, `'class="(snipped)"' in out` (list-valued attribute measured by its joined length, 560), and `"y"*501 not in out`.
+- `test_cull_html_missing_snip_key_raises` parametrized over `["max_html_tag_length", "max_length_placeholder"]`: `monkeypatch.delitem(pw_mod.ASTRAL_CONFIG["html_cull"], key)`, then `pytest.raises(ValueError, match=key)` on `pw_mod._cull_html("<div>x</div>")`.
+- `test_extract_page_dom_culls_off_event_loop` **[bug-repro]** (`@pytest.mark.asyncio`)
+  - Setup as in `TestCullHtmlDefault`: `cull_html_default=True`; `_ensure_html` is an `AsyncMock` returning `"<body>hi</body>"`.
+  - `_cull_html` is replaced by a plain function that records `threading.get_ident()` and returns `"<p>hi</p>"`.
+  - Assert `out == "<p>hi</p>"` and that the recorded thread id `!= threading.get_ident()` of the test coroutine.
+- Existing `TestCullHtmlDefault::test_extract_page_dom_culls_when_default_on` stays **unchanged**. It already passes through `to_thread`, because the `MagicMock` is resolved at call time.
+
+**2. `tests/component/core/test_roster.py` — new class `TestAst1840CullOffEventLoop`**, placed after `TestAst827TitleHandoffDomCull`. Each test is `@pytest.mark.asyncio`, records `threading.get_ident()` inside a replacement `_culled_dom_for_parse`, and asserts that the id differs from the coroutine's thread:
+
+- `test_parse_dispatch_culls_off_event_loop` **[bug-repro]**
+  - Same scaffold as `TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom`: `_company(state="JOBLIST_IDENTIFIED", …, job_titles=_TWO_TITLES)`, with `_scrape_list_page_dom_for_parse` returning `_SIBLING_DOM` and `_fetch_parse_job_list` / `_validate_parse_job_list_raw_job_listings` stubbed.
+  - The replacement wraps the **real** `_culled_dom_for_parse`, so the result stays real.
+  - Assert `out["state"] == "WATCH"`.
+- `test_finalize_after_chain_culls_off_event_loop` **[bug-repro]**
+  - Stub `save_company_data` and `_save_company` with `MagicMock`; the replacement returns `("", [], "cull_miss")`.
+  - Call `_finalize_joblist_titles_after_chain({"job_titles": ["A", "B"], "selected_page": 0}, {"parsed_response": {}}, "acme", "https://acme.com", "https://acme.com/jobs", {0: "<div>A B</div>"}, {0: "A B"}, 0, "JOBLIST_TITLES", False, None)`.
+  - Assert `out["state"] == "CANNOT_PARSE_JOB_SITE"`.
+- `test_finalize_select_only_culls_off_event_loop` **[bug-repro]**
+  - Same stubs.
+  - Call `_finalize_joblist_titles_select_only({"job_titles": ["A", "B"], "selected_page": 0}, "acme", "https://acme.com", "https://acme.com/jobs", {0: "<div>A B</div>"}, 0, "JOBLIST_TITLES", False, None, {0: "A B"})`.
+  - Assert `CANNOT_PARSE_JOB_SITE`.
+- This is the board's "non-blocking assertion": off-loop is proven by thread identity, which is deterministic and needs no sleeps or tick counters. Existing AST-827 / AST-469 / parse-dispatch tests stay **unchanged**.
+
+**3. `tests/component/utils/test_formatting.py` — new class `TestAst1840FindJobContainersEquivalence`**, placed after `TestFindJobContainers`. Titles are always `["Senior Engineer", "Nurse"]` except in the large-DOM case. The asserts are structural (count, prefix, substring) rather than full-string, because bs4 whitespace serialization varies across the `>=4.12` floor. Every row gives identical output on the pre- and post-fix trees:
+
+| Node (parametrize id) | DOM | Assert | Branch it pins |
+|---|---|---|---|
+| `comment_ws` | `'<div id="w"><section>\n  <!-- Nurse -->\n  <p>Senior Engineer</p>\n</section><p>Nurse</p></div>'` | 1 container, starts `'<div id="w">'` (comment text doesn't count, so `<section>` is not all-match) | `345→350`, `356→353` |
+| `script` | `'<main><div><p>Senior Engineer</p><script>Nurse</script></div><p>Nurse</p></main>'` | 1 container, starts `'<main>'` | `375→377` |
+| `style` | same shape with `<style>Nurse</style>` | 1 container, starts `'<main>'` | `375→377` |
+| `template` | `'<ul><li>Senior Engineer</li><template><li>Nurse</li></template></ul>'` | 2 containers: `'<li>Senior Engineer</li>'` and one starting `'<template>'` (Phase 2 sibling union) | `375→377`, Phase 2 |
+| `ruby_rt` | `'<div id="r"><p><ruby>Senior Engineer<rt>Nurse</rt></ruby></p><p>Nurse</p></div>'` | 1 container, starts `'<div id="r">'` | `375→377` |
+| `ruby_rp` | `'<div id="q"><p><ruby>Lead<rp>(Nurse)</rp></ruby> Senior Engineer</p><p>Nurse</p></div>'` | 1 container, starts `'<div id="q">'` | `375→377` |
+| `test_large_dom_same_containers` | `'<div id="app"><ul>' + ''.join('<li class="job-row"><div class="c1"><h3><a href="/job/E_%d">Engineer %d</a></h3></div><span>Pittsburgh</span></li>' % (i, i) for i in range(8000)) + '</ul></div>'`, titles `["Engineer 7999", "Engineer 12"]` | 1 container, starts `'<ul><li class="job-row">'` (deepest all-match is the `<ul>`) | large-DOM equivalence |
+
+No timing assertion on the large DOM: equivalence only (no heuristics or limits without Susan's say-so).
+
+**4. Bible entries**, each a new `### AST-1840 · AST-1844 (…)` block with a `**Board REVISE:**` line and an `Area | Component tests` table, in the same shape as the existing AST-1745 block in `external/telescope.md`:
+
+- `docs/test-bible/external/telescope.md`, "(qa-fix bug-repro — linear `_cull_html`, attribute snip, off-loop cull)": the four telescope nodes, with the two **bug-repro** nodes marked.
+- `docs/test-bible/core/roster.md`, "(qa-fix bug-repro — `_culled_dom_for_parse` off the event loop)": the three roster nodes, all **bug-repro**.
+- `docs/test-bible/utils/formatting.md`, "(`find_job_containers` linear rewrite equivalence)": the parametrized class plus the large-DOM node, noting the three branch ids it closes.
+
+**Narrowed run for test-fix** (manifest):
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  tests/component/external/test_telescope.py::TestAst1840CullHtmlLinearAndSnip \
+  tests/component/core/test_roster.py::TestAst1840CullOffEventLoop \
+  tests/component/utils/test_formatting.py::TestAst1840FindJobContainersEquivalence \
+  tests/component/external/test_telescope.py::TestCullHtmlDefault \
+  tests/component/external/test_telescope.py::TestAst1745CullPreservesRootSvgLogo \
+  tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull \
+  tests/component/utils/test_formatting.py::TestFindJobContainers -q
+```
+
+Pass criterion: green on `fb472a98` (merged into this sub). The **[bug-repro]** nodes are red on `31846c28`.
+
+### Blast radius
+
+- Test and bible files only. No product, config, or fixture tables (scope: "new test cases only").
+- **Doc merge:** this branch was seeded from ftr before AST-1840's plan section merged, so both `## Bug: AST-1840` and `## Bug: AST-1844` are appended at the end of this doc. Expect a trivial keep-both conflict at merge-child; resolve with AST-1840 first, AST-1844 second.
+- `monkeypatch.setattr(bs4.element.Tag, "__hash__", …)` is class-wide but test-scoped; monkeypatch restores it on teardown. Don't use it in a module-scoped fixture.
+- `monkeypatch.delitem` on `ASTRAL_CONFIG["html_cull"]` mutates the shared config dict and is restored on teardown.
+- **Out of scope:** the 54 tests already failing on `origin/dev` (stale references to removed functions such as `roster.get_page` and `telescope._TelescopePool`). That includes the three near the parse path (`TestFinalize469BranchCoverage::test_after_chain_empty_containers_debug_true_logs`, `TestAst891ParseJobListBatch::{test_debug_emits_per_company_index, test_scrape_timeout_labeled_infra_and_counts_passed}`). This gap does not fix them.
+
+### What must still hold
+
+- `TestCullHtmlDefault`, `TestAst1745CullPreservesRootSvgLogo`, `TestAst827TitleHandoffDomCull`, `TestFindJobContainers`, and the AST-469 resolver tests all stay unchanged and green.
+- The `[bug-repro]` nodes are red on the pre-fix product and green on `fb472a98`. The equivalence nodes are green on both.
+- No wall-clock or timeout assertions, and no DOM-size caps (Susan, 2026-09-28).
+- LOCKED_AT_100: after these nodes land, `src/utils/formatting.py` has no uncovered lines or branches inside AST-1840's hunks. The `telescope.py` and `roster.py` hunks sit in lines that are already covered or `# pragma: no cover`, so they add no new gate debt.
