@@ -203,3 +203,10 @@ AC 11 (child) / parent AC 11 → S1 steps 1–7 · AC 12 (child) / parent AC 13 
 - **Finding:** AST-1830 **Plan Ready**, assignee Joan; no `[plan-discuss]` rounds; depends-on AST-1829 noted on ftr (implementation ordering, not a plan defect).
 
 context_tokens≈32000
+
+## Review
+
+- **Branch:** `origin/sub/AST-1824/AST-1830-sweep-interval-admin-api-ui`
+- **Stage 1:** `0f3f2428` — `code(AST-1830): admin API sweep_hrs create/update/columns`
+- **Stage 2:** `9d93d03d` — `code(AST-1830): Scheduled Actions sweep_hrs modal input + list column`
+- **Build notes:** `py_compile` clean on `api_admin.py`; `_parse_sweep_hrs` smoke-checked in isolation (None/""/whitespace → NULL, 2.5/"4"/0 accepted, -1/"abc"/list → 400 message). `tsc -b --noEmit` clean, `npm run build` succeeds. `eslint` on the page reports only two pre-existing `no-extra-boolean-cast` errors (`!!row.empty_render` in the Run/toggle handlers) — present on the pre-change file, untouched per plan. `grep -n "sweepDisabled"` still shows `!!row.auto_mode && avail >= (row.min_count || 1)`. `tests/component/ui/api/test_api_admin.py` does not collect in this env (`ModuleNotFoundError: asyncpg`, same on the clean tree) — flag for Betty.
