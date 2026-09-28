@@ -791,3 +791,84 @@ What: stat.logging.warning + stat.logging.error — AST-1839 destination carve-o
 #### Chuckles disposition
 
 Both REVISE. AST-1846 is the gap child, so both run inline (no gap-of-a-gap): F3 validate-plan fix mode (Joan writes the literal `stat.logging.warning` / `stat.logging.error` patch, Chuckles applies it verbatim), then F4 qa-fix (Betty), with her branch-lock addendum (a `check_per_file_coverage.py` run on the five locked files at `2eac54b5`, plus a node for each uncovered AST-1839 branch) added to §2/§3 scope. make-fix = empty `code(AST-1846)` after sync.
+
+### Radia review-fix — AST-1846
+
+[code-rubric] PROCEED (Commit: 2b515163) tests, bible, canon carve-out
+
+**Ticket:** AST-1846  
+**Publish ref:** `2b515163` (`origin/sub/AST-1828/AST-1846-auto-retry-warn-then-error-gap`)  
+**Diff:** `origin/ftr/AST-1828-auto-retry-warn-then-error...origin/sub/AST-1828/AST-1846-auto-retry-warn-then-error-gap` — 16 files, **0** `src/**` lines (canon + plan doc + test-bible + component tests + `ast1806_prior_snapshot.json` re-pin)  
+**Corpus:** active `canon/directives/**` on tip (`e1f2699f` canon commit)  
+**Overall:** CLEAN  
+
+#### Canon scores
+
+No frozen **Canon Scope** id list on the ticket (gap child; boundaries name the two statutes only). Scored per plan §4 / Joan F3 scope:
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| `stat.logging.warning` | A | | Statement/Resolution §2 carve-out matches `_log_fail_dest` + consult/roster hydrate/decode (`debug` + `exc_info`, per-item WARNING on `retry_base(dest)`) |
+| `stat.logging.error` | A | | Statement/Resolution §3: terminal/unrouted → ERROR; `log_llm_batch_summary(..., error=...)` → WARNING; caller ERROR on terminal landings |
+
+#### Column diff vs plan stage
+
+Joan F3 comment on Linear documents the §4 intent; no separate validate-plan grade table in the issue doc → `no plan-stage scores attached` (aligned with F3 delivery in `e1f2699f`).
+
+#### Frame diff
+
+(none)
+
+#### Fix-specific checks
+
+### `[bug-repro]` — OK
+
+Betty’s `[bug-repro]` on Linear (`b6207dc6`) matches the plan gate and the test bodies are substantive (not tautologies):
+
+- **New repro (`TestAst1846*`):** Pin concrete To-be values — e.g. `transition…("HOMEPAGE_READY_RETRY")`, `total_errors == 0`, `caplog` level vectors like `["WARNING"]` / `["ERROR"]`, `retried` / `errors` splits, `agent_failure` + `error` strings, `log_llm_batch_summary` WARNING-only (`TestAst1846ProviderErrorLevel`).
+- **Red @ `31846c28` / green @ `2eac54b5`:** Documented on Linear (28/29 repro runs failed on **assertions** at base; guard `test_non_rubric_task_does_not_set_agent_failure` green both shas by design). I could not re-run pytest here (host lacks component Python); Betty’s archive export method is acceptable for gap sequencing.
+- **19 flips:** Present per manifest in `docs/test-bible/core/roster.md` § AST-1846; assertions updated to HR_RETRY / `retried` / upshot holding `total_errors == 0` (e.g. `test_batch_missing_company_transitions_and_counts_error`, `test_analysis_upshot_primary_failure_to_retry_holding`).
+- **Board addendum:** Extra nodes cover agent `failure_note` fallbacks + store swallow, candidate hop-label / unregistered trigger, parse batch error/exception paths, upshot terminal/no-dest ERROR sites — consistent with Betty’s branch-lock comment.
+
+### `## What must still hold` — OK
+
+| Item | Verdict |
+|------|---------|
+| No `src/**` on this ref | Diff has zero product lines; tip includes empty `code(AST-1846)` after ftr sync. |
+| Tests pin AST-1839 contract, don’t reshape it | Repro + flips assert routing, counts, and levels per § Bug: AST-1839; no product edits. |
+| AST-882 / AST-1810 / balance / grade holdings preserved | Flipped nodes retain balance hold, WFR leave-alone, incomplete-grade → HR_RETRY, upshot `FAILED_TECHNICAL` second strike, etc. |
+| Canon carve-out scoped | Only `stat.logging.warning` + `stat.logging.error` touched; no other `stat.logging.*`. |
+
+### Canon text vs shipped AST-1839 code (`2eac54b5` on ftr)
+
+- **`_log_fail_dest` / `retry_base(dest)`:** Canon Do block mirrors `(logger.warning if retry_base(dest) else logger.error)(...)`.
+- **Batch hydrate/decode:** Code uses `logger.debug(..., exc_info=True)` + `_log_fail_dest`; canon carve-out matches.
+- **`log_llm_batch_summary`:** Code logs WARNING on `error=`; canon §3 amended accordingly.
+- **Advisory (not fix-now, no re-wording):** `scrape_company_homepage_content` still uses `logger.warning(..., exc_info=True)` on scrape exceptions (AST-1839 product). Joan’s carve-out text targets **dispatch batch handlers** with traceback on **debug**, not `warning`+`exc_info`. Tests only require WARNING and no ERROR (`test_fetch_website_scrape_failure_logs_warning`). Statute does not explicitly bless that single-entity path; it also does not contradict it if read as outside the batch carve-out.
+
+#### Findings
+
+**fix-now:** none  
+
+**discuss:** none  
+
+**advisory:**
+- **sibling test carry:** N/A — this ticket *is* the test/bible delivery; diff is expected test-tree only.
+- **Host manifest:** Component venv unavailable in this session; rely on Betty’s 50/50 manifest + red/green archive proof for gate sign-off.
+- **Pre-existing reds:** Documented in bible (AST-891 timeout, AST-882 WFR claim, AST-507 inflow pair) — out of scope.
+
+#### What’s solid
+
+- Canon patch at `e1f2699f` closes the AST-1839 deferral Radia noted as **B** on AST-1839.
+- Primary manifest in `roster.md` § AST-1846 lists all 19 flips + five `TestAst1846*` classes; sibling bible sections cross-link.
+- Fixture re-pin drops stale `HOMEPAGE_READY` feeder on `WEBSITE_FOUND_RETRY` per plan.
+
+#### Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 0 advisory blocking |
+
+#### Chuckles disposition
+
+Clean PROCEED → Review Posted → User Testing (resolve-child skipped). merge-child into `ftr/AST-1828-auto-retry-warn-then-error`; all children done → prep-uat.
