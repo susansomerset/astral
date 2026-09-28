@@ -916,3 +916,15 @@ cd src/ui/frontend && npm run test:component -- \
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/ui/api/api_admin.md`
 - `docs/test-bible/frontend/pages.md`
+
+### AST-1831 · AST-1820
+
+**Parent:** AST-1820 (UAT-batch). **Publish:** `origin/sub/AST-1820/AST-1831-recheck-no-openings-batch-size-max-runs`.
+
+Admin **`create_dtask`** (POST **`/api/admin/dispatch_tasks`**) persists **`max_runs`** through an **`update_dispatch_task(task_id, max_runs=int(...))`** follow-up (**`save_dispatch_task`** has no **`max_runs`** param; before the fix every form-created row kept column DEFAULT **1**). Absent / JSON null → no follow-up (DEFAULT 1 unchanged).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create **`max_runs`** follow-up | `src/ui/api/api_admin.py` (**`create_dtask`**) | `tests/component/ui/api/test_api_admin.py::TestAst1831CreateMaxRuns` (**`test_create_persists_max_runs`** 0 / 5 / `"3"`; **`test_create_without_max_runs_skips_follow_up`** absent / null) |
+
+**Repro:** `test_create_persists_max_runs` red on pre-fix tip (`update_dispatch_task` not called). **Branch lock:** `api_admin.py` (`LOCKED_AT_100`) — both arms of the new `max_runs` guard covered.

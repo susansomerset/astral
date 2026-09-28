@@ -4027,3 +4027,38 @@ class TestAst1830SweepHrsAdminApi:
         col = next(c for c in admin_mod._DISPATCH_TASK_COLUMNS if c["key"] == "sweep_hrs")
         assert col["type"] == "float"
         assert keys.index("sweep_hrs") == keys.index("freq_hrs") + 1
+
+
+# Branches: create_dtask max_runs follow-up — present non-null (0 / N / numeric str → update) vs absent / null (no update).
+class TestAst1831CreateMaxRuns:
+    """AST-1831: POST /dispatch_tasks persists max_runs via update_dispatch_task follow-up (save has no max_runs param)."""
+
+    _BODY = {"candidate_id": "c1", "task_key": "grade_do", "trigger_state": "PASSED_JD", "min_count": 1}
+
+    def _mocks(self, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", MagicMock(return_value=42))
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        return update
+
+    # 0 = loop until drained; N = cap; str coerced like update_dt.
+    @pytest.mark.parametrize("raw,expected", [(0, 0), (5, 5), ("3", 3)], ids=["drain", "cap", "numeric_str"])
+    def test_create_persists_max_runs(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, raw, expected
+    ) -> None:
+        update = self._mocks(monkeypatch)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks", json={**self._BODY, "max_runs": raw}, headers=auth_headers
+        )
+        assert resp.status_code == 201
+        update.assert_called_once_with(42, max_runs=expected)
+
+    # Absent / null → no follow-up; row keeps column DEFAULT 1.
+    @pytest.mark.parametrize("extra", [{}, {"max_runs": None}], ids=["absent", "null"])
+    def test_create_without_max_runs_skips_follow_up(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, extra
+    ) -> None:
+        update = self._mocks(monkeypatch)
+        resp = admin_client.post("/api/admin/dispatch_tasks", json={**self._BODY, **extra}, headers=auth_headers)
+        assert resp.status_code == 201
+        update.assert_not_called()
