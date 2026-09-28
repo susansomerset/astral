@@ -816,3 +816,25 @@ Branch-lock nodes (fold-in `7/5/0/3`, `_run_unified` set/pop/cancel, roster `_ta
 #### Chuckles disposition (AST-1848)
 
 Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1847's product fix is on ftr @ 8c4914b2, so the tests run green on ftr without a scratch overlay.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/e732d904813bc91801c5595e0b9b87fd/bb19fc62-8a05-4213-8be8-bad2285d8ee0/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/7574b88f-e8f5-4363-b139-fefef7dc93f3/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/e732d904813bc91801c5595e0b9b87fd/60ab7a41-7ce5-4940-9d82-8b76225585cd/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1845 (parent) | ftr/AST-1845-parse-job-list-timeout-partial-counts |
+| AST-1847 | sub/AST-1845/AST-1847-parse-job-list-timeout-partial-counts |
+| AST-1848 | sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests |
+
+**Epic worktree:** `astral-AST-1845/` — one active sub checked out at a time.
