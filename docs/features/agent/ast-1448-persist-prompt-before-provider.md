@@ -969,6 +969,88 @@ AST-1843 board-joan done — CANON: OK.
 
 **Regression classes from the manifest:** `TestAst897HoldStateOnBalanceRefusal` all green. `TestAst1448PersistPromptBeforeProvider` 14 passed / 3 failed, and all 3 failures are the known pre-existing reds recorded in § Bug: AST-1842 build stub (`…debug_emits_prompt_found…`, `…prompt_only_batch_is_not_latest_ref…`, `…bare_run_adhoc…`). Nothing new.
 
+## Bug: AST-1843 — Radia review-fix
+
+[code-rubric]
+
+**Ticket:** AST-1843  
+**Publish ref:** `38aa052d938a12acc2933d6bf73e5b104bc11763` (`origin/sub/AST-1825/AST-1843-repro-coverage`)  
+**Diff base:** `origin/ftr/AST-1825-select-job-page-db-lock-loop-stall...origin/sub/AST-1825/AST-1843-repro-coverage` (23 paths, **tests + docs only** — `git diff … -- src/` empty)  
+**Corpus:** `a0bc2f0e5b5810448cf465ebeff84ffb6f1d60b6`  
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen canon list on AST-1843 is **empty** (no directive ids locked at Plan Approved; fix-board Joan `CANON: OK`, overlap triage only). **No directive rows to score** — canon roll-up vacuously clean.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (no `validate-plan` fix-mode column; fix-board only).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+### [bug-repro] — OK (all three)
+
+| Node | Pins AST-1842 To-be? | Pre-fix red plausible? | Notes |
+|------|----------------------|-------------------------|--------|
+| `TestAst1842SelectJobPageTimeoutHold::test_find_job_page_provider_call_timeout_holds_pjl_ready` | **Yes** — `PJL_READY`, `state_held`, `failure_class == PROVIDER_CALL_BUDGET["failure_class"]`, `SELECT_FAILED`, `saver.assert_not_called()` (not tautology vs mock return). | **Yes** — pre-fix path saves `NO_JOBLIST`; Betty/issue doc: `'NO_JOBLIST' == 'PJL_READY'`. | Uses config failure class, not a hard-coded string. `[bug-repro]` comment present. |
+| `TestAst1842DoTaskStoreOffLoop::test_slow_save_agent_data_does_not_block_loop` | **Yes** — 0.3s blocking `save_agent_data` with real `_store_*` call sites; heartbeat max inter-tick gap `< 0.2` (loop freeze vs worker thread). | **Yes** — Betty: pre-fix gap ~1.5s (stores on loop); post-fix green on ftr tip. | **Deviation from plan-fix prose** (documented in issue QA manifest): heartbeat ticks **before** `done` check (avoids false green when `do_task` never yields); `block_types` asserts `RESPONSE` + any non-RESPONSE prompt segment (not literal `SYSTEM`) — still pins “stores ran” + “loop stayed responsive,” not duplicate of product logic. |
+| `TestAst1842ConnectionWalBusyTimeout::test_get_connection_wal_and_configured_busy_timeout` | **Yes** — `journal_mode == "wal"` then `busy_timeout` from `ASTRAL_CONFIG["db_connection"]` on temp `DB_PATH`. | **Yes** — pre-fix `'delete' == 'wal'` (issue doc); literal `wal` assert first so red is journal mode, not `KeyError` on missing config. | `[bug-repro]` comment present. |
+
+None of the three is presence-only, `assert True`, or structured to pass on both pre- and post-fix trees given Betty’s documented red/green matrix against `origin/dev` product @ `31846c28` and ftr-backed tip.
+
+### ## What must still hold — OK
+
+| Item | Verdict |
+|------|---------|
+| Each repro red on pre-fix / green with AST-1842 on tree | Recorded in build stub + QA manifest (`870e2a0f` / Betty `7c40f2c4`); aligns with plan To-be table. |
+| Bible names node ids | `roster.md`, `agent.md`, `data/database.md` sections added per plan-fix. |
+| No existing test weakened/deleted | `TestAst897HoldStateOnBalanceRefusal` unchanged; AST-1842 classes are **append-only** in scoped files. |
+| AST-1842 contract asserted, not re-specified | Tests exercise hold branch, off-loop stores, `_get_connection` PRAGMAs — no `src/` edits on this ref. |
+| No product code on publish ref | Confirmed: zero `src/**` in three-dot diff vs `ftr`. |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Sibling test carry (`merge-tests`):** `870e2a0f merge-tests(AST-1843): origin/tests 7c40f2c4` brings additional paths (e.g. AST-1829/AST-1830 dispatcher + frontend Vitest) beyond AST-1843’s declared three repros — expected `qa-child`/`merge-tests` shape per `review-child` §5.4; **not** cross-ticket product scope. Narrow manifest in issue description remains the right regression surface for this bug’s bar.
+- **Plan vs implementation (Test 2):** Betty’s heartbeat/`block_types` tweaks are justified in the QA thread; worth keeping one line in the issue doc so future readers do not “fix” the test back to the plan’s first-draft shape and reintroduce false green.
+- **Timing test:** ~2–3s runtime; CI jitter margin documented in plan-fix Decision — monitor only.
+- **Pre-existing reds:** AST-1448 manifest failures unchanged per build stub — out of AST-1843 scope.
+
+## What's solid
+
+- All three board-flagged gaps closed with tagged `[bug-repro]` nodes tied to concrete outcomes from AST-1842 **To-be** / **Repro**.
+- Scoped deliverables match plan-fix (three modules + three bible files); product fix correctly stays on AST-1842/ftr.
+- Roster repro mirrors AST-897 hold test shape with the timeout failure class — clear regression pairing in bible.
+
+## Notes for Chuckles (post-review branching)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (C7 complete) | AST-1825 mini-parent (live `ftr`) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+## Recommended actions (downstream only — not performed here)
+
+- Append artifact to `docs/features/agent/ast-1448-persist-prompt-before-provider.md` § Bug: AST-1843; `docs()` push on sub branch.
+- Post slim upshot `--as radia`; advance status per §3h when Susan/Chuckles accept CLEAN.
+
+`context_tokens≈22000`
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 38aa052d938a12acc2933d6bf73e5b104bc11763) Three bug-repros OK
+```
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
