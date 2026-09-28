@@ -1358,8 +1358,14 @@ class TestAst814InflowDiscoveryDebug:
 
 class TestTaskThreadTarget:
     def test_cleans_registry_after_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ran: list[str] = []
+
+        def run_until_complete(coro):
+            ran.append(coro.__qualname__)
+            coro.close()  # mock loop: never awaited on purpose
+
         loop = MagicMock()
-        loop.run_until_complete = MagicMock()
+        loop.run_until_complete = MagicMock(side_effect=run_until_complete)
         loop.close = MagicMock()
         monkeypatch.setattr(dispatcher_mod.asyncio, "new_event_loop", lambda: loop)
         with dispatcher_mod._registry_lock:
@@ -1367,7 +1373,8 @@ class TestTaskThreadTarget:
         dispatcher_mod._task_thread_target(15, {"task_key": "evaluate_jd"})
         assert 15 not in dispatcher_mod._task_registry
         loop.close.assert_called_once()
-        loop.run_until_complete.assert_called_once()
+        # The dispatch itself, then the per-loop Telescope client cleanup (#178).
+        assert ran == ["_dispatch_one", "close_loop_resources"]
 
     def test_skips_loop_assignment_without_registry_entry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         loop = MagicMock()
