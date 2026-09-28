@@ -109,17 +109,14 @@ No other files. Do **not** edit `src/ui/api/api_admin.py` or `src/ui/frontend/sr
             due.append(task)
         elif avail > 0 and dispatch_task_sweep_due(task):
             # AST-1829: partial remainder + sweep interval elapsed → one-batch sweep via the tick
-            _log.debug(
-                "sweep due task_id=%s task_key=%s available=%s min_count=%s sweep_hrs=%s last_run_at=%s",
-                task.get("id"), task.get("task_key"), avail, min_count,
-                task.get("sweep_hrs"), task.get("last_run_at"),
-            )
             task["available_count"] = avail
             task["_scheduled_sweep"] = True
             due.append(task)
    ```
 
    Append one sentence to the docstring: `Rows with 0 < Avail < min_count are also due when dispatch_task_sweep_due is true (AST-1829); those carry _scheduled_sweep=True.` The `auto_mode = 1` SELECT is unchanged, so AUTO-off rows never reach either branch (AC 6).
+
+   No logging of any level in this branch — `stat.logging.debug` bans debug in `src/data/`; the sweep-due debug line lives once in core (`_tick_loop`, Stage 2 step 2).
 
 9. Compile: `python3 -m py_compile src/data/database.py`. Re-audit every literal `INSERT`/`UPDATE` on `dispatch_task` in this file (build-child §8): only `save_dispatch_task`'s INSERT changes shape; the legacy rebuild INSERTs keep their explicit 18-column lists (step 1 decision); `update_dispatch_task` and `set_dispatch_tasks_from_template_rows` build columns dynamically.
 
@@ -142,12 +139,7 @@ Commit: `code(AST-1829): sweep_hrs column, sweep-due helper, claim-queue sweep d
         if not database.dispatch_task_freq_allows(task):
             continue
         if sweep:
-            logger.debug(
-                "sweep due task_id=%s task_key=%s available=%s min_count=%s sweep_hrs=%s last_run_at=%s",
-                task.get("id"), task.get("task_key"), avail, min_count,
-                task.get("sweep_hrs"), task.get("last_run_at"),
-            )
-            task["_scheduled_sweep"] = True
+            task["_scheduled_sweep"] = True  # sweep-due debug line is logged once in _tick_loop
         task["available_count"] = avail
         due.append(task)
    ```
@@ -156,13 +148,30 @@ Commit: `code(AST-1829): sweep_hrs column, sweep-due helper, claim-queue sweep d
 
    ⚠️ **Decision:** For mailbox rows the flag only affects due selection. The mailbox run branch in `_dispatch_one_body` calls `check_email` directly (no `_run_dispatch_loop`, no `min_count` gate), so a mailbox sweep runs exactly as a normal mailbox AUTO run does today — the flag is carried but has nothing further to bypass.
 
-2. `_tick_loop` — change the spawn call inside `for task in due:` from `if run_task(tid):` to:
+2. `_tick_loop` — two edits, nothing else:
+
+   a. Directly after the `due = list(database.get_due_tasks()) + _meteorite_email_due_tasks()` line (before the existing freq_hrs `# Note:` comment), add the single sweep-due debug site for both due paths:
+
+   ```python
+            # AST-1829: one sweep-due debug site for claim-queue and mailbox (no debug in src/data/)
+            for t in due:
+                if t.get("_scheduled_sweep"):
+                    logger.debug(
+                        "sweep due task_id=%s task_key=%s available=%s min_count=%s sweep_hrs=%s last_run_at=%s",
+                        t.get("id"), t.get("task_key"), t.get("available_count"), t.get("min_count"),
+                        t.get("sweep_hrs"), t.get("last_run_at"),
+                    )
+   ```
+
+   The call is ungated (`stat.logging.debug`) — `log_debug` decides emission, not the caller.
+
+   b. Change the spawn call inside `for task in due:` from `if run_task(tid):` to:
 
    ```python
                     if run_task(tid, scheduled_sweep=bool(task.get("_scheduled_sweep"))):
    ```
 
-   No other tick-loop change: `max_auto_threads` slots and the running-id skip apply to sweep rows unchanged.
+   `max_auto_threads` slots and the running-id skip apply to sweep rows unchanged.
 
 3. `run_task` — change the signature to:
 
@@ -226,15 +235,21 @@ Commit: `code(AST-1829): scheduled sweep in mailbox due, tick spawn, one-batch l
 
 Scope list: `patt.entity.batch-criteria`, `patt.entity.batch-processing` (read in full), `astral.batch.claim-process-release`, `astral.dispatch.entity-state-bound`, `stat.logging.info.dispatcher`, `stat.logging.debug` (id-only until build-child §8).
 
-- batch-criteria: `sweep_hrs` is row data read fresh each tick; no literal in the caller; no data-layer validation.
+- batch-criteria: `sweep_hrs` is eligibility/cadence row data alongside `freq_hrs` — read fresh each tick, no literal in the caller, no data-layer validation.
 - batch-processing / claim-process-release: a sweep is one ordinary `_run_task` iteration — same claim, `batch_id`, release; nothing new in the claim path.
 - entity-state-bound: sweep uses the row's own `entity_type` / `trigger_state` / `candidate_id` via the unchanged `count_eligible_for_dispatch_task` and `_run_task`.
 - logging.info.dispatcher: sweep runs end in the existing `_log_dispatch_task_completed` line — no new info lines.
-- logging.debug: sweep-due decisions log via ungated `_log.debug` / `logger.debug`.
+- logging.debug: sweep-due decisions log once, ungated, via `logger.debug` in `dispatcher._tick_loop`; no debug in `src/data/`.
 
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Revisions
+
+Revision 1 — 2026-09-28
+Driven by: Joan `[plan-discuss] round=1 concern` — fix-now: remove `_log.debug` from `get_due_tasks` (`stat.logging.debug` bans debug in `src/data/`), log sweep-due once in `src/core/dispatcher.py`; discuss: note `sweep_hrs` as eligibility/cadence row data alongside `freq_hrs`.
+Changes: S1 step 8 drops the `_log.debug` block (plus a no-logging note). S2 step 1 drops the mailbox `logger.debug` block. S2 step 2 adds one ungated `logger.debug` loop over `due` in `_tick_loop` covering both due paths. Canon batch-criteria and logging.debug bullets updated.
 
 ## Joan validate
 
