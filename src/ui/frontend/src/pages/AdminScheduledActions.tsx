@@ -32,6 +32,7 @@ type DispatchFormState = {
   task_key: string
   trigger_state: string
   freq_hrs: string
+  sweep_hrs: string
   min_count: string
   batch_size: string
   max_runs: string
@@ -75,6 +76,7 @@ interface DispatchTask {
   entity_type: string | null
   trigger_state?: string | null
   freq_hrs: number
+  sweep_hrs?: number | null
   min_count: number
   batch_size: number | null
   batch_call_mode?: number
@@ -107,7 +109,7 @@ const FROZEN_DATA_COLUMNS = 1 // AST-1818: only Task pinned; Entity/State scroll
 
 const DATA_COL_KEYS = [
   "task_key", "entity_type", "trigger_state", "score_floor",
-  "auto_mode", "run", "debug", "freq_hrs", "min_count",
+  "auto_mode", "run", "debug", "freq_hrs", "sweep_hrs", "min_count",
   "batch_size", "batch_call_mode", "max_runs", "candidate_id", "available_count", "last_run_at",
 ] as const
 
@@ -180,6 +182,7 @@ function ScheduledPhaseTable({
             <th style={{ textAlign: "center" }}>Run</th>
             <th className="sortable" style={{ textAlign: "center" }} onClick={() => toggleSort("debug")}>Dbg{sortIcon("debug")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("freq_hrs")}>Freq{sortIcon("freq_hrs")}</th>
+            <th className="sortable" style={{ textAlign: "right" }} title="Scheduled sweep interval (hrs): AUTO row with 0 < Avail < Min runs one batch this often since Last Run" onClick={() => toggleSort("sweep_hrs")}>Sweep{sortIcon("sweep_hrs")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("min_count")}>Min{sortIcon("min_count")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("batch_size")}>Batch{sortIcon("batch_size")}</th>
             <th
@@ -284,6 +287,9 @@ function ScheduledPhaseTable({
                   <ListTableTruncatedCell text={row.freq_hrs ? String(row.freq_hrs) : "—"} maxChars={truncateChars} />
                 </td>
                 <td style={{ textAlign: "right" }}>
+                  <ListTableTruncatedCell text={row.sweep_hrs ? String(row.sweep_hrs) : "—"} maxChars={truncateChars} />
+                </td>
+                <td style={{ textAlign: "right" }}>
                   <ListTableTruncatedCell text={String(row.min_count)} maxChars={truncateChars} />
                 </td>
                 <td style={{ textAlign: "right" }}>
@@ -333,7 +339,7 @@ export default function ScheduledActions() {
   // Modal state (add/edit)
   const [showModal, setShowModal] = useState(false)
   const [editRow, setEditRow] = useState<DispatchTask | null>(null)
-  const [form, setForm] = useState({ candidate_id: "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false, batch_call_mode: false })
+  const [form, setForm] = useState({ candidate_id: "", task_key: "", trigger_state: "", freq_hrs: "0", sweep_hrs: "", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false, batch_call_mode: false })
   const [saving, setSaving] = useState(false)
 
   // Thread status (polled every 5s)
@@ -648,7 +654,7 @@ export default function ScheduledActions() {
 
   const openAdd = () => {
     setEditRow(null)
-    setForm({ candidate_id: selectedId ?? "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false, batch_call_mode: false })
+    setForm({ candidate_id: selectedId ?? "", task_key: "", trigger_state: "", freq_hrs: "0", sweep_hrs: "", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false, batch_call_mode: false })
     setShowModal(true)
   }
   const openEdit = (row: DispatchTask) => {
@@ -663,6 +669,7 @@ export default function ScheduledActions() {
       task_key: row.task_key,
       trigger_state: row.trigger_state || cfg?.trigger_state || "",
       freq_hrs: String(row.freq_hrs ?? 0),
+      sweep_hrs: row.sweep_hrs != null ? String(row.sweep_hrs) : "",
       min_count: String(row.min_count),
       batch_size: row.batch_size != null ? String(row.batch_size) : "",
       max_runs: row.max_runs != null ? String(row.max_runs) : "1",
@@ -686,6 +693,7 @@ export default function ScheduledActions() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             freq_hrs: parseFloat(form.freq_hrs) || 0,
+            sweep_hrs: form.sweep_hrs !== "" ? parseFloat(form.sweep_hrs) : null,
             min_count: parseInt(form.min_count, 10),
             trigger_state: form.trigger_state,
             task_key: form.task_key,
@@ -722,6 +730,7 @@ export default function ScheduledActions() {
             trigger_state: form.trigger_state,
             entity_type: form.entity_type,
             freq_hrs: parseFloat(form.freq_hrs) || 0,
+            sweep_hrs: form.sweep_hrs !== "" ? parseFloat(form.sweep_hrs) : null,
             min_count: parseInt(form.min_count, 10),
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             batch_call_mode: form.batch_call_mode,
@@ -1008,6 +1017,11 @@ export default function ScheduledActions() {
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Freq (hrs)</span>
                 <input type="number" min="0" step="0.25" value={form.freq_hrs} onChange={e => setForm({ ...form, freq_hrs: e.target.value })} />
+              </div>
+              <div className="modal-detail-row">
+                <span className="modal-detail-label">Sweep (hrs)</span>
+                <input type="number" min="0" step="0.25" placeholder="off" value={form.sweep_hrs} onChange={e => setForm({ ...form, sweep_hrs: e.target.value })}
+                  title="When AUTO is on and 0 < Avail < Min Count, run one batch (min 1) every N hours since Last Run. Blank or 0 = off." />
               </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Min Count</span>

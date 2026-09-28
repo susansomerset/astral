@@ -4,6 +4,7 @@
 import base64
 import json
 import re
+from bisect import bisect_left
 from typing import Any, Dict, List, Optional
 from urllib.parse import unquote, urlparse
 
@@ -313,7 +314,7 @@ def find_job_containers(dom_html: str, job_titles: List[str]) -> List[str]:
     cannot be located.
     """
     # B1 lazy import: BeautifulSoup/Tag only for DOM-heavy job container discovery.
-    from bs4 import BeautifulSoup, Tag
+    from bs4 import BeautifulSoup, CData, NavigableString, Tag
 
     if not job_titles:
         return [dom_html]
@@ -326,29 +327,87 @@ def find_job_containers(dom_html: str, job_titles: List[str]) -> List[str]:
 
     titles_set = set(titles_lower)
 
+    # AST-1840: one ordered walk — every stripped main-content string, lowercased, " "-joined into `text`.
+    # Each Tag gets a [start, end) char span so text[start:end] == el.get_text(" ", strip=True).lower().
+    # Tags whose own get_text reads a special string type (script/style/template/rt/rp) fall back below.
+    special = set(getattr(soup.builder, "string_containers", {}) or {})
+    pieces: List[str] = []
+    offset = 0
+    span: dict = {}
+    stack: list = [("enter", soup)]
+    while stack:
+        op, node = stack.pop()
+        if op == "exit":
+            span[id(node)] = (span[id(node)], offset)
+            continue
+        if op == "str":
+            txt = node.strip().lower()
+            if txt:
+                if pieces:
+                    offset += 1  # the joining " "
+                pieces.append(txt)
+                offset += len(txt)
+            continue
+        span[id(node)] = offset + (1 if pieces else 0)  # where this tag's first piece would start
+        stack.append(("exit", node))
+        for child in reversed(node.contents):
+            if isinstance(child, Tag):
+                stack.append(("enter", child))
+            elif type(child) in (NavigableString, CData):  # exact types: get_text's default filter
+                stack.append(("str", child))
+    text = " ".join(pieces)
+
+    # Every (overlapping) occurrence start of each title in `text`, ascending.
+    occ = {}
+    for t in titles_set:
+        hits, p = [], text.find(t)
+        while p != -1:
+            hits.append(p)
+            p = text.find(t, p + 1)
+        occ[t] = hits
+
+    cache: dict = {}
+
     def _titles_in(el: Tag) -> set:
-        text = el.get_text(" ", strip=True).lower()
-        return {t for t in titles_set if t in text}
+        key = id(el)
+        if key in cache:
+            return cache[key]
+        if el.name in special:
+            el_text = el.get_text(" ", strip=True).lower()
+            found = {t for t in titles_set if t in el_text}
+        else:
+            s, e = span[key]
+            found = set()
+            for t, hits in occ.items():
+                i = bisect_left(hits, s)
+                if i < len(hits) and hits[i] + len(t) <= e:
+                    found.add(t)
+        cache[key] = found
+        return found
+
+    tags = [el for el in soup.descendants if isinstance(el, Tag)]
+
+    # Reverse pre-order visits every descendant before its ancestor → O(n) "any match below" flags.
+    all_below: dict = {}
+    any_below: dict = {}
+    for el in reversed(tags):
+        kids = [ch for ch in el.children if isinstance(ch, Tag)]
+        all_below[id(el)] = any(_titles_in(ch) == titles_set or all_below[id(ch)] for ch in kids)
+        any_below[id(el)] = any(bool(_titles_in(ch)) or any_below[id(ch)] for ch in kids)
 
     # Phase 1: single element containing ALL titles → filter to deepest
-    all_match = [el for el in soup.descendants if isinstance(el, Tag) and _titles_in(el) == titles_set]
+    all_match = [el for el in tags if _titles_in(el) == titles_set]
     if all_match:
-        match_ids = set(id(c) for c in all_match)
-        deepest = [c for c in all_match if not any(
-            isinstance(d, Tag) and id(d) in match_ids for d in c.descendants if d is not c
-        )]
+        deepest = [c for c in all_match if not all_below[id(c)]]
         if deepest:  # pragma: no branch
             return [str(el) for el in deepest]
 
     # Phase 2: accumulate across siblings (AST-390: pragma — DOM/BS4 sibling union is brittle in tests).
-    partial = [(el, _titles_in(el)) for el in soup.descendants if isinstance(el, Tag) and _titles_in(el)]  # pragma: no cover
+    partial = [(el, _titles_in(el)) for el in tags if _titles_in(el)]  # pragma: no cover
     if not partial:  # pragma: no cover
         return [dom_html]  # pragma: no cover
 
-    partial_ids = set(id(p[0]) for p in partial)  # pragma: no cover
-    leaves = [(el, titles) for el, titles in partial if not any(  # pragma: no cover
-        isinstance(d, Tag) and id(d) in partial_ids for d in el.descendants if d is not el  # pragma: no cover
-    )]  # pragma: no cover
+    leaves = [(el, ts) for el, ts in partial if not any_below[id(el)]]  # pragma: no cover
 
     checked: set = set()  # pragma: no cover
     for leaf, _ in leaves:  # pragma: no cover

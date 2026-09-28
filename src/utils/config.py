@@ -4434,6 +4434,8 @@ ASTRAL_CONFIG = {
         "hidden_class_patterns": ['hide', 'hidden', 'd-none', 'visually-hidden', 'sr-only'],
         "strip_attributes": ['style', 'srcset'],
         "strip_on_attrs": True,
+        "max_html_tag_length": 500,            # AST-1840: attribute values longer than this are snipped
+        "max_length_placeholder": "(snipped)", # AST-1840: replacement text, so snipped spots stay visible
     },
     "cookie_dismiss_selectors": [
         'button:has-text("Accept All")',
@@ -4456,6 +4458,12 @@ ASTRAL_CONFIG = {
         "max_attempts": 3,
         "base_delay_seconds": 0.5,
         "max_delay_seconds": 5.0,
+    },
+    # sqlite connection settings (AST-1842): busy wait on locked writes + WAL so readers
+    # never block a writer's commit. journal_mode is persistent in the db file once set.
+    "db_connection": {
+        "busy_timeout_seconds": 10.0,
+        "journal_mode": "WAL",
     },
 
     # --- Gazer (gazer) ---
