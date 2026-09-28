@@ -170,3 +170,21 @@ Company **`count_eligible_for_dispatch_task`** composes the **`last_scan_at`** w
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Company Avail window + score_floor | `src/data/database.py` (**`count_eligible_for_dispatch_task`**, **`count_companies_in_state_with_score_floor`**) | `tests/component/data/database/test_dispatch_tasks.py::TestAst1821CompanyAvailWindow` (all five nodes) + **`TestAst508PrefilterPassedEligible`** regression |
+
+### AST-1842 · AST-1825 (connection WAL + busy timeout)
+
+**Parent:** [AST-1825](https://linear.app/astralcareermatch/issue/AST-1825) (orphaned-bug mini-parent). Product: **AST-1842**; test/bible delivery on gap sibling **AST-1843** (`origin/sub/AST-1825/AST-1843-repro-coverage`). `_get_connection` applies `ASTRAL_CONFIG["db_connection"]`: `sqlite3.connect(timeout=busy_timeout_seconds)` + `PRAGMA journal_mode=<journal_mode>` (WAL) on every connection. Test points `DB_PATH` at `tmp_path` so the shared db is not asserted. `[bug-repro]`: red on pre-fix `origin/dev` (`journal_mode == "delete"`), green once AST-1842 is on the tree.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Connection WAL + configured busy timeout | `src/data/database.py` (`_get_connection`), `src/utils/config.py` (`db_connection`) | **`tests/component/data/test_database.py::TestAst1842ConnectionWalBusyTimeout::test_get_connection_wal_and_configured_busy_timeout`** |
+
+**Broken / obsolete:** none. **Known pre-existing reds (not AST-1842):** `TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex` (5 nodes, `job has no column named company` fixture drift) — red on `origin/dev` too.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/test_database.py::TestAst1842ConnectionWalBusyTimeout \
+  -q
+```
