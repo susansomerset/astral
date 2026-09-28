@@ -942,3 +942,16 @@ Files: `tests/component/external/test_telescope.py`, `docs/test-bible/external/t
 - Engineers don't edit `tests/` or `docs/test-bible/**`. Betty lands both at qa-fix.
 - No depth, output, or timing limits in the nodes.
 
+
+
+### Joan fix-board — AST-1850
+
+**Findings (Joan fix-board, AST-1850)**
+
+Read `## Bug: AST-1850` on `origin/sub/AST-1841/AST-1850-asyncio-run-telescope-loop-teardown-tests`. Scope is **tests + bible only** (`test_telescope.py`, `docs/test-bible/external/telescope.md`); product stays on AST-1849 (`run_one_shot` @ `bf470756`). Overlap triage via `canon/docs/DIRECTIVES-DIRECTORY.md` / harvested statutes (no `docs/canon-index.md` on ref)—same resolution as AST-1849 and gap siblings like AST-1848.
+
+The plan adds four component nodes that lock AST-1849 Repro 1–4 (including `[bug-repro]` on `run_one_shot` teardown) and a bible block pointing at those nodes. It does **not** amend any `canon/statutes/**`, `canon/directives/active/**`, or pattern text, and does not introduce a new product rule beyond what AST-1849 already implements. `astral.layers.*` and pending `patt.external.web-scraping-via-telescope` are unchanged; monkeypatching `_pool` / `asyncpg.create_pool` is test-tree practice, not a corpus edit. `orch.roles.betty-owns-test-tree` / engineer test-tree ban are satisfied by Betty-only landing.
+
+**Verdict:** no in-force statute or pattern needs an update or carve-out; F3 (`validate-plan` fix mode) not indicated.
+
+`[board-joan]  CANON: OK`
