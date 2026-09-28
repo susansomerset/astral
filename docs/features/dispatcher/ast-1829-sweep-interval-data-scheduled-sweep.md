@@ -309,3 +309,40 @@ AC 1 → S1 steps 1–2 · AC 2 → S1 steps 7–8 · AC 3 → S1 step 7 · AC 4
 - Missing self-assessment block in plan doc: not blocking; Estimate confirm line present.
 
 context_tokens≈22000
+
+## Joan validate — round 1 re-check
+
+[plan-rubric]
+**Ticket:** AST-1829
+**Overall:** APPROVED
+**Corpus:** a0bc2f0e5b5810448cf465ebeff84ffb6f1d60b6
+**Publish ref:** `origin/sub/AST-1824/AST-1829-sweep-interval-data-scheduled-sweep` @ `c8314af01615f1d2adfb4bb326a27586c56c3869`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+| patt.entity.batch-processing | A | | |
+| astral.batch.claim-process-release | A | | |
+| astral.dispatch.entity-state-bound | A | | |
+| stat.logging.info.dispatcher | A | | |
+| stat.logging.debug | A | | |
+
+## Traceability
+
+AC 1 → S1 steps 1–2 · AC 2 → S1 steps 7–8 · AC 3 → S1 step 7 · AC 4 → S1 step 7 (`sweep <= 0`) · AC 5 → S1 step 8 / S2 step 1 (`avail > 0`) · AC 6 → S1 step 8 (`auto_mode = 1` SELECT unchanged) · AC 7 → S1 step 8 first branch / S2 step 4 · AC 8 → S2 steps 2–4 · AC 9 → S2 step 1 · AC 10 → S2 step 5 · AC 11 → S1 steps 5–6 · AC 12 → S2 step 6 (Thread grep) · Parent AC 11/13/14 → N/A (AST-1830)
+
+## Findings
+
+### acceptable
+
+- **Location:** `## Revisions` / S1 step 8 / S2 step 2a
+- **Finding:** Round-1 fix-now closed: no debug in `src/data/`; single ungated `logger.debug` over merged `due` in `_tick_loop` covers claim-queue and mailbox marks.
+- **Recommendation:** None.
+
+- **Location:** Plan Discuss thread
+- **Finding:** One completed round (`[plan-discuss] round=1 concern` via Joan upshot + Ada `round=1 reply` @ `c8314af0`); cap not hit.
+- **Recommendation:** Chuckles may move to **Plan Approved** and restore implementer per skill §8.
+
+context_tokens≈28000
