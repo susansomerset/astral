@@ -1436,7 +1436,7 @@ class TestScheduler:
         due = [{"id": 20}, {"id": 21}]
         monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: due)
         spawned: list[int] = []
-        monkeypatch.setattr(dispatcher_mod, "run_task", lambda task_id: spawned.append(task_id) or True)
+        monkeypatch.setattr(dispatcher_mod, "run_task", lambda task_id, **_kw: spawned.append(task_id) or True)
         _run_one_tick(monkeypatch)
         with pytest.raises(StopIteration):
             dispatcher_mod._tick_loop()
@@ -1448,7 +1448,7 @@ class TestScheduler:
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[30] = {"is_auto": True}
         spawned: list[int] = []
-        monkeypatch.setattr(dispatcher_mod, "run_task", lambda task_id: spawned.append(task_id) or True)
+        monkeypatch.setattr(dispatcher_mod, "run_task", lambda task_id, **_kw: spawned.append(task_id) or True)
         cfg = dict(dispatcher_mod.ASTRAL_CONFIG)
         cfg["max_auto_threads"] = 2
         monkeypatch.setattr(dispatcher_mod, "ASTRAL_CONFIG", cfg)
@@ -1461,7 +1461,7 @@ class TestScheduler:
         due = [{"id": 40}, {"id": 41}]
         monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: due)
         spawned: list[int] = []
-        monkeypatch.setattr(dispatcher_mod, "run_task", lambda task_id: spawned.append(task_id) or False)
+        monkeypatch.setattr(dispatcher_mod, "run_task", lambda task_id, **_kw: spawned.append(task_id) or False)
         _run_one_tick(monkeypatch)
         with pytest.raises(StopIteration):
             dispatcher_mod._tick_loop()
@@ -1471,7 +1471,7 @@ class TestScheduler:
         due = [{"id": 52}, {"id": 53}]
         monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: due)
         spawned: list[int] = []
-        monkeypatch.setattr(dispatcher_mod, "run_task", lambda task_id: spawned.append(task_id) or True)
+        monkeypatch.setattr(dispatcher_mod, "run_task", lambda task_id, **_kw: spawned.append(task_id) or True)
         cfg = dict(dispatcher_mod.ASTRAL_CONFIG)
         cfg["max_auto_threads"] = 1
         monkeypatch.setattr(dispatcher_mod, "ASTRAL_CONFIG", cfg)
@@ -1486,7 +1486,7 @@ class TestScheduler:
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[51] = {"is_auto": True}
         spawned: list[int] = []
-        monkeypatch.setattr(dispatcher_mod, "run_task", lambda task_id: spawned.append(task_id) or True)
+        monkeypatch.setattr(dispatcher_mod, "run_task", lambda task_id, **_kw: spawned.append(task_id) or True)
         cfg = dict(dispatcher_mod.ASTRAL_CONFIG)
         cfg["max_auto_threads"] = 1
         monkeypatch.setattr(dispatcher_mod, "ASTRAL_CONFIG", cfg)
@@ -2446,7 +2446,7 @@ class TestAst1022HonorAutoOffStageDispatch:
         def _dbg() -> None:
             order.append("debug")
 
-        def _run(task_id: int) -> bool:
+        def _run(task_id: int, **_kw: object) -> bool:
             order.append(f"run:{task_id}")
             return True
 
@@ -3024,3 +3024,173 @@ class TestAst1623MeteoriteLedgerAndBackfill:
         dispatcher_mod.start_scheduler()
         corr.assert_called_once_with()
 
+
+# Branches: mailbox sweep-due mark / sweep-not-due skip / freq gate on sweep / normal row unmarked;
+# tick passes _scheduled_sweep to run_task + logs sweep-due (marked vs unmarked);
+# run_task stores the flag; _run_dispatch_loop one batch min 1 for flagged AUTO; debug forcing UI-only.
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod.database, "dispatch_task_sweep_due"),
+    reason="AST-1829 scheduled sweep not on this publish tip",
+)
+class TestAst1829ScheduledSweep:
+    """AST-1829: sweep_hrs scheduled sweep — mailbox due, tick spawn flag, one-batch loop."""
+
+    @staticmethod
+    def _ago(hours: float) -> str:
+        from datetime import datetime, timedelta, timezone
+
+        return (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _mailbox_rows(self, **overrides: Any) -> List[Dict[str, Any]]:
+        tk = dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
+        row = {
+            "id": 1829,
+            "task_key": tk,
+            "candidate_id": "A",
+            "auto_mode": 1,
+            "min_count": 5,
+            "freq_hrs": 0,
+            "sweep_hrs": 1,
+            "last_run_at": self._ago(2),
+        }
+        row.update(overrides)
+        return [row]
+
+    def _mailbox_due(self, monkeypatch: pytest.MonkeyPatch, rows, bound, freq_ok: bool = True):
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr("src.core.inbox.count_inbox_bound_by_candidate", lambda **kwargs: bound)
+        monkeypatch.setattr(dispatcher_mod.database, "dispatch_task_freq_allows", lambda t: freq_ok)
+        # sweep-due helper is real (row data only, no DB)
+        return dispatcher_mod._meteorite_email_due_tasks()
+
+    # AC 9: bound Avail 2 < min_count 5, sweep due, freq allows → due, marked sweep
+    def test_mailbox_sweep_due_marked(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        due = self._mailbox_due(monkeypatch, self._mailbox_rows(), {"A": 2})
+        assert [t["id"] for t in due] == [1829]
+        assert due[0]["_scheduled_sweep"] is True
+        assert due[0]["available_count"] == 2
+
+    # AC 9: freq_allows false gates the sweep branch too
+    def test_mailbox_sweep_blocked_by_freq(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert self._mailbox_due(monkeypatch, self._mailbox_rows(), {"A": 2}, freq_ok=False) == []
+
+    # AC 3 / 4 / 5 on the mailbox path: inside interval, no interval, zero Avail → not due
+    @pytest.mark.parametrize(
+        "overrides,bound",
+        [
+            ({"last_run_at": "RECENT"}, {"A": 2}),
+            ({"sweep_hrs": None}, {"A": 2}),
+            ({"sweep_hrs": 0}, {"A": 2}),
+            ({}, {}),
+        ],
+        ids=["inside_interval", "sweep_null", "sweep_zero", "zero_avail"],
+    )
+    def test_mailbox_sweep_not_due(self, monkeypatch: pytest.MonkeyPatch, overrides, bound) -> None:
+        if overrides.get("last_run_at") == "RECENT":
+            overrides = {"last_run_at": self._ago(10 / 60)}
+        assert self._mailbox_due(monkeypatch, self._mailbox_rows(**overrides), bound) == []
+
+    # AC 7 on the mailbox path: Avail >= min_count → due, not marked
+    def test_mailbox_full_batch_unmarked(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        due = self._mailbox_due(monkeypatch, self._mailbox_rows(), {"A": 5})
+        assert [t["id"] for t in due] == [1829]
+        assert not due[0].get("_scheduled_sweep")
+
+    # Tick: marked row spawns with scheduled_sweep=True and logs once; unmarked row spawns False
+    def test_tick_passes_sweep_flag_and_logs_sweep_due(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        due = [{"id": 60, "_scheduled_sweep": True, "task_key": "evaluate_jd"}, {"id": 61}]
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: due)
+        calls: list[tuple] = []
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "run_task",
+            lambda task_id, **kw: calls.append((task_id, kw)) or True,
+        )
+        log = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "logger", log)
+        _run_one_tick(monkeypatch)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        assert calls == [(60, {"scheduled_sweep": True}), (61, {"scheduled_sweep": False})]
+        sweep_lines = [c for c in log.debug.call_args_list if str(c.args[0]).startswith("sweep due")]
+        assert len(sweep_lines) == 1
+        assert sweep_lines[0].args[1] == 60
+
+    # run_task: flag lands on the thread's task dict (row is re-read, so it must be passed in)
+    @pytest.mark.parametrize("flag", [True, False])
+    def test_run_task_stores_scheduled_sweep(self, monkeypatch: pytest.MonkeyPatch, flag: bool) -> None:
+        captured: list[dict] = []
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                captured.append(args[1])
+
+            def start(self) -> None:
+                return None
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {"id": task_id, "task_key": "evaluate_jd", "candidate_id": "cand-1"},
+        )
+        kwargs = {"scheduled_sweep": True} if flag else {}
+        assert dispatcher_mod.run_task(1829, **kwargs) is True
+        assert captured[0]["_scheduled_sweep"] is flag
+        assert captured[0]["_ui_initiated"] is False
+
+    # AC 7: normal AUTO row below min_count (no sweep flag) still skips
+    @pytest.mark.asyncio
+    async def test_loop_unflagged_auto_below_min_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 3)
+        run = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        task = {"id": 1829, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY",
+                "auto_mode": 1, "min_count": 10, "max_runs": 0, "_scheduled_sweep": False}
+        await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "b", dict(dispatcher_mod._SUMMARY_ZERO), None)
+        run.assert_not_awaited()
+
+    # AC 8 + AC 10: tick-spawned sweep (Avail 3 < min 10, max_runs 0) → exactly one batch,
+    # last_run_at stamped, log_debug stays False on a local deploy; ui_initiated contrast forces True.
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "flag_key,expect_debug",
+        [("_scheduled_sweep", False), ("_ui_initiated", True)],
+        ids=["scheduled_sweep", "ui_sweep_contrast"],
+    )
+    async def test_sweep_one_batch_no_min_gate_and_debug(
+        self, monkeypatch: pytest.MonkeyPatch, flag_key: str, expect_debug: bool
+    ) -> None:
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock(return_value=1829))
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_check_circuit_breaker", MagicMock())
+        stamp = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", stamp)
+        monkeypatch.setattr(dispatcher_mod, "is_local_deploy_env", lambda: True)
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 3)
+        seen_debug: list[bool] = []
+
+        async def _one_batch(*args: Any, **kwargs: Any) -> Dict[str, int]:
+            seen_debug.append(bool(dispatcher_mod.log_debug.get()))
+            return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+
+        run = AsyncMock(side_effect=_one_batch)
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        task = {
+            "id": 1829, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY",
+            "candidate_id": "cand-1", "auto_mode": 1, "min_count": 10, "max_runs": 0, "debug": 0,
+            flag_key: True,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[1829] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        assert run.await_count == 1
+        assert seen_debug == [expect_debug]
+        assert any("last_run_at" in c.kwargs for c in stamp.call_args_list)
