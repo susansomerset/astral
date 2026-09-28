@@ -163,3 +163,10 @@ cd src/ui/frontend && npm run test:component -- \
   -q
 ```
 
+### AST-1821 · AST-1820
+
+Company **`count_eligible_for_dispatch_task`** composes the **`last_scan_at`** window with **`score_floor`**, resolves **`batch_criteria`** through **`registered_base`** (implicit **`{base}_RETRY`** triggers), and equals **`claim_company_batch`**; **`count_companies_in_state_with_score_floor(scan_interval_hours=)`** keyword-only window (default **`None`** unchanged). Test/bible delivery on gap sibling **AST-1822**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Company Avail window + score_floor | `src/data/database.py` (**`count_eligible_for_dispatch_task`**, **`count_companies_in_state_with_score_floor`**) | `tests/component/data/database/test_dispatch_tasks.py::TestAst1821CompanyAvailWindow` (all five nodes) + **`TestAst508PrefilterPassedEligible`** regression |
