@@ -555,7 +555,7 @@ fix-now accepted → Review Posted → resolve by Betty (test-tree owner): resto
 
 ## Bug: AST-1831 — recheck_no_openings runs one batch of 10 regardless of batch_size / max_runs
 
-**Status: Plan Discuss (`[scope-gate]` + live-row question).** Nothing in code treats `recheck_no_openings` differently. The one concrete defect found is generic and lives outside AST-1820's declared scope.
+**Status:** The `[scope-gate]` is answered. On 2026-09-28 Susan said to add the admin UI bug to this bug's scope and resolve it, and Chuckles amended AST-1820's scope to add `src/ui/api/api_admin.py` `create_dtask`. The live-row values weren't provided, so the admin create `max_runs` fix is the resolution. Nothing in code treats `recheck_no_openings` differently.
 
 ### As-is
 
@@ -588,18 +588,48 @@ So "10 per batch, one run" means the row's **stored** values are `batch_size = N
 2. **Edits to an AUTO row are rejected.** PUT returns 400 "Turn AUTO mode off before editing this row" whenever `row.auto_mode` is set and the body has any other key. The modal always sends every field, so an AUTO row's `batch_size` / `max_runs` can't change until AUTO is turned off first. This is by design and shows a toast, but it's easy to miss.
 3. **Sweeps:** the Sweep button, and a tick sweep when `0 < Avail < min_count` and `sweep_hrs` has elapsed, run exactly one batch.
 
-### Proposed change (pending scope amendment + live-row confirmation)
+### Create-path persistence audit (Add form POST body vs `create_dtask`)
 
-- **`src/ui/api/api_admin.py`, create handler (POST `/dispatch_tasks`):** after `save_dispatch_task(...)`, when `"max_runs" in data and data["max_runs"] is not None`, call `update_dispatch_task(task_id, max_runs=int(data["max_runs"]))`. This mirrors the existing `skip_daisy_chain` / `batch_call_mode` follow-ups. It's one guarded call with no schema change. **Outside AST-1820 scope** (`api_admin.py` isn't declared). See the `[scope-gate]` comment.
-- No dispatcher, roster, or claim change: none of them special-case recheck.
-- If the live row shows `batch_size` / `max_runs` already set to Susan's values and the ledger shows `Calling get_new_company_batch: [... limit=10 ...]` on a non-Sweep run, this root cause is wrong. Re-plan from that log line.
+The Add form (`AdminScheduledActions.tsx` `handleSave`, create branch) sends: `candidate_id`, `task_key`, `trigger_state`, `entity_type`, `freq_hrs`, `sweep_hrs`, `min_count`, `batch_size`, `batch_call_mode`, `max_runs`, `score_floor`, `auto_mode`, `skip_daisy_chain`.
+
+| Field | `create_dtask` today | Verdict |
+|---|---|---|
+| `candidate_id`, `task_key`, `trigger_state`, `entity_type`, `min_count`, `auto_mode`, `freq_hrs`, `sweep_hrs`, `score_floor` | passed to `save_dispatch_task` | OK |
+| `batch_size` | `int(...) if data.get("batch_size") else None` → saved; blank/0 → NULL, which is the form's "default" placeholder (state `batch_criteria.limit`) | OK, by design |
+| `batch_call_mode` | follow-up `update_dispatch_task` when not None | OK |
+| `skip_daisy_chain` | follow-up when truthy; false → column default 0 | OK |
+| **`max_runs`** | **dropped**: `save_dispatch_task` has no param and there's no follow-up → column DEFAULT 1 | **Defect: fixed below** |
+| `debug` | Add modal shows a Debug checkbox, but the frontend create body **doesn't send** `debug` | Gap is in `AdminScheduledActions.tsx` (outside scope); not fixed here, noted for a follow-up. The row can still be toggled with the list's Debug control (PUT `{debug}`). |
+
+So `max_runs` is the only `api_admin.py` persistence gap on this path.
+
+### Proposed change
+
+**`src/ui/api/api_admin.py`, `create_dtask` (POST `/api/admin/dispatch_tasks`), one guarded follow-up:**
+
+Directly after the existing `batch_call_mode` follow-up and before `return jsonify({"id": task_id}), 201`, add:
+
+```python
+    # save_dispatch_task has no max_runs param; without this, form-created rows keep the column default 1.
+    if "max_runs" in data and data.get("max_runs") is not None:
+        update_dispatch_task(task_id, max_runs=int(data["max_runs"]))
+```
+
+- It mirrors the `skip_daisy_chain` / `batch_call_mode` follow-ups and uses the same `int(...)` coercion as `update_dt` for `max_runs`. Values: 0 = loop until drained, N = cap, absent/null = column default 1.
+- No change to `save_dispatch_task`, schema, dispatcher, roster, claim, or frontend.
 
 ### Blast radius
 
-The create fix touches every task key's Add-form create: `max_runs` is persisted as sent instead of 1. Rows created before the fix keep their stored value (no backfill). Existing tests that create via POST and assume `max_runs == 1` after sending another value would change; none is known.
+- Every task key's Add-form create now stores `max_runs` as sent instead of 1. Recheck is just where it was noticed.
+- The frontend already sends `max_runs` (blank → 1), so its behavior is unchanged except that non-1 values now stick.
+- Rows created before the fix keep their stored value (no backfill). Susan fixes an affected row by editing it: turn AUTO off first, because `update_dt` rejects non-toggle edits on AUTO rows.
+- Template copy (`set_dispatch_tasks_from_template_rows`) and PUT (`update_dt`) are untouched; they already persist `max_runs`.
+- Tests: create tests in `tests/component/ui/api/test_api_admin.py` (`test_create_dispatch_task_rejects_retired_*`) return 400 before the save and don't mock `update_dispatch_task`, so they're unaffected. There's no existing coverage that POST persists `max_runs`, which is Betty's call at the board.
 
 ### What must still hold
 
-- A Sweep (UI or scheduled, AST-1829) on an AUTO row is still one batch.
-- A NULL `batch_size` still falls back to the state `batch_criteria.limit`.
+- A create POST without `max_runs` (or with null) stores the column default 1, same as today.
+- `batch_size` blank/0 on create still stores NULL (state `batch_criteria.limit` fallback), and a NULL `batch_size` still falls back to that limit at claim.
+- A Sweep (UI or scheduled, AST-1829) on an AUTO row is still one batch. `max_runs = 0` still means loop until drained.
+- `update_dt` behavior is unchanged, including the AUTO-row edit block.
 - AST-1821 count/claim parity and failure stamping are unchanged.
