@@ -162,3 +162,44 @@ No other files. Do **not** edit `src/data/database.py` or `src/core/dispatcher.p
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1830
+**Overall:** APPROVED
+**Corpus:** a0bc2f0e5b5810448cf465ebeff84ffb6f1d60b6
+**Publish ref:** `origin/sub/AST-1824/AST-1830-sweep-interval-admin-api-ui` @ `de6c5fdedac6ff3f00c792416695672f0531c788`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | B | | |
+
+## Traceability
+
+AC 11 (child) / parent AC 11 → S1 steps 1–7 · AC 12 (child) / parent AC 13 → S2 steps 1–5, 7–11 · AC 13 (child) / parent AC 14 → S2 step 6 + step 11 grep · Parent AC 1–10, 12, 15 → N/A (AST-1829 or out of slice)
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 1 step 2 (`_parse_sweep_hrs` Decision)
+- **Finding:** `patt.entity.batch-criteria` Arc 1 says dispatch_task rows are not code-validated; this plan adds a narrow API gate (non-negative float, negative/non-numeric → 400). Parent AST-1824 technical scope and child AC 11 require that gate; the Decision documents ticket-over-Arc-1 for `sweep_hrs` only.
+- **Recommendation:** No plan change required for approval; keep the Decision so Radia can see the intentional exception. Archie need not widen Canon Scope for a single AC-mandated field.
+
+### acceptable
+
+- **Location:** Explicit scope gate / Files Changed
+- **Finding:** Two-file footprint matches ticket `## Scope`; AST-1829 frozen `sweep_hrs` key respected; no `database.py` / `dispatcher.py` edits; AUTO-on edit lock unchanged (S1 step 5).
+- **Recommendation:** None.
+
+- **Location:** Stage 2 / AST-1829 contract
+- **Finding:** List rows already carry `sweep_hrs` via `SELECT *`; plan limits API work to column metadata + create/update — consistent with Frozen names.
+- **Recommendation:** None.
+
+- **Location:** Identity / status
+- **Finding:** AST-1830 **Plan Ready**, assignee Joan; no `[plan-discuss]` rounds; depends-on AST-1829 noted on ftr (implementation ordering, not a plan defect).
+
+context_tokens≈32000
