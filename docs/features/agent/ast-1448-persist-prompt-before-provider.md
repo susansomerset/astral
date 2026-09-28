@@ -678,6 +678,191 @@ Do **not** treat AST-1842 as orphaned merge-to-dev despite plan doc wording “o
 
 Repro coverage for the select_job_page timeout hold, the do_task loop-not-blocked store, and the WAL/busy-timeout connection is owned by sibling gap **AST-1843** (orphaned fix-board TESTS: REVISE path). No test() on this tip; lighter test-fix compile/sanity **Tests Passed** @ `b43b7bf9`.
 
+## Bug: AST-1843 — repro coverage for AST-1842 (timeout hold, loop-not-blocked store, WAL connection)
+
+- **Linear:** [AST-1843](https://linear.app/astralcareermatch/issue/AST-1843) · mini-parent [AST-1825](https://linear.app/astralcareermatch/issue/AST-1825) · product fix sibling [AST-1842](https://linear.app/astralcareermatch/issue/AST-1842) (already merged into `ftr/AST-1825-select-job-page-db-lock-loop-stall`)
+- **Publish ref:** `sub/AST-1825/AST-1843-repro-coverage`
+- **Kind:** test/bible gap child opened by AST-1842 fix-board `[board-betty] TESTS: REVISE` (precedent: AST-1724 gap child of AST-1723). **Betty lands everything below at qa-fix** — test tree and bible are hers; this section is the spec, not code.
+- **Explicit scope:** AST-1843 `## Scope` — `tests/component/core/test_roster.py`, `tests/component/core/test_agent.py`, `tests/component/data/test_database.py`, `docs/test-bible/core/roster.md`, `docs/test-bible/core/agent.md`, `docs/test-bible/data/database.md`. No product code (AST-1842 owns `agent.py` / `database.py` / `config.py` / `roster.py`). No coverage beyond the three repros. No Canon Scope on AST-1843 or AST-1825.
+
+### As-is
+
+None of AST-1842's three repros (§ Bug: AST-1842 → Repro 1–3) is covered on `origin/ftr/AST-1825-select-job-page-db-lock-loop-stall`:
+
+- `tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal::test_find_job_page_holds_state` covers only the `provider_balance_refusal` hold in `_find_job_page_from_assembled`; nothing asserts the `provider_call_timeout` hold (`roster.py` is `LOCKED_AT_100` in `scripts/testing/check_per_file_coverage.py`).
+- Nothing in `tests/component/core/test_agent.py` (or `test_agent_ast1448.py`) asserts the event loop keeps running while `save_agent_data` blocks inside `do_task`; existing AST-1448 tests stub `_store_*` with instant functions, so they pass whether the store runs on the loop or on a thread.
+- `tests/component/data/test_database.py` opens connections via `db._get_connection()` for schema tests but never asserts `journal_mode` or `busy_timeout`.
+- Bible pages `docs/test-bible/core/roster.md`, `core/agent.md` (§ AST-1448 · AST-1442), `data/database.md` name no AST-1842 node ids.
+
+### To-be
+
+Three `[bug-repro]` tests, each **red on pre-fix product** (`origin/dev`) and **green on the ftr tip** (AST-1842 merged), plus bible entries naming their node ids:
+
+| # | Node id | Pre-fix (red) | Post-fix (green) |
+|---|---------|---------------|------------------|
+| 1 | `tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold::test_find_job_page_provider_call_timeout_holds_pjl_ready` | `_save_company(state="NO_JOBLIST")` called; `out["state"] == "NO_JOBLIST"`, no `state_held` | no save; `PJL_READY`, `state_held`, `failure_class="provider_call_timeout"` |
+| 2 | `tests/component/core/test_agent.py::TestAst1842DoTaskStoreOffLoop::test_slow_save_agent_data_does_not_block_loop` | heartbeat max gap ≥ one blocked store (~0.3s) | heartbeat max gap < 0.2s |
+| 3 | `tests/component/data/test_database.py::TestAst1842ConnectionWalBusyTimeout::test_get_connection_wal_and_configured_busy_timeout` | `journal_mode == "delete"`, `busy_timeout == 5000` | `journal_mode == "wal"`, `busy_timeout == 10000` (from config) |
+
+### Repro
+
+Evidence this shape discriminates pre/post fix: during AST-1842 test-fix, a throwaway harness (outside `tests/`, not committed) using the same fixtures ran against both trees — roster: pre-fix saved `NO_JOBLIST`, post-fix held `PJL_READY`; agent (1.0s blocking stores): pre-fix max loop gap **1.046s**, post-fix **0.038s**; connection (temp DB): post-fix `journal_mode=wal`, `busy_timeout=10000`. Tests 1–3 below are that harness, tightened.
+
+### Root cause
+
+Coverage gap only: AST-1842 routed its `[bug-repro]` bar to this sibling (fix-board REVISE), so the product fix merged to ftr with lighter test-fix sanity and no committed repro.
+
+### Proposed change
+
+All three tests plus bible edits land in **one** Betty `test(AST-1843): …` commit (or one per file — her call) on `astral-tests`, published to `origin/sub/AST-1825/AST-1843-repro-coverage` only. Use existing module imports/helpers in each file; add no new fixture modules or conftest changes.
+
+**Test 1 — `tests/component/core/test_roster.py`**
+
+Add a new class `TestAst1842SelectJobPageTimeoutHold` **immediately after** `TestAst897HoldStateOnBalanceRefusal` (before `TestAst1155PrefilterIncompleteRetry`). Docstring: `"""AST-1842: provider_call_timeout on select_job_page holds loop-eligible state (no NO_JOBLIST)."""`. One async test, a copy of `TestAst897HoldStateOnBalanceRefusal::test_find_job_page_holds_state` with exactly these differences:
+
+```python
+    async def test_find_job_page_provider_call_timeout_holds_pjl_ready(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Provider call exceeded per-call time budget (600s)",
+                    "failure_class": PROVIDER_CALL_BUDGET["failure_class"],
+                }
+            ),
+        )
+        saver = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state="PJL_READY")))
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme",
+            company_website="https://cw",
+            assembled_content="asm",
+            page_url_map={1: "https://jobs"},
+            page_dom_map={},
+            visible_map={1: ""},
+            nav_links="",
+            browser_context=None,
+            debug=False,
+            ctx=None,
+            chain_parse=False,   # select-only dispatch entry, as run_select_job_page_dispatch calls it
+            decomposed=True,
+        )
+        assert out["response_type"] == "SELECT_FAILED"
+        assert out["state"] == "PJL_READY"
+        assert out["state_held"] is True
+        assert out["failure_class"] == PROVIDER_CALL_BUDGET["failure_class"]
+        assert out["error"]
+        saver.assert_not_called()
+```
+
+`PROVIDER_CALL_BUDGET` comes from `src.utils.config` (add to the file's existing config import if absent — do not hard-code `"provider_call_timeout"`).
+
+**Test 2 — `tests/component/core/test_agent.py`**
+
+Append a new class `TestAst1842DoTaskStoreOffLoop` at the end of the file. Docstring: `"""AST-1842: a slow/locked save_agent_data blocks a worker thread, not the event loop."""`. Stub **`save_agent_data`** (the real `_store_prompt_blocks` / `_store_response_block` stay in play, so the test covers the actual call sites AST-1842 changed):
+
+```python
+    async def test_slow_save_agent_data_does_not_block_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        token = agent_mod.log_batch_id.set("batch-1")
+        try:
+            monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda _key: _agent_rows())
+            block_types: List[str] = []
+
+            def slow_save(**kw: Any) -> None:
+                block_types.append(kw["block_type"])
+                time.sleep(0.3)   # a locked-DB commit
+
+            monkeypatch.setattr(agent_mod, "save_agent_data", slow_save)
+            monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value={
+                "success": True, "parsed_response": {"agent_payload": "0|CRA2"},
+                "api_response": _api_response("ok"), "timesheet": {},
+            }))
+            ticks: List[float] = []
+            done = asyncio.Event()
+
+            async def heartbeat() -> None:
+                while not done.is_set():
+                    ticks.append(time.monotonic())
+                    await asyncio.sleep(0.02)
+
+            async def run() -> None:
+                try:
+                    await asyncio.sleep(0.1)   # heartbeat ticks first, so a freeze shows as a gap
+                    await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_draft_job_resume_ctx())
+                finally:
+                    done.set()
+
+            await asyncio.gather(run(), heartbeat())
+        finally:
+            agent_mod.log_batch_id.reset(token)
+        assert "SYSTEM" in block_types and "RESPONSE" in block_types   # prompt + RESPONSE stores both ran
+        assert max(b - a for a, b in zip(ticks, ticks[1:])) < 0.2
+```
+
+- `_agent_rows`, `_api_response`, `_draft_job_resume_ctx` are this module's existing helpers (already imported by `test_agent_ast1448.py` from here). Add `asyncio` / `time` / `AsyncMock` imports only if the module lacks them.
+- **Do not assert `out["success"]`.** In the AST-1842 harness this exact setup returned `success=False` from a downstream decode check (`agent_payload must be the newline-separated encoded string…`); that path still runs the prompt store and the failure-audit RESPONSE store, which is all the repro needs. The `block_types` assertion proves both store kinds ran.
+
+⚠️ **Decision (timing values for Betty to confirm):** 0.3s per blocked save, 0.02s heartbeat, pass bar max gap < 0.2s. Pre-fix, every save is a ≥0.3s gap (red with margin); post-fix the harness measured ~0.04s (green with ~5× margin). Total runtime ≈ number of saves × 0.3s (~2–3s). If CI jitter bites, widen the per-save sleep, not the bar.
+
+**Test 3 — `tests/component/data/test_database.py`**
+
+Append a new class `TestAst1842ConnectionWalBusyTimeout`. Docstring: `"""AST-1842: _get_connection opens WAL with the configured busy timeout."""`. Point `DB_PATH` at a temp file so the shared `data/astral.db` is not the one flipped/asserted:
+
+```python
+    def test_get_connection_wal_and_configured_busy_timeout(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        from src.data import database as db
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setattr(db, "DB_PATH", tmp_path / "astral.db")
+        cfg = ASTRAL_CONFIG["db_connection"]
+        conn = db._get_connection()
+        try:
+            assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == cfg["journal_mode"].lower()
+            assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == int(float(cfg["busy_timeout_seconds"]) * 1000)
+        finally:
+            conn.close()
+```
+
+- Pre-fix, `ASTRAL_CONFIG["db_connection"]` does not exist, so the test is red on `KeyError` before the PRAGMA asserts — acceptable as the pre-fix red (the fix is exactly "add this config + apply it"). If Betty prefers a pre-fix red on the PRAGMA values themselves, assert literals `"wal"` / `10000` instead; either reads config the product owns.
+- Add `pytest` / `Path` imports only if absent (the module currently imports `sqlite3` only).
+
+**Bible edits** (same commit(s)):
+
+1. `docs/test-bible/core/roster.md` — new section `### AST-1842 · AST-1825 (select_job_page provider_call_timeout hold)`, with "Test/bible delivery on gap sibling **AST-1843**", a one-line behavior summary (timeout joins the AST-897 balance-refusal hold in `_find_job_page_from_assembled`; `PJL_READY` held, no `NO_JOBLIST`), a table row `| Timeout hold | src/core/roster.py (_find_job_page_from_assembled) | tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold::test_find_job_page_provider_call_timeout_holds_pjl_ready |`, and a regression row pointing at `TestAst897HoldStateOnBalanceRefusal::test_find_job_page_holds_state`. roster.md has no existing AST-897 section to nest under (checked: no `897` / `balance` hits), so this is a new section.
+2. `docs/test-bible/core/agent.md` — inside the existing `### AST-1448 · AST-1442 (persist prompt before provider)` section, add a table row `| Store off the event loop (AST-1842 / AST-1843) | src/core/agent.py (do_task → asyncio.to_thread) | tests/component/core/test_agent.py::TestAst1842DoTaskStoreOffLoop::test_slow_save_agent_data_does_not_block_loop |` and append that node id to the section's `run_component_tests.sh` block.
+3. `docs/test-bible/data/database.md` — new section `### AST-1842 · AST-1825` (after `### AST-1821 · AST-1820`), "Test/bible delivery on gap sibling **AST-1843**", summary (`_get_connection` applies `ASTRAL_CONFIG["db_connection"]`: busy timeout + WAL), row `| Connection WAL + busy timeout | src/data/database.py (_get_connection), src/utils/config.py (db_connection) | tests/component/data/test_database.py::TestAst1842ConnectionWalBusyTimeout::test_get_connection_wal_and_configured_busy_timeout |`, plus a run block.
+
+**Manifest for qa-fix / test-fix (narrowed):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_agent.py::TestAst1842DoTaskStoreOffLoop \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider \
+  tests/component/data/test_database.py::TestAst1842ConnectionWalBusyTimeout \
+  -q
+```
+
+Red check: the three `TestAst1842*` node ids against `origin/dev` product (pre-AST-1842) must fail; against the ftr tip they must pass.
+
+### Blast radius
+
+- **Test tree only** — three appended classes, three bible edits. No product file, no conftest, no fixture module.
+- **Test 3 flips its temp DB to WAL** — isolated via `monkeypatch.setattr(db, "DB_PATH", tmp_path / …)`; the shared `data/astral.db` other tests use is untouched by this test (it already flips via ordinary `_get_connection` use on the ftr tip — expected, AST-1842 behavior).
+- **Test 2 is timing-based** — ~2–3s added runtime; jitter margin per the Decision above.
+- **Pre-existing reds on this suite** (unchanged by this ticket, recorded in § Bug: AST-1842 build stub): `test_agent.py` 41 / `test_roster.py` 50 / `tests/component/data/**` 51 + 2 collection errors in the local Python 3.14 venv, including `TestAst1448PersistPromptBeforeProvider::test_do_task_debug_emits_prompt_found_recorded_before_provider`. The manifest's AST-1448 class carries those 3 known reds; qa-fix should judge "green" on the new `TestAst1842*` nodes + no new reds, or fix those separately (out of this ticket's scope).
+- **`LOCKED_AT_100`** (`agent.py`, `roster.py`, `config.py`): the new tests only add hits; nothing is removed.
+
+### What must still hold
+
+- AST-1843 AC: each repro red on `origin/dev`, green on ftr; bible names the node ids; no existing test weakened or deleted (`TestAst897HoldStateOnBalanceRefusal` and `TestAst1448PersistPromptBeforeProvider` unchanged).
+- AST-1842's contract as merged: prompt persist completes before the provider await; timeout hold returns the AST-897 shape; `db_connection` config drives `_get_connection`. Tests assert that contract; they do not re-specify it.
+- No product code on this publish ref (engineer and Betty hooks both enforce; plan-fix doc edit is the only engineer commit here).
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
