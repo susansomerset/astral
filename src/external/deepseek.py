@@ -6,8 +6,11 @@ mirror anthropic.py — avoid refactor in this ticket (AST-493).
 
 import json
 import os
+import random
 import re
 import sys
+import threading
+import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -22,7 +25,7 @@ from src.utils.formatting import (
     looks_like_encoded_grades_text,
     clean_encoded_agent_payload,
 )
-from src.utils.config import PROVIDER_EMPTY_RESPONSE
+from src.utils.config import DEEPSEEK_CONCURRENCY, PROVIDER_EMPTY_RESPONSE
 from src.utils.llm_external import (
     await_provider_call_with_budget,
     classify_provider_balance_refusal,
@@ -48,7 +51,7 @@ for _name in ("httpcore", "httpx", "anthropic"):
     _logging.getLogger(_name).setLevel(_logging.WARNING)
 
 try:
-    from anthropic import Anthropic
+    from anthropic import Anthropic, RateLimitError
     import httpx as _httpx
 except ImportError:  # pragma: no cover
     logger.error("Anthropic SDK not installed. Run: pip install anthropic")
@@ -176,6 +179,30 @@ def _parse_python_code_response(response_text: str) -> Dict[str, Any]:
     return result
 
 
+_call_slots = threading.BoundedSemaphore(int(DEEPSEEK_CONCURRENCY["max_concurrent"]))
+
+
+def _create_with_concurrency_cap(client: Anthropic, api_kwargs: Dict[str, Any]) -> Any:
+    """Blocking messages.create under the process-wide slot cap; retries 429 with jittered backoff.
+
+    Runs in a worker thread (each dispatch task has its own event loop, so the cap is a
+    threading semaphore, not asyncio). The slot is held only during the call, not the backoff sleep.
+    """
+    attempts = int(DEEPSEEK_CONCURRENCY["rate_limit_retries"]) + 1
+    base = float(DEEPSEEK_CONCURRENCY["backoff_base_seconds"])
+    cap = float(DEEPSEEK_CONCURRENCY["backoff_max_seconds"])
+    for attempt in range(attempts):
+        try:
+            with _call_slots:
+                return client.messages.create(**api_kwargs)
+        except RateLimitError:
+            if attempt == attempts - 1:
+                raise
+            delay = min(base * (2 ** attempt), cap) * random.uniform(0.5, 1.0)
+            logger.warning("deepseek 429; retry %d/%d in %.1fs", attempt + 1, attempts - 1, delay)
+            time.sleep(delay)
+
+
 async def send_to_deepseek(
     content_blocks: List[Dict[str, Any]],
     *,
@@ -242,7 +269,7 @@ async def send_to_deepseek(
             api_kwargs["system"] = system_blocks
 
         def _make_api_call():
-            return client.messages.create(**api_kwargs)
+            return _create_with_concurrency_cap(client, api_kwargs)
 
         try:
             response = await await_provider_call_with_budget(

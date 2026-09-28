@@ -263,7 +263,13 @@ def _get_connection() -> sqlite3.Connection:
     """
     # Ensure data directory exists (DB_PATH already set above)
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+    # Many dispatch threads write concurrently: wait for locks instead of failing fast, and
+    # use WAL so readers do not block on the writer.
+    busy_ms = int(ASTRAL_CONFIG.get("db_busy_timeout_ms", 30000))
+    conn = sqlite3.connect(str(DB_PATH), timeout=busy_ms / 1000.0)
+    conn.execute(f"PRAGMA busy_timeout={busy_ms}")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.row_factory = sqlite3.Row
     return conn
 
