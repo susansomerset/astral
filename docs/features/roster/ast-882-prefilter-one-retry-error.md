@@ -633,3 +633,7 @@ Frozen **Canon Scope** on AST-1839 is empty (Linear Description + fix-board Joan
 #### Chuckles disposition
 
 Clean PROCEED → Review Posted → User Testing (resolve-child skipped). Orphaned mini-parent: merge-child into `ftr/AST-1828-auto-retry-warn-then-error`. The statute carve-out and the 19 test nodes stay on gap AST-1846.
+
+### docs-acceptance (AST-1839)
+
+Test and bible coverage for this fix is owned by sibling gap **AST-1846** (Betty board `[board-betty] TESTS: REVISE`; orphaned mini-parent, so no qa-fix / `[bug-repro]` on this ref). That includes the 19 broken or missing test nodes (the `test_roster.py` AST-882 first-strike asserts, `COMPANY_STATES` / HOMEPAGE_READY transition asserts, and the uncovered repro paths listed under Fix board → Betty) plus the `docs/test-bible/**` updates. No test-tree delivery on this ref, so no `merge-tests(AST-1839)` and no fabricated `test(AST-1839)` noop.
