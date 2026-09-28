@@ -496,6 +496,85 @@ END-VERDICT
 AST-1847 board-joan done — CANON: OK.
 ```
 
+## Radia review — AST-1847
+
+[code-rubric]
+**Ticket:** AST-1847  
+**Publish ref:** `ba60f8e4` (`origin/sub/AST-1845/AST-1847-parse-job-list-timeout-partial-counts`)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on this ref)  
+**Overall:** CLEAN  
+
+**Diff reviewed:** `origin/ftr/AST-1845-parse-job-list-timeout-partial-counts...origin/sub/AST-1845/AST-1847-parse-job-list-timeout-partial-counts` — 3 commits (`bd850855` plan-fix, `3dd75285` Joan board, `ba60f8e4` product); product delta `src/core/dispatcher.py`, `src/core/roster.py` only (+ plan-fix doc block).
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — plan-fix patch states the same. No directive ids to score; Joan fix-board overlap skim recorded CANON: OK. Off-list statutes not graded per §5.3.)*
+
+| (no frozen ids) | — | — | — |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **fix-board** `[board-joan] CANON: OK` only; no `validate-plan` fix-mode score table in the issue doc).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`** — **not applicable — clean board opt-out with sibling ownership.** Betty `[board-betty] TESTS: REVISE` on this ticket; repro/`[bug-repro]` and bible nodes live on sibling **AST-1848** (`origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests`; Susan: red at `8e7b77a5`, green with this fix overlaid). No `[bug-repro]` on AST-1847 tip — expected, not fix-now.
+
+**`## What must still hold`** — **OK**
+
+| Item | Verdict |
+|------|---------|
+| AC2/AC4: per-company state writes as today; `clear_company_batch` in `_run_unified` `finally` unchanged | OK — only `_tally` / `_counted` added beside existing classification; no change to `run_parse_job_list_dispatch` or `finally` body |
+| AST-1839 buckets (retry ≠ error; error/pass/retry branches) | OK — `_tally` mirrors the same four branches as local `passed`/`errors`/`retried` |
+| Normal completion: return dict / `consult` / `s` / COMPLETED ledger unchanged; no double count across `max_runs` | OK — `ctx["dispatch_partial"]` set only after non-empty claim; `ctx.pop("dispatch_partial", None)` immediately before `return s` so completed runs still flow only via `s`; timeout fold uses popped partial once |
+| Timeout → `INTERRUPTED` + `+1` timeout error | OK — `total_errors += 1` retained; moved above `logger.exception` so log matches ledger |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Sibling test carry:** AST-1848 owns Betty’s REVISE manifest and the plan-fix **Repro** fixture; this tip is product-only by design.
+- **Admin-kill path:** `except asyncio.CancelledError` still does not fold `dispatch_partial` — matches plan-fix scope decision and Susan’s binding (timeout branch only); harmless stale key on discarded `ctx` per plan.
+- **Test baseline noise:** Hedy’s Tests Passed comment documents 66 component failures identical to `origin/dev` @ `8e7b77a5`; not introduced by this diff.
+
+## What’s solid
+
+- Mechanism matches plan: dispatcher-owned `ctx["dispatch_partial"]` (`_SUMMARY_ZERO` shape), in-place tally in `parse_job_list_batch`, fold + enriched timeout log in `_dispatch_one_body` only.
+- `_counted` excludes `CancelledError` so in-flight companies are not counted on timeout; `Exception` path gets one `total_processed` + `total_errors` tally before re-raise.
+- No limits/caps/truncation; `consult.py` untouched; scope limited to declared files/functions.
+- Plan fidelity to **To-be** (nonzero `total_*` + log line with four counts + timeout error) is satisfied by the diff.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (C7 complete) | **AST-1845 mini-parent with `origin/ftr/AST-1845-…`** (not Done-ancestor / not standalone “orphaned → dev” intake) | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Do **not** use finish-up straight-to-`dev` for this bug alone; land via parent `ftr` / sibling merge story. |
+| | | Append this artifact to the issue doc; post slim upshot `--as radia`. Keep **AST-1848** on its branch for tests. |
+
+`context_tokens≈52000`
+
+---
+
+**Slim upshot (Chuckles → Linear):**
+
+```
+[code-rubric] PROCEED (Commit: ba60f8e4) partial ledger counts hold
+```
+
+#### Chuckles disposition (AST-1847)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). Merged into the mini-parent ftr.
+
+Docs-acceptance on this tip: no test-tree delivery here — tests and bible land on gap sibling AST-1848.
+
 ---
 
 ## Bug: AST-1848 — parse_job_list timeout partial-count repro + tally/fold-in branch tests (AST-1847 board)
