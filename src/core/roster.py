@@ -67,6 +67,7 @@ from src.utils.config import (
     TASK_CONFIG,
     is_registered_state,
     registered_base,
+    retry_base,
     retry_of,
 )
 from src.utils.formatting import (
@@ -94,6 +95,11 @@ def _entity_info(entity_id: Any, entity_type: str, event: str, detail: Any) -> N
 
 def _warn_company(aid: Any, dest: Any, reason: str) -> None:
     logger.warning("%s -> %s [%s]", aid, dest, reason)
+
+
+def _log_fail_dest(entity: Any, dest: Any, reason: str) -> None:
+    """Retry holding → WARNING; error/terminal → ERROR (AST-1839)."""
+    (logger.warning if retry_base(dest) else logger.error)("%s -> %s [%s]", entity, dest or "-", reason)
 
 
 def _pace_debug(message: str) -> None:
@@ -1109,6 +1115,7 @@ def _save_parse_dispatch_failure(
     response_type: str = "PARSE_DISPATCH_FAIL",
 ) -> Dict[str, Any]:
     fail_state = _parse_dispatch_failure_state(input_state)
+    _log_fail_dest(short_name, fail_state, notes or response_type)
     if notes:
         save_company_data(short_name, {"parse_job_list_notes": notes})
     _save_company(
@@ -1248,11 +1255,13 @@ async def run_parse_job_list_dispatch(
             async with create_browser_context() as browser_context:
                 result = await _scrape_and_parse(browser_context)
     except PlaywrightInfraError as ex:
-        logger.exception(
+        # Outcome severity is logged by _save_parse_dispatch_failure (AST-1839)
+        logger.debug(
             "%s | company parse_job_list scrape\n  %s: %s\n  Continuing to the next company",
             short_name,
             type(ex).__name__,
             ex,
+            exc_info=True,
         )
         result = _save_parse_dispatch_failure(
             short_name, company_website, list_url, input_state,
@@ -1260,11 +1269,12 @@ async def run_parse_job_list_dispatch(
             response_type="PARSE_DISPATCH_INFRA",
         )
     except Exception as ex:
-        logger.exception(
+        logger.debug(
             "%s | company parse_job_list scrape\n  %s: %s\n  Continuing to the next company",
             short_name,
             type(ex).__name__,
             ex,
+            exc_info=True,
         )
         result = _save_parse_dispatch_failure(
             short_name, company_website, list_url, input_state,
@@ -1283,18 +1293,13 @@ async def parse_job_list_batch(
 ) -> Dict[str, int]:
     """Shared-browser parse_job_list for a claimed company batch (AST-891)."""
     parse_cfg = ROSTER_CONFIG["parse_job_list"]
-    ok_states = frozenset({
-        parse_cfg["pass_state"],
-        parse_cfg["retry_state"],
-        parse_cfg["terminal_fail_state"],
-    })
     company_total = len(companies)
-    passed = errors = 0
+    passed = errors = retried = 0
     logger.debug("Beginning parse_job_list loop on %s items", company_total)
 
     async with create_batch_browser_session() as batch_session:
         async def _one(company: Dict[str, Any], company_index: int) -> None:
-            nonlocal passed, errors
+            nonlocal passed, errors, retried
             short_name = company.get("short_name") or ""
             company_website = company.get("company_website") or ""
             input_state = str(company.get("state") or "").strip()
@@ -1309,10 +1314,15 @@ async def parse_job_list_batch(
                 company, batch_id, ctx, debug, batch_session=batch_session,
             )
             logger.debug("Response from run_parse_job_list_dispatch: %s", result)
-            if result.get("error") or result.get("state") not in ok_states:
+            # AST-1839: retry holding is not an error; terminal fail (only reached out of the holding) is.
+            if result.get("error"):
                 errors += 1
-            else:
+            elif result.get("state") == parse_cfg["pass_state"]:
                 passed += 1
+            elif result.get("state") == parse_cfg["retry_state"]:
+                retried += 1
+            else:
+                errors += 1
 
         results = await asyncio.gather(
             *[_one(c, ci) for ci, c in enumerate(companies, start=1)],
@@ -1330,7 +1340,7 @@ async def parse_job_list_batch(
                 )
 
     logger.debug("End parse_job_list loop after %s items", company_total)
-    return {"passed": passed, "failed": 0, "total": company_total, "errors": errors}
+    return {"passed": passed, "failed": 0, "total": company_total, "errors": errors, "retried": retried}
 
 
 async def process_recheck_no_openings(
@@ -1496,11 +1506,15 @@ def _prefilter_fail(
     if not retryable:
         dest = cfg["error_state"]
     else:
-        dest = _prefilter_batch_fail_dest(current_state, cfg) or cfg["error_state"]
+        dest = _prefilter_batch_fail_dest(
+            current_state, cfg,
+            short_name=short_name, agent_failure=bool((api_result or {}).get("agent_failure")),
+        )
     transition_company_state(short_name, dest)
+    _log_fail_dest(short_name, dest, error)
     result["error"] = error
     result["state"] = dest
-    result["decision"] = "RETRY" if dest == cfg["retry_state"] else "ERROR"
+    result["decision"] = "RETRY" if retry_base(dest) else "ERROR"
     return result
 
 
@@ -1607,11 +1621,13 @@ async def scrape_company_homepage_content(
             out["error"] = f"[playwright:{fc}] {msg}"
         else:
             out["error"] = str(scrape_err)
-        logger.exception(
+        # WARNING: fetch_website routes this to its retry holding or fail_state, never an error_state (AST-1839)
+        logger.warning(
             "%s | company homepage scrape\n  %s: %s\n  Leaving homepage unread",
             short_name,
             type(scrape_err).__name__,
             scrape_err,
+            exc_info=True,
         )
         return out
     final_url = contract.get("final_url") or company_website
@@ -1850,16 +1866,25 @@ def _company_homepage_ready(company: Dict[str, Any]) -> bool:
     return len((cd.get("homepage_text") or "").strip()) > 0
 
 
-def _prefilter_batch_fail_dest(entity_state: Optional[str], cfg: Dict[str, Any]) -> Optional[str]:
-    st = (entity_state or "").strip()
-    if not st:
-        return cfg.get("error_state")
-    retry = COMPANY_STATES.get(st, {}).get("retry_state")
-    if retry:
-        return retry
-    if st == cfg.get("retry_state"):
-        return cfg.get("error_state")
-    return cfg.get("error_state")
+def _prefilter_batch_fail_dest(
+    entity_state: Optional[str],
+    cfg: Dict[str, Any],
+    *,
+    short_name: str = "",
+    agent_failure: bool = False,
+) -> str:
+    """HR parsing fail → HR_RETRY; HR envelope fail → WFR once; anything out of a holding → error (AST-1839)."""
+    if (entity_state or "").strip() != cfg["input_state"]:
+        return cfg["error_state"]
+    if not agent_failure:
+        return cfg["retry_state"]
+    # One re-scrape per company: a prior HR → WFR edge means fetch_website already had its chance.
+    history = (get_company(short_name) or {}).get("state_history") or []
+    rescraped = any(
+        h.get("from_state") == cfg["input_state"] and h.get("to_state") == cfg["envelope_retry_state"]
+        for h in history
+    )
+    return cfg["error_state"] if rescraped else cfg["envelope_retry_state"]
 
 
 def _transition_prefilter_batch_failures(
@@ -1868,23 +1893,29 @@ def _transition_prefilter_batch_failures(
     *,
     debug: bool = False,
     fail_class: str = "technical fail",
-) -> None:
+    agent_failure: bool = False,
+    reason: Optional[str] = None,
+) -> int:
+    """Transition each company to its fail dest; log when reason given. Returns count sent to a retry holding."""
     _ = debug
-    by_dest: Dict[str, List[str]] = {}
+    retried = 0
     for company in companies:
         short_name = company.get("short_name")
         if not short_name:
             continue
-        dest = _prefilter_batch_fail_dest(company.get("state"), cfg)
-        if dest:
-            by_dest.setdefault(dest, []).append(short_name)
-    for dest, names in by_dest.items():
-        for i, short_name in enumerate(names, start=1):
-            transition_company_state(short_name, dest)
-            logger.debug(
-                "Response from _transition_prefilter_batch_failures: %s %s -> %s",
-                fail_class, short_name, dest,
-            )
+        dest = _prefilter_batch_fail_dest(
+            company.get("state"), cfg, short_name=short_name, agent_failure=agent_failure,
+        )
+        transition_company_state(short_name, dest)
+        if reason is not None:
+            _log_fail_dest(short_name, dest, f"{fail_class}: {reason}")
+        if retry_base(dest):
+            retried += 1
+        logger.debug(
+            "Response from _transition_prefilter_batch_failures: %s %s -> %s",
+            fail_class, short_name, dest,
+        )
+    return retried
 
 
 async def _run_batch_company_prefilter(
@@ -1975,26 +2006,30 @@ async def _run_batch_company_prefilter(
                 "state_held": True,
             }
         logger.debug("Response from agent.do_task: do_task failed error=%r", result.get("error"))
-        _transition_prefilter_batch_failures(
+        retried = _transition_prefilter_batch_failures(
             companies, cfg, debug=debug, fail_class="do_task",
+            agent_failure=bool(result.get("agent_failure")),
+            reason=result.get("error") or "do_task failed",
         )
-        return {"passed": 0, "failed": 0, "total": len(companies)}
+        return {"passed": 0, "failed": 0, "total": len(companies), "retried": retried}
 
     parsed = result.get("parsed_response") or {}
     response_companies = parsed.get("companies") or []
     try:
         _hydrate_response_jobs_grade_reasons(response_companies, rubric_list)
     except ValueError as hydrate_err:
-        logger.exception(
+        # Per-company severity is logged by _transition_prefilter_batch_failures (AST-1839)
+        logger.debug(
             "%s | company prefilter hydrate\n  %s: %s\n  Continuing without this batch's grades",
             batch_id,
             type(hydrate_err).__name__,
             hydrate_err,
+            exc_info=True,
         )
-        _transition_prefilter_batch_failures(
-            companies, cfg, debug=debug, fail_class="hydrate",
+        retried = _transition_prefilter_batch_failures(
+            companies, cfg, debug=debug, fail_class="hydrate", reason=str(hydrate_err),
         )
-        return {"passed": 0, "failed": 0, "total": len(companies)}
+        return {"passed": 0, "failed": 0, "total": len(companies), "retried": retried}
 
     sent_ids = set(input_by_id.keys())
     received_ids = {rc["company_id"] for rc in response_companies}
@@ -2002,11 +2037,11 @@ async def _run_batch_company_prefilter(
     fabricated = received_ids - sent_ids
     missing_rows = [input_by_id[mid] for mid in missing if mid in input_by_id]
 
+    retried = 0
     if missing:
-        for mid in sorted(missing):
-            _warn_company(mid, "-", "prefilter batch omitted this id")
-        _transition_prefilter_batch_failures(
+        retried += _transition_prefilter_batch_failures(
             missing_rows, cfg, debug=debug, fail_class="missing id",
+            reason="prefilter batch omitted this id",
         )
 
     passed = failed = 0
@@ -2031,11 +2066,17 @@ async def _run_batch_company_prefilter(
             )
         except Exception as e:
             bad_grades.add(cid)
-            logger.exception(
+            _log_fail_dest(
+                cid,
+                _prefilter_batch_fail_dest(input_company.get("state"), cfg),
+                f"decode: {type(e).__name__}: {e}",
+            )
+            logger.debug(
                 "%s | company prefilter decode\n  %s: %s\n  Continuing to the next company",
                 cid,
                 type(e).__name__,
                 e,
+                exc_info=True,
             )
             logger.debug(
                 "Response from _apply_prefilter_decoded_company_outcome: grades=%s",
@@ -2049,8 +2090,8 @@ async def _run_batch_company_prefilter(
 
     if bad_grades:
         bad_rows = [input_by_id[cid] for cid in bad_grades if cid in input_by_id]
-        # Per-company debug already emitted in the process-exception loop above.
-        _transition_prefilter_batch_failures(bad_rows, cfg)
+        # Per-company severity already logged in the process-exception loop above.
+        retried += _transition_prefilter_batch_failures(bad_rows, cfg)
 
     agent_ref = result.get("agent_ref")
     if agent_ref:
@@ -2066,7 +2107,7 @@ async def _run_batch_company_prefilter(
                 stamp_err,
             )
 
-    return {"passed": passed, "failed": failed, "total": len(companies)}
+    return {"passed": passed, "failed": failed, "total": len(companies), "retried": retried}
 
 
 async def prefilter_company_batch(
@@ -2095,7 +2136,7 @@ async def prefilter_company_batch(
     for ni, company in enumerate(not_ready, start=1):
         short_name = company["short_name"]
         st = (company.get("state") or "").strip()
-        if st == cfg["retry_state"]:
+        if st == cfg["envelope_retry_state"]:
             skipped += 1
             logger.debug(
                 "End not_ready skip: %s leave WEBSITE_FOUND_RETRY for fetch_website",
@@ -2113,6 +2154,7 @@ async def prefilter_company_batch(
             "failed": 0,
             "total": len(companies),
             "skipped": skipped,
+            "retried": 0,
         }
 
     batch_result = await _run_batch_company_prefilter(batch_id, ready, ctx=ctx, debug=debug)

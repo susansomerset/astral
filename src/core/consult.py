@@ -29,6 +29,7 @@ from src.utils.config import (
     TASK_CONFIG,
     TRACKER_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
+    retry_base,
     retry_of,
     JOB_STATES,
     ASTRAL_CONFIG,
@@ -105,6 +106,11 @@ def _job_consult_info(job_id: Any, to_state: Any) -> None:
 
 def _warn_job(aid: Any, dest: Any, reason: str) -> None:
     logger.warning("%s -> %s [%s]", aid, dest, reason)
+
+
+def _log_fail_dest(entity: Any, dest: Any, reason: str) -> None:
+    """Retry holding → WARNING; error/terminal → ERROR (AST-1839)."""
+    (logger.warning if retry_base(dest) else logger.error)("%s -> %s [%s]", entity, dest or "-", reason)
 
 
 async def _debug_await(fn_name: str, call_args: str, coro):
@@ -1222,8 +1228,10 @@ async def _run_analysis_upshot_batch(
                 dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
                 if dest:
                     _transition_job_state_for_task(task_key, [aid], dest)
-                _warn_job(aid, dest or "-", "no company")
-                errors += 1
+                _log_fail_dest(aid, dest, "no company")
+                # AST-1839: retry holding is not a run error
+                if not retry_base(dest):
+                    errors += 1
                 continue
         live_content = await _prep_analysis_upshot_live_content(
             row, company, scoring_task_key=task_key,
@@ -1234,10 +1242,12 @@ async def _run_analysis_upshot_batch(
                 dest = _consult_batch_fail_dest(fresh.get("state"), task_cfg.get("error_state"))
                 if dest:
                     _transition_job_state_for_task(task_key, [aid], dest)
-                _warn_job(aid, dest or (fresh.get("state") or "-"), "no live content")
+                _log_fail_dest(aid, dest, "no live content")
+                if not retry_base(dest):
+                    errors += 1
             else:
                 _warn_job(aid, "NEED_WEBSITE_CONTENT", "no live content")
-            errors += 1
+                errors += 1
             continue
         task_ctx = {**base_ctx, "batch_entities": [row], "job": row, "batch_size": 1}
         logger.debug("Calling agent.do_task: [task_key=%s, index=%s]", task_key, aid)
@@ -1261,16 +1271,18 @@ async def _run_analysis_upshot_batch(
             dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest)
-            _warn_job(aid, dest or "-", result.get("error") or "do_task failed")
-            errors += 1
+            _log_fail_dest(aid, dest, result.get("error") or "do_task failed")
+            if not retry_base(dest):
+                errors += 1
             continue
         parsed = result.get("parsed_response")
         if not isinstance(parsed, dict):
             dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest)
-            _warn_job(aid, dest or "-", "parsed_response is not a dict")
-            errors += 1
+            _log_fail_dest(aid, dest, "parsed_response is not a dict")
+            if not retry_base(dest):
+                errors += 1
             continue
         # Same job_data key as analysis_upshot so Recommended report consumers keep working.
         harvested = _normalize_harvested_source_artifact_ids(result.get("source_artifact_ids"))
@@ -1497,7 +1509,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
                 grades=grades_dbg,
                 dest=dest,
             )
-        _warn_job(astral_job_id, dest or "-", str(e))
+        _log_fail_dest(astral_job_id, dest, str(e))
         if dest:
             _transition_job_state_for_task(agent_task, [astral_job_id], dest)
         return {"success": False, "to_state": dest, "error": str(e)}
@@ -1533,18 +1545,23 @@ def _transition_batch_consult_failures(
     task_key: str,
     job_rows: List[Dict[str, Any]],
     error_state: Optional[str],
-) -> None:
-    """Group jobs by per-entity fail dest and transition once per destination."""
+    reason: Optional[str] = None,
+) -> int:
+    """Group jobs by per-entity fail dest and transition once per destination.
+    Logs each job when reason is given; returns the count sent to a retry holding (AST-1839)."""
     by_dest: Dict[str, List[str]] = {}
     for row in job_rows:
         aid = row.get("astral_job_id")
         if not aid:
             continue
         dest = _consult_batch_fail_dest(row.get("state"), error_state)
+        if reason is not None:
+            _log_fail_dest(aid, dest, reason)
         if dest:
             by_dest.setdefault(dest, []).append(aid)
     for dest, ids in by_dest.items():
         _transition_job_state_for_task(task_key, ids, dest)
+    return sum(len(ids) for dest, ids in by_dest.items() if retry_base(dest))
 
 
 @_with_log_debug
@@ -1632,13 +1649,13 @@ async def _run_batch_consult(
             "do_task failed task=%s error=%r error_state=%r",
             task_key, result.get("error"), error_state,
         )
-        if error_state:
-            _transition_batch_consult_failures(task_key, jobs, error_state)
-        reason = result.get("error") or "do_task failed"
-        for job in jobs:
-            dest = _consult_batch_fail_dest(job.get("state"), error_state)
-            _warn_job(job.get("astral_job_id"), dest or "-", reason)
-        return {"success": False, "error": result.get("error"), "passed": 0, "failed": 0, "total": len(jobs)}
+        retried = _transition_batch_consult_failures(
+            task_key, jobs, error_state, reason=result.get("error") or "do_task failed",
+        ) if error_state else 0
+        return {
+            "success": False, "error": result.get("error"),
+            "passed": 0, "failed": 0, "total": len(jobs), "retried": retried,
+        }
 
     parsed = result["parsed_response"]
     response_jobs = parsed["jobs"]
@@ -1646,22 +1663,22 @@ async def _run_batch_consult(
     try:
         _hydrate_response_jobs_grade_reasons(response_jobs, rubric_criteria)
     except ValueError as e:
-        logger.exception(
-            "%s | grade reason hydration\n  %s: %s\n  The batch is transitioning to error",
+        # Per-job severity is logged by _transition_batch_consult_failures (AST-1839)
+        logger.debug(
+            "%s | grade reason hydration\n  %s: %s\n  The batch is transitioning to its fail destinations",
             task_key, type(e).__name__, e,
+            exc_info=True,
         )
-        reason = str(e)
-        for job in jobs:
-            dest = _consult_batch_fail_dest(job.get("state"), error_state)
-            _warn_job(job.get("astral_job_id"), dest or "-", reason)
-        if error_state:
-            _transition_batch_consult_failures(task_key, jobs, error_state)
+        retried = _transition_batch_consult_failures(
+            task_key, jobs, error_state, reason=f"hydrate: {e}",
+        ) if error_state else 0
         return {
             "success": False,
             "error": str(e),
             "passed": 0,
             "failed": 0,
             "total": len(jobs),
+            "retried": retried,
         }
 
     _bind_response_jobs_to_claimed(response_jobs, jobs)
@@ -1687,6 +1704,7 @@ async def _run_batch_consult(
     fabricated = received_ids - sent_ids
     missing_rows: List[Dict[str, Any]] = []
     missing_dest_counts: Dict[str, int] = {}
+    retried = 0
 
     if missing:
         missing_rows = [input_by_id[mid] for mid in missing if mid in input_by_id]
@@ -1694,8 +1712,9 @@ async def _run_batch_consult(
             d = _consult_batch_fail_dest(row.get("state"), error_state)
             if d:
                 missing_dest_counts[d] = missing_dest_counts.get(d, 0) + 1
-            _warn_job(row.get("astral_job_id"), d or "-", "omitted from response")
-        _transition_batch_consult_failures(task_key, missing_rows, error_state)
+        retried += _transition_batch_consult_failures(
+            task_key, missing_rows, error_state, reason="omitted from response",
+        )
     if missing:
         logger.debug("MISSING %s IDs: %s", len(missing), sorted(missing))
     if fabricated:
@@ -1742,15 +1761,17 @@ async def _run_batch_consult(
                     index=job_idx,
                     total=len(response_jobs),
                 )
-            if isinstance(e, InvalidJobLinkError):
-                # Expected model-output defect: job is routed to its fail/retry state; no traceback.
-                logger.warning(
-                    "%s | process_fn %s: %s\n  Continuing to the next job", aid, task_key, e,
-                )
-                continue
-            logger.exception(
+            # One fail-destination line per job (WARNING on retry, ERROR if terminal) —
+            # covers InvalidJobLinkError too; the traceback is debug-only.
+            _log_fail_dest(
+                aid,
+                _consult_batch_fail_dest(input_job.get("state"), error_state),
+                f"process_fn {type(e).__name__}: {e}",
+            )
+            logger.debug(
                 "%s | process_fn %s\n  %s: %s\n  Continuing to the next job",
                 aid, task_key, type(e).__name__, e,
+                exc_info=True,
             )
             continue
         logger.debug(
@@ -1779,7 +1800,7 @@ async def _run_batch_consult(
     error_ids = list(bad_grades)
     if error_ids:
         bad_rows = [input_by_id[aid] for aid in error_ids if aid in input_by_id]
-        _transition_batch_consult_failures(task_key, bad_rows, error_state)
+        retried += _transition_batch_consult_failures(task_key, bad_rows, error_state)
 
     errors = []
     if fabricated:
@@ -1809,6 +1830,7 @@ async def _run_batch_consult(
         "passed": passed,
         "failed": failed,
         "total": len(jobs),
+        "retried": retried,
         "missing": sorted(missing) if missing else None,
         "fabricated": sorted(fabricated) if fabricated else None,
         "bad_grades": sorted(bad_grades) if bad_grades else None,
@@ -2657,7 +2679,8 @@ async def run_consult_task(
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
             skipped = r.get("skipped", 0)
-            errors = max(0, total - passed - failed - skipped)
+            # AST-1839: retry-routed companies are not run errors
+            errors = max(0, total - passed - failed - skipped - r.get("retried", 0))
             return {
                 "total_processed": total,
                 "total_passed": passed,
@@ -2820,7 +2843,9 @@ async def run_consult_task(
             if rv.get("success"):
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
                 return {"total_processed": 1, "total_passed": passed, "total_failed": 1 - passed, "total_errors": 0}
-            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+            # AST-1839: incomplete grades routed to a retry holding are not a run error
+            retried = not rv.get("state_held") and retry_base(rv.get("to_state"))
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0 if retried else 1}
         if task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
             _batch = {
                 "grade_do": grade_do_batch,
@@ -2869,7 +2894,7 @@ async def run_consult_task(
     total = r.get("total", len(entities))
     passed = r.get("passed", 0)
     failed = r.get("failed", 0)
-    errors = max(0, total - passed - failed)
+    errors = max(0, total - passed - failed - r.get("retried", 0))
     return {"total_processed": total, "total_passed": passed, "total_failed": failed, "total_errors": errors}
 
 

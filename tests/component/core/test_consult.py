@@ -1610,13 +1610,21 @@ class TestAnalysisUpshotPrepAndBatch480ExtraBranches:
         assert ri < bi < pi
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("state", "dest", "errors"),
+        [
+            # AST-1839: no state → PASSED_LIKE_RETRY holding (uncounted); out of the holding → FAILED_TECHNICAL (counted).
+            (None, TASK_CONFIG["analysis_upshot"]["error_state"], 0),
+            ("PASSED_LIKE_RETRY", "FAILED_TECHNICAL", 1),
+        ],
+    )
     async def test_batch_missing_company_transitions_and_counts_error(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, state: Any, dest: str, errors: int,
     ) -> None:
         monkeypatch.setattr(
             consult_mod.tracker,
             "get_job",
-            lambda _aid: {"astral_job_id": "j1", "company": "co_x"},
+            lambda _aid: {"astral_job_id": "j1", "company": "co_x", "state": state},
         )
         monkeypatch.setattr(consult_mod.tracker, "get_company", lambda _sn: None)
         transition = MagicMock()
@@ -1631,13 +1639,9 @@ class TestAnalysisUpshotPrepAndBatch480ExtraBranches:
             "total_processed": 1,
             "total_passed": 0,
             "total_failed": 0,
-            "total_errors": 1,
+            "total_errors": errors,
         }
-        transition.assert_called_once_with(
-            "analysis_upshot",
-            ["j1"],
-            TASK_CONFIG["analysis_upshot"]["error_state"],
-        )
+        transition.assert_called_once_with("analysis_upshot", ["j1"], dest)
 
     @pytest.mark.asyncio
     async def test_batch_requires_company_false_skips_company_lookup_and_passes(
@@ -1739,13 +1743,21 @@ class TestAnalysisUpshotPrepAndBatch480ExtraBranches:
         transition.assert_called_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("state", "dest", "errors"),
+        [
+            # AST-1839: primary → holding (uncounted); from holding → FAILED_TECHNICAL (counted).
+            (None, TASK_CONFIG["analysis_upshot"]["error_state"], 0),
+            ("PASSED_LIKE_RETRY", "FAILED_TECHNICAL", 1),
+        ],
+    )
     async def test_batch_do_task_failure_transitions_error(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, state: Any, dest: str, errors: int,
     ) -> None:
         monkeypatch.setattr(
             consult_mod.tracker,
             "get_job",
-            lambda _aid: {"astral_job_id": "j1", "company": "co"},
+            lambda _aid: {"astral_job_id": "j1", "company": "co", "state": state},
         )
         monkeypatch.setattr(consult_mod.tracker, "get_company", lambda _sn: {"short_name": "co"})
         monkeypatch.setattr(
@@ -1762,8 +1774,8 @@ class TestAnalysisUpshotPrepAndBatch480ExtraBranches:
             None,
             False,
         )
-        assert out["total_errors"] == 1
-        transition.assert_called_once()
+        assert out["total_errors"] == errors
+        transition.assert_called_once_with("analysis_upshot", ["j1"], dest)
 
     @pytest.mark.asyncio
     async def test_batch_non_dict_parsed_transitions_error(
@@ -2152,7 +2164,8 @@ class TestAnalysisUpshotPrepAndBatch480:
         trans = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
         out = await consult_mod._run_analysis_upshot_batch("b1", row, {}, False)
-        assert out["total_errors"] == 1 and out["total_passed"] == 0
+        # AST-1839: error_state PASSED_LIKE_RETRY is a retry holding → not a run error.
+        assert out["total_errors"] == 0 and out["total_passed"] == 0
         trans.assert_called_once_with(
             "analysis_upshot",
             ["a1"],
@@ -2646,7 +2659,8 @@ class TestAst642PerEntityBatchRetry:
         transition = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
         out = await consult_mod._run_analysis_upshot_batch("b1", [job], {}, False)
-        assert out["total_errors"] == 1
+        # AST-1839: primary → PASSED_LIKE_RETRY holding, uncounted.
+        assert out["total_errors"] == 0
         transition.assert_called_once_with(
             "analysis_upshot",
             ["j1"],
@@ -7128,3 +7142,121 @@ class TestAst1704MeteoriteTrackSoT:
         transition.assert_not_called()
         batch.assert_awaited_once()
         assert out["passed"] == 1
+
+
+class TestAst1846ConsultRetryWarnThenError:
+    """AST-1846 bug-repro (AST-1839): consult batch holding → WARNING/uncounted; terminal → ERROR/counted.
+
+    Red at ftr base 31846c28 (retries counted in total_errors, logger.exception), green at 2eac54b5.
+    """
+
+    _ERR = TASK_CONFIG["qualify_job_listings"]["error_state"]
+
+    async def _hydrate_fail(self, monkeypatch: pytest.MonkeyPatch, state: str) -> tuple:
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(return_value={
+                "success": True,
+                "parsed_response": {"jobs": [
+                    {"astral_job_id": aid, "grades": [{"grade": "A", "confidence": 2, "vector": "fit"}]}
+                    for aid in ("job-1", "job-2")
+                ]},
+                "timesheet": {},
+            }),
+        )
+        monkeypatch.setattr(
+            consult_mod, "_hydrate_response_jobs_grade_reasons", MagicMock(side_effect=ValueError("missing rubric")),
+        )
+        jobs = [{"astral_job_id": aid, "state": state, "company": "co"} for aid in ("job-1", "job-2")]
+        out = await consult_mod.run_consult_task(
+            "job", state, jobs, "b1", {}, dispatch_task_key="qualify_job_listings",
+        )
+        return out, transition
+
+    @staticmethod
+    def _levels(caplog: pytest.LogCaptureFixture, needle: str) -> List[str]:
+        return [r.levelname for r in caplog.records if needle in r.getMessage()]
+
+    @pytest.mark.asyncio
+    async def test_hydrate_fail_from_primary_warns_into_holding(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        out, transition = await self._hydrate_fail(monkeypatch, "VALID_TITLE")
+        transition.assert_called_once_with("qualify_job_listings", ["job-1", "job-2"], "NEW_RETRY")
+        assert out["total_errors"] == 0
+        assert self._levels(caplog, "-> NEW_RETRY [hydrate:") == ["WARNING", "WARNING"]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+    @pytest.mark.asyncio
+    async def test_hydrate_fail_from_holding_errors_into_error_state(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        out, transition = await self._hydrate_fail(monkeypatch, "NEW_RETRY")
+        transition.assert_called_once_with("qualify_job_listings", ["job-1", "job-2"], self._ERR)
+        assert out["total_errors"] == 2
+        # One per-job who -> dest [why] ERROR line each (the batch traceback moved to debug).
+        assert self._levels(caplog, f"-> {self._ERR} [hydrate:") == ["ERROR", "ERROR"]
+
+    @pytest.mark.asyncio
+    async def test_single_entity_grade_counts_holding_not_held_or_terminal(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        rv = AsyncMock()
+        monkeypatch.setattr(consult_mod, "render_verdict", rv)
+        job = [{"astral_job_id": "j1", "state": "PASSED_GET"}]
+
+        async def _errors(result: Dict[str, Any]) -> int:
+            rv.return_value = result
+            out = await consult_mod.run_consult_task("job", "PASSED_GET", job, "b1", {}, dispatch_task_key="grade_get")
+            return out["total_errors"]
+
+        # Incomplete grades → retry holding: not a run error.
+        assert await _errors({"success": False, "to_state": "PASSED_GET_RETRY", "error": "incomplete"}) == 0
+        # Balance refusal holds state: still counted.
+        assert await _errors({"success": False, "to_state": "PASSED_GET_RETRY", "state_held": True}) == 1
+        # Terminal / no destination: counted.
+        assert await _errors({"success": False, "to_state": None, "error": "boom"}) == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("site", ["no_company", "no_live_content", "do_task_fail", "non_dict_parse"])
+    @pytest.mark.parametrize(
+        ("state", "error_state", "dest"),
+        [
+            # Out of the holding → FAILED_TECHNICAL (terminal, counted).
+            ("PASSED_LIKE_RETRY", "PASSED_LIKE_RETRY", "FAILED_TECHNICAL"),
+            # No destination at all (no state, no error_state) → no transition, still counted.
+            (None, None, None),
+        ],
+    )
+    async def test_upshot_terminal_and_no_dest_sites_log_error(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+        site: str, state: Any, error_state: Any, dest: Any,
+    ) -> None:
+        # Branch lock (AST-1839 lines): each upshot fail site's terminal + dest-None arcs.
+        caplog.set_level("DEBUG")
+        monkeypatch.setitem(TASK_CONFIG, "analysis_upshot", {**TASK_CONFIG["analysis_upshot"], "error_state": error_state})
+        job = {"astral_job_id": "j1", "company": "co", "state": state, "job_data": {}}
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda _aid: dict(job))
+        monkeypatch.setattr(
+            consult_mod.tracker, "get_company", lambda _sn: None if site == "no_company" else {"short_name": "co"},
+        )
+        monkeypatch.setattr(
+            consult_mod, "_prep_analysis_upshot_live_content",
+            AsyncMock(return_value=False if site == "no_live_content" else "live"),
+        )
+        do_result = {"success": False, "error": "fail"} if site == "do_task_fail" else {"success": True, "parsed_response": ["bad"]}
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value=do_result))
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        out = await consult_mod._run_analysis_upshot_batch("b1", [job], {}, False)
+        assert out["total_errors"] == 1
+        if dest:
+            transition.assert_called_once_with("analysis_upshot", ["j1"], dest)
+        else:
+            transition.assert_not_called()
+        assert self._levels(caplog, f"j1 -> {dest or '-'} [") == ["ERROR"]

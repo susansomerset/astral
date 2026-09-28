@@ -2306,3 +2306,17 @@ Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (l
   tests/component/core/test_candidate.py::TestAst1808RetryResolvesViaBase \
   -q
 ```
+
+### AST-1846 · AST-1828 (bug-repro — requested artifacts retry WARNING)
+
+**Primary manifest:** **`docs/test-bible/core/roster.md`** § AST-1846. AST-1839: `run_requested_artifacts_dispatch` failure into the retry holding logs WARNING and counts `total_failed` (not `total_errors`); failure out of the holding → error_state, ERROR, `total_errors`. Hop-label hold / unregistered trigger → WARNING, `total_failed`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Primary failure → retry, WARNING, `total_errors == 0` | `src/core/candidate.py` | **`TestAst1846RequestedArtifactsWarnThenError::test_primary_failure_warns_into_retry_uncounted`** (**bug-repro**) |
+| Retry failure → error_state, ERROR | same | **`…::test_retry_failure_logs_error`** (branch lock) |
+| Hop-label hold → WARNING | same | **`…::test_hop_label_hold_warns`** (branch lock) |
+| Unregistered trigger → WARNING | same | **`…::test_unregistered_trigger_warns`** (branch lock) |
+| Flipped (retry failure counts `total_errors`, not `total_failed`) | same | `TestAst972RequestedStageDispatch::test_artifacts_dispatch_retry_failure_errors` |
+
+**Integration:** none.

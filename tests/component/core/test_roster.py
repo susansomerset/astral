@@ -2149,7 +2149,8 @@ class TestAst702PrefilterCompanyBatch:
             {"short_name": "blank", "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "  "}},
         ]
         out = await roster_mod.prefilter_company_batch("batch-skip", companies, debug=False)
-        assert out == {"passed": 0, "failed": 0, "total": 2, "skipped": 2}
+        # AST-1839: the not-ready early return carries retried=0.
+        assert out == {"passed": 0, "failed": 0, "total": 2, "skipped": 2, "retried": 0}
         do_task.assert_not_called()
         assert transition.call_count == 2
         save.assert_called()
@@ -2239,8 +2240,9 @@ class TestAst702PrefilterCompanyBatch:
             },
         ]
         out = await roster_mod.prefilter_company_batch("batch-fail", companies, debug=False)
-        assert out == {"passed": 0, "failed": 0, "total": 1}
-        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
+        # AST-1839: parsing-class first strike from HR → HOMEPAGE_READY_RETRY (no re-scrape), counted as retried.
+        assert out == {"passed": 0, "failed": 0, "total": 1, "retried": 1}
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY_RETRY")
 
 
 class TestAst702PrefilterBatchHelpers:
@@ -2251,7 +2253,9 @@ class TestAst702PrefilterBatchHelpers:
 
     def test_prefilter_batch_fail_dest_from_homepage_ready(self) -> None:
         cfg = ROSTER_CONFIG["prefilter"]
-        assert roster_mod._prefilter_batch_fail_dest("HOMEPAGE_READY", cfg) == "WEBSITE_FOUND_RETRY"
+        # AST-1839: parsing first strike → HOMEPAGE_READY_RETRY; anything out of a holding → error_state.
+        assert roster_mod._prefilter_batch_fail_dest("HOMEPAGE_READY", cfg) == "HOMEPAGE_READY_RETRY"
+        assert roster_mod._prefilter_batch_fail_dest("HOMEPAGE_READY_RETRY", cfg) == "ERROR_PREFILTER"
         assert roster_mod._prefilter_batch_fail_dest("WEBSITE_FOUND_RETRY", cfg) == "ERROR_PREFILTER"
 
 
@@ -2268,9 +2272,10 @@ class TestAst882PrefilterOneRetryThenError:
             MagicMock(return_value=_company(state="HOMEPAGE_READY")),
         )
         out = roster_mod._prefilter_fail("acme", cfg, {}, "decode boom")
+        # AST-1839: first strike lands in the prefilter-owned HOMEPAGE_READY_RETRY holding.
         assert out["decision"] == "RETRY"
-        assert out["state"] == "WEBSITE_FOUND_RETRY"
-        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
+        assert out["state"] == "HOMEPAGE_READY_RETRY"
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY_RETRY")
 
     def test_prefilter_fail_second_strike_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg = ROSTER_CONFIG["prefilter"]
@@ -2297,15 +2302,16 @@ class TestAst882PrefilterOneRetryThenError:
             "do_task",
             AsyncMock(return_value={"success": False, "error": "api down"}),
         )
+        # AST-1839: second strike now comes out of HOMEPAGE_READY_RETRY (prefilter's own holding).
         companies = [
             {
                 "short_name": "acme",
-                "state": "WEBSITE_FOUND_RETRY",
+                "state": "HOMEPAGE_READY_RETRY",
                 "company_data": {"homepage_text": "hello"},
             },
         ]
         out = await roster_mod.prefilter_company_batch("batch-882-err", companies, debug=False)
-        assert out == {"passed": 0, "failed": 0, "total": 1}
+        assert out == {"passed": 0, "failed": 0, "total": 1, "retried": 0}
         transition.assert_called_once_with("acme", "ERROR_PREFILTER")
 
     @pytest.mark.asyncio
@@ -2331,7 +2337,7 @@ class TestAst882PrefilterOneRetryThenError:
             },
         ]
         out = await roster_mod.prefilter_company_batch("batch-882-skip", companies, debug=False)
-        assert out == {"passed": 0, "failed": 0, "total": 2, "skipped": 2}
+        assert out == {"passed": 0, "failed": 0, "total": 2, "skipped": 2, "retried": 0}
         do_task.assert_not_called()
         transition.assert_called_once_with("hr-empty", "CANNOT_READ_WEBSITE")
         save.assert_called_once()
@@ -5909,13 +5915,20 @@ class TestAst891ParseJobListBatch:
             seen.append(batch_session)
             if company["short_name"] == "co-ok":
                 return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
-            return {"state": "JOBLIST_IDENTIFIED_RETRY", "response_type": "PARSE_DISPATCH_INFRA"}
+            if company["short_name"] == "co-retry":
+                return {"state": "JOBLIST_IDENTIFIED_RETRY", "response_type": "PARSE_DISPATCH_INFRA"}
+            return {"state": "COULD_NOT_PARSE_JOBLIST", "response_type": "PARSE_DISPATCH_INFRA"}
 
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
-        companies = [self._co("co-ok"), self._co("co-retry")]
+        companies = [
+            self._co("co-ok"),
+            self._co("co-retry"),
+            self._co("co-terminal", state="JOBLIST_IDENTIFIED_RETRY"),
+        ]
         out = await roster_mod.parse_job_list_batch("batch-891", companies)
-        assert out == {"passed": 2, "failed": 0, "total": 2, "errors": 0}
-        assert seen == [batch_session, batch_session]
+        # AST-1839: retry holding → retried (not passed); terminal out of the holding → errors.
+        assert out == {"passed": 1, "failed": 0, "total": 3, "errors": 1, "retried": 1}
+        assert seen == [batch_session, batch_session, batch_session]
 
     @pytest.mark.asyncio
     async def test_scrape_timeout_labeled_infra_and_counts_passed(
@@ -6027,10 +6040,11 @@ class TestAst897HoldStateOnBalanceRefusal:
         # Decode/validation failure (has api_response) stays on one-retry ladder — not a hold.
         api_result = {"success": False, "error": "decode boom", "api_response": object()}
         out = roster_mod._prefilter_fail("acme", cfg, {}, "decode boom", api_result=api_result)
+        # AST-1839: parsing-class first strike → HOMEPAGE_READY_RETRY.
         assert out["decision"] == "RETRY"
-        assert out["state"] == "WEBSITE_FOUND_RETRY"
+        assert out["state"] == "HOMEPAGE_READY_RETRY"
         assert out.get("state_held") is not True
-        transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
+        transition.assert_called_once_with("acme", "HOMEPAGE_READY_RETRY")
 
     @pytest.mark.asyncio
     async def test_batch_prefilter_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6195,7 +6209,7 @@ class TestAst1155PrefilterIncompleteRetry:
             )
 
     @pytest.mark.asyncio
-    async def test_prefilter_company_incomplete_routes_to_website_found_retry(
+    async def test_prefilter_company_incomplete_routes_to_homepage_ready_retry(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         transition = MagicMock()
@@ -6247,5 +6261,212 @@ class TestAst1155PrefilterIncompleteRetry:
             "https://acme.com",
             ctx={**_prefilter_rubric_ctx(multi_vector=True), "astral_candidate_id": "c1155"},
         )
-        assert out["state"] == "WEBSITE_FOUND_RETRY"
-        transition.assert_called_with("acme", "WEBSITE_FOUND_RETRY")
+        # AST-1839: incomplete grades are a parsing failure → HOMEPAGE_READY_RETRY (no re-scrape).
+        assert out["state"] == "HOMEPAGE_READY_RETRY"
+        transition.assert_called_with("acme", "HOMEPAGE_READY_RETRY")
+
+
+def _ast1846_company(state: str = "HOMEPAGE_READY", short_name: str = "acme_com") -> Dict[str, Any]:
+    """AST-1839 Repro fixture: HOMEPAGE_READY company with homepage text + nav links."""
+    return {
+        "short_name": short_name,
+        "state": state,
+        "company_data": {"homepage_text": "Acme builds rockets.", "nav_links": "[001] https://acme.com/careers"},
+    }
+
+
+def _ast1846_prefilter_env(
+    monkeypatch: pytest.MonkeyPatch,
+    do_task_result: Dict[str, Any],
+    *,
+    history: Optional[List[Dict[str, str]]] = None,
+) -> MagicMock:
+    """Mock prefilter I/O only (do_task, company row, transition, saves); routing + counting stay real."""
+    transition = MagicMock()
+    monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+    monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+    monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"state_history": history or []}))
+    monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=do_task_result))
+    return transition
+
+
+def _ast1846_levels(caplog: pytest.LogCaptureFixture, needle: str) -> List[str]:
+    return [r.levelname for r in caplog.records if needle in r.getMessage()]
+
+
+_AST1846_HYDRATE_ERR = "No rubric criterion matching vector 'JO'"
+_AST1846_OK_PARSE = {
+    "success": True,
+    "parsed_response": {"companies": [{"company_id": "acme_com", "grades": [{"vector": "JO", "grade": "A"}]}]},
+}
+_AST1846_ENVELOPE_FAIL = {"success": False, "agent_failure": True, "error": "Agent failure: page is a parked domain"}
+
+
+class TestAst1846PrefilterRetryWarnThenError:
+    """AST-1846 bug-repro (AST-1839): prefilter retry holding → WARNING/uncounted; out of holding → ERROR/counted.
+
+    Red at ftr base 31846c28 (HR → WFR, retries counted, logger.exception), green at 2eac54b5.
+    """
+
+    async def _run_hydrate_fail(self, monkeypatch: pytest.MonkeyPatch, state: str) -> tuple:
+        from src.core import consult as consult_mod
+
+        transition = _ast1846_prefilter_env(monkeypatch, _AST1846_OK_PARSE)
+        monkeypatch.setattr(
+            consult_mod, "_hydrate_response_jobs_grade_reasons", MagicMock(side_effect=ValueError(_AST1846_HYDRATE_ERR)),
+        )
+        out = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", [_ast1846_company(state)], "b1", dispatch_task_key="prefilter_company",
+        )
+        return out, transition
+
+    @pytest.mark.asyncio
+    async def test_hydrate_fail_from_homepage_ready_warns_into_hr_retry(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        out, transition = await self._run_hydrate_fail(monkeypatch, "HOMEPAGE_READY")
+        transition.assert_called_once_with("acme_com", "HOMEPAGE_READY_RETRY")
+        assert out["total_errors"] == 0
+        assert _ast1846_levels(caplog, "acme_com -> HOMEPAGE_READY_RETRY [hydrate:") == ["WARNING"]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+    @pytest.mark.asyncio
+    async def test_hydrate_fail_from_hr_retry_errors_into_error_prefilter(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        out, transition = await self._run_hydrate_fail(monkeypatch, "HOMEPAGE_READY_RETRY")
+        transition.assert_called_once_with("acme_com", "ERROR_PREFILTER")
+        assert out["total_errors"] == 1
+        # One per-company who -> dest [why] ERROR line (the batch traceback moved to debug).
+        assert _ast1846_levels(caplog, "acme_com -> ERROR_PREFILTER [hydrate:") == ["ERROR"]
+
+    @pytest.mark.asyncio
+    async def test_envelope_fail_first_strike_warns_into_wfr(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from src.core import consult as consult_mod
+
+        caplog.set_level("DEBUG")
+        transition = _ast1846_prefilter_env(monkeypatch, _AST1846_ENVELOPE_FAIL, history=[])
+        out = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", [_ast1846_company()], "b1", dispatch_task_key="prefilter_company",
+        )
+        transition.assert_called_once_with("acme_com", "WEBSITE_FOUND_RETRY")
+        assert out["total_errors"] == 0
+        assert _ast1846_levels(caplog, "acme_com -> WEBSITE_FOUND_RETRY [do_task:") == ["WARNING"]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+    @pytest.mark.asyncio
+    async def test_envelope_fail_after_rescrape_errors_loop_bound(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from src.core import consult as consult_mod
+
+        caplog.set_level("DEBUG")
+        history = [{"from_state": "HOMEPAGE_READY", "to_state": "WEBSITE_FOUND_RETRY"}]
+        transition = _ast1846_prefilter_env(monkeypatch, _AST1846_ENVELOPE_FAIL, history=history)
+        out = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", [_ast1846_company()], "b1", dispatch_task_key="prefilter_company",
+        )
+        # One re-scrape per company: prior HR → WFR edge means the second envelope failure is terminal.
+        transition.assert_called_once_with("acme_com", "ERROR_PREFILTER")
+        assert out["total_errors"] == 1
+        assert _ast1846_levels(caplog, "acme_com -> ERROR_PREFILTER [do_task:") == ["ERROR"]
+
+    @pytest.mark.asyncio
+    async def test_mixed_batch_counts_retried_and_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import consult as consult_mod
+
+        parse = {
+            "success": True,
+            "parsed_response": {"companies": [
+                {"company_id": "decco", "grades": []},
+                {"company_id": "passco", "grades": []},
+            ]},
+        }
+        transition = _ast1846_prefilter_env(monkeypatch, parse)
+        monkeypatch.setattr(consult_mod, "_hydrate_response_jobs_grade_reasons", MagicMock())
+
+        def _outcome(cid, *_a, **_k):
+            if cid == "decco":
+                raise ValueError("decode boom")
+            return "PREFILTER_PASSED"
+
+        monkeypatch.setattr(roster_mod, "_apply_prefilter_decoded_company_outcome", _outcome)
+        # decco: decode fail from HR (retry); missco: omitted from HR_RETRY (terminal); passco: clean pass.
+        rows = [
+            _ast1846_company("HOMEPAGE_READY", "decco"),
+            _ast1846_company("HOMEPAGE_READY_RETRY", "missco"),
+            _ast1846_company("HOMEPAGE_READY", "passco"),
+        ]
+        out = await roster_mod.prefilter_company_batch("b-mix", [dict(r) for r in rows])
+        assert out.get("retried") == 1
+        assert out["passed"] == 1
+        assert call("decco", "HOMEPAGE_READY_RETRY") in transition.call_args_list
+        assert call("missco", "ERROR_PREFILTER") in transition.call_args_list
+        summary = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", [dict(r) for r in rows], "b-mix", dispatch_task_key="prefilter_company",
+        )
+        assert summary["total_errors"] == 1
+
+    @pytest.mark.asyncio
+    async def test_parse_job_list_batch_retry_vs_terminal(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        _mock_parse_batch_browser_session(monkeypatch)
+        # Real dispatch: no selected_pjl_url → _save_parse_dispatch_failure routes on input_state.
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"company_data": {}}))
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        companies = [
+            {"short_name": "co-first", "company_website": "https://first.example", "state": "JOBLIST_IDENTIFIED"},
+            {"short_name": "co-second", "company_website": "https://second.example", "state": "JOBLIST_IDENTIFIED_RETRY"},
+        ]
+        out = await roster_mod.parse_job_list_batch("b-pjl", companies)
+        assert out.get("retried") == 1
+        assert out["errors"] == 1
+        assert out["passed"] == 0
+        assert _ast1846_levels(caplog, "co-first -> JOBLIST_IDENTIFIED_RETRY [") == ["WARNING"]
+        assert _ast1846_levels(caplog, "co-second -> COULD_NOT_PARSE_JOBLIST [") == ["ERROR"]
+
+    @pytest.mark.asyncio
+    async def test_parse_job_list_batch_error_result_and_generic_exception(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # Branch lock (AST-1839 lines): result["error"] → errors; generic scrape exception → holding at WARNING.
+        caplog.set_level("DEBUG")
+        _mock_parse_batch_browser_session(monkeypatch)
+        url_key = ROSTER_CONFIG["parse_job_list"]["selected_pjl_url_key"]
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(return_value={"company_data": {url_key: "https://acme.com/jobs", "job_titles": ["Engineer"]}}),
+        )
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(
+            roster_mod, "_scrape_list_page_dom_for_parse", AsyncMock(side_effect=RuntimeError("socket reset")),
+        )
+        companies = [
+            {"short_name": "co-watch", "company_website": "https://w.example", "state": "WATCH"},
+            {"short_name": "co-raise", "company_website": "https://r.example", "state": "JOBLIST_IDENTIFIED"},
+        ]
+        out = await roster_mod.parse_job_list_batch("b-pjl-err", companies)
+        assert out["errors"] == 1
+        assert out.get("retried") == 1
+        assert _ast1846_levels(caplog, "co-raise -> JOBLIST_IDENTIFIED_RETRY [socket reset]") == ["WARNING"]
+
+    @pytest.mark.asyncio
+    async def test_fetch_website_scrape_failure_logs_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        monkeypatch.setattr(roster_mod, "scrape_page", AsyncMock(side_effect=RuntimeError("dns fail")))
+        out = await roster_mod.scrape_company_homepage_content("acme_com", "https://acme.com")
+        assert out["error"]
+        # fetch_website routes scrape failures to WFR / CANNOT_READ_WEBSITE — never an error_state.
+        assert _ast1846_levels(caplog, "company homepage scrape") == ["WARNING"]
+        assert not [r for r in caplog.records if r.levelno >= 40]

@@ -671,12 +671,12 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 
 ### AST-882 · AST-881
 
-**AST-882:** Prefilter one automatic retry then terminal **`ERROR_PREFILTER`**. **`_prefilter_fail`** / batch fail dest use current state (`HOMEPAGE_READY` → `WEBSITE_FOUND_RETRY`, `WEBSITE_FOUND_RETRY` → `ERROR_PREFILTER`). Not-ready **`WEBSITE_FOUND_RETRY`** rows are left alone for fetch_website (no **`CANNOT_READ_WEBSITE`**). Claim companion: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`**. Gazer homepage-ready WFR skip: **`docs/test-bible/core/gazer.md`**.
+**AST-882:** Prefilter one automatic retry then terminal **`ERROR_PREFILTER`**. **`_prefilter_fail`** / batch fail dest use current state (`HOMEPAGE_READY` → `WEBSITE_FOUND_RETRY`, `WEBSITE_FOUND_RETRY` → `ERROR_PREFILTER`). **Superseded by AST-1839 (tests: AST-1846):** parsing first strike is **`HOMEPAGE_READY_RETRY`**; envelope (`agent_failure`) first strike is **`WEBSITE_FOUND_RETRY`** once (history-gated); anything out of a holding → **`ERROR_PREFILTER`**. The rows below were flipped in place — see § AST-1846. Not-ready **`WEBSITE_FOUND_RETRY`** rows are left alone for fetch_website (no **`CANNOT_READ_WEBSITE`**). Claim companion: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`**. Gazer homepage-ready WFR skip: **`docs/test-bible/core/gazer.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | `_prefilter_fail` first/second strike | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError::{test_prefilter_fail_first_strike_retries,test_prefilter_fail_second_strike_errors}` |
-| Batch do_task fail from WFR → error | `src/core/roster.py` | `::TestAst882PrefilterOneRetryThenError::test_batch_do_task_failure_second_strike_to_error` |
+| Batch do_task fail from HR_RETRY → error (was WFR pre-AST-1839) | `src/core/roster.py` | `::TestAst882PrefilterOneRetryThenError::test_batch_do_task_failure_second_strike_to_error` |
 
 **AST-1810:** `get_new_company_batch` no longer takes/passes `exclude_prefilter_second_strike` — `TestBatchApi::test_get_new_company_batch_claims_and_returns_rows` drops the kwarg from its `claim_company_batch` call assert. Prefilter second-strike routing rows above are unchanged. Primary manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-1810**).
 | Not-ready WFR leave-alone | `src/core/roster.py` | `::TestAst882PrefilterOneRetryThenError::test_not_ready_wfr_left_alone_for_fetch_website` |
@@ -894,3 +894,73 @@ Canonical external map: [`external/telescope.md`](../external/telescope.md).
   tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull \
   -q
 ```
+
+### AST-1846 · AST-1828 (qa-fix bug-repro — AUTO retry WARNING, error only out of the holding)
+
+**Parent:** [AST-1828](https://linear.app/astralcareermatch/issue/AST-1828) (orphaned-bug mini-parent). Product: **AST-1839** (`36f385a2`, merged on `origin/ftr/AST-1828-auto-retry-warn-then-error` @ `2eac54b5`); test/bible delivery on gap sibling **AST-1846** (`origin/sub/AST-1828/AST-1846-auto-retry-warn-then-error-gap`). Contract: a failure routed to a retry holding (`retry_base(dest)` not `None`) logs **WARNING** `who -> dest [why]` and is excluded from `total_errors` via a per-function **`retried`** count; a failure out of the holding (error/terminal state or no dest) logs **ERROR** and counts. Prefilter parsing first strike → **`HOMEPAGE_READY_RETRY`**; envelope (`agent_failure`) first strike → **`WEBSITE_FOUND_RETRY`** once (history-gated); anything from a holding → **`ERROR_PREFILTER`**.
+
+**Sequencing deviation (gap child, AST-1820/AST-1822 precedent):** product landed first. `[bug-repro]` proven both ways — new nodes **RED at ftr base `31846c28`** on assertions (wrong state / count / level / missing `retried` / missing `agent_failure`) and **GREEN at `2eac54b5`**. The 19 flipped nodes run the opposite way (green at base, green at tip after this edit).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| HR hydrate fail → `HOMEPAGE_READY_RETRY`, WARNING, `total_errors == 0` | `src/core/roster.py` (`_run_batch_company_prefilter`) + `src/core/consult.py` (`run_consult_task`) | **`tests/component/core/test_roster.py::TestAst1846PrefilterRetryWarnThenError::test_hydrate_fail_from_homepage_ready_warns_into_hr_retry`** (**bug-repro**) |
+| HR_RETRY hydrate fail → `ERROR_PREFILTER`, ERROR line, counted | same | **`…::test_hydrate_fail_from_hr_retry_errors_into_error_prefilter`** (**bug-repro**) |
+| Envelope fail, empty history → WFR, WARNING, uncounted | `_prefilter_batch_fail_dest` | **`…::test_envelope_fail_first_strike_warns_into_wfr`** (**bug-repro**) |
+| Envelope fail after HR → WFR history → `ERROR_PREFILTER` (loop bound) | same | **`…::test_envelope_fail_after_rescrape_errors_loop_bound`** (**bug-repro**) |
+| Mixed batch: decode fail (retried) + omitted HR_RETRY (terminal) + pass | `_run_batch_company_prefilter` | **`…::test_mixed_batch_counts_retried_and_errors`** (**bug-repro**) |
+| `parse_job_list_batch` retry vs terminal counts + levels | `parse_job_list_batch` / `_save_parse_dispatch_failure` | **`…::test_parse_job_list_batch_retry_vs_terminal`** (**bug-repro**) |
+| `parse_job_list_batch` `result["error"]` → errors; generic scrape exception → holding at WARNING | same + `run_parse_job_list_dispatch` | **`…::test_parse_job_list_batch_error_result_and_generic_exception`** (branch lock) |
+| fetch_website homepage scrape exception → WARNING, no ERROR | `scrape_company_homepage_content` | **`…::test_fetch_website_scrape_failure_logs_warning`** (**bug-repro**) |
+| Flipped (first strike HR_RETRY, `retried` key, parse retry/terminal split) | `src/core/roster.py` | `TestAst702PrefilterBatchHelpers::test_prefilter_batch_fail_dest_from_homepage_ready` · `TestAst882PrefilterOneRetryThenError::{test_prefilter_fail_first_strike_retries,test_batch_do_task_failure_second_strike_to_error,test_not_ready_wfr_left_alone_for_fetch_website}` · `TestAst702PrefilterCompanyBatch::{test_do_task_failure_transitions_batch,test_skips_not_ready_without_do_task}` · `TestAst1155PrefilterIncompleteRetry::test_prefilter_company_incomplete_routes_to_homepage_ready_retry` (renamed from `…_to_website_found_retry`) · `TestAst897HoldStateOnBalanceRefusal::test_prefilter_fail_ordinary_api_still_retries` · `TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes` |
+
+Sibling pages: **`core/consult.md`**, **`core/agent.md`**, **`core/candidate.md`**, **`utils/config.md`**, **`utils/logging_batch.md`** (§ AST-1846 each).
+
+**Branch lock (AST-1839 lines only):** full component run with `--cov-branch` at `2eac54b5` — **0 missing lines / 0 missing branches** on every line `36f385a2` added in `roster.py`, `consult.py`, `agent.py`, `candidate.py`, `config.py` (and `logging.py`). Whole-file `LOCKED_AT_100` % on this host stays below 100 (roster 78.3, consult 80.4, agent 86.3, candidate 82.4, config 92.6) solely from pre-existing env/dev drift (Python 3.14 host venv: 322 failing + 5 uncollectable modules, identical at base and tip) — not AST-1839 lines.
+
+**Broken / obsolete (pre-existing, not AST-1839, left as-is):** `TestAst891ParseJobListBatch::test_scrape_timeout_labeled_infra_and_counts_passed` (timeout premise stale — no timeout fires, dispatch returns `WATCH`; fails at base too); `tests/component/data/database/test_dispatch_tasks.py::TestAst882HomepageReadyClaimsWfr::test_count_eligible_homepage_ready_unions_wfr` (asserts HR claims WFR — stale since AST-1810; fails at base too); `TestAst507EncodedPrefilter::{test_inflow_dealbreaker_f2_prefilter_failed,test_inflow_f1_no_dealbreaker_prefilter_passed}` (fail at base too).
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **19 flipped nodes** (green at tip):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst702PrefilterBatchHelpers::test_prefilter_batch_fail_dest_from_homepage_ready \
+  tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError::test_prefilter_fail_first_strike_retries \
+  tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError::test_batch_do_task_failure_second_strike_to_error \
+  tests/component/core/test_roster.py::TestAst882PrefilterOneRetryThenError::test_not_ready_wfr_left_alone_for_fetch_website \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch::test_do_task_failure_transitions_batch \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch::test_skips_not_ready_without_do_task \
+  tests/component/core/test_roster.py::TestAst1155PrefilterIncompleteRetry::test_prefilter_company_incomplete_routes_to_homepage_ready_retry \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal::test_prefilter_fail_ordinary_api_still_retries \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes \
+  tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480::test_batch_company_missing_moves_to_retry \
+  tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480ExtraBranches::test_batch_do_task_failure_transitions_error \
+  tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480ExtraBranches::test_batch_missing_company_transitions_and_counts_error \
+  tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry::test_analysis_upshot_primary_failure_to_retry_holding \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch::test_artifacts_dispatch_retry_failure_errors \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_input_state_and_retry_on_homepage_ready \
+  tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_company_states_and_transitions \
+  tests/component/utils/test_config.py::TestAst1807ImplicitRetryHelpers::test_state_prior_states_cross_base_feeders \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/utils/test_logging_batch.py::TestLogLlmBatchSummary::test_empty_error_string_uses_error_path_not_healthy_summary \
+  -q
+```
+
+2. **New repro + branch-lock nodes** (**[bug-repro]** — red at `31846c28`, green at `2eac54b5`; `test_non_rubric_task_does_not_set_agent_failure` is a guard, green both):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1846PrefilterRetryWarnThenError \
+  tests/component/core/test_consult.py::TestAst1846ConsultRetryWarnThenError \
+  tests/component/core/test_agent.py::TestAst1846DoTaskAgentFailureFlag \
+  tests/component/core/test_candidate.py::TestAst1846RequestedArtifactsWarnThenError \
+  tests/component/utils/test_logging_batch.py::TestAst1846ProviderErrorLevel \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–2 (50 node runs incl. params) — not the zero-arg harness / whole-file branch-lock gate (host drift; AST-1839 lines are fully covered, see Branch lock above).
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1828/AST-1846-auto-retry-warn-then-error-gap:docs/test-bible/core/roster.md | shasum`

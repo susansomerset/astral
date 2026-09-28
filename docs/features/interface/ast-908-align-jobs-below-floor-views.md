@@ -1,3 +1,137 @@
+<!-- linear-archive: AST-908 archived 2026-08-02 -->
+
+## Linear archive (AST-908)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-908/align-jobs-below-floor-views-with-dispatch-score-floor-states-we-are  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-907 — We are not applying the "below dispatched score floor" logic to all states  
+**Blocked by / blocks / related:** parent: AST-907
+
+### Description
+
+## What this implements
+
+Expand below-floor classification so every In Review state dispatch gates with **score_floor** (including **PASSED_JOBLIST**) is excluded from In Review, listed under **Skipped → Below dispatch score floor**, and reflected in nav counts — without changing claim math or DB states. Single vertical slice: eligibility source + Jobs list/count surfaces.
+
+## Acceptance criteria
+
+1. With a candidate that has a scored dispatch row whose trigger is **PASSED_JOBLIST** and a non-zero **score_floor**, jobs in **PASSED_JOBLIST** whose **latest_score** is null or below that floor appear under **Skipped → Below dispatch score floor** and do **not** appear under **In Review → Passed Job List**.
+2. The same rule holds for every other In Review job state where that candidate's dispatch already applies a **score_floor**: below-floor jobs are in the virtual Skipped section only, not In Review.
+3. Jobs at or above the applicable floor remain in **In Review** under their real state section and are absent from **Below dispatch score floor**.
+4. Jobs that fail for non-floor reasons (failed / scrape-fail / candidate-skipped states, etc.) continue to use their existing real Skipped sections — unchanged.
+5. In Review and Skipped nav counts match the jobs shown on each page for the selected candidate (below-floor rows counted once, under Skipped).
+
+## Boundaries
+
+* Does **not** change dispatch claim/count math, **score_floor** storage on dispatch tasks, or **pass_threshold** grading.
+* Does **not** move jobs into a new database skip state — virtual Skipped membership only.
+* Does **not** change the Scheduled Actions score-floor editor or scored vs unscored row rules.
+* Does **not** invent additional "not eligible" reasons beyond score floor.
+
+## Notes for planning
+
+* Align Jobs UI below-floor helpers with the same states `dispatch_claim_uses_score_floor` already gates — today the floors map used by In Review exclusion / Skipped virtual section omits **PASSED_JOBLIST** (and any other claim-gated In Review states outside `PASSED_SCORE_GATED_STATES`).
+* Config as source of truth (**ASTRAL_CODE_RULES** §1.4 / §2.1); pass_threshold vs score_floor stay distinct.
+* Backend debug contract only if this change touches `debug=` paths (**AST-538**).
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-907-below-dispatch-score-floor-all-states`, child `sub/AST-907/AST-908-align-jobs-below-floor-views`. Created at **dispatch-parent**. Engineers publish to `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-07-22T01:57:04.995Z
+**Diff:** `origin/dev...origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `224b9f1`
+
+### What's solid
+- Stage 1 matches plan: `score_floor_by_trigger_for_candidate` gates on `dispatch_claim_uses_score_floor` (includes **PASSED_JOBLIST**); `list_jobs_below_dispatch_score_floor` uses `list(floors.keys())`; config comment documents UI vs `PASSED_SCORE_GATED_STATES` without expanding that frozenset.
+- Boundaries held — no dispatcher / API / React / claim-sort / `pass_threshold` edits; unused imports dropped.
+- §1.3 / §1.4 / §2.1 / §3.3 satisfied; Self-Assessment Single-Component matches footprint.
+- Betty: `TestAst908BelowDispatchScoreFloorViews` + VALID_TITLE→NEW legacy assert rewrite post-AST-898.
+
+### Issues
+None.
+
+### Advisory
+- `count_jobs_below_dispatch_score_floor` docstring still says “PASSED_* jobs”; behavior already walks all floors keys. Cosmetic.
+
+### Recommended actions
+| Action | Item |
+|--------|------|
+| none (ship) | 0 fix-now · 0 discuss · 1 advisory |
+
+**Doc:** `docs/features/interface/ast-908-align-jobs-below-floor-views.md` — `docs(AST-908): Radia review — clean` → `origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `224b9f1`
+
+#### betty — 2026-07-22T01:52:05.026Z
+[check-linear]
+Cleared [qa-handoff]: rewrote `TestAst586DispatchClaimScoreFloor::test_legacy_helper_may_still_classify_valid_title_graded` → `test_legacy_helper_tracks_schedulable_defaults_not_retired_valid_title` — `trigger_state_used_by_scored_dispatch_task("VALID_TITLE")` is False post-AST-898 (qualify defaults to NEW); assert NEW True. Floors / claim-floor coverage unchanged.
+
+**Manifest (unchanged paths):**
+```
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_jobs.py::TestAst908BelowDispatchScoreFloorViews \
+  tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_in_review_filters_score_floor \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_skipped_view_appends_virtual_rows
+```
+
+**Publish:** `origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `bdb6126` (`test(AST-908): rewrite AST-586 legacy VALID_TITLE graded assert post-AST-898`; still one `merge-tests(AST-908)` @ `a7eafca`)
+**Bible:** `docs/test-bible/data/database/jobs.md` + `docs/test-bible/utils/config.md` updated on publish ref.
+Reassigned Ada for test-child.
+
+— Betty
+
+#### ada — 2026-07-22T01:49:37.517Z
+[qa-handoff]
+@Betty White
+
+**Command (manifest item 1):**
+```
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_jobs.py::TestAst908BelowDispatchScoreFloorViews \
+  tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_in_review_filters_score_floor \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_skipped_view_appends_virtual_rows
+```
+
+**Result:** 10 passed, 1 failed — all `TestAst908BelowDispatchScoreFloorViews` + api_jobs wiring + three AST-586 claim assertions green. Only failure:
+`TestAst586DispatchClaimScoreFloor::test_legacy_helper_may_still_classify_valid_title_graded`
+
+**Why test/manifest, not product:** Assertion expects `trigger_state_used_by_scored_dispatch_task("VALID_TITLE") is True`. Current config: `dispatch_task_admin_defaults("qualify_job_listings")["trigger_state"]` is **`NEW`** (AST-898), and **no** schedulable task defaults to `VALID_TITLE`, so the legacy helper correctly returns **False**. AST-908 product only changed `score_floor_by_trigger_for_candidate` / `list_jobs_below_dispatch_score_floor` (and a config comment) — did not touch that helper. Publish tip still Betty’s `a7eafca` (no engineer `test()` commit).
+
+**Ask:** Drop or rewrite that legacy VALID_TITLE assertion for post-AST-898 defaults; keep the claim-floor + AST-908 floors coverage. Reassign Ada when manifest is updated.
+
+#### betty — 2026-07-22T01:47:16.525Z
+1. `./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_jobs.py::TestAst908BelowDispatchScoreFloorViews \
+  tests/component/utils/test_config.py::TestAst586DispatchClaimScoreFloor \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_in_review_filters_score_floor \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_skipped_view_appends_virtual_rows`
+
+**Coverage:** New data-layer floors tests assert `PASSED_JOBLIST` joins `score_floor_by_trigger_for_candidate` / `list_jobs_below_dispatch_score_floor` / `count_jobs_below_dispatch_score_floor` via `dispatch_claim_uses_score_floor`; pre-score triggers stay out; existing `PASSED_JD` below-floor behavior unchanged. Existing AST-586 claim helper + api_jobs wiring mocks re-run for regression.
+
+**Broken / obsolete:** none.
+
+**Publish:** `origin/sub/AST-907/AST-908-align-jobs-below-floor-views` @ `a7eafca` (`merge-tests(AST-908): origin/tests c12646bbb2de6451369a425d6bc938d1980f8f3d`)
+
+**Bible:** `docs/test-bible/data/database/jobs.md` shasum `99c6be78f8c9d603dafb732e092898571b57a15d`
+
+— Betty
+
+#### ada — 2026-07-22T01:39:06.185Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-907/AST-908-align-jobs-below-floor-views/docs/features/interface/ast-908-align-jobs-below-floor-views.md
+
+**Self-assessment**
+- **Scope:** Single-Component — floors map + list filter in `database.py`, plus a config comment; Jobs list/count surfaces already consume those helpers.
+- **Conf:** high — UI floors still gate on `PASSED_SCORE_GATED_STATES` and omit **PASSED_JOBLIST**; claim already uses `dispatch_claim_uses_score_floor` for that state.
+- **Risk:** Medium — wrong floors membership mis-counts nav badges / In Review rows; mitigated by reusing the claim helper and not touching claim/sort paths.
+
+---
+
 # Align Jobs below-floor views with dispatch score-floor states
 
 **Linear:** [AST-908](https://linear.app/astralcareermatch/issue/AST-908/align-jobs-below-floor-views-with-dispatch-score-floor-states-we-are)  

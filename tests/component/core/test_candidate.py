@@ -2014,7 +2014,9 @@ class TestAst972RequestedStageDispatch:
         trans = MagicMock()
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
         out = await candidate_mod.run_requested_artifacts_dispatch("c1")
-        assert out["total_failed"] == 1
+        # AST-1839: out of the holding → error_state counts as an error, not a failure.
+        assert out["total_errors"] == 1
+        assert out["total_failed"] == 0
         trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_ERROR")
 
     def test_resume_wrapper_worker_removed(self) -> None:
@@ -2056,6 +2058,73 @@ class TestAst1389RequestedArtifactsHopLabels:
         out = await candidate_mod.run_requested_artifacts_dispatch("c1")
         assert out["total_failed"] == 1
         trans.assert_not_called()
+
+
+class TestAst1846RequestedArtifactsWarnThenError:
+    """AST-1846 bug-repro (AST-1839): craft-chain failure severity follows the destination."""
+
+    _MSG = "run_requested_artifacts_dispatch failed"
+
+    @staticmethod
+    def _patch(monkeypatch: pytest.MonkeyPatch, state: str) -> MagicMock:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": state, "candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value={"success": False, "error": "boom"}))
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        return trans
+
+    def _levels(self, caplog: pytest.LogCaptureFixture) -> List[str]:
+        return [r.levelname for r in caplog.records if self._MSG in r.getMessage()]
+
+    @pytest.mark.asyncio
+    async def test_primary_failure_warns_into_retry_uncounted(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        trans = self._patch(monkeypatch, "REQUESTED_ARTIFACTS")
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_RETRY")
+        assert out["total_failed"] == 1
+        assert out["total_errors"] == 0
+        assert self._levels(caplog) == ["WARNING"]
+
+    @pytest.mark.asyncio
+    async def test_retry_failure_logs_error(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        self._patch(monkeypatch, "REQUESTED_ARTIFACTS_RETRY")
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        assert out["total_errors"] == 1
+        assert self._levels(caplog) == ["ERROR"]
+
+    @pytest.mark.asyncio
+    async def test_hop_label_hold_warns(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        trans = self._patch(monkeypatch, dispatch_hop_label(trigger, "craft_get_rubric"))
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        # Held on the hop label: still claimable, so WARNING and not an error.
+        trans.assert_not_called()
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+        assert self._levels(caplog) == ["WARNING"]
+
+    @pytest.mark.asyncio
+    async def test_unregistered_trigger_warns(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        trans = self._patch(monkeypatch, "REQUESTED_ARTIFACTS")
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1", trigger_state="AST1846_NOT_A_STATE")
+        trans.assert_not_called()
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+        assert self._levels(caplog) == ["WARNING"]
 
 
 class TestAst973HardDeleteAndReapPurge:
