@@ -12,7 +12,7 @@
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Blank `error=` ERROR path | `src/utils/logging.py` | `test_empty_error_string_uses_error_path_not_healthy_summary` |
+| Blank `error=` error path (level WARNING since AST-1839 — see § AST-1846) | `src/utils/logging.py` | `test_empty_error_string_uses_error_path_not_healthy_summary` |
 | Omitted `error` keeps INFO | same | `test_omitted_error_still_logs_healthy_summary` |
 
 ---
@@ -28,3 +28,12 @@
 **Broken / obsolete this pass:** none for prior `log_llm_batch_summary` suite.
 
 **Integration:** none.
+
+### AST-1846 · AST-1828 (bug-repro — provider error line is WARNING)
+
+**Primary manifest:** **`docs/test-bible/core/roster.md`** § AST-1846. AST-1839: `log_llm_batch_summary` with `error is not None` logs at **WARNING** (the batch caller decides ERROR via `_log_fail_dest`); blank error still uses the error shape, never the healthy INFO line.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Provider error → WARNING, no ERROR record | `src/utils/logging.py` | **`TestAst1846ProviderErrorLevel::test_provider_error_logs_warning_not_error`** (**bug-repro**) |
+| Flipped (blank error → WARNING) | same | `TestLogLlmBatchSummary::test_empty_error_string_uses_error_path_not_healthy_summary` |

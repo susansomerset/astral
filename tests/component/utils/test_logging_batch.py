@@ -70,9 +70,11 @@ class TestLogLlmBatchSummary:
         finally:
             logging_mod.log_batch_id.reset(token)
 
-        err_msgs = [r.message for r in caplog.records if r.levelname == "ERROR"]
+        # AST-1839: provider error line is WARNING; the caller logs ERROR only on a terminal landing.
+        warn_msgs = [r.message for r in caplog.records if r.levelname == "WARNING"]
         info_msgs = [r.message for r in caplog.records if r.levelname == "INFO"]
-        assert any("error=(empty error)" in m for m in err_msgs)
+        assert any("error=(empty error)" in m for m in warn_msgs)
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]
         assert not any("stop=?" in m and "tokens in=0" in m for m in info_msgs)
 
     def test_omitted_error_still_logs_healthy_summary(
@@ -101,6 +103,24 @@ class TestLogLlmBatchSummary:
             for r in caplog.records
             if r.levelname == "INFO"
         )
+
+
+class TestAst1846ProviderErrorLevel:
+    """AST-1846 bug-repro (AST-1839): provider error summary is WARNING, never ERROR."""
+
+    def test_provider_error_logs_warning_not_error(self, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
+        logger = logging.getLogger("test.ast1846.provider_error")
+        token = logging_mod.log_batch_id.set("batch-1846")
+        try:
+            logging_mod.log_llm_batch_summary(
+                logger, "deepseek", "prefilter_company", 0.3, error="400 Content Exists Risk",
+            )
+        finally:
+            logging_mod.log_batch_id.reset(token)
+        hits = [r for r in caplog.records if "400 Content Exists Risk" in r.message]
+        assert [r.levelname for r in hits] == ["WARNING"]
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
 
 class TestAst1598LogCandidateId:
