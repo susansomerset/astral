@@ -346,3 +346,10 @@ AC 1 → S1 steps 1–2 · AC 2 → S1 steps 7–8 · AC 3 → S1 step 7 · AC 4
 - **Recommendation:** Chuckles may move to **Plan Approved** and restore implementer per skill §8.
 
 context_tokens≈28000
+
+## Review
+
+- **Branch:** `origin/sub/AST-1824/AST-1829-sweep-interval-data-scheduled-sweep`
+- **Stage 1:** `9f61f1ce` — `code(AST-1829): sweep_hrs column, sweep-due helper, claim-queue sweep due`
+- **Stage 2:** `506c2d77` — `code(AST-1829): scheduled sweep in mailbox due, tick spawn, one-batch loop`
+- **Build notes:** `py_compile` clean on both files; ruff `F,E9` shows no new findings vs pre-change. `grep -c "Thread(" src/core/dispatcher.py` = 2. Literal INSERT/UPDATE audit: `save_dispatch_task` is the only shape change; `apply_config_table_upsert` derives columns from live schema; `config.py` SEED_CONFIG inserts name columns explicitly (nullable `sweep_hrs` → NULL); legacy rebuild blocks unchanged per S1 step 1 decision.
