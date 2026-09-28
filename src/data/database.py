@@ -264,7 +264,12 @@ def _get_connection() -> sqlite3.Connection:
     """
     # Ensure data directory exists (DB_PATH already set above)
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+    cfg = ASTRAL_CONFIG.get("db_connection", {}) or {}
+    # busy timeout: locked writers wait instead of raising "database is locked" (AST-1842)
+    conn = sqlite3.connect(str(DB_PATH), timeout=float(cfg.get("busy_timeout_seconds", 5.0)))
+    # WAL is persistent per db file; re-issuing on an already-WAL db is a no-op read
+    if cfg.get("journal_mode"):
+        conn.execute(f"PRAGMA journal_mode={cfg['journal_mode']}")
     conn.row_factory = sqlite3.Row
     return conn
 
