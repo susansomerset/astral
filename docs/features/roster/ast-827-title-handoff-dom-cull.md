@@ -877,3 +877,80 @@ END-VERDICT
 ```text
 AST-1844 board-joan done — CANON: OK.
 ```
+
+
+## Radia review-fix (AST-1844)
+
+[code-rubric] PROCEED (Commit: 59b7b03d)
+
+**Overall:** CLEAN
+
+## Canon scores
+
+No `Canon Scope (frozen at plan)` on Linear. Gap child: tests + bible only; Joan **`[board-joan] CANON: OK`** — no product or statute landing. No scored product violations.
+
+**Notes:** Missing frozen list = Archie process gap, not **ESCALATE** on this tip.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached`
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+### `[bug-repro]` — **OK**
+
+Betty thread (`[bug-repro]` @ `c1838b28`, 8 nodes red→green `31846c28` → AST-1840 product). Assertions match plan **`## To-be`**, not tautologies:
+
+| Repro node | What it asserts | Why it fails pre-fix |
+|------------|-----------------|----------------------|
+| `TestAst1840CullHtmlLinearAndSnip::test_cull_html_full_page_never_hashes_tag` | `Tag.__hash__` raises; 40-row `<body>` page; `"Engineer 39"`, no `<svg` | `elem in preserve_root_svgs` hashes Tags |
+| `::test_cull_html_snips_attr_over_max_length` | 500 kept, 501 + list `class` → `(snipped)` | No snip pre-AST-1840 |
+| `::test_cull_html_missing_snip_key_raises` (×2 keys) | `ValueError` matching key name after `delitem` | Missing keys / wrong error pre-fix |
+| `::test_extract_page_dom_culls_off_event_loop` | `_cull_html` runs on thread `!=` asyncio thread | Sync cull on loop |
+| `TestAst1840CullOffEventLoop::test_parse_dispatch_culls_off_event_loop` | Real `_culled_dom_for_parse` wrapper; `WATCH`; off-loop | Sync cull in dispatch |
+| `::test_finalize_after_chain_culls_off_event_loop` | `CANNOT_PARSE_JOB_SITE`; off-loop | Sync finalize cull |
+| `::test_finalize_select_only_culls_off_event_loop` | same | Sync finalize cull |
+
+**Four off-loop cull sites:** `extract_page_dom` + three roster async call sites — covered.
+
+`TestAst1840FindJobContainersEquivalence`: **green both trees** by design; structural pins (comment/script/style/template/rt/rp, 8k DOM) per plan — closes LOCKED_AT_100 branches, not the freeze repro.
+
+**Advisory:** class docstrings say `AST-1840 bug-repro` vs first-line `# [bug-repro]`; bible + Betty thread name repro nodes — sufficient.
+
+### `## What must still hold` — **OK**
+
+- `TestCullHtmlDefault`, AST-1745, AST-827, `TestFindJobContainers` — not modified (additions only).
+- No wall-clock or DOM-size caps in new tests.
+- Plan **`### Proposed change`** + three bible `### AST-1840 · AST-1844` blocks match landed nodes/manifest.
+- Sub ancestry includes ftr sync (`8e4b53d4`) after Betty’s “merge ftr first” note.
+
+### Carry-over (`resolve(AST-1844)` `7ade973a`) — **OK**
+
+Three-dot diff **only** the seven AST-1844 paths. No reintroduction of stripped carry-over (`test_dispatcher`, `test_agent`, frontend tests, extra bible modules, etc.). `test_roster.py` vs ftr: additive `TestAst1840CullOffEventLoop` + `threading` import.
+
+## Findings
+
+**fix-now:** none
+
+**discuss:** none
+
+**advisory:**
+- Equivalence tests don’t dual-call old vs new `find_job_containers`; plan probe table + structural asserts are the contract.
+- Stale 54-test debt elsewhere remains out of scope per plan blast radius.
+
+## What's solid
+
+- Board REVISE on AST-1840 addressed: linear-time guard, snip 500/501 + keys, equivalence branches, off-loop at all four sites.
+- Parse-dispatch repro uses AST-827 scaffold with real cull to `WATCH`.
+- Diff isolated; product remains on ftr via AST-1840.
+
+## Chuckles — post-review branching
+
+**PROCEED** + orphaned mini-parent **AST-1838** → **Review Posted** → clean §3h shortcut → **User Testing** (skip **resolve-child**). Land gap sub into **`ftr/AST-1838-parse-job-list-event-loop-block`** per parent shape (not dev until finish-up).
+
+context_tokens≈N
+
