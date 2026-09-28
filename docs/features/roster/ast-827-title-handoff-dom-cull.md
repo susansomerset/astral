@@ -954,3 +954,24 @@ Three-dot diff **only** the seven AST-1844 paths. No reintroduction of stripped 
 
 context_tokens≈N
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/01943644208eb991f6defdb7a1d60f26/d7c24aa3-4e0a-4c3e-9896-b74e3619cbdd/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/fff92880-9753-4d79-b13a-31a60cd86070/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/01943644208eb991f6defdb7a1d60f26/ff537d5c-ff7c-4040-91ca-ae48a68d512c/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1838 (parent) | ftr/AST-1838-parse-job-list-event-loop-block |
+| AST-1840 | sub/AST-1838/AST-1840-parse-job-list-event-loop-block |
+| AST-1844 | sub/AST-1838/AST-1844-parse-job-list-event-loop-block-tests |
+
+**Epic worktree:** `astral-AST-1838/` — one active sub checked out at a time.
