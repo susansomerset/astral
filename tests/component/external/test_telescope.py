@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -344,6 +345,75 @@ class TestAst1745CullPreservesRootSvgLogo:
         assert "<svg" not in out.lower(), (
             "AST-1745: nested svg under non-svg roots must still be culled"
         )
+
+
+class TestAst1840CullHtmlLinearAndSnip:
+    """AST-1840 bug-repro — _cull_html never hashes Tags (quadratic freeze); attr snip; off-loop cull."""
+
+    _ROW = (
+        '<li class="job-row" data-automation-id="job"><div class="c1">'
+        '<h3><a href="/job/E_%d">Engineer %d</a></h3></div>'
+        '<button><i>x</i></button><span class="loc">Pittsburgh</span>'
+        '<svg viewBox="0 0 10 10"><g><path d="M0 0L10 10"></path></g></svg></li>'
+    )
+
+    def test_cull_html_full_page_never_hashes_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # bs4 Tag.__hash__ serializes the subtree; any hash on a <body> page is O(document) work
+        # per element — the 2h freeze. Must include <body>: root-svg fragments legitimately hash.
+        import bs4.element
+
+        def boom(self: Any) -> int:
+            raise AssertionError("Tag.__hash__ called during _cull_html")
+
+        html = (
+            '<html><body><div id="app"><ul>'
+            + "".join(self._ROW % (i, i) for i in range(40))
+            + "</ul></div></body></html>"
+        )
+        monkeypatch.setattr(bs4.element.Tag, "__hash__", boom)
+        out = pw_mod._cull_html(html)
+        assert "Engineer 39" in out
+        assert "<svg" not in out
+
+    def test_cull_html_snips_attr_over_max_length(self) -> None:
+        # 500 kept, 501 snipped (strict >); list-valued class measured by joined length (560).
+        html = '<div data-a="%s" data-b="%s" class="%s">Job</div>' % (
+            "x" * 500, "y" * 501, " ".join(["c" * 50] * 11),
+        )
+        out = pw_mod._cull_html(html)
+        assert 'data-a="' + "x" * 500 + '"' in out
+        assert 'data-b="(snipped)"' in out
+        assert 'class="(snipped)"' in out
+        assert "y" * 501 not in out
+
+    @pytest.mark.parametrize("key", ["max_html_tag_length", "max_length_placeholder"])
+    def test_cull_html_missing_snip_key_raises(
+        self, monkeypatch: pytest.MonkeyPatch, key: str,
+    ) -> None:
+        monkeypatch.delitem(pw_mod.ASTRAL_CONFIG["html_cull"], key)
+        with pytest.raises(ValueError, match=key):
+            pw_mod._cull_html("<div>x</div>")
+
+    @pytest.mark.asyncio
+    async def test_extract_page_dom_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Thread identity proves the cull left the loop thread — no timers.
+        import threading
+
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "cull_html_default", True)
+        page = pw_mod.PageHandle(url="https://example.com")
+        monkeypatch.setattr(pw_mod, "_ensure_html", AsyncMock(return_value="<body>hi</body>"))
+        seen: Dict[str, int] = {}
+
+        def fake_cull(raw: str) -> str:
+            seen["tid"] = threading.get_ident()
+            return "<p>hi</p>"
+
+        monkeypatch.setattr(pw_mod, "_cull_html", fake_cull)
+        out = await pw_mod.extract_page_dom(page)
+        assert out == "<p>hi</p>"
+        assert seen["tid"] != threading.get_ident()
 
 
 class TestAst1750PostTelescopeDebugDump:

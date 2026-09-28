@@ -853,3 +853,27 @@ Pass criterion: green on `fb472a98` (merged into this sub). The **[bug-repro]** 
 - The `[bug-repro]` nodes are red on the pre-fix product and green on `fb472a98`. The equivalence nodes are green on both.
 - No wall-clock or timeout assertions, and no DOM-size caps (Susan, 2026-09-28).
 - LOCKED_AT_100: after these nodes land, `src/utils/formatting.py` has no uncovered lines or branches inside AST-1840's hunks. The `telescope.py` and `roster.py` hunks sit in lines that are already covered or `# pragma: no cover`, so they add no new gate debt.
+
+
+## Joan fix-board (AST-1844)
+
+AST-1844 is Betty’s gap child (qa-fix): **test + `docs/test-bible` only**, no `src/` or `config.py`. Joan’s fix-board question is whether that work **conflicts with or requires updating** any in-force statute/pattern.
+
+**Findings**
+
+- **Scope:** New component tests (`TestAst1840CullHtmlLinearAndSnip`, `TestAst1840CullOffEventLoop`, `TestAst1840FindJobContainersEquivalence`) plus three bible blocks mirroring the AST-1745 telescope bible shape. Product behavior under test is already defined on AST-1840 @ `fb472a98`; this pass only pins it (red on pre-fix ftr `31846c28`, green on fix tip).
+- **Corpus:** Adds no directives, no statute text, no pattern ids, no carve-outs. It exercises existing law-friendly shapes: `html_cull` keys and required-key `ValueError` (aligns with `astral.config.config-source-of-truth` / `astral.standards.no-hardcoded-sets` on the **product** tree, not amended here), layer boundaries unchanged, no new logging/debug contract in product code.
+- **Test mechanics:** `Tag.__hash__` monkeypatch and `delitem` on `ASTRAL_CONFIG["html_cull"]` are scoped test patterns; they don’t imply a canon edit. LOCKED_AT_100 / branch coverage goals are bible/CI discipline, not the statute corpus.
+- **Susan constraints** (no wall-clock asserts, no DOM-size caps) live in the plan and test design; they don’t need a new statute for this gap child.
+
+No architectural call for Archie; no F3 (`validate-plan` fix mode) canon landing required for AST-1844.
+
+BEGIN-VERDICT
+```
+[board-joan]  CANON: OK
+```
+END-VERDICT
+
+```text
+AST-1844 board-joan done — CANON: OK.
+```
