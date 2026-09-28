@@ -4434,6 +4434,8 @@ ASTRAL_CONFIG = {
         "hidden_class_patterns": ['hide', 'hidden', 'd-none', 'visually-hidden', 'sr-only'],
         "strip_attributes": ['style', 'srcset'],
         "strip_on_attrs": True,
+        "max_html_tag_length": 500,            # AST-1840: attribute values longer than this are snipped
+        "max_length_placeholder": "(snipped)", # AST-1840: replacement text, so snipped spots stay visible
     },
     "cookie_dismiss_selectors": [
         'button:has-text("Accept All")',

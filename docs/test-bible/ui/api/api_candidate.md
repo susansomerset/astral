@@ -441,7 +441,3 @@ See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
-
-### AST-1768 · AST-1687 (bug)
-
-`GET /api/candidates/by_email?email=` (`@require_auth`, registered before `/<candidate_id>`) → `{"candidate_id": <id|null>}` via `get_candidate_id_for_query`; missing / no-`@` email → 400. Tests: **`test_api_candidate.py::TestAst1768CandidateByEmailApi`**. Full manifest: [`../../frontend/lib.md`](../../frontend/lib.md) § AST-1768.

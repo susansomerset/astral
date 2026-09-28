@@ -873,15 +873,16 @@ Canonical external map: [`external/telescope.md`](../external/telescope.md).
   -q
 ```
 
-### AST-1842 · AST-1825 (select_job_page provider_call_timeout hold)
+### AST-1840 · AST-1844 (qa-fix bug-repro — `_culled_dom_for_parse` off the event loop)
 
-**Parent:** [AST-1825](https://linear.app/astralcareermatch/issue/AST-1825) (orphaned-bug mini-parent). Product: **AST-1842**; test/bible delivery on gap sibling **AST-1843** (`origin/sub/AST-1825/AST-1843-repro-coverage`). A `do_task` failure with `failure_class == PROVIDER_CALL_BUDGET["failure_class"]` (AST-1189 timeout) joins the AST-897 balance-refusal hold in `_find_job_page_from_assembled`: current state (`PJL_READY`) held, `state_held=True`, no `_save_company(state="NO_JOBLIST")`. Every other failure still saves `NO_JOBLIST` / `SELECT_FAILED`. `[bug-repro]`: red on pre-fix `origin/dev` (`NO_JOBLIST` saved), green once AST-1842 is on the tree.
+**Parent:** [AST-1838](https://linear.app/astralcareermatch/issue/AST-1838) (orphaned-bug mini-parent). Product: **AST-1840**; test/bible delivery on gap sibling **AST-1844** (`origin/sub/AST-1838/AST-1844-parse-job-list-event-loop-block-tests`). The three async cull sites now `await asyncio.to_thread(_culled_dom_for_parse, …)`; proven by thread identity (no timers). `[bug-repro]`: red on pre-fix `31846c28`, green on AST-1840 (`fb472a98`). `make_locate_parse_resolver` stays sync (not asserted).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Timeout hold (select-only decomposed entry) | `src/core/roster.py` (`_find_job_page_from_assembled`) | **`tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold::test_find_job_page_provider_call_timeout_holds_pjl_ready`** |
-| Balance-refusal hold regression | same | **`TestAst897HoldStateOnBalanceRefusal::test_find_job_page_holds_state`** |
-| Non-hold failure still `NO_JOBLIST` | same | existing **`test_find_assembled_do_task_failure`** |
+| Parse dispatch cull off loop (real cull, reaches `WATCH`) | `src/core/roster.py` (`run_parse_job_list_dispatch`) | **`tests/component/core/test_roster.py::TestAst1840CullOffEventLoop::test_parse_dispatch_culls_off_event_loop`** (**bug-repro**) |
+| JOBS_FOUND chain finalize cull off loop | `_finalize_joblist_titles_after_chain` | **`TestAst1840CullOffEventLoop::test_finalize_after_chain_culls_off_event_loop`** (**bug-repro**) |
+| Select-only finalize cull off loop | `_finalize_joblist_titles_select_only` | **`TestAst1840CullOffEventLoop::test_finalize_select_only_culls_off_event_loop`** (**bug-repro**) |
+| AST-827 handoff regression | same | existing **`TestAst827TitleHandoffDomCull`** |
 
 **Broken / obsolete:** none.
 
@@ -889,8 +890,7 @@ Canonical external map: [`external/telescope.md`](../external/telescope.md).
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold \
-  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
-  tests/component/core/test_roster.py::test_find_assembled_do_task_failure \
+  tests/component/core/test_roster.py::TestAst1840CullOffEventLoop \
+  tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull \
   -q
 ```

@@ -568,19 +568,3 @@ Board REVISE on AST-1432: pool-2 on a bound row was wrong; two-candidate bound A
 ```
 
 **Pass criterion:** pytest green once AST-1810 product (P1–P5) is on the tree; red on the pre-fix tree (count 3 ≠ 4, gazer skip, roster extra kwarg).
-
-### AST-1829 · AST-1824 (sweep_hrs column + claim-queue scheduled-sweep due)
-
-**Parent:** [AST-1824](https://linear.app/astralcareermatch/issue/AST-1824). **Publish:** `origin/sub/AST-1824/AST-1829-sweep-interval-data-scheduled-sweep`. Nullable `sweep_hrs REAL` (fresh `CREATE TABLE` + `_migrate_cols`, no backfill; legacy rebuild blocks untouched), `save_dispatch_task(sweep_hrs=)`, update whitelist + AST-875 template copy, `dispatch_task_sweep_due` (reuses `_parse_dispatch_last_run_at`), `get_due_tasks` OR's the sweep branch and marks `_scheduled_sweep=True`.
-
-| Area | Component tests |
-| --- | --- |
-| Column fresh (REAL, notnull=0, no default) / migrated from missing, rows NULL | `tests/component/data/database/test_dispatch_tasks.py::TestAst1829SweepInterval::{test_fresh_schema_has_nullable_real_column,test_existing_db_migrates_column_without_backfill}` |
-| Save default NULL / save 2.5 / update 4 | `::TestAst1829SweepInterval::test_save_and_update_persist_sweep_hrs` |
-| Template copy 6 → 6, NULL stays NULL | `::TestAst1829SweepInterval::test_template_copy_carries_sweep_hrs` |
-| Sweep-due helper (NULL/0 off, missing last_run due, inside/past interval) | `::TestAst1829SweepInterval::test_sweep_due_helper` |
-| `get_due_tasks` AC 2–7 (Avail stubbed) | `::TestAst1829SweepInterval::test_get_due_tasks_sweep_rule` |
-
-**Broken / obsolete:** none in this file. **Integration:** none.
-
-Primary numbered manifest: **`docs/test-bible/core/dispatcher.md`** § AST-1829.

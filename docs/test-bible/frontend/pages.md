@@ -3108,19 +3108,3 @@ Scheduled Actions: native `title` on the Run-cell wrapper `<div>` of an `empty_r
 ```bash
 cd src/ui/frontend && npx vitest run --config vite.config.ts test_AdminScheduledActions
 ```
-
-### AST-1830 · AST-1824 (Scheduled Actions sweep_hrs input + list column)
-
-**Parent:** [AST-1824](https://linear.app/astralcareermatch/issue/AST-1824). **Publish:** `origin/sub/AST-1824/AST-1830-sweep-interval-admin-api-ui`.
-
-`AdminScheduledActions.tsx`: a `Sweep (hrs)` numeric input in the Add and Edit modals (blank = off; prefilled from the row on Edit). Save sends `sweep_hrs` as a number, or `null` when blank. A sortable **Sweep** list column shows the value or `—`. Run/Sweep button logic (`sweepDisabled`) is unchanged.
-
-| Area | Component tests |
-| --- | --- |
-| List shows value or `—`; Sweep header sorts both directions | **`test_AdminScheduledActions.test.tsx`**: **`AST-1830 sweep_hrs modal input + list column > list shows sweep_hrs or — and the Sweep column sorts`** |
-| Edit prefills; PUT sends new value; clearing sends `null` | **`… > edit modal prefills sweep_hrs, PUT sends the new value, and clearing sends null`** |
-| Add starts blank; POST sends value; blank sends `null` | **`… > add modal starts blank and POST sends sweep_hrs (null when blank)`** |
-
-All three fail on the pre-AST-1830 page and pass with it (checked at QA). **Broken / obsolete:** none. The existing 74 tests across both Scheduled Actions files stay green.
-
-Primary numbered manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1830.
