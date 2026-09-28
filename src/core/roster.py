@@ -62,6 +62,7 @@ from src.utils.config import (
     COMPANY_STATES,
     INFLOW_CONFIG,
     PLAYWRIGHT_CONFIG,
+    PROVIDER_CALL_BUDGET,
     ROSTER_CONFIG,
     TASK_CONFIG,
     is_registered_state,
@@ -2162,10 +2163,12 @@ async def _find_job_page_from_assembled(
         )
         logger.debug("Response from agent.do_task: %s", res)
         if not res.get("success"):  # pragma: no branch
-            if is_provider_balance_refusal(res):
+            # Balance refusal (AST-897) and provider-call-budget timeout (AST-1189) are not model
+            # verdicts: hold the loop-eligible state so the next select_job_page dispatch retries (AST-1842).
+            if is_provider_balance_refusal(res) or res.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]:
                 current_state = (get_company(short_name) or {}).get("state")
                 logger.debug(
-                    "Response from agent.do_task: provider_balance_refusal failure_class=%r error=%r current_state=%r",
+                    "Response from agent.do_task: state held failure_class=%r error=%r current_state=%r",
                     res.get("failure_class"), res.get("error"), current_state,
                 )
                 return {
