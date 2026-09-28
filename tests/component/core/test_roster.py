@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, call
@@ -1393,6 +1394,91 @@ class TestAst827TitleHandoffDomCull:
         assert out["state"] == "JOBLIST_IDENTIFIED_RETRY"
         assert out["response_type"] == "PARSE_DISPATCH_NO_CONTAINERS"
         assert save_co.call_args.kwargs.get("state") == "JOBLIST_IDENTIFIED_RETRY"
+
+
+class TestAst1840CullOffEventLoop:
+    """AST-1840 bug-repro — _culled_dom_for_parse runs off the event loop at all three async sites."""
+
+    @pytest.mark.asyncio
+    async def test_parse_dispatch_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        t827 = TestAst827TitleHandoffDomCull
+        company = _company(
+            state="JOBLIST_IDENTIFIED",
+            company_website="https://acme.com",
+            company_data={
+                "selected_pjl_url": "https://acme.com/jobs",
+                "job_titles": t827._TWO_TITLES,
+            },
+        )
+        seen: Dict[str, int] = {}
+        real_cull = roster_mod._culled_dom_for_parse
+
+        def spy_cull(dom_html: str, job_titles: List[str]) -> Any:
+            # Records the calling thread, keeps the real cull result
+            seen["tid"] = threading.get_ident()
+            return real_cull(dom_html, job_titles)
+
+        monkeypatch.setattr(roster_mod, "_culled_dom_for_parse", spy_cull)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "create_browser_context", t827._browser_cm())
+        monkeypatch.setattr(
+            roster_mod, "_scrape_list_page_dom_for_parse",
+            AsyncMock(return_value=t827._SIBLING_DOM),
+        )
+        monkeypatch.setattr(
+            roster_mod, "_fetch_parse_job_list",
+            AsyncMock(return_value={"job_container": "a", "job_tag": "a", "job_ids": ["j1", "j2"]}),
+        )
+        monkeypatch.setattr(
+            roster_mod, "_validate_parse_job_list_raw_job_listings",
+            MagicMock(return_value=(None, [], [])),
+        )
+        out = await roster_mod.run_parse_job_list_dispatch(company, "batch-1840")
+        assert out["state"] == "WATCH"
+        assert seen["tid"] != threading.get_ident()
+
+    @staticmethod
+    def _miss_spy(monkeypatch: pytest.MonkeyPatch, seen: Dict[str, int]) -> None:
+        # Finalize paths: stub saves, force cull_miss, record the cull's thread
+        def spy_cull(dom_html: str, job_titles: List[str]) -> Any:
+            seen["tid"] = threading.get_ident()
+            return ("", [], "cull_miss")
+
+        monkeypatch.setattr(roster_mod, "_culled_dom_for_parse", spy_cull)
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+
+    @pytest.mark.asyncio
+    async def test_finalize_after_chain_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: Dict[str, int] = {}
+        self._miss_spy(monkeypatch, seen)
+        out = await roster_mod._finalize_joblist_titles_after_chain(
+            {"job_titles": ["A", "B"], "selected_page": 0}, {"parsed_response": {}},
+            "acme", "https://acme.com", "https://acme.com/jobs",
+            {0: "<div>A B</div>"}, {0: "A B"}, 0, "JOBLIST_TITLES", False, None,
+        )
+        assert out["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert seen["tid"] != threading.get_ident()
+
+    @pytest.mark.asyncio
+    async def test_finalize_select_only_culls_off_event_loop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: Dict[str, int] = {}
+        self._miss_spy(monkeypatch, seen)
+        out = await roster_mod._finalize_joblist_titles_select_only(
+            {"job_titles": ["A", "B"], "selected_page": 0},
+            "acme", "https://acme.com", "https://acme.com/jobs",
+            {0: "<div>A B</div>"}, 0, "JOBLIST_TITLES", False, None, {0: "A B"},
+        )
+        assert out["state"] == "CANNOT_PARSE_JOB_SITE"
+        assert seen["tid"] != threading.get_ident()
 
 
 class TestAst701ScrapeCompanyHomepageContent:
