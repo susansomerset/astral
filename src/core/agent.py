@@ -2415,6 +2415,28 @@ async def do_task(
                             "error": grade_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})})
 
     if isinstance(parsed, dict) and "agent_payload" in parsed:
+        # AST-1839: rubric-encoded tasks skip _validate_response_schema, so the envelope status is
+        # lost on unwrap — surface a model-reported failure (bad source content) as agent_failure.
+        _perf = parsed.get("agent_performance")
+        if rubric_encoded and _agent_performance_status(_perf) == "failure":
+            _note = (_perf.get("failure_note") if isinstance(_perf, dict) else None) or parsed.get("failure_note")
+            agent_err = f"Agent failure: {_note or 'Agent returned status=failure with no note'}"
+            _warn_hop_no_success(task_key, agent_err)
+            if _should_store:
+                try:
+                    await asyncio.to_thread(_store_response_block,
+                        entity_type,
+                        task_key,
+                        batch_id,
+                        _failure_response_block_data(index, _audit_response_body(raw_text, parsed, agent_err)),
+                        index=index,
+                        debug=debug)
+                except Exception as exc:
+                    _log_swallowed_agent_data(index, task_key, exc)
+            _close_hop_ledger(success=False, clear_log=True, failure_error=agent_err)
+            return _with_harvest({"success": False, "agent_failure": True, "api_response": result.get("api_response"),
+                    "parsed_response": None, "error": agent_err, "raw_response": parsed,
+                    "timesheet": result.get("timesheet", {})})
         # AST-1072: preserve conversational outcome on result before unwrapping payload.
         if is_conversational_task(task_key):
             _perf_keep = parsed.get("agent_performance")
