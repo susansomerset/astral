@@ -653,3 +653,78 @@ END-VERDICT
 ```text
 AST-1840 board-joan done — CANON: OK.
 ```
+
+
+## Radia review-fix (AST-1840)
+
+Review for **AST-1840** — diff `origin/ftr/AST-1838-parse-job-list-event-loop-block...origin/sub/AST-1838/AST-1840-parse-job-list-event-loop-block`, tip `fb472a989b21bc372118bf3b310a45d89c525ef8`. Status gate: **Tests Passed** (trusted). Product-only diff (no `tests/**`); qa-fix did not run; `[bug-repro]` deferred to sibling **AST-1844**.
+
+---
+
+```
+[code-rubric]
+**Ticket:** AST-1840
+**Publish ref:** `fb472a989b21bc372118bf3b310a45d89c525ef8` (`origin/sub/AST-1838/AST-1840-parse-job-list-event-loop-block`)
+**Corpus:** `edcd401473615509c180c015cd18b4472dfba94a` (tree at publish ref; no `docs/canon-index.md` on this ref — resolved ids from `canon/statutes/**` on same tip)
+**Overall:** CLEAN
+
+## Canon scores
+
+Scored list: Linear Description has **no** `Canon Scope (frozen at plan)` block. Per fix-lane precedent (e.g. AST-1821), scored **fix-board Joan overlap** from the plan-fix patch / `## Joan fix-board (AST-1840)`:
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | `astral.config.config-source-of-truth` | A | | `max_html_tag_length` / `max_length_placeholder` added to `ASTRAL_CONFIG["html_cull"]`; `_cull_html` reads them with same required-key `ValueError` pattern as existing `html_cull` keys |
+| 2 | `astral.standards.no-hardcoded-sets` | A | | 500 / `"(snipped)"` not inlined in `telescope.py`; snip threshold and placeholder come from config |
+
+**Notes (Canon Scope):** Missing frozen list on the bug ticket is a **process gap for Archie** (comparability with feature children), not a product defect on this tip. No off-list statute plainly violated without being named by Joan; no **ESCALATE** for scope gap.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (no `validate-plan` fix-mode column in issue doc or comments; only `[board-joan] CANON: OK`).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** not applicable — clean board opt-out for this tip; Betty’s **TESTS: REVISE** and repro coverage owned by sibling **AST-1844**; no `[bug-repro]` on this diff.
+- **`## What must still hold`:** **OK** — traced against diff:
+  - **AST-827:** `_culled_dom_for_parse` body untouched; three async call sites use `await asyncio.to_thread(...)` only; return shape / outcome labels / downstream branches unchanged; `make_locate_parse_resolver` stays sync (not in diff).
+  - **`find_job_containers`:** signature, fallbacks, Phase 2 walk-up / 2b from `checked: set = set()` onward unchanged; Phase 1/2 “deepest” / “leaves” refactored via span cache + `all_below` / `any_below` per plan (semantics contract; equivalence not re-proven in-repo on this tip).
+  - **AST-1745:** identity `_in_preserved_svg` matches plan; **global** attribute snip (no preserved-SVG exemption) per Susan 2026-09-28 — long `d` on preserved logo may snip; plan documents that tradeoff.
+  - **AST-891 / AST-1189:** `_cull_html` and `_culled_dom_for_parse` off event loop via `extract_page_dom` + roster `to_thread` — matches to-be.
+  - **No DOM-size guard:** no cap added.
+  - **Required config keys:** fail-fast `ValueError` for missing new keys.
+  - **Admin workbench ~629/631:** still synchronous `_cull_html` (out of scope; verified on tip).
+
+## Findings
+
+**fix-now:** none
+
+**discuss:** none
+
+**advisory:**
+- **Test debt / sibling carry:** Linear `## Scope` still lists `test_formatting` / `test_roster` changes; this tip is **product-only**; fix-board **TESTS: REVISE** → **AST-1844**. Radia does not block product on absent tests here.
+- **Semantic proof for `find_job_containers`:** plan-fix documents 30k fuzz / prototype parity; touched-area pytest **30/30** per engineer comment; no landed repro test on this branch until AST-1844.
+- **AST-1745 vs snip:** preserved root `svg.logo` with attribute values **>500** chars will show `(snipped)` in captured HTML — accepted per Susan binding; fixtures use short paths.
+- **Blast radius:** all `extract_page_dom` consumers get linear `_cull_html` + snip in thread; gazer JD path included (intended).
+- **Poller “Task was destroyed but it is pending”:** plan correctly leaves investigate-only; not fixed here.
+
+## What's solid
+
+- Root-cause fix landed: `_in_preserved_svg` `id()` set ends quadratic `Tag.__hash__` / `decode` behavior; matches scope-gate measurements narrative.
+- `asyncio.to_thread` at the three roster parse-finalize sites and in `extract_page_dom` — minimal, consistent with plan order.
+- Snip loop runs on **every** attribute after strip pass (`> max_html_tag_length`, strict `>`), lists joined with space — matches plan and Susan’s “every attribute” rule.
+- `asyncio` already imported in `roster.py`; monkeypatch-friendly `to_thread` lookup for `_culled_dom_for_parse` / `_cull_html`.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (this review) | **Orphaned mini-parent AST-1838** (per intake) | **Review Posted** → **do-all-the-things §3h** clean shortcut → **User Testing**; **skip `resolve-child`**. Do **not** `merge-child` / `prep-uat`; when UT-ready, land **`sub/AST-1838/AST-1840-…` → `origin/dev`** finish-up-style. |
+| If findings later | same | **Review Posted** → `resolve-child` on sub → then dev merge |
+
+context_tokens≈N
+```
