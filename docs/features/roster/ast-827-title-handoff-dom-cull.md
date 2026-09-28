@@ -728,3 +728,7 @@ Scored list: Linear Description has **no** `Canon Scope (frozen at plan)` block.
 
 context_tokens≈N
 ```
+
+#### Chuckles disposition (AST-1840)
+
+Clean review: Review Posted → User Testing (resolve-child skipped). Docs-acceptance on this tip: the test/bible delivery is sibling gap AST-1844 (Betty's `[board-betty] TESTS: REVISE`). merge-child goes into this bug's own `ftr/AST-1838-parse-job-list-event-loop-block` (orphaned mini-parent), not straight to dev.
