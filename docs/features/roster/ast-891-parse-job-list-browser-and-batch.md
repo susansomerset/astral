@@ -572,3 +572,5 @@ AST-1847 board-joan done — CANON: OK.
 #### Chuckles disposition (AST-1847)
 
 Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). Merged into the mini-parent ftr.
+
+Docs-acceptance on this tip: no test-tree delivery here — tests and bible land on gap sibling AST-1848.
