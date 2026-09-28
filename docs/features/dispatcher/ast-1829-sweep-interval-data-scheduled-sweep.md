@@ -353,3 +353,65 @@ context_tokens≈28000
 - **Stage 1:** `9f61f1ce` — `code(AST-1829): sweep_hrs column, sweep-due helper, claim-queue sweep due`
 - **Stage 2:** `506c2d77` — `code(AST-1829): scheduled sweep in mailbox due, tick spawn, one-batch loop`
 - **Build notes:** `py_compile` clean on both files; ruff `F,E9` shows no new findings vs pre-change. `grep -c "Thread(" src/core/dispatcher.py` = 2. Literal INSERT/UPDATE audit: `save_dispatch_task` is the only shape change; `apply_config_table_upsert` derives columns from live schema; `config.py` SEED_CONFIG inserts name columns explicitly (nullable `sweep_hrs` → NULL); legacy rebuild blocks unchanged per S1 step 1 decision.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1829
+**Publish ref:** `4e623d46d0e92da370e0b290d3595823d78eff0b` (`origin/sub/AST-1824/AST-1829-sweep-interval-data-scheduled-sweep`)
+**Corpus:** a0bc2f0e5b5810448cf465ebeff84ffb6f1d60b6
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+| patt.entity.batch-processing | A | | |
+| astral.batch.claim-process-release | A | | |
+| astral.dispatch.entity-state-bound | A | | |
+| stat.logging.info.dispatcher | A | | |
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan round-1 re-check scored all **A** on the same six ids; code matches the revised plan (no `logger.debug` in `src/data/`, single ungated sweep-due site in `_tick_loop`).
+
+## Frame diff
+
+(none) — Linear **Acceptance criteria** 1–12 in the issue description match what the tip implements and what Betty’s manifest maps; no new checklist rows required for `resolve-child` §10.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `merge-tests` on the sub brings non–AST-1829 paths into the three-dot diff — e.g. `tests/component/frontend/**`, `tests/component/ui/api/test_api_candidate.py`, `docs/test-bible/frontend/lib.md`, `docs/test-bible/ui/api/api_candidate.md`. Product scope stays `src/data/database.py` + `src/core/dispatcher.py` only; do not treat those as AST-1829 scope violations.
+- **Linear one-liner vs child AC 11:** Description “Ships AC 1–10, 12, and 15” omits **11** (template copy) while the child plan, tests (`TestAst1829SweepInterval::test_template_copy_carries_sweep_hrs`), and data diff include it. Plan doc is authoritative on this ticket; no code change implied.
+
+## What's solid
+
+- Two-file product footprint matches **## Scope** and explicit scope gate; AST-1830 API/UI untouched.
+- `sweep_hrs` wired through fresh `CREATE TABLE`, `_migrate_cols`, `save_dispatch_task` (14-column INSERT / bind tuple aligned in diff), update whitelist, template-copy cols, and `dispatch_task_sweep_due` reusing `_parse_dispatch_last_run_at`.
+- Claim-queue and mailbox due rules share the same sweep predicate; `_scheduled_sweep` is runtime-only; `run_task(..., scheduled_sweep=)` re-applies the due mark after re-read.
+- `_run_dispatch_loop` mirrors UI Sweep: one batch + `effective_min` bypass for `scheduled_sweep`; `_dispatch_one` still gates `log_debug` on `debug` / `ui_initiated` only (AC 10 covered in `TestAst1829ScheduledSweep::test_sweep_one_batch_no_min_gate_and_debug`).
+- `grep -n "Thread("` still exactly two sites in `dispatcher.py` (AC 12).
+- Component coverage for AST-1829 is documented in `docs/test-bible/core/dispatcher.md` § AST-1829 and `docs/test-bible/data/database/dispatch_tasks.md`.
+
+## Recommended actions (downstream only — not executed in this session)
+
+- Chuckles: append this artifact to `docs/features/dispatcher/ast-1829-sweep-interval-data-scheduled-sweep.md`, `docs()` commit on the sub, post slim upshot `--as radia`, move **Review Posted**; **PROCEED** → datt may route toward **User Testing** per §3h.
+- Optional: align Linear description “Ships …” line with child AC 11 if you want Description and plan byte-identical (cosmetic).
+
+```
+[code-rubric] PROCEED (Commit: 4e623d46) scheduled sweep clean
+```
+
+context_tokens≈38000
