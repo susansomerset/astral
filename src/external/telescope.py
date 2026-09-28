@@ -20,7 +20,7 @@ import uuid
 import zlib
 from contextlib import asynccontextmanager
 from html.parser import HTMLParser
-from typing import Any, Dict, List, Optional, Sequence, Tuple, TypedDict
+from typing import Any, Awaitable, Dict, List, Optional, Sequence, Tuple, TypedDict
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
 import asyncpg
@@ -546,6 +546,17 @@ _pool = _TelescopeQueue()
 async def close_loop_resources() -> None:
     """Release telescope queue resources bound to the running event loop (task-thread shutdown)."""
     await _pool.aclose_current_loop()
+
+
+def run_one_shot(coro: Awaitable[Any]) -> Any:
+    """asyncio.run for one-shot callers: releases this loop's Telescope state before the loop closes."""
+    async def _main() -> Any:
+        try:
+            return await coro
+        finally:
+            # Must run on the owning loop, before asyncio.run closes it.
+            await close_loop_resources()
+    return asyncio.run(_main())
 
 CAPTURE_FIELDS = frozenset({"text", "links", "html"})
 CAPTURE_FIELDS_ORDER = ("text", "links", "html")
