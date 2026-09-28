@@ -177,6 +177,8 @@ Primary data/API manifest: **`docs/test-bible/data/database/dispatch_tasks.md`**
 
 Primary roster / consult manifest: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/core/consult.md`** (**AST-891**).
 
+Timeout partial counts: § AST-1847 · AST-1848.
+
 ### AST-972 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. Dispatcher: **`retire_candidate_requested_wrapper_dispatch_tasks`** (retire-only); candidate claim gate in **`_run_unified`**; tick calls **`age_stale_candidate_states`**; **`start_scheduler`** runs wrapper retire after meteorite provision.
@@ -516,3 +518,44 @@ Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1562.
 **Integration:** none revised.
 
 Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+---
+
+### AST-1847 · AST-1848 (qa-fix bug-repro — parse_job_list timeout partial counts in ledger)
+
+**Parent:** [AST-1845](https://linear.app/astralcareermatch/issue/AST-1845) (orphaned-bug mini-parent). Product: **AST-1847** (`ba60f8e4` on `origin/sub/AST-1845/AST-1847-parse-job-list-timeout-partial-counts`, not yet on ftr); test/bible delivery on gap sibling **AST-1848** (`origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests`). Contract: `_run_unified` puts a fresh copy of `_SUMMARY_ZERO` on `ctx["dispatch_partial"]` per run and pops it on normal return only; the `_dispatch_one_body` **timeout** branch folds the in-flight partial into `accumulated`, adds the `+1` timeout error **before** logging, and the timeout log line carries `processed= passed= failed= errors=` matching the INTERRUPTED ledger write. Admin-kill (`CancelledError`) branch unchanged (out of scope).
+
+**Sequencing deviation (gap child, AST-1844 / AST-1846 precedent):** product landed first. `[bug-repro]` proven both ways — **RED at ftr base `8e7b77a5`** on assertions (ledger `0/0/0/1`, log without counts; node 5 `KeyError: 'dispatch_partial'`) and **GREEN with `ba60f8e4`'s `roster.py` + `dispatcher.py` overlaid** (scratch worktree, not committed).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Real dispatch → consult → `parse_job_list_batch` timeout: ledger `3/2/0/1` + log counts; `clear_company_batch` on cancel | `_dispatch_one_body` / `_run_unified` + `roster.parse_job_list_batch` | **`tests/component/core/test_dispatcher.py::TestAst1847TimeoutPartialCounts::test_parse_job_list_timeout_ledger_and_log_carry_partial_counts`** (**bug-repro**) |
+| Fold-in loop with items on top of prior runs; `+1` before log; partial popped | `_dispatch_one_body` timeout branch | **`::TestAst1847TimeoutPartialCounts::test_timeout_folds_partial_on_top_of_prior_runs`** (branch lock) |
+| Fresh copy per run (stale replaced, constant not aliased); popped on return | `_run_unified` | **`::TestRunUnified::test_ast1847_sets_fresh_dispatch_partial_and_pops_on_return`** (branch lock) |
+| Cancel leaves partial in place; `finally` still clears batch | `_run_unified` | **`::TestRunUnified::test_ast1847_cancel_keeps_dispatch_partial_and_clears_batch`** (branch lock) |
+| Empty-partial fold (`wait_for` raises before `_run_unified` sets the key) | `_dispatch_one_body` timeout branch | existing **`::TestDispatchOne::test_auto_dispatch_uses_timeout`** (unchanged) |
+
+Roster tally nodes: **`docs/test-bible/core/roster.md`** § AST-1847 · AST-1848.
+
+**Branch lock (AST-1847 lines only):** full component run with `--cov-branch` and the `ba60f8e4` overlay — **0 missing lines / 0 missing branches** on every line `ba60f8e4` added in `dispatcher.py` (16) and `roster.py` (23); missing-branch count unchanged vs base (dispatcher 42 / 42, roster 136 / 136). `check_per_file_coverage.py` on that report still exits 1 whole-file (dispatcher **86.1%**, roster **78.2%**; base 86.0% / 78.1%) solely from pre-existing host drift (316 failing + 5 uncollectable `SURFER_BATCH_CONFIG` modules at tip, 323 at base — the 7-node difference is exactly this ticket's red→green set).
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **Repro + branch-lock nodes** (**[bug-repro]** — red at `8e7b77a5`, green with AST-1847; `test_auto_dispatch_uses_timeout` green both):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1847TimeoutPartialCounts \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast1847_sets_fresh_dispatch_partial_and_pops_on_return \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast1847_cancel_keeps_dispatch_partial_and_clears_batch \
+  tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_dispatch_uses_timeout \
+  -q
+```
+
+2. **Branch lock:** full `tests/component` with `--cov-branch` (`--continue-on-collection-errors` on this host) — 0 missing lines / branches on AST-1847's added lines in `src/core/dispatcher.py`; whole-file % no lower than base.
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests:docs/test-bible/core/dispatcher.md | shasum`
