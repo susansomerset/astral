@@ -1296,6 +1296,16 @@ async def parse_job_list_batch(
     company_total = len(companies)
     passed = errors = retried = 0
     logger.debug("Beginning parse_job_list loop on %s items", company_total)
+    # AST-1847: dispatcher-owned running summary (mutated in place) so per-company
+    # outcomes survive a dispatch-timeout cancel that discards the return value below.
+    partial = (ctx or {}).get("dispatch_partial")
+
+    def _tally(key: Optional[str]) -> None:
+        if partial is None:
+            return
+        partial["total_processed"] += 1
+        if key:
+            partial[key] += 1
 
     async with create_batch_browser_session() as batch_session:
         async def _one(company: Dict[str, Any], company_index: int) -> None:
@@ -1317,15 +1327,27 @@ async def parse_job_list_batch(
             # AST-1839: retry holding is not an error; terminal fail (only reached out of the holding) is.
             if result.get("error"):
                 errors += 1
+                _tally("total_errors")
             elif result.get("state") == parse_cfg["pass_state"]:
                 passed += 1
+                _tally("total_passed")
             elif result.get("state") == parse_cfg["retry_state"]:
                 retried += 1
+                _tally(None)  # processed, neither pass nor error
             else:
                 errors += 1
+                _tally("total_errors")
+
+        async def _counted(company: Dict[str, Any], company_index: int) -> None:
+            # Exception (not CancelledError) = a finished company that errored; cancelled ones stay uncounted.
+            try:
+                await _one(company, company_index)
+            except Exception:
+                _tally("total_errors")
+                raise
 
         results = await asyncio.gather(
-            *[_one(c, ci) for ci, c in enumerate(companies, start=1)],
+            *[_counted(c, ci) for ci, c in enumerate(companies, start=1)],
             return_exceptions=True,
         )
         for r in results:
