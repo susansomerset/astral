@@ -475,6 +475,109 @@ Re-run a 30+ company `select_job_page` batch (parent Proposed step 5) on the tes
 - **Data layer contract:** `save_agent_data` still commits per row and raises to the caller; no new logging in `src/data/`; no new tables, columns, or migrations.
 - **Boundaries:** `PROVIDER_CALL_BUDGET`, `dispatch_timeout_seconds`, dispatcher gather/concurrency, and the `select_job_page` prompt unchanged.
 
+## Bug: AST-1842 — Fix board (Joan)
+
+## Fix-board Joan pass — AST-1842
+
+**Ticket:** AST-1842 (orphaned bug under mini-parent AST-1825)  
+**Read:** `origin/sub/AST-1825/AST-1842-agent-data-writes-off-event-loop:docs/features/agent/ast-1448-persist-prompt-before-provider.md` § Bug: AST-1842 (As-is / To-be / Repro / Root cause / Proposed change steps 1–6 / Blast radius / What must still hold)  
+**Canon Scope:** None on AST-1842 or AST-1825 — overlap triage only (not R1–R7, no `validate-plan` rubric).  
+**Roster:** `docs/canon-index.md` is absent on this publish ref, `origin/dev`, and `origin/main` (same resolution as prior fix-board passes: `canon/statutes/README.md` harvested table + `canon/docs/HARVEST-patterns.md` + `canon/docs/DIRECTIVES-DIRECTORY.md` for active `canon/directives/active/*`).
+
+### Plan-fix summary (canon lens)
+
+| Step | Layer | Canon-relevant shape |
+|------|--------|----------------------|
+| 1–2 | `config` + `data` | New `db_connection` block; `_get_connection` busy timeout + `PRAGMA journal_mode=WAL` |
+| 3–4 | `core/agent` | All `do_task` `agent_data` writes via `await asyncio.to_thread(...)`; sequencing unchanged |
+| 5 | `core/roster` | `provider_call_timeout` held like balance refusal — no `NO_JOBLIST` transition |
+| 6 | ops | Host re-run; not a canon gate |
+
+Boundaries explicitly preserve `PROVIDER_CALL_BUDGET`, `dispatch_timeout_seconds`, and AST-1448 prompt-before-provider ordering.
+
+---
+
+### Overlap review (roster rows that plausibly touch this diff)
+
+**`pattern.agent.prompt-persist-before-provider` (HARVEST — proposed; no `canon/patterns/agent/…` file on this publish ref)**  
+- Harvest text: commit prompt segments **before** provider await; RESPONSE after return.  
+- Proposed change: `await asyncio.to_thread(_store_prompt_blocks, …)` **completes** before `send_to_*` is awaited; RESPONSE sites still after return.  
+- **Judgment:** Conforming to the stated invariant; moving I/O to a worker thread is not a sequencing carve-out. No catalog edit required for F5.
+
+**`astral.batch.entity-agent-responses-latest-only`**  
+- RESPONSE tagging / `entity_id` / no entity-row mirrors — unchanged.  
+- **Judgment:** No impact.
+
+**`astral.agent.do-task-delegation` / `astral.layers.core-vs-external-bright-line`**  
+- Bright line is external HTTP/DOM/API vs core orchestration. `do_task` already persists via `src/data`; this change threads blocking sqlite work, it does not push new external I/O into core.  
+- **Judgment:** No conflict.
+
+**`astral.standards.data-raises-caller-logs`**  
+- Plan: no new logging in `src/data/`; `_run_with_retry` untouched; core still swallows via `_log_swallowed_agent_data` at the `await`.  
+- **Judgment:** Conforming.
+
+**`astral.standards.debug-contract-gated`**  
+- Plan explicitly relies on `contextvars` + existing debug paths through `to_thread`; AC7 preserved in What must still hold.  
+- **Judgment:** No new ungated debug; no edit.
+
+**`astral.config.config-source-of-truth`**  
+- `db_connection` as a sibling block in `ASTRAL_CONFIG` matches “behavior in organized config blocks.”  
+- **Judgment:** Conforming.
+
+**`astral.standards.database-header-inventory`**  
+- Touches `_get_connection` only; no new tables or header inventory drift.  
+- **Judgment:** Conforming.
+
+**`patt.artifact.write-operative` (SQLite concurrency note)**  
+- Acknowledges DB boundaries; fix strengthens shared-file behavior (WAL), does not change artifact write contract.  
+- **Judgment:** No statute/pattern update required.
+
+**`astral.dispatch.entity-state-bound`**  
+- No change to `dispatch_task` registry pairs or claim keys; `select_job_page` still dispatches on real trigger states.  
+- **Judgment:** No impact.
+
+**`patt.task.dispatch-retry` (active directive — arc 5)**  
+- Arc 5: failures must not “remain in the same state.”  
+- **Pre-existing product tension:** AST-897 balance refusal already holds loop-eligible company state without a `_RETRY` transition — same return shape Step 5 copies for `provider_call_timeout`. AST-1842 does not invent hold-without-transition; it stops misclassifying a **timer/infrastructure** failure as a model verdict (`NO_JOBLIST`).  
+- Parallels AST-1821 fix-board treatment: arc-5 vs stamp/hold behavior was already at odds with shipped code; this patch aligns timeout with an established hold class, not unbounded `_RETRY` bypass. Plan flags unbounded re-dispatch without a cap as a Susan product call, not a new canon shape.  
+- **Judgment:** Worth noting in narrative; **does not require** a canon patch to proceed with F5 (not REVISE solely to record arc-5 exception retroactively for AST-897 + AST-1842).
+
+**AST-896 feature archive (not harvested statute)**  
+- Boundaries once said timeouts keep prior transition rules; this fix **changes** timeout routing for `select_job_page`. That is intentional product scope in the plan-fix (root cause #3), documented with ⚠️ decisions — not an in-force statute contradiction.  
+- **Judgment:** Not ESCALATE — bounded roster branch, mirrors AST-897 precedent already on ftr lineage; not “new unbounded architectural precedent” at the canon layer.
+
+**WAL / `download_db` / backup lag (Blast radius)**  
+- Operational and admin-path honesty issue; no active statute mandates rollback journal or single-file backup completeness. Plan already flags follow-up for Susan.  
+- **Judgment:** Out of fix-board canon scope.
+
+**`PROVIDER_CALL_BUDGET` / AST-1189**  
+- Explicitly untouched; inline `failure_class` compare only. No corpus entries for budget values on this branch.  
+- **Judgment:** No impact.
+
+---
+
+### ESCALATE check
+
+- No ambiguous statute intent that blocks implementation.  
+- Blast radius is bounded in the plan (default executor sharing with provider `to_thread`, on-loop DB callers still blocking, WAL ops note).  
+- No request for new `COMPANY_STATES`, retry caps, or dedicated DB pool without Susan — those are plan ⚠️ decisions, not missing canon.
+
+---
+
+### Verdict rationale
+
+The proposed change does **not** contradict any active harvested statute or active directive in a way that **requires** landing a canon edit before `make-fix`. Closest pattern tension (`patt.task.dispatch-retry` arc 5) is **pre-existing** relative to AST-897-style holds; AST-1842 extends that hold to the correct failure class rather than introducing a new dispatch-retry story. Prompt-persist sequencing, data logging ownership, config sourcing, and database header inventory all remain aligned.
+
+F3 (`validate-plan` fix mode) is **not** triggered from this board pass.
+
+```text
+AST-1842 board-joan done — CANON: OK.
+```
+
+```
+[board-joan]  CANON: OK
+```
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
