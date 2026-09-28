@@ -6,6 +6,8 @@ after any AUTO task run that produces errors. Future features (log scanning,
 escalation, daily summaries) extend this module without touching the dispatcher.
 """
 
+import re
+
 from src.data import database
 from src.external.gmail import send_email
 from src.utils.config import ASTRAL_CONFIG
@@ -72,7 +74,12 @@ def auto_run_error(
 # ---------------------------------------------------------------------------
 
 def _format_log_body(batch_id: str) -> str:
-    """Fetch log entries for batch_id and return them as chronological plain text."""
+    """Fetch log entries for batch_id and return them chronologically in a fenced code block.
+
+    The fence makes Linear (which files these alert emails as issues) render the log as
+    one code block instead of thousands of lines of description to scroll past. It is one
+    backtick longer than any backtick run inside the logs, so a log line can't close it.
+    """
     entries = database.list_log_entries(batch_id=batch_id)
     entries = list(reversed(entries))  # DB returns newest-first; email body is chronological
     if not entries:
@@ -81,7 +88,10 @@ def _format_log_body(batch_id: str) -> str:
         f"{e.get('created_at', '')}  [{e.get('level', '?')}]  {e.get('message', '')}"
         for e in entries
     ]
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    longest_run = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest_run + 1)
+    return f"{fence}\n{text}\n{fence}"
 
 
 def _resolve_candidate_last_name(candidate_id: str) -> str | None:
