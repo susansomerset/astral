@@ -931,3 +931,18 @@ Files: `src/external/telescope.py`, `src/ui/api/api_admin.py`, `src/ui/api/api_m
 - The AST-1728 admin Telescope workbench response shape is unchanged.
 - No depth, output, or timeout limits added. No new logging.
 
+
+
+### Joan fix-board — AST-1849
+
+**Joan fix-board (AST-1849)** — Read the `## Bug: AST-1849` plan-fix patch on `origin/sub/AST-1841/AST-1849-asyncio-run-telescope-loop-teardown` and overlapped roster rows via `canon/docs/DIRECTIVES-DIRECTORY.md` / harvested statutes (no `docs/canon-index.md` on this ref). The change adds `run_one_shot` beside existing `close_loop_resources()` and routes five known Telescope-touching `asyncio.run` call sites through it; it does not alter `_TelescopeQueue` / `aclose_current_loop` semantics and explicitly preserves AST-1726 per-loop state and dispatcher `c86d8b5c` teardown. That matches the existing `aclose_current_loop` docstring (“before the loop closes”) and layer rules (`astral.layers.import-direction`, `astral.layers.core-vs-external-bright-line`); no in-force statute or pattern text contradicts the wrapper or requires a carve-out. Pending `patt.external.web-scraping-via-telescope` remains id-only (AST-1726 planner note). No F3 canon landing indicated.
+
+BEGIN-VERDICT
+```
+[board-joan]  CANON: OK
+```
+END-VERDICT
+
+```text
+AST-1849 board-joan done — CANON: OK.
+```
