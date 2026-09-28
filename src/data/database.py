@@ -7836,6 +7836,7 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
                 skip_daisy_chain INTEGER NOT NULL DEFAULT 0,
                 max_runs INTEGER DEFAULT 1,
                 score_floor REAL,
+                sweep_hrs REAL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(candidate_id, task_key, trigger_state)
             )
@@ -7954,6 +7955,7 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
             "sort_by":        "TEXT",
             "batch_call_mode": "INTEGER DEFAULT 0",
             "score_floor":    "REAL",
+            "sweep_hrs":      "REAL",  # AST-1829: scheduled sweep interval (hours); NULL/0 = off, no backfill
         }
         for col, col_type in _migrate_cols.items():
             if col not in cols:
@@ -8209,6 +8211,7 @@ def save_dispatch_task(
     trigger_state: Optional[str] = None,
     batch_size: Optional[int] = None, freq_hrs: float = 0,
     score_floor: Optional[float] = None,
+    sweep_hrs: Optional[float] = None,
 ) -> int:
     """Insert a new dispatch_task. Returns the new row id.
     Fills entity_type, trigger_state, sort_by, batch_call_mode from config defaults when omitted.
@@ -8263,10 +8266,10 @@ def save_dispatch_task(
             cur = conn.execute(
                 """INSERT INTO dispatch_task
                    (candidate_id, task_key, entity_type, trigger_state, sort_by, batch_call_mode,
-                    freq_hrs, min_count, batch_size, auto_mode, score_floor, last_run_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    freq_hrs, min_count, batch_size, auto_mode, score_floor, sweep_hrs, last_run_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (cid_val, tk, entity_type, trigger_state, sort_by, batch_call_mode,
-                 freq_hrs, min_count, batch_size, int(auto_mode), score_floor, now, now),
+                 freq_hrs, min_count, batch_size, int(auto_mode), score_floor, sweep_hrs, now, now),
             )
             conn.commit()
             return cur.lastrowid
@@ -8595,7 +8598,7 @@ def get_dispatch_row_or_seed_preview_meta(task_key: str) -> Optional[Dict[str, A
 _DISPATCH_TASK_UPDATE_COLS = {
     "min_count", "batch_size", "auto_mode", "last_run_at", "entity_type", "trigger_state",
     "debug", "skip_cache", "skip_daisy_chain", "freq_hrs", "max_runs", "score_floor",
-    "task_key", "sort_by", "batch_call_mode",
+    "task_key", "sort_by", "batch_call_mode", "sweep_hrs",
 }
 
 # Schedule columns mirrored from a template candidate row (AST-875). Runtime fields excluded.
@@ -8603,7 +8606,7 @@ _DISPATCH_TASK_TEMPLATE_COPY_COLS = frozenset({
     "task_key", "entity_type", "trigger_state", "sort_by", "batch_call_mode",
     "freq_hrs", "min_count", "batch_size", "auto_mode", "debug", "skip_cache",
     "skip_daisy_chain",
-    "max_runs", "score_floor",
+    "max_runs", "score_floor", "sweep_hrs",
 })
 
 
@@ -8673,7 +8676,7 @@ def _dispatch_task_schedule_assign(template_row: Dict[str, Any]) -> Dict[str, An
             assign[col] = int(val) if val is not None else None
         elif col == "freq_hrs":
             assign[col] = float(val or 0)
-        elif col == "score_floor":
+        elif col in ("score_floor", "sweep_hrs"):
             assign[col] = float(val) if val is not None else None
         else:
             assign[col] = val
@@ -8766,6 +8769,8 @@ def get_due_tasks() -> List[Dict[str, Any]]:
     merged in core dispatcher (AST-1135) — this helper skips null entity/trigger shells.
     Meteorite AUTO rows may have NULL candidate_id and still due when eligible count meets
     min_count (global unclaimed pool).
+    Rows with 0 < Avail < min_count are also due when dispatch_task_sweep_due is true (AST-1829);
+    those carry _scheduled_sweep=True.
     """
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
@@ -8788,8 +8793,14 @@ def get_due_tasks() -> List[Dict[str, Any]]:
         if not cid and et != "meteorite":
             continue
         avail = count_eligible_for_dispatch_task(task)
-        if avail >= (task.get("min_count") or 1):  # match runner threshold (or 1) to avoid noisy zero-work runs
+        min_count = task.get("min_count") or 1  # match runner threshold (or 1) to avoid noisy zero-work runs
+        if avail >= min_count:
             task["available_count"] = avail
+            due.append(task)
+        elif avail > 0 and dispatch_task_sweep_due(task):
+            # AST-1829: partial remainder + sweep interval elapsed → one-batch sweep via the tick
+            task["available_count"] = avail
+            task["_scheduled_sweep"] = True
             due.append(task)
     return due
 
@@ -8925,6 +8936,19 @@ def dispatch_task_freq_allows(task: Dict[str, Any]) -> bool:
         return True
     age = datetime.now(timezone.utc) - last
     return age.total_seconds() >= freq * 3600
+
+
+def dispatch_task_sweep_due(task: Dict[str, Any]) -> bool:
+    """True when sweep_hrs > 0 and last_run_at is missing or at least sweep_hrs old (AST-1829).
+
+    last_run_at is any run (AUTO batch, manual Run/Sweep, earlier scheduled sweep)."""
+    sweep = float(task.get("sweep_hrs") or 0)
+    if sweep <= 0:
+        return False
+    last = _parse_dispatch_last_run_at(task.get("last_run_at"))
+    if last is None:
+        return True
+    return (datetime.now(timezone.utc) - last).total_seconds() >= sweep * 3600
 
 
 def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
