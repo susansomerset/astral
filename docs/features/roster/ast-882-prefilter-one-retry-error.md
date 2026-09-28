@@ -530,3 +530,34 @@ Betty owns tests; do not edit `tests/` or `docs/test-bible/**`.
 - Provider balance refusal still holds state (AST-897).
 - Every out-of-holding failure still counts toward `total_errors` and still triggers `auto_run_error` on AUTO runs.
 
+### Fix board — AST-1839
+
+#### Betty
+
+[board-betty] TESTS: REVISE
+What: docs/test-bible/core/roster.md § AST-882 + utils/config.md + core/consult.md + utils/logging + core/agent.md + core/candidate.md — broken tests + missing repro coverage — `test_roster.py` hard-asserts HR→`WEBSITE_FOUND_RETRY` first strike (`_prefilter_batch_fail_dest` L2254, `TestAst882PrefilterOneRetryThenError` L2272, plus L6031/L6292) and `COMPANY_STATES`/transition asserts for HOMEPAGE_READY; no existing node covers the repro (HR→`HOMEPAGE_READY_RETRY`→`ERROR_PREFILTER`, envelope WFR-once via history, `retried` excluded from `total_errors`, WARNING-vs-ERROR by `retry_base(dest)`, `do_task` `agent_failure` flag, `parse_job_list_batch` retry/terminal counting, candidate `error_state` → `total_errors: 1`, `log_llm_batch_summary` WARNING level).
+
+#### Joan
+
+[board-joan]  CANON: REVISE
+What: stat.logging.error + stat.logging.warning — destination-based batch/LLM severity (retry holding → warning + debug traceback; terminal → error); amend Resolution §2–3 and log_llm_batch_summary level.
+
+**Findings (Joan pass — AST-1839, plan-fix on `origin/sub/AST-1828/AST-1839-auto-retry-warn-then-error`, Bug section in `docs/features/roster/ast-882-prefilter-one-retry-error.md`)**
+
+**Read:** As-is / To-be / Repro / Root cause / Proposed change / Blast radius / What must still hold. No frozen **Canon Scope** on AST-1839 (same process gap as other fix children; triage via directive roster overlap only, not R1–R7).
+
+**Aligns (no canon edit for F3 on these):**
+- **`patt.task.dispatch-retry` / AST-641 shape:** Moving prefilter parsing first-strike to `retry_of("HOMEPAGE_READY")` (`HOMEPAGE_READY_RETRY`) matches the `{trigger}_RETRY` claim rule the parent already cited; implicit registration via `retry_state` + transitions (AST-1805-style, no literal `HOMEPAGE_READY_RETRY` row) matches pattern arc 1–2. Envelope path via `envelope_retry_state` → `WEBSITE_FOUND_RETRY` reuses the existing cross-task holding with history-gated second strike — bounded in plan; not an unbounded loop ESCALATE.
+- **`stat.general.registry-not-literals` / config SSOT:** Routing and `retry_base`/`retry_of` stay in `config.py`; no new dispatch seed rows (AST-745-safe).
+- **`patt.entity.batch-processing` / claim-process-release:** `retried` counting and consult `total_errors` math do not change batch lock/release; monitor formatting explicitly out of scope.
+- **`stat.agent` / `do_task`:** Rubric envelope `agent_failure` flag is caller routing input, not a new I/O path — within delegation.
+
+**Requires canon update (REVISE → spawn `validate-plan` fix mode F3):**
+- **`stat.logging.warning`:** Statement scopes warning to happy-path misses **without an exception**; Resolution §2 sends any `except` path to **`stat.logging.error`**. Proposed change deliberately does the opposite on retry holdings: caught hydrate/decode/process failures → **`logger.debug(..., exc_info=True)`** plus **`_log_fail_dest` → WARNING** when `retry_base(dest)`. That is the core product fix but is not readable as compliant with in-force text without a carve-out (retry-routed batch catch: per-item warning who/why; stack on debug, not `logger.exception` at error).
+- **`stat.logging.error`:** Same batch handlers today use `logger.exception`; plan removes error-level traceback for retry destinations. Resolution §3 still treats **`log_llm_batch_summary(..., error=...)`** as **the** hop error line; plan §7 downgrades provider summary to **WARNING** and defers ERROR to callers when dest is terminal — needs an explicit amendment so F7/Radia do not read the shipped fix as violating §3.
+
+**Not ESCALATE:** Susan answered open questions on AST-1828/1839; dual first-strike holdings and counting approach are specified in plan-fix with blast radius and “What must still hold” (AST-882 AC restated, AST-1810/1155/641 preserved). No Archie-only precedent gap beyond logging statute wording.
+
+#### Chuckles disposition
+
+Both REVISE. Orphaned-bug rule: both verdicts go to one sibling gap child (tests + bible from Betty, and the `stat.logging.*` carve-out that Joan authors in validate-plan fix mode and Chuckles applies verbatim), not to qa-fix / F3 inline on AST-1839. AST-1839 → Plan Approved → make-fix now.
