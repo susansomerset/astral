@@ -300,3 +300,44 @@ describe("JobsJobDetail — AST-1704 company_id align prefetch", () => {
   })
 })
 
+
+describe("JobsJobDetail — AST-1768 non-admin waits for candidate hydration", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    navigate.mockReset()
+    mockedApi.mockReset()
+    stubAuthPublicFetches(true)
+  })
+
+  it("[bug-repro] non-admin: stays on Loading job… until /api/candidates resolves, then opens the modal", async () => {
+    let releaseCandidates: () => void = () => {}
+    const candidatesGate = new Promise<void>((resolve) => { releaseCandidates = resolve })
+    const calls: string[] = []
+    const handler = jobHandler("j-nonadmin")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push(url)
+      if (url === "/api/me") {
+        return jsonResponse({ user_id: "u1", name: "Test User", is_admin: false })
+      }
+      if (url === "/api/candidates") {
+        await candidatesGate
+        return jsonResponse([{ astral_candidate_id: candidateId, state: "ACTIVE", candidate_data: {} }])
+      }
+      if (url === "/api/state_ui_manifest") return jsonResponse(STATE_UI_MANIFEST_FIXTURE)
+      if (url === "/api/system/ui_config") return jsonResponse({ column_types: {} })
+      const res = handler(url, init)
+      if (res) return res
+      throw new Error(`unexpected api call: ${url}`)
+    })
+    renderDetail("/jobs/detail/j-nonadmin")
+    await waitFor(() => expect(calls).toContain("/api/jobs/j-nonadmin"))
+    await waitFor(() => expect(calls).toContain("/api/candidates"))
+    // Job prefetch has landed; candidate list is still pending → host must not open the modal yet.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByText("Loading job…")).toBeInTheDocument()
+    expect(document.querySelector(".recommended-report-tabs")).toBeNull()
+    releaseCandidates()
+    await waitForReportShell()
+    expect(screen.queryByText("Loading job…")).not.toBeInTheDocument()
+  })
+})
