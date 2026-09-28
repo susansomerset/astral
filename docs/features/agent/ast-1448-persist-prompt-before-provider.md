@@ -674,6 +674,10 @@ Do **not** treat AST-1842 as orphaned merge-to-dev despite plan doc wording “o
 [code-rubric] PROCEED (Commit: b43b7bf9832357371c678f474289ece5b12d50c0) Off-loop writes WAL hold
 ```
 
+## Docs-acceptance (AST-1842)
+
+Repro coverage for the select_job_page timeout hold, the do_task loop-not-blocked store, and the WAL/busy-timeout connection is owned by sibling gap **AST-1843** (orphaned fix-board TESTS: REVISE path). No test() on this tip; lighter test-fix compile/sanity **Tests Passed** @ `b43b7bf9`.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
