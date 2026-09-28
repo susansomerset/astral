@@ -4455,7 +4455,7 @@ ASTRAL_CONFIG = {
 
     # --- DB (database) ---
     "db_retry": {
-        "max_attempts": 3,
+        "max_attempts": 5,
         "base_delay_seconds": 0.5,
         "max_delay_seconds": 5.0,
     },
@@ -5070,6 +5070,16 @@ PROVIDER_BALANCE_REFUSAL = {
 # PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).
 # httpx client timeout uses timeout_seconds; caller wait uses timeout_seconds + grace_seconds.
 # max_retries=0 → one attempt (SDK default 2 would allow up to 3× wall time inside the worker thread).
+# DEEPSEEK_CONCURRENCY — process-wide cap on in-flight DeepSeek calls (all dispatch threads share it).
+# DeepSeek's real limit follows account balance (observed 25-26); keep max_concurrent below it.
+# 429s are retried with jittered exponential backoff inside the worker thread (SDK retries stay off).
+DEEPSEEK_CONCURRENCY = {
+    "max_concurrent": 20,
+    "rate_limit_retries": 4,
+    "backoff_base_seconds": 2.0,
+    "backoff_max_seconds": 30.0,
+}
+
 PROVIDER_CALL_BUDGET = {
     "timeout_seconds": 600,
     "grace_seconds": 10,

@@ -270,6 +270,8 @@ def _get_connection() -> sqlite3.Connection:
     # WAL is persistent per db file; re-issuing on an already-WAL db is a no-op read
     if cfg.get("journal_mode"):
         conn.execute(f"PRAGMA journal_mode={cfg['journal_mode']}")
+        # NORMAL is safe under WAL (durable on checkpoint) and skips fsync on every commit.
+        conn.execute("PRAGMA synchronous=NORMAL")
     conn.row_factory = sqlite3.Row
     return conn
 

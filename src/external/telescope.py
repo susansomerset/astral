@@ -322,6 +322,28 @@ class _TelescopeQueue:
                 if fut is not None and not fut.done():
                     fut.set_result(row)
 
+    async def aclose_current_loop(self) -> None:
+        """Cancel this loop's poller and close its listener/db pool. Call before the loop closes."""
+        with self._states_lock:
+            st = self._states.pop(asyncio.get_running_loop(), None)
+        if st is None:
+            return
+        if st.poller is not None and not st.poller.done():
+            st.poller.cancel()
+            await asyncio.gather(st.poller, return_exceptions=True)
+        for t in list(st.wake_tasks):
+            t.cancel()
+        if st.listener is not None and not st.listener.is_closed():
+            try:
+                await st.listener.close()
+            except Exception:
+                pass
+        if st.db is not None:
+            try:
+                await st.db.close()
+            except Exception:
+                pass
+
     async def submit(
         self, request: Dict[str, Any], *, priority: Optional[int] = None
     ) -> dict:
@@ -519,6 +541,11 @@ async def _wake_targets(url: str) -> List[str]:
 
 
 _pool = _TelescopeQueue()
+
+
+async def close_loop_resources() -> None:
+    """Release telescope queue resources bound to the running event loop (task-thread shutdown)."""
+    await _pool.aclose_current_loop()
 
 CAPTURE_FIELDS = frozenset({"text", "links", "html"})
 CAPTURE_FIELDS_ORDER = ("text", "links", "html")

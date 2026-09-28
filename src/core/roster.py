@@ -2361,6 +2361,16 @@ def _pjl_scrape_ledger_keys(pjl_scrape_pages: list) -> Set[str]:
     }
 
 
+_DOWNLOAD_URL_SUFFIXES = (
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".csv",
+)
+
+
+def _is_download_url(url: str) -> bool:
+    """True when the URL path is a file download the browser cannot render as a page."""
+    return urlparse(url or "").path.lower().endswith(_DOWNLOAD_URL_SUFFIXES)
+
+
 async def _scrape_pjl_page(
     url: str, browser_context, *, debug: bool = False
 ) -> Dict[str, Any]:
@@ -2368,6 +2378,10 @@ async def _scrape_pjl_page(
     if fetch_url and "://" not in fetch_url:
         fetch_url = f"https://{fetch_url.lstrip('/')}"
     out: Dict[str, Any] = {"url": fetch_url, "visible_text": "", "page_links": []}
+    if _is_download_url(fetch_url):
+        logger.debug("Skipping PJL page scrape: file download URL %s", fetch_url)
+        out["error"] = "skipped: file download, not a web page"
+        return out
     try:
         pg = await scrape_page(
             fetch_url, fields=("text", "links"), careers_list=True, session=browser_context

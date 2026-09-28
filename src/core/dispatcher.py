@@ -1563,6 +1563,18 @@ async def _run_dispatch_loop(
                 break
 
 
+def _cancel_pending_tasks(loop: asyncio.AbstractEventLoop) -> None:
+    """Cancel and drain tasks left on a finished dispatch loop (avoids 'Task was destroyed but it is pending')."""
+    try:
+        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        for t in pending:
+            t.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+    except Exception:
+        logger.debug("pending-task cleanup failed", exc_info=True)
+
+
 def _task_thread_target(task_id: int, task: Dict) -> None:
     """Daemon thread target: owns its asyncio event loop, cleans up registry on exit."""
     loop = asyncio.new_event_loop()
@@ -1571,7 +1583,20 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
             _task_registry[task_id]["loop"] = loop
     try:
         loop.run_until_complete(_dispatch_one(task))
+    except Exception:
+        # Log instead of letting threading print a bare traceback (e.g. transient DB lock).
+        logger.exception(
+            "%s | dispatch task %s crashed",
+            task.get("candidate_id") or "-",
+            task.get("task_key", task_id),
+        )
     finally:
+        try:
+            from src.external.telescope import close_loop_resources
+            loop.run_until_complete(close_loop_resources())
+        except Exception:
+            logger.debug("telescope loop cleanup failed", exc_info=True)
+        _cancel_pending_tasks(loop)
         loop.close()
         with _registry_lock:
             _task_registry.pop(task_id, None)

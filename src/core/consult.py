@@ -1548,6 +1548,10 @@ def _transition_batch_consult_failures(
 
 
 @_with_log_debug
+class InvalidJobLinkError(ValueError):
+    """Model returned an empty or non-absolute job_link for a listing."""
+
+
 async def _run_batch_consult(
     task_key: str,
     batch_id: str,
@@ -1738,6 +1742,12 @@ async def _run_batch_consult(
                     index=job_idx,
                     total=len(response_jobs),
                 )
+            if isinstance(e, InvalidJobLinkError):
+                # Expected model-output defect: job is routed to its fail/retry state; no traceback.
+                logger.warning(
+                    "%s | process_fn %s: %s\n  Continuing to the next job", aid, task_key, e,
+                )
+                continue
             logger.exception(
                 "%s | process_fn %s\n  %s: %s\n  Continuing to the next job",
                 aid, task_key, type(e).__name__, e,
@@ -1940,8 +1950,9 @@ async def qualify_job_listings(
             return dest or cfg["error_state"]
         job_link = (response_job.get("job_link") or "").strip()
         if not job_link.startswith("http"):
-            logger.debug("relative job_link: %r", job_link)
-            raise ValueError(f"relative job_link: {job_link}")
+            kind = "empty" if not job_link else "relative"
+            logger.debug("%s job_link: %r", kind, job_link)
+            raise InvalidJobLinkError(f"{kind} job_link: {job_link}")
         if not tracker.initialize_job(aid, input_job["company"], response_job):
             _warn_job(aid, cfg["fail_state"], "identity collision")
             return cfg["fail_state"]
