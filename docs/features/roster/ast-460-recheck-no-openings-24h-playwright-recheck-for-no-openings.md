@@ -659,3 +659,56 @@ Directly after the existing `batch_call_mode` follow-up and before `return jsoni
 **Blast radius (canon lens):** All task keys benefit from honest `max_runs` on Add-form create; aligns UI with stored criteria per batch-criteria, no special-case statute for recheck.
 
 Chuckles: UAT-batch bug, so Plan Discuss → qa-fix (F4) alone → make-fix.
+
+### Radia review-fix — AST-1831
+
+**Ticket:** AST-1831  
+**Publish ref:** `origin/sub/AST-1820/AST-1831-recheck-no-openings-batch-size-max-runs` @ `78f1b395`  
+**Review diff (ticket scope):** `origin/dev...origin/sub/AST-1820/AST-1831-recheck-no-openings-batch-size-max-runs` — 4 files (`api_admin.py`, `test_api_admin.py`, bible, plan § AST-1831). **Out of scope:** `origin/ftr/...` three-dot diff includes dev-sync (#177/#178/#181) product churn; ignored per spawn.  
+**Corpus:** `a0bc2f0e5b`  
+**Overall:** CLEAN  
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — Betty’s thread + `TestAst1831CreateMaxRuns` pin **To-be** create persistence: `test_create_persists_max_runs` (0 / 5 / `"3"`) mocks `save_dispatch_task` → `42` and asserts `update_dispatch_task(42, max_runs=<int>)` exactly once; pre-fix that call was missing (Betty: 3 red / 2 green → tip 5/5). `test_create_without_max_runs_skips_follow_up` (absent / JSON null) asserts no `update_dispatch_task` — matches “column DEFAULT 1 unchanged.” Not tautological (exercises the new guard, not duplicate handler logic). **Advisory:** nodes lack an in-file `[bug-repro]` line (convention); Linear + class docstring carry the gate.
+- **## What must still hold — OK** — Diff touches only `create_dtask` `max_runs` follow-up after existing `skip_daisy_chain` / `batch_call_mode` blocks; no `save_dispatch_task`, dispatcher, roster, or database changes → batch_size NULL behavior, sweep/`max_runs` loop semantics, `update_dt`, and AST-1821 paths unchanged. Absent/null path covered by tests; present-non-null including `0` uses `is not None` correctly.
+
+## Canon scores
+
+**Notes:** No frozen **Canon Scope** on Linear Description; scored fix-board overlap (`patt.entity.batch-criteria`).
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — fix-board Joan CANON OK; no validate-plan score table
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory**
+
+- Symptom title mentions `batch_size`; plan-fix correctly limits code to **create `max_runs` persistence** (batch_size already persisted; NULL → state limit 10 is by design). Susan scoped admin create as the fix.
+- `debug` on Add form still not sent on create (plan defers to frontend follow-up).
+- Branch-lock 100% on `api_admin.py` not re-verified in Hedy’s environment (collection errors on dev); new guard’s both arms are exercised by the five parametrized nodes.
+
+## Chuckles — post-review branching
+
+**PROCEED**, C7 complete — parent AST-1820 (UAT batch, not orphaned): **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Merge path: `sub/.../AST-1831-...` into `ftr/AST-1820-recheck-no-openings-avail-count` when rollup-ready (not straight-to-dev unless parent policy says otherwise).
+
+context_tokens≈9000
+
+---
+
+**VERDICT: CLEAN** (no fix-now items)
+
+**Chuckles disposition:** CLEAN → Review Posted → User Testing (resolve-child skipped). Advisories only (debug-on-create frontend follow-up; 100% branch re-check on a clean test env).
