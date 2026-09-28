@@ -633,3 +633,29 @@ Directly after the existing `batch_call_mode` follow-up and before `return jsoni
 - A Sweep (UI or scheduled, AST-1829) on an AUTO row is still one batch. `max_runs = 0` still means loop until drained.
 - `update_dt` behavior is unchanged, including the AUTO-row edit block.
 - AST-1821 count/claim parity and failure stamping are unchanged.
+
+### Fix board — AST-1831
+
+[board-betty] TESTS: REVISE: no create POST sends `max_runs`. Needs a create node posting `max_runs` 0 and N that asserts `update_dispatch_task(task_id, max_runs=<int>)`, plus absent/null asserting no follow-up. `api_admin.py` stays LOCKED_AT_100.
+
+[board-joan] CANON: OK
+
+**Findings (AST-1831 — fix-board Joan pass)**
+
+**Plan-fix:** `create_dtask` POST follow-up to persist `max_runs` via `update_dispatch_task` (same pattern as `batch_call_mode` / `skip_daisy_chain`). Generic admin persistence bug; no `recheck_no_openings` branch in dispatcher/roster.
+
+**`patt.entity.batch-criteria` — conforming:** `batch_size`, `max_runs`, and related knobs are row data on `dispatch_task`, edited through admin and read fresh each tick. Dropping `max_runs` on create so the column default `1` wins **violates** that model (operator sets criteria; stored row lies). The one-line follow-up **restores** conformance; no new carve-out or pattern rewrite.
+
+**`patt.entity.batch-processing` — no change:** Dispatcher loop semantics (`max_runs` 0 / N / NULL, AST-1829 sweep = one batch on AUTO) stay as documented in “What must still hold.” Fix only affects what gets **stored** at create time.
+
+**`astral.dispatch.entity-state-bound` — unaffected:** Still about real `entity_type` / `trigger_state` pairs; not about `max_runs`.
+
+**Seed / operator curation statutes:** AST-1496-style operator-owned `dispatch_task` rows are **written** by admin create; persisting all form-sent scheduling fields is consistent with operator curation, not a boot/catalog ensure change.
+
+**Not REVISE:** No in-force directive needs text updated for this fix. Optional follow-up (`debug` omitted on create body) is frontend/plan scope, not canon.
+
+**Not ESCALATE:** Susan scoped admin `create_dtask` as the resolution; no architectural precedent question.
+
+**Blast radius (canon lens):** All task keys benefit from honest `max_runs` on Add-form create; aligns UI with stored criteria per batch-criteria, no special-case statute for recheck.
+
+Chuckles: UAT-batch bug, so Plan Discuss → qa-fix (F4) alone → make-fix.
