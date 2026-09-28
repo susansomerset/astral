@@ -136,8 +136,19 @@ def configure_logging() -> None:
     root = logging.getLogger()
     # Root passes everything; the handler filter decides (level, or a debug job).
     root.setLevel(logging.DEBUG)
-    for name in ("asyncio", "asyncpg", "uvicorn", "playwright"):
+    for name in ("asyncio", "asyncpg", "playwright"):
         logging.getLogger(name).setLevel(max(level, logging.INFO))
+    # uvicorn's own logging setup (run before this, at Config() construction time) gives
+    # uvicorn.error/uvicorn.access their own handler wired to stderr/stdout with propagate=False —
+    # INFO lifecycle lines ("Uvicorn running on...", "Shutting down") land on stderr regardless of
+    # level, and Railway reads severity off the stream, so they show up flagged as errors. Strip
+    # uvicorn's handlers and let these loggers fall through to our RailwayJsonHandler instead, so
+    # they get the same stdout JSON payload (with a correct "level" field) as everything else.
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        lg = logging.getLogger(name)
+        lg.handlers = []
+        lg.propagate = True
+        lg.setLevel(max(level, logging.INFO))
     for handler in root.handlers:
         if isinstance(handler, RailwayJsonHandler):
             handler.filters = [_LevelOrJobDebug(level)]
