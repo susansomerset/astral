@@ -637,3 +637,118 @@ Clean PROCEED → Review Posted → User Testing (resolve-child skipped). Orphan
 ### docs-acceptance (AST-1839)
 
 Test and bible coverage for this fix is owned by sibling gap **AST-1846** (Betty board `[board-betty] TESTS: REVISE`; orphaned mini-parent, so no qa-fix / `[bug-repro]` on this ref). That includes the 19 broken or missing test nodes (the `test_roster.py` AST-882 first-strike asserts, `COMPANY_STATES` / HOMEPAGE_READY transition asserts, and the uncovered repro paths listed under Fix board → Betty) plus the `docs/test-bible/**` updates. No test-tree delivery on this ref, so no `merge-tests(AST-1839)` and no fabricated `test(AST-1839)` noop.
+
+---
+
+## AST-1846 plan-fix
+
+- **Linear:** [AST-1846](https://linear.app/astralcareermatch/issue/AST-1846) — gap: tests + logging statute carve-out for AUTO retry WARNING (sibling of AST-1839, parent AST-1828)
+- **Publish ref:** `origin/sub/AST-1828/AST-1846-auto-retry-warn-then-error-gap`
+- **Refs:** ftr base (pre-fix) `31846c28`; ftr tip (AST-1839 merged) `2eac54b5`.
+- **No product `src/` change.** make-fix is an empty `code(AST-1846)` commit after sync.
+
+### As-is
+
+- AST-1839's product fix is merged on `origin/ftr/AST-1828-auto-retry-warn-then-error` @ `2eac54b5`. On that tip, 19 existing component nodes still assert the old contract: HR → `WEBSITE_FOUND_RETRY` first strike, result dicts without `retried`, retries counted as errors or passes, provider errors at ERROR, and the old `HOMEPAGE_READY` config/prior snapshot. They are red there and green at `31846c28`. The list comes from AST-1839 test-fix: a touched-area run of roster, consult, agent, `agent_ast1448`, candidate, config, and `logging_batch` compared against the pre-fix tree. It had 267 failures in common (env/dev drift) and exactly these 19 new ones.
+- No node covers the new behavior (fix board, Betty).
+- The in-force `stat.logging.warning` Resolution §2 sends every `except` path to `stat.logging.error`, and `stat.logging.error` Resolution §3 names `log_llm_batch_summary(..., error=...)` as the hop error line. The shipped fix contradicts both on retry-routed paths (fix board, Joan; Radia B on both, deferred here).
+
+### To-be
+
+- The 19 nodes assert the AST-1839 contract (§ Bug: AST-1839 → Proposed change), and they are green at `2eac54b5`.
+- New repro nodes pin that contract. They are **red at `31846c28`** and **green at `2eac54b5`**.
+- The bible pages list both.
+- `stat.logging.warning` / `stat.logging.error` read as compliant with destination-based severity. A caught exception routed to a retry holding logs WARNING per item (who/why), with the traceback at debug only. Only an error/terminal destination logs ERROR. `log_llm_batch_summary` provider errors log WARNING, and the caller logs ERROR when the entity lands terminal.
+
+### Repro
+
+The new nodes below (Proposed change §2) are the repro set. Gate for qa-fix: each new node is **RED** against a `git archive 31846c28` export and **GREEN** at `2eac54b5`, run with the repo's own `pytest.ini` addopts (`--import-mode=importlib`; don't clear addopts). Fixture shape is § Bug: AST-1839 → Repro (`acme_com`, `HOMEPAGE_READY`, hydrate `ValueError`, envelope variant with a `HOMEPAGE_READY → WEBSITE_FOUND_RETRY` history row). Every new node must fail at base on an **assertion** about the behavior (wrong state, wrong count, wrong level, missing key), not on an import or attribute error. Import- or attribute-errors at base (`envelope_retry_state`, `retry_base` on roster) don't count as red. Assert through `run_consult_task` / batch functions and `caplog` levels, not by referencing new symbols.
+
+The 19 flipped nodes follow the opposite direction: green at base, red at tip before Betty's edit, green at tip after.
+
+### Root cause
+
+Fix board on AST-1839 routed both REVISE verdicts to one gap child (orphaned mini-parent rule), so AST-1839 shipped with no test-tree delivery and no statute amendment. The test tree and canon still encode the pre-AST-1839 contract.
+
+### Proposed change
+
+#### 1. Betty (qa-fix) — flip the 19 existing nodes to the new contract
+
+Edit assertions only; keep each node's intent where it still holds. Target behavior per node:
+
+| Node | New assertion |
+|------|---------------|
+| `tests/component/core/test_roster.py::TestAst702PrefilterBatchHelpers::test_prefilter_batch_fail_dest_from_homepage_ready` | `_prefilter_batch_fail_dest("HOMEPAGE_READY", cfg)` → `HOMEPAGE_READY_RETRY` |
+| `…test_roster.py::TestAst882PrefilterOneRetryThenError::test_prefilter_fail_first_strike_retries` | first strike → `HOMEPAGE_READY_RETRY`, `decision == "RETRY"` |
+| `…test_roster.py::TestAst882PrefilterOneRetryThenError::test_batch_do_task_failure_second_strike_to_error` | from `HOMEPAGE_READY_RETRY` → `ERROR_PREFILTER`; result dict includes `"retried": 0` |
+| `…test_roster.py::TestAst882PrefilterOneRetryThenError::test_not_ready_wfr_left_alone_for_fetch_website` | WFR not-ready still skipped; result dict includes `"retried": 0` |
+| `…test_roster.py::TestAst702PrefilterCompanyBatch::test_do_task_failure_transitions_batch` | HR rows → `HOMEPAGE_READY_RETRY`; dict includes `"retried": <n>` |
+| `…test_roster.py::TestAst702PrefilterCompanyBatch::test_skips_not_ready_without_do_task` | dict includes `"retried": 0` |
+| `…test_roster.py::TestAst1155PrefilterIncompleteRetry::test_prefilter_company_incomplete_routes_to_website_found_retry` | incomplete grades → `HOMEPAGE_READY_RETRY` (rename optional; Betty's call) |
+| `…test_roster.py::TestAst897HoldStateOnBalanceRefusal::test_prefilter_fail_ordinary_api_still_retries` | ordinary API failure → `HOMEPAGE_READY_RETRY` (balance hold unchanged) |
+| `…test_roster.py::TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes` | `JOBLIST_IDENTIFIED_RETRY` → `retried`, not `passed`; `COULD_NOT_PARSE_JOBLIST` → `errors` |
+| `tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480::test_batch_company_missing_moves_to_retry` | dest `PASSED_LIKE_RETRY`, `total_errors == 0` |
+| `…test_consult.py::TestAnalysisUpshotPrepAndBatch480ExtraBranches::test_batch_do_task_failure_transitions_error` | from primary → holding, `total_errors == 0`; (add or keep a from-holding case → `FAILED_TECHNICAL`, `total_errors == 1`) |
+| `…test_consult.py::TestAnalysisUpshotPrepAndBatch480ExtraBranches::test_batch_missing_company_transitions_and_counts_error` | same split: holding → 0, terminal → 1 |
+| `…test_consult.py::TestAst642PerEntityBatchRetry::test_analysis_upshot_primary_failure_to_retry_holding` | holding dest, `total_errors == 0` |
+| `tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch::test_artifacts_dispatch_retry_failure_errors` | from `REQUESTED_ARTIFACTS_RETRY` → `REQUESTED_ARTIFACTS_ERROR`, `total_errors == 1`, `total_failed == 0` |
+| `tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_input_state_and_retry_on_homepage_ready` | `retry_state == "HOMEPAGE_READY_RETRY"`, `envelope_retry_state == "WEBSITE_FOUND_RETRY"` |
+| `…test_config.py::TestAst507EncodedPrefilterConfig::test_company_states_and_transitions` | `COMPANY_STATES["HOMEPAGE_READY"]["retry_state"] == "HOMEPAGE_READY_RETRY"`; new HR / HR_RETRY transition edges present; `("HOMEPAGE_READY", "WEBSITE_FOUND_RETRY")` still present |
+| `…test_config.py::TestAst1807ImplicitRetryHelpers::test_state_prior_states_cross_base_feeders` | `state_prior_states(COMPANY_STATES, "WEBSITE_FOUND_RETRY")` has no `HOMEPAGE_READY` feeder; `…("HOMEPAGE_READY_RETRY")` includes `HOMEPAGE_READY` |
+| `…test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` | re-pin `tests/component/utils/fixtures/ast1806_prior_snapshot.json` `COMPANY_STATES` entries for `WEBSITE_FOUND_RETRY` / `HOMEPAGE_READY_RETRY` to the derived values |
+| `tests/component/utils/test_logging_batch.py::TestLogLlmBatchSummary::test_empty_error_string_uses_error_path_not_healthy_summary` | `error="(empty error)"` line at **WARNING**, not ERROR; still no healthy `stop=?` INFO |
+
+(Betty's board note cited `test_roster.py` L6292. That line doesn't exist at tip: the file has 6251 lines. The late first-strike asserts are L6031 and L6250, which are the `TestAst897…` and `TestAst1155…` rows above.)
+
+#### 2. Betty (qa-fix) — new repro nodes (red at `31846c28`, green at `2eac54b5`)
+
+Class and file placement is Betty's call. Suggested: one `TestAst1846*` class per file. Each bullet is one node:
+
+- **`test_roster.py`**
+  1. HR hydrate failure through `run_consult_task(…, dispatch_task_key="prefilter_company")` → `HOMEPAGE_READY_RETRY`, `total_errors == 0`, one WARNING record `acme_com -> HOMEPAGE_READY_RETRY [hydrate: …]`, no ERROR record.
+  2. Same company from `HOMEPAGE_READY_RETRY` → `ERROR_PREFILTER`, `total_errors == 1`, one ERROR record.
+  3. Envelope (`do_task` → `{"success": False, "agent_failure": True, …}`) from HR with empty history → `WEBSITE_FOUND_RETRY`, WARNING, `total_errors == 0`.
+  4. Envelope from HR with a `HOMEPAGE_READY → WEBSITE_FOUND_RETRY` history row → `ERROR_PREFILTER`, ERROR, `total_errors == 1` (loop bound).
+  5. Mixed batch (one per-company decode failure from HR, one missing id from `HOMEPAGE_READY_RETRY`, one clean pass) → `prefilter_company_batch` returns `retried == 1`, `passed == 1`; summary `total_errors == 1`.
+  6. `parse_job_list_batch`: one `JOBLIST_IDENTIFIED` fail (→ retry) and one `JOBLIST_IDENTIFIED_RETRY` fail (→ `COULD_NOT_PARSE_JOBLIST`) → `retried == 1`, `errors == 1`, `passed == 0`; WARNING for the first, ERROR for the second.
+- **`test_consult.py`**
+  7. `_run_batch_consult` hydrate failure on primary-state jobs → dests `*_RETRY`, `run_consult_task` `total_errors == 0`, WARNING records only.
+  8. Same from `*_RETRY` states → `error_state`, `total_errors == N`, ERROR records.
+  9. Single-entity grade, incomplete grades → `*_RETRY`: `total_errors == 0`. Balance-held result (`state_held=True`) still `total_errors == 1`.
+- **`test_agent.py`**
+  10. Rubric-encoded task (`prefilter_company`) whose envelope is `{"agent_performance": {"status": "failure", "failure_note": "parked domain"}, "agent_payload": "…"}` → `success is False`, `agent_failure is True`, `error == "Agent failure: parked domain"`. A non-rubric task with the same envelope does **not** set `agent_failure` (existing schema path).
+- **`test_candidate.py`**
+  11. Primary `REQUESTED_ARTIFACTS` failure → `REQUESTED_ARTIFACTS_RETRY`, `total_failed == 1`, `total_errors == 0`, WARNING (no ERROR record).
+- **`test_logging_batch.py`**
+  12. `log_llm_batch_summary(..., error="400 Content Exists Risk")` → one WARNING record, zero ERROR records.
+- **`test_roster.py`** (fetch_website severity)
+  13. `scrape_company_homepage_content` scrape exception → WARNING record, zero ERROR records; `out["error"]` set as before.
+
+#### 3. Betty — bible
+
+Add or modify entries for every node in §1–§2 in `docs/test-bible/core/roster.md` (AST-882 section + new AST-1846 entries), `core/consult.md`, `core/agent.md`, `core/candidate.md`, `utils/config.md`, and `utils/logging_batch.md`. Include a `## QA test manifest` listing all §1 and §2 nodes with the run command:
+
+```bash
+./scripts/testing/run_component_tests.sh <node ids…>
+```
+
+#### 4. Joan (validate-plan fix mode) — canon carve-out, intent only
+
+Joan authors the literal patch; Chuckles applies it verbatim. No new directive ids; no other `stat.logging.*` directive touched.
+
+- **`canon/directives/active/stat.logging.warning.md`:** Statement + Resolution §2. A caught exception on a dispatch batch path whose entity is routed to a **retry holding** (`retry_base(dest)` not `None`) logs **WARNING per item** (who → dest [why]), with the traceback at **debug** (`exc_info=True`), not `logger.exception`. §2's "thrown → error" stays true for everything else.
+- **`canon/directives/active/stat.logging.error.md`:** Statement/Do + Resolution §3. ERROR (with traceback where useful) is for a **terminal/error destination** or an unrouted exception. `log_llm_batch_summary(..., error=...)` is the per-call provider line at **WARNING**, and the caller logs ERROR only when the entity lands in an error/terminal state. The §3 wording changes from "the hop error line" accordingly.
+
+### Blast radius
+
+- Test tree and bible only (Betty), plus two canon files (Joan → Chuckles). No `src/**`.
+- The fixture `tests/component/utils/fixtures/ast1806_prior_snapshot.json` is shared by the AST-1806/1808 snapshot tests. Re-pin only the two `COMPANY_STATES` retry targets.
+- The 267 touched-area failures common to base and tip are environment/dev drift (missing scratch-DB tables, dev's required candidate id for agent prompts, Python 3.14 venv). They are out of scope, so don't "fix" them here. The qa-fix run should use the component venv (`scripts/testing/ensure_component_venv.sh`) where they may not reproduce.
+- Radia's B grades on `stat.logging.warning` / `stat.logging.error` for AST-1839 clear once §4 lands.
+
+### What must still hold
+
+- No `src/**` change on this ref (make-fix = empty `code(AST-1846)`).
+- The AST-1839 contract as shipped (§ Bug: AST-1839 → Proposed change / What must still hold). Tests pin it and don't re-shape it.
+- Pre-existing, non-AST-1839 assertions in the touched classes (balance-refusal hold, clean evaluate outcomes, AST-1810 fetch_website re-scrape of every WFR row, AST-1155/1760 holding → `FAILED_TECHNICAL_*`) stay asserted.
+- The canon carve-out stays scoped to retry-routed dispatch batch failures and the `log_llm_batch_summary` level. It doesn't loosen ERROR for terminal or unrouted exceptions.
