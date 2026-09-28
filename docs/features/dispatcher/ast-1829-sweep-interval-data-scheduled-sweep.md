@@ -235,3 +235,62 @@ Scope list: `patt.entity.batch-criteria`, `patt.entity.batch-processing` (read i
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Ticket:** AST-1829
+**Overall:** REVISE
+**Corpus:** a0bc2f0e5b5810448cf465ebeff84ffb6f1d60b6
+**Publish ref:** `origin/sub/AST-1824/AST-1829-sweep-interval-data-scheduled-sweep` @ `3e9a1c56567b65aa8eeae9e40549564e57187839`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+| patt.entity.batch-processing | A | | |
+| astral.batch.claim-process-release | A | | |
+| astral.dispatch.entity-state-bound | A | | |
+| stat.logging.info.dispatcher | A | | |
+| stat.logging.debug | D | 2 | S1 step 8: `_log.debug` in `get_due_tasks` (`src/data/database.py`) |
+
+## Traceability
+
+AC 1 → S1 steps 1–2 · AC 2 → S1 steps 7–8 · AC 3 → S1 step 7 · AC 4 → S1 step 7 (`sweep <= 0`) · AC 5 → S1 step 8 / S2 step 1 (`avail > 0`) · AC 6 → S1 step 8 (`auto_mode = 1` SELECT unchanged) · AC 7 → S1 step 8 first branch / S2 step 4 · AC 8 → S2 steps 2–4 · AC 9 → S2 step 1 · AC 10 → S2 step 5 · AC 11 → S1 steps 5–6 · AC 12 → S2 step 6 (Thread grep) · Parent AC 11/13/14 → N/A (AST-1830)
+
+## Findings
+
+### fix-now
+
+- **Location:** Stage 1 step 8 (`get_due_tasks` sweep branch)
+- **Finding:** Plan commits to ungated `_log.debug(...)` inside `src/data/database.py` for sweep-due selection. `stat.logging.debug` explicitly lists debug in `src/data/` as a Don't (`logger.debug` / equivalent); data may use warning/error elsewhere, but sweep-due diagnostics belong in core (mailbox path already uses `logger.debug` in S2 step 1).
+- **Recommendation:** Remove the `_log.debug` block from `get_due_tasks`. Log sweep-due once in `src/core/dispatcher.py` (e.g. in `_tick_loop` when iterating `due` and `task.get("_scheduled_sweep")`, or a small core helper called from both due paths) so claim-queue and mailbox stay consistent without data-layer debug.
+
+### discuss
+
+- **Location:** Plan `## Canon` (batch-criteria bullet)
+- **Finding:** `patt.entity.batch-criteria` Arc 1 names `freq_hrs` / `score_floor` but not `sweep_hrs`; the plan’s reading (interval as row criteria, no caller literals, no data validation) matches the pattern’s intent and parent architectural definition.
+- **Recommendation:** No canon amend required for this child; optional one-line plan note that `sweep_hrs` is eligibility/cadence row data alongside `freq_hrs`.
+
+### acceptable
+
+- **Location:** Explicit scope gate / Files Changed
+- **Finding:** Two-file footprint matches ticket `## Scope`; AST-1830 API/UI explicitly excluded; frozen `sweep_hrs` / `_scheduled_sweep` / `dispatch_task_sweep_due` / `scheduled_sweep` kwarg contract is clear.
+- **Recommendation:** None.
+
+- **Location:** S2 step 1 (mailbox sweep flag)
+- **Finding:** Mailbox sweep mark does not change `_run_dispatch_loop` behavior (documented decision); consistent with parent functional scope for mailbox path.
+- **Recommendation:** None.
+
+- **Location:** Identity / status
+- **Finding:** AST-1829 is **Plan Ready**, assignee Joan; no prior `[plan-discuss]` rounds (0 completed). Parent AST-1824 definition and child AC 1–12 align with stages; sibling AC 11/13/14 correctly out of scope.
+
+## R6 notes (non-canon checklist)
+
+- Definition fidelity: matches AST-1829 slice of AST-1824; no scope creep into `api_admin` / frontend / tests.
+- DRY: reuses `_parse_dispatch_last_run_at`, mirrors existing UI Sweep loop semantics via `scheduled_sweep` (AC 10 preserved).
+- Missing self-assessment block in plan doc: not blocking; Estimate confirm line present.
+
+context_tokens≈22000
