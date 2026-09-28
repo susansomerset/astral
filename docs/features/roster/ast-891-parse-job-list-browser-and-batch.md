@@ -729,3 +729,90 @@ END-VERDICT
 ```text
 AST-1848 board-joan done — CANON: OK.
 ```
+
+## Radia review — AST-1848
+
+[code-rubric]
+
+**Ticket:** AST-1848  
+**Publish ref:** `e5718649` (`origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests`)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on this ref)  
+**Overall:** CLEAN  
+
+**Diff reviewed:** `origin/ftr/AST-1845-parse-job-list-timeout-partial-counts` (`8c4914b2`, AST-1847 product + Radia doc already on ftr) … `origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests` — test + bible + plan-fix doc only (no `src/**`). Sub is stacked on ftr.
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — same pattern as AST-1847. Joan fix-board `[board-joan] CANON: OK` for test/bible-only delivery.)*
+
+| (no frozen ids) | — | — | — |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (fix-board Joan only).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`** — **OK**
+
+Primary repro: `TestAst1847TimeoutPartialCounts::test_parse_job_list_timeout_ledger_and_log_carry_partial_counts` (comment `# bug-repro:`; Betty’s Linear `[bug-repro]` at `ca645d07`).
+
+- **Not tautological:** asserts concrete **AST-1847 To-be** values — ledger `update_dispatch_ledger` kwargs `(total_processed, total_passed, total_failed, total_errors) == (3, 2, 0, 1)` with `status == "INTERRUPTED"`, and a caplog line containing both `dispatch timeout after` and `processed=3 passed=2 failed=0 errors=1` (timeout `+1` included; `d` uncounted).
+- **Repro-first plausible:** real `_dispatch_one` → `_dispatch_one_body` → `_run_dispatch_loop` → `_run_unified` → `consult.run_consult_task` → `parse_job_list_batch`; only claim, browser session, and per-company `run_parse_job_list_dispatch` are faked — enough to fail at `8e7b77a5` on `(0,0,0,1)` / missing log counts (Hedy verified 7 repro nodes red pre-fix).
+- **Cheap AC2 check:** `clear_company_batch` called once with claimed batch id — aligns with plan “must still hold,” not a substitute for count asserts.
+
+Branch-lock nodes (fold-in `7/5/0/3`, `_run_unified` set/pop/cancel, roster `_tally` / `_counted` / cancel / no-op) pin adjacent behavior and would flip red→green with the product diff; they are not the end-to-end contract but support the board’s “every AST-1847 line covered” bar. Roster bible labels `test_tallies_every_outcome…` as bug-repro; that node locks partial tally shape, while **node 1** is the authoritative ledger+log repro — acceptable split per plan (node 2 = cheap fold-in unit).
+
+**Minor advisory:** first-line `[bug-repro]` tag convention (vs `# bug-repro:` comment) differs from some older tests; machinery still keyed off Betty’s thread + bible manifest — not fix-now.
+
+**`## What must still hold` (AST-1848 plan-fix)** — **OK**
+
+| Item | Verdict |
+|------|---------|
+| Node 1 red at `8e7b77a5` / green with AST-1847 product on ledger+log assertions | OK — assertions target ledger tuple + log substring, not setup-only failures (engineer dry-run documented) |
+| Every AST-1847 added line in `dispatcher.py` / `roster.py` covered | OK — nine new nodes + existing `test_auto_dispatch_uses_timeout` for empty partial; bible documents `--cov-branch` branch-lock on added lines (Betty REVISE addressed; engineer attestation at tip) |
+| AC2/AC4 where cheap (`clear_company_batch`, return dict shape) | OK — nodes 1, 5, 6, 9 |
+| No timing assertions / no caps | OK |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Betty board REVISE** (manifest-only `check_per_file_coverage` gap): addressed in published bible via narrowed manifests (stale `test_scrape_timeout…` / `test_debug_emits…` excluded), explicit branch-lock narrative, and two named AST-891 regression nodes instead of whole-class run.
+- **Stale plan/bible copy:** blocks still say AST-1847 product “not yet on ftr”; ftr is now `8c4914b2` with product — Chuckles can refresh wording when appending this review (cosmetic).
+- **Coverage proof:** branch-lock numbers are engineer-reported at `e5718649`; Radia did not re-run `pytest --cov-branch` in this pass.
+
+## What’s solid
+
+- Diff scope is strictly gap-child (tests + test-bible + plan-fix); no product smuggle.
+- Repro fixture matches AST-1847 plan **Repro** / **To-be** (a,b pass; c retry; d hangs; `3/2/0/1` + log).
+- `test_timeout_folds_partial_on_top_of_prior_runs` proves fold-in arithmetic and log-before-ledger ordering with non-zero prior `accumulated`.
+- Manifest structure matches fix-lane precedent (AST-1844 / AST-1846 gap siblings).
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (C7 complete) | AST-1845 mini-parent + `ftr` (AST-1847 already on ftr @ `8c4914b2`) | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Then **merge-child** AST-1848 into ftr (tests should be green on ftr without scratch overlay). |
+
+`context_tokens≈38000`
+
+---
+
+**Slim upshot (Chuckles → Linear):**
+
+```
+[code-rubric] PROCEED (Commit: e5718649) repro pins ledger+log
+```
+
+#### Chuckles disposition (AST-1848)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1847's product fix is on ftr @ 8c4914b2, so the tests run green on ftr without a scratch overlay.
