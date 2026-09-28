@@ -634,3 +634,19 @@ Reuse `_mock_parse_batch_browser_session(monkeypatch)` and `TestAst891ParseJobLi
 - Every line AST-1847 added in `src/core/roster.py` and `src/core/dispatcher.py` is covered (`LOCKED_AT_100`): `_tally` (present / None key / absent partial), `_counted` (normal / except), `_run_unified` set + pop + pop-skipped-on-cancel, timeout fold-in (items / empty) + counts in log.
 - AST-891 AC2/AC4 invariants asserted where cheap: `clear_company_batch` on cancel (nodes 1, 5); normal-return dict shape unchanged (nodes 6, 9).
 - No timing assertions and no size caps. Sub-second `dispatch_timeout_seconds` / `wait_for` values only trigger the cancel.
+
+## Joan fix-board — AST-1848
+
+Fix-board Joan triage for **AST-1848** against the plan-fix patch on `origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests`. Scope is **test + bible only** (no `src/**` on this ref). Corpus via `canon/docs/DIRECTIVES-DIRECTORY.md` (no `docs/canon-index.md` on ref).
+
+**Assessment:** Proposed change adds component tests and `docs/test-bible` blocks that lock **AST-1847** product behavior Joan already triaged **CANON: OK** (partial `total_*` on timeout, counts on the single timeout `logger.exception` line). No statute or pattern text is proposed for amendment; no new product carve-out. Same shape as other gap siblings (e.g. AST-1840 · AST-1844): bible/test-tree work only.
+
+BEGIN-VERDICT
+```
+[board-joan]  CANON: OK
+```
+END-VERDICT
+
+```text
+AST-1848 board-joan done — CANON: OK.
+```
