@@ -1,6 +1,6 @@
 # AST-1872 — Config tab order, score template, and server-side skip flag (Recommended Job Modal Changes)
 
-- **Linear:** [AST-1872](https://linear.app/astral/issue/AST-1872) · parent [AST-1862](https://linear.app/astral/issue/AST-1862)
+- **Linear:** [AST-1872](https://linear.app/astralcareermatch/issue/AST-1872) · parent [AST-1862](https://linear.app/astralcareermatch/issue/AST-1862)
 - **Publish ref:** `origin/sub/AST-1862/AST-1872-config-tab-order-score-template-skip-flag`
 - **Assignee:** Katherine
 
