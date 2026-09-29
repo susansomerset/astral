@@ -693,3 +693,19 @@ All new classes follow existing module conventions (`monkeypatch`, `MagicMock`/`
 - Ordinary AUTO error runs still send `auto_run_error` (D7, `TestAutoRunError`).
 - Non-refusal batches call the provider for every entity (D4).
 - No test edits to `docs/test-bible/utils/llm_external.md` or any file outside AST-1870's scope.
+
+## Joan fix-board — AST-1870
+
+Gap child for Betty’s AST-1867 `TESTS: REVISE`: component tests + `docs/test-bible/core/{roster,dispatcher,monitor}.md` only (no `src/**`). The plan locks behavior already triaged **CANON: OK** on AST-1867 (`provider_balance_outage`, held counting, INTERRUPTED, outage alert vs `auto_run_error`, breaker skip, D1 call-budget guard). No directive or pattern amendment is proposed; bible contract text is descriptive of that product, not a new carve-out. Same shape as AST-1848 after AST-1847.
+
+BEGIN-VERDICT
+
+```
+[board-joan]  CANON: OK
+```
+
+END-VERDICT
+
+```text
+AST-1870 board-joan done — CANON: OK.
+```
