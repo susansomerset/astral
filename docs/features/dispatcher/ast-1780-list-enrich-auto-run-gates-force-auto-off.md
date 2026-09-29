@@ -1125,3 +1125,106 @@ END-VERDICT
 ```text
 AST-1855 board-joan done — CANON: OK.
 ```
+
+## Radia review — AST-1855
+
+[code-rubric]
+
+**Ticket:** AST-1855  
+**Publish ref:** `4bbeabff46cbc6bc51db807b81bdeb7ad12a5a9f` (`origin/sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate-tests`)  
+**Diff base:** `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate` @ `ac9c93b6` (AST-1854 product already on ftr) → gap delta: issue doc + bible + `test_api_admin.py` only — **no `src/**`**  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish ref)  
+**Overall:** CLEAN  
+
+**Status gate:** `Tests Passed` / Hedy — trusted.
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `TestAst1854HydratedCandidateEmptyRender::test_evaluate_artifact_only_ideal_day_empty_render_false` is tagged and pins **concrete To-be** from plan § Repro / AST-1854:
+
+- Asserts `{"empty_render": False, "empty_tokens": []}` and `_candidate_dispatch_empty_render_error(...) is None` for `c1` with **empty** `context` but `get_current_artifact("candidate", "c1", "ideal_day")` returning operative body.
+- **Not tautological:** leaves `admin_mod.get_candidate` (core hydrated loader), all `hydrate_operative_*`, `build_candidate_token_view`, `resolve_tokens`, and `empty_render_for_prompts` **unstubbed**; only DB edges + `_dispatch_empty_render_prompt_texts` (same isolation pattern as AST-1792/1795).
+- **Plausibly red pre-fix:** on raw `database.get_candidate` path, `get_current_artifact` is never consulted → `{$IDEAL_DAY}` blank → `True` / `["IDEAL_DAY"]` (Betty `@ 6c083f3c` red at `3dd7f249`; Hedy red→green at `4bbeabff`; matches plan red/green gate).
+- **Contrast nodes** `c2` / `c3` lock blank vs legacy-blob behavior so the repro is not “always false.”
+
+**## What must still hold — OK** (plan-fix § AST-1855):
+
+| Item | Verdict |
+|------|---------|
+| Truly blank token → `True` + token named | `test_evaluate_no_ideal_day_anywhere_empty_render_true` |
+| Legacy `context.ideal_day` → `False` | `test_evaluate_legacy_blob_ideal_day_empty_render_false` |
+| AST-1791 soft-miss path stays green | Four `get_current_artifact → None` additions in `_stub_no_agent_task_prompts` / related |
+| No product `src/` on this diff | Confirmed (`--name-only` = docs + tests only) |
+| No integration invented | Bible § AST-1855 says none |
+
+## Canon scores
+
+*(Frozen **Canon Scope** on Linear AST-1855: **none** — test/bible gap; scored fix-board Joan overlap.)*
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | Repro asserts artifact-table Ideal Day flows through real hydrate → gate pass |
+| astral.dispatch.entity-state-bound | A | | Per-candidate `c1`/`c2`/`c3` eval; no cross-candidate pooling in tests |
+
+## Column diff vs plan stage
+
+(aligned) — Fix-board Joan `[board-joan] CANON: OK`; no validate-plan per-id table. Betty’s REVISE ask (stub all seven row-returning paths with `get_current_artifact → None`) is **implemented** in diff — not a Radia/engineer gap.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — sibling test carry: `TestAst1830SweepHrsAdminApi`
+
+- **Severity:** advisory  
+- **Location:** `test_api_admin.py` diff (~19 cases), `merge-tests`  
+- **Finding:** AST-1830 Done on `origin/dev`; not AST-1855 scope. `skipif(not hasattr(admin_mod, "_parse_sweep_hrs"))` limits blast on older tips. Hedy attribution comment matches spawn prompt.  
+- **Recommendation:** Do not score as cross-ticket **fix-now**; no Radia action.
+
+### advisory — Bible sequencing line vs current ftr
+
+- **Severity:** advisory  
+- **Location:** `docs/test-bible/ui/api/api_admin.md` § AST-1855 — “product not on ftr yet”  
+- **Finding:** `origin/ftr/AST-1852…` @ `ac9c93b6` now includes AST-1854 product; pass criterion (“green with AST-1854 on tree”) is satisfied on ftr+sub merge. Wording is slightly stale, not a test defect.  
+- **Recommendation:** Optional docs tidy in docs-acceptance; not **fix-now** for `resolve-child`.
+
+### advisory — Pre-existing module failures
+
+- **Severity:** advisory  
+- **Location:** Hedy test-fix — 5 failures identical on `origin/dev`  
+- **Finding:** Outside AST-1855 manifest; unchanged.
+
+### discuss — Canon Scope missing (process)
+
+- **Severity:** discuss  
+- **Finding:** No frozen list on Linear; Joan overlap scored only.  
+- **Default:** Ship; Archie may add list for comparability later.
+
+## What's solid
+
+- Delivers exactly what `[board-betty] TESTS: REVISE` on AST-1854 asked for: real hydrated-loader chain, three candidates, bible § AST-1855 + manifest (10/10 per Hedy).  
+- Hermeticity: proactive `get_current_artifact` stubs on the seven row-returning swapped-path tests (Betty board call) — avoids env-dependent greens against repo `data/astral.db`.  
+- Closes repro-first bar for AST-1854 board REVISE when merged onto ftr that already carries `b5a72977`/`ac9c93b6` product.  
+- Estimate **2** fits.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | Normal — AST-1852 + `ftr/AST-1852-dispatch-gate-hydrated-candidate` | Append artifact → `docs(AST-1855): Radia review — clean` → post slim upshot `--as radia` → **Review Posted** → §3h clean-review → **User Testing** (`resolve-child` skipped). Merge gap sub onto ftr after UT if not already stacked. |
+
+context_tokens≈7200
+
+---
+
+**Slim upshot (Chuckles → `linear_proxy --as radia save-comment`):**
+
+```
+[code-rubric] PROCEED (Commit: 4bbeabff) Bug-repro pins hydrated gate
+```
+
+#### Chuckles disposition (AST-1855)
+
+Clean review (discuss items only, default ship): Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1854's product fix is on ftr @ ac9c93b6, so the tests run green on ftr without a scratch overlay.
