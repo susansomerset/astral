@@ -497,3 +497,91 @@ END-VERDICT
 ```text
 AST-1881 board-joan done — CANON: OK.
 ```
+
+## Radia review — AST-1881
+
+[code-rubric]
+
+**Ticket:** AST-1881  
+**Publish ref:** `2b1f6e1acd5a4cf9f768164abedd290d3c536105` (`origin/sub/AST-1876/AST-1881-prefilter-rc-default-vector`)  
+**Diff base:** `origin/ftr/AST-1876-prefilter-rc-default-vector...origin/sub/AST-1876/AST-1881-prefilter-rc-default-vector` (4 files: `data/admin/agent_task.json`, `src/utils/config.py`, `src/core/candidate.py`, plan-fix append in feature doc — **no** `tests/**` / `src/core/agent.py` / `src/core/consult.py`)  
+**Corpus:** `e1f2699fad` (local `canon/` via `canon_clerk index`; `docs/canon-index.md` absent on sub tip — same shape as Joan fix-board)  
+**Overall:** CLEAN  
+
+## Fix-specific checks
+
+| Check | Verdict |
+|-------|---------|
+| `[bug-repro]` | **not applicable — clean board opt-out** — fix-board `TESTS: REVISE` became sibling **AST-1882**; no `[bug-repro]` on this ticket (per spawn brief; repro assertion not scored here). |
+| `## What must still hold` | **OK** — see below. |
+
+### What must still hold (§5.2)
+
+1. **AST-1513 duplicate-code guard** — `_decode_payload` / `_require_complete_grade_set` not in diff; `src/core/agent.py` unchanged on tip. Duplicate `RC` rejection remains the intended fix *target*, not a regression.  
+2. **QC/GC merge** — `_merge_embedded_evaluate_jd_criteria` definition and existing `evaluate_jd` / `evaluate_meteorite` branches unchanged; diff only adds parallel `elif` arms for `prefilter_company` / `company_prefilter` / `craft_prefilter_rubric`.  
+3. **AST-707 read-time RC** — `rubric_criteria_for_task` still prepends embedded RC via `_merge_embedded_company_prefilter_criteria` (refactor of prior inline merge); roster/consult/agent token paths use `rubric_criteria_for_task` — hydration/`{$RUBRIC_VECTORS}` still get RC when DB rows lack RC.  
+4. **`_assert_unique_rubric_codes`** — merge strips artifact rows whose codes collide with embedded before persist; merged lists are single RC + tail — compatible with normalize’s duplicate-code check on craft persist (normalize → apply merge → sync).  
+5. **No new limits/caps/retries/tables/fields** — diff respects boundary.  
+
+## Canon scores
+
+**Process gap:** AST-1881 Linear description has **no frozen Canon Scope list** (Plan Approved append-only ids). Per `review-child` §5 / fix-lane precedent (e.g. AST-702, AST-897), **`## Canon scores` table omitted** — do not treat `[board-joan] CANON: OK` as per-id plan-stage grades.
+
+**Qualitative alignment** (Joan fix-board cited ids only, not scored as formal rows): embedded RC lifecycle mirrors AST-1085 QC/GC pattern; config-block edit is in-place `EMBEDDED_COMPANY_PREFILTER_CRITERIA`; seed prompt dedupe in `agent_task.json` with operator Revert-to-file rollout called out in plan; grade letters `{A,B,C,D,F,X}` for RC; decode guard untouched. No off-list statute violations spotted in the isolated fix diff.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** `CANON: OK` only; no `validate-plan` per-directive column on the bug ticket.
+
+## Frame diff
+
+- [ ] **Operator:** After deploy, apply `prefilter_company` prompt dedupe on **live** `agent_task` (Manage Tasks → Revert to file or manual delete of duplicate Reality Check block) — plan §6; until then live DB can still double-define RC despite repo seed fix.
+
+## Plan fidelity
+
+| Plan-fix item | Diff |
+|---------------|------|
+| RC prose → company-site scale + X; drop generic E scale | ✓ `config.py` |
+| `_merge_embedded_company_prefilter_criteria` + read/save/craft persist/craft generate | ✓ `candidate.py` (save on **`apply_rubric_vectors_save`**, matching plan-fix — not `normalize_rubric_artifacts_on_save`, consistent with QC/GC) |
+| Remove hand-written Reality Check block from `prefilter_company` `cache_prompt` | ✓ `agent_task.json`; `json.load` OK; no `### Reality Check` header; `{$RUBRIC_VECTORS}` retained |
+| Tests/bible | Deferred to **AST-1882** (expected; no test carry in this diff) |
+
+## Non-canon findings
+
+**fix-now:** none  
+
+**discuss:** none  
+
+**advisory:**
+
+- Linear **Technical scope** still says “modify `normalize_rubric_artifacts_on_save`” for RC merge; authoritative plan-fix and shipped code use **`apply_rubric_vectors_save`** (QC/GC precedent). Wording drift only — implementation matches plan-fix.  
+- **Sibling gap AST-1882:** `TestAst707EmbeddedPrefilterConfig` / prompt assertions updated there; product tip is intentionally ahead of bible on RC prose until sibling lands.  
+- **Parent shape:** orphaned mini-parent **AST-1876** — on clean review Chuckles merges **`sub/.../AST-1881-...` straight to `origin/dev`** (no `merge-child` / `prep-uat`).
+
+## What's solid
+
+Focused fix diff: one prompt dedupe, one config constant refresh, one merge helper wired on the four QC/GC-parity paths; preserves AST-1513 enforcement and batch decode contract while eliminating double RC definition at the source.
+
+## Chuckles — post-review branching
+
+| Gate | Parent | Next |
+|------|--------|------|
+| **PROCEED** (this review) | **Orphaned AST-1876** | **Review Posted** → clean-review shortcut → **User Testing** (skip `resolve-child`) → then finish-up-style merge **sub → `origin/dev`**. |
+
+---
+
+**Slim upshot (Chuckles posts `--as radia`):**
+
+```
+[code-rubric] PROCEED (Commit: 2b1f6e1a) RC persist + prompt dedupe OK
+```
+
+`context_tokens≈` (approximate session cost not instrumented here)
+
+#### Chuckles disposition (AST-1881)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). Merged into the mini-parent ftr (orphaned bug with its own ftr — merge-child, then prep-uat/finish-up per fix-intake bug-fix; not a direct sub → dev).
+
+Docs-acceptance on this tip: no test-tree delivery here — tests and bible land on gap sibling AST-1882.
+
+Operator step after deploy: Manage Tasks → Revert to file on `prefilter_company` (live DB prompt still carries the duplicate Reality Check block until then).
