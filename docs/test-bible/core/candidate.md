@@ -891,6 +891,32 @@ Append-merge `EMBEDDED_EVALUATE_JD_CRITERIA` (QC then GC; AST-1084) into `evalua
   -q
 ```
 
+---
+
+### AST-1881 · AST-1876
+
+**Parent:** [AST-1876](https://linear.app/astralcareermatch/issue/AST-1876). **Publish:** `origin/sub/AST-1876/AST-1882-prefilter-rc-default-vector-tests` (gap child AST-1882; product AST-1881).
+
+`EMBEDDED_COMPANY_PREFILTER_CRITERIA` (RC) prepend-merged into `prefilter_company` / `company_prefilter` / `craft_prefilter_rubric` on save, craft generate and persist, so it is stored in `rubric_vector` — embedded wins on duplicate code (case-insensitive). The duplicate hand-written Reality Check block is removed from the `prefilter_company` `cache_prompt` (`[bug-repro]`: `test_prefilter_prompt_has_no_hand_written_reality_check` pins the rubric section, not a `{$RUBRIC_VECTORS}` count — the token also appears in the AST-1154 completeness section). Config definition: **`docs/test-bible/utils/config.md`** (**AST-707**, revised **AST-1881**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper + save / craft generate / persist; prompt dedupe | `src/core/candidate.py`, `data/admin/agent_task.json` | **`TestAst1881PrefilterRcDefaultVector`** |
+
+**Broken / obsolete:** `TestAst707EmbeddedPrefilterConfig::test_embedded_rc_registry` revised (old real-vs-fraudulent scale with E is obsolete). Pre-existing red, not AST-1881: `test_roster.py::TestAst707EmbeddedRcBatchHydration` fails on `origin/dev` too (ctx-artifact criteria no longer reach batch hydration → `HOMEPAGE_READY_RETRY`); left for a separate drift ticket.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1881PrefilterRcDefaultVector \
+  tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig \
+  tests/component/core/test_candidate.py::TestAst1085EvaluateJdEmbeddedMerge \
+  tests/component/core/test_candidate.py::TestAst723RubricVectorsCutover::test_prefilter_merges_embedded_rc_from_table \
+  tests/component/core/test_consult.py::TestRubricLookup::test_matches_criterion_by_code \
+  -q
+```
+
 
 ---
 ### AST-1559 · AST-1555

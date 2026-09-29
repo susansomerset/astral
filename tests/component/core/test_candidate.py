@@ -3840,6 +3840,116 @@ class TestAst1085EvaluateJdEmbeddedMerge:
         assert [r["code"] for r in synced[0][2]] == ["JD", "QC", "GC"]
 
 
+class TestAst1881PrefilterRcDefaultVector:
+    """AST-1881: RC default prefilter vector — prompt dedupe + prepend-merge on read / save / craft generate / persist."""
+
+    _MP_ROW = {
+        "code": "MP",
+        "label": "Mission & Product",
+        "content": "Mission fit\nA == great\nF == poor",
+        "importance": 5,
+    }
+    # Lowercase code proves dedupe is case-insensitive; embedded RC must replace it.
+    _STALE_RC = {"code": "rc", "label": "Stale", "content": "operator edit", "importance": 2}
+
+    def _record_sync(self, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, list]]:
+        synced: list[tuple[str, str, list]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "sync_rubric_vectors_from_criteria",
+            lambda cid, owner, val: synced.append((cid, owner, list(val))),
+        )
+        return synced
+
+    def test_prefilter_prompt_has_no_hand_written_reality_check(self) -> None:
+        """[bug-repro] AST-1881: RC defined once — only via {$RUBRIC_VECTORS}, not a hand-written block."""
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "prefilter_company")
+        cp = row.get("cache_prompt") or ""
+        assert "Reality Check" not in cp
+        assert "Is this the website for a company" not in cp
+        # Token also appears in the AST-1154 GRADE SET COMPLETENESS section, so pin the rubric section, not a count.
+        assert "**Your Rubric for evaluation:**\n\n{$RUBRIC_VECTORS}\n\n### POSSIBLE_JOBLIST_LINKS" in cp
+
+    def test_merge_helper_prepends_and_dedupes_by_code(self) -> None:
+        out = candidate_mod._merge_embedded_company_prefilter_criteria([self._MP_ROW, self._STALE_RC])
+        assert [r["code"] for r in out] == ["RC", "MP"]
+        assert out[0]["label"] == "Reality Check"
+        assert out[0]["importance"] == 8
+        assert [r["code"] for r in candidate_mod._merge_embedded_company_prefilter_criteria([])] == ["RC"]
+
+    def test_apply_save_restores_rc_before_sync(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import EMBEDDED_COMPANY_PREFILTER_CRITERIA
+
+        synced = self._record_sync(monkeypatch)
+        arts: Dict[str, Any] = {"company_prefilter": [self._MP_ROW, self._STALE_RC]}
+        candidate_mod.apply_rubric_vectors_save("c1881", arts)
+        assert "company_prefilter" not in arts
+        assert synced[0][:2] == ("c1881", "prefilter_company")
+        assert [r["code"] for r in synced[0][2]] == ["RC", "MP"]
+        assert synced[0][2][0]["content"] == EMBEDDED_COMPANY_PREFILTER_CRITERIA[0]["content"]
+
+    def test_other_owners_do_not_gain_rc_on_save(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        synced = self._record_sync(monkeypatch)
+        arts: Dict[str, Any] = {"jobdesc_rubric": [TestAst1085EvaluateJdEmbeddedMerge._CANDIDATE_ROW]}
+        candidate_mod.apply_rubric_vectors_save("c1881", arts)
+        assert synced[0][1] == "evaluate_jd"
+        # QC/GC append unchanged; RC never leaks into non-prefilter owners.
+        assert [r["code"] for r in synced[0][2]] == ["JD", "QC", "GC"]
+
+    def test_craft_prefilter_generate_merges_into_response_and_stash(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        store = {"astral_candidate_id": "karfo", "candidate_data": {}}
+        saves: list[tuple[Any, ...]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: dict(store) if store.get("astral_candidate_id") == candidate_id else None,
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        parsed = {"criteria": [dict(self._MP_ROW)]}
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation(
+            "karfo", "craft_prefilter_rubric", None,
+        )
+        assert status == 200
+        assert [r["code"] for r in body["parsed_response"]["criteria"]] == ["RC", "MP"]
+        pending = saves[0][1]["candidate_data"]["pending_craft_generations"]["craft_prefilter_rubric"]
+        assert [r["code"] for r in pending["parsed_response"]["criteria"]] == ["RC", "MP"]
+
+    def test_persist_craft_prefilter_merges_before_sync(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import copy
+
+        from src.utils.config import EMBEDDED_COMPANY_PREFILTER_CRITERIA
+
+        snapshot = copy.deepcopy(EMBEDDED_COMPANY_PREFILTER_CRITERIA[0])
+        synced = self._record_sync(monkeypatch)
+        candidate_mod._persist_craft_dispatch_success(
+            "c1881",
+            "craft_prefilter_rubric",
+            {"criteria": [_criterion(code="MP", label="Mission & Product")]},
+        )
+        assert synced
+        assert synced[0][1] == "prefilter_company"
+        assert [r["code"] for r in synced[0][2]] == ["RC", "MP"]
+        # normalize_rubric_artifacts_on_save runs on the shared constant dicts; values must not drift.
+        assert EMBEDDED_COMPANY_PREFILTER_CRITERIA[0] == snapshot
+
+
 @pytest.mark.skipif(
     not hasattr(candidate_mod, "email_aliases_for_candidate"),
     reason="AST-1559 email_aliases_for_candidate not on this publish tip",
