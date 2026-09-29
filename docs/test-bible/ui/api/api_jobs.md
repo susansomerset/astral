@@ -343,3 +343,5 @@ Job detail `related_meteorite`: when reverse `astral_job_id` miss, fall back to 
 **Broken / obsolete this pass:** none.
 
 **Integration:** none.
+
+**AST-1872 (pointer):** `GET /api/jobs/<id>` always includes boolean **`can_skip`** from core `job_state_admits_transition(state, "CANDIDATE_SKIPPED")` — **`TestAst1872DetailCanSkip`**. Manifest: **`docs/test-bible/core/tracker.md`** § AST-1872.

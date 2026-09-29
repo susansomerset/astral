@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 
 from src.core import roster as roster_mod
-from src.utils.config import COMPANY_STATES, ROSTER_CONFIG, TASK_CONFIG
+from src.utils.config import COMPANY_STATES, PROVIDER_CALL_BUDGET, ROSTER_CONFIG, TASK_CONFIG
 
 
 def _prefilter_rubric_ctx(*, multi_vector: bool = False) -> Dict[str, Any]:
@@ -6216,7 +6216,8 @@ class TestAst897HoldStateOnBalanceRefusal:
     async def test_run_company_task_jobs_found_balance_hold_skips_error_state(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Outer JOBS_FOUND wrapper must not undo an inner balance hold with locate error_state."""
+        """Outer JOBS_FOUND wrapper must not undo an inner balance hold with locate error_state.
+        AST-1867: counted held, not an error."""
         ent = _company(state="JOBS_FOUND", job_site="https://jobs")
         monkeypatch.setattr(
             roster_mod,
@@ -6233,14 +6234,17 @@ class TestAst897HoldStateOnBalanceRefusal:
         transition = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
         out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b897-hold")
-        assert out["total_errors"] == 1
+        assert out["total_errors"] == 0
+        assert out["total_held"] == 1
+        assert out["failure_class"] == self._FC
         transition.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_run_company_task_jobs_found_balance_failure_class_skips_error_state(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Hold also when failure_class is set without state_held (predicate path)."""
+        """Hold also when failure_class is set without state_held (predicate path).
+        AST-1867: counted held, not an error."""
         ent = _company(state="JOBS_FOUND", job_site="https://jobs")
         monkeypatch.setattr(
             roster_mod,
@@ -6256,8 +6260,126 @@ class TestAst897HoldStateOnBalanceRefusal:
         transition = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
         out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b897-fc")
-        assert out["total_errors"] == 1
+        assert out["total_errors"] == 0
+        assert out["total_held"] == 1
+        assert out["failure_class"] == self._FC
         transition.assert_not_called()
+
+
+# Branches: select_job_page balance hold → held (no _warn_company); AST-1189 call-budget
+# state_held (no balance failure_class) still an error on select_job_page + JOBS_FOUND.
+class TestAst1867BalanceHeldCounting:
+    """AST-1867 / AST-1870: provider balance refusal counts as held, not an entity error."""
+
+    _FC = "provider_balance_refusal"
+    _REFUSAL_ERR = "Error code: 402 - Insufficient Balance"
+
+    @pytest.mark.asyncio
+    async def test_select_job_page_balance_hold_counts_held_not_error(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "run_select_job_page_dispatch",
+            AsyncMock(
+                return_value={
+                    "short_name": "acme",
+                    "state": "PJL_READY",
+                    "response_type": "SELECT_FAILED",
+                    "error": self._REFUSAL_ERR,
+                    "failure_class": self._FC,
+                    "state_held": True,
+                }
+            ),
+        )
+        warn = MagicMock()
+        monkeypatch.setattr(roster_mod, "_warn_company", warn)
+        out = await roster_mod.run_company_task(
+            "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b1867",
+            dispatch_task_key="select_job_page",
+        )
+        assert (out["total_processed"], out["total_passed"], out["total_failed"], out["total_errors"]) == (1, 0, 0, 0)
+        assert out["total_held"] == 1
+        assert out["failure_class"] == self._FC
+        assert out["error"] == self._REFUSAL_ERR
+        # the provider already logged the 402 — no second per-company WARNING
+        warn.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("branch", ["select_job_page", "jobs_found"])
+    async def test_call_budget_hold_still_counts_error(
+        self, monkeypatch: pytest.MonkeyPatch, branch: str,
+    ) -> None:
+        # D1 guard: AST-1189 timeout holds state too, but is not a balance refusal → stays an error
+        # local import: sub/ftr test trees can drop the module-level PROVIDER_CALL_BUDGET import on merge
+        from src.utils.config import PROVIDER_CALL_BUDGET
+
+        state = "PJL_READY" if branch == "select_job_page" else "JOBS_FOUND"
+        inner = {
+            "error": "provider call budget exceeded",
+            "failure_class": PROVIDER_CALL_BUDGET["failure_class"],
+            "state_held": True,
+            "state": state,
+        }
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        if branch == "select_job_page":
+            monkeypatch.setattr(roster_mod, "run_select_job_page_dispatch", AsyncMock(return_value=inner))
+            out = await roster_mod.run_company_task(
+                "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b1189",
+                dispatch_task_key="select_job_page",
+            )
+        else:
+            monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", AsyncMock(return_value=inner))
+            out = await roster_mod.run_company_task(
+                "JOBS_FOUND", {"short_name": "acme", "job_site": "https://j"}, "b1189",
+            )
+        assert out["total_errors"] == 1
+        assert "total_held" not in out
+        # AST-897 guard: state_held still blocks the JOBS_FOUND error_state transition
+        transition.assert_not_called()
+
+
+class TestAst1842SelectJobPageTimeoutHold:
+    """AST-1842: provider_call_timeout on select_job_page holds loop-eligible state (no NO_JOBLIST)."""
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_provider_call_timeout_holds_pjl_ready(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] pre-fix: timeout falls through to _save_company(state="NO_JOBLIST") like a model verdict
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Provider call exceeded per-call time budget (600s)",
+                    "failure_class": PROVIDER_CALL_BUDGET["failure_class"],
+                }
+            ),
+        )
+        saver = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state="PJL_READY")))
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme",
+            company_website="https://cw",
+            assembled_content="asm",
+            page_url_map={1: "https://jobs"},
+            page_dom_map={},
+            visible_map={1: ""},
+            nav_links="",
+            browser_context=None,
+            debug=False,
+            ctx=None,
+            chain_parse=False,  # select-only dispatch entry, as run_select_job_page_dispatch calls it
+            decomposed=True,
+        )
+        assert out["response_type"] == "SELECT_FAILED"
+        assert out["state"] == "PJL_READY"
+        assert out.get("state_held") is True
+        assert out.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]
+        assert out.get("error")
+        saver.assert_not_called()
 
 
 class TestAst1155PrefilterIncompleteRetry:

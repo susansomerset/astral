@@ -875,6 +875,28 @@ Canonical external map: [`external/telescope.md`](../external/telescope.md).
   -q
 ```
 
+### AST-1842 · AST-1825 (select_job_page provider_call_timeout hold)
+
+**Parent:** [AST-1825](https://linear.app/astralcareermatch/issue/AST-1825) (orphaned-bug mini-parent). Product: **AST-1842**; test/bible delivery on gap sibling **AST-1843** (`origin/sub/AST-1825/AST-1843-repro-coverage`). A `do_task` failure with `failure_class == PROVIDER_CALL_BUDGET["failure_class"]` (AST-1189 timeout) joins the AST-897 balance-refusal hold in `_find_job_page_from_assembled`: current state (`PJL_READY`) held, `state_held=True`, no `_save_company(state="NO_JOBLIST")`. Every other failure still saves `NO_JOBLIST` / `SELECT_FAILED`. `[bug-repro]`: red on pre-fix `origin/dev` (`NO_JOBLIST` saved), green once AST-1842 is on the tree.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Timeout hold (select-only decomposed entry) | `src/core/roster.py` (`_find_job_page_from_assembled`) | **`tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold::test_find_job_page_provider_call_timeout_holds_pjl_ready`** |
+| Balance-refusal hold regression | same | **`TestAst897HoldStateOnBalanceRefusal::test_find_job_page_holds_state`** |
+| Non-hold failure still `NO_JOBLIST` | same | existing **`test_find_assembled_do_task_failure`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_roster.py::test_find_assembled_do_task_failure \
+  -q
+```
+
 ### AST-1840 · AST-1844 (qa-fix bug-repro — `_culled_dom_for_parse` off the event loop)
 
 **Parent:** [AST-1838](https://linear.app/astralcareermatch/issue/AST-1838) (orphaned-bug mini-parent). Product: **AST-1840**; test/bible delivery on gap sibling **AST-1844** (`origin/sub/AST-1838/AST-1844-parse-job-list-event-loop-block-tests`). The three async cull sites now `await asyncio.to_thread(_culled_dom_for_parse, …)`; proven by thread identity (no timers). `[bug-repro]`: red on pre-fix `31846c28`, green on AST-1840 (`fb472a98`). `make_locate_parse_resolver` stays sync (not asserted).
@@ -1001,3 +1023,26 @@ Sibling pages: **`core/consult.md`**, **`core/agent.md`**, **`core/candidate.md`
 2. **Dispatcher half + branch lock:** **`docs/test-bible/core/dispatcher.md`** § AST-1847 · AST-1848 manifest items 1–2.
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests:docs/test-bible/core/roster.md | shasum`
+
+### AST-1867 · AST-1870 (qa-fix bug-repro — provider balance refusal counted held, not error)
+
+**Parent:** [AST-1860](https://linear.app/astralcareermatch/issue/AST-1860) (orphaned-bug mini-parent). Product: **AST-1867** (`144b8850`, not yet on ftr); test/bible delivery on gap sibling **AST-1870**. `run_company_task` select_job_page and JOBS_FOUND branches return `{**zero, "total_held": 1, "failure_class", "error"}` (`total_errors: 0`, no `_warn_company`) when `is_provider_balance_refusal(result)`; AST-897 per-entity state hold unchanged. AST-1189 call-budget `state_held` (no balance `failure_class`) keeps `total_errors: 1` (AST-1867 D1). Dispatcher half (ctx marker, skip, loop stop, INTERRUPTED + outage alert, real-chain repro): **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870.
+
+**Red / green:** red at ftr base `fbe9486e`, green with `144b8850`'s `roster.py` + `dispatcher.py` + `monitor.py` overlaid (scratch worktree, not committed). R4 is a guard — green both.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| select_job_page balance hold → `total_held: 1`, errors 0, `failure_class` + `error` carried, no `_warn_company` | `run_company_task` PJL_READY branch | **`tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting::test_select_job_page_balance_hold_counts_held_not_error`** |
+| AST-1189 call-budget hold still `total_errors: 1`, no `total_held`, JOBS_FOUND transition still blocked (select_job_page + jobs_found) | `run_company_task` | **`…::test_call_budget_hold_still_counts_error[select_job_page]`** / **`[jobs_found]`** (guard) |
+
+**Flipped (AST-897 → held contract):** `TestAst897HoldStateOnBalanceRefusal::test_run_company_task_jobs_found_balance_hold_skips_error_state` and `::test_run_company_task_jobs_found_balance_failure_class_skips_error_state` — was `total_errors == 1`; now `total_errors == 0`, `total_held == 1`, `failure_class == provider_balance_refusal`; `transition.assert_not_called()` kept. Class-level reference in **`docs/test-bible/utils/llm_external.md`** § AST-897 stays valid (no edit).
+
+**Broken / obsolete:** none beyond the two flips above.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. See **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870 manifest (includes `TestAst1867BalanceHeldCounting` + `TestAst897HoldStateOnBalanceRefusal`).
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/roster.md | shasum`
