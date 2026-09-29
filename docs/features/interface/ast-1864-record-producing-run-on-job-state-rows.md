@@ -178,3 +178,47 @@ context_tokens≈28000
   `TestAst733InitializeJobCollision` ×3, `TestGetJobData` ×3, `TestAst1693SaveMeteoriteDuplicateLinkBackfill` ×2,
   `TestAst1523NotesMetadataRetention`, `TestAst552BuildArtifactsGate`, `TestAst997ExperienceJobArrayPersist`. Not caused by this change.
 - **Sub-log pre-check:** `validate-sub-log.sh --stage=build … ftr/AST-1853-execution-history-for-job-modals` → ok.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1864
+**Publish ref:** 5ccfca280ff0f387fa5e82e394685ae286774a93
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+astral.entity.required-metadata | X | | `applies_when` is `src/data/database.py` add/modify only; landed diff touches `src/core/tracker.py` + tests/bible — no column-set change; optional `run_id` inside `state_history` JSON parallels existing `score`; `batch_id` column and history key unchanged
+
+## Column diff vs plan stage
+(aligned) — Joan graded `astral.entity.required-metadata` **X** for the same territorial reason; landed product diff matches that rationale.
+
+## Frame diff
+(none)
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+- **sibling test carry:** none — `tests/component/core/test_tracker.py` and `docs/test-bible/core/tracker.md` AST-1864 blocks belong to this child (Betty `qa-child` / `merge-tests`), not a sibling product leak.
+- **docs/test-bible/core/tracker.md** — `**Bible shasum (publish tip):**` still shows `*(filled after publish)*`; hygiene only for Chuckles doc pass, not a product gate.
+- **Linear AC3** still bundles “row is not clickable in the modal” with backend stamping; implementation and `TestAst1864RunIdStamp` correctly assert key absence only; clickability remains sibling #2 per Boundaries (already Joan-noted at plan stage).
+
+## What's solid
+- `_stamp_run_id` matches plan verbatim: truthy `log_batch_id` stamps `run_id`; `None` / `""` leave the key absent (never `null`/empty string values).
+- Both appenders (`write_job_dispatch_hop_label`, `transition_job_state`) share one helper; `score` still applied after stamp on transitions.
+- `TestAst1864RunIdStamp` covers AC1 (single-hop), AC2 (hop label + graduation path via `transition_job_state`), AC3 (parametrized `None`/`""`, both appenders); manifest regression classes named in bible.
+- AC4: `git diff origin/dev...origin/sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows -- src/ui/api/ src/data/` is empty.
+- Plan fidelity: product change is Stage 1 as written; estimate footprint still fits confirmed **1** point.
+
+## Recommended actions (downstream — not Radia)
+- Chuckles: append this artifact, commit `docs(AST-1864): Radia review — clean`, post slim upshot, move to **Review Posted**; datt **PROCEED** → **User Testing** per mapping.
+- Optional doc tidy: fill bible shasum line on publish tip when touching the issue doc anyway.
+
+context_tokens≈32000
