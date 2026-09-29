@@ -452,3 +452,197 @@ No unresolved conflicts.
 **Discuss (deferred):** mixed raw/normalized keys in `possible_joblist_links` ledger append, missing `PREFILTER_PASSED_RETRY → NO_JOBLIST` transition, and dispatch-error `error_state` transition — no decomposed-path regression today; revisit if monolith/retry combo needs them.
 
 **Publish ref:** `origin/sub/AST-716/select-job-page-dispatch-refactor`
+
+---
+
+## Bug: AST-1892 — persist job_site on decomposed JOBLIST_NO_JOBS → NO_OPENINGS
+
+**Parent:** AST-1887 (orphaned Bug mini-parent). **Publish ref:** `origin/sub/AST-1887/AST-1892-no-openings-job-site`. **Canon Scope:** none cited on AST-1887 / AST-1892.
+
+### As-is
+
+A `PJL_READY` company whose decomposed `select_job_page` hop returns `JOBLIST_NO_JOBS` transitions to `NO_OPENINGS` with `companies.job_site` written as `""`. Any existing value is wiped, and the selected list-page URL is never stored. From then on, `process_recheck_no_openings` returns `{"success": False, "message": "missing job_site"}` on every run, and the company stays stuck in `NO_OPENINGS`.
+
+### To-be
+
+The decomposed `JOBLIST_NO_JOBS` → `NO_OPENINGS` transition persists `job_site` exactly as the legacy (`decomposed=False`) path does: `_save_company` → `_job_site_for_persist` writes `job_site_url`, because `NO_OPENINGS` ∈ `_PERSIST_PAGE_OPTION_URL_STATES`. The return dict's `job_site` equals that same `job_site_url`. `recheck_no_openings` then has a URL to load on its 24h cadence.
+
+### Repro
+
+Fixture (component level, no DB), mirroring `TestAst1842SelectJobPageTimeoutHold`:
+
+```python
+monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={
+    "success": True,
+    "parsed_response": {"response_type": "JOBLIST_NO_JOBS", "selected_page": 1, "no_jobs_message": "No openings"},
+}))
+monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"short_name": "acme", "state": "PJL_READY", "job_site": "https://old/jobs"}))
+update = MagicMock(); monkeypatch.setattr(roster_mod, "update_company", update)
+monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+out = await roster_mod._find_job_page_from_assembled(
+    short_name="acme", company_website="https://cw", assembled_content="asm",
+    page_url_map={1: "https://jobs"}, page_dom_map={}, visible_map={1: ""},
+    nav_links="", browser_context=None, debug=False, ctx=None,
+    chain_parse=False, decomposed=True,
+)
+```
+
+Today: `update_company` is called with `job_site=""`, and `out["job_site"] == ""`. Expected: `job_site="https://jobs"` in both places.
+
+### Root cause
+
+`74ae56276 code(AST-720)` added `decomposed` to `_check_parse_results` (`src/core/roster.py`) as `suppress = decomposed`, and applied it to **every** branch, including `JOBLIST_NO_JOBS`: `_save_company(..., suppress_job_site=suppress)`, which returns `"job_site": "" if suppress else job_site_url`. `_save_company` with `suppress_job_site=True` hard-writes `job_site_to_write = ""` and never consults `_job_site_for_persist`. Stage 3 of this plan said `JOBLIST_NO_JOBS` stays "unchanged". The AST-673 suppression was meant only for `JOBLIST_IDENTIFIED`, where the AST-721 parse sibling writes `job_site` later. `NO_OPENINGS` is terminal, and no later hop writes the column.
+
+### Proposed change
+
+One file, one branch: `src/core/roster.py`, `_check_parse_results`, the `if response_type == "JOBLIST_NO_JOBS":` block only.
+
+1. In the `_save_company(...)` call for `state="NO_OPENINGS"`, **remove** the `suppress_job_site=suppress` argument. The call becomes `_save_company(short_name=..., company_website=..., state="NO_OPENINGS", page_option_url=job_site_url, raw_response=result, no_jobs_message=no_jobs_msg)`. `_save_company` then defaults to `suppress_job_site=False` and writes `_job_site_for_persist(terminal_state="NO_OPENINGS", page_option_url=job_site_url, ...)`, which returns `job_site_url.strip()`.
+2. In that branch's return dict, replace `"job_site": "" if suppress else job_site_url` with `"job_site": job_site_url`.
+3. Leave `suppress = decomposed` in place. The `JOBSITE_SCRAPE_ISSUE` branch still uses it, and that branch is out of scope. Add a short inline comment on the `JOBLIST_NO_JOBS` save explaining why it's not suppressed: `NO_OPENINGS` is terminal, `recheck_no_openings` needs `job_site`, and AST-673 suppression applies only to `JOBLIST_IDENTIFIED`.
+4. No change to `_save_company`, `_job_site_for_persist`, `_PERSIST_PAGE_OPTION_URL_STATES`, config, schema, `_find_job_page_from_assembled`, or `run_select_job_page_dispatch`.
+
+⚠️ **Decision (fallback value):** AST-1887's To-be says the fallback is "the pre-run value". In the code, `_find_job_page_from_assembled` computes `job_site_url = page_url_map.get(selected_page, company_website)`, and `_job_site_for_persist` returns `page_option_url` as-is for persist-set states. So when `selected_page` is missing or unmapped, both paths persist `company_website`, not the pre-run `job_site`. This fix matches the **legacy path exactly**, which is what the ticket's Technical scope asks for, and does not add a pre-run fallback. Doing that would mean changing `_find_job_page_from_assembled` or `_job_site_for_persist`, which is outside the declared scope and would also change legacy behavior. Susan or fix-board can widen scope if a pre-run fallback is wanted.
+
+### Blast radius
+
+- `_check_parse_results` has one caller: `_find_job_page_from_assembled` (~line 2364). The legacy `decomposed=False` path (AST-535 `TO_WATCH`) already took the non-suppressed branch, so it is bit-identical.
+- Decomposed callers: only `run_select_job_page_dispatch` (`PJL_READY`). The behavior change is limited to `PJL_READY` + `JOBLIST_NO_JOBS`.
+- Downstream: `process_recheck_no_openings` now receives a non-empty `job_site` for these rows (the intended consumer, AST-463). `run_company_task`'s `terminal_ok` set already includes `NO_OPENINGS`, so counts are unchanged.
+- Tests: `tests/component/core/test_roster.py` has no assertion that pins decomposed `JOBLIST_NO_JOBS` to `job_site=""`. `grep suppress_job_site` finds zero hits in tests. The existing tests that stub `_check_parse_results` (e.g. the AST-674 batch-id test) are unaffected. Betty owns the new regression test (Repro above).
+- Already-stuck `NO_OPENINGS` rows with an empty `job_site` are not repaired. Backfill is out of scope.
+
+### What must still hold
+
+- AST-673 / AST-720: `_finalize_joblist_identified` keeps `suppress_job_site=True` (no `job_site` column write on `JOBLIST_IDENTIFIED`, return `job_site=""`).
+- The decomposed `TRY_LINKS`-exhausted exits (`suppress_job_site=True` → `NO_PJL_SELECTED`) are unchanged.
+- The decomposed `JOBSITE_SCRAPE_ISSUE` branch is unchanged (still suppressed). It's out of scope unless Susan widens it.
+- Legacy `TO_WATCH` `select_job_page` behavior is bit-identical.
+- `_save_company` still sets `no_jobs_message` in `company_data` and transitions to `NO_OPENINGS`.
+- No new limits, caps, retries, schema, or config.
+
+## Joan fix-board — AST-1892
+
+**Ticket context:** Orphaned bug under AST-1887. **Canon Scope on AST-1887 / AST-1892:** none cited (per plan-fix patch). **Question (F2):** Does the proposed fix conflict with or require updating any directive in force?
+
+**Plan-fix read** (`origin/sub/AST-1887/AST-1892-no-openings-job-site` → `## Bug: AST-1892`):
+
+| Section | Summary |
+|--------|---------|
+| **As-is** | Decomposed `JOBLIST_NO_JOBS` → `NO_OPENINGS` clears `companies.job_site` to `""`; `recheck_no_openings` then fails with “missing job_site”. |
+| **To-be** | Same persistence as legacy (`decomposed=False`): `_save_company` / `_job_site_for_persist` for `NO_OPENINGS` (in `_PERSIST_PAGE_OPTION_URL_STATES`). |
+| **Root cause** | AST-720 `suppress = decomposed` was applied to **all** branches; AST-673 suppression was only meant for `JOBLIST_IDENTIFIED`, not terminal `NO_OPENINGS`. |
+| **Proposed change** | Only `src/core/roster.py`, `JOBLIST_NO_JOBS` block: drop `suppress_job_site=suppress` on save; return `job_site_url`; keep `suppress` for `JOBSITE_SCRAPE_ISSUE`; inline comment; no API/schema/config changes. |
+| **Blast radius** | Decomposed `PJL_READY` + `JOBLIST_NO_JOBS` only; legacy path unchanged; AST-673 finalize path unchanged per “What must still hold”. |
+| **Scope note** | Pre-run `job_site` fallback vs `company_website` is explicitly **out of scope** (matches legacy); product decision, not widened in this patch. |
+
+**Corpus check (registry skim, not R1–R7):** `docs/canon-index.md` is not on the publish ref; used `canon/docs/DIRECTIVES-DIRECTORY.md` and grep on `canon/directives/active/` for overlap with `src/core/roster.py`, `job_site`, `NO_OPENINGS`, `suppress`, AST-673/720.
+
+**Findings:**
+
+1. **No cited canon list** — Nothing to reconcile against a frozen parent/child directive set; Joan still checks obvious roster/task overlap from the registry.
+
+2. **Persistence path stays canonical** — The fix removes an erroneous flag and uses existing `_save_company` / `_job_site_for_persist` for a terminal state. That **aligns** with the in-force entity pattern (`stat.core.entity-save` in the directory table; save stays in `core/roster`, not a new writer or `data.database` bypass). No new carve-out or exception text is required.
+
+3. **Active directives touched in blast radius do not encode the bug** — `patt.task.dispatch-retry` mentions `NO_OPENINGS` as a valid “passing” terminal state; restoring `job_site` for recheck **supports** downstream task behavior, it does not contradict retry/dispatch statutes. `patt.entity.batch-processing` and entity logging statutes (`stat.logging.info.entity`, etc.) scope `roster.py` but do not specify decomposed `suppress_job_site` for `JOBLIST_NO_JOBS`. No active directive mentions `suppress_job_site`, `JOBLIST_IDENTIFIED` suppression, or AST-673/720 IDs in the corpus.
+
+4. **“What must still hold” is product/plan contract** — Preserving `suppress_job_site=True` on `JOBLIST_IDENTIFIED`, `TRY_LINKS` / `JOBSITE_SCRAPE_ISSUE`, and legacy `TO_WATCH` is implementation discipline for this bug, not a statute amendment. F3 (`validate-plan` fix mode) is unnecessary for canon **unless** someone later encodes AST-673 branch rules in a directive (not in force today).
+
+5. **Fallback wording (AST-1887 To-be vs code)** — Plan flags a possible product widen; Joan does **not** treat that as ESCALATE here: it is bounded scope choice already documented in plan-fix, not ambiguous statute intent or new architectural precedent requiring Archie.
+
+**Conclusion:** No in-force statute or pattern needs updating; no Archie gate for canon.
+
+BEGIN-VERDICT
+[board-joan]  CANON: OK
+
+context_tokens≈4200
+END-VERDICT
+
+```text
+AST-1892 board-joan done — CANON: OK.
+```
+
+## Radia review — AST-1892
+
+[code-rubric]
+**Ticket:** AST-1892
+**Publish ref:** `origin/sub/AST-1887/AST-1892-no-openings-job-site` @ `e21863a1ac58d6f02faa3155f0d92ce084c112c0`
+**Diff base:** `origin/ftr/AST-1887-no-openings-job-site...origin/sub/AST-1887/AST-1892-no-openings-job-site` (2 files: `src/core/roster.py` + plan-fix doc append)
+**Corpus:** (no `corpus_sha` / `docs/canon-index.md` on publish ref; Joan used registry skim — not re-scored directive-by-directive)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen Canon Scope on AST-1887 / AST-1892: **none cited** (per issue doc and plan-fix patch).
+
+| # | id | grade | effort | one-line |
+|---|-----|-------|--------|----------|
+| — | *(empty list)* | — | — | No frozen directives to score; fix uses existing `_save_company` / `_job_site_for_persist` path only. |
+
+**Notes:** No Canon Scope gap → **ESCALATE** not warranted. Joan fix-board F2 concluded no in-force statute amendment required (`[board-joan] CANON: OK`).
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **fix-board** F2 only — no `validate-plan` per-id column on this orphaned bug).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** **not applicable** — Betty’s fix-board **TESTS: REVISE** was split to sibling **AST-1894**; this diff has **zero** `tests/**` changes and no `[bug-repro]` tag on AST-1892. Repro assertion quality is intentionally out of scope for F7 here (track on AST-1894).
+
+**`## What must still hold`:** **OK**
+
+| Item | Verdict |
+|------|---------|
+| `_finalize_joblist_identified` keeps `suppress_job_site=True`, return `job_site=""` | **OK** — unchanged on tip (`git show` ~2720–2729). |
+| Decomposed TRY_LINKS-exhausted → `NO_PJL_SELECTED` with `suppress_job_site=True` | **OK** — ~2280–2316 unchanged vs ftr. |
+| Decomposed `JOBSITE_SCRAPE_ISSUE` still suppressed (`suppress_job_site=suppress`) | **OK** — branch untouched in diff. |
+| Legacy `TO_WATCH` / `decomposed=False` bit-identical | **OK** — pre-fix `suppress=False` already persisted `job_site` on `JOBLIST_NO_JOBS`; only `decomposed=True` behavior changes. |
+| `_save_company` still sets `no_jobs_message`, transitions `NO_OPENINGS` | **OK** — same args minus erroneous `suppress_job_site`. |
+| `NO_OPENINGS` persists via `_job_site_for_persist` | **OK** — default `suppress_job_site=False` → `_job_site_for_persist` for `NO_OPENINGS` ∈ `_PERSIST_PAGE_OPTION_URL_STATES`. |
+| No new limits / schema / config | **OK** — single branch edit + comment. |
+
+## Findings
+
+### fix-now
+
+None.
+
+### discuss
+
+None.
+
+### advisory
+
+- **Sibling test gap:** Component regression from plan-fix **Repro** is **not** on this publish ref; **AST-1894** owns bible/test carry. Ship product fix is consistent with fix-lane split; UAT should not assume a pinned decomposed `JOBLIST_NO_JOBS` test until AST-1894 lands.
+- **Pre-run `job_site` vs `company_website`:** Plan-fix **Decision** documents bounded scope (match legacy); not a code defect on this diff.
+- **Hedy test-fix note:** Full `test_roster.py` parity with `origin/dev` (50 pre-existing failures) accepted; targeted subset 26/26 green per spawn prompt.
+
+## What's solid
+
+- Plan fidelity: implements **Proposed change** items 1–4 exactly — drop `suppress_job_site=suppress` on `JOBLIST_NO_JOBS` save, return `job_site_url`, keep `suppress` for `JOBSITE_SCRAPE_ISSUE`, AST-1892 inline comment.
+- Blast radius matches plan: one caller path, decomposed `PJL_READY` + `JOBLIST_NO_JOBS` only.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned** AST-1887 mini-parent (own `ftr`, not feature rollup) | **Review Posted** → skip `resolve-child` / `merge-child` / `prep-uat` → merge `sub/AST-1887/AST-1892-no-openings-job-site` **straight to `origin/dev`** (finish-up-style) once Susan’s lane accepts it. |
+
+context_tokens≈9500
+
+---
+
+```
+[code-rubric] PROCEED (Commit: e21863a) Decomposed NO_OPENINGS persists job_site
+```
+
+#### Chuckles disposition (AST-1892)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1887 is an orphaned bug mini-parent with its own ftr, so AST-1892 goes through merge-child into ftr, then prep-uat and finish-up per fix-intake bug-fix. Radia's 'straight to origin/dev' line applies only to an orphaned bug whose parent is already Done, not here.
+
+Docs-acceptance on this tip: nothing is delivered to the test tree here; tests and bible land on gap sibling AST-1894.
