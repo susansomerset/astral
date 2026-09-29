@@ -271,3 +271,62 @@ Run after Stages 1–2, once nothing in `src/` imports the symbols (checked with
 ## Estimate
 
 Confirm Chuckles estimate: 5 — revise to 8 because this is four backend files plus four frontend pages plus the legacy deletions, and the Invalid gate, key UI and agent pickers are each a separate round-trip to verify.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1880
+**Overall:** APPROVED
+**Corpus:** `e1f2699fad`
+**Publish ref:** `16dbe56de`
+
+## Canon scores
+
+Model → server catalog routing | A | | Stages 1–4: catalog admin routes/UI, server-scoped keys, Invalid gate, legacy path removed
+stat.logging.info.api | A | | Stage 1 `_api_completed` on mutating routes this ticket changes; GET reads omitted
+stat.logging.warning | A | | Missing-key Invalid/AUTO, task-manager unroutable agent, dispatch skip who/why/consequence
+
+## Traceability
+
+1→S3 steps 1,6 + S1 import swap | 2→S3 steps 2–4 + S1 comment rewrites + S4 (no vendor literals) | 3→S1 steps 1,3–4 | 4→S2 | 5→S1 steps 8–9 + S4 step 3 | 6→S4 steps 1–2 + S1 `/agents/models` | 7→S3 step 3 (+ Betty deletes `test_deepseek.py` for `tests/` grep) | 8→S1 step 10 + S4 step 4 (+ Betty wire/key intercept) | parent 3–4,7,9–14→N/A (#1–#3 or not on this child’s AC list)
+
+## Findings
+
+### discuss
+
+- **Severity:** discuss
+- **Location:** **Estimate**
+- **Finding:** Plan recommends revising Linear points to **8** while the ticket still shows **5**; scope (four backend surfaces, four frontend pages, Stage 3 deletions, Invalid gate) supports the higher estimate.
+- **Recommendation:** Chuckles updates Linear estimate before or at Plan Approved.
+
+- **Severity:** discuss
+- **Location:** AC 7 / **Tests expected to move**
+- **Finding:** Engineer pre-commit cannot delete `tests/component/external/test_deepseek.py`; `rg send_to_deepseek tests/` stays dirty until Betty’s qa-child pass, though product `src/` clears in Stage 3.
+- **Recommendation:** Expected epic handoff — Betty deletes bible/test paths early in qa-child on this sub.
+
+- **Severity:** discuss
+- **Location:** Stage 2 `_sanitize_candidate` decision
+- **Finding:** List rows may call `get_candidate` per row for set/not-set (correct under layer rules, potentially slow); plan flags a core wrapper follow-up if Susan wants it.
+- **Recommendation:** No plan change unless Susan opts into the follow-up.
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** Scope gate / **Revisions**
+- **Finding:** `src/core/monitor.py` server-labeled `provider_balance_outage` is now in Scope, Files Changed, and Stage 3 step 6 — AC 1 can clear without leaving `get_active_llm_provider` in `monitor.py`.
+- **Recommendation:** None.
+
+- **Severity:** acceptable
+- **Location:** Stage 2 plaintext leak / Radia deferrals
+- **Finding:** Plan closes AST-1878/1879 review items (`api_candidate` arity, ad-hoc `TypeError`, dispatch Run/Auto gate, `default_brain_setting` grep) with explicit stage ownership.
+- **Recommendation:** None.
+
+- **Severity:** acceptable
+- **Location:** Stage 3 step 1 “Left in place” / **Follow-ups**
+- **Finding:** Anthropic-legacy config helpers may become dead after Stage 1; plan defers deletion to a scoped follow-up rather than silent scope creep.
+- **Recommendation:** None unless Susan wants a cleanup ticket.
+
+context_tokens≈155000
+
+[plan-rubric] PROCEED (Commit: 16dbe56de) Admin + legacy retirement plan clean
+
