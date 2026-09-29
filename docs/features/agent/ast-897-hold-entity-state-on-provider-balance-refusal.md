@@ -952,3 +952,25 @@ Chuckles: append artifact, `docs(AST-1870): Radia review — clean`, post slim u
 Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1867's product fix is on ftr @ 727b386d, so the tests run green on ftr without a scratch overlay.
 
 origin/tests carry: Betty's merge-tests brought `a927666d` (AST-1864 TestAst1864RunIdStamp + tracker bible). AST-1864's product is on in-flight ftr/AST-1853, not dev; 3 of its 5 tests are red until AST-1853 lands. Left in place: reverting it here would make git drop those tests when AST-1853 later merges, and removing it from history would need a cherry-pick. Not part of this ticket's manifest.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/173b1605a3fe684e671a65587ccf1ad3/7a228e39-30aa-4e4a-91c6-878710246823/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/a92930ec-b8a2-491e-a303-a327192e2ba2/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/173b1605a3fe684e671a65587ccf1ad3/2f1595e6-8eef-4217-95ef-356053ca7635/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1860 (parent) | ftr/AST-1860-provider-balance-outage |
+| AST-1867 | sub/AST-1860/AST-1867-provider-balance-outage |
+| AST-1870 | sub/AST-1860/AST-1870-provider-balance-outage-tests |
+
+**Epic worktree:** `astral-AST-1860/` — one active sub checked out at a time.
