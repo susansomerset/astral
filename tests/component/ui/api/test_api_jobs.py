@@ -1078,3 +1078,36 @@ class TestAst1704JobsDetailParentFields:
         assert body["source"] == "meteorite"
         assert body["source_entity_id"] == "mid-1"
         assert body["job_link"] == crumb
+
+
+# Branches: detail can_skip (AST-1872) — real core prior-state rule, not mocked; missing state → False.
+class TestAst1872DetailCanSkip:
+    @pytest.mark.parametrize(
+        ("state", "expected"),
+        [
+            ("RECOMMENDED", True),
+            ("CANDIDATE_REVIEW", True),
+            (f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.draft_job_resume", True),
+            ("CANDIDATE_SKIPPED", False),
+            ("CANDIDATE_APPLIED", False),
+            (None, False),
+        ],
+    )
+    def test_detail_can_skip_by_state(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+        state, expected: bool,
+    ) -> None:
+        job = {"astral_job_id": "job-1872", "job_data": {}}
+        if state is not None:
+            job["state"] = state
+        monkeypatch.setattr(jobs_mod, "get_job", lambda jid: dict(job))
+        monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda job: [])
+        monkeypatch.setattr(
+            jobs_mod,
+            "hydrate_job_artifacts_for_display",
+            lambda art, debug=False, astral_job_id=None: art or {},
+        )
+        monkeypatch.setattr(jobs_mod, "get_meteorite_by_astral_job_id", lambda _jid: None)
+        resp = jobs_client.get("/api/jobs/job-1872", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json()["can_skip"] is expected

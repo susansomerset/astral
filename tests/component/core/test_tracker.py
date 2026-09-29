@@ -2715,3 +2715,30 @@ class TestAst1864RunIdStamp:
         assert "run_id" not in transition
         assert "run_id" not in hop
         assert transition["batch_id"] == hop["batch_id"] == "claim-C"
+
+
+# Branches: job_state_admits_transition (AST-1872) — exact / hop sub-state / non-hop suffix /
+# not-a-prior / blank state admitted via _job_state_matches_prior; unregistered target raises.
+class TestAst1872JobStateAdmitsTransition:
+    """AST-1872: public prior-state query backing GET /api/jobs/<id> can_skip."""
+
+    @pytest.mark.parametrize(
+        "state",
+        ["RECOMMENDED", "CANDIDATE_REVIEW", cfg.BUILD_ARTIFACTS_BASE_STATE,
+         f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.draft_job_resume"],
+    )
+    def test_skip_admitted(self, state: str) -> None:
+        assert tracker_mod.job_state_admits_transition(state, "CANDIDATE_SKIPPED") is True
+
+    @pytest.mark.parametrize(
+        "state",
+        # BUILD_ARTIFACTS.resume: suffix is not a TASK_CONFIG hop key, so no base-state resolve.
+        ["CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.resume", "", None],
+    )
+    def test_skip_refused(self, state) -> None:
+        assert tracker_mod.job_state_admits_transition(state, "CANDIDATE_SKIPPED") is False
+
+    def test_unregistered_target_fails_loud(self) -> None:
+        # Config typo must surface, not silently hide Skip.
+        with pytest.raises(KeyError):
+            tracker_mod.job_state_admits_transition("RECOMMENDED", "NOT_A_JOB_STATE")
