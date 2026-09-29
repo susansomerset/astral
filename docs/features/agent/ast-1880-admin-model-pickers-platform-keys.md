@@ -423,3 +423,11 @@ stat.logging.info.api — Joan A, Radia C (api_keys-only PUT completion line)
 - Susan: optional estimate + list-row perf follow-up.
 
 context_tokens≈45000
+
+## Resolution
+
+- **fix-now:** none.
+- **discuss — `api_keys`-only PUT completion log:** took the `Default:`. `update_candidate_data` now emits one `api … completed: PUT 200` line when `api_keys` is the only thing that changed. It stays silent when an artifact save already logged completion, so there is never a second line. Commit `be239f09a`.
+- **discuss — AC 7 test-tree grep:** Betty fixed it (`0ede9b9a7`, merged as `eb81cfe3a`). No product change.
+- **discuss — Estimate, list-row decrypt:** took the `Default:` (not engineer items). Chuckles keeps 5, and the list decrypt ships as-is.
+- **Gates:** §9a dry-run merges into `origin/dev` and `origin/ftr/AST-1851-support-openrouter-api-models` are both clean. `validate-sub-log` is **blocked**: there are two `merge-tests(AST-1880)` commits on the sub (`e74930781`, `eb81cfe3a`). That is test-delivery history, so it went to Betty via `[qa-handoff]`. The ticket stays Review Posted.
