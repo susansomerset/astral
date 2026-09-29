@@ -277,21 +277,32 @@ export function jobScoreBreakdownForGradesField(
   return { earned, possible, max }
 }
 
-/** Analysis section header title with score chrome (AST-1348). */
+/** Recommended list phase score (JD/DO/GET/LIKE): one decimal, else em dash (AST-522, AST-1874). */
+export function formatPhaseScore(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value)) return value.toFixed(1)
+  return "\u2014"
+}
+
+/** Analysis section header title with score chrome (AST-1348); list score fills {score} (AST-1874). */
 export function formatPhaseSectionScoreTitle(
   phaseLabel: string,
   breakdown: { earned: number; possible: number; max: number },
   template: string,
+  score?: unknown,
 ): string {
   const e = String(Math.round(breakdown.earned))
   const p = String(Math.round(breakdown.possible))
   const m = String(Math.round(breakdown.max))
+  // No list score → drop the whole " - {score}" segment; never render an em dash here.
+  const hasScore = typeof score === "number" && Number.isFinite(score)
+  const s = hasScore ? formatPhaseScore(score) : ""
   const tpl = template.trim()
   if (!tpl) {
-    return `${phaseLabel} - score: ${e} out of ${p} possible (${m} max total)`
+    return `${phaseLabel}${hasScore ? ` - ${s}` : ""} - score: ${e} out of ${p} possible (${m} max total)`
   }
-  return tpl
+  return (hasScore ? tpl : tpl.replaceAll(" - {score}", ""))
     .replaceAll("{phase_label}", phaseLabel)
+    .replaceAll("{score}", s)
     .replaceAll("{earned}", e)
     .replaceAll("{possible}", p)
     .replaceAll("{max}", m)
