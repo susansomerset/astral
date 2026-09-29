@@ -490,3 +490,82 @@ context_tokens≈135000
 - **Build tip:** `85d426b0f` (stages: `026e1e74b` do_task catalog route + server key gate + protocol dispatch · `bf6d6887c` run_adhoc / workbench route by server · `85d426b0f` dispatcher server-key gate + meteorite key map + Estelle turn ctx)
 - **Build notes:** Built as planned, no deviations. The Stage 3 check `rg -n "candidate_api_key\b" src/core/` also matches AST-1878's `set_candidate_api_key(` / `clear_candidate_api_key(` wrapper names in `candidate.py` (the `\b` fires before `(`). Those are per-server wrappers, not the legacy single-key field; no legacy-key reads remain in `src/core/`. `contact.py` / `meteorite.py` cannot be imported locally (`asyncpg` not installed); smoke under `debug/spikes/ast-1879/` (asyncpg stubbed) confirmed: kimi agent → `send_to_llm_compat` with only the kimi key from a two-key map; claude agent → `send_to_anthropic` with the anthropic key; no-key `do_task` / `run_adhoc` → `success: False` naming the server, zero client calls; Estelle turn with no candidate → `no_candidate`, zero calls.
 - **For qa-child:** see **Tests expected to move** above (agent / dispatcher / meteorite / contact fixtures and the AC 7–10 coverage).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1879
+**Publish ref:** ea18268dd
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+Model → server catalog routing | A | |
+stat.logging.warning | A | |
+stat.logging.error | A | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+- [ ] **Acceptance criteria — AC 9 (`default_brain_setting` grep):** Optional ticket footnote that repo-wide grep clears when AST-1880 deletes `CONTACT_ESTELLE_CONFIG["default_brain_setting"]`; this child removed all `agent.py` / conversational override uses only. Engineer to confirm at UT against merged ftr, not `sub/*` alone.
+- [ ] **Deploy / UAT — agent `model_id` in live DB:** Checkbox that production/UAT `agent` (+ `agent_task` for `contact_estelle_turn`) rows were reverted from repo JSON before routed dispatch is exercised (plan **Deploy / UAT notes**).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Severity:** discuss  
+- **Location:** Linear **Acceptance criteria** AC 9 vs plan **Acceptance mapping** / AST-1880  
+- **Finding:** Ticket AC 9 quotes the full parent AC 11 bar (`agent_task.json` row, `rg default_brain_setting src/`, component turn). Seed row is #2; config key deletion is #4; #3 owns override removal and `agent.py` purge — `rg` still hits `CONTACT_ESTELLE_CONFIG` in `config.py` until #4.  
+- **Recommendation:** Optional AC footnote (Linear description already has **Notes for planning**).  
+- **Default:** Treat AC 9 grep + `agent_task` as epic/ftr pass criteria; do not reopen #3 for `config.py` deletion.
+
+- **Severity:** discuss  
+- **Location:** Plan **Transitional gaps** — `api_admin` ad-hoc / dispatch Run·Auto  
+- **Finding:** `run_adhoc_workbench_test` now requires `server_id` + `tier` + `candidate_api_keys`; legacy `api_admin` paths still pass old kwargs until #4 → `TypeError` / 500 on ad-hoc test and legacy single-key dispatch gate.  
+- **Recommendation:** None in #3; #4 rewires admin.  
+- **Default:** Document in UT checklist for ftr; no #1879 code change.
+
+- **Severity:** discuss  
+- **Location:** AST-1878 hand-off — `principal_recruiter_estelle` `max_tokens: 384000` on Kimi K2.6 Big  
+- **Finding:** #3 sends agent row `max_tokens` as-is; Kimi may reject oversized values.  
+- **Recommendation:** Operator awareness (plan deploy note).  
+- **Default:** No cap in code without @susan; adjust row via admin after #4 or DB if provider rejects.
+
+### advisory
+
+- **Severity:** advisory  
+- **Location:** Three-dot diff `origin/dev`…`sub/AST-1879`  
+- **Finding:** Includes merged #1877/#1878 product (catalog, `database`, seed) — prerequisite stack, not #1879 scope smuggling. **#1879 product-only commits** (`026e1e74b`…`85d426b0f`): `agent.py`, `dispatcher.py`, `contact.py`, `meteorite.py` only.  
+- **Recommendation:** Score routing against those four files.
+
+- **Severity:** advisory  
+- **Location:** `tests/component/**` in tip `ea18268dd` (merge-tests + Betty AC 7–10)  
+- **Finding:** sibling test carry; engineer test-tree ban respected on code commits.  
+- **Recommendation:** Note once.
+
+## What's solid
+
+- **Pattern:** `_agent_llm_route` → `resolve_model_brain`; `_candidate_server_key` uses `candidate_api_keys[server_id]` only (ctx map or `get_candidate` reload); `_missing_server_key_result` names server, no client call; `_send_to_server` branches `anthropic` vs `anthropic_compat` with explicit `api_key` (no env / cross-platform fallback).
+- **Scope files:** Conversational `CONTACT_ESTELLE_CONFIG` brain override removed; `send_to_deepseek` and legacy provider imports gone from `agent.py`; no vendor/server name literals in `agent.py`.
+- **`stat.logging.warning`:** Missing-key skips in `do_task`, dispatcher (`task_llm_server_id` gate), and contact `no_candidate` use per-item who / why / consequence lines.
+- **`stat.logging.error`:** No new provider `logger.error` in routing path; client `log_llm_batch_summary` contract unchanged; existing dispatcher/agent exception sites untouched by this diff.
+- **Stage 3:** Meteorite hand-off copies `candidate_api_keys`; Estelle turn builds `turn_ctx` with id + key map; both `do_task` calls use `ctx=turn_ctx`; no candidate → `no_candidate` before any LLM call.
+
+## Recommended actions
+
+- Chuckles: append artifact, `docs(AST-1879): Radia review — clean`, post slim upshot, **Review Posted** → datt **PROCEED** to User Testing.
+- #4: wire `api_admin` ad-hoc + dispatch gate to `resolve_model_brain` + per-server keys; delete `CONTACT_ESTELLE_CONFIG["default_brain_setting"]`.
+- Susan/UAT: repo revert `agent` / `agent_task` on target DB before exercising routed tasks in production.
+
+context_tokens≈42000
+
+[code-rubric] PROCEED (Commit: ea18268dd) core routing by catalog
