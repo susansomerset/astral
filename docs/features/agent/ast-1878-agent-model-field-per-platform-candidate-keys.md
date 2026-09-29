@@ -566,3 +566,12 @@ Model → server catalog routing | A | |
 context_tokens≈38000
 
 `[code-rubric] PROCEED (Commit: f74ca3030) data layer keys clean`
+
+## Resolution
+
+2026-09-29, resolved against Radia review `ff3b5c2c4` (CLEAN / PROCEED). No product changes.
+
+- **fix-now:** none.
+- **discuss — `api_candidate.py` still calls `clear_candidate_api_key` with one argument:** took the review's `Default:`. #4 (AST-1880) owns the admin PATCH/clear wiring that passes `server_id`, and this tip stays as it is. That file is outside #1878's Scope, and the gap is already listed under **Transitional gaps**. Susan can reverse this by asking for it here.
+- **Frame diff — parent AC 6 storage-half bullet:** not added to the Linear description. Engineers don't write AC. The storage half is implemented in Stage 2 and covered by `TestAst1878CandidateServerKeys`, and the row is left for Susan/Chuckles if she wants Linear to trace it.
+- **Advisories:** no action. The AST-1877 carry, sibling test carry, and the Estelle `max_tokens` hand-off to #3 are already recorded.
