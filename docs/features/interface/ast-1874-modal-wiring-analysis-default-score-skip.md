@@ -229,3 +229,67 @@ context_tokens≈36000
 - **Existing tests (read-only run, for Betty's `qa-child`):** related Vitest files show 90 passed and 5 failed. Three of the failures also fail on the tree before Stage 2, the same pre-existing trio AST-1873 recorded: AST-1546 Print Resume success, AST-1350 Print Resume unsupported toast, and AST-1704 breadcrumb. Two are expected revisions for AC 1, because they assume Summary opens by default: the AST-948 "Summary default" test and the AST-949 "Summary empty-state" test. `test_JobsRecommended` and `test_recommendedJobReport` pass unedited (AC 4).
 - **Canon (§8):** `config-source-of-truth` and `ui-config-driven-business-logic` hold. The default tab is manifest `topTabs[0]`, Skip visibility is the server's `can_skip`, and there is no state list in React. `dry-and-focused-functions` holds, with one formatter shared by the list and the header. Advisory: the plan's Stage 2 step 9 calls `httpListingHref(job.listing_href)` twice in the header props, once each for `jobLink` and `jobLinkText`. It's trivial and was kept as the plan wrote it.
 - **Sync note:** `sync-child.sh --ftr` wants the bare segment (`AST-1862-recommended-job-modal-changes`). Both spawn forms skipped the ftr merge: `AST-1862` has no match, and `ftr/…` becomes `ftr/ftr/…`. Each pass was re-run with the bare segment.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1874
+**Publish ref:** 8787e464fd38bf513e5b7e6f3d162ebc8f8667f1
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51 · `canon_clerk.py expand` rejects all three frozen ids (statutes under `canon/statutes/` scored directly; clerk migration gap unchanged)
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.config.config-source-of-truth | A | | |
+| astral.layers.ui-config-driven-business-logic | A | | |
+| astral.standards.dry-and-focused-functions | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan APPROVED all three at A; `4af70ecd9` / `c75622b2f` match plan Stages 1–2.
+
+## Frame diff
+
+- [ ] **Acceptance criteria 1 (config slice):** Tab order at index 0/1 remains proven on AST-1872 (`config.py` + component config tests on `ftr`); this ticket’s AC1 proof is modal + `stateUiManifestFixture` (`analysis` first) and the AST-1874 block in `test_JobAnalysisReportModal.test.tsx`.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none requiring product call) — Prerequisites (#1/#2 on `ftr`) are satisfied on this publish ref via sync/resolve history; Betty landed modal AC1/3/5/6 coverage in `81dd0c445`.
+
+### advisory
+
+- **sibling product carry (expected):** Tip-vs-dev and three-dot diffs include AST-1872/1873 work (`tracker.py`, `api_jobs.py`, `config.py`, `RecommendedJobReportHeader.tsx`, `App.css`) stacked ahead of Ada’s three files. Audit AST-1874 product with `4af70ecd9^..c75622b2f` (3 files only) or the ftr delta on those three paths (+43/−12 vs `origin/ftr/AST-1862-recommended-job-modal-changes`).
+
+- **sibling test carry:** `8787e464 merge-tests(AST-1874)` / `81dd0c445` — modal, lib, fixture, bible; branch history also carries AST-1877 test commits (`test_llm_compat.py`, `test_cost_calculator.py`, extra `test_config.py` hunks) unrelated to AST-1874 scope.
+
+- **Duplicate `httpListingHref` in header props:** `jobLink` and `jobLinkText` each call `httpListingHref(job.listing_href)` — trivial duplication, plan-explicit; optional micro-refactor in a later pass, not blocking.
+
+- **Pane routing literals:** Modal still compares `activeTopTab === "summary"` / `"analysis"` for pane bodies; AC2 forbids hard-coded **default/reset** (`useState("summary")` / `setActiveTopTab("summary")`), not tab-id routing. Greps clean.
+
+## What's solid
+
+- **Stage 1:** `formatPhaseScore` exported from `recommendedJobReport.tsx`; page local copy removed; `formatPhaseSectionScoreTitle` optional `score` with ` - {score}` drop rule matches AST-1872 template; `JobsRecommended.tsx` has no `toFixed(1)`.
+- **Stage 2:** Default/reset use `""` + existing fallback to `topTabs[0]` (manifest order); `can_skip` on `JobDetail`; score from flattened `<prefix>_score`; `handleSkip` → `postSkipJob` → refresh/close on success, error toast on failure (409 message via thrown `Error`); header wired with `jobLinkText`, conditional `onSkip`/`skipBusy`.
+- **Boundaries:** `Modal.tsx`, `CandidateJobRowActions.tsx`, `JobDetailModal.tsx`, `JobsJobDetail.tsx` unchanged tip-vs-dev; no `CANDIDATE_REVIEW` / `REVIEW_LIKE` in modal or header.
+- **Tests:** `test_recommendedJobReport` covers AC3/4; modal AST-1874 block covers Analysis default, jobId reset, `3.7` header string, `can_skip` visibility, POST/refresh/close on 200, toast + stay open on 409; fixture manifest lists `analysis` before `summary`.
+- **Integration:** `origin/dev` vs sub tip shows **no** `monitor.py` drift (AST-1877 hotfix on branch history); backend delta vs dev is AST-1872-only (`can_skip` + config tabs/template).
+
+## Recommended actions (downstream — not for Radia)
+
+1. Chuckles: append artifact to `docs/features/interface/ast-1874-modal-wiring-analysis-default-score-skip.md`, commit `docs(AST-1874): Radia review — clean`, post slim upshot, move to **Review Posted**.
+2. `merge-child` / `prep-uat`: roll sub into `ftr/AST-1862` with siblings; three-dot stat is noisy — gate rollup on scoped file deltas and green manifest, not raw three-dot file count alone.
+3. Optional: tick frame-diff AC1 split when resolving to User Testing.
+
+```
+[code-rubric] PROCEED (Commit: 8787e464) Modal wiring, shared formatter
+```
+
+context_tokens≈52000
