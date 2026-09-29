@@ -553,3 +553,21 @@ Example subject for the repro: `"[✅/Somerset] deepseek insufficient balance �
 - **Circuit breaker** still trips on 3 genuine consecutive COMPLETED zero-progress runs.
 - **Alert gate** stays AUTO-only with a ledger id; ordinary error runs still get `auto_run_error` with the full log body.
 - No new limits, caps, retries, or failover; the only new stop is "a balance refusal came back".
+
+## Joan fix-board — AST-1867
+
+Read the **Bug: AST-1867** plan-fix block on `origin/sub/AST-1860/AST-1867-provider-balance-outage` (As-is through What must still hold). Overlap skim via `canon/docs/DIRECTIVES-DIRECTORY.md` and active directives on the epic worktree (`docs/canon-index.md` absent on this ref, same resolution as prior fix-board passes).
+
+**Triage:** Ticket **Canon Scope** lists no directive ids. The change extends AST-897’s existing `failure_class` / `is_provider_balance_refusal` signal into dispatcher batch control (`ctx["provider_balance_outage"]`, same side-channel class as AST-1847’s `dispatch_partial`), roster counting (`total_held` vs `total_errors`), ledger `INTERRUPTED`, and a new `monitor.provider_balance_outage` alert. That aligns with **`stat.logging.warning`** dispatcher stops (3-line English, product next step — mirrors admin kill and circuit auto-disable) and skips the COMPLETED **`stat.logging.info.dispatcher`** task-completed line without contradicting Resolution §2 (this is not timeout `logger.exception` INTERRUPTED). **`patt.entity.batch-processing`** still claim → process → **`finally` release**; skipped entities are not double-processed. **`patt.dispatch.scheduler-loop`** / breaker unchanged in code; exclusion via non-`COMPLETED` ledger rows matches existing timeout/admin INTERRUPTED semantics. No in-force statute requires balance refusals to roll up as `total_errors` or to trip the breaker; D5 (`consult.py` pass-through gap) is scoped follow-up, not an Archie precedent call. No canon edit required before `make-fix`.
+
+BEGIN-VERDICT
+
+```
+[board-joan]  CANON: OK
+```
+
+END-VERDICT
+
+```text
+AST-1867 board-joan done — CANON: OK.
+```
