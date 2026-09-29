@@ -176,3 +176,36 @@ Each stage is one commit on the epic worktree, published to
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1872
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `sub/AST-1862/AST-1872-config-tab-order-score-template-skip-flag` @ `be7706903168f8e1d2ef1b593115393f74aa1caf`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.config.config-source-of-truth | A | | |
+| astral.state.core-decides-transitions | A | | |
+| astral.layers.ui-config-driven-business-logic | A | | |
+| astral.idioms.require-auth-on-protected-endpoints | A | | |
+
+## Traceability
+
+AC1→Stage1 (config tab order + template; modal default/tab-bar asserts N/A—#3); AC2→Stage2 (`can_skip` via `job_state_admits_transition`); AC3→Stages1–2 (no `src/data`/Modal; route count 15 unchanged).
+
+### Findings
+
+- **discuss** — Plan **Canon Scope (id-only)** · Finding: All four frozen ids exist as statute files under `canon/statutes/` but are absent from `canon_clerk.py` roster at this corpus sha (plan cites AST-1678 gap). · Recommendation: Track clerk migration so validate-plan / review-child expansion matches Discussion locks; does not block this plan’s substance.
+
+- **discuss** — Child **AC1** vs **Boundaries** · Finding: AC1 names `test_JobAnalysisReportModal` default tab and tab-bar order; this child explicitly ships no UI (#3 consumes manifest). Stage 1 only satisfies the `config.py` slice. · Recommendation: Betty `qa-child` / #3 manifest should not gate AST-1872 on modal tests; config component tests (~566–573) are the in-scope AC1 proof.
+
+- **acceptable** — Plan **Stage 1 integration note** · Finding: Merging config before #3 may show literal `{score}` in headers until formatter lands. · Recommendation: Accepted partition; documented in plan.
+
+- **acceptable** — Plan **Stage 2** · Finding: `job_state_admits_transition` reuses `_job_state_matches_prior` + `state_prior_states(JOB_STATES, to_state)` aligned with `skip_job` → `transition_job_state(..., "CANDIDATE_SKIPPED")`; `CANDIDATE_SKIPPED.prior_states` is `RECOMMENDED`, `BUILD_ARTIFACTS`, `CANDIDATE_REVIEW` on current `origin/dev` config. · Recommendation: None.
+
+context_tokens≈24000
