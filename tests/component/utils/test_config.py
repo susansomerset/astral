@@ -1194,10 +1194,10 @@ class TestAst492LlmBrainTierConfig:
         with pytest.raises(ValueError, match="No DeepSeek tier mapping"):
             cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
 
-    def test_validate_llm_provider_environment_unknown_active_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_validate_llm_provider_environment_ignores_active_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1877: startup validates the catalogs only; active_provider is no longer consulted.
         monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "other-vendor")
-        with pytest.raises(ValueError, match="Unknown LLM active_provider"):
-            cfg.validate_llm_provider_environment()
+        assert cfg.validate_llm_provider_environment() is None
 
     def test_brain_setting_for_anthropic_agent_key_inverse(self) -> None:
         assert cfg.brain_setting_for_anthropic_agent_key("claude-haiku-4-5") == cfg.BRAIN_LITTLE
@@ -1219,22 +1219,13 @@ class TestAst492LlmBrainTierConfig:
             )
         assert [r["brain_setting"] for r in rows] == list(cfg.BRAIN_SETTINGS)
 
-    def test_validate_llm_provider_environment_deepseek_requires_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "deepseek")
-        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-        with pytest.raises(KeyError):
-            cfg.validate_llm_provider_environment()
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-ds")
-        cfg.validate_llm_provider_environment()
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "anthropic")
-
-    def test_validate_llm_provider_environment_anthropic_requires_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "anthropic")
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        with pytest.raises(KeyError):
-            cfg.validate_llm_provider_environment()
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-ant")
-        cfg.validate_llm_provider_environment()
+    def test_validate_llm_provider_environment_needs_no_provider_env_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1877: no platform key comes from env, so boot passes with every provider key unset.
+        for active in ("deepseek", "anthropic"):
+            monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", active)
+            monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+            monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+            assert cfg.validate_llm_provider_environment() is None
 
 
 class TestAst702PrefilterBatchConfig:
@@ -2926,7 +2917,8 @@ class TestAst1037SimpleResumeParseConfig:
         assert simple["response_format"] == "json"
         assert simple["context_format"] == "simple_resume_parse_{index}"
         assert simple["entity_type"] is None
-        assert simple["requires_candidate_key"] is False
+        # AST-1877: every task runs on the candidate's platform key.
+        assert simple["requires_candidate_key"] is True
         assert simple["trigger_state"] is None
 
     def test_craft_resume_base_meta_unchanged(self) -> None:
@@ -3768,7 +3760,8 @@ class TestAst1072ConversationalEnvelopeConfig:
         assert entry["response_format"] == "json"
         assert entry["response_schema"]["reply"]["required"] is True
         assert entry["trigger_state"] is None
-        assert entry["requires_candidate_key"] is False
+        # AST-1877: every task runs on the candidate's platform key.
+        assert entry["requires_candidate_key"] is True
 
     def test_is_conversational_task_chat_only(self) -> None:
         assert cfg.is_conversational_task("contact_estelle_turn") is True
@@ -7074,3 +7067,116 @@ class TestAst1808RetryRegistryPurge:
             assert consult_mod._consult_batch_fail_dest(holding, err) == err, holding
         # analysis_upshot: error_state IS the retry holding → second failure is FAILED_TECHNICAL.
         assert consult_mod._consult_batch_fail_dest("PASSED_LIKE_RETRY", "PASSED_LIKE_RETRY") == "FAILED_TECHNICAL"
+
+
+class TestAst1877LlmCatalogConfig:
+    """AST-1877: LLM_SERVER_CONFIG / LLM_MODEL_CONFIG, catalog resolvers, startup catalog validation.
+
+    Branches: get_llm_server / get_llm_model hit + unknown; validate_brain_setting_for_model ok + reject;
+    get_sku_pricing single hit / server narrowing / unknown / ambiguous; resolve_model_brain;
+    validate_llm_provider_environment each raise (protocol, auth, compat base_url, unknown server,
+    empty brain sizes, off-vocabulary brain size, unpriced SKU) + clean pass.
+    """
+
+    def test_timesheet_providers_derive_from_server_ids(self) -> None:
+        assert cfg.ALLOWED_TIMESHEET_PROVIDERS == tuple(cfg.LLM_SERVER_CONFIG)
+        # Existing ledger values stay valid for database.insert_agent_timesheet callers.
+        assert {"anthropic", "deepseek"} <= set(cfg.ALLOWED_TIMESHEET_PROVIDERS)
+
+    def test_shipped_openrouter_sends_no_zdr(self) -> None:
+        # AC 9: ZDR enforcement is future scope — no provider.zdr in this release.
+        assert "provider" not in cfg.LLM_SERVER_CONFIG["openrouter"]["request_extras"]
+
+    def test_deepseek_concurrency_is_alias_of_server_block(self) -> None:
+        assert cfg.DEEPSEEK_CONCURRENCY is cfg.LLM_SERVER_CONFIG["deepseek"]["concurrency"]
+
+    def test_every_task_requires_candidate_key(self) -> None:
+        assert [k for k, v in cfg.TASK_CONFIG.items() if v.get("requires_candidate_key") is not True] == []
+        for key in ("simple_resume_parse", "select_job_page", "contact_estelle_turn"):
+            assert cfg.TASK_CONFIG[key]["requires_candidate_key"] is True
+
+    def test_get_llm_server_and_model_hit_and_unknown(self) -> None:
+        assert cfg.get_llm_server("openrouter") is cfg.LLM_SERVER_CONFIG["openrouter"]
+        assert cfg.get_llm_model("claude") is cfg.LLM_MODEL_CONFIG["claude"]
+        with pytest.raises(ValueError, match="Unknown LLM server"):
+            cfg.get_llm_server("__nope__")
+        with pytest.raises(ValueError, match="Unknown LLM model"):
+            cfg.get_llm_model("__nope__")
+
+    def test_model_brain_sizes_are_per_model_in_catalog_order(self) -> None:
+        assert cfg.model_brain_sizes("kimi-k2.6") == (cfg.BRAIN_LITTLE, cfg.BRAIN_BIG)
+        assert cfg.model_brain_sizes("claude") == (cfg.BRAIN_LITTLE, cfg.BRAIN_MEDIUM, cfg.BRAIN_BIG)
+        assert cfg.model_brain_sizes("deepseek-v4") == (cfg.BRAIN_LITTLE, cfg.BRAIN_MEDIUM, cfg.BRAIN_BIG)
+
+    def test_validate_brain_setting_for_model(self) -> None:
+        cfg.validate_brain_setting_for_model("kimi-k2.6", cfg.BRAIN_BIG)
+        with pytest.raises(ValueError, match="Invalid brain_setting 'Medium' for model 'kimi-k2.6'"):
+            cfg.validate_brain_setting_for_model("kimi-k2.6", cfg.BRAIN_MEDIUM)
+
+    def test_get_sku_pricing_hit_narrowing_unknown(self) -> None:
+        assert cfg.get_sku_pricing("kimi-k2.6") is cfg.LLM_MODEL_CONFIG["kimi-k2.6"]["pricing"]["kimi-k2.6"]
+        assert cfg.get_sku_pricing("kimi-k2.6", "kimi")["cpm_input"] == 0.95
+        with pytest.raises(ValueError, match="Unknown SKU"):
+            cfg.get_sku_pricing("kimi-k2.6", "openrouter")
+        with pytest.raises(ValueError, match="Unknown SKU"):
+            cfg.get_sku_pricing("__no_sku__")
+
+    def test_get_sku_pricing_ambiguous_raises_unless_server_given(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {"model_label": "dup", "cpm_input": 9.0, "cpm_output": 9.0, "cpm_cache_read": 0.0,
+               "cpm_cache_write": 0.0, "cache_min_tokens": 0}
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__dup__", {"server": "openrouter", "pricing": {"kimi-k2.6": row}})
+        with pytest.raises(ValueError, match="more than one server"):
+            cfg.get_sku_pricing("kimi-k2.6")
+        assert cfg.get_sku_pricing("kimi-k2.6", "openrouter") is row
+
+    def test_resolve_model_brain_shape(self) -> None:
+        out = cfg.resolve_model_brain("kimi-k2.6-openrouter", cfg.BRAIN_BIG)
+        m = cfg.LLM_MODEL_CONFIG["kimi-k2.6-openrouter"]
+        assert out == {
+            "model_id": "kimi-k2.6-openrouter",
+            "server_id": "openrouter",
+            "server": cfg.LLM_SERVER_CONFIG["openrouter"],
+            "sku": "moonshotai/kimi-k2.6",
+            "tier": m["brain_sizes"][cfg.BRAIN_BIG],
+            "pricing": m["pricing"]["moonshotai/kimi-k2.6"],
+        }
+        with pytest.raises(ValueError, match="Invalid brain_setting"):
+            cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_MEDIUM)
+
+    def test_shipped_catalog_passes_startup_validation(self) -> None:
+        assert cfg.validate_llm_provider_environment() is None
+
+    @pytest.mark.parametrize(
+        ("patch", "match"),
+        [
+            ({"protocol": "grpc"}, "protocol 'grpc' not in"),
+            ({"auth": "cookie"}, "auth 'cookie' not in"),
+            ({"protocol": "anthropic_compat", "base_url": None}, "anthropic_compat requires base_url"),
+        ],
+    )
+    def test_startup_rejects_bad_server_entry(self, monkeypatch: pytest.MonkeyPatch, patch: dict, match: str) -> None:
+        monkeypatch.setitem(cfg.LLM_SERVER_CONFIG, "__bad__", {**cfg.LLM_SERVER_CONFIG["kimi"], **patch})
+        with pytest.raises(ValueError, match=match):
+            cfg.validate_llm_provider_environment()
+
+    def test_startup_rejects_model_on_unknown_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "server": "__nope__"})
+        with pytest.raises(ValueError, match="Unknown LLM server '__nope__'"):
+            cfg.validate_llm_provider_environment()
+
+    def test_startup_rejects_model_without_brain_sizes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "brain_sizes": {}})
+        with pytest.raises(ValueError, match="'__bad__': no brain sizes"):
+            cfg.validate_llm_provider_environment()
+
+    def test_startup_rejects_off_vocabulary_brain_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        base = cfg.LLM_MODEL_CONFIG["kimi-k2.6"]
+        bad = {**base, "brain_sizes": {"Huge": base["brain_sizes"][cfg.BRAIN_BIG]}}
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", bad)
+        with pytest.raises(ValueError, match="brain size 'Huge' not in"):
+            cfg.validate_llm_provider_environment()
+
+    def test_startup_rejects_unpriced_sku(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "pricing": {}})
+        with pytest.raises(ValueError, match="SKU 'kimi-k2.6' has no pricing row"):
+            cfg.validate_llm_provider_environment()
