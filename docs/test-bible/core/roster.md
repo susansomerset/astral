@@ -1001,3 +1001,26 @@ Sibling pages: **`core/consult.md`**, **`core/agent.md`**, **`core/candidate.md`
 2. **Dispatcher half + branch lock:** **`docs/test-bible/core/dispatcher.md`** § AST-1847 · AST-1848 manifest items 1–2.
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests:docs/test-bible/core/roster.md | shasum`
+
+### AST-1867 · AST-1870 (qa-fix bug-repro — provider balance refusal counted held, not error)
+
+**Parent:** [AST-1860](https://linear.app/astralcareermatch/issue/AST-1860) (orphaned-bug mini-parent). Product: **AST-1867** (`144b8850`, not yet on ftr); test/bible delivery on gap sibling **AST-1870**. `run_company_task` select_job_page and JOBS_FOUND branches return `{**zero, "total_held": 1, "failure_class", "error"}` (`total_errors: 0`, no `_warn_company`) when `is_provider_balance_refusal(result)`; AST-897 per-entity state hold unchanged. AST-1189 call-budget `state_held` (no balance `failure_class`) keeps `total_errors: 1` (AST-1867 D1). Dispatcher half (ctx marker, skip, loop stop, INTERRUPTED + outage alert, real-chain repro): **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870.
+
+**Red / green:** red at ftr base `fbe9486e`, green with `144b8850`'s `roster.py` + `dispatcher.py` + `monitor.py` overlaid (scratch worktree, not committed). R4 is a guard — green both.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| select_job_page balance hold → `total_held: 1`, errors 0, `failure_class` + `error` carried, no `_warn_company` | `run_company_task` PJL_READY branch | **`tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting::test_select_job_page_balance_hold_counts_held_not_error`** |
+| AST-1189 call-budget hold still `total_errors: 1`, no `total_held`, JOBS_FOUND transition still blocked (select_job_page + jobs_found) | `run_company_task` | **`…::test_call_budget_hold_still_counts_error[select_job_page]`** / **`[jobs_found]`** (guard) |
+
+**Flipped (AST-897 → held contract):** `TestAst897HoldStateOnBalanceRefusal::test_run_company_task_jobs_found_balance_hold_skips_error_state` and `::test_run_company_task_jobs_found_balance_failure_class_skips_error_state` — was `total_errors == 1`; now `total_errors == 0`, `total_held == 1`, `failure_class == provider_balance_refusal`; `transition.assert_not_called()` kept. Class-level reference in **`docs/test-bible/utils/llm_external.md`** § AST-897 stays valid (no edit).
+
+**Broken / obsolete:** none beyond the two flips above.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. See **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870 manifest (includes `TestAst1867BalanceHeldCounting` + `TestAst897HoldStateOnBalanceRefusal`).
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/roster.md | shasum`
