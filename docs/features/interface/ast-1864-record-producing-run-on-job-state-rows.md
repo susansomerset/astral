@@ -139,3 +139,30 @@ Note: `docs/canon-index.md` is not present on this ref; the id was resolved dire
 ## Estimate
 
 Confirm Chuckles estimate: 2 — revise to 1 because the change is one helper plus two call sites in a single file, with no schema or API contract change.
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1864
+**Overall:** APPROVED
+**Corpus:** e1f2699fad
+**Publish ref tip:** b45705c1
+
+## Canon scores
+astral.entity.required-metadata | X | | applies_when targets `src/data/database.py`; plan only modifies `src/core/tracker.py` — column-set statute is not in mechanical territory for this diff; plan § Canon alignment still commits to no column/API change and preserves `batch_id` semantics (Radia should grade the landed diff the same way).
+
+## Traceability
+AC1→Stage 1 (`transition_job_state` + `log_batch_id`); AC2→Stage 1 (`write_job_dispatch_hop_label` + chained hop context); AC3→Stage 1 (absent `run_id` when no context; modal clickability → sibling #2 per Boundaries); AC4→Stage 1 steps 7–8 (empty `src/ui/api/` + `src/data/` diff).
+
+### Findings
+
+**acceptable** — `## Scope gate` / two-appender decision: Scope text names one “state-transition function,” but `write_job_dispatch_hop_label` is the chained per-hop appender; plan documents why both need `_stamp_run_id` and keeps all edits in `tracker.py`. Matches parent Functional scope #4 (per-hop run id).
+
+**discuss** — Child AC3 quotes “row is not clickable in the modal”; this child is backend-only. Plan correctly defers UI to AST-1853 child #2; Betty’s `qa-child` should assert key absence here and leave clickability to the frontend child (already partitioned in parent Scope).
+
+**acceptable** — Tests deferred to `qa-child` per workflow; plan cites why existing tracker tests stay green (`log_batch_id` default `None`, partial key asserts).
+
+**acceptable** — Code-facts block (dispatcher `log_batch_id`, hop ledger open/close ordering, API skip paths) matches current `agent.py` / `tracker.py` on this worktree; chained graduation and hop-failure transitions run before `log_batch_id` clear.
+
+context_tokens≈28000
