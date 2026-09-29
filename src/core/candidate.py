@@ -1500,6 +1500,22 @@ def _merge_embedded_evaluate_jd_criteria(criteria: list) -> list:
     return head + list(EMBEDDED_EVALUATE_JD_CRITERIA)
 
 
+def _merge_embedded_company_prefilter_criteria(criteria: list) -> list:
+    """Prepend EMBEDDED_COMPANY_PREFILTER_CRITERIA; embedded wins on duplicate code (AST-707 / AST-1881)."""
+    embedded_codes = {
+        str(c.get("code")).strip().upper()
+        for c in EMBEDDED_COMPANY_PREFILTER_CRITERIA
+        if isinstance(c, dict) and c.get("code")
+    }
+    tail = [
+        c
+        for c in (criteria or [])
+        if isinstance(c, dict)
+        and str(c.get("code") or "").strip().upper() not in embedded_codes
+    ]
+    return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+
+
 def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     """Active rubric criteria from rubric_vector for (candidate, owner task_key)."""
     if not candidate_id or not owner_task_key:
@@ -1507,17 +1523,7 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     rows = database.list_rubric_vectors(candidate_id, owner_task_key, current_only=True)
     criteria = _rubric_rows_to_criteria(rows)
     if owner_task_key == "prefilter_company":
-        embedded_codes = {
-            str(c.get("code")).strip().upper()
-            for c in EMBEDDED_COMPANY_PREFILTER_CRITERIA
-            if isinstance(c, dict) and c.get("code")
-        }
-        tail = [
-            c
-            for c in criteria
-            if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
-        ]
-        return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+        return _merge_embedded_company_prefilter_criteria(criteria)
     if owner_task_key in ("evaluate_jd", "evaluate_meteorite"):
         return _merge_embedded_evaluate_jd_criteria(criteria)
     return criteria
@@ -1550,6 +1556,9 @@ def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
         # meteorite JD screen, not just the regular gazer-discovered evaluate_jd.
         if owner in ("evaluate_jd", "evaluate_meteorite"):
             val = _merge_embedded_evaluate_jd_criteria(val)
+        # AST-1881: restore RC on save (prepend; embedded wins on code), like QC/GC.
+        elif owner == "prefilter_company":
+            val = _merge_embedded_company_prefilter_criteria(val)
         database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
         del artifacts[key]
 
@@ -3602,6 +3611,9 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
         # QC/GC are source-agnostic — also restore for the meteorite dealbreaker screen.
         if artifact_key in ("jobdesc_rubric", "meteorite_jobdesc_rubric"):
             criteria = _merge_embedded_evaluate_jd_criteria(criteria)
+        # AST-1881: craft_prefilter_rubric persist restores RC before sync.
+        elif artifact_key == "company_prefilter":
+            criteria = _merge_embedded_company_prefilter_criteria(criteria)
         arts = {artifact_key: criteria}
         normalize_rubric_artifacts_on_save(arts)
         apply_rubric_vectors_save(candidate_id, arts)
@@ -4004,6 +4016,12 @@ def run_candidate_artifact_generation(
                 crit = parsed_response.get("criteria")
                 if isinstance(crit, list):
                     parsed_response["criteria"] = _merge_embedded_evaluate_jd_criteria(crit)
+                    criteria_count = len(parsed_response["criteria"])
+            # AST-1881: prepend RC into craft_prefilter_rubric generate response/stash.
+            elif task_key == "craft_prefilter_rubric" and isinstance(parsed_response, dict):
+                crit = parsed_response.get("criteria")
+                if isinstance(crit, list):
+                    parsed_response["criteria"] = _merge_embedded_company_prefilter_criteria(crit)
                     criteria_count = len(parsed_response["criteria"])
             if not _stash_pending_craft_generation(
                 candidate_id, task_key, response_batch_id, parsed_response
