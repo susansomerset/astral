@@ -824,3 +824,131 @@ END-VERDICT
 ```text
 AST-1870 board-joan done — CANON: OK.
 ```
+
+## Radia review — AST-1870
+
+[code-rubric]  
+**Ticket:** AST-1870  
+**Publish ref:** `8c4d2a5d25bf74ebc6d52c710655df15d7a50445` (`origin/sub/AST-1860/AST-1870-provider-balance-outage-tests`)  
+**Diff base:** `727b386d88491bc623663c6af47021b454bdf3a6` (`origin/ftr/AST-1860-provider-balance-outage`, includes AST-1867 product @ merge)  
+**Corpus:** `docs/canon-index.md` absent on tip; Joan fix-board **CANON: OK** (test/bible only, no new statute).  
+**Overall:** CLEAN  
+
+**Status gate:** **Tests Passed** (assignee Ada). Proceed.
+
+---
+
+## Fix-specific checks
+
+### [bug-repro] — OK
+
+**Node:** `tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage::test_bug_repro_balance_refusal_one_call_interrupted_outage_alert` (first-line `[bug-repro]` in body).
+
+**Verdict:** Asserts **concrete To-be behavior**, not presence-only:
+
+| Pin | Assertion |
+|-----|-----------|
+| One provider call / no re-claim storm | `run_select_job_page_dispatch.await_count == 1`, `get_new_company_batch.call_count == 1` (vs pre-fix 3×3=9) |
+| Release skipped entities | `clear_company_batch` once with `bid-1867` |
+| Ledger contract | final `update_dispatch_ledger` kwargs: `status == "INTERRUPTED"`, `(total_processed, total_errors) == (1, 0)` |
+| Alert routing | `auto_run_error` not called; `provider_balance_outage` once with `task_key`, batch id prefix, `args[3] == {"error": REFUSAL_ERR, "held": 1}`, `candidate_id` |
+| Breaker | `_check_circuit_breaker` patched and `assert_not_called()` |
+
+Stack is real (`_dispatch_one` → loop → `_run_unified` → `consult` → `run_company_task`); only AST-1842 held return + DB/monitor edges stubbed. `provider_balance_outage` mock uses `raising=False` so pre-fix fails on **9==1**, not missing attribute — matches Betty’s red@`fbe9486e` / green@`144b8850` thread and Ada’s test-fix red→green.
+
+**D3 note (advisory, not repro defect):** chunk test stubs `consult.run_consult_task` to return top-level `failure_class` — exercises dispatcher chunk short-circuit; live `evaluate_jd` normalization may not pass `failure_class` until consult changes (AST-1867 D5). Plan names D3 intentionally as dispatcher unit coverage.
+
+### ## What must still hold — OK
+
+| Item | Check |
+|------|--------|
+| Other `TestAst897HoldStateOnBalanceRefusal` nodes | Diff touches only R1/R2 assertions; `transition.assert_not_called()` retained |
+| AST-1189 call-budget guard | **R4** `test_call_budget_hold_still_counts_error` parametrized `select_job_page` + `jobs_found`: `total_errors == 1`, `"total_held" not in out`, `transition.assert_not_called()` |
+| Ordinary errors still call every entity | **D4** `await_count == 3`, no `provider_balance_outage` in ctx |
+| `auto_run_error` path | Plan **D7** unchanged; manifest includes `TestDispatchOne::test_auto_run_error_on_auto_failures` |
+| No edits outside ticket test/bible scope (product) | `git diff … -- src/` empty |
+| `llm_external` bible | Not in diff |
+
+---
+
+## Canon scores
+
+Frozen **Canon Scope:** no directive ids (gap test ticket). Joan **CANON: OK**.
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| *(frozen list empty)* | — | — | Board CANON: OK; bible describes AST-1867 product already triaged |
+
+**Worst grade:** none → **CLEAN**.
+
+---
+
+## Column diff vs plan stage
+
+`no plan-stage per-id scores attached` — Joan `[board-joan] CANON: OK` only; plan-fix nodes R1–R4, D1–D6, M1–M4 and three bible sections match diff on tip.
+
+---
+
+## Plan fidelity (§5.4)
+
+- **Roster:** R1/R2 flipped to `total_errors==0`, `total_held==1`, `failure_class`; R3 select_job_page + no `_warn_company`; R4 D1 guard with local `PROVIDER_CALL_BUDGET` import (documented merge-tree rationale).
+- **Dispatcher:** Full `TestAst1867ProviderBalanceOutage` per plan; `_edges` avoids breaker arity drift and pre-fix missing `provider_balance_outage`.
+- **Monitor:** M1–M4 exact subject/body lines, no `list_log_entries`, error swallow paths.
+- **Bible:** `roster.md`, `dispatcher.md`, `monitor.md` gain **AST-1867 · AST-1870** sections + narrowed manifest (23 nodes per Ada).
+
+**Cross-ticket scope:** Diff also includes `a927666d` — `TestAst1864RunIdStamp` + `docs/test-bible/core/tracker.md` (**AST-1864** on `ftr/AST-1853`, not on dev). **Not** in AST-1870 Component/Technical scope; standard **`merge-tests` / `origin/tests` carry** (Susan: Chuckles owns separation). **Not fix-now** on this ticket.
+
+---
+
+## Frame diff
+
+(none)
+
+---
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling test carry:** `tests/component/core/test_tracker.py` + `docs/test-bible/core/tracker.md` (~AST-1864) ride this publish ref; exclude from AST-1870 manifest/accounting when Chuckles splits or documents carry.
+- **Pre-existing module reds:** Plan blast radius documents `TestCircuitBreaker` / `TestAutoRunErrorSubjectPrefix` / accidental D7 pass — unchanged; Ada’s 69-fail-on-full-module = `origin/dev` set.
+- **Chuckles routing:** Mini-parent **AST-1860** with live `ftr` (not Done-orphaned). **PROCEED** → **Review Posted** → clean-review shortcut → **User Testing**; rollup with AST-1867 already on `ftr` @ `727b386d`.
+
+---
+
+## What's solid
+
+- Repro pins the incident shape (multi-run loop bounded by `max_runs=3`) that would spam 402s pre-fix.
+- R4 directly guards Susan-approved D1 (balance-only held counting).
+- Bible manifest is narrowed and names `[bug-repro]` explicitly.
+- Test-only diff atop merged product — appropriate gap-child shape.
+
+---
+
+## Recommended actions
+
+Chuckles: append artifact, `docs(AST-1870): Radia review — clean`, post slim upshot, **Review Posted** → **User Testing** (clean shortcut). Keep AST-1864 carry visible in merge/rollup notes only.
+
+`context_tokens≈9500`
+
+---
+
+### Slim upshot (Chuckles → Linear `--as radia`)
+
+```
+[code-rubric] PROCEED (Commit: 8c4d2a5d) repro pins outage contract
+```
+
+#### Chuckles disposition (AST-1870)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1867's product fix is on ftr @ 727b386d, so the tests run green on ftr without a scratch overlay.
+
+origin/tests carry: Betty's merge-tests brought `a927666d` (AST-1864 TestAst1864RunIdStamp + tracker bible). AST-1864's product is on in-flight ftr/AST-1853, not dev; 3 of its 5 tests are red until AST-1853 lands. Left in place: reverting it here would make git drop those tests when AST-1853 later merges, and removing it from history would need a cherry-pick. Not part of this ticket's manifest.
