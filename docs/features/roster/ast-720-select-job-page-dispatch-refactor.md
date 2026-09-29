@@ -521,3 +521,44 @@ One file, one branch: `src/core/roster.py`, `_check_parse_results`, the `if resp
 - Legacy `TO_WATCH` `select_job_page` behavior is bit-identical.
 - `_save_company` still sets `no_jobs_message` in `company_data` and transitions to `NO_OPENINGS`.
 - No new limits, caps, retries, schema, or config.
+
+## Joan fix-board — AST-1892
+
+**Ticket context:** Orphaned bug under AST-1887. **Canon Scope on AST-1887 / AST-1892:** none cited (per plan-fix patch). **Question (F2):** Does the proposed fix conflict with or require updating any directive in force?
+
+**Plan-fix read** (`origin/sub/AST-1887/AST-1892-no-openings-job-site` → `## Bug: AST-1892`):
+
+| Section | Summary |
+|--------|---------|
+| **As-is** | Decomposed `JOBLIST_NO_JOBS` → `NO_OPENINGS` clears `companies.job_site` to `""`; `recheck_no_openings` then fails with “missing job_site”. |
+| **To-be** | Same persistence as legacy (`decomposed=False`): `_save_company` / `_job_site_for_persist` for `NO_OPENINGS` (in `_PERSIST_PAGE_OPTION_URL_STATES`). |
+| **Root cause** | AST-720 `suppress = decomposed` was applied to **all** branches; AST-673 suppression was only meant for `JOBLIST_IDENTIFIED`, not terminal `NO_OPENINGS`. |
+| **Proposed change** | Only `src/core/roster.py`, `JOBLIST_NO_JOBS` block: drop `suppress_job_site=suppress` on save; return `job_site_url`; keep `suppress` for `JOBSITE_SCRAPE_ISSUE`; inline comment; no API/schema/config changes. |
+| **Blast radius** | Decomposed `PJL_READY` + `JOBLIST_NO_JOBS` only; legacy path unchanged; AST-673 finalize path unchanged per “What must still hold”. |
+| **Scope note** | Pre-run `job_site` fallback vs `company_website` is explicitly **out of scope** (matches legacy); product decision, not widened in this patch. |
+
+**Corpus check (registry skim, not R1–R7):** `docs/canon-index.md` is not on the publish ref; used `canon/docs/DIRECTIVES-DIRECTORY.md` and grep on `canon/directives/active/` for overlap with `src/core/roster.py`, `job_site`, `NO_OPENINGS`, `suppress`, AST-673/720.
+
+**Findings:**
+
+1. **No cited canon list** — Nothing to reconcile against a frozen parent/child directive set; Joan still checks obvious roster/task overlap from the registry.
+
+2. **Persistence path stays canonical** — The fix removes an erroneous flag and uses existing `_save_company` / `_job_site_for_persist` for a terminal state. That **aligns** with the in-force entity pattern (`stat.core.entity-save` in the directory table; save stays in `core/roster`, not a new writer or `data.database` bypass). No new carve-out or exception text is required.
+
+3. **Active directives touched in blast radius do not encode the bug** — `patt.task.dispatch-retry` mentions `NO_OPENINGS` as a valid “passing” terminal state; restoring `job_site` for recheck **supports** downstream task behavior, it does not contradict retry/dispatch statutes. `patt.entity.batch-processing` and entity logging statutes (`stat.logging.info.entity`, etc.) scope `roster.py` but do not specify decomposed `suppress_job_site` for `JOBLIST_NO_JOBS`. No active directive mentions `suppress_job_site`, `JOBLIST_IDENTIFIED` suppression, or AST-673/720 IDs in the corpus.
+
+4. **“What must still hold” is product/plan contract** — Preserving `suppress_job_site=True` on `JOBLIST_IDENTIFIED`, `TRY_LINKS` / `JOBSITE_SCRAPE_ISSUE`, and legacy `TO_WATCH` is implementation discipline for this bug, not a statute amendment. F3 (`validate-plan` fix mode) is unnecessary for canon **unless** someone later encodes AST-673 branch rules in a directive (not in force today).
+
+5. **Fallback wording (AST-1887 To-be vs code)** — Plan flags a possible product widen; Joan does **not** treat that as ESCALATE here: it is bounded scope choice already documented in plan-fix, not ambiguous statute intent or new architectural precedent requiring Archie.
+
+**Conclusion:** No in-force statute or pattern needs updating; no Archie gate for canon.
+
+BEGIN-VERDICT
+[board-joan]  CANON: OK
+
+context_tokens≈4200
+END-VERDICT
+
+```text
+AST-1892 board-joan done — CANON: OK.
+```
