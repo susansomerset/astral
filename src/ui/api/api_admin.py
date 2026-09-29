@@ -36,6 +36,7 @@ from src.core.dispatcher import (
 )
 from src.core.candidate import (
     build_candidate_token_view,
+    get_candidate,
     preview_task_prompt,
     run_session_resume_parse,
 )
@@ -382,7 +383,7 @@ def _enrich_tasks(candidate_id: str) -> list:
     Resolves token counts against candidate_data, computes cache threshold status,
     and fetches timesheet averages per task version."""
     tasks = database.list_candidate_tasks()
-    candidate = database.get_candidate(candidate_id) if candidate_id else None
+    candidate = get_candidate(candidate_id) if candidate_id else None
     # AST-1014: token view merges name columns + library blobs for resolve_tokens.
     cd = build_candidate_token_view(candidate) if candidate else {}
 
@@ -1580,7 +1581,7 @@ def _resolve_adhoc(body):
     cd = {}
     candidate = None
     if candidate_id:
-        candidate = database.get_candidate(candidate_id)
+        candidate = get_candidate(candidate_id)
         if candidate:
             # AST-1014: adhoc resolve needs columns + contact.* (not raw blob only).
             cd = build_candidate_token_view(candidate)
@@ -2022,7 +2023,7 @@ def _evaluate_dispatch_empty_render(
             tk,
         )
         return {"empty_render": True, "empty_tokens": []}
-    cand = database.get_candidate(cid)
+    cand = get_candidate(cid)
     if not cand:
         logger.warning(
             "%s | dispatch empty_render task_key=%r — candidate not found; treating as empty_render",
