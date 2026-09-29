@@ -241,7 +241,7 @@ context_tokens≈24000
 
 ## Frame diff
 
-- [ ] **Acceptance criteria 1:** Proof for “Analysis first and default” is config manifest + `tests/component/utils/test_config.py` (`test_ast565_recommended_report_manifest_tabs`), not `test_JobAnalysisReportModal` (no UI on this child; #3 owns modal default/tab bar).
+- [x] **Acceptance criteria 1:** Proof for “Analysis first and default” is config manifest + `tests/component/utils/test_config.py` (`test_ast565_recommended_report_manifest_tabs`), not `test_JobAnalysisReportModal` (no UI on this child; #3 owns modal default/tab bar).
 
 ## Findings
 
@@ -283,3 +283,11 @@ context_tokens≈24000
 ```
 
 context_tokens≈58000
+
+## Resolution
+
+2026-09-29 — resolve-child against Radia review `3737a06c` (Overall CLEAN, no fix-now).
+
+- **discuss — dev drift (dispatcher/monitor/roster):** Default taken. `sync-child.sh` merged `origin/dev` into the sub (`6de3e3ca sync(dev)`); `git diff origin/dev HEAD -- src/core/dispatcher.py src/core/monitor.py src/core/roster.py` is now empty. Betty's manifest item 1 re-run on the merged tip: 35 passed. No AST-1872 product change.
+- **discuss — AC1 proof:** Default taken. AC1 ticked on config component proof (`test_ast565_recommended_report_manifest_tabs`, `TestAst1550DiscussionHopKeys`); modal default-tab / tab-bar AC1 deferred to AST-1874. Frame diff row checked above. Linear description carries no checkboxes — nothing to tick there.
+- **advisory:** clerk gap, three-dot noise, and `{score}` integration timing acknowledged; no action on this ticket.
