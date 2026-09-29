@@ -562,3 +562,87 @@ END-VERDICT
 ```text
 AST-1892 board-joan done — CANON: OK.
 ```
+
+## Radia review — AST-1892
+
+[code-rubric]
+**Ticket:** AST-1892
+**Publish ref:** `origin/sub/AST-1887/AST-1892-no-openings-job-site` @ `e21863a1ac58d6f02faa3155f0d92ce084c112c0`
+**Diff base:** `origin/ftr/AST-1887-no-openings-job-site...origin/sub/AST-1887/AST-1892-no-openings-job-site` (2 files: `src/core/roster.py` + plan-fix doc append)
+**Corpus:** (no `corpus_sha` / `docs/canon-index.md` on publish ref; Joan used registry skim — not re-scored directive-by-directive)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen Canon Scope on AST-1887 / AST-1892: **none cited** (per issue doc and plan-fix patch).
+
+| # | id | grade | effort | one-line |
+|---|-----|-------|--------|----------|
+| — | *(empty list)* | — | — | No frozen directives to score; fix uses existing `_save_company` / `_job_site_for_persist` path only. |
+
+**Notes:** No Canon Scope gap → **ESCALATE** not warranted. Joan fix-board F2 concluded no in-force statute amendment required (`[board-joan] CANON: OK`).
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **fix-board** F2 only — no `validate-plan` per-id column on this orphaned bug).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** **not applicable** — Betty’s fix-board **TESTS: REVISE** was split to sibling **AST-1894**; this diff has **zero** `tests/**` changes and no `[bug-repro]` tag on AST-1892. Repro assertion quality is intentionally out of scope for F7 here (track on AST-1894).
+
+**`## What must still hold`:** **OK**
+
+| Item | Verdict |
+|------|---------|
+| `_finalize_joblist_identified` keeps `suppress_job_site=True`, return `job_site=""` | **OK** — unchanged on tip (`git show` ~2720–2729). |
+| Decomposed TRY_LINKS-exhausted → `NO_PJL_SELECTED` with `suppress_job_site=True` | **OK** — ~2280–2316 unchanged vs ftr. |
+| Decomposed `JOBSITE_SCRAPE_ISSUE` still suppressed (`suppress_job_site=suppress`) | **OK** — branch untouched in diff. |
+| Legacy `TO_WATCH` / `decomposed=False` bit-identical | **OK** — pre-fix `suppress=False` already persisted `job_site` on `JOBLIST_NO_JOBS`; only `decomposed=True` behavior changes. |
+| `_save_company` still sets `no_jobs_message`, transitions `NO_OPENINGS` | **OK** — same args minus erroneous `suppress_job_site`. |
+| `NO_OPENINGS` persists via `_job_site_for_persist` | **OK** — default `suppress_job_site=False` → `_job_site_for_persist` for `NO_OPENINGS` ∈ `_PERSIST_PAGE_OPTION_URL_STATES`. |
+| No new limits / schema / config | **OK** — single branch edit + comment. |
+
+## Findings
+
+### fix-now
+
+None.
+
+### discuss
+
+None.
+
+### advisory
+
+- **Sibling test gap:** Component regression from plan-fix **Repro** is **not** on this publish ref; **AST-1894** owns bible/test carry. Ship product fix is consistent with fix-lane split; UAT should not assume a pinned decomposed `JOBLIST_NO_JOBS` test until AST-1894 lands.
+- **Pre-run `job_site` vs `company_website`:** Plan-fix **Decision** documents bounded scope (match legacy); not a code defect on this diff.
+- **Hedy test-fix note:** Full `test_roster.py` parity with `origin/dev` (50 pre-existing failures) accepted; targeted subset 26/26 green per spawn prompt.
+
+## What's solid
+
+- Plan fidelity: implements **Proposed change** items 1–4 exactly — drop `suppress_job_site=suppress` on `JOBLIST_NO_JOBS` save, return `job_site_url`, keep `suppress` for `JOBSITE_SCRAPE_ISSUE`, AST-1892 inline comment.
+- Blast radius matches plan: one caller path, decomposed `PJL_READY` + `JOBLIST_NO_JOBS` only.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned** AST-1887 mini-parent (own `ftr`, not feature rollup) | **Review Posted** → skip `resolve-child` / `merge-child` / `prep-uat` → merge `sub/AST-1887/AST-1892-no-openings-job-site` **straight to `origin/dev`** (finish-up-style) once Susan’s lane accepts it. |
+
+context_tokens≈9500
+
+---
+
+```
+[code-rubric] PROCEED (Commit: e21863a) Decomposed NO_OPENINGS persists job_site
+```
+
+#### Chuckles disposition (AST-1892)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1887 is an orphaned bug mini-parent with its own ftr, so AST-1892 goes through merge-child into ftr, then prep-uat and finish-up per fix-intake bug-fix. Radia's 'straight to origin/dev' line applies only to an orphaned bug whose parent is already Done, not here.
+
+Docs-acceptance on this tip: nothing is delivered to the test tree here; tests and bible land on gap sibling AST-1894.
