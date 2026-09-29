@@ -238,3 +238,33 @@ view — accepted on the parent.
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+**Ticket:** AST-1865
+**Overall:** APPROVED
+**Corpus:** e1f2699fad
+**Publish ref tip:** dff9ed63
+
+## Canon scores
+astral.standards.dry-and-focused-functions | A |
+astral.ui.frontend-file-placement | A |
+
+## Traceability
+AC4→Stages 2–3; AC5→Stages 2–3 (`onSelectRun` gate + no fetch when `runId` null); AC6→Stage 3 `entryRunId`; AC7→Stage 1; AC8→Stage 1 (verbatim move); AC9→Stage 3 step 3; AC10→Files Changed (no `src/ui/api/` / `src/data/`).
+
+### Findings
+
+**acceptable** — Stage 1 “cut verbatim” move of `LogEntry` + `LogViewer` from `AdminPerformanceMonitor.tsx` (lines 29–36, 435–504) into `components/BatchLogViewer.tsx` is the right unit of DRY for AC7; page keeps fetch/cache/filter, shared component owns markup only.
+
+**acceptable** — `BatchExecutionModal` log fetch duplicates the page’s `/logs` call pattern without sharing a helper; plan documents why (page `logCache` unchanged, one-shot open per run). Not the AC7 defect class (table markup duplication).
+
+**discuss** — AC4–AC6 component tests are explicitly Betty (`qa-child`); build stages only run existing vitest files. Fine for workflow; Radia should expect new assertions in `test_JobDetailModal.test.tsx` / timeline tests on the landed branch.
+
+**acceptable** — Admin gate in `JobDetailModal` (`onSelectRun` only when `isAdmin`), `StateTimeline` auth-agnostic, `CompanyDetailModal` untouched — matches Scope and parent AC9 by construction.
+
+**acceptable** — `BatchExecutionModal` as fragment sibling of job `Modal` (not nested) addresses `Modal` body `onInput` dirty auto-detect vs stacked run view; `stacked` + `showFooter={false}` align with existing modal precedents.
+
+**acceptable** — `run_id || batch_id` fallback and pre-AST-1864 chained rows possibly opening empty run views are called out per parent forward-only decision; in scope for this child.
+
+context_tokens≈42000
