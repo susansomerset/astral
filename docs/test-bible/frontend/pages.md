@@ -3126,3 +3126,14 @@ All three fail on the pre-AST-1830 page and pass with it (checked at QA). **Brok
 Primary numbered manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1830.
 
 **AST-1874 (pointer):** `JobsRecommended` imports `formatPhaseScore` from `lib/recommendedJobReport` (list cells unchanged); row-click and `JobsJobDetail` deeplink tests now expect the report to open on **Analysis**. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1874.
+
+### AST-1880 · AST-1851 (admin pickers + per-server keys)
+
+| Page | Tests |
+| --- | --- |
+| `AdminAgentPrompts.tsx`: Model select, then that model's own sizes (from `/agents/models` `order`). A model change keeps the size if offered, otherwise uses the first size plus its defaults. Model column label; POST/PUT carry `model_id` + `brain_setting` | `test_AdminAgentPrompts.test.tsx`: fixtures moved to the keyed catalog (`brain_settings` mocks removed); new **AST-1880: Add picks a model…**, **AST-1880: Edit shows the agent's model + size…** |
+| `AdminManageCandidates.tsx`: one key field per `api_keys` server (label, set/not set, Show, Clear only when set, per-server confirm). PUT sends only the changed servers (`""` = clear). The column lists the set labels | `test_AdminManageCandidates.test.tsx`: main CRUD test drives the DeepSeek type + Show and the Kimi Clear → `api_keys: {kimi: "", deepseek: "sk-ds-new"}`; new **AST-1880: no keys set…** (no Clear, Save omits `api_keys`); **AST-1880: API Key column lists the labels…** is **red: product bug** (renderer still tests `val === "Set"`) |
+| `AdminScheduledActions.tsx`: Invalid tooltip prefers `invalid_reason`, else tokens, else "Could not validate prompts" | `test_AdminScheduledActions.test.tsx` › AST-1819 describe: new **AST-1880: missing platform key reason wins…**, **AST-1880: empty invalid_reason falls back to tokens** |
+| `AdminSessionResumePaste.tsx`: Parse needs a selected candidate (disabled with a title otherwise); POST body `{resume_text, candidate_id}` | `test_AdminSessionResumePaste.test.tsx`: `mockApis` serves a candidate list; Parse-success test asserts the exact body; new **AST-1880: no selected candidate keeps Parse disabled…** |
+
+Manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1880.

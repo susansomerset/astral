@@ -2,6 +2,8 @@
 
 **Test module:** `tests/component/external/test_anthropic.py`
 
+> **AST-1880:** `src/external/deepseek.py` and `tests/component/external/test_deepseek.py` are deleted. DeepSeek goes through `llm_compat` (see [`llm_compat.md`](llm_compat.md)). Manifests below that cite `test_deepseek.py` are frozen historical records: drop those nodes when re-running.
+
 ## Coverage map
 
 | Source | Test file | Branch lock |

@@ -170,7 +170,7 @@ class TestFormatLogBody:
         assert "```json" in lines[1]
 
 
-# Branches: subject names provider; short body (no log dump); Held line only when held > 0;
+# Branches: subject names the task's own server label (AST-1880); short body (no log dump); Held line only when held > 0;
 # send_email False logged; unexpected exception swallowed.
 class TestAst1867ProviderBalanceOutage:
     """AST-1867 / AST-1870: one short alert per AUTO run stopped by a provider balance refusal."""
@@ -181,7 +181,8 @@ class TestAst1867ProviderBalanceOutage:
     @staticmethod
     def _stub(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
         # direct patches keep the subject independent of host env / candidate DB
-        monkeypatch.setattr(monitor_mod, "get_active_llm_provider", lambda: "deepseek", raising=False)
+        # AST-1880: provider label comes from the refused task's agent server, not a global setting
+        monkeypatch.setattr(monitor_mod, "task_llm_server_id", lambda task_key: "deepseek")
         monkeypatch.setattr(monitor_mod, "get_deploy_label", lambda: "local")
         monkeypatch.setattr(monitor_mod, "_resolve_candidate_last_name", lambda cid: "Somerset")
         return _stub_alert(monkeypatch)
@@ -196,9 +197,9 @@ class TestAst1867ProviderBalanceOutage:
         )
 
         kw = send.call_args.kwargs
-        assert kw["subject"] == "[local/Somerset] deepseek insufficient balance — select_job_page stopped | b-1"
+        assert kw["subject"] == "[local/Somerset] DeepSeek insufficient balance — select_job_page stopped | b-1"
         assert kw["body"].splitlines() == [
-            "Provider: deepseek",
+            "Provider: DeepSeek",
             f"Refusal: {self._REFUSAL_ERR}",
             "Task: select_job_page   Batch: b-1",
             "Processed: 1  Passed: 0  Failed: 0  Errors: 0",
@@ -208,6 +209,19 @@ class TestAst1867ProviderBalanceOutage:
         assert kw["to"] == monitor_mod.ASTRAL_CONFIG["support_email"]
         # no batch log dump
         list_logs.assert_not_called()
+
+    def test_provider_label_resolved_from_refused_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        send = self._stub(monkeypatch)
+        seen: List[str] = []
+        monkeypatch.setattr(monitor_mod, "task_llm_server_id", lambda task_key: seen.append(task_key) or "openrouter")
+
+        monitor_mod.provider_balance_outage(
+            "evaluate_jd", "b-5", dict(self._ACC), {"error": self._REFUSAL_ERR, "held": 0}, "cand-1",
+        )
+
+        assert seen == ["evaluate_jd"]
+        assert " OpenRouter insufficient balance — evaluate_jd stopped" in send.call_args.kwargs["subject"]
+        assert send.call_args.kwargs["body"].splitlines()[0] == "Provider: OpenRouter"
 
     def test_held_line_omitted_when_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
         send = self._stub(monkeypatch)
@@ -227,10 +241,10 @@ class TestAst1867ProviderBalanceOutage:
     def test_swallows_unexpected_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
         send = self._stub(monkeypatch)
 
-        def _boom() -> str:
-            raise ValueError("no provider")
+        def _boom(task_key: str) -> str:
+            raise ValueError("no agent")
 
-        monkeypatch.setattr(monitor_mod, "get_active_llm_provider", _boom, raising=False)
+        monkeypatch.setattr(monitor_mod, "task_llm_server_id", _boom)
 
         monitor_mod.provider_balance_outage("task", "b-4", dict(self._ACC), {"error": self._REFUSAL_ERR, "held": 1})
 

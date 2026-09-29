@@ -960,3 +960,89 @@ Admin **`create_dtask`** (POST **`/api/admin/dispatch_tasks`**) persists **`max_
 | Create **`max_runs`** follow-up | `src/ui/api/api_admin.py` (**`create_dtask`**) | `tests/component/ui/api/test_api_admin.py::TestAst1831CreateMaxRuns` (**`test_create_persists_max_runs`** 0 / 5 / `"3"`; **`test_create_without_max_runs_skips_follow_up`** absent / null) |
 
 **Repro:** `test_create_persists_max_runs` red on pre-fix tip (`update_dispatch_task` not called). **Branch lock:** `api_admin.py` (`LOCKED_AT_100`) — both arms of the new `max_runs` guard covered.
+
+---
+
+### AST-1880 · AST-1851 (admin model pickers + per-server platform keys)
+
+The admin API and screens drop the global provider. **Manage Agents** gets `GET /agents/models`: a model → own-brain-size catalog, with an `order` index because jsonify sorts keys. `/agents/brain_settings` and `_agent_admin_view` are gone. Create requires `agent_id` + `model_id` + `brain_setting`; update takes `content` / `model_id` / `brain_setting` / `temperature` / `max_tokens`. A data-layer `ValueError` (for example Kimi + Medium) returns 400 and leaves the row unchanged. `_resolve_adhoc` / `_enrich_tasks` route by `resolve_model_brain`. Ad hoc: an unroutable agent → 400, and core gets `server_id` / `tier` / `candidate_api_keys`. Task manager: the row stays blank and a warning is logged. The dispatch key gate names the task agent's server label, and agentless tasks need no key. `list_dtasks` marks a missing key as Invalid with `invalid_reason` and forces AUTO off; Run returns 400 without starting. Session paste forwards `candidate_id`. `config.py` / `cost_calculator.py` lose the DeepSeek-only symbols, and `src/external/deepseek.py` is deleted. Pointers: [`api_candidate.md`](api_candidate.md), [`../../utils/config.md`](../../utils/config.md), [`../../utils/cost_calculator_deepseek.md`](../../utils/cost_calculator_deepseek.md), [`../../core/monitor.md`](../../core/monitor.md), [`../../data/database/timesheets.md`](../../data/database/timesheets.md), [`../../frontend/pages.md`](../../frontend/pages.md).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC 3: `/agents/models` exact shape per catalog model (label, server id/label, own sizes + defaults, `order`); Kimi Little/Big, Claude + DeepSeek Little/Medium/Big | `list_models` | `test_api_admin.py::TestAdminConfigAndAgents::test_list_models_is_per_model_brain_size_catalog` |
+| Retired: `/agents/brain_settings` now falls through to `GET /agents/<id>` → 404; `list_brain_settings` / `_agent_admin_view` absent | `api_admin.py` | `…::test_brain_settings_route_and_admin_view_retired` |
+| List / get pass through the data-layer row (no admin inference) | `list_agents`, `get_agent` | `…::test_list_agents_and_ids`, `…::test_get_agent_missing_and_found` |
+| Create requires id + model + size (six shapes including legacy `model_code`); 409; stripped kwargs to `save_agent`; `ValueError` → 400 | `create_agent` | `…::test_create_agent_requires_id_model_and_brain`, `…::test_create_agent_conflict_success_and_data_layer_rejection` |
+| Update key allowlist + strip; legacy `model_code` alone → 400; `ValueError` → 400 | `update_agent` | `…::test_update_agent_fields_strip_and_errors` |
+| AC 3 against real sqlite: Kimi + Medium on PUT and POST → 400, row unchanged / not created; Claude Medium accepted | `create_agent` / `update_agent` → `database` | `…::test_kimi_medium_rejected_on_create_and_update_row_unchanged` |
+| Delete paths (unchanged, split out of the old CRUD test) | `delete_agent` | `…::test_delete_agent_paths` |
+| Task manager SKU + cache threshold from the agent's model + size; unroutable agent (size not offered / unknown model / no model) → blank row + warning | `_enrich_tasks` | `TestEnrichTasks` (revised `test_enrich_tasks_covers_agent_and_cache_branches`; new `test_enrich_tasks_uses_catalog_pricing_for_agent_model`, `test_enrich_tasks_unroutable_agent_leaves_row_blank_and_warns`) |
+| Ad hoc resolve: catalog SKU / server / tier / defaults; agent overrides incl. 0; unroutable → 400; whole key map handed to core | `_resolve_adhoc` | `TestAst1880ResolveAdhocCatalogRoute` (replaces `TestAst492ResolveAdhocApiAdmin`), `TestAdhocHelpers::test_adhoc_entities_and_resolve`, `TestApiAdminBranchGaps::test_resolve_adhoc_candidate_and_preview_errors` |
+| Ad hoc test route forwards `model_code` / `server_id` / `tier` / temperature / max_tokens / `candidate_api_keys`; no `api_key_override` / `tier_meta` | `adhoc_test` | `TestAst1880ResolveAdhocCatalogRoute::test_adhoc_test_forwards_route_and_key_map_to_core` |
+| Key gate: exact messages (no candidate / not found / `Set this candidate's <label> API key …`), key present → None; agentless task → None | `_candidate_dispatch_api_key_error` | `TestBackfillAndCandidateKey::test_candidate_dispatch_api_key_error`, `…::test_candidate_dispatch_api_key_error_agentless_task_needs_no_key` |
+| AC 5: missing key → row Invalid + `invalid_reason` + AUTO forced off (warning carries the reason); Run 400 `started: false`, `run_task` not called; `invalid_reason` is `""` when the key is present | `list_dtasks`, `run_dtask` | `TestAst1780EmptyRenderListGatesForceOff` (new `test_list_missing_platform_key_is_invalid_with_reason_and_forces_auto_off`, `test_run_missing_platform_key_400_never_starts`; the two list tests assert `invalid_reason`) |
+| AC 8 (route half): `candidate_id` stripped and forwarded, `""` when absent | `session_resume_parse` | `TestAst986SessionResumeParseApi` (4 revised) |
+| Revised: stubs follow the two-arg key gate `(candidate_id, task_key)` and the new resolve payload (`server_id`, `tier`, `candidate_api_keys`) | `api_admin.py` routes | `TestDispatchTasks` create / update / scheduler, `TestApiAdminBranchGaps` auto_mode + adhoc_test nodes, `TestAst1394…`, `TestAst1411…`, `TestAst1780…`, `TestAst1791…`, `TestAdhocRoutes`, plus other create-dispatch stubs |
+| Retired | — | `test_list_models`, `test_list_brain_settings`, `test_agent_admin_view_branches_strip_and_infer_legacy`, `test_create_agent_validation_and_success` (split into the create / update / delete nodes above), `test_enrich_tasks_uses_deepseek_pricing_when_active_provider_deepseek`, `test_enrich_tasks_unknown_llm_provider_skips_tier_catalog_lookups`, `TestAst492ResolveAdhocApiAdmin` (3) |
+| Conftest | `tests/component/core/conftest.py`, `tests/component/ui/conftest.py` | Autouse `_core_default_anthropic_llm_provider` / `_ui_default_anthropic_llm_provider` removed: they patched the deleted `get_active_llm_provider`, which broke ~2800 tests at setup |
+| Scope deletion | `src/external/deepseek.py` | `tests/component/external/test_deepseek.py` + `docs/test-bible/external/deepseek.md` removed |
+
+**Product bug returned to the engineer:** `AdminManageCandidates.tsx` `api_key_status` now holds the joined labels (plan Stage 4), but the column renderer still tests `val === "Set"`. Every candidate therefore shows `⚠️ Not set`, even with keys stored. Red test: `test_AdminManageCandidates.test.tsx` › **AST-1880: API Key column lists the labels of servers with a key set**.
+
+**Pre-existing reds outside the manifest** (same on the base tip): `test_api_admin.py` (5: `TestDispatchTasks::test_list_dispatch_tasks_and_keys`, `TestApiAdminBranchGaps::test_dispatch_task_keys_db_row_adds_orphan_key`, `TestAst781…`, `TestAst783…::test_repo_json_revert_invalid_table_key`, `TestAst1214…::test_mailbox_trigger_null_only_and_unsupported_craft_wording`). In `test_api_candidate.py`: `test_list_candidates_and_states` (stale `PROSPECT` assert), and `test_update_merges_data_and_state` (renamed from `…_and_api_key`; `joblist_rubric` artifact → data-layer 400).
+
+**Branch lock:** no AST-1880-changed line or branch of `api_admin.py` / `api_candidate.py` is missing under `test_api_admin.py` + `test_api_candidate.py`. `monitor.py` and `cost_calculator.py` are at 100%.
+
+**Integration:** none.
+
+## QA test manifest (AST-1880)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_cost_calculator_deepseek.py \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/data/database/test_timesheets.py::TestBackfillDeepseekAgentTimesheetCosts \
+  tests/component/core/test_monitor.py::TestAst1867ProviderBalanceOutage \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/utils/test_config.py::TestAst1391DeepseekBigMaxTokensFloor \
+  tests/component/utils/test_config.py::TestAst1072ConversationalEnvelopeConfig \
+  tests/component/utils/test_config.py::TestAst1073ContactEstelleTurnConfig \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/ui/api/test_api_candidate.py::TestSanitizeCandidate \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_non_admin_cannot_create_delete_or_override_state \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_list_rows_carry_per_server_key_flags_only \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_get_returns_sanitized_candidate \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_sets_and_clears_api_keys_per_server \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_malformed_api_keys \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_put_two_server_keys_stores_ciphertext_and_get_shows_flags_only \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents \
+  tests/component/ui/api/test_api_admin.py::TestEnrichTasks \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers \
+  tests/component/ui/api/test_api_admin.py::TestAst1880ResolveAdhocCatalogRoute \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes \
+  tests/component/ui/api/test_api_admin.py::TestBackfillAndCandidateKey \
+  tests/component/ui/api/test_api_admin.py::TestAst986SessionResumeParseApi \
+  tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText \
+  tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment \
+  tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff \
+  tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_resolve_adhoc_candidate_and_preview_errors \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_adhoc_test_decodes_encoded_payload \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_adhoc_test_hydrates_encoded_payload_with_entities \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_adhoc_test_skips_decode_without_response_text \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_score_floor_and_auto_mode_error \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_create_dispatch_task_paths \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_update_dispatch_task_paths \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls
+
+# Vitest (narrow): the four changed pages
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
+```
+
+**Pass criterion:** narrowed pytest green (145) plus narrowed Vitest green. This is not the zero-arg harness. Vitest has exactly **one** red on the publish tip: the ManageCandidates API Key column test (the product bug above), which turns green when the renderer shows the labels. The full `tests/component` baseline diff against the pre-AST-1880 product tip shows zero new failures, apart from the renamed pre-existing `test_update_merges_data_and_state` and one timing flake (`test_intake.py::…::test_background_initiate_failure_writes_assistant_error`, green 3/3 alone and 2/2 as a file).
