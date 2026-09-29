@@ -483,3 +483,10 @@ stat.logging.error | A | | Broken agent config raises; dispatcher crash path unc
 context_tokens≈135000
 
 [plan-rubric] PROCEED (Commit: 5c361de46) Core routing plan clean
+
+## Review
+
+- **Branch:** `origin/sub/AST-1851/AST-1879-route-calls-by-model-server`
+- **Build tip:** `85d426b0f` (stages: `026e1e74b` do_task catalog route + server key gate + protocol dispatch · `bf6d6887c` run_adhoc / workbench route by server · `85d426b0f` dispatcher server-key gate + meteorite key map + Estelle turn ctx)
+- **Build notes:** Built as planned, no deviations. The Stage 3 check `rg -n "candidate_api_key\b" src/core/` also matches AST-1878's `set_candidate_api_key(` / `clear_candidate_api_key(` wrapper names in `candidate.py` (the `\b` fires before `(`). Those are per-server wrappers, not the legacy single-key field; no legacy-key reads remain in `src/core/`. `contact.py` / `meteorite.py` cannot be imported locally (`asyncpg` not installed); smoke under `debug/spikes/ast-1879/` (asyncpg stubbed) confirmed: kimi agent → `send_to_llm_compat` with only the kimi key from a two-key map; claude agent → `send_to_anthropic` with the anthropic key; no-key `do_task` / `run_adhoc` → `success: False` naming the server, zero client calls; Estelle turn with no candidate → `no_candidate`, zero calls.
+- **For qa-child:** see **Tests expected to move** above (agent / dispatcher / meteorite / contact fixtures and the AC 7–10 coverage).
