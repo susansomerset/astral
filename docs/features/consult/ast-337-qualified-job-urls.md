@@ -404,3 +404,9 @@ Canon: AST-1895 lists no Canon Scope, so there are no ids to resolve.
 - The bug-repro cases fail on `origin/dev` and pass on the tip (AC1).
 - `test_fails_short_title_and_relative_link` and every other existing test stay unchanged.
 - AST-1893's invariants hold: the same fail/retry destination, one `_log_fail_dest` line per job, and a `_run_batch_consult` signature and return shape that don't change.
+
+### Joan fix-board (AST-1895)
+
+`[board-joan]  CANON: OK`
+
+AST-1895's plan-fix patch is qa-fix scope only — new `TestAst1895InvalidJobLinkError` in `test_consult.py` and a bible block in `docs/test-bible/core/consult.md`. No `src/` edits (AC2). The bug-repro assertions pin behavior that already matches in-force logging statutes (`stat.logging.warning` / consult `_log_fail_dest` who→dest [why], `stat.logging.debug` / `log_debug` via `_with_log_debug` on `_run_batch_consult`) once AST-1893's product fix is on the tree; they do not introduce a new product rule or contradict `patt.entity.batch-processing` / dispatch-retry routing. No Canon Scope ids on AST-1895; nothing in the roster calls for a statute or pattern amendment to land test+bible coverage.
