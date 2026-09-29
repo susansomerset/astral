@@ -452,3 +452,72 @@ No unresolved conflicts.
 **Discuss (deferred):** mixed raw/normalized keys in `possible_joblist_links` ledger append, missing `PREFILTER_PASSED_RETRY → NO_JOBLIST` transition, and dispatch-error `error_state` transition — no decomposed-path regression today; revisit if monolith/retry combo needs them.
 
 **Publish ref:** `origin/sub/AST-716/select-job-page-dispatch-refactor`
+
+---
+
+## Bug: AST-1892 — persist job_site on decomposed JOBLIST_NO_JOBS → NO_OPENINGS
+
+**Parent:** AST-1887 (orphaned Bug mini-parent). **Publish ref:** `origin/sub/AST-1887/AST-1892-no-openings-job-site`. **Canon Scope:** none cited on AST-1887 / AST-1892.
+
+### As-is
+
+A `PJL_READY` company whose decomposed `select_job_page` hop returns `JOBLIST_NO_JOBS` transitions to `NO_OPENINGS` with `companies.job_site` written as `""`. Any existing value is wiped, and the selected list-page URL is never stored. From then on, `process_recheck_no_openings` returns `{"success": False, "message": "missing job_site"}` on every run, and the company stays stuck in `NO_OPENINGS`.
+
+### To-be
+
+The decomposed `JOBLIST_NO_JOBS` → `NO_OPENINGS` transition persists `job_site` exactly as the legacy (`decomposed=False`) path does: `_save_company` → `_job_site_for_persist` writes `job_site_url`, because `NO_OPENINGS` ∈ `_PERSIST_PAGE_OPTION_URL_STATES`. The return dict's `job_site` equals that same `job_site_url`. `recheck_no_openings` then has a URL to load on its 24h cadence.
+
+### Repro
+
+Fixture (component level, no DB), mirroring `TestAst1842SelectJobPageTimeoutHold`:
+
+```python
+monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={
+    "success": True,
+    "parsed_response": {"response_type": "JOBLIST_NO_JOBS", "selected_page": 1, "no_jobs_message": "No openings"},
+}))
+monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"short_name": "acme", "state": "PJL_READY", "job_site": "https://old/jobs"}))
+update = MagicMock(); monkeypatch.setattr(roster_mod, "update_company", update)
+monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+out = await roster_mod._find_job_page_from_assembled(
+    short_name="acme", company_website="https://cw", assembled_content="asm",
+    page_url_map={1: "https://jobs"}, page_dom_map={}, visible_map={1: ""},
+    nav_links="", browser_context=None, debug=False, ctx=None,
+    chain_parse=False, decomposed=True,
+)
+```
+
+Today: `update_company` is called with `job_site=""`, and `out["job_site"] == ""`. Expected: `job_site="https://jobs"` in both places.
+
+### Root cause
+
+`74ae56276 code(AST-720)` added `decomposed` to `_check_parse_results` (`src/core/roster.py`) as `suppress = decomposed`, and applied it to **every** branch, including `JOBLIST_NO_JOBS`: `_save_company(..., suppress_job_site=suppress)`, which returns `"job_site": "" if suppress else job_site_url`. `_save_company` with `suppress_job_site=True` hard-writes `job_site_to_write = ""` and never consults `_job_site_for_persist`. Stage 3 of this plan said `JOBLIST_NO_JOBS` stays "unchanged". The AST-673 suppression was meant only for `JOBLIST_IDENTIFIED`, where the AST-721 parse sibling writes `job_site` later. `NO_OPENINGS` is terminal, and no later hop writes the column.
+
+### Proposed change
+
+One file, one branch: `src/core/roster.py`, `_check_parse_results`, the `if response_type == "JOBLIST_NO_JOBS":` block only.
+
+1. In the `_save_company(...)` call for `state="NO_OPENINGS"`, **remove** the `suppress_job_site=suppress` argument. The call becomes `_save_company(short_name=..., company_website=..., state="NO_OPENINGS", page_option_url=job_site_url, raw_response=result, no_jobs_message=no_jobs_msg)`. `_save_company` then defaults to `suppress_job_site=False` and writes `_job_site_for_persist(terminal_state="NO_OPENINGS", page_option_url=job_site_url, ...)`, which returns `job_site_url.strip()`.
+2. In that branch's return dict, replace `"job_site": "" if suppress else job_site_url` with `"job_site": job_site_url`.
+3. Leave `suppress = decomposed` in place. The `JOBSITE_SCRAPE_ISSUE` branch still uses it, and that branch is out of scope. Add a short inline comment on the `JOBLIST_NO_JOBS` save explaining why it's not suppressed: `NO_OPENINGS` is terminal, `recheck_no_openings` needs `job_site`, and AST-673 suppression applies only to `JOBLIST_IDENTIFIED`.
+4. No change to `_save_company`, `_job_site_for_persist`, `_PERSIST_PAGE_OPTION_URL_STATES`, config, schema, `_find_job_page_from_assembled`, or `run_select_job_page_dispatch`.
+
+⚠️ **Decision (fallback value):** AST-1887's To-be says the fallback is "the pre-run value". In the code, `_find_job_page_from_assembled` computes `job_site_url = page_url_map.get(selected_page, company_website)`, and `_job_site_for_persist` returns `page_option_url` as-is for persist-set states. So when `selected_page` is missing or unmapped, both paths persist `company_website`, not the pre-run `job_site`. This fix matches the **legacy path exactly**, which is what the ticket's Technical scope asks for, and does not add a pre-run fallback. Doing that would mean changing `_find_job_page_from_assembled` or `_job_site_for_persist`, which is outside the declared scope and would also change legacy behavior. Susan or fix-board can widen scope if a pre-run fallback is wanted.
+
+### Blast radius
+
+- `_check_parse_results` has one caller: `_find_job_page_from_assembled` (~line 2364). The legacy `decomposed=False` path (AST-535 `TO_WATCH`) already took the non-suppressed branch, so it is bit-identical.
+- Decomposed callers: only `run_select_job_page_dispatch` (`PJL_READY`). The behavior change is limited to `PJL_READY` + `JOBLIST_NO_JOBS`.
+- Downstream: `process_recheck_no_openings` now receives a non-empty `job_site` for these rows (the intended consumer, AST-463). `run_company_task`'s `terminal_ok` set already includes `NO_OPENINGS`, so counts are unchanged.
+- Tests: `tests/component/core/test_roster.py` has no assertion that pins decomposed `JOBLIST_NO_JOBS` to `job_site=""`. `grep suppress_job_site` finds zero hits in tests. The existing tests that stub `_check_parse_results` (e.g. the AST-674 batch-id test) are unaffected. Betty owns the new regression test (Repro above).
+- Already-stuck `NO_OPENINGS` rows with an empty `job_site` are not repaired. Backfill is out of scope.
+
+### What must still hold
+
+- AST-673 / AST-720: `_finalize_joblist_identified` keeps `suppress_job_site=True` (no `job_site` column write on `JOBLIST_IDENTIFIED`, return `job_site=""`).
+- The decomposed `TRY_LINKS`-exhausted exits (`suppress_job_site=True` → `NO_PJL_SELECTED`) are unchanged.
+- The decomposed `JOBSITE_SCRAPE_ISSUE` branch is unchanged (still suppressed). It's out of scope unless Susan widens it.
+- Legacy `TO_WATCH` `select_job_page` behavior is bit-identical.
+- `_save_company` still sets `no_jobs_message` in `company_data` and transitions to `NO_OPENINGS`.
+- No new limits, caps, retries, schema, or config.
