@@ -608,3 +608,50 @@ Roster tally nodes: **`docs/test-bible/core/roster.md`** § AST-1847 · AST-1848
 2. **Branch lock:** full `tests/component` with `--cov-branch` (`--continue-on-collection-errors` on this host) — 0 missing lines / branches on AST-1847's added lines in `src/core/dispatcher.py`; whole-file % no lower than base.
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1845/AST-1848-parse-job-list-timeout-partial-counts-tests:docs/test-bible/core/dispatcher.md | shasum`
+
+---
+
+### AST-1867 · AST-1870 (qa-fix bug-repro — provider balance refusal as one batch-level outage)
+
+**Parent:** [AST-1860](https://linear.app/astralcareermatch/issue/AST-1860) (orphaned-bug mini-parent). Product: **AST-1867** (`144b8850` on `origin/sub/AST-1860/AST-1867-provider-balance-outage`, not yet on ftr); test/bible delivery on gap sibling **AST-1870** (`origin/sub/AST-1860/AST-1870-provider-balance-outage-tests`). Contract: the first result satisfying `is_provider_balance_refusal` sets `ctx["provider_balance_outage"] = {"error", "held"}` (one WARNING; later refusals only add `total_held`); `_run_unified` per-entity `_one` and chunk `_consult_chunk` return `_SUMMARY_ZERO` once it is set (no provider call, not processed; `finally` still releases the claim); `_run_dispatch_loop` breaks after the outage run's mid-run ledger write; `_dispatch_one_body` ends the run **INTERRUPTED**, sends `monitor.provider_balance_outage` **instead of** `auto_run_error` (AUTO + ledger id only), and never reaches `_check_circuit_breaker` (COMPLETED-only; non-COMPLETED rows are also invisible to `get_recent_ledger_summaries`). `total_held` / `failure_class` never enter the summary (ledger-safe). Ordinary errors never set the ctx key.
+
+**Sequencing deviation (gap child, AST-1848 precedent):** product landed first. `[bug-repro]` proven both ways — **RED at ftr base `fbe9486e`** on assertions (`assert 9 == 1` on `run_select_job_page_dispatch.await_count`: 3 companies × 3 runs) and **GREEN with `144b8850`'s `roster.py` + `dispatcher.py` + `monitor.py` overlaid** (scratch worktree, not committed).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Real dispatch → consult → `run_company_task` select_job_page balance hold: 1 provider call, 1 claim, INTERRUPTED `1/…/0` errors, outage alert `(task_key, batch, acc, {"error", "held": 1}, cid)`, no `auto_run_error`, no breaker | `_dispatch_one_body` / `_run_dispatch_loop` / `_run_unified` + `roster.run_company_task` | **`tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage::test_bug_repro_balance_refusal_one_call_interrupted_outage_alert`** (**bug-repro**) |
+| Per-entity skip after refusal; summary has no `total_held` / `failure_class`; ctx marker `held=1`; claim released | `_run_unified` `_one` + `_note_provider_balance_outage` | **`::TestAst1867ProviderBalanceOutage::test_run_unified_per_entity_skips_after_refusal`** |
+| Job chunk split: head chunk refusal skips both tail chunks; consult envelope → `held=0` | `_run_unified` `_consult_chunk` | **`::TestAst1867ProviderBalanceOutage::test_run_unified_chunk_split_skips_tail_after_head_refusal`** |
+| Ordinary error (no `failure_class`) → every entity called, no ctx marker (guard) | `_run_unified` | **`::TestAst1867ProviderBalanceOutage::test_run_unified_ordinary_error_does_not_skip`** (green both) |
+| Loop stops after the outage run; mid-run ledger write first (`max_runs=0`; finite eligibility `[24,24,24,0]` so the pre-fix loop terminates) | `_run_dispatch_loop` | **`::TestAst1867ProviderBalanceOutage::test_run_dispatch_loop_stops_after_outage_run`** |
+| CLICK outage run → INTERRUPTED, no alert of either kind, no breaker | `_dispatch_one_body` | **`::TestAst1867ProviderBalanceOutage::test_dispatch_one_click_outage_interrupted_no_alert`** |
+| Non-outage AUTO error still → `auto_run_error` | `_dispatch_one_body` | existing **`::TestDispatchOne::test_auto_run_error_on_auto_failures`** (unchanged; passes by accident — its 5-param `_bump` raises `TypeError` against the 6-arg call, run ends FAILED `+1` error; pre-existing, out of scope) |
+
+Roster counting nodes: **`docs/test-bible/core/roster.md`** § AST-1867 · AST-1870. Alert body/subject: **`docs/test-bible/core/monitor.md`** § AST-1867 · AST-1870.
+
+**Not covered (by design):** consult batch branches (`prefilter_company` etc.) rebuild the summary and drop `failure_class` — AST-1867 D5 leaves them unwired; no outage assertions there.
+
+**Pre-existing drift on this tip (not AST-1867, left as-is):** `TestCircuitBreaker::*` (4-arg calls vs 3-arg product); `TestAutoRunErrorSubjectPrefix` (3 nodes). Full `test_dispatcher.py` + `test_roster.py` + `test_monitor.py` run: identical 65-node failure set at `fbe9486e` (base tests) and with the `144b8850` overlay (this ticket's tests) — zero new failures.
+
+**Broken / obsolete:** none in dispatcher.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **Repro + outage nodes + alert-routing regression** (**[bug-repro]** red at `fbe9486e`, green with AST-1867):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_run_error_on_auto_failures \
+  tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_monitor.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_monitor.py::TestAutoRunError \
+  -q
+```
+
+Expect **23 passed** with AST-1867 product.
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/dispatcher.md | shasum`
