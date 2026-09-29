@@ -479,3 +479,21 @@ def _merge_embedded_company_prefilter_criteria(criteria: list) -> list:
 - AST-707: prefilter hydration still resolves RC for candidates with no stored RC row (read-time merge), and embedded wins on duplicate code.
 - `_assert_unique_rubric_codes` still passes: the helper dedupes by code, so a stored RC plus the embedded RC yields one row.
 - No new limits, caps, retries, tables or fields.
+
+## Joan fix-board — AST-1881
+
+Read the AST-1881 plan-fix patch on `origin/sub/AST-1876/AST-1881-prefilter-rc-default-vector` (As-is → What must still hold). `docs/canon-index.md` is not on that ref; roster overlap was checked via `canon/directives/active/*` and draft statutes cited by the AST-1085 embedded-vector precedent (`pattern.config.config-block`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.agent.grade-vector-validation`, `astral.seed.agent-tables-in-repo-json`).
+
+**Triage question:** Does the proposed change conflict with or require updating any in-force directive?
+
+**Answer:** No. The plan completes the QC/GC lifecycle for RC (config constant, merge on read/save/craft paths, seed prompt dedupe), keeps grades in `{A,B,C,D,F,X}`, leaves AST-1513 duplicate-code enforcement intact, and uses repo `agent_task.json` plus operator Revert-to-file rollout—aligned with seed and config-block law. Prepend-vs-append is an owner-specific implementation choice already called out in plan; it does not contradict the evaluate_jd append precedent as a global rule. No new carve-out, statute rewrite, or Archie-only precedent gap.
+
+```
+BEGIN-VERDICT
+[board-joan]  CANON: OK
+END-VERDICT
+```
+
+```text
+AST-1881 board-joan done — CANON: OK.
+```
