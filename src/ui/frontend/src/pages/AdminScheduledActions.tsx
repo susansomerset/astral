@@ -93,6 +93,8 @@ interface DispatchTask {
   always_visible_under_avail_gt0?: boolean
   empty_render?: boolean
   empty_tokens?: string[]
+  /** AST-1880: missing platform key reason ("" when the key is present). */
+  invalid_reason?: string
 }
 
 interface ThreadEntry {
@@ -211,9 +213,11 @@ function ScheduledPhaseTable({
             // AST-1818: a valid task with nothing to claim gets the same muted, unclickable Run treatment.
             const zeroAvail = !emptyRender && avail === 0
             const runBlocked = isRunning || sweepDisabled || emptyRender || zeroAvail
-            // AST-1819: Invalid tooltip — missing tokens, or a fallback when prompts could not be validated.
+            // AST-1819 / AST-1880: Invalid tooltip — missing platform key, missing tokens, or a fallback
+            // when prompts could not be validated.
             const invalidTitle = emptyRender && !isRunning
-              ? (row.empty_tokens?.length ? row.empty_tokens.join(", ") : "Could not validate prompts")
+              ? (row.invalid_reason
+                || (row.empty_tokens?.length ? row.empty_tokens.join(", ") : "Could not validate prompts"))
               : undefined
             return (
               <tr
