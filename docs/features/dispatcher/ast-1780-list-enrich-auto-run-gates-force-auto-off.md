@@ -990,3 +990,17 @@ AST-1780 QA stubbed the evaluate helper (wiring only); AST-1792/1795 stubbed the
 - Truly blank candidate-scoped token → `empty_render: True` with the token named (node 2).
 - Legacy `context.ideal_day` blob still resolves (node 3).
 - `entity_contexts=None`; no second list boolean; no product `src/` edits on this tip; no invented integration tier.
+
+## Joan fix-board — AST-1855
+
+Fix-board Joan pass on **AST-1855** (test + bible gap only; product stays on sibling AST-1854). Joan’s single question is whether the plan-fix **requires or conflicts with** in-force canon. This patch adds component tests and bible rows that exercise the real hydrated-loader → token-view → `empty_render_for_prompts` chain via DB-edge stubs only; it does not edit `src/`, statutes, or patterns. The asserted outcomes (artifact-only Ideal Day passes, truly blank fails, legacy blob passes) match `patt.artifact.read-current` / migration intent, not a new exception. Blast-radius discuss items (hermetic `get_current_artifact`, base-resume pop vs AST-1854 wording) are product/UAT scope on AST-1854, not canon edits this gap must land.
+
+BEGIN-VERDICT
+
+[board-joan]  CANON: OK
+
+END-VERDICT
+
+```text
+AST-1855 board-joan done — CANON: OK.
+```
