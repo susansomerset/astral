@@ -814,3 +814,68 @@ AST-1792 proved the fail-open return. AST-1794’s delta is log-only; Betty’s 
 Test/bible gap only — product silence on sibling AST-1794 / ftr.
 
 _Product silence: sibling AST-1794 / ftr. Test delivery: merge-tests(AST-1795)._
+
+## Bug: AST-1854 — Admin token resolves use the hydrated candidate view
+
+Orphaned fix child of AST-1852 (mini-parent off `origin/dev`; no ancestor box checked). Scope gate is this ticket's own `## Scope` (copied from the bug Component/Technical scope) — `src/ui/api/api_admin.py` `_evaluate_dispatch_empty_render`, `_enrich_tasks`, ad hoc run handler (`_resolve_adhoc`): swap the candidate loader only. Product only; tests/bible are Betty's. This is the "operative artifact token view" divergence Radia flagged as discuss on AST-1780 (and carried forward on AST-1791), now surfaced in UAT.
+
+### As-is
+
+Scheduled Actions flags `craft_do_rubric` for candidate somerset as `empty_render: true` with `IDEAL_DAY` in `empty_tokens` (AUTO forced off, AUTO-on / Run 400), even though somerset has a current Ideal Day. `_evaluate_dispatch_empty_render`, `_enrich_tasks`, and `_resolve_adhoc` each load the candidate with raw `database.get_candidate(...)` and pass it straight to `build_candidate_token_view`, so no operative artifact rows are overlaid.
+
+### To-be
+
+All three admin call sites load the candidate with the hydrated `src.core.candidate.get_candidate` (operative artifact rows overlaid onto `candidate_data.context`, legacy blob kept on artifact miss) before `build_candidate_token_view` — the same view the runtime path builds (`src/core/agent.py` ~456–474). Somerset's `craft_do_rubric` validates `empty_render: false`; a candidate with neither a current Ideal Day artifact nor a legacy `context.ideal_day` blob still gets `empty_render: true` / `IDEAL_DAY` in `empty_tokens`.
+
+### Repro
+
+Fixture shape (no SQL seed — persistence is file/JSON / artifacts rows via existing helpers):
+
+1. Candidate `c1` whose `candidate_data.context` has **no** `ideal_day` key (post-AST-1659 save popped it), and a current operative Ideal Day artifact for `c1` (`get_candidate_current("c1", <ideal day artifact key>)` returns a non-empty string, e.g. `"Deep work mornings, collaborative afternoons."`).
+2. An `agent_task` for `craft_do_rubric` whose prompt text references `{$IDEAL_DAY}`; a `dispatch_task` row `{candidate_id: "c1", task_key: "craft_do_rubric", auto_mode: 1}`.
+3. As-is: `_evaluate_dispatch_empty_render("c1", "craft_do_rubric")` → `{"empty_render": True, "empty_tokens": [... "IDEAL_DAY" ...]}`; `GET /api/admin/dispatch_tasks` forces `auto_mode` → 0; `POST …/run` → 400 "Prompt tokens resolve empty…". Task Manager (`_enrich_tasks("c1")`) and ad hoc preview/test for `c1` likewise resolve `{$IDEAL_DAY}` to `""`.
+4. To-be: same fixture → `empty_render: False`, `auto_mode` stays 1, Run not blocked by empty-render; Task Manager / ad hoc resolve `{$IDEAL_DAY}` to the artifact string.
+5. Contrast (must still fail): candidate `c2` with no Ideal Day artifact and no legacy `context.ideal_day` → `empty_render: True`, `IDEAL_DAY` in `empty_tokens`.
+6. Contrast (must still pass): candidate `c3` with legacy `context.ideal_day` blob and no artifact row → `empty_render: False` (hydrate miss leaves the blob untouched).
+
+### Root cause
+
+Since the AST-1643 migration (AST-1659 blob retirement / AST-1660 Ideal Day wire-up), a UI-saved Ideal Day (and the other migrated context artifacts: base resume, resume structure, strengths, priorities, deal breakers, bio summary, backstory, writing preferences) lives only in the artifacts table. The hydrated loader `src.core.candidate.get_candidate` overlays those rows onto `candidate_data.context`; raw `database.get_candidate` does not. AST-1780 Stage 1 step 4 literally named `database.get_candidate` + `build_candidate_token_view` (pre-migration assumption), and `_enrich_tasks` / `_resolve_adhoc` predate the migration with the same raw read. `{$IDEAL_DAY}` walks `context.ideal_day`, finds nothing, and `empty_render_for_prompts` scores it blank.
+
+### Proposed change
+
+All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.py` (`resolve_tokens` / `empty_render_for_prompts`), `src/core/candidate.py` (`get_candidate`, `hydrate_operative_*`, `build_candidate_token_view`), or `src/core/agent.py`.
+
+1. **Import:** add `get_candidate` to the existing `from src.core.candidate import (` block (today lines 37–41, alongside `build_candidate_token_view`). Bare name, same import style as `src/core/agent.py`. No module-level name collision — `api_admin.py` only references the raw loader as `database.get_candidate`.
+
+2. **`_evaluate_dispatch_empty_render(candidate_id, task_key)`** (today ~line 2025): replace `cand = database.get_candidate(cid)` with `cand = get_candidate(cid)`. Everything else byte-for-byte unchanged: blank-`cid` warning + `empty_render: True`; `if not cand:` warning + `empty_render: True` (hydrated loader returns `None` on the same miss); `cd = build_candidate_token_view(cand)`; silent `ValueError` soft-miss pass (AST-1791/1794); `logger.exception` fail-closed; `empty_render_for_prompts(texts, cd, tk, entity_contexts=None)`.
+
+3. **`_enrich_tasks(candidate_id)`** (today ~line 385): replace `database.get_candidate(candidate_id) if candidate_id else None` with `get_candidate(candidate_id) if candidate_id else None`. Leave the `build_candidate_token_view(candidate) if candidate else {}` line and the AST-1014 comment as-is.
+
+4. **`_resolve_adhoc(body)`** (ad hoc run handler, today ~line 1583): replace `candidate = database.get_candidate(candidate_id)` with `candidate = get_candidate(candidate_id)`. `candidate` is also used later in the handler (API key override etc.); the hydrated row carries the same top-level columns (`database.get_candidate` row + `candidate_data` overlay only), so downstream reads are unaffected.
+
+5. No new function, table, field, log line, cap, or cache. Three one-token loader swaps + one import name.
+
+⚠️ **Decision:** Hydration placement mirrors the raw call exactly — `_evaluate_dispatch_empty_render` keeps the load **outside** its `try`, as today. An artifact-read exception propagates the same way a DB read exception already does; no new catch/fail-open added (out of scope, and would change AST-1780 fail-closed behavior).
+
+⚠️ **Decision:** Swap covers all migrated context artifacts the hydrated loader overlays, not just Ideal Day — that is what "same view as runtime" means; no per-token special-casing.
+
+### Blast radius
+
+- `_evaluate_dispatch_empty_render` feeds `list_dtasks` enrichment + force AUTO off, create/update AUTO-on 400, and `run_dtask` 400 — all three flip to the hydrated view together. React (`AdminScheduledActions.tsx`) trusts `row.empty_render`; no edit.
+- `_enrich_tasks` → Task Manager token counts / cache threshold; `_resolve_adhoc` → `adhoc_preview` / `adhoc_test`. Values for artifact-only candidates change from `""` to the operative string (intended).
+- Per-candidate cost: each load now also runs the nine `hydrate_operative_*` artifact reads (`list_dtasks` calls eval once per row). Same cost runtime already pays; no cap/cache added per Susan's no-shortcuts rule.
+- AST-1781 `database._token_view_for_empty_render` revalidation hooks already overlay operative current — this fix converges list/gate with those hooks (Radia's AST-1780 discuss item).
+- **Tests (Betty's lane):** 11 references in `tests/component/ui/api/test_api_admin.py` stub `admin_mod.database.get_candidate`. The hydrated loader calls `database.get_candidate` on the same `src.data.database` module object, so those stubs still take effect — but the hydrate helpers then call `get_candidate_current` against the test DB. Tests that stub only the raw loader may need an artifact-read stub (or stub `admin_mod.get_candidate` directly). Engineer does not edit `tests/`.
+- Out of Scope, not changed: `_resolve_agent_preview_candidate` (~line 175, agent preview) also uses raw `database.get_candidate` → `build_candidate_token_view`; same divergence class. `_candidate_dispatch_api_key_error` (~line 2075) reads the API-key column only — unaffected by artifacts. Flag for Susan/Chuckles if agent preview should follow in a separate delta.
+
+### What must still hold
+
+- Blank `candidate_id` / missing candidate → `empty_render: True` with existing warnings (AST-1780 / AST-1791 decisions).
+- Prompt-load `ValueError` → silent `{"empty_render": False, "empty_tokens": []}` (AST-1791 / AST-1794).
+- Unexpected evaluation exceptions → `logger.exception` + fail-closed.
+- Referenced candidate-scoped token truly blank (no artifact, no legacy blob) → `empty_render: True`; AUTO-on / Run 400; list force-off (AST-1766 AC1, AC3–5).
+- Legacy-blob-only candidates still resolve (hydrate miss leaves the blob).
+- `entity_contexts=None` — job tokens alone never flip the flag (AST-1780 AC5).
+- API-key gate runs first and is independent of empty-render.
+- No edits outside `api_admin.py`; `config.py` resolve semantics, `hydrate_operative_*`, and `agent.py` untouched.
