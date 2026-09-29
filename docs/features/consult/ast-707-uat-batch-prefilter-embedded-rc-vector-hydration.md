@@ -455,3 +455,21 @@ The read path (`rubric_criteria_for_task` prepends RC) is already covered by `Te
 - AST-1085 QC/GC tests are untouched and green.
 - `TestAst723RubricVectorsCutover::test_prefilter_merges_embedded_rc_from_table`, `TestAst707EmbeddedRcBatchHydration` and `TestRubricLookup::test_matches_criterion_by_code` are unchanged and green (label `Reality Check` and code `RC` are unchanged).
 - No product files in this ticket. No test weakens the AST-1513 duplicate-code guard.
+
+## Joan fix-board — AST-1882
+
+Skimmed fix-board § Joan pass against the AST-1882 plan-fix block on `origin/sub/AST-1876/AST-1882-prefilter-rc-default-vector-tests`. This ticket is **test + test-bible only** (Betty / qa-fix); it pins AST-1881’s RC contract (company-site scale, prepend merge on save/craft paths, `prefilter_company` prompt dedupe) and does not propose product or `canon/` edits.
+
+**Triage:** Does this plan conflict with or require updating any in-force directive?
+
+**Answer:** No. Coverage asserts behavior that already fits the embedded-vector / config-block precedent (`pattern.config.config-block`, config SoT, no inline RC sets) and repo seed law for `agent_task.json`; it does not weaken AST-1513 (explicit in What must still hold). Leaving the AST-756 UAT twin out of scope is a test/fixture ops choice, not an ambiguous statute call. No new carve-out or pattern/statute amendment is needed for F3.
+
+```
+BEGIN-VERDICT
+[board-joan]  CANON: OK
+END-VERDICT
+```
+
+```text
+AST-1882 board-joan done — CANON: OK.
+```
