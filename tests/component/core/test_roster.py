@@ -1039,6 +1039,43 @@ class TestAst720PjlReadySelectDispatch:
         assert out["job_site"] == ""
 
     @pytest.mark.asyncio
+    async def test_joblist_no_jobs_persists_selected_job_site(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # [bug-repro] AST-1892 pre-fix: decomposed JOBLIST_NO_JOBS writes job_site="" (suppress_job_site)
+        company = self._pjl_ready_company()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        update = MagicMock()
+        save = MagicMock()
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "response_type": "JOBLIST_NO_JOBS",
+                        "selected_page": 1,
+                        "no_jobs_message": "No open positions",
+                    },
+                }
+            ),
+        )
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-1892")
+        assert out["state"] == "NO_OPENINGS"
+        assert out["response_type"] == "JOBLIST_NO_JOBS"
+        # NO_OPENINGS is terminal: recheck_no_openings needs the selected page URL on the column
+        assert out["job_site"] == "https://acme.com/careers"
+        update.assert_called_once()
+        assert update.call_args.kwargs["job_site"] == "https://acme.com/careers"
+        transition.assert_called_once_with("acme", "NO_OPENINGS")
+        assert save.call_args[0][1]["no_jobs_message"] == "No open positions"
+
+    @pytest.mark.asyncio
     async def test_empty_assembled_routes_no_pjl_selected(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
