@@ -290,3 +290,50 @@ context_tokens≈42000
 - **For Betty (qa-child):** AC4–AC6 coverage is new work in `test_JobDetailModal.test.tsx` / `test_StateTimeline.test.tsx`.
   Clickable rows carry `role="button"` and `title="Open run <id>"`; non-clickable rows carry neither.
 - **Sub-log pre-check:** `validate-sub-log.sh --stage=build … ftr/AST-1853-execution-history-for-job-modals` → ok.
+
+## Radia review
+
+**Ticket:** AST-1865
+**Publish ref:** 110ed44b32c1a4e0c79f4854bfd2b6b2b7c0000f
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+astral.standards.dry-and-focused-functions | A | |
+astral.ui.frontend-file-placement | A | |
+
+## Column diff vs plan stage
+(aligned) — Joan graded both directives **A**; landed frontend matches (shared `BatchLogViewer` extract, new components under flat `components/`, page stays in `pages/`).
+
+## Frame diff
+(none)
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+- **Three-dot diff breadth:** `origin/dev...origin/sub/AST-1853/AST-1865-clickable-job-state-history-opens-run` includes **AST-1864** product (`src/core/tracker.py`, ast-1864 plan doc) and **merge-tests / resync** carry (`tests/component/core/*`, `test_AdminScheduledActions.test.tsx`, multiple bible sections, `test(AST-1872)` on branch history). Expected for stacked sub + `merge-tests`; **AST-1865-owned product** is the five `src/ui/frontend/**` files in Scope. Not a cross-ticket scope violation for this child’s commits (`7de3e0f4`, `52614323`, `d6022750`, `b027f33b`).
+- **sibling test carry:** paths above beyond `test_JobDetailModal.test.tsx`, `test_StateTimeline.test.tsx`, and `docs/test-bible/frontend/components.md` § AST-1865 — note once, do not re-litigate in Linear.
+- **Canon clerk:** `canon_clerk.py expand` does not resolve these two statute-only frozen ids (active harvest, not `directives/active/`). Scored from `canon/statutes/astral/standards/astral.standards.dry-and-focused-functions.md` and `canon/statutes/astral/ui/astral.ui.frontend-file-placement.md` at corpus tip — same path as plan § Code facts. Downstream: optional clerk roster gap, not a ticket blocker.
+- **DRY judgment:** `/logs` fetch in `BatchExecutionModal` parallels `AdminPerformanceMonitor` page logic without a shared hook; plan + Joan already accepted (distinct from AC7 table-markup duplication). No grade change.
+- **Lint-driven deviations** (documented in issue doc § Review): `loading` derived from `{ runId, logs }` instead of sync `setState` in effect; `entryRunId` kept module-private — behaviour matches AC4–AC6 intent.
+- **Manifest:** qa-child narrows Vitest with `--testNamePattern='^(?!.*null listing_href)'` for one **pre-existing** AST-1695 red on `origin/dev`; excluded by name, not product regression from this ticket.
+
+## What's solid
+- **AC7:** `dispatch-log-table` appears only in `components/BatchLogViewer.tsx` (tsx); no `function LogViewer` in `AdminPerformanceMonitor.tsx`.
+- **AC4–AC6:** `TestAst1864RunIdStamp`-style coverage at UI layer — admin click hits `/api/admin/dispatch_ledger/hop-R/logs` and `/api/agent_data/hop-R`; `run_id` beats `claim-C`; legacy `batch_id` opens `B`; MANUAL row inert; non-admin has no `Open run` titles and no `/api/admin/` after `/api/me` settles. `StateTimeline` tests cover callback gate, fallback, keyboard.
+- **AC8–AC9:** `CompanyDetailModal.tsx` unchanged in diff; Execution History page swaps to `BatchLogViewer` only.
+- **AC10:** `src/ui/api/` and `src/data/` diff vs `origin/dev` is empty.
+- **Integration:** `BatchExecutionModal` sibling to job `Modal` (not nested) preserves dirty-detection rationale from plan; `stacked` + `showFooter={false}` consistent with existing modals.
+- **Plan fidelity:** Stages 1–3 match Files Changed; estimate footprint for **this** child still fits confirmed **3** points (frontend-only scope).
+
+## Recommended actions (downstream — not Radia)
+- Chuckles: append artifact, `docs(AST-1865): Radia review — clean`, post slim upshot, **Review Posted** → datt **PROCEED** to **User Testing** (blockedBy AST-1864 on ftr is a merge/UAT ordering concern for Chuckles, not a canon fail on this tip).
+- Optional hygiene: bible shasum line per qa-child note when touching issue doc.
+
+context_tokens≈38000
