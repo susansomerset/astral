@@ -233,7 +233,7 @@ context_tokens≈18500
 
 ## Frame diff
 
-- [ ] **Acceptance criteria 6:** Skip visibility is proven via `test_RecommendedJobReportHeader` with `onSkip` / `skipBusy` (last button in row, absent without callback). Modal `can_skip` wiring and `test_JobAnalysisReportModal` skip-by-flag asserts belong to AST-1874 (#3), not this child.
+- [x] **Acceptance criteria 6:** Skip visibility is proven via `test_RecommendedJobReportHeader` with `onSkip` / `skipBusy` (last button in row, absent without callback). Modal `can_skip` wiring and `test_JobAnalysisReportModal` skip-by-flag asserts belong to AST-1874 (#3), not this child.
 
 ## Findings
 
@@ -273,3 +273,12 @@ context_tokens≈18500
 ```
 [code-rubric] PROCEED (Commit: df4b816) Header row, skip prop, scoped CSS
 ```
+
+## Resolution
+
+2026-09-29, resolve-child (Hedy), against Radia review `1be3a975`.
+
+- **fix-now:** none, and no product changes were made.
+- **discuss: `origin/dev` drift on monitor:** resolved by the existing `sync(dev)` `26873d5b`, which is now on `origin/sub/…` (1be3a975). HEAD is 0 behind `origin/dev`, `origin/dev` is an ancestor of HEAD, and `git diff origin/dev HEAD -- src/core/monitor.py tests/component/core/test_monitor.py` is empty. The AST-1873 manifest was re-run after the sync: Vitest shows 73 passed and 4 name-skipped, the AC6/AC7 greps return nothing, AC8 CSS holds, and every App.css hunk sits at lines 774–880, clear of the shared `.modal-*` blocks at line 1005 and below.
+- **discuss: AC6 vs boundaries:** Default taken. AC6 is ticked from the header tests (`RecommendedJobReportHeader — AST-1873 …`: Skip last in row, absent without `onSkip`, `skipBusy` disables), and the modal `can_skip` flag asserts are deferred to AST-1874. The Linear AC6 wording is left as dispatched, because plan-child and resolve-child do not rewrite AC. Susan can reverse this.
+- **advisory:** sibling AST-1872 carry and interim link-line UX are acknowledged as expected, and no action was taken.
