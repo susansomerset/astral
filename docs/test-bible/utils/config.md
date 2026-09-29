@@ -410,6 +410,8 @@ Persisted-default merge (save / craft generate / persist) + prompt dedupe: **`do
 
 ### AST-695 · AST-694
 
+> **AST-1880:** Historical. `tier_map["deepseek"]`, `test_resolve_deepseek_tier_meta`, the DeepSeek-only `do_task` node, and `TestAst492ResolveAdhocApiAdmin` are retired. DeepSeek tiers are catalog rows (`TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_tiers`). See the AST-1880 pointer below.
+
 **Scope:** `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"][BRAIN_MEDIUM]` — Medium retargets from `deepseek-v4-flash` + thinking to `deepseek-v4-pro` non-thinking (**AST-694** ladder). Little and Big unchanged; runtime dispatch reads tier meta from config — no `agent.py` / `deepseek.py` edits.
 
 | Area | Source | Component tests |
@@ -829,6 +831,8 @@ Consult fail-dest matrix: **`docs/test-bible/core/consult.md`** (**AST-1339**). 
 **AST-955:** Save membership = registered **`TASK_CONFIG`** (optional trigger override on **`dispatch_task_admin_defaults`**). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).
 
 ### AST-1391 · AST-1390 (DeepSeek Big output floor)
+
+> **AST-1880:** `deepseek_brain_max_tokens_floor` and `DEEPSEEK_MODEL_PRICING` are retired. `TestAst1391DeepseekBigMaxTokensFloor::test_big_tier_floor` now reads the catalog tier row (`max_tokens_floor` 384000 on Big only).
 
 **`deepseek_brain_max_tokens_floor`** + DeepSeek `BRAIN_BIG` `max_tokens: 384000`. Not on Little/Medium; `DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"]` stays **16000**. Primary hop manifest: **`docs/test-bible/core/agent.md`** § AST-1391.
 
@@ -4450,3 +4454,42 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 **Integration:** none.
 
 **AST-1872 (pointer):** `JOBS_RECOMMENDED_REPORT_TOP_TABS` is Analysis-first (first entry = default tab); `PHASE_SCORE_HEADER_TITLE_TEMPLATE` gains ` - {score}` — revised `TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`, `TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`; extended `TestAst1348PhaseScoreHeaderTitleConfig`. Manifest: **`docs/test-bible/core/tracker.md`** § AST-1872.
+
+### AST-1877 · AST-1851 (model/server catalog + shared compat client)
+
+Config gains `LLM_SERVER_CONFIG` / `LLM_MODEL_CONFIG`, catalog resolvers, catalog-only startup validation (no provider env key), `requires_candidate_key: True` on every task, `ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)`, `DEEPSEEK_CONCURRENCY` alias. Legacy provider symbols stay importable (additive until AST-1880). New client `src/external/llm_compat.py` ([`external/llm_compat.md`](../external/llm_compat.md)); cost pricing via catalog ([`cost_calculator.md`](cost_calculator.md)).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — catalogs, resolvers, startup catalog validation (every raise branch), task-flag sweep, derived timesheet providers | `src/utils/config.py` | `TestAst1877LlmCatalogConfig` |
+| Revised — boot needs no provider env key; `active_provider` not consulted | `validate_llm_provider_environment` | `TestAst492LlmBrainTierConfig::test_validate_llm_provider_environment_ignores_active_provider` · `::test_validate_llm_provider_environment_needs_no_provider_env_keys` (replace `_unknown_active_provider` / `_deepseek_requires_key` / `_anthropic_requires_key`) |
+| Revised — `requires_candidate_key` is `True` | `TASK_CONFIG` | `TestAst1037SimpleResumeParseConfig::test_simple_resume_parse_shares_schema_object_with_craft_base` · `TestAst1072ConversationalEnvelopeConfig::test_contact_estelle_turn_task_registration` |
+| New — AC 9 intercepted request + client contract | `src/external/llm_compat.py` | `tests/component/external/test_llm_compat.py` |
+| New — catalog pricing | `src/utils/cost_calculator.py` | `tests/component/utils/test_cost_calculator.py::TestAst1877CatalogPricing` |
+
+`LOCKED_AT_100`: every new `config.py` line is branch-covered by the tests above.
+
+**Integration:** none (no `tests/integration/` scenario reads these symbols).
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/utils/test_config.py::TestAst1037SimpleResumeParseConfig \
+  tests/component/utils/test_config.py::TestAst1072ConversationalEnvelopeConfig \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/utils/test_cost_calculator_deepseek.py \
+  tests/component/external/test_llm_compat.py \
+  tests/component/external/test_deepseek.py \
+  tests/component/external/test_anthropic.py \
+  tests/component/core/test_bootstrap.py \
+  tests/component/data/database/test_timesheets.py \
+  --deselect tests/component/external/test_deepseek.py::TestAst1190EmptyUnusableProviderResponse::test_hollow_stop_question_zero_tokens_fails_closed \
+  --deselect tests/component/external/test_anthropic.py::TestAst1190EmptyUnusableProviderResponse::test_hollow_stop_question_zero_tokens_fails_closed
+```
+
+**Pass criterion:** narrowed run green — not the zero-arg harness. The two deselected AST-1190 nodes fail identically with `origin/dev` product (pre-existing, not this ticket). Zero-arg / full `tests/component` red on this tip is the same set with or without AST-1877 product (baseline diff: exactly the five revised nodes above changed).
+
+**AST-1880 (pointer):** DeepSeek-only config retired. `TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_tiers` replaces `test_resolve_deepseek_tier_meta`. `…::test_legacy_global_provider_symbols_retired` asserts no `active_provider` / `tier_map["deepseek"]` / `CONTACT_ESTELLE_CONFIG["default_brain_setting"]` / `get_active_llm_provider` / `resolve_brain_setting_to_deepseek_tier_meta` / `deepseek_brain_max_tokens_floor` / `DEEPSEEK_MODEL_PRICING` / `DEEPSEEK_CONCURRENCY`. `TestAst1391DeepseekBigMaxTokensFloor::test_big_tier_floor` reads the catalog tier row. The Estelle config tests assert no brain override. Retired: `test_get_active_llm_provider_strips_and_rejects_invalid`, `test_resolve_deepseek_raises_when_mapping_has_no_vendor_model`, `test_deepseek_concurrency_is_alias_of_server_block`. Historical manifests above that cite those nodes or `tests/component/external/test_deepseek.py` are frozen records. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1880.

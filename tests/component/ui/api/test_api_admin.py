@@ -16,24 +16,8 @@ from src.utils import config as cfg
 from ui.api import api_admin as admin_mod
 
 
-def _tier_catalog_rows_via_ast492_resolve() -> list[dict[str, Any]]:
-    """Ada AST-492 contract: tiers → anthropic AGENT_CONFIG key via resolve_* then model defaults."""
-    out: list[dict[str, Any]] = []
-    for tier in cfg.BRAIN_SETTINGS:
-        mk = cfg.resolve_brain_setting_to_anthropic_agent_key(tier)
-        m = cfg.get_model(mk)
-        out.append(
-            {
-                "brain_setting": tier,
-                "label": tier,
-                "default_temperature": m["default_temperature"],
-                "default_max_tokens": m["default_max_tokens"],
-            }
-        )
-    return out
-
-
-# Branches: config and agent CRUD success/error paths.
+# Branches: config; agent list/get pass-through; /agents/models per-model catalog; brain_settings retired;
+# create/update require model_id + brain_setting, data-layer ValueError → 400; delete.
 class TestAdminConfigAndAgents:
     def test_admin_config(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = admin_client.get("/api/admin/config", headers=auth_headers)
@@ -41,115 +25,145 @@ class TestAdminConfigAndAgents:
         assert isinstance(resp.get_json(), dict)
 
     def test_list_agents_and_ids(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(admin_mod.database, "list_agents", lambda: [{"agent_id": "a1"}])
-        assert admin_client.get("/api/admin/agents", headers=auth_headers).get_json() == [{"agent_id": "a1", "brain_setting": "Medium"}]
+        # AST-1880: rows go out as the data layer exposes them (no admin-side tier inference).
+        row = {"agent_id": "a1", "model_id": "kimi-k2.6", "brain_setting": "Big", "model_code": "kimi-k2.6"}
+        monkeypatch.setattr(admin_mod.database, "list_agents", lambda: [dict(row)])
+        assert admin_client.get("/api/admin/agents", headers=auth_headers).get_json() == [row]
         assert admin_client.get("/api/admin/agents/ids", headers=auth_headers).get_json() == ["a1"]
 
-    def test_list_models(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+    def test_list_models_is_per_model_brain_size_catalog(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1880 AC 3: each model lists only its own sizes with their defaults; `order` keeps catalog order.
         resp = admin_client.get("/api/admin/agents/models", headers=auth_headers)
         assert resp.status_code == 200
-        assert any(row.get("model_code") == "claude-haiku-4-5" for row in resp.get_json())
+        body = resp.get_json()
+        assert list(cfg.LLM_MODEL_CONFIG) == sorted(body, key=lambda mid: body[mid]["order"])
+        for i, (mid, m) in enumerate(cfg.LLM_MODEL_CONFIG.items()):
+            assert body[mid] == {
+                "order": i,
+                "label": m["label"],
+                "server_id": m["server"],
+                "server_label": cfg.LLM_SERVER_CONFIG[m["server"]]["label"],
+                "brain_sizes": {
+                    bs: {"order": j, "default_temperature": t["default_temperature"], "default_max_tokens": t["default_max_tokens"]}
+                    for j, (bs, t) in enumerate(m["brain_sizes"].items())
+                },
+            }
+        sizes = lambda mid: sorted(body[mid]["brain_sizes"], key=lambda bs: body[mid]["brain_sizes"][bs]["order"])  # noqa: E731
+        assert sizes("kimi-k2.6") == ["Little", "Big"]
+        assert sizes("claude") == ["Little", "Medium", "Big"]
+        assert sizes("deepseek-v4") == ["Little", "Medium", "Big"]
 
-    def test_list_brain_settings(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
-        resp = admin_client.get("/api/admin/agents/brain_settings", headers=auth_headers)
-        assert resp.status_code == 200
-        assert resp.get_json() == _tier_catalog_rows_via_ast492_resolve()
+    def test_brain_settings_route_and_admin_view_retired(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1880: global tier catalog gone; the path now falls through to GET /agents/<agent_id>.
+        seen: list = []
+        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: seen.append(agent_id))
+        assert admin_client.get("/api/admin/agents/brain_settings", headers=auth_headers).status_code == 404
+        assert seen == ["brain_settings"]
+        assert not hasattr(admin_mod, "list_brain_settings")
+        assert not hasattr(admin_mod, "_agent_admin_view")
 
     def test_get_agent_missing_and_found(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
         assert admin_client.get("/api/admin/agents/missing", headers=auth_headers).status_code == 404
-        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id})
-        row = admin_client.get("/api/admin/agents/a1", headers=auth_headers).get_json()
-        assert row["agent_id"] == "a1"
-        assert row["brain_setting"] == "Medium"
+        monkeypatch.setattr(
+            admin_mod.database, "get_agent",
+            lambda agent_id: {"agent_id": agent_id, "model_id": "claude", "brain_setting": "Medium"},
+        )
+        assert admin_client.get("/api/admin/agents/a1", headers=auth_headers).get_json() == {
+            "agent_id": "a1", "model_id": "claude", "brain_setting": "Medium",
+        }
 
-    def test_agent_admin_view_branches_strip_and_infer_legacy(self) -> None:
-        assert admin_mod._agent_admin_view({}) == {}
-        assert admin_mod._agent_admin_view({"agent_id": "x", "brain_setting": " Big "})["brain_setting"] == "Big"
-        assert admin_mod._agent_admin_view({"agent_id": "x", "model_code": "claude-opus-4-6"})["brain_setting"] == cfg.BRAIN_BIG
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {},
+            {"model_id": "claude", "brain_setting": "Little"},
+            {"agent_id": "a1", "brain_setting": "Little"},
+            {"agent_id": "a1", "model_id": "claude"},
+            {"agent_id": "a1", "model_id": "  ", "brain_setting": "Little"},
+            # legacy shape: model_code alone no longer infers a tier
+            {"agent_id": "a1", "model_code": "claude-haiku-4-5"},
+        ],
+        ids=["empty", "no_agent_id", "no_model_id", "no_brain", "blank_model_id", "legacy_model_code"],
+    )
+    def test_create_agent_requires_id_model_and_brain(
+        self, body, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(admin_mod.database, "save_agent", save)
+        resp = admin_client.post("/api/admin/agents", json=body, headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "agent_id, model_id and brain_setting are required"
+        save.assert_not_called()
 
-    def test_create_agent_validation_and_success(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        assert admin_client.post("/api/admin/agents", json={}, headers=auth_headers).status_code == 400
-        bad_model = admin_client.post("/api/admin/agents", json={"agent_id": "a1", "model_code": "nope"}, headers=auth_headers)
-        assert bad_model.status_code == 400
-        bad_tier = admin_client.post(
-            "/api/admin/agents",
-            json={"agent_id": "a1", "content": "x", "brain_setting": "Huge"},
-            headers=auth_headers,
-        )
-        assert bad_tier.status_code == 400
-        both_create = admin_client.post(
-            "/api/admin/agents",
-            json={"agent_id": "dup-fields", "content": "", "brain_setting": "Little", "model_code": "claude-haiku-4-5"},
-            headers=auth_headers,
-        )
-        assert both_create.status_code == 400
-        no_tier_row = admin_client.post(
-            "/api/admin/agents",
-            json={"agent_id": "no-tier", "content": "sys"},
-            headers=auth_headers,
-        )
-        assert no_tier_row.status_code == 400
+    def test_create_agent_conflict_success_and_data_layer_rejection(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        good = {"agent_id": " a1 ", "content": "sys", "model_id": " kimi-k2.6 ", "brain_setting": " Big ", "temperature": 0.2, "max_tokens": 100}
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id})
-        assert (
-            admin_client.post(
-                "/api/admin/agents",
-                json={"agent_id": "a1", "content": "x", "brain_setting": "Little"},
-                headers=auth_headers,
-            ).status_code
-            == 409
-        )
+        assert admin_client.post("/api/admin/agents", json=good, headers=auth_headers).status_code == 409
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
         save = MagicMock()
         monkeypatch.setattr(admin_mod.database, "save_agent", save)
-        created = admin_client.post(
-            "/api/admin/agents",
-            json={"agent_id": "a1", "content": "sys", "model_code": "claude-haiku-4-5", "temperature": 0.2, "max_tokens": 100},
-            headers=auth_headers,
-        )
-        assert created.status_code == 201
-        save.assert_called_once_with(
-            "a1", "sys", brain_setting="Little", temperature=0.2, max_tokens=100
-        )
-        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
-        save.reset_mock()
-        created_tier = admin_client.post(
-            "/api/admin/agents",
-            json={"agent_id": "a2", "content": "sys", "brain_setting": "Big", "temperature": 0.1, "max_tokens": 50},
-            headers=auth_headers,
-        )
-        assert created_tier.status_code == 201
-        save.assert_called_once_with("a2", "sys", brain_setting="Big", temperature=0.1, max_tokens=50)
+        created = admin_client.post("/api/admin/agents", json=good, headers=auth_headers)
+        assert (created.status_code, created.get_json()) == (201, {"created": "a1"})
+        save.assert_called_once_with("a1", "sys", model_id="kimi-k2.6", brain_setting="Big", temperature=0.2, max_tokens=100)
+        monkeypatch.setattr(admin_mod.database, "save_agent", MagicMock(side_effect=ValueError("size not offered")))
+        bad = admin_client.post("/api/admin/agents", json=good, headers=auth_headers)
+        assert (bad.status_code, bad.get_json()) == (400, {"error": "size not offered"})
+
+    def test_update_agent_fields_strip_and_errors(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
         assert admin_client.put("/api/admin/agents/a1", json={"content": "x"}, headers=auth_headers).status_code == 404
-        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id})
-        bad_bs = admin_client.put("/api/admin/agents/a1", json={"brain_setting": "Huge"}, headers=auth_headers)
-        assert bad_bs.status_code == 400
-        both_put = admin_client.put(
-            "/api/admin/agents/a1",
-            json={"brain_setting": "Little", "model_code": "claude-haiku-4-5"},
-            headers=auth_headers,
-        )
-        assert both_put.status_code == 400
-        assert admin_client.put("/api/admin/agents/a1", json={"model_code": "nope"}, headers=auth_headers).status_code == 400
-        assert admin_client.put("/api/admin/agents/a1", json={}, headers=auth_headers).status_code == 400
+        stored = {"agent_id": "a1", "model_id": "claude", "brain_setting": "Big"}
+        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: dict(stored))
         update = MagicMock()
         monkeypatch.setattr(admin_mod.database, "update_agent", update)
-        resp = admin_client.put("/api/admin/agents/a1", json={"content": "new"}, headers=auth_headers)
-        assert resp.status_code == 200
-        update.assert_called_once()
-        update.reset_mock()
-        infer_put = admin_client.put("/api/admin/agents/a1", json={"model_code": "claude-opus-4-6"}, headers=auth_headers)
-        assert infer_put.status_code == 200
-        update.assert_called_once()
-        update.reset_mock()
-        # Branch: model_code key present but empty after strip — skip infer shim; still update via other kwargs.
-        assert (
-            admin_client.put("/api/admin/agents/a1", json={"model_code": "", "content": "u2"}, headers=auth_headers).status_code
-            == 200
+        assert admin_client.put("/api/admin/agents/a1", json={}, headers=auth_headers).status_code == 400
+        # legacy model_code is not an updatable key anymore
+        assert admin_client.put("/api/admin/agents/a1", json={"model_code": "claude-opus-4-6"}, headers=auth_headers).status_code == 400
+        update.assert_not_called()
+        resp = admin_client.put(
+            "/api/admin/agents/a1",
+            json={"content": " keep ", "model_id": " deepseek-v4 ", "brain_setting": " Medium ", "temperature": 0.3, "max_tokens": 9, "model_code": "x"},
+            headers=auth_headers,
         )
-        update.assert_called_once()
-        update.reset_mock()
+        assert (resp.status_code, resp.get_json()) == (200, stored)
+        update.assert_called_once_with(
+            "a1", content=" keep ", model_id="deepseek-v4", brain_setting="Medium", temperature=0.3, max_tokens=9
+        )
+        monkeypatch.setattr(admin_mod.database, "update_agent", MagicMock(side_effect=ValueError("Medium not offered")))
+        bad = admin_client.put("/api/admin/agents/a1", json={"brain_setting": "Medium"}, headers=auth_headers)
+        assert (bad.status_code, bad.get_json()) == (400, {"error": "Medium not offered"})
+
+    def test_kimi_medium_rejected_on_create_and_update_row_unchanged(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory
+    ) -> None:
+        # AST-1880 AC 3 against the real data layer: Kimi offers Little/Big only.
+        db = sqlite_in_memory
+        db.save_agent("kimi_agent", "sys", model_id="kimi-k2.6", brain_setting="Big")
+        before = db.get_agent("kimi_agent")
+        put = admin_client.put("/api/admin/agents/kimi_agent", json={"brain_setting": "Medium"}, headers=auth_headers)
+        assert put.status_code == 400
+        assert db.get_agent("kimi_agent") == before
+        post = admin_client.post(
+            "/api/admin/agents",
+            json={"agent_id": "kimi_med", "content": "", "model_id": "kimi-k2.6", "brain_setting": "Medium"},
+            headers=auth_headers,
+        )
+        assert post.status_code == 400
+        assert db.get_agent("kimi_med") is None
+        ok = admin_client.put(
+            "/api/admin/agents/kimi_agent", json={"model_id": "claude", "brain_setting": "Medium"}, headers=auth_headers
+        )
+        assert ok.status_code == 200
+        assert (ok.get_json()["model_id"], ok.get_json()["brain_setting"]) == ("claude", "Medium")
+
+    def test_delete_agent_paths(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
         assert admin_client.delete("/api/admin/agents/a1", headers=auth_headers).status_code == 404
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id})
@@ -219,7 +233,6 @@ class TestAdminConfigAndAgents:
 # Branches: enrich rows with/without candidate, agent, task, cache, and timesheet averages.
 class TestEnrichTasks:
     def test_enrich_tasks_covers_agent_and_cache_branches(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(admin_mod, "get_active_llm_provider", lambda: "anthropic")
         conn = MagicMock()
         conn.execute.return_value.fetchone.return_value = (12.5, 3.0)
         monkeypatch.setattr(admin_mod, "_get_connection", lambda: conn)
@@ -261,7 +274,8 @@ class TestEnrichTasks:
             admin_mod.database,
             "get_agent",
             lambda agent_id: {
-                "model_code": "claude-sonnet-4-6",
+                "model_id": "claude",
+                "brain_setting": cfg.BRAIN_MEDIUM,
                 "content": "agent {$name}",
                 "temperature": 0.1,
                 "max_tokens": 10,
@@ -276,6 +290,10 @@ class TestEnrichTasks:
             lambda text, *args, **kwargs: text.replace("{$name}", "Susan" * 20000),
         )
         rows = admin_mod._enrich_tasks("cand-1")
+        # AST-1880: SKU + cache threshold from the agent's own model + brain size
+        route = cfg.resolve_model_brain("claude", cfg.BRAIN_MEDIUM)
+        assert (rows[0]["resolved_model_key"], rows[0]["model_code"]) == (route["sku"], route["sku"])
+        assert rows[0]["cache_min_tokens"] == route["pricing"]["cache_min_tokens"] > 0
         assert rows[0]["cache_satisfied"] is True
         assert rows[0]["parsed_cache_tokens"] is not None
         assert rows[1]["system_prompt_tokens"] == 0
@@ -306,11 +324,11 @@ class TestEnrichTasks:
         assert rows[0]["parsed_cache_tokens"] is None
         conn.close.assert_called_once()
 
-    def test_enrich_tasks_uses_deepseek_pricing_when_active_provider_deepseek(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    @staticmethod
+    def _one_agent_row(monkeypatch: pytest.MonkeyPatch, agent: dict) -> None:
         conn = MagicMock()
         conn.execute.return_value.fetchone.return_value = None
         monkeypatch.setattr(admin_mod, "_get_connection", lambda: conn)
-        monkeypatch.setattr(admin_mod, "get_active_llm_provider", lambda: "deepseek")
         monkeypatch.setattr(
             admin_mod.database,
             "list_candidate_tasks",
@@ -318,36 +336,31 @@ class TestEnrichTasks:
         )
         monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: None)
         monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: None)
-        monkeypatch.setattr(
-            admin_mod.database,
-            "get_agent",
-            lambda agent_id: {"agent_id": agent_id, "brain_setting": cfg.BRAIN_LITTLE, "content": "body"},
-        )
+        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id, "content": "body", **agent})
         monkeypatch.setattr(admin_mod, "resolve_tokens", lambda text, *args, **kwargs: text or "")
-        rows = admin_mod._enrich_tasks("")
-        assert rows[0]["task_key"] == "craft_resume_base"
 
-    def test_enrich_tasks_unknown_llm_provider_skips_tier_catalog_lookups(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Neither anthropic nor deepseek branch in _enrich_tasks — resolved_model_key and model_cfg stay empty."""
-        conn = MagicMock()
-        conn.execute.return_value.fetchone.return_value = None
-        monkeypatch.setattr(admin_mod, "_get_connection", lambda: conn)
-        monkeypatch.setattr(admin_mod, "get_active_llm_provider", lambda: "mistral-unknown")
-        monkeypatch.setattr(
-            admin_mod.database,
-            "list_candidate_tasks",
-            lambda: [{"task_key": "craft_resume_base", "task_key_uuid": None, "agent_id": "a1", "cache_prompt_len": 0, "nocache_prompt_len": 0}],
-        )
-        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: None)
-        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: None)
-        monkeypatch.setattr(
-            admin_mod.database,
-            "get_agent",
-            lambda agent_id: {"agent_id": agent_id, "brain_setting": cfg.BRAIN_LITTLE, "content": "body"},
-        )
-        monkeypatch.setattr(admin_mod, "resolve_tokens", lambda text, *args, **kwargs: text or "")
-        rows = admin_mod._enrich_tasks("")
-        assert rows[0]["resolved_model_key"] == ""
+    def test_enrich_tasks_uses_catalog_pricing_for_agent_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1880: a DeepSeek agent resolves its own SKU (no global provider switch).
+        self._one_agent_row(monkeypatch, {"model_id": "deepseek-v4", "brain_setting": cfg.BRAIN_LITTLE})
+        route = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE)
+        row = admin_mod._enrich_tasks("")[0]
+        assert (row["brain_setting"], row["resolved_model_key"]) == (cfg.BRAIN_LITTLE, "deepseek-v4-flash")
+        assert row["cache_min_tokens"] == route["pricing"].get("cache_min_tokens", 0)
+
+    @pytest.mark.parametrize(
+        "agent",
+        [{"model_id": "kimi-k2.6", "brain_setting": cfg.BRAIN_MEDIUM}, {"model_id": "__no_model__", "brain_setting": cfg.BRAIN_BIG}, {"brain_setting": cfg.BRAIN_BIG}],
+        ids=["size_not_offered", "unknown_model", "no_model_id"],
+    )
+    def test_enrich_tasks_unroutable_agent_leaves_row_blank_and_warns(
+        self, agent: dict, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Display row only: one misconfigured agent must not 500 the task manager.
+        self._one_agent_row(monkeypatch, agent)
+        with caplog.at_level("WARNING"):
+            row = admin_mod._enrich_tasks("")[0]
+        assert (row["resolved_model_key"], row["cache_min_tokens"], row["cache_satisfied"]) == ("", 0, False)
+        assert "task manager craft_resume_base agent a1 has no routable model" in caplog.text
 
 
 # Branches: task routes, preview errors, and update validation.
@@ -660,7 +673,7 @@ class TestAst796FetchJdRetiredDispatchKeys:
     def test_create_dispatch_task_rejects_retired_scrape_jd(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         resp = admin_client.post(
             "/api/admin/dispatch_tasks",
             json={
@@ -679,7 +692,7 @@ class TestAst796FetchJdRetiredDispatchKeys:
     def test_create_dispatch_task_rejects_retired_validate_title(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         resp = admin_client.post(
             "/api/admin/dispatch_tasks",
             json={
@@ -698,7 +711,7 @@ class TestAst796FetchJdRetiredDispatchKeys:
     def test_create_dispatch_task_rejects_retired_gaze_board(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         resp = admin_client.post(
             "/api/admin/dispatch_tasks",
             json={
@@ -1084,7 +1097,7 @@ class TestAst804CandidateDispatchAdminValidation:
     def test_create_dispatch_task_rejects_invalid_candidate_trigger_state(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         resp = admin_client.post(
             "/api/admin/dispatch_tasks",
             json={
@@ -1101,7 +1114,7 @@ class TestAst804CandidateDispatchAdminValidation:
     def test_create_dispatch_task_candidate_entity_success(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         save = MagicMock(return_value=55)
         monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
         resp = admin_client.post(
@@ -1219,7 +1232,7 @@ class TestDispatchTasks:
     def test_create_dispatch_task_rejects_retired_consult_key(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         resp = admin_client.post(
             "/api/admin/dispatch_tasks",
             json={
@@ -1238,7 +1251,7 @@ class TestDispatchTasks:
     def test_create_dispatch_task_rejects_retired_consult_key(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         resp = admin_client.post(
             "/api/admin/dispatch_tasks",
             json={
@@ -1256,14 +1269,14 @@ class TestDispatchTasks:
 
     def test_create_dispatch_task_paths(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         assert admin_client.post("/api/admin/dispatch_tasks", json={"task_key": "t"}, headers=auth_headers).status_code == 400
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: "need key")
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: "need key")
         auto_bad = admin_client.post(
             "/api/admin/dispatch_tasks",
             json={"candidate_id": "c1", "task_key": "qualify_job_listings", "trigger_state": "VALID_TITLE", "min_count": 1, "auto_mode": True},
             headers=auth_headers,
         )
         assert auto_bad.status_code == 400
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "save_dispatch_task", MagicMock(side_effect=Exception("UNIQUE constraint failed")))
         dup = admin_client.post(
             "/api/admin/dispatch_tasks",
@@ -1325,13 +1338,13 @@ class TestDispatchTasks:
             },
         )
         assert admin_client.put(f"/api/admin/dispatch_tasks/1", json={}, headers=auth_headers).status_code == 400
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: "need key")
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: "need key")
         assert admin_client.put(
             f"/api/admin/dispatch_tasks/1",
             json={"auto_mode": True, "min_count": 2, "batch_size": 3, "debug": False, "skip_cache": True, "freq_hrs": 1.0, "max_runs": 5, "score_floor": 2.0, "trigger_state": "VALID_TITLE"},
             headers=auth_headers,
         ).status_code == 400
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         update = MagicMock()
         monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
         # Schedule-only update (no empty trigger — blank trigger_state is 400)
@@ -1345,7 +1358,7 @@ class TestDispatchTasks:
         monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda task_id: {"candidate_id": None})
         assert admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers).status_code == 400
         monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda task_id: {"candidate_id": "c1", "task_key": "qualify_job_listings"})
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "run_task", lambda task_id, ui_initiated=False: True)
         assert admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers).get_json()["started"] is True
@@ -1463,37 +1476,41 @@ class TestAdhocHelpers:
         other = admin_client.get("/api/admin/adhoc/entities?task_key=t3", headers=auth_headers).get_json()
         assert other["entities"] == []
 
-        resolved, err = admin_mod._resolve_adhoc({})
-        assert err is not None
-        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
-        _, err = admin_mod._resolve_adhoc({"agent_id": "a1"})
-        assert err[1] == 404
-        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id})
-        monkeypatch.setattr(admin_mod, "get_active_llm_provider", lambda: "anthropic")
-        # AST-492: missing brain_setting/model_code infer Medium (legacy shim); not a client error.
-        payload, err = admin_mod._resolve_adhoc({"agent_id": "a1"})
-        assert err is None
-        assert payload["model_code"] == cfg.resolve_brain_setting_to_anthropic_agent_key(cfg.BRAIN_MEDIUM)
-        assert payload.get("tier_meta") is None
+        with admin_client.application.app_context():
+            resolved, err = admin_mod._resolve_adhoc({})
+            assert err is not None
+            monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
+            _, err = admin_mod._resolve_adhoc({"agent_id": "a1"})
+            assert err[1] == 404
+            # AST-1880: no legacy Medium inference — an agent without a model is a client error.
+            monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id})
+            _, err = admin_mod._resolve_adhoc({"agent_id": "a1"})
+            assert err[1] == 400
         monkeypatch.setattr(
             admin_mod.database,
             "get_agent",
-            lambda agent_id: {"agent_id": agent_id, "model_code": "claude-haiku-4-5", "content": "sys", "temperature": None, "max_tokens": None},
+            lambda agent_id: {"agent_id": agent_id, "model_id": "claude", "brain_setting": cfg.BRAIN_LITTLE, "content": "sys", "temperature": None, "max_tokens": None},
         )
-        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: {"candidate_data": {"x": 1}, "candidate_api_key": "key"})
+        monkeypatch.setattr(
+            admin_mod.database, "get_candidate",
+            lambda candidate_id: {"candidate_data": {"x": 1}, "candidate_api_keys": {"anthropic": "key"}, "candidate_api_key": "legacy"},
+        )
         # AST-1855: hydrated loader (AST-1854) reads artifacts — keep it off the repo DB.
         monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
         monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: {"task_key_uuid": "uuid-1"})
         monkeypatch.setattr(admin_mod, "resolve_tokens", lambda text, *args, **kwargs: text)
         payload, err = admin_mod._resolve_adhoc({"agent_id": "a1", "candidate_id": "c1", "task_key": "craft_resume_base", "user_prompt": "u"})
         assert err is None
-        assert payload["api_key_override"] == "key"
+        # AST-1880: whole key map handed to core; core picks the route's server (AST-1879)
+        assert payload["candidate_api_keys"] == {"anthropic": "key"}
+        assert "api_key_override" not in payload
+        assert (payload["model_code"], payload["server_id"]) == ("claude-haiku-4-5", "anthropic")
 
     def test_resolve_adhoc_job_entity_resolves_visible_jd_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             admin_mod.database,
             "get_agent",
-            lambda agent_id: {"agent_id": agent_id, "content": "{$VISIBLE_JD}", "brain_setting": cfg.BRAIN_LITTLE},
+            lambda agent_id: {"agent_id": agent_id, "content": "{$VISIBLE_JD}", "model_id": "claude", "brain_setting": cfg.BRAIN_LITTLE},
         )
         monkeypatch.setattr(
             admin_mod.database,
@@ -1527,39 +1544,76 @@ class TestAdhocHelpers:
         assert payload["system"] == "Preview JD body"
 
 
-# AST-491/492 — _resolve_adhoc mirrors do_task tier routing under active_provider.
-class TestAst492ResolveAdhocApiAdmin:
-    def test_resolve_adhoc_deepseek_sets_tier_meta_and_vendor_as_model_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(admin_mod, "get_active_llm_provider", lambda: "deepseek")
-        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id, "content": "sys", "brain_setting": cfg.BRAIN_LITTLE})
+# AST-1880 — _resolve_adhoc routes by the agent's own model + brain size (catalog), no global provider.
+# Branches: catalog defaults; agent overrides (incl. 0); size not offered / unknown model / no model → 400.
+class TestAst1880ResolveAdhocCatalogRoute:
+    @staticmethod
+    def _agent(monkeypatch: pytest.MonkeyPatch, **agent: Any) -> None:
+        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id, "content": "sys", **agent})
+
+    def test_deepseek_little_uses_catalog_sku_server_tier_and_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._agent(monkeypatch, model_id="deepseek-v4", brain_setting=cfg.BRAIN_LITTLE)
+        route = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE)
         payload, err = admin_mod._resolve_adhoc({"agent_id": "z1"})
         assert err is None
-        assert payload["model_code"] == "deepseek-v4-flash"
-        assert payload["tier_meta"] is not None
-        assert payload["tier_meta"]["thinking"] is False
-
-    def test_resolve_adhoc_deepseek_unknown_vendor_model_returns_400(
-        self, admin_client: FlaskClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(admin_mod, "get_active_llm_provider", lambda: "deepseek")
-        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id, "content": "sys", "brain_setting": cfg.BRAIN_LITTLE})
-        monkeypatch.setattr(
-            admin_mod,
-            "resolve_brain_setting_to_deepseek_tier_meta",
-            lambda _bs: {"vendor_model": "not-in-pricing-json", "thinking": False},
+        assert (payload["model_code"], payload["server_id"], payload["tier"]) == ("deepseek-v4-flash", "deepseek", route["tier"])
+        assert (payload["temperature"], payload["max_tokens"]) == (
+            route["tier"]["default_temperature"], route["tier"]["default_max_tokens"],
         )
-        with admin_client.application.app_context():
-            _, err = admin_mod._resolve_adhoc({"agent_id": "z1"})
-        assert err is not None and err[1] == 400
+        assert payload["candidate_api_keys"] is None
+        assert "tier_meta" not in payload
 
-    def test_resolve_adhoc_unknown_active_provider_returns_400(
-        self, admin_client: FlaskClient, monkeypatch: pytest.MonkeyPatch
+    def test_agent_overrides_win_including_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # principal_recruiter_estelle shape: Kimi Big, temperature 0, max_tokens 384000
+        self._agent(monkeypatch, model_id="kimi-k2.6", brain_setting=cfg.BRAIN_BIG, temperature=0, max_tokens=384000)
+        payload, err = admin_mod._resolve_adhoc({"agent_id": "z1"})
+        assert err is None
+        assert (payload["server_id"], payload["model_code"]) == ("kimi", "kimi-k2.6")
+        assert payload["tier"]["thinking"] is True
+        assert (payload["temperature"], payload["max_tokens"]) == (0, 384000)
+
+    def test_adhoc_test_forwards_route_and_key_map_to_core(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "get_active_llm_provider", lambda: "contoso-bedrock")
-        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id, "content": "sys", "brain_setting": cfg.BRAIN_MEDIUM})
+        captured: dict[str, Any] = {}
+        tier = cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_BIG)["tier"]
+        monkeypatch.setattr(
+            admin_mod, "_resolve_adhoc",
+            lambda _b: ({"system": "s", "user": "u", "cache": "", "cache_a": "", "cache_b": "", "cache_c": "", "cache_d": "",
+                         "nocache": "", "model_code": "kimi-k2.6", "server_id": "kimi", "tier": tier, "temperature": 0,
+                         "max_tokens": 384000, "candidate_id": "c1", "task_key_uuid": None,
+                         "candidate_api_keys": {"kimi": "sk-k"}}, None),
+        )
+
+        async def run_ok(**kwargs: Any) -> dict[str, Any]:
+            captured.update(kwargs)
+            return {"success": True, "parsed_response": "ok", "timesheet": {}}
+
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_ok)
+        resp = admin_client.post("/api/admin/adhoc/test", json={"agent_id": "a1", "task_key": "evaluate_jd"}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert (captured["model_code"], captured["server_id"], captured["tier"]) == ("kimi-k2.6", "kimi", tier)
+        assert (captured["temperature"], captured["max_tokens"]) == (0, 384000)
+        assert captured["candidate_api_keys"] == {"kimi": "sk-k"}
+        assert {"api_key_override", "tier_meta"}.isdisjoint(captured)
+
+    @pytest.mark.parametrize(
+        "agent",
+        [
+            {"model_id": "kimi-k2.6", "brain_setting": cfg.BRAIN_MEDIUM},
+            {"model_id": "__no_model__", "brain_setting": cfg.BRAIN_BIG},
+            {"brain_setting": cfg.BRAIN_BIG},
+            {"model_code": "claude-haiku-4-5"},
+        ],
+        ids=["size_not_offered", "unknown_model", "no_model_id", "legacy_model_code_only"],
+    )
+    def test_unroutable_agent_returns_400(self, agent: dict, admin_client: FlaskClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._agent(monkeypatch, **agent)
         with admin_client.application.app_context():
-            _, err = admin_mod._resolve_adhoc({"agent_id": "z1"})
-        assert err is not None and err[1] == 400
+            payload, err = admin_mod._resolve_adhoc({"agent_id": "z1"})
+            assert payload is None
+            assert err[1] == 400
+            assert err[0].get_json()["error"]
 
 
 # Branches: adhoc preview/test success and failure envelopes.
@@ -1583,7 +1637,9 @@ class TestAdhocRoutes:
                     "max_tokens": 10,
                     "candidate_id": "c1",
                     "task_key_uuid": None,
-                    "api_key_override": None,
+                    "server_id": "anthropic",
+                    "tier": {},
+                    "candidate_api_keys": None,
                 },
                 None,
             ),
@@ -1656,7 +1712,9 @@ class TestAdhocRoutes:
                     "max_tokens": 10,
                     "candidate_id": "c1",
                     "task_key_uuid": None,
-                    "api_key_override": None,
+                    "server_id": "anthropic",
+                    "tier": {},
+                    "candidate_api_keys": None,
                 },
                 None,
             ),
@@ -1747,13 +1805,31 @@ class TestDataManagement:
 # Branches: culture-link backfill start/status/companies and candidate key helper.
 class TestBackfillAndCandidateKey:
     def test_candidate_dispatch_api_key_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        assert admin_mod._candidate_dispatch_api_key_error(None) is not None
+        # AST-1880: the key required is the one for the task agent's server, named by its label.
+        err = admin_mod._candidate_dispatch_api_key_error
+        assert err(None, "select_job_page") == "This dispatch task has no candidate; set one before Run or Auto."
         monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: None)
-        assert "not found" in admin_mod._candidate_dispatch_api_key_error("c1")
-        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: {"candidate_api_key": "  "})
-        assert "Anthropic API key" in admin_mod._candidate_dispatch_api_key_error("c1")
-        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: {"candidate_api_key": "key"})
-        assert admin_mod._candidate_dispatch_api_key_error("c1") is None
+        assert err("c1", "select_job_page") == "Candidate not found: c1"
+        asked: list = []
+        monkeypatch.setattr(admin_mod, "task_llm_server_id", lambda task_key: asked.append(task_key) or "kimi")
+        need_kimi = "Set this candidate's Kimi API key before using Run or Auto on this task."
+        for cand in ({"astral_candidate_id": "c1"}, {"candidate_api_keys": None}, {"candidate_api_keys": {"anthropic": "sk-a"}}, {"candidate_api_keys": {"kimi": ""}},
+                     {"candidate_api_key": "legacy-ciphertext"}):
+            monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id, c=cand: c)
+            assert err("c1", "select_job_page") == need_kimi, cand
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: {"candidate_api_keys": {"kimi": "sk-k"}})
+        assert err("c1", "select_job_page") is None
+        assert set(asked) == {"select_job_page"}
+
+    def test_candidate_dispatch_api_key_error_agentless_task_needs_no_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Table runners / notify tasks have no agent model → no platform key to require.
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: {"candidate_api_keys": {}})
+
+        def _no_agent(task_key: str) -> str:
+            raise ValueError(f"no agent for {task_key}")
+
+        monkeypatch.setattr(admin_mod, "task_llm_server_id", _no_agent)
+        assert admin_mod._candidate_dispatch_api_key_error("c1", "meteorite_retention") is None
 
     def test_backfill_routes(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         admin_mod._backfill_thread = None
@@ -1813,7 +1889,7 @@ class TestApiAdminBranchGaps:
         assert keys["dup"]["trigger_state"] == "NEW"
 
     def test_create_dispatch_task_auto_mode_success(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "save_dispatch_task", MagicMock(return_value=9))
         resp = admin_client.post(
@@ -1879,7 +1955,7 @@ class TestApiAdminBranchGaps:
     def test_ast535_create_dispatch_task_triple_unique_409(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(
             admin_mod,
             "save_dispatch_task",
@@ -1939,7 +2015,7 @@ class TestApiAdminBranchGaps:
         monkeypatch.setattr(
             admin_mod.database,
             "get_agent",
-            lambda agent_id: {"agent_id": agent_id, "model_code": "claude-haiku-4-5", "content": "sys", "temperature": 0.2, "max_tokens": 5},
+            lambda agent_id: {"agent_id": agent_id, "model_id": "claude", "brain_setting": cfg.BRAIN_LITTLE, "content": "sys", "temperature": 0.2, "max_tokens": 5},
         )
         monkeypatch.setattr(admin_mod, "resolve_tokens", lambda text, *args, **kwargs: text)
         payload, err = admin_mod._resolve_adhoc({"agent_id": "a1", "task_key": "adhoc"})
@@ -1947,7 +2023,7 @@ class TestApiAdminBranchGaps:
         assert payload["candidate_id"] is None
         monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: None)
         payload, err = admin_mod._resolve_adhoc({"agent_id": "a1", "candidate_id": "c1", "task_key": "craft_resume_base"})
-        assert payload["api_key_override"] is None
+        assert payload["candidate_api_keys"] is None
         assert admin_client.post("/api/admin/adhoc/preview", json={}, headers=auth_headers).status_code == 400
         assert admin_client.post("/api/admin/adhoc/test", json={}, headers=auth_headers).status_code == 400
 
@@ -1966,7 +2042,9 @@ class TestApiAdminBranchGaps:
                     "max_tokens": 10,
                     "candidate_id": None,
                     "task_key_uuid": None,
-                    "api_key_override": None,
+                    "server_id": "anthropic",
+                    "tier": {},
+                    "candidate_api_keys": None,
                 },
                 None,
             ),
@@ -2010,7 +2088,7 @@ class TestApiAdminBranchGaps:
         monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
         ok = admin_client.put("/api/admin/dispatch_tasks/1", json={"score_floor": 2.0}, headers=auth_headers)
         assert ok.status_code == 200
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: "need key")
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: "need key")
         bad = admin_client.put("/api/admin/dispatch_tasks/1", json={"auto_mode": True}, headers=auth_headers)
         assert bad.status_code == 400
 
@@ -2040,7 +2118,7 @@ class TestApiAdminBranchGaps:
         )
         update = MagicMock()
         monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda candidate_id, task_key: None)
         scored = admin_client.put("/api/admin/dispatch_tasks/1", json={"score_floor": 2.5, "auto_mode": True}, headers=auth_headers)
         assert scored.status_code == 200
@@ -2109,7 +2187,9 @@ class TestApiAdminBranchGaps:
                     "max_tokens": 10,
                     "candidate_id": None,
                     "task_key_uuid": None,
-                    "api_key_override": None,
+                    "server_id": "anthropic",
+                    "tier": {},
+                    "candidate_api_keys": None,
                 },
                 None,
             ),
@@ -2147,7 +2227,9 @@ class TestApiAdminBranchGaps:
                     "max_tokens": 10,
                     "candidate_id": None,
                     "task_key_uuid": None,
-                    "api_key_override": None,
+                    "server_id": "anthropic",
+                    "tier": {},
+                    "candidate_api_keys": None,
                 },
                 None,
             ),
@@ -2441,7 +2523,7 @@ class TestAst955AlignScheduledActionsSave:
     def test_create_check_cover_letter_201(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         save = MagicMock(return_value=77)
         monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
         resp = admin_client.post(
@@ -2462,7 +2544,7 @@ class TestAst955AlignScheduledActionsSave:
     def test_create_check_job_resume_regression(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         save = MagicMock(return_value=78)
         monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
         resp = admin_client.post(
@@ -2546,7 +2628,8 @@ class TestAst960TaskKeysNoFrozensetInventory:
         assert "inflow_resolve_website" not in keys
 
 
-# AST-986: Admin POST /session_resume/parse — thin delegate; no candidate bind in route.
+# AST-986: Admin POST /session_resume/parse — thin delegate; no candidate write in route.
+# AST-1880: forwards the selected candidate_id (stripped; "" when absent) so core uses that candidate's key.
 class TestAst986SessionResumeParseApi:
     def test_requires_admin(
         self, admin_client: FlaskClient, non_admin_headers: dict[str, str]
@@ -2563,8 +2646,8 @@ class TestAst986SessionResumeParseApi:
     ) -> None:
         calls: list[tuple[str, bool]] = []
 
-        def _fake(resume_text: str, *, debug: bool = False) -> tuple[dict[str, Any], int]:
-            calls.append((resume_text, debug))
+        def _fake(resume_text: str, *, candidate_id: str, debug: bool = False) -> tuple[dict[str, Any], int]:
+            calls.append((resume_text, candidate_id, debug))
             return ({"success": False, "error": "resume_text is required"}, 400)
 
         monkeypatch.setattr(admin_mod, "run_session_resume_parse", _fake)
@@ -2578,15 +2661,15 @@ class TestAst986SessionResumeParseApi:
             headers=auth_headers,
         )
         assert non_str.status_code == 400
-        assert calls == [("", False), ("", False)]
+        assert calls == [("", "", False), ("", "", False)]
 
     def test_no_json_body_uses_empty_dict(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         calls: list[str] = []
 
-        def _fake(resume_text: str, *, debug: bool = False) -> tuple[dict[str, Any], int]:
-            calls.append(resume_text)
+        def _fake(resume_text: str, *, candidate_id: str, debug: bool = False) -> tuple[dict[str, Any], int]:
+            calls.append((resume_text, candidate_id))
             return ({"success": False, "error": "resume_text is required"}, 400)
 
         monkeypatch.setattr(admin_mod, "run_session_resume_parse", _fake)
@@ -2598,15 +2681,16 @@ class TestAst986SessionResumeParseApi:
             headers=auth_headers,
         )
         assert resp.status_code == 400
-        assert calls == [""]
+        assert calls == [("", "")]
 
     def test_success_forwards_debug_and_body(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         captured: dict[str, Any] = {}
 
-        def _fake(resume_text: str, *, debug: bool = False) -> tuple[dict[str, Any], int]:
+        def _fake(resume_text: str, *, candidate_id: str, debug: bool = False) -> tuple[dict[str, Any], int]:
             captured["resume_text"] = resume_text
+            captured["candidate_id"] = candidate_id
             captured["debug"] = debug
             return (
                 {
@@ -2624,14 +2708,14 @@ class TestAst986SessionResumeParseApi:
         monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: True)
         resp = admin_client.post(
             "/api/admin/session_resume/parse",
-            json={"resume_text": "paste block"},
+            json={"resume_text": "paste block", "candidate_id": " cand-7 "},
             headers=auth_headers,
         )
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["success"] is True
         assert body["base_resume"]["experience"] == "x"
-        assert captured == {"resume_text": "paste block", "debug": True}
+        assert captured == {"resume_text": "paste block", "candidate_id": "cand-7", "debug": True}
 
     def test_failure_status_passthrough(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -2639,7 +2723,7 @@ class TestAst986SessionResumeParseApi:
         monkeypatch.setattr(
             admin_mod,
             "run_session_resume_parse",
-            lambda resume_text, *, debug=False: (
+            lambda resume_text, *, candidate_id, debug=False: (
                 {"success": False, "error": "agent down", "batch_id": "b1"},
                 500,
             ),
@@ -2935,7 +3019,7 @@ class TestAst1214AdminCatalogAlphabeticalWritable:
     def test_post_fetch_jd_and_parse_meteorite_email_create(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         save = MagicMock(side_effect=[71, 72])
         monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
         fetch = admin_client.post(
@@ -3030,7 +3114,9 @@ class TestAst1394AdhocTestResponseText:
                     "max_tokens": 10,
                     "candidate_id": "c1",
                     "task_key_uuid": None,
-                    "api_key_override": None,
+                    "server_id": "anthropic",
+                    "tier": {},
+                    "candidate_api_keys": None,
                 },
                 None,
             ),
@@ -3132,6 +3218,7 @@ class TestAst1411AdhocSevenSegment:
             lambda agent_id: {
                 "agent_id": agent_id,
                 "content": content,
+                "model_id": "claude",
                 "brain_setting": cfg.BRAIN_LITTLE,
                 "temperature": 0.1,
                 "max_tokens": 10,
@@ -3210,7 +3297,9 @@ class TestAst1411AdhocSevenSegment:
                     "max_tokens": 10,
                     "candidate_id": "c1",
                     "task_key_uuid": None,
-                    "api_key_override": None,
+                    "server_id": "anthropic",
+                    "tier": {},
+                    "candidate_api_keys": None,
                 },
                 None,
             ),
@@ -3436,7 +3525,7 @@ class TestAst1618PersistEntityTypeAdmin:
     def test_create_forwards_entity_type(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         save = MagicMock(return_value=1618)
         monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
         resp = admin_client.post(
@@ -3457,7 +3546,7 @@ class TestAst1618PersistEntityTypeAdmin:
     def test_create_rejects_entity_trigger_mismatch(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         save = MagicMock(return_value=1)
         monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
         resp = admin_client.post(
@@ -3478,7 +3567,7 @@ class TestAst1618PersistEntityTypeAdmin:
     def test_create_rejects_empty_and_unknown_entity(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         empty = admin_client.post(
             "/api/admin/dispatch_tasks",
             json={
@@ -3649,7 +3738,7 @@ class TestAst1623AdminMeteoriteStateOptionsAvail:
     def test_create_accepts_meteorite_entity_type(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         save = MagicMock(return_value=1623)
         monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
         resp = admin_client.post(
@@ -3693,6 +3782,7 @@ class TestAst1780EmptyRenderListGatesForceOff:
             "_evaluate_dispatch_empty_render",
             lambda cid, tk: {"empty_render": True, "empty_tokens": ["FIRST_NAME"]},
         )
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda cid, tk: None)
         updates: list[tuple] = []
         monkeypatch.setattr(
             admin_mod,
@@ -3705,6 +3795,7 @@ class TestAst1780EmptyRenderListGatesForceOff:
         assert out[0]["empty_render"] is True
         # AST-1819: token list rides on the row for the Invalid tooltip.
         assert out[0]["empty_tokens"] == ["FIRST_NAME"]
+        assert out[0]["invalid_reason"] == ""
         assert out[0]["auto_mode"] == 0
         assert updates == [(7, {"auto_mode": 0})]
 
@@ -3729,6 +3820,7 @@ class TestAst1780EmptyRenderListGatesForceOff:
             "_evaluate_dispatch_empty_render",
             lambda cid, tk: {"empty_render": False, "empty_tokens": []},
         )
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda cid, tk: None)
         updates: list = []
         monkeypatch.setattr(
             admin_mod, "update_dispatch_task", lambda *a, **k: updates.append(k)
@@ -3736,13 +3828,53 @@ class TestAst1780EmptyRenderListGatesForceOff:
         out = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
         assert out[0]["empty_render"] is False
         assert out[0]["empty_tokens"] == []  # AST-1819: always a list
+        assert out[0]["invalid_reason"] == ""  # AST-1880: always a string
         assert out[0]["auto_mode"] == 1
         assert updates == []
+
+    def test_list_missing_platform_key_is_invalid_with_reason_and_forces_auto_off(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # AST-1880 AC 5: prompts render fine, but the candidate lacks the task server's key.
+        rows = [{"id": 9, "task_key": "select_job_page", "trigger_state": "NEW", "entity_type": "company",
+                 "candidate_id": "c1", "score_floor": None, "auto_mode": 1}]
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        monkeypatch.setattr(admin_mod, "_evaluate_dispatch_empty_render", lambda cid, tk: {"empty_render": False, "empty_tokens": []})
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda cid: {"candidate_api_keys": {"anthropic": "sk-a"}})
+        monkeypatch.setattr(admin_mod, "task_llm_server_id", lambda tk: "kimi")
+        updates: list = []
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", lambda tid, **kw: updates.append((tid, kw)))
+        with caplog.at_level("WARNING"):
+            out = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        need = "Set this candidate's Kimi API key before using Run or Auto on this task."
+        assert (out[0]["empty_render"], out[0]["invalid_reason"], out[0]["empty_tokens"]) == (True, need, [])
+        assert out[0]["auto_mode"] == 0
+        assert updates == [(9, {"auto_mode": 0})]
+        assert f"{need} — AUTO forced off" in caplog.text
+
+    def test_run_missing_platform_key_400_never_starts(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1880 AC 5: Run refuses before any request; the key checked is the row task's server.
+        monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda tid: {"id": tid, "task_key": "select_job_page", "candidate_id": "c1"})
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda cid: {"candidate_api_keys": {"anthropic": "sk-a"}})
+        asked: list = []
+        monkeypatch.setattr(admin_mod, "task_llm_server_id", lambda tk: asked.append(tk) or "kimi")
+        run = MagicMock()
+        monkeypatch.setattr(admin_mod, "run_task", run)
+        resp = admin_client.post("/api/admin/dispatch_tasks/9/run", headers=auth_headers)
+        assert (resp.status_code, resp.get_json()) == (
+            400, {"error": "Set this candidate's Kimi API key before using Run or Auto on this task.", "started": False},
+        )
+        assert asked == ["select_job_page"]
+        run.assert_not_called()
 
     def test_create_auto_on_empty_render_400(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(
             admin_mod,
             "_candidate_dispatch_empty_render_error",
@@ -3780,7 +3912,7 @@ class TestAst1780EmptyRenderListGatesForceOff:
                 "entity_type": "job",
             },
         )
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(
             admin_mod,
             "_candidate_dispatch_empty_render_error",
@@ -3805,7 +3937,7 @@ class TestAst1780EmptyRenderListGatesForceOff:
             "get_dispatch_task",
             lambda task_id: {"candidate_id": "c1", "task_key": "qualify_job_listings"},
         )
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(
             admin_mod,
             "_candidate_dispatch_empty_render_error",
@@ -3922,7 +4054,7 @@ class TestAst1791NoPromptValueErrorEmptyRender:
             "get_dispatch_task",
             lambda task_id: {"candidate_id": "c1", "task_key": "gaze"},
         )
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         run = MagicMock(return_value=True)
         monkeypatch.setattr(admin_mod, "run_task", run)
         resp = admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers)

@@ -468,3 +468,5 @@ cd src/ui/frontend && npx tsc -b --noEmit && npm run test:component -- \
 ```
 
 **Pass criterion (test-fix):** every `[bug-repro]` node red on pre-fix tip (verified by Betty) flips green after make-fix — not zero-arg harness / branch-lock gate. Betty dry-ran the plan's Proposed change locally (not committed): all AST-1768 nodes green, only the pre-existing reds above remain.
+
+**AST-1874 (pointer):** `formatPhaseScore` (one decimal, else em dash) now lives here, shared with `JobsRecommended`; `formatPhaseSectionScoreTitle(label, breakdown, template, score?)` fills `{score}` and drops the whole ` - {score}` segment when the score is not a finite number — **`recommendedJobReport — AST-1874 list score in phase header`**. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1874.

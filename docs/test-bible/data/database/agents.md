@@ -51,3 +51,12 @@ Narrow manifest (**agents cluster**):
 ```
 
 **test-child scope gate (required):** `git show 1c8364e --name-only` — expect **only** `data/admin/agent.json` and `docs/features/foundation/ast-787-uat-agent-json-empty-seed-six-agent-personas.md` under `code(AST-787)` (no `src/`).
+
+### AST-1878 · AST-1851 (agent model_id + per-model brain validation)
+
+**Primary manifest:** **`docs/test-bible/data/database/candidates.md`** § AST-1878.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — `model_id` save/update/list, catalog SKU as `model_code` / `resolved_model_key` (None without model), per-model size check on insert/update/`update_agent`, repo JSON `model_id` required + size check before writes | `src/data/database.py` | `TestAst1878AgentModelField` |
+| Revised — repo JSON row helper carries `model_id` (default `claude`) | fixture | `_agent_repo_row` → `TestAst782AgentRepoJsonStartup` |

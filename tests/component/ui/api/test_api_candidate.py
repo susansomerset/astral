@@ -9,7 +9,7 @@ import pytest
 from flask.testing import FlaskClient
 
 from ui.api import api_candidate as candidate_mod
-from src.utils.config import ARTIFACT_CONFIG
+from src.utils.config import ARTIFACT_CONFIG, LLM_SERVER_CONFIG
 
 _PILOT_ARTIFACT_KEY = "candidate.artifacts.base_resume"
 
@@ -55,12 +55,35 @@ def _resume_content_blob(**overrides) -> dict:
     return body
 
 
+def _api_keys_flags(**set_ids: bool) -> dict:
+    """Expected outbound api_keys: every catalog server, set only where named (AST-1880)."""
+    return {sid: {"label": s["label"], "set": bool(set_ids.get(sid))} for sid, s in LLM_SERVER_CONFIG.items()}
+
+
+# Branches: hydrated key map → per-server flags; list row (no map) → get_candidate lookup;
+# no id + no map → all unset, no lookup; plaintext + legacy ciphertext always stripped.
 class TestSanitizeCandidate:
-    def test_strips_api_key_and_sets_flag(self) -> None:
-        row = {"candidate_api_key": "secret", "state": "NEW_CANDIDATE"}
+    def test_strips_keys_and_sets_per_server_flags(self) -> None:
+        row = {"candidate_api_keys": {"kimi": "sk-kimi", "deepseek": ""}, "candidate_api_key": "ct", "state": "NEW_CANDIDATE"}
         out = candidate_mod._sanitize_candidate(row)
-        assert out["has_api_key"] is True
+        assert out["api_keys"] == _api_keys_flags(kimi=True)
+        assert {"candidate_api_keys", "candidate_api_key", "has_api_key"}.isdisjoint(out)
+        assert "sk-kimi" not in repr(out)
+
+    def test_list_row_without_map_loads_keys_via_get_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen: list = []
+        monkeypatch.setattr(
+            candidate_mod, "get_candidate",
+            lambda cid: seen.append(cid) or {"candidate_api_keys": {"openrouter": "sk-or"}},
+        )
+        out = candidate_mod._sanitize_candidate({"astral_candidate_id": "cand-1", "candidate_api_key": "ct"})
+        assert seen == ["cand-1"]
+        assert out["api_keys"] == _api_keys_flags(openrouter=True)
         assert "candidate_api_key" not in out
+
+    def test_row_without_id_or_map_reports_all_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod, "get_candidate", MagicMock(side_effect=AssertionError("no lookup")))
+        assert candidate_mod._sanitize_candidate({"state": "NEW_CANDIDATE"})["api_keys"] == _api_keys_flags()
 
 
 def _tiny_jpeg_bytes(height: int, width: int) -> bytes:
@@ -192,19 +215,36 @@ class TestCandidateRoutes:
         assert resp.status_code == 403
         key_resp = candidate_client.put(
             "/api/candidates/cand-x/data",
-            json={"api_key": "secret"},
+            json={"api_keys": {"kimi": "secret"}},
             headers=non_admin_headers,
         )
         assert key_resp.status_code == 403
 
     def test_list_candidates_and_states(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(candidate_mod, "core_list_candidates", lambda include_deleted=False: [{"candidate_api_key": "x"}] if include_deleted else [])
+        monkeypatch.setattr(candidate_mod, "core_list_candidates", lambda include_deleted=False: [{}] if include_deleted else [])
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: None)
         assert candidate_client.get("/api/candidates", headers=auth_headers).get_json() == []
-        assert candidate_client.get("/api/candidates?include_deleted=true", headers=auth_headers).get_json()[0]["has_api_key"] is True
+        assert len(candidate_client.get("/api/candidates?include_deleted=true", headers=auth_headers).get_json()) == 1
         states = candidate_client.get("/api/candidates/states", headers=auth_headers)
         assert states.status_code == 200
         assert "NEW_CANDIDATE" in states.get_json()
         assert "PROSPECT" not in states.get_json()
+
+    def test_list_rows_carry_per_server_key_flags_only(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1880: list rows have no hydrated map; sanitize loads it and returns set/not-set per server.
+        monkeypatch.setattr(
+            candidate_mod, "core_list_candidates",
+            lambda include_deleted=False: [{"astral_candidate_id": "c1", "candidate_api_key": "x"}],
+        )
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: {"candidate_api_keys": {"kimi": "sk-kimi"}})
+        listed = candidate_client.get("/api/candidates", headers=auth_headers)
+        assert listed.status_code == 200
+        row = listed.get_json()[0]
+        assert row["api_keys"] == _api_keys_flags(kimi=True)
+        assert {"candidate_api_keys", "candidate_api_key", "has_api_key"}.isdisjoint(row)
+        assert b"sk-kimi" not in listed.data
 
     def test_create_requires_candidate_id(self, candidate_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = candidate_client.post("/api/candidates", json={}, headers=auth_headers)
@@ -224,10 +264,16 @@ class TestCandidateRoutes:
         assert resp.status_code == 404
 
     def test_get_returns_sanitized_candidate(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "x"})
+        monkeypatch.setattr(
+            candidate_mod, "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"deepseek": "sk-ds"}, "candidate_api_key": "x"},
+        )
         resp = candidate_client.get("/api/candidates/cand-1", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.get_json()["has_api_key"] is True
+        body = resp.get_json()
+        assert body["api_keys"] == _api_keys_flags(deepseek=True)
+        assert {"candidate_api_keys", "candidate_api_key", "has_api_key"}.isdisjoint(body)
+        assert b"sk-ds" not in resp.data
 
     def test_update_requires_body(self, candidate_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = candidate_client.put("/api/candidates/cand-1/data", json={}, headers=auth_headers)
@@ -245,13 +291,11 @@ class TestCandidateRoutes:
         assert resp.status_code == 400
         assert "profile was renamed to contact" in resp.get_json()["error"]
 
-    def test_update_merges_data_state_and_api_key(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_update_merges_data_and_state(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         save_data = MagicMock()
-        save_admin = MagicMock()
         clear_key = MagicMock()
         transition = MagicMock()
         monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
-        monkeypatch.setattr(candidate_mod, "save_candidate_admin", save_admin)
         monkeypatch.setattr(candidate_mod, "clear_candidate_api_key", clear_key)
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
@@ -262,17 +306,96 @@ class TestCandidateRoutes:
         monkeypatch.setattr(candidate_mod, "normalize_resume_structure", lambda merged: merged, raising=False)
         resp = candidate_client.put(
             "/api/candidates/cand-1/data",
-            json={"state": "ACTIVE_SEARCH", "api_key": "  new-key  ", "artifacts": {"joblist_rubric": []}, "note": "x"},
+            json={"state": "ACTIVE_SEARCH", "artifacts": {"joblist_rubric": []}, "note": "x"},
             headers=auth_headers,
         )
         assert resp.status_code == 200
         save_data.assert_called_once()
         # AST-1287: keyword-only force= (default false) on every transition call
         transition.assert_called_once_with("cand-1", "ACTIVE_SEARCH", force=False)
-        save_admin.assert_any_call("cand-1", candidate_api_key="new-key")
-        clear = candidate_client.put("/api/candidates/cand-1/data", json={"api_key": "   "}, headers=auth_headers)
+        clear_key.assert_not_called()
+
+    def test_update_sets_and_clears_api_keys_per_server(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save_data, set_key, clear_key = MagicMock(), MagicMock(), MagicMock()
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        monkeypatch.setattr(candidate_mod, "set_candidate_api_key", set_key)
+        monkeypatch.setattr(candidate_mod, "clear_candidate_api_key", clear_key)
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        resp = candidate_client.put(
+            "/api/candidates/cand-1/data",
+            json={"api_keys": {"kimi": "  new-key  ", "openrouter": "sk-or"}, "note": "x"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        # api_keys never reaches candidate_data
+        assert "api_keys" not in repr(save_data.call_args_list)
+        assert "new-key" not in repr(save_data.call_args_list)
+        # AST-1880: one set per server, stripped
+        assert [c.args for c in set_key.call_args_list] == [("cand-1", "kimi", "new-key"), ("cand-1", "openrouter", "sk-or")]
+        clear_key.assert_not_called()
+        clear = candidate_client.put("/api/candidates/cand-1/data", json={"api_keys": {"deepseek": "   "}}, headers=auth_headers)
         assert clear.status_code == 200
-        clear_key.assert_called_once_with("cand-1")
+        clear_key.assert_called_once_with("cand-1", "deepseek")
+        assert set_key.call_count == 2
+
+    @pytest.mark.parametrize(
+        "api_keys",
+        [["kimi", "sk"], "sk", {"__no_server__": "sk"}, {"kimi": 5}, {"kimi": None}],
+        ids=["list", "string", "unknown_server", "int_key", "null_key"],
+    )
+    def test_update_rejects_malformed_api_keys(
+        self, api_keys, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        set_key, clear_key, save_data = MagicMock(), MagicMock(), MagicMock()
+        monkeypatch.setattr(candidate_mod, "set_candidate_api_key", set_key)
+        monkeypatch.setattr(candidate_mod, "clear_candidate_api_key", clear_key)
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        resp = candidate_client.put("/api/candidates/cand-1/data", json={"api_keys": api_keys}, headers=auth_headers)
+        assert resp.status_code == 400
+        set_key.assert_not_called()
+        clear_key.assert_not_called()
+        save_data.assert_not_called()
+
+    def test_put_two_server_keys_stores_ciphertext_and_get_shows_flags_only(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AC 4 end to end: two platform keys → two candidate_key ciphertext rows; GET returns set/not-set only.
+        from cryptography.fernet import Fernet
+
+        db = sqlite_in_memory
+        # rubric hydrate is off-topic here and reads rubric_vector (order-dependent in sqlite_in_memory)
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "hydrate_rubric_artifacts_for_response", MagicMock())
+        monkeypatch.setattr(db, "_fernet", Fernet(Fernet.generate_key()))
+        db.save_candidate("cand-k", state="NEW_CANDIDATE", candidate_data={})
+        resp = candidate_client.put(
+            "/api/candidates/cand-k/data",
+            json={"api_keys": {"kimi": "sk-kimi-plain", "openrouter": "sk-or-plain"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        conn = db._get_connection()
+        try:
+            rows = conn.execute(
+                "SELECT server_id, api_key FROM candidate_key WHERE candidate_id = ? ORDER BY server_id", ("cand-k",)
+            ).fetchall()
+        finally:
+            conn.close()
+        assert [r["server_id"] for r in rows] == ["kimi", "openrouter"]
+        assert [db.decrypt_value(r["api_key"]) for r in rows] == ["sk-kimi-plain", "sk-or-plain"]
+        assert all("plain" not in r["api_key"] for r in rows)
+        got = candidate_client.get("/api/candidates/cand-k", headers=auth_headers)
+        assert got.get_json()["api_keys"] == _api_keys_flags(kimi=True, openrouter=True)
+        assert b"plain" not in got.data
+        cleared = candidate_client.put("/api/candidates/cand-k/data", json={"api_keys": {"kimi": ""}}, headers=auth_headers)
+        assert cleared.status_code == 200
+        assert candidate_client.get("/api/candidates/cand-k", headers=auth_headers).get_json()["api_keys"] == _api_keys_flags(openrouter=True)
 
     def test_update_rejects_blank_company_search_terms(self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())

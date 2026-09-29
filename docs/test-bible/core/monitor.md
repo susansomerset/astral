@@ -47,3 +47,7 @@ AUTO error alert subject replaces hardcoded `[Astral]` with `[{deploy_label}]` o
 Dispatcher routing (outage alert vs `auto_run_error`): **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870 (manifest there covers these nodes + `TestAutoRunError`).
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/monitor.md | shasum`
+
+### AST-1880 · AST-1851 (pointer)
+
+`provider_balance_outage` labels the alert with `get_llm_server(task_llm_server_id(task_key))["label"]`, the refused task's own server, not a global setting. `TestAst1867ProviderBalanceOutage` stubs `task_llm_server_id`, so the expected subject and body read `DeepSeek`. New `test_provider_label_resolved_from_refused_task` checks the task key reaches the resolver and the label is `OpenRouter`. The swallow test raises from the resolver. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1880.

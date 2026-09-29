@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import SessionResumePaste from "../../../../src/ui/frontend/src/pages/AdminSessionResumePaste"
-import { installBaseApiMocks, renderWithProviders } from "../test-utils"
+import { installBaseApiMocks, jsonResponse, renderWithProviders } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
@@ -39,18 +39,23 @@ describe("AdminSessionResumePaste — AST-987", () => {
     })
   })
 
+  // AST-1880: Parse runs on the selected candidate's key — the provider selects the first listed candidate.
   function mockApis(
     extra?: (url: string, init?: RequestInit) => Promise<Response | undefined> | Response | undefined,
+    candidates: Array<Record<string, unknown>> = [{ astral_candidate_id: "cand-9", full: "Ada Lovelace" }],
   ) {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       const fromExtra = extra ? await extra(url, init) : undefined
       if (fromExtra !== undefined) return fromExtra
+      if (url === "/api/candidates") return jsonResponse(candidates)
     })
   }
 
   it("renders page; Parse success enables Open HTML; failure never opens tab (§6c)", async () => {
+    const parseBodies: unknown[] = []
     mockApis(async (url, init) => {
       if (url === "/api/admin/session_resume/parse" && init?.method === "POST") {
+        parseBodies.push(JSON.parse(String(init.body)))
         return {
           ok: true,
           json: async () => ({
@@ -78,10 +83,12 @@ describe("AdminSessionResumePaste — AST-987", () => {
 
     const textarea = screen.getByPlaceholderText(/Paste full resume text/)
     fireEvent.change(textarea, { target: { value: "Full resume paste" } })
-    expect(screen.getByRole("button", { name: "Parse" })).toBeEnabled()
+    await waitFor(() => expect(screen.getByRole("button", { name: "Parse" })).toBeEnabled())
 
     await userEvent.click(screen.getByRole("button", { name: "Parse" }))
     await waitFor(() => expect(screen.getByText("Parsed resume structure.")).toBeInTheDocument())
+    // AST-1880 AC 8: selected candidate id rides on the wire; nothing else added.
+    expect(parseBodies).toEqual([{ resume_text: "Full resume paste", candidate_id: "cand-9" }])
     expect(screen.getByRole("button", { name: "View Parsed JSON" })).toBeEnabled()
     expect(screen.getByRole("button", { name: "Open HTML" })).toBeEnabled()
     expect(window.open).not.toHaveBeenCalled()
@@ -106,11 +113,26 @@ describe("AdminSessionResumePaste — AST-987", () => {
     fireEvent.change(screen.getByPlaceholderText(/Paste full resume text/), {
       target: { value: "bad paste" },
     })
+    await waitFor(() => expect(screen.getByRole("button", { name: "Parse" })).toBeEnabled())
     await userEvent.click(screen.getByRole("button", { name: "Parse" }))
     await waitFor(() => expect(screen.getAllByText("agent boom").length).toBeGreaterThan(0))
     expect(screen.getByRole("button", { name: "View Parsed JSON" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Open HTML" })).toBeDisabled()
     expect(window.open).not.toHaveBeenCalled()
+  })
+
+  it("AST-1880: no selected candidate keeps Parse disabled with a reason and never POSTs", async () => {
+    mockApis(undefined, [])
+    renderWithProviders(<SessionResumePaste />)
+    fireEvent.change(screen.getByPlaceholderText(/Paste full resume text/), {
+      target: { value: "Full resume paste" },
+    })
+    await waitFor(() => expect(mockedApi).toHaveBeenCalledWith("/api/candidates"))
+    const parse = screen.getByRole("button", { name: "Parse" })
+    expect(parse).toBeDisabled()
+    expect(parse).toHaveAttribute("title", "Select a candidate first — Parse runs on their API key")
+    await userEvent.click(parse)
+    expect(mockedApi.mock.calls.some(([u]) => u === "/api/admin/session_resume/parse")).toBe(false)
   })
 
   it("View Parsed JSON shows lastParse payload; close keeps lastParse (AST-1035)", async () => {

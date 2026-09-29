@@ -55,13 +55,10 @@ class TestSaveCandidate:
         assert row is not None
         assert row["candidate_data"] == {"summary": "only"}
 
-    def test_stores_encrypted_api_key(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
-        key = Fernet.generate_key().decode()
-        monkeypatch.setattr(sqlite_in_memory, "_fernet", Fernet(key.encode()))
-        sqlite_in_memory.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_api_key="secret-key")
-        row = sqlite_in_memory.get_candidate("cand-1")
-        assert row is not None
-        assert row["candidate_api_key"] == "secret-key"
+    def test_save_candidate_no_longer_takes_legacy_api_key(self, sqlite_in_memory) -> None:
+        # AST-1878: per-server keys live in candidate_key; no save path writes the legacy column.
+        with pytest.raises(TypeError):
+            sqlite_in_memory.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_api_key="secret-key")
 
 
 class TestAst1417SaveCandidateHopLabelPersist:
@@ -97,17 +94,106 @@ class TestListCandidates:
         assert ids == {"cand-1", "cand-2"}
 
 
-class TestClearCandidateApiKey:
-    def test_clears_stored_key(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
-        key = Fernet.generate_key().decode()
-        monkeypatch.setattr(sqlite_in_memory, "_fernet", Fernet(key.encode()))
-        db = sqlite_in_memory
-        db.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_api_key="secret-key")
-        db.clear_candidate_api_key("cand-1")
+# Branches: set (upsert, blank id, unknown server, blank key, missing candidate); clear (hit, miss,
+# unknown server); list ids; get_candidate key map (undecryptable omitted, legacy column never exposed);
+# hard-delete cascade.
+class TestAst1878CandidateServerKeys:
+    """AST-1878: one Fernet-encrypted key per (candidate, server); get_candidate hydrates candidate_api_keys."""
+
+    @pytest.fixture
+    def db(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(sqlite_in_memory, "_fernet", Fernet(Fernet.generate_key()))
+        sqlite_in_memory.save_candidate("cand-1", state="NEW_CANDIDATE")
+        return sqlite_in_memory
+
+    @staticmethod
+    def _raw_rows(db, cid: str) -> list:
+        conn = db._get_connection()
+        try:
+            return conn.execute(
+                "SELECT server_id, api_key FROM candidate_key WHERE candidate_id = ? ORDER BY server_id", (cid,)
+            ).fetchall()
+        finally:
+            conn.close()
+
+    def test_two_servers_store_two_ciphertext_rows(self, db) -> None:
+        # Parent AC 6 storage half: two platform keys on one candidate, both encrypted at rest.
+        db.set_candidate_server_key("cand-1", "kimi", "sk-kimi")
+        db.set_candidate_server_key("cand-1", "openrouter", " sk-or ")
+        rows = self._raw_rows(db, "cand-1")
+        assert [r["server_id"] for r in rows] == ["kimi", "openrouter"]
+        assert all(r["api_key"] not in ("sk-kimi", "sk-or", " sk-or ") for r in rows)
+        assert db.decrypt_value(rows[1]["api_key"]) == "sk-or"
+
+    def test_get_candidate_returns_key_map_without_legacy_key(self, db) -> None:
+        # AC 5: no single candidate_api_key string; map of server → plaintext instead.
+        db.set_candidate_server_key("cand-1", "kimi", "sk-kimi")
+        db.set_candidate_server_key("cand-1", "deepseek", "sk-ds")
         row = db.get_candidate("cand-1")
         assert row is not None
-        assert row["candidate_api_key"] is None
+        assert "candidate_api_key" not in row
+        assert row["candidate_api_keys"] == {"deepseek": "sk-ds", "kimi": "sk-kimi"}
+        assert all("candidate_api_key" not in r for r in db.list_candidates())
 
+    def test_candidate_without_keys_has_empty_map(self, db) -> None:
+        assert db.get_candidate("cand-1")["candidate_api_keys"] == {}
+
+    def test_legacy_column_value_is_never_exposed(self, db) -> None:
+        conn = db._get_connection()
+        try:
+            conn.execute("UPDATE candidate SET candidate_api_key = ? WHERE astral_candidate_id = ?",
+                         (db.encrypt_value("old-single-key"), "cand-1"))
+            conn.commit()
+        finally:
+            conn.close()
+        row = db.get_candidate("cand-1")
+        assert "candidate_api_key" not in row
+        assert row["candidate_api_keys"] == {}
+
+    def test_upsert_replaces_key_in_place(self, db) -> None:
+        db.set_candidate_server_key("cand-1", "kimi", "first")
+        db.set_candidate_server_key("cand-1", "kimi", "second")
+        assert len(self._raw_rows(db, "cand-1")) == 1
+        assert db.get_candidate("cand-1")["candidate_api_keys"] == {"kimi": "second"}
+
+    def test_undecryptable_row_is_omitted(self, db, monkeypatch: pytest.MonkeyPatch) -> None:
+        db.set_candidate_server_key("cand-1", "kimi", "sk-kimi")
+        monkeypatch.setattr(db, "_fernet", Fernet(Fernet.generate_key()))
+        db.set_candidate_server_key("cand-1", "deepseek", "sk-ds")
+        assert db.get_candidate("cand-1")["candidate_api_keys"] == {"deepseek": "sk-ds"}
+
+    @pytest.mark.parametrize(
+        ("cid", "server", "key", "exc", "match"),
+        [
+            ("  ", "kimi", "k", ValueError, "candidate_id is required"),
+            ("cand-1", "__nope__", "k", ValueError, "Unknown LLM server"),
+            ("cand-1", "kimi", "   ", ValueError, "api_key is required"),
+            ("ghost", "kimi", "k", LookupError, "Candidate not found: ghost"),
+        ],
+    )
+    def test_set_rejects_bad_input(self, db, cid: str, server: str, key: str, exc: type, match: str) -> None:
+        with pytest.raises(exc, match=match):
+            db.set_candidate_server_key(cid, server, key)
+        assert db.list_candidate_server_keys("cand-1") == ()
+
+    def test_list_and_clear(self, db) -> None:
+        db.set_candidate_server_key("cand-1", "openrouter", "a")
+        db.set_candidate_server_key("cand-1", "kimi", "b")
+        assert db.list_candidate_server_keys("cand-1") == ("kimi", "openrouter")
+        assert db.clear_candidate_server_key("cand-1", "kimi") is True
+        assert db.clear_candidate_server_key("cand-1", "kimi") is False
+        assert db.list_candidate_server_keys("cand-1") == ("openrouter",)
+        assert db.get_candidate("cand-1")["candidate_api_keys"] == {"openrouter": "a"}
+        with pytest.raises(ValueError, match="Unknown LLM server"):
+            db.clear_candidate_server_key("cand-1", "__nope__")
+
+    def test_hard_delete_cascades_keys(self, db) -> None:
+        db.set_candidate_server_key("cand-1", "kimi", "sk-kimi")
+        counts = db.hard_delete_candidate("cand-1")
+        assert counts["candidate_key"] == 1
+        # A re-created candidate with the same id must not inherit the deleted person's keys.
+        db.save_candidate("cand-1", state="NEW_CANDIDATE")
+        assert db.get_candidate("cand-1")["candidate_api_keys"] == {}
 
 
 # Branches: candidate.last_email_check column + stamp helper (AST-1134).

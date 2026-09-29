@@ -43,7 +43,13 @@ const shapes = {
 const candidate = {
   astral_candidate_id: "doe_jane",
   state: "ACTIVE",
-  has_api_key: true,
+  // AST-1880: one set/not-set entry per catalog server, never the key.
+  api_keys: {
+    anthropic: { label: "Anthropic", set: false },
+    kimi: { label: "Kimi", set: true },
+    openrouter: { label: "OpenRouter", set: true },
+    deepseek: { label: "DeepSeek", set: false },
+  },
   first: "Jane",
   last: "Doe",
   pronouns: "she/her",
@@ -58,15 +64,22 @@ function textboxByFieldLabel(container: HTMLElement, label: string) {
   return within(field as HTMLElement).getByRole("textbox")
 }
 
+/** AST-1880 per-server key field (password input until Show). */
+function keyFieldByLabel(container: HTMLElement, label: string) {
+  return within(container).getByText(label, { selector: "label.dep-field-label" }).closest(".dep-field") as HTMLElement
+}
+
 function comboboxByFieldLabel(container: HTMLElement, label: string) {
   const field = within(container).getByText(label, { selector: "label.dep-field-label" }).closest(".dep-field")!
   return within(field as HTMLElement).getByRole("combobox")
 }
 
 describe("AdminManageCandidates", () => {
+  let putBodies: Record<string, unknown>[] = []
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
+    putBodies = []
   })
 
   function mockApi(
@@ -86,7 +99,10 @@ describe("AdminManageCandidates", () => {
         return { ok: true, json: async () => ({ users: unbound }) } as Response
       }
       if (url === "/api/candidates" && init?.method === "POST") return { ok: true, json: async () => ({}) } as Response
-      if (url === "/api/candidates/doe_jane/data" && init?.method === "PUT") return { ok: true, json: async () => ({}) } as Response
+      if (url === "/api/candidates/doe_jane/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
       if (url === "/api/candidates/doe_jane" && init?.method === "DELETE") return { ok: true, json: async () => ({}) } as Response
     })
   }
@@ -95,7 +111,6 @@ describe("AdminManageCandidates", () => {
     mockApi()
     renderWithProviders(<ManageCandidates />)
     await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
-    expect(screen.getByText("🔑 Set")).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("button", { name: "+ Add Candidate" }))
     const addModal = screen.getByText("Add Candidate").closest(".modal-card") as HTMLElement
@@ -109,19 +124,63 @@ describe("AdminManageCandidates", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
 
     await userEvent.click(screen.getByRole("button", { name: "Edit" }))
-    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card")!
-    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Show" }))
-    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Clear" }))
-    const clearDialog = await screen.findByRole("alertdialog", { name: "Clear API key" })
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
+    // AST-1880: one field per server; Clear only on servers whose key is set.
+    const kimi = keyFieldByLabel(editModal, "Kimi API key (set — leave blank to keep current)")
+    const deepseek = keyFieldByLabel(editModal, "DeepSeek API key (not set)")
+    keyFieldByLabel(editModal, "OpenRouter API key (set — leave blank to keep current)")
+    keyFieldByLabel(editModal, "Anthropic API key (not set)")
+    expect(within(editModal).getAllByRole("button", { name: "Clear" })).toHaveLength(2)
+    expect(within(deepseek).queryByRole("button", { name: "Clear" })).not.toBeInTheDocument()
+    const dsInput = deepseek.querySelector("input") as HTMLInputElement
+    expect(dsInput.type).toBe("password")
+    await userEvent.click(within(deepseek).getByRole("button", { name: "Show" }))
+    expect(dsInput.type).toBe("text")
+    fireEvent.change(dsInput, { target: { value: "  sk-ds-new  " } })
+    await userEvent.click(within(kimi).getByRole("button", { name: "Clear" }))
+    const clearDialog = await screen.findByRole("alertdialog", { name: "Clear Kimi API key" })
     await userEvent.click(within(clearDialog).getByRole("button", { name: "Clear key" }))
-    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Save" }))
+    await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
+    // Only changed servers ride on the PUT: typed key trimmed, cleared server "".
+    expect(putBodies.at(-1)?.api_keys).toEqual({ kimi: "", deepseek: "sk-ds-new" })
+    expect(putBodies.at(-1)).not.toHaveProperty("api_key")
 
     await userEvent.click(screen.getByRole("button", { name: "Delete" }))
     const deleteDialog = await screen.findByRole("alertdialog", { name: "Delete candidate" })
     await userEvent.click(within(deleteDialog).getByRole("button", { name: "Delete" }))
     await waitFor(() => expect(screen.getByText(/Candidate "doe_jane" deleted/)).toBeInTheDocument())
   }, 20000)
+
+  it("AST-1880: API Key column lists the labels of servers with a key set", async () => {
+    // Plan Stage 4: api_key_status = labels with set: true, joined, or "Not set".
+    mockApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("doe_jane")).toBeInTheDocument())
+    const row = screen.getByText("doe_jane").closest("tr") as HTMLElement
+    expect(row.textContent).toContain("Kimi, OpenRouter")
+    expect(row.textContent).not.toContain("Not set")
+  })
+
+  it("AST-1880: no keys set shows Not set; edit Save without key changes omits api_keys", async () => {
+    const noKeys = {
+      ...candidate,
+      api_keys: Object.fromEntries(Object.entries(candidate.api_keys).map(([sid, k]) => [sid, { ...k, set: false }])),
+    }
+    mockApi()
+    const base = mockedApi.getMockImplementation()!
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) =>
+      url === "/api/candidates?include_deleted=true" ? ({ json: async () => [noKeys] } as Response) : base(url, init),
+    )
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText(/Not set/)).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
+    expect(within(editModal).queryByRole("button", { name: "Clear" })).not.toBeInTheDocument()
+    await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
+    expect(putBodies.at(-1)).not.toHaveProperty("api_keys")
+  }, 15000)
 
   it("validates add form and surfaces API errors", async () => {
     mockApi()

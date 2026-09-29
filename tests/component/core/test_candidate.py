@@ -753,13 +753,18 @@ class TestParseCandidateResumeExtended:
 class TestCandidateAdminFacades:
     def test_save_candidate_admin_and_clear_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
-        clear = MagicMock()
+        set_key = MagicMock()
+        clear = MagicMock(return_value=True)
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        monkeypatch.setattr(candidate_mod.database, "clear_candidate_api_key", clear)
+        monkeypatch.setattr(candidate_mod.database, "set_candidate_server_key", set_key)
+        monkeypatch.setattr(candidate_mod.database, "clear_candidate_server_key", clear)
         candidate_mod.save_candidate_admin("somerset", state="ACTIVE_SEARCH")
-        candidate_mod.clear_candidate_api_key("somerset")
+        # AST-1878: keys are per catalog server.
+        candidate_mod.set_candidate_api_key("somerset", "kimi", "sk-kimi")
+        assert candidate_mod.clear_candidate_api_key("somerset", "kimi") is True
         save.assert_called_once_with("somerset", state="ACTIVE_SEARCH")
-        clear.assert_called_once_with("somerset")
+        set_key.assert_called_once_with("somerset", "kimi", "sk-kimi")
+        clear.assert_called_once_with("somerset", "kimi")
 
 
 class TestRunCandidateArtifactGeneration:
@@ -2163,6 +2168,9 @@ class TestAst973HardDeleteAndReapPurge:
 
 # Branches: 400 empty/non-str; ledger session sentinel; do_task fail/exception/non-dict;
 # success split + no get/save_candidate; debug Style D on/off.
+_SESSION_CANDIDATE = {"astral_candidate_id": "somerset", "candidate_api_keys": {"kimi": "sk-kimi", "deepseek": "sk-ds"}}
+
+
 class TestAst986SessionResumeParse:
     def _patch_ledger(self, monkeypatch: pytest.MonkeyPatch) -> tuple[list, list]:
         saves: list = []
@@ -2179,6 +2187,8 @@ class TestAst986SessionResumeParse:
         )
         monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.5))
         monkeypatch.setattr(candidate_mod, "flush_log_buffer", MagicMock())
+        # AST-1878: session paste loads the selected candidate for its key map only.
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", MagicMock(return_value=_SESSION_CANDIDATE))
         return saves, updates
 
     @pytest.mark.parametrize("bad", ["", "   ", None, 12])
@@ -2187,12 +2197,31 @@ class TestAst986SessionResumeParse:
         assert status == 400
         assert body == {"success": False, "error": "resume_text is required"}
 
+    def test_400_requires_candidate_id_before_ledger_or_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves, _ = self._patch_ledger(monkeypatch)
+        do_task = MagicMock()
+        monkeypatch.setattr(candidate_mod, "do_task", do_task)
+        for cid in (None, "", "   "):
+            body, status = candidate_mod.run_session_resume_parse("paste me", candidate_id=cid)
+            assert status == 400
+            assert body == {"success": False, "error": "candidate_id is required"}
+        assert saves == []
+        do_task.assert_not_called()
+
+    def test_404_unknown_candidate_before_ledger(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves, _ = self._patch_ledger(monkeypatch)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", MagicMock(return_value=None))
+        body, status = candidate_mod.run_session_resume_parse("paste me", candidate_id=" ghost ")
+        assert status == 404
+        assert body == {"success": False, "error": "Candidate not found: ghost"}
+        assert saves == []
+
     def test_500_on_task_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         saves, updates = self._patch_ledger(monkeypatch)
         monkeypatch.setattr(
             candidate_mod, "asyncio", MagicMock(run=MagicMock(side_effect=RuntimeError("boom")))
         )
-        body, status = candidate_mod.run_session_resume_parse("paste me")
+        body, status = candidate_mod.run_session_resume_parse("paste me", candidate_id="somerset")
         assert status == 500
         assert body["success"] is False
         assert body["error"] == "boom"
@@ -2210,7 +2239,7 @@ class TestAst986SessionResumeParse:
         monkeypatch.setattr(
             candidate_mod, "asyncio", MagicMock(run=MagicMock(side_effect=RuntimeError("x")))
         )
-        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        body, status = candidate_mod.run_session_resume_parse("paste", candidate_id="somerset", debug=True)
         assert status == 500
         assert body["success"] is False
         dbg.assert_called_once()
@@ -2223,7 +2252,7 @@ class TestAst986SessionResumeParse:
             "asyncio",
             MagicMock(run=MagicMock(return_value={"success": False, "error": "bad parse"})),
         )
-        body, status = candidate_mod.run_session_resume_parse("paste me")
+        body, status = candidate_mod.run_session_resume_parse("paste me", candidate_id="somerset")
         assert status == 500
         assert body["error"] == "bad parse"
         assert body["batch_id"].startswith("user-session-parse-resume-")
@@ -2241,7 +2270,7 @@ class TestAst986SessionResumeParse:
             "asyncio",
             MagicMock(run=MagicMock(return_value={"success": False})),
         )
-        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        body, status = candidate_mod.run_session_resume_parse("paste", candidate_id="somerset", debug=True)
         assert status == 500
         assert body["error"] == "Generation failed"
         assert dbg.call_args.kwargs["outcome"] == "failed"
@@ -2249,7 +2278,7 @@ class TestAst986SessionResumeParse:
     def test_500_when_task_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._patch_ledger(monkeypatch)
         monkeypatch.setattr(candidate_mod, "asyncio", MagicMock(run=MagicMock(return_value=None)))
-        body, status = candidate_mod.run_session_resume_parse("paste me")
+        body, status = candidate_mod.run_session_resume_parse("paste me", candidate_id="somerset")
         assert status == 500
         assert body["error"] == "do_task returned None"
 
@@ -2263,7 +2292,7 @@ class TestAst986SessionResumeParse:
             "asyncio",
             MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": "nope"})),
         )
-        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        body, status = candidate_mod.run_session_resume_parse("paste", candidate_id="somerset", debug=True)
         assert status == 500
         assert body["error"] == "simple_resume_parse returned non-dict parsed_response"
         assert dbg.call_args.kwargs["outcome"] == "invalid payload"
@@ -2275,7 +2304,7 @@ class TestAst986SessionResumeParse:
             "asyncio",
             MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": ["x"]})),
         )
-        body, status = candidate_mod.run_session_resume_parse("paste")
+        body, status = candidate_mod.run_session_resume_parse("paste", candidate_id="somerset")
         assert status == 500
         assert updates[-1][1]["status"] == "FAILED"
         assert body["success"] is False
@@ -2284,7 +2313,7 @@ class TestAst986SessionResumeParse:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         saves, updates = self._patch_ledger(monkeypatch)
-        get_c = MagicMock()
+        get_c = MagicMock(return_value=_SESSION_CANDIDATE)
         save_c = MagicMock()
         monkeypatch.setattr(candidate_mod.database, "get_candidate", get_c)
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save_c)
@@ -2296,7 +2325,7 @@ class TestAst986SessionResumeParse:
             return {"success": True, "parsed_response": parsed, "timesheet": {"tokens": 1}}
 
         monkeypatch.setattr(candidate_mod, "do_task", _fake_do_task)
-        body, status = candidate_mod.run_session_resume_parse("  full resume text  ")
+        body, status = candidate_mod.run_session_resume_parse("  full resume text  ", candidate_id="somerset")
         assert status == 200
         assert body["success"] is True
         assert body["parsed_response"] == parsed
@@ -2311,7 +2340,10 @@ class TestAst986SessionResumeParse:
         assert calls[0]["ctx"]["candidate_data"]["context"]["raw_resume"] == "full resume text"
         assert saves[0][0][2] == "session"
         assert updates[-1][1]["status"] == "COMPLETED"
-        get_c.assert_not_called()
+        # AST-1878: read the selected candidate for its key map; never bind or persist.
+        get_c.assert_called_once_with("somerset")
+        assert calls[0]["ctx"]["candidate_api_keys"] == _SESSION_CANDIDATE["candidate_api_keys"]
+        assert calls[0]["ctx"]["candidate_api_keys"] is not _SESSION_CANDIDATE["candidate_api_keys"]
         save_c.assert_not_called()
 
     def test_200_success_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2326,7 +2358,7 @@ class TestAst986SessionResumeParse:
             "asyncio",
             MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
         )
-        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        body, status = candidate_mod.run_session_resume_parse("paste", candidate_id="somerset", debug=True)
         assert status == 200
         assert body["success"] is True
         assert dbg.call_args.kwargs["outcome"] == "ok"
@@ -2476,7 +2508,8 @@ class TestAst996ExperienceJobArray:
             return {"success": True, "parsed_response": parsed, "timesheet": {}}
 
         monkeypatch.setattr(candidate_mod, "do_task", _fake_do_task)
-        body, status = candidate_mod.run_session_resume_parse("multi-job resume")
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", MagicMock(return_value=_SESSION_CANDIDATE))
+        body, status = candidate_mod.run_session_resume_parse("multi-job resume", candidate_id="somerset")
         assert status == 200
         assert body["base_resume"]["experience"] == jobs
         assert body["base_resume"]["experience"][0]["accomplishments"] == ["Shipped widgets"]
