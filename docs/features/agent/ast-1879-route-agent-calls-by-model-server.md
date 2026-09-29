@@ -569,3 +569,14 @@ stat.logging.error | A | |
 context_tokens≈42000
 
 [code-rubric] PROCEED (Commit: ea18268dd) core routing by catalog
+
+## Resolution
+
+2026-09-29, resolved against Radia review `ac37748b3` (CLEAN / PROCEED). No product changes.
+
+- **fix-now:** none.
+- **discuss — AC 9 quotes the full parent AC 11 bar:** took the `Default:`. The AC 9 `rg default_brain_setting src/` grep and the `agent_task.json` row are epic/ftr pass criteria. The seed row is #2's (already on ftr) and the `config.py` key deletion is #4's (AST-1880). This child removed every use in `agent.py` (the conversational override). #3 is not reopened for `config.py`.
+- **discuss — `api_admin` ad-hoc / dispatch Run·Auto on legacy kwargs:** took the `Default:`. Already recorded under **Transitional gaps**; #4 rewires `_resolve_adhoc` and the dispatch gate. No AST-1879 code change.
+- **discuss — Estelle (analysis) `max_tokens: 384000` on Kimi K2.6 Big:** took the `Default:`. No cap in code without Susan's approval; operator adjusts the row if Kimi rejects it (see **Deploy / UAT notes**).
+- **Frame diff rows (AC 9 footnote, live-DB revert):** not ticked here. Both are checks against merged ftr / the target DB (after #4, and after Susan's Revert-to-file), which cannot be validated on this `sub/*` tip. They are left for UT, the same way AST-1878's frame-diff row was left for Susan. The ticket's Linear description has no checkbox rows to tick.
+- **Advisories:** no action (sibling product stack and sibling test carry, as Radia noted).
