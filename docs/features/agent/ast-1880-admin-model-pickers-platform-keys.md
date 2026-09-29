@@ -19,7 +19,7 @@ Found during research (in Scope, fixed in Stage 2): **plaintext candidate keys l
 
 ## Scope gate
 
-Every row in **Files Changed** is named in this ticket's `## Scope`, except one:
+Every row in **Files Changed** is named in this ticket's `## Scope`:
 
 - `src/ui/api/api_admin.py`: model catalog route, agent routes with model + size check, ad-hoc resolve, execution-history display, Invalid evaluation + Run/Auto gate, `session_resume/parse` requires `candidate_id` (Stage 1).
 - `src/ui/api/api_candidate.py`: per-server key write + outbound set/not-set (Stage 2).
@@ -29,7 +29,7 @@ Every row in **Files Changed** is named in this ticket's `## Scope`, except one:
 - `src/utils/cost_calculator.py`: DeepSeek-named wrappers deleted (Stage 3).
 - `tests/component/external/test_deepseek.py`, `docs/test-bible/external/deepseek.md`: deleted, but by **Betty** in qa-child. Engineers may not touch `tests/` or `docs/test-bible/**` (the pre-commit hook enforces this).
 
-**⛔ Gap — `src/core/monitor.py` (not in Scope).** `provider_balance_outage` calls `get_active_llm_provider()` (line 83) to label the balance-outage email. Scope says "delete `active_provider` / `get_active_llm_provider`" and AC 1 requires `rg -n "active_provider|get_active_llm_provider" src/` to return nothing. Neither can hold while `monitor.py` imports the function, and no Scope line names `monitor.py`. Stage 3 step 6 below is the planned change, **pending the Scope amendment** (`[scope-gate]` on Linear, ticket at Plan Discuss).
+- `src/core/monitor.py`: `provider_balance_outage` labels the alert by the task agent's server instead of the global provider (Stage 3 step 6). This Scope line was added after the `[scope-gate]` on Linear. The gap was that AC 1 can't hold while `monitor.py` imports `get_active_llm_provider`.
 
 ## Files Changed (planned)
 
@@ -40,7 +40,7 @@ Every row in **Files Changed** is named in this ticket's `## Scope`, except one:
 | `src/utils/config.py` | Delete `LLM_PROVIDER_CONFIG["active_provider"]`, `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"]`, `DEEPSEEK_MODEL_PRICING` + the AST-1851 parity asserts, `DEEPSEEK_CONCURRENCY`, `get_active_llm_provider`, `resolve_brain_setting_to_deepseek_tier_meta`, `deepseek_brain_max_tokens_floor`, `CONTACT_ESTELLE_CONFIG["default_brain_setting"]` + its assert; matching header-inventory lines. Nothing else. | utils |
 | `src/utils/cost_calculator.py` | Delete the three DeepSeek-named wrappers (+ header-inventory lines). | utils |
 | `src/external/deepseek.py` | Deleted (`git rm`). | external |
-| `src/core/monitor.py` | **Pending scope-gate.** `provider_balance_outage` labels the email with the task agent's server (`get_llm_server(task_llm_server_id(task_key))["label"]`) instead of the global provider. | core |
+| `src/core/monitor.py` | Import `get_llm_server` (config) + `task_llm_server_id` (`src.core.agent`), drop `get_active_llm_provider`. `provider_balance_outage` labels the email with the task agent's server (`get_llm_server(task_llm_server_id(task_key))["label"]`) instead of the global provider. | core |
 | `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` | Model select + model-scoped brain-size select; Model column; saves `model_id` + `brain_setting`. | ui |
 | `src/ui/frontend/src/pages/AdminManageCandidates.tsx` | One key field (+ Show / Clear) per `api_keys` entry; table column lists the servers set. | ui |
 | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | Invalid tooltip prefers `invalid_reason`. | ui |
@@ -194,7 +194,7 @@ Run after Stages 1–2, once nothing in `src/` imports the symbols (checked with
 3. `git rm src/external/deepseek.py`.
 4. Clear the remaining vendor names in in-scope files, so the AC 2 grep has zero hits (comments included; `api_admin.py` lines 399 / 456 are rewritten by Stage 1 anyway).
 5. `tests/component/external/test_deepseek.py` and `docs/test-bible/external/deepseek.md`: **Betty deletes these in qa-child** (the engineer's pre-commit hook blocks both paths). Until then `test_deepseek.py` fails on import. It is listed first under **Tests expected to move**.
-6. **Pending scope-gate — `src/core/monitor.py`:** replace `get_active_llm_provider` with `get_llm_server` (config) and `task_llm_server_id` (`src.core.agent`; no cycle, since `agent.py` does not import `monitor`). In `provider_balance_outage`:
+6. **`src/core/monitor.py`:** replace `get_active_llm_provider` with `get_llm_server` (config) and `task_llm_server_id` (`src.core.agent`; no cycle, since `agent.py` does not import `monitor`). In `provider_balance_outage`:
    ```python
    provider = get_llm_server(task_llm_server_id(task_key))["label"]
    ```
@@ -250,7 +250,7 @@ Run after Stages 1–2, once nothing in `src/` imports the symbols (checked with
 - `tests/component/ui/api/test_api_admin.py` + `tests/component/ui/conftest.py`: `/agents/models` shape, `/agents/brain_settings` gone, agent create/update need `model_id`, ad-hoc kwargs, the dispatch gate's `(cid, task_key)` signature + `invalid_reason`, and session paste `candidate_id`.
 - `tests/component/utils/test_config.py`: deleted symbols + parity asserts.
 - `tests/component/utils/test_cost_calculator.py`, `tests/component/utils/test_cost_calculator_deepseek.py`: deleted wrappers (the second file may retire or move to `calculate_cost_components_from_counts`).
-- `tests/component/core/test_monitor.py`: `get_active_llm_provider` monkeypatch → `task_llm_server_id` (if the scope-gate is approved).
+- `tests/component/core/test_monitor.py`: `get_active_llm_provider` monkeypatch → `task_llm_server_id` (+ `get_llm_server` label).
 - `tests/component/core/conftest.py`, `test_agent.py`, `test_agent_ast1879.py`, `tests/component/utils/test_llm_external.py`, `tests/component/data/database/test_timesheets.py`: all hit the deleted-symbol grep. Each needs its reference re-checked.
 - Candidate API tests (wherever `has_api_key` / `api_key` PUT are covered): `api_keys` in and out, and no plaintext in any response.
 
@@ -263,6 +263,10 @@ Run after Stages 1–2, once nothing in `src/` imports the symbols (checked with
 
 - Dead Anthropic-legacy helpers left in `config.py` (see S3 step 1 "Left in place"). Deleting them needs a Scope line naming them.
 - A core `list_candidate_server_keys` wrapper, if the per-row `get_candidate` on the candidate list is too slow (S2 Decision).
+
+## Revisions
+
+- Scope amended with `src/core/monitor.py` (scope-gate resolved). Its Files Changed row and Stage 3 step 6 are no longer marked pending. No other plan change.
 
 ## Estimate
 
