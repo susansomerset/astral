@@ -1691,3 +1691,44 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** item 1 all green (52 pass, 1 name-skipped) + items 2–4 hold — narrowed run, not zero-arg harness.
 
 **Bible shasum (after publish):** fill — `git show origin/sub/AST-1853/AST-1865-clickable-job-state-history-opens-run:docs/test-bible/frontend/components.md | shasum`
+
+### AST-1873 · AST-1862 (report header title row, job-link line, labels, Skip)
+
+`RecommendedJobReportHeader`: title always plain `<span>`; job-link line directly below it (display `jobLinkText` → fallback `jobLink`; `<a target="_blank">` only when `jobLink` is http(s)); copy/skip row shares `.recommended-report-header-row` with `.recommended-report-title-block`; labels **Copy Job Link** / **Copy Job JSON** (→ **Copied**); optional `onSkip` / `skipBusy` → **Skip this Job** last `.btn secondary`. `App.css`: two-column title row, report-modal-only title bar via `.modal-card:has(.recommended-report-shell)`. Modal wiring (`jobLinkText`, `onSkip` from `can_skip`, default tab, `{score}` headers) is sibling **AST-1874**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC6 Skip last in row / absent without `onSkip` / `skipBusy` disables / Skip-only row renders | `RecommendedJobReportHeader.tsx` | **`RecommendedJobReportHeader — AST-1873 title row, job-link line, Skip`** (first two cases) |
+| AC8 DOM: button row + title block both direct children of the header row | same | **`…AST-1873…`** › `button row and title block are children of the same header row` |
+| AC9 title no `<a>` ancestor; http line `<a target=_blank>` after title; `jobLinkText` plain when no http href; text+href combo; neither → no line | same | **`…AST-1873…`** (four link-line cases) |
+| AC7 labels (revised) | same | **`AST-1421 snapshot Copy`**, **`AST-1696 Copy Link`** (header + modal); Job Detail **Copy** (`test_JobDetailModal` AST-1421) unedited, still green |
+| AC9 title→line (revised) | `RecommendedJobReportHeader.tsx` via modal | header **`AST-1695 listing title`**, **`AST-1704 http(s)-only href`**; modal **`AST-948`** sticky header + CANDIDATE_REVIEW case, **`AST-1695 listing_href title`** |
+
+**Broken / obsolete (revised this pass):** 13 asserts tied to the linked title `<a>` or **Copy Link** / **Copy** labels — header file (AST-1421 ×3, AST-1695, AST-1696 ×3, AST-1704 http) and modal file (AST-948 sticky header, AST-948 CANDIDATE_REVIEW title, AST-1421, AST-1696, AST-1695 listing_href). Supersedes the title-`<a>` wording in the AST-1695 / AST-1704 blocks above.
+
+**Pre-existing reds (not this ticket; identical on `origin/ftr/AST-1862` before AST-1873):** modal `AST-1546: Print Resume success…`, `AST-1350: Print Resume unsupported toast…` (no **Print Resume** button rendered), modal `AST-1704 … breadcrumb text…` (needs AST-1874 `jobLinkText` = raw `job_link`), `JobDetailModal — AST-1695 … null listing_href → no Link <a>…` (dev drift, see AST-1865 block). Name-excluded below.
+
+**Out of scope:** AC6 modal half (`test_JobAnalysisReportModal` Skip visibility from `can_skip`) and AC10 UAT visual — **AST-1874** / Susan UAT. CSS computed layout is not asserted in jsdom; AC8 CSS + AC10 are grep checks.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **AC6–AC9 + regressions (Vitest):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  --testNamePattern='^(?!.*(no Link <a> even when|AST-1546: Print Resume|AST-1350: Print Resume unsupported|breadcrumb text))'
+```
+
+2. **AC6 / AC7 greps (expect nothing):** `grep -n "CANDIDATE_REVIEW\|REVIEW_LIKE" src/ui/frontend/src/components/JobAnalysisReportModal.tsx src/ui/frontend/src/components/RecommendedJobReportHeader.tsx`; `grep -n '"Copy Link"\|>Copy<\|"Copy"' src/ui/frontend/src/components/RecommendedJobReportHeader.tsx`.
+3. **AC8 CSS:** `.recommended-report-title-block` has `min-width: 0` + `overflow-wrap`/`word-break`; `.recommended-report-links` has `flex-shrink: 0`; no `white-space: nowrap` on the title block.
+4. **AC10:** `git diff origin/dev -- src/ui/frontend/src/App.css` has no hunk inside the existing `.modal-title` / `.modal-header` / `.modal-body` blocks; a `.modal-card:has(.recommended-report-shell) .modal-title` rule sets `font-size` < `18px`.
+
+**Pass criterion:** item 1 green (73 pass, 4 name-skipped) + items 2–4 hold — narrowed run, not zero-arg harness.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/components.md` — *(filled after publish)*
