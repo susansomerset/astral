@@ -559,6 +559,17 @@ def update_candidate_data(candidate_id):
             f"/api/candidates/{candidate_id}/data",
             200,
         )
+    # stat.logging.info.api: a keys-only save still completed work — one line, not doubled when an artifact line fired.
+    if api_keys and not (
+        strengths_saved or priorities_saved or deal_breakers_saved or bio_summary_saved
+        or ideal_day_saved or backstory_saved or writing_preferences_saved or resume_structure_saved
+    ):
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
     updated = get_candidate(candidate_id)
     return jsonify(_sanitize_candidate(updated) if updated else {})
 
