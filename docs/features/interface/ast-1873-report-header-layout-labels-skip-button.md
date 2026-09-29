@@ -204,3 +204,11 @@ AC6→Stage1 (header `onSkip`/last-in-row; modal flag wiring N/A—AST-1874); AC
 - **acceptable** — Plan **Canon check** · Finding: Self-assessment names concrete DRY wins (merged title/link branches, no duplicate button component). · Recommendation: None.
 
 context_tokens≈18500
+
+## Review
+
+- **Code commits on `origin/sub/AST-1862/AST-1873-report-header-layout-labels-skip-button`:** `a54c6d9f` (Stage 1, header component) and `1d8e84ca` (Stage 2, CSS).
+- **Diff:** 2 files, both listed in Files Changed. `JobAnalysisReportModal.tsx` and `Modal.tsx` were not edited. There are no deviations from the plan.
+- **Checks:** `npm run build` (`tsc -b` plus vite) is clean. `eslint` is clean on `RecommendedJobReportHeader.tsx`. Full `npm run lint` reports 32 problems, and the pre-build tree reports the same 32, so none are new. Both Stage 1 greps return nothing. The built CSS keeps both `.modal-card:has(.recommended-report-shell)` selectors. Every `App.css` hunk falls within lines 774–880, clear of the shared `.modal-*` blocks at line 966 and below.
+- **Existing tests (read-only run, for Betty's `qa-child`):** `test_RecommendedJobReportHeader` plus `test_JobAnalysisReportModal` have 16 failures. Three also fail on the pre-build tree: AST-1546 Print Resume success, AST-1350 Print Resume unsupported toast, and AST-1704 modal breadcrumb. The other 13 are expected revisions: they assert the old **Copy Link** / **Copy** labels or the linked title `<a>` (AST-948, AST-1421, AST-1695, AST-1696, AST-1704 header).
+- **Sub-log validator:** `validate-sub-log --stage=build` blocks on `075c3d78 Merge remote-tracking branch 'origin/dev' into tmp-refresh-AST-1853…`. That commit comes from origin/dev (AST-1853 PR #189) through the mandatory `sync(dev)`, and it isn't on `origin/ftr/AST-1862` yet. The plan commit `d818add5` is already on ftr, which puts it outside the range the validator checks. Both clear once ftr absorbs current dev.
