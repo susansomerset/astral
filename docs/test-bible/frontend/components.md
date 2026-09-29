@@ -1732,3 +1732,49 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/components.md` — *(filled after publish)*
+
+### AST-1874 · AST-1862 (modal wiring — Analysis default, list score in headers, Skip)
+
+`JobAnalysisReportModal`: active top tab starts `""` and the fallback effect picks `topTabs[0]` (manifest order → **Analysis**), on open and on every `jobId` change — no tab literal. Analysis headers pass `<prefix>_score` (from `grades_field`) into `formatPhaseSectionScoreTitle`. `can_skip` (AST-1872) gates `onSkip` → `postSkipJob` → `onRefresh?.()` + `onClose()`; failure → error toast, modal stays open. Header gets `jobLinkText` = http `listing_href` else raw `job_link`. `formatPhaseScore` moved to `lib/recommendedJobReport.tsx` (shared with `JobsRecommended`). Fixture **`tests/component/frontend/fixtures/stateUiManifestFixture.ts`** now mirrors config: `report_top_tabs` Analysis-first, `phase_score_header_title_template` with ` - {score}` (deferred from AST-1872).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1 Analysis default + order Analysis/Summary/Artifacts/Discussion | `JobAnalysisReportModal.tsx` | **`AST-948 horizontal shell`** › `…with Analysis default (AST-1874)` (revised) |
+| AC1 jobId switch after Summary → Analysis | same | **`JobAnalysisReportModal — AST-1874 Analysis default, list score, Skip`** › `switching jobId…` |
+| AC3 `JD Analysis - 3.7 - score: …` / absent score drops segment | same + `recommendedJobReport.tsx` | **`…AST-1874…`** › two JD header cases; **`recommendedJobReport — AST-1874 list score in phase header`**; **`AST-1348 Analysis score title chrome`** (revised to `- 8.5 -`) |
+| AC4 one formatter; list cells unchanged | `recommendedJobReport.tsx`, `JobsRecommended.tsx` | **`recommendedJobReport — AST-1874…`** › `formatPhaseScore…`; `test_JobsRecommended.test.tsx` score-column cases unedited |
+| AC5 Skip shown iff `can_skip` true, last in row | `JobAnalysisReportModal.tsx` | **`…AST-1874…`** › `can_skip=%s…` (true / false / absent); header half **AST-1873** |
+| AC6 POST `/skip` 200 → `onRefresh` ×1 + `onClose` ×1; 409 → server-message toast, no close | same | **`…AST-1874…`** › `Skip success…`, `Skip 409…` |
+| `jobLinkText` raw `job_link` when no http `listing_href` | same | **`AST-1704 non-http job_link chrome`** (revised fixture: `listing_href: null`) — now green |
+
+**Broken / obsolete (revised this pass):** modal — AST-948 Summary-default (now Analysis + waits for the post-paint default effect), AST-948 no-upshot shell + AST-949 ×4 (select Summary via `openSummaryTab()`), AST-1348 title (fixture template now has `{score}`), AST-1551 / AST-1692 ×2 tab-order arrays, AST-1704 breadcrumb fixture; pages — `test_JobsRecommended` `opens the report modal from a row click` and `test_JobsJobDetail` AST-1481 ×2 asserted the Summary pane on open. **AC4 note:** the JobsRecommended edit is the modal default-tab assert only (AC1 by design); no list-column assert changed.
+
+**Fixture ripple check:** every other `STATE_UI_MANIFEST_FIXTURE` / `page-mocks` consumer run with and without the fixture change — identical failure sets (24 pre-existing reds, `lib/api` mock missing `setAuthTokenGetter` et al.; not this ticket).
+
+**Pre-existing reds (not this ticket):** modal `AST-1546: Print Resume success…`, `AST-1350: Print Resume unsupported toast…` (see AST-1873 block). Name-excluded below.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **AC1, AC3–AC6 + regressions (Vitest):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsJobDetail.test.tsx \
+  ../../../tests/component/frontend/contexts/test_StateUiContext.test.tsx \
+  --testNamePattern='^(?!.*(AST-1546: Print Resume|AST-1350: Print Resume unsupported))'
+```
+
+2. **AC2 / AC4 / AC5 greps (expect nothing):** `grep -n 'useState("summary")\|setActiveTopTab("summary")' src/ui/frontend/src/components/JobAnalysisReportModal.tsx`; `grep -rn "toFixed(1)" src/ui/frontend/src/pages/JobsRecommended.tsx`; `grep -n "CANDIDATE_REVIEW\|REVIEW_LIKE" src/ui/frontend/src/components/JobAnalysisReportModal.tsx src/ui/frontend/src/components/RecommendedJobReportHeader.tsx`.
+3. **AC1 config half:** AST-1872 manifest (`docs/test-bible/core/tracker.md` § AST-1872) — `TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`.
+4. **Boundaries:** `git diff origin/ftr/AST-1862-recommended-job-modal-changes...HEAD -- src/ui/frontend/src/components/{Modal,CandidateJobRowActions,JobDetailModal,RecommendedJobReportHeader}.tsx src/ui/frontend/src/pages/JobsJobDetail.tsx src/ui/frontend/src/App.css src/utils src/ui/api src/core` empty.
+
+**Pass criterion:** item 1 green (115 pass, 2 name-skipped) + items 2–4 hold — narrowed run, not zero-arg harness.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/components.md` — *(filled after publish)*

@@ -713,3 +713,14 @@ Primary numbered list: **`docs/test-bible/utils/config.md`** § AST-1773 (includ
 ## QA test manifest
 
 Primary: **`docs/test-bible/core/meteorite.md`** § AST-1796 (includes this module’s node id).
+
+### AST-1878 · AST-1851 (agent seed models + contact-Estelle agent)
+
+**Primary manifest:** **`docs/test-bible/data/database/candidates.md`** § AST-1878.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 3 catalog model + valid size on every row; AC 4 exact model/size per agent; contact-Estelle copies analysis content with null temperature/max_tokens; startup apply stores model ids | `data/admin/agent.json` | `TestAst1878AgentSeedModels` |
+| Revised — seven agents (adds `contact_recruiter_estelle`); repo columns include `model_id` | `data/admin/agent.json` | `TestAst787AgentRepoJsonSeed::test_repo_json_has_seven_sorted_persona_ids` · `::test_repo_rows_use_repo_columns_only` · `::test_startup_apply_loads_all_seven_agents` |
+| Revised — `contact_estelle_turn` → `contact_recruiter_estelle` | `data/admin/agent_task.json` | `TestAst1072ContactEstelleTurnCatalogRow::test_contact_estelle_turn_envelope_prompts` |
+| Revised — revert fixture agent names a model (repo JSON requires it) | fixture | `TestAst783RepoAdminJsonDivergence::test_revert_restores_db_from_repo_file` |
