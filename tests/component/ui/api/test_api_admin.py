@@ -244,6 +244,8 @@ class TestEnrichTasks:
             "get_candidate",
             lambda candidate_id: {"candidate_data": {"name": "Susan"}},
         )
+        # AST-1855: hydrated loader (AST-1854) reads artifacts — keep it off the repo DB.
+        monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
         monkeypatch.setattr(
             admin_mod.database,
             "get_agent_task",
@@ -1479,6 +1481,8 @@ class TestAdhocHelpers:
             lambda agent_id: {"agent_id": agent_id, "model_code": "claude-haiku-4-5", "content": "sys", "temperature": None, "max_tokens": None},
         )
         monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: {"candidate_data": {"x": 1}, "candidate_api_key": "key"})
+        # AST-1855: hydrated loader (AST-1854) reads artifacts — keep it off the repo DB.
+        monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
         monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: {"task_key_uuid": "uuid-1"})
         monkeypatch.setattr(admin_mod, "resolve_tokens", lambda text, *args, **kwargs: text)
         payload, err = admin_mod._resolve_adhoc({"agent_id": "a1", "candidate_id": "c1", "task_key": "craft_resume_base", "user_prompt": "u"})
@@ -1496,6 +1500,8 @@ class TestAdhocHelpers:
             "get_candidate",
             lambda candidate_id: {"candidate_data": {"artifacts": {"jobdesc_rubric": {"criteria": []}}}},
         )
+        # AST-1855: hydrated loader (AST-1854) reads artifacts — keep it off the repo DB.
+        monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
         monkeypatch.setattr(
             admin_mod.database,
             "get_job",
@@ -3839,6 +3845,8 @@ class TestAst1791NoPromptValueErrorEmptyRender:
                 "candidate_data": {},
             },
         )
+        # AST-1855: hydrated loader (AST-1854) reads artifacts — keep it off the repo DB.
+        monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
         monkeypatch.setattr(admin_mod, "build_candidate_token_view", lambda cand: {"first": "Ada"})
         monkeypatch.setattr(
             admin_mod,
@@ -3921,6 +3929,74 @@ class TestAst1791NoPromptValueErrorEmptyRender:
         assert resp.status_code == 200
         assert resp.get_json()["started"] is True
         run.assert_called_once()
+
+
+# Branches: artifact-only / neither / legacy-blob Ideal Day through the real hydrated loader (AST-1854).
+class TestAst1854HydratedCandidateEmptyRender:
+    """AST-1855 / AST-1854: dispatch empty-render reads the hydrated candidate (artifact overlay), no eval / loader / token-view monkeypatch."""
+
+    @staticmethod
+    def _stub_hydrated_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+        # DB edges only — loader, hydrate_operative_*, token view, resolve_tokens and
+        # empty_render_for_prompts stay real, or the raw-vs-hydrated defect is hidden.
+        def _rows() -> dict[str, dict[str, Any]]:
+            # Fresh dicts per call: the hydrated loader mutates candidate_data in place.
+            return {
+                "c1": {"astral_candidate_id": "c1", "first": "Ada", "last": "Lovelace",
+                       "candidate_data": {"context": {}}},
+                "c2": {"astral_candidate_id": "c2", "first": "Bea", "last": "Blank",
+                       "candidate_data": {"context": {}}},
+                "c3": {"astral_candidate_id": "c3", "first": "Cy", "last": "Legacy",
+                       "candidate_data": {"context": {"ideal_day": "Legacy blob ideal day."}}},
+            }
+
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda cid: _rows()[cid])
+        # Same src.data.database object candidate.get_candidate_current calls — answers all
+        # nine hydrate reads; only c1 has a current Ideal Day artifact.
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_current_artifact",
+            lambda entity_type, entity_id, artifact_type: (
+                {"artifact_data": "Deep work mornings, collaborative afternoons."}
+                if (entity_id, artifact_type) == ("c1", "ideal_day")
+                else None
+            ),
+        )
+        # Single candidate-scoped token, so a blank fill names exactly IDEAL_DAY.
+        monkeypatch.setattr(
+            admin_mod, "_dispatch_empty_render_prompt_texts", lambda tk: ["Ideal day: {$IDEAL_DAY}"]
+        )
+
+    def test_evaluate_artifact_only_ideal_day_empty_render_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # [bug-repro] red on pre-AST-1854 (raw row → IDEAL_DAY blank); green after hydrated loader.
+        self._stub_hydrated_candidates(monkeypatch)
+        assert admin_mod._evaluate_dispatch_empty_render("c1", "craft_do_rubric") == {
+            "empty_render": False,
+            "empty_tokens": [],
+        }
+        assert admin_mod._candidate_dispatch_empty_render_error("c1", "craft_do_rubric") is None
+
+    def test_evaluate_no_ideal_day_anywhere_empty_render_true(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub_hydrated_candidates(monkeypatch)
+        assert admin_mod._evaluate_dispatch_empty_render("c2", "craft_do_rubric") == {
+            "empty_render": True,
+            "empty_tokens": ["IDEAL_DAY"],
+        }
+        assert "IDEAL_DAY" in admin_mod._candidate_dispatch_empty_render_error("c2", "craft_do_rubric")
+
+    def test_evaluate_legacy_blob_ideal_day_empty_render_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Hydrate miss leaves the legacy context.ideal_day blob in place.
+        self._stub_hydrated_candidates(monkeypatch)
+        assert admin_mod._evaluate_dispatch_empty_render("c3", "craft_do_rubric") == {
+            "empty_render": False,
+            "empty_tokens": [],
+        }
 
 
 # Branches: _parse_sweep_hrs None / "" / non-numeric / negative / valid; create 400 vs save kwarg;
