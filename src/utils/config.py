@@ -4945,23 +4945,18 @@ def get_model(model_code: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# LLM_PROVIDER_CONFIG — global active vendor (literal v1); brain tiers Little/Medium/Big;
-# tier → Anthropic AGENT_CONFIG key or DeepSeek SKU + reasoning flags (AST-492).
-# DeepSeek pricing USD/M tokens — https://api-docs.deepseek.com/quick_start/pricing
-# Standard listed rates snapshot 2026-06-03 (vendor may adjust promos).
-# Manage Agents UI catalog (AST-495) uses tier_map["anthropic"] + AGENT_CONFIG defaults.
+# LLM_PROVIDER_CONFIG — legacy brain tiers Little/Medium/Big + tier → Anthropic AGENT_CONFIG key (AST-492).
+# Routing is per agent via LLM_MODEL_CONFIG → LLM_SERVER_CONFIG (AST-1851); no global vendor.
 # ---------------------------------------------------------------------------
 BRAIN_LITTLE = "Little"
 BRAIN_MEDIUM = "Medium"
 CONTACT_ESTELLE_CONFIG = {
-    "default_brain_setting": "Medium",
     "task_key": "contact_estelle_turn",
     # Max Slack messages included in live_content (trim from oldest).
     "turn_context_message_limit": 40,
     # Max chars per message text in live_content (truncate with …).
     "turn_context_text_max_chars": 500,
 }
-assert CONTACT_ESTELLE_CONFIG["default_brain_setting"] == BRAIN_MEDIUM
 assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_message_limit"], int)
 assert CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] > 0
 assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"], int)
@@ -5049,33 +5044,12 @@ def infer_brain_setting_from_legacy_model_code(model_code: Optional[str]) -> str
 
 
 LLM_PROVIDER_CONFIG = {
-    "active_provider": "deepseek",
-    # anthropic | deepseek — literals only until multi-vendor UI exists
     "brain_settings": BRAIN_SETTINGS,
     "tier_map": {
         "anthropic": {
             BRAIN_LITTLE: {"agent_config_key": "claude-haiku-4-5"},
             BRAIN_MEDIUM: {"agent_config_key": "claude-sonnet-4-6"},
             BRAIN_BIG: {"agent_config_key": "claude-opus-4-6"},
-        },
-        "deepseek": {
-            # AST-694: Little = v4-flash non-thinking; Medium = v4-pro non-thinking; Big = v4-pro thinking.
-            BRAIN_LITTLE: {
-                "vendor_model": "deepseek-v4-flash",
-                "thinking": False,
-                "reasoning_effort": None,
-            },
-            BRAIN_MEDIUM: {
-                "vendor_model": "deepseek-v4-pro",
-                "thinking": False,
-                "reasoning_effort": None,
-            },
-            BRAIN_BIG: {
-                "vendor_model": "deepseek-v4-pro",
-                "thinking": False,
-                "reasoning_effort": "max",
-                "max_tokens": 384000,  # AST-1391: hop output floor; not the shared v4-pro SKU default
-            },
         },
     },
 }
@@ -5383,9 +5357,6 @@ PROVIDER_BALANCE_REFUSAL = {
 # PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).
 # httpx client timeout uses timeout_seconds; caller wait uses timeout_seconds + grace_seconds.
 # max_retries=0 → one attempt (SDK default 2 would allow up to 3× wall time inside the worker thread).
-# DEEPSEEK_CONCURRENCY — legacy alias of LLM_SERVER_CONFIG["deepseek"]["concurrency"] (AST-1851).
-DEEPSEEK_CONCURRENCY = LLM_SERVER_CONFIG["deepseek"]["concurrency"]  # legacy name for deepseek.py (#4 deletes)
-
 PROVIDER_CALL_BUDGET = {
     "timeout_seconds": 600,
     "grace_seconds": 10,
@@ -5415,45 +5386,6 @@ PROVIDER_EMPTY_RESPONSE = {
     ),
 }
 
-# Vendor_model strings aligned with tier_map["deepseek"] (also DEEPSEEK cost_math / AST-493).
-DEEPSEEK_MODEL_PRICING = {
-    "deepseek-v4-flash": {
-        "model_label": "DeepSeek V4 Flash",
-        "cpm_cache_read": 0.0028,
-        "cpm_input": 0.14,
-        "cpm_cache_write": 0.0,
-        "cpm_output": 0.28,
-        "default_temperature": 1.0,
-        "default_max_tokens": 8192,
-        "cache_min_tokens": 0,
-    },
-    "deepseek-v4-pro": {
-        "model_label": "DeepSeek V4 Pro",
-        "cpm_cache_read": 3.625,
-        "cpm_input": 0.435,
-        "cpm_cache_write": 0.0,
-        "cpm_output": 0.87,
-        "default_temperature": 1.0,
-        "default_max_tokens": 16000,
-        "cache_min_tokens": 0,
-    },
-}
-# AST-1851 parity: legacy DeepSeek blocks must match LLM_MODEL_CONFIG until #4 deletes them.
-for _bs, _legacy in LLM_PROVIDER_CONFIG["tier_map"]["deepseek"].items():
-    assert LLM_MODEL_CONFIG["deepseek-v4"]["brain_sizes"][_bs]["sku"] == _legacy["vendor_model"], _bs
-for _sku, _legacy in DEEPSEEK_MODEL_PRICING.items():
-    for _k in ("cpm_input", "cpm_output", "cpm_cache_read", "cpm_cache_write"):
-        assert LLM_MODEL_CONFIG["deepseek-v4"]["pricing"][_sku][_k] == _legacy[_k], (_sku, _k)
-
-
-def get_active_llm_provider() -> str:
-    """Return configured LLM vendor key (literal in LLM_PROVIDER_CONFIG)."""
-    p = LLM_PROVIDER_CONFIG["active_provider"]
-    if not isinstance(p, str) or not p.strip():
-        raise ValueError("LLM_PROVIDER_CONFIG['active_provider'] is invalid")
-    return p.strip()
-
-
 def validate_allowed_brain_setting(value: str) -> None:
     if value not in LLM_PROVIDER_CONFIG["brain_settings"]:
         raise ValueError(
@@ -5472,29 +5404,6 @@ def resolve_brain_setting_to_anthropic_agent_key(brain_setting: str) -> str:
     if not key or key not in AGENT_CONFIG:
         raise ValueError(f"No Anthropic tier mapping for brain_setting {brain_setting!r}")
     return str(key)
-
-
-def resolve_brain_setting_to_deepseek_tier_meta(brain_setting: str) -> Dict[str, Any]:
-    """Vendor model id + reasoning flags for send_to_deepseek (AST-493)."""
-    validate_allowed_brain_setting(brain_setting)
-    tier = dict(LLM_PROVIDER_CONFIG["tier_map"].get("deepseek", {}).get(brain_setting) or {})
-    if not tier.get("vendor_model"):
-        raise ValueError(f"No DeepSeek tier mapping for brain_setting {brain_setting!r}")
-    return tier
-
-
-def deepseek_brain_max_tokens_floor(brain_setting: str) -> Optional[int]:
-    """AST-1391: DeepSeek tier output-token floor, or None when the tier has none."""
-    validate_allowed_brain_setting(brain_setting)
-    raw = (
-        LLM_PROVIDER_CONFIG["tier_map"]
-        .get("deepseek", {})
-        .get(brain_setting, {})
-        .get("max_tokens")
-    )
-    if raw is None:
-        return None
-    return int(raw)
 
 
 def validate_llm_provider_environment() -> None:

@@ -100,43 +100,6 @@ def calculate_cost_components_from_counts(
     }
 
 
-def deepseek_usage_to_token_counts(usage) -> dict:
-    """Map DeepSeek Messages API usage to agent_timesheets token buckets.
-
-    cache_read = cache hit; cache_miss = usage.input_tokens (vendor cache-miss count
-    on compat API); cache_write always 0 (DeepSeek does not bill cache creation).
-    """
-    return {
-        "cache_read": getattr(usage, "cache_read_input_tokens", 0) or 0,
-        "cache_miss": usage.input_tokens,
-        "output": usage.output_tokens,
-        "cache_write": 0,
-    }
-
-
-def calculate_cost_components_deepseek_from_counts(
-    cache_read: int,
-    cache_miss: int,
-    output: int,
-    cache_write: int,
-    vendor_model: str,
-) -> dict:
-    """Legacy name (deepseek.py / database.py importers) — delegates to catalog pricing."""
-    return calculate_cost_components_from_counts(cache_read, cache_miss, output, cache_write, sku=vendor_model)
-
-
-def calculate_cost_components_deepseek(usage, vendor_model: str) -> dict:
-    """Granular cost components for DeepSeek usage (same keys as calculate_cost_components)."""
-    counts = deepseek_usage_to_token_counts(usage)
-    return calculate_cost_components_deepseek_from_counts(
-        counts["cache_read"],
-        counts["cache_miss"],
-        counts["output"],
-        counts["cache_write"],
-        vendor_model,
-    )
-
-
 CALC_COST_KEYS = (
     "calc_cost_cache_write",
     "calc_cost_cache_read",

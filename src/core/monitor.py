@@ -11,7 +11,8 @@ import re
 
 from src.data import database
 from src.external.gmail import send_email
-from src.utils.config import ASTRAL_CONFIG, get_active_llm_provider
+from src.core.agent import task_llm_server_id
+from src.utils.config import ASTRAL_CONFIG, get_llm_server
 from src.utils.deploy_status import get_deploy_label
 from src.utils.logging import get_logger
 
@@ -80,7 +81,8 @@ def provider_balance_outage(
     """AST-1867: one alert per AUTO run stopped by an LLM provider balance refusal.
     Short body (no batch log dump). Never raises — a failed alert must not surface to the caller."""
     try:
-        provider = get_active_llm_provider()
+        # The server the refused task's agent actually called (AST-1880), not a global setting.
+        provider = get_llm_server(task_llm_server_id(task_key))["label"]
         prefix = _format_alert_subject_prefix(get_deploy_label(), _resolve_candidate_last_name(candidate_id))
         subject = f"{prefix} {provider} insufficient balance — {task_key} stopped | {batch_id}"
         lines = [
