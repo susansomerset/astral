@@ -51,7 +51,6 @@ from src.utils.llm_external import (
     is_provider_balance_refusal,
     normalize_provider_error,
 )
-from src.external.deepseek import send_to_deepseek
 from src.external.llm_compat import send_to_llm_compat
 from src.utils.config import (
     TASK_CONFIG, BASE_SCHEMA, BLOCK_TYPES, ASTRAL_CONFIG, BUILD_CONFIG,
@@ -3117,12 +3116,13 @@ async def run_adhoc_workbench_test(
     live_content: Optional[str] = None,
     model_code: Optional[str] = None,
     *,
-    tier_meta: Optional[Dict[str, Any]] = None,
+    server_id: Optional[str] = None,
+    tier: Optional[Dict[str, Any]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     response_format: Optional[str] = "text",
     context: Optional[str] = None,
-    api_key_override: Optional[str] = None,
+    candidate_api_keys: Optional[Dict[str, str]] = None,
     task_key_uuid: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
@@ -3178,8 +3178,8 @@ async def run_adhoc_workbench_test(
 
         try:
             logger.debug(
-                "Calling run_adhoc: [task_key=%s, candidate=%s, model=%s]",
-                workbench_task_key, candidate_id, model_code,
+                "Calling run_adhoc: [task_key=%s, candidate=%s, server=%s, model=%s]",
+                workbench_task_key, candidate_id, server_id, model_code,
             )
             result = await run_adhoc(
                 system_content=system_content,
@@ -3191,13 +3191,14 @@ async def run_adhoc_workbench_test(
                 nocache_content=nocache_content,
                 live_content=live_content,
                 model_code=model_code,
-                tier_meta=tier_meta,
+                server_id=server_id,
+                tier=tier,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format=response_format,
                 context=context,
                 candidate_id=candidate_id,
-                api_key_override=api_key_override,
+                candidate_api_keys=candidate_api_keys,
                 task_key_uuid=task_key_uuid,
                 debug=debug,
             )
@@ -3322,20 +3323,26 @@ async def run_adhoc(
     live_content: Optional[str] = None,
     model_code: Optional[str] = None,
     *,
-    tier_meta: Optional[Dict[str, Any]] = None,
+    server_id: Optional[str] = None,
+    tier: Optional[Dict[str, Any]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     response_format: Optional[str] = "text",
     context: Optional[str] = None,
     candidate_id: Optional[str] = None,
-    api_key_override: Optional[str] = None,
+    candidate_api_keys: Optional[Dict[str, str]] = None,
     task_key_uuid: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
     """Run an ad-hoc prompt without DB prompt resolution or agent_data storage.
-    Uses candidate's API key when available, falls back to system key."""
+    Routes by catalog server; sends only the candidate's key for that server (no fallback — AST-1879)."""
     if not model_code:
-        raise ValueError("run_adhoc requires model_code (Anthropic AGENT_CONFIG key or DeepSeek vendor_model)")
+        raise ValueError("run_adhoc requires model_code (catalog SKU)")
+    if not server_id or tier is None:
+        raise ValueError("run_adhoc requires server_id and tier (resolve_model_brain route)")
+    api_key = (candidate_api_keys or {}).get(server_id)
+    if not api_key:
+        return _missing_server_key_result(candidate_id, server_id)
 
     system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks_seven_segment(
         system_content=system_content,
@@ -3348,41 +3355,23 @@ async def run_adhoc(
         candidate_id=candidate_id,
     )
 
-    if tier_meta is not None:
-        result = await send_to_deepseek(
-            user_blocks,
-            system_blocks=system_blocks,
-            response_format=response_format,
-            prompt_label="adhoc",
-            vendor_model=model_code,
-            tier_meta=tier_meta,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            candidate_id=candidate_id,
-            api_key_override=api_key_override,
-            task_key_uuid=task_key_uuid,
-            debug=debug,
-            no_cache_prompt_tokens=no_cache_prompt_tokens,
-            no_cache_live_tokens=no_cache_live_tokens,
-            record_timesheet=record_timesheet_entry,
-        )
-    else:
-        result = await send_to_anthropic(
-            user_blocks,
-            system_blocks=system_blocks,
-            response_format=response_format,
-            prompt_label="adhoc",
-            model_code=model_code,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            candidate_id=candidate_id,
-            api_key_override=api_key_override,
-            task_key_uuid=task_key_uuid,
-            debug=debug,
-            no_cache_prompt_tokens=no_cache_prompt_tokens,
-            no_cache_live_tokens=no_cache_live_tokens,
-            record_timesheet=record_timesheet_entry,
-        )
+    result = await _send_to_server(
+        user_blocks,
+        server_id=server_id,
+        sku=model_code,
+        tier=tier,
+        api_key=api_key,
+        system_blocks=system_blocks,
+        response_format=response_format,
+        prompt_label="adhoc",
+        candidate_id=candidate_id,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        debug=debug,
+        task_key_uuid=task_key_uuid,
+        no_cache_prompt_tokens=no_cache_prompt_tokens,
+        no_cache_live_tokens=no_cache_live_tokens,
+    )
     result["runtime_prompt"] = runtime_prompt
     return result
 
