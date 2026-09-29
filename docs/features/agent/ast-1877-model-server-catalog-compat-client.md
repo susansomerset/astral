@@ -646,3 +646,54 @@ Confirm Chuckles estimate: 5 — agree
 Revision 1 — 2026-09-29
 Driven by: gate AST-1883 Done — Susan approved both `[scope-gate]` moves; Scope amended on AST-1877 / AST-1878 / AST-1880 / AST-1851.
 Changes: Scope gate section now records the approved moves (repo-admin agent column → #2; DeepSeek-named cost wrapper deletion → #4) instead of an open stop. `config.py` line anchors updated for the `origin/dev` sync (+14 lines after 2406: LLM_PROVIDER_CONFIG close 5079, timesheet block 4886–4889, DEEPSEEK_CONCURRENCY 5101–5106; TASK_CONFIG anchors unchanged). Stages are otherwise unchanged.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1877
+**Overall:** APPROVED
+**Corpus:** `e1f2699fad`
+**Publish ref:** `e9662278f`
+
+## Canon scores
+
+Model → server catalog routing | A | | catalogs + resolvers + compat client match parent Architectural definition
+stat.logging.debug | A | | Stage 4: ungated call/response debug; no debug= param
+stat.logging.error | A | | Stage 4: log_llm_batch_summary WARNING; caller owns entity ERROR
+
+## Traceability
+
+9→S4 (`request_extras` in `extra_body`; shipped OpenRouter `{}`) | parent 2-partial→S3–4 + Acceptance mapping (vendor-free outside config.py) | 14→S2 (three flips + assert all `requires_candidate_key`) | 10-partial→S1 (`ALLOWED_TIMESHEET_PROVIDERS` from server ids) | parent 1,3–8,11–13,15–16→N/A (sibling #2–#4 or epic grep after #4)
+
+## Findings
+
+### discuss
+
+- **Severity:** discuss
+- **Location:** Ticket `## Scope` vs plan Stage 2 §7
+- **Finding:** Linear Scope still says `env.example — per-server env vars` while the plan correctly adds none and rewords the Anthropic fallback comment only (parent: no platform keys from env).
+- **Recommendation:** Optional Scope wording cleanup on the ticket; build from the plan.
+
+- **Severity:** discuss
+- **Location:** Acceptance mapping (AC 9) vs Files Changed / Pre-commit
+- **Finding:** Child AC 9 names an intercepted-request **component test**; the plan implements extras in Stage 4 and describes the test shape but excludes `tests/` (engineer ban). No explicit “Betty / qa-child lands AC 9 component test” line unlike several agent epics.
+- **Recommendation:** Add one plan sentence so qa-child manifest cannot miss AC 9 before this child’s UT.
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** Scope gate / AST-1883
+- **Finding:** Repo-admin agent column and DeepSeek-named wrapper deletion moves are recorded; Files Changed matches amended Scope.
+- **Recommendation:** None.
+
+- **Severity:** acceptable
+- **Location:** Stage 2 `validate_llm_provider_environment`
+- **Finding:** Boot checks catalog consistency only; `send_to_deepseek` env fallback remains until #3/#4 — documented and keeps sub green.
+- **Recommendation:** None.
+
+- **Severity:** acceptable
+- **Location:** Canon Scope (not on list)
+- **Finding:** `astral.config.config-source-of-truth` plainly governs catalog placement; plan complies; id omitted from frozen list (Archie may amend at Discussion if desired).
+- **Recommendation:** Do not score off-list; no plan change required.
+
+context_tokens≈95000
