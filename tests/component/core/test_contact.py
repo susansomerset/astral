@@ -661,6 +661,11 @@ class TestAst1070ContactConversationContext:
 
 
 
+def _turn_candidate_row(cid: str) -> dict:
+    """AST-1879: Estelle turn needs a resolved candidate row (key map rides into do_task ctx)."""
+    return {"astral_candidate_id": cid, "candidate_data": {}, "candidate_api_keys": {"kimi": "sk-kimi"}}
+
+
 class TestAst1073ContactEstelleTurnLoop:
     """AST-1073: run_contact_estelle_turn — listen, do_task envelope, skills, Slack post, Style D."""
 
@@ -688,7 +693,7 @@ class TestAst1073ContactEstelleTurnLoop:
                 }
             ),
         )
-        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(return_value=None))
+        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(side_effect=_turn_candidate_row))
         monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
         post = MagicMock(return_value={"ok": True, "ts": "9.0"})
         monkeypatch.setattr(contact_mod, "contact_post_message", post)
@@ -699,14 +704,16 @@ class TestAst1073ContactEstelleTurnLoop:
         )
         skill = MagicMock(return_value={"ok": True, "skill_key": "save_profile_field"})
         monkeypatch.setattr(contact_mod, "run_contact_skill", skill)
+        do_task_calls: list = []
 
-        async def _do_task(*_a, **_k):
+        async def _do_task(*a, **k):
+            do_task_calls.append((a, k))
             return do_task_result
 
         import src.core.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "do_task", _do_task)
-        return {"post": post, "skill": skill}
+        return {"post": post, "skill": skill, "do_task_calls": do_task_calls}
 
     def test_listen_off_skips_do_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
         deps = self._patch_turn_deps(
@@ -730,7 +737,7 @@ class TestAst1073ContactEstelleTurnLoop:
             },
         )
         out = contact_mod.run_contact_estelle_turn(
-            channel="C1", text="hi", message_ts="2.0", debug=False
+            channel="C1", text="hi", message_ts="2.0", astral_candidate_id="c1", debug=False
         )
         assert out["ok"] is True
         assert out["outcome"] == "success"
@@ -778,14 +785,19 @@ class TestAst1073ContactEstelleTurnLoop:
                 "parsed_response": None,
             },
         )
-        out = contact_mod.run_contact_estelle_turn(channel="C1", text="hi", debug=False)
+        out = contact_mod.run_contact_estelle_turn(
+            channel="C1", text="hi", astral_candidate_id="c1", debug=False
+        )
         assert out["ok"] is False
-        assert out["error"]
+        assert out["error"] != "no_candidate"
+        assert len(deps["do_task_calls"]) == 1
         deps["post"].assert_not_called()
 
-    def test_skill_calls_acl_and_no_candidate(
+    def test_skill_calls_run_for_resolved_candidate(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-1879: a turn with no candidate never reaches do_task, so skill_calls only run
+        # for a resolved candidate (no-candidate path: TestAst1879EstelleTurnCandidateCtx).
         deps = self._patch_turn_deps(
             monkeypatch,
             do_task_result={
@@ -800,12 +812,6 @@ class TestAst1073ContactEstelleTurnLoop:
                 },
             },
         )
-        out = contact_mod.run_contact_estelle_turn(channel="C1", text="hi", debug=False)
-        assert out["skill_results"] == [
-            {"ok": False, "error": "no_candidate", "skill_key": "save_profile_field"}
-        ]
-        deps["skill"].assert_not_called()
-
         out2 = contact_mod.run_contact_estelle_turn(
             channel="C1", text="hi", astral_candidate_id="c1", debug=False
         )
@@ -873,6 +879,106 @@ class TestAst1073ContactEstelleTurnLoop:
         turn.assert_called_once()
         assert turn.call_args.kwargs["channel"] == "C1"
         assert turn.call_args.kwargs["astral_candidate_id"] == "c1"
+
+
+# Branches: no/blank/unresolved candidate → no_candidate before do_task; resolved → ctx key map (AST-1879).
+class TestAst1879EstelleTurnCandidateCtx:
+    """AST-1879 AC 10: every Estelle turn runs on the candidate's key — no candidate, no request."""
+
+    def setup_method(self) -> None:
+        contact_mod._context_cache.clear()
+        contact_mod._seen_event_ids.clear()
+
+    _OK = {
+        "success": True,
+        "conversational_outcome": "success",
+        "agent_performance": {"status": "success"},
+        "parsed_response": {"reply": "Hi"},
+    }
+
+    def _patch(self, monkeypatch: pytest.MonkeyPatch, get_candidate: MagicMock) -> dict:
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        ctx_load = MagicMock(return_value={"channel": "C1", "thread_ts": "", "messages": [], "source": "cache"})
+        monkeypatch.setattr(contact_mod, "load_slack_conversation_context", ctx_load)
+        monkeypatch.setattr(contact_mod, "get_candidate", get_candidate)
+        monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
+        post = MagicMock(return_value={"ok": True, "ts": "9.0"})
+        monkeypatch.setattr(contact_mod, "contact_post_message", post)
+        monkeypatch.setattr(contact_mod, "format_contact_reply_text", lambda text: text)
+        calls: list = []
+
+        async def _do_task(*a, **k):
+            calls.append((a, k))
+            return dict(self._OK)
+
+        import src.core.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        return {"post": post, "calls": calls, "ctx_load": ctx_load}
+
+    @pytest.mark.parametrize("cid", [None, "", "   "])
+    def test_no_candidate_id_fails_before_do_task(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, cid: object
+    ) -> None:
+        get_candidate = MagicMock(return_value=_turn_candidate_row("c1"))
+        deps = self._patch(monkeypatch, get_candidate)
+        with caplog.at_level("WARNING", logger="src.core.contact"):
+            out = contact_mod.run_contact_estelle_turn(
+                channel="C1", text="hi", astral_candidate_id=cid, debug=False
+            )
+        assert out["ok"] is False
+        assert out["error"] == "no_candidate"
+        assert deps["calls"] == []
+        deps["post"].assert_not_called()
+        get_candidate.assert_not_called()
+        # Early return: no Slack context load either.
+        deps["ctx_load"].assert_not_called()
+        assert any(
+            "C1 | contact estelle turn skipped — no candidate for this Slack user" in r.getMessage()
+            and "Estelle is not replying" in r.getMessage()
+            for r in caplog.records
+        )
+
+    def test_unresolved_candidate_id_fails_before_do_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        get_candidate = MagicMock(return_value=None)
+        deps = self._patch(monkeypatch, get_candidate)
+        out = contact_mod.run_contact_estelle_turn(
+            channel="C1", text="hi", astral_candidate_id="ghost", debug=False
+        )
+        assert out["error"] == "no_candidate"
+        get_candidate.assert_called_once_with("ghost")
+        assert deps["calls"] == []
+        deps["post"].assert_not_called()
+
+    def test_resolved_candidate_passes_ctx_with_key_map(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {"profile": {"first": "Ada"}},
+            "candidate_api_keys": {"kimi": "sk-kimi", "anthropic": "sk-ant"},
+        }
+        deps = self._patch(monkeypatch, MagicMock(return_value=row))
+        out = contact_mod.run_contact_estelle_turn(
+            channel="C1", text="hi", astral_candidate_id=" c1 ", debug=False
+        )
+        assert out["ok"] is True
+        (args, kwargs), = deps["calls"]
+        assert args[0] == "contact_estelle_turn"
+        assert "candidate_data" not in kwargs
+        ctx = kwargs["ctx"]
+        assert ctx == {
+            "astral_candidate_id": "c1",
+            "candidate_data": {"profile": {"first": "Ada"}},
+            "candidate_api_keys": {"kimi": "sk-kimi", "anthropic": "sk-ant"},
+        }
+        # Copied map, not the row's own dict.
+        assert ctx["candidate_api_keys"] is not row["candidate_api_keys"]
+
+    def test_resolved_candidate_without_keys_sends_empty_map(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Missing key is do_task's call (server-naming failure) — the turn still hands over an empty map.
+        deps = self._patch(monkeypatch, MagicMock(return_value={"astral_candidate_id": "c1", "candidate_data": {}}))
+        contact_mod.run_contact_estelle_turn(channel="C1", text="hi", astral_candidate_id="c1", debug=False)
+        (_a, kwargs), = deps["calls"]
+        assert kwargs["ctx"]["candidate_api_keys"] == {}
 
 
 # Branches: list_estelle_activity; record on accept; listen_off skips (AST-1094).
@@ -1456,7 +1562,7 @@ class TestAst1515ContactEstelleTurnMarkup:
                 }
             ),
         )
-        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(return_value=None))
+        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(side_effect=_turn_candidate_row))
         monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
         post = MagicMock(return_value={"ok": True, "ts": "9.0"})
         monkeypatch.setattr(contact_mod, "contact_post_message", post)
@@ -1774,7 +1880,7 @@ class TestAst1561ContactPasteRouting:
             "load_slack_conversation_context",
             MagicMock(return_value={"channel": "D1", "thread_ts": "", "messages": [], "source": "cache"}),
         )
-        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(return_value=None))
+        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(side_effect=_turn_candidate_row))
         monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
         monkeypatch.setattr(contact_mod, "contact_post_message", MagicMock(return_value={"ok": True}))
         monkeypatch.setattr(contact_mod, "format_contact_reply_text", lambda t: t)
@@ -1913,7 +2019,7 @@ class TestAst1585ContactPinnedBaseResume:
         captured: dict = {}
 
         async def _do_task(*_a, **kwargs):
-            captured["candidate_data"] = kwargs.get("candidate_data")
+            captured["candidate_data"] = kwargs["ctx"]["candidate_data"]
             return {
                 "success": True,
                 "conversational_outcome": "success",

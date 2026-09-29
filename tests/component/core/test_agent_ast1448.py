@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.core import agent as agent_mod
+from src.utils import config as cfg
 
 from tests.component.core.test_agent import _agent_rows, _api_response, _draft_job_resume_ctx
 
@@ -31,6 +32,8 @@ class TestAst1448PersistPromptBeforeProvider:
 
     def _patch_prompts(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda _key: _agent_rows())
+        # AST-1879: past the server-key gate — ordering, not key selection, is under test here.
+        monkeypatch.setattr(agent_mod, "_candidate_server_key", lambda ctx, cid, server_id: "sk-test")
 
     def _timeline_helpers(self, monkeypatch: pytest.MonkeyPatch) -> List[str]:
         events: List[str] = []
@@ -394,6 +397,9 @@ class TestAst1448PersistPromptBeforeProvider:
             system_content="sys",
             user_content="usr",
             model_code="claude-haiku-4-5",
+            server_id="anthropic",
+            tier=cfg.resolve_model_brain("claude", cfg.BRAIN_LITTLE)["tier"],
+            candidate_api_keys={"anthropic": "sk-ant"},
         )
         assert store_prompt.call_count == 0
         assert store_response.call_count == 0
