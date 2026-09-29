@@ -655,3 +655,16 @@ Roster counting nodes: **`docs/test-bible/core/roster.md`** § AST-1867 · AST-1
 Expect **23 passed** with AST-1867 product.
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/dispatcher.md | shasum`
+
+### AST-1879 · AST-1851 (skip gate on the task agent's server key)
+
+**Primary manifest:** [`agent.md`](agent.md) § QA test manifest (AST-1879). `_dispatch_one_body` checks `candidate_api_keys[task_llm_server_id(task_key)]`. With no candidate, no map, an empty key, or only another platform's key, it skips: no ledger, plus a warning naming the server ("This task is not starting").
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No candidate → skip + server-naming warning, no ledger | `src/core/dispatcher.py` | `TestDispatchOne::test_skips_without_candidate_context` (now asserts; was assertion-free) |
+| Missing / empty / other-platform key → skip (4 params) | same | `TestDispatchOne::test_skips_without_task_servers_api_key` (replaces `test_skips_without_api_key`) |
+| Gate asks `task_llm_server_id(task_key)` which server to check | same | `TestDispatchOne::test_gate_reads_key_for_task_agents_server` |
+| Revised — candidate stubs `candidate_api_key` → `candidate_api_keys: {"anthropic": …}`; autouse `_task_server_anthropic` pins `task_llm_server_id` (no seeded agent_task rows in this file) | `test_dispatcher.py` | 13 stubs across `TestDispatchOne`, `TestAst841…`, `TestAst1847…`, `TestAst1867…`, `TestAst1829ScheduledSweep` |
+
+**Integration:** none.

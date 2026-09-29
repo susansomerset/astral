@@ -3404,3 +3404,41 @@ class TestAst1617StageErrorWarns:
         warns = self._warns_for(caplog, "mid-1617-c")
         assert len(warns) == 1
         assert warns[0].levelno == logging.ERROR
+
+
+# Branches: ctx key map forwarded / absent → do_task loads by candidate id (AST-1879).
+class TestAst1879ClassifyKeyMapHandOff:
+    """AST-1879: _classify_stage_blob forwards candidate_api_keys to do_task ctx."""
+
+    async def _run(self, monkeypatch: pytest.MonkeyPatch, ctx: object) -> dict:
+        import src.core.agent as agent_mod
+
+        seen: dict = {}
+
+        async def _do_task(**kwargs):
+            seen.update(kwargs)
+            return {"success": False, "error": "stop"}
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        await meteorite_mod._classify_stage_blob(
+            "cand-1879", "blob", source_kind="email", source_id="msg-1879", ctx=ctx
+        )
+        return seen["ctx"]
+
+    @pytest.mark.asyncio
+    async def test_forwards_key_map_from_ctx(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        keys = {"kimi": "sk-kimi"}
+        task_ctx = await self._run(
+            monkeypatch, {"candidate_data": {"a": 1}, "candidate_api_keys": keys}
+        )
+        assert task_ctx["candidate_api_keys"] == keys
+        assert task_ctx["astral_candidate_id"] == "cand-1879"
+        assert "candidate_api_key" not in task_ctx
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("ctx", [None, {"astral_candidate_id": "cand-1879"}])
+    async def test_no_key_map_in_ctx_leaves_it_off(self, monkeypatch: pytest.MonkeyPatch, ctx: object) -> None:
+        # do_task then loads the map by candidate id (_candidate_server_key).
+        task_ctx = await self._run(monkeypatch, ctx)
+        assert "candidate_api_keys" not in task_ctx
+        assert task_ctx["astral_candidate_id"] == "cand-1879"

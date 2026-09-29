@@ -851,3 +851,13 @@ Text-outcome map prefers http(s) `job_link` over `_email_breadcrumb_link`; `stag
 ```
 
 **Pass criterion (test-fix):** `test_classify_fail_warns_once` and `test_map_error_warns_once` are red pre-fix and must go green after make-fix; the guard test stays green throughout.
+
+### AST-1879 · AST-1851 (classify hand-off carries the key map)
+
+**Primary manifest:** [`agent.md`](agent.md) § QA test manifest (AST-1879).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `_classify_stage_blob` copies `ctx["candidate_api_keys"]` into the `do_task` ctx; with no map in ctx it leaves the key off (do_task loads by id) | `src/core/meteorite.py` | `TestAst1879ClassifyKeyMapHandOff` |
+
+**Integration:** none.

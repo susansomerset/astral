@@ -24,11 +24,14 @@ def _batch_entities(*job_ids: str) -> List[Dict[str, str]]:
     return [{"astral_job_id": job_id} for job_id in job_ids]
 
 
-def _agent_rows(*, run_next: str = "", brain_setting: str = "Little") -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def _agent_rows(
+    *, run_next: str = "", brain_setting: str = "Little", model_id: str = "claude"
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     return (
         {
             "content": "agent sys",
             "model_code": "claude-haiku-4-5",
+            "model_id": model_id,
             "brain_setting": brain_setting,
             "agent_id": "agent-1",
             "temperature": 0.4,
@@ -44,6 +47,10 @@ def _agent_rows(*, run_next: str = "", brain_setting: str = "Little") -> Tuple[D
             "run_next": run_next,
         },
     )
+
+
+# AST-1879: DeepSeek V4 Big catalog tier floor (was deepseek_brain_max_tokens_floor).
+_DEEPSEEK_BIG_FLOOR = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_BIG)["tier"]["max_tokens_floor"]
 
 
 def _api_response(text: str = "raw") -> Any:
@@ -84,9 +91,15 @@ def _strict_batch_llm_ok(*, payload: str = "0|CRA2", api_label: str = "raw") -> 
 
 
 def _patch_strict_batch_anthropic(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Default active_provider is deepseek; chain-hop tests mock send_to_anthropic only."""
-    monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-    monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+    """Chain-hop tests mock send_to_anthropic only; the compat client must stay untouched."""
+    monkeypatch.setattr(agent_mod, "send_to_llm_compat", AsyncMock())
+
+
+@pytest.fixture(autouse=True)
+def _candidate_server_key_stub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AST-1879: this file exercises do_task past the key gate — every route gets a key.
+    Key selection / no-fallback coverage lives in test_agent_ast1879.py (no stub there)."""
+    monkeypatch.setattr(agent_mod, "_candidate_server_key", lambda ctx, cid, server_id: f"sk-{server_id}")
 
 
 @pytest.fixture
@@ -1360,7 +1373,8 @@ class TestDoTask:
         with pytest.raises(ValueError, match="missing required response_schema"):
             await agent_mod.do_task("broken")
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: ({"agent_id": "a"}, {"agent_id": "a"}))
-        with pytest.raises(ValueError, match="no brain_setting"):
+        # AST-1879: model_id is checked before brain_setting (_agent_llm_route).
+        with pytest.raises(ValueError, match="no model_id configured"):
             await agent_mod.do_task("evaluate_jd")
 
     async def test_returns_api_failure_and_stores_agent_data(
@@ -1390,8 +1404,7 @@ class TestDoTask:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         """Phase B craft tasks use entity_type None in TASK_CONFIG; prompts still persist."""
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -1516,11 +1529,13 @@ class TestDoTask:
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
     ) -> None:
-        """DeepSeek may return agent_payload as a string inside the envelope object."""
-        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        """Compat servers may return agent_payload as a string inside the envelope object."""
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4")
+        )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_deepseek",
+            "send_to_llm_compat",
             AsyncMock(
                 return_value={
                     "success": True,
@@ -1531,12 +1546,6 @@ class TestDoTask:
             ),
         )
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
-        monkeypatch.setattr(
-            agent_mod,
-            "resolve_brain_setting_to_deepseek_tier_meta",
-            lambda _bs: {"vendor_model": "deepseek-v4-flash", "thinking": False},
-        )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -1559,8 +1568,7 @@ class TestDoTask:
     ) -> None:
         """Qualify/evaluate batch consult must use the outer JSON envelope — no bare compact lines."""
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -1621,8 +1629,7 @@ class TestDoTask:
     ) -> None:
         """DO scored batch (grade_* agent_task) rejects bare compact lines — same envelope contract as AST-501."""
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -1895,7 +1902,7 @@ class TestDoTask:
         assert "Returning this hop only" in caplog.text
 
 
-# brain_setting → Anthropic SKU + send_to_anthropic, or DeepSeek tier_meta + send_to_deepseek (AST-492 + AST-493).
+# model_id + brain_setting → catalog route → send_to_anthropic or send_to_llm_compat (AST-492 / AST-1879).
 class TestAst492BrainSettingDoTask:
     @pytest.mark.asyncio
     async def test_send_to_anthropic_receives_resolved_key_for_big_tier(
@@ -1904,8 +1911,7 @@ class TestAst492BrainSettingDoTask:
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
@@ -1931,17 +1937,19 @@ class TestAst492BrainSettingDoTask:
         assert send.await_args.kwargs.get("model_code") == "claude-opus-4-6"
 
     @pytest.mark.asyncio
-    async def test_send_to_deepseek_receives_vendor_model_and_tier_meta(
+    async def test_compat_model_sends_via_llm_compat_with_catalog_route(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
     ) -> None:
-        tier_meta = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
-        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        # AST-1879: deepseek-v4 agent → compat client with the catalog server / SKU / tier row.
+        route = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE)
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4")
+        )
         send_anth = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
-        send_ds = AsyncMock(
+        send_compat = AsyncMock(
             return_value={
                 "success": True,
                 "parsed_response": {"agent_payload": "0|CRA2"},
@@ -1949,7 +1957,7 @@ class TestAst492BrainSettingDoTask:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", send_ds)
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         out = await agent_mod.do_task(
             "evaluate_jd",
@@ -1958,37 +1966,40 @@ class TestAst492BrainSettingDoTask:
         )
         assert out["success"] is True
         send_anth.assert_not_called()
-        assert send_ds.await_args is not None
-        kwa = send_ds.await_args.kwargs
-        assert kwa.get("vendor_model") == tier_meta["vendor_model"]
-        assert kwa.get("tier_meta") == tier_meta
+        kwa = send_compat.await_args.kwargs
+        assert kwa["server_id"] == "deepseek"
+        assert kwa["sku"] == route["sku"]
+        assert kwa["tier"] == route["tier"]
 
     @pytest.mark.asyncio
-    async def test_do_task_deepseek_raises_when_vendor_model_not_in_pricing(self, monkeypatch: pytest.MonkeyPatch, batch_token: Any) -> None:
-        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
-        monkeypatch.setattr(
-            agent_mod,
-            "resolve_brain_setting_to_deepseek_tier_meta",
-            lambda _bs: {"vendor_model": "unknown-vendor-model", "thinking": False},
-        )
-        with pytest.raises(ValueError, match="Unknown DeepSeek vendor_model"):
+    @pytest.mark.parametrize(
+        ("row_patch", "match"),
+        [
+            ({"model_id": ""}, "has no model_id configured"),
+            ({"brain_setting": ""}, "has no brain_setting configured"),
+            ({"model_id": "__no_such_model__"}, "Unknown LLM model"),
+            ({"model_id": "kimi-k2.6", "brain_setting": "Medium"}, "Invalid brain_setting"),
+        ],
+    )
+    async def test_do_task_raises_on_broken_agent_model_config(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any, row_patch: Dict[str, str], match: str
+    ) -> None:
+        # Broken agent config raises before any client call (AST-1879 _agent_llm_route).
+        agent_row, task_row = _agent_rows()
+        agent_row.update(row_patch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, task_row))
+        send_anth = AsyncMock()
+        send_compat = AsyncMock()
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
+        with pytest.raises(ValueError, match=match):
             await agent_mod.do_task(
                 "evaluate_jd",
                 index="job-1",
                 ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             )
-
-    @pytest.mark.asyncio
-    async def test_do_task_raises_on_unknown_llm_provider(self, monkeypatch: pytest.MonkeyPatch, batch_token: Any) -> None:
-        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "__no_such_vendor__")
-        with pytest.raises(ValueError, match="Unknown LLM active_provider"):
-            await agent_mod.do_task(
-                "evaluate_jd",
-                index="job-1",
-                ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
-            )
+        send_anth.assert_not_called()
+        send_compat.assert_not_called()
 
 
 class TestAst469ResolveRunNextLive:
@@ -2160,38 +2171,78 @@ class TestRunAdhoc:
         with pytest.raises(ValueError, match="requires model_code"):
             await agent_mod.run_adhoc("system", "user")
 
-    async def test_with_tier_meta_sends_via_deepseek(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        send_deep = AsyncMock(return_value={"success": True, "parsed_response": "ds-ok"})
+    async def test_requires_server_id_and_tier(self) -> None:
+        with pytest.raises(ValueError, match="requires server_id and tier"):
+            await agent_mod.run_adhoc("system", "user", model_code="claude-haiku-4-5")
+        with pytest.raises(ValueError, match="requires server_id and tier"):
+            await agent_mod.run_adhoc("system", "user", model_code="claude-haiku-4-5", server_id="anthropic")
+
+    async def test_compat_server_sends_via_llm_compat_with_that_servers_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1879 AC 7: only the route server's key goes out, never another platform's.
+        route = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE)
+        send_compat = AsyncMock(return_value={"success": True, "parsed_response": "ds-ok"})
         send_anth = AsyncMock()
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", send_deep)
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
         out = await agent_mod.run_adhoc(
             "sys",
             "usr",
-            model_code="deepseek-v4-flash",
-            tier_meta={"thinking": False, "vendor_model": "deepseek-v4-flash"},
+            model_code=route["sku"],
+            server_id=route["server_id"],
+            tier=route["tier"],
+            candidate_api_keys={"anthropic": "sk-ant", "deepseek": "sk-ds"},
             candidate_id="somerset",
         )
         assert out["parsed_response"] == "ds-ok"
-        send_deep.assert_awaited()
+        send_anth.assert_not_called()
+        kwa = send_compat.await_args.kwargs
+        assert (kwa["server_id"], kwa["sku"], kwa["tier"], kwa["api_key"]) == (
+            "deepseek", route["sku"], route["tier"], "sk-ds"
+        )
+        assert kwa["prompt_label"] == "adhoc"
+
+    async def test_missing_server_key_fails_naming_server_without_request(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1879 AC 7: no key for the route's server → failure envelope, neither client called.
+        send_compat = AsyncMock()
+        send_anth = AsyncMock()
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
+        route = cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_LITTLE)
+        out = await agent_mod.run_adhoc(
+            "sys",
+            "usr",
+            model_code=route["sku"],
+            server_id=route["server_id"],
+            tier=route["tier"],
+            candidate_api_keys={"anthropic": "sk-ant", "deepseek": "sk-ds"},
+            candidate_id="somerset",
+        )
+        assert out["success"] is False
+        assert "'kimi'" in out["error"] and "somerset" in out["error"]
+        assert out["api_response"] is None and out["timesheet"] == {}
+        send_compat.assert_not_called()
         send_anth.assert_not_called()
 
     async def test_returns_runtime_prompt(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            agent_mod,
-            "send_to_anthropic",
-            AsyncMock(return_value={"success": True, "parsed_response": "ok"}),
-        )
+        send_anth = AsyncMock(return_value={"success": True, "parsed_response": "ok"})
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
+        route = cfg.resolve_model_brain("claude", cfg.BRAIN_LITTLE)
         out = await agent_mod.run_adhoc(
             "system",
             "user",
             cache_content="cache",
             nocache_content="nocache",
             live_content="live",
-            model_code="claude-haiku-4-5",
+            model_code=route["sku"],
+            server_id=route["server_id"],
+            tier=route["tier"],
+            candidate_api_keys={"anthropic": "sk-ant"},
             candidate_id="somerset",
         )
         assert out["runtime_prompt"]
+        # Anthropic protocol: SKU as model_code, candidate key as override (never the env client).
+        assert send_anth.await_args.kwargs["model_code"] == "claude-haiku-4-5"
+        assert send_anth.await_args.kwargs["api_key_override"] == "sk-ant"
 
 
 class TestResponseSchemaBranches:
@@ -4815,7 +4866,7 @@ class TestAst531RunNextHopLedger:
             index="job-1",
             ctx={
                 "astral_candidate_id": "c1",
-                "candidate_api_key": "key",
+                "candidate_api_keys": {"anthropic": "key"},
                 "candidate_data": {},
                 "batch_entities": _batch_entities("job-1"),
             },
@@ -4844,8 +4895,7 @@ class TestAst531RunNextHopLedger:
             lambda *args, **kwargs: saves.append((args, kwargs)),
         )
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(run_next=""))
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -5017,6 +5067,34 @@ class TestAst515AdhocWorkbenchLedger:
         assert save_args[0].startswith("adhoc-evaluate_jd-")
         assert "adhoc-adhoc-" not in save_args[0]
         assert save_kw["entity_type"] == "job"
+
+    async def test_forwards_server_route_and_key_map_to_run_adhoc(
+        self, monkeypatch: pytest.MonkeyPatch, ledger_trackers: Dict[str, Any]
+    ) -> None:
+        # AST-1879 Stage 2: wrapper passes server_id / tier / candidate_api_keys through unchanged.
+        seen: Dict[str, Any] = {}
+
+        async def _ok(**kwargs: Any) -> Dict[str, Any]:
+            seen.update(kwargs)
+            return {"success": True, "parsed_response": {"agent_payload": "ok"}, "timesheet": {}}
+
+        monkeypatch.setattr(agent_mod, "run_adhoc", _ok)
+        route = cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_LITTLE)
+        keys = {"kimi": "sk-kimi"}
+        out = await agent_mod.run_adhoc_workbench_test(
+            workbench_task_key="evaluate_jd",
+            candidate_id="c1",
+            entity_id="j1",
+            model_code=route["sku"],
+            server_id=route["server_id"],
+            tier=route["tier"],
+            candidate_api_keys=keys,
+        )
+        assert out["success"] is True
+        assert (seen["server_id"], seen["tier"], seen["candidate_api_keys"], seen["model_code"]) == (
+            "kimi", route["tier"], keys, "kimi-k2.6"
+        )
+        assert "tier_meta" not in seen and "api_key_override" not in seen
 
 
 class TestAst1451ListAgentDataRuns:
@@ -5918,8 +5996,7 @@ class TestAst1190DoTaskEmptyProviderError:
         batch_token: Any,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
@@ -5959,8 +6036,7 @@ class TestAst1190DoTaskEmptyProviderError:
         from src.utils.config import PROVIDER_EMPTY_RESPONSE
 
         fc = PROVIDER_EMPTY_RESPONSE["failure_class"]
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         monkeypatch.setattr(
             agent_mod,
@@ -6265,17 +6341,13 @@ class TestAst1298OrphanedJobClaimRelease:
             "src.core.tracker.get_job",
             lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
         )
-        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next="", model_id="deepseek-v4")
+        )
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
-            "resolve_brain_setting_to_deepseek_tier_meta",
-            lambda _bs: {"vendor_model": "deepseek-v4-flash", "thinking": False},
-        )
-        monkeypatch.setattr(
-            agent_mod,
-            "send_to_deepseek",
+            "send_to_llm_compat",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -6315,8 +6387,7 @@ class TestAst903CraftRubricMaxTokensFloor:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         # Agent row max_tokens=100 (from _agent_rows); floor must raise to CRAFT_RUBRIC_MAX_TOKENS.
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         criteria = [
             {"code": "GT", "label": "Get", "content": "full criterion body", "importance": 5},
@@ -6350,8 +6421,7 @@ class TestAst903CraftRubricMaxTokensFloor:
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         send = AsyncMock(
             return_value={
@@ -6388,23 +6458,14 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # Big meta starts thinking=True; do_task must clear it for craft rubrics (Decision A).
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        # Kimi Big tier starts thinking=True; do_task must clear it for craft rubrics (Decision A).
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big"),
+            lambda task_key: _agent_rows(brain_setting="Big", model_id="kimi-k2.6"),
         )
-        monkeypatch.setattr(
-            agent_mod,
-            "resolve_brain_setting_to_deepseek_tier_meta",
-            lambda _bs: {
-                "vendor_model": "deepseek-v4-pro",
-                "thinking": True,
-                "reasoning_effort": "max",
-            },
-        )
+        assert cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_BIG)["tier"]["thinking"] is True
         criteria = [
             {"code": "GT", "label": "Get", "content": "full criterion body", "importance": 5},
         ]
@@ -6419,7 +6480,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", send)
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send)
         out = await agent_mod.do_task(
             "craft_get_rubric",
             index="abrams",
@@ -6427,35 +6488,24 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         )
         assert out["success"] is True
         assert send.await_args is not None
-        tier = send.await_args.kwargs.get("tier_meta") or {}
-        assert tier.get("thinking") is False
-        assert not tier.get("reasoning_effort")
-        # AST-1391: DeepSeek Big floor sits above the craft 32000 floor (AC6).
-        assert send.await_args.kwargs.get("max_tokens") == cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG)
+        tier = send.await_args.kwargs["tier"]
+        assert tier["thinking"] is False
+        # Kimi has no tier floor → craft floor wins over the row's 100.
+        assert send.await_args.kwargs.get("max_tokens") == cfg.CRAFT_RUBRIC_MAX_TOKENS
 
     @pytest.mark.asyncio
-    async def test_non_craft_deepseek_big_keeps_thinking(
+    async def test_non_craft_kimi_big_keeps_thinking(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         # Decision A must not blanket-disable Big thinking off craft rubric keys.
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big"),
-        )
-        monkeypatch.setattr(
-            agent_mod,
-            "resolve_brain_setting_to_deepseek_tier_meta",
-            lambda _bs: {
-                "vendor_model": "deepseek-v4-pro",
-                "thinking": True,
-                "reasoning_effort": "max",
-            },
+            lambda task_key: _agent_rows(brain_setting="Big", model_id="kimi-k2.6"),
         )
         send = AsyncMock(
             return_value={
@@ -6465,16 +6515,16 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", send)
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send)
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
             ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
-        tier = send.await_args.kwargs.get("tier_meta") or {}
-        assert tier.get("thinking") is True
-        assert tier.get("reasoning_effort") == "max"
+        tier = send.await_args.kwargs["tier"]
+        assert tier["thinking"] is True
+        assert tier["thinking_params"] == {"thinking": {"type": "enabled"}}
 
     @pytest.mark.asyncio
     async def test_provider_failure_response_banner_prefixes_success_shaped_envelope(
@@ -6484,25 +6534,15 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         # Truncated success-shaped envelope must land under Provider failed banner, not bare.
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big"),
+            lambda task_key: _agent_rows(brain_setting="Big", model_id="deepseek-v4"),
         )
         monkeypatch.setattr(
             agent_mod,
-            "resolve_brain_setting_to_deepseek_tier_meta",
-            lambda _bs: {
-                "vendor_model": "deepseek-v4-pro",
-                "thinking": True,
-                "reasoning_effort": "max",
-            },
-        )
-        monkeypatch.setattr(
-            agent_mod,
-            "send_to_deepseek",
+            "send_to_llm_compat",
             AsyncMock(
                 return_value={
                     "success": False,
@@ -6923,20 +6963,20 @@ class TestAst1072ConversationalEnvelope:
         }
 
     @pytest.mark.asyncio
-    async def test_do_task_concern_preserves_outcome_and_uses_medium_brain(
+    async def test_do_task_concern_preserves_outcome_at_agent_rows_own_brain(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
     ) -> None:
-        # Estelle row stays Big for upshot; CHAT overrides to CONTACT_ESTELLE Medium.
+        # AST-1879 AC 9: no conversational brain override — the turn runs at its agent row's
+        # model + brain (Big here), not a CONTACT_ESTELLE / default_brain_setting Medium.
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big"),
+            lambda task_key: _agent_rows(brain_setting="Big", model_id="kimi-k2.6"),
         )
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
-        tier_meta = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_MEDIUM)
+        tier = cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_BIG)["tier"]
         send_ds = AsyncMock(
             return_value={
                 "success": True,
@@ -6949,7 +6989,7 @@ class TestAst1072ConversationalEnvelope:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", send_ds)
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_ds)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         out = await agent_mod.do_task(self._TASK, index="turn-1", ctx={ "astral_candidate_id": "somerset",}, debug=False)
         assert out["success"] is True
@@ -6957,7 +6997,8 @@ class TestAst1072ConversationalEnvelope:
         assert out["agent_performance"]["admin_aside"] == "User sounding frustrated"
         assert out["parsed_response"] == {"reply": "Sorry this is hard"}
         assert send_ds.await_args is not None
-        assert send_ds.await_args.kwargs.get("tier_meta") == tier_meta
+        assert send_ds.await_args.kwargs["tier"] == tier
+        assert send_ds.await_args.kwargs["server_id"] == "kimi"
         shaped = agent_mod.conversational_turn_from_do_task_result(out)
         assert shaped["outcome"] == "concern"
         assert shaped["reply"] == "Sorry this is hard"
@@ -6974,8 +7015,7 @@ class TestAst1072ConversationalEnvelope:
             "_resolve_task_prompts",
             lambda task_key: _agent_rows(brain_setting="Big"),
         )
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -7009,8 +7049,7 @@ class TestAst1072ConversationalEnvelope:
             "_resolve_task_prompts",
             lambda task_key: _agent_rows(brain_setting="Big"),
         )
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod,
             "send_to_anthropic",
@@ -7894,8 +7933,7 @@ class TestAst1576CraftPersistOperative:
     """AST-1576: persist_candidate_craft_hops with artifact_key uses generic save."""
 
     def _stub_llm(self, monkeypatch: pytest.MonkeyPatch, send: AsyncMock) -> None:
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(agent_mod, "_task_references_caller_tokens", lambda *a, **k: False)
@@ -8005,8 +8043,7 @@ class TestAst1264CandidateCraftSuccession:
         assert "persist_candidate_craft succession stopped" in src
 
     def _stub_craft_llm(self, monkeypatch: pytest.MonkeyPatch, send: AsyncMock) -> None:
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         from src.core import candidate as candidate_mod
@@ -8786,15 +8823,16 @@ class TestAst1391DeepseekBigOutputFloor:
         brain: str,
         max_tokens: int = 100,
     ) -> Tuple[AsyncMock, AsyncMock]:
-        agent_row, prompts = _agent_rows(brain_setting=brain)
+        # AST-1879: provider label → catalog model_id; floor now rides the tier row.
+        model_id = {"deepseek": "deepseek-v4", "anthropic": "claude"}[provider]
+        agent_row, prompts = _agent_rows(brain_setting=brain, model_id=model_id)
         agent_row = {**agent_row, "max_tokens": max_tokens}
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: provider)
         monkeypatch.setattr(
             agent_mod, "_resolve_task_prompts", lambda _tk: (agent_row, prompts)
         )
         send_ds = self._ok_send()
         send_anth = self._ok_send()
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", send_ds)
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_ds)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         return send_ds, send_anth
@@ -8815,7 +8853,7 @@ class TestAst1391DeepseekBigOutputFloor:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         # AC1: stored 16000 must not starve Big — hop sends the config floor.
-        floor = cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG)
+        floor = _DEEPSEEK_BIG_FLOOR
         send_ds, send_anth = self._patch_evaluate_jd(
             monkeypatch, provider="deepseek", brain=cfg.BRAIN_BIG, max_tokens=16000
         )
@@ -8877,7 +8915,7 @@ class TestAst1391DeepseekBigOutputFloor:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         # AC4: Anthropic Big stays on agent-row / Opus default — never 384000.
-        floor = cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG)
+        floor = _DEEPSEEK_BIG_FLOOR
         _, send_anth = self._patch_evaluate_jd(
             monkeypatch, provider="anthropic", brain=cfg.BRAIN_BIG, max_tokens=100
         )
@@ -8918,22 +8956,13 @@ class TestAst1391DeepseekBigOutputFloor:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         # AC6: AST-1380 thinking-off stays; Big floor (not craft 32000) is what gets sent.
-        floor = cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG)
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        floor = _DEEPSEEK_BIG_FLOOR
+        assert floor > cfg.CRAFT_RUBRIC_MAX_TOKENS
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda _tk: _agent_rows(brain_setting=cfg.BRAIN_BIG),
-        )
-        monkeypatch.setattr(
-            agent_mod,
-            "resolve_brain_setting_to_deepseek_tier_meta",
-            lambda _bs: {
-                "vendor_model": "deepseek-v4-pro",
-                "thinking": True,
-                "reasoning_effort": "max",
-            },
+            lambda _tk: _agent_rows(brain_setting=cfg.BRAIN_BIG, model_id="deepseek-v4"),
         )
         send = AsyncMock(
             return_value={
@@ -8950,16 +8979,14 @@ class TestAst1391DeepseekBigOutputFloor:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", send)
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", send)
         out = await agent_mod.do_task(
             "craft_get_rubric",
             index="abrams",
             ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "abrams"}},
         )
         assert out["success"] is True
-        tier = send.await_args.kwargs.get("tier_meta") or {}
-        assert tier.get("thinking") is False
-        assert not tier.get("reasoning_effort")
+        assert send.await_args.kwargs["tier"]["thinking"] is False
         assert send.await_args.kwargs.get("max_tokens") == floor
 
 
@@ -9151,16 +9178,18 @@ class TestAst1639CandidateIdSystemPrefix:
             return _strict_batch_llm_ok()
 
         monkeypatch.setattr(agent_mod, "send_to_anthropic", _capture_anth)
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", _capture_ds)
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", _capture_ds)
 
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
             ctx=_rubric_evaluate_jd_ctx(),
             store_agent_data=False,
         )
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        # AST-1879: second hop on a compat-protocol model.
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4")
+        )
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
@@ -9177,8 +9206,17 @@ class TestAst1639CandidateIdSystemPrefix:
     ) -> None:
         send = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        route = cfg.resolve_model_brain("claude", cfg.BRAIN_LITTLE)
         with pytest.raises(ValueError, match="candidate id required"):
-            await agent_mod.run_adhoc("sys", "usr", model_code="claude-haiku-4-5", candidate_id="")
+            await agent_mod.run_adhoc(
+                "sys",
+                "usr",
+                model_code=route["sku"],
+                server_id=route["server_id"],
+                tier=route["tier"],
+                candidate_api_keys={"anthropic": "sk-ant"},
+                candidate_id="",
+            )
         send.assert_not_called()
 
     def test_preview_fail_closed_without_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -9268,8 +9306,7 @@ class TestAst1683ContactBaseResumeCurrentRead:
             return out
 
         monkeypatch.setattr(agent_mod, "resolve_tokens", capture_resolve)
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         send = AsyncMock(
             return_value={
                 "success": True,
@@ -9367,8 +9404,7 @@ class TestAst1698HarvestSourceArtifactIds:
         monkeypatch.setattr(
             agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, task_row)
         )
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         send = AsyncMock(
             return_value={
                 "success": True,
@@ -9453,8 +9489,7 @@ class TestAst1700ThreadHarvestGenerativeLands:
                 "timesheet": {},
             }
         )
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
-        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         monkeypatch.setattr(
@@ -9647,21 +9682,17 @@ class TestAst1846DoTaskAgentFailureFlag:
 
     @staticmethod
     async def _run(monkeypatch: pytest.MonkeyPatch, envelope: Dict[str, Any]) -> Dict[str, Any]:
-        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4")
+        )
         monkeypatch.setattr(
             agent_mod,
-            "send_to_deepseek",
+            "send_to_llm_compat",
             AsyncMock(return_value={
                 "success": True, "parsed_response": envelope, "api_response": _api_response("env"), "timesheet": {},
             }),
         )
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
-        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
-        monkeypatch.setattr(
-            agent_mod,
-            "resolve_brain_setting_to_deepseek_tier_meta",
-            lambda _bs: {"vendor_model": "deepseek-v4-flash", "thinking": False},
-        )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         return await agent_mod.do_task(
             "prefilter_company",
