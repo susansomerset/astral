@@ -261,3 +261,9 @@ Canon: neither AST-1893 nor AST-1888 has a Canon Scope list, so there are no can
 - `_run_batch_consult` keeps its signature and return shape, and `debug=False` callers behave exactly as they do today.
 - No other `@_with_log_debug` use in `src/` changes, and no decorator in `src/` sits on a class.
 
+
+### Joan fix-board (AST-1893)
+
+`[board-joan]  CANON: OK` — context_tokens≈12000
+
+The plan-fix patch only moves `@_with_log_debug` off `InvalidJobLinkError` and back onto `_run_batch_consult` in `src/core/consult.py`. No behavior change to `job_link` rules, fail/retry routing, or `_log_fail_dest` formatting — only restoration of a real `ValueError` subclass and `debug=True` → `log_debug` scoping. Aligns with `stat.logging.debug` (run entry sets the ContextVar; batch frame was wrongly undecorated) and `stat.logging.warning`'s consult `_log_fail_dest` pattern (per-item who/why, including `process_fn {ExceptionName}: …`). Overlap checks: `patt.entity.batch-processing`, `patt.task.dispatch-retry` — claim/process/release and dest logic unchanged. AST-1893 / AST-1888 carry no Canon Scope ids; nothing in the directive roster implies a statute or pattern amendment or a new "no decorator on classes" carve-out for this mechanical regression fix. No architectural ESCALATE.
