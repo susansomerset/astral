@@ -497,3 +497,72 @@ context_tokens≈115000
 - **Build tip:** `be5917353` (stages: `af2895717` agent `model_id` + per-model brain validation + seed · `31046806a` `candidate_key` + key map + legacy key dark + session paste candidate · `be5917353` timesheet SKU/server validation + backfill on catalog pricing)
 - **Build notes:** Built as planned, no deviations. `agent_task.json` line 763 was changed with a line-scoped `sed`, because the editor tool can't read that file; the diff is exactly one line. Smoke-tested against temp SQLite DBs: repo-JSON apply of the seed (seven rows, AC 4 values); per-model brain rejects on save/update; two `candidate_key` ciphertext rows and upsert; `get_candidate` map with no `candidate_api_key`; hard-delete cascade count; `run_session_resume_parse` 400 without a candidate and 404 for an unknown one; timesheet SKU/server reject; backfill by server. `src/ui/api/*` can't be import-tested locally (`asyncpg` not installed).
 - **For qa-child:** see **Tests expected to move** above; also Joan's optional note — parent AC 6 storage half (two ciphertext rows) is implemented in Stage 2.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1878
+**Publish ref:** f74ca3030
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+Model → server catalog routing | A | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+- [ ] **Acceptance criteria — parent AC 6 (storage half):** Optional child-ticket bullet that two Fernet `candidate_key` rows per candidate are required (verification already in plan **Tests expected to move** / qa-child). Engineer to confirm at UT if Susan wants Linear traceability to match parent AC 6.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Severity:** discuss  
+- **Location:** `src/ui/api/api_candidate.py` (unchanged on this branch) vs `src/core/candidate.py` `clear_candidate_api_key(candidate_id, server_id)`  
+- **Finding:** Admin clear-key still calls `clear_candidate_api_key(candidate_id)` with one argument; the data-layer API is now per-server. That path will fail at runtime until #4 (AST-1880) updates candidate admin routes.  
+- **Recommendation:** Treat as the documented layer split (#1878 data only); do not widen #1878 into `api_candidate.py`.  
+- **Default:** #4 owns the PATCH/clear wiring to pass `server_id`; leave #1878 tip as-is.
+
+### advisory
+
+- **Severity:** advisory  
+- **Location:** Three-dot diff vs `origin/dev`  
+- **Finding:** Branch stacks AST-1877 catalog/client (`config.py`, `llm_compat.py`, `env.example`, ast-1877 plan doc) ahead of dev — expected for child 2 on the same epic, not AST-1878 scope smuggling. AST-1878 product footprint: `database.py`, `candidate.py`, `data/admin/agent.json`, `data/admin/agent_task.json`, plus the single `REPO_ADMIN_JSON_CONFIG` `model_id` column line in `config.py`.  
+- **Recommendation:** None for resolve-child on #1878.
+
+- **Severity:** advisory  
+- **Location:** `tests/component/frontend/**` (AST-1874 modal/tab/score changes) in merge-tests commit `81dd0c445`  
+- **Finding:** sibling test carry on the sub; not #1878 product scope.  
+- **Recommendation:** Note once; no separate Linear comment.
+
+- **Severity:** advisory  
+- **Location:** `data/admin/agent.json` — `principal_recruiter_estelle`  
+- **Finding:** Analysis Estelle keeps `max_tokens: 384000` on `kimi-k2.6` Big (plan hand-off to #3 for call-path sanity).  
+- **Recommendation:** None at this review gate.
+
+## What's solid
+
+- **AC 3 / 4:** Seed has `model_id` on every agent; AC 4 mapping matches (`principal_recruiter_estelle` / `content_writer_judith` → `kimi-k2.6` Big; `contact_recruiter_estelle` → `kimi-k2.6` Little; four agents on `deepseek-v4` with prior brain sizes). `contact_estelle_turn` current row → `contact_recruiter_estelle`.
+- **AC 5 (child slice):** `get_candidate` hydrates `candidate_api_keys` and strips legacy `candidate_api_key` from the returned dict; `save_candidate` does not write the legacy column; `candidate_key` table with Fernet upsert/clear/list and hard-delete cascade.
+- **Pattern:** `model_id` + per-model brain validation on agent save/update/repo JSON; `_expose_agent_public` resolves SKU via `resolve_model_brain`; timesheet insert validates SKU with `get_sku_pricing(model_code, provider)`; backfill is `backfill_agent_timesheet_costs(server_id)` on `calculate_cost_components_from_counts`.
+- **Scope gate (AST-1883):** `config.py` edit on this ticket is the repo-admin `model_id` column addition only (catalog block is #1877 carry).
+- **Session paste (parent 16-partial):** `run_session_resume_parse` requires `candidate_id`, loads candidate, injects `candidate_api_keys` into synthetic ctx without bind/persist.
+
+## Recommended actions
+
+- Chuckles: append artifact, `docs(AST-1878): Radia review — clean`, post slim upshot, **Review Posted** → datt **PROCEED** to User Testing (no canon fix-now for #1878).
+- #4 / #3: consume hand-off notes (`candidate_api_keys` map, server-scoped set/clear, optional `model_id` on agent writes, `api_candidate` arity).
+
+context_tokens≈38000
+
+`[code-rubric] PROCEED (Commit: f74ca3030) data layer keys clean`
