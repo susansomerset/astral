@@ -96,8 +96,9 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
     renderDetail("/jobs/detail/j-deeplink")
     await waitForReportShell()
     const bar = document.querySelector(".recommended-report-tabs") as HTMLElement
-    expect(within(bar).getByRole("button", { name: "Summary" })).toHaveClass("active")
-    expect(screen.getByText("Job Summary")).toBeInTheDocument()
+    // AST-1874: deeplink opens on the first manifest tab (Analysis)
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Analysis" })).toHaveClass("active"))
+    expect(screen.getByText("JD Analysis")).toBeInTheDocument()
     expect(document.querySelector(".side-tab-list")).toBeNull()
   })
 
@@ -105,7 +106,7 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
     installBaseApiMocks(mockedApi, jobHandler("j-skipped", { state: "SKIPPED" }))
     renderDetail("/jobs/detail/j-skipped")
     await waitForReportShell()
-    expect(screen.getByText("Job Summary")).toBeInTheDocument()
+    expect(await screen.findByText("JD Analysis")).toBeInTheDocument()
   })
 
   it("shows explicit 404 error UI with back link", async () => {

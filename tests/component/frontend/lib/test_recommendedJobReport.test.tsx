@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 import {
   artifactHasContent,
   buildPhaseSectionGradeConfidenceRow,
+  formatPhaseScore,
   formatPhaseSectionScoreTitle,
   gradesForHeader,
   jobScoreBreakdownForGradesField,
@@ -240,5 +241,40 @@ describe("recommendedJobReport — AST-1348 phase score header helpers", () => {
   })
 })
 
+describe("recommendedJobReport — AST-1874 list score in phase header", () => {
+  const tpl =
+    STATE_UI_MANIFEST_FIXTURE.jobs.recommended.phase_score_header_title_template!
+  const trio = { earned: 42, possible: 50, max: 60 }
 
+  it("formatPhaseScore: finite number → one decimal; anything else → em dash", () => {
+    expect(formatPhaseScore(3.66)).toBe("3.7")
+    expect(formatPhaseScore(0)).toBe("0.0")
+    for (const v of [null, undefined, "3.7", Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(formatPhaseScore(v)).toBe("\u2014")
+    }
+  })
 
+  it("fills {score} with the one-decimal list score (AC3)", () => {
+    expect(tpl).toContain(" - {score}")
+    expect(formatPhaseSectionScoreTitle("JD Analysis", trio, tpl, 3.66)).toBe(
+      "JD Analysis - 3.7 - score: 42 out of 50 possible (60 max total)",
+    )
+  })
+
+  it("absent / non-finite score drops the whole ' - {score}' segment — no em dash, no empty dash", () => {
+    for (const s of [undefined, null, "3.7", Number.NaN]) {
+      const out = formatPhaseSectionScoreTitle("JD Analysis", trio, tpl, s)
+      expect(out).toBe("JD Analysis - score: 42 out of 50 possible (60 max total)")
+      expect(out).not.toContain("\u2014")
+    }
+  })
+
+  it("no-template fallback carries the same score segment rule", () => {
+    expect(formatPhaseSectionScoreTitle("DO Analysis", trio, "", 8.5)).toBe(
+      "DO Analysis - 8.5 - score: 42 out of 50 possible (60 max total)",
+    )
+    expect(formatPhaseSectionScoreTitle("DO Analysis", trio, "  ")).toBe(
+      "DO Analysis - score: 42 out of 50 possible (60 max total)",
+    )
+  })
+})
