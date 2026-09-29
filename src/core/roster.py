@@ -2900,12 +2900,13 @@ async def _check_parse_results(
     if response_type == "JOBLIST_NO_JOBS":
         no_jobs_msg = result.get("no_jobs_message", "")
         _strip_company_data_keys(short_name, ("job_list_visible",))
+        # AST-1892: never suppress here — NO_OPENINGS is terminal and recheck_no_openings
+        # needs job_site; AST-673 suppression applies only to JOBLIST_IDENTIFIED.
         _save_company(short_name=short_name, company_website=company_website,
                            state="NO_OPENINGS", page_option_url=job_site_url,
-                           raw_response=result, no_jobs_message=no_jobs_msg,
-                           suppress_job_site=suppress)
+                           raw_response=result, no_jobs_message=no_jobs_msg)
         logger.debug("Response from select_job_page: JOBLIST_NO_JOBS %s", no_jobs_msg)
-        return {"short_name": short_name, "state": "NO_OPENINGS", "job_site": "" if suppress else job_site_url, "response_type": response_type}
+        return {"short_name": short_name, "state": "NO_OPENINGS", "job_site": job_site_url, "response_type": response_type}
 
     if response_type == "JOBSITE_SCRAPE_ISSUE":
         summary = str(result.get("scrape_issue_summary") or "").strip()
