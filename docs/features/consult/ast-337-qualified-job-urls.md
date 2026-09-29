@@ -332,3 +332,75 @@ context_tokens≈14000
 ### Resolution — AST-1893
 
 **2026-09-29** — Radia PROCEED (`b516e8764`), clean-review shortcut → User Testing (no resolve-child). Docs-Acceptance for this product-only sub: no test-tree delivery here — regression tests and bible land on gap sibling **AST-1895** (from `[board-betty] TESTS: REVISE`). Targeted `test_consult.py` run: same 7 pre-existing failures as `origin/dev`, none from this change.
+
+---
+
+## Bug: AST-1895 — Cover InvalidJobLinkError fail reason + _run_batch_consult debug scope
+
+> Test-gap sibling of AST-1893, filed from `[board-betty] TESTS: REVISE`. It covers **tests and bible only** (`tests/component/core/test_consult.py`, `docs/test-bible/core/consult.md`). Betty lands it through qa-fix. There is no product change; AST-1893's decorator move (`b516e8764`) reaches this sub through `origin/ftr/AST-1888-invalid-job-link-error-decorator`.
+
+### As-is
+
+No test catches the `c86d8b5ce` decorator regression. `TestQualifyJobListings::test_fails_short_title_and_relative_link` sends `job_link: "/relative"`, but it only asserts `out["passed"] == 1` and `out["bad_grades"] == ["job-2"]`. Routing was correct even on the broken tree, so the test passes on `origin/dev`. Nothing asserts the `_log_fail_dest` reason, that `InvalidJobLinkError` is a `ValueError` subclass, or that `_run_batch_consult(debug=True)` sets `log_debug`. `docs/test-bible/core/consult.md` has no entry for any of these.
+
+### To-be
+
+A new bug-repro test class fails on `origin/dev`, where `consult.py` still has the decorator on the class, and passes on this sub's tip, where AST-1893's fix is present. The bible has a matching section and manifest.
+
+### Repro
+
+This was verified with a throwaway probe outside `tests/` that mirrors the tests in **Proposed change**, run with `/home/susan/astral/.venv` (system `python3` lacks `asyncpg`):
+
+| Tree | Result |
+| --- | --- |
+| This sub tip (`658b7123e`, includes `b516e8764`) | 4 passed |
+| `origin/dev` `src/core/consult.py` swapped in | 3 failed: the reason was `process_fn ValueError: no signature found for builtin type <class 'src.core.consult.InvalidJobLinkError'>`, `isinstance(InvalidJobLinkError, type)` was `False` (it's a function), and `log_debug` inside the frame was `[False]` instead of `[True]`. The `debug=False` guard passes on both trees, by design. |
+
+### Root cause
+
+The coverage gap is that the only relative-link test asserts routing, and routing survives the bug because the stray `ValueError` is caught by the same `except Exception` in `_run_batch_consult`. The reason string (`f"process_fn {type(e).__name__}: {e}"`) and the decorator's `log_debug` scoping were never asserted.
+
+### Proposed change
+
+All of this is Betty's (qa-fix) work. The engineer does not touch `tests/` or the bible.
+
+**1. `tests/component/core/test_consult.py`: add a new class `TestAst1895InvalidJobLinkError`.** Place it after `TestQualifyJobListings`, or wherever Betty's placement convention says. Reuse the module's existing `_pass_grade()` / `_rubric_item()` helpers, `consult_mod`, `MagicMock` / `AsyncMock`, and `pytest.mark.asyncio`. Do not modify `test_fails_short_title_and_relative_link`; it stays as the routing check.
+
+- **`test_empty_and_relative_job_link_fail_reason_names_error`** (**bug-repro**), async:
+  - Monkeypatch these on `consult_mod`: `_log_fail_dest` → `MagicMock()` (captures `(entity, dest, reason)`; it is resolved as a module global inside `_run_batch_consult`); `_transition_job_state_for_task` → `MagicMock()`; `tracker.initialize_job` and `tracker.save_job_data` → `MagicMock()`; `_rubric_criteria_for_cfg` → `lambda _cid, _cfg: [_rubric_item()]`. The rubric patch is required: without criteria, hydration raises `rubric criteria missing or empty`, which is the cause of the 7 existing failures on dev.
+  - `do_task` → `AsyncMock` returning `{"success": True, "parsed_response": {"jobs": [...]}, "timesheet": {}}` with two passing jobs: `{"astral_job_id": "job-e", "grades": [_pass_grade()], "job_title": "Engineer", "job_link": ""}` and `{"astral_job_id": "job-r", ..., "job_link": "/relative"}`.
+  - Input jobs: `{"astral_job_id": "job-e"|"job-r", "state": "VALID_TITLE", "company": "co", "job_data": {"raw_job_listing": "a"|"b"}}`. Call `await consult_mod.qualify_job_listings("batch-x", jobs, {}, debug=False)`.
+  - Assert `out["bad_grades"] == ["job-e", "job-r"]`.
+  - Key the `_log_fail_dest` calls by `args[0]`. Both jobs' `args[1]` must equal `consult_mod._consult_batch_fail_dest("VALID_TITLE", consult_mod.TASK_CONFIG["qualify_job_listings"].get("error_state"))`, meaning the same destination.
+  - Assert `args[2] == "process_fn InvalidJobLinkError: empty job_link: "` for `job-e` (trailing space included) and `args[2] == "process_fn InvalidJobLinkError: relative job_link: /relative"` for `job-r`. An exact match also rules out `no signature found`.
+- **`test_invalid_job_link_error_is_value_error_class`** (**bug-repro**), sync: `assert isinstance(consult_mod.InvalidJobLinkError, type)` and `assert issubclass(consult_mod.InvalidJobLinkError, ValueError)`.
+- **`test_run_batch_consult_debug_scope`**, async, `@pytest.mark.parametrize("debug", [True, False])`. `True` is the **bug-repro** case; `False` guards that nothing is forced on.
+  - Monkeypatch `_transition_job_state_for_task` → `MagicMock()` and `do_task` → `AsyncMock(return_value={"success": False, "error": "bad"})`. The envelope-failure path returns early and needs no rubric.
+  - Use an `assemble_fn` that appends `consult_mod.log_debug.get()` to a list and returns `"content"`. It is called inside the frame before `do_task`.
+  - Record `before = consult_mod.log_debug.get()`, then call `await consult_mod._run_batch_consult("qualify_job_listings", "batch-d", [{"astral_job_id": "job-1", "state": "VALID_TITLE"}], assemble, lambda i, r, c: c["pass_state"], {}, debug)`.
+  - Assert `seen == [debug]`, and `consult_mod.log_debug.get() is before` after the call, meaning the token was reset.
+
+**2. `docs/test-bible/core/consult.md`: append a section `### AST-1895 · AST-1888 (bug-repro — InvalidJobLinkError reason + _run_batch_consult debug scope)`.** Follow the shape of the AST-1846 block: a one-line contract, then an `Area | Source | Component tests` table with one row per test above (tag the bug-repro ones), `**Integration:** none.`, and a manifest:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1895InvalidJobLinkError \
+  -q
+```
+
+**Pass criterion:** that class is green on this sub's tip, and the three bug-repro cases (reason, class, `debug=True`) are red against `origin/dev` `src/core/consult.py`.
+
+Canon: AST-1895 lists no Canon Scope, so there are no ids to resolve.
+
+### Blast radius
+
+- The work is new test code plus one bible section. No product file changes, and no existing test is edited.
+- The monkeypatches are scoped by the `monkeypatch` fixture per test. `log_debug` is a `ContextVar`, and the decorator resets its token, so it does not leak into sibling tests. The `before` assertion checks exactly this.
+- The 7 failures that already exist in `test_consult.py` on dev (rubric/debug-detail drift) are untouched and out of scope. The new tests avoid them by patching `_rubric_criteria_for_cfg` and by using the envelope-failure path.
+
+### What must still hold
+
+- There are no changes under `src/` on this ticket (AC2).
+- The bug-repro cases fail on `origin/dev` and pass on the tip (AC1).
+- `test_fails_short_title_and_relative_link` and every other existing test stay unchanged.
+- AST-1893's invariants hold: the same fail/retry destination, one `_log_fail_dest` line per job, and a `_run_batch_consult` signature and return shape that don't change.
