@@ -2406,29 +2406,43 @@ def rubric_owner_task_key_choices() -> tuple[str, ...]:
     return tuple(sorted(RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.values()))
 
 
-# AST-707: embedded company_prefilter vectors — merged before candidate artifact criteria (embedded wins on code).
+# AST-707 / AST-1881: default company_prefilter vector — merged on save / craft persist /
+# craft generate / read (embedded wins on code) and stored in rubric_vector, like QC/GC.
 EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
     {
         "code": "RC",
         "label": "Reality Check",
         "importance": 8,
         "content": (
-            "Reality Check — assess whether the company is real and operating as represented.\n"
-            "A == clearly real and verifiable\n"
-            "B == appears real with minor gaps\n"
-            "C == mixed signals; legitimacy uncertain\n"
-            "D == significant doubt about reality or representation\n"
-            "E == strong evidence of misrepresentation\n"
-            "F == not a real company or clearly fraudulent\n"
+            "Reality Check — Is this the website for a company that the candidate might work at?\n"
+            "A == It is a typical website with content about products or services, a link to a careers page, etc.\n"
+            "B == It is an elaborate website that isn't clearly a company website, but at least it's about the company, such as a VC portfolio page.\n"
+            "C == It is a social media site for the company, but not their website. Links might still be found to job openings from here.\n"
+            "D == This is a company website, but it doesn't look like the expected website for this company.\n"
+            "F == This is obviously not a company website, someone got confused in their previous research identifying the company.\n"
             "X == could not read the page (bot blocked or other network issue)"
         ),
         "grade_descriptions": [
-            {"grade": "A", "description": "clearly real and verifiable"},
-            {"grade": "B", "description": "appears real with minor gaps"},
-            {"grade": "C", "description": "mixed signals; legitimacy uncertain"},
-            {"grade": "D", "description": "significant doubt about reality or representation"},
-            {"grade": "E", "description": "strong evidence of misrepresentation"},
-            {"grade": "F", "description": "not a real company or clearly fraudulent"},
+            {
+                "grade": "A",
+                "description": "It is a typical website with content about products or services, a link to a careers page, etc.",
+            },
+            {
+                "grade": "B",
+                "description": "It is an elaborate website that isn't clearly a company website, but at least it's about the company, such as a VC portfolio page.",
+            },
+            {
+                "grade": "C",
+                "description": "It is a social media site for the company, but not their website. Links might still be found to job openings from here.",
+            },
+            {
+                "grade": "D",
+                "description": "This is a company website, but it doesn't look like the expected website for this company.",
+            },
+            {
+                "grade": "F",
+                "description": "This is obviously not a company website, someone got confused in their previous research identifying the company.",
+            },
             {
                 "grade": "X",
                 "description": "could not read the page (bot blocked or other network issue)",

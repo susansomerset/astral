@@ -1277,7 +1277,7 @@ class TestAst702PrefilterBatchConfig:
 
 
 class TestAst707EmbeddedPrefilterConfig:
-    """AST-707: embedded RC criterion for company_prefilter hydration."""
+    """AST-707 / AST-1881: embedded RC criterion (company-site scale) for company_prefilter."""
 
     def test_embedded_rc_registry(self) -> None:
         rows = cfg.EMBEDDED_COMPANY_PREFILTER_CRITERIA
@@ -1287,23 +1287,35 @@ class TestAst707EmbeddedPrefilterConfig:
         assert rc["label"] == "Reality Check"
         assert rc["importance"] == 8
         assert rc["content"] == (
-            "Reality Check — assess whether the company is real and operating as represented.\n"
-            "A == clearly real and verifiable\n"
-            "B == appears real with minor gaps\n"
-            "C == mixed signals; legitimacy uncertain\n"
-            "D == significant doubt about reality or representation\n"
-            "E == strong evidence of misrepresentation\n"
-            "F == not a real company or clearly fraudulent\n"
+            "Reality Check — Is this the website for a company that the candidate might work at?\n"
+            "A == It is a typical website with content about products or services, a link to a careers page, etc.\n"
+            "B == It is an elaborate website that isn't clearly a company website, but at least it's about the company, such as a VC portfolio page.\n"
+            "C == It is a social media site for the company, but not their website. Links might still be found to job openings from here.\n"
+            "D == This is a company website, but it doesn't look like the expected website for this company.\n"
+            "F == This is obviously not a company website, someone got confused in their previous research identifying the company.\n"
             "X == could not read the page (bot blocked or other network issue)"
         )
         by_grade = {g["grade"]: g["description"] for g in rc["grade_descriptions"]}
-        assert list(by_grade) == ["A", "B", "C", "D", "E", "F", "X"]
-        assert by_grade["A"] == "clearly real and verifiable"
-        assert by_grade["B"] == "appears real with minor gaps"
-        assert by_grade["C"] == "mixed signals; legitimacy uncertain"
-        assert by_grade["D"] == "significant doubt about reality or representation"
-        assert by_grade["E"] == "strong evidence of misrepresentation"
-        assert by_grade["F"] == "not a real company or clearly fraudulent"
+        # Company-site scale defines no E row (AST-1881).
+        assert list(by_grade) == ["A", "B", "C", "D", "F", "X"]
+        assert by_grade["A"] == (
+            "It is a typical website with content about products or services, a link to a careers page, etc."
+        )
+        assert by_grade["B"] == (
+            "It is an elaborate website that isn't clearly a company website, "
+            "but at least it's about the company, such as a VC portfolio page."
+        )
+        assert by_grade["C"] == (
+            "It is a social media site for the company, but not their website. "
+            "Links might still be found to job openings from here."
+        )
+        assert by_grade["D"] == (
+            "This is a company website, but it doesn't look like the expected website for this company."
+        )
+        assert by_grade["F"] == (
+            "This is obviously not a company website, "
+            "someone got confused in their previous research identifying the company."
+        )
         assert by_grade["X"] == "could not read the page (bot blocked or other network issue)"
 
 
