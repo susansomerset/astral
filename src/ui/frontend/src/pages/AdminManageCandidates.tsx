@@ -592,11 +592,15 @@ export default function ManageCandidates() {
     if (col.key === "api_key_status") {
       return {
         ...col,
-        render: (val: unknown) => (
-          <span style={{ color: val === "Set" ? "var(--success, #4caf50)" : "var(--warning, #ff9800)", fontWeight: 600, fontSize: 12 }}>
-            {val === "Set" ? "🔑 Set" : "⚠️ Not set"}
-          </span>
-        ),
+        // Value is the joined labels of servers with a key set (AST-1880), or "Not set".
+        render: (val: unknown) => {
+          const isSet = typeof val === "string" && val !== "" && val !== "Not set"
+          return (
+            <span style={{ color: isSet ? "var(--success, #4caf50)" : "var(--warning, #ff9800)", fontWeight: 600, fontSize: 12 }}>
+              {isSet ? `🔑 ${val}` : "⚠️ Not set"}
+            </span>
+          )
+        },
       }
     }
     if (col.key === "dispatch_task_count") {
