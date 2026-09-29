@@ -209,3 +209,11 @@ AC1→Stage1 (config tab order + template; modal default/tab-bar asserts N/A—#
 - **acceptable** — Plan **Stage 2** · Finding: `job_state_admits_transition` reuses `_job_state_matches_prior` + `state_prior_states(JOB_STATES, to_state)` aligned with `skip_job` → `transition_job_state(..., "CANDIDATE_SKIPPED")`; `CANDIDATE_SKIPPED.prior_states` is `RECOMMENDED`, `BUILD_ARTIFACTS`, `CANDIDATE_REVIEW` on current `origin/dev` config. · Recommendation: None.
 
 context_tokens≈24000
+
+## Review
+
+| Field | Value |
+|-------|-------|
+| Branch | `sub/AST-1862/AST-1872-config-tab-order-score-template-skip-flag` |
+| Build tip | `720a7a60dfbbcdf3131ffbe51c55385e62dfc1ac` |
+| Status | Code Complete |
