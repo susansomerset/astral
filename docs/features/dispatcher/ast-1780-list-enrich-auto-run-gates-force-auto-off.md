@@ -898,6 +898,127 @@ END-VERDICT
 AST-1854 board-joan done — CANON: OK.
 ```
 
+## Radia review — AST-1854
+
+[code-rubric]
+
+**Ticket:** AST-1854  
+**Publish ref:** `b5a72977af962d9e8fdd8b797e0e5e9444898f4c` (`origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate`)  
+**Diff base:** `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate...origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate` (product delta: `src/ui/api/api_admin.py` + plan-fix patch in issue doc)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish ref; no `docs/canon-index.md` on this ref — ids resolved from `canon/**` on same tip)  
+**Overall:** CLEAN  
+
+**Status gate:** Spawn prompt `Tests Passed` / assignee Hedy — trusted; no re-fetch block.
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — `[board-betty] TESTS: REVISE` on AST-1854; repro-first coverage owned by sibling **AST-1855** (`origin/sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate` @ `6c083f3c`, red at ftr `3dd7f249`, green with this fix overlaid per spawn prompt). No qa-fix / no `[bug-repro]` on this tip; valid board opt-out for the product child (same lane pattern as AST-1791 → AST-1792).
+
+**## What must still hold — OK** — traced against tip `api_admin.py` + unchanged branches around the three swaps:
+
+| Item | Verdict |
+|------|---------|
+| Blank `candidate_id` / missing candidate → `empty_render: True` + existing warnings | Unchanged guards before/after `get_candidate(cid)` |
+| Prompt-load `ValueError` → silent `empty_render: False` | `try`/`except ValueError` block untouched |
+| Unexpected evaluation exceptions → `logger.exception` + fail-closed | `except Exception` block untouched |
+| Truly blank candidate-scoped token → fail gates | Still `empty_render_for_prompts` on hydrated `cd` |
+| Legacy-blob-only (hydrate miss leaves blob) | `get_candidate` behavior unchanged; plan § Repro c3 still holds for `ideal_day` |
+| `entity_contexts=None` | Unchanged call |
+| API-key gate independent of empty-render | `_candidate_dispatch_api_key_error` still raw `database.get_candidate` (column-only); runs before empty-render on Run |
+| No edits outside `api_admin.py` for product | Diff is import + three loader swaps only (+ issue doc) |
+
+## Canon scores
+
+*(Frozen **Canon Scope** on Linear AST-1854 description: **none** — same process gap as other fix children. Scored **fix-board Joan overlap** from plan-fix § Bug: AST-1854 / `## Joan fix-board — AST-1854`; logging statutes noted **id-only** — no logging lines added or changed in diff.)*
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | Admin token paths use `get_candidate` → operative current overlay before `build_candidate_token_view` |
+| astral.dispatch.entity-state-bound | A | | Evaluation remains per dispatch row `candidate_id`; blank/missing candidate still fail-closed |
+| stat.logging.info.api | A | | (id-only) No new route/info spam |
+| stat.logging.warning | A | | (id-only) Existing warning paths on blank/miss candidate unchanged |
+| stat.logging.error | A | | (id-only) `logger.exception` fail-closed path unchanged |
+
+## Column diff vs plan stage
+
+(aligned) — No `validate-plan` fix-mode per-id table for AST-1854. Fix-board Joan `[board-joan] CANON: OK` triage matches code review on the two substantive ids above; no Joan-high / Radia-low divergence.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — Canon Scope missing on ticket (process)
+
+- **Severity:** discuss  
+- **Location:** Linear Description vs fix-lane Radia comparability  
+- **Finding:** No `Canon Scope (frozen at plan)` block on AST-1854; scored Joan fix-board overlap only (AST-1847 / AST-1821 precedent).  
+- **Recommendation:** Archie may add a frozen list for future fix bugs; not a product defect on this tip.  
+- **Default:** Ship on overlap triage; no engineer recall for Description alone.
+
+### discuss — Test coverage deferred to AST-1855
+
+- **Severity:** discuss  
+- **Location:** `[board-betty] TESTS: REVISE` / spawn handoff  
+- **Finding:** No hydrated-view `[bug-repro]` on this tip; sibling AST-1855 owns artifact-only Ideal Day gate assertions + contrasts.  
+- **Recommendation:** Not **fix-now** on Hedy’s product patch; UAT should still exercise somerset / `craft_do_rubric` per parent AST-1852 To-be.  
+- **Default:** Merge product after PROCEED; land tests via AST-1855 before treating repro-first bar closed.
+
+### advisory — Agent preview still raw loader (approved out of scope)
+
+- **Severity:** advisory  
+- **Location:** `_resolve_agent_preview_candidate` (~L175) — still `database.get_candidate`  
+- **Finding:** Same divergence class as pre-fix empty-render; explicitly out of Susan-approved scope.  
+- **Recommendation:** Separate ticket if UAT wants preview parity; do not expand AST-1854.
+
+### advisory — Legacy blob-only `base_resume` in admin
+
+- **Severity:** advisory  
+- **Location:** Full `get_candidate` overlay (all nine `hydrate_operative_*`), not Ideal Day alone  
+- **Finding:** Legacy-only `base_resume` blob without artifact row can read blank in admin after this fix — **same as runtime** (`hydrate_operative_base_resume_for_response` strips stale blob on miss). Susan flagged as known behavior to weigh, not a scope change.  
+- **Recommendation:** UAT awareness only; aligns with plan ⚠️ Decision (“all migrated context artifacts the hydrated loader overlays”).
+
+### advisory — Pre-existing `test_api_admin.py` failures
+
+- **Severity:** advisory  
+- **Location:** Hedy `test-fix` comment — 5 failures identical on `origin/dev`  
+- **Finding:** Not introduced by AST-1854; not a Radia block on this diff.
+
+## What's solid
+
+- Diff matches plan-fix **Proposed change** exactly: one import name + three `database.get_candidate` → `get_candidate` swaps in `_evaluate_dispatch_empty_render`, `_enrich_tasks`, `_resolve_adhoc`; no caps, caches, or new helpers.  
+- Hydration stays **outside** the `try` in `_evaluate_dispatch_empty_render` per plan decision (fail-closed semantics preserved vs AST-1780).  
+- Scope gate honored: no `config.py`, `candidate.py`, `agent.py`, or React edits.  
+- Estimate **2** fits the footprint.  
+- Converges admin list/gate/Task Manager/ad hoc with runtime token view — addresses UAT somerset / `IDEAL_DAY` root cause from plan § Root cause.
+
+## Recommended actions (Chuckles — read-only for Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | **Normal** — AST-1852 mini-parent with `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate` (not Done-orphan / not straight-to-dev) | Append artifact → `docs(AST-1854): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+1. Do **not** block product on AST-1855 test gap (parallel to AST-1791 / AST-1792).  
+2. Track AST-1855 for `[bug-repro]` / bible REVISE closure.  
+3. Optional follow-up ticket for `_resolve_agent_preview_candidate` only if Susan wants preview parity.
+
+context_tokens≈9500
+
+---
+
+**Slim upshot (Chuckles → `linear_proxy --as radia save-comment`):**
+
+```
+[code-rubric] PROCEED (Commit: b5a72977) Three hydrated loader swaps clean
+```
+
+#### Chuckles disposition (AST-1854)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). Merged into the mini-parent ftr.
+
+Docs-acceptance on this tip: no test-tree delivery here — tests and bible land on gap sibling AST-1855.
+
 ## Bug: AST-1855 — Gap: artifact-only Ideal Day repro for the dispatch empty-render gate
 
 Gap child of AST-1852 from `[board-betty] TESTS: REVISE` on AST-1854. Scope is **test + bible only** (this ticket's `## Scope`): `tests/component/ui/api/test_api_admin.py`, `docs/test-bible/ui/api/api_admin.md`. Product loader swap is sibling **AST-1854** (`api_admin.py`, `origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate` @ `b5a72977`); do not re-plan or re-implement it here. This gap ref carries AST-1854's plan doc commits only (`sync(AST-1855)` absorb of `b01b1ce8`) — **not** its product commit — so the gap tip stays test-tree only and its own `api_admin.py` is the pre-fix product.
