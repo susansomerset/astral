@@ -6311,6 +6311,9 @@ class TestAst1867BalanceHeldCounting:
         self, monkeypatch: pytest.MonkeyPatch, branch: str,
     ) -> None:
         # D1 guard: AST-1189 timeout holds state too, but is not a balance refusal → stays an error
+        # local import: sub/ftr test trees can drop the module-level PROVIDER_CALL_BUDGET import on merge
+        from src.utils.config import PROVIDER_CALL_BUDGET
+
         state = "PJL_READY" if branch == "select_job_page" else "JOBS_FOUND"
         inner = {
             "error": "provider call budget exceeded",
