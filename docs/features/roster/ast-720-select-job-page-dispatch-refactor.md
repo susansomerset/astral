@@ -452,3 +452,116 @@ No unresolved conflicts.
 **Discuss (deferred):** mixed raw/normalized keys in `possible_joblist_links` ledger append, missing `PREFILTER_PASSED_RETRY → NO_JOBLIST` transition, and dispatch-error `error_state` transition — no decomposed-path regression today; revisit if monolith/retry combo needs them.
 
 **Publish ref:** `origin/sub/AST-716/select-job-page-dispatch-refactor`
+
+---
+
+## Bug: AST-1894 — tests for decomposed JOBLIST_NO_JOBS job_site persist (AST-1892 board)
+
+**Parent:** AST-1887. **Publish ref:** `origin/sub/AST-1887/AST-1894-no-openings-job-site-tests`. **Product sibling:** AST-1892 at `origin/sub/AST-1887/AST-1892-no-openings-job-site` @ `e21863a1a` (not yet on ftr). Its `## Bug: AST-1892` section lives on that sub. When `merge-child` rolls both subs into ftr, keep both sections (union). **Canon Scope:** none cited. **Delivery:** test and bible only. Betty lands this at `qa-fix`, and engineers do not touch `tests/` or `docs/test-bible/**`.
+
+### As-is
+
+Decomposed (`PJL_READY`) `JOBLIST_NO_JOBS` has no test coverage. The three existing `JOBLIST_NO_JOBS` tests all use the legacy path and assert state only. The AST-720 entry in `docs/test-bible/core/roster.md` describes the bug as intended behavior: "**`JOBSITE_SCRAPE_ISSUE`** / **`JOBLIST_NO_JOBS`** with **`suppress_job_site`**".
+
+### To-be
+
+A `[bug-repro]` component test pins that decomposed `JOBLIST_NO_JOBS` → `NO_OPENINGS` persists the selected page URL as `job_site`, both in the `update_company` write and in the returned dict. It is red on the pre-fix tree and green with AST-1892. The bible says `JOBLIST_NO_JOBS` persists `job_site`, while `JOBLIST_IDENTIFIED`, the `TRY_LINKS`-exhausted exits, and (still, out of scope for AST-1892) `JOBSITE_SCRAPE_ISSUE` suppress it. The bible also has a row for the new test.
+
+### Repro
+
+The test below is the repro. On `origin/ftr/AST-1887-no-openings-job-site` / this sub's pre-merge tip `42b6ecf52`, it fails first at `out["job_site"]` (`AssertionError: assert '' == 'https://acme.com/careers'`). It passes once AST-1892 `e21863a1a` is on the tree. This was verified at plan time with a scratch copy outside `tests/`, run against both `roster.py` versions.
+
+### Root cause
+
+The AST-720 test pass (Betty manifest, 2026-06-18) covered `JOBLIST_TITLES`, `TRY_LINKS`, `JOBSITE_SCRAPE_ISSUE`, and empty-assembled on the decomposed path, but never decomposed `JOBLIST_NO_JOBS`. The bible prose was written from AST-720's implementation, not from `_PERSIST_PAGE_OPTION_URL_STATES`, so it recorded the `suppress_job_site` pass-through as the contract.
+
+### Proposed change
+
+**1. `tests/component/core/test_roster.py`: new method in `TestAst720PjlReadySelectDispatch`**, placed directly after `test_jobsite_scrape_issue_suppresses_job_site` (before `test_empty_assembled_routes_no_pjl_selected`). It reuses the class helper `_pjl_ready_company()`, whose `pjl_scrape_pages` gives `page_url_map == {1: "https://acme.com/careers"}`:
+
+```python
+    @pytest.mark.asyncio
+    async def test_joblist_no_jobs_persists_selected_job_site(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # [bug-repro] AST-1892 pre-fix: decomposed JOBLIST_NO_JOBS writes job_site="" (suppress_job_site)
+        company = self._pjl_ready_company()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        update = MagicMock()
+        save = MagicMock()
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "response_type": "JOBLIST_NO_JOBS",
+                        "selected_page": 1,
+                        "no_jobs_message": "No open positions",
+                    },
+                }
+            ),
+        )
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-1892")
+        assert out["state"] == "NO_OPENINGS"
+        assert out["response_type"] == "JOBLIST_NO_JOBS"
+        assert out["job_site"] == "https://acme.com/careers"
+        update.assert_called_once()
+        assert update.call_args.kwargs["job_site"] == "https://acme.com/careers"
+        transition.assert_called_once_with("acme", "NO_OPENINGS")
+        assert save.call_args[0][1]["no_jobs_message"] == "No open positions"
+```
+
+The assertions are exact: the `update_company` kwarg `job_site`, the return `job_site`, the state, and the transition. The `no_jobs_message` assertion guards the "What must still hold" item that `company_data` still carries the message. The mocks match the neighbouring AST-720 tests, and there's no new fixture.
+
+**2. `docs/test-bible/core/roster.md`, `### AST-720 · AST-716` prose (line ~313):** replace
+
+> **`JOBSITE_SCRAPE_ISSUE`** / **`JOBLIST_NO_JOBS`** with **`suppress_job_site`**.
+
+with
+
+> **`JOBSITE_SCRAPE_ISSUE`** with **`suppress_job_site`**; **`JOBLIST_NO_JOBS` → `NO_OPENINGS`** persists the selected page URL as **`job_site`** (**`NO_OPENINGS` ∈ `_PERSIST_PAGE_OPTION_URL_STATES`**, AST-1892) — suppression (AST-673) stays on **`JOBLIST_IDENTIFIED`** and **`TRY_LINKS`**-exhausted exits only.
+
+The AST-720 table and narrowed run need no edit, because the new method is inside `TestAst720PjlReadySelectDispatch`, which both already name at class level.
+
+**3. `docs/test-bible/core/roster.md`: new section directly after `### AST-1842 · AST-1825` (after its `**Integration:**` / run block)**, following the AST-1842 `[bug-repro]` precedent:
+
+```markdown
+### AST-1892 · AST-1887 (decomposed JOBLIST_NO_JOBS persists job_site)
+
+**Parent:** [AST-1887](https://linear.app/astralcareermatch/issue/AST-1887) (orphaned-bug mini-parent). Product: **AST-1892**; test/bible delivery on gap sibling **AST-1894** (`origin/sub/AST-1887/AST-1894-no-openings-job-site-tests`). Decomposed (`PJL_READY`) `JOBLIST_NO_JOBS` → `NO_OPENINGS` no longer passes `suppress_job_site`; `_save_company` → `_job_site_for_persist` writes the selected page URL so `recheck_no_openings` has a `job_site`. `[bug-repro]`: red on pre-fix `origin/ftr/AST-1887-no-openings-job-site` (`job_site=""`), green once AST-1892 is on the tree.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Decomposed no-jobs persists `job_site` | `src/core/roster.py` (`_check_parse_results`) | **`tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_joblist_no_jobs_persists_selected_job_site`** |
+| `JOBLIST_IDENTIFIED` still suppresses | same | existing **`::test_joblist_titles_identified_without_job_site_column`** |
+| `JOBSITE_SCRAPE_ISSUE` still suppresses (out of scope) | same | existing **`::test_jobsite_scrape_issue_suppresses_job_site`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+```
+
+Narrowed run (Betty's red/green check):
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  "tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch" -q
+```
+
+### Blast radius
+
+- Test tree: one new method in an existing class, with no shared fixture change and no new imports (`AsyncMock`, `MagicMock`, `pytest`, and `roster_mod` are already imported). Existing AST-720 methods are untouched. `test_jobsite_scrape_issue_suppresses_job_site` stays valid, because AST-1892 left that branch suppressed.
+- Bible: one sentence in the AST-720 prose, plus one appended section. No other section changes.
+- Baseline: the full `test_roster.py` file already has 50 failures on `origin/dev` (AST-505/689/837/839/877/891 classes), and they're identical on the AST-1892 tip. They're unrelated and not part of this gap.
+
+### What must still hold
+
+- The new test is **red before AST-1892 and green after**. If Betty cannot get it red on the pre-fix tree, that's a finding (`[qa-handoff]`), not a formality.
+- The existing AST-720 assertions keep AST-673 intact: `JOBLIST_IDENTIFIED` `job_site == ""`, and the `TRY_LINKS`-exhausted return `job_site == ""`.
+- No product code on this sub. No limits, caps, or retries.
