@@ -438,3 +438,55 @@ Between this child and #3/#4, on `sub/*` and `ftr` only (UAT runs after all four
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1878
+**Overall:** APPROVED
+**Corpus:** `e1f2699fad`
+**Publish ref:** `0f6eee2f7`
+
+## Canon scores
+
+Model → server catalog routing | A | | Stages 1–3: model_id + per-model brain checks, server-scoped keys, catalog SKU timesheet validation, seed/task wiring
+
+## Traceability
+
+3→S1 (repo JSON + `agent.json` + in-memory apply check) | 4→S1 step 11–12 (seed models/sizes + `contact_recruiter_estelle` + task agent) | 5→S2 (`candidate_api_keys`, legacy column dark, `save_candidate` / `_parse_candidate_row`) + **Tests expected to move** (Betty AC 5) | parent 6-partial→S2 (two-server `candidate_key` storage; Betty lists coverage) | parent 11-partial→S1 step 12 (`contact_estelle_turn` agent) | parent 16-partial→S2 step 9 (`run_session_resume_parse` candidate_id + key map; HTTP/route #4) | parent 5,7–10,12–15→N/A (#3/#4 or epic-only)
+
+## Findings
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** Linear assignee vs validate-plan §1
+- **Finding:** Ticket assignee is still Hedy at Plan Ready; this pass was user-requested Joan validation only.
+- **Recommendation:** Chuckles restores implementer after posting upshot (normal handoff).
+
+- **Severity:** acceptable
+- **Location:** Scope gate / AST-1883
+- **Finding:** Repo-admin `model_id` column-only `config.py` edit and backfill switch to `calculate_cost_components_from_counts` (with rename/generalization in Stage 3) match approved Scope moves.
+- **Recommendation:** None.
+
+- **Severity:** acceptable
+- **Location:** **Transitional gaps** / **Hand-off notes**
+- **Finding:** Layer split knowingly leaves `candidate_api_key` consumers red on `sub/*` until #3/#4; plan documents gaps and contracts for `candidate_api_keys`, server-scoped set/clear, and optional `model_id` on agent writes until admin routes land.
+- **Recommendation:** None — faithful to parent partition.
+
+- **Severity:** acceptable
+- **Location:** Stage 1 step 4 / Hand-off note
+- **Finding:** Analysis Estelle keeps `max_tokens: 384000` on Kimi K2.6 Big while contact row uses catalog null defaults; plan flags #3 call-path risk without changing seed beyond Scope.
+- **Recommendation:** None at plan stage.
+
+### discuss
+
+- **Severity:** discuss
+- **Location:** Child ticket **Acceptance criteria** vs plan Stage 2 + **Tests expected to move**
+- **Finding:** Parent AC 6 (two platform keys on one candidate) is implemented in Stage 2 but not copied into the child ticket’s three AC bullets; verification is delegated to qa-child explicitly.
+- **Recommendation:** Optional Linear AC addendum citing parent AC 6 storage half so UAT traceability matches the plan (not blocking build).
+
+context_tokens≈115000
+
+[plan-rubric] PROCEED (Commit: 0f6eee2f7) Data layer keys plan clean
