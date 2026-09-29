@@ -430,3 +430,56 @@ On `sub/*` and `ftr` only, until AST-1880 lands (UAT runs after all four childre
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1879
+**Overall:** APPROVED
+**Corpus:** `e1f2699fad`
+**Publish ref:** `5c361de46`
+
+## Canon scores
+
+Model → server catalog routing | A | | Stages 1–3: `resolve_model_brain` route, protocol dispatch, server-scoped keys, no legacy provider path in core
+stat.logging.warning | A | | Missing-key skips (do_task, dispatcher, contact `no_candidate`); per-item who/why/consequence lines
+stat.logging.error | A | | Broken agent config raises; dispatcher crash path unchanged; provider failures stay on client/handler contract
+
+## Traceability
+
+7→S1 steps 2–4,6 + S2 (`candidate_api_keys[server_id]` only; Betty AC 7 intercept tests) | 8→S1 dispatch via `_send_to_server` / compat timesheet fields (Betty AC 8; needs #1 client + #2 SKU validation + Kimi-seeded agent) | 9→S1 step 4 override removed + agent.py `default_brain_setting` purge (S2 rg); `agent_task.json` row→#2; config grep remainder→#4 (Betty AC 9 turn test) | 10→S3 contact `no_candidate` + S1 keyed turn path; `requires_candidate_key` assert→#1 (Betty AC 10) | parent 1–6,12–13,15–16→N/A (#4 or prior children)
+
+## Findings
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** **Transitional gaps** / **Deploy / UAT notes**
+- **Finding:** `api_admin` ad-hoc and dispatch Run/Auto stay on legacy signatures until #4; live DB needs repo revert for `model_id` / `contact_estelle_turn` before routed tasks run in production.
+- **Recommendation:** None — documented layer split and operator steps.
+
+- **Severity:** acceptable
+- **Location:** Stage 1 `_candidate_server_key` decision
+- **Finding:** Reloading `candidate_api_keys` by `candidate_id` when ctx omits the map (meteorite classify path) is scoped to the same server id, not env or cross-platform fallback.
+- **Recommendation:** None.
+
+- **Severity:** acceptable
+- **Location:** **Tests expected to move**
+- **Finding:** AC 7–10 component coverage is named for Betty; engineer test-tree ban respected.
+- **Recommendation:** None.
+
+### discuss
+
+- **Severity:** discuss
+- **Location:** Child **Acceptance criteria** AC 9 vs **Acceptance mapping**
+- **Finding:** Ticket AC 9 quotes the full parent AC 11 bar (`agent_task.json`, repo-wide `default_brain_setting` grep, component turn); this plan correctly assigns the seed row to #2, config key deletion to #4, and owns override removal + `agent.py` grep here — so the child ticket AC text overstates what #3 alone can pass before sibling merges.
+- **Recommendation:** Optional ticket AC footnote mirroring **Notes for planning** (already on Linear description) so UAT does not treat AC 9 as failing on `sub/*` before #2/#4 are on the integration branch.
+
+- **Severity:** discuss
+- **Location:** Deploy note / AST-1878 hand-off
+- **Finding:** Analysis Estelle may send `max_tokens: 384000` on Kimi K2.6 Big; plan defers cap to operator/config without inventing limits.
+- **Recommendation:** Susan awareness only; no plan change required.
+
+context_tokens≈135000
+
+[plan-rubric] PROCEED (Commit: 5c361de46) Core routing plan clean
