@@ -816,3 +816,25 @@ Repro asserts **structure + absence of hand prose**, not token presence alone. S
 Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1881's product fix is on ftr @ 6e35dfbf, so the tests run green on ftr.
 
 origin/tests carry: Betty's merge-tests brought `1cc7aaf1` (AST-1873 frontend header tests + components bible). AST-1873's product is on in-flight ftr/AST-1862, not dev; those frontend tests may be red on dev until AST-1862 lands. Left in place, same as the AST-1860 precedent: reverting it here would make git drop those tests when AST-1862 later merges.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/4cccaf6fe569865795fd3783398d91dd/4269001b-dc3c-4655-9978-c34c60375056/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/a55fd56c-b18d-48e7-9a61-d514c2792af5/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/4cccaf6fe569865795fd3783398d91dd/686e8de6-5e73-4a75-b84e-91379a11a5fb/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1876 (parent) | ftr/AST-1876-prefilter-rc-default-vector |
+| AST-1881 | sub/AST-1876/AST-1881-prefilter-rc-default-vector |
+| AST-1882 | sub/AST-1876/AST-1882-prefilter-rc-default-vector-tests |
+
+**Epic worktree:** `astral-AST-1876/` — one active sub checked out at a time.
