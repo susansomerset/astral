@@ -4883,11 +4883,6 @@ TELESCOPE_CONFIG = {
     "default_wait_ready": False,
 }
 
-# ---------------------------------------------------------------------------
-# Timesheet rows (database ledgers): provider string validated on insert.
-# ---------------------------------------------------------------------------
-ALLOWED_TIMESHEET_PROVIDERS = ("anthropic", "deepseek")
-
 
 # ---------------------------------------------------------------------------
 # AGENT_CONFIG: Anthropic model catalog. Keyed by model_code (alias form — auto-upgrades
@@ -5077,6 +5072,292 @@ LLM_PROVIDER_CONFIG = {
         },
     },
 }
+
+# ---------------------------------------------------------------------------
+# LLM_SERVER_CONFIG — the platform/protocol behind a model (AST-1851). Operators never pick a
+# server; an agent picks a model and LLM_MODEL_CONFIG names its server. Adding a server is a
+# config edit only — no server name appears in code outside this file.
+#   protocol           — "anthropic" (src.external.anthropic) | "anthropic_compat" (src.external.llm_compat)
+#   base_url           — Anthropic SDK base_url (SDK appends /v1/messages); None = SDK default
+#   auth               — "x-api-key" | "bearer" (how the candidate's platform key is sent)
+#   thinking_off_params — body fields sent when the brain size has thinking off
+#   request_extras     — body fields sent on every request (e.g. OpenRouter provider.zdr —
+#                        NOT set in this release; ZDR enforcement is future scope)
+#   concurrency        — None, or process-wide in-flight cap + 429 backoff for this server
+# ---------------------------------------------------------------------------
+LLM_SERVER_CONFIG = {
+    "anthropic": {
+        "label": "Anthropic",
+        "protocol": "anthropic",
+        "base_url": None,
+        "auth": "x-api-key",
+        "thinking_off_params": {},
+        "request_extras": {},
+        "concurrency": None,
+    },
+    "kimi": {
+        "label": "Kimi",
+        "protocol": "anthropic_compat",
+        "base_url": "https://api.moonshot.ai/anthropic",
+        "auth": "bearer",
+        "thinking_off_params": {"thinking": {"type": "disabled"}},
+        "request_extras": {},
+        "concurrency": None,
+    },
+    "openrouter": {
+        "label": "OpenRouter",
+        "protocol": "anthropic_compat",
+        "base_url": "https://openrouter.ai/api",
+        "auth": "bearer",
+        "thinking_off_params": {"thinking": {"type": "disabled"}},
+        "request_extras": {},
+        "concurrency": None,
+    },
+    "deepseek": {
+        "label": "DeepSeek",
+        "protocol": "anthropic_compat",
+        "base_url": "https://api.deepseek.com/anthropic",
+        "auth": "x-api-key",
+        "thinking_off_params": {"thinking": {"type": "disabled"}},
+        "request_extras": {},
+        # DeepSeek's real limit follows account balance (observed 25-26); keep max_concurrent below it.
+        "concurrency": {
+            "max_concurrent": 20,
+            "rate_limit_retries": 4,
+            "backoff_base_seconds": 2.0,
+            "backoff_max_seconds": 30.0,
+        },
+    },
+}
+LLM_SERVER_PROTOCOLS = ("anthropic", "anthropic_compat")
+LLM_SERVER_AUTH_STYLES = ("x-api-key", "bearer")
+
+# Timesheet rows (database ledgers): provider string validated on insert = a server id.
+ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
+
+# ---------------------------------------------------------------------------
+# LLM_MODEL_CONFIG — what an agent row picks (AST-1851). model id → server + ordered brain
+# sizes (dict order = UI order) + per-SKU pricing. Adding a model is a config edit only.
+#   brain_sizes[<size>]:
+#     sku                 — vendor model string sent as `model`
+#     thinking            — bool; False sends the server's thinking_off_params
+#     thinking_params     — body fields sent when thinking is True (ignored when False)
+#     max_tokens_floor    — int | None; output-token floor applied over the agent's max_tokens
+#     default_temperature / default_max_tokens — used when the agent row leaves them null
+#   pricing[<sku>]: model_label, cpm_input, cpm_output, cpm_cache_read, cpm_cache_write,
+#     cache_min_tokens (USD per million tokens; cache_write 0 where the vendor does not bill it)
+# ---------------------------------------------------------------------------
+LLM_MODEL_CONFIG = {
+    "kimi-k2.6": {
+        "label": "Kimi K2.6",
+        "server": "kimi",
+        "brain_sizes": {
+            BRAIN_LITTLE: {
+                "sku": "kimi-k2.6",
+                "thinking": False,
+                "thinking_params": {},
+                "max_tokens_floor": None,
+                "default_temperature": 0.6,
+                "default_max_tokens": 16000,
+            },
+            BRAIN_BIG: {
+                "sku": "kimi-k2.6",
+                "thinking": True,
+                "thinking_params": {"thinking": {"type": "enabled"}},
+                "max_tokens_floor": None,
+                "default_temperature": 1.0,
+                "default_max_tokens": 32000,
+            },
+        },
+        # Moonshot list price 2026-09 — https://platform.kimi.ai (K2.6: $0.95 in / $4.00 out / $0.16 cache hit)
+        "pricing": {
+            "kimi-k2.6": {
+                "model_label": "Kimi K2.6",
+                "cpm_input": 0.95,
+                "cpm_output": 4.00,
+                "cpm_cache_read": 0.16,
+                "cpm_cache_write": 0.0,
+                "cache_min_tokens": 0,
+            },
+        },
+    },
+    "kimi-k2.6-openrouter": {
+        "label": "Kimi K2.6 via OpenRouter",
+        "server": "openrouter",
+        "brain_sizes": {
+            BRAIN_LITTLE: {
+                "sku": "moonshotai/kimi-k2.6",
+                "thinking": False,
+                "thinking_params": {},
+                "max_tokens_floor": None,
+                "default_temperature": 0.6,
+                "default_max_tokens": 16000,
+            },
+            BRAIN_BIG: {
+                "sku": "moonshotai/kimi-k2.6",
+                "thinking": True,
+                "thinking_params": {"thinking": {"type": "adaptive"}},
+                "max_tokens_floor": None,
+                "default_temperature": 1.0,
+                "default_max_tokens": 32000,
+            },
+        },
+        # OpenRouter bills per upstream host; catalog uses Moonshot list price (conservative).
+        "pricing": {
+            "moonshotai/kimi-k2.6": {
+                "model_label": "Kimi K2.6 (OpenRouter)",
+                "cpm_input": 0.95,
+                "cpm_output": 4.00,
+                "cpm_cache_read": 0.16,
+                "cpm_cache_write": 0.0,
+                "cache_min_tokens": 0,
+            },
+        },
+    },
+    "claude": {
+        "label": "Claude",
+        "server": "anthropic",
+        "brain_sizes": {
+            BRAIN_LITTLE: {
+                "sku": "claude-haiku-4-5",
+                "thinking": False,
+                "thinking_params": {},
+                "max_tokens_floor": None,
+                "default_temperature": AGENT_CONFIG["claude-haiku-4-5"]["default_temperature"],
+                "default_max_tokens": AGENT_CONFIG["claude-haiku-4-5"]["default_max_tokens"],
+            },
+            BRAIN_MEDIUM: {
+                "sku": "claude-sonnet-4-6",
+                "thinking": False,
+                "thinking_params": {},
+                "max_tokens_floor": None,
+                "default_temperature": AGENT_CONFIG["claude-sonnet-4-6"]["default_temperature"],
+                "default_max_tokens": AGENT_CONFIG["claude-sonnet-4-6"]["default_max_tokens"],
+            },
+            BRAIN_BIG: {
+                "sku": "claude-opus-4-6",
+                "thinking": False,
+                "thinking_params": {},
+                "max_tokens_floor": None,
+                "default_temperature": AGENT_CONFIG["claude-opus-4-6"]["default_temperature"],
+                "default_max_tokens": AGENT_CONFIG["claude-opus-4-6"]["default_max_tokens"],
+            },
+        },
+        # AGENT_CONFIG stays the Anthropic pricing source (send_to_anthropic prices by alias key).
+        "pricing": {k: AGENT_CONFIG[k] for k in ("claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6")},
+    },
+    "deepseek-v4": {
+        "label": "DeepSeek V4",
+        "server": "deepseek",
+        # AST-694: Little = v4-flash; Medium = v4-pro; Big = v4-pro + AST-1391 output floor.
+        # Big is thinking-off today (legacy tier_map thinking=False; its reasoning_effort was never sent).
+        "brain_sizes": {
+            BRAIN_LITTLE: {
+                "sku": "deepseek-v4-flash",
+                "thinking": False,
+                "thinking_params": {},
+                "max_tokens_floor": None,
+                "default_temperature": 1.0,
+                "default_max_tokens": 8192,
+            },
+            BRAIN_MEDIUM: {
+                "sku": "deepseek-v4-pro",
+                "thinking": False,
+                "thinking_params": {},
+                "max_tokens_floor": None,
+                "default_temperature": 1.0,
+                "default_max_tokens": 16000,
+            },
+            BRAIN_BIG: {
+                "sku": "deepseek-v4-pro",
+                "thinking": False,
+                "thinking_params": {},
+                "max_tokens_floor": 384000,
+                "default_temperature": 1.0,
+                "default_max_tokens": 16000,
+            },
+        },
+        # https://api-docs.deepseek.com/quick_start/pricing — snapshot 2026-06-03
+        "pricing": {
+            "deepseek-v4-flash": {
+                "model_label": "DeepSeek V4 Flash",
+                "cpm_input": 0.14,
+                "cpm_output": 0.28,
+                "cpm_cache_read": 0.0028,
+                "cpm_cache_write": 0.0,
+                "cache_min_tokens": 0,
+            },
+            "deepseek-v4-pro": {
+                "model_label": "DeepSeek V4 Pro",
+                "cpm_input": 0.435,
+                "cpm_output": 0.87,
+                "cpm_cache_read": 3.625,
+                "cpm_cache_write": 0.0,
+                "cache_min_tokens": 0,
+            },
+        },
+    },
+}
+
+
+def get_llm_server(server_id: str) -> Dict[str, Any]:
+    """Server catalog entry. Raises ValueError if unknown."""
+    s = LLM_SERVER_CONFIG.get(server_id)
+    if not s:
+        raise ValueError(f"Unknown LLM server {server_id!r}. Valid: {list(LLM_SERVER_CONFIG)}")
+    return s
+
+
+def get_llm_model(model_id: str) -> Dict[str, Any]:
+    """Model catalog entry. Raises ValueError if unknown."""
+    m = LLM_MODEL_CONFIG.get(model_id)
+    if not m:
+        raise ValueError(f"Unknown LLM model {model_id!r}. Valid: {list(LLM_MODEL_CONFIG)}")
+    return m
+
+
+def model_brain_sizes(model_id: str) -> tuple[str, ...]:
+    """This model's brain sizes in catalog (UI) order."""
+    return tuple(get_llm_model(model_id)["brain_sizes"])
+
+
+def validate_brain_setting_for_model(model_id: str, brain_setting: str) -> None:
+    """Per-model brain-size check (replaces the global BRAIN_SETTINGS check for model-bound callers)."""
+    sizes = model_brain_sizes(model_id)
+    if brain_setting not in sizes:
+        raise ValueError(
+            f"Invalid brain_setting {brain_setting!r} for model {model_id!r}. Allowed: {list(sizes)}"
+        )
+
+
+def get_sku_pricing(sku: str, server_id: Optional[str] = None) -> Dict[str, Any]:
+    """Pricing row for a vendor SKU; server_id narrows the search. Raises on unknown or ambiguous SKU."""
+    hits = [
+        m["pricing"][sku]
+        for m in LLM_MODEL_CONFIG.values()
+        if sku in m["pricing"] and (server_id is None or m["server"] == server_id)
+    ]
+    if not hits:
+        raise ValueError(f"Unknown SKU {sku!r} for pricing (server={server_id!r})")
+    if len(hits) > 1:
+        raise ValueError(f"SKU {sku!r} is priced on more than one server — pass server_id")
+    return hits[0]
+
+
+def resolve_model_brain(model_id: str, brain_setting: str) -> Dict[str, Any]:
+    """model + brain size → server id/entry, SKU, tier meta (the brain_sizes row), pricing."""
+    validate_brain_setting_for_model(model_id, brain_setting)
+    m = get_llm_model(model_id)
+    tier = m["brain_sizes"][brain_setting]
+    return {
+        "model_id": model_id,
+        "server_id": m["server"],
+        "server": get_llm_server(m["server"]),
+        "sku": tier["sku"],
+        "tier": tier,
+        "pricing": m["pricing"][tier["sku"]],
+    }
+
 
 # PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion (AST-897).
 # Used by utils.llm_external classifiers and core state-hold gates.
