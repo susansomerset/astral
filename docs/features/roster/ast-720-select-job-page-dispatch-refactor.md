@@ -565,3 +565,37 @@ Narrowed run (Betty's red/green check):
 - The new test is **red before AST-1892 and green after**. If Betty cannot get it red on the pre-fix tree, that's a finding (`[qa-handoff]`), not a formality.
 - The existing AST-720 assertions keep AST-673 intact: `JOBLIST_IDENTIFIED` `job_site == ""`, and the `TRY_LINKS`-exhausted return `job_site == ""`.
 - No product code on this sub. No limits, caps, or retries.
+
+## Joan fix-board — AST-1894
+
+**Scope:** AST-1894 is **test + `docs/test-bible/**` only** (Betty/`qa-fix` delivery). Product fix is AST-1892 on `origin/ftr/AST-1887-no-openings-job-site` @ `91577d1c6`. **Canon Scope:** none cited.
+
+**Plan-fix summary:**
+
+| Section | Summary |
+|--------|---------|
+| **Proposed change** | One `[bug-repro]` in `TestAst720PjlReadySelectDispatch`; bible AST-720 prose fix (split `JOBSITE_SCRAPE_ISSUE` suppress vs `JOBLIST_NO_JOBS` persist); new `### AST-1892 · AST-1887` bible section with table + narrowed pytest run. |
+| **Blast radius** | Single new test method; two bible edits; no `src/` changes on this sub. |
+| **What must still hold** | Red/green gate vs pre-fix tree; existing AST-720 tests still pin AST-673 suppression paths. |
+
+**Canon triage (one question):** Does this require updating or conflict with any **directive in force**?
+
+1. **No product/corpus touch** — Joan’s lane is statutes/patterns, not test manifests. This patch does not edit `canon/**`, `src/core/roster.py`, or config/schema.
+
+2. **Bible correction ≠ statute amendment** — The AST-720 bible line that grouped `JOBLIST_NO_JOBS` with `suppress_job_site` mirrored the AST-720 implementation mistake (per root cause). Replacing it with “`JOBLIST_NO_JOBS` persists `job_site`; suppression stays on `JOBLIST_IDENTIFIED` / `TRY_LINKS` / `JOBSITE_SCRAPE_ISSUE`” **documents** behavior consistent with existing roster persistence (`_PERSIST_PAGE_OPTION_URL_STATES` / `_save_company`), not a new canon rule. No active directive encodes `suppress_job_site` or decomposed `JOBLIST_NO_JOBS` (same conclusion as AST-1892 board).
+
+3. **Registry overlap** — Active roster-scoped patterns (`patt.task.dispatch-retry`, `patt.entity.batch-processing`, entity logging) are unchanged in meaning; the new test **asserts** terminal `NO_OPENINGS` + `job_site` persistence, which does not contradict those statutes.
+
+4. **No Archie gate** — No new precedent, ambiguous statute, or unbounded blast radius into canon; ticket IDs in bible prose are traceability, not directive ids.
+
+**Conclusion:** No canon impact; F3 fix-mode not indicated for this sub.
+
+BEGIN-VERDICT
+[board-joan]  CANON: OK
+
+context_tokens≈6800
+END-VERDICT
+
+```text
+AST-1894 board-joan done — CANON: OK.
+```
