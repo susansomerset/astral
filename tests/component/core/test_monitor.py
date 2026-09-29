@@ -157,3 +157,70 @@ class TestFormatLogBody:
         body = monitor_mod._format_log_body("batch-y")
         assert body.splitlines()[0].endswith("older")
         assert body.splitlines()[-1].endswith("newer")
+
+
+# Branches: subject names provider; short body (no log dump); Held line only when held > 0;
+# send_email False logged; unexpected exception swallowed.
+class TestAst1867ProviderBalanceOutage:
+    """AST-1867 / AST-1870: one short alert per AUTO run stopped by a provider balance refusal."""
+
+    _REFUSAL_ERR = "Error code: 402 - Insufficient Balance"
+    _ACC = {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+
+    @staticmethod
+    def _stub(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+        # direct patches keep the subject independent of host env / candidate DB
+        monkeypatch.setattr(monitor_mod, "get_active_llm_provider", lambda: "deepseek", raising=False)
+        monkeypatch.setattr(monitor_mod, "get_deploy_label", lambda: "local")
+        monkeypatch.setattr(monitor_mod, "_resolve_candidate_last_name", lambda cid: "Somerset")
+        return _stub_alert(monkeypatch)
+
+    def test_subject_names_provider_and_body_is_short(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        send = self._stub(monkeypatch)
+        list_logs = MagicMock(return_value=[])
+        monkeypatch.setattr(monitor_mod.database, "list_log_entries", list_logs)
+
+        monitor_mod.provider_balance_outage(
+            "select_job_page", "b-1", dict(self._ACC), {"error": self._REFUSAL_ERR, "held": 2}, "cand-1",
+        )
+
+        kw = send.call_args.kwargs
+        assert kw["subject"] == "[local/Somerset] deepseek insufficient balance — select_job_page stopped | b-1"
+        assert kw["body"].splitlines() == [
+            "Provider: deepseek",
+            f"Refusal: {self._REFUSAL_ERR}",
+            "Task: select_job_page   Batch: b-1",
+            "Processed: 1  Passed: 0  Failed: 0  Errors: 0",
+            "Held (state unchanged): 2",
+            "Entity state was held; the task stays enabled and resumes once provider credit is restored.",
+        ]
+        assert kw["to"] == monitor_mod.ASTRAL_CONFIG["support_email"]
+        # no batch log dump
+        list_logs.assert_not_called()
+
+    def test_held_line_omitted_when_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        send = self._stub(monkeypatch)
+
+        monitor_mod.provider_balance_outage(
+            "evaluate_jd", "b-2", dict(self._ACC), {"error": self._REFUSAL_ERR, "held": 0}, "cand-1",
+        )
+
+        assert not any(ln.startswith("Held") for ln in send.call_args.kwargs["body"].splitlines())
+
+    def test_logs_when_send_email_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._stub(monkeypatch)
+        monkeypatch.setattr(monitor_mod, "send_email", MagicMock(return_value=False))
+
+        monitor_mod.provider_balance_outage("task", "b-3", dict(self._ACC), {"error": self._REFUSAL_ERR, "held": 1})
+
+    def test_swallows_unexpected_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        send = self._stub(monkeypatch)
+
+        def _boom() -> str:
+            raise ValueError("no provider")
+
+        monkeypatch.setattr(monitor_mod, "get_active_llm_provider", _boom, raising=False)
+
+        monitor_mod.provider_balance_outage("task", "b-4", dict(self._ACC), {"error": self._REFUSAL_ERR, "held": 1})
+
+        send.assert_not_called()
