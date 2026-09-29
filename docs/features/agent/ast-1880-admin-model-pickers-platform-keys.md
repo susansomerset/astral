@@ -330,3 +330,10 @@ context_tokens≈155000
 
 [plan-rubric] PROCEED (Commit: 16dbe56de) Admin + legacy retirement plan clean
 
+
+## Review
+
+- **Branch:** `origin/sub/AST-1851/AST-1880-admin-model-pickers-platform-keys`
+- **Build tip:** `df3bcb890` (stages: `0c0bef06e` api_admin catalog route, agent `model_id` routes, catalog ad-hoc/history, server-key Invalid gate, session paste candidate, info.api lines · `482ad1ff5` api_candidate per-server keys in / set-not-set out · `673927ace` legacy retirement + `monitor.py` server label · `df3bcb890` admin UI pages)
+- **Build notes:** Built as planned, with one addition. Flask `jsonify` sorts keys in this app, so the model catalog came out Big, Little, Medium instead of catalog order. `GET /agents/models` therefore adds an `order` index on each model and each brain size, and the UI sorts by it. The response stays keyed by id. The AC 1 / AC 2 / AC 7 / `default_brain_setting` greps over `src/` (frontend included) are all empty. `_sanitize_candidate` smoke: a two-key map comes out as `api_keys` set flags with no plaintext. Lint: `ruff --select F` shows only the pre-existing unused `cfg` in `api_admin._enrich_tasks`. ESLint shows only the 2 pre-existing `no-extra-boolean-cast` errors in `AdminScheduledActions.tsx`. `npm run build` passes. `ruff` was installed into the local gitignored `.venv`, and `npm ci` was run in `src/ui/frontend`.
+- **For qa-child:** see **Tests expected to move** above. `test_deepseek.py` now fails on import (module deleted), so delete it together with `docs/test-bible/external/deepseek.md`.
