@@ -713,3 +713,106 @@ END-VERDICT
 ```text
 AST-1882 board-joan done — CANON: OK.
 ```
+
+## Radia review — AST-1882
+
+[code-rubric]
+
+**Ticket:** AST-1882  
+**Publish ref:** `dcea82e5a4b07d01c032c0508800b640723b2688` (`origin/sub/AST-1876/AST-1882-prefilter-rc-default-vector-tests`)  
+**Diff base:** `origin/ftr/AST-1876-prefilter-rc-default-vector...origin/sub/AST-1876/AST-1882-prefilter-rc-default-vector-tests` (8 files — **tests/** + **docs/test-bible/** + plan doc append; **zero** `src/**` / `data/**`)  
+**Corpus:** `e1f2699fad` (local `canon/` index; no frozen Canon Scope on ticket — same gap as AST-1881)  
+**Overall:** CLEAN  
+
+## Fix-specific checks
+
+| Check | Verdict |
+|-------|---------|
+| `[bug-repro]` | **OK** |
+| `## What must still hold` | **OK** |
+
+### `[bug-repro]` (§5.1) — `test_prefilter_prompt_has_no_hand_written_reality_check`
+
+**Body (tip):** loads repo `data/admin/agent_task.json`; finds `task_key == "prefilter_company"`; asserts:
+
+- `"Reality Check" not in cp` and `"Is this the website for a company" not in cp` (negative — hand-written block prose),
+- **positive pin:** exact rubric slice  
+  `**Your Rubric for evaluation:**\n\n{$RUBRIC_VECTORS}\n\n### POSSIBLE_JOBLIST_LINKS`  
+  (avoids tautological `{$RUBRIC_VECTORS}` **count** — token also appears in AST-1154 completeness copy; matches bible note and is **stronger** than plan table’s `count == 1`).
+
+**Tied to To-be:** single RC definition via rendered rubric vectors, duplicate hand section removed — not mere “file loads” or “token exists somewhere.”
+
+**Repro-first (reasoned):** on **`origin/dev`** (pre–AST-1881 product): `Reality Check in cp` → True, website phrase → True, rubric pin → **False** (hand block sits between header and `{$RUBRIC_VECTORS}`). On **`origin/ftr/AST-1876-prefilter-rc-default-vector`** after AST-1881 @ `6e35dfbf`: negatives False / pin True — repro is **green on ftr product**, which is correct for a gap branch stacked **after** product merge; red gate is **dev / pre-fix**, not “ftr without tests.”
+
+### `## What must still hold` (§5.2)
+
+| Item | Check |
+|------|--------|
+| AST-1085 QC/GC tests untouched | Diff only **appends** `TestAst1881PrefilterRcDefaultVector` after `TestAst1085EvaluateJdEmbeddedMerge`; no hunks in AST-1085 class. `test_other_owners_do_not_gain_rc_on_save` asserts `evaluate_jd` sync stays `["JD","QC","GC"]`. |
+| AST-723 / AST-707 batch / rubric lookup unchanged | **No** diff in `test_roster.py` or `test_consult.py`. |
+| No product in this ticket | **0** lines under `src/` / `data/` in three-dot diff. |
+| AST-1513 guard not weakened | No `agent.py` / decode tests edited to relax duplicate-code behavior. |
+
+## Canon scores
+
+**Omitted** — AST-1882 Linear description has no frozen Canon Scope id list. Joan fix-board **CANON: OK** for test-only pinning of AST-1881 contract; not a per-id plan-stage column.
+
+## Column diff vs plan stage
+
+`(aligned)` with Joan fix-board **CANON: OK**; no `validate-plan` per-directive table.
+
+**Plan vs shipped (non-blocking):**
+
+- Plan run block listed `TestAst707EmbeddedRcBatchHydration`; bible run on tip **drops** it and documents **pre-existing red on `origin/dev`** (artifact criteria vs batch hydration drift) — honest scope trim, not a weakened repro.
+- Plan repro table said `cp.count("{$RUBRIC_VECTORS}") == 1`; shipped test uses **section substring pin** — improvement, not regression.
+
+## Frame diff
+
+(none)
+
+## Plan fidelity
+
+| Plan item | Shipped |
+|-----------|---------|
+| Revise `test_embedded_rc_registry` (company-site A/B/C/D/F/X, no E) | ✓ `test_config.py` |
+| `TestAst1881PrefilterRcDefaultVector` (helper, save, craft generate, persist, non-prefilter guard) | ✓ six tests, mirrors AST-1085 pattern |
+| `[bug-repro]` prompt dedupe | ✓ |
+| Bible `config.md` + `candidate.md` | ✓ |
+| Read path | Correctly **not** duplicated (`TestAst723…` cited in bible) |
+
+## Non-canon findings
+
+**fix-now:** none  
+
+**discuss:** none  
+
+**advisory:**
+
+- **Sibling test carry (origin/tests merge @ `87a6ef0c`):** `test_RecommendedJobReportHeader.test.tsx`, `test_JobAnalysisReportModal.test.tsx`, `docs/test-bible/frontend/components.md` (**AST-1873** / in-flight **AST-1862**) — expected Betty `merge-tests` carry; **not** AST-1882 product scope; no **discuss** / **fix-now** per review-child §5.4 sibling-test rule.
+- **Stacking:** Product for repro lives on **ftr @ `6e35dfbf`** (AST-1881 merged); this sub adds tests only — green manifest assumes ftr (or dev after orphan merge), not dev-alone without AST-1881.
+
+## What's solid
+
+Repro asserts **structure + absence of hand prose**, not token presence alone. Storage-path tests assert concrete sync payloads (`["RC","MP"]`, embedded content equality, QC/GC non-leak). Registry test locks full RC contract to config constant. Test-only diff respects engineer test-tree ban.
+
+## Chuckles — post-review branching
+
+| Gate | Parent | Next |
+|------|--------|------|
+| **PROCEED** | Orphaned **AST-1876** mini-parent | **Review Posted** → clean shortcut → **User Testing** (skip `resolve-child` if no findings) → roll gap + product on ftr, then orphan merge path to **`origin/dev`** per fix-lane (AST-1881 already on ftr). |
+
+---
+
+**Slim upshot:**
+
+```
+[code-rubric] PROCEED (Commit: dcea82e5) Gap tests + repro OK
+```
+
+`context_tokens≈` (not instrumented)
+
+#### Chuckles disposition (AST-1882)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1881's product fix is on ftr @ 6e35dfbf, so the tests run green on ftr.
+
+origin/tests carry: Betty's merge-tests brought `1cc7aaf1` (AST-1873 frontend header tests + components bible). AST-1873's product is on in-flight ftr/AST-1862, not dev; those frontend tests may be red on dev until AST-1862 lands. Left in place, same as the AST-1860 precedent: reverting it here would make git drop those tests when AST-1862 later merges.
