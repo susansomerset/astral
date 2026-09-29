@@ -212,3 +212,64 @@ context_tokens≈18500
 - **Checks:** `npm run build` (`tsc -b` plus vite) is clean. `eslint` is clean on `RecommendedJobReportHeader.tsx`. Full `npm run lint` reports 32 problems, and the pre-build tree reports the same 32, so none are new. Both Stage 1 greps return nothing. The built CSS keeps both `.modal-card:has(.recommended-report-shell)` selectors. Every `App.css` hunk falls within lines 774–880, clear of the shared `.modal-*` blocks at line 966 and below.
 - **Existing tests (read-only run, for Betty's `qa-child`):** `test_RecommendedJobReportHeader` plus `test_JobAnalysisReportModal` have 16 failures. Three also fail on the pre-build tree: AST-1546 Print Resume success, AST-1350 Print Resume unsupported toast, and AST-1704 modal breadcrumb. The other 13 are expected revisions: they assert the old **Copy Link** / **Copy** labels or the linked title `<a>` (AST-948, AST-1421, AST-1695, AST-1696, AST-1704 header).
 - **Sub-log validator:** `validate-sub-log --stage=build` blocks on `075c3d78 Merge remote-tracking branch 'origin/dev' into tmp-refresh-AST-1853…`. That commit comes from origin/dev (AST-1853 PR #189) through the mandatory `sync(dev)`, and it isn't on `origin/ftr/AST-1862` yet. The plan commit `d818add5` is already on ftr, which puts it outside the range the validator checks. Both clear once ftr absorbs current dev.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1873
+**Publish ref:** df4b816b7a8ac07240bb94d4ebb7d44bb181514a
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51 · `canon_clerk.py expand` rejects `astral.standards.dry-and-focused-functions` (statute under `canon/statutes/astral/standards/` scored directly; same clerk gap as sibling tickets)
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.standards.dry-and-focused-functions | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan APPROVED at A; `a54c6d9f` / `1d8e84ca` match plan Stages 1–2.
+
+## Frame diff
+
+- [ ] **Acceptance criteria 6:** Skip visibility is proven via `test_RecommendedJobReportHeader` with `onSkip` / `skipBusy` (last button in row, absent without callback). Modal `can_skip` wiring and `test_JobAnalysisReportModal` skip-by-flag asserts belong to AST-1874 (#3), not this child.
+
+## Findings
+
+### fix-now
+
+(none) — AST-1873 product commits touch only `RecommendedJobReportHeader.tsx` and report-scoped `App.css` hunks; boundaries hold.
+
+### discuss
+
+- **`origin/dev` drift on monitor (branch integration)** · Tip-vs-tip, this sub is **behind** `origin/dev` on `src/core/monitor.py` (`_format_log_body` drops the Linear-safe fenced code block and `re` import) and matching `tests/component/core/test_monitor.py` (fence assertions and `test_fence_outruns_backticks_inside_the_logs` removed). Not introduced by `a54c6d9f` / `1d8e84ca`; epic sync history (`sync(ftr)`, `sync(dev)`, `sync(publish-ref)` from AST-1872) left the publish ref stale vs current dev. · **Default:** Before `merge-child` rolls AST-1873 into `ftr/AST-1862`, merge `origin/dev` into the publish ref and re-run the AST-1873 test manifest so ftr does not regress monitor alert formatting.
+
+- **Description AC6 vs boundaries (partially resolved in tests)** · Linear AC6 still names modal skip-by-detail-flag; plan and Stage 1 correctly defer wiring to #3. Betty’s `1cc7aaf1` covers AC6 on the header component (`onSkip` prop, last-in-row, `skipBusy`). · **Default:** `resolve-child` §10 ticks AC6 from header tests; defer modal flag asserts to AST-1874.
+
+### advisory
+
+- **sibling product carry:** Publish ref history includes AST-1872 (`sync(publish-ref)`, `resolve(AST-1872)`). Three-dot and tip-vs-dev diffs include `src/core/tracker.py`, `src/ui/api/api_jobs.py`, `src/utils/config.py` (AST-1872) — expected epic stacking, not AST-1873 scope smuggle; audit AST-1873 with `a54c6d9f^..1d8e84ca` (2 files) or frontend paths only.
+
+- **sibling test carry:** `df4b816b merge-tests(AST-1873)` / `1cc7aaf1` — `tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx`, `test_JobAnalysisReportModal.test.tsx` (title/link-line revisions only; no modal `can_skip` wiring tests), `docs/test-bible/frontend/components.md`; three-dot also lists AST-1872 plan doc append.
+
+- **Interim UX:** Until #3 passes `jobLinkText`, link line display falls back to http `jobLink` only — plan decision; acceptable.
+
+- **Build self-check in issue doc:** Engineer noted 32 pre-existing eslint issues unchanged; Radia did not re-run npm (Ask mode); no new lint called out in product diff.
+
+## What's solid
+
+- Stage 1 matches plan: plain title span, job-link line in `.recommended-report-title-block` (http(s) `<a target="_blank">` vs plain text), **Copy Job Link** / **Copy Job JSON**, optional **Skip this Job** last among buttons, `onSkip` in row visibility guard, `jobLink`/`jobLinkText` contract preserves #3 compile boundary.
+- Stage 2 matches plan: `:has(.recommended-report-shell)` scoped header/title padding and 15px font; title-row flex, `.recommended-report-title-block` wrap rules, job-link-line styling, `.recommended-report-links` `flex-shrink: 0` / `margin-top: 0`; no edits inside shared `.modal-header` / `.modal-title` / `.modal-body` blocks (those start ~1005).
+- `JobAnalysisReportModal.tsx` and `Modal.tsx` unchanged tip-vs-tip (boundary AC).
+- Betty tests explicitly cover AC7–9 and header-side AC6; DRY win: single link-line path replaces title-link + separate crumb row branches.
+
+## Recommended actions (downstream — not for Radia)
+
+1. Chuckles: merge `origin/dev` into `origin/sub/AST-1862/AST-1873-report-header-layout-labels-skip-button`, fix any monitor test fallout, re-verify green, then ftr merge.
+2. Chuckles: append this artifact to `docs/features/interface/ast-1873-report-header-layout-labels-skip-button.md`, commit `docs(AST-1873): Radia review — clean`, post slim upshot, move to **Review Posted**.
+3. Optional: align Linear AC6 wording with header-test proof (frame diff above).
+
+```
+[code-rubric] PROCEED (Commit: df4b816) Header row, skip prop, scoped CSS
+```
