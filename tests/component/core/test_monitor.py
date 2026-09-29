@@ -41,8 +41,10 @@ class TestAutoRunError:
         send.assert_called_once()
         _, kwargs = send.call_args
         assert kwargs["subject"].startswith("[Astral] qualify_job_listings failure:")
-        assert kwargs["body"].splitlines()[0].endswith("older")
-        assert kwargs["body"].splitlines()[-1].endswith("newer")
+        body_lines = kwargs["body"].splitlines()
+        assert body_lines[0] == "```" and body_lines[-1] == "```"
+        assert body_lines[1].endswith("older")
+        assert body_lines[-2].endswith("newer")
 
     def test_logs_when_send_email_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(monitor_mod.database, "list_log_entries", lambda batch_id: [])
@@ -155,8 +157,17 @@ class TestFormatLogBody:
     def test_formats_entries_chronologically(self, log_entries: List[Dict[str, Any]], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(monitor_mod.database, "list_log_entries", lambda batch_id: list(reversed(log_entries)))
         body = monitor_mod._format_log_body("batch-y")
-        assert body.splitlines()[0].endswith("older")
-        assert body.splitlines()[-1].endswith("newer")
+        lines = body.splitlines()
+        assert lines[0] == "```" and lines[-1] == "```"  # fenced for Linear
+        assert lines[1].endswith("older")
+        assert lines[-2].endswith("newer")
+
+    def test_fence_outruns_backticks_inside_the_logs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        entries = [{"created_at": "t1", "level": "ERROR", "message": "raw ```json {} ```` tail"}]
+        monkeypatch.setattr(monitor_mod.database, "list_log_entries", lambda batch_id: entries)
+        lines = monitor_mod._format_log_body("batch-z").splitlines()
+        assert lines[0] == "`````" and lines[-1] == "`````"  # longest inner run is 4
+        assert "```json" in lines[1]
 
 
 # Branches: subject names provider; short body (no log dump); Held line only when held > 0;
