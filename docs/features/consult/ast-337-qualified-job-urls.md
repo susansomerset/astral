@@ -328,3 +328,7 @@ context_tokens≈14000
 ---
 
 [code-rubric] PROCEED (Commit: b516e8764) Decorator restore clean
+
+### Resolution — AST-1893
+
+**2026-09-29** — Radia PROCEED (`b516e8764`), clean-review shortcut → User Testing (no resolve-child). Docs-Acceptance for this product-only sub: no test-tree delivery here — regression tests and bible land on gap sibling **AST-1895** (from `[board-betty] TESTS: REVISE`). Targeted `test_consult.py` run: same 7 pre-existing failures as `origin/dev`, none from this change.
