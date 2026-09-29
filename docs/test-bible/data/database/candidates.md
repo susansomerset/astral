@@ -93,3 +93,42 @@ Board REVISE on AST-1416: `TestSaveCandidate` only rejects `NOT_A_STATE`; AST-13
 **Broken / obsolete this pass:** none in this module beyond the new assertion bar (AST-575 ensure-driven backfill expectations may need a later revise when AST-1497 lands — out of this gap's board What).
 
 **Integration:** none.
+
+### AST-1878 · AST-1851 (agent model field + per-platform candidate keys)
+
+New `candidate_key` table (one Fernet-encrypted key per candidate × `LLM_SERVER_CONFIG` server); `get_candidate` hydrates `candidate_api_keys` `{server_id: plaintext}` and never exposes the legacy single `candidate_api_key`; `save_candidate` loses the legacy parameter; hard delete cascades keys. Agent `model_id` + per-model brain validation ([`agents.md`](agents.md)), seed AC 3/4 ([`../../core/repo_admin_json.md`](../../core/repo_admin_json.md)), timesheet SKU/server check + per-server backfill ([`timesheets.md`](timesheets.md)), core wrappers + session paste ([`../../core/candidate.md`](../../core/candidate.md)).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — two-server ciphertext storage (parent AC 6 storage half), AC 5 key map / no legacy key, upsert, undecryptable omitted, set/clear/list, cascade | `src/data/database.py` | `TestAst1878CandidateServerKeys` |
+| Revised — legacy key write retired | `save_candidate` | `TestSaveCandidate::test_save_candidate_no_longer_takes_legacy_api_key` (replaces `test_stores_encrypted_api_key`) |
+| Retired — `database.clear_candidate_api_key` deleted | — | `TestClearCandidateApiKey` removed; superseded by `TestAst1878CandidateServerKeys::test_list_and_clear` |
+
+**Not moved here (by design, #3 AST-1879):** `test_dispatcher.py` / `test_agent.py` / `test_meteorite_email.py` stubs still hand `candidate_api_key` dicts to consumers #3 rewires; they stay green on this tip because they stub their own dicts.
+
+**Integration:** none.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_candidates.py::TestAst1878CandidateServerKeys \
+  tests/component/data/database/test_candidates.py::TestSaveCandidate \
+  tests/component/data/database/test_candidates.py::TestGetCandidate \
+  tests/component/data/database/test_candidates.py::TestListCandidates \
+  tests/component/data/database/test_agents.py \
+  tests/component/data/database/test_timesheets.py \
+  tests/component/core/test_candidate.py::TestCandidateAdminFacades \
+  tests/component/core/test_candidate.py::TestAst986SessionResumeParse \
+  tests/component/core/test_candidate.py::TestAst1038SessionResumeWire \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_session_parse_returns_job_array_in_base_resume \
+  tests/component/core/test_repo_admin_json.py::TestAst1878AgentSeedModels \
+  tests/component/core/test_repo_admin_json.py::TestAst787AgentRepoJsonSeed::test_repo_json_has_seven_sorted_persona_ids \
+  tests/component/core/test_repo_admin_json.py::TestAst787AgentRepoJsonSeed::test_repo_rows_use_repo_columns_only \
+  tests/component/core/test_repo_admin_json.py::TestAst787AgentRepoJsonSeed::test_startup_apply_loads_all_seven_agents \
+  tests/component/core/test_repo_admin_json.py::TestAst783RepoAdminJsonDivergence \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig
+```
+
+**Pass criterion:** narrowed run green — not the zero-arg harness. Full `tests/component` failure set on this tip is identical to the same tree with `origin/ftr/AST-1851-support-openrouter-api-models` product (baseline diff: zero new, all 20 moved items green). Pre-existing reds left out of the manifest: `TestAst787AgentRepoJsonSeed::test_repo_rows_match_fixture_repo_column_mapping`, `TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array`, `TestAst1258CandidateBatchClaim` (two nodes).

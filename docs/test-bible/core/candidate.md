@@ -2346,3 +2346,13 @@ Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (l
 | Flipped (retry failure counts `total_errors`, not `total_failed`) | same | `TestAst972RequestedStageDispatch::test_artifacts_dispatch_retry_failure_errors` |
 
 **Integration:** none.
+
+### AST-1878 · AST-1851 (per-server key wrappers + session paste on selected candidate)
+
+**Primary manifest:** **`docs/test-bible/data/database/candidates.md`** § AST-1878.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Revised — `set_candidate_api_key` / `clear_candidate_api_key(cid, server_id)` delegate to per-server DB helpers | `src/core/candidate.py` | `TestCandidateAdminFacades::test_save_candidate_admin_and_clear_api_key` |
+| New — session paste 400 without `candidate_id` / 404 unknown, before ledger or `do_task` | `run_session_resume_parse` | `TestAst986SessionResumeParse::test_400_requires_candidate_id_before_ledger_or_task` · `::test_404_unknown_candidate_before_ledger` |
+| Revised — session calls pass `candidate_id=`; 200 path reads the candidate once, ctx carries a copy of its `candidate_api_keys`, no bind/persist | `run_session_resume_parse` | `TestAst986SessionResumeParse` (all) · `TestAst996ExperienceJobArray::test_session_parse_returns_job_array_in_base_resume` |
