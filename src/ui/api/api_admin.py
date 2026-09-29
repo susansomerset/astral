@@ -26,7 +26,7 @@ from src.core.inbox import count_inbox_bound_by_candidate
 from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
 from src.utils.cost_calculator import sum_calc_cost_components
-from src.external.telescope import PlaywrightInfraError, admin_telescope_scrape
+from src.external.telescope import PlaywrightInfraError, admin_telescope_scrape, run_one_shot
 from src.core.dispatcher import (
     list_dispatch_ledger, get_dispatch_ledger, list_log_entries,
     list_dispatch_tasks, save_dispatch_task, update_dispatch_task,
@@ -2253,7 +2253,7 @@ def admin_telescope():
     if element_id is not None:
         element_id = str(element_id).strip() or None
     try:
-        data = asyncio.run(
+        data = run_one_shot(
             admin_telescope_scrape(
                 url,
                 response_type=response_type,

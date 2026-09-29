@@ -848,3 +848,364 @@ Files: `src/utils/config.py`, `src/core/meteorite.py` only. Do not edit `src/cor
 - **What must still hold — OK.**
 - **§3h:** resolve-child skipped (clean review).
 
+## Bug: AST-1849 — asyncio.run callers leak Telescope per-loop state at loop close
+
+Orphaned-bug `fix` child of mini-parent AST-1841. Lives on this plan doc because AST-1726 introduced `_TelescopeQueue` and its per-loop `_LoopState` (Stage 2). Does not rewrite Stages 1–4 or any earlier bug block. Scope: AST-1849 `## Scope`, amended after its `[scope-gate]` to add the `contact.py` contact-task dispatch site. `dispatcher._task_thread_target` is already fixed on dev (`c86d8b5c`) and is not touched. The 2h loop stall (AST-1840) is out of scope.
+
+### As-is
+
+Five one-shot `asyncio.run(...)` call sites can reach Telescope. When their loop closes, that loop's `_LoopState` is still open: the asyncpg pool (`st.db`), the LISTEN connection (`st.listener`), the `telescope-result-poller` task, and any `_ping_wake` tasks in `st.wake_tasks`. `asyncio.run` cancels leftover tasks before it closes the loop, but it never closes the pool or listener. `_TelescopeQueue._state()` later drops the closed loop's entry from `_states` without closing anything (it can't, because the loop is gone). The result is `Event loop is closed` / `Task was destroyed but it is pending!` teardown noise (AST-1841 `parse_job_list` log, 12:40:33) and one leaked Telescope DB pool plus listener per request.
+
+The five sites:
+
+| Site | Call | Telescope reach |
+|------|------|-----------------|
+| `src/ui/api/api_admin.py` `admin_telescope` | `asyncio.run(admin_telescope_scrape(...))` | direct |
+| `src/ui/api/api_meteorite.py` `_run_land` | `asyncio.run(land_meteorite(candidate_id, **kwargs))` | `land_meteorite` → `_land_link_check_append` / `enrich_meteorite_land_packet` → `_land_fetch_link_text` → `get_visible_text` |
+| `src/ui/api/api_inbox.py` `inbox_land_meteorite` | `asyncio.run(_land_all())` | `ingest_candidate_email_message` → meteorite land path |
+| `src/core/gazer.py` `ingest_meteorite_jobs_from_email_html_sync` | `asyncio.run(ingest_meteorite_jobs_from_email_html(...))` | `_meteorite_fetch_link_visible_text` → `get_visible_text` |
+| `src/core/contact.py` contact-task dispatch loop | `asyncio.run(handler(cid, param, debug=debug))` | handlers `gazer.contact_task_gazer_scrape` / `meteorite.create_contact_meteorite` → `check_connectivity` → `_pool.healthy()` → `_get_db()` |
+
+### To-be
+
+Each of the five sites calls one sync runner in `src/external/telescope.py`, `run_one_shot(coro)`. It runs `coro` under `asyncio.run` and awaits `close_loop_resources()` in a `finally` inside that same loop, before `asyncio.run` cancels leftovers and closes it. After any of the five calls returns or raises, `_pool._states` has no entry for that loop, its pool and listener are closed, and its poller and wake tasks are cancelled. Return values and raised exceptions reach the caller unchanged. A loop that never touched Telescope is a no-op (`aclose_current_loop` returns when the loop has no state).
+
+### Repro
+
+No SQL seed. Fixture-level, against `src/external/telescope.py` with `asyncpg.create_pool` and `asyncpg.connect` patched to fakes whose `close()` is an `AsyncMock`:
+
+1. **Leak (today).** `asyncio.run(coro)` where `coro` does `await telescope._pool._get_db()` (the first Telescope touch of every path above, e.g. via `check_connectivity()`). After it returns: `telescope._pool._states` still holds an entry for the now-closed loop, `st.db.close` was never awaited, and `st.poller` was cancelled only by `asyncio.run`'s leftover-task sweep.
+2. **Fixed.** `telescope.run_one_shot(coro)` with the same `coro`. After it returns: `_pool._states` has no entry for that loop, the fake pool's `close` was awaited once, and the poller is `done()`.
+3. **Exception path.** `coro` does `await _pool._get_db()` then raises `ValueError("x")`. `run_one_shot` re-raises the same `ValueError`, and (2)'s cleanup assertions still hold.
+4. **No Telescope touch.** `run_one_shot` on a coroutine that returns `42` without touching Telescope returns `42`. `_pool._states` is unchanged and no pool is created.
+
+Live shape: `POST /api/admin/telescope` once, then a later request that creates a new loop. Today, `_state()` silently drops the first loop's entry with its pool still open, and interpreter/GC teardown logs `Event loop is closed` / `Task was destroyed but it is pending!`. After the fix there is no leaked entry and no noise.
+
+### Root cause
+
+`close_loop_resources()` → `_TelescopeQueue.aclose_current_loop()` has to run on the loop that owns the state, before that loop closes. Only the dispatcher's long-lived task threads call it (`_task_thread_target`, `c86d8b5c`). The one-shot `asyncio.run` callers never do, and `asyncio.run` itself doesn't know about asyncpg pools or listeners. So nothing releases per-loop Telescope state on those loops.
+
+### Proposed change
+
+Files: `src/external/telescope.py`, `src/ui/api/api_admin.py`, `src/ui/api/api_meteorite.py`, `src/ui/api/api_inbox.py`, `src/core/gazer.py`, `src/core/contact.py` only. Do not edit `src/core/dispatcher.py`, `_TelescopeQueue` / `_LoopState` / `aclose_current_loop` / `close_loop_resources`, any other `asyncio.run` site, `tests/`, or `docs/test-bible/**`.
+
+1. **`src/external/telescope.py` — new `run_one_shot`**, placed directly after `close_loop_resources()`. Add `Awaitable` to the existing `from typing import ...` line.
+
+   ```python
+   def run_one_shot(coro: Awaitable[Any]) -> Any:
+       """asyncio.run for one-shot callers: releases this loop's Telescope state before the loop closes."""
+       async def _main() -> Any:
+           try:
+               return await coro
+           finally:
+               # Must run on the owning loop, before asyncio.run closes it.
+               await close_loop_resources()
+       return asyncio.run(_main())
+   ```
+
+   Do not add a try/except or logging around `close_loop_resources()`. `aclose_current_loop` already swallows listener/pool close errors and gathers the poller with `return_exceptions=True`, so it can't mask the caller's result or exception. Do not call dispatcher's `_cancel_pending_tasks`, because `asyncio.run` already cancels and drains leftover tasks.
+
+2. **`src/ui/api/api_admin.py` `admin_telescope`** — `data = asyncio.run(admin_telescope_scrape(...))` → `data = run_one_shot(admin_telescope_scrape(...))`, same arguments. Import: extend line 29 to `from src.external.telescope import PlaywrightInfraError, admin_telescope_scrape, run_one_shot`. Keep `import asyncio` because the workbench `asyncio.run` at `:1679` stays, out of scope.
+
+3. **`src/ui/api/api_meteorite.py` `_run_land`** — `result = asyncio.run(land_meteorite(candidate_id, **kwargs))` → `result = run_one_shot(land_meteorite(candidate_id, **kwargs))`. Add `from src.external.telescope import run_one_shot` next to the `src.core.meteorite` import. Remove `import asyncio` (this was its only use).
+
+4. **`src/ui/api/api_inbox.py` `inbox_land_meteorite`** — `result = asyncio.run(_land_all())` → `result = run_one_shot(_land_all())`. Add `from src.external.telescope import run_one_shot` with the other `src.*` imports. Remove `import asyncio` (this was its only use).
+
+5. **`src/core/gazer.py` `ingest_meteorite_jobs_from_email_html_sync`** — `return asyncio.run(ingest_meteorite_jobs_from_email_html(...))` → `return run_one_shot(ingest_meteorite_jobs_from_email_html(...))`. Add `run_one_shot` to the existing `from src.external.telescope import (...)` block. Docstring: `"""Sync wrapper for Flask/inbox callers (run_one_shot)."""`. Keep `import asyncio` (other uses remain).
+
+6. **`src/core/contact.py` contact-task dispatch loop** — only the `asyncio.iscoroutinefunction(handler)` branch: `raw_result = asyncio.run(handler(cid, param, debug=debug))` → `raw_result = run_one_shot(handler(cid, param, debug=debug))`. The sync-handler `else` branch is unchanged. Add a module-top `from src.external.telescope import run_one_shot` (telescope imports only `src.utils.*`, so there's no cycle). Keep `import asyncio`. Leave the `:572` `stage_meteorite` call and the `:1153` / `:1202` `do_task` `asyncio.run` calls as they are.
+
+### Blast radius
+
+- Every request through the five sites now closes its Telescope pool/listener before returning. That adds one `pool.close()` round-trip per Telescope-touching request and removes the per-request leak. Paths that never touch Telescope (e.g. `land_meteorite` with text only, non-scrape contact tasks) pay nothing.
+- Each request still gets a fresh pool, the same as today. No cross-request pooling is introduced.
+- `api_meteorite.py` / `api_inbox.py` drop `import asyncio`. No `tests/` file patches `asyncio.run` in any of the five modules (checked at plan time), so no existing mock target moves. Tests that mock `asyncpg.create_pool` on these paths will now also see `close()` awaited. Betty owns `tests/` and `docs/test-bible/**`, and this ticket does not edit them.
+- `dispatcher._task_thread_target` teardown is unchanged, and the long-lived dispatch loops are unaffected.
+- Out-of-scope `asyncio.run` sites (`candidate.py`, `contact.py:572/1153/1202`, `intake.py`, `api_intake.py`, `api_admin.py:1679`) keep bare `asyncio.run`. None of them reaches Telescope (verified at plan time).
+
+### What must still hold
+
+- AST-1726 Stage 2: state stays per event loop. asyncpg connections, Events, and Futures never cross loops, and `_state()` still forgets closed loops as a fallback.
+- `c86d8b5c`: `dispatcher._task_thread_target` still runs `close_loop_resources()` → `_cancel_pending_tasks` → `loop.close()`, unchanged.
+- Each of the five sites returns the same value and raises the same exception types as before. HTTP handlers keep their `ValueError` → 400, `PlaywrightInfraError` → 502, and other → 502/`telescope_error` mappings. The contact loop's per-task `try/except` behavior is unchanged.
+- The AST-1728 admin Telescope workbench response shape is unchanged.
+- No depth, output, or timeout limits added. No new logging.
+
+
+
+### Joan fix-board — AST-1849
+
+**Joan fix-board (AST-1849)** — Read the `## Bug: AST-1849` plan-fix patch on `origin/sub/AST-1841/AST-1849-asyncio-run-telescope-loop-teardown` and overlapped roster rows via `canon/docs/DIRECTIVES-DIRECTORY.md` / harvested statutes (no `docs/canon-index.md` on this ref). The change adds `run_one_shot` beside existing `close_loop_resources()` and routes five known Telescope-touching `asyncio.run` call sites through it; it does not alter `_TelescopeQueue` / `aclose_current_loop` semantics and explicitly preserves AST-1726 per-loop state and dispatcher `c86d8b5c` teardown. That matches the existing `aclose_current_loop` docstring (“before the loop closes”) and layer rules (`astral.layers.import-direction`, `astral.layers.core-vs-external-bright-line`); no in-force statute or pattern text contradicts the wrapper or requires a carve-out. Pending `patt.external.web-scraping-via-telescope` remains id-only (AST-1726 planner note). No F3 canon landing indicated.
+
+BEGIN-VERDICT
+```
+[board-joan]  CANON: OK
+```
+END-VERDICT
+
+```text
+AST-1849 board-joan done — CANON: OK.
+```
+
+
+### Radia review — AST-1849
+
+**Diff reviewed:** `origin/ftr/AST-1841-asyncio-run-telescope-loop-teardown...origin/sub/AST-1841/AST-1849-asyncio-run-telescope-loop-teardown` — commits through `bf470756` (plan-fix, Joan board, product); product delta `src/external/telescope.py`, `src/ui/api/api_admin.py`, `api_meteorite.py`, `api_inbox.py`, `src/core/gazer.py`, `src/core/contact.py` (+ plan-fix doc block, unrelated doc carry below).
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — same as sibling orphaned fixes; no directive ids to score. Joan fix-board overlap skim in issue doc records `[board-joan] CANON: OK` including `astral.layers.import-direction` / `astral.layers.core-vs-external-bright-line`. Off-list statutes not graded per §5.3.)*
+
+| (no frozen ids) | — | — | — |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **fix-board** `[board-joan] CANON: OK` only; no `validate-plan` fix-mode score table for AST-1849).
+
+## Frame diff
+
+- [ ] **Description · What this implements:** still says “four confirmed … call sites” while Component/Technical scope and plan-fix list **five** (post `[scope-gate]` `contact.py`). Tick after aligning Linear text to five sites.
+
+## Fix-specific checks
+
+**`[bug-repro]`** — **not applicable — board REVISE owned by sibling AST-1850.** Betty `[board-betty] TESTS: REVISE` on AST-1849; repro nodes and `[bug-repro]` live on **AST-1850** per issue doc and spawn prompt. No `[bug-repro]` on this tip — expected, not fix-now.
+
+**`## What must still hold`** — **OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-1726 Stage 2: per-loop state; no cross-loop asyncpg/Events/Futures; `_state()` forgets closed loops as fallback | OK — `_TelescopeQueue` / `aclose_current_loop` untouched; `run_one_shot` only calls existing `close_loop_resources()` on the owning loop before `asyncio.run` exits |
+| `c86d8b5c`: `dispatcher._task_thread_target` teardown unchanged | OK — zero diff on `src/core/dispatcher.py`; sub tip still `close_loop_resources()` → `_cancel_pending_tasks` → `loop.close()` |
+| Five sites: same return values and exception types; HTTP mappings unchanged; contact per-task `try/except` unchanged | OK — thin `asyncio.run` → `run_one_shot` swap; handlers/wrappers unchanged; `run_one_shot` re-raises after `finally` |
+| AST-1728 admin Telescope **response shape** unchanged | OK — only execution wrapper in `admin_telescope()`; workbench `asyncio.run` at ~1679 untouched |
+| No new depth/output/timeout limits; no new logging | OK — diff adds no limits or log lines |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Sibling test gap:** AST-1850 owns Betty’s REVISE manifest (`run_one_shot` / Repro 1–4); this tip is product-only by design — merge order per plan (tests red on ftr until AST-1849 lands).
+- **Stray doc carry:** commit `3998536e` appends **AST-1845** epic-registry **Threads** to `docs/features/roster/ast-891-parse-job-list-browser-and-batch.md` — unrelated to AST-1849. Harmless to product; Chuckles may omit from dev merge narrative or strip on doc commit.
+- **Linear copy drift:** “four confirmed sites” in **What this implements** vs five in scope/plan — cosmetic; frame diff above.
+- **UI → external imports:** `api_inbox.py` / `api_meteorite.py` gain first `src.external.telescope` import (runner only); follows existing `api_admin` Telescope import pattern named in plan.
+- **Test baseline noise:** Hedy Tests Passed comment — 28 component failures identical with fix reverted; not introduced here.
+
+## What’s solid
+
+- `run_one_shot` matches plan-fix verbatim (placement, `try`/`finally`, no extra logging, no `_cancel_pending_tasks`).
+- All **five** binding sites switched; `contact.py` only the `iscoroutinefunction(handler)` branch; `:572` / `:1153` / `:1202` `asyncio.run` left bare.
+- Plan fidelity to **To-be** and **Proposed change** (six files, dispatcher/queue internals out) satisfied on the product diff.
+- Estimate **2** footprint still fits (wrapper + five call-site swaps).
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned mini-parent AST-1841** (spawn: finish-up-style **`origin/dev`**, not `merge-child`/`prep-uat`) | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). When Susan accepts UT, merge **`sub/AST-1841/AST-1849-…`** straight to **`origin/dev`** (single bug), not via parent UAT rollup. |
+
+context_tokens≈0
+```
+
+**Docs-acceptance (AST-1849):** no test-tree delivery on this tip. Betty's [board-betty] TESTS: REVISE is owned by sibling gap AST-1850.
+
+## Bug: AST-1850 — tests for one-shot Telescope loop teardown runner
+
+Test-gap sibling of AST-1849 under mini-parent AST-1841. It answers AST-1849's `[board-betty] TESTS: REVISE`. Tests and bible only: Betty lands them at qa-fix, and product code stays on AST-1849 (`run_one_shot` in `src/external/telescope.py`, `bf470756`). Case numbers below refer to the `## Bug: AST-1849` block's `### Repro` list in this doc. Does not rewrite Stages 1–4 or any other bug block.
+
+### As-is
+
+No test references `close_loop_resources`, `aclose_current_loop`, `_LoopState`, `_pool._states`, or `run_one_shot`. AST-1849's Repro cases 1–4 have no node, so a regression back to a bare `asyncio.run` (or a runner that stops awaiting `close_loop_resources`) would pass the suite. `docs/test-bible/external/telescope.md` has no loop-teardown entry.
+
+### To-be
+
+`tests/component/external/test_telescope.py` gains one class, `TestAst1849OneShotLoopTeardown`, with four nodes that cover AST-1849 Repro cases 1–4. The `[bug-repro]` node is red against the pre-fix product and green on `bf470756`. `docs/test-bible/external/telescope.md` gains an `AST-1849 · AST-1850` section mapping those nodes.
+
+### Repro
+
+Red/green proof, prototyped at plan time from a scratch copy outside the repo, with the real `tests/conftest.py` chain and the fixture below:
+
+- On `bf470756` (AST-1849 fix): all 4 nodes pass.
+- On pre-fix `3998536e` (this sub's base, which is `origin/dev` = `origin/ftr/AST-1841-…` product): nodes 1–3 fail with `AttributeError: module 'src.external.telescope' has no attribute 'run_one_shot'`, and node 4 (control) passes.
+
+### Root cause
+
+AST-1726's per-loop queue (Stage 2) shipped without teardown coverage, and AST-1849 added `run_one_shot` with no node. `TestTelescopePoolHttp` exercises the retired HTTP `_TelescopePool`, not `_TelescopeQueue`.
+
+### Proposed change
+
+Files: `tests/component/external/test_telescope.py`, `docs/test-bible/external/telescope.md` only. No product code, no other test file.
+
+1. **`tests/component/external/test_telescope.py` — new class `TestAst1849OneShotLoopTeardown`**, appended after `TestAst1750PostTelescopeDebugDump` with a `# Branches:` header comment matching the file's style: `# Branches: run_one_shot releases per-loop Telescope state (AST-1849 / AST-1850).` Add `import asyncio` to the file's imports. Nodes are plain `def` (not `async def` / `@pytest.mark.asyncio`), because `asyncio.run` cannot start inside a running loop.
+
+   **Fixture** (class-local `@pytest.fixture` named `fresh_queue`, returns `(q, fake_db, create_pool)`):
+   - `monkeypatch.setenv(pw_mod.TELESCOPE_CONFIG["database_url_env"], "postgresql://fake/db")` so `_dsn()` passes.
+   - `q = pw_mod._TelescopeQueue()` and `monkeypatch.setattr(pw_mod, "_pool", q)`. `close_loop_resources` reads module-global `_pool` at call time, so it sees `q`.
+   - `fake_db = MagicMock()`, `fake_db.close = AsyncMock()`, `fake_db.fetch = AsyncMock(return_value=[])`.
+   - `create_pool = AsyncMock(return_value=fake_db)` and `monkeypatch.setattr(pw_mod.asyncpg, "create_pool", create_pool)`.
+
+   **Shared coroutine** (class-local helper `_touch(q, seen)` returning an `async def`): `await q._get_db()` (starts the real `telescope-result-poller`). Then record `loop = asyncio.get_running_loop()` and `st = q._states[loop]`. Attach a fake listener `st.listener = MagicMock(is_closed=MagicMock(return_value=False), close=AsyncMock())`. Store `loop`, `st`, `listener` in `seen` and return `"ok"`.
+
+   **Shared release asserts** (helper `_assert_released(q, fake_db, seen)`):
+   - `seen["st"].db is fake_db`: state really existed, so the green isn't vacuous.
+   - `seen["loop"] not in q._states` and `q._states == {}`.
+   - `fake_db.close.await_count == 1` and `seen["listener"].close.await_count == 1`.
+   - `seen["st"].poller.done()`.
+   - `seen["loop"].is_closed()`.
+
+   **Nodes:**
+
+   | Node | AST-1849 Repro | Body | Pre-fix | `bf470756` |
+   |------|----------------|------|---------|------------|
+   | `test_run_one_shot_releases_loop_state` (**bug-repro**) | 2 (+1 via red) | `assert pw_mod.run_one_shot(_touch(q, seen)()) == "ok"`, then `_assert_released` | red (`AttributeError`) | green |
+   | `test_run_one_shot_reraises_and_still_releases` | 3 | `async def _boom(): await touch(); raise ValueError("boom")`; `with pytest.raises(ValueError, match="boom"): pw_mod.run_one_shot(_boom())`, then `_assert_released` | red | green |
+   | `test_run_one_shot_passthrough_without_telescope` | 4 | `async def _plain(): return 42`; `assert pw_mod.run_one_shot(_plain()) == 42`; `assert q._states == {}`; `create_pool.assert_not_awaited()` | red | green |
+   | `test_bare_asyncio_run_leaves_loop_state_control` | 1 | `asyncio.run(_touch(q, seen)())`; `assert seen["loop"] in q._states`; `assert fake_db.close.await_count == 0` | green | green |
+
+   Node 4 is a control, not a bug-repro. It proves the fixture creates the exact state a bare `asyncio.run` leaves behind, which is AST-1849's as-is. Its docstring must say so: `"""Control: bare asyncio.run leaves per-loop Telescope state open (AST-1849 as-is); proves the fixture is not vacuous."""`. No `time.sleep`, wall-clock asserts, or timeouts.
+
+2. **`docs/test-bible/external/telescope.md` — new section** appended after the AST-1840 · AST-1844 section, same shape as that section:
+
+   ~~~markdown
+   ---
+
+   ### AST-1849 · AST-1850 (qa-fix bug-repro — one-shot loop teardown)
+
+   **Board REVISE:** no test referenced `close_loop_resources` / `aclose_current_loop` / `_LoopState` / `_pool._states`; one-shot `asyncio.run` callers leaked the per-loop asyncpg pool, LISTEN connection and `telescope-result-poller`. Product: **AST-1849** (`run_one_shot`); tests on gap sibling **AST-1850**. `[bug-repro]` node red on pre-fix `3998536e` (`AttributeError`: no `run_one_shot`), green on AST-1849 (`bf470756`).
+
+   | Area | Component tests |
+   | --- | --- |
+   | `run_one_shot` releases loop state (pool + listener closed once, poller done, `_states` empty) | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_run_one_shot_releases_loop_state` (**bug-repro**) |
+   | Exception re-raised unchanged, cleanup still done | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_run_one_shot_reraises_and_still_releases` |
+   | No Telescope touch → value returned, no pool, `_states` unchanged | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_run_one_shot_passthrough_without_telescope` |
+   | Control: bare `asyncio.run` leaves loop state open | `test_telescope.py::TestAst1849OneShotLoopTeardown::test_bare_asyncio_run_leaves_loop_state_control` |
+
+   **Broken / obsolete:** none. Call-site swaps (`api_admin`, `api_meteorite`, `api_inbox`, `gazer`, `contact`) need no new nodes; no test patches `asyncio.run` on those modules.
+
+   ```bash
+   ./scripts/testing/run_component_tests.sh \
+     tests/component/external/test_telescope.py::TestAst1849OneShotLoopTeardown -q
+   ```
+   ~~~
+
+### Blast radius
+
+- Test tree and bible only. No product file changes, and no existing node is edited.
+- The nodes monkeypatch `pw_mod._pool` and `asyncpg.create_pool` via `monkeypatch`, which restores them after each node, so other telescope nodes are unaffected.
+- **Merge order:** AST-1850's own sub has no `run_one_shot` (the base is pre-fix). Nodes 1–3 stay red on `origin/sub/AST-1841/AST-1850-…` until AST-1849 merges into `origin/ftr/AST-1841-…`, so AST-1850 test-fix runs after that merge. The red/green gate is red on the current ftr base, green on `bf470756` / post-merge ftr.
+- Four pre-existing `test_telescope.py` failures (`TestTelescopePoolHttp` ×3 and `TestAst1750PostTelescopeDebugDump`) target the retired `_TelescopePool` / `_pool.request` and also fail on `origin/dev`. They are out of this gap's scope, noted and not fixed here.
+- `LOCKED_AT_100` for `telescope.py`: this gap adds coverage of `run_one_shot` and `aclose_current_loop`. It does not make the branch lock whole (the bible's pass criterion is manifest-green, not the lock gate).
+
+### What must still hold
+
+- AST-1849 `### What must still hold`: nodes assert return value and exception pass-through unchanged, and a no-op on loops that never touched Telescope.
+- AST-1726 Stage 2: per-loop state. The fixture uses a fresh `_TelescopeQueue` per node and never shares a loop or Future across nodes.
+- Engineers don't edit `tests/` or `docs/test-bible/**`. Betty lands both at qa-fix.
+- No depth, output, or timing limits in the nodes.
+
+
+
+### Joan fix-board — AST-1850
+
+**Findings (Joan fix-board, AST-1850)**
+
+Read `## Bug: AST-1850` on `origin/sub/AST-1841/AST-1850-asyncio-run-telescope-loop-teardown-tests`. Scope is **tests + bible only** (`test_telescope.py`, `docs/test-bible/external/telescope.md`); product stays on AST-1849 (`run_one_shot` @ `bf470756`). Overlap triage via `canon/docs/DIRECTIVES-DIRECTORY.md` / harvested statutes (no `docs/canon-index.md` on ref)—same resolution as AST-1849 and gap siblings like AST-1848.
+
+The plan adds four component nodes that lock AST-1849 Repro 1–4 (including `[bug-repro]` on `run_one_shot` teardown) and a bible block pointing at those nodes. It does **not** amend any `canon/statutes/**`, `canon/directives/active/**`, or pattern text, and does not introduce a new product rule beyond what AST-1849 already implements. `astral.layers.*` and pending `patt.external.web-scraping-via-telescope` are unchanged; monkeypatching `_pool` / `asyncpg.create_pool` is test-tree practice, not a corpus edit. `orch.roles.betty-owns-test-tree` / engineer test-tree ban are satisfied by Betty-only landing.
+
+**Verdict:** no in-force statute or pattern needs an update or carve-out; F3 (`validate-plan` fix mode) not indicated.
+
+`[board-joan]  CANON: OK`
+
+
+### Radia review — AST-1850
+
+**Diff scope check:** three-dot diff touches **only**  
+`tests/component/external/test_telescope.py`,  
+`docs/test-bible/external/telescope.md`,  
+`docs/features/foundation/ast-1726-platform-telescope-py-drop-in-playwright-decommission.md` (AST-1850 plan-fix block). **Zero bytes under `src/**`.** Tip commit `code(AST-1850): no product src — test gap; product fix AST-1849 on tip via ftr` is a publish marker, not a product delta.
+
+---
+
+```
+[code-rubric]
+**Ticket:** AST-1850
+**Publish ref:** `06d68e26` (`origin/sub/AST-1841/AST-1850-asyncio-run-telescope-loop-teardown-tests`)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on this ref)
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-1841-asyncio-run-telescope-loop-teardown...origin/sub/AST-1841/AST-1850-asyncio-run-telescope-loop-teardown-tests` — plan-fix + Joan board + qa-fix test/bible + merge-tests/sync/marker commits; **net delta:** 211 lines across the three paths above only. Sub stacked on ftr with AST-1849 (`run_one_shot`) already merged.
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — gap test sibling pattern (cf. AST-1848). Joan fix-board `[board-joan] CANON: OK` for tests/bible-only; Betty post-qa `[board-betty] TESTS: OK`. Off-list statutes not graded per §5.3.)*
+
+| (no frozen ids) | — | — | — |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (fix-board Joan + Betty only; no `validate-plan` fix-mode score table).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`** — **OK**
+
+Primary repro: `TestAst1849OneShotLoopTeardown::test_run_one_shot_releases_loop_state` (docstring opens with `[bug-repro]`; Betty’s Linear `[bug-repro]` @ `41a1c634` names this node).
+
+- **Not tautological:** asserts AST-1849 **To-be** teardown — return `"ok"`, then `_assert_released`: `seen["st"].db is fake_db`, `seen["loop"] not in q._states` and `q._states == {}`, `fake_db.close.await_count == 1`, `seen["listener"].close.await_count == 1`, `seen["st"].poller.done()`, `seen["loop"].is_closed()`. These are concrete post-conditions, not “no exception.”
+- **Repro-first plausible:** pre-fix product @ `83a0c352` (ftr before AST-1849 merge) → nodes 1–3 fail `AttributeError: no run_one_shot`; control green (Hedy attestation @ tip). On ftr `0877d286` all four green — matches plan **Repro** / qa-fix contract.
+- **Would catch a fake-green runner:** a `run_one_shot` that only `asyncio.run(coro)` without awaiting `close_loop_resources()` would still fail `_assert_released` (open `_states`, `close` not awaited, poller not `done()`). Betty board reached the same conclusion; control node `test_bare_asyncio_run_leaves_loop_state_control` pins the as-is leak shape (`loop in q._states`, `fake_db.close.await_count == 0`) so green on the bug-repro is not vacuous setup.
+
+**Companion nodes (plan Repro 3–4 + control 1):**
+
+| Node | Verdict |
+|------|---------|
+| `test_run_one_shot_reraises_and_still_releases` | OK — `pytest.raises(ValueError, match="boom")` then same `_assert_released` |
+| `test_run_one_shot_passthrough_without_telescope` | OK — `== 42`, `q._states == {}`, `create_pool.assert_not_awaited()` |
+| `test_bare_asyncio_run_leaves_loop_state_control` | OK — required docstring; proves fixture models AST-1849 as-is |
+
+**`## What must still hold` (AST-1850 plan-fix + AST-1849 cross-refs)** — **OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-1849: return/exception pass-through unchanged | OK — nodes 1–3 |
+| No-op when loop never touches Telescope | OK — passthrough node |
+| AST-1726 per-loop isolation in tests | OK — class `fresh_queue` fixture; new `_TelescopeQueue` per node; plain `def` + outer `asyncio.run` / `run_one_shot` |
+| No timing/wall-clock asserts | OK |
+| Plan files only (`test_telescope.py`, `telescope.md`) | OK — no other test file edits in diff |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Known residual (documented):** bible + Betty **TESTS: OK** — reverting a **call site** to bare `asyncio.run` would not fail this class; plan and bible state that explicitly. Product decision already flagged for Susan; not a blocker for this gap ticket.
+- **`[bug-repro]` tag shape:** tag lives in the test **docstring** first line, not a `# [bug-repro]` comment (same minor convention drift as AST-1848); Betty thread + bible manifest still key the node — not fix-now.
+- **Betty qa-fix ops:** `[bug-repro]` comment notes `origin/tests-clean-base` missing, cherry-pick to `origin/tests` @ `b3c7f256`, and **marker still needs restoring** — Chuckles/process, not a defect in the published sub diff vs ftr.
+- **Pre-existing suite noise:** four failing `test_telescope.py` nodes (`TestTelescopePoolHttp` ×3, `TestAst1750PostTelescopeDebugDump`) on retired `_TelescopePool`; Hedy documented identical on `origin/dev` — out of gap scope per plan **Blast radius**.
+
+## What’s solid
+
+- Strict gap-child footprint: tests + test-bible + plan-fix doc only; no product smuggle.
+- Implementation matches plan-fix **Proposed change** (fixture, `_touch`, `_assert_released`, four nodes, bible section + manifest command).
+- Repro class would go red if `run_one_shot` existed but skipped `close_loop_resources`, not only on missing symbol.
+- ftr now carries AST-1849; engineer red→green gate (`83a0c352` → tip on ftr) satisfied per thread.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned mini-parent AST-1841** | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). After UT: merge gap sub into **`origin/ftr/AST-1841-…`** (tests green on ftr without scratch overlay), then finish-up-style **`origin/dev`** for the orphaned mini-parent per fix-lane §8 — not `prep-uat` rollup. Restore **`origin/tests`** marker per Betty if still open. |
+
+context_tokens≈0
+```

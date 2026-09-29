@@ -58,6 +58,7 @@ from src.external.telescope import (
     get_visible_text,
     check_connectivity,
     extract_raw_job_listings,
+    run_one_shot,
 )
 from src.utils.formatting import (
     collapse_consecutive_blank_lines,
@@ -1478,7 +1479,7 @@ def ingest_meteorite_jobs_from_email_html_sync(
     *,
     debug: bool = False,
 ) -> dict[str, Any]:
-    """Sync wrapper for Flask/inbox callers (asyncio.run)."""
-    return asyncio.run(
+    """Sync wrapper for Flask/inbox callers (run_one_shot)."""
+    return run_one_shot(
         ingest_meteorite_jobs_from_email_html(candidate_id, html, debug=debug)
     )
