@@ -268,3 +268,25 @@ AC4→Stages 2–3; AC5→Stages 2–3 (`onSelectRun` gate + no fetch when `runI
 **acceptable** — `run_id || batch_id` fallback and pre-AST-1864 chained rows possibly opening empty run views are called out per parent forward-only decision; in scope for this child.
 
 context_tokens≈42000
+
+## Review
+
+- **Code commits on `origin/sub/AST-1853/AST-1865-clickable-job-state-history-opens-run`:** `7de3e0f4` (Stage 1), `52614323` (Stage 2), `d6022750` (Stage 3).
+- **Diff:** 5 frontend files, as planned in Files Changed. `git diff origin/dev...HEAD -- src/ui/api/ src/data/` empty (AC10).
+  AC7 greps: `dispatch-log-table` matches only `components/BatchLogViewer.tsx`; no `function LogViewer` in the page.
+- **Deviations (both forced by `npm run lint`, which the plan's Done-when requires clean; no file, prop, endpoint, or behaviour change):**
+  1. Stage 2 — the plan snippet's synchronous `setLoading(true)` / `setLogs([])` in the effect trips
+     `react-hooks/set-state-in-effect`. `BatchExecutionModal` instead stores `{ runId, logs }` from the fetch callback
+     and derives `loading = fetched?.runId !== runId`. Same zero-request-while-closed behaviour; a late response for a
+     previous run can't render under the current one.
+  2. Stage 3 — exporting `entryRunId` from `StateTimeline.tsx` trips `react-refresh/only-export-components`. Nothing
+     imports it, so it is module-private. `StateEntry` stays exported (type export is allowed).
+- **Compile / lint:** `npx tsc -b --noEmit` clean; `eslint` clean on all 5 files.
+- **Existing tests (read-only run):** `test_AdminPerformanceMonitor` 23/23 pass unedited (AC8); `test_CompanyDetailModal`,
+  `test_BatchAgentDataModal` pass. 3 failures, identical on the pre-Stage-3 tree (not caused by this change):
+  `test_StateTimeline` ×2 and `test_JobDetailModal` "AST-1695 read-only: null listing_href → no Link <a>". The
+  StateTimeline pair fail in `renderWithProviders` because the test's `lib/api` mock lacks `setAuthTokenGetter` /
+  `setUnauthorizedHandler` (AuthProvider effect) — test harness, Betty's.
+- **For Betty (qa-child):** AC4–AC6 coverage is new work in `test_JobDetailModal.test.tsx` / `test_StateTimeline.test.tsx`.
+  Clickable rows carry `role="button"` and `title="Open run <id>"`; non-clickable rows carry neither.
+- **Sub-log pre-check:** `validate-sub-log.sh --stage=build … ftr/AST-1853-execution-history-for-job-modals` → ok.
