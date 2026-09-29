@@ -916,6 +916,11 @@ async def run_company_task(
             )
             error_state = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
             if result.get("error"):  # pragma: no branch
+                # AST-1867: provider refused for balance — held (AST-897 kept state), not an entity error;
+                # failure_class travels up so the dispatcher can stop the batch and alert once.
+                if is_provider_balance_refusal(result):
+                    logger.debug("%s | company jobs_found held: provider_balance_refusal error=%r", short_name, result.get("error"))
+                    return {**zero, "total_held": 1, "failure_class": result.get("failure_class"), "error": result.get("error")}
                 dest = error_state if (
                     error_state
                     and not result.get("state_held")
@@ -942,6 +947,11 @@ async def run_company_task(
                 return {**zero, "total_errors": 1}
             result = await run_select_job_page_dispatch(entity, batch_id, ctx, debug)
             sel_cfg = ROSTER_CONFIG["select_job_page"]
+            # AST-1867: provider refused for balance — held (AST-897 kept state), not an entity error;
+            # failure_class travels up so the dispatcher can stop the batch and alert once.
+            if is_provider_balance_refusal(result):
+                logger.debug("%s | company select_job_page held: provider_balance_refusal error=%r", short_name, result.get("error"))
+                return {**zero, "total_held": 1, "failure_class": result.get("failure_class"), "error": result.get("error")}
             if result.get("error"):
                 _warn_company(short_name, "-", result["error"])
                 return {**zero, "total_errors": 1}

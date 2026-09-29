@@ -2,13 +2,16 @@
 Astral Monitor: admin alerting and monitoring.
 
 Entry point for all notification logic. The dispatcher calls auto_run_error()
-after any AUTO task run that produces errors. Future features (log scanning,
+after any AUTO task run that produces errors, and provider_balance_outage()
+instead when the run was stopped by an LLM provider balance refusal. Future features (log scanning,
 escalation, daily summaries) extend this module without touching the dispatcher.
 """
 
+import re
+
 from src.data import database
 from src.external.gmail import send_email
-from src.utils.config import ASTRAL_CONFIG
+from src.utils.config import ASTRAL_CONFIG, get_active_llm_provider
 from src.utils.deploy_status import get_deploy_label
 from src.utils.logging import get_logger
 
@@ -67,12 +70,46 @@ def auto_run_error(
         logger.warning("[monitor] auto_run_error raised unexpectedly for %s: %s", batch_id, e)
 
 
+def provider_balance_outage(
+    task_key: str,
+    batch_id: str,
+    accumulated: dict,
+    outage: dict,
+    candidate_id: str = "",
+) -> None:
+    """AST-1867: one alert per AUTO run stopped by an LLM provider balance refusal.
+    Short body (no batch log dump). Never raises — a failed alert must not surface to the caller."""
+    try:
+        provider = get_active_llm_provider()
+        prefix = _format_alert_subject_prefix(get_deploy_label(), _resolve_candidate_last_name(candidate_id))
+        subject = f"{prefix} {provider} insufficient balance — {task_key} stopped | {batch_id}"
+        lines = [
+            f"Provider: {provider}",
+            f"Refusal: {outage.get('error') or '-'}",
+            f"Task: {task_key}   Batch: {batch_id}",
+            f"Processed: {accumulated.get('total_processed', 0)}  Passed: {accumulated.get('total_passed', 0)}  "
+            f"Failed: {accumulated.get('total_failed', 0)}  Errors: {accumulated.get('total_errors', 0)}",
+        ]
+        if outage.get("held"):
+            lines.append(f"Held (state unchanged): {outage['held']}")
+        lines.append("Entity state was held; the task stays enabled and resumes once provider credit is restored.")
+        if not send_email(to=ASTRAL_CONFIG["support_email"], subject=subject, body="\n".join(lines)):
+            logger.warning("[monitor] send_email returned False for batch %s — check Gmail credentials", batch_id)
+    except Exception as e:
+        logger.warning("[monitor] provider_balance_outage raised unexpectedly for %s: %s", batch_id, e)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _format_log_body(batch_id: str) -> str:
-    """Fetch log entries for batch_id and return them as chronological plain text."""
+    """Fetch log entries for batch_id and return them chronologically in a fenced code block.
+
+    The fence makes Linear (which files these alert emails as issues) render the log as
+    one code block instead of thousands of lines of description to scroll past. It is one
+    backtick longer than any backtick run inside the logs, so a log line can't close it.
+    """
     entries = database.list_log_entries(batch_id=batch_id)
     entries = list(reversed(entries))  # DB returns newest-first; email body is chronological
     if not entries:
@@ -81,7 +118,10 @@ def _format_log_body(batch_id: str) -> str:
         f"{e.get('created_at', '')}  [{e.get('level', '?')}]  {e.get('message', '')}"
         for e in entries
     ]
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    longest_run = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest_run + 1)
+    return f"{fence}\n{text}\n{fence}"
 
 
 def _resolve_candidate_last_name(candidate_id: str) -> str | None:
