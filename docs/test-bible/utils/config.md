@@ -410,6 +410,8 @@ Persisted-default merge (save / craft generate / persist) + prompt dedupe: **`do
 
 ### AST-695 · AST-694
 
+> **AST-1880:** Historical. `tier_map["deepseek"]`, `test_resolve_deepseek_tier_meta`, the DeepSeek-only `do_task` node, and `TestAst492ResolveAdhocApiAdmin` are retired. DeepSeek tiers are catalog rows (`TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_tiers`). See the AST-1880 pointer below.
+
 **Scope:** `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"][BRAIN_MEDIUM]` — Medium retargets from `deepseek-v4-flash` + thinking to `deepseek-v4-pro` non-thinking (**AST-694** ladder). Little and Big unchanged; runtime dispatch reads tier meta from config — no `agent.py` / `deepseek.py` edits.
 
 | Area | Source | Component tests |
@@ -829,6 +831,8 @@ Consult fail-dest matrix: **`docs/test-bible/core/consult.md`** (**AST-1339**). 
 **AST-955:** Save membership = registered **`TASK_CONFIG`** (optional trigger override on **`dispatch_task_admin_defaults`**). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).
 
 ### AST-1391 · AST-1390 (DeepSeek Big output floor)
+
+> **AST-1880:** `deepseek_brain_max_tokens_floor` and `DEEPSEEK_MODEL_PRICING` are retired. `TestAst1391DeepseekBigMaxTokensFloor::test_big_tier_floor` now reads the catalog tier row (`max_tokens_floor` 384000 on Big only).
 
 **`deepseek_brain_max_tokens_floor`** + DeepSeek `BRAIN_BIG` `max_tokens: 384000`. Not on Little/Medium; `DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"]` stays **16000**. Primary hop manifest: **`docs/test-bible/core/agent.md`** § AST-1391.
 

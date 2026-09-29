@@ -529,6 +529,8 @@ Expect **all pytest passed** (includes **`TestDispatchTasks::test_scheduler_and_
 
 ### AST-688 (parent AST-680)
 
+> **AST-1880:** Frozen record. `tests/component/external/test_deepseek.py` is deleted, so drop that node when re-running this manifest.
+
 **Scope:** Global **`review-child`** **§5g** external layer cleanliness rubric (**§5** / **§5a** cross-refs + sample review comment). Plan + **Implementation record** on **`origin/sub/AST-680/AST-688-radia-review-criteria-external-cleanliness`**; skill path **`~/.cursor/skills/review-child/SKILL.md`** (not repo git). **No new Betty tests** — parent forbids log-string manifest; sibling **AST-687** owns product attribution.
 
 **Manifest (test-child):**

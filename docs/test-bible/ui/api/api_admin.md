@@ -34,6 +34,8 @@ Narrow (**`test-astral`** **AST-485** / **AST-549** regression tip):
 
 ### AST-492 · AST-495 · AST-491
 
+> **AST-1880:** Historical. The global `active_provider`, `DEEPSEEK_MODEL_PRICING`, `resolve_brain_setting_to_deepseek_tier_meta`, `/agents/brain_settings`, the DeepSeek-only client, and `TestAst492ResolveAdhocApiAdmin` are retired. Each agent routes by its own model → server. Current coverage: [§ AST-1880](#ast-1880--ast-1851-admin-model-pickers--per-server-platform-keys).
+
 **`LLM_PROVIDER_CONFIG`**, **`DEEPSEEK_MODEL_PRICING`**, Ada tier helpers (**`resolve_brain_setting_to_anthropic_agent_key`**, **`resolve_brain_setting_to_deepseek_tier_meta`**, **`validate_allowed_brain_setting`**, **`infer_brain_setting_from_legacy_model_code`**); product may keep thin wrappers (**`admin_brain_setting_catalog()`**, **`anthropic_agent_key_for_brain_setting`**). **`component` tests compare admin payloads using resolve + **`get_model`** only. **`save_agent`** / **`get_agent`** / **`list_agents`** **`brain_setting`** column + migration off legacy **`model_code`**. **`do_task`** resolves tiers to **`AGENT_CONFIG`** keys and calls **`send_to_anthropic`** when **`active_provider`** is **`anthropic`**; when **`deepseek`**, **`resolve_brain_setting_to_deepseek_tier_meta`** feeds **`send_to_deepseek`** (**`vendor_model`**, **`tier_meta`**, same block assembly as Anthropic) per **AST-493**. **`GET /api/admin/agents/brain_settings`** returns tier rows (label + default temperature / max tokens from **`AGENT_CONFIG`**) for Manage Agents (**AST-495**). **`AdminAgentPrompts`** loads that catalog and posts **`brain_setting`** on create/update.
 
 | Area | Source | Component tests |

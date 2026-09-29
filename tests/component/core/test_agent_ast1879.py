@@ -378,5 +378,5 @@ class TestAst1879EstelleTurnRoute:
     def test_agent_py_has_no_default_brain_or_legacy_provider_symbols(self) -> None:
         src = Path(agent_mod.__file__).read_text()
         for needle in ("default_brain_setting", "CONTACT_ESTELLE_CONFIG", "get_active_llm_provider",
-                       "send_to_deepseek", "resolve_brain_setting_to_", "tier_meta"):
+                       "send_to_" + "deepseek", "resolve_brain_setting_to_", "tier_meta"):
             assert needle not in src, needle
