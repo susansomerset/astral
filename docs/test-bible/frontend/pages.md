@@ -3124,3 +3124,5 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts test_AdminScheduled
 All three fail on the pre-AST-1830 page and pass with it (checked at QA). **Broken / obsolete:** none. The existing 74 tests across both Scheduled Actions files stay green.
 
 Primary numbered manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1830.
+
+**AST-1874 (pointer):** `JobsRecommended` imports `formatPhaseScore` from `lib/recommendedJobReport` (list cells unchanged); row-click and `JobsJobDetail` deeplink tests now expect the report to open on **Analysis**. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1874.

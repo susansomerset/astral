@@ -4450,3 +4450,40 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 **Integration:** none.
 
 **AST-1872 (pointer):** `JOBS_RECOMMENDED_REPORT_TOP_TABS` is Analysis-first (first entry = default tab); `PHASE_SCORE_HEADER_TITLE_TEMPLATE` gains ` - {score}` — revised `TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`, `TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`; extended `TestAst1348PhaseScoreHeaderTitleConfig`. Manifest: **`docs/test-bible/core/tracker.md`** § AST-1872.
+
+### AST-1877 · AST-1851 (model/server catalog + shared compat client)
+
+Config gains `LLM_SERVER_CONFIG` / `LLM_MODEL_CONFIG`, catalog resolvers, catalog-only startup validation (no provider env key), `requires_candidate_key: True` on every task, `ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)`, `DEEPSEEK_CONCURRENCY` alias. Legacy provider symbols stay importable (additive until AST-1880). New client `src/external/llm_compat.py` ([`external/llm_compat.md`](../external/llm_compat.md)); cost pricing via catalog ([`cost_calculator.md`](cost_calculator.md)).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — catalogs, resolvers, startup catalog validation (every raise branch), task-flag sweep, derived timesheet providers | `src/utils/config.py` | `TestAst1877LlmCatalogConfig` |
+| Revised — boot needs no provider env key; `active_provider` not consulted | `validate_llm_provider_environment` | `TestAst492LlmBrainTierConfig::test_validate_llm_provider_environment_ignores_active_provider` · `::test_validate_llm_provider_environment_needs_no_provider_env_keys` (replace `_unknown_active_provider` / `_deepseek_requires_key` / `_anthropic_requires_key`) |
+| Revised — `requires_candidate_key` is `True` | `TASK_CONFIG` | `TestAst1037SimpleResumeParseConfig::test_simple_resume_parse_shares_schema_object_with_craft_base` · `TestAst1072ConversationalEnvelopeConfig::test_contact_estelle_turn_task_registration` |
+| New — AC 9 intercepted request + client contract | `src/external/llm_compat.py` | `tests/component/external/test_llm_compat.py` |
+| New — catalog pricing | `src/utils/cost_calculator.py` | `tests/component/utils/test_cost_calculator.py::TestAst1877CatalogPricing` |
+
+`LOCKED_AT_100`: every new `config.py` line is branch-covered by the tests above.
+
+**Integration:** none (no `tests/integration/` scenario reads these symbols).
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/utils/test_config.py::TestAst1037SimpleResumeParseConfig \
+  tests/component/utils/test_config.py::TestAst1072ConversationalEnvelopeConfig \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/utils/test_cost_calculator_deepseek.py \
+  tests/component/external/test_llm_compat.py \
+  tests/component/external/test_deepseek.py \
+  tests/component/external/test_anthropic.py \
+  tests/component/core/test_bootstrap.py \
+  tests/component/data/database/test_timesheets.py \
+  --deselect tests/component/external/test_deepseek.py::TestAst1190EmptyUnusableProviderResponse::test_hollow_stop_question_zero_tokens_fails_closed \
+  --deselect tests/component/external/test_anthropic.py::TestAst1190EmptyUnusableProviderResponse::test_hollow_stop_question_zero_tokens_fails_closed
+```
+
+**Pass criterion:** narrowed run green — not the zero-arg harness. The two deselected AST-1190 nodes fail identically with `origin/dev` product (pre-existing, not this ticket). Zero-arg / full `tests/component` red on this tip is the same set with or without AST-1877 product (baseline diff: exactly the five revised nodes above changed).
