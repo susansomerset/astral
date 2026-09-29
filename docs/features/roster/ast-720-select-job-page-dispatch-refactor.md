@@ -891,3 +891,25 @@ Clean review: Review Posted → User Testing via the clean-review shortcut (reso
 origin/tests carry: Betty's merge-tests brought other epics' tests and bible (AST-1874, AST-1877 to AST-1880) already on origin/tests. Left in place, same as the AST-1860 / AST-1876 precedent.
 
 Published without validate-tests-branch.sh, because origin/tests-clean-base is missing (flagged to Susan).
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/b86ada557c0072cc2011c9c8dbfb8618/7a7e85a8-a3cf-489b-8ffa-51562d5d61aa/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/6672defd-1e1f-4071-9b8c-0ebf8a50818f/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/b86ada557c0072cc2011c9c8dbfb8618/3f8609f6-da61-4997-b551-e6a83f74fd6a/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1887 (parent) | ftr/AST-1887-no-openings-job-site |
+| AST-1892 | sub/AST-1887/AST-1892-no-openings-job-site |
+| AST-1894 | sub/AST-1887/AST-1894-no-openings-job-site-tests |
+
+**Epic worktree:** `astral-AST-1887/` — one active sub checked out at a time.
