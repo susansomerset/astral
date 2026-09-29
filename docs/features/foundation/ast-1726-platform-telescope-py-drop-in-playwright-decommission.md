@@ -1209,3 +1209,25 @@ Primary repro: `TestAst1849OneShotLoopTeardown::test_run_one_shot_releases_loop_
 
 context_tokens≈0
 ```
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/470bcda677679f613fe0681dc1fbdda1/730ab1c2-eb2e-4750-81a2-264acd3db387/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/b4c452ea-b55d-4951-8bdf-19484427361c/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/470bcda677679f613fe0681dc1fbdda1/d490759b-7e7d-4554-99d9-972eb9e0fee3/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1841 (parent) | ftr/AST-1841-asyncio-run-telescope-loop-teardown |
+| AST-1849 | sub/AST-1841/AST-1849-asyncio-run-telescope-loop-teardown |
+| AST-1850 | sub/AST-1841/AST-1850-asyncio-run-telescope-loop-teardown-tests |
+
+**Epic worktree:** `astral-AST-1841/` — one active sub checked out at a time.
