@@ -879,3 +879,21 @@ All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.p
 - `entity_contexts=None` — job tokens alone never flip the flag (AST-1780 AC5).
 - API-key gate runs first and is independent of empty-render.
 - No edits outside `api_admin.py`; `config.py` resolve semantics, `hydrate_operative_*`, and `agent.py` untouched.
+
+## Joan fix-board — AST-1854
+
+Fix-board Joan pass on **AST-1854** (`plan-fix` § Bug: AST-1854 on `origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate`).
+
+**Triage:** Three loader swaps (`database.get_candidate` → `get_candidate`) in `_evaluate_dispatch_empty_render`, `_enrich_tasks`, and `_resolve_adhoc` align admin token resolution with the runtime path. That **conforms** to `patt.artifact.read-current` intent (current operative bodies, not stale blob-only context) and `astral.dispatch.entity-state-bound` (still entity/candidate-bound; blank/missing candidate behavior unchanged). No in-force statute requires raw DB reads for empty-render or Task Manager/ad hoc resolves. AST-1780’s written `database.get_candidate` step is a **feature-plan decision**, same class as Joan’s **CANON: OK** on AST-1791 — not a canon contradiction. Logging statutes untouched (no new `logger.info` / route spam). Out-of-scope `_resolve_agent_preview_candidate` is a separate product delta, not an Archie canon halt.
+
+---
+
+BEGIN-VERDICT
+
+[board-joan]  CANON: OK
+
+END-VERDICT
+
+```text
+AST-1854 board-joan done — CANON: OK.
+```
