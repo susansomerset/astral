@@ -580,19 +580,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Hedy | engineer | `/home/susan/.cursor/chats/b9aeae5a2989dd7fb2d5931ab5d3b434/50e6d46f-c237-4b7f-8829-327f19bcbc27/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/3c38f6e2-161b-4bd5-b13b-e7ac604ae2bf/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/b9aeae5a2989dd7fb2d5931ab5d3b434/bf0569fe-896f-445f-896a-32b01a34839e/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/ee6d6e8328c2789a0c5b8441d3c3847b/16642d74-02fe-4fba-bbbc-9923429f73d9/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/e8ccf81b-4c85-49a8-bf3b-e420eb26515f/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/ee6d6e8328c2789a0c5b8441d3c3847b/2dbcb4c4-8fd3-4991-9096-c6d4e0d5c4b0/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1793 (parent) | ftr/AST-1793-no-agent-empty-render-warning |
-| AST-1794 | sub/AST-1793/AST-1794-no-agent-empty-render-warning |
-| AST-1795 | sub/AST-1793/AST-1795-no-agent-empty-render-warning-tests |
+| AST-1852 (parent) | ftr/AST-1852-dispatch-gate-hydrated-candidate |
+| AST-1854 | sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate |
+| AST-1855 | sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate-tests |
 
-**Epic worktree:** `astral-AST-1793/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-1852/` — one active sub checked out at a time.
 
 ## Bug: AST-1794 — Silence no-agent empty_render warning
 
