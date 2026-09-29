@@ -704,3 +704,66 @@ context_tokens≈95000
 - **Build tip:** `2ad269d79` (stages: `874e59e8d` catalogs + resolvers · `125ba5b96` validation / candidate-key tasks / parity · `10546a9de` cost calculator · `2ad269d79` compat client)
 - **Build notes:** Stage 4 omits `extract_api_response_text` from the planned import list because it is unused once the `emit_llm_call_debug` blocks are gone; the response debug line logs the full response object. Cost calculator outputs are byte-identical to pre-change for every Claude/DeepSeek SKU (probe under `debug/spikes/ast-1877/`). `src/ui/api/api_admin.py` import could not be smoke-tested locally (`asyncpg` not installed); `database`, `agent`, `bootstrap`, `anthropic`, `deepseek` import cleanly.
 - **For qa-child:** AC 9 intercepted-request test (see Acceptance mapping); existing tests that assert `ALLOWED_TIMESHEET_PROVIDERS == ("anthropic","deepseek")`, `validate_llm_provider_environment` requiring `DEEPSEEK_API_KEY`, or `requires_candidate_key: False` on `simple_resume_parse` / `select_job_page` / `contact_estelle_turn` are now stale by design.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1877
+**Publish ref:** d2bd76b0d
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+Model → server catalog routing | A | |
+stat.logging.debug | A | |
+stat.logging.error | A | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+- [ ] **Boundaries — Linear `## Scope`:** Replace `env.example — per-server env vars` with wording that matches the plan (reword Anthropic fallback comment only; no new platform env vars). Engineer to confirm against shipped `env.example`.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Severity:** discuss  
+- **Location:** Linear issue `## Scope` (env.example line) vs plan Stage 2 §7 and tip `env.example`  
+- **Finding:** Linear still says per-server env vars; the diff only rewords the Anthropic comment and does not add platform keys.  
+- **Recommendation:** Optional Description cleanup when Chuckles next touches the ticket.  
+- **Default:** Leave Linear Scope unchanged; plan + `env.example` on `d2bd76b0d` are authoritative for build and UT.
+
+### advisory
+
+- **Severity:** advisory  
+- **Location:** `tests/component/external/test_llm_compat.py`, `tests/component/utils/test_config.py`, `tests/component/utils/test_cost_calculator.py`, `docs/test-bible/**`  
+- **Finding:** sibling test carry (qa-child / merge-tests): Betty’s manifest and bible updates ride the sub; not engineer product scope on the original “no tests” plan line.  
+- **Recommendation:** None for resolve-child product work.
+
+- **Severity:** advisory  
+- **Location:** Canon Scope (off frozen list)  
+- **Finding:** `astral.config.config-source-of-truth` plainly governs catalog placement; implementation matches (catalogs in `config.py`, client reads `get_llm_server` / tier from caller). Id omitted from frozen list — Archie may amend at Discussion if desired.  
+- **Recommendation:** Do not score off-list; no code change required for this review.
+
+## What's solid
+
+- `LLM_SERVER_CONFIG` / `LLM_MODEL_CONFIG`, resolvers, catalog-only `validate_llm_provider_environment()`, global `requires_candidate_key` assert, derived `ALLOWED_TIMESHEET_PROVIDERS`, and DeepSeek parity asserts match the parent *Model → server catalog routing* definition and the plan stages.
+- `send_to_llm_compat` is server-id + SKU driven, no env key, merges `request_extras` into `extra_body`, mirrors `send_to_deepseek` failure/success shape; no vendor strings in `llm_compat.py` / updated `llm_external.py` docstrings.
+- `stat.logging.debug`: ungated `logger.debug` call/response around `messages.create`; no `debug=` on the public API.
+- `stat.logging.error`: failures use `log_llm_batch_summary` only; no new `logger.error` / `logger.exception` in `llm_compat.py`.
+- AC 9 covered on tip: component tests patch `request_extras` and assert shipped OpenRouter body has no `provider.zdr`.
+
+## Recommended actions
+
+- Chuckles: append this artifact, `docs(AST-1877): Radia review — clean`, post slim upshot, move to **Review Posted** → datt **PROCEED** to User Testing (no resolve-child canon fixes).
+- Optional downstream: tick Frame diff Boundaries row if Susan wants Linear Scope aligned with plan.
+
+context_tokens≈42000
