@@ -188,3 +188,35 @@ Each stage is one commit on the epic worktree, published to `origin/sub/AST-1862
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1874
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `sub/AST-1862/AST-1874-modal-wiring-analysis-default-score-skip` @ `777031de2a5349272c44220ffc399959a71e75d3`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.config.config-source-of-truth | A | | |
+| astral.layers.ui-config-driven-business-logic | A | | |
+| astral.standards.dry-and-focused-functions | A | | |
+
+## Traceability
+
+AC1→Stage2 (manifest-first tab + modal tests; config order via #1 on `ftr`); AC2→Stage2 steps 3–6; AC3→Stages1–2; AC4→Stage1; AC5→Stage2 step 9; AC6→Stage2 step 8.
+
+### Findings
+
+- **discuss** — **Prerequisites** · Finding: Plan binds on AST-1872/1873 merged into `ftr/AST-1862` before Stage 2 (execution contract 🛑). · Recommendation: Chuckles confirms `ftr` rollup before Ada builds; no plan change.
+
+- **discuss** — **AC1 vs Scope** · Finding: AC1 cites `config.py` tab list; this child touches only modal/lib/page. · Recommendation: Split proof: #1 config tests + this ticket’s modal AC1 asserts.
+
+- **acceptable** — **Stages 1–2** · Finding: Scope-limited three-file footprint; `can_skip`/`topTabs[0]`/`formatPhaseScore` move match parent definition and frozen canon list. · Recommendation: None.
+
+context_tokens≈36000
+
+[plan-rubric] PROCEED (Commit: 777031de) Modal wiring plan sound
