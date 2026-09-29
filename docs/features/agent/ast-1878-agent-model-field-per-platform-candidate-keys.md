@@ -490,3 +490,10 @@ Model → server catalog routing | A | | Stages 1–3: model_id + per-model brai
 context_tokens≈115000
 
 [plan-rubric] PROCEED (Commit: 0f6eee2f7) Data layer keys plan clean
+
+## Review
+
+- **Branch:** `origin/sub/AST-1851/AST-1878-agent-model-per-platform-keys`
+- **Build tip:** `be5917353` (stages: `af2895717` agent `model_id` + per-model brain validation + seed · `31046806a` `candidate_key` + key map + legacy key dark + session paste candidate · `be5917353` timesheet SKU/server validation + backfill on catalog pricing)
+- **Build notes:** Built as planned, no deviations. `agent_task.json` line 763 was changed with a line-scoped `sed`, because the editor tool can't read that file; the diff is exactly one line. Smoke-tested against temp SQLite DBs: repo-JSON apply of the seed (seven rows, AC 4 values); per-model brain rejects on save/update; two `candidate_key` ciphertext rows and upsert; `get_candidate` map with no `candidate_api_key`; hard-delete cascade count; `run_session_resume_parse` 400 without a candidate and 404 for an unknown one; timesheet SKU/server reject; backfill by server. `src/ui/api/*` can't be import-tested locally (`asyncpg` not installed).
+- **For qa-child:** see **Tests expected to move** above; also Joan's optional note — parent AC 6 storage half (two ciphertext rows) is implemented in Stage 2.
