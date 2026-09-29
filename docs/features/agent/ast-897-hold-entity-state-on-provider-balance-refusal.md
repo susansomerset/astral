@@ -357,3 +357,199 @@ Hydrate / missing-id failure transitions stay as today (not balance).
 | Outer-path component test | Product only here — **`[qa-handoff]`** to Betty for `run_company_task` JOBS_FOUND balance-hold coverage (engineer test-tree ban). |
 
 **Betty return (2026-07-15):** cleared `[qa-handoff]` @ `698119d` — `TestAst897HoldStateOnBalanceRefusal` outer JOBS_FOUND hold cases + ordinary error regression. Manifest green (23 passed). §9a clean vs `origin/dev` and `origin/ftr/AST-896-insufficient-balance-hold-state`.
+
+---
+
+## Bug: AST-1867 — report provider balance refusal as one batch-level outage
+
+**Parent bug:** [AST-1860](https://linear.app/astralcareermatch/issue/AST-1860) (orphaned mini-parent, `ftr/AST-1860-provider-balance-outage`) · **Publish ref:** `origin/sub/AST-1860/AST-1867-provider-balance-outage`  
+**Explicit scope (AST-1867 `## Scope`):** `src/core/roster.py`, `src/core/dispatcher.py`, `src/core/monitor.py`, `src/utils/config.py` (only if needed — **not needed**, see Decision D4). Product only; tests/bible are Betty's.  
+**Canon Scope:** AST-1860 / AST-1867 cite no canon ids — nothing to resolve beyond ASTRAL_CODE_RULES habits already followed by this doc (§2.1 config source of truth, §3.3 layering, 3-line WARNING shape).
+
+### As-is
+
+DeepSeek returned HTTP 402 "Insufficient Balance" on all 24 `select_job_page` calls in batch `select_job_page-9763cb58-…`. This doc's hold worked (companies stayed `PJL_READY` via `_find_job_page_from_assembled`'s `state_held` return, AST-1842), but:
+
+- **(a)** `run_company_task`'s `select_job_page` branch (`roster.py` ~945) sees `result["error"]`, calls `_warn_company`, returns `total_errors: 1` → run rolls up `pass:0 fail:0 error:24`. The JOBS_FOUND branch (~918–932) does the same (keeps state, still counts an error).
+- **(b)** `_dispatch_one_body` calls `monitor.auto_run_error` → subject `"[✅/Somerset] select_job_page COMPLETED: 24 error(s) / 24 processed | <batch>"` with the full batch log dump as body, no headline cause.
+- **(c)** Every claimed company still fires its provider call; `_run_dispatch_loop` then claims the **same** held (still-eligible) companies again on the next run until `max_runs`/drain. Each 402 is logged twice (provider-side line + `_warn_company`).
+- **(d)** `_check_circuit_breaker` auto-disables after 3 consecutive COMPLETED runs with 0 passed / 0 failed — exactly the balance-refusal shape — so an unpaid provider silently turns AUTO off, and it stays off after credit is restored.
+
+### To-be
+
+A provider balance refusal is reported as **one provider-level outage** per dispatch run: held entities are counted as held, not errors; once a balance refusal comes back, the run issues **no further provider calls** (remaining entities in the batch are skipped and released, and the dispatch loop claims no further batches); the AUTO alert subject names the provider + "insufficient balance" with a short body (no log dump); balance-refusal runs never count toward the circuit breaker. The AST-897 / AST-1842 per-entity state hold is unchanged. No failover, no retries, no new caps.
+
+### Repro
+
+Fixture (no DB seed needed — astral persistence is file/SQLite rows built by test helpers; this is the data shape):
+
+```python
+task = {
+    "id": 1, "task_key": "select_job_page", "candidate_id": "cand-1",
+    "entity_type": "company", "trigger_state": "PJL_READY",
+    "batch_call_mode": 0, "batch_size": 24, "auto_mode": 1, "max_runs": 0,
+}
+companies = [{"short_name": f"co{i}", "state": "PJL_READY",
+              "company_data": {...assembled PJL maps...}} for i in range(24)]
+# agent.do_task("select_job_page", ...) returns for every call:
+balance_refusal = {
+    "success": False, "api_response": None,
+    "error": "Error code: 402 - {'error': {'message': 'Insufficient Balance', ...}}",
+    "failure_class": "provider_balance_refusal",
+}
+```
+
+Steps: `_dispatch_one_body(task, debug=False)` with `get_active_llm_provider() == "deepseek"`.  
+**Today:** 24 `do_task` calls per run (and again on every subsequent loop run); ledger row `COMPLETED`, `total_errors=24`; `auto_run_error` subject `"… select_job_page COMPLETED: 24 error(s) / 24 processed | …"`; after 3 such runs `update_dispatch_task(1, enabled=False)`.  
+**After fix:** exactly **1** `do_task` call (the cache-warm first entity); 23 companies skipped and released by `clear_company_batch`; loop stops after run 1; ledger row `INTERRUPTED`, `total_processed=1, total_errors=0`; one `monitor.provider_balance_outage` email, no `auto_run_error`; `_check_circuit_breaker` not called and the row is invisible to future breaker lookbacks; all 24 companies still `PJL_READY`.
+
+### Root cause
+
+AST-897 scoped only the per-entity **state** decision. The batch layer still treats a balance-held result as an ordinary entity error:
+
+1. `run_company_task` maps any `result.get("error")` to `total_errors: 1` — it never consults `is_provider_balance_refusal(result)` for **counting** (only for the JOBS_FOUND state transition).
+2. `_run_unified` / `_run_dispatch_loop` have no batch-level signal: nothing tells them the provider itself is refusing, so every entity and every subsequent claim still calls the provider.
+3. `_dispatch_one_body` routes alerts purely on `total_errors > 0`, and `_check_circuit_breaker` reads only `total_passed`/`total_failed` of `COMPLETED` rows — a refusal run is indistinguishable from a genuinely stuck task.
+
+### Proposed change
+
+Signal path (task-agnostic, keyed on `failure_class`): any per-run result dict that satisfies `is_provider_balance_refusal(result)` → `_run_unified` records a **ctx-level marker** `ctx["provider_balance_outage"]` → skips remaining entities → `_run_dispatch_loop` stops → `_dispatch_one_body` ends the run `INTERRUPTED` and sends the provider-outage alert. The marker lives on `ctx` (per-run dict copied from `database.get_candidate` in `_dispatch_one_body`, same side-channel precedent as AST-1847's `ctx["dispatch_partial"]`), **not** in the summary counts, because `update_dispatch_ledger(**accumulated)` rejects keys outside `_LEDGER_UPDATE_COLS` and the ledger schema (`src/data/database.py`) is out of scope.
+
+#### 1. `src/core/roster.py` — `run_company_task`
+
+1a. **`select_job_page` branch** (`elif input_state == ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]`, ~945): before the existing `if result.get("error"):` add:
+
+```python
+# AST-1867: provider refused for balance — held (AST-897 kept state), not an entity error;
+# failure_class travels up so the dispatcher can stop the batch and alert once.
+if is_provider_balance_refusal(result):
+    logger.debug("%s | company select_job_page held: provider_balance_refusal error=%r", short_name, result.get("error"))
+    return {**zero, "total_held": 1, "failure_class": result.get("failure_class"), "error": result.get("error")}
+```
+
+No `_warn_company` on this path (that is the second of the two per-call 402 log lines). Everything after it (ordinary `error` → `_warn_company` + `total_errors: 1`; terminal/pass/fail mapping) is unchanged.
+
+1b. **JOBS_FOUND branch** (~918): identical early return (task label `jobs_found` in the debug line) placed as the first statement inside `if result.get("error"):`, **before** the `dest` / `_warn_company` / `transition_company_state` lines. Leave the existing `not result.get("state_held") and not is_provider_balance_refusal(result)` guards exactly as they are — they still protect the non-balance `state_held` case (AST-1189 call-budget).
+
+`total_processed` stays `1` for a held company (it was attempted); `total_held` is a new informational key. It is **not** added to `_SUMMARY_ZERO` (no ledger column); the dispatcher reads it only to fill the alert body.
+
+#### 2. `src/core/dispatcher.py`
+
+2a. **Imports:** `from src.utils.llm_external import is_provider_balance_refusal` (core ← utils, §3.3).
+
+2b. **New helper** directly above `_run_unified`:
+
+```python
+def _note_provider_balance_outage(ctx: Dict, task: Dict, result: Dict) -> None:
+    """AST-1867: first balance refusal in a run sets ctx["provider_balance_outage"] and logs one WARNING;
+    later refusals only add to the held tally."""
+    outage = ctx.get("provider_balance_outage")
+    if outage is None:
+        outage = ctx["provider_balance_outage"] = {"error": result.get("error") or "", "held": 0}
+        logger.warning(
+            "%s | dispatch %s %s\n  LLM provider refused: insufficient balance (%s)\n  The batch is stopping; entity state is held",
+            ctx.get("astral_candidate_id") or task.get("candidate_id") or "-",
+            task.get("entity_type") or "-",
+            task.get("task_key") or "-",
+            outage["error"],
+        )
+    outage["held"] += int(result.get("total_held", 0) or 0)
+```
+
+2c. **`_run_unified`** — per-entity path (`else:` branch, `async def _one(e)`):
+
+- First line of `_one`: `if ctx.get("provider_balance_outage"): return dict(_SUMMARY_ZERO)` — entity is not sent to the provider and not counted as processed; the existing `finally: clear_*_batch(bid)` releases it.
+- After `result = await consult.run_consult_task(...)`: `if is_provider_balance_refusal(result): _note_provider_balance_outage(ctx, task, result)`.
+
+Because `_warm_then_gather` runs entity 0 alone first, a refusal on entity 0 means every other `_one` returns immediately (no provider call). Entities already in flight when a later refusal lands finish normally — no cancellation (Decision D2).
+
+2d. **`_run_unified`** — full-batch paths (task-agnostic; only fires where the consult return carries `failure_class`):
+
+- Chunk split: inside `_consult_chunk`, first line `if ctx.get("provider_balance_outage"): return dict(_SUMMARY_ZERO)`; after the `consult.run_consult_task` call, `if is_provider_balance_refusal(result): _note_provider_balance_outage(ctx, task, result)`. Head chunk runs first, so a head refusal skips every tail chunk.
+- Single consult call: after the call, same `is_provider_balance_refusal` → `_note_provider_balance_outage` (nothing left to skip in-run; the loop stop in 2e still applies).
+
+2e. **`_run_dispatch_loop`** — right after the mid-run `update_dispatch_ledger(dispatch_ledger_id, **accumulated)` and **before** the `total_processed == 0` check:
+
+```python
+if ctx.get("provider_balance_outage"):
+    logger.debug("loop stop: provider balance refusal run_count=%s", run_count)
+    logger.debug("End dispatch loop after %s run(s)", run_count)
+    break
+```
+
+(The one operator-facing WARNING was already emitted by 2b; no extra info line.)
+
+2f. **`_dispatch_one_body`** — main (candidate/ctx) path only; meteorite / bot-blocked / mailbox branches pass `{}` or no ctx and never call `_run_unified`, so they are untouched:
+
+- Immediately after `await _tracked()` in the `try:` (successful return), add: `if ctx.get("provider_balance_outage"): final_status = "INTERRUPTED"` — the run was cut short by a provider outage. Effects, all via existing code: the ledger row is written `INTERRUPTED`; `_log_dispatch_task_completed` (COMPLETED-only) is skipped — the 2b WARNING replaces it; `_check_circuit_breaker` (called only when `COMPLETED`) is skipped; and `get_recent_ledger_summaries` (`status = 'COMPLETED'`) never sees this row, so past outage runs can't combine with a later genuine zero-progress run to trip the breaker.
+- Alert routing in `finally:` — replace the single `auto_run_error` block with:
+
+```python
+outage = ctx.get("provider_balance_outage")
+if dispatch_ledger_id and not is_click and outage:
+    monitor.provider_balance_outage(task_key, dispatch_ledger_id, accumulated, outage, candidate_id)
+elif dispatch_ledger_id and not is_click and accumulated.get("total_errors", 0) > 0:
+    monitor.auto_run_error(task_key, dispatch_ledger_id, accumulated, final_status, candidate_id)
+```
+
+Same AUTO-only / ledger-present gate as today; CLICK runs get the 2b WARNING only (unchanged policy). If a dispatch timeout or admin cancel also occurs, `final_status` is already `INTERRUPTED` and the outage alert still wins (one email per run).
+
+2g. **`_check_circuit_breaker`** — **no code change**; exclusion is achieved by 2f (status `INTERRUPTED` is filtered out by the ledger query it reads). Scope allows "`_check_circuit_breaker` (or the ledger summary it reads)".
+
+#### 3. `src/core/monitor.py` — new `provider_balance_outage`
+
+Add after `auto_run_error`; import `get_active_llm_provider` from `src.utils.config`. Module docstring gains one line naming the new entry point.
+
+```python
+def provider_balance_outage(task_key: str, batch_id: str, accumulated: dict, outage: dict, candidate_id: str = "") -> None:
+    """AST-1867: one alert per AUTO run stopped by an LLM provider balance refusal.
+    Short body (no batch log dump). Never raises — a failed alert must not surface to the caller."""
+    try:
+        provider = get_active_llm_provider()
+        prefix = _format_alert_subject_prefix(get_deploy_label(), _resolve_candidate_last_name(candidate_id))
+        subject = f"{prefix} {provider} insufficient balance — {task_key} stopped | {batch_id}"
+        lines = [
+            f"Provider: {provider}",
+            f"Refusal: {outage.get('error') or '-'}",
+            f"Task: {task_key}   Batch: {batch_id}",
+            f"Processed: {accumulated.get('total_processed', 0)}  Passed: {accumulated.get('total_passed', 0)}  "
+            f"Failed: {accumulated.get('total_failed', 0)}  Errors: {accumulated.get('total_errors', 0)}",
+        ]
+        if outage.get("held"):
+            lines.append(f"Held (state unchanged): {outage['held']}")
+        lines.append("Entity state was held; the task stays enabled and resumes once provider credit is restored.")
+        if not send_email(to=ASTRAL_CONFIG["support_email"], subject=subject, body="\n".join(lines)):
+            logger.warning("[monitor] send_email returned False for batch %s — check Gmail credentials", batch_id)
+    except Exception as e:
+        logger.warning("[monitor] provider_balance_outage raised unexpectedly for %s: %s", batch_id, e)
+```
+
+Example subject for the repro: `"[✅/Somerset] deepseek insufficient balance — select_job_page stopped | select_job_page-9763cb58-…"`.
+
+#### 4. `src/utils/config.py` — no change (Decision D4)
+
+#### ⚠️ Decisions (for fix-board)
+
+- **D1 — "held" keys on balance refusal only, not bare `state_held`.** AST-1867's Technical scope says "`state_held` or a balance-refusal `failure_class`". But `_find_job_page_from_assembled` also sets `state_held=True` for **AST-1189 provider-call-budget timeouts** (`roster.py` ~2233). Counting those as held would drop them out of `total_errors` → no `auto_run_error` email, while still letting all-timeout `COMPLETED` runs trip the breaker — a silent regression the bug doesn't ask for. So `run_company_task` returns `total_held` only when `is_provider_balance_refusal(result)`; call-budget holds keep today's `total_errors: 1` (narrower than scope, same file/function/kind of change).
+- **D2 — "stop issuing calls" = no *new* calls.** Entities not yet started are skipped; calls already in flight (concurrent gather members started before the first refusal returned) are not cancelled. No caps/retries added.
+- **D3 — breaker exclusion via `INTERRUPTED`, not a new ledger column.** A refusal run *was* cut short, so `INTERRUPTED` is truthful; it reuses an existing status the admin UI already renders (`AdminPerformanceMonitor.tsx`), needs no `database.py` change (out of scope), and excludes the run from both the current breaker check and all future lookbacks.
+- **D4 — alert wording hard-coded in `monitor.py`, no config change.** Matches `auto_run_error`'s precedent (subject built in monitor); provider name comes from existing `get_active_llm_provider()` (provider is global per `LLM_PROVIDER_CONFIG`, `agent.py` ~1983). The breaker exclusion is structural (D3), so there's no switch to configure.
+- **D5 — `prefilter_company` (AST-1858/1859 question) not wired end-to-end.** The dispatcher path is task-agnostic, but `consult.run_consult_task`'s `prefilter_company` branch (and the other company batch branches) rebuilds the summary dict and drops `failure_class`/`state_held`; `consult.py` is outside AST-1867's scope. Prefilter balance refusals therefore keep today's counting/alert/breaker behavior until a follow-up widens scope to `consult.py` (one-line pass-through of `failure_class`). Per-company paths (`batch_call_mode=0`, incl. `select_job_page`, JOBS_FOUND) are covered.
+
+### Blast radius
+
+- **`_run_unified` / `_run_dispatch_loop` / `_dispatch_one_body`** are shared by every candidate-scoped dispatch task (job consult, company, candidate). New behavior fires **only** when a returned dict carries `failure_class == "provider_balance_refusal"`; all other runs take identical code paths (the ctx key is absent).
+- **Job consult batch paths** (`_run_batch_consult`, `render_verdict` holds from this doc's Stage 3) return `failure_class` only where consult passes it through; where it does, those runs now also stop/alert/skip-breaker — intended (task-agnostic). Where consult rebuilds the dict, behavior is unchanged (D5).
+- **Ledger semantics:** refusal runs now show `INTERRUPTED` in execution history instead of `COMPLETED`; skipped entities are not in `total_processed`. `entity_cost` math already guards `total_processed == 0`.
+- **Alerts:** refusal runs no longer send `auto_run_error`; they send `provider_balance_outage` instead. Non-refusal error runs unchanged.
+- **Tests likely asserting the old behavior (Betty's call):** `tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal` JOBS_FOUND outer-path cases (currently expect `total_errors: 1` on the balance hold); dispatcher tests around `auto_run_error` gating and `_check_circuit_breaker`; `_warm_then_gather` / `_run_unified` summary tests that stub `run_consult_task`. Monitor tests for the new function are new coverage.
+- **AST-1839** (retry-routed → not `total_errors`) and **AST-1847** (`dispatch_partial` on timeout) are adjacent; neither code path is modified.
+
+### What must still hold
+
+- **AST-897 AC1–2:** balance-refused job/company **state string unchanged** and entity stays loop-eligible — no edit to any hold gate (`classify_provider_balance_refusal`, `is_provider_balance_refusal`, `_find_job_page_from_assembled` held return, `_prefilter_fail` / batch prefilter holds, consult holds). Skipped entities are released by the existing `clear_*_batch` in `_run_unified`'s `finally`, never transitioned.
+- **AST-897 AC3:** non-balance failures (ordinary `error`, AST-1189 call-budget `state_held`) keep today's routing **and** counting (`total_errors: 1`, JOBS_FOUND `error_state` transition for ordinary errors).
+- **AST-897 AC4:** the refusal attempt is still recorded (agent/ledger failure storage untouched) and now also surfaced once in the 2b WARNING and the outage email.
+- **Circuit breaker** still trips on 3 genuine consecutive COMPLETED zero-progress runs.
+- **Alert gate** stays AUTO-only with a ledger id; ordinary error runs still get `auto_run_error` with the full log body.
+- No new limits, caps, retries, or failover; the only new stop is "a balance refusal came back".
