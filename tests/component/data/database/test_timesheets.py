@@ -6,7 +6,6 @@ import pytest
 
 from src.data.database import backfill_agent_timesheet_costs
 from src.utils.cost_calculator import (
-    calculate_cost_components_deepseek_from_counts,
     calculate_cost_components_from_counts,
 )
 
@@ -89,8 +88,8 @@ class TestSumCostByBatch:
 class TestBackfillDeepseekAgentTimesheetCosts:
     def test_recomputes_deepseek_costs_leaves_anthropic_unchanged(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        expected = calculate_cost_components_deepseek_from_counts(
-            50, 100, 25, 0, "deepseek-v4-pro"
+        expected = calculate_cost_components_from_counts(
+            50, 100, 25, 0, sku="deepseek-v4-pro", server_id="deepseek"
         )
         db._add_timesheet_entry(
             "req-ds",

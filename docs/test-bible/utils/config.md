@@ -410,6 +410,8 @@ Persisted-default merge (save / craft generate / persist) + prompt dedupe: **`do
 
 ### AST-695 · AST-694
 
+> **AST-1880:** Historical. `tier_map["deepseek"]`, `test_resolve_deepseek_tier_meta`, the DeepSeek-only `do_task` node, and `TestAst492ResolveAdhocApiAdmin` are retired. DeepSeek tiers are catalog rows (`TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_tiers`). See the AST-1880 pointer below.
+
 **Scope:** `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"][BRAIN_MEDIUM]` — Medium retargets from `deepseek-v4-flash` + thinking to `deepseek-v4-pro` non-thinking (**AST-694** ladder). Little and Big unchanged; runtime dispatch reads tier meta from config — no `agent.py` / `deepseek.py` edits.
 
 | Area | Source | Component tests |
@@ -829,6 +831,8 @@ Consult fail-dest matrix: **`docs/test-bible/core/consult.md`** (**AST-1339**). 
 **AST-955:** Save membership = registered **`TASK_CONFIG`** (optional trigger override on **`dispatch_task_admin_defaults`**). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).
 
 ### AST-1391 · AST-1390 (DeepSeek Big output floor)
+
+> **AST-1880:** `deepseek_brain_max_tokens_floor` and `DEEPSEEK_MODEL_PRICING` are retired. `TestAst1391DeepseekBigMaxTokensFloor::test_big_tier_floor` now reads the catalog tier row (`max_tokens_floor` 384000 on Big only).
 
 **`deepseek_brain_max_tokens_floor`** + DeepSeek `BRAIN_BIG` `max_tokens: 384000`. Not on Little/Medium; `DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"]` stays **16000**. Primary hop manifest: **`docs/test-bible/core/agent.md`** § AST-1391.
 
@@ -4487,3 +4491,5 @@ Config gains `LLM_SERVER_CONFIG` / `LLM_MODEL_CONFIG`, catalog resolvers, catalo
 ```
 
 **Pass criterion:** narrowed run green — not the zero-arg harness. The two deselected AST-1190 nodes fail identically with `origin/dev` product (pre-existing, not this ticket). Zero-arg / full `tests/component` red on this tip is the same set with or without AST-1877 product (baseline diff: exactly the five revised nodes above changed).
+
+**AST-1880 (pointer):** DeepSeek-only config retired. `TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_tiers` replaces `test_resolve_deepseek_tier_meta`. `…::test_legacy_global_provider_symbols_retired` asserts no `active_provider` / `tier_map["deepseek"]` / `CONTACT_ESTELLE_CONFIG["default_brain_setting"]` / `get_active_llm_provider` / `resolve_brain_setting_to_deepseek_tier_meta` / `deepseek_brain_max_tokens_floor` / `DEEPSEEK_MODEL_PRICING` / `DEEPSEEK_CONCURRENCY`. `TestAst1391DeepseekBigMaxTokensFloor::test_big_tier_floor` reads the catalog tier row. The Estelle config tests assert no brain override. Retired: `test_get_active_llm_provider_strips_and_rejects_invalid`, `test_resolve_deepseek_raises_when_mapping_has_no_vendor_model`, `test_deepseek_concurrency_is_alias_of_server_block`. Historical manifests above that cite those nodes or `tests/component/external/test_deepseek.py` are frozen records. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1880.
