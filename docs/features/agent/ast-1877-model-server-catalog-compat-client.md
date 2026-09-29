@@ -630,7 +630,7 @@ No other file is touched. No DB, core, UI, `data/admin/`, `tests/`, or bible edi
 
 ## Acceptance mapping (this ticket)
 
-- **AC 9 (request extras, ZDR not enforced):** `send_to_llm_compat` merges `server["request_extras"]` into `extra_body`, so a test that patches a server entry's `request_extras` sees the extra in the intercepted body. The shipped `openrouter` entry has `request_extras: {}`, so no `provider.zdr` is sent.
+- **AC 9 (request extras, ZDR not enforced):** `send_to_llm_compat` merges `server["request_extras"]` into `extra_body`, so a test that patches a server entry's `request_extras` sees the extra in the intercepted body. The shipped `openrouter` entry has `request_extras: {}`, so no `provider.zdr` is sent. **Betty (qa-child) lands the AC 9 intercepted-request component test** (patch a server's `request_extras` with a test extra, stub `_get_client`, assert the extra is in the outbound body and the shipped `openrouter` body carries no `provider.zdr`). The engineer build does not touch `tests/`.
 - **AC 1 / 2 / 15:** these are epic-level greps that pass only after #4. This ticket keeps `llm_compat.py`, `llm_external.py`, and the new `cost_calculator.py` functions free of vendor names. #4 deletes the remaining `cost_calculator.py` legacy names (AST-1883).
 
 ## Pre-commit gate (every stage)
