@@ -1207,6 +1207,9 @@ def create_dtask():
         update_dispatch_task(task_id, skip_daisy_chain=1)
     if "batch_call_mode" in data and data.get("batch_call_mode") is not None:
         update_dispatch_task(task_id, batch_call_mode=int(bool(data["batch_call_mode"])))
+    # save_dispatch_task has no max_runs param; without this, form-created rows keep the column default 1.
+    if "max_runs" in data and data.get("max_runs") is not None:
+        update_dispatch_task(task_id, max_runs=int(data["max_runs"]))
     return jsonify({"id": task_id}), 201
 
 
