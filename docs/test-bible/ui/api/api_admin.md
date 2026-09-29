@@ -804,6 +804,38 @@ Keep AST-1780 / AST-1792 rows; do not mark them obsolete.
 
 **Integration:** none — do not invent new integration scenarios.
 
+### AST-1855 · AST-1852 (gap: hydrated candidate view for dispatch empty-render)
+
+**Parent:** [AST-1852](https://linear.app/astralcareermatch/issue/AST-1852) (orphaned-bug mini-parent). **Sibling product:** AST-1854 (`b5a72977` on `origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate`). **Publish:** `origin/sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate-tests`.
+
+AST-1854 — dispatch empty-render (and `_enrich_tasks` / `_resolve_adhoc`) loads the hydrated candidate (operative artifact overlay onto `candidate_data.context`), not the raw row. Only `database.get_candidate`, `database.get_current_artifact`, and `_dispatch_empty_render_prompt_texts` are stubbed; loader, `hydrate_operative_*`, `build_candidate_token_view`, `resolve_tokens`, `empty_render_for_prompts` stay real. One `_evaluate_dispatch_empty_render` repro gates all three call sites (same one-token loader swap).
+
+**Sequencing deviation (gap child):** product not on ftr yet. `[bug-repro]` proven both ways — **RED at ftr base `3dd7f249`** (`c1` → `{"empty_render": True, "empty_tokens": ["IDEAL_DAY"]}`) and **GREEN with `b5a72977`'s `api_admin.py` overlaid** (scratch worktree, not committed).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Artifact-only Ideal Day → false `[bug-repro]` | `src/ui/api/api_admin.py` | **`TestAst1854HydratedCandidateEmptyRender::test_evaluate_artifact_only_ideal_day_empty_render_false`** |
+| No artifact, no legacy blob → true, `["IDEAL_DAY"]` | same | **`…::test_evaluate_no_ideal_day_anywhere_empty_render_true`** |
+| Legacy `context.ideal_day` only → false | same | **`…::test_evaluate_legacy_blob_ideal_day_empty_render_false`** |
+
+**Revised (hermeticity, not obsolete):** seven existing row-returning `database.get_candidate` stubs on swapped paths now also stub `database.get_current_artifact → None`, so the hydrated loader never reads the repo `data/astral.db`: `TestEnrichTasks::test_enrich_tasks_covers_agent_and_cache_branches`, `TestAdhocHelpers::test_adhoc_entities_and_resolve`, `TestAdhocHelpers::test_resolve_adhoc_job_entity_resolves_visible_jd_token`, and the four `TestAst1791NoPromptValueErrorEmptyRender` tests (via `_stub_no_agent_task_prompts`). Keep AST-1780 / AST-1792 / AST-1795 rows unchanged.
+
+Pre-existing unrelated reds in this file (same 5 as AST-1819, red at base without these edits) — not in this manifest.
+
+**Integration:** none — do not invent new integration scenarios.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1854HydratedCandidateEmptyRender \
+  tests/component/ui/api/test_api_admin.py::TestEnrichTasks::test_enrich_tasks_covers_agent_and_cache_branches \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_adhoc_entities_and_resolve \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_resolve_adhoc_job_entity_resolves_visible_jd_token \
+  tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender \
+  -q
+```
+
+**Pass criterion:** pytest green on these nodes with AST-1854 product on the tree under test; the `[bug-repro]` stays red until then.
+
 ## QA test manifest
 
 1. List force off: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_list_sets_empty_render_and_forces_auto_off`
