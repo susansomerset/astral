@@ -345,3 +345,113 @@ No conflicts requiring **`!!-NONE`**.
 ## Review stub
 
 - `code(AST-707): embedded RC registry and prefilter hydration merge` @ `c4a25ee1` — `origin/sub/AST-700/AST-707-uat-batch-prefilter-embedded-rc-vector-hydration`
+
+---
+
+## Bug: AST-1882 — gap: tests for Reality Check as persisted default prefilter vector (AST-1881 board)
+
+**Parent bug:** [AST-1876](https://linear.app/astralcareermatch/issue/AST-1876)  
+**Publish ref:** `origin/sub/AST-1876/AST-1882-prefilter-rc-default-vector-tests`  
+**Answers:** AST-1881 `[board-betty] TESTS: REVISE`.  
+**Product under test:** AST-1881 on `origin/sub/AST-1876/AST-1881-prefilter-rc-default-vector` @ `2b1f6e1a`. Its plan section (`## Bug: AST-1881 — …`) is in this same doc on that ref; it isn't on this ref until merge-child rolls AST-1881 into ftr.  
+**Lands:** Betty (qa-fix). Test and bible only; no product code.
+
+### As-is
+
+`test_config.py::TestAst707EmbeddedPrefilterConfig::test_embedded_rc_registry` pins the old "real vs fraudulent" RC text and a grade list that includes E, so it fails once AST-1881 lands (confirmed in AST-1881 test-fix: this was the only new failure vs `origin/dev`). Nothing covers RC being merged and stored on rubric save, craft persist or craft generate, and nothing asserts the `prefilter_company` prompt dropped its hand-written Reality Check block.
+
+### To-be
+
+The registry test pins the company-site scale (A/B/C/D/F/X). A new `TestAst1881PrefilterRcDefaultVector` class covers the merge helper, the three storage paths and the prompt dedupe; the prompt dedupe test is the `[bug-repro]`. The bible names the revised and new coverage.
+
+### Repro
+
+`[bug-repro]` = `tests/component/core/test_candidate.py::TestAst1881PrefilterRcDefaultVector::test_prefilter_prompt_has_no_hand_written_reality_check`.
+
+- **Red** on `origin/ftr/AST-1876-prefilter-rc-default-vector` (= `origin/dev`, pre-fix): the `prefilter_company` `cache_prompt` in `data/admin/agent_task.json` contains `### Reality Check - Is this the website for a company that {$FIRST_NAME} might work at?`.
+- **Green** on a tree with AST-1881 merged: the block is gone and `{$RUBRIC_VECTORS}` is still there exactly once. (Checked by hand on `2b1f6e1a`: `'Reality Check' in cache_prompt` → `False`; the rubric section reads `**Your Rubric for evaluation:**\n\n{$RUBRIC_VECTORS}\n\n### POSSIBLE_JOBLIST_LINKS`.)
+
+### Root cause
+
+AST-1881 changed the RC contract and added three storage paths plus a prompt edit. The only existing RC test pins the old text, and the AST-1085 QC/GC storage tests have no prefilter counterpart.
+
+### Proposed change
+
+All tests are read-only against product. Paths are relative to the repo root.
+
+**1. Modify `tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig::test_embedded_rc_registry` (~1282–1307).** Keep `len(rows) == 1`, `code == "RC"`, `label == "Reality Check"`, `importance == 8`. Replace the `content` assert and the grade asserts with:
+
+```python
+        assert rc["content"] == (
+            "Reality Check — Is this the website for a company that the candidate might work at?\n"
+            "A == It is a typical website with content about products or services, a link to a careers page, etc.\n"
+            "B == It is an elaborate website that isn't clearly a company website, but at least it's about the company, such as a VC portfolio page.\n"
+            "C == It is a social media site for the company, but not their website. Links might still be found to job openings from here.\n"
+            "D == This is a company website, but it doesn't look like the expected website for this company.\n"
+            "F == This is obviously not a company website, someone got confused in their previous research identifying the company.\n"
+            "X == could not read the page (bot blocked or other network issue)"
+        )
+        by_grade = {g["grade"]: g["description"] for g in rc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "D", "F", "X"]
+```
+
+Then assert each of the six `by_grade[...]` descriptions against the exact text after `== ` on the matching content line. X stays `"could not read the page (bot blocked or other network issue)"`. Update the class docstring to `"""AST-707 / AST-1881: embedded RC criterion (company-site scale) for company_prefilter."""`.
+
+**2. New class `TestAst1881PrefilterRcDefaultVector` in `tests/component/core/test_candidate.py`**, directly after `TestAst1085EvaluateJdEmbeddedMerge` (which ends ~3840). Docstring: `"""AST-1881: RC default prefilter vector — prompt dedupe + prepend-merge on read / save / craft generate / persist."""`. Class fixture:
+
+```python
+    _MP_ROW = {
+        "code": "MP",
+        "label": "Mission & Product",
+        "content": "Mission fit\nA == great\nF == poor",
+        "importance": 5,
+    }
+```
+
+Tests, each mirroring the AST-1085 sibling named in brackets:
+
+| # | Test | Mirrors | Asserts |
+|---|------|---------|---------|
+| a | `test_prefilter_prompt_has_no_hand_written_reality_check` **[bug-repro]** | AST-1027/1028 prompt-data tests (`json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))`) | Row with `task_key == "prefilter_company"` exists. On its `cache_prompt`: `"Reality Check" not in cp`, `"Is this the website for a company" not in cp`, `cp.count("{$RUBRIC_VECTORS}") == 1`. |
+| b | `test_merge_helper_prepends_and_dedupes_by_code` | `test_merge_helper_appends_and_dedupes_by_code` | Input `[self._MP_ROW, stale_rc]`, with `stale_rc = {"code": "rc", "label": "Stale", "content": "operator edit", "importance": 2}`. `_merge_embedded_company_prefilter_criteria(...)` codes `== ["RC", "MP"]`, `out[0]["label"] == "Reality Check"`, `out[0]["importance"] == 8`. Empty input gives codes `== ["RC"]`. |
+| c | `test_apply_save_restores_rc_before_sync` | `test_apply_save_restores_qc_gc_before_sync` | Monkeypatch `candidate_mod.database.sync_rubric_vectors_from_criteria` to record calls. `arts = {"company_prefilter": [self._MP_ROW, stale_rc]}`, then `apply_rubric_vectors_save("c1881", arts)`. Asserts: `"company_prefilter" not in arts`; `synced[0][:2] == ("c1881", "prefilter_company")`; codes `== ["RC", "MP"]`; `synced[0][2][0]["content"] == EMBEDDED_COMPANY_PREFILTER_CRITERIA[0]["content"]` (stale RC replaced). |
+| d | `test_other_owners_do_not_gain_rc_on_save` | `test_other_owners_do_not_gain_qc_gc` | Same monkeypatch. `apply_rubric_vectors_save("c1881", {"jobdesc_rubric": [TestAst1085EvaluateJdEmbeddedMerge._CANDIDATE_ROW]})` → owner `"evaluate_jd"`, codes `== ["JD", "QC", "GC"]`, no `"RC"`. (Also guards "QC/GC merge unchanged".) |
+| e | `test_craft_prefilter_generate_merges_into_response_and_stash` | `test_craft_jobdesc_generate_merges_into_response_and_stash` | Identical monkeypatch setup; `parsed = {"criteria": [self._MP_ROW]}`; `run_candidate_artifact_generation("karfo", "craft_prefilter_rubric", None)`. Asserts: `status == 200`; body codes `== ["RC", "MP"]`; `pending_craft_generations["craft_prefilter_rubric"]` codes `== ["RC", "MP"]`. |
+| f | `test_persist_craft_prefilter_merges_before_sync` | `test_persist_craft_jobdesc_merges_before_sync` | `snapshot = copy.deepcopy(EMBEDDED_COMPANY_PREFILTER_CRITERIA[0])`. Same sync monkeypatch; `_persist_craft_dispatch_success("c1881", "craft_prefilter_rubric", {"criteria": [_criterion(code="MP", label="Mission & Product")]})`. Asserts: `synced[0][1] == "prefilter_company"`; codes `== ["RC", "MP"]`; `EMBEDDED_COMPANY_PREFILTER_CRITERIA[0] == snapshot` (normalize doesn't change the shared constant; checked by hand on `2b1f6e1a`). |
+
+The read path (`rubric_criteria_for_task` prepends RC) is already covered by `TestAst723RubricVectorsCutover::test_prefilter_merges_embedded_rc_from_table`; no new read test is needed.
+
+**3. Bible — `docs/test-bible/utils/config.md` (~405).** Revise the row's Area cell to `Embedded RC registry — company-site scale A/B/C/D/F/X (AST-707; revised AST-1881)`. Source and test columns are unchanged.
+
+**4. Bible — `docs/test-bible/core/candidate.md`.** Add a `### AST-1881 · AST-1876` block directly after the AST-1085 block's run command (~892), in the same shape:
+
+- **Parent** line (AST-1876 link) and **Publish** line (`origin/sub/AST-1876/AST-1882-prefilter-rc-default-vector-tests`).
+- One-paragraph summary: `EMBEDDED_COMPANY_PREFILTER_CRITERIA` (RC) prepend-merged into `prefilter_company` / `company_prefilter` / `craft_prefilter_rubric` on save, craft generate and persist, so it's stored in `rubric_vector`. Embedded wins on duplicate code. The duplicate hand-written Reality Check block is removed from the `prefilter_company` `cache_prompt`. Config definition lives in `docs/test-bible/utils/config.md` (AST-707, revised AST-1881).
+- Table row: `| Helper + save / craft generate / persist; prompt dedupe | src/core/candidate.py, data/admin/agent_task.json | **TestAst1881PrefilterRcDefaultVector** |`.
+- **Broken / obsolete:** `TestAst707EmbeddedPrefilterConfig::test_embedded_rc_registry` revised (old real-vs-fraudulent scale with E is obsolete).
+- **Integration:** none revised.
+- Run block:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1881PrefilterRcDefaultVector \
+  tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig \
+  tests/component/core/test_candidate.py::TestAst1085EvaluateJdEmbeddedMerge \
+  tests/component/core/test_candidate.py::TestAst723RubricVectorsCutover::test_prefilter_merges_embedded_rc_from_table \
+  tests/component/core/test_roster.py::TestAst707EmbeddedRcBatchHydration \
+  tests/component/core/test_consult.py::TestRubricLookup::test_matches_criterion_by_code \
+  -q
+```
+
+### Blast radius
+
+- **Red/green needs AST-1881 on the tree.** This ref is ftr-based and doesn't carry AST-1881's product change until merge-child rolls it in (AST-1881 before AST-1882). On this tip alone, every new test and the revised registry test are red, which is the expected pre-fix state. The green check (test-fix) needs `origin/sub/AST-1876/AST-1881-prefilter-rc-default-vector` merged first.
+- **UAT twin fixture (out of scope, pre-existing red):** `TestAst1333CraftParseHighlightsPrompts::test_uat_fixture_agent_task_twin_matches_catalog` and `TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits` compare `data/admin/agent_task.json` byte-for-byte to `docs/uat-fixtures/AST-756/expected-agent_task.json`. Both already fail on `origin/dev` because the twin drifted on `stage_meteorite`. AST-1881 adds a second difference (`prefilter_company`). That fixture isn't in AST-1882's scope and the tests aren't made newly red by this fix, so it's left alone. Re-syncing the twin is a follow-up for Susan/Chuckles to file if wanted.
+- **Doc merge:** AST-1881's and AST-1882's `## Bug:` blocks both append at this doc's end on separate refs. Expect a trivial end-of-file conflict at merge-child; resolve it by keeping both blocks, AST-1881 first.
+- The new tests only monkeypatch `candidate_mod.database` / `asyncio` / `compute_batch_cost`, same as AST-1085. No shared DB state.
+
+### What must still hold
+
+- AST-1085 QC/GC tests are untouched and green.
+- `TestAst723RubricVectorsCutover::test_prefilter_merges_embedded_rc_from_table`, `TestAst707EmbeddedRcBatchHydration` and `TestRubricLookup::test_matches_criterion_by_code` are unchanged and green (label `Reality Check` and code `RC` are unchanged).
+- No product files in this ticket. No test weakens the AST-1513 duplicate-code guard.
