@@ -47,7 +47,7 @@ from src.utils.config import (
     validate_source_entity_type,
     validate_value,
 )
-from src.utils.logging import get_logger, truncate_debug_content
+from src.utils.logging import get_logger, log_batch_id, truncate_debug_content
 from src.utils.formatting import _strip_json_markdown_fences, parse_text
 
 logger = get_logger(__name__)
@@ -1413,6 +1413,18 @@ def persist_skipped_job_edits(astral_job_id: str, fields: Dict[str, Any]) -> Dic
     return out
 
 
+def _stamp_run_id(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Add run_id = the active run's audit id (log_batch_id) to a job state_history entry (AST-1864).
+
+    Chained hops set log_batch_id to their own hop ledger id, so run_id can differ from the
+    claim batch_id. No active run (operator/API transition) -> key left absent, never None/"".
+    """
+    run_id = log_batch_id.get()
+    if run_id:
+        entry["run_id"] = run_id
+    return entry
+
+
 def write_job_dispatch_hop_label(job_id: str, trigger_state: str, completed_task_key: str) -> str:
     """Write runtime dispatch hop label to job.state (not a JOB_STATES registry key)."""
     label = dispatch_hop_label(trigger_state, completed_task_key)
@@ -1421,11 +1433,11 @@ def write_job_dispatch_hop_label(job_id: str, trigger_state: str, completed_task
         raise ValueError(f"Job not found: {job_id}")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     history = job.get("state_history", [])
-    history.append({
+    history.append(_stamp_run_id({
         "to_state": label,
         "timestamp": now,
         "batch_id": job.get("batch_id"),
-    })
+    }))
     database.save_job(job_id, state=label, state_history=history, state_changed_at=now)
     return label
 
@@ -1457,6 +1469,7 @@ def transition_job_state(
 ) -> None:
     """Record state transition for jobs (AST-77). Appends to state_history; updates state.
     score: when provided, recorded in the state_history entry and written to latest_score column (AST-350).
+    run_id: stamped from log_batch_id when a run is active; absent otherwise (AST-1864).
     Validates to_state against JOB_STATES and prior_states rules. Raises ValueError if invalid.
     enforce_prior_states=False skips the prior_states check (skipped-job operator edit only)."""
     # Implicit {base}_RETRY validates via its base (AST-1805); message kept for callers/tests.
@@ -1471,7 +1484,7 @@ def transition_job_state(
         if enforce_prior_states and not _job_state_matches_prior(job.get("state") or "", prior_states):
             raise ValueError(f"Invalid transition: {job.get('state')} -> {to_state}")
         history = job.get("state_history", [])
-        entry: Dict[str, Any] = {"to_state": to_state, "timestamp": now, "batch_id": job.get("batch_id")}
+        entry: Dict[str, Any] = _stamp_run_id({"to_state": to_state, "timestamp": now, "batch_id": job.get("batch_id")})
         if score is not None:
             entry["score"] = score
         history.append(entry)

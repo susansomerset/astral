@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react"
 import Modal from "./Modal"
 import SideTabPanel, { type SideTab } from "./SideTabPanel"
-import StateTimeline from "./StateTimeline"
+import StateTimeline, { type StateEntry } from "./StateTimeline"
 import AgentStoryTab, { type AgentStoryEntry } from "./AgentStoryTab"
+import BatchExecutionModal from "./BatchExecutionModal"
 import Time from "./Time"
 import api from "../lib/api"
 import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
+import { useAuth } from "../contexts/AuthContext"
 import { useStateUi } from "../contexts/StateUiContext"
 
 /** Navigable listing URL only — mirrors AST-1694 http(s) rule; non-http → null. */
@@ -25,7 +27,7 @@ interface JobDetail {
   state: string
   state_changed_at: string | null
   created_at: string | null
-  state_history?: Array<{ to_state?: string; timestamp?: string }>
+  state_history?: StateEntry[]
   job_data?: Record<string, unknown>
   agent_story?: AgentStoryEntry[]
   fields_editable?: boolean
@@ -66,6 +68,8 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
   const [baseline, setBaseline] = useState<FieldDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const { isAdmin } = useAuth()
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!jobId) return
@@ -86,7 +90,7 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
   }, [jobId])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { setSnapshotCopied(false) }, [jobId])
+  useEffect(() => { setSnapshotCopied(false); setSelectedRunId(null) }, [jobId])
 
   const fieldsEditable = Boolean(job?.fields_editable)
   const isDraftDirty = Boolean(
@@ -198,6 +202,7 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
           onCopy={handleCopySnapshot}
           copied={snapshotCopied}
           copying={snapshotCopying}
+          onSelectRun={isAdmin ? setSelectedRunId : undefined}
         />
       )
     }
@@ -230,23 +235,27 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
   }
 
   return (
-    <Modal
-      open={!!jobId}
-      onClose={onClose}
-      title={job?.job_title || job?.company || "Job Detail"}
-      size="wide"
-      dirty={isDraftDirty}
-      onSave={fieldsEditable ? () => { void handleSave() } : undefined}
-    >
-      {loading && <p className="entity-loading">Loading…</p>}
-      {job && (
-        <SideTabPanel
-          tabs={sideTabs}
-          renderContent={renderSideContent}
-        />
-      )}
-      {!loading && !job && jobId && <p className="entity-error">Job not found.</p>}
-    </Modal>
+    <>
+      <Modal
+        open={!!jobId}
+        onClose={onClose}
+        title={job?.job_title || job?.company || "Job Detail"}
+        size="wide"
+        dirty={isDraftDirty}
+        onSave={fieldsEditable ? () => { void handleSave() } : undefined}
+      >
+        {loading && <p className="entity-loading">Loading…</p>}
+        {job && (
+          <SideTabPanel
+            tabs={sideTabs}
+            renderContent={renderSideContent}
+          />
+        )}
+        {!loading && !job && jobId && <p className="entity-error">Job not found.</p>}
+      </Modal>
+      {/* Sibling, not child: portal events bubble along the React tree into the job Modal's dirty detector */}
+      <BatchExecutionModal runId={selectedRunId} onClose={() => setSelectedRunId(null)} />
+    </>
   )
 }
 
@@ -263,6 +272,7 @@ function InfoTab({
   onCopy,
   copied,
   copying,
+  onSelectRun,
 }: {
   job: JobDetail | null
   fieldsEditable: boolean
@@ -275,6 +285,7 @@ function InfoTab({
   onCopy: () => void
   copied: boolean
   copying: boolean
+  onSelectRun?: (runId: string) => void
 }) {
   const { manifest, loadState } = useStateUi()
   if (!job) return null
@@ -395,7 +406,7 @@ function InfoTab({
         {/* Right column: state history */}
         <div className="entity-summary-col">
           <p className="entity-section-label">State History</p>
-          <StateTimeline history={job.state_history || []} />
+          <StateTimeline history={job.state_history || []} onSelectRun={onSelectRun} />
         </div>
       </div>
     </div>

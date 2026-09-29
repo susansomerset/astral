@@ -1648,3 +1648,46 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Bible shasum (after publish):** fill — `git show origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips:docs/test-bible/frontend/components.md | shasum`
+
+---
+
+### AST-1865 · AST-1853 (clickable job state history opens the run)
+
+**Parent:** [AST-1853 — Execution History for job modals](https://linear.app/astralcareermatch/issue/AST-1853). **Publish:** `origin/sub/AST-1853/AST-1865-clickable-job-state-history-opens-run`. Reads sibling **AST-1864**'s `run_id` (`docs/test-bible/core/tracker.md` § AST-1864), falling back to `batch_id`.
+
+`StateTimeline` rows are clickable (`role="button"`, `title="Open run <id>"`, Enter/Space) only when `onSelectRun` is passed **and** the row resolves `run_id || batch_id`. `JobDetailModal` passes it only when `useAuth().isAdmin`, and stacks `BatchExecutionModal` (reused `BatchAgentDataPanes` + new shared `BatchLogViewer`). `AdminPerformanceMonitor`'s private `LogViewer` moved to `BatchLogViewer` (routed page §6c satisfied by the unedited page suite).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC4 admin click `run_id` row → `/api/admin/dispatch_ledger/R/logs` + `/api/agent_data/R`, log + block rendered; claim `batch_id` never opened | `JobDetailModal.tsx`, `BatchExecutionModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`AST-1865 … AC4`** |
+| AC5 non-admin → no clickable rows, zero `/api/admin/` calls (asserted after `/api/me` settles) | `JobDetailModal.tsx` | **`… AC5`** |
+| AC6 `batch_id`-only row opens `B`; neither → inert | `StateTimeline.tsx`, `JobDetailModal.tsx` | **`… AC6`**; **`test_StateTimeline.test.tsx`** — **`StateTimeline — AST-1865 run selection`** (no-callback inert, run_id > batch_id, keyboard) |
+| AC8 Execution History unchanged | `AdminPerformanceMonitor.tsx`, `BatchLogViewer.tsx` | **`test_AdminPerformanceMonitor.test.tsx`** (unedited) |
+| AC9 Company modal unchanged / not clickable | `CompanyDetailModal.tsx` (no `onSelectRun`) | **`test_CompanyDetailModal.test.tsx`** (unedited) |
+| Panes reuse regression | `BatchAgentDataModal.tsx` | **`test_BatchAgentDataModal.test.tsx`** (unedited) |
+
+**Broken / obsolete (revised this pass):** `test_StateTimeline.test.tsx` `lib/api` mock lacked `setAuthTokenGetter` / `setUnauthorizedHandler` (AuthProvider setup) — both existing cases were red before this ticket; stubs added. **Pre-existing red, not this ticket:** `JobDetailModal — AST-1695 listing_href > read-only: null listing_href → no Link <a> even when job_link is http(s)` (identical on the pre-AST-1865 tree; follows `origin/dev` `82fcbd6c` null-`job_link` change) — excluded by name below, not revised here.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **AC4–AC6, AC8, AC9 + regressions (Vitest):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_StateTimeline.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx \
+  ../../../tests/component/frontend/components/test_CompanyDetailModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  --testNamePattern='^(?!.*null listing_href)'
+```
+
+2. **AC7 (one log viewer):** `grep -rn "dispatch-log-table" src/ui/frontend/src --include=*.tsx` → only `components/BatchLogViewer.tsx`; `grep -n "function LogViewer" src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` → nothing.
+3. **AC8 / AC9 unedited:** `git diff origin/dev...HEAD -- tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx tests/component/frontend/components/test_CompanyDetailModal.test.tsx` empty.
+4. **AC10:** `git diff origin/dev...origin/sub/AST-1853/AST-1865-clickable-job-state-history-opens-run -- src/ui/api/ src/data/` empty.
+
+**Pass criterion:** item 1 all green (52 pass, 1 name-skipped) + items 2–4 hold — narrowed run, not zero-arg harness.
+
+**Bible shasum (after publish):** fill — `git show origin/sub/AST-1853/AST-1865-clickable-job-state-history-opens-run:docs/test-bible/frontend/components.md | shasum`
