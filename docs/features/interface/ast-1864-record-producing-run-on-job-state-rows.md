@@ -166,3 +166,15 @@ AC1→Stage 1 (`transition_job_state` + `log_batch_id`); AC2→Stage 1 (`write_j
 **acceptable** — Code-facts block (dispatcher `log_batch_id`, hop ledger open/close ordering, API skip paths) matches current `agent.py` / `tracker.py` on this worktree; chained graduation and hop-failure transitions run before `log_batch_id` clear.
 
 context_tokens≈28000
+
+## Review
+
+- **Code commit:** `23d6145d` on `origin/sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows`
+- **Diff:** `src/core/tracker.py` only (+17 / −4). `git diff origin/dev -- src/ui/api/ src/data/` empty.
+- **Built as planned:** Stage 1 steps 1–8, no deviation.
+- **Compile:** `python3 -m py_compile src/core/tracker.py` OK (no `.ts`/`.tsx` changed; no Python linter configured in repo).
+- **Existing tests (read-only run):** `tests/component/core/test_tracker.py` → 135 passed, 20 failed. The same 20 fail on the pre-change tree
+  (identical `FAILED` list): `TestAst562ArtifactBuildTransitions` ×6, `TestAst551StructureAlignedResumeChain` ×3,
+  `TestAst733InitializeJobCollision` ×3, `TestGetJobData` ×3, `TestAst1693SaveMeteoriteDuplicateLinkBackfill` ×2,
+  `TestAst1523NotesMetadataRetention`, `TestAst552BuildArtifactsGate`, `TestAst997ExperienceJobArrayPersist`. Not caused by this change.
+- **Sub-log pre-check:** `validate-sub-log.sh --stage=build … ftr/AST-1853-execution-history-for-job-modals` → ok.
