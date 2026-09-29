@@ -4448,3 +4448,5 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 | Fixture re-pin | `tests/component/utils/fixtures/ast1806_prior_snapshot.json` | `COMPANY_STATES["WEBSITE_FOUND_RETRY"]` → `["WEBSITE_FOUND","WEBSITE_FOUND_RETRY"]` |
 
 **Integration:** none.
+
+**AST-1872 (pointer):** `JOBS_RECOMMENDED_REPORT_TOP_TABS` is Analysis-first (first entry = default tab); `PHASE_SCORE_HEADER_TITLE_TEMPLATE` gains ` - {score}` — revised `TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`, `TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`; extended `TestAst1348PhaseScoreHeaderTitleConfig`. Manifest: **`docs/test-bible/core/tracker.md`** § AST-1872.

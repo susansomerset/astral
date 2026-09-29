@@ -2639,3 +2639,106 @@ class TestAst1693SaveMeteoriteDuplicateLinkBackfill:
                                              job_title="Ignored", job_link="https://jobs.example.test/other")
         assert out["outcome"] == METEORITE_CONFIG["land_outcome_duplicate_skip"]
         assert db.get_job("existing-1693-keep")["job_link"] == kept
+
+
+# Branches: _stamp_run_id — log_batch_id truthy (stamp) vs None/"" (key absent); both appenders.
+class TestAst1864RunIdStamp:
+    """AST-1864: job state_history entries carry run_id = active log_batch_id; absent with no run."""
+
+    @staticmethod
+    def _last_entry(monkeypatch: pytest.MonkeyPatch, write, *, run_ctx, batch_id: str, state: str) -> Dict[str, Any]:
+        from src.utils.logging import log_batch_id
+
+        saves: List[Dict[str, Any]] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "get_job",
+            lambda jid: {"state": state, "state_history": [], "batch_id": batch_id},
+        )
+        monkeypatch.setattr(tracker_mod.database, "save_job", lambda jid, **kw: saves.append(kw))
+        # Set/reset the context var around the write so no run context leaks into other tests.
+        token = log_batch_id.set(run_ctx)
+        try:
+            write()
+        finally:
+            log_batch_id.reset(token)
+        return saves[-1]["state_history"][-1]
+
+    def test_single_hop_transition_stamps_dispatch_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC1: single-hop dispatch — run context and claim batch_id are the same id.
+        entry = self._last_entry(
+            monkeypatch,
+            lambda: tracker_mod.transition_job_state(["job-1864"], "VALID_TITLE"),
+            run_ctx="batch-X", batch_id="batch-X", state="NEW",
+        )
+        assert entry["run_id"] == "batch-X"
+        assert entry["batch_id"] == "batch-X"
+
+    def test_chained_hop_label_stamps_hop_id_not_claim(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC2: per-hop BUILD_ARTIFACTS.<hop> row — run_id is the hop ledger id, batch_id stays the claim.
+        entry = self._last_entry(
+            monkeypatch,
+            lambda: tracker_mod.write_job_dispatch_hop_label(
+                "job-1864", cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan",
+            ),
+            run_ctx="anticipate_scan-hop-H", batch_id="claim-C", state=cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+        assert entry["run_id"] == "anticipate_scan-hop-H"
+        assert entry["batch_id"] == "claim-C"
+
+    def test_chained_transition_stamps_hop_id_not_claim(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC2: graduation / chain-error rows go through transition_job_state inside the hop context.
+        entry = self._last_entry(
+            monkeypatch,
+            lambda: tracker_mod.transition_job_state(["job-1864"], "VALID_TITLE"),
+            run_ctx="finalize-hop-H", batch_id="claim-C", state="NEW",
+        )
+        assert entry["run_id"] == "finalize-hop-H"
+        assert entry["batch_id"] == "claim-C"
+
+    @pytest.mark.parametrize("run_ctx", [None, ""])
+    def test_no_run_context_leaves_key_absent(self, monkeypatch: pytest.MonkeyPatch, run_ctx) -> None:
+        # AC3: operator/API transitions (e.g. skip) — key absent, never present as None/"".
+        # Modal clickability is the frontend sibling's AC, not asserted here.
+        transition = self._last_entry(
+            monkeypatch,
+            lambda: tracker_mod.transition_job_state(["job-1864"], "VALID_TITLE"),
+            run_ctx=run_ctx, batch_id="claim-C", state="NEW",
+        )
+        hop = self._last_entry(
+            monkeypatch,
+            lambda: tracker_mod.write_job_dispatch_hop_label(
+                "job-1864", cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan",
+            ),
+            run_ctx=run_ctx, batch_id="claim-C", state=cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+        assert "run_id" not in transition
+        assert "run_id" not in hop
+        assert transition["batch_id"] == hop["batch_id"] == "claim-C"
+
+
+# Branches: job_state_admits_transition (AST-1872) — exact / hop sub-state / non-hop suffix /
+# not-a-prior / blank state admitted via _job_state_matches_prior; unregistered target raises.
+class TestAst1872JobStateAdmitsTransition:
+    """AST-1872: public prior-state query backing GET /api/jobs/<id> can_skip."""
+
+    @pytest.mark.parametrize(
+        "state",
+        ["RECOMMENDED", "CANDIDATE_REVIEW", cfg.BUILD_ARTIFACTS_BASE_STATE,
+         f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.draft_job_resume"],
+    )
+    def test_skip_admitted(self, state: str) -> None:
+        assert tracker_mod.job_state_admits_transition(state, "CANDIDATE_SKIPPED") is True
+
+    @pytest.mark.parametrize(
+        "state",
+        # BUILD_ARTIFACTS.resume: suffix is not a TASK_CONFIG hop key, so no base-state resolve.
+        ["CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.resume", "", None],
+    )
+    def test_skip_refused(self, state) -> None:
+        assert tracker_mod.job_state_admits_transition(state, "CANDIDATE_SKIPPED") is False
+
+    def test_unregistered_target_fails_loud(self) -> None:
+        # Config typo must surface, not silently hide Skip.
+        with pytest.raises(KeyError):
+            tracker_mod.job_state_admits_transition("RECOMMENDED", "NOT_A_JOB_STATE")

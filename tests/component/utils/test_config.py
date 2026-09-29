@@ -68,6 +68,10 @@ class TestAst1348PhaseScoreHeaderTitleConfig:
         assert "{max}" in cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
         rec = cfg.build_state_ui_manifest()["jobs"]["recommended"]
         assert rec["phase_score_header_title_template"] == cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        # AST-1872: exact text — UI drops the literal " - {score}" segment as one unit when absent.
+        assert cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE == (
+            "{phase_label} - {score} - score: {earned} out of {possible} possible ({max} max total)"
+        )
         # Base phase nav labels unchanged
         assert [p["nav_label"] for p in rec["report_phase_tabs"]] == [
             "JD Analysis",
@@ -559,20 +563,20 @@ class TestBuildStateUiManifest:
 
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
         # AST-948 / AST-1550: report_top_tabs + report_summary_sections;
-        # Discussion follows Artifacts (AST-1550).
+        # Discussion follows Artifacts (AST-1550). AST-1872: Analysis first (default tab).
         manifest = cfg.build_state_ui_manifest()
         rec = manifest["jobs"]["recommended"]
         assert "report_fixed_tabs" not in rec
         assert [t["tab_id"] for t in rec["report_top_tabs"]] == [
-            "summary",
             "analysis",
+            "summary",
             "artifacts",
             "discussion",
             "meteorite",
         ]
         assert [t["nav_label"] for t in rec["report_top_tabs"]] == [
-            "Summary",
             "Analysis",
+            "Summary",
             "Artifacts",
             "Discussion",
             "Meteorite",
@@ -5492,10 +5496,11 @@ class TestAst1550DiscussionHopKeys:
     """AST-1550: Discussion top tab + live run_next hop walk for section order."""
 
     def test_top_tabs_discussion_after_artifacts(self) -> None:
+        # AST-1872: Analysis leads; Discussion still follows Artifacts.
         tabs = cfg.JOBS_RECOMMENDED_REPORT_TOP_TABS
         assert [t["tab_id"] for t in tabs] == [
-            "summary",
             "analysis",
+            "summary",
             "artifacts",
             "discussion",
             "meteorite",
