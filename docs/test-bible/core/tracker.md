@@ -705,3 +705,38 @@ Gazed `ingest_jobs` writes `source=company`, `source_entity_id` + `company_id` t
   tests/component/core/test_tracker.py::TestTransitionJobState::test_ast1807_rejects_unregistered_base_retry \
   -q
 ```
+
+### AST-1864 · AST-1853 (run_id on job state_history)
+
+**Parent:** [AST-1853 — Execution History for job modals](https://linear.app/astralcareermatch/issue/AST-1853). **Publish:** `origin/sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows`. Product: private `_stamp_run_id` adds `run_id` = active `log_batch_id` to entries appended by `transition_job_state` and `write_job_dispatch_hop_label`; `batch_id` unchanged; no run context (`None` / `""`) → key **absent**. Modal clickability (AC3 tail) belongs to the frontend sibling — not asserted here.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1 single-hop: run ctx `X` = claim `X` → `run_id == X` | `src/core/tracker.py` `transition_job_state` | **`TestAst1864RunIdStamp::test_single_hop_transition_stamps_dispatch_batch`** |
+| AC2 chained hop row: `run_id == H`, `batch_id == C` | same `write_job_dispatch_hop_label` | **`…::test_chained_hop_label_stamps_hop_id_not_claim`** |
+| AC2 graduation / chain-error row inside hop ctx | same `transition_job_state` | **`…::test_chained_transition_stamps_hop_id_not_claim`** |
+| AC3 no run ctx (`None`, `""`) → no `run_id` key, both appenders | same `_stamp_run_id` false branch | **`…::test_no_run_context_leaves_key_absent[None]`**, **`…[]`** |
+| Regression (partial-key asserts unchanged) | same | **`TestTransitionJobState`**, **`TestAst848DispatchChainTracker`** |
+
+**Broken / obsolete:** none. **Pre-existing reds (not this ticket):** 17 `test_tracker.py` failures identical with `src/core/tracker.py` at `origin/dev` (`TestAst733InitializeJobCollision` ×3, `TestAst551StructureAlignedResumeChain` ×3, `TestAst552BuildArtifactsGate` ×1, `TestAst562ArtifactBuildTransitions` ×6, `TestAst997ExperienceJobArrayPersist` ×1, `TestAst1523NotesMetadataRetention` ×1, `TestAst1693SaveMeteoriteDuplicateLinkBackfill` ×2) — manifest is narrowed so they do not gate this child.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **AC1–AC3 + regression (pytest):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1864RunIdStamp \
+  tests/component/core/test_tracker.py::TestTransitionJobState \
+  tests/component/core/test_tracker.py::TestAst848DispatchChainTracker \
+  -q
+```
+
+2. **AC4 (no API / schema change):** `git diff origin/dev...origin/sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows -- src/ui/api/ src/data/` is empty.
+
+**Pass criterion:** item 1 green + item 2 empty — narrowed run, not zero-arg harness / branch-lock gate (pre-existing reds above).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/tracker.md` — *(filled after publish)*
