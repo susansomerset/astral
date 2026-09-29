@@ -217,3 +217,69 @@ context_tokens≈24000
 | Branch | `sub/AST-1862/AST-1872-config-tab-order-score-template-skip-flag` |
 | Build tip | `720a7a60dfbbcdf3131ffbe51c55385e62dfc1ac` |
 | Status | Code Complete |
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1872
+**Publish ref:** 938dc37de79db55403526a988c3e8514cd895f90
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51 · `canon_clerk.py expand` still rejects all four frozen ids (statute files under `canon/statutes/` scored directly; same clerk gap Joan noted at validate-plan)
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.config.config-source-of-truth | A | | |
+| astral.state.core-decides-transitions | A | | |
+| astral.layers.ui-config-driven-business-logic | A | | |
+| astral.idioms.require-auth-on-protected-endpoints | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan APPROVED all four at A; code on `f0cd0de5` / `720a7a60` matches plan Stages 1–2.
+
+## Frame diff
+
+- [ ] **Acceptance criteria 1:** Proof for “Analysis first and default” is config manifest + `tests/component/utils/test_config.py` (`test_ast565_recommended_report_manifest_tabs`), not `test_JobAnalysisReportModal` (no UI on this child; #3 owns modal default/tab bar).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Branch tip vs `origin/dev` (integration)** · `git diff origin/dev origin/sub/AST-1862/AST-1872-config-tab-order-score-template-skip-flag` drops recent `origin/dev` work in `src/core/dispatcher.py`, `src/core/monitor.py`, and `src/core/roster.py` (e.g. AST-1867 provider balance-outage handling on dispatcher). AST-1872 commits did not touch those files; `5ee6d34b` resync + epic merge-base history left the sub tip behind dev on those paths. · **Default:** Before `merge-child` rolls this sub into `ftr/AST-1862`, merge `origin/dev` into the publish ref and re-run the AST-1872 test manifest so ftr does not regress shipped dev fixes.
+
+- **Description AC1 vs boundaries** · Linear AC1 still names modal default/tab order in `test_JobAnalysisReportModal`; plan Boundaries and Stage 1 confine this ticket to `config.py` + server flag. Betty’s `46902d66` covers AC1 via config/manifest tests only (appropriate). · **Default:** `resolve-child` §10 ticks AC1 using config component proof; defer modal AC1 to blocked child #3.
+
+### advisory
+
+- **sibling test carry:** `938dc37d merge-tests(AST-1872)` / `46902d66` — `tests/component/core/test_tracker.py`, `tests/component/ui/api/test_api_jobs.py`, `tests/component/utils/test_config.py`, `docs/test-bible/{core/tracker,ui/api/api_jobs,utils/config}.md`; plus unrelated plan-doc bulk from resync/merge-tests in the three-dot stat (not AST-1872 product scope).
+
+- **Three-dot diff noise:** `origin/dev...origin/sub/…` warns *multiple merge bases* and lists many `src/**` paths (e.g. `src/data/database.py` PRAGMA) that are **byte-identical** on `origin/dev` and sub tip; tip-vs-tip product delta for this child is `src/utils/config.py` (tab order + `{score}` template only in AST-1872 commits), `src/core/tracker.py` (`job_state_admits_transition`), `src/ui/api/api_jobs.py` (`can_skip` on `detail()`). Use two-dot or AST-1872 commit range when auditing scope, not three-dot alone.
+
+- **Canon clerk:** Frozen ids remain off `canon_clerk.py` roster; reproducible expand still blocked until clerk migration (AST-1678 pattern).
+
+- **Integration timing:** Literal `{score}` in headers until #3 updates `formatPhaseSectionScoreTitle` — accepted in plan; not a defect on this ticket.
+
+## What's solid
+
+- Stage 1 constants match plan verbatim (`JOBS_RECOMMENDED_REPORT_TOP_TABS` analysis-first; `PHASE_SCORE_HEADER_TITLE_TEMPLATE` with ` - {score} - ` segment).
+- `job_state_admits_transition` is a thin public wrapper over `_job_state_matches_prior` + `state_prior_states(JOB_STATES, to_state)` — same gate as `transition_job_state` / `skip_job` → `"CANDIDATE_SKIPPED"`.
+- `detail()` keeps `@require_auth`; route count remains 15; `src/data/**` and `Modal.tsx` unchanged tip-vs-tip (AC3 schema/no-UI boundary holds on publish tip).
+- Betty tests parametrize admitted/refused states, hop vs non-hop suffix (`BUILD_ARTIFACTS.draft_job_resume` vs `.resume`), KeyError on bad target, and integration-style `can_skip` on the detail route without mocking the core rule.
+
+## Recommended actions (downstream — not for Radia)
+
+1. Chuckles: merge `origin/dev` into `origin/sub/AST-1862/AST-1872-config-tab-order-score-template-skip-flag` and re-verify green before ftr merge (dispatcher regression).
+2. Chuckles: append this artifact to `docs/features/interface/ast-1872-config-tab-order-score-template-skip-flag.md`, commit `docs(AST-1872): Radia review — clean`, post slim upshot, move to Review Posted.
+3. Optional: align Linear AC1 wording with config-test proof (frame diff above) so UAT does not expect modal tests on AST-1872.
+
+```
+[code-rubric] PROCEED (Commit: 938dc37) Core-owned can_skip, config tabs
+```
+
+context_tokens≈58000
