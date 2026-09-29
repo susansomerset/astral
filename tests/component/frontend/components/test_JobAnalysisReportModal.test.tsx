@@ -167,11 +167,12 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     await waitFor(() => expect(btn).not.toHaveClass("in-flight"))
   })
 
-  it("sticky header: deeplinked title + company, copy controls, no Apply button", async () => {
+  it("sticky header: plain title + listing line + company link, copy controls, no Apply button", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j948"))
     renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)
     await waitForShell()
-    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute("href", "https://jobs.example/apply")
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "https://jobs.example/apply" })).toHaveAttribute("href", "https://jobs.example/apply")
     expect(screen.getByRole("link", { name: "Globex" })).toHaveAttribute("href", "https://globex.example")
     expect(screen.getByRole("button", { name: "Copy Application Email" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Copy LinkedIn Profile" })).toBeInTheDocument()
@@ -297,13 +298,14 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.queryByRole("button", { name: "Print Cover Letter" })).not.toBeInTheDocument()
   })
 
-  it("job title deeplink uses listing_href for CANDIDATE_REVIEW (Apply filtered from Artifacts)", async () => {
+  it("job-link line uses listing_href for CANDIDATE_REVIEW (Apply filtered from Artifacts)", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j-ready", { state: "CANDIDATE_REVIEW" }))
     renderWithProviders(<JobAnalysisReportModal jobId="j-ready" onClose={() => {}} />)
     await waitForShell()
-    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute("href", "https://jobs.example/apply")
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "https://jobs.example/apply" })).toHaveAttribute("href", "https://jobs.example/apply")
     expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
-    // Apply filtered from Artifacts strip — navigable open is title link + CLIENT handler
+    // Apply filtered from Artifacts strip — navigable open is the job-link line (AST-1873) + CLIENT handler
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
     expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
@@ -1194,7 +1196,7 @@ describe("JobAnalysisReportModal — AST-1421 snapshot Copy", () => {
     installBaseApiMocks(mockedApi, jobHandler("j1421"))
     renderWithProviders(<JobAnalysisReportModal jobId="j1421" onClose={() => {}} />)
     await waitForShell()
-    const copyBtn = screen.getByRole("button", { name: /^Copy$/ })
+    const copyBtn = screen.getByRole("button", { name: "Copy Job JSON" })
     expect(screen.getByRole("button", { name: "Copy Application Email" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Copy LinkedIn Profile" })).toBeInTheDocument()
     await userEvent.click(copyBtn)
@@ -1202,7 +1204,7 @@ describe("JobAnalysisReportModal — AST-1421 snapshot Copy", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /^Copied$/ })).toBeInTheDocument())
     expect(document.querySelector(".recommended-report-copy-feedback")).toBeNull()
     await waitFor(
-      () => expect(screen.getByRole("button", { name: /^Copy$/ })).toBeInTheDocument(),
+      () => expect(screen.getByRole("button", { name: "Copy Job JSON" })).toBeInTheDocument(),
       { timeout: 3000 },
     )
   })
@@ -1222,12 +1224,12 @@ describe("JobAnalysisReportModal — AST-1696 Copy Link", () => {
     renderWithProviders(<JobAnalysisReportModal jobId="j1696" onClose={() => {}} />)
     await waitForShell()
     const links = document.querySelector(".recommended-report-links") as HTMLElement
-    expect(within(links).getByRole("button", { name: "Copy Link" })).toHaveClass("btn", "secondary")
-    expect(within(links).getByRole("button", { name: /^Copy$/ })).toBeInTheDocument()
+    expect(within(links).getByRole("button", { name: "Copy Job Link" })).toHaveClass("btn", "secondary")
+    expect(within(links).getByRole("button", { name: "Copy Job JSON" })).toBeInTheDocument()
     expect(within(links).getByRole("button", { name: "Copy Application Email" })).toBeInTheDocument()
     expect(within(links).getByRole("button", { name: "Copy LinkedIn Profile" })).toBeInTheDocument()
 
-    await userEvent.click(within(links).getByRole("button", { name: "Copy Link" }))
+    await userEvent.click(within(links).getByRole("button", { name: "Copy Job Link" }))
     await waitFor(() =>
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
         `${window.location.origin}/jobs/detail/j1696`,
@@ -1238,7 +1240,7 @@ describe("JobAnalysisReportModal — AST-1696 Copy Link", () => {
     )
     expect(document.querySelector(".recommended-report-copy-feedback")).toBeNull()
     await waitFor(
-      () => expect(within(links).getByRole("button", { name: "Copy Link" })).toBeInTheDocument(),
+      () => expect(within(links).getByRole("button", { name: "Copy Job Link" })).toBeInTheDocument(),
       { timeout: 3000 },
     )
   })
@@ -1425,7 +1427,7 @@ describe("JobAnalysisReportModal — AST-1599 no Source base resume on Artifacts
 describe("JobAnalysisReportModal — AST-1695 listing_href title", () => {
   beforeEach(() => mockedApi.mockReset())
 
-  it("title <a> uses listing_href; raw job_link alone is not navigable", async () => {
+  it("job-link line <a> uses listing_href; raw job_link alone is not navigable", async () => {
     installBaseApiMocks(
       mockedApi,
       jobHandler("j1695-a", {
@@ -1435,7 +1437,9 @@ describe("JobAnalysisReportModal — AST-1695 listing_href title", () => {
     )
     renderWithProviders(<JobAnalysisReportModal jobId="j1695-a" onClose={() => {}} />)
     await waitForShell()
-    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute(
+    // AST-1873: title plain; listing_href is the job-link line href
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "https://jobs.example/listing" })).toHaveAttribute(
       "href",
       "https://jobs.example/listing",
     )
