@@ -9,11 +9,10 @@ This ticket introduces the *Model → server catalog routing* pattern in config 
 
 ## Scope gate
 
-Every row in **Files Changed** is named in this ticket's `## Scope`. One Scope item is **not planned here**:
+Every row in **Files Changed** is named in this ticket's amended `## Scope` (AST-1883, approved by Susan), and every stage is the kind of change that Scope describes.
 
-- **"agent model field in repo-admin columns"** (`REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]`). `_validate_agent_repo_json_rows` (`src/data/database.py`) requires every `data/admin/agent.json` row's keys to equal that tuple exactly, and `fetch_agent_repo_json_export_rows` `SELECT`s those columns from the `agent` table. The DB column and the `agent.json` model values are #2's scope (database.py / agent.json), and #2's Technical scope also chooses which column holds the model id. Adding the name here makes Revert-to-file raise on every row and breaks export on this `sub/*`, which violates "each child must stay green on its own `sub/*`". Filed as `[scope-gate]` on AST-1877 asking Chuckles to move this one line to #2.
-
-**Integration note (not planned here; for Chuckles):** `cost_calculator.py` keeps `deepseek_usage_to_token_counts`, `calculate_cost_components_deepseek_from_counts`, and `calculate_cost_components_deepseek` as thin catalog-backed wrappers, because `src/external/deepseek.py` (deleted by #4) and `src/data/database.py` (`backfill_deepseek_agent_timesheet_costs`, #2) still import them. Parent AC 2 (`rg -i deepseek src/ --glob '!src/utils/config.py'`) will hit those names until someone deletes them, and no child after #1 has `cost_calculator.py` in Scope. The same `[scope-gate]` comment raises this.
+- **Repo-admin agent model column:** moved to #2 (AST-1878). Its Scope now carries the one `REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]` edit. Nothing in this plan touches `REPO_ADMIN_JSON_CONFIG`.
+- **DeepSeek-named cost wrappers:** `cost_calculator.py` keeps `deepseek_usage_to_token_counts`, `calculate_cost_components_deepseek_from_counts`, and `calculate_cost_components_deepseek` as catalog-backed wrappers so `src/external/deepseek.py` and `database.backfill_deepseek_agent_timesheet_costs` stay green. #2 switches the backfill to `calculate_cost_components_from_counts` (added in Stage 3), and #4 (AST-1880) deletes the wrappers.
 
 ## Files Changed (planned)
 
@@ -33,7 +32,7 @@ No other file is touched. No DB, core, UI, `data/admin/`, `tests/`, or bible edi
 
 **Done when:** `python -c "from src.utils.config import LLM_SERVER_CONFIG, LLM_MODEL_CONFIG, resolve_model_brain; print(resolve_model_brain('kimi-k2.6','Big')['sku'])"` prints `kimi-k2.6`, `model_brain_sizes('kimi-k2.6')` is `('Little', 'Big')`, `model_brain_sizes('claude')` / `('deepseek-v4')` are `('Little', 'Medium', 'Big')`, and every existing import from `src.utils.config` still works.
 
-1. In `src/utils/config.py`, immediately **after** the closing `}` of `LLM_PROVIDER_CONFIG` (currently line 5065, before the `# PROVIDER_BALANCE_REFUSAL` comment), insert a section header comment and `LLM_SERVER_CONFIG`:
+1. In `src/utils/config.py`, immediately **after** the closing `}` of `LLM_PROVIDER_CONFIG` (currently line 5079, before the `# PROVIDER_BALANCE_REFUSAL` comment), insert a section header comment and `LLM_SERVER_CONFIG`:
 
    ```python
    # ---------------------------------------------------------------------------
@@ -100,7 +99,7 @@ No other file is touched. No DB, core, UI, `data/admin/`, `tests/`, or bible edi
 
    ⚠️ **Decision (concurrency — Susan's recommended default, she did not override):** only `deepseek` carries a `concurrency` block, holding today's `DEEPSEEK_CONCURRENCY` values verbatim. `kimi` / `openrouter` get `None`, meaning no in-flight cap and no 429 retry, until Susan approves limits for them.
 
-2. Directly below `LLM_SERVER_AUTH_STYLES`, move the timesheet provider set here and derive it (delete the old literal block at the `# Timesheet rows (database ledgers)` comment, currently lines 4872–4875, including its 3-line comment header):
+2. Directly below `LLM_SERVER_AUTH_STYLES`, move the timesheet provider set here and derive it (delete the old literal block at the `# Timesheet rows (database ledgers)` comment, currently lines 4886–4889, including its 3-line comment header):
 
    ```python
    # Timesheet rows (database ledgers): provider string validated on insert = a server id.
@@ -372,7 +371,7 @@ No other file is touched. No DB, core, UI, `data/admin/`, `tests/`, or bible edi
 
    ⚠️ **Decision (why this stays green before #3):** `do_task` reads the flag only to (a) log the existing "no candidate_data" warning, (b) take `ctx["candidate_api_key"]` as override (None → today's env fallback in `send_to_deepseek`, unchanged until #3), and (c) `_effective_entity_type` returns `"candidate"` when the task has no `entity_type` and an index is passed, which only feeds hop-ledger labels and caller hydration, and neither path applies to these three tasks. The api_admin ad-hoc path uses the candidate key only when a candidate is selected. No call stops going out in this ticket.
 
-3. Replace the `DEEPSEEK_CONCURRENCY = { … }` literal (currently lines 5087–5092) with an alias so the values have one source:
+3. Replace the `DEEPSEEK_CONCURRENCY = { … }` literal (currently lines 5101–5106) with an alias so the values have one source:
 
    ```python
    DEEPSEEK_CONCURRENCY = LLM_SERVER_CONFIG["deepseek"]["concurrency"]  # legacy name for deepseek.py (#4 deletes)
@@ -632,7 +631,7 @@ No other file is touched. No DB, core, UI, `data/admin/`, `tests/`, or bible edi
 ## Acceptance mapping (this ticket)
 
 - **AC 9 (request extras, ZDR not enforced):** `send_to_llm_compat` merges `server["request_extras"]` into `extra_body`, so a test that patches a server entry's `request_extras` sees the extra in the intercepted body. The shipped `openrouter` entry has `request_extras: {}`, so no `provider.zdr` is sent.
-- **AC 1 / 2 / 15:** these are epic-level greps that pass only after #4. This ticket keeps `llm_compat.py`, `llm_external.py`, and the new `cost_calculator.py` functions free of vendor names. The remaining `cost_calculator.py` legacy names are raised in the scope-gate comment.
+- **AC 1 / 2 / 15:** these are epic-level greps that pass only after #4. This ticket keeps `llm_compat.py`, `llm_external.py`, and the new `cost_calculator.py` functions free of vendor names. #4 deletes the remaining `cost_calculator.py` legacy names (AST-1883).
 
 ## Pre-commit gate (every stage)
 
@@ -641,3 +640,9 @@ No other file is touched. No DB, core, UI, `data/admin/`, `tests/`, or bible edi
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Revisions
+
+Revision 1 — 2026-09-29
+Driven by: gate AST-1883 Done — Susan approved both `[scope-gate]` moves; Scope amended on AST-1877 / AST-1878 / AST-1880 / AST-1851.
+Changes: Scope gate section now records the approved moves (repo-admin agent column → #2; DeepSeek-named cost wrapper deletion → #4) instead of an open stop. `config.py` line anchors updated for the `origin/dev` sync (+14 lines after 2406: LLM_PROVIDER_CONFIG close 5079, timesheet block 4886–4889, DEEPSEEK_CONCURRENCY 5101–5106; TASK_CONFIG anchors unchanged). Stages are otherwise unchanged.
