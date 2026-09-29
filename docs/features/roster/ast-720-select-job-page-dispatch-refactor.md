@@ -793,3 +793,101 @@ END-VERDICT
 ```text
 AST-1894 board-joan done — CANON: OK.
 ```
+
+## Radia review — AST-1894
+
+[code-rubric]
+**Ticket:** AST-1894
+**Publish ref:** `origin/sub/AST-1887/AST-1894-no-openings-job-site-tests` @ `8d776727512694b380acdea899f12c4d4a96cce7`
+**Diff base:** `origin/ftr/AST-1887-no-openings-job-site` @ `91577d1c6` (AST-1892 product fix on ftr) … `origin/sub/AST-1887/AST-1894-no-openings-job-site-tests`
+**Corpus:** (none cited; no frozen Canon Scope on AST-1894)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen Canon Scope: **none cited**.
+
+| # | id | grade | effort | one-line |
+|---|-----|-------|--------|----------|
+| — | *(empty list)* | — | — | Test/bible-only gap; Joan fix-board F2 CANON: OK. |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **fix-board** F2 only).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** **OK**
+
+- Tag present on first line of `test_joblist_no_jobs_persists_selected_job_site`.
+- Exercises **decomposed** path via `run_select_job_page_dispatch` on `PJL_READY` `_pjl_ready_company()` (not a stubbed `_check_parse_results`).
+- Pins **concrete** expected URL `https://acme.com/careers` from class fixture `pjl_scrape_pages` / `selected_page: 1` — matches AST-1892 **To-be** (selected list-page URL persisted).
+- Asserts both **return** `out["job_site"]` and **persist** `update.call_args.kwargs["job_site"]` (not tautology / not presence-only).
+- Also asserts `NO_OPENINGS`, `JOBLIST_NO_JOBS`, transition, and `no_jobs_message` in `save_company_data` — aligns with AST-1892 “must still hold” on terminal message.
+- **Pre-fix plausibility:** on pre-AST-1892 `_check_parse_results`, `decomposed=True` → `suppress_job_site=True` → `job_site=""` and empty column write; assertions fail at `'' == 'https://acme.com/careers'` (matches plan **Repro** and Hedy’s red/green note). ftr tip `91577d1c6` includes AST-1892 fix → green on stacked sub.
+
+**`## What must still hold`:** **OK**
+
+| Item | Verdict |
+|------|---------|
+| Red before AST-1892 / green after | **OK** — repro targets exact bug; ftr base now carries fix; engineer report matches. |
+| AST-720 suppression paths unchanged | **OK** — `test_roster.py` diff is **+37 lines only**; `test_joblist_titles_identified_without_job_site_column`, `test_try_links_*`, `test_jobsite_scrape_issue_suppresses_job_site` untouched on tip. |
+| No product code on this sub | **OK** — `git diff … -- src/` empty. |
+| No new limits/caps/retries | **OK** — bible + one test method only (AST-1894 scope). |
+
+## Findings
+
+### fix-now
+
+None.
+
+### discuss
+
+None.
+
+### advisory
+
+- **origin/tests carry (not AST-1894 scope):** Diff vs ftr includes **~54 other files** (agent/candidate/config/frontend tests + bible from Betty’s `origin/tests` merge — AST-1874, AST-1877–1880, etc.). Per `review-child` §5.4, note once as sibling test carry; do not score as AST-1894 product scope. **AST-1894 deliverable** for review: `tests/component/core/test_roster.py` (+37), `docs/test-bible/core/roster.md` (+22), plan doc append.
+- **Bible red/green baseline wording:** New `### AST-1892 · AST-1887` section says repro is red on **pre-fix `origin/dev`**; plan-fix **Repro** names **pre-fix ftr**. Both are true until AST-1887 lands on `dev`; for this mini-parent, **ftr @ pre-`91577d1c6`** is the authoritative repro baseline. Cosmetic doc drift only.
+- **Stale plan header:** `## Bug: AST-1894` still says AST-1892 product sub “not yet on ftr”; ftr is now @ `91577d1c6` with product fix. Chuckles can tidy on doc append, not a merge blocker.
+- **Hedy test-fix:** Full `test_roster.py` 50 failures identical to `origin/dev`; narrowed `TestAst720PjlReadySelectDispatch` green on tip — consistent with plan **Blast radius**.
+
+## Plan fidelity (§5.4)
+
+| Planned item | Landed |
+|--------------|--------|
+| `[bug-repro]` in `TestAst720PjlReadySelectDispatch` after `test_jobsite_scrape_issue_suppresses_job_site` | **Yes** |
+| AST-720 bible prose split suppress vs persist | **Yes** (`docs/test-bible/core/roster.md` ~313) |
+| New `### AST-1892 · AST-1887` bible section + table | **Yes** (after AST-1842 block; includes `run_component_tests.sh` narrowed run — reasonable AST-1842 precedent) |
+| No `src/` on this sub | **Yes** |
+
+## What's solid
+
+- Betty’s gap closes AST-1892 board **TESTS: REVISE** with a real repro-first pin on the decomposed `JOBLIST_NO_JOBS` path.
+- Bible correction matches product truth on ftr: **`JOBLIST_NO_JOBS` → `NO_OPENINGS` persists `job_site`**; **`JOBSITE_SCRAPE_ISSUE`**, **`JOBLIST_IDENTIFIED`**, and **`TRY_LINKS`-exhausted** remain documented/tested as suppress / empty `job_site`.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | AST-1887 **mini-parent** (active `ftr/AST-1887-no-openings-job-site`, not Done-orphaned) | **Review Posted** → clean-review shortcut → **User Testing** (or `resolve-child` only if findings — none). Then **merge-child** AST-1894 sub into **ftr** (AST-1892 already @ `91577d1c6`); **not** straight-to-`dev` until finish-up/prep-uat for the mini-parent. |
+
+context_tokens≈11000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 8d77672) bug-repro pins decomposed job_site
+```
+
+#### Chuckles disposition (AST-1894)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1892's product fix is on ftr @ 91577d1c6, so the repro runs green on ftr. The plan-fix note above that says AST-1892 is 'not yet on ftr' was true when it was written, and is now superseded.
+
+origin/tests carry: Betty's merge-tests brought other epics' tests and bible (AST-1874, AST-1877 to AST-1880) already on origin/tests. Left in place, same as the AST-1860 / AST-1876 precedent.
+
+Published without validate-tests-branch.sh, because origin/tests-clean-base is missing (flagged to Susan).
