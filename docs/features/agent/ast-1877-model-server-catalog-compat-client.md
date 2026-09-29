@@ -697,3 +697,10 @@ stat.logging.error | A | | Stage 4: log_llm_batch_summary WARNING; caller owns e
 - **Recommendation:** Do not score off-list; no plan change required.
 
 context_tokens≈95000
+
+## Review
+
+- **Branch:** `origin/sub/AST-1851/AST-1877-model-server-catalog-compat-client`
+- **Build tip:** `2ad269d79` (stages: `874e59e8d` catalogs + resolvers · `125ba5b96` validation / candidate-key tasks / parity · `10546a9de` cost calculator · `2ad269d79` compat client)
+- **Build notes:** Stage 4 omits `extract_api_response_text` from the planned import list because it is unused once the `emit_llm_call_debug` blocks are gone; the response debug line logs the full response object. Cost calculator outputs are byte-identical to pre-change for every Claude/DeepSeek SKU (probe under `debug/spikes/ast-1877/`). `src/ui/api/api_admin.py` import could not be smoke-tested locally (`asyncpg` not installed); `database`, `agent`, `bootstrap`, `anthropic`, `deepseek` import cleanly.
+- **For qa-child:** AC 9 intercepted-request test (see Acceptance mapping); existing tests that assert `ALLOWED_TIMESHEET_PROVIDERS == ("anthropic","deepseek")`, `validate_llm_provider_environment` requiring `DEEPSEEK_API_KEY`, or `requires_candidate_key: False` on `simple_resume_parse` / `select_job_page` / `contact_estelle_turn` are now stale by design.
