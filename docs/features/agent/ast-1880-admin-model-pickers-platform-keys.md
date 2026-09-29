@@ -337,3 +337,89 @@ context_tokens≈155000
 - **Build tip:** `df3bcb890` (stages: `0c0bef06e` api_admin catalog route, agent `model_id` routes, catalog ad-hoc/history, server-key Invalid gate, session paste candidate, info.api lines · `482ad1ff5` api_candidate per-server keys in / set-not-set out · `673927ace` legacy retirement + `monitor.py` server label · `df3bcb890` admin UI pages)
 - **Build notes:** Built as planned, with one addition. Flask `jsonify` sorts keys in this app, so the model catalog came out Big, Little, Medium instead of catalog order. `GET /agents/models` therefore adds an `order` index on each model and each brain size, and the UI sorts by it. The response stays keyed by id. The AC 1 / AC 2 / AC 7 / `default_brain_setting` greps over `src/` (frontend included) are all empty. `_sanitize_candidate` smoke: a two-key map comes out as `api_keys` set flags with no plaintext. Lint: `ruff --select F` shows only the pre-existing unused `cfg` in `api_admin._enrich_tasks`. ESLint shows only the 2 pre-existing `no-extra-boolean-cast` errors in `AdminScheduledActions.tsx`. `npm run build` passes. `ruff` was installed into the local gitignored `.venv`, and `npm ci` was run in `src/ui/frontend`.
 - **For qa-child:** see **Tests expected to move** above. `test_deepseek.py` now fails on import (module deleted), so delete it together with `docs/test-bible/external/deepseek.md`.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1880
+**Publish ref:** 387f84ac5
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** DISCUSS
+
+## Canon scores
+
+stat.logging.info.api | C | 2 | `api_candidate.py` `update_candidate_data` — no completion `logger.info` when the PUT only mutates `api_keys`
+stat.logging.warning | A | |
+
+## Column diff vs plan stage
+
+stat.logging.info.api — Joan A, Radia C (api_keys-only PUT completion line)
+
+## Frame diff
+
+- [ ] **Estimate:** Confirm Linear estimate matches plan revision (**8** vs ticket **5**) if Chuckles has not already updated.
+- [ ] **Parent AC 7 (`rg send_to_deepseek tests/`):** Engineer to confirm on merged ftr after Betty’s qa-child pass (product `src/` clean; two test files still contain the string in negative-assertion / fixture metadata).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Severity:** discuss  
+- **Location:** `src/ui/api/api_candidate.py` — `update_candidate_data`  
+- **Finding:** `stat.logging.info.api` expects one completion info line per mutating route. Admin routes use `_api_completed`; candidate `PUT …/data` still logs only when catalog leaves (strengths, resume, etc.) save. A body with **only** `api_keys` updates keys via `set_candidate_api_key` / `clear_candidate_api_key` but emits **no** `api completed` line.  
+- **Recommendation:** Add one `logger.info("%s | api %s completed: PUT %s", …)` before the successful return when `api_keys is not None` (or unify with `_api_completed` pattern).  
+- **Default:** `resolve-child` adds the single line on the success path; no behavior change.
+
+- **Severity:** discuss  
+- **Location:** Parent **AC 7** vs tip `tests/`  
+- **Finding:** `src/external/deepseek.py` is gone and `rg send_to_deepseek src/` is empty. `tests/` still matches `send_to_deepseek` in `test_agent_ast1879.py` (forbidden-name tuple) and `test_llm_external.py` (fixture `func_name`). Not product imports; epic grep AC 7 fails until Betty renames strings or documents exceptions.  
+- **Recommendation:** qa-child early pass per plan **Tests expected to move** (already deleted `test_deepseek.py` on tip).  
+- **Default:** Betty adjusts assertions/fixtures; no #1880 product revert.
+
+- **Severity:** discuss  
+- **Location:** Plan **Estimate**  
+- **Finding:** Plan recommends **8** points; Linear still **5**.  
+- **Recommendation:** Chuckles sync estimate if not done at plan approval.  
+- **Default:** Proceed on scope; estimate is bookkeeping.
+
+- **Severity:** discuss  
+- **Location:** Stage 2 `_sanitize_candidate` / list candidates  
+- **Finding:** List rows may call `get_candidate` per row to hydrate set/not-set flags (plan-flagged perf).  
+- **Recommendation:** Optional core list wrapper follow-up if Susan wants it.  
+- **Default:** Ship as-is.
+
+### advisory
+
+- **Severity:** advisory  
+- **Location:** AST-1878 / AST-1879 Radia deferrals (this brief)  
+- **Finding:** **Resolved on tip:** `clear_candidate_api_key(candidate_id, sid)` in `api_candidate.py`; `_resolve_adhoc` + `adhoc_test` use `resolve_model_brain`, `server_id`, `tier`, `candidate_api_keys`; dispatch list/run use `task_llm_server_id` + `_candidate_dispatch_api_key_error` (`invalid_reason`, AUTO off, Run 400); `rg default_brain_setting src/` empty; `rg active_provider|get_active_llm_provider src/` empty; `CONTACT_ESTELLE_CONFIG["default_brain_setting"]` removed with legacy provider retirement; `monitor.py` labels outage by `task_llm_server_id` server label.  
+- **Recommendation:** None.
+
+- **Severity:** advisory  
+- **Location:** Three-dot diff vs `origin/dev`  
+- **Finding:** Includes full epic stack (#1877–#1879); **#1880 code commits** touch `api_admin`, `api_candidate`, `config` legacy deletion, `deepseek.py` removal, `cost_calculator` wrapper removal, `monitor.py`, four admin TSX pages.  
+- **Recommendation:** Score canon against #1880 surfaces.
+
+- **Severity:** advisory  
+- **Location:** Build note — `GET /agents/models` `order` field  
+- **Finding:** Flask `jsonify` key order vs catalog UI order; explicit `order` index added — reasonable addition.  
+- **Recommendation:** None.
+
+## What's solid
+
+- **Pattern / AC (product):** Catalog-driven agents (`GET /agents/models`), model-scoped brain validation on save, per-server `api_keys` in/out without plaintext leak, Invalid gate + tooltip reason + Run 400, legacy provider path removed from `src/`.
+- **AC 2:** No vendor literals in `src/` outside `config.py` on tip.
+- **stat.logging.warning:** Missing-key Invalid (`invalid_reason`, AUTO forced off with who/why), dispatch empty-render warnings, task-manager patterns unchanged where applicable.
+- **stat.logging.info.api:** `_api_completed` on agent create/update, ad-hoc test success, session resume parse, dispatch run — matches plan Stage 1.
+
+## Recommended actions
+
+- Chuckles: append artifact, `docs(AST-1880): Radia review — discuss`, post slim upshot, **Review Posted** → datt **REVIEW** → `resolve-child` for the `api_keys` completion log (or Susan waives).
+- Betty: finish AC 7 test-tree grep + any remaining bible paths per build notes.
+- Susan: optional estimate + list-row perf follow-up.
+
+context_tokens≈45000
