@@ -267,3 +267,64 @@ Canon: neither AST-1893 nor AST-1888 has a Canon Scope list, so there are no can
 `[board-joan]  CANON: OK` — context_tokens≈12000
 
 The plan-fix patch only moves `@_with_log_debug` off `InvalidJobLinkError` and back onto `_run_batch_consult` in `src/core/consult.py`. No behavior change to `job_link` rules, fail/retry routing, or `_log_fail_dest` formatting — only restoration of a real `ValueError` subclass and `debug=True` → `log_debug` scoping. Aligns with `stat.logging.debug` (run entry sets the ContextVar; batch frame was wrongly undecorated) and `stat.logging.warning`'s consult `_log_fail_dest` pattern (per-item who/why, including `process_fn {ExceptionName}: …`). Overlap checks: `patt.entity.batch-processing`, `patt.task.dispatch-retry` — claim/process/release and dest logic unchanged. AST-1893 / AST-1888 carry no Canon Scope ids; nothing in the directive roster implies a statute or pattern amendment or a new "no decorator on classes" carve-out for this mechanical regression fix. No architectural ESCALATE.
+
+### Radia review-fix (AST-1893)
+
+[code-rubric]
+**Ticket:** AST-1893  
+**Publish ref:** `b516e8764d088b3e0cb2b6860ae950b79076b7ff` (`origin/sub/AST-1888/AST-1893-restore-invalid-job-link-error-class`)  
+**Diff base:** `42b6ecf527ee04dfad6bb959a71494a631da9a7a` (`origin/ftr/AST-1888-invalid-job-link-error-decorator`) — fix-lane isolated diff (2 files: `src/core/consult.py` + plan-fix patch in `docs/features/consult/ast-337-qualified-job-urls.md`)  
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+**Omitted** — AST-1893 Linear description has **no frozen Canon Scope id list** (plan-fix patch states the same). Per fix-lane precedent (e.g. AST-1882 / AST-1881 in consult docs), do **not** treat `[board-joan] CANON: OK` as per-directive plan-stage grades or substitute an inferred roster.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** `CANON: OK` only; no `validate-plan` fix-mode per-id column on this bug.
+
+## Frame diff
+
+- [ ] **Acceptance criteria #1–#3 (product):** Empty/relative `job_link` fail reason names `InvalidJobLinkError` (not `no signature found`); class is a `ValueError` subclass; `_run_batch_consult(debug=True)` restores `log_debug` scoping — verify in UAT or via engineer’s import/`__wrapped__` checks on tip.
+- [ ] **Regression tests** called out in ticket **Component scope** / AC: owned by sibling **AST-1895** (board `TESTS: REVISE` split); not required on this sub tip.
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — clean board opt-out: `qa-fix` did not run on AST-1893; Betty’s `TESTS: REVISE` coverage work was split to **AST-1895**. No `[bug-repro]` on this tip by design; not scored as missing.
+- **## What must still hold — OK** — Traced against tip `src/core/consult.py`:
+  - Fail path unchanged: `process_fn` still `raise InvalidJobLinkError(...)` when `job_link` fails `startswith("http")`; `_run_batch_consult` still catches `Exception`, routes via `_consult_batch_fail_dest(input_job["state"], error_state)`, single `_log_fail_dest(..., f"process_fn {type(e).__name__}: {e}")` (lines ~1742–1770, ~1973–1977). With the class restored, `type(e).__name__` is `InvalidJobLinkError` instead of the stray `ValueError`.
+  - AST-337 path untouched in diff: no changes to `assemble()` / `job_site` enrichment or the `http` gate before `tracker.initialize_job`.
+  - `class InvalidJobLinkError(ValueError)` undecorated; `@_with_log_debug` only on `async def _run_batch_consult` (lines 1567–1572). No `@_with_log_debug` on any class in `src/` (repo grep clean).
+  - `_run_batch_consult` signature and return contract unchanged; decorator move only restores pre-`c86d8b5ce` layout.
+
+### Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Sibling test gap (AST-1895):** Ticket description still lists `tests/` in component scope; plan-fix and board explicitly park regression assertions (fail reason string, `debug=True` `log_debug`) on **AST-1895**. Product fix on this tip is complete; UAT should not expect new tests here.
+- **Pre-existing pytest drift on dev:** Hedy’s test-fix comment documents **7 failures** in `tests/component/core/test_consult.py` (rubric hydration / AST-1062 / debug detail expectations), **identical** on pre-fix `consult.py` and on this branch — outside AST-1893 blast radius; Betty flagged for AST-1895 / bible context.
+- **Canon Scope process:** No F7 per-id table this pass; intake explicitly waived ids for AST-1893/AST-1888 — not an ESCALATE unless Archie later freezes a list for this cluster.
+
+### What’s solid
+
+- Diff is exactly the mechanical **Proposed change** (move one `@_with_log_debug` line off the exception class onto `_run_batch_consult`); no collateral edits in `consult.py`.
+- Root cause analysis in plan-fix matches the failure mode (`_with_log_debug` on a class → name binding / `inspect.signature` on builtin).
+- Estimate **1** matches footprint (two-line product fix + plan-fix doc).
+
+### Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (clean, artifact complete) | AST-1888 **mini-parent** with dedicated `origin/ftr/AST-1888-invalid-job-link-error-decorator` (diff **not** vs `origin/dev`) | → **Review Posted** → fix-lane **§3h** clean-review shortcut → **User Testing** (`resolve-child` skipped). Merge/stack policy for the mini-parent cluster stays on **ftr**, not the “parent Done → straight to `origin/dev`” orphaned finish-up path unless intake later flags `ORPHANED — target dev`. |
+
+context_tokens≈14000
+
+---
+
+[code-rubric] PROCEED (Commit: b516e8764) Decorator restore clean
