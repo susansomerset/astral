@@ -402,9 +402,9 @@ Gazer batch + roster helpers: **`docs/test-bible/core/gazer.md`** · **`docs/tes
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Embedded RC registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig` |
+| Embedded RC registry — company-site scale A/B/C/D/F/X (AST-707; revised AST-1881) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig` |
 
-Consult merge + roster batch regression: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/core/roster.md`** (**AST-707**).
+Persisted-default merge (save / craft generate / persist) + prompt dedupe: **`docs/test-bible/core/candidate.md`** (**AST-1881**). Consult merge + roster batch regression: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/core/roster.md`** (**AST-707**).
 
 ---
 
