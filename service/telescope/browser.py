@@ -177,7 +177,11 @@ class Firefox:
         bind_firefox(inst.firefox_id)
         context: Optional[BrowserContext] = None
         try:
-            context = await inst.browser.new_context(viewport=settings.viewport)
+            context = await inst.browser.new_context(
+                viewport=settings.viewport,
+                # Public scraping: tolerate incomplete cert chains (SEC_ERROR_UNKNOWN_ISSUER).
+                ignore_https_errors=True,
+            )
             page = await context.new_page()
             _log.debug("Context opened (%d active on this Firefox)", inst.active)
             yield page

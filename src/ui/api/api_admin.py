@@ -26,7 +26,7 @@ from src.core.inbox import count_inbox_bound_by_candidate
 from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
 from src.utils.cost_calculator import sum_calc_cost_components
-from src.external.telescope import PlaywrightInfraError, admin_telescope_scrape
+from src.external.telescope import PlaywrightInfraError, admin_telescope_scrape, run_one_shot
 from src.core.dispatcher import (
     list_dispatch_ledger, get_dispatch_ledger, list_log_entries,
     list_dispatch_tasks, save_dispatch_task, update_dispatch_task,
@@ -36,6 +36,7 @@ from src.core.dispatcher import (
 )
 from src.core.candidate import (
     build_candidate_token_view,
+    get_candidate,
     preview_task_prompt,
     run_session_resume_parse,
 )
@@ -382,7 +383,7 @@ def _enrich_tasks(candidate_id: str) -> list:
     Resolves token counts against candidate_data, computes cache threshold status,
     and fetches timesheet averages per task version."""
     tasks = database.list_candidate_tasks()
-    candidate = database.get_candidate(candidate_id) if candidate_id else None
+    candidate = get_candidate(candidate_id) if candidate_id else None
     # AST-1014: token view merges name columns + library blobs for resolve_tokens.
     cd = build_candidate_token_view(candidate) if candidate else {}
 
@@ -1207,6 +1208,9 @@ def create_dtask():
         update_dispatch_task(task_id, skip_daisy_chain=1)
     if "batch_call_mode" in data and data.get("batch_call_mode") is not None:
         update_dispatch_task(task_id, batch_call_mode=int(bool(data["batch_call_mode"])))
+    # save_dispatch_task has no max_runs param; without this, form-created rows keep the column default 1.
+    if "max_runs" in data and data.get("max_runs") is not None:
+        update_dispatch_task(task_id, max_runs=int(data["max_runs"]))
     return jsonify({"id": task_id}), 201
 
 
@@ -1577,7 +1581,7 @@ def _resolve_adhoc(body):
     cd = {}
     candidate = None
     if candidate_id:
-        candidate = database.get_candidate(candidate_id)
+        candidate = get_candidate(candidate_id)
         if candidate:
             # AST-1014: adhoc resolve needs columns + contact.* (not raw blob only).
             cd = build_candidate_token_view(candidate)
@@ -2019,7 +2023,7 @@ def _evaluate_dispatch_empty_render(
             tk,
         )
         return {"empty_render": True, "empty_tokens": []}
-    cand = database.get_candidate(cid)
+    cand = get_candidate(cid)
     if not cand:
         logger.warning(
             "%s | dispatch empty_render task_key=%r — candidate not found; treating as empty_render",
@@ -2253,7 +2257,7 @@ def admin_telescope():
     if element_id is not None:
         element_id = str(element_id).strip() or None
     try:
-        data = asyncio.run(
+        data = run_one_shot(
             admin_telescope_scrape(
                 url,
                 response_type=response_type,

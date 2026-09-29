@@ -7,13 +7,13 @@ AST-1748: candidate-scoped list + detail GET for Jobs → Meteorites.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Dict, Tuple
 
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_auth
 from src.core.meteorite import land_meteorite
+from src.external.telescope import run_one_shot
 from src.data.database import get_meteorite, list_meteorites_for_candidate
 from src.utils.config import (
     JOBS_METEORITES_LIST_COLUMNS,
@@ -106,7 +106,7 @@ def _land_http_response(result: dict):
 def _run_land(candidate_id: str, data: dict):
     kwargs = _land_request_payload(data)
     try:
-        result = asyncio.run(land_meteorite(candidate_id, **kwargs))
+        result = run_one_shot(land_meteorite(candidate_id, **kwargs))
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:

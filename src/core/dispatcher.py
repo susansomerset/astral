@@ -779,6 +779,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             clear_candidate_batch(bid)
         return s
 
+    # AST-1847: in-flight run's running summary; batch runners tally into it in place so a
+    # dispatch-timeout cancel can still record partial counts (_dispatch_one_body timeout branch).
+    ctx["dispatch_partial"] = dict(_SUMMARY_ZERO)
     try:
         if use_full_batch:
             job_tk = task.get("task_key", "") if entity_type == "job" else ""
@@ -858,6 +861,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             clear_candidate_batch(bid)
         else:
             clear_company_batch(bid)
+    # Normal return only: counts travel via s now, so drop the partial to avoid double counting.
+    ctx.pop("dispatch_partial", None)
     return s
 
 
@@ -1374,16 +1379,25 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         logger.debug("Response from _run_dispatch_loop: %s", accumulated)
     except asyncio.TimeoutError as exc:
         final_status = "INTERRUPTED"
+        # AST-1847: fold in the cancelled run's finished entities; accumulated only holds completed runs.
+        for k, v in (ctx.pop("dispatch_partial", None) or {}).items():
+            accumulated[k] = accumulated.get(k, 0) + v
+        # +1 before logging so the log line matches the ledger write in finally.
+        accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         logger.exception(
-            "%s | dispatch %s %s\n  TimeoutError: dispatch timeout after %ss batch=%s\n  Truncating the batch",
+            "%s | dispatch %s %s\n  TimeoutError: dispatch timeout after %ss batch=%s"
+            " processed=%d passed=%d failed=%d errors=%d\n  Truncating the batch",
             candidate_id or "-",
             task.get("entity_type") or "-",
             task_key,
             timeout,
             entity_batch_id,
+            accumulated.get("total_processed", 0),
+            accumulated.get("total_passed", 0),
+            accumulated.get("total_failed", 0),
+            accumulated.get("total_errors", 0),
             exc_info=exc,
         )
-        accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except asyncio.CancelledError:
         final_status = "INTERRUPTED"
         logger.warning(
@@ -1563,6 +1577,18 @@ async def _run_dispatch_loop(
                 break
 
 
+def _cancel_pending_tasks(loop: asyncio.AbstractEventLoop) -> None:
+    """Cancel and drain tasks left on a finished dispatch loop (avoids 'Task was destroyed but it is pending')."""
+    try:
+        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        for t in pending:
+            t.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+    except Exception:
+        logger.debug("pending-task cleanup failed", exc_info=True)
+
+
 def _task_thread_target(task_id: int, task: Dict) -> None:
     """Daemon thread target: owns its asyncio event loop, cleans up registry on exit."""
     loop = asyncio.new_event_loop()
@@ -1571,7 +1597,20 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
             _task_registry[task_id]["loop"] = loop
     try:
         loop.run_until_complete(_dispatch_one(task))
+    except Exception:
+        # Log instead of letting threading print a bare traceback (e.g. transient DB lock).
+        logger.exception(
+            "%s | dispatch task %s crashed",
+            task.get("candidate_id") or "-",
+            task.get("task_key", task_id),
+        )
     finally:
+        try:
+            from src.external.telescope import close_loop_resources
+            loop.run_until_complete(close_loop_resources())
+        except Exception:
+            logger.debug("telescope loop cleanup failed", exc_info=True)
+        _cancel_pending_tasks(loop)
         loop.close()
         with _registry_lock:
             _task_registry.pop(task_id, None)
