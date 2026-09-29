@@ -17,6 +17,8 @@ Config sections:
   ASTRAL_CONFIG   — paths, state machines, batch settings
   RAILWAY_CONFIG  — gunicorn deployment settings (workers, timeout)
   AGENT_CONFIG    — Anthropic model catalog (pricing, defaults)
+  LLM_SERVER_CONFIG — LLM servers (endpoint, auth, thinking-off body, request extras, concurrency) (AST-1851)
+  LLM_MODEL_CONFIG  — LLM models → server + per-model brain sizes (SKU, thinking, floor, defaults) + per-SKU pricing (AST-1851)
   TASK_CONFIG     — task definitions (schemas, grading, job consult orchestration fields)
   COMPANY_STATES  — company state list + batch criteria
   CANDIDATE_STATES — candidate state registry (prior_states, companions, progress_rank)
@@ -277,7 +279,7 @@ TASK_CONFIG = {
         "response_format": "json",
         "context_format": "simple_resume_parse_{index}",
         "entity_type": None,
-        "requires_candidate_key": False,
+        "requires_candidate_key": True,
         "trigger_state": None,
     },
     # DECOMMISSIONED (AST-1108): superseded by intake chat; keep key for legacy callers/tests.
@@ -505,7 +507,7 @@ TASK_CONFIG = {
         "response_format": "json",
         "context_format": "select_job_page_{index}",
         "entity_type": "company",
-        "requires_candidate_key": False,
+        "requires_candidate_key": True,
         "trigger_state": None,
     },
     "parse_job_list": {
@@ -1137,12 +1139,16 @@ TASK_CONFIG = {
             },
         },
         "entity_type": None,
-        "requires_candidate_key": False,
+        "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
     },
 }
+# AST-1851: every LLM task runs on the candidate's platform key — a system-key task is a bug.
+assert all(cfg.get("requires_candidate_key") is True for cfg in TASK_CONFIG.values()), [
+    k for k, cfg in TASK_CONFIG.items() if cfg.get("requires_candidate_key") is not True
+]
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["astral_job_id"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["company_job_id"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_link"]["required"] is False
@@ -5376,15 +5382,8 @@ PROVIDER_BALANCE_REFUSAL = {
 # PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).
 # httpx client timeout uses timeout_seconds; caller wait uses timeout_seconds + grace_seconds.
 # max_retries=0 → one attempt (SDK default 2 would allow up to 3× wall time inside the worker thread).
-# DEEPSEEK_CONCURRENCY — process-wide cap on in-flight DeepSeek calls (all dispatch threads share it).
-# DeepSeek's real limit follows account balance (observed 25-26); keep max_concurrent below it.
-# 429s are retried with jittered exponential backoff inside the worker thread (SDK retries stay off).
-DEEPSEEK_CONCURRENCY = {
-    "max_concurrent": 20,
-    "rate_limit_retries": 4,
-    "backoff_base_seconds": 2.0,
-    "backoff_max_seconds": 30.0,
-}
+# DEEPSEEK_CONCURRENCY — legacy alias of LLM_SERVER_CONFIG["deepseek"]["concurrency"] (AST-1851).
+DEEPSEEK_CONCURRENCY = LLM_SERVER_CONFIG["deepseek"]["concurrency"]  # legacy name for deepseek.py (#4 deletes)
 
 PROVIDER_CALL_BUDGET = {
     "timeout_seconds": 600,
@@ -5438,6 +5437,12 @@ DEEPSEEK_MODEL_PRICING = {
         "cache_min_tokens": 0,
     },
 }
+# AST-1851 parity: legacy DeepSeek blocks must match LLM_MODEL_CONFIG until #4 deletes them.
+for _bs, _legacy in LLM_PROVIDER_CONFIG["tier_map"]["deepseek"].items():
+    assert LLM_MODEL_CONFIG["deepseek-v4"]["brain_sizes"][_bs]["sku"] == _legacy["vendor_model"], _bs
+for _sku, _legacy in DEEPSEEK_MODEL_PRICING.items():
+    for _k in ("cpm_input", "cpm_output", "cpm_cache_read", "cpm_cache_write"):
+        assert LLM_MODEL_CONFIG["deepseek-v4"]["pricing"][_sku][_k] == _legacy[_k], (_sku, _k)
 
 
 def get_active_llm_provider() -> str:
@@ -5492,14 +5497,23 @@ def deepseek_brain_max_tokens_floor(brain_setting: str) -> Optional[int]:
 
 
 def validate_llm_provider_environment() -> None:
-    """Fatal startup parity: require secrets for whichever vendor config selects (no fallback)."""
-    provider = get_active_llm_provider()
-    if provider == "anthropic":
-        _ = os.environ["ANTHROPIC_API_KEY"]
-    elif provider == "deepseek":
-        _ = os.environ["DEEPSEEK_API_KEY"]
-    else:
-        raise ValueError(f"Unknown LLM active_provider {provider!r}")
+    """Fatal startup check: LLM catalogs are consistent. No provider key comes from env (AST-1851)."""
+    for sid, s in LLM_SERVER_CONFIG.items():
+        if s["protocol"] not in LLM_SERVER_PROTOCOLS:
+            raise ValueError(f"LLM server {sid!r}: protocol {s['protocol']!r} not in {LLM_SERVER_PROTOCOLS}")
+        if s["auth"] not in LLM_SERVER_AUTH_STYLES:
+            raise ValueError(f"LLM server {sid!r}: auth {s['auth']!r} not in {LLM_SERVER_AUTH_STYLES}")
+        if s["protocol"] == "anthropic_compat" and not s["base_url"]:
+            raise ValueError(f"LLM server {sid!r}: anthropic_compat requires base_url")
+    for mid, m in LLM_MODEL_CONFIG.items():
+        get_llm_server(m["server"])
+        if not m["brain_sizes"]:
+            raise ValueError(f"LLM model {mid!r}: no brain sizes")
+        for bs, tier in m["brain_sizes"].items():
+            if bs not in BRAIN_SETTINGS:
+                raise ValueError(f"LLM model {mid!r}: brain size {bs!r} not in {BRAIN_SETTINGS}")
+            if tier["sku"] not in m["pricing"]:
+                raise ValueError(f"LLM model {mid!r} {bs}: SKU {tier['sku']!r} has no pricing row")
 
 
 # --- AST-495 helpers (thin layer on AST-492 tier_map; names kept for Admin UI / plans) ---
