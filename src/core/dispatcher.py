@@ -779,6 +779,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             clear_candidate_batch(bid)
         return s
 
+    # AST-1847: in-flight run's running summary; batch runners tally into it in place so a
+    # dispatch-timeout cancel can still record partial counts (_dispatch_one_body timeout branch).
+    ctx["dispatch_partial"] = dict(_SUMMARY_ZERO)
     try:
         if use_full_batch:
             job_tk = task.get("task_key", "") if entity_type == "job" else ""
@@ -858,6 +861,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             clear_candidate_batch(bid)
         else:
             clear_company_batch(bid)
+    # Normal return only: counts travel via s now, so drop the partial to avoid double counting.
+    ctx.pop("dispatch_partial", None)
     return s
 
 
@@ -1374,16 +1379,25 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         logger.debug("Response from _run_dispatch_loop: %s", accumulated)
     except asyncio.TimeoutError as exc:
         final_status = "INTERRUPTED"
+        # AST-1847: fold in the cancelled run's finished entities; accumulated only holds completed runs.
+        for k, v in (ctx.pop("dispatch_partial", None) or {}).items():
+            accumulated[k] = accumulated.get(k, 0) + v
+        # +1 before logging so the log line matches the ledger write in finally.
+        accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         logger.exception(
-            "%s | dispatch %s %s\n  TimeoutError: dispatch timeout after %ss batch=%s\n  Truncating the batch",
+            "%s | dispatch %s %s\n  TimeoutError: dispatch timeout after %ss batch=%s"
+            " processed=%d passed=%d failed=%d errors=%d\n  Truncating the batch",
             candidate_id or "-",
             task.get("entity_type") or "-",
             task_key,
             timeout,
             entity_batch_id,
+            accumulated.get("total_processed", 0),
+            accumulated.get("total_passed", 0),
+            accumulated.get("total_failed", 0),
+            accumulated.get("total_errors", 0),
             exc_info=exc,
         )
-        accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except asyncio.CancelledError:
         final_status = "INTERRUPTED"
         logger.warning(

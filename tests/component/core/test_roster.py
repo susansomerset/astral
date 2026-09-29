@@ -6000,6 +6000,104 @@ class TestAst891ParseJobListBatch:
         assert indexes[0]["identifier"] == "acme"
 
 
+class TestAst1847ParseJobListBatchPartialTally:
+    """AST-1847 / AST-1848: per-company outcomes tally into ctx["dispatch_partial"] in place."""
+
+    _co = staticmethod(TestAst891ParseJobListBatch._co)
+
+    @staticmethod
+    def _partial_ctx() -> Dict[str, Any]:
+        return {"dispatch_partial": dict(total_processed=0, total_passed=0, total_failed=0, total_errors=0)}
+
+    @pytest.mark.asyncio
+    async def test_tallies_every_outcome_into_ctx_dispatch_partial(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # All four _one branches: error / pass (_tally key) / retry (_tally None) / terminal.
+        _mock_parse_batch_browser_session(monkeypatch)
+        results = {
+            "co-ok": {"state": "WATCH"},
+            "co-retry": {"state": "JOBLIST_IDENTIFIED_RETRY"},
+            "co-err": {"error": "boom", "state": "JOBLIST_IDENTIFIED_RETRY"},
+            "co-term": {"state": "COULD_NOT_PARSE_JOBLIST"},
+        }
+
+        async def _dispatch(company, *_a, **_k):
+            return results[company["short_name"]]
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
+        ctx = self._partial_ctx()
+        partial = ctx["dispatch_partial"]
+        companies = [
+            self._co("co-ok"),
+            self._co("co-retry"),
+            self._co("co-err"),
+            self._co("co-term", state="JOBLIST_IDENTIFIED_RETRY"),
+        ]
+        out = await roster_mod.parse_job_list_batch("batch-1847", companies, ctx=ctx)
+        assert partial == {"total_processed": 4, "total_passed": 1, "total_failed": 0, "total_errors": 2}
+        assert ctx["dispatch_partial"] is partial
+        # Normal-return shape unchanged.
+        assert out == {"passed": 1, "failed": 0, "total": 4, "errors": 2, "retried": 1}
+
+    @pytest.mark.asyncio
+    async def test_counted_tallies_escaping_exception_once(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _mock_parse_batch_browser_session(monkeypatch)
+
+        async def _dispatch(company, *_a, **_k):
+            if company["short_name"] == "co-boom":
+                raise RuntimeError("boom")
+            return {"state": "WATCH"}
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
+        ctx = self._partial_ctx()
+        out = await roster_mod.parse_job_list_batch(
+            "batch-1847", [self._co("co-ok"), self._co("co-boom")], ctx=ctx,
+        )
+        assert ctx["dispatch_partial"] == {"total_processed": 2, "total_passed": 1, "total_failed": 0, "total_errors": 1}
+        # Post-gather exception count unchanged, not doubled.
+        assert (out["passed"], out["errors"]) == (1, 1)
+
+    @pytest.mark.asyncio
+    async def test_cancelled_company_is_not_tallied(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # _counted catches Exception only; CancelledError (BaseException) leaves no tally.
+        _mock_parse_batch_browser_session(monkeypatch)
+
+        async def _dispatch(company, *_a, **_k):
+            if company["short_name"] == "co-hang":
+                await asyncio.sleep(3600)
+            return {"state": "WATCH"}
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
+        ctx = self._partial_ctx()
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                roster_mod.parse_job_list_batch(
+                    "batch-1847", [self._co("co-ok"), self._co("co-hang")], ctx=ctx,
+                ),
+                0.1,
+            )
+        assert ctx["dispatch_partial"] == {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+
+    @pytest.mark.asyncio
+    async def test_ctx_without_dispatch_partial_is_noop(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Branch lock: real ctx lacking the key → partial is None; no key invented.
+        _mock_parse_batch_browser_session(monkeypatch)
+        monkeypatch.setattr(
+            roster_mod, "run_parse_job_list_dispatch", AsyncMock(return_value={"state": "WATCH"}),
+        )
+        ctx = {"entity_batch_id": "batch-1847"}
+        out = await roster_mod.parse_job_list_batch("batch-1847", [self._co("co-ok")], ctx=ctx)
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0, "retried": 0}
+        assert ctx == {"entity_batch_id": "batch-1847"}
+
+
 class TestAst897HoldStateOnBalanceRefusal:
     """AST-897: provider balance refusal holds company state (no error/retry / NO_JOBLIST)."""
 

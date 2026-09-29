@@ -552,3 +552,163 @@ no plan-stage scores attached (fix-board Joan: CANON OK narrative only)
 #### Chuckles disposition
 
 fix-now accepted → Review Posted → resolve by Betty (test-tree owner): restore the 8 leaked AST-1768 paths to ftr content on this sub (same drop as 4a9d769f on AST-1818). Then re-run the test-fix manifest → User Testing → merge-child into `ftr/AST-1820-recheck-no-openings-avail-count`.
+
+## Bug: AST-1831 — recheck_no_openings runs one batch of 10 regardless of batch_size / max_runs
+
+**Status:** The `[scope-gate]` is answered. On 2026-09-28 Susan said to add the admin UI bug to this bug's scope and resolve it, and Chuckles amended AST-1820's scope to add `src/ui/api/api_admin.py` `create_dtask`. The live-row values weren't provided, so the admin create `max_runs` fix is the resolution. Nothing in code treats `recheck_no_openings` differently.
+
+### As-is
+
+A `recheck_no_openings` run (company, trigger `NO_OPENINGS`) claims 10 companies, processes them, and stops, whatever `batch_size` / `max_runs` show in Admin → Scheduled Actions.
+
+### To-be
+
+Like every other dispatch row: each batch claims `batch_size`, and the loop repeats until `max_runs` is reached (0 = until drained) or Available runs out. A manual or scheduled Sweep on an AUTO row stays at one batch by design (AST-1829).
+
+### Repro
+
+Needs the live row. The local `data/astral.db` has one `dispatch_task` row (`gaze_email`) and no NO_OPENINGS companies, so it's not the environment the bug was seen in. Minimal code repro for the defect below: POST `/api/admin/dispatch_tasks` with `{"task_key": "recheck_no_openings", "trigger_state": "NO_OPENINGS", "entity_type": "company", "min_count": 1, "max_runs": 0, ...}`. `GET` the row and it shows `max_runs = 1`.
+
+### Root cause (code, traced from tick/click to claim)
+
+These paths are generic, with no `recheck_no_openings` branch:
+
+- **Dispatcher, `src/core/dispatcher.py`:**
+  - `_run_task` → `_run_unified` company branch: `limit = int(task["batch_size"])` when set, passed to `get_new_company_batch(limit=...)`.
+  - `_run_dispatch_loop` honors `max_runs` (None → one run, 0 → drain). It forces 1 only for a UI Sweep or a scheduled sweep on an AUTO row.
+- **Batch shape:** `recheck_no_openings` defaults to `batch_call_mode = 0` (not in `_DISPATCH_BATCH_CALL_MODE_ONE`), so it goes per-entity through `_warm_then_gather`.
+- **Consult / roster:** `consult.run_consult_task` company → `roster.run_company_task` NO_OPENINGS returns `total_processed = 1` per company, so the zero-progress stop doesn't fire early.
+- **Claim limit fallback:** `roster.get_new_company_batch` uses `COMPANY_STATES["NO_OPENINGS"].batch_criteria.limit = 10` **only when `batch_size` is NULL**.
+- **Tick scheduling:** `database.get_due_tasks` and the `dispatch_task_sweep_due` sweep path are generic.
+- **Startup / seed:** `_ensure_dispatch_task_schema` does no recurring row writes (AST-1496). The historical `recheck_no_openings` rows came from retargeting `find_job_page` NO_OPENINGS rows (removed in AST-1496), which kept those rows' `batch_size` / `max_runs`. Template copy (`_dispatch_task_schedule_assign`) and PUT (`update_dt`) persist both fields as given.
+
+So "10 per batch, one run" means the row's **stored** values are `batch_size = NULL` and `max_runs ∈ {NULL, 1}`, or the runs were Sweeps. Paths that can store those values when the UI shows something else:
+
+1. **Confirmed defect: admin create drops `max_runs`.** `api_admin` POST `/dispatch_tasks` calls `save_dispatch_task(...)`, which has **no `max_runs` parameter**, and it never follows up with `update_dispatch_task(max_runs=...)`, unlike `skip_daisy_chain` / `batch_call_mode`. Every row created from the Add form gets the column DEFAULT `1`, whatever the form sent. This affects all task keys, not just recheck. It matches Susan's symptom if the recheck row was (re)created from the form: `batch_size` left blank ("default" placeholder → NULL → 10) plus `max_runs` dropped (→ 1).
+2. **Edits to an AUTO row are rejected.** PUT returns 400 "Turn AUTO mode off before editing this row" whenever `row.auto_mode` is set and the body has any other key. The modal always sends every field, so an AUTO row's `batch_size` / `max_runs` can't change until AUTO is turned off first. This is by design and shows a toast, but it's easy to miss.
+3. **Sweeps:** the Sweep button, and a tick sweep when `0 < Avail < min_count` and `sweep_hrs` has elapsed, run exactly one batch.
+
+### Create-path persistence audit (Add form POST body vs `create_dtask`)
+
+The Add form (`AdminScheduledActions.tsx` `handleSave`, create branch) sends: `candidate_id`, `task_key`, `trigger_state`, `entity_type`, `freq_hrs`, `sweep_hrs`, `min_count`, `batch_size`, `batch_call_mode`, `max_runs`, `score_floor`, `auto_mode`, `skip_daisy_chain`.
+
+| Field | `create_dtask` today | Verdict |
+|---|---|---|
+| `candidate_id`, `task_key`, `trigger_state`, `entity_type`, `min_count`, `auto_mode`, `freq_hrs`, `sweep_hrs`, `score_floor` | passed to `save_dispatch_task` | OK |
+| `batch_size` | `int(...) if data.get("batch_size") else None` → saved; blank/0 → NULL, which is the form's "default" placeholder (state `batch_criteria.limit`) | OK, by design |
+| `batch_call_mode` | follow-up `update_dispatch_task` when not None | OK |
+| `skip_daisy_chain` | follow-up when truthy; false → column default 0 | OK |
+| **`max_runs`** | **dropped**: `save_dispatch_task` has no param and there's no follow-up → column DEFAULT 1 | **Defect: fixed below** |
+| `debug` | Add modal shows a Debug checkbox, but the frontend create body **doesn't send** `debug` | Gap is in `AdminScheduledActions.tsx` (outside scope); not fixed here, noted for a follow-up. The row can still be toggled with the list's Debug control (PUT `{debug}`). |
+
+So `max_runs` is the only `api_admin.py` persistence gap on this path.
+
+### Proposed change
+
+**`src/ui/api/api_admin.py`, `create_dtask` (POST `/api/admin/dispatch_tasks`), one guarded follow-up:**
+
+Directly after the existing `batch_call_mode` follow-up and before `return jsonify({"id": task_id}), 201`, add:
+
+```python
+    # save_dispatch_task has no max_runs param; without this, form-created rows keep the column default 1.
+    if "max_runs" in data and data.get("max_runs") is not None:
+        update_dispatch_task(task_id, max_runs=int(data["max_runs"]))
+```
+
+- It mirrors the `skip_daisy_chain` / `batch_call_mode` follow-ups and uses the same `int(...)` coercion as `update_dt` for `max_runs`. Values: 0 = loop until drained, N = cap, absent/null = column default 1.
+- No change to `save_dispatch_task`, schema, dispatcher, roster, claim, or frontend.
+
+### Blast radius
+
+- Every task key's Add-form create now stores `max_runs` as sent instead of 1. Recheck is just where it was noticed.
+- The frontend already sends `max_runs` (blank → 1), so its behavior is unchanged except that non-1 values now stick.
+- Rows created before the fix keep their stored value (no backfill). Susan fixes an affected row by editing it: turn AUTO off first, because `update_dt` rejects non-toggle edits on AUTO rows.
+- Template copy (`set_dispatch_tasks_from_template_rows`) and PUT (`update_dt`) are untouched; they already persist `max_runs`.
+- Tests: create tests in `tests/component/ui/api/test_api_admin.py` (`test_create_dispatch_task_rejects_retired_*`) return 400 before the save and don't mock `update_dispatch_task`, so they're unaffected. There's no existing coverage that POST persists `max_runs`, which is Betty's call at the board.
+
+### What must still hold
+
+- A create POST without `max_runs` (or with null) stores the column default 1, same as today.
+- `batch_size` blank/0 on create still stores NULL (state `batch_criteria.limit` fallback), and a NULL `batch_size` still falls back to that limit at claim.
+- A Sweep (UI or scheduled, AST-1829) on an AUTO row is still one batch. `max_runs = 0` still means loop until drained.
+- `update_dt` behavior is unchanged, including the AUTO-row edit block.
+- AST-1821 count/claim parity and failure stamping are unchanged.
+
+### Fix board — AST-1831
+
+[board-betty] TESTS: REVISE: no create POST sends `max_runs`. Needs a create node posting `max_runs` 0 and N that asserts `update_dispatch_task(task_id, max_runs=<int>)`, plus absent/null asserting no follow-up. `api_admin.py` stays LOCKED_AT_100.
+
+[board-joan] CANON: OK
+
+**Findings (AST-1831 — fix-board Joan pass)**
+
+**Plan-fix:** `create_dtask` POST follow-up to persist `max_runs` via `update_dispatch_task` (same pattern as `batch_call_mode` / `skip_daisy_chain`). Generic admin persistence bug; no `recheck_no_openings` branch in dispatcher/roster.
+
+**`patt.entity.batch-criteria` — conforming:** `batch_size`, `max_runs`, and related knobs are row data on `dispatch_task`, edited through admin and read fresh each tick. Dropping `max_runs` on create so the column default `1` wins **violates** that model (operator sets criteria; stored row lies). The one-line follow-up **restores** conformance; no new carve-out or pattern rewrite.
+
+**`patt.entity.batch-processing` — no change:** Dispatcher loop semantics (`max_runs` 0 / N / NULL, AST-1829 sweep = one batch on AUTO) stay as documented in “What must still hold.” Fix only affects what gets **stored** at create time.
+
+**`astral.dispatch.entity-state-bound` — unaffected:** Still about real `entity_type` / `trigger_state` pairs; not about `max_runs`.
+
+**Seed / operator curation statutes:** AST-1496-style operator-owned `dispatch_task` rows are **written** by admin create; persisting all form-sent scheduling fields is consistent with operator curation, not a boot/catalog ensure change.
+
+**Not REVISE:** No in-force directive needs text updated for this fix. Optional follow-up (`debug` omitted on create body) is frontend/plan scope, not canon.
+
+**Not ESCALATE:** Susan scoped admin `create_dtask` as the resolution; no architectural precedent question.
+
+**Blast radius (canon lens):** All task keys benefit from honest `max_runs` on Add-form create; aligns UI with stored criteria per batch-criteria, no special-case statute for recheck.
+
+Chuckles: UAT-batch bug, so Plan Discuss → qa-fix (F4) alone → make-fix.
+
+### Radia review-fix — AST-1831
+
+**Ticket:** AST-1831  
+**Publish ref:** `origin/sub/AST-1820/AST-1831-recheck-no-openings-batch-size-max-runs` @ `78f1b395`  
+**Review diff (ticket scope):** `origin/dev...origin/sub/AST-1820/AST-1831-recheck-no-openings-batch-size-max-runs` — 4 files (`api_admin.py`, `test_api_admin.py`, bible, plan § AST-1831). **Out of scope:** `origin/ftr/...` three-dot diff includes dev-sync (#177/#178/#181) product churn; ignored per spawn.  
+**Corpus:** `a0bc2f0e5b`  
+**Overall:** CLEAN  
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — Betty’s thread + `TestAst1831CreateMaxRuns` pin **To-be** create persistence: `test_create_persists_max_runs` (0 / 5 / `"3"`) mocks `save_dispatch_task` → `42` and asserts `update_dispatch_task(42, max_runs=<int>)` exactly once; pre-fix that call was missing (Betty: 3 red / 2 green → tip 5/5). `test_create_without_max_runs_skips_follow_up` (absent / JSON null) asserts no `update_dispatch_task` — matches “column DEFAULT 1 unchanged.” Not tautological (exercises the new guard, not duplicate handler logic). **Advisory:** nodes lack an in-file `[bug-repro]` line (convention); Linear + class docstring carry the gate.
+- **## What must still hold — OK** — Diff touches only `create_dtask` `max_runs` follow-up after existing `skip_daisy_chain` / `batch_call_mode` blocks; no `save_dispatch_task`, dispatcher, roster, or database changes → batch_size NULL behavior, sweep/`max_runs` loop semantics, `update_dt`, and AST-1821 paths unchanged. Absent/null path covered by tests; present-non-null including `0` uses `is not None` correctly.
+
+## Canon scores
+
+**Notes:** No frozen **Canon Scope** on Linear Description; scored fix-board overlap (`patt.entity.batch-criteria`).
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — fix-board Joan CANON OK; no validate-plan score table
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory**
+
+- Symptom title mentions `batch_size`; plan-fix correctly limits code to **create `max_runs` persistence** (batch_size already persisted; NULL → state limit 10 is by design). Susan scoped admin create as the fix.
+- `debug` on Add form still not sent on create (plan defers to frontend follow-up).
+- Branch-lock 100% on `api_admin.py` not re-verified in Hedy’s environment (collection errors on dev); new guard’s both arms are exercised by the five parametrized nodes.
+
+## Chuckles — post-review branching
+
+**PROCEED**, C7 complete — parent AST-1820 (UAT batch, not orphaned): **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Merge path: `sub/.../AST-1831-...` into `ftr/AST-1820-recheck-no-openings-avail-count` when rollup-ready (not straight-to-dev unless parent policy says otherwise).
+
+context_tokens≈9000
+
+---
+
+**VERDICT: CLEAN** (no fix-now items)
+
+**Chuckles disposition:** CLEAN → Review Posted → User Testing (resolve-child skipped). Advisories only (debug-on-create frontend follow-up; 100% branch re-check on a clean test env).

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -761,6 +762,69 @@ class TestRunUnified:
         assert out["total_processed"] == 1
         run.assert_awaited_once()
 
+    # AST-1847 / AST-1848: ctx["dispatch_partial"] — fresh copy per run, popped on normal
+    # return, left in place on cancel (timeout branch folds it); finally still clears the batch.
+    @staticmethod
+    def _ast1847_company_claim(monkeypatch: pytest.MonkeyPatch, batch_id: str) -> Tuple[MagicMock, Dict[str, Any]]:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        monkeypatch.setattr(
+            "src.core.roster.get_new_company_batch",
+            MagicMock(return_value=(batch_id, [{"short_name": "co-1", "state": "JOBLIST_IDENTIFIED"}])),
+        )
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.roster.clear_company_batch", clear)
+        task = {
+            "entity_type": "company",
+            "trigger_state": "JOBLIST_IDENTIFIED",
+            "task_key": "parse_job_list",
+            "batch_call_mode": 1,
+        }
+        return clear, task
+
+    @pytest.mark.asyncio
+    async def test_ast1847_sets_fresh_dispatch_partial_and_pops_on_return(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str,
+    ) -> None:
+        _clear, task = self._ast1847_company_claim(monkeypatch, batch_id)
+        # Stale partial from a prior run must not leak into this one.
+        ctx = {
+            "astral_candidate_id": "cand-1",
+            "dispatch_partial": {"total_processed": 9, "total_passed": 9, "total_failed": 0, "total_errors": 0},
+        }
+        seen: Dict[str, Any] = {}
+
+        async def _seen(*_a, **_k):
+            seen["partial"] = dict(ctx["dispatch_partial"])
+            seen["is_zero_const"] = ctx["dispatch_partial"] is dispatcher_mod._SUMMARY_ZERO
+            return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+
+        monkeypatch.setattr("src.core.consult.run_consult_task", AsyncMock(side_effect=_seen))
+        out = await dispatcher_mod._run_unified(task, ctx, False)
+        assert seen["partial"] == dispatcher_mod._SUMMARY_ZERO
+        # Copy, so the module constant is never mutated by batch runners.
+        assert seen["is_zero_const"] is False
+        assert "dispatch_partial" not in ctx
+        assert out["total_processed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_ast1847_cancel_keeps_dispatch_partial_and_clears_batch(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str,
+    ) -> None:
+        clear, task = self._ast1847_company_claim(monkeypatch, batch_id)
+        ctx: Dict[str, Any] = {"astral_candidate_id": "cand-1"}
+
+        async def _tally_then_cancel(*_a, **_k):
+            ctx["dispatch_partial"]["total_processed"] += 1
+            ctx["dispatch_partial"]["total_passed"] += 1
+            raise asyncio.CancelledError()
+
+        monkeypatch.setattr("src.core.consult.run_consult_task", AsyncMock(side_effect=_tally_then_cancel))
+        with pytest.raises(asyncio.CancelledError):
+            await dispatcher_mod._run_unified(task, ctx, False)
+        # Pop is on the normal-return path only; cancel leaves the partial for the timeout fold-in.
+        assert ctx["dispatch_partial"] == {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+        clear.assert_called_once_with(batch_id)
+
 
 class TestCircuitBreaker:
     def test_disables_task_after_zero_progress_runs(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1200,6 +1264,125 @@ class TestAst841DispatchTerminalLogging:
             and "inflow_discovery" in r.message
             for r in caplog.records
         )
+
+
+class TestAst1847TimeoutPartialCounts:
+    """AST-1847 / AST-1848: dispatch timeout keeps finished companies' counts in ledger + log."""
+
+    @staticmethod
+    def _stub_dispatch_one(monkeypatch: pytest.MonkeyPatch, task_id: int, timeout_s: float) -> MagicMock:
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
+        update_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", update_ledger)
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_check_circuit_breaker", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.monitor, "auto_run_error", MagicMock())
+        # Sub-second timeout only triggers the cancel; nothing asserts on elapsed time.
+        monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "dispatch_timeout_seconds", timeout_s)
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[task_id] = {"asyncio_task": None}
+        return update_ledger
+
+    @pytest.mark.asyncio
+    async def test_parse_job_list_timeout_ledger_and_log_carry_partial_counts(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # bug-repro: real _dispatch_one → _run_dispatch_loop → _run_task → _run_unified →
+        # consult.run_consult_task → roster.parse_job_list_batch; only claim, browser and the
+        # per-company dispatch are faked, so the ctx reference must survive consult.
+        from src.core import roster as roster_mod
+        from src.utils.config import ROSTER_CONFIG
+
+        update_ledger = self._stub_dispatch_one(monkeypatch, 1847, 0.2)
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        # No run_next chain → this dispatch owns the ledger row.
+        monkeypatch.setattr(dispatcher_mod, "_current_agent_task_run_next", lambda _tk: None)
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda _t: 4)
+        companies = [{"short_name": n, "state": "JOBLIST_IDENTIFIED"} for n in ("a", "b", "c", "d")]
+        claimed: List[str] = []
+
+        def _claim(*_a, **k):
+            claimed.append(k["batch_id"])
+            return k["batch_id"], companies
+
+        monkeypatch.setattr("src.core.roster.get_new_company_batch", _claim)
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.roster.clear_company_batch", clear)
+
+        @asynccontextmanager
+        async def _batch():
+            yield MagicMock()
+
+        monkeypatch.setattr(roster_mod, "create_batch_browser_session", _batch)
+        monkeypatch.setattr(roster_mod, "get_company", lambda _sn: {})
+        parse_cfg = ROSTER_CONFIG["parse_job_list"]
+
+        async def _dispatch(company, batch_id, ctx, debug, batch_session=None):
+            name = company["short_name"]
+            if name in ("a", "b"):
+                return {"state": parse_cfg["pass_state"]}
+            if name == "c":
+                return {"state": parse_cfg["retry_state"]}
+            await asyncio.sleep(3600)  # d: still in flight when the dispatch timeout fires
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
+        task = {
+            "id": 1847,
+            "task_key": "parse_job_list",
+            "candidate_id": "cand-1",
+            "entity_type": "company",
+            "trigger_state": "JOBLIST_IDENTIFIED",
+            "auto_mode": 1,
+            "batch_call_mode": 1,
+            "max_runs": 1,
+        }
+        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one(task)
+
+        kw = update_ledger.call_args.kwargs
+        assert kw["status"] == "INTERRUPTED"
+        # a, b passed; c retried (processed, not error); d cancelled → uncounted; errors=1 is the timeout.
+        assert (kw["total_processed"], kw["total_passed"], kw["total_failed"], kw["total_errors"]) == (3, 2, 0, 1)
+        assert any(
+            "dispatch timeout after" in r.message and "processed=3 passed=2 failed=0 errors=1" in r.message
+            for r in caplog.records
+        )
+        # AST-891 AC2: _run_unified finally still releases the claim on cancel.
+        assert len(claimed) == 1
+        clear.assert_called_once_with(claimed[0])
+
+    @pytest.mark.asyncio
+    async def test_timeout_folds_partial_on_top_of_prior_runs(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        update_ledger = self._stub_dispatch_one(monkeypatch, 1848, 0.05)
+        captured: Dict[str, Any] = {}
+
+        async def _hang(ctx, task, task_key, batch_id, accumulated, dispatch_ledger_id=None):
+            captured["ctx"] = ctx
+            # Completed prior runs already in accumulated; in-flight run's partial on ctx.
+            accumulated.update(total_processed=5, total_passed=4, total_failed=0, total_errors=1)
+            ctx["dispatch_partial"] = {"total_processed": 2, "total_passed": 1, "total_failed": 0, "total_errors": 1}
+            await asyncio.sleep(3600)
+
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=_hang))
+        task = {"id": 1848, "task_key": "evaluate_jd", "candidate_id": "cand-1", "auto_mode": 1}
+        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one(task)
+
+        kw = update_ledger.call_args.kwargs
+        # errors = 1 prior + 1 partial + 1 timeout
+        assert (kw["total_processed"], kw["total_passed"], kw["total_failed"], kw["total_errors"]) == (7, 5, 0, 3)
+        # +1 timeout lands before the log line, so log == ledger.
+        assert any("processed=7 passed=5 failed=0 errors=3" in r.message for r in caplog.records)
+        assert "dispatch_partial" not in captured["ctx"]
 
 
 class TestRunDispatchLoop:

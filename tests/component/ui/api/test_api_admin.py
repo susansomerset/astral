@@ -244,6 +244,8 @@ class TestEnrichTasks:
             "get_candidate",
             lambda candidate_id: {"candidate_data": {"name": "Susan"}},
         )
+        # AST-1855: hydrated loader (AST-1854) reads artifacts — keep it off the repo DB.
+        monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
         monkeypatch.setattr(
             admin_mod.database,
             "get_agent_task",
@@ -1479,6 +1481,8 @@ class TestAdhocHelpers:
             lambda agent_id: {"agent_id": agent_id, "model_code": "claude-haiku-4-5", "content": "sys", "temperature": None, "max_tokens": None},
         )
         monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: {"candidate_data": {"x": 1}, "candidate_api_key": "key"})
+        # AST-1855: hydrated loader (AST-1854) reads artifacts — keep it off the repo DB.
+        monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
         monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: {"task_key_uuid": "uuid-1"})
         monkeypatch.setattr(admin_mod, "resolve_tokens", lambda text, *args, **kwargs: text)
         payload, err = admin_mod._resolve_adhoc({"agent_id": "a1", "candidate_id": "c1", "task_key": "craft_resume_base", "user_prompt": "u"})
@@ -1496,6 +1500,8 @@ class TestAdhocHelpers:
             "get_candidate",
             lambda candidate_id: {"candidate_data": {"artifacts": {"jobdesc_rubric": {"criteria": []}}}},
         )
+        # AST-1855: hydrated loader (AST-1854) reads artifacts — keep it off the repo DB.
+        monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
         monkeypatch.setattr(
             admin_mod.database,
             "get_job",
@@ -3839,6 +3845,8 @@ class TestAst1791NoPromptValueErrorEmptyRender:
                 "candidate_data": {},
             },
         )
+        # AST-1855: hydrated loader (AST-1854) reads artifacts — keep it off the repo DB.
+        monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
         monkeypatch.setattr(admin_mod, "build_candidate_token_view", lambda cand: {"first": "Ada"})
         monkeypatch.setattr(
             admin_mod,
@@ -3922,3 +3930,211 @@ class TestAst1791NoPromptValueErrorEmptyRender:
         assert resp.get_json()["started"] is True
         run.assert_called_once()
 
+
+# Branches: artifact-only / neither / legacy-blob Ideal Day through the real hydrated loader (AST-1854).
+class TestAst1854HydratedCandidateEmptyRender:
+    """AST-1855 / AST-1854: dispatch empty-render reads the hydrated candidate (artifact overlay), no eval / loader / token-view monkeypatch."""
+
+    @staticmethod
+    def _stub_hydrated_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+        # DB edges only — loader, hydrate_operative_*, token view, resolve_tokens and
+        # empty_render_for_prompts stay real, or the raw-vs-hydrated defect is hidden.
+        def _rows() -> dict[str, dict[str, Any]]:
+            # Fresh dicts per call: the hydrated loader mutates candidate_data in place.
+            return {
+                "c1": {"astral_candidate_id": "c1", "first": "Ada", "last": "Lovelace",
+                       "candidate_data": {"context": {}}},
+                "c2": {"astral_candidate_id": "c2", "first": "Bea", "last": "Blank",
+                       "candidate_data": {"context": {}}},
+                "c3": {"astral_candidate_id": "c3", "first": "Cy", "last": "Legacy",
+                       "candidate_data": {"context": {"ideal_day": "Legacy blob ideal day."}}},
+            }
+
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda cid: _rows()[cid])
+        # Same src.data.database object candidate.get_candidate_current calls — answers all
+        # nine hydrate reads; only c1 has a current Ideal Day artifact.
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_current_artifact",
+            lambda entity_type, entity_id, artifact_type: (
+                {"artifact_data": "Deep work mornings, collaborative afternoons."}
+                if (entity_id, artifact_type) == ("c1", "ideal_day")
+                else None
+            ),
+        )
+        # Single candidate-scoped token, so a blank fill names exactly IDEAL_DAY.
+        monkeypatch.setattr(
+            admin_mod, "_dispatch_empty_render_prompt_texts", lambda tk: ["Ideal day: {$IDEAL_DAY}"]
+        )
+
+    def test_evaluate_artifact_only_ideal_day_empty_render_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # [bug-repro] red on pre-AST-1854 (raw row → IDEAL_DAY blank); green after hydrated loader.
+        self._stub_hydrated_candidates(monkeypatch)
+        assert admin_mod._evaluate_dispatch_empty_render("c1", "craft_do_rubric") == {
+            "empty_render": False,
+            "empty_tokens": [],
+        }
+        assert admin_mod._candidate_dispatch_empty_render_error("c1", "craft_do_rubric") is None
+
+    def test_evaluate_no_ideal_day_anywhere_empty_render_true(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub_hydrated_candidates(monkeypatch)
+        assert admin_mod._evaluate_dispatch_empty_render("c2", "craft_do_rubric") == {
+            "empty_render": True,
+            "empty_tokens": ["IDEAL_DAY"],
+        }
+        assert "IDEAL_DAY" in admin_mod._candidate_dispatch_empty_render_error("c2", "craft_do_rubric")
+
+    def test_evaluate_legacy_blob_ideal_day_empty_render_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Hydrate miss leaves the legacy context.ideal_day blob in place.
+        self._stub_hydrated_candidates(monkeypatch)
+        assert admin_mod._evaluate_dispatch_empty_render("c3", "craft_do_rubric") == {
+            "empty_render": False,
+            "empty_tokens": [],
+        }
+
+
+# Branches: _parse_sweep_hrs None / "" / non-numeric / negative / valid; create 400 vs save kwarg;
+# update "sweep_hrs" in body (400 vs value / null clear); AUTO edit lock unchanged; column metadata key.
+@pytest.mark.skipif(
+    not hasattr(admin_mod, "_parse_sweep_hrs"),
+    reason="AST-1830 sweep_hrs admin API not on this publish tip",
+)
+class TestAst1830SweepHrsAdminApi:
+    """AST-1830: dispatch_task sweep_hrs on admin create/update + list column metadata."""
+
+    _BODY = {"candidate_id": "c1", "task_key": "grade_do", "trigger_state": "PASSED_JD", "min_count": 1}
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [(2.5, 2.5), ("3", 3.0), (0, 0.0), (None, None), ("", None), ("  ", None)],
+        ids=["float", "numeric_str", "zero", "null", "empty", "blank"],
+    )
+    def test_create_passes_sweep_hrs(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, raw, expected
+    ) -> None:
+        save = MagicMock(return_value=42)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks", json={**self._BODY, "sweep_hrs": raw}, headers=auth_headers
+        )
+        assert resp.status_code == 201
+        assert save.call_args.kwargs["sweep_hrs"] == expected
+
+    def test_create_omitted_sweep_hrs_is_null(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock(return_value=42)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        assert admin_client.post("/api/admin/dispatch_tasks", json=self._BODY, headers=auth_headers).status_code == 201
+        assert save.call_args.kwargs["sweep_hrs"] is None
+
+    @pytest.mark.parametrize("raw", [-1, "-0.5", "abc", [1]], ids=["neg", "neg_str", "non_numeric", "list"])
+    def test_create_rejects_bad_sweep_hrs(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, raw
+    ) -> None:
+        save = MagicMock(return_value=42)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks", json={**self._BODY, "sweep_hrs": raw}, headers=auth_headers
+        )
+        assert resp.status_code == 400
+        assert "sweep_hrs" in resp.get_json()["error"]
+        save.assert_not_called()
+
+    def _stub_row(self, monkeypatch: pytest.MonkeyPatch, auto_mode: int = 0) -> MagicMock:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "grade_do", "trigger_state": "PASSED_JD", "candidate_id": "c1",
+                "auto_mode": auto_mode, "sweep_hrs": 1.0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        return update
+
+    # AC 11: PUT on AUTO-off row — 4 persists 4, null clears to NULL
+    @pytest.mark.parametrize("raw,expected", [(4, 4.0), (None, None), ("", None)], ids=["four", "null", "empty"])
+    def test_update_sets_or_clears_sweep_hrs(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, raw, expected
+    ) -> None:
+        update = self._stub_row(monkeypatch)
+        resp = admin_client.put("/api/admin/dispatch_tasks/1", json={"sweep_hrs": raw}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert "sweep_hrs" in update.call_args.kwargs
+        assert update.call_args.kwargs["sweep_hrs"] == expected
+
+    @pytest.mark.parametrize("raw", [-4, "nope"], ids=["neg", "non_numeric"])
+    def test_update_rejects_bad_sweep_hrs(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, raw
+    ) -> None:
+        update = self._stub_row(monkeypatch)
+        resp = admin_client.put("/api/admin/dispatch_tasks/1", json={"sweep_hrs": raw}, headers=auth_headers)
+        assert resp.status_code == 400
+        assert "sweep_hrs" in resp.get_json()["error"]
+        update.assert_not_called()
+
+    def test_update_auto_row_edit_lock_unchanged(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        update = self._stub_row(monkeypatch, auto_mode=1)
+        resp = admin_client.put("/api/admin/dispatch_tasks/1", json={"sweep_hrs": 2}, headers=auth_headers)
+        assert resp.status_code == 400
+        assert "AUTO" in resp.get_json()["error"]
+        update.assert_not_called()
+
+    def test_update_without_sweep_key_leaves_it_untouched(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        update = self._stub_row(monkeypatch)
+        assert admin_client.put("/api/admin/dispatch_tasks/1", json={"min_count": 3}, headers=auth_headers).status_code == 200
+        assert "sweep_hrs" not in update.call_args.kwargs
+
+    # AC 11: list req_dict column metadata exposes sweep_hrs (float) right after freq_hrs
+    def test_column_metadata_includes_sweep_hrs(self) -> None:
+        keys = [c["key"] for c in admin_mod._DISPATCH_TASK_COLUMNS]
+        col = next(c for c in admin_mod._DISPATCH_TASK_COLUMNS if c["key"] == "sweep_hrs")
+        assert col["type"] == "float"
+        assert keys.index("sweep_hrs") == keys.index("freq_hrs") + 1
+
+
+# Branches: create_dtask max_runs follow-up — present non-null (0 / N / numeric str → update) vs absent / null (no update).
+class TestAst1831CreateMaxRuns:
+    """AST-1831: POST /dispatch_tasks persists max_runs via update_dispatch_task follow-up (save has no max_runs param)."""
+
+    _BODY = {"candidate_id": "c1", "task_key": "grade_do", "trigger_state": "PASSED_JD", "min_count": 1}
+
+    def _mocks(self, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", MagicMock(return_value=42))
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        return update
+
+    # 0 = loop until drained; N = cap; str coerced like update_dt.
+    @pytest.mark.parametrize("raw,expected", [(0, 0), (5, 5), ("3", 3)], ids=["drain", "cap", "numeric_str"])
+    def test_create_persists_max_runs(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, raw, expected
+    ) -> None:
+        update = self._mocks(monkeypatch)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks", json={**self._BODY, "max_runs": raw}, headers=auth_headers
+        )
+        assert resp.status_code == 201
+        update.assert_called_once_with(42, max_runs=expected)
+
+    # Absent / null → no follow-up; row keeps column DEFAULT 1.
+    @pytest.mark.parametrize("extra", [{}, {"max_runs": None}], ids=["absent", "null"])
+    def test_create_without_max_runs_skips_follow_up(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, extra
+    ) -> None:
+        update = self._mocks(monkeypatch)
+        resp = admin_client.post("/api/admin/dispatch_tasks", json={**self._BODY, **extra}, headers=auth_headers)
+        assert resp.status_code == 201
+        update.assert_not_called()

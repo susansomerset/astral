@@ -580,19 +580,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Hedy | engineer | `/home/susan/.cursor/chats/b9aeae5a2989dd7fb2d5931ab5d3b434/50e6d46f-c237-4b7f-8829-327f19bcbc27/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/3c38f6e2-161b-4bd5-b13b-e7ac604ae2bf/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/b9aeae5a2989dd7fb2d5931ab5d3b434/bf0569fe-896f-445f-896a-32b01a34839e/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/ee6d6e8328c2789a0c5b8441d3c3847b/16642d74-02fe-4fba-bbbc-9923429f73d9/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/e8ccf81b-4c85-49a8-bf3b-e420eb26515f/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/ee6d6e8328c2789a0c5b8441d3c3847b/2dbcb4c4-8fd3-4991-9096-c6d4e0d5c4b0/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1793 (parent) | ftr/AST-1793-no-agent-empty-render-warning |
-| AST-1794 | sub/AST-1793/AST-1794-no-agent-empty-render-warning |
-| AST-1795 | sub/AST-1793/AST-1795-no-agent-empty-render-warning-tests |
+| AST-1852 (parent) | ftr/AST-1852-dispatch-gate-hydrated-candidate |
+| AST-1854 | sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate |
+| AST-1855 | sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate-tests |
 
-**Epic worktree:** `astral-AST-1793/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-1852/` — one active sub checked out at a time.
 
 ## Bug: AST-1794 — Silence no-agent empty_render warning
 
@@ -814,3 +814,417 @@ AST-1792 proved the fail-open return. AST-1794’s delta is log-only; Betty’s 
 Test/bible gap only — product silence on sibling AST-1794 / ftr.
 
 _Product silence: sibling AST-1794 / ftr. Test delivery: merge-tests(AST-1795)._
+
+## Bug: AST-1854 — Admin token resolves use the hydrated candidate view
+
+Orphaned fix child of AST-1852 (mini-parent off `origin/dev`; no ancestor box checked). Scope gate is this ticket's own `## Scope` (copied from the bug Component/Technical scope) — `src/ui/api/api_admin.py` `_evaluate_dispatch_empty_render`, `_enrich_tasks`, ad hoc run handler (`_resolve_adhoc`): swap the candidate loader only. Product only; tests/bible are Betty's. This is the "operative artifact token view" divergence Radia flagged as discuss on AST-1780 (and carried forward on AST-1791), now surfaced in UAT.
+
+### As-is
+
+Scheduled Actions flags `craft_do_rubric` for candidate somerset as `empty_render: true` with `IDEAL_DAY` in `empty_tokens` (AUTO forced off, AUTO-on / Run 400), even though somerset has a current Ideal Day. `_evaluate_dispatch_empty_render`, `_enrich_tasks`, and `_resolve_adhoc` each load the candidate with raw `database.get_candidate(...)` and pass it straight to `build_candidate_token_view`, so no operative artifact rows are overlaid.
+
+### To-be
+
+All three admin call sites load the candidate with the hydrated `src.core.candidate.get_candidate` (operative artifact rows overlaid onto `candidate_data.context`, legacy blob kept on artifact miss) before `build_candidate_token_view` — the same view the runtime path builds (`src/core/agent.py` ~456–474). Somerset's `craft_do_rubric` validates `empty_render: false`; a candidate with neither a current Ideal Day artifact nor a legacy `context.ideal_day` blob still gets `empty_render: true` / `IDEAL_DAY` in `empty_tokens`.
+
+### Repro
+
+Fixture shape (no SQL seed — persistence is file/JSON / artifacts rows via existing helpers):
+
+1. Candidate `c1` whose `candidate_data.context` has **no** `ideal_day` key (post-AST-1659 save popped it), and a current operative Ideal Day artifact for `c1` (`get_candidate_current("c1", <ideal day artifact key>)` returns a non-empty string, e.g. `"Deep work mornings, collaborative afternoons."`).
+2. An `agent_task` for `craft_do_rubric` whose prompt text references `{$IDEAL_DAY}`; a `dispatch_task` row `{candidate_id: "c1", task_key: "craft_do_rubric", auto_mode: 1}`.
+3. As-is: `_evaluate_dispatch_empty_render("c1", "craft_do_rubric")` → `{"empty_render": True, "empty_tokens": [... "IDEAL_DAY" ...]}`; `GET /api/admin/dispatch_tasks` forces `auto_mode` → 0; `POST …/run` → 400 "Prompt tokens resolve empty…". Task Manager (`_enrich_tasks("c1")`) and ad hoc preview/test for `c1` likewise resolve `{$IDEAL_DAY}` to `""`.
+4. To-be: same fixture → `empty_render: False`, `auto_mode` stays 1, Run not blocked by empty-render; Task Manager / ad hoc resolve `{$IDEAL_DAY}` to the artifact string.
+5. Contrast (must still fail): candidate `c2` with no Ideal Day artifact and no legacy `context.ideal_day` → `empty_render: True`, `IDEAL_DAY` in `empty_tokens`.
+6. Contrast (must still pass): candidate `c3` with legacy `context.ideal_day` blob and no artifact row → `empty_render: False` (hydrate miss leaves the blob untouched).
+
+### Root cause
+
+Since the AST-1643 migration (AST-1659 blob retirement / AST-1660 Ideal Day wire-up), a UI-saved Ideal Day (and the other migrated context artifacts: base resume, resume structure, strengths, priorities, deal breakers, bio summary, backstory, writing preferences) lives only in the artifacts table. The hydrated loader `src.core.candidate.get_candidate` overlays those rows onto `candidate_data.context`; raw `database.get_candidate` does not. AST-1780 Stage 1 step 4 literally named `database.get_candidate` + `build_candidate_token_view` (pre-migration assumption), and `_enrich_tasks` / `_resolve_adhoc` predate the migration with the same raw read. `{$IDEAL_DAY}` walks `context.ideal_day`, finds nothing, and `empty_render_for_prompts` scores it blank.
+
+### Proposed change
+
+All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.py` (`resolve_tokens` / `empty_render_for_prompts`), `src/core/candidate.py` (`get_candidate`, `hydrate_operative_*`, `build_candidate_token_view`), or `src/core/agent.py`.
+
+1. **Import:** add `get_candidate` to the existing `from src.core.candidate import (` block (today lines 37–41, alongside `build_candidate_token_view`). Bare name, same import style as `src/core/agent.py`. No module-level name collision — `api_admin.py` only references the raw loader as `database.get_candidate`.
+
+2. **`_evaluate_dispatch_empty_render(candidate_id, task_key)`** (today ~line 2025): replace `cand = database.get_candidate(cid)` with `cand = get_candidate(cid)`. Everything else byte-for-byte unchanged: blank-`cid` warning + `empty_render: True`; `if not cand:` warning + `empty_render: True` (hydrated loader returns `None` on the same miss); `cd = build_candidate_token_view(cand)`; silent `ValueError` soft-miss pass (AST-1791/1794); `logger.exception` fail-closed; `empty_render_for_prompts(texts, cd, tk, entity_contexts=None)`.
+
+3. **`_enrich_tasks(candidate_id)`** (today ~line 385): replace `database.get_candidate(candidate_id) if candidate_id else None` with `get_candidate(candidate_id) if candidate_id else None`. Leave the `build_candidate_token_view(candidate) if candidate else {}` line and the AST-1014 comment as-is.
+
+4. **`_resolve_adhoc(body)`** (ad hoc run handler, today ~line 1583): replace `candidate = database.get_candidate(candidate_id)` with `candidate = get_candidate(candidate_id)`. `candidate` is also used later in the handler (API key override etc.); the hydrated row carries the same top-level columns (`database.get_candidate` row + `candidate_data` overlay only), so downstream reads are unaffected.
+
+5. No new function, table, field, log line, cap, or cache. Three one-token loader swaps + one import name.
+
+⚠️ **Decision:** Hydration placement mirrors the raw call exactly — `_evaluate_dispatch_empty_render` keeps the load **outside** its `try`, as today. An artifact-read exception propagates the same way a DB read exception already does; no new catch/fail-open added (out of scope, and would change AST-1780 fail-closed behavior).
+
+⚠️ **Decision:** Swap covers all migrated context artifacts the hydrated loader overlays, not just Ideal Day — that is what "same view as runtime" means; no per-token special-casing.
+
+### Blast radius
+
+- `_evaluate_dispatch_empty_render` feeds `list_dtasks` enrichment + force AUTO off, create/update AUTO-on 400, and `run_dtask` 400 — all three flip to the hydrated view together. React (`AdminScheduledActions.tsx`) trusts `row.empty_render`; no edit.
+- `_enrich_tasks` → Task Manager token counts / cache threshold; `_resolve_adhoc` → `adhoc_preview` / `adhoc_test`. Values for artifact-only candidates change from `""` to the operative string (intended).
+- Per-candidate cost: each load now also runs the nine `hydrate_operative_*` artifact reads (`list_dtasks` calls eval once per row). Same cost runtime already pays; no cap/cache added per Susan's no-shortcuts rule.
+- AST-1781 `database._token_view_for_empty_render` revalidation hooks already overlay operative current — this fix converges list/gate with those hooks (Radia's AST-1780 discuss item).
+- **Tests (Betty's lane):** 11 references in `tests/component/ui/api/test_api_admin.py` stub `admin_mod.database.get_candidate`. The hydrated loader calls `database.get_candidate` on the same `src.data.database` module object, so those stubs still take effect — but the hydrate helpers then call `get_candidate_current` against the test DB. Tests that stub only the raw loader may need an artifact-read stub (or stub `admin_mod.get_candidate` directly). Engineer does not edit `tests/`.
+- Out of Scope, not changed: `_resolve_agent_preview_candidate` (~line 175, agent preview) also uses raw `database.get_candidate` → `build_candidate_token_view`; same divergence class. `_candidate_dispatch_api_key_error` (~line 2075) reads the API-key column only — unaffected by artifacts. Flag for Susan/Chuckles if agent preview should follow in a separate delta.
+
+### What must still hold
+
+- Blank `candidate_id` / missing candidate → `empty_render: True` with existing warnings (AST-1780 / AST-1791 decisions).
+- Prompt-load `ValueError` → silent `{"empty_render": False, "empty_tokens": []}` (AST-1791 / AST-1794).
+- Unexpected evaluation exceptions → `logger.exception` + fail-closed.
+- Referenced candidate-scoped token truly blank (no artifact, no legacy blob) → `empty_render: True`; AUTO-on / Run 400; list force-off (AST-1766 AC1, AC3–5).
+- Legacy-blob-only candidates still resolve (hydrate miss leaves the blob).
+- `entity_contexts=None` — job tokens alone never flip the flag (AST-1780 AC5).
+- API-key gate runs first and is independent of empty-render.
+- No edits outside `api_admin.py`; `config.py` resolve semantics, `hydrate_operative_*`, and `agent.py` untouched.
+
+## Joan fix-board — AST-1854
+
+Fix-board Joan pass on **AST-1854** (`plan-fix` § Bug: AST-1854 on `origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate`).
+
+**Triage:** Three loader swaps (`database.get_candidate` → `get_candidate`) in `_evaluate_dispatch_empty_render`, `_enrich_tasks`, and `_resolve_adhoc` align admin token resolution with the runtime path. That **conforms** to `patt.artifact.read-current` intent (current operative bodies, not stale blob-only context) and `astral.dispatch.entity-state-bound` (still entity/candidate-bound; blank/missing candidate behavior unchanged). No in-force statute requires raw DB reads for empty-render or Task Manager/ad hoc resolves. AST-1780’s written `database.get_candidate` step is a **feature-plan decision**, same class as Joan’s **CANON: OK** on AST-1791 — not a canon contradiction. Logging statutes untouched (no new `logger.info` / route spam). Out-of-scope `_resolve_agent_preview_candidate` is a separate product delta, not an Archie canon halt.
+
+---
+
+BEGIN-VERDICT
+
+[board-joan]  CANON: OK
+
+END-VERDICT
+
+```text
+AST-1854 board-joan done — CANON: OK.
+```
+
+## Radia review — AST-1854
+
+[code-rubric]
+
+**Ticket:** AST-1854  
+**Publish ref:** `b5a72977af962d9e8fdd8b797e0e5e9444898f4c` (`origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate`)  
+**Diff base:** `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate...origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate` (product delta: `src/ui/api/api_admin.py` + plan-fix patch in issue doc)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish ref; no `docs/canon-index.md` on this ref — ids resolved from `canon/**` on same tip)  
+**Overall:** CLEAN  
+
+**Status gate:** Spawn prompt `Tests Passed` / assignee Hedy — trusted; no re-fetch block.
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — `[board-betty] TESTS: REVISE` on AST-1854; repro-first coverage owned by sibling **AST-1855** (`origin/sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate` @ `6c083f3c`, red at ftr `3dd7f249`, green with this fix overlaid per spawn prompt). No qa-fix / no `[bug-repro]` on this tip; valid board opt-out for the product child (same lane pattern as AST-1791 → AST-1792).
+
+**## What must still hold — OK** — traced against tip `api_admin.py` + unchanged branches around the three swaps:
+
+| Item | Verdict |
+|------|---------|
+| Blank `candidate_id` / missing candidate → `empty_render: True` + existing warnings | Unchanged guards before/after `get_candidate(cid)` |
+| Prompt-load `ValueError` → silent `empty_render: False` | `try`/`except ValueError` block untouched |
+| Unexpected evaluation exceptions → `logger.exception` + fail-closed | `except Exception` block untouched |
+| Truly blank candidate-scoped token → fail gates | Still `empty_render_for_prompts` on hydrated `cd` |
+| Legacy-blob-only (hydrate miss leaves blob) | `get_candidate` behavior unchanged; plan § Repro c3 still holds for `ideal_day` |
+| `entity_contexts=None` | Unchanged call |
+| API-key gate independent of empty-render | `_candidate_dispatch_api_key_error` still raw `database.get_candidate` (column-only); runs before empty-render on Run |
+| No edits outside `api_admin.py` for product | Diff is import + three loader swaps only (+ issue doc) |
+
+## Canon scores
+
+*(Frozen **Canon Scope** on Linear AST-1854 description: **none** — same process gap as other fix children. Scored **fix-board Joan overlap** from plan-fix § Bug: AST-1854 / `## Joan fix-board — AST-1854`; logging statutes noted **id-only** — no logging lines added or changed in diff.)*
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | Admin token paths use `get_candidate` → operative current overlay before `build_candidate_token_view` |
+| astral.dispatch.entity-state-bound | A | | Evaluation remains per dispatch row `candidate_id`; blank/missing candidate still fail-closed |
+| stat.logging.info.api | A | | (id-only) No new route/info spam |
+| stat.logging.warning | A | | (id-only) Existing warning paths on blank/miss candidate unchanged |
+| stat.logging.error | A | | (id-only) `logger.exception` fail-closed path unchanged |
+
+## Column diff vs plan stage
+
+(aligned) — No `validate-plan` fix-mode per-id table for AST-1854. Fix-board Joan `[board-joan] CANON: OK` triage matches code review on the two substantive ids above; no Joan-high / Radia-low divergence.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — Canon Scope missing on ticket (process)
+
+- **Severity:** discuss  
+- **Location:** Linear Description vs fix-lane Radia comparability  
+- **Finding:** No `Canon Scope (frozen at plan)` block on AST-1854; scored Joan fix-board overlap only (AST-1847 / AST-1821 precedent).  
+- **Recommendation:** Archie may add a frozen list for future fix bugs; not a product defect on this tip.  
+- **Default:** Ship on overlap triage; no engineer recall for Description alone.
+
+### discuss — Test coverage deferred to AST-1855
+
+- **Severity:** discuss  
+- **Location:** `[board-betty] TESTS: REVISE` / spawn handoff  
+- **Finding:** No hydrated-view `[bug-repro]` on this tip; sibling AST-1855 owns artifact-only Ideal Day gate assertions + contrasts.  
+- **Recommendation:** Not **fix-now** on Hedy’s product patch; UAT should still exercise somerset / `craft_do_rubric` per parent AST-1852 To-be.  
+- **Default:** Merge product after PROCEED; land tests via AST-1855 before treating repro-first bar closed.
+
+### advisory — Agent preview still raw loader (approved out of scope)
+
+- **Severity:** advisory  
+- **Location:** `_resolve_agent_preview_candidate` (~L175) — still `database.get_candidate`  
+- **Finding:** Same divergence class as pre-fix empty-render; explicitly out of Susan-approved scope.  
+- **Recommendation:** Separate ticket if UAT wants preview parity; do not expand AST-1854.
+
+### advisory — Legacy blob-only `base_resume` in admin
+
+- **Severity:** advisory  
+- **Location:** Full `get_candidate` overlay (all nine `hydrate_operative_*`), not Ideal Day alone  
+- **Finding:** Legacy-only `base_resume` blob without artifact row can read blank in admin after this fix — **same as runtime** (`hydrate_operative_base_resume_for_response` strips stale blob on miss). Susan flagged as known behavior to weigh, not a scope change.  
+- **Recommendation:** UAT awareness only; aligns with plan ⚠️ Decision (“all migrated context artifacts the hydrated loader overlays”).
+
+### advisory — Pre-existing `test_api_admin.py` failures
+
+- **Severity:** advisory  
+- **Location:** Hedy `test-fix` comment — 5 failures identical on `origin/dev`  
+- **Finding:** Not introduced by AST-1854; not a Radia block on this diff.
+
+## What's solid
+
+- Diff matches plan-fix **Proposed change** exactly: one import name + three `database.get_candidate` → `get_candidate` swaps in `_evaluate_dispatch_empty_render`, `_enrich_tasks`, `_resolve_adhoc`; no caps, caches, or new helpers.  
+- Hydration stays **outside** the `try` in `_evaluate_dispatch_empty_render` per plan decision (fail-closed semantics preserved vs AST-1780).  
+- Scope gate honored: no `config.py`, `candidate.py`, `agent.py`, or React edits.  
+- Estimate **2** fits the footprint.  
+- Converges admin list/gate/Task Manager/ad hoc with runtime token view — addresses UAT somerset / `IDEAL_DAY` root cause from plan § Root cause.
+
+## Recommended actions (Chuckles — read-only for Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | **Normal** — AST-1852 mini-parent with `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate` (not Done-orphan / not straight-to-dev) | Append artifact → `docs(AST-1854): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+1. Do **not** block product on AST-1855 test gap (parallel to AST-1791 / AST-1792).  
+2. Track AST-1855 for `[bug-repro]` / bible REVISE closure.  
+3. Optional follow-up ticket for `_resolve_agent_preview_candidate` only if Susan wants preview parity.
+
+context_tokens≈9500
+
+---
+
+**Slim upshot (Chuckles → `linear_proxy --as radia save-comment`):**
+
+```
+[code-rubric] PROCEED (Commit: b5a72977) Three hydrated loader swaps clean
+```
+
+#### Chuckles disposition (AST-1854)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). Merged into the mini-parent ftr.
+
+Docs-acceptance on this tip: no test-tree delivery here — tests and bible land on gap sibling AST-1855.
+
+## Bug: AST-1855 — Gap: artifact-only Ideal Day repro for the dispatch empty-render gate
+
+Gap child of AST-1852 from `[board-betty] TESTS: REVISE` on AST-1854. Scope is **test + bible only** (this ticket's `## Scope`): `tests/component/ui/api/test_api_admin.py`, `docs/test-bible/ui/api/api_admin.md`. Product loader swap is sibling **AST-1854** (`api_admin.py`, `origin/sub/AST-1852/AST-1854-dispatch-gate-hydrated-candidate` @ `b5a72977`); do not re-plan or re-implement it here. This gap ref carries AST-1854's plan doc commits only (`sync(AST-1855)` absorb of `b01b1ce8`) — **not** its product commit — so the gap tip stays test-tree only and its own `api_admin.py` is the pre-fix product.
+
+### As-is
+
+Every empty-render test either monkeypatches `_evaluate_dispatch_empty_render` (`TestAst1780EmptyRenderListGatesForceOff`) or stubs raw `admin_mod.database.get_candidate` **and** `admin_mod.build_candidate_token_view` (`TestAst1791NoPromptValueErrorEmptyRender._stub_no_agent_task_prompts`). None drives the real loader → artifact overlay → token view → `empty_render_for_prompts` chain, so reverting AST-1854 to the raw `database.get_candidate` read would leave the suite green. Bible §§ AST-1780 / AST-1792 / AST-1795 have no node for an artifact-only context value.
+
+### To-be
+
+A three-candidate `[bug-repro]` class drives `_evaluate_dispatch_empty_render` through the real hydrated loader, with only the DB edges stubbed: `c1` (Ideal Day only in artifacts) → `empty_render: False` — **red** on pre-fix product (gap tip / `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate` `api_admin.py`), **green** on `b5a72977`; `c2` (no artifact, no legacy blob) → `empty_render: True`, `empty_tokens == ["IDEAL_DAY"]`; `c3` (legacy `context.ideal_day` only) → `empty_render: False`. The existing `admin_mod.database.get_candidate` stubs stay green on `b5a72977`.
+
+### Repro
+
+1. Pre-fix product (`api_admin.py` as on this gap tip): `_evaluate_dispatch_empty_render("c1", "craft_do_rubric")` with `database.get_candidate("c1")` → row whose `candidate_data.context` has no `ideal_day`, `database.get_current_artifact("candidate", "c1", "ideal_day")` → `{"artifact_data": "Deep work mornings, collaborative afternoons."}`, prompt texts `["Ideal day: {$IDEAL_DAY}"]` → returns `{"empty_render": True, "empty_tokens": ["IDEAL_DAY"]}` (raw row, no overlay — `get_current_artifact` is never called).
+2. Same stubs on `b5a72977` → `{"empty_render": False, "empty_tokens": []}` (hydrated loader overlays the artifact onto `context.ideal_day`).
+3. `c2` / `c3` return the same values on both trees (contrasts — they pin that the fix neither blanks a legacy blob nor fills a truly empty Ideal Day).
+
+### Root cause
+
+AST-1780 QA stubbed the evaluate helper (wiring only); AST-1792/1795 stubbed the raw loader **and** the token view to isolate the ValueError soft-miss. No test left the loader + `build_candidate_token_view` + `resolve_tokens` chain real, so the raw-vs-hydrated read (AST-1854's defect) was invisible to the suite.
+
+### Proposed change
+
+**Files only (Scope gate):**
+
+| File | Change |
+|------|--------|
+| `tests/component/ui/api/test_api_admin.py` | New class `TestAst1854HydratedCandidateEmptyRender` directly after `TestAst1791NoPromptValueErrorEmptyRender`; existing tests edited only per step 3's red rule |
+| `docs/test-bible/ui/api/api_admin.md` | New § AST-1855 under the AST-1780 empty-render cluster (after § AST-1795) |
+
+**Do not edit** `src/ui/api/api_admin.py`, `src/core/candidate.py`, or `src/utils/config.py` — AST-1854 owns product.
+
+1. **Class + stub helper** — `TestAst1854HydratedCandidateEmptyRender`, docstring `"""AST-1855 / AST-1854: dispatch empty-render reads the hydrated candidate (artifact overlay), no eval / loader / token-view monkeypatch."""`. Static helper `_stub_hydrated_candidates(monkeypatch)`:
+
+   - `admin_mod.database.get_candidate` → `lambda cid: _rows()[cid]` where `_rows()` builds **fresh** dicts per call (the hydrated loader mutates `candidate_data` in place), keyed by id:
+
+     ```python
+     {
+         "c1": {"astral_candidate_id": "c1", "first": "Ada", "last": "Lovelace",
+                "candidate_data": {"context": {}}},
+         "c2": {"astral_candidate_id": "c2", "first": "Bea", "last": "Blank",
+                "candidate_data": {"context": {}}},
+         "c3": {"astral_candidate_id": "c3", "first": "Cy", "last": "Legacy",
+                "candidate_data": {"context": {"ideal_day": "Legacy blob ideal day."}}},
+     }
+     ```
+
+   - `admin_mod.database.get_current_artifact` → `lambda entity_type, entity_id, artifact_type: {"artifact_data": "Deep work mornings, collaborative afternoons."} if (entity_id, artifact_type) == ("c1", "ideal_day") else None`. Patching the attribute on `admin_mod.database` patches `src.data.database` itself, which `src.core.candidate.get_candidate_current` also calls — so this one stub answers all nine `hydrate_operative_*` reads hermetically (no repo `data/astral.db` access).
+   - `admin_mod._dispatch_empty_render_prompt_texts` → `lambda tk: ["Ideal day: {$IDEAL_DAY}"]` (single candidate-scoped token, so `empty_tokens` is exactly `["IDEAL_DAY"]` when blank).
+   - **Must not** monkeypatch: `admin_mod.get_candidate`, `admin_mod.build_candidate_token_view`, any `hydrate_operative_*`, `get_candidate_current`, `empty_render_for_prompts`, `resolve_tokens`, `_evaluate_dispatch_empty_render`, `_candidate_dispatch_empty_render_error`. Stubbing any of these hides the defect.
+
+2. **Three test methods** (separate methods, not parametrize — keeps the `[bug-repro]` node id stable and distinct from its contrasts, same precedent as AST-1795):
+
+   - `test_evaluate_artifact_only_ideal_day_empty_render_false` — `# [bug-repro] red on pre-AST-1854 (raw row → IDEAL_DAY blank); green after hydrated loader.` Assert `admin_mod._evaluate_dispatch_empty_render("c1", "craft_do_rubric") == {"empty_render": False, "empty_tokens": []}` and `admin_mod._candidate_dispatch_empty_render_error("c1", "craft_do_rubric") is None`.
+   - `test_evaluate_no_ideal_day_anywhere_empty_render_true` — assert `_evaluate_dispatch_empty_render("c2", "craft_do_rubric") == {"empty_render": True, "empty_tokens": ["IDEAL_DAY"]}` and `"IDEAL_DAY" in _candidate_dispatch_empty_render_error("c2", "craft_do_rubric")`.
+   - `test_evaluate_legacy_blob_ideal_day_empty_render_false` — assert `_evaluate_dispatch_empty_render("c3", "craft_do_rubric") == {"empty_render": False, "empty_tokens": []}`.
+
+   Red/green gate for qa-fix: node 1 **fails** with this gap tip's own `api_admin.py` (pre-fix, = `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate`) and **passes** with `b5a72977`'s `api_admin.py`; nodes 2–3 pass on both.
+
+3. **Existing `admin_mod.database.get_candidate` stubs — run, don't pre-edit.** Classification on `b5a72977`:
+
+   - **Unaffected (stub returns `None` → hydrated loader returns before any artifact read, or the call site stays raw):** `TestAdminConfigAndAgents` agent-preview stubs (~lines 177, 190 — `_resolve_agent_preview_candidate` stays raw per AST-1854 scope), `TestEnrichTasks` `None` stubs (~290, 317, 339), `TestBackfillAndCandidateKey` api-key stubs (~1745–1749 — `_candidate_dispatch_api_key_error` stays raw), `TestApiAdminBranchGaps` (~1792, ~1942), `TestAst1412EnrichTaskLens` (~3289).
+   - **Now reach hydrate reads (row-returning stub on a swapped path):** `TestEnrichTasks::test_enrich_tasks_covers_agent_and_cache_branches` (~243), `TestAdhocHelpers::test_adhoc_entities_and_resolve` (~1481), `TestAdhocHelpers::test_resolve_adhoc_job_entity_resolves_visible_jd_token` (~1496), and the four `TestAst1791NoPromptValueErrorEmptyRender` tests via `_stub_no_agent_task_prompts` (~3834). None of these fixtures carry `artifacts.base_resume` or any context leaf their assertions depend on, so they are expected green.
+   - Run the whole module on `b5a72977` product. Edit an existing test **only if it goes red**, and then only by adding `monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)` to that test (or to `_stub_no_agent_task_prompts`). No other changes to existing cases.
+
+4. **Bible** (`docs/test-bible/ui/api/api_admin.md`, new § AST-1855 after § AST-1795):
+   - Table rows for the three node ids; `[bug-repro]` tag on `test_evaluate_artifact_only_ideal_day_empty_render_false` only.
+   - One-line note: AST-1854 — dispatch empty-render loads the hydrated candidate (operative artifact overlay); only `database.get_candidate` / `database.get_current_artifact` / prompt texts stubbed.
+   - QA manifest: the three new nodes + the seven row-returning existing tests from step 3 (re-run guard).
+   - Keep § AST-1780 / AST-1792 / AST-1795 rows unchanged. **Integration:** none.
+
+5. **Implementer lane:** Betty lands tests + bible on `astral-tests` and publishes to `origin/sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate-tests` per qa-fix. Engineers do not edit `tests/` or `docs/test-bible/**`.
+
+⚠️ **Decision:** Stub at the DB edges (`database.get_candidate`, `database.get_current_artifact`) rather than seeding `sqlite_in_memory` artifact rows — keeps the full product chain (hydrated loader → `hydrate_operative_*` → `build_candidate_token_view` → `resolve_tokens` → `empty_render_for_prompts`) real while staying hermetic and independent of artifact-save helpers.
+
+⚠️ **Decision:** One `_evaluate_dispatch_empty_render` repro is the gate (Betty's board note) — `_enrich_tasks` / `_resolve_adhoc` share the same one-token loader swap; no separate repro nodes for them.
+
+### Blast radius
+
+- **Hermeticity (discuss):** `tests/component/ui/conftest.py` DB isolation (`sqlite_in_memory` / `seeded_db`) is opt-in and `tests/conftest.py` defaults `ASTRAL_DB_DIR` to the repo `data/`. On `b5a72977`, the seven row-returning tests in step 3 now call `database.get_current_artifact` against that default DB (nine reads per load). Expected green (fixture ids like `c1` have no rows), but non-hermetic; step 3 stubs only on red, per Scope ("existing cases change only if needed"). Susan may prefer the `get_current_artifact → None` stub on all seven regardless.
+- **Legacy base resume (discuss, AST-1854 product — not this gap):** `hydrate_operative_base_resume_for_response` **pops** legacy `artifacts.base_resume` on artifact miss (AST-1659 blob retirement), unlike the context leaves, which keep the legacy blob. So on `b5a72977` a candidate with only a legacy `base_resume` blob now reads blank in the admin gate / Task Manager / ad hoc — matching runtime (`agent.py` already hydrates), but narrower than AST-1854's "legacy-blob-only candidates still resolve" line, which holds for Ideal Day (and the other context leaves) only. No test in this gap asserts base-resume behavior.
+- New class is additive; `TestAst1780…` / `TestAst1791…` intent unchanged.
+- Sibling AST-1854 product must be on the line under test for green; merge-child order AST-1854 → AST-1855.
+
+### What must still hold
+
+- Blank / missing `candidate_id` and candidate miss → `empty_render: True` (AST-1780 / AST-1791) — covered by existing product; not re-asserted here.
+- Prompt-load `ValueError` → silent `empty_render: False` (AST-1791 / AST-1794) — `TestAst1791…` stays green.
+- Truly blank candidate-scoped token → `empty_render: True` with the token named (node 2).
+- Legacy `context.ideal_day` blob still resolves (node 3).
+- `entity_contexts=None`; no second list boolean; no product `src/` edits on this tip; no invented integration tier.
+
+## Joan fix-board — AST-1855
+
+Fix-board Joan pass on **AST-1855** (test + bible gap only; product stays on sibling AST-1854). Joan’s single question is whether the plan-fix **requires or conflicts with** in-force canon. This patch adds component tests and bible rows that exercise the real hydrated-loader → token-view → `empty_render_for_prompts` chain via DB-edge stubs only; it does not edit `src/`, statutes, or patterns. The asserted outcomes (artifact-only Ideal Day passes, truly blank fails, legacy blob passes) match `patt.artifact.read-current` / migration intent, not a new exception. Blast-radius discuss items (hermetic `get_current_artifact`, base-resume pop vs AST-1854 wording) are product/UAT scope on AST-1854, not canon edits this gap must land.
+
+BEGIN-VERDICT
+
+[board-joan]  CANON: OK
+
+END-VERDICT
+
+```text
+AST-1855 board-joan done — CANON: OK.
+```
+
+## Radia review — AST-1855
+
+[code-rubric]
+
+**Ticket:** AST-1855  
+**Publish ref:** `4bbeabff46cbc6bc51db807b81bdeb7ad12a5a9f` (`origin/sub/AST-1852/AST-1855-dispatch-gate-hydrated-candidate-tests`)  
+**Diff base:** `origin/ftr/AST-1852-dispatch-gate-hydrated-candidate` @ `ac9c93b6` (AST-1854 product already on ftr) → gap delta: issue doc + bible + `test_api_admin.py` only — **no `src/**`**  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish ref)  
+**Overall:** CLEAN  
+
+**Status gate:** `Tests Passed` / Hedy — trusted.
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `TestAst1854HydratedCandidateEmptyRender::test_evaluate_artifact_only_ideal_day_empty_render_false` is tagged and pins **concrete To-be** from plan § Repro / AST-1854:
+
+- Asserts `{"empty_render": False, "empty_tokens": []}` and `_candidate_dispatch_empty_render_error(...) is None` for `c1` with **empty** `context` but `get_current_artifact("candidate", "c1", "ideal_day")` returning operative body.
+- **Not tautological:** leaves `admin_mod.get_candidate` (core hydrated loader), all `hydrate_operative_*`, `build_candidate_token_view`, `resolve_tokens`, and `empty_render_for_prompts` **unstubbed**; only DB edges + `_dispatch_empty_render_prompt_texts` (same isolation pattern as AST-1792/1795).
+- **Plausibly red pre-fix:** on raw `database.get_candidate` path, `get_current_artifact` is never consulted → `{$IDEAL_DAY}` blank → `True` / `["IDEAL_DAY"]` (Betty `@ 6c083f3c` red at `3dd7f249`; Hedy red→green at `4bbeabff`; matches plan red/green gate).
+- **Contrast nodes** `c2` / `c3` lock blank vs legacy-blob behavior so the repro is not “always false.”
+
+**## What must still hold — OK** (plan-fix § AST-1855):
+
+| Item | Verdict |
+|------|---------|
+| Truly blank token → `True` + token named | `test_evaluate_no_ideal_day_anywhere_empty_render_true` |
+| Legacy `context.ideal_day` → `False` | `test_evaluate_legacy_blob_ideal_day_empty_render_false` |
+| AST-1791 soft-miss path stays green | Four `get_current_artifact → None` additions in `_stub_no_agent_task_prompts` / related |
+| No product `src/` on this diff | Confirmed (`--name-only` = docs + tests only) |
+| No integration invented | Bible § AST-1855 says none |
+
+## Canon scores
+
+*(Frozen **Canon Scope** on Linear AST-1855: **none** — test/bible gap; scored fix-board Joan overlap.)*
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | Repro asserts artifact-table Ideal Day flows through real hydrate → gate pass |
+| astral.dispatch.entity-state-bound | A | | Per-candidate `c1`/`c2`/`c3` eval; no cross-candidate pooling in tests |
+
+## Column diff vs plan stage
+
+(aligned) — Fix-board Joan `[board-joan] CANON: OK`; no validate-plan per-id table. Betty’s REVISE ask (stub all seven row-returning paths with `get_current_artifact → None`) is **implemented** in diff — not a Radia/engineer gap.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — sibling test carry: `TestAst1830SweepHrsAdminApi`
+
+- **Severity:** advisory  
+- **Location:** `test_api_admin.py` diff (~19 cases), `merge-tests`  
+- **Finding:** AST-1830 Done on `origin/dev`; not AST-1855 scope. `skipif(not hasattr(admin_mod, "_parse_sweep_hrs"))` limits blast on older tips. Hedy attribution comment matches spawn prompt.  
+- **Recommendation:** Do not score as cross-ticket **fix-now**; no Radia action.
+
+### advisory — Bible sequencing line vs current ftr
+
+- **Severity:** advisory  
+- **Location:** `docs/test-bible/ui/api/api_admin.md` § AST-1855 — “product not on ftr yet”  
+- **Finding:** `origin/ftr/AST-1852…` @ `ac9c93b6` now includes AST-1854 product; pass criterion (“green with AST-1854 on tree”) is satisfied on ftr+sub merge. Wording is slightly stale, not a test defect.  
+- **Recommendation:** Optional docs tidy in docs-acceptance; not **fix-now** for `resolve-child`.
+
+### advisory — Pre-existing module failures
+
+- **Severity:** advisory  
+- **Location:** Hedy test-fix — 5 failures identical on `origin/dev`  
+- **Finding:** Outside AST-1855 manifest; unchanged.
+
+### discuss — Canon Scope missing (process)
+
+- **Severity:** discuss  
+- **Finding:** No frozen list on Linear; Joan overlap scored only.  
+- **Default:** Ship; Archie may add list for comparability later.
+
+## What's solid
+
+- Delivers exactly what `[board-betty] TESTS: REVISE` on AST-1854 asked for: real hydrated-loader chain, three candidates, bible § AST-1855 + manifest (10/10 per Hedy).  
+- Hermeticity: proactive `get_current_artifact` stubs on the seven row-returning swapped-path tests (Betty board call) — avoids env-dependent greens against repo `data/astral.db`.  
+- Closes repro-first bar for AST-1854 board REVISE when merged onto ftr that already carries `b5a72977`/`ac9c93b6` product.  
+- Estimate **2** fits.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | Normal — AST-1852 + `ftr/AST-1852-dispatch-gate-hydrated-candidate` | Append artifact → `docs(AST-1855): Radia review — clean` → post slim upshot `--as radia` → **Review Posted** → §3h clean-review → **User Testing** (`resolve-child` skipped). Merge gap sub onto ftr after UT if not already stacked. |
+
+context_tokens≈7200
+
+---
+
+**Slim upshot (Chuckles → `linear_proxy --as radia save-comment`):**
+
+```
+[code-rubric] PROCEED (Commit: 4bbeabff) Bug-repro pins hydrated gate
+```
+
+#### Chuckles disposition (AST-1855)
+
+Clean review (discuss items only, default ship): Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). AST-1854's product fix is on ftr @ ac9c93b6, so the tests run green on ftr without a scratch overlay.
