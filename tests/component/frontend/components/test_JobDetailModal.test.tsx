@@ -1,11 +1,11 @@
 import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import { copyJobSnapshotToClipboard } from "../../../../src/ui/frontend/src/lib/copyJobSnapshot"
 import JobDetailModal from "../../../../src/ui/frontend/src/components/JobDetailModal"
 import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
-import { renderWithProviders } from "../test-utils"
+import { renderWithProviders, stubAuthPublicFetches } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
@@ -415,5 +415,106 @@ describe("JobDetailModal — AST-1704 http(s)-only Link row", () => {
     await userEvent.click(screen.getByText("Info"))
     expect(screen.queryByRole("link", { name: crumb })).not.toBeInTheDocument()
     expect(screen.getByText(crumb)).toBeInTheDocument()
+  })
+})
+
+describe("JobDetailModal — AST-1865 admin state-history row opens the run", () => {
+  // Newest first: HOP (run_id beats claim batch_id), LEGACY (batch_id only), MANUAL (neither).
+  const history = [
+    { to_state: "MANUAL", timestamp: "2026-01-01T00:00:00Z" },
+    { to_state: "LEGACY", timestamp: "2026-01-02T00:00:00Z", batch_id: "legacy-B" },
+    { to_state: "HOP", timestamp: "2026-01-03T00:00:00Z", run_id: "hop-R", batch_id: "claim-C" },
+  ]
+
+  /** Passthrough auth so /api/me decides isAdmin; routes the run modal's log + agent-data fetches. */
+  function mockRunApis(isAdmin: boolean) {
+    stubAuthPublicFetches(true)
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/me") {
+        return { ok: true, json: async () => ({ user_id: "u1", name: "Test User", is_admin: isAdmin }) } as Response
+      }
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") return { json: async () => [] } as Response
+      if (url === "/api/jobs/j1" && !init) {
+        return { ok: true, json: async () => ({ ...jobPayload, state_history: history }) } as Response
+      }
+      const logs = url.match(/^\/api\/admin\/dispatch_ledger\/([^/]+)\/logs$/)
+      if (logs) {
+        return {
+          ok: true,
+          json: async () => [{
+            id: 1, level: "INFO", logger_name: "src.core.agent",
+            message: `log line for ${logs[1]}`, batch_id: logs[1], created_at: "2026-01-03T00:00:00Z",
+          }],
+        } as Response
+      }
+      const blocks = url.match(/^\/api\/agent_data\/([^/]+)$/)
+      if (blocks) {
+        return {
+          json: async () => [{
+            agent_data_id: "a1", block_type: "SYSTEM", block_data: `system prompt for ${blocks[1]}`,
+            token_size: 1, task_key: "t", created_at: "2026-01-03T00:00:00Z",
+          }],
+        } as Response
+      }
+      if (url.startsWith("/api/admin/timesheets")) return { json: async () => [] } as Response
+      if (/^\/api\/admin\/dispatch_ledger\/[^/]+$/.test(url)) return { ok: false } as Response
+      throw new Error(url)
+    })
+  }
+
+  const calledUrls = () => mockedApi.mock.calls.map(call => String(call[0]))
+
+  beforeEach(() => {
+    mockedApi.mockReset()
+    mockedCopy.mockReset()
+    mockedCopy.mockResolvedValue(true)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("AC4: admin clicks a run_id row → run logs + agent data fetched and rendered", async () => {
+    mockRunApis(true)
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await userEvent.click(await screen.findByTitle("Open run hop-R"))
+
+    expect(await screen.findByText("log line for hop-R")).toBeInTheDocument()
+    expect(await screen.findByDisplayValue("system prompt for hop-R")).toBeInTheDocument()
+    expect(calledUrls()).toContain("/api/admin/dispatch_ledger/hop-R/logs")
+    expect(calledUrls()).toContain("/api/agent_data/hop-R")
+    // run_id wins: the claim batch id on the same row is never opened
+    expect(calledUrls().some(url => url.includes("claim-C"))).toBe(false)
+  })
+
+  it("AC6: batch_id-only row opens that run; a row with neither id is not clickable", async () => {
+    mockRunApis(true)
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    const legacy = await screen.findByTitle("Open run legacy-B")
+    expect(screen.getByText("MANUAL").closest('[role="button"]')).toBeNull()
+
+    await userEvent.click(legacy)
+    expect(await screen.findByText("log line for legacy-B")).toBeInTheDocument()
+    expect(calledUrls()).toContain("/api/admin/dispatch_ledger/legacy-B/logs")
+    expect(calledUrls()).toContain("/api/agent_data/legacy-B")
+  })
+
+  it("AC5: non-admin → no clickable rows and no /api/admin/ request", async () => {
+    mockRunApis(false)
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await screen.findByText("HOP")
+    // Let /api/me resolve and settle before asserting absence, so this cannot pass on a pre-auth render
+    await waitFor(() => expect(calledUrls()).toContain("/api/me"))
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(screen.queryByTitle(/^Open run /)).not.toBeInTheDocument()
+    for (const state of ["HOP", "LEGACY", "MANUAL"]) {
+      expect(screen.getByText(state).closest('[role="button"]')).toBeNull()
+    }
+    await userEvent.click(screen.getByText("HOP"))
+    expect(calledUrls().some(url => url.startsWith("/api/admin/"))).toBe(false)
   })
 })

@@ -705,3 +705,84 @@ Gazed `ingest_jobs` writes `source=company`, `source_entity_id` + `company_id` t
   tests/component/core/test_tracker.py::TestTransitionJobState::test_ast1807_rejects_unregistered_base_retry \
   -q
 ```
+
+### AST-1864 · AST-1853 (run_id on job state_history)
+
+**Parent:** [AST-1853 — Execution History for job modals](https://linear.app/astralcareermatch/issue/AST-1853). **Publish:** `origin/sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows`. Product: private `_stamp_run_id` adds `run_id` = active `log_batch_id` to entries appended by `transition_job_state` and `write_job_dispatch_hop_label`; `batch_id` unchanged; no run context (`None` / `""`) → key **absent**. Modal clickability (AC3 tail) belongs to the frontend sibling — not asserted here.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1 single-hop: run ctx `X` = claim `X` → `run_id == X` | `src/core/tracker.py` `transition_job_state` | **`TestAst1864RunIdStamp::test_single_hop_transition_stamps_dispatch_batch`** |
+| AC2 chained hop row: `run_id == H`, `batch_id == C` | same `write_job_dispatch_hop_label` | **`…::test_chained_hop_label_stamps_hop_id_not_claim`** |
+| AC2 graduation / chain-error row inside hop ctx | same `transition_job_state` | **`…::test_chained_transition_stamps_hop_id_not_claim`** |
+| AC3 no run ctx (`None`, `""`) → no `run_id` key, both appenders | same `_stamp_run_id` false branch | **`…::test_no_run_context_leaves_key_absent[None]`**, **`…[]`** |
+| Regression (partial-key asserts unchanged) | same | **`TestTransitionJobState`**, **`TestAst848DispatchChainTracker`** |
+
+**Broken / obsolete:** none. **Pre-existing reds (not this ticket):** 17 `test_tracker.py` failures identical with `src/core/tracker.py` at `origin/dev` (`TestAst733InitializeJobCollision` ×3, `TestAst551StructureAlignedResumeChain` ×3, `TestAst552BuildArtifactsGate` ×1, `TestAst562ArtifactBuildTransitions` ×6, `TestAst997ExperienceJobArrayPersist` ×1, `TestAst1523NotesMetadataRetention` ×1, `TestAst1693SaveMeteoriteDuplicateLinkBackfill` ×2) — manifest is narrowed so they do not gate this child.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **AC1–AC3 + regression (pytest):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1864RunIdStamp \
+  tests/component/core/test_tracker.py::TestTransitionJobState \
+  tests/component/core/test_tracker.py::TestAst848DispatchChainTracker \
+  -q
+```
+
+2. **AC4 (no API / schema change):** `git diff origin/dev...origin/sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows -- src/ui/api/ src/data/` is empty.
+
+**Pass criterion:** item 1 green + item 2 empty — narrowed run, not zero-arg harness / branch-lock gate (pre-existing reds above).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/tracker.md` — *(filled after publish)*
+
+### AST-1872 · AST-1862 (config tab order, score template, server-side skip flag)
+
+Public **`job_state_admits_transition(current_state, to_state)`** wraps `_job_state_matches_prior` + `state_prior_states(JOB_STATES, to_state)` — same rule `transition_job_state` enforces (hop sub-states resolve via base; non-hop suffix does not). Unregistered `to_state` raises `KeyError`. `GET /api/jobs/<id>` attaches **`can_skip`** (always present) via this function with target `CANDIDATE_SKIPPED`. Config slice: `JOBS_RECOMMENDED_REPORT_TOP_TABS` Analysis-first; `PHASE_SCORE_HEADER_TITLE_TEMPLATE` gains ` - {score}`. Route: **`docs/test-bible/ui/api/api_jobs.md`**. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Admitted: `RECOMMENDED`, `CANDIDATE_REVIEW`, `BUILD_ARTIFACTS`, `BUILD_ARTIFACTS.draft_job_resume` | `src/core/tracker.py` `job_state_admits_transition` | **`TestAst1872JobStateAdmitsTransition::test_skip_admitted`** |
+| Refused: `CANDIDATE_SKIPPED`, `CANDIDATE_APPLIED`, `BUILD_ARTIFACTS.resume` (non-hop), `""`, `None` | same | **`…::test_skip_refused`** |
+| Unregistered target fails loud | same | **`…::test_unregistered_target_fails_loud`** |
+| AC2 detail `can_skip` per state (real core rule, not mocked); missing state → `false` | `src/ui/api/api_jobs.py` `detail` | **`test_api_jobs.py::TestAst1872DetailCanSkip`** |
+| AC1 config: tab order Analysis, Summary, Artifacts, Discussion, Meteorite (constant + manifest) | `src/utils/config.py` | **`test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`** (revised) · **`TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`** (revised) · **`TestAst1691MeteoriteReportConfig`** (unchanged, holds) |
+| Header template exact text with `{score}` | same | **`TestAst1348PhaseScoreHeaderTitleConfig`** (extended) |
+| Regression: detail skipped-edit meta / other detail fields | `src/ui/api/api_jobs.py` | **`TestAst1453SkippedEditMetaAndPut`**, **`TestAst1704JobsDetailParentFields`** |
+
+**Broken / obsolete (revised this pass):** `test_config.py` `TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs` and `TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts` asserted Summary-first order.
+
+**Out of scope (sibling AST-1874):** `test_JobAnalysisReportModal.test.tsx` default-tab / tab-bar asserts and `tests/component/frontend/fixtures/stateUiManifestFixture.ts` (`report_top_tabs` order + `phase_score_header_title_template`) — the fixture feeds `formatPhaseSectionScoreTitle`, which #3 owns; re-pinning here would red Vitest before the formatter lands.
+
+**Pre-existing reds (not this ticket, identical on dev-only tip `5ee6d34b`):** `TestJobsRoutes::test_put_resume_content_persists_via_tracker`, `test_api_system.py::TestSystemNavHelpers::test_resolve_nav_keeps_candidate_facing_groups_and_stubs`, `TestAst1375InflightHideStatesManifest::test_manifest_includes_inflight_hide_states` — not in this manifest.
+
+**Integration:** none — no scenario touches detail / report tabs / skip.
+
+## QA test manifest
+
+1. **AC1 + AC2 + regression (pytest):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1872JobStateAdmitsTransition \
+  tests/component/ui/api/test_api_jobs.py::TestAst1872DetailCanSkip \
+  tests/component/ui/api/test_api_jobs.py::TestAst1453SkippedEditMetaAndPut \
+  tests/component/ui/api/test_api_jobs.py::TestAst1704JobsDetailParentFields \
+  tests/component/utils/test_config.py::TestAst1348PhaseScoreHeaderTitleConfig \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys \
+  tests/component/utils/test_config.py::TestAst1691MeteoriteReportConfig \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs \
+  -q
+```
+
+2. **AC3 (no routes / schema / Modal):** `git diff origin/dev...origin/sub/AST-1862/AST-1872-config-tab-order-score-template-skip-flag -- src/data/ src/ui/frontend/src/components/Modal.tsx` is empty; `grep -n "@jobs_bp.route" src/ui/api/api_jobs.py | wc -l` prints `15`.
+
+**Pass criterion:** item 1 green + item 2 holds — narrowed run, not zero-arg harness / branch-lock gate (pre-existing reds above).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/tracker.md` — *(filled after publish)*

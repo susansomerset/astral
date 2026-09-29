@@ -30,3 +30,20 @@ AUTO error alert subject replaces hardcoded `[Astral]` with `[{deploy_label}]` o
   tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_run_error_on_auto_failures \
   tests/component/utils/test_deploy_status.py::TestGetDeployLabel
 ```
+
+---
+
+### AST-1867 · AST-1870
+
+**Parent:** [AST-1860](https://linear.app/astralcareermatch/issue/AST-1860) (orphaned-bug mini-parent). Product: **AST-1867** (`144b8850`, not yet on ftr); test/bible delivery on gap sibling **AST-1870**. New `provider_balance_outage(task_key, batch_id, accumulated, outage, candidate_id="")`: subject `"{prefix} {provider} insufficient balance — {task_key} stopped | {batch_id}"` (provider from `get_active_llm_provider()`); short body (provider, refusal, task/batch, counts, `Held (state unchanged): N` only when `held > 0`, resume line) — **no** batch log dump; never raises. AUTO error alert (`auto_run_error`) unchanged. Nodes patch `get_deploy_label` / `_resolve_candidate_last_name` directly to stay clear of the pre-existing `TestAutoRunErrorSubjectPrefix` drift.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Exact subject + body lines, `to` = support_email, `list_log_entries` not called | `provider_balance_outage` | **`tests/component/core/test_monitor.py::TestAst1867ProviderBalanceOutage::test_subject_names_provider_and_body_is_short`** |
+| `held == 0` → no `Held` line | same | **`…::test_held_line_omitted_when_zero`** |
+| `send_email` False → logged, no raise | same | **`…::test_logs_when_send_email_returns_false`** |
+| Unexpected exception swallowed, no send | same | **`…::test_swallows_unexpected_errors`** |
+
+Dispatcher routing (outage alert vs `auto_run_error`): **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870 (manifest there covers these nodes + `TestAutoRunError`).
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/monitor.md | shasum`

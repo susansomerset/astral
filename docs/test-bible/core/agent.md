@@ -1026,8 +1026,11 @@ Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_pr
 | Workbench Test sequencing; bare `run_adhoc` | same | **`test_workbench_stores_prompt_before_run_adhoc`**, **`test_workbench_raise_keeps_prompt_omits_response`**, **`test_bare_run_adhoc_does_not_store_agent_data`** |
 | Prompt-only batch is not latest story | `src/data/database.py` | **`test_prompt_only_batch_is_not_latest_ref`**; existing **`tests/component/data/database/test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key`** |
 | Existing store-once + ledger | `src/core/agent.py` | **`TestDoTask::test_returns_api_failure_and_stores_agent_data`**, **`TestAst515AdhocWorkbenchLedger`**, **`TestDoTaskStorageFailures`** |
+| Store off the event loop (AST-1842 / AST-1843) | `src/core/agent.py` (`do_task` → `asyncio.to_thread(_store_*)`) | **`tests/component/core/test_agent.py::TestAst1842DoTaskStoreOffLoop::test_slow_save_agent_data_does_not_block_loop`** — `[bug-repro]`: 0.3s blocking `save_agent_data`, heartbeat max gap < 0.2s; pre-fix `origin/dev` gap ≈ 1.5s (5 stores on the loop) |
 
 **Broken / obsolete:** none — `_store_prompt_blocks` still runs once; order moved before the await. Count-only tests still hold.
+
+**Known pre-existing reds (not AST-1842, red on `origin/dev` too):** `test_do_task_debug_emits_prompt_found_recorded_before_provider`, `test_prompt_only_batch_is_not_latest_ref`, `test_bare_run_adhoc_does_not_store_agent_data`.
 
 **Integration:** no existing scenario asserts in-flight `agent_data` vs provider await — no revision; do not invent new integration coverage.
 
@@ -1035,6 +1038,7 @@ Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_pr
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider \
   tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1842DoTaskStoreOffLoop \
   tests/component/data/database/test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key \
   -q
 ```
