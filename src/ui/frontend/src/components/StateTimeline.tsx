@@ -1,17 +1,25 @@
+import type { KeyboardEvent } from "react"
 import Time from "./Time"
 
-interface StateEntry {
+export interface StateEntry {
   to_state?: string
   state?: string
   timestamp?: string
   batch_id?: string
+  run_id?: string
+}
+
+/** Run that produced this row: AST-1864 run_id, else legacy batch_id; "" when neither (not clickable). */
+function entryRunId(entry: StateEntry): string {
+  return entry.run_id || entry.batch_id || ""
 }
 
 interface StateTimelineProps {
   history: StateEntry[]
+  onSelectRun?: (runId: string) => void
 }
 
-export default function StateTimeline({ history }: StateTimelineProps) {
+export default function StateTimeline({ history, onSelectRun }: StateTimelineProps) {
   if (!history || history.length === 0) {
     return <p style={{ color: "#888", fontSize: 13 }}>No state history recorded.</p>
   }
@@ -23,8 +31,26 @@ export default function StateTimeline({ history }: StateTimelineProps) {
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       {sorted.map((entry, i) => {
         const state = entry.to_state || entry.state || "?"
+        // Clickable only when the caller opts in AND the row resolves a run id (AST-1865)
+        const runId = onSelectRun ? entryRunId(entry) : ""
+        const clickProps = runId ? {
+          role: "button",
+          tabIndex: 0,
+          title: `Open run ${runId}`,
+          onClick: () => onSelectRun!(runId),
+          onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault()
+              onSelectRun!(runId)
+            }
+          },
+        } : {}
         return (
-          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "6px 0" }}>
+          <div
+            key={i}
+            style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "6px 0", ...(runId ? { cursor: "pointer" } : {}) }}
+            {...clickProps}
+          >
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center", minWidth: 20,
             }}>
