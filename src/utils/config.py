@@ -4396,6 +4396,7 @@ REPO_ADMIN_JSON_CONFIG = {
             "columns": (
                 "agent_id",
                 "content",
+                "model_id",
                 "brain_setting",
                 "temperature",
                 "max_tokens",
