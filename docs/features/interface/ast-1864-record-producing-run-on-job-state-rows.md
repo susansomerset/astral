@@ -1,0 +1,141 @@
+# AST-1864 — Record the producing run on each job state row (Execution History for job modals)
+
+- **Parent:** AST-1853 — Execution History for job modals
+- **Ticket:** AST-1864
+- **Publish ref:** `sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows` (origin only)
+- **Canon Scope:** `astral.entity.required-metadata`
+
+Every new job `state_history` entry written inside a run gets a `run_id` key holding the id of the
+run that actually wrote the logs and agent data — the active `log_batch_id` context var. For
+single-hop dispatch that is the dispatch batch id (same value as the job's `batch_id`); for
+chained tasks it is the per-hop ledger id opened by `agent._open_run_next_hop_ledger`, which
+differs from the job's claim `batch_id`. When no run is active (operator skip / edit, API
+transitions), `run_id` is **absent**. The existing `batch_id` key is unchanged. Backend only;
+sibling AST-1853 child #2 (Ada) reads `run_id` and falls back to `batch_id`.
+
+## Code facts this plan relies on (verified on this ref)
+
+- `src/utils/logging.py:49` — `log_batch_id: ContextVar[Optional[str]]`, default `None`.
+- `src/core/dispatcher.py` sets `log_batch_id` to `entity_batch_id` around each dispatch run and
+  resets it to `None` in `finally`.
+- `src/core/agent.py:3002–3020` — `_open_run_next_hop_ledger` writes a `dispatch_ledger` row with
+  id `f"{task_key}-{uuid}"` and sets `log_batch_id` to it for the hop.
+- `src/core/agent.py:2782–2867` — on a chained hop's success, `_write_dispatch_hop_label_on_success`
+  (→ `tracker.write_job_dispatch_hop_label`) and `_maybe_graduate_dispatch_chain`
+  (→ `tracker.graduate_job_from_dispatch_chain` → `tracker.transition_job_state`) both run
+  **before** `_close_hop_ledger(..., clear_log=True)` clears the context. The hop-failure
+  error-state transition (`agent.py:1142`) runs inside `_close_hop_ledger` before finalize/clear.
+  So `log_batch_id` holds the hop id at every chained write.
+- Job `state_history` rows are appended by two transition functions in `src/core/tracker.py`:
+  `write_job_dispatch_hop_label` (line 1416 — the per-hop `BUILD_ARTIFACTS.<hop>` rows of a chain)
+  and `transition_job_state` (line 1455 — every registered-state transition, incl. chain
+  graduation and chain error states). `ingest_jobs` / `save_meteorite_job` write a job's
+  creation row, not a transition, and stay untouched.
+- API transitions (`src/ui/api/api_jobs.py:204, 448, 537`) run with no run context →
+  `log_batch_id.get()` is `None` → no `run_id` (AC3).
+
+## Scope gate
+
+Ticket `## Scope` names `src/core/tracker.py` only, change kind: "the job state-transition
+function that appends `state_history` … each new history entry also records the current run's
+audit id (the active log batch context set per hop / per dispatch) … existing `batch_id` key stays
+… when no run context is active the new key is absent … key name is `plan-child`'s call."
+Every change below is in that file and is that kind of change. No file under `src/ui/api/` or
+`src/data/` is touched (AC4).
+
+⚠️ **Decision (key name):** `run_id`. Short, matches the ticket's "run-id key" wording, and
+`rg '\brun_id\b' src` has zero hits today, so nothing collides.
+
+⚠️ **Decision (two appenders, one helper):** Scope says "the job state-transition function"
+(singular), but chained runs write their per-hop state rows through `write_job_dispatch_hop_label`,
+not `transition_job_state`. Stamping only `transition_job_state` would leave every chain hop row
+without its hop run id — the exact case parent Functional scope #4 exists for. Both functions get
+the stamp through one small private helper so the rule lives in one place. Same file, same kind
+of change the Scope describes; no new capability.
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/core/tracker.py` | Import `log_batch_id`; new private helper `_stamp_run_id`; call it from `write_job_dispatch_hop_label` and `transition_job_state` | core |
+
+## Stage 1: Stamp `run_id` on job state-history entries
+
+**Done when:** with `log_batch_id` set to `H`, both `transition_job_state` and
+`write_job_dispatch_hop_label` append an entry with `run_id == "H"` and `batch_id` equal to the
+job's `batch_id`; with `log_batch_id` unset (`None`) or `""`, the appended entry has no `run_id`
+key at all. `python3 -m py_compile src/core/tracker.py` passes.
+
+1. In `src/core/tracker.py`, change the import at line 50 from
+   `from src.utils.logging import get_logger, truncate_debug_content` to
+   `from src.utils.logging import get_logger, log_batch_id, truncate_debug_content`.
+
+2. In `src/core/tracker.py`, immediately **above** `def write_job_dispatch_hop_label` (line 1416),
+   add exactly this function:
+
+   ```python
+   def _stamp_run_id(entry: Dict[str, Any]) -> Dict[str, Any]:
+       """Add run_id = the active run's audit id (log_batch_id) to a job state_history entry (AST-1864).
+
+       Chained hops set log_batch_id to their own hop ledger id, so run_id can differ from the
+       claim batch_id. No active run (operator/API transition) -> key left absent, never None/"".
+       """
+       run_id = log_batch_id.get()
+       if run_id:
+           entry["run_id"] = run_id
+       return entry
+   ```
+
+3. In `write_job_dispatch_hop_label`, wrap the appended dict in `_stamp_run_id(...)`. Result:
+
+   ```python
+   history.append(_stamp_run_id({
+       "to_state": label,
+       "timestamp": now,
+       "batch_id": job.get("batch_id"),
+   }))
+   ```
+
+   No other line in the function changes.
+
+4. In `transition_job_state`, change the entry construction line from
+   `entry: Dict[str, Any] = {"to_state": to_state, "timestamp": now, "batch_id": job.get("batch_id")}`
+   to
+   `entry: Dict[str, Any] = _stamp_run_id({"to_state": to_state, "timestamp": now, "batch_id": job.get("batch_id")})`.
+   The following `score` handling, `history.append(entry)`, and `save_job` call stay as-is.
+
+5. Update the `transition_job_state` docstring: after the `score:` line, add one line:
+   `run_id: stamped from log_batch_id when a run is active; absent otherwise (AST-1864).`
+
+6. Compile: `python3 -m py_compile src/core/tracker.py`. No `.ts`/`.tsx` changed, so no `tsc`.
+
+7. Scope check before commit:
+   `git diff origin/dev -- src/ui/api/ src/data/` must be empty, and `git diff --stat origin/dev`
+   (product files) must list only `src/core/tracker.py` plus this plan doc.
+
+8. Commit on the epic worktree: `code(AST-1864): stamp run_id on job state_history entries`;
+   publish with `git push origin HEAD:sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows`.
+
+⚠️ **Decision (no tests in build):** AC1–AC3 tests in `tests/component/core/test_tracker.py` are
+Betty's (`qa-child`). Existing tracker tests assert individual keys (`to_state`, `score`), not
+whole-entry dict equality, and `log_batch_id` defaults to `None`, so the absent-by-default key
+does not disturb them.
+
+## Out of scope (reference only)
+
+- All frontend reading of `run_id` / fallback to `batch_id` — AST-1853 child #2 (Ada).
+- Company transitions (`roster.transition_company_state`), candidate hop labels, job creation rows
+  (`ingest_jobs`, `save_meteorite_job`) — not job state transitions per this ticket.
+- Back-matching old chained rows — forbidden (Susan: forward-only).
+
+## Canon alignment
+
+`astral.entity.required-metadata`: no column added, renamed, dropped, or repurposed. `batch_id`
+column and the `batch_id` key inside history entries keep their current meaning. The new key
+lives inside `state_history` JSON entries, which already carry optional keys (`score`).
+Note: `docs/canon-index.md` is not present on this ref; the id was resolved directly to
+`canon/directives/active/stat.entity.required-metadata.md`.
+
+## Estimate
+
+Confirm Chuckles estimate: 2 — revise to 1 because the change is one helper plus two call sites in a single file, with no schema or API contract change.
