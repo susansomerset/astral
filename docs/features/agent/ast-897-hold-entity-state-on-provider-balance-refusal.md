@@ -571,3 +571,125 @@ END-VERDICT
 ```text
 AST-1867 board-joan done — CANON: OK.
 ```
+
+---
+
+## Bug: AST-1870 — tests for provider balance outage path (AST-1867 board)
+
+**Parent bug:** [AST-1860](https://linear.app/astralcareermatch/issue/AST-1860) · **Gap for:** AST-1867 (`[board-betty] TESTS: REVISE`) · **Publish ref:** `origin/sub/AST-1860/AST-1870-provider-balance-outage-tests`  
+**Explicit scope (AST-1870 `## Scope`):** `tests/component/core/test_roster.py`, `tests/component/core/test_dispatcher.py`, `tests/component/core/test_monitor.py`, `docs/test-bible/core/{roster,dispatcher,monitor}.md`. Test + bible only — **Betty lands them at `qa-fix`**; this block names the exact nodes. No product code.  
+**Branch note:** this ref was fast-forwarded to `origin/sub/AST-1860/AST-1867-provider-balance-outage` @ `144b8850` so AST-1867's plan block precedes this one — the ref therefore **carries AST-1867's product change**. Red/green proof must compare against the pre-fix product explicitly (see Repro).
+
+### As-is
+
+AST-1867 (`144b8850`) changed batch behavior on a provider balance refusal, but no test covers it, and two AST-897 tests now fail on the fix:
+
+- `test_roster.py::TestAst897HoldStateOnBalanceRefusal::test_run_company_task_jobs_found_balance_hold_skips_error_state` and `::test_run_company_task_jobs_found_balance_failure_class_skips_error_state` assert `out["total_errors"] == 1` (fix returns `total_errors: 0`, `total_held: 1`).
+- Uncovered: select_job_page held counting (AST-1867 §1a), `_run_unified` skip-after-refusal (§2c/2d), `_run_dispatch_loop` stop (§2e), `_dispatch_one_body` INTERRUPTED + `provider_balance_outage` instead of `auto_run_error` + breaker skip (§2f/2g), `monitor.provider_balance_outage` (§3), and the D1 guard (AST-1189 call-budget `state_held` still `total_errors: 1`).
+
+### To-be
+
+The nodes below exist, the two AST-897 assertions follow the held contract, and bible entries in `docs/test-bible/core/{roster,dispatcher,monitor}.md` name every node. One dispatcher-level `[bug-repro]` is **red on the pre-fix product** and **green on `144b8850`**.
+
+### Repro
+
+The `[bug-repro]` (node **D1** below) was drafted as a scratch test (in `/tmp`, never committed) and run both ways against the real stack `_dispatch_one → _run_dispatch_loop → _run_task → _run_unified → consult.run_consult_task → roster.run_company_task`, stubbing only `roster.run_select_job_page_dispatch` (the AST-1842 held return) and DB/email edges:
+
+- **RED at pre-fix product** (`origin/ftr/AST-1860-provider-balance-outage` @ `fbe9486e`, detached scratch worktree): `AssertionError: assert 9 == 1` on `run_select_job_page_dispatch.await_count` — 3 companies × 3 runs (`max_runs=3`), one `_warn_company` WARNING per company per run, exactly the incident shape.
+- **GREEN at `144b8850`:** 1 passed.
+
+Host env for the scratch run: `ASTRAL_DB_DIR` (throwaway dir) and dummy `GMAIL_USER` / `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` (import-time checks only; both alert functions are mocked). The normal `run_component_tests.sh` env already covers this.
+
+Roster nodes R3/R4 were scratch-checked the same way: R3 red at base (`assert 1 == 0` on `total_errors`), green at fix; R4 green on both (guard).
+
+### Root cause
+
+AST-1867 is a product-behavior change with no test delta: the board correctly found (a) two assertions pinned to the old "balance hold still counts as an error" contract and (b) zero coverage for the new dispatcher/monitor paths.
+
+### Proposed change
+
+All new classes follow existing module conventions (`monkeypatch`, `MagicMock`/`AsyncMock`, `@pytest.mark.asyncio`, `dispatcher_mod` / `roster_mod` / `monitor_mod` aliases already imported in each file). `FC = "provider_balance_refusal"`; `REFUSAL_ERR = "Error code: 402 - Insufficient Balance"`.
+
+#### `tests/component/core/test_roster.py`
+
+**R1 — modify** `TestAst897HoldStateOnBalanceRefusal::test_run_company_task_jobs_found_balance_hold_skips_error_state` (~6236): replace `assert out["total_errors"] == 1` with
+`assert out["total_errors"] == 0`, `assert out["total_held"] == 1`, `assert out["failure_class"] == self._FC`. Keep `transition.assert_not_called()`. Docstring: add "AST-1867: counted held, not an error."
+
+**R2 — modify** `::test_run_company_task_jobs_found_balance_failure_class_skips_error_state` (~6259): same three assertions (the predicate path — `failure_class` without `state_held`).
+
+**New class** `TestAst1867BalanceHeldCounting` (append after `TestAst897HoldStateOnBalanceRefusal`):
+
+**R3** `test_select_job_page_balance_hold_counts_held_not_error` (async) — patch `roster_mod.run_select_job_page_dispatch` → `AsyncMock(return_value={"short_name": "acme", "state": "PJL_READY", "response_type": "SELECT_FAILED", "error": REFUSAL_ERR, "failure_class": FC, "state_held": True})`; patch `roster_mod._warn_company` → `MagicMock()`. Call `run_company_task("PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b1867", dispatch_task_key="select_job_page")`. Assert `total_processed == 1`, `total_errors == 0`, `total_passed == 0`, `total_failed == 0`, `total_held == 1`, `failure_class == FC`, `error == REFUSAL_ERR`; `_warn_company.assert_not_called()`.
+
+**R4** `test_call_budget_hold_still_counts_error` (async, `@pytest.mark.parametrize("branch", ["select_job_page", "jobs_found"])`) — D1 regression guard. Inner result `{"error": "provider call budget exceeded", "failure_class": PROVIDER_CALL_BUDGET["failure_class"], "state_held": True, "state": <PJL_READY|JOBS_FOUND>}` (import `PROVIDER_CALL_BUDGET` from `src.utils.config`). Patch `transition_company_state` → `MagicMock()`. `select_job_page`: stub `run_select_job_page_dispatch`, call with `"PJL_READY"` + `dispatch_task_key="select_job_page"`. `jobs_found`: stub `jobs_found_process_job_site`, call `run_company_task("JOBS_FOUND", {"short_name": "acme", "job_site": "https://j"}, "b1189")`. Assert `total_errors == 1`, `"total_held" not in out`, `transition.assert_not_called()` (AST-897 guard still protects `state_held` on JOBS_FOUND).
+
+#### `tests/component/core/test_dispatcher.py`
+
+**New class** `TestAst1867ProviderBalanceOutage` (append after `TestAst1847TimeoutPartialCounts`). Shared setup helper inside the class (`_edges(monkeypatch)`) patches: `database.get_candidate` → `{"astral_candidate_id": cid, "candidate_api_key": "key"}`; `_current_agent_task_run_next` → `lambda tk: None` (otherwise a run_next chain suppresses the ledger id and the alert); `database.save_dispatch_ledger`, `database.update_dispatch_ledger`, `flush_log_buffer`, `_db_update_dispatch_task` → `MagicMock()`; `compute_batch_cost` → `MagicMock(return_value=0.0)`; `_check_circuit_breaker` → `MagicMock()` (**patch, never call** — see Blast radius, pre-existing signature drift); `check_internet_reachable` → `lambda: True`; `monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "cache_warm_delay_seconds", 0)`; `monitor.auto_run_error` → `MagicMock()`; `monitor.provider_balance_outage` → `MagicMock()` with **`raising=False`** (so the repro fails on assertions, not setup, against the pre-fix product where the attribute doesn't exist).
+
+**D1 `[bug-repro]`** `test_bug_repro_balance_refusal_one_call_interrupted_outage_alert` (async) — the incident, end to end:
+- `database.count_eligible_for_dispatch_task` → `lambda task: 24` (held companies stay eligible).
+- `src.core.roster.get_new_company_batch` → `MagicMock(return_value=("bid-1867", [3 companies {"short_name": f"co{i}", "state": "PJL_READY", "company_website": f"https://co{i}"}]))`; `src.core.roster.clear_company_batch` → `MagicMock()`.
+- `roster_mod.run_select_job_page_dispatch` → `AsyncMock(return_value={... "state": "PJL_READY", "response_type": "SELECT_FAILED", "error": REFUSAL_ERR, "failure_class": FC, "state_held": True})`.
+- Task: `{"id": 1867, "task_key": "select_job_page", "candidate_id": "cand-1", "entity_type": "company", "trigger_state": "PJL_READY", "batch_call_mode": 0, "batch_size": 3, "auto_mode": 1, "max_runs": 3}` (`max_runs=3` bounds the pre-fix run; `0` would loop forever there). `await dispatcher_mod._dispatch_one(task)`.
+- Assert: `run_select_job_page_dispatch.await_count == 1`; `get_new_company_batch.call_count == 1`; `clear_company_batch.assert_called_once_with("bid-1867")`; final `update_dispatch_ledger.call_args.kwargs` has `status == "INTERRUPTED"`, `total_processed == 1`, `total_errors == 0`; `auto_run_error.assert_not_called()`; `provider_balance_outage.assert_called_once()` with `args[0] == "select_job_page"`, `args[1] == "select_job_page-…"` (startswith `"select_job_page-"`), `args[3] == {"error": REFUSAL_ERR, "held": 1}`, `args[4] == "cand-1"`; `_check_circuit_breaker.assert_not_called()`.
+
+**D2** `test_run_unified_per_entity_skips_after_refusal` (async) — `_run_unified` directly, company task (`batch_call_mode: 0`, 3 entities, claim/clear patched as D1). `src.core.consult.run_consult_task` → `AsyncMock(return_value={"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0, "total_held": 1, "failure_class": FC, "error": REFUSAL_ERR})`. `ctx = {"astral_candidate_id": "cand-1"}`. Assert consult `await_count == 1`; `out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}` (no `total_held` / `failure_class` leak into the summary → ledger-safe); `ctx["provider_balance_outage"] == {"error": REFUSAL_ERR, "held": 1}`; clear called once.
+
+**D3** `test_run_unified_chunk_split_skips_tail_after_head_refusal` (async) — job consult chunk path: task `{"entity_type": "job", "trigger_state": "JD_READY", "task_key": "evaluate_jd", "batch_call_mode": 1, "batch_size": 1, "score_floor": 0.5}`, `database.count_eligible_for_dispatch_task` → `3`, `src.core.tracker.get_new_job_batch` → 3 jobs, `clear_job_batch` patched; consult returns `{"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1, "failure_class": FC, "error": REFUSAL_ERR}`. Assert consult `await_count == 1` (tail chunks skipped); `ctx["provider_balance_outage"]["held"] == 0` (no `total_held` on a consult envelope).
+
+**D4** `test_run_unified_ordinary_error_does_not_skip` (async) — same as D2 but consult returns `{"total_processed": 1, "total_errors": 1, "error": "boom"}` (no `failure_class`). Assert `await_count == 3`, `"provider_balance_outage" not in ctx`, `out["total_errors"] == 3`. Guards the task-agnostic key.
+
+**D5** `test_run_dispatch_loop_stops_after_outage_run` (async) — `_run_dispatch_loop` directly: `count_eligible_for_dispatch_task` → `24`; `_run_task` → `AsyncMock(side_effect=_run)` where `_run(task, ctx, debug)` sets `ctx["provider_balance_outage"] = {"error": REFUSAL_ERR, "held": 1}` and returns `{"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}`; `update_dispatch_ledger` patched. Task `{"id": 5, "task_key": "select_job_page", "entity_type": "company", "auto_mode": 1, "max_runs": 0}` (unlimited — only the outage stop can end it). Call with `(ctx, task, "select_job_page", "bid", accumulated, "bid")`. Assert `_run_task.await_count == 1`; `update_dispatch_ledger` called once with `accumulated` counts (mid-run write happens before the stop).
+
+**D6** `test_dispatch_one_click_outage_interrupted_no_alert` (async) — `_edges`; `_run_dispatch_loop` → `AsyncMock(side_effect=_loop)` where `_loop(ctx, task, task_key, batch_id, accumulated, ledger_id)` sets `ctx["provider_balance_outage"] = {...}` and `accumulated["total_processed"] = 1`. Task `auto_mode: 0` (CLICK). Assert final ledger `status == "INTERRUPTED"`; `provider_balance_outage` and `auto_run_error` both not called (AUTO-only gate); `_check_circuit_breaker.assert_not_called()`.
+
+**D7 — existing, unchanged:** `TestDispatchOne::test_auto_run_error_on_auto_failures` stays green (non-outage error → `auto_run_error`). Listed in the manifest as the regression half of the alert routing; see Blast radius for its pre-existing fragility.
+
+#### `tests/component/core/test_monitor.py`
+
+**New class** `TestAst1867ProviderBalanceOutage`. Each node patches `monitor_mod.get_active_llm_provider` → `lambda: "deepseek"`, `monitor_mod.get_deploy_label` → `lambda: "local"`, `monitor_mod._resolve_candidate_last_name` → `lambda cid: "Somerset"` (isolates from the pre-existing `TestAutoRunErrorSubjectPrefix` drift), and `send_email` via `_stub_alert` (whose `list_log_entries` stub is replaced by a `MagicMock` in M1 to prove no log dump).
+
+**M1** `test_subject_names_provider_and_body_is_short` — call `provider_balance_outage("select_job_page", "b-1", {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}, {"error": REFUSAL_ERR, "held": 2}, "cand-1")`. Assert subject `== "[local/Somerset] deepseek insufficient balance — select_job_page stopped | b-1"`; body lines `== ["Provider: deepseek", f"Refusal: {REFUSAL_ERR}", "Task: select_job_page   Batch: b-1", "Processed: 1  Passed: 0  Failed: 0  Errors: 0", "Held (state unchanged): 2", "Entity state was held; the task stays enabled and resumes once provider credit is restored."]`; `to == ASTRAL_CONFIG["support_email"]`; `database.list_log_entries` not called.
+
+**M2** `test_held_line_omitted_when_zero` — `outage={"error": REFUSAL_ERR, "held": 0}` → no line starting `"Held"`.
+
+**M3** `test_logs_when_send_email_returns_false` — `send_email` → `False`; asserts no raise (mirror `TestAutoRunError`).
+
+**M4** `test_swallows_unexpected_errors` — `get_active_llm_provider` raises `ValueError`; asserts no raise, `send_email` not called.
+
+#### Bible entries (Betty's wording; content required)
+
+- **`docs/test-bible/core/dispatcher.md`** — new `### AST-1867 · AST-1870 (qa-fix bug-repro — provider balance refusal as one batch-level outage)` in the AST-1847 section shape: parent/product/gap line (product `144b8850`), contract sentence (ctx `provider_balance_outage`; skip remaining entities/chunks; loop stop; INTERRUPTED; outage alert replaces `auto_run_error`; breaker not called and non-COMPLETED rows invisible to `get_recent_ledger_summaries`), sequencing-deviation line (product first; red at `fbe9486e`, green at `144b8850`), Area/Source/Component tests table for D1–D7 (D1 marked **bug-repro**), **Broken / obsolete:** none in dispatcher, **Integration:** none, `## QA test manifest` with the narrowed run below.
+- **`docs/test-bible/core/roster.md`** — new `### AST-1867 · AST-1870` table: R3, R4; **Flipped:** R1, R2 (old `total_errors == 1` → held contract). Cross-link the AST-897 row in `docs/test-bible/utils/llm_external.md` (class-level reference there stays valid — no edit needed; that file is out of AST-1870's scope).
+- **`docs/test-bible/core/monitor.md`** — new `### AST-1867 · AST-1870` table: M1–M4; note AUTO error alert (`auto_run_error`) unchanged.
+
+**Narrowed run (manifest):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_dispatcher.py::TestDispatchOne::test_auto_run_error_on_auto_failures \
+  tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_monitor.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_monitor.py::TestAutoRunError \
+  -q
+```
+
+**`[bug-repro]`:** `tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage::test_bug_repro_balance_refusal_one_call_interrupted_outage_alert`.
+
+### Blast radius
+
+- **Tests only.** Only R1/R2 change existing assertions; everything else is additive.
+- **Pre-existing drift on this tip (not caused by AST-1867, present at ftr base `fbe9486e`; out of AST-1870 scope — flag only):** `TestCircuitBreaker::*` (3) call `_check_circuit_breaker(..., False)` with 4 args vs the 3-arg product (`TypeError`); `TestAutoRunErrorSubjectPrefix::{test_local_env_with_candidate_last_name, test_eu_west_preserves_case, test_unset_env_with_candidate_last_name}` fail on subject assertions. Also `TestDispatchOne::test_auto_run_error_on_auto_failures` passes by accident: its 5-param `_bump` raises `TypeError` against the 6-arg `_run_dispatch_loop` call, the run ends `FAILED` with `+1` error, and the alert still fires. New nodes avoid all three (patch the breaker; 6-param loop fakes; direct patches for deploy label / last name).
+- **Consult batch paths** (`prefilter_company` etc.) are not covered — AST-1867 D5 leaves them unwired; do not add tests asserting outage behavior there.
+- **Breaker "future lookbacks"** rely on the existing `get_recent_ledger_summaries` `status = 'COMPLETED'` filter (`src/data/database.py`); no database test is added (outside scope — D1 plus D6 prove the run is written non-COMPLETED and the breaker isn't called).
+
+### What must still hold
+
+- AST-897 hold assertions (`transition.assert_not_called()`, `state_held`, `_save_company` not called) stay in R1/R2 and every other `TestAst897HoldStateOnBalanceRefusal` node unchanged.
+- AST-1189 call-budget holds count `total_errors: 1` (R4).
+- Ordinary AUTO error runs still send `auto_run_error` (D7, `TestAutoRunError`).
+- Non-refusal batches call the provider for every entity (D4).
+- No test edits to `docs/test-bible/utils/llm_external.md` or any file outside AST-1870's scope.
