@@ -345,3 +345,137 @@ No conflicts requiring **`!!-NONE`**.
 ## Review stub
 
 - `code(AST-707): embedded RC registry and prefilter hydration merge` @ `c4a25ee1` — `origin/sub/AST-700/AST-707-uat-batch-prefilter-embedded-rc-vector-hydration`
+
+---
+
+## Bug: AST-1881 — Reality Check as a persisted default prefilter vector (like QC/GC); drop duplicate prompt section
+
+**Parent bug:** [AST-1876](https://linear.app/astralcareermatch/issue/AST-1876) (orphaned mini-parent, `ftr/AST-1876-prefilter-rc-default-vector` off `origin/dev`)  
+**Publish ref:** `origin/sub/AST-1876/AST-1881-prefilter-rc-default-vector`  
+**Pattern precedent:** AST-1085 / AST-1077 (`_merge_embedded_evaluate_jd_criteria`, `docs/features/interface/ast-1085-wire-constants-evaluate-jd.md`).
+
+### As-is
+
+Reality Check is defined twice in the rendered `prefilter_company` prompt: once as a hand-written `### Reality Check - Is this the website for a company…` block (A/B/C/D/F company-site scale) in the `cache_prompt`, and again inside `{$RUBRIC_VECTORS}` from `EMBEDDED_COMPANY_PREFILTER_CRITERIA` (generic "real vs fraudulent" A–F/X scale). The model grades both, emits `000|RCA5|RCA5|…`, and the AST-1513 duplicate-code guard in `agent._decode_payload` rejects the whole payload. Batch `prefilter_company-6e5f321d-…` errored 50 of 50. RC is only merged in memory by `rubric_criteria_for_task` and never stored in `rubric_vector`, unlike QC/GC.
+
+### To-be
+
+RC is defined once, as a default prefilter rubric vector maintained exactly like QC/GC: the `config.py` constant is merged on rubric save, craft persist, craft generate and read for owner `prefilter_company` / artifact `company_prefilter` / task `craft_prefilter_rubric`, and stored in `rubric_vector`. Its content is the company-site scale (the deleted prompt block's A/B/C/D/F plus X = couldn't read the page). The prompt's hand-written section is gone; each encoded line carries exactly one `RC` segment.
+
+### Repro
+
+Data-shape fixture (no DB seed; prompt + decode):
+
+1. `prefilter_company` `cache_prompt` from `data/admin/agent_task.json` as shipped on `origin/dev` — contains both `### Reality Check - Is this the website…` and `{$RUBRIC_VECTORS}`.
+2. `rubric_criteria_for_task(cid, "prefilter_company")` for a candidate whose `rubric_vector` rows are `MP` + `US` only → returns `[RC(embedded), MP, US]`, so `{$RUBRIC_VECTORS}` renders a second Reality Check.
+3. Model response line `000|RCA5|RCA5|MPB3|USA3|…` → `_decode_payload` raises duplicate vector code `RC`; the batch errors every company.
+4. Post-fix expectation: the rendered prompt contains exactly one Reality Check definition (from `{$RUBRIC_VECTORS}`); `list_rubric_vectors(cid, "prefilter_company", current_only=True)` includes an `RC` row after the candidate's next prefilter rubric save or craft persist.
+
+### Root cause
+
+AST-707 added `EMBEDDED_COMPANY_PREFILTER_CRITERIA` as a read-time-only merge (now inline in `rubric_criteria_for_task`, `src/core/candidate.py` ~1509–1520) and left the prompt's hand-written Reality Check block in place (AST-707 Stage 1 step 1 read the prompt copy but never removed it). Result: two RC definitions with different scales in one prompt. Also, unlike QC/GC (merged in `apply_rubric_vectors_save` ~1551, `_persist_craft_dispatch_success` ~3603, craft generate ~4003), RC never reaches `rubric_vector`.
+
+### Proposed change
+
+**1. `src/utils/config.py` — `EMBEDDED_COMPANY_PREFILTER_CRITERIA` (~2409–2438).** Keep `code` `"RC"`, `label` `"Reality Check"`, `importance` `8`. Replace the header comment and the `content` / `grade_descriptions` with the company-site scale:
+
+```python
+# AST-707 / AST-1881: default company_prefilter vector — merged on save / craft persist /
+# craft generate / read (embedded wins on code) and stored in rubric_vector, like QC/GC.
+EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
+    {
+        "code": "RC",
+        "label": "Reality Check",
+        "importance": 8,
+        "content": (
+            "Reality Check — Is this the website for a company that the candidate might work at?\n"
+            "A == It is a typical website with content about products or services, a link to a careers page, etc.\n"
+            "B == It is an elaborate website that isn't clearly a company website, but at least it's about the company, such as a VC portfolio page.\n"
+            "C == It is a social media site for the company, but not their website. Links might still be found to job openings from here.\n"
+            "D == This is a company website, but it doesn't look like the expected website for this company.\n"
+            "F == This is obviously not a company website, someone got confused in their previous research identifying the company.\n"
+            "X == could not read the page (bot blocked or other network issue)"
+        ),
+        "grade_descriptions": [
+            {"grade": "A", "description": "It is a typical website with content about products or services, a link to a careers page, etc."},
+            {"grade": "B", "description": "It is an elaborate website that isn't clearly a company website, but at least it's about the company, such as a VC portfolio page."},
+            {"grade": "C", "description": "It is a social media site for the company, but not their website. Links might still be found to job openings from here."},
+            {"grade": "D", "description": "This is a company website, but it doesn't look like the expected website for this company."},
+            {"grade": "F", "description": "This is obviously not a company website, someone got confused in their previous research identifying the company."},
+            {"grade": "X", "description": "could not read the page (bot blocked or other network issue)"},
+        ],
+    },
+)
+```
+
+⚠️ **Decision:** `{$FIRST_NAME}` from the prompt block becomes "the candidate". Rubric vector content is not relied on to resolve tokens. No `E` row: the company-site scale defines no E, and nothing in `src/` gates on RC letters (grep: `"RC"` / `Reality Check` appear only in this constant).
+
+**2. `src/core/candidate.py` — new helper, immediately after `_merge_embedded_evaluate_jd_criteria` (~1500):**
+
+```python
+def _merge_embedded_company_prefilter_criteria(criteria: list) -> list:
+    """Prepend EMBEDDED_COMPANY_PREFILTER_CRITERIA; embedded wins on duplicate code (AST-707 / AST-1881)."""
+    embedded_codes = {
+        str(c.get("code")).strip().upper()
+        for c in EMBEDDED_COMPANY_PREFILTER_CRITERIA
+        if isinstance(c, dict) and c.get("code")
+    }
+    tail = [
+        c
+        for c in (criteria or [])
+        if isinstance(c, dict)
+        and str(c.get("code") or "").strip().upper() not in embedded_codes
+    ]
+    return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+```
+
+⚠️ **Decision:** **Prepend** (RC first), not append like QC/GC. This keeps today's read-time order and the `000|RC…|…` line shape. Only the persistence lifecycle mirrors QC/GC.
+
+**3. `src/core/candidate.py` — call the helper on the same four paths as QC/GC:**
+
+- **Read — `rubric_criteria_for_task` (~1509–1520):** replace the inline `if owner_task_key == "prefilter_company":` block body with `return _merge_embedded_company_prefilter_criteria(criteria)`. The read-time merge stays; it covers candidates that have no stored RC row yet.
+- **Save — `apply_rubric_vectors_save` (~1548–1552):** that's where QC/GC are merged on save. The ticket names `normalize_rubric_artifacts_on_save`, but that function only validates and never merges. After the existing QC/GC `if`, add:
+  ```python
+        # AST-1881: restore RC on save (prepend; embedded wins on code), like QC/GC.
+        if owner == "prefilter_company":
+            val = _merge_embedded_company_prefilter_criteria(val)
+  ```
+  Leave `normalize_rubric_artifacts_on_save` unchanged, same as QC/GC.
+- **Craft persist — `_persist_craft_dispatch_success` (~3601–3604):** after the QC/GC `if`, add:
+  ```python
+        # AST-1881: craft_prefilter_rubric persist restores RC before sync.
+        elif artifact_key == "company_prefilter":
+            criteria = _merge_embedded_company_prefilter_criteria(criteria)
+  ```
+- **Craft generate — generate response/stash (~4001–4007):** after the QC/GC block, add:
+  ```python
+            # AST-1881: prepend RC into craft_prefilter_rubric generate response/stash.
+            elif task_key == "craft_prefilter_rubric" and isinstance(parsed_response, dict):
+                crit = parsed_response.get("criteria")
+                if isinstance(crit, list):
+                    parsed_response["criteria"] = _merge_embedded_company_prefilter_criteria(crit)
+                    criteria_count = len(parsed_response["criteria"])
+  ```
+
+**4. `data/admin/agent_task.json` — `prefilter_company` row, `cache_prompt` only.** Delete the hand-written block from `### Reality Check - Is this the website for a company that {$FIRST_NAME} might work at?` through the `F == This is obviously not a company website, …identifying the company.` line and its trailing blank line, so the rubric section reads `**Your Rubric for evaluation:**\n\n{$RUBRIC_VECTORS}\n\n### POSSIBLE_JOBLIST_LINKS`. Replace it as raw text on the JSON-escaped substring; do not reserialize the file, so the rest of the diff stays one hunk. Verify with `json.load` that the file parses and that the `prefilter_company` row's `cache_prompt` no longer contains `Reality Check` while `{$RUBRIC_VECTORS}` is still present. Leave every other row and field alone, including the "Use the rubric's A/B/C/D/F/X definitions" ground rule.
+
+**5. Existing candidates — how RC gets stored (planning call).** RC is stored **on the candidate's next prefilter rubric save or `craft_prefilter_rubric` persist**. There's no explicit backfill script. In the meantime the read-time merge in `rubric_criteria_for_task` keeps `{$RUBRIC_VECTORS}` and hydration correct, because embedded wins on code either way, so the prompt is identical before and after a candidate's row lands. A backfill would need a `scripts/` file, which is outside this ticket's scope. If Susan wants every candidate stored immediately, that's a follow-up ticket.
+
+**6. Rollout (operator, not code).** The `agent_task` DB rows are the live prompt. `data/admin/agent_task.json` is a seed, and automatic startup apply is disabled under the AST-1492 kill-switch (`stat.seed.agent-tables-in-repo-json`). After deploy, Susan applies `prefilter_company` with Manage Tasks → **Revert to file**, or deletes the same block in Manage Tasks. Until she does, the live prompt still carries the duplicate block and batches keep failing.
+
+### Blast radius
+
+- `rubric_criteria_for_task` feeds the `{$RUBRIC_VECTORS}` token resolver (`rubric_criteria_for_token`), `hydrate_rubric_artifacts_for_response` (Artifacts UI already shows RC via the read merge), and prefilter batch decode labels and grade-reason hydration. The list shape and order are unchanged; only RC's text changes.
+- **Candidate Rubric UI:** edits a user makes to the RC row get overwritten by the constant on save. This is the same as QC/GC today and is intended ("maintained the same way").
+- **Shared dict objects:** like the QC/GC helper, the merge returns the constant's own dicts. In craft persist, `normalize_rubric_artifacts_on_save` then rewrites `grade_descriptions` / `importance` on them in place. The values written are identical (the content parses to the same six rows; importance 8 normalizes to 8). This mirrors QC/GC exactly. Copying the dicts would diverge from the precedent, so it's left out unless Susan asks for it.
+- **Tests (Betty):** `tests/component/utils/test_config.py::TestAst707EmbeddedPrefilterConfig` and any test asserting the old RC prose or an `E` row will need an update. So will any test that asserts the `prefilter_company` prompt text or that `apply_rubric_vectors_save` / craft persist writes only artifact rows for `prefilter_company`.
+- **AST-724 vector feedback:** RC now gets a `rubric_vector` row. Whether prefilter feedback capture then picks it up is a side effect, not a goal of this ticket.
+- **Hot file:** in-flight `ftr/AST-1862-recommended-job-modal-changes` edits a different block of `src/utils/config.py`. Expect a clean merge.
+
+### What must still hold
+
+- The AST-1513 duplicate-code guard in `_decode_payload` / `_require_complete_grade_set` is untouched, and duplicate codes are still rejected.
+- QC/GC merge behavior (`_merge_embedded_evaluate_jd_criteria` and its four call sites) is unchanged.
+- AST-707: prefilter hydration still resolves RC for candidates with no stored RC row (read-time merge), and embedded wins on duplicate code.
+- `_assert_unique_rubric_codes` still passes: the helper dedupes by code, so a stored RC plus the embedded RC yields one row.
+- No new limits, caps, retries, tables or fields.
