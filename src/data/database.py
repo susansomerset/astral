@@ -73,7 +73,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from src.utils.config import (
     AGENT_CONFIG,
     ALLOWED_TIMESHEET_PROVIDERS,
-    DEEPSEEK_MODEL_PRICING,
+    LLM_MODEL_CONFIG,
+    get_sku_pricing,
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
     ASTRAL_CONFIG,
@@ -121,7 +122,7 @@ from src.utils.config import (
     empty_render_for_prompts,
     list_artifact_keys_in_prompt_texts,
 )
-from src.utils.cost_calculator import calculate_cost_components_deepseek_from_counts
+from src.utils.cost_calculator import calculate_cost_components_from_counts
 from src.utils.logging import get_logger
 
 DB_PATH = ASTRAL_CONFIG["db_dir"] / "astral.db"
@@ -2576,6 +2577,9 @@ def _add_timesheet_entry(
     """Anthropic completions mirror into anthropic_timesheets + agent_timesheets; other providers use agent_timesheets only."""
     if provider not in ALLOWED_TIMESHEET_PROVIDERS:
         raise ValueError(f"Invalid timesheet provider {provider!r}")
+    if model_code:
+        # Ledger row must name a SKU the catalog prices on this server (raises ValueError otherwise).
+        get_sku_pricing(model_code, provider)
     row_vals = (
         agent_req_id, task_key_uuid, model_code, candidate_id, batch_id, batch_size,
         cache_write_tokens, cache_read_tokens, no_cache_prompt_tokens, no_cache_live_tokens,
@@ -2614,9 +2618,12 @@ def _add_timesheet_entry(
         conn.close()
 
 
-def backfill_deepseek_agent_timesheet_costs() -> int:
-    """Recompute calc_cost_* for all agent_timesheets rows with DeepSeek model_code keys."""
-    model_codes = tuple(DEEPSEEK_MODEL_PRICING.keys())
+def backfill_agent_timesheet_costs(server_id: str) -> int:
+    """Recompute calc_cost_* from stored token counts for agent_timesheets rows priced on one catalog server."""
+    get_llm_server(server_id)
+    model_codes = tuple(sorted({
+        sku for m in LLM_MODEL_CONFIG.values() if m["server"] == server_id for sku in m["pricing"]
+    }))
     if not model_codes:
         return 0
     placeholders = ",".join("?" for _ in model_codes)
@@ -2636,12 +2643,13 @@ def backfill_deepseek_agent_timesheet_costs() -> int:
             ).fetchall()
             updated = 0
             for row in rows:
-                parts = calculate_cost_components_deepseek_from_counts(
+                parts = calculate_cost_components_from_counts(
                     row["cache_read_tokens"],
                     row["total_no_cache_input_tokens"],
                     row["total_output_tokens"],
                     row["cache_write_tokens"],
-                    row["model_code"],
+                    sku=row["model_code"],
+                    server_id=server_id,
                 )
                 conn.execute(
                     """
