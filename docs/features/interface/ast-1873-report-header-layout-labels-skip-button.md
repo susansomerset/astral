@@ -176,3 +176,31 @@ Existing component tests that assert the title `<a>`, **Copy Link** / **Copy**, 
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1873
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `sub/AST-1862/AST-1873-report-header-layout-labels-skip-button` @ `d818add5b32340b6fcc683b896deeab4f04698bc`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.standards.dry-and-focused-functions | A | | |
+
+## Traceability
+
+AC6→Stage1 (header `onSkip`/last-in-row; modal flag wiring N/A—AST-1874); AC7→Stage1; AC8→Stages1+2; AC9→Stage1 (`jobLink`/`jobLinkText`); AC10→Stage2 (`:has(.recommended-report-shell)` + padding/font).
+
+### Findings
+
+- **discuss** — Child **AC6** / `## Traceability` · Finding: AC6 text still names `test_JobAnalysisReportModal.test.tsx` skip visibility, but this child’s boundaries correctly defer modal wiring to #3; Stage 1 only supplies props/UI. · Recommendation: Ensure Betty’s `qa-child` manifest for AST-1873 scopes AC6 modal asserts to #3 (or stubs) so this ticket is not blocked on skip-legality wiring not in Files Changed.
+
+- **acceptable** — Plan **Stage 1** interim UX · Finding: Until #3 passes `jobLinkText`, the link line shows http `listing_href` only (documented decision). · Recommendation: None for this plan; matches partition with #3.
+
+- **acceptable** — Plan **Canon check** · Finding: Self-assessment names concrete DRY wins (merged title/link branches, no duplicate button component). · Recommendation: None.
+
+context_tokens≈18500
