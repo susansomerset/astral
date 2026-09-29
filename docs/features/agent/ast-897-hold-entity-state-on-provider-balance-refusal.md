@@ -571,3 +571,118 @@ END-VERDICT
 ```text
 AST-1867 board-joan done — CANON: OK.
 ```
+
+## Radia review — AST-1867
+
+[code-rubric]  
+**Ticket:** AST-1867  
+**Publish ref:** `144b8850c986aebb1c330035a3f82e704d04bb0c` (`origin/sub/AST-1860/AST-1867-provider-balance-outage`)  
+**Diff base:** `fbe9486e` (`origin/ftr/AST-1860-provider-balance-outage`)  
+**Corpus:** `docs/canon-index.md` absent on ftr and sub tips — no `corpus_sha`; Joan fix-board used `canon/docs/DIRECTIVES-DIRECTORY.md` overlap skim (same as prior passes).  
+**Overall:** CLEAN  
+
+**Status gate:** Spawn prompt + Linear brief confirm **Tests Passed** (assignee Ada). Proceed.
+
+---
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out on this tip: Betty **TESTS: REVISE** is owned by sibling **AST-1870** (`origin/sub/AST-AST-1860/AST-1870-provider-balance-outage` @ `d4494bc3`; repro red at ftr base, green with fix overlaid). No `[bug-repro]` on AST-1867 tip; qa-fix did not run here. Appropriate for F7.
+
+**## What must still hold** — OK (traced against `origin/ftr/...origin/sub/...` product diff only):
+
+| Item | Verdict |
+|------|---------|
+| AST-897 AC1–2 (hold gates, state, eligibility) | No edits to `classify_*`, `_find_job_page_from_assembled` hold return, prefilter holds, or consult hold paths; skip path uses existing `clear_*_batch` in `_run_unified` `finally`. |
+| AST-897 AC3 (non-balance errors / AST-1189 call-budget `state_held`) | D1 honored: early return only when `is_provider_balance_refusal(result)`; JOBS_FOUND guards for bare `state_held` unchanged; ordinary errors still `_warn_company` + `total_errors: 1`. |
+| AST-897 AC4 (attempt recorded + surfaced) | Agent/ledger failure storage untouched; one 3-line `logger.warning` in `_note_provider_balance_outage` + `monitor.provider_balance_outage`. |
+| Circuit breaker (3× COMPLETED zero-progress) | `final_status = "INTERRUPTED"` when `ctx["provider_balance_outage"]`; `_check_circuit_breaker` only on `COMPLETED`; ledger query unchanged. |
+| Alert gate (AUTO + ledger; `auto_run_error` for ordinary errors) | `not is_click` preserved; outage branch before `total_errors` branch. |
+| No new limits/caps/retries/failover | Only new stop is balance refusal marker + loop `break`; D2 (no cancel in-flight) respected. |
+
+---
+
+## Canon scores
+
+Frozen **Canon Scope** on AST-1867 lists **no directive ids** (issue description + plan-fix block). Nothing to resolve per id; Joan fix-board **CANON: OK** by overlap skim (`stat.logging.warning`, `patt.entity.batch-processing`, breaker via ledger status).
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| *(frozen list empty)* | — | — | Joan board CANON: OK; habits cited in plan (config SOT, layering, 3-line WARNING) observed in diff |
+
+**Worst grade:** none scored → roll-up **CLEAN** (no off-list statute scored; no §5.3 ESCALATE).
+
+---
+
+## Column diff vs plan stage
+
+`no plan-stage per-id scores attached` — Joan artifact is `[board-joan] CANON: OK` only; aligned on intent.
+
+---
+
+## Plan fidelity (§5.4)
+
+Diff matches **Proposed change** §§1–3 and D4 (no `config.py`):
+
+- **roster:** JOBS_FOUND + `select_job_page` balance early returns (`total_held`, `failure_class`, no `_warn_company` on balance path).
+- **dispatcher:** `_note_provider_balance_outage`, per-entity/chunk short-circuit, loop stop, `INTERRUPTED` + alert routing.
+- **monitor:** `provider_balance_outage` mirrors `auto_run_error` safety (try/except, no raise).
+
+**D5 (`prefilter_company` / consult rebuild)** explicitly out of scope; not implemented — matches Susan-approved scope.
+
+---
+
+## Frame diff
+
+(none)
+
+---
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Job encoded batch consult:** `consult.run_consult_task` normalizes batch results at ~2893–2898 and drops `failure_class`, so dispatcher `is_provider_balance_refusal(result)` after `run_consult_task` does **not** fire for `qualify_*` / `_run_batch_consult` balance holds even though `_run_batch_consult` can return `failure_class`. Plan blast radius says job paths stop “where consult passes it through”; at the `run_consult_task` boundary they do not — behavior for those tasks stays pre-fix. **Not a defect for the approved repro** (`select_job_page`, `batch_call_mode=0` company path passes `run_company_task` dict through with `failure_class`). Follow-up only if product wants encoded job batches on the same outage rail without touching `consult.py`.
+- **Sibling test carry:** Betty’s REVISE and the two AST-897 JOBS_FOUND assertion deltas are **AST-1870**; 69 other roster/dispatcher/monitor failures match `origin/dev` per Ada’s test-fix note — do not attribute to this tip.
+- **Parent shape for Chuckles:** AST-1860 is a **mini-parent with live `ftr/AST-1860-provider-balance-outage`** — **not** fix-lane “orphaned parent (Done, merge straight to dev)”. On **PROCEED**: **Review Posted** → clean-review shortcut (**User Testing**, skip `resolve-child`) → normal fix rollup on `ftr`, not finish-up-to-dev-only.
+
+---
+
+## What’s solid
+
+- Side-channel `ctx["provider_balance_outage"]` follows AST-1847 `dispatch_partial` precedent; no ledger schema creep.
+- Breaker exclusion is structural (`INTERRUPTED`), not a one-off hack in `_check_circuit_breaker`.
+- Held tally uses `total_held` from roster summary; `is_provider_balance_refusal` on consult return works for per-company dispatch.
+- Scope stays in four files (plus plan doc); no `consult.py`, no caps/limits.
+
+---
+
+## Recommended actions
+
+Chuckles: append artifact, `docs(AST-1867): Radia review — clean`, post slim upshot, **Review Posted** → **User Testing** (clean shortcut). Ensure **AST-1870** lands before or with rollup so bible/tests match D1.
+
+`context_tokens≈12000`
+
+---
+
+### Slim upshot (Chuckles → Linear `--as radia`)
+
+```
+[code-rubric] PROCEED (Commit: 144b8850) plan-faithful outage path
+```
+
+#### Chuckles disposition (AST-1867)
+
+Clean review: Review Posted → User Testing via the clean-review shortcut (resolve-child skipped). Merged into the mini-parent ftr.
+
+Docs-acceptance on this tip: no test-tree delivery here — tests and bible land on gap sibling AST-1870.
+
+Follow-up candidates (not in this bug's approved scope): consult.py drops `failure_class` at the batch-result boundary, so prefilter_company (AST-1858/AST-1859 shape) and encoded job batch consults stay on the pre-fix counting/alert path.
