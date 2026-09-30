@@ -678,3 +678,85 @@ Joan plan-rubric verdict attached (APPROVED). Excluded set: `astral.debug.no-rep
 2. **fix-now / api_candidate** — `update_candidate_data` calls `save_candidate_data(..., debug=ui_llm_debug())` so Stage 3 / AC8 gated debug lines fire on primary PUT.
 3. **fix-now / agent.py** — lazy-import comment added on `build_candidate_token_view` (same cycle-break note as sibling import).
 4. **discuss** — engineer-test-tree-ban straggler: acknowledged; statute already conforms (Betty-only test/bible commits). No product change.
+
+---
+
+## Bug: AST-1904 — Keep full saved contact line on resume render
+
+Fix child of mini-parent AST-1902 (*Candidate Contact Detail is truncated after email*, project Astral Artifacts). Publish ref `sub/AST-1902/AST-1904-keep-full-saved-contact-line`, parent `ftr/AST-1902-candidate-contact-detail-truncated`. This block covers only the contact-line overwrite that Stage 3 step 8 above re-sourced. It does not bring in any other AST-1014 scope.
+
+### As-is
+
+`build_resume_from_job` and `build_base_resume` call `_apply_contact_to_render_dict` after content loads. Whenever at least one contact-blob field is non-empty, it replaces `render["candidate_contact_detail"]`, even when the blob has fewer parts than the saved line. A `job_resume` saved with `hire@susansomerset.com • 415-745-5238 • linkedin.com/in/susansomerset • California, USA (PST)` renders as `<div class="contact"><span>hire@susansomerset.com</span></div>` when the blob holds only the email.
+
+### To-be
+
+A non-empty saved `candidate_contact_detail` renders exactly as saved. The line built from the contact blob is used only when the saved content has no contact line (missing, empty, or whitespace-only).
+
+### Repro
+
+Fixture (persistence is JSON, so this is a literal dict, not a seeded DB row). Run against `origin/ftr/AST-1902-candidate-contact-detail-truncated` @ `777c04a81`:
+
+```python
+from src.core.builder import _apply_contact_to_render_dict as f
+r = {"candidate_name": "Susan Somerset",
+     "candidate_contact_detail": "hire@susansomerset.com • 415-745-5238 • linkedin.com/in/susansomerset • California, USA (PST)"}
+f(r, {"contact_email": "hire@susansomerset.com"}, full="Susan Somerset")
+r["candidate_contact_detail"]   # -> 'hire@susansomerset.com'   (BUG: phone / LinkedIn / location dropped)
+
+r = {"candidate_contact_detail": ""}
+f(r, {"contact_email": "a@b.c", "phone": "555"})
+r["candidate_contact_detail"]   # -> 'a@b.c\xa0• 555'           (fallback path, must keep working)
+```
+
+End to end, the same happens through `build_resume_from_job` (L255) and `build_base_resume` (L447). `_emit_html_document` (L1242) escapes and emits whatever `render["candidate_contact_detail"]` holds by then.
+
+### Root cause
+
+`src/core/builder.py` `_apply_contact_to_render_dict` (L1028–1050) ends with `if parts: render["candidate_contact_detail"] = "\u00a0• ".join(parts)`. It never checks whether the render already holds a contact line. This unconditional overwrite came over from the pre-AST-1014 `_apply_profile_to_render_dict`. Stage 3 step 8 only re-pointed it at the contact blob plus the name columns. The bug shows up when the blob is sparser than the saved artifact line.
+
+### Proposed change
+
+**Choice: option (a). A saved artifact `candidate_contact_detail` wins, and the contact blob is only a fallback.**
+
+Why (a) and not (b), "blob stays authoritative but never emits fewer parts than the saved line":
+
+- **Smaller change.** (a) changes one condition in one function. Neither the signature nor the two call sites change, and `src/utils/config.py` is untouched.
+- **No heuristic.** `candidate_contact_detail` is freeform text. To count its "parts", (b) would have to split on an assumed `•` separator, and nothing in config declares that separator. A line saved with `|`, `,` or line breaks would count as one part, so the bug would come back. Doing (b) properly would need a new config field for separator and precedence. That is a bigger change and a heuristic that has not been approved.
+- **Meets AC 1–3 directly.** AC1: the saved line is kept. AC2: both builders go through this one helper. AC3: an empty or missing saved line still falls back to the blob.
+
+Edit to `src/core/builder.py` `_apply_contact_to_render_dict`:
+
+1. Update the docstring to say that `candidate_name` is still overwritten from the name columns, and that `candidate_contact_detail` is filled from the contact blob only when the render has no non-empty saved line (AST-1904).
+2. Before building `parts`, return early when a saved line already exists. Normalize the value the same way `_emit_html_document` does at L1242:
+
+```python
+    # AST-1904: a saved artifact contact line wins; the blob is only a fallback.
+    if str(render.get("candidate_contact_detail") or "").strip():
+        return
+```
+
+   Place this **after** the `candidate_name` block (L1030–1032), so the name-column overwrite still runs whatever the contact line holds. Leave the rest of the function (the part list, `if parts:` assignment and NBSP-bullet join) unchanged. A whitespace-only saved value counts as empty and falls back to the blob.
+
+3. Do not change `build_resume_from_job`, `build_base_resume`, `build_resume_from_paste`, `_emit_html_document`, or `src/utils/config.py`.
+
+⚠️ **Decision (consequence of (a)):** if a job resume or base resume already has a saved contact line, later edits to the Profile contact blob will not change that resume's header. To change it, edit the saved `candidate_contact_detail`. This is the trade-off built into (a), which AST-1902 offered as acceptable, and the blob still covers resumes with no saved line.
+
+### Blast radius
+
+- **Callers:** `build_resume_from_job` (L255) and `build_base_resume` (L447) only. `build_resume_from_paste` already skips this helper (L528). Session builders (`build_session_base_resume`, etc.) do not call it.
+- **Tests that rely on the current overwrite.** `tests/component/core/test_builder.py`: the `_resume_blob()` fixture (L17–23) always sets `candidate_contact_detail: "ada@example.com"`, so under (a) these asserts change outcome:
+  - `TestBuilderHelpers::test_applies_profile_contact_and_markers`: `assert "555" in render["candidate_contact_detail"]` (L366) will fail, because the saved `ada@example.com` now wins.
+  - `TestBuilderHelpers::test_profile_uses_reply_email_and_skips_empty_name`: `assert "reply@example.com" in ...` (L382) will fail for the same reason.
+  - `TestAst1014BuilderContact::test_apply_contact_uses_full_column_over_first_last` (L2965) still passes, but only because the saved value and the blob value are both `ada@example.com`.
+  - For Betty (fix-board / qa-fix): these blob-fallback asserts need `_resume_blob(candidate_contact_detail="")`, or an equivalent, to keep testing the fallback path. The new AST-1904 regression goes in `TestAst1014BuilderContact`, as the scope lists. This plan does not touch `tests/`.
+- **Other suites** with `candidate_contact_detail` mentions (`test_candidate`, `test_config`, `test_tracker`, `test_agent`, `test_api_candidate`) do not call `_apply_contact_to_render_dict`, so they are not expected to change. test-fix confirms this.
+- **Data / UI:** no schema, contact-library, Profile UI, `.contact` CSS, or `draft_job_resume` change (AST-1904 Boundaries).
+
+### What must still hold
+
+- AST-1014 Stage 3 step 8: `candidate_name` is still taken from `full`, else `first last`, and is left alone when both are blank.
+- If there is no saved line, the header contact line is still built from the blob in this order: `contact_email`/`reply_email`, `phone`, `linkedin_url`, `github`, `location`, joined with `"\u00a0• "` (AST-1904 AC3).
+- The saved line is emitted exactly as saved, only HTML-escaped at L1242. The builder does not rewrite, merge, or reorder it (AC1).
+- Both `build_resume_from_job` and `build_base_resume` behave the same way, because both go through this one helper (AC2).
+- The paste path (`build_resume_from_paste`) is unchanged.
