@@ -1354,6 +1354,15 @@ def _job_state_matches_prior(current_state: str, prior_states: Optional[List[str
     return False
 
 
+def job_state_admits_transition(current_state: str, to_state: str) -> bool:
+    """True when to_state's configured prior_states admit current_state (AST-1872).
+
+    Same rule transition_job_state enforces — hop sub-states resolve via their base.
+    Raises KeyError when to_state is not a registered JOB_STATES key (config error, fail loud).
+    """
+    return _job_state_matches_prior(current_state, state_prior_states(JOB_STATES, to_state))
+
+
 def legal_job_successor_states(from_state: str) -> List[str]:
     """Skipped-edit targets: every JOB_STATES key except from_state (operator override; no prior_states filter)."""
     current = (from_state or "").strip()

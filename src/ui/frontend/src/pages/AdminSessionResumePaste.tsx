@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react"
 import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
+import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
 import { useLocalStorage } from "../lib/useLocalStorage"
 
@@ -11,6 +12,8 @@ type SessionResumeParse = {
 } | null
 
 export default function SessionResumePaste() {
+  // AST-1880: Ruth's call runs on the selected candidate's key for her model's server.
+  const { selectedId } = useCandidate()
   const [pasteText, setPasteText] = useLocalStorage<string>("session_resume:paste_text", "")
   const [lastParse, setLastParse] = useLocalStorage<SessionResumeParse>(
     "session_resume:last_parse",
@@ -25,14 +28,14 @@ export default function SessionResumePaste() {
 
   async function handleParse() {
     const text = pasteText.trim()
-    if (!text || parsing) return
+    if (!text || parsing || !selectedId) return
     setParsing(true)
     setError(null)
     try {
       const r = await api("/api/admin/session_resume/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume_text: pasteText }),
+        body: JSON.stringify({ resume_text: pasteText, candidate_id: selectedId }),
       })
       const data = await r.json().catch(() => ({} as Record<string, unknown>))
       if (!r.ok || data.success !== true) {
@@ -129,7 +132,7 @@ export default function SessionResumePaste() {
       </h1>
       <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
         Paste a full resume, Parse to structure-keyed JSON, optionally View Parsed JSON, then Open HTML to Print → PDF.
-        This tool does not use the selected candidate and does not save to the database.
+        Uses the selected candidate's API key for Ruth's model; does not save to the database.
       </p>
 
       <textarea
@@ -154,7 +157,8 @@ export default function SessionResumePaste() {
           type="button"
           className="btn primary"
           onClick={() => void handleParse()}
-          disabled={!pasteText.trim() || parsing}
+          disabled={!selectedId || !pasteText.trim() || parsing}
+          title={selectedId ? undefined : "Select a candidate first — Parse runs on their API key"}
         >
           {parsing ? "Parsing…" : "Parse"}
         </button>

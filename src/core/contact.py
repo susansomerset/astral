@@ -1046,6 +1046,18 @@ def run_contact_estelle_turn(
         out["error"] = "listen_off"
         return out
 
+    # a2. Every LLM task runs on the candidate's platform key (AST-1879) — no candidate, no call.
+    cid = astral_candidate_id.strip() if isinstance(astral_candidate_id, str) else ""
+    row = get_candidate(cid) if cid else None
+    if not isinstance(row, dict):
+        logger.warning(
+            "%s | contact estelle turn skipped — no candidate for this Slack user\n  Estelle is not replying",
+            channel,
+        )
+        out = dict(empty)
+        out["error"] = "no_candidate"
+        return out
+
     logger.debug(
         "Calling run_contact_estelle_turn: [channel=%r, thread_ts=%r, "
         "astral_candidate_id=%r, candidate_state=%r, text=%r]",
@@ -1126,24 +1138,28 @@ def run_contact_estelle_turn(
 
     # c. Candidate raft for tokens (AST-1585: strip blob base_resume; pin→body when supplied)
     candidate_data: dict = {}
-    if isinstance(astral_candidate_id, str) and astral_candidate_id.strip():
-        row = get_candidate(astral_candidate_id)
-        if isinstance(row, dict):
-            cd = row.get("candidate_data")
-            if isinstance(cd, dict):
-                candidate_data = copy.deepcopy(cd)
-            arts = candidate_data.get("artifacts")
-            if isinstance(arts, dict) and "base_resume" in arts:
-                arts = dict(arts)
-                del arts["base_resume"]
-                candidate_data["artifacts"] = arts
-            pin = (base_resume_artifact_id or "").strip()
-            if pin:
-                body = resolve_pinned_base_resume(
-                    astral_candidate_id, pin, debug=debug
-                )
-                if body is not None:
-                    candidate_data.setdefault("artifacts", {})["base_resume"] = body
+    cd = row.get("candidate_data")
+    if isinstance(cd, dict):
+        candidate_data = copy.deepcopy(cd)
+    arts = candidate_data.get("artifacts")
+    if isinstance(arts, dict) and "base_resume" in arts:
+        arts = dict(arts)
+        del arts["base_resume"]
+        candidate_data["artifacts"] = arts
+    pin = (base_resume_artifact_id or "").strip()
+    if pin:
+        body = resolve_pinned_base_resume(
+            cid, pin, debug=debug
+        )
+        if body is not None:
+            candidate_data.setdefault("artifacts", {})["base_resume"] = body
+    # Resolved candidate ctx: do_task picks this candidate's key for the agent's server
+    # and stamps the [astral-<id>] system prefix (AST-1639).
+    turn_ctx = {
+        "astral_candidate_id": cid,
+        "candidate_data": candidate_data,
+        "candidate_api_keys": dict(row.get("candidate_api_keys") or {}),
+    }
 
     # d. do_task + envelope helper
     task_key = CONTACT_ESTELLE_CONFIG["task_key"]
@@ -1156,7 +1172,7 @@ def run_contact_estelle_turn(
             task_key,
             live_content=live_content,
             index=astral_candidate_id or channel,
-            candidate_data=candidate_data,
+            ctx=turn_ctx,
             debug=debug,
             store_agent_data=True,
         )
@@ -1205,7 +1221,7 @@ def run_contact_estelle_turn(
                 task_key,
                 live_content=follow_live_content,
                 index=astral_candidate_id or channel,
-                candidate_data=candidate_data,
+                ctx=turn_ctx,
                 debug=debug,
                 store_agent_data=True,
             )

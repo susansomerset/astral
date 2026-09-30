@@ -760,7 +760,7 @@
     "user_prompt": "Hi Judith,\n\nGrace's fact-check on your letter is below. Produce the final letter.\n\nSame discipline as the resume pass: for each issue, FIX (correct to what the source supports) or DEFEND (quote the candidate-context line Grace missed). Keep the THESIS, the STORY, and the QUESTION intact unless an issue makes them untrue; accuracy repairs change facts, not voice. Stay under 300 words. The WRITING INSTRUCTIONS apply; scan for banned characters before you output.\n\nOutput one JSON object exactly:\n{\n  \"agent_performance\": {\"status\": \"success | failure\", \"failure_note\": \"\"},\n  \"agent_payload\": {\n    \"re_line\": \"\", \"body\": \"\", \"signature\": \"{$FIRST_NAME} {$LAST_NAME}\",\n    \"dispositions\": [{\"claim\": \"\", \"action\": \"fixed | defended\", \"note\": \"\"}]\n  }\n}"
   },
   {
-    "agent_id": "principal_recruiter_estelle",
+    "agent_id": "contact_recruiter_estelle",
     "cache_prompt": "",
     "cache_prompt_b": "",
     "cache_prompt_c": "",

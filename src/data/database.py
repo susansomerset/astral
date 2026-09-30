@@ -10,8 +10,9 @@ Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company_id (nullable real employer; AST-1701), candidate_id (required owning candidate; AST-1598 / AST-1594), company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (company|meteorite parent/track; AST-1701 repurpose of AST-1469) + source_entity_id (company short_name or meteorite id text), etc.
 - meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; reverse lookup via `get_meteorite_by_astral_job_id(astral_job_id)`; candidate-scoped listing via `list_meteorites_for_candidate(candidate_id)`; listing-href fallback reverse lookup via `get_meteorite_link_by_astral_job_id(astral_job_id)` (AST-1694 — link column only; not AST-1685 provenance); columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, electronic_contact (AST-1689; config literal from AST-1688), job_title, employer_name (AST-1713; Ruth stage_meteorite response keys), astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
-- candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
-- agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
+- candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (legacy — not read or written since AST-1878), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
+- candidate_key — Per-server candidate API keys (AST-1878): candidate_id, server_id (LLM_SERVER_CONFIG key), api_key (Fernet ciphertext), created_at, updated_at; PRIMARY KEY (candidate_id, server_id). set/clear/list_candidate_server_key(s); get_candidate hydrates candidate_api_keys {server_id: plaintext}; cascade-deleted with the candidate.
+- agent    — Agent: agent_id TEXT PK, content TEXT, model_id TEXT (LLM_MODEL_CONFIG key; brain_setting validated against that model's sizes — AST-1878), model_code TEXT (legacy/unwritten), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
@@ -72,7 +73,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from src.utils.config import (
     AGENT_CONFIG,
     ALLOWED_TIMESHEET_PROVIDERS,
-    DEEPSEEK_MODEL_PRICING,
+    LLM_MODEL_CONFIG,
+    get_sku_pricing,
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
     ASTRAL_CONFIG,
@@ -99,10 +101,11 @@ from src.utils.config import (
     INFLOW_CONFIG,
     ROSTER_CONFIG,
     TASK_CONFIG,
-    get_active_llm_provider,
     infer_brain_setting_from_legacy_model_code,
-    resolve_brain_setting_to_anthropic_agent_key,
-    resolve_brain_setting_to_deepseek_tier_meta,
+    resolve_model_brain,
+    get_llm_server,
+    validate_brain_setting_for_model,
+    BRAIN_SETTINGS,
     dispatch_task_admin_defaults,
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
@@ -110,7 +113,6 @@ from src.utils.config import (
     dispatch_chain_claim_states_for_row,
     is_dispatch_chain_trigger,
     is_valid_candidate_batch_claim_state,
-    validate_allowed_brain_setting,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_FEEDBACK_CONFIG,
     REPO_ADMIN_JSON_CONFIG,
@@ -120,7 +122,7 @@ from src.utils.config import (
     empty_render_for_prompts,
     list_artifact_keys_in_prompt_texts,
 )
-from src.utils.cost_calculator import calculate_cost_components_deepseek_from_counts
+from src.utils.cost_calculator import calculate_cost_components_from_counts
 from src.utils.logging import get_logger
 
 DB_PATH = ASTRAL_CONFIG["db_dir"] / "astral.db"
@@ -136,20 +138,24 @@ def _coerce_agent_brain_setting(row: Dict[str, Any]) -> str:
 
 
 def _expose_agent_public(row_dict: Dict[str, Any]) -> Dict[str, Any]:
-    """brain_setting authoritative; model_code JSON key mirrors resolved SKU for admin UI."""
+    """brain_setting authoritative; model_code JSON key mirrors the catalog SKU for admin UI (None without model_id)."""
     out = dict(row_dict)
     bs = _coerce_agent_brain_setting(out)
     out["brain_setting"] = bs
-    prov = get_active_llm_provider()
-    if prov == "anthropic":
-        rk = resolve_brain_setting_to_anthropic_agent_key(bs)
-    elif prov == "deepseek":
-        rk = str(resolve_brain_setting_to_deepseek_tier_meta(bs)["vendor_model"])
-    else:
-        raise ValueError(f"Unknown active LLM provider {prov!r}")
+    mid = out.get("model_id")
+    # Legacy rows written before Revert-to-file carry no model yet.
+    rk = resolve_model_brain(mid, bs)["sku"] if mid else None
     out["resolved_model_key"] = rk
     out["model_code"] = rk
     return out
+
+
+def _validate_agent_model_brain(model_id: Optional[str], brain_setting: str) -> None:
+    """Per-model brain check; model-less writes (admin routes until AST-1880) use the global tiers."""
+    if model_id:
+        validate_brain_setting_for_model(model_id, brain_setting)
+    elif brain_setting not in BRAIN_SETTINGS:
+        raise ValueError(f"Invalid brain_setting {brain_setting!r}. Allowed: {list(BRAIN_SETTINGS)}")
 
 
 def _utc_now() -> str:
@@ -674,6 +680,13 @@ def _validate_agent_repo_json_rows(rows: list[dict[str, Any]]) -> None:
         bs = row.get("brain_setting")
         if bs is None or not str(bs).strip():
             raise ValueError(f"agent repo JSON row {i}: brain_setting required")
+        mid = row.get("model_id")
+        if mid is None or not str(mid).strip():
+            raise ValueError(f"agent repo JSON row {i}: model_id required")
+        try:
+            validate_brain_setting_for_model(str(mid).strip(), str(bs).strip())
+        except ValueError as e:
+            raise ValueError(f"agent repo JSON row {i}: {e}") from e
 
 
 def _validate_agent_task_repo_json_rows(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
@@ -724,7 +737,7 @@ def apply_agent_repo_json_startup(conn: sqlite3.Connection, rows: list[dict[str,
             row["content"] if isinstance(row["content"], str) else str(row["content"])
         )
         bs = str(row["brain_setting"]).strip()
-        validate_allowed_brain_setting(bs)
+        mid = str(row["model_id"]).strip()
         temp = row.get("temperature")
         max_t = row.get("max_tokens")
         updated = row.get("updated_at")
@@ -733,15 +746,15 @@ def apply_agent_repo_json_startup(conn: sqlite3.Connection, rows: list[dict[str,
         existing = conn.execute("SELECT agent_id FROM agent WHERE agent_id = ?", (aid,)).fetchone()
         if existing is None:
             conn.execute(
-                """INSERT INTO agent (agent_id, content, brain_setting, temperature, max_tokens, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (aid, content, bs, temp, max_t, updated),
+                """INSERT INTO agent (agent_id, content, model_id, brain_setting, temperature, max_tokens, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (aid, content, mid, bs, temp, max_t, updated),
             )
         else:
             conn.execute(
-                """UPDATE agent SET content = ?, brain_setting = ?, temperature = ?, max_tokens = ?, updated_at = ?
+                """UPDATE agent SET content = ?, model_id = ?, brain_setting = ?, temperature = ?, max_tokens = ?, updated_at = ?
                    WHERE agent_id = ?""",
-                (content, bs, temp, max_t, updated, aid),
+                (content, mid, bs, temp, max_t, updated, aid),
             )
     if ids:
         placeholders = ",".join("?" * len(ids))
@@ -2564,6 +2577,9 @@ def _add_timesheet_entry(
     """Anthropic completions mirror into anthropic_timesheets + agent_timesheets; other providers use agent_timesheets only."""
     if provider not in ALLOWED_TIMESHEET_PROVIDERS:
         raise ValueError(f"Invalid timesheet provider {provider!r}")
+    if model_code:
+        # Ledger row must name a SKU the catalog prices on this server (raises ValueError otherwise).
+        get_sku_pricing(model_code, provider)
     row_vals = (
         agent_req_id, task_key_uuid, model_code, candidate_id, batch_id, batch_size,
         cache_write_tokens, cache_read_tokens, no_cache_prompt_tokens, no_cache_live_tokens,
@@ -2602,9 +2618,12 @@ def _add_timesheet_entry(
         conn.close()
 
 
-def backfill_deepseek_agent_timesheet_costs() -> int:
-    """Recompute calc_cost_* for all agent_timesheets rows with DeepSeek model_code keys."""
-    model_codes = tuple(DEEPSEEK_MODEL_PRICING.keys())
+def backfill_agent_timesheet_costs(server_id: str) -> int:
+    """Recompute calc_cost_* from stored token counts for agent_timesheets rows priced on one catalog server."""
+    get_llm_server(server_id)
+    model_codes = tuple(sorted({
+        sku for m in LLM_MODEL_CONFIG.values() if m["server"] == server_id for sku in m["pricing"]
+    }))
     if not model_codes:
         return 0
     placeholders = ",".join("?" for _ in model_codes)
@@ -2624,12 +2643,13 @@ def backfill_deepseek_agent_timesheet_costs() -> int:
             ).fetchall()
             updated = 0
             for row in rows:
-                parts = calculate_cost_components_deepseek_from_counts(
+                parts = calculate_cost_components_from_counts(
                     row["cache_read_tokens"],
                     row["total_no_cache_input_tokens"],
                     row["total_output_tokens"],
                     row["cache_write_tokens"],
-                    row["model_code"],
+                    sku=row["model_code"],
+                    server_id=server_id,
                 )
                 conn.execute(
                     """
@@ -3189,6 +3209,7 @@ def hard_delete_candidate(astral_candidate_id: str) -> Dict[str, int]:
                 "company_search_terms": 0,
                 "vector_feedback": 0,
                 "rubric_vector": 0,
+                "candidate_key": 0,
                 "candidate": 0,
             }
             _ensure_candidate_schema(conn)
@@ -3202,6 +3223,7 @@ def hard_delete_candidate(astral_candidate_id: str) -> Dict[str, int]:
                 ("company_search_terms", "DELETE FROM company_search_terms WHERE candidate_id = ?"),
                 ("vector_feedback", "DELETE FROM vector_feedback WHERE candidate_id = ?"),
                 ("rubric_vector", "DELETE FROM rubric_vector WHERE candidate_id = ?"),
+                ("candidate_key", "DELETE FROM candidate_key WHERE candidate_id = ?"),
             ):
                 try:
                     cur = conn.execute(sql, (cid,))
@@ -3274,6 +3296,7 @@ def _legacy_candidate_migrate_conn(
                 "DELETE FROM company_search_terms WHERE candidate_id = ?",
                 "DELETE FROM vector_feedback WHERE candidate_id = ?",
                 "DELETE FROM rubric_vector WHERE candidate_id = ?",
+                "DELETE FROM candidate_key WHERE candidate_id = ?",
             ):
                 try:
                     conn.execute(sql, (cid,))
@@ -3424,11 +3447,8 @@ def _parse_candidate_row(d: Dict[str, Any]) -> Dict[str, Any]:
     for col in ("first", "last", "full", "pronouns"):
         if d.get(col) is None:
             d[col] = ""
-    if d.get("candidate_api_key"):
-        try:
-            d["candidate_api_key"] = decrypt_value(d["candidate_api_key"])
-        except (RuntimeError, ValueError):
-            d["candidate_api_key"] = None
+    # Legacy single key is never exposed (AST-1878); per-server keys hydrate in get_candidate.
+    d.pop("candidate_api_key", None)
     return d
 
 
@@ -3437,7 +3457,6 @@ def save_candidate(
     *,
     state: Optional[str] = None,
     candidate_data: Optional[Dict[str, Any]] = None,
-    candidate_api_key: Optional[str] = None,
     merge: bool = True,
     first: Optional[str] = None,
     last: Optional[str] = None,
@@ -3450,10 +3469,8 @@ def save_candidate(
     candidate_data: merge=True deep-merges with existing; merge=False overwrites.
     first/last/full/pronouns: set only when provided (AST-1014).
     state_history: overwrite when provided; preserve when omitted (AST-971).
-    candidate_api_key: if provided, Fernet-encrypted before storage.
     Auto-sets updated_at; auto-sets state_changed_at when state changes."""
     now = _utc_now()
-    encrypted_key = encrypt_value(candidate_api_key) if candidate_api_key else None
 
     def _with_conn() -> None:
         conn = _get_connection()
@@ -3476,15 +3493,15 @@ def save_candidate(
                     """INSERT INTO candidate (
                         astral_candidate_id, state, state_history, candidate_data,
                         first, last, full, pronouns,
-                        candidate_api_key, created_at, updated_at, state_changed_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        created_at, updated_at, state_changed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         astral_candidate_id, state, hist_str, cdata_str,
                         "" if first is None else first,
                         "" if last is None else last,
                         "" if full is None else full,
                         "" if pronouns is None else pronouns,
-                        encrypted_key, now, now, now,
+                        now, now, now,
                     ),
                 )
             else:
@@ -3523,9 +3540,6 @@ def save_candidate(
                 if state_history is not None:
                     sets.append("state_history = ?")
                     params.append(json.dumps(state_history))
-                if encrypted_key is not None:
-                    sets.append("candidate_api_key = ?")
-                    params.append(encrypted_key)
                 if not sets:
                     return
                 sets.append("updated_at = ?")
@@ -3571,25 +3585,110 @@ def update_candidate_last_email_check(
     _run_with_retry(_with_conn)
 
 
-def clear_candidate_api_key(candidate_id: str) -> None:
-    """Set candidate_api_key to NULL for a candidate."""
+# -- candidate_key: one Fernet-encrypted API key per (candidate, LLM server) (AST-1878) --
+
+def _ensure_candidate_key_table(conn: sqlite3.Connection) -> None:
+    # No module flag: test/DB swaps reuse the process, so re-check every call (CREATE IF NOT EXISTS is cheap).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS candidate_key (
+            candidate_id TEXT NOT NULL,
+            server_id TEXT NOT NULL,
+            api_key TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL,
+            PRIMARY KEY (candidate_id, server_id)
+        )
+    """)
+
+
+def _candidate_key_map(conn: sqlite3.Connection, candidate_id: str) -> Dict[str, str]:
+    """server_id → plaintext key; undecryptable rows are omitted (treated as not set)."""
+    _ensure_candidate_key_table(conn)
+    out: Dict[str, str] = {}
+    for r in conn.execute(
+        "SELECT server_id, api_key FROM candidate_key WHERE candidate_id = ? ORDER BY server_id",
+        (candidate_id,),
+    ).fetchall():
+        try:
+            out[r["server_id"]] = decrypt_value(r["api_key"])
+        except (RuntimeError, ValueError):
+            continue
+    return out
+
+
+def set_candidate_server_key(candidate_id: str, server_id: str, api_key: str) -> None:
+    """Upsert this candidate's key for one catalog server (Fernet-encrypted). Raises on unknown server / blank key."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    get_llm_server(server_id)
+    key = str(api_key or "").strip()
+    if not key:
+        raise ValueError("api_key is required (use clear_candidate_server_key to remove)")
+    ciphertext = encrypt_value(key)
     now = _utc_now()
+
     def _with_conn() -> None:
         conn = _get_connection()
         try:
             _ensure_candidate_schema(conn)
+            if conn.execute(
+                "SELECT 1 FROM candidate WHERE astral_candidate_id = ?", (cid,)
+            ).fetchone() is None:
+                raise LookupError(f"Candidate not found: {cid}")
+            _ensure_candidate_key_table(conn)
             conn.execute(
-                "UPDATE candidate SET candidate_api_key = NULL, updated_at = ? WHERE astral_candidate_id = ?",
-                (now, candidate_id),
+                """INSERT INTO candidate_key (candidate_id, server_id, api_key, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(candidate_id, server_id)
+                   DO UPDATE SET api_key = excluded.api_key, updated_at = excluded.updated_at""",
+                (cid, server_id, ciphertext, now, now),
             )
             conn.commit()
         finally:
             conn.close()
+
     _run_with_retry(_with_conn)
 
 
+def clear_candidate_server_key(candidate_id: str, server_id: str) -> bool:
+    """Delete this candidate's key for one catalog server. Returns True when a row was removed."""
+    get_llm_server(server_id)
+
+    def _with_conn() -> bool:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_key_table(conn)
+            cur = conn.execute(
+                "DELETE FROM candidate_key WHERE candidate_id = ? AND server_id = ?",
+                (candidate_id, server_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def list_candidate_server_keys(candidate_id: str) -> Tuple[str, ...]:
+    """Server ids this candidate holds a key for (no plaintext) — admin set/not-set."""
+    def _with_conn() -> Tuple[str, ...]:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_key_table(conn)
+            return tuple(r["server_id"] for r in conn.execute(
+                "SELECT server_id FROM candidate_key WHERE candidate_id = ? ORDER BY server_id",
+                (candidate_id,),
+            ).fetchall())
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
-    """Select single candidate by astral_candidate_id. Returns parsed dict or None."""
+    """Select single candidate by astral_candidate_id. Returns parsed dict (with candidate_api_keys server → key map) or None."""
     if not candidate_id or not candidate_id.strip():
         return None
 
@@ -3600,7 +3699,11 @@ def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
             row = conn.execute(
                 "SELECT * FROM candidate WHERE astral_candidate_id = ?", (candidate_id,)
             ).fetchone()
-            return _parse_candidate_row(_row_to_dict(row)) if row else None
+            if not row:
+                return None
+            d = _parse_candidate_row(_row_to_dict(row))
+            d["candidate_api_keys"] = _candidate_key_map(conn, candidate_id)
+            return d
         finally:
             conn.close()
 
@@ -5863,6 +5966,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
             CREATE TABLE agent (
                 agent_id TEXT PRIMARY KEY,
                 content TEXT,
+                model_id TEXT,
                 model_code TEXT,
                 brain_setting TEXT,
                 temperature REAL,
@@ -5874,6 +5978,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
     else:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(agent)").fetchall()}
         for col_name, col_def in [
+            ("model_id", "TEXT"),
             ("model_code", "TEXT"),
             ("brain_setting", "TEXT"),
             ("temperature", "REAL"),
@@ -5895,10 +6000,14 @@ def save_agent(
     content: str,
     *,
     brain_setting: Optional[str] = None,
+    model_id: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
 ) -> None:
-    """Upsert an agent row; new rows require brain_setting (model_code column is legacy, not written)."""
+    """Upsert an agent row; new rows require brain_setting; model_id (catalog key) validated with it (model_code column is legacy, not written)."""
+    mid = model_id.strip() if model_id is not None else None
+    if mid == "":
+        raise ValueError("model_id must be non-empty when provided")
     now = _utc_now()
 
     def _with_conn() -> None:
@@ -5906,24 +6015,30 @@ def save_agent(
         try:
             _ensure_agent_schema(conn)
             existing = conn.execute(
-                "SELECT agent_id FROM agent WHERE agent_id = ?", (agent_id,)
+                "SELECT agent_id, model_id, brain_setting FROM agent WHERE agent_id = ?", (agent_id,)
             ).fetchone()
             if existing is None:
                 if brain_setting is None or not str(brain_setting).strip():
                     raise ValueError("save_agent requires brain_setting for new agent rows")
-                validate_allowed_brain_setting(str(brain_setting).strip())
+                _validate_agent_model_brain(mid, str(brain_setting).strip())
                 conn.execute(
                     """
-                    INSERT INTO agent (agent_id, content, brain_setting, temperature, max_tokens, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO agent (agent_id, content, model_id, brain_setting, temperature, max_tokens, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (agent_id, content, str(brain_setting).strip(), temperature, max_tokens, now),
+                    (agent_id, content, mid, str(brain_setting).strip(), temperature, max_tokens, now),
                 )
             else:
                 sets = ["content = ?", "updated_at = ?"]
                 params: List[Any] = [content, now]
+                if mid is not None or brain_setting is not None:
+                    eff_mid = mid if mid is not None else existing["model_id"]
+                    eff_bs = str(brain_setting).strip() if brain_setting is not None else (existing["brain_setting"] or "")
+                    _validate_agent_model_brain(eff_mid, eff_bs)
+                if mid is not None:
+                    sets.append("model_id = ?")
+                    params.append(mid)
                 if brain_setting is not None:
-                    validate_allowed_brain_setting(str(brain_setting).strip())
                     sets.append("brain_setting = ?")
                     params.append(str(brain_setting).strip())
                 for col, val in [("temperature", temperature), ("max_tokens", max_tokens)]:
@@ -5958,7 +6073,7 @@ def get_agent(agent_id: str) -> Optional[Dict[str, Any]]:
 
 
 def list_agents() -> List[Dict[str, Any]]:
-    """Return all agents including brain_setting / resolved_model_key plus UI-compat model_code."""
+    """Return all agents including model_id / brain_setting / resolved_model_key plus UI-compat model_code."""
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
@@ -5966,7 +6081,7 @@ def list_agents() -> List[Dict[str, Any]]:
             _ensure_agent_task_schema(conn)
             rows = conn.execute("""
                 SELECT agent_id, LENGTH(content) AS content_length,
-                       model_code, brain_setting, temperature, max_tokens, updated_at,
+                       model_code, model_id, brain_setting, temperature, max_tokens, updated_at,
                        (SELECT COUNT(*) FROM agent_task WHERE agent_task.agent_id = agent.agent_id) AS task_count
                 FROM agent ORDER BY agent_id
             """).fetchall()
@@ -5977,7 +6092,7 @@ def list_agents() -> List[Dict[str, Any]]:
     return _run_with_retry(_with_conn)
 
 
-_UPDATE_AGENT_ALLOWED = frozenset({"content", "brain_setting", "temperature", "max_tokens"})
+_UPDATE_AGENT_ALLOWED = frozenset({"content", "model_id", "brain_setting", "temperature", "max_tokens"})
 
 
 def update_agent(agent_id: str, **kwargs: Any) -> int:
@@ -5997,6 +6112,18 @@ def update_agent(agent_id: str, **kwargs: Any) -> int:
         conn = _get_connection()
         try:
             _ensure_agent_schema(conn)
+            if "model_id" in cols or "brain_setting" in cols:
+                row = conn.execute(
+                    "SELECT model_id, brain_setting FROM agent WHERE agent_id = ?", (agent_id,)
+                ).fetchone()
+                if row is None:
+                    return 0
+                if "model_id" in cols and (kwargs["model_id"] is None or not str(kwargs["model_id"]).strip()):
+                    raise ValueError("model_id must be non-empty when provided")
+                eff_mid = kwargs["model_id"] if "model_id" in cols else row["model_id"]
+                eff_bs = kwargs["brain_setting"] if "brain_setting" in cols else row["brain_setting"]
+                # Changing only the model re-checks the stored brain size against it.
+                _validate_agent_model_brain(eff_mid, str(eff_bs or "").strip())
             cur = conn.execute(
                 f"UPDATE agent SET {', '.join(pairs)} WHERE agent_id = ?", tuple(params)
             )

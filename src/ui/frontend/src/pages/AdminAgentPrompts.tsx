@@ -10,12 +10,25 @@ import api from "../lib/api"
 import { ApiError, errorToastFromApiError, readApiError } from "../lib/toastDiagnostics"
 import type { Column } from "../components/ListPage"
 
-/** Rows from GET /api/admin/agents/brain_settings (config-backed tiers). */
-interface BrainSettingCatalogRow {
-  brain_setting: string
-  label: string
+/** GET /api/admin/agents/models — keyed by model id; each model lists only its own brain sizes (AST-1880).
+ *  JSON keys arrive sorted, so `order` carries catalog order. */
+interface BrainSizeRow {
+  order: number
   default_temperature: number
   default_max_tokens: number
+}
+interface ModelRow {
+  order: number
+  label: string
+  server_id: string
+  server_label: string
+  brain_sizes: Record<string, BrainSizeRow>
+}
+type ModelCatalog = Record<string, ModelRow>
+
+/** Ids of a keyed catalog object in catalog order. */
+function byOrder<T extends { order: number }>(o: Record<string, T> | undefined): string[] {
+  return Object.entries(o ?? {}).sort((a, b) => a[1].order - b[1].order).map(([id]) => id)
 }
 
 interface Agent {
@@ -23,6 +36,7 @@ interface Agent {
   content?: string
   content_length?: number
   model_code?: string
+  model_id?: string | null
   brain_setting?: string | null
   temperature?: number
   max_tokens?: number
@@ -33,6 +47,7 @@ interface Agent {
 
 const LIST_COLUMNS: Column<Agent>[] = [
   { key: "agent_id",       label: "Agent ID",      sortable: true },
+  { key: "model_label",    label: "Model",         sortable: true },
   { key: "brain_setting", label: "Brain setting", sortable: true },
   { key: "temperature",    label: "Temp",          sortable: true },
   { key: "max_tokens",     label: "Max Tok",       sortable: true },
@@ -66,7 +81,7 @@ export default function AgentPrompts() {
   const { selectedId } = useCandidate()
   const tokenList = useAgentTokenList()
   const [agents, setAgents]   = useState<Agent[]>([])
-  const [brainSettings, setBrainSettings] = useState<BrainSettingCatalogRow[]>([])
+  const [models, setModels] = useState<ModelCatalog>({})
   const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [toast, setToast]     = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
@@ -75,6 +90,7 @@ export default function AgentPrompts() {
   const [editOpen, setEditOpen]           = useState(false)
   const [editAgent, setEditAgent]         = useState<Agent | null>(null)
   const [editContent, setEditContent]     = useState("")
+  const [editModelId, setEditModelId]     = useState("")
   const [editBrainSetting, setEditBrainSetting] = useState("")
   const [editTemp, setEditTemp]           = useState("")
   const [editMaxTok, setEditMaxTok]       = useState("")
@@ -83,6 +99,7 @@ export default function AgentPrompts() {
   const [addOpen, setAddOpen]             = useState(false)
   const [addId, setAddId]                 = useState("")
   const [addContent, setAddContent]       = useState("")
+  const [addModelId, setAddModelId]       = useState("")
   const [addBrainSetting, setAddBrainSetting] = useState("")
   const [addTemp, setAddTemp]             = useState("")
   const [addMaxTok, setAddMaxTok]         = useState("")
@@ -108,34 +125,50 @@ export default function AgentPrompts() {
 
   useEffect(() => {
     loadAll(true)
-    api("/api/admin/agents/brain_settings")
+    api("/api/admin/agents/models")
       .then(r => r.json())
-      .then(data => {
-        const list: BrainSettingCatalogRow[] = Array.isArray(data) ? data : []
-        setBrainSettings(list)
-        if (list.length > 0 && !addBrainSetting)
-          setAddBrainSetting(list[0].brain_setting)
-      })
+      .then(data => setModels(data && typeof data === "object" && !Array.isArray(data) ? data : {}))
       .catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadAll])
 
-  // When tier changes in add/edit, fill defaults from catalog row for that tier
-  function applyTierDefaults(setting: string, setter: (t: string, m: string) => void) {
-    const row = brainSettings.find(x => x.brain_setting === setting)
+  // When size changes in add/edit, fill defaults from that model's row for that size
+  function applyTierDefaults(modelId: string, setting: string, setter: (t: string, m: string) => void) {
+    const row = models[modelId]?.brain_sizes[setting]
     if (!row)
       return
     setter(String(row.default_temperature), String(row.default_max_tokens))
   }
 
+  // Model change keeps the size when the new model has it; otherwise the model's first size + its defaults.
+  function sizeForModel(modelId: string, current: string): string {
+    const sizes = byOrder(models[modelId]?.brain_sizes)
+    return sizes.includes(current) ? current : (sizes[0] ?? "")
+  }
+
   function onAddTierChange(setting: string) {
     setAddBrainSetting(setting)
-    applyTierDefaults(setting, (t, m) => { setAddTemp(t); setAddMaxTok(m) })
+    applyTierDefaults(addModelId, setting, (t, m) => { setAddTemp(t); setAddMaxTok(m) })
   }
 
   function onEditTierChange(setting: string) {
     setEditBrainSetting(setting)
-    applyTierDefaults(setting, (t, m) => { setEditTemp(t); setEditMaxTok(m) })
+    applyTierDefaults(editModelId, setting, (t, m) => { setEditTemp(t); setEditMaxTok(m) })
+  }
+
+  function onAddModelChange(modelId: string) {
+    setAddModelId(modelId)
+    const size = sizeForModel(modelId, addBrainSetting)
+    setAddBrainSetting(size)
+    if (size !== addBrainSetting)
+      applyTierDefaults(modelId, size, (t, m) => { setAddTemp(t); setAddMaxTok(m) })
+  }
+
+  function onEditModelChange(modelId: string) {
+    setEditModelId(modelId)
+    const size = sizeForModel(modelId, editBrainSetting)
+    setEditBrainSetting(size)
+    if (size !== editBrainSetting)
+      applyTierDefaults(modelId, size, (t, m) => { setEditTemp(t); setEditMaxTok(m) })
   }
 
   function openEdit(agent: Agent) {
@@ -145,6 +178,7 @@ export default function AgentPrompts() {
     }).then(full => {
       setEditAgent(full)
       setEditContent(full.content || "")
+      setEditModelId(typeof full.model_id === "string" ? full.model_id : "")
       setEditBrainSetting(
         typeof full.brain_setting === "string" ? full.brain_setting : "",
       )
@@ -161,6 +195,8 @@ export default function AgentPrompts() {
       temperature: editTemp  ? parseFloat(editTemp)  : undefined,
       max_tokens:  editMaxTok ? parseInt(editMaxTok) : undefined,
     }
+    if (editModelId)
+      body.model_id = editModelId
     if (editBrainSetting)
       body.brain_setting = editBrainSetting
     api(`/api/admin/agents/${editAgent.agent_id}`, {
@@ -190,6 +226,8 @@ export default function AgentPrompts() {
       temperature: addTemp   ? parseFloat(addTemp)   : undefined,
       max_tokens:  addMaxTok ? parseInt(addMaxTok)   : undefined,
     }
+    if (addModelId)
+      body.model_id = addModelId
     if (addBrainSetting)
       body.brain_setting = addBrainSetting
     api("/api/admin/agents", {
@@ -203,7 +241,7 @@ export default function AgentPrompts() {
       })
       .then(() => {
         setAddOpen(false); setAddId(""); setAddContent("")
-        setAddBrainSetting(brainSettings[0]?.brain_setting || "")
+        setAddModelId(""); setAddBrainSetting("")
         setAddTemp(""); setAddMaxTok("")
         setToast({ text: `Agent "${id}" created`, variant: "success" })
         setRepoJsonRefresh(n => n + 1)
@@ -252,13 +290,16 @@ export default function AgentPrompts() {
 
   const renderedAgents = agents.map(a => ({
     ...a,
+    model_label: (a.model_id && models[a.model_id]?.label) || a.model_id || "—",
     brain_setting: tierCell(a),
   }))
 
   function openAddModal() {
-    const first = brainSettings[0]?.brain_setting || ""
-    setAddBrainSetting(first)
-    applyTierDefaults(first, (t, m) => { setAddTemp(t); setAddMaxTok(m) })
+    const firstModel = byOrder(models)[0] ?? ""
+    const firstSize = byOrder(models[firstModel]?.brain_sizes)[0] ?? ""
+    setAddModelId(firstModel)
+    setAddBrainSetting(firstSize)
+    applyTierDefaults(firstModel, firstSize, (t, m) => { setAddTemp(t); setAddMaxTok(m) })
     setAddOpen(true)
   }
 
@@ -308,7 +349,9 @@ export default function AgentPrompts() {
         onSave={handleEditSave}
       >
         <BrainSettingFields
-          brainSettings={brainSettings}
+          models={models}
+          modelId={editModelId}
+          onModelChange={onEditModelChange}
           brainSetting={editBrainSetting}
           temp={editTemp}
           maxTok={editMaxTok}
@@ -355,7 +398,9 @@ export default function AgentPrompts() {
           />
         </div>
         <BrainSettingFields
-          brainSettings={brainSettings}
+          models={models}
+          modelId={addModelId}
+          onModelChange={onAddModelChange}
           brainSetting={addBrainSetting}
           temp={addTemp}
           maxTok={addMaxTok}
@@ -423,9 +468,11 @@ export default function AgentPrompts() {
   )
 }
 
-/** Tier select + temperature / max_tokens (catalog-driven tier list; no vendor CPM in v1) */
+/** Model select, then that model's own brain sizes + temperature / max_tokens (catalog-driven; AST-1880) */
 function BrainSettingFields({
-  brainSettings,
+  models,
+  modelId,
+  onModelChange,
   brainSetting,
   temp,
   maxTok,
@@ -433,7 +480,9 @@ function BrainSettingFields({
   onTempChange,
   onMaxTokChange,
 }: {
-  brainSettings: BrainSettingCatalogRow[]
+  models: ModelCatalog
+  modelId: string
+  onModelChange: (v: string) => void
   brainSetting: string
   temp: string
   maxTok: string
@@ -441,17 +490,28 @@ function BrainSettingFields({
   onTempChange:  (v: string) => void
   onMaxTokChange: (v: string) => void
 }) {
-  const noMatch =
-    !!brainSetting && !brainSettings.some(r => r.brain_setting === brainSetting)
+  const sizes = byOrder(models[modelId]?.brain_sizes)
+  const noModelMatch = !!modelId && !models[modelId]
+  const noMatch = !!brainSetting && !sizes.includes(brainSetting)
   return (
     <>
       <div className="dep-field">
-        <label className="dep-field-label">Brain setting</label>
+        <label className="dep-field-label">Model</label>
+        <select className="dep-input" value={modelId} onChange={e => onModelChange(e.target.value)}>
+          {noModelMatch ? <option value={modelId}>— (unknown model) —</option> : null}
+          {modelId === "" ? <option value="">— choose model —</option> : null}
+          {byOrder(models).map(id => (
+            <option key={id} value={id}>{models[id].label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="dep-field">
+        <label className="dep-field-label">Brain size</label>
         <select className="dep-input" value={brainSetting} onChange={e => onTierChange(e.target.value)}>
           {noMatch ? <option value={brainSetting}>— (unmapped) —</option> : null}
-          {brainSetting === "" ? <option value="">— choose tier —</option> : null}
-          {brainSettings.map(row => (
-            <option key={row.brain_setting} value={row.brain_setting}>{row.label}</option>
+          {brainSetting === "" ? <option value="">— choose size —</option> : null}
+          {sizes.map(bs => (
+            <option key={bs} value={bs}>{bs}</option>
           ))}
         </select>
       </div>

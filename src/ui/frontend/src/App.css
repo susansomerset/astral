@@ -774,18 +774,41 @@ body {
   flex-shrink: 0;
 }
 
+/* AST-1873: report-modal-only title bar. Modal.tsx has no class hook, so scope by content. */
+.modal-card:has(.recommended-report-shell) .modal-header {
+  padding-top: 10px;
+  padding-bottom: 8px;
+}
+
+.modal-card:has(.recommended-report-shell) .modal-title {
+  font-size: 15px;
+}
+
 .recommended-report-header {
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
-  padding: 12px 16px 14px;
+  padding: 6px 16px 14px;
 }
 
 .recommended-report-header-row {
   display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+/* Title/link/company column: shrinks and wraps so long titles never slide under the buttons. */
+.recommended-report-title-block {
+  display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  margin-bottom: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .recommended-report-title {
@@ -831,6 +854,20 @@ body {
   text-decoration: underline;
 }
 
+.recommended-report-job-link-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.recommended-report-job-link-text a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.recommended-report-job-link-text a:hover {
+  color: var(--accent-gold);
+}
+
 .recommended-report-external-link {
   margin-left: 10px;
   font-size: 13px;
@@ -841,7 +878,9 @@ body {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  margin-top: 8px;
+  margin-top: 0;
+  justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .recommended-report-copy-feedback {

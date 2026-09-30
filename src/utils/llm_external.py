@@ -1,4 +1,4 @@
-"""Shared helpers for Anthropic- and DeepSeek-compatible external LLM clients (AST-687 / AST-538)."""
+"""Shared helpers for Anthropic and Anthropic-Messages-compatible external LLM clients (AST-687 / AST-538 / AST-1851)."""
 
 import asyncio
 from typing import Any, Callable, Dict, List, Optional
@@ -134,7 +134,7 @@ def is_provider_empty_response(result: Optional[Dict[str, Any]]) -> bool:
 
 
 def extract_api_response_text(api_response: Any) -> str:
-    """Return model answer text; skip thinking blocks that lack `.text` (DeepSeek / extended thinking)."""
+    """Return model answer text; skip thinking blocks that lack `.text` (extended thinking)."""
     if not hasattr(api_response, "content") or not api_response.content:
         raise ValueError("API response content is empty or missing")
     text_parts: List[str] = []
