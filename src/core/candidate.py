@@ -3513,18 +3513,13 @@ debug_experience_jobs = _debug_experience_jobs
 
 
 def save_candidate_admin(candidate_id: str, **kwargs: Any) -> None:
-    """Direct candidate row updates from admin API (state override, etc.). API keys: set_candidate_api_key."""
+    """Direct candidate row updates from admin API (state override, etc.). API keys: update_candidate_api_keys."""
     database.save_candidate(candidate_id, **kwargs)
 
 
-def set_candidate_api_key(candidate_id: str, server_id: str, api_key: str) -> None:
-    """Store this candidate's key for one catalog server (admin)."""
-    database.set_candidate_server_key(candidate_id, server_id, api_key)
-
-
-def clear_candidate_api_key(candidate_id: str, server_id: str) -> bool:
-    """Remove this candidate's key for one catalog server (admin). True when a key was removed."""
-    return database.clear_candidate_server_key(candidate_id, server_id)
+def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) -> None:
+    """Admin key edits on the candidate's api_keys array: key sets/replaces that server's entry, "" removes it."""
+    database.update_candidate_api_keys(candidate_id, entries)
 
 
 def get_pending_craft_generation(
