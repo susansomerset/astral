@@ -1176,9 +1176,9 @@ RUBRIC_TOTAL = 3000
 # AST-1347 — job_data phase contribution breakdown beside {prefix}_score
 PHASE_SCORE_BREAKDOWN_KEY_SUFFIX = "score_breakdown"  # → f"{prefix}_score_breakdown"
 PHASE_SCORE_BREAKDOWN_FIELDS = ("earned", "possible", "max")
-# AST-1348 — Analysis section header title when a phase breakdown is available
+# AST-1348 / AST-1872 — Analysis section header title when a phase breakdown is available; {score} = list phase score (UI drops " - {score}" when absent)
 PHASE_SCORE_HEADER_TITLE_TEMPLATE = (
-    "{phase_label} - score: {earned} out of {possible} possible ({max} max total)"
+    "{phase_label} - {score} - score: {earned} out of {possible} possible ({max} max total)"
 )
 
 
@@ -3449,10 +3449,10 @@ JOBS_RECOMMENDED_PRIMARY_ACTIONS = {
 
 assert all(state in RECOMMENDED_JOB_STATES for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS)
 
-# AST-948 / AST-1550 / AST-1691: top-level Recommended report tabs (Meteorite after Discussion).
+# AST-948 / AST-1550 / AST-1691 / AST-1872: top-level Recommended report tabs — first entry is the default tab (Meteorite after Discussion).
 JOBS_RECOMMENDED_REPORT_TOP_TABS = [
-    {"tab_id": "summary", "nav_label": "Summary"},
     {"tab_id": "analysis", "nav_label": "Analysis"},
+    {"tab_id": "summary", "nav_label": "Summary"},
     {"tab_id": "artifacts", "nav_label": "Artifacts"},
     {"tab_id": "discussion", "nav_label": "Discussion"},
     {"tab_id": "meteorite", "nav_label": "Meteorite"},

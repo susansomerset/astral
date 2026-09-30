@@ -9,6 +9,7 @@ import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidateJobActions } from "../hooks/useCandidateJobActions"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
+import { formatPhaseScore } from "../lib/recommendedJobReport"
 import Time from "../components/Time"
 
 interface Job {
@@ -25,11 +26,6 @@ interface Job {
 }
 
 interface SortState { col: string; asc: boolean }
-
-function formatPhaseScore(value: unknown): string {
-  if (typeof value === "number" && Number.isFinite(value)) return value.toFixed(1)
-  return "\u2014"
-}
 
 function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields: string[]): Job[] {
   return [...jobs].sort((a, b) => {
