@@ -838,3 +838,7 @@ context_tokens≈9500
 ```
 [code-rubric] PROCEED (Commit: 7479f320a) saved line wins guard
 ```
+
+### Resolution — AST-1904
+
+docs-acceptance: product-only fix. The regression test and the two `TestBuilderHelpers` fixture repoints (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1905, stacked after this ticket on `ftr/AST-1902-candidate-contact-detail-truncated`.
