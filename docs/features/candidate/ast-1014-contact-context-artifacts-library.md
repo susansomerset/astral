@@ -760,3 +760,21 @@ Edit to `src/core/builder.py` `_apply_contact_to_render_dict`:
 - The saved line is emitted exactly as saved, only HTML-escaped at L1242. The builder does not rewrite, merge, or reorder it (AC1).
 - Both `build_resume_from_job` and `build_base_resume` behave the same way, because both go through this one helper (AC2).
 - The paste path (`build_resume_from_paste`) is unchanged.
+
+### Joan fix-board — AST-1904
+
+```text
+[board-joan]  CANON: OK
+
+Overlap skim (no `docs/canon-index.md` on publish ref; `canon/docs/DIRECTIVES-DIRECTORY.md` + `canon/statutes/**` on tip): `src/core/builder.py` `_apply_contact_to_render_dict` only. Frozen Canon Scope on AST-1902 / AST-1904: none cited (mini-parent bug; triage via roster overlap, not R1–R7).
+
+`astral.config.config-source-of-truth` / `patt.config.block`: plan keeps join order and `CANDIDATE_LIBRARY_CONFIG` untouched; early-return when a non-empty saved `candidate_contact_detail` is present does not add literals or move precedence into `config.py`. Fallback path unchanged (AC3).
+
+`patt.core.logical-scope` (builder): one conditional guard; no layer/import/signature churn. `patt.artifact.parse-validate-persist` / build lifecycle: persisted resume JSON is still emitted HTML-escaped at render; fix stops sparser contact blob from overwriting a richer saved artifact line — no statute requires unconditional blob overwrite.
+
+Option (a) vs (b) and Profile-blob staleness when a saved line exists are product trade-offs already accepted in the AST-1902 / plan-fix patch, not an in-force statute conflict or new architectural precedent (`orch.pipeline.call-susan-for-product-decisions` scope is plan-fix, not F2 canon landing).
+
+No directive id needs amendment or a one-line carve-out for F3.
+
+context_tokens≈12000
+```
