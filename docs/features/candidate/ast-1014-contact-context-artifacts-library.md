@@ -944,3 +944,17 @@ On this host set `ASTRAL_PYTHON` to a 3.10+ venv python. `ensure_component_venv.
 - The full `tests/component/core/test_builder.py` suite is green on this tip. On `origin/dev`'s builder only the new bug-repro test fails, and the rest matches the 190-pass ftr baseline.
 - The repointed `TestBuilderHelpers` tests still assert blob-built content (`"555"`, `reply@example.com`) and the NBSP marker behavior. They are repointed, not weakened.
 - `TestAst1014BuilderContact::test_apply_contact_uses_full_column_over_first_last` and `test_coerce_row_injects_name_columns_for_render` are left untouched.
+
+### Joan fix-board — AST-1905
+
+```text
+[board-joan]  CANON: OK
+
+Scope: **tests + `docs/test-bible/**` only** (AST-1905); no `src/**` on this publish ref. Product behavior is AST-1904 on ftr @ `7479f320a`. Frozen Canon Scope on AST-1902 / AST-1905: none cited.
+
+Overlap skim (no `docs/canon-index.md` on ref; `canon/docs/DIRECTIVES-DIRECTORY.md` + in-force `canon/statutes/**`): `orch.roles.betty-owns-test-tree`, `astral.git.betty-no-src-or-features`, `astral.git.engineer-test-tree-ban` — delivery matches Betty/qa-fix; no engineer product landing. `astral.docs.features-single-file-per-ticket` applies to `docs/features/**`; bible rows in `docs/test-bible/core/{builder,candidate}.md` are test-tree documentation, not statute/pattern corpus.
+
+No active directive requires amending canon to record AST-1904 precedence or test names; fixing fixture calls and adding `TestAst1014BuilderContact` regressions does not contradict `astral.config.config-source-of-truth` or any builder/contact statute (no product diff to score). Same fix-board pattern as other test-gap siblings (e.g. AST-1848): not F3 material.
+
+context_tokens≈14000
+```
