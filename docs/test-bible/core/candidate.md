@@ -683,6 +683,8 @@ Locks craft/parse/finalize prompts + draft validate on the shared experience job
 
 **Integration:** no existing scenario asserts profile/contact library homes — no revision; do not invent new integration coverage.
 
+**AST-1904 / AST-1905:** saved contact line wins over a sparser blob. See **`docs/test-bible/core/builder.md`** § AST-1014 · AST-952 (bug-repro + revised **`TestBuilderHelpers`**). The narrowed run below already covers both classes whole.
+
 **AST-1014** narrowed run:
 
 ```bash
