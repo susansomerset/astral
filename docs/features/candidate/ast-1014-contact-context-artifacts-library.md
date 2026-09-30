@@ -778,3 +778,63 @@ No directive id needs amendment or a one-line carve-out for F3.
 
 context_tokens≈12000
 ```
+
+### Radia review-fix — AST-1904
+
+```
+[code-rubric]
+**Ticket:** AST-1904
+**Publish ref:** 7479f320aaa372f734fa192769487e8473dafb1e (`origin/sub/AST-1902/AST-1904-keep-full-saved-contact-line`)
+**Diff base:** `origin/ftr/AST-1902-candidate-contact-detail-truncated...origin/sub/AST-1902/AST-1904-keep-full-saved-contact-line` (2 files: `src/core/builder.py` + plan-fix doc block)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish tip; no `docs/canon-index.md` on ref — same shape Joan used at fix-board)
+**Overall:** CLEAN
+
+## Canon scores
+
+(no rows) — AST-1904 Linear Description has no locked `## Canon Scope` / frozen directive ids; Joan `[board-joan] CANON: OK` on AST-1904 explicitly records *Frozen Canon Scope on AST-1902 / AST-1904: none cited* (mini-parent bug; roster overlap at F2, not R1–R7). Nothing on the frozen list to score; no off-list statute scored as a grade.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (`validate-plan` fix-mode did not run; fix-board only)
+
+## Frame diff
+
+(none)
+
+### Fix-specific checks
+
+- **[bug-repro]** not applicable — clean board opt-out: `qa-fix` did not run on this ticket; Betty’s `TESTS: REVISE` test work was gap-split to **AST-1905**. No `[bug-repro]` on this tip by design; not scored as missing here.
+- **`## What must still hold`** — OK. Traced against `src/core/builder.py` `_apply_contact_to_render_dict` @ publish tip:
+  - `candidate_name` still overwritten from `full` / `first last` **before** the AST-1904 guard (L1031–1033).
+  - Fallback path unchanged: same field order and `"\u00a0• ".join(parts)` (L1037–1054).
+  - Non-empty saved line preserved via early `return` after `.strip()` (L1035–1036); matches plan normalization intent vs `_emit_html_document` contact escape at L1246 (`str(... or "").strip()` on read path).
+  - `build_resume_from_job` / `build_base_resume` still call the helper only (L255, L447); `build_resume_from_paste` still skips it (L528) — untouched in diff.
+
+## Findings
+
+**advisory**
+
+- **Sibling test carry / split scope:** Diff is product-only (`builder.py` + `## Bug: AST-1904` plan patch). Two `TestBuilderHelpers` failures on tip vs ftr are expected per plan **Blast radius** and Ada’s test-fix comment; owned by **AST-1905**, not a defect on this publish ref.
+- **AC proof on tip:** Behavioral AC 1–3 are implemented by the guard; automated regression + helper fixture repoint land on AST-1905. Acceptable given explicit gap split; UAT should use plan **Repro** or wait for AST-1905 green manifest for full test lock.
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+## Notes
+
+- **Canon Scope:** Empty frozen list is consistent with fix-board; overlapping draft/statute skim (config SoT, logical-scope, artifact lifecycle) was already litigated at F2 with **CANON: OK**. No Canon Scope gap requiring **ESCALATE** for unstated ids on this micro-diff.
+- **Plan fidelity:** Matches plan-fix **Proposed change** option (a) — docstring update + early return after name block; no `config.py`, call-site, or paste-path edits.
+- **Estimate footprint:** Estimate **2** vs ~5-line product change + doc — fits.
+- **Parent shape (Chuckles §8):** Mini-parent **AST-1902** with live `ftr/AST-1902-candidate-contact-detail-truncated` — **not** the orphaned-parent → straight-`dev` merge path. Clean review → **Review Posted** → `do-all-the-things` §3h shortcut → **User Testing** (`resolve-child` skipped). Product fix may ride with AST-1905 test work on the same ftr stack; no `merge-child`/`prep-uat` epic semantics.
+
+## What’s solid
+
+- Minimal, plan-faithful guard; fallback and name precedence unchanged; boundaries respected (no schema/UI/config/test tree on this ticket).
+
+context_tokens≈9500
+```
+
+```
+[code-rubric] PROCEED (Commit: 7479f320a) saved line wins guard
+```
