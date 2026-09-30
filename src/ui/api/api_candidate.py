@@ -42,8 +42,8 @@ from src.core.candidate import (
     prepare_resume_structure_sections_for_save,
     resolve_resume_structure,
     run_candidate_artifact_generation,
-    save_candidate_admin,
     save_candidate_data,
+    set_candidate_api_key,
     start_requested_artifacts,
     transition_candidate_state,
 )
@@ -51,6 +51,7 @@ from src.core.contact import resolve_pinned_base_resume
 from src.utils.config import (
     CANDIDATE_STATES,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
+    LLM_SERVER_CONFIG,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_EXTRA_ID_PATTERN,
@@ -122,9 +123,16 @@ def _validate_cover_letter_signature_image(value) -> None:
 
 
 def _sanitize_candidate(c: dict) -> dict:
-    """Strip ciphertext, inject has_api_key boolean. Applied to every outbound candidate."""
-    c["has_api_key"] = bool(c.get("candidate_api_key"))
+    """Strip every key (plaintext map + legacy ciphertext); inject per-server set/not-set. Applied to every outbound candidate."""
+    keys = c.pop("candidate_api_keys", None)
+    if keys is None and c.get("astral_candidate_id"):
+        # List rows come without the hydrated map; core get_candidate is the only ui-legal read.
+        keys = (get_candidate(c["astral_candidate_id"]) or {}).get("candidate_api_keys")
     c.pop("candidate_api_key", None)
+    # Keyed by server id, one entry per catalog server (AST-1880).
+    c["api_keys"] = {
+        sid: {"label": s["label"], "set": bool((keys or {}).get(sid))} for sid, s in LLM_SERVER_CONFIG.items()
+    }
     return c
 
 
@@ -285,7 +293,7 @@ def create_candidate():
 def update_candidate_data(candidate_id):
     """Update candidate_data fields (merge=True). If 'state' is in the body,
     applies it via transition_candidate_state (fail closed on illegal hops).
-    api_key handling: non-empty string = set/replace, empty string = clear to NULL."""
+    api_keys handling ({server_id: key}): non-empty string = set/replace that server's key, empty string = clear it."""
     body = request.get_json(silent=True) or {}
     if not body:
         return jsonify({"error": "No data provided"}), 400
@@ -302,12 +310,18 @@ def update_candidate_data(candidate_id):
     resume_structure_saved = False
     try:
         state_override = body.pop("state", None)
-        api_key = body.pop("api_key", None)
+        api_keys = body.pop("api_keys", None)
         confirm_override = body.pop("confirm_state_override", False)
         if not g.user.get("is_admin") and (
-            state_override is not None or api_key is not None or confirm_override is True
+            state_override is not None or api_keys is not None or confirm_override is True
         ):
             return jsonify({"error": "Admin access required"}), 403
+        if api_keys is not None:
+            if not isinstance(api_keys, dict):
+                return jsonify({"error": "api_keys must be an object of {server_id: key}"}), 400
+            for sid, key in api_keys.items():
+                if sid not in LLM_SERVER_CONFIG or not isinstance(key, str):
+                    return jsonify({"error": f"Invalid api_keys entry for server {sid!r}"}), 400
         base_resume_in_save = False
         pilot_body = None
         resume_structure_body = None
@@ -486,11 +500,12 @@ def update_candidate_data(candidate_id):
                     }), 400
                 except ValueError as e:
                     return jsonify({"error": str(e)}), 400
-        if api_key is not None:
-            if api_key.strip():
-                save_candidate_admin(candidate_id, candidate_api_key=api_key.strip())
+        # One candidate_key row per server; the data layer encrypts (AST-1878).
+        for sid, key in (api_keys or {}).items():
+            if key.strip():
+                set_candidate_api_key(candidate_id, sid, key.strip())
             else:
-                clear_candidate_api_key(candidate_id)
+                clear_candidate_api_key(candidate_id, sid)
     except Exception as e:
         # Failed Save: keep submitted criteria recoverable via GET …/pending
         logger.exception(
@@ -538,6 +553,17 @@ def update_candidate_data(candidate_id):
             200,
         )
     if resume_structure_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    # stat.logging.info.api: a keys-only save still completed work — one line, not doubled when an artifact line fired.
+    if api_keys and not (
+        strengths_saved or priorities_saved or deal_breakers_saved or bio_summary_saved
+        or ideal_day_saved or backstory_saved or writing_preferences_saved or resume_structure_saved
+    ):
         logger.info(
             "%s | api %s completed: PUT %s",
             candidate_id,
