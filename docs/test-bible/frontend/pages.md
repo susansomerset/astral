@@ -3137,3 +3137,15 @@ Primary numbered manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1830
 | `AdminSessionResumePaste.tsx`: Parse needs a selected candidate (disabled with a title otherwise); POST body `{resume_text, candidate_id}` | `test_AdminSessionResumePaste.test.tsx`: `mockApis` serves a candidate list; Parse-success test asserts the exact body; new **AST-1880: no selected candidate keeps Parse disabled…** |
 
 Manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1880.
+
+### AST-1901 · AST-1851 (bug: Manage Candidates keys as an array)
+
+> Supersedes the AST-1880 `AdminManageCandidates` row above (no fixed per-server fields; the column red is closed).
+
+`test_AdminManageCandidates.test.tsx`: the fixture `api_keys` is `[{server, label}]` (Kimi, OpenRouter). A file-local `installBaseApiMocks` wrapper serves `/api/admin/agents/models`; the catalog has two DeepSeek models, so the picker de-dupes by server.
+- **Main CRUD test:** fields appear only for stored entries (Clear on each). The picker lists servers without a row, in catalog order. Adding DeepSeek gives a "(new)" field (no Clear; Show; typed key). Kimi Clear goes through the confirm dialog. The PUT carries `api_keys: [{kimi, ""}, {deepseek, "sk-ds-new"}]`.
+- **AST-1901: API Key column joins the stored entries' labels.**
+- **AST-1901: no keys…:** Not set, no key fields, all four servers in the picker, and Save omits `api_keys`.
+- **AST-1901: Remove drops an unsaved row…:** the picker disappears once every server has a row. Remove returns that server to the picker, and a blank added row isn't sent.
+
+Manifest: **`docs/test-bible/data/database/candidates.md`** § QA test manifest (AST-1901).
