@@ -575,3 +575,283 @@ context_tokens≈38000
 - **discuss — `api_candidate.py` still calls `clear_candidate_api_key` with one argument:** took the review's `Default:`. #4 (AST-1880) owns the admin PATCH/clear wiring that passes `server_id`, and this tip stays as it is. That file is outside #1878's Scope, and the gap is already listed under **Transitional gaps**. Susan can reverse this by asking for it here.
 - **Frame diff — parent AC 6 storage-half bullet:** not added to the Linear description. Engineers don't write AC. The storage half is implemented in Stage 2 and covered by `TestAst1878CandidateServerKeys`, and the row is left for Susan/Chuckles if she wants Linear to trace it.
 - **Advisories:** no action. The AST-1877 carry, sibling test carry, and the Estelle `max_tokens` hand-off to #3 are already recorded.
+
+## Bug: AST-1901 — Candidate keys: JSON array of {server, key} on the candidate
+
+Design calls settled by Susan on AST-1901 ([plan-discuss] round=1, answer "1B, 2A"):
+- Entries are keyed by **LLM server**: `{"server": "<LLM_SERVER_CONFIG id>", "key": "…"}`. Parent functional scope 5 and AC 6 (one key per platform) stay as they are.
+- The array lives in a dedicated **`api_keys`** column on the `candidate` row. Each entry's `key` is Fernet-encrypted.
+- The `candidate_key` table is removed. Duplicate server entries are rejected on save.
+
+### As-is
+
+Per-server keys live in a separate `candidate_key` table (AST-1878 Stage 2: one row per candidate × server, `set/clear/list_candidate_server_key(s)`, cascade-deleted with the candidate). `get_candidate` hydrates `candidate_api_keys` from that table. `list_candidates` rows carry no keys, so `api_candidate._sanitize_candidate` calls `get_candidate` once per list row. Outbound candidates carry `api_keys` as a **fixed dict with one slot per catalog server** (`{sid: {label, set}}` for every entry in `LLM_SERVER_CONFIG`). Manage Candidates renders one fixed key field per server (four today). The PUT body takes `api_keys` as a `{server_id: key}` object.
+
+### To-be
+
+The candidate row has an `api_keys` JSON array of `{"server", "key"}` entries: any number of entries, at most one per server, no fixed slots. `candidate_key` does not exist, and schema setup drops it on existing databases. Outbound candidates list only the servers that have a key (`[{server, label}]`, never the key). Manage Candidates shows those entries plus an "Add API key for…" server picker built from the catalog. The PUT body takes `api_keys` as an array of `{server, key}` edits. Routing and the Invalid / Run gates still read `get_candidate(...)["candidate_api_keys"]`, which is now hydrated from the array.
+
+### Repro
+
+On `origin/ftr/AST-1851-support-openrouter-api-models` @ `777c04a81`, with a candidate `smith` in state `NEW_CANDIDATE` and `ASTRAL_ENCRYPTION_KEY` set:
+1. `database.set_candidate_server_key("smith", "kimi", "sk-kimi")`.
+2. `sqlite3 astral.db "SELECT name FROM sqlite_master WHERE name='candidate_key'"` returns `candidate_key`, which should not exist.
+3. `GET /api/candidates/smith` returns `"api_keys": {"anthropic": {"label": …, "set": false}, "deepseek": {…, "set": false}, "kimi": {…, "set": true}, "openrouter": {…, "set": false}}`, which is four fixed slots rather than an array holding only the kimi entry.
+4. Manage Candidates → Edit `smith` shows four key fields.
+
+### Root cause
+
+AST-1878 Stage 2 modelled per-server keys as a separate relational table, as the parent Technical scope worded it ("new candidate key table"). AST-1880 then rendered one slot per `LLM_SERVER_CONFIG` entry. Susan's intent is a variable-length JSON array held on the candidate itself.
+
+### Proposed change
+
+⚠️ **Decision (scope):** this replaces the parent Technical scope's "new candidate key table" wording with Susan's UAT to-be. The files stay inside the parent Component scope (`database.py`, `core/candidate.py`, `api_candidate.py`, `AdminManageCandidates.tsx`), and each change is the same kind that scope already describes: key storage and hydration, per-server save wrappers, the PATCH plus the outbound set/not-set view, and a catalog-driven key form.
+
+⚠️ **Decision (routing contract unchanged):** `candidate_api_keys` (`{server_id: plaintext}`) stays the in-memory hydrate. It is now derived from the `api_keys` array, which is the single stored copy. This leaves AST-1879's readers untouched: `dispatcher.py:1338`, `agent.py` (~1850, ~3343), `meteorite.py:759`, `contact.py:1161`, and `api_admin.py` (~1568, ~2061).
+
+**1. `src/data/database.py`**
+
+a. **Header inventory.**
+   - In the `candidate` line, after `candidate_api_key TEXT (legacy — not read or written since AST-1878),`, insert `api_keys TEXT JSON array [{"server": LLM_SERVER_CONFIG id, "key": Fernet ciphertext}] — at most one entry per server; hydrated as candidate_api_keys {server: plaintext} (AST-1901),`.
+   - Delete the whole `- candidate_key — …` line.
+
+b. **`_ensure_candidate_schema`.**
+   - In `CREATE TABLE candidate`, add `api_keys TEXT DEFAULT '[]',` directly after `candidate_api_key TEXT,`.
+   - In the ALTER migration list, add `("api_keys", "TEXT DEFAULT '[]'"),` directly after `("candidate_api_key", "TEXT"),`.
+   - After the `if/else` and before `_drop_entity_agent_responses_column(conn, "candidate")`, add:
+
+     ```python
+     # AST-1901: per-server keys live in candidate.api_keys; DDL-only drop, no content migration (AST-1497) — keys are re-entered in Manage Candidates.
+     conn.execute("DROP TABLE IF EXISTS candidate_key")
+     conn.commit()
+     ```
+
+   ⚠️ **Decision:** no copy of existing `candidate_key` rows into the array. Schema setup stays DDL-only (AST-1497), and the parent already says keys are entered manually with no migration. Any keys entered during UAT are re-entered once.
+
+c. **Delete** the whole `# -- candidate_key: … (AST-1878) --` block: `_ensure_candidate_key_table`, `_candidate_key_map`, `set_candidate_server_key`, `clear_candidate_server_key`, `list_candidate_server_keys`.
+
+d. **New helpers**, placed where that block was (directly above `def get_candidate(`):
+
+   ```python
+   def _candidate_api_key_entries(raw: Any) -> List[Dict[str, str]]:
+       """candidate.api_keys column → [{server, key(ciphertext)}]; malformed JSON / entries dropped."""
+       try:
+           entries = json.loads(raw) if raw else []
+       except (TypeError, ValueError):
+           return []
+       return [
+           {"server": str(e["server"]), "key": str(e["key"])}
+           for e in (entries if isinstance(entries, list) else [])
+           if isinstance(e, dict) and e.get("server") and e.get("key")
+       ]
+
+
+   def _candidate_key_map_from_column(raw: Any) -> Dict[str, str]:
+       """api_keys array → {server: plaintext} in array order; undecryptable entries omitted (treated as not set)."""
+       out: Dict[str, str] = {}
+       for e in _candidate_api_key_entries(raw):
+           try:
+               out[e["server"]] = decrypt_value(e["key"])
+           except (RuntimeError, ValueError):
+               continue
+       return out
+
+
+   def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) -> None:
+       """Apply key edits to candidate.api_keys: non-empty key sets/replaces that server's entry, "" removes it.
+       Raises ValueError on unknown server / duplicate server in entries, LookupError if the candidate is missing."""
+       cid = str(candidate_id or "").strip()
+       if not cid:
+           raise ValueError("candidate_id is required")
+       edits: Dict[str, Optional[str]] = {}
+       for e in entries:
+           sid = str((e or {}).get("server") or "")
+           get_llm_server(sid)
+           if sid in edits:
+               raise ValueError(f"Duplicate api_keys entry for server {sid!r}")
+           key = str((e or {}).get("key") or "").strip()
+           # Encrypt before opening the connection; None marks a removal.
+           edits[sid] = encrypt_value(key) if key else None
+       now = _utc_now()
+
+       def _with_conn() -> None:
+           conn = _get_connection()
+           try:
+               _ensure_candidate_schema(conn)
+               row = conn.execute(
+                   "SELECT api_keys FROM candidate WHERE astral_candidate_id = ?", (cid,)
+               ).fetchone()
+               if row is None:
+                   raise LookupError(f"Candidate not found: {cid}")
+               # Existing order kept; new servers append — at most one entry per server by construction.
+               merged = {e["server"]: e["key"] for e in _candidate_api_key_entries(row["api_keys"])}
+               for sid, ciphertext in edits.items():
+                   if ciphertext is None:
+                       merged.pop(sid, None)
+                   else:
+                       merged[sid] = ciphertext
+               conn.execute(
+                   "UPDATE candidate SET api_keys = ?, updated_at = ? WHERE astral_candidate_id = ?",
+                   (json.dumps([{"server": s, "key": k} for s, k in merged.items()]), now, cid),
+               )
+               conn.commit()
+           finally:
+               conn.close()
+
+       _run_with_retry(_with_conn)
+   ```
+
+e. **`_parse_candidate_row`**: replace the two lines `# Legacy single key is never exposed (AST-1878); …` and `d.pop("candidate_api_key", None)` with:
+
+   ```python
+   # Legacy single key is never exposed (AST-1878); the api_keys array hydrates as a server → key map (AST-1901).
+   d.pop("candidate_api_key", None)
+   d["candidate_api_keys"] = _candidate_key_map_from_column(d.pop("api_keys", None))
+   ```
+
+   This hydrates every parsed row (`get_candidate`, `list_candidates`, the claim/list readers at ~3795), so list rows no longer need a follow-up `get_candidate` call.
+
+f. **`get_candidate`**: restore the one-line body `return _parse_candidate_row(_row_to_dict(row)) if row else None`, which drops the `_candidate_key_map(conn, …)` call. Keep the docstring.
+
+g. **Cascade removal.** The keys now die with the candidate row.
+   - `hard_delete_candidate`: delete the `"candidate_key": 0,` counts entry and the `("candidate_key", "DELETE FROM candidate_key WHERE candidate_id = ?"),` tuple.
+   - `_legacy_candidate_migrate_conn`: delete the `"DELETE FROM candidate_key WHERE candidate_id = ?",` line.
+
+**2. `src/core/candidate.py`**
+
+- `save_candidate_admin` docstring becomes `"""Direct candidate row updates from admin API (state override, etc.). API keys: update_candidate_api_keys."""`.
+- Replace `set_candidate_api_key` and `clear_candidate_api_key` with:
+
+  ```python
+  def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) -> None:
+      """Admin key edits on the candidate's api_keys array: key sets/replaces that server's entry, "" removes it."""
+      database.update_candidate_api_keys(candidate_id, entries)
+  ```
+
+  (`List`, `Dict` are already imported.) `run_session_resume_parse` is unchanged, because it reads `candidate_api_keys` from `database.get_candidate`.
+
+**3. `src/ui/api/api_candidate.py`**
+
+a. Imports from core: remove `clear_candidate_api_key` and `set_candidate_api_key`, and add `update_candidate_api_keys`.
+
+b. `_sanitize_candidate` becomes:
+
+   ```python
+   def _sanitize_candidate(c: dict) -> dict:
+       """Strip every key (plaintext map + legacy ciphertext); expose the api_keys array as [{server, label}]. Applied to every outbound candidate."""
+       keys = c.pop("candidate_api_keys", None) or {}
+       c.pop("candidate_api_key", None)
+       # One entry per stored key, in array order (AST-1901) — no fixed per-server slots, never the key itself.
+       c["api_keys"] = [
+           {"server": sid, "label": (LLM_SERVER_CONFIG.get(sid) or {}).get("label", sid)} for sid in keys
+       ]
+       return c
+   ```
+
+c. `update_candidate_data` changes:
+   - Docstring's last line becomes `api_keys handling ([{server, key}]): non-empty key = set/replace that server's entry, "" = remove it; duplicate servers → 400.`
+   - Replace the `if api_keys is not None:` validation block (dict check plus the per-server loop) with:
+
+     ```python
+     if api_keys is not None:
+         if not isinstance(api_keys, list):
+             return jsonify({"error": "api_keys must be an array of {server, key}"}), 400
+         seen_servers: set = set()
+         for e in api_keys:
+             sid = e.get("server") if isinstance(e, dict) else None
+             if sid not in LLM_SERVER_CONFIG or not isinstance(e.get("key"), str):
+                 # Name the server only — never echo a submitted key.
+                 return jsonify({"error": f"Invalid api_keys entry for server {sid!r}"}), 400
+             if sid in seen_servers:
+                 return jsonify({"error": f"Duplicate api_keys entry for server {sid!r}"}), 400
+             seen_servers.add(sid)
+     ```
+
+   - Replace the apply loop (`# One candidate_key row per server; …` plus the `for sid, key in (api_keys or {}).items():` block) with:
+
+     ```python
+     # Edits land in the candidate's api_keys array; the data layer encrypts (AST-1901).
+     if api_keys:
+         update_candidate_api_keys(candidate_id, [{"server": e["server"], "key": e["key"].strip()} for e in api_keys])
+     ```
+
+   The trailing `if api_keys and not (…)` info-log check works unchanged on a list.
+
+**4. `src/ui/frontend/src/pages/AdminManageCandidates.tsx`**
+
+a. **`Candidate` type.** Replace the `api_keys?: Record<…>` field and its comment with:
+   `/** Stored keys only, in array order (AST-1901): server id + catalog label — never the key itself. */`
+   `api_keys?: { server: string; label: string }[]`
+
+b. **Row mapping.** Change `api_key_status` to `(c.api_keys ?? []).map(k => k.label).join(", ") || "Not set"`. Update the `api_key_status` column comment (~line 595) to `// Value is the joined labels of servers with a stored key (AST-1901), or "Not set".`
+
+c. **New state**, next to `keyInputs`:
+   - `const [keyServers, setKeyServers] = useState<{ server: string; label: string }[]>([])` with the comment `// Server catalog for "Add API key for…", derived from /api/admin/agents/models (no literals).`
+   - `const [addedServers, setAddedServers] = useState<string[]>([])`
+   - Change the `keyInputs` comment to `// Key edits keyed by server id: typed value, show toggle, pending clear (stored entries) / added rows.`
+
+d. **Mount effect** (the `useEffect` with `/api/shapes/candidates`): add
+
+   ```ts
+   api("/api/admin/agents/models").then(r => r.json()).then((m: Record<string, { order: number; server_id: string; server_label: string }>) => {
+     const seen = new Set<string>()
+     setKeyServers(Object.values(m).sort((a, b) => a.order - b.order).flatMap(x =>
+       seen.has(x.server_id) ? [] : (seen.add(x.server_id), [{ server: x.server_id, label: x.server_label }])))
+   })
+   ```
+
+e. **Opening Edit.** Next to `setKeyInputs({})` / `setShowKeys({})` / `setClearKeys({})` (~line 374), add `setAddedServers([])`.
+
+f. **Save payload.** Replace the `apiKeys` block (~lines 425–431) with:
+
+   ```ts
+   // Only rows that changed: typed key = set/replace, "" = remove a stored entry; omit when nothing changed.
+   const apiKeys: { server: string; key: string }[] = []
+   for (const sid of [...(editTarget.api_keys ?? []).map(k => k.server), ...addedServers]) {
+     if (clearKeys[sid]) apiKeys.push({ server: sid, key: "" })
+     else if ((keyInputs[sid] ?? "").trim()) apiKeys.push({ server: sid, key: keyInputs[sid].trim() })
+   }
+   if (apiKeys.length) payload.api_keys = apiKeys
+   ```
+
+g. **Key fields.** Replace the `{/* One key field per catalog server (AST-1880); … */}` block with rows for stored entries followed by added rows, then the add picker:
+   - `const keyRows = [...(editTarget?.api_keys ?? []).map(k => ({ ...k, stored: true })), ...addedServers.map(sid => ({ server: sid, label: keyServers.find(s => s.server === sid)?.label ?? sid, stored: false }))]`
+   - Declare this inside the component body, just above `return (`.
+   - Each row renders exactly as the current per-server field does, with `k.server` in place of `sid`, `key={k.server}`, and this label: `{k.label} API key {k.stored ? "(set — leave blank to keep current)" : "(new)"}`.
+   - The existing **Clear** button (confirm dialog + `setClearKeys`) renders only when `k.stored && !keyInputs[k.server] && !clearKeys[k.server]`.
+   - Unsaved rows (`!k.stored`) get a `btn secondary` **Remove** button that runs `setAddedServers(p => p.filter(s => s !== k.server))` and `setKeyInputs(p => { const n = { ...p }; delete n[k.server]; return n })`.
+   - After the rows, when `keyServers.some(s => !keyRows.find(r => r.server === s.server))`, render:
+
+     ```tsx
+     <div className="dep-field">
+       <select className="dep-input" value="" onChange={e => { const sid = e.target.value; if (sid) setAddedServers(p => [...p, sid]) }}>
+         <option value="">Add API key for…</option>
+         {keyServers.filter(s => !keyRows.find(r => r.server === s.server)).map(s => <option key={s.server} value={s.server}>{s.label}</option>)}
+       </select>
+     </div>
+     ```
+
+     This offers only servers without a row, so the UI can't produce a duplicate.
+
+**Compile / lint:** `python3 -m py_compile` on the three `.py` files, then `cd src/ui/frontend && npx tsc -b --noEmit`.
+
+### Blast radius
+
+- **AST-1879 routing / gates** (`dispatcher.py`, `agent.py`, `meteorite.py`, `contact.py`, and `api_admin.py`'s Invalid + Run gate and ad-hoc resolve): no code change, because the `candidate_api_keys` contract is kept. `candidate_api_keys` now also appears on `list_candidates` / claim-batch rows, which is harmless for those readers.
+- **AST-1880 admin surface:** the outbound `api_keys` shape changes from a dict to an array (only `AdminManageCandidates.tsx` reads it, per `rg api_keys src/ui/frontend/src`), and the PUT `api_keys` body changes from an object to an array.
+- **Tests Betty will need to move:**
+  - `test_candidates.py::TestAst1878CandidateServerKeys` (table helpers go away) and the hard-delete count assertions that mention `candidate_key`.
+  - `test_candidate.py::TestCandidateAdminFacades` (set/clear wrappers become `update_candidate_api_keys`).
+  - `test_api_candidate.py` `api_keys` sanitize / PUT cases (dict → array).
+  - Any `tests/component/frontend/**` coverage of the Manage Candidates key fields.
+  - Bible pages `data/database/candidates.md` and the api_candidate / frontend pages.
+- **Data:** keys stored in `candidate_key` on existing databases are dropped with the table and have to be re-entered once.
+
+### What must still hold
+
+- **AST-1878 AC 5 / parent AC 13:** `get_candidate` has no single `candidate_api_key`, and no path writes the legacy column.
+- **Parent AC 6, re-worded by Susan's to-be:** setting a Kimi key and an OpenRouter key leaves two entries in that candidate's `api_keys` array. Both hold ciphertext that differs from the plaintext, and a GET lists both servers. One key never overwrites another.
+- **Parent AC 7 / 8 / 14 / 16:** right key and no fallback; Invalid on a missing server key; Slack and session-paste keys come from the candidate. These are unchanged because the map contract is unchanged.
+- **Parent AC 2:** no server or model literals outside `config.py`. Labels come from `LLM_SERVER_CONFIG` or the models endpoint.
+- **Parent AC 12, candidate half, superseded:** the "exactly one key field per server" wording is replaced by Susan's "no fixed slots". The form lists only stored entries plus an add picker drawn from the catalog.
+- **No plaintext outbound:** API responses and error messages never include a key.
