@@ -108,6 +108,21 @@ New `candidate_key` table (one Fernet-encrypted key per candidate × `LLM_SERVER
 
 **Integration:** none.
 
+### AST-1901 · AST-1851 (bug: candidate keys as a JSON array on the candidate)
+
+> Supersedes the AST-1878 key storage above. `candidate_key`, `set/clear/list_candidate_server_key(s)` and `TestAst1878CandidateServerKeys` are gone. AST-1878 manifest lines that cite them are frozen records.
+
+Per-server keys live in a `candidate.api_keys` column: a JSON array of `{"server", "key"}` with the key Fernet-encrypted, at most one entry per server, no fixed slots. `update_candidate_api_keys(cid, [{server, key}])` sets or replaces with a non-empty key and removes with `""`. Existing order is kept and new servers append. It raises on a duplicate or unknown server, a blank id, or a missing candidate, and writes nothing on error. `_parse_candidate_row` hydrates `candidate_api_keys {server: plaintext}` on every parsed row, list rows included. Undecryptable or malformed entries read as not set. Schema setup adds the column and drops `candidate_key` (DDL only, no copy). Hard delete no longer counts `candidate_key`. The routing contract (`candidate_api_keys`) is unchanged for AST-1879 readers.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New (bug-repro): array storage, hydrate, edits, duplicate/bad input, undecryptable, malformed, schema add + drop, retired helpers, hard delete | `src/data/database.py` | `TestAst1901CandidateApiKeysArray` (replaces `TestAst1878CandidateServerKeys`) |
+| Revised: facade `update_candidate_api_keys`; per-server set/clear wrappers retired | `src/core/candidate.py` | `test_candidate.py::TestCandidateAdminFacades` ([`../../core/candidate.md`](../../core/candidate.md)) |
+| Revised: outbound `api_keys: [{server, label}]`, PUT `api_keys: [{server, key}]`, duplicate → 400 | `src/ui/api/api_candidate.py` | [`../../ui/api/api_candidate.md`](../../ui/api/api_candidate.md) § AST-1901 |
+| Revised: stored entries + "Add API key for…" picker | `AdminManageCandidates.tsx` | [`../../frontend/pages.md`](../../frontend/pages.md) § AST-1901 |
+
+**Integration:** none.
+
 ## QA test manifest
 
 ```bash
@@ -132,3 +147,22 @@ New `candidate_key` table (one Fernet-encrypted key per candidate × `LLM_SERVER
 ```
 
 **Pass criterion:** narrowed run green — not the zero-arg harness. Full `tests/component` failure set on this tip is identical to the same tree with `origin/ftr/AST-1851-support-openrouter-api-models` product (baseline diff: zero new, all 20 moved items green). Pre-existing reds left out of the manifest: `TestAst787AgentRepoJsonSeed::test_repo_rows_match_fixture_repo_column_mapping`, `TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array`, `TestAst1258CandidateBatchClaim` (two nodes).
+
+## QA test manifest (AST-1901)
+
+**Bug-repro (qa-fix):** every node below except the two pre-existing reds is red on the pre-fix tree (`origin/sub/AST-1851/AST-1901-candidate-keys-json-array` @ `f422a71d0`). Each fails for the root cause: no `update_candidate_api_keys`, no `api_keys` column, dict-shaped outbound `api_keys`, the old `{server_id: key}` PUT contract, or fixed per-server fields. test-fix must see all of them flip green.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_candidates.py::TestAst1901CandidateApiKeysArray \
+  tests/component/data/database/test_candidates.py::TestSaveCandidate \
+  tests/component/core/test_candidate.py::TestCandidateAdminFacades \
+  tests/component/ui/api/test_api_candidate.py::TestSanitizeCandidate \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes \
+  tests/component/core/test_agent_ast1879.py
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```
+
+**Pass criterion:** all green except two pre-existing reds that also fail on the pre-fix tree for unrelated reasons: `TestCandidateRoutes::test_list_candidates_and_states` (stale `PROSPECT`) and `::test_update_merges_data_and_state` (`qualify_job_listings` agent_task 400).
