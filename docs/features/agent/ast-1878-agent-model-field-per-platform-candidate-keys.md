@@ -876,3 +876,78 @@ No **REVISE** (no statute/pattern carve-out to land in F3) and no **ESCALATE** (
 ```
 AST-1901 board-joan done — CANON: OK.
 ```
+
+
+### Radia review — AST-1901
+
+[code-rubric]
+**Ticket:** AST-1901
+**Publish ref:** 5835782f1
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+(frozen list empty — ticket has no `## Citations` directive ids; Joan fix-board **CANON: OK** with no statute rows to score)
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (fix-board only)
+
+## Frame diff
+
+(none)
+
+## [bug-repro]
+
+**Verdict:** OK — `TestAst1901CandidateApiKeysArray` (database) and `test_put_two_server_keys_stores_ciphertext_array_and_get_lists_servers_only` (api) pin **to-be**: `candidate.api_keys` JSON array, `candidate_key` table gone, outbound `[{server, label}]` only, two-platform ciphertext ≠ plaintext, map hydrate for routing. Would fail on AST-1878/1880 fixed-slot + `candidate_key` table.
+
+**Advisory:** qa-fix commit names bug-repro but no test uses the first-line `[bug-repro]` tag the skill machinery expects; assertions are substantive anyway.
+
+## What must still hold
+
+**Verdict:** OK — legacy `candidate_api_key` not exposed; two-server storage + GET list semantics covered; `candidate_api_keys` map unchanged for #1879 readers; no vendor literals in touched UI/API; dynamic admin rows + catalog picker; errors do not echo submitted keys.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Severity:** discuss  
+- **Location:** Susan UAT comment vs plan-discuss **1B, 2A**  
+- **Finding:** Linear bug text says “array of JSON between **model** and key”; shipped design and patch use **`server`** (`LLM_SERVER_CONFIG` id) per Susan’s answered plan-discuss. Implementation matches patch and parent “one key per platform,” not a model-id array.  
+- **Recommendation:** Optional ticket wording cleanup so UAT traceability matches storage shape.  
+- **Default:** Treat plan-discuss + patch as authoritative; no code change.
+
+### advisory
+
+- **Severity:** advisory  
+- **Location:** `database._ensure_candidate_schema` — `DROP TABLE IF EXISTS candidate_key`  
+- **Finding:** DDL-only; no migration of existing `candidate_key` rows into `api_keys` (documented in patch). UAT DBs need keys re-entered once.  
+- **Recommendation:** Note in parent UAT checklist.
+
+- **Severity:** advisory  
+- **Location:** AST-1879 deferrals (this brief)  
+- **Finding:** **Not in AST-1901 scope:** `api_admin` ad-hoc/dispatch gate and `api_candidate` clear arity were **AST-1880** items (on `origin/dev` via PR #195). This fix replaces storage/UI shape only; it does not regress those paths and keeps `update_candidate_api_keys` + hydrated list rows.  
+- **Recommendation:** Confirm parent UAT still exercises 1880 admin surfaces separately.
+
+- **Severity:** advisory  
+- **Location:** `stat.logging.info.api` (carry from AST-1880 Radia discuss)  
+- **Finding:** `api_keys`-only `PUT …/data` still may omit a completion info line when no catalog leaf saves — unchanged by this diff (“must still hold: PUT completion info lines unchanged”).  
+- **Recommendation:** Optional follow-up on AST-1880 / separate ticket if Susan wants that log.
+
+## What's solid
+
+- `candidate.api_keys` column + helpers; `candidate_key` table and server-key CRUD removed; `get_candidate` / `list_candidates` hydrate `candidate_api_keys` via `_parse_candidate_row` (no per-row `get_candidate` in `_sanitize_candidate`).
+- `api_candidate`: array PUT validation, duplicate-server 400 without echoing keys, `_sanitize_candidate` → `[{server, label}]` in stored order.
+- `AdminManageCandidates`: stored rows + “Add API key for…” from `/api/admin/agents/models`; no four fixed slots.
+- Tests + bible updates on tip align with repro and AC 6 storage half.
+
+## Recommended actions (Chuckles)
+
+- Append artifact; `docs(AST-1901): Radia review — clean`; post slim upshot; **Review Posted** → fix-lane clean shortcut → **User Testing** (skip `resolve-child`).
+- **Parent shape:** normal batch on AST-1851 (diff base `origin/dev...sub/AST-1901` per spawn override — not orphaned).
+- Optional: clarify Linear bug text **model** → **server** if Susan wants ticket prose aligned.
