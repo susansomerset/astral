@@ -16,6 +16,7 @@ import Toast, { type ToastMessage } from "./Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
+import { postSkipJob } from "../lib/candidateJobActions"
 import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
 import { parseAnalysisUpshot, type AnalysisUpshot } from "../lib/analysisUpshot"
 import {
@@ -70,6 +71,7 @@ interface JobDetail {
   like_rubric?: unknown
   agent_story?: AgentStoryEntry[]
   related_meteorite?: RelatedMeteorite | null
+  can_skip?: boolean // AST-1872: server-resolved Skip legality
 }
 
 interface Props {
@@ -92,7 +94,9 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [snapshotCopied, setSnapshotCopied] = useState(false)
   const [detailLinkCopied, setDetailLinkCopied] = useState(false)
   const [snapshotCopying, setSnapshotCopying] = useState(false)
-  const [activeTopTab, setActiveTopTab] = useState("summary")
+  const [skipBusy, setSkipBusy] = useState(false)
+  // Empty until the manifest tabs resolve — the effect below picks topTabs[0] (config order, AST-1874).
+  const [activeTopTab, setActiveTopTab] = useState("")
   const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
   const [structureError, setStructureError] = useState(false)
   const [allSections, setAllSections] = useState<SectionRow[]>([])
@@ -279,9 +283,9 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }
   }, [jobId, selectedId, allSections])
 
-  // Reset top tab when opening a different job.
+  // Reset top tab when opening a different job; the fallback effect re-picks the first manifest tab.
   useEffect(() => {
-    setActiveTopTab("summary")
+    setActiveTopTab("")
   }, [jobId])
   useEffect(() => { setSnapshotCopied(false) }, [jobId])
   useEffect(() => { setDetailLinkCopied(false) }, [jobId])
@@ -335,7 +339,9 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       if (jobRec) {
         const breakdown = jobScoreBreakdownForGradesField(jobRec, p.grades_field)
         if (breakdown) {
-          nav_label = formatPhaseSectionScoreTitle(base, breakdown, template)
+          // List score is flattened top-level on the detail GET as <prefix>_score (jd_grades → jd_score).
+          const score = jobRec[p.grades_field.replace(/_grades$/, "_score")]
+          nav_label = formatPhaseSectionScoreTitle(base, breakdown, template, score)
         }
       }
       return {
@@ -664,6 +670,21 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     })
   }
 
+  // AST-1874: server already gated visibility via can_skip; 409 etc. surface as a toast, modal stays open.
+  async function handleSkip() {
+    if (!jobId || skipBusy) return
+    setSkipBusy(true)
+    try {
+      await postSkipJob(jobId)
+      onRefresh?.()
+      onClose()
+    } catch (e) {
+      setToast({ text: e instanceof Error ? e.message : "Skip failed", variant: "error" })
+    } finally {
+      setSkipBusy(false)
+    }
+  }
+
   function handleCopyApplicationEmail() {
     if (!applicationEmail) return
     const text = emailWithJobPlusTag(applicationEmail, emailPlusTag)
@@ -699,6 +720,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
             <RecommendedJobReportHeader
               jobTitle={jobTitleDisplay}
               jobLink={httpListingHref(job.listing_href)}
+              jobLinkText={httpListingHref(job.listing_href) ?? job.job_link ?? null}
               companyName={job.company}
               companyWebsite={companyWebsite}
               applicationEmail={applicationEmail}
@@ -711,6 +733,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
               onCopySnapshot={handleCopySnapshot}
               snapshotCopied={snapshotCopied}
               snapshotCopying={snapshotCopying}
+              onSkip={job.can_skip ? () => { void handleSkip() } : undefined}
+              skipBusy={skipBusy}
               showPrintResume={showPrintResume}
               showPrintCover={showPrintCover}
               onPrintResume={() => { void handlePrintResume() }}

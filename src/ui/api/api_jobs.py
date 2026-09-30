@@ -16,6 +16,7 @@ from src.core.tracker import (
     get_job,
     get_job_artifacts,
     hydrate_job_artifacts_for_display,
+    job_state_admits_transition,
     job_misses_dispatch_score_floor,
     legal_job_successor_states,
     list_jobs,
@@ -217,6 +218,8 @@ def detail(astral_job_id):
         return jsonify({"error": "Not found"}), 404
     job = _flatten_grades(job)
     _attach_skipped_edit_meta(job)
+    # AST-1872: server-resolved Skip legality for the Recommended report (core owns the prior-state rule)
+    job["can_skip"] = job_state_admits_transition(job.get("state") or "", "CANDIDATE_SKIPPED")
     # AST-1100/1592: pin-resolve proposed_answers; re-hydrate with job id for catalog current-read.
     jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     art = hydrate_job_artifacts_for_display(
