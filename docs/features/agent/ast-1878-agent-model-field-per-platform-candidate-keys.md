@@ -855,3 +855,24 @@ g. **Key fields.** Replace the `{/* One key field per catalog server (AST-1880);
 - **Parent AC 2:** no server or model literals outside `config.py`. Labels come from `LLM_SERVER_CONFIG` or the models endpoint.
 - **Parent AC 12, candidate half, superseded:** the "exactly one key field per server" wording is replaced by Susan's "no fixed slots". The form lists only stored entries plus an add picker drawn from the catalog.
 - **No plaintext outbound:** API responses and error messages never include a key.
+
+
+### Joan fix-board — AST-1901
+
+**Verdict comment body (for Chuckles to post):**
+
+```
+[board-joan]  CANON: OK
+```
+
+**Rationale**
+
+The `## Bug: AST-1901` patch keeps the runtime contract AST-1879 depends on: in-memory `candidate_api_keys` as `{server_id: plaintext}`, still derived from catalog server ids via `get_llm_server` / `LLM_SERVER_CONFIG`. That matches parent **Model → server catalog routing** (model → server for tasks; one key per platform on the candidate), even though persistence moves from `candidate_key` rows to a JSON `api_keys` column. Susan’s plan-discuss answer (1B, 2A) keys entries by **server**, not model, which aligns with parent functional scope 5 and AC 6’s “one key per platform” semantics; the patch explicitly supersedes the old “two rows in the candidate key table” / fixed four-slot UI wording without changing routing or gate behavior.
+
+Against parent **Canon Scope** statutes, the touched surface (`database.py`, `api_candidate.py`, `AdminManageCandidates.tsx`) does not introduce a logging, API completion, or config-source-of-truth conflict: no new `debug=` logging paths; dispatch Invalid / skip warnings stay who/why on missing **server** keys; PUT completion info lines are unchanged; labels still come from config or `/api/admin/agents/models`; error responses still avoid echoing keys (“What must still hold”). Header-inventory edits are the kind **astral.standards.database-header-inventory** expects for schema changes, not a directive rewrite. Nothing in force mandates a separate `candidate_key` table or exactly four admin slots—those were epic plan text, corrected by Susan’s UAT to-be.
+
+No **REVISE** (no statute/pattern carve-out to land in F3) and no **ESCALATE** (storage shape is a bounded product fix, not ambiguous statute intent).
+
+```
+AST-1901 board-joan done — CANON: OK.
+```
