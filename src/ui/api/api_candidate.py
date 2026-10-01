@@ -13,7 +13,6 @@ from src.core.candidate import (
     _stash_pending_craft_generation,
     apply_company_search_terms_save,
     apply_rubric_vectors_save,
-    clear_candidate_api_key,
     company_search_terms_joined_text,
     company_search_terms_lines_for_candidate,
     delete_candidate as core_delete_candidate,
@@ -43,9 +42,9 @@ from src.core.candidate import (
     resolve_resume_structure,
     run_candidate_artifact_generation,
     save_candidate_data,
-    set_candidate_api_key,
     start_requested_artifacts,
     transition_candidate_state,
+    update_candidate_api_keys,
 )
 from src.core.contact import resolve_pinned_base_resume
 from src.utils.config import (
@@ -123,16 +122,13 @@ def _validate_cover_letter_signature_image(value) -> None:
 
 
 def _sanitize_candidate(c: dict) -> dict:
-    """Strip every key (plaintext map + legacy ciphertext); inject per-server set/not-set. Applied to every outbound candidate."""
-    keys = c.pop("candidate_api_keys", None)
-    if keys is None and c.get("astral_candidate_id"):
-        # List rows come without the hydrated map; core get_candidate is the only ui-legal read.
-        keys = (get_candidate(c["astral_candidate_id"]) or {}).get("candidate_api_keys")
+    """Strip every key (plaintext map + legacy ciphertext); expose the api_keys array as [{server, label}]. Applied to every outbound candidate."""
+    keys = c.pop("candidate_api_keys", None) or {}
     c.pop("candidate_api_key", None)
-    # Keyed by server id, one entry per catalog server (AST-1880).
-    c["api_keys"] = {
-        sid: {"label": s["label"], "set": bool((keys or {}).get(sid))} for sid, s in LLM_SERVER_CONFIG.items()
-    }
+    # One entry per stored key, in array order (AST-1901) — no fixed per-server slots, never the key itself.
+    c["api_keys"] = [
+        {"server": sid, "label": (LLM_SERVER_CONFIG.get(sid) or {}).get("label", sid)} for sid in keys
+    ]
     return c
 
 
@@ -293,7 +289,7 @@ def create_candidate():
 def update_candidate_data(candidate_id):
     """Update candidate_data fields (merge=True). If 'state' is in the body,
     applies it via transition_candidate_state (fail closed on illegal hops).
-    api_keys handling ({server_id: key}): non-empty string = set/replace that server's key, empty string = clear it."""
+    api_keys handling ([{server, key}]): non-empty key = set/replace that server's entry, "" = remove it; duplicate servers → 400."""
     body = request.get_json(silent=True) or {}
     if not body:
         return jsonify({"error": "No data provided"}), 400
@@ -317,11 +313,17 @@ def update_candidate_data(candidate_id):
         ):
             return jsonify({"error": "Admin access required"}), 403
         if api_keys is not None:
-            if not isinstance(api_keys, dict):
-                return jsonify({"error": "api_keys must be an object of {server_id: key}"}), 400
-            for sid, key in api_keys.items():
-                if sid not in LLM_SERVER_CONFIG or not isinstance(key, str):
+            if not isinstance(api_keys, list):
+                return jsonify({"error": "api_keys must be an array of {server, key}"}), 400
+            seen_servers: set = set()
+            for e in api_keys:
+                sid = e.get("server") if isinstance(e, dict) else None
+                if sid not in LLM_SERVER_CONFIG or not isinstance(e.get("key"), str):
+                    # Name the server only — never echo a submitted key.
                     return jsonify({"error": f"Invalid api_keys entry for server {sid!r}"}), 400
+                if sid in seen_servers:
+                    return jsonify({"error": f"Duplicate api_keys entry for server {sid!r}"}), 400
+                seen_servers.add(sid)
         base_resume_in_save = False
         pilot_body = None
         resume_structure_body = None
@@ -500,12 +502,9 @@ def update_candidate_data(candidate_id):
                     }), 400
                 except ValueError as e:
                     return jsonify({"error": str(e)}), 400
-        # One candidate_key row per server; the data layer encrypts (AST-1878).
-        for sid, key in (api_keys or {}).items():
-            if key.strip():
-                set_candidate_api_key(candidate_id, sid, key.strip())
-            else:
-                clear_candidate_api_key(candidate_id, sid)
+        # Edits land in the candidate's api_keys array; the data layer encrypts (AST-1901).
+        if api_keys:
+            update_candidate_api_keys(candidate_id, [{"server": e["server"], "key": e["key"].strip()} for e in api_keys])
     except Exception as e:
         # Failed Save: keep submitted criteria recoverable via GET …/pending
         logger.exception(
