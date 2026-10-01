@@ -493,3 +493,84 @@ All in `src/ui/frontend/src/pages/AdminTaskPrompts.tsx`. **No backend change**: 
 ```
 AST-1909 board-joan done — CANON: OK.
 ```
+
+
+### Radia review — AST-1909
+
+[code-rubric]
+**Ticket:** AST-1909
+**Publish ref:** 9c7591ea9
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+(parent AST-1851 Canon Scope — UAT-batch bound; ticket carries no frozen ids of its own)
+
+Model → server catalog routing | A | |
+stat.logging.debug | X | |
+stat.logging.error | X | |
+stat.logging.warning | X | |
+stat.logging.info.api | X | |
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (fix-board only)
+
+## Frame diff
+
+(none)
+
+## [bug-repro]
+
+**Verdict:** OK — `describe("AST-1909 task modal model + brain size")` pins to-be: catalog `GET /api/admin/agents/models`, model + brain selects (not read-only SKU), `sizeForModel` rule, task `PUT` then conditional agent `PUT` with `{model_id, brain_setting}`, no agent `PUT` when unchanged / no agent / 404, shared-agent hint, agent `PUT` 400 toast after task save. Would fail on pre-fix read-only `Model:` line and missing selects.
+
+**Advisory:** qa-fix commit message says `bug-repro`; no first-line `[bug-repro]` tag on the test class (fixture literals `kimi-k2.6` in tests only — not AC 2 `src/`).
+
+## What must still hold
+
+**Verdict:** OK
+
+- **AC 3 / Kimi + Medium:** Kimi brain options in tests are `Little` / `Big` only; switching to Kimi drops invalid `Medium` to first size — UI cannot submit Kimi+Medium; backend 400 path covered by agent-PUT error toast test.
+- **Parent AC 2:** no vendor/server literals in `AdminTaskPrompts.tsx` (options from catalog API only).
+- **Manage Agents:** product commit touches only `AdminTaskPrompts.tsx` — `AdminAgentPrompts.tsx` unchanged on `9c7591ea9`.
+- **Task-only save:** test asserts zero agent `PUT` when model/size unchanged.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Severity:** advisory  
+- **Location:** `origin/ftr/AST-1851-support-openrouter-api-models...origin/sub/AST-1901-candidate-keys-json-array` (spawn used **ftr** base per brief)  
+- **Finding:** Three-dot range includes **sibling** commits (AST-1904/1905 `builder.py`, feature docs) ahead of AST-1909 on the publish branch. **AST-1909 product** is single-file `9c7591ea9` (+ Betty tests `58098c74c`).  
+- **Recommendation:** Score and merge AST-1909 on its commits; do not treat sibling diffs as this fix’s footprint.
+
+- **Severity:** advisory  
+- **Location:** Parent **AC 12** wording vs scope-gate  
+- **Finding:** Parent AC 12 names Manage Agents / Manage Candidates; this fix extends catalog-driven model picking to **Manage Tasks** per amended Component scope — intentional, not a regression of Manage Agents.  
+- **Recommendation:** Optional parent AC note at epic close if Susan wants AC 12 prose to mention Manage Tasks.
+
+## What's solid
+
+- Plan patch followed: catalog on mount, `loadAgentModel` with stale-request guard, selects replace read-only `model_code`, `handleModelChange` matches Manage Agents, two-step save (task then agent), shared-agent hint, no backend changes.
+- Extends **Model → server catalog routing** admin surface without task-level model column.
+- Component tests cover catalog order, persistence, agent change, disabled states, and agent PUT failure after task PUT.
+
+## Recommended actions (Chuckles)
+
+- Append artifact; `docs(AST-1909): Radia review — clean`; post slim upshot; **Review Posted** → fix-lane **PROCEED** shortcut → **User Testing** (skip `resolve-child`).
+- **Parent shape:** AST-1851 UAT-batch, **not orphaned** — normal sub merge path (not straight-to-dev).
+
+context_tokens≈32000
+
+---
+
+`[code-rubric] PROCEED (Commit: 9c7591ea9) task modal catalog picks`
