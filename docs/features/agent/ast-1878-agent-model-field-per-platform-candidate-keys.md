@@ -1029,3 +1029,22 @@ AST-1901 step 4g derives `keyRows` from stored entries plus `addedServers`, so u
 - **Parent AC 2:** no server literals in the UI. Labels come from `/api/admin/agents/models` or the outbound `api_keys` label.
 - **No plaintext outbound:** the form never shows a stored key, only "(set …)".
 - **Parent AC 12, candidate half:** one key field per catalog server is restored (AST-1880's original shape), with stored state from the `api_keys` array.
+
+### Joan fix-board (AST-1920)
+
+#### Findings
+
+The patch is **frontend-only** (`AdminManageCandidates.tsx`): `keyRows` becomes one row per catalog server (plus orphan stored servers for Clear), with the AST-1901 add-picker / `addedServers` / Remove path removed. **AST-1901** storage (`candidate.api_keys` JSON array), PUT `[{server, key}]`, and in-memory **`candidate_api_keys`** are unchanged, so **Model → server catalog routing** and AST-1879 gates/routing need no canon adjustment.
+
+Susan’s **option 1 (UI only)** restores the parent **AC 12** candidate shape (one field per catalog server) without undoing the variable-length array on the row. That is product scope alignment, not a conflict with in-force directives. Labels still come from `/api/admin/agents/models` or outbound `{server, label}` (parent **AC 2**). No new API routes → no **stat.logging.info.api** impact. Betty’s bible/test updates are test-tree, not statute.
+
+No statute or pattern text requires the “stored rows + Add API key for…” UI or forbids fixed catalog rows while keeping array storage.
+
+---
+
+```
+[board-joan]  CANON: OK
+
+```
+[board-joan]  CANON: OK
+```
