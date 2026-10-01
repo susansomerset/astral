@@ -653,3 +653,7 @@ Frozen **Canon Scope** on AST-1910 Linear Description: **none** (same fix-lane p
 ---
 
 [code-rubric] PROCEED (Commit: 2bc48e66) QC forbids X prompt fix
+
+### Resolution — AST-1910
+
+docs-acceptance: product-only fix. The regression tests and bible rows (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1911, stacked after this ticket on `ftr/AST-1898-evaluate-jd-qc-forbid-x`.
