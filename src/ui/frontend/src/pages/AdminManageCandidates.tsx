@@ -154,10 +154,9 @@ export default function ManageCandidates() {
     first: "", last: "", contact_email: "", pronouns: "", state: "",
     slack_user_id: "", slack_channel_id: "",
   })
-  // Key edits keyed by server id: typed value, show toggle, pending clear (stored entries) / added rows.
+  // Key edits keyed by server id: typed value, show toggle, pending clear.
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({})
-  const [addedServers, setAddedServers] = useState<string[]>([])
-  // Server catalog for "Add API key for…", derived from /api/admin/agents/models (no literals).
+  // Server catalog for the key fields, derived from /api/admin/agents/models (no literals).
   const [keyServers, setKeyServers] = useState<{ server: string; label: string }[]>([])
   const [unboundSlackUsers, setUnboundSlackUsers] = useState<UnboundSlackUser[]>([])
   const [slackChannels, setSlackChannels] = useState<SlackChannelOption[]>([])
@@ -383,7 +382,6 @@ export default function ManageCandidates() {
     setKeyInputs({})
     setShowKeys({})
     setClearKeys({})
-    setAddedServers([])
     setChannelMembershipWarn(null)
     setEditOpen(true)
     void loadUnboundSlackUsers()
@@ -434,7 +432,7 @@ export default function ManageCandidates() {
     }
     // Only rows that changed: typed key = set/replace, "" = remove a stored entry; omit when nothing changed.
     const apiKeys: { server: string; key: string }[] = []
-    for (const sid of [...(editTarget.api_keys ?? []).map(k => k.server), ...addedServers]) {
+    for (const sid of keyRows.map(r => r.server)) {
       if (clearKeys[sid]) apiKeys.push({ server: sid, key: "" })
       else if ((keyInputs[sid] ?? "").trim()) apiKeys.push({ server: sid, key: keyInputs[sid].trim() })
     }
@@ -680,12 +678,12 @@ export default function ManageCandidates() {
     </div>
   ) : null
 
-  // Stored entries first (array order), then rows added this edit — at most one row per server.
+  // One row per catalog server (AST-1920), set or not; stored entries the catalog no longer lists stay visible so they can be cleared.
+  const storedKeys = editTarget?.api_keys ?? []
   const keyRows = [
-    ...(editTarget?.api_keys ?? []).map(k => ({ ...k, stored: true })),
-    ...addedServers.map(sid => ({ server: sid, label: keyServers.find(s => s.server === sid)?.label ?? sid, stored: false })),
+    ...keyServers.map(s => ({ ...s, stored: storedKeys.some(k => k.server === s.server) })),
+    ...storedKeys.filter(k => !keyServers.some(s => s.server === k.server)).map(k => ({ ...k, stored: true })),
   ]
-  const addableServers = keyServers.filter(s => !keyRows.some(r => r.server === s.server))
 
   return (
     <>
@@ -858,11 +856,11 @@ export default function ManageCandidates() {
             {validStates.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        {/* One key field per stored entry + added row (AST-1901); labels come from the server, not literals. */}
+        {/* One key field per catalog server (AST-1920); labels come from the server, not literals. */}
         {keyRows.map(({ server: sid, ...k }) => (
           <div className="dep-field" key={sid}>
             <label className="dep-field-label">
-              {k.label} API key {k.stored ? "(set — leave blank to keep current)" : "(new)"}
+              {k.label} API key {k.stored ? "(set — leave blank to keep current)" : "(not set)"}
             </label>
             <div style={{ display: "flex", gap: 6 }}>
               <input
@@ -899,35 +897,9 @@ export default function ManageCandidates() {
                   Clear
                 </button>
               )}
-              {/* Unsaved row: drop it (and any typed key) and return the server to the picker. */}
-              {!k.stored && (
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={() => {
-                    setAddedServers(p => p.filter(s => s !== sid))
-                    setKeyInputs(p => { const n = { ...p }; delete n[sid]; return n })
-                  }}
-                >
-                  Remove
-                </button>
-              )}
             </div>
           </div>
         ))}
-        {/* Only servers without a row are offered, so the form can't produce a duplicate entry. */}
-        {addableServers.length > 0 && (
-          <div className="dep-field">
-            <select
-              className="dep-input"
-              value=""
-              onChange={e => { const sid = e.target.value; if (sid) setAddedServers(p => [...p, sid]) }}
-            >
-              <option value="">Add API key for…</option>
-              {addableServers.map(s => <option key={s.server} value={s.server}>{s.label}</option>)}
-            </select>
-          </div>
-        )}
       </Modal>
 
       <Toast message={toast} onDone={clearToast} />
