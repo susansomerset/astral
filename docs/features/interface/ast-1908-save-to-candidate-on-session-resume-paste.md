@@ -194,3 +194,12 @@ context_tokens≈14500
 ```
 
 **Summary:** Plan matches parent Purpose, Functional/Technical scope, and child **## Scope** (one file). **Stage 1** maps all eight ACs; component/UAT coverage for AC1/3/5 stays on Betty/UAT as the ticket Boundaries state. Verified assumptions on `origin/ftr/AST-1899-add-save-to-candidate-button` support operative save, accent retention, and error JSON shape. **Canon Scope gap:** none material (`astral.ui.frontend-file-placement` / `astral.layers.import-direction` not required — modify-in-place only, no new files). **Discuss-only note (non-blocking):** `patt.artifact.ui-consistency` frontmatter still marks **draft** on `origin/dev` while the parent cites it as reuse authority; plan text aligns with Implementation §5 + Exception 3 regardless.
+
+## Review stub (Hedy / build)
+
+- **Commit:** `094161cd3` — `code(AST-1908): Save to Candidate on Session Resume Paste`
+- **Branch:** `origin/sub/AST-1899/AST-1908-save-to-candidate-session-resume-paste`
+- **Files:** `src/ui/frontend/src/pages/AdminSessionResumePaste.tsx` only (Stage 1 steps 1–7 as written).
+- **Compile/lint:** `npx tsc -b --noEmit` clean; `npx eslint src/pages/AdminSessionResumePaste.tsx` clean. Full `npm run lint` reports 32 problems identical with and without this change (pre-existing, none in this file).
+- **Self-check §9:** no "does not save to the database"; no `session_resume/save` in `src/`; empty backend diff vs `origin/dev`.
+- **Canon note for review:** `astral.standards.dry-and-focused-functions` — `handleSave`'s non-OK error read mirrors `handleOpenHtml`'s block by the plan's ⚠️ Decision (no refactor of existing handlers under `astral.standards.in-scope-only`). Flagged so Radia can rule on it; not changed at build.
