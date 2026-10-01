@@ -657,3 +657,140 @@ Frozen **Canon Scope** on AST-1910 Linear Description: **none** (same fix-lane p
 ### Resolution — AST-1910
 
 docs-acceptance: product-only fix. The regression tests and bible rows (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1911, stacked after this ticket on `ftr/AST-1898-evaluate-jd-qc-forbid-x`.
+
+## Bug: AST-1911 — Pin QC never-X rule and evaluate_jd QC prompt exception (test gap for AST-1910)
+
+Test-gap sibling of AST-1910, filed from Betty's `[board-betty] TESTS: REVISE` on AST-1910. Mini-parent AST-1898 (`ftr/AST-1898-evaluate-jd-qc-forbid-x`). **Tests and bible only:** qa-fix (Betty) lands them, and there are no product changes. AST-1910's product edits (`## Bug: AST-1910` above) are already on this sub's tip via sync-child.
+
+### As-is
+
+No test pins AST-1910's fix. The existing `TestAst1084EvaluateJdCriteria` and `TestAst1154GradedTaskCompletenessPrompts` use substring checks that were already green before AST-1910 and stay green after it. Deleting the QC rule line, or either `evaluate_jd` prompt exception, would bring `QCX0` and the 9/9 hydrate errors back with no red test.
+
+### To-be
+
+Three new test functions pin the fix. Each fails on `origin/dev` and passes on this tip:
+
+1. The QC rubric line, including its placement and the A/B/C/F grade table it must not disturb.
+2. Both QC exceptions in the catalog `evaluate_jd` `cache_prompt`.
+3. The `evaluate_jd` row lockstep between catalog and AST-756 fixture, per key.
+
+Two bible files point at them.
+
+### Repro
+
+Verified this pass with `git show <ref>:<path>`:
+
+| Check | `origin/dev` | this tip (`68418dd2`) |
+| --- | --- | --- |
+| `"Never grade Quality Check X"` in `src/utils/config.py` | absent | present (1) |
+| catalog `evaluate_jd` `cache_prompt` has STEP 3 exception / completeness exception | False / False | True / True |
+| fixture `evaluate_jd` `cache_prompt` has both exceptions | False / False | True / True |
+| catalog `evaluate_jd` row object-equal to fixture row | True | True |
+
+The new tests are therefore red on dev and green on the tip. Row equality alone is green on dev too, which is why the lockstep test (item 3 below) also asserts the exception text.
+
+### Root cause
+
+AST-1910 changed only appended text, so every pre-existing assertion still holds. No test asserts the *new* text, its *placement* (the QC line before the A row, which keeps the trailing grade-table parse at A/B/C/F), or that the fixture copy carries it. That is a missing guard, not a product defect.
+
+### Proposed change
+
+Scope is exactly the four files in AST-1911 `## Scope`. Literal strings below are copied from the tip and must match byte for byte, including the em dashes (`—`) and en dash (`–`).
+
+**1. `tests/component/utils/test_config.py`, `TestAst1084EvaluateJdCriteria`.** Add one method and leave the three existing methods untouched (AC 2):
+
+```python
+    def test_qc_content_forbids_x_and_grade_table_stays_abcf(self) -> None:
+        # AST-1910 / AST-1911: QC never X; rule line sits above the A row so the trailing table stays A/B/C/F.
+        from src.utils.rubric_text import parse_trailing_grade_table_lines
+
+        qc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[0]
+        rule = (
+            "Never grade Quality Check X — X is not a valid grade for this vector. "
+            "If there is not enough to analyze, grade it F (confidence 1–5, never 0)."
+        )
+        lines = qc["content"].split("\n")
+        assert lines[0] == "Quality Check — is this enough of a JD to analyze?"
+        assert lines[1] == rule
+        assert lines[2].startswith("A = ")
+        assert [r["grade"] for r in parse_trailing_grade_table_lines(qc["content"])] == ["A", "B", "C", "F"]
+        assert [g["grade"] for g in qc["grade_descriptions"]] == ["A", "B", "C", "F"]
+```
+
+On `origin/dev`, `lines[1]` is the `A = …` row, so the test fails. On the tip it passes.
+
+**2. `tests/component/core/test_repo_admin_json.py`.** Add a new class `TestAst1910EvaluateJdQcNeverXPrompt` **immediately after** `TestAst1154GradedTaskCompletenessPrompts`, shaped like `TestAst1211EvaluateCraftFixtureLockstep` (with a `_current_by_key` helper and `current == 1` rows). It is not decorated with the AST-1269 seed-wipe skip, since it reads only files.
+
+```python
+class TestAst1910EvaluateJdQcNeverXPrompt:
+    """AST-1910 / AST-1911: evaluate_jd keeps X0-when-silent but names QC as the one never-X exception."""
+
+    _STEP3 = (
+        "use X0 when silent — never omit a code. Exception: QC (Quality Check) is never X — "
+        "if the job description is too thin to analyze, grade QC F with confidence 1–5 "
+        "(never QCX0, never QCF0)."
+    )
+    _COMPLETENESS = (
+        "When the source is silent, emit {code}X0 — never skip the segment. "
+        "The one exception is QC (Quality Check): never emit QCX — grade it F when there is "
+        "not enough to analyze."
+    )
+
+    def _current_by_key(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {r["task_key"]: r for r in rows if r.get("current") == 1}
+
+    def test_catalog_evaluate_jd_cache_prompt_qc_exception(self) -> None:
+        cache = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]["cache_prompt"]
+        assert cache.count(self._STEP3) == 1
+        assert cache.count(self._COMPLETENESS) == 1
+
+    def test_fixture_evaluate_jd_row_lockstep_with_catalog(self) -> None:
+        # Per-key lockstep (AST-1196 / AST-1211 style) — whole-file AST-756 twin is already red on dev, not ours.
+        cat = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]
+        fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")["evaluate_jd"]
+        assert self._STEP3 in fix["cache_prompt"]
+        assert self._COMPLETENESS in fix["cache_prompt"]
+        assert fix == cat
+```
+
+Each combined string pins both halves at once: the general "X0 when silent" rule (AST-1910 AC 2, still there for every other vector) and the QC exception right after it. The `TestAst1154…` class is **not** edited.
+
+**3. `docs/test-bible/utils/config.md`, § `AST-1084 · AST-1077`.**
+- Add a table row: `| QC never-X rule line + A/B/C/F table (AST-1910 fix, pinned by AST-1911) | src/utils/config.py | **TestAst1084EvaluateJdCriteria::test_qc_content_forbids_x_and_grade_table_stays_abcf** |`.
+- Add one sentence after the table: QC `content` carries a "Never grade Quality Check X" line between the header and the A row (AST-1910). Grades stay A/B/C/F, and hydrate stays strict. Cross-ref `docs/test-bible/core/repo_admin_json.md` § AST-1911.
+- The existing run block (`::TestAst1084EvaluateJdCriteria`) already covers the new method and is unchanged.
+
+**4. `docs/test-bible/core/repo_admin_json.md`.** Append a section after the last one, in the same shape as § AST-1196 and § AST-1494:
+- Heading: `### AST-1911 · AST-1898 (gap — evaluate_jd QC never-X prompt; pins AST-1910)`.
+- **Parent** line linking AST-1898, and **Publish** `origin/sub/AST-1898/AST-1911-pin-qc-never-x-tests`.
+- One paragraph: the `evaluate_jd` `cache_prompt` keeps X0-when-silent and names QC as the never-X exception in STEP 3 and GRADE SET COMPLETENESS. The AST-756 fixture row is locked per key. Config SSOT is `docs/test-bible/utils/config.md` § AST-1084.
+- A table row: `| Prompt QC exception + per-key fixture lockstep | data/admin/agent_task.json, docs/uat-fixtures/AST-756/expected-agent_task.json | **TestAst1910EvaluateJdQcNeverXPrompt** |`.
+- `**Broken / obsolete:** none.` Then note that the whole-file AST-756 twin tests (`TestAst1494…::test_fixture_byte_identical_to_catalog`, `TestAst1773…::test_fixture_catalog_byte_lockstep`) are already red on `origin/dev` from four drifted rows. They are not revised here and not made worse.
+- `**Integration:** none.`
+- A run block:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1084EvaluateJdCriteria \
+  tests/component/core/test_repo_admin_json.py::TestAst1910EvaluateJdQcNeverXPrompt \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  -q
+```
+
+**Repro-first check (qa-fix):** run the three new functions against `origin/dev` product files and confirm they are red. For example, in a throwaway detached checkout of `origin/dev`, copy in the two edited test files and run the manifest above. Then confirm green on this tip. This host's component runner only finds Python 3.10–3.12, so use `ASTRAL_PYTHON=/home/susan/astral-AST-1851/.venv/bin/python`.
+
+### Blast radius
+
+- **No product files.** `src/`, `data/admin/`, and `docs/uat-fixtures/` stay as AST-1910 left them.
+- **Future edits to the `evaluate_jd` row** (in any column) must now be mirrored into the AST-756 fixture, or `test_fixture_evaluate_jd_row_lockstep_with_catalog` goes red. This is the intended per-key guard, the same contract AST-1211 imposes on its two keys.
+- **Future rewording** of QC `content` or the two prompt sentences will turn these tests red by design. The plan doc and these tests move together.
+- **Existing tests:** `TestAst1084…` (three methods) and `TestAst1154…` are unchanged and stay green. The 77 pre-existing failures across the touched files (AST-1910 test-fix comment) are not affected.
+
+### What must still hold
+
+- QC grades are still pinned to exactly A/B/C/F. `test_qc_grades_abcdef_subset_and_descriptions` is unchanged, and the new test strengthens the pin with the parse check and the placement check (AST-1911 AC 2).
+- No product code changes on this ticket (AC 3).
+- Every new test function fails on `origin/dev` and passes on the tip (AC 1).
+- The whole-file AST-756 twin tests are not revised and not made worse (Boundaries).
+- AST-1910's invariants are unchanged: hydrate stays strict on QC X, and every non-QC vector keeps X0-when-silent.
