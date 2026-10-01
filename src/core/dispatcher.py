@@ -985,6 +985,11 @@ _registry_lock = threading.Lock()
 _tick_thread: Optional[threading.Thread] = None
 _tick_event = threading.Event()
 
+# Runtime override for the AUTO thread cap (None = use ASTRAL_CONFIG["max_auto_threads"]).
+# In-memory only — a restart/deploy returns to the config default. Coherent only because
+# production runs a single gunicorn worker (one scheduler, one registry per deploy).
+_auto_thread_cap_override: Optional[int] = None
+
 
 async def _dispatch_one(task: Dict) -> None:
     """Run a single dispatch task to completion inside its own asyncio event loop.
@@ -1864,11 +1869,41 @@ def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
     return due
 
 
+def get_auto_thread_cap() -> int:
+    """Effective cap on concurrent AUTO task threads: runtime override if set, else config default."""
+    # Must NOT be called while holding _registry_lock (threading.Lock is not re-entrant).
+    with _registry_lock:
+        override = _auto_thread_cap_override
+    return override if override is not None else ASTRAL_CONFIG["max_auto_threads"]
+
+
+def set_auto_thread_cap(value: Any) -> int:
+    """Set the runtime AUTO thread cap. Raises ValueError unless value is an int within the
+    config bounds. Never cancels running threads — the tick just stops spawning until
+    running AUTO < cap."""
+    global _auto_thread_cap_override
+    lo = ASTRAL_CONFIG["max_auto_threads_min"]
+    hi = ASTRAL_CONFIG["max_auto_threads_max"]
+    # type() check (not isinstance) so bools, floats like 2.5 and numeric strings are rejected
+    if type(value) is not int or not lo <= value <= hi:
+        raise ValueError(f"max_auto_threads must be a whole number between {lo} and {hi}")
+    with _registry_lock:
+        previous = _auto_thread_cap_override
+        _auto_thread_cap_override = value
+    logger.info(
+        "AUTO thread cap set to %d (was %s; config default %d)",
+        value,
+        previous if previous is not None else "default",
+        ASTRAL_CONFIG["max_auto_threads"],
+    )
+    return value
+
+
 def _tick_loop() -> None:
-    """Global tick: wakes every tick_rate_minutes, spawns due AUTO tasks up to max_auto_threads."""
-    # Captured once at thread start — changes to ASTRAL_CONFIG require a server restart
+    """Global tick: wakes every tick_rate_minutes, spawns due AUTO tasks up to get_auto_thread_cap()."""
+    # Tick rate is captured once at thread start (changes need a restart); the AUTO cap is
+    # re-read every tick via get_auto_thread_cap() so admin overrides apply on the next tick.
     tick_secs = ASTRAL_CONFIG.get("tick_rate_minutes", 1) * 60
-    max_auto = ASTRAL_CONFIG.get("max_auto_threads", 3)
     while True:
         try:
             # late: avoid cycle with candidate → dispatcher (module-top import)
@@ -1901,7 +1936,7 @@ def _tick_loop() -> None:
             with _registry_lock:
                 running_auto = sum(1 for e in _task_registry.values() if e["is_auto"])
                 running_ids = set(_task_registry.keys())
-            slots = max_auto - running_auto
+            slots = get_auto_thread_cap() - running_auto  # live cap; outside the lock (non-re-entrant)
             if slots > 0:
                 for task in due:
                     if slots <= 0:
