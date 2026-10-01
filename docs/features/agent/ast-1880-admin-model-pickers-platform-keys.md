@@ -434,7 +434,7 @@ context_tokens≈45000
 
 ## Bug: AST-1909 — Manage Task modal: no Model dropdown of config-driven model keys
 
-> **Scope gate:** `src/ui/frontend/src/pages/AdminTaskPrompts.tsx` is not in AST-1851's Component scope, and this fix lives entirely in that file. The bug is at **Plan Discuss** with a `[scope-gate]` on Linear. The plan below is complete, pending that amendment.
+> **Scope:** `src/ui/frontend/src/pages/AdminTaskPrompts.tsx` was added to AST-1851's Component and Technical scope after the `[scope-gate]`: "Manage Task modal: model + brain-size selects for the task's agent (catalog-driven); loads `GET /api/admin/agents/models`, saves the task's agent `model_id` + brain size via the existing agent update route; no task-level model, no backend change". The change below stays inside that scope.
 
 ### As-is
 The Manage Task modal (`AdminTaskPrompts.tsx`) shows the model only as read-only text (`Model: <SKU>` from `editTask.model_code`). The config-driven model picker (`GET /api/admin/agents/models`) is only reachable from Manage Agents, so a model can't be chosen while editing a task.
