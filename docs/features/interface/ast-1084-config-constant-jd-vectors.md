@@ -794,3 +794,11 @@ Each combined string pins both halves at once: the general "X0 when silent" rule
 - Every new test function fails on `origin/dev` and passes on the tip (AC 1).
 - The whole-file AST-756 twin tests are not revised and not made worse (Boundaries).
 - AST-1910's invariants are unchanged: hydrate stays strict on QC X, and every non-QC vector keeps X0-when-silent.
+
+### Joan fix-board — AST-1911
+
+— Read `## Bug: AST-1911` on `origin/sub/AST-1898/AST-1911-pin-qc-never-x-tests`. Scope is **tests + test-bible only** (new component tests pinning AST-1910 QC never-X rubric line and `evaluate_jd` prompt exceptions; bible rows in `config.md` and `repo_admin_json.md`). Blast radius explicitly excludes `src/`, `data/admin/`, and fixtures as product edits. Same shape as other gap siblings (e.g. AST-1848, AST-1850): no in-force statute or pattern amendment; registry skim (`canon/statutes/**`, no `docs/canon-index.md` on ref) has no overlap that these assertions would contradict.
+
+```text
+[board-joan]  CANON: OK
+```
