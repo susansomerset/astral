@@ -203,3 +203,51 @@ context_tokens≈14500
 - **Compile/lint:** `npx tsc -b --noEmit` clean; `npx eslint src/pages/AdminSessionResumePaste.tsx` clean. Full `npm run lint` reports 32 problems identical with and without this change (pre-existing, none in this file).
 - **Self-check §9:** no "does not save to the database"; no `session_resume/save` in `src/`; empty backend diff vs `origin/dev`.
 - **Canon note for review:** `astral.standards.dry-and-focused-functions` — `handleSave`'s non-OK error read mirrors `handleOpenHtml`'s block by the plan's ⚠️ Decision (no refactor of existing handlers under `astral.standards.in-scope-only`). Flagged so Radia can rule on it; not changed at build.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1908
+**Publish ref:** 868c641836a20309d02d167a28feaf21fec8206e
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+patt.artifact.write-operative | A | | Client PUT reuses existing `PUT /api/candidates/<id>/data` → server `save_candidate_data`; no parallel write path or `session_resume/save`
+patt.artifact.ui-consistency | A | | `{ artifacts: { resume_structure: { sections }, base_resume } }`; no client `artifact_id`; Exception 3 (session paste, not ArtifactEditor fork)
+astral.standards.dry-and-focused-functions | B | | `AdminSessionResumePaste.tsx` — non-OK JSON/`HTTP` handling duplicated in `handleSave` vs `handleOpenHtml`; plan ⚠️ defers extract under in-scope-only
+astral.layers.ui-config-driven-business-logic | A | | Parse payload sent as-is; sections-only structure; no React section-id or experience field lists
+astral.standards.in-scope-only | A | | Product delta is one page file; no backend `src/ui/api|core|data|utils` diff
+
+## Column diff vs plan stage
+astral.standards.dry-and-focused-functions | Joan A (plan: inline mirror intentional) | Radia B (two-call-site duplicate remains; bounded and documented)
+
+## Frame diff
+(none)
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+- **Plan fidelity:** `AdminSessionResumePaste.tsx` matches Stage 1 steps 1–7 (handler body, disabled props, button row, intro copy); build stub self-checks (no backend stat, no `session_resume/save`, no stale intro line) align with AC7/AC8.
+- **Estimate footprint:** Confirm **1** — one-page product change plus Betty’s manifest/tests/bible on the publish ref; fits the ticket.
+- **Test carry:** Three-dot diff includes `tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx` (+7 cases) and `docs/test-bible/frontend/pages.md` — expected `qa-child` / `merge-tests` for this child, not sibling product scope.
+- **UAT remainder:** AC3–AC5 (DB `current=1`, layout/accent, experience deep-equal) remain manual/UAT per Boundaries; component tests correctly cover AC1/2/6/8 only.
+- **Canon Scope observation:** `patt.artifact.ui-consistency` frontmatter still **draft** in `canon/directives/active`; reuse matches Implementation §5 + Exception 3 — same non-blocking note Joan left at plan time.
+- **Corpus note:** Joan plan artifact pinned `bd68954dc854ca80fca1fc391821dff9ff288a7a`; review corpus tip `e1f2699…` (clean). No change to the five frozen directives’ substance at review time.
+
+## What's solid
+- Operative save contract: single PUT, sections-only `resume_structure`, passthrough `base_resume`, success/error toasts + inline error on failure, `lastParse` retained (AC6).
+- Busy gating: fourth button, `Saving…`, all four buttons disabled in flight; tests exercise Parse/Open HTML in-flight disables.
+- Scope gate honored for product code; backend reuse matches parent epic intent.
+
+## Recommended actions (downstream only — not executed in ASK mode)
+- **resolve-child:** No canon fix required; optional **B→A** only if Hedy extracts a tiny shared `readApiError(r)` helper in the same file without touching `handleParse` — not required for PROCEED.
+- **Chuckles:** Append this artifact; post slim upshot `--as radia`; move **Tests Passed → Review Posted**; route Hedy **resolve-child** then UT for AC3–5.
+
+context_tokens≈24000
