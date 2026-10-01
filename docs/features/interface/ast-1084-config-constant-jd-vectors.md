@@ -472,3 +472,98 @@ No other files. Do not import or reference the new constant from core/UI/data in
 - **fix-now:** none.
 - **discuss (stragglers):** acknowledged — `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` were Joan-Excluded against plan Files Changed `{utils}` but appear on the three-dot diff once plan + Betty test-tree landed. All three scored **conforms** in Radia's review; no product or plan change.
 - **src:** no change this pass (constant already matches Stage 1 @ `29d55902`).
+
+## Bug: AST-1910 — Forbid X grade for Quality Check in evaluate_jd (QC hydrate error)
+
+Fix child of orphaned mini-parent AST-1898 (`ftr/AST-1898-evaluate-jd-qc-forbid-x`). Susan's decision: **option (b)**. Forbid `X` for QC, so the model grades **F** when a JD is too thin. QC `grade_descriptions` stay A/B/C/F, and hydrate stays strict (no X→F mapping in code). This block patches only that delta. It does not reopen AST-1084's Stage 1.
+
+### As-is
+
+The evaluate_jd model grades the embedded QC / Quality Check vector `X` (segment `QCX0`). QC's `grade_descriptions` (Stage 1 above) have A/B/C/F rows only, so `_lookup_rubric_reason_for_grade` (`src/core/consult.py`) raises `No rubric description for vector 'Quality Check' grade X`. Every job in the batch errors with `ERROR_EVALUATE_JD [hydrate: …]` (Abrams batch `evaluate_jd-3aebf350-…`: 9/9 errors).
+
+### To-be
+
+The model never emits `X` for QC. When a JD is too thin to analyze, it emits QC **F** with confidence 1–5 (for example `QCF5`), and hydrate resolves F's existing description. Every other vector keeps the "use X0 when silent" rule.
+
+### Repro
+
+Data-shape fixture (no DB seed needed). Hydrate an evaluate_jd grade list containing `{"vector": "Quality Check", "grade": "X", "confidence": 0}` against `list(EMBEDDED_EVALUATE_JD_CRITERIA)`:
+
+```python
+from src.core.consult import _lookup_rubric_reason_for_grade
+from src.utils.config import EMBEDDED_EVALUATE_JD_CRITERIA
+_lookup_rubric_reason_for_grade(list(EMBEDDED_EVALUATE_JD_CRITERIA), "Quality Check", "X")
+# ValueError: No rubric description for vector 'Quality Check' grade X
+```
+
+That raise is **correct and stays**. The defect is upstream: the prompt tells the model to produce `X`. Live repro is any evaluate_jd batch where the model judges a JD silent or thin and so emits `QCX0`.
+
+### Root cause
+
+Every instruction the model sees says `X0` is always valid for a silent vector, and nothing names QC as an exception:
+
+1. **`data/admin/agent_task.json`, row `task_key: "evaluate_jd"`, `cache_prompt`**, in two places:
+   - STEP 3: `Confirm every rubric vector code appears exactly once; use X0 when silent — never omit a code.`
+   - `## GRADE SET COMPLETENESS (AST-1154)` paragraph: `When the source is silent, emit {code}X0 — never skip the segment.`
+2. **`src/utils/config.py` `_ENCODED_GRADE_SET_COMPLETENESS`** (~L4428). It is appended to every `grades_encoded*` `payload_instructions` (evaluate_jd uses `output_type: "grades_encoded"`, ~L672) and says `emit {code}X0` / `use X with confidence 0 when the source is silent`. It is shared by every encoded task.
+3. **`src/utils/config.py` `EMBEDDED_EVALUATE_JD_CRITERIA` QC `content`** (~L2462). This is what the model sees for QC via `{$RUBRIC_VECTORS}`. It lists A/B/C/F but never says X is off-limits, so the general X0 rule fills the gap.
+
+QC's own F row already means "not enough information to perform job fit analysis". The model just isn't told to use it instead of X.
+
+**Runtime reach (confirmed):**
+
+- **QC content:** `rubric_criteria_for_task` (`src/core/candidate.py` ~L1519) calls `_merge_embedded_evaluate_jd_criteria` **when criteria are read**, and the embedded copy wins on code. Editing the constant takes effect on deploy, with no DB sync or rubric re-save.
+- **Task prompt:** `REPO_ADMIN_JSON_CONFIG` (`config.py` ~L4391) is explicit: *"Server start does not apply these files (AST-1455)."* The only file-to-DB path is `revert_repo_admin_json_table("agent_task")` (`src/core/repo_admin_json.py`), reached through `POST /api/admin/repo_json/revert/agent_task` (the **Revert to file** action in `RepoJsonDivergenceBanner.tsx`). It reapplies **the whole `agent_task` table** from the file. Committing the JSON edit alone does **not** change the live prompt.
+
+### Proposed change
+
+Prompt and rubric text only, in two files. Hydrate, decode, and validation code are untouched.
+
+**1. `src/utils/config.py`, `EMBEDDED_EVALUATE_JD_CRITERIA[0]` (QC) `content`.** Insert one line **between** the header line and the `A = …` line:
+
+```python
+        "content": (
+            "Quality Check — is this enough of a JD to analyze?\n"
+            "Never grade Quality Check X — X is not a valid grade for this vector. If there is not enough to analyze, grade it F (confidence 1–5, never 0).\n"
+            "A = This is a valid job description …\n"
+            # B / C / F lines unchanged
+        ),
+```
+
+- **Placement constraint:** the line must go **before** the A row. `rubric_text.parse_trailing_grade_table_lines` reads the trailing block of grade lines, and hydrate falls back to it when `grade_descriptions` has no match (`consult.py` L300–306). A line after F would break that trailing block.
+- **Wording constraint:** the line must **not** begin with a grade letter followed by `=`, `==`, or `:`. `_GRADE_LINE` is `^([ABCDEFX])\s*(?:==|=|:)` (case-insensitive), so a line like `X = not valid` would be parsed as an X description and quietly defeat hydrate's strictness. Starting with "Never" is safe.
+- `grade_descriptions` is unchanged: still exactly A/B/C/F, with byte-identical descriptions. GC is unchanged.
+
+**2. `data/admin/agent_task.json`, row `task_key: "evaluate_jd"`, `cache_prompt` only.** Make two in-string appends and leave the existing text otherwise intact:
+
+- STEP 3: after `use X0 when silent — never omit a code.` append
+  ` Exception: QC (Quality Check) is never X — if the job description is too thin to analyze, grade QC F with confidence 1–5 (never QCX0, never QCF0).`
+- GRADE SET COMPLETENESS paragraph: after `When the source is silent, emit {code}X0 — never skip the segment.` append
+  ` The one exception is QC (Quality Check): never emit QCX — grade it F when there is not enough to analyze.`
+
+Edit by script: `json.load`, then replace the two substrings in that row's `cache_prompt`, then `json.dump(rows, f, indent=2, ensure_ascii=True)` plus a trailing `"\n"`. This round-trip is verified byte-identical on the current file. `git diff` must show exactly one changed line (that row's `cache_prompt`). Do not touch `updated_at`, other columns, or other rows. Assert that each target substring occurs exactly once before replacing.
+
+**Why "confidence 1–5, never 0" is spelled out:** `src/core/agent.py` (L188 and L350) rejects any non-X grade with confidence 0. If the model swaps `QCX0` for `QCF0` out of habit, every job still errors, just with a different message. The instruction has to close that path too.
+
+**3. `_ENCODED_GRADE_SET_COMPLETENESS`: no change (AC 4).** The per-vector rule should win without it. It's stated three times, each next to the thing it governs (the QC rubric line, STEP 3, and the task's own completeness paragraph), and every statement names QC specifically, while the shared block is generic. QC F is also not "inventing a letter grade to fill a gap" in the shared block's sense, because F is QC's defined answer for "not enough information". Changing the shared block would touch every `grades_encoded*` task. If a post-deploy evaluate_jd batch still returns `QCX0`, that is the evidence for a follow-up ticket, not grounds to widen this one.
+
+**4. Deploy step (required to meet AC 2 at runtime).** After this lands on the target environment, an admin runs **Revert to file** for `agent_task` (`POST /api/admin/repo_json/revert/agent_task`). Check `GET /api/admin/repo_json/compare/agent_task` first: revert overwrites **every** `agent_task` row with repo content, so any live-only edits on other rows must be exported or accepted as lost. The QC content change (item 1) needs no admin step.
+
+**5. Tests (Betty's tree, `tests/component/utils/test_config.py` `TestAst1084EvaluateJdCriteria`).** Add an assertion that QC `content` contains the "Never grade Quality Check X" line and that `parse_trailing_grade_table_lines(qc["content"])` still returns grades `["A","B","C","F"]`. Keep `list(by_grade) == ["A","B","C","F"]`. The existing `in`-based content assertions stay green after the insert.
+
+### Blast radius
+
+- **`evaluate_meteorite` (latent, out of scope):** it also merges QC/GC (`candidate.py` L1527 and L1557) and its `cache_prompt` carries the same two X0 lines. Item 1 (the QC rubric line) reaches it automatically and should suppress `QCX` there too, but its task prompt still says X0 with no QC exception. If meteorite batches show the same hydrate error, that is a separate ticket. This one is scoped to the `evaluate_jd` row.
+- **Rubric fingerprint:** QC is not persisted through `sync_rubric_vectors_from_criteria` as a source of truth (the embedded copy wins at read and save merge), so no `rubric_vector` version churn is expected from the content edit.
+- **Revert to file** rewrites the whole `agent_task` table (see item 4).
+- **Tests that assume the current text:** `TestAst1084EvaluateJdCriteria` uses substring checks, so it is unaffected. No test pins `evaluate_jd` `cache_prompt` text verbatim as far as this pass saw. Betty confirms at fix-board.
+- **Not touched:** `consult.py` hydrate, `agent.py` decode/validation, `rubric_text.py`, GC, `_ENCODED_GRADE_SET_COMPLETENESS`, and other `agent_task` rows.
+
+### What must still hold
+
+- QC `grade_descriptions` are exactly A/B/C/F with unchanged descriptions (AST-1084 Stage 1 and AC). GC is unchanged (A/B/C/D/F/X).
+- `_lookup_rubric_reason_for_grade` still raises on an unknown grade, including QC X. There is no X→F mapping anywhere in code.
+- `parse_trailing_grade_table_lines(qc["content"])` still yields A/B/C/F, so the new line is not parsed as a grade row.
+- Every non-QC vector keeps "use X0 when silent" in both the evaluate_jd prompt and the shared completeness block.
+- `EMBEDDED_EVALUATE_JD_CRITERIA` stays the single definition site, appended by `_merge_embedded_evaluate_jd_criteria` with the embedded copy winning on code (AST-1085).
+- If QC comes back **F on every job** after the fix, JD content is likely arriving empty upstream. That is a separate bug (AST-1898 Boundaries), not a regression of this fix.
