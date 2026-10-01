@@ -3142,6 +3142,8 @@ Manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1880.
 
 > Supersedes the AST-1880 `AdminManageCandidates` row above (no fixed per-server fields; the column red is closed).
 
+> **AST-1920:** the UI half below (stored-only fields, "Add API key for…" picker, `(new)` rows, Remove) is superseded. The Edit modal shows one key field per catalog server again; see § AST-1920. The array storage and PUT contract stay.
+
 `test_AdminManageCandidates.test.tsx`: the fixture `api_keys` is `[{server, label}]` (Kimi, OpenRouter). A file-local `installBaseApiMocks` wrapper serves `/api/admin/agents/models`; the catalog has two DeepSeek models, so the picker de-dupes by server.
 - **Main CRUD test:** fields appear only for stored entries (Clear on each). The picker lists servers without a row, in catalog order. Adding DeepSeek gives a "(new)" field (no Clear; Show; typed key). Kimi Clear goes through the confirm dialog. The PUT carries `api_keys: [{kimi, ""}, {deepseek, "sk-ds-new"}]`.
 - **AST-1901: API Key column joins the stored entries' labels.**
@@ -3238,3 +3240,24 @@ git diff --stat origin/ftr/AST-1875-runtime-auto-thread-cap...HEAD -- src/   # e
 **Pass criterion:** 86/86 green and both commands as stated. `test_AdminSessionResumePaste.test.tsx` (AST-1908; product AST-1899 not on dev) is red on this tip pre-existing — out of scope.
 
 **Bible shasum (publish tip):** fill after `merge-tests` — `docs/test-bible/frontend/pages.md`
+
+### AST-1920 · AST-1851 (bug: Manage Candidate key fields for every server)
+
+`AdminManageCandidates.tsx` Edit shows one API key field per server in `/api/admin/agents/models`, deduped by server, in catalog order. A server with a stored `api_keys` entry shows `(set — leave blank to keep current)` with Show and Clear; a server without one shows `(not set)` with Show only. A stored entry whose server isn't in the catalog is appended after the catalog rows and stays clearable. There is no picker and no Remove. Save sends only changed rows as `[{server, key}]` in row order (`""` = clear a stored entry) and omits `api_keys` when nothing changed. The array storage, PUT contract and list column are unchanged from AST-1901.
+
+| Area | Tests (`test_AdminManageCandidates.test.tsx`) |
+| --- | --- |
+| Rewritten (AST-1901 picker assertions removed) | main CRUD test: the four catalog-order labels (Kimi and OpenRouter set), 2 Clear buttons, no picker or Remove. DeepSeek `(not set)` gets Show plus a typed key, Kimi gets Clear, and the PUT carries `[{kimi, ""}, {deepseek, "sk-ds-new"}]` |
+| Repro (bug-repro) | **AST-1920: no keys shows Not set and a (not set) field for every catalog server…** (4 fields, 4 Show, no Clear, Save omits `api_keys`) · **AST-1920: a stored key for a server not in the catalog stays visible and clearable…** (5th row `retired_srv`; a whitespace-only Anthropic input isn't sent; PUT `[{retired_srv, ""}]`) |
+| Retired | **AST-1901: no keys … full picker**, **AST-1901: Remove drops an unsaved row …** |
+
+## QA test manifest (AST-1920)
+
+**Bug-repro (qa-fix):** the main CRUD test and both AST-1920 tests are red on the pre-fix tree (`origin/sub/AST-1851/AST-1920-manage-candidate-key-fields` @ `098705380`): only stored entries render (2 fields, or 0 with no keys). test-fix must see all 3 flip green, with the rest of the file still green.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```
+
+**Pass criterion:** the whole file green.
