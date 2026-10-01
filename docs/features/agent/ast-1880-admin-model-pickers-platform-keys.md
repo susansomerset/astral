@@ -480,3 +480,16 @@ All in `src/ui/frontend/src/pages/AdminTaskPrompts.tsx`. **No backend change**: 
 - Parent AC 2: `rg -n -i "kimi|moonshot|openrouter|deepseek" src/ --glob '!src/utils/config.py'` stays empty.
 - Parent AC 12: Manage Agents' pickers behave exactly as before.
 - Task save without a model change sends the same single task `PUT` as today.
+
+
+### Joan fix-board — AST-1909
+
+```
+[board-joan]  CANON: OK
+```
+
+**Rationale:** The patch is frontend-only in `AdminTaskPrompts.tsx`: it reuses AST-1880’s catalog route and agent `PUT`, writes the task agent’s `model_id` + `brain_setting` (per-agent model routing from parent **Model → server catalog routing**), and keeps options off `GET /api/admin/agents/models` with no vendor literals (parent AC 2). That extends catalog-driven admin behavior; it does not conflict with in-force logging statutes (no new API routes or completion paths) or config-as-source-of-truth. The task-level vs agent-level storage question is settled in the patch from the parent definition, not an open canon carve-out.
+
+```
+AST-1909 board-joan done — CANON: OK.
+```
