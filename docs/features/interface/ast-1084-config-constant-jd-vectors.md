@@ -577,3 +577,79 @@ Edit by script: `json.load`, then replace the two substrings in that row's `cach
 ```text
 [board-joan]  CANON: OK
 ```
+
+### Radia review-fix — AST-1910
+
+[code-rubric] CLEAN
+
+**Ticket:** AST-1910  
+**Publish ref:** `2bc48e66df30dbbd2298adb996f7eb9dc0b88902` (`origin/sub/AST-1898/AST-1910-forbid-qc-x-grade`)  
+**Diff reviewed:** `origin/ftr/AST-1898-evaluate-jd-qc-forbid-x...origin/sub/AST-1898/AST-1910-forbid-qc-x-grade`  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on this ref)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen **Canon Scope** on AST-1910 Linear Description: **none** (same fix-lane pattern as AST-1839 / AST-1847). No directive ids to score; roll-up from canon grades is vacuously clean.
+
+**Board overlap (informational only — not on frozen list):**
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| `astral.seed.agent-tables-in-repo-json` | A | | `evaluate_jd` `cache_prompt` edited in repo JSON + AST-756 byte-twin; deploy path documented (Revert to file) |
+| `astral.config.config-source-of-truth` | A | | QC rule line in `EMBEDDED_EVALUATE_JD_CRITERIA` literal block |
+| `astral.agent.confidence-bounds` | A | | Prompt/rubric text closes QCF0 / requires F with confidence 1–5 |
+| `astral.agent.grade-vector-validation` | A | | No `src/core/**` change; global `{A…X}` validation unchanged |
+
+## Column diff vs plan stage
+
+`no plan-stage validate-plan scores attached` — fix-board Joan `[board-joan] CANON: OK`; Radia aligns with board triage, not re-litigating F2.
+
+## Frame diff
+
+- [ ] **Acceptance criteria — runtime prompt:** AC 2 for live `agent_task` DB still requires admin **Revert to file** after deploy (plan item 4); engineer/UAT checklist only — product on tip is correct in repo JSON.
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** not applicable — clean board opt-out (Betty `TESTS: REVISE` → test work split to sibling **AST-1911**; qa-fix did not run; no `[bug-repro]` on this tip by design).
+- **`## What must still hold`:** OK — traced on product diff (`1cacc0635` + doc commits):
+  - QC `grade_descriptions` remain exactly A/B/C/F (unchanged in diff; verified at tip).
+  - `_lookup_rubric_reason_for_grade(…, "Quality Check", "X")` still raises (no hydrate/decode change).
+  - `parse_trailing_grade_table_lines(qc["content"])` still yields A/B/C/F only; new line is not parsed as a grade row (verified at tip).
+  - Non-QC vectors: evaluate_jd prompt retains universal X0 language plus QC-specific exceptions; `_ENCODED_GRADE_SET_COMPLETENESS` unchanged in diff.
+  - `EMBEDDED_EVALUATE_JD_CRITERIA` remains the embedded SSOT for QC content (single added prose line + placement comment).
+
+## Findings
+
+**fix-now:** none  
+
+**discuss:** none  
+
+**advisory:**
+- **Product footprint vs Linear scope:** Description still lists `tests/component/utils/test_config.py` under this ticket; Ada’s Code Complete / test-fix threads document **no `tests/` on this ref** — coverage lands on gap sibling **AST-1911** (same pattern as AST-1839 / AST-1846). Not a defect on this tip.
+- **Pre-existing ftr failures:** Ada’s test-fix comment: **77** failures, **identical** on `origin/ftr/AST-1898-evaluate-jd-qc-forbid-x` vs this sub tip; **0 new**. `TestAst1084EvaluateJdCriteria` passes. Do not treat the 77 as regressions from AST-1910.
+- **Three-dot diff** includes plan-fix / fix-board / scope-amendment **docs** (+105 lines in `ast-1084-config-constant-jd-vectors.md`); **product delta** is four files: `config.py` (QC content), `data/admin/agent_task.json` + `docs/uat-fixtures/AST-756/expected-agent_task.json` (one `cache_prompt` line each), matching plan items 1, 2, and 2a.
+- **Canon Scope process:** No frozen list on the bug ticket — note for Archie if fix children should carry explicit Discussion locks; not **ESCALATE** (Joan board OK; no off-list statute violation on shipped product).
+
+## What’s solid
+
+- QC “Never grade Quality Check X … grade F (confidence 1–5, never 0)” inserted **before** the A row with a safe non–`X=` prefix (plan placement constraints).
+- `evaluate_jd` `cache_prompt` gets both STEP 3 and GRADE SET COMPLETENESS QC exceptions while preserving X0 for other vectors.
+- AST-756 fixture mirrors the admin JSON edit on the same row (fix-board scope amendment).
+- Boundaries respected: no X→F mapping in code, no `_ENCODED_GRADE_SET_COMPLETENESS` widening, no GC change.
+
+## Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship product on this ref) | 0 fix-now · 0 discuss · 0 advisory blocking |
+| Chuckles routing | Clean → **Review Posted** → **User Testing** (resolve-child skipped). Mini-parent **with ftr** (AST-1898 In Progress): merge/stack via `ftr/AST-1898-evaluate-jd-qc-forbid-x`, not straight-to-`dev` finish-up until parent lane says so. Test/bible gap stays **AST-1911**. |
+
+## Chuckles disposition
+
+**PROCEED** — product matches `## Bug: AST-1910` plan-fix; board canon OK; what-must-still-hold intact; `[bug-repro]` N/A by opt-out.
+
+
+---
+
+[code-rubric] PROCEED (Commit: 2bc48e66) QC forbids X prompt fix
