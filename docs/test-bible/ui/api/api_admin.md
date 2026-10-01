@@ -1048,3 +1048,16 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** narrowed pytest green (145) plus narrowed Vitest green. This is not the zero-arg harness. Vitest has exactly **one** red on the publish tip: the ManageCandidates API Key column test (the product bug above), which turns green when the renderer shows the labels. The full `tests/component` baseline diff against the pre-AST-1880 product tip shows zero new failures, apart from the renamed pre-existing `test_update_merges_data_and_state` and one timing flake (`test_intake.py::…::test_background_initiate_failure_writes_assistant_error`, green 3/3 alone and 2/2 as a file).
+
+### AST-1916 · AST-1875 (GET/POST /scheduler/auto_thread_cap)
+
+**Primary manifest:** [`../../core/dispatcher.md`](../../core/dispatcher.md) § AST-1916. Real dispatcher getter/setter behind the routes (no stubs), so GET-after-POST is end-to-end; class autouse `_reset_override` restores `src.core.dispatcher._auto_thread_cap_override`.
+
+| AC | Route | Component tests |
+| --- | --- | --- |
+| GET payload `{max_auto_threads, default, min, max}` | `GET /api/admin/scheduler/auto_thread_cap` | `tests/component/ui/api/test_api_admin.py::TestAst1916AutoThreadCapApi::test_get_reports_default_and_bounds` |
+| 3 POST 1 / 100 → 200 + payload, GET reflects | `POST` same path | `::TestAst1916AutoThreadCapApi::test_post_in_range_returns_payload_and_get_reflects` |
+| 3 POST 0 / 101 / `"abc"` / 2.5 / missing key / no body → 400 `error`, prior cap kept | same | `::TestAst1916AutoThreadCapApi::test_post_rejects_and_keeps_prior_cap` |
+| 4 no session 401, non-admin 403 (both verbs), cap untouched | both | `::TestAst1916AutoThreadCapApi::test_requires_admin` |
+
+**Broken / obsolete:** none. `TestDispatchTasks::test_scheduler_and_run_controls` (sibling `/scheduler/*` routes) unchanged.
