@@ -70,7 +70,7 @@ Parent UAT on **`origin/ftr/AST-436-quickie-bugs`** surfaced gaps when manifests
 | --- | --- | --- | --- |
 | Candidate Profile | `src/ui/frontend/src/pages/CandidateProfile.tsx` | `tests/component/frontend/pages/test_CandidateProfile.test.tsx` — must render page + open signature-image tab | `/api/shapes/candidates`, `/api/ui_config`, `/api/candidates/{id}`, `/api/state_ui_manifest` (reject OK) |
 | Execution History | `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` | `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` — include date blur / clear behavior per **§6c** | `/api/candidates`, `/api/admin/dispatch_ledger`, ledger logs as needed |
-| Scheduled Actions | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` | candidates, dispatch tasks, thread status |
+| Scheduled Actions | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx`; header cap dropdown in `test_AdminScheduledActions_AST1917.test.tsx` | candidates, dispatch tasks, thread status, `/api/admin/scheduler/auto_thread_cap` (unmocked → caught, dropdown hidden) |
 | Signature image tab wiring | `TabbedTextArea.tsx` + `CandidateProfile.tsx` | **Both** `test_TabbedTextArea.test.tsx` (panel slot) **and** `test_CandidateProfile.test.tsx` (routed page) | see Candidate Profile row |
 
 ---
@@ -3200,3 +3200,41 @@ grep -n "does not save to the database" src/ui/frontend/src/pages/AdminSessionRe
 ```
 
 **Pass criterion:** 14/14 green and all three commands print nothing.
+
+### AST-1917 · AST-1875 (Scheduled Actions header Max AUTO threads dropdown)
+
+**Parent:** [AST-1875](https://linear.app/astralcareermatch/issue/AST-1875). **Publish:** `origin/sub/AST-1875/AST-1917-header-dropdown`. `AdminScheduledActions.tsx` loads `GET /api/admin/scheduler/auto_thread_cap` once on mount (failure → dropdown hidden, no toast) and renders a "Max AUTO threads" `<select>` with options `min..max` from the payload. A pick POSTs `{"max_auto_threads": <number>}` optimistically; success shows the server-returned value, failure reverts and toasts. Backend contract: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1916.
+
+| AC | Source | Component tests (`tests/component/frontend/pages/test_AdminScheduledActions_AST1917.test.tsx`) |
+| --- | --- | --- |
+| 1 default pre-selected · 2 exactly 1..100 | page mount load + `<select>` | **`AC1/AC2: shows the live cap pre-selected with exactly 1..100 options`** |
+| 3 bounds from API, not literals | `<select>` options | **`AC3: option range follows the API bounds, not page literals`** (2..6 payload) + grep (manifest item 2) |
+| POST body is a JSON number; server value wins | `handleAutoThreadCapChange` | **`POSTs the pick as a JSON number and shows the server-returned value`** |
+| 400 → revert + API error toast · throw → revert + fallback toast | same | **`reverts to the prior cap and toasts the API error on a 400`**, **`reverts and shows the fallback toast when the POST throws`** |
+| load failure hides dropdown silently (non-ok / throw) | mount effect | **`hides the dropdown silently when the cap load fails`** (2 cases) |
+
+**Existing coverage (unchanged, must stay green):** `test_AdminScheduledActions.test.tsx` + `test_AdminScheduledActions_AST1104.test.tsx` — they don't mock the cap route; `installBaseApiMocks` throws `Unhandled api`, the page catches it, the dropdown stays hidden. **Broken / obsolete:** none. **Integration:** none.
+
+## QA test manifest (AST-1917)
+
+1. **Page Vitest (§6c routed page, required, green):** new file (7) + both existing Scheduled Actions files (79).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1917.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1104.test.tsx
+```
+
+Expect **86 passed**.
+
+2. **AC3 grep + scope:**
+
+```bash
+grep -nE '\b100\b' src/ui/frontend/src/pages/AdminScheduledActions.tsx    # expect nothing
+git diff --stat origin/ftr/AST-1875-runtime-auto-thread-cap...HEAD -- src/   # expect only AdminScheduledActions.tsx
+```
+
+**Pass criterion:** 86/86 green and both commands as stated. `test_AdminSessionResumePaste.test.tsx` (AST-1908; product AST-1899 not on dev) is red on this tip pre-existing — out of scope.
+
+**Bible shasum (publish tip):** fill after `merge-tests` — `docs/test-bible/frontend/pages.md`
