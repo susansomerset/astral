@@ -16,8 +16,8 @@ interface Candidate {
   last?: string
   full?: string
   pronouns?: string
-  /** One entry per catalog server, keyed by server id (AST-1880) — never the key itself. */
-  api_keys?: Record<string, { label: string; set: boolean }>
+  /** Stored keys only, in array order (AST-1901): server id + catalog label — never the key itself. */
+  api_keys?: { server: string; label: string }[]
   [key: string]: unknown
 }
 
@@ -70,7 +70,7 @@ function flattenCandidate(c: Candidate): Candidate & Record<string, unknown> {
     last: c.last ?? "",
     contact_email: contact.contact_email ?? "",
     slack_username: typeof contact.slack_username === "string" ? contact.slack_username : "",
-    api_key_status: Object.values(c.api_keys ?? {}).filter(k => k.set).map(k => k.label).join(", ") || "Not set",
+    api_key_status: (c.api_keys ?? []).map(k => k.label).join(", ") || "Not set",
   }
 }
 
@@ -154,8 +154,11 @@ export default function ManageCandidates() {
     first: "", last: "", contact_email: "", pronouns: "", state: "",
     slack_user_id: "", slack_channel_id: "",
   })
-  // Per-server key edits, keyed by server id: typed value, show toggle, pending clear.
+  // Key edits keyed by server id: typed value, show toggle, pending clear (stored entries) / added rows.
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({})
+  const [addedServers, setAddedServers] = useState<string[]>([])
+  // Server catalog for "Add API key for…", derived from /api/admin/agents/models (no literals).
+  const [keyServers, setKeyServers] = useState<{ server: string; label: string }[]>([])
   const [unboundSlackUsers, setUnboundSlackUsers] = useState<UnboundSlackUser[]>([])
   const [slackChannels, setSlackChannels] = useState<SlackChannelOption[]>([])
   const [channelMembershipWarn, setChannelMembershipWarn] = useState<string | null>(null)
@@ -304,6 +307,12 @@ export default function ManageCandidates() {
   useEffect(() => {
     api("/api/shapes/candidates").then(r => r.json()).then(s => setShapes(s))
     api("/api/candidates/states").then(r => r.json()).then(s => setValidStates(Array.isArray(s) ? s : []))
+    // One picker option per server, catalog order (several models can share a server).
+    api("/api/admin/agents/models").then(r => r.json()).then((m: Record<string, { order: number; server_id: string; server_label: string }>) => {
+      const seen = new Set<string>()
+      setKeyServers(Object.values(m).sort((a, b) => a.order - b.order).flatMap(x =>
+        seen.has(x.server_id) ? [] : (seen.add(x.server_id), [{ server: x.server_id, label: x.server_label }])))
+    })
     loadAll()
     loadDispatchTaskCounts()
   }, [loadAll, loadDispatchTaskCounts])
@@ -374,6 +383,7 @@ export default function ManageCandidates() {
     setKeyInputs({})
     setShowKeys({})
     setClearKeys({})
+    setAddedServers([])
     setChannelMembershipWarn(null)
     setEditOpen(true)
     void loadUnboundSlackUsers()
@@ -422,13 +432,13 @@ export default function ManageCandidates() {
       contact,
       state,
     }
-    // Only servers that changed: typed key = set/replace, "" = clear; omit when nothing changed.
-    const apiKeys: Record<string, string> = {}
-    for (const sid of Object.keys(editTarget.api_keys ?? {})) {
-      if (clearKeys[sid]) apiKeys[sid] = ""
-      else if ((keyInputs[sid] ?? "").trim()) apiKeys[sid] = keyInputs[sid].trim()
+    // Only rows that changed: typed key = set/replace, "" = remove a stored entry; omit when nothing changed.
+    const apiKeys: { server: string; key: string }[] = []
+    for (const sid of [...(editTarget.api_keys ?? []).map(k => k.server), ...addedServers]) {
+      if (clearKeys[sid]) apiKeys.push({ server: sid, key: "" })
+      else if ((keyInputs[sid] ?? "").trim()) apiKeys.push({ server: sid, key: keyInputs[sid].trim() })
     }
-    if (Object.keys(apiKeys).length) payload.api_keys = apiKeys
+    if (apiKeys.length) payload.api_keys = apiKeys
     const url = `/api/candidates/${editTarget.astral_candidate_id}/data`
     const putOpts = {
       method: "PUT",
@@ -592,7 +602,7 @@ export default function ManageCandidates() {
     if (col.key === "api_key_status") {
       return {
         ...col,
-        // Value is the joined labels of servers with a key set (AST-1880), or "Not set".
+        // Value is the joined labels of servers with a stored key (AST-1901), or "Not set".
         render: (val: unknown) => {
           const isSet = typeof val === "string" && val !== "" && val !== "Not set"
           return (
@@ -669,6 +679,13 @@ export default function ManageCandidates() {
       {channelMembershipWarn}
     </div>
   ) : null
+
+  // Stored entries first (array order), then rows added this edit — at most one row per server.
+  const keyRows = [
+    ...(editTarget?.api_keys ?? []).map(k => ({ ...k, stored: true })),
+    ...addedServers.map(sid => ({ server: sid, label: keyServers.find(s => s.server === sid)?.label ?? sid, stored: false })),
+  ]
+  const addableServers = keyServers.filter(s => !keyRows.some(r => r.server === s.server))
 
   return (
     <>
@@ -841,11 +858,11 @@ export default function ManageCandidates() {
             {validStates.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        {/* One key field per catalog server (AST-1880); labels come from the server, not literals. */}
-        {Object.entries(editTarget?.api_keys ?? {}).map(([sid, k]) => (
+        {/* One key field per stored entry + added row (AST-1901); labels come from the server, not literals. */}
+        {keyRows.map(({ server: sid, ...k }) => (
           <div className="dep-field" key={sid}>
             <label className="dep-field-label">
-              {k.label} API key {k.set ? "(set — leave blank to keep current)" : "(not set)"}
+              {k.label} API key {k.stored ? "(set — leave blank to keep current)" : "(new)"}
             </label>
             <div style={{ display: "flex", gap: 6 }}>
               <input
@@ -863,7 +880,7 @@ export default function ManageCandidates() {
               >
                 {showKeys[sid] ? "Hide" : "Show"}
               </button>
-              {k.set && !keyInputs[sid] && !clearKeys[sid] && (
+              {k.stored && !keyInputs[sid] && !clearKeys[sid] && (
                 <button
                   type="button"
                   className="btn danger"
@@ -882,9 +899,35 @@ export default function ManageCandidates() {
                   Clear
                 </button>
               )}
+              {/* Unsaved row: drop it (and any typed key) and return the server to the picker. */}
+              {!k.stored && (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => {
+                    setAddedServers(p => p.filter(s => s !== sid))
+                    setKeyInputs(p => { const n = { ...p }; delete n[sid]; return n })
+                  }}
+                >
+                  Remove
+                </button>
+              )}
             </div>
           </div>
         ))}
+        {/* Only servers without a row are offered, so the form can't produce a duplicate entry. */}
+        {addableServers.length > 0 && (
+          <div className="dep-field">
+            <select
+              className="dep-input"
+              value=""
+              onChange={e => { const sid = e.target.value; if (sid) setAddedServers(p => [...p, sid]) }}
+            >
+              <option value="">Add API key for…</option>
+              {addableServers.map(s => <option key={s.server} value={s.server}>{s.label}</option>)}
+            </select>
+          </div>
+        )}
       </Modal>
 
       <Toast message={toast} onDone={clearToast} />

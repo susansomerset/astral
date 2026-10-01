@@ -958,3 +958,71 @@ No active directive requires amending canon to record AST-1904 precedence or tes
 
 context_tokens≈14000
 ```
+
+### Radia review-fix — AST-1905
+
+```
+[code-rubric]
+**Ticket:** AST-1905
+**Publish ref:** 5246ff91f9f395b2420959d9bee092e4491691d7 (`origin/sub/AST-1902/AST-1905-cover-saved-contact-line-tests`)
+**Diff base:** `origin/ftr/AST-1902-candidate-contact-detail-truncated...origin/sub/AST-1902/AST-1905-cover-saved-contact-line-tests` (11 files; **AST-1905-owned footprint** ≈ `test_builder.py` + `builder.md` / `candidate.md` § AST-1014 rows + `## Bug: AST-1905` plan block — no `src/**`)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish tip; no `docs/canon-index.md` on ref)
+**Overall:** CLEAN
+
+## Canon scores
+
+(no rows) — AST-1905 has no locked `## Canon Scope` / frozen directive ids; Joan `[board-joan] CANON: OK` records *Frozen Canon Scope on AST-1902 / AST-1905: none cited*. Delivery is tests + bible only (Betty/qa-fix path); not scored against off-list ids.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (`validate-plan` fix-mode skipped; fix-board only)
+
+## Frame diff
+
+(none)
+
+### Fix-specific checks
+
+- **[bug-repro]** **OK** — `TestAst1014BuilderContact::test_saved_multi_part_contact_line_survives_email_only_blob` (Betty manifest + qa-fix thread; bible item 1):
+  - Pins **concrete** multi-part `saved` string (NBSP `•` separators) vs email-only blob `{"contact_email": "hire@example.com"}`.
+  - **`assert render["candidate_contact_detail"] == saved`** (exact equality) — would **fail** pre-fix (`"hire@example.com"`); not a substring/tautology on email alone.
+  - **`assert render["candidate_name"] == "Ada Lovelace"`** locks AST-1904 name-column overwrite still running with a saved line present.
+  - Betty/Ada documented red→green against `origin/dev` `builder.py` with only this case failing — matches repro-first intent.
+  - **advisory (tagging):** test body comments say `AST-1904 bug-repro`, not a first-line `[bug-repro]` marker in the file; gate is carried in `docs/test-bible/core/builder.md` manifest. Not a fix-now if your machinery reads the bible manifest (Betty’s qa-fix comment names the node explicitly).
+- **`## What must still hold`** — **OK**
+  - No `src/` in three-dot diff (AC3).
+  - Repointed `TestBuilderHelpers` still assert blob-built `"555"` and `reply@example.com` with `candidate_contact_detail=""` (L350–369, L383–386).
+  - `test_whitespace_saved_contact_line_falls_back_to_blob` exact `ada@example.com\u00a0• 555` (AC3 fallback).
+  - `test_apply_contact_uses_full_column_over_first_last` unchanged (still uses default `_resume_blob()` saved line).
+  - Plan verification scope: full `test_builder.py` 192 green on tip with AST-1904 product on ftr (Ada manifest).
+
+## Findings
+
+**discuss**
+
+- **origin/tests merge carry (AST-1901) — Chuckles routing:** Tip includes `merge-tests(AST-1905): origin/tests` stacking commit `d3550e7ad` (`test(AST-1901): bug-repro — candidate api_keys JSON array…`) plus bible rows for AST-1901. **Not AST-1905 scope** — product for AST-1901 lives on `origin/ftr/AST-1851-support-openrouter-api-models` only. Affected paths: `tests/component/data/database/test_candidates.py`, `tests/component/ui/api/test_api_candidate.py`, `tests/component/core/test_candidate.py`, `tests/component/ui/frontend/pages/test_AdminManageCandidates.test.tsx`, `docs/test-bible/data/database/candidates.md`, `docs/test-bible/ui/api/api_candidate.md`, `docs/test-bible/frontend/pages.md`, and the AST-1901 table line in `candidate.md` (separate from the AST-1014 cross-ref). Ada’s test-fix comment: many failures in those suites on ftr `src/`; AST-1905 manifest is builder-only and green.
+  - **Default:** Treat Radia/plan fidelity and UAT for **AST-1905** as `test_builder.py` + § AST-1014 bible edits only; do not block 1905 on 1901 carry failures; land/validate 1901 on its own publish ref when that lane runs.
+
+**advisory**
+
+- **sibling test carry:** `review-child` §5.4 expected shape — noted once above; not cross-ticket **fix-now** on 1905 product (there is none).
+- **Estimate footprint:** Estimate **1** matches the owned delta (~28 LOC tests + bible); whole-branch stat is inflated by AST-1901 merge — attribute separately per discuss item.
+
+**fix-now:** (none)
+
+## Notes
+
+- **Plan fidelity (1905-owned):** Matches plan-fix **Proposed change** items 1–6 for builder tests and § AST-1014 bible text/cross-ref; no manifest edit (as planned).
+- **Stacking:** AST-1904 fix on ftr (`7479f320a`) is prerequisite; branch history includes `sync(ftr)` — consistent with gap-sibling design.
+- **Parent shape (Chuckles §8):** Mini-parent AST-1902 with live `ftr` — clean → **Review Posted** → §3h → **User Testing** (`resolve-child` skipped). Pair with already-reviewed AST-1904 product on ftr for end-to-end UAT.
+
+## What’s solid
+
+- Repro test is tight (exact equality + name guard); helper repoints preserve fallback assertions; bible manifest documents red gate and pass criterion.
+
+context_tokens≈10500
+```
+
+```
+[code-rubric] PROCEED (Commit: 5246ff91f) bug-repro plus bible
+```
