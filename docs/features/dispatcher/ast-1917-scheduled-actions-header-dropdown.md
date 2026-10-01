@@ -166,3 +166,39 @@ Proposed resolutions: <2-3 options, or "need guidance">
 ## Estimate
 
 Confirm Chuckles estimate: 1 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1917
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `origin/sub/AST-1875/AST-1917-header-dropdown` @ `e5c8aaac787adf90314285a8b66c1b1149d8633e`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.layers.ui-config-driven-business-logic | A | | |
+| astral.ui.frontend-file-placement | A | | |
+| astral.config.config-source-of-truth | A | | |
+
+## Traceability
+
+AC 1→Stage 1 steps 3+5 (GET `max_auto_threads` binds select; fresh server ⇒ effective equals config default); AC 2→step 5 (`min..max` inclusive step 1 from API); AC 3→steps 5+lint `grep` (no bound literals). Parent AC 3–9 N/A (backend #1). Stage 1→parent Purpose 3, Functional scope 3–4, parent AC 8 UI half.
+
+## Findings
+
+**discuss** — Location: Stage 1 step 3 / Decision (silent GET failure)  
+Child AC 1 fails if the dropdown is absent; hiding the control on GET failure matches `loadThreadStatus` but means a broken cap API looks like “no dropdown” with no toast. Acceptable for build; flag for UAT if Susan wants visible load errors.
+
+**acceptable** — Location: ticket assignee vs validate-plan gate  
+Assignee is implementer (Hedy), not Joan; spawn still requested review — Chuckles should restore assignee after posting upshot per §8.
+
+**acceptable** — Location: plan doc (no `## Self-assessment`)  
+Scope is single-file, one stage; explicit Decisions cover risk (optimistic UI, test mocks). Not `!!-NONE` conf.
+
+**acceptable** — Location: Done-when / Stage 1  
+“Pre-selected to `3`” and “1..100” describe today’s config/API, not TS literals; runtime range stays API-driven.
+
+context_tokens≈42000
