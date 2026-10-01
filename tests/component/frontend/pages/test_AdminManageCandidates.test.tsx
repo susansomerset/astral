@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import ManageCandidates from "../../../../src/ui/frontend/src/pages/AdminManageCandidates"
-import { installBaseApiMocks, renderWithProviders } from "../test-utils"
+import { installBaseApiMocks as installBase, renderWithProviders } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
@@ -12,6 +12,22 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
 }))
 
 const mockedApi = vi.mocked(api)
+
+// AST-1901: "Add API key for…" options come from the models catalog (two DeepSeek models → one server).
+const models = {
+  claude: { order: 0, server_id: "anthropic", server_label: "Anthropic" },
+  "kimi-k2.6": { order: 1, server_id: "kimi", server_label: "Kimi" },
+  "deepseek-v4-pro": { order: 2, server_id: "deepseek", server_label: "DeepSeek" },
+  "deepseek-v4-flash": { order: 3, server_id: "deepseek", server_label: "DeepSeek" },
+  "or-model": { order: 4, server_id: "openrouter", server_label: "OpenRouter" },
+}
+
+/** Every test in this file serves the models catalog the page loads on mount. */
+function installBaseApiMocks(m: typeof mockedApi, handler: (url: string, init?: RequestInit) => unknown) {
+  installBase(m, async (url: string, init?: RequestInit) =>
+    url === "/api/admin/agents/models" ? ({ ok: true, json: async () => models } as Response) : handler(url, init),
+  )
+}
 
 const pronounFieldDef = {
   key: "pronouns",
@@ -43,13 +59,11 @@ const shapes = {
 const candidate = {
   astral_candidate_id: "doe_jane",
   state: "ACTIVE",
-  // AST-1880: one set/not-set entry per catalog server, never the key.
-  api_keys: {
-    anthropic: { label: "Anthropic", set: false },
-    kimi: { label: "Kimi", set: true },
-    openrouter: { label: "OpenRouter", set: true },
-    deepseek: { label: "DeepSeek", set: false },
-  },
+  // AST-1901: stored keys only, in array order — server id + label, never the key.
+  api_keys: [
+    { server: "kimi", label: "Kimi" },
+    { server: "openrouter", label: "OpenRouter" },
+  ],
   first: "Jane",
   last: "Doe",
   pronouns: "she/her",
@@ -64,9 +78,17 @@ function textboxByFieldLabel(container: HTMLElement, label: string) {
   return within(field as HTMLElement).getByRole("textbox")
 }
 
-/** AST-1880 per-server key field (password input until Show). */
+/** Per-server key field (password input until Show). */
 function keyFieldByLabel(container: HTMLElement, label: string) {
   return within(container).getByText(label, { selector: "label.dep-field-label" }).closest(".dep-field") as HTMLElement
+}
+
+/** AST-1901 "Add API key for…" select, and its option labels in order. */
+function addKeyPicker(container: HTMLElement) {
+  return within(container).getByText("Add API key for…", { selector: "option" }).closest("select") as HTMLSelectElement
+}
+function pickerOptions(container: HTMLElement) {
+  return Array.from(addKeyPicker(container).options).map(o => o.textContent)
 }
 
 function comboboxByFieldLabel(container: HTMLElement, label: string) {
@@ -125,13 +147,17 @@ describe("AdminManageCandidates", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Edit" }))
     const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
-    // AST-1880: one field per server; Clear only on servers whose key is set.
+    // AST-1901: a field per stored entry only (no fixed slots); Clear on each stored entry.
     const kimi = keyFieldByLabel(editModal, "Kimi API key (set — leave blank to keep current)")
-    const deepseek = keyFieldByLabel(editModal, "DeepSeek API key (not set)")
     keyFieldByLabel(editModal, "OpenRouter API key (set — leave blank to keep current)")
-    keyFieldByLabel(editModal, "Anthropic API key (not set)")
+    expect(within(editModal).queryByText(/^(DeepSeek|Anthropic) API key/)).not.toBeInTheDocument()
     expect(within(editModal).getAllByRole("button", { name: "Clear" })).toHaveLength(2)
+    // Picker offers only servers without a row, catalog order, one option per server.
+    expect(pickerOptions(editModal)).toEqual(["Add API key for…", "Anthropic", "DeepSeek"])
+    await userEvent.selectOptions(addKeyPicker(editModal), "deepseek")
+    const deepseek = keyFieldByLabel(editModal, "DeepSeek API key (new)")
     expect(within(deepseek).queryByRole("button", { name: "Clear" })).not.toBeInTheDocument()
+    expect(pickerOptions(editModal)).toEqual(["Add API key for…", "Anthropic"])
     const dsInput = deepseek.querySelector("input") as HTMLInputElement
     expect(dsInput.type).toBe("password")
     await userEvent.click(within(deepseek).getByRole("button", { name: "Show" }))
@@ -142,8 +168,11 @@ describe("AdminManageCandidates", () => {
     await userEvent.click(within(clearDialog).getByRole("button", { name: "Clear key" }))
     await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
-    // Only changed servers ride on the PUT: typed key trimmed, cleared server "".
-    expect(putBodies.at(-1)?.api_keys).toEqual({ kimi: "", deepseek: "sk-ds-new" })
+    // Only changed rows ride on the PUT as [{server, key}]: stored rows first, then added; typed key trimmed, cleared "".
+    expect(putBodies.at(-1)?.api_keys).toEqual([
+      { server: "kimi", key: "" },
+      { server: "deepseek", key: "sk-ds-new" },
+    ])
     expect(putBodies.at(-1)).not.toHaveProperty("api_key")
 
     await userEvent.click(screen.getByRole("button", { name: "Delete" }))
@@ -152,8 +181,8 @@ describe("AdminManageCandidates", () => {
     await waitFor(() => expect(screen.getByText(/Candidate "doe_jane" deleted/)).toBeInTheDocument())
   }, 20000)
 
-  it("AST-1880: API Key column lists the labels of servers with a key set", async () => {
-    // Plan Stage 4: api_key_status = labels with set: true, joined, or "Not set".
+  it("AST-1901: API Key column joins the stored entries' labels", async () => {
+    // api_key_status = stored entries' labels in array order, joined, or "Not set".
     mockApi()
     renderWithProviders(<ManageCandidates />)
     await waitFor(() => expect(screen.getByText("doe_jane")).toBeInTheDocument())
@@ -162,11 +191,8 @@ describe("AdminManageCandidates", () => {
     expect(row.textContent).not.toContain("Not set")
   })
 
-  it("AST-1880: no keys set shows Not set; edit Save without key changes omits api_keys", async () => {
-    const noKeys = {
-      ...candidate,
-      api_keys: Object.fromEntries(Object.entries(candidate.api_keys).map(([sid, k]) => [sid, { ...k, set: false }])),
-    }
+  it("AST-1901: no keys shows Not set, no key fields, full picker; Save without key changes omits api_keys", async () => {
+    const noKeys = { ...candidate, api_keys: [] }
     mockApi()
     const base = mockedApi.getMockImplementation()!
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) =>
@@ -177,8 +203,33 @@ describe("AdminManageCandidates", () => {
     await userEvent.click(screen.getByRole("button", { name: "Edit" }))
     const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
     expect(within(editModal).queryByRole("button", { name: "Clear" })).not.toBeInTheDocument()
+    expect(within(editModal).queryByText(/ API key \(/)).not.toBeInTheDocument()
+    expect(pickerOptions(editModal)).toEqual(["Add API key for…", "Anthropic", "Kimi", "DeepSeek", "OpenRouter"])
     await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
+    expect(putBodies.at(-1)).not.toHaveProperty("api_keys")
+  }, 15000)
+
+  it("AST-1901: Remove drops an unsaved row back into the picker; blank added rows are not sent", async () => {
+    mockApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("doe_jane")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
+    expect(pickerOptions(editModal)).toContain("Anthropic")
+    await userEvent.selectOptions(addKeyPicker(editModal), "anthropic")
+    await userEvent.selectOptions(addKeyPicker(editModal), "deepseek")
+    // Every catalog server has a row now → no picker, so a duplicate row can't be added.
+    expect(within(editModal).queryByText("Add API key for…", { selector: "option" })).not.toBeInTheDocument()
+    const deepseek = keyFieldByLabel(editModal, "DeepSeek API key (new)")
+    fireEvent.change(deepseek.querySelector("input") as HTMLInputElement, { target: { value: "sk-typed" } })
+    await userEvent.click(within(deepseek).getByRole("button", { name: "Remove" }))
+    expect(within(editModal).queryByText("DeepSeek API key (new)")).not.toBeInTheDocument()
+    expect(pickerOptions(editModal)).toEqual(["Add API key for…", "DeepSeek"])
+    keyFieldByLabel(editModal, "Anthropic API key (new)")
+    await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
+    // Anthropic row left blank + DeepSeek removed → nothing changed.
     expect(putBodies.at(-1)).not.toHaveProperty("api_keys")
   }, 15000)
 

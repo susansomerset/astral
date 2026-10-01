@@ -751,20 +751,21 @@ class TestParseCandidateResumeExtended:
 
 
 class TestCandidateAdminFacades:
-    def test_save_candidate_admin_and_clear_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_save_candidate_admin_and_update_api_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
-        set_key = MagicMock()
-        clear = MagicMock(return_value=True)
+        update = MagicMock()
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        monkeypatch.setattr(candidate_mod.database, "set_candidate_server_key", set_key)
-        monkeypatch.setattr(candidate_mod.database, "clear_candidate_server_key", clear)
+        monkeypatch.setattr(candidate_mod.database, "update_candidate_api_keys", update, raising=False)
         candidate_mod.save_candidate_admin("somerset", state="ACTIVE_SEARCH")
-        # AST-1878: keys are per catalog server.
-        candidate_mod.set_candidate_api_key("somerset", "kimi", "sk-kimi")
-        assert candidate_mod.clear_candidate_api_key("somerset", "kimi") is True
+        # AST-1901: key edits pass straight to the candidate's api_keys array.
+        edits = [{"server": "kimi", "key": "sk-kimi"}, {"server": "openrouter", "key": ""}]
+        candidate_mod.update_candidate_api_keys("somerset", edits)
         save.assert_called_once_with("somerset", state="ACTIVE_SEARCH")
-        set_key.assert_called_once_with("somerset", "kimi", "sk-kimi")
-        clear.assert_called_once_with("somerset", "kimi")
+        update.assert_called_once_with("somerset", edits)
+
+    def test_per_server_set_clear_wrappers_retired(self) -> None:
+        assert not hasattr(candidate_mod, "set_candidate_api_key")
+        assert not hasattr(candidate_mod, "clear_candidate_api_key")
 
 
 class TestRunCandidateArtifactGeneration:
