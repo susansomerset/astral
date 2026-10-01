@@ -1048,3 +1048,83 @@ No statute or pattern text requires the “stored rows + Add API key for…” U
 ```
 [board-joan]  CANON: OK
 ```
+
+### Radia review-fix (AST-1920)
+
+[code-rubric]
+**Ticket:** AST-1920
+**Publish ref:** 711621d1b
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+#### Canon scores
+
+(frozen list empty on AST-1920 — no `## Citations` directive ids; UAT-batch bound to parent **Model → server catalog routing** per Joan fix-board and AST-1878 parent scope)
+
+Model → server catalog routing | A | |
+stat.logging.debug | X | |
+stat.logging.error | X | |
+stat.logging.warning | X | |
+stat.logging.info.api | X | |
+
+#### Column diff vs plan stage
+
+no plan-stage canon scores attached (fix-board only; Joan **CANON: OK**)
+
+#### Frame diff
+
+(none)
+
+#### [bug-repro]
+
+**Verdict:** OK — Betty’s thread points at `origin/sub/AST-1851/AST-1920-manage-candidate-key-fields` @ `74087971d` (merge-tests); product tip `711621d1b`. `test_AdminManageCandidates.test.tsx` pins **to-be**: four catalog-order fields (deduped DeepSeek), `(set …)` vs `(not set)`, no picker/Remove, Clear only on stored rows, `api_keys: []` → four `(not set)` fields and Save **omits** `api_keys`, orphan `retired_srv` row after catalog + clear-only PUT, whitespace-only Anthropic not sent, changed rows only `[{server, key}]`. Main CRUD test rewritten from picker flow. Would fail on pre-fix AST-1901 (stored-only rows + “Add API key for…”).
+
+**Advisory:** qa-fix comment uses `[bug-repro]`; tests are named `AST-1920:` / file header comment — no first-line `[bug-repro]` tag in the test source (same pattern as AST-1909/1901).
+
+#### What must still hold
+
+**Verdict:** OK
+
+- **AST-1901 storage/API:** Save loop iterates `keyRows.map(r => r.server)`; only `clearKeys` / trimmed `keyInputs` become PUT rows; tests assert omit-when-unchanged and partial updates. No `api_candidate` / `database` change on `711621d1b`.
+- **Parent AC 2:** no vendor/server literals in `AdminManageCandidates.tsx`; labels from `keyServers` / outbound `api_keys` labels.
+- **No plaintext outbound:** stored rows still use password inputs + “(set — leave blank to keep current)”; no echo of ciphertext.
+- **Parent AC 12 (candidate half):** one field per catalog server restored; storage remains `api_keys` array (Susan option 1).
+
+#### Findings
+
+##### fix-now
+
+(none)
+
+##### discuss
+
+(none)
+
+##### advisory
+
+- **Severity:** advisory  
+- **Location:** `git diff origin/ftr/AST-1851-support-openrouter-api-models...origin/sub/AST-1851/AST-1920-manage-candidate-key-fields`  
+- **Finding:** Range includes **sibling** epic/fix work (AST-1909 `AdminTaskPrompts`, AST-1916/1917 tests, AST-1904/1905 `builder.py`, ast-1014 doc, etc.). **AST-1920 product** is single-file `711621d1b` (+ Betty `7c9610031` / merge `74087971d`).  
+- **Recommendation:** Merge/review AST-1920 on its commits; do not attribute sibling diffs to this bug.
+
+- **Severity:** advisory  
+- **Location:** UAT / data  
+- **Finding:** Plan and ticket: legacy `candidate_key` drop and dark `candidate_api_key` are **out of scope**; staging keys still require manual re-entry — UI fix does not recover DB rows.  
+- **Recommendation:** Parent UAT checklist only.
+
+#### What's solid
+
+- Plan patch followed: `addedServers` / picker / Remove removed; `keyRows` = full `keyServers` + orphan stored servers; suffix `(not set)`; save payload unchanged semantically.
+- Restores discoverable key entry without undoing AST-1901 array PUT contract or routing hydrate.
+- Bible § AST-1920 + manifest describe repro; picker-era AST-1901 tests retired as planned.
+
+#### Recommended actions (Chuckles)
+
+- Append artifact; `docs(AST-1920): Radia review — clean`; post slim upshot **`--as radia`**; **Review Posted** → fix-lane clean shortcut → **User Testing** (skip `resolve-child`).
+- **Parent shape:** AST-1851 live epic, UAT-batch — **not orphaned**; normal `sub` merge path (not straight-to-dev).
+
+context_tokens≈28000
+
+---
+
+`[code-rubric] PROCEED (Commit: 711621d1b) catalog key fields restored`
