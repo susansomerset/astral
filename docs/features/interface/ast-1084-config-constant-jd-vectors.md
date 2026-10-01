@@ -567,3 +567,11 @@ Edit by script: `json.load`, then replace the two substrings in that row's `cach
 - Every non-QC vector keeps "use X0 when silent" in both the evaluate_jd prompt and the shared completeness block.
 - `EMBEDDED_EVALUATE_JD_CRITERIA` stays the single definition site, appended by `_merge_embedded_evaluate_jd_criteria` with the embedded copy winning on code (AST-1085).
 - If QC comes back **F on every job** after the fix, JD content is likely arriving empty upstream. That is a separate bug (AST-1898 Boundaries), not a regression of this fix.
+
+### Joan fix-board — AST-1910
+
+— Read the `## Bug: AST-1910` plan-fix patch on `origin/sub/AST-1898/AST-1910-forbid-qc-x-grade` and skimmed in-force overlap via `canon/statutes/README.md` / `canon/docs/DIRECTIVES-DIRECTORY.md` (no `docs/canon-index.md` on this ref). Scope is prompt + embedded QC rubric text only (`EMBEDDED_EVALUATE_JD_CRITERIA` content, `evaluate_jd` `cache_prompt` in repo JSON); hydrate stays strict, no core validation change, `_ENCODED_GRADE_SET_COMPLETENESS` unchanged by design. That aligns with `astral.seed.agent-tables-in-repo-json` (repo JSON + Revert to file), `astral.config.config-source-of-truth` (criteria literals in config), and `astral.agent.confidence-bounds` (QC **F** with confidence 1–5, not **X**/**0**). `astral.agent.grade-vector-validation` is core-scoped and untouched; it does not require every vector to emit **X** when silent. No active statute/pattern mandates universal **X0** without per-vector rubric exceptions; QC **A/B/C/F** is already the AST-1084 product shape. **ESCALATE** not warranted (Susan option (b) is bounded; `evaluate_meteorite` prompt gap is explicitly out of scope).
+
+```text
+[board-joan]  CANON: OK
+```
