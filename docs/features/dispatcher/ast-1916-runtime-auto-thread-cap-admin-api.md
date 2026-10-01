@@ -251,3 +251,64 @@ context_tokens≈28000
 **Built:** `sub/AST-1875/AST-1916-runtime-cap-api` @ `abcd7ca3c`
 **Scope:** `max_auto_threads_min`/`_max` in `ASTRAL_CONFIG`; `get_auto_thread_cap()` / `set_auto_thread_cap()` in dispatcher with `_tick_loop` reading the cap every tick; admin `GET`/`POST /api/admin/scheduler/auto_thread_cap`.
 **Betty:** dispatcher getter/setter bounds + type rejection (bool, float, str, None), tick slot calc uses live cap, admin route 200/400/401 paths per AC 3–4. No linter is configured in this repo; compile + Flask test-client smoke only.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1916
+**Publish ref:** `79ddf0b297045cba227554796d5cd8912b144632` (`origin/sub/AST-1875/AST-1916-runtime-cap-api`)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.ui.single-gunicorn-worker | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.layers.import-direction | A | | |
+| astral.idioms.require-auth-on-protected-endpoints | A | | |
+| astral.standards.logging-via-utils | A | | |
+| astral.standards.in-scope-only | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — all six ids match Joan’s plan-stage **A** grades.
+
+## Frame diff
+
+- [ ] **Boundaries / Scope wording:** Linear `## Scope` still says “POST/PUT”; shipped surface is **GET + POST** only (matches plan Stage 3 and API contract). Optional description cleanup on next doc touch — not a product change.
+
+(none required for resolve-child product work)
+
+## Findings
+
+**fix-now**
+
+(none)
+
+**discuss**
+
+- **Location:** Linear `## Scope` vs plan + diff (`src/ui/api/api_admin.py`)  
+  **Decision:** Whether to edit the ticket description to drop “PUT” so dispatch text matches the POST-only contract.  
+  **Default:** Leave description as-is; AST-1917 consumes GET/POST per the plan doc; no API change.
+
+**advisory**
+
+- **sibling test carry:** `tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx`, `docs/test-bible/frontend/pages.md` — AST-1908 “Save to Candidate” coverage from `merge-tests`; ignore for AST-1916 scoring (per spawn note).
+- **Plan fidelity:** Product diff matches `docs/features/dispatcher/ast-1916-runtime-auto-thread-cap-admin-api.md` Stages 1–3 (config bounds, getter/setter + live `_tick_loop` slot math outside `_registry_lock`, admin routes + shared payload helper). AC 6 satisfied: no `max_auto = ASTRAL_CONFIG` in `_tick_loop`. `start_scheduler` still logs config default at boot (plan-explicit).
+- **Estimate footprint:** Chuckles estimate **2** — three `src/**` files + plan doc; fits.
+
+## What’s solid
+
+- Bounds and default read from `ASTRAL_CONFIG`; setter validates via `max_auto_threads_min` / `max_auto_threads_max` (AC 8).
+- `@require_admin` on both routes (`require_admin` wraps `@require_auth` in `src/ui/auth.py`), consistent with `/scheduler/thread_status`.
+- `set_auto_thread_cap` uses `logger` from `get_logger`; strict `type(value) is not int` matches plan.
+- Component tests (`TestAst1916AutoThreadCap`, `TestAst1916AutoThreadCapApi`) cover bounds, auth, live tick raise/lower, and config-driven bounds — aligns with child AC 3–7; AC 9 (restart reset) is inherent module-global `None` override.
+
+## Recommended actions (Chuckles / downstream — not Radia)
+
+- Append this artifact to the issue doc; `docs(AST-1916): Radia review — clean`; post slim upshot `--as radia`; move **Tests Passed → Review Posted**; datt **PROCEED** → **User Testing** (no canon fix-now for `resolve-child`).
+- Optional: one-line Linear description tweak POST/PUT → POST when editing the parent/child description anyway.
+
+context_tokens≈38000
