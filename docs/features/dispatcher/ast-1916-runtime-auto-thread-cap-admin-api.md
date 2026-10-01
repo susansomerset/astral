@@ -245,3 +245,9 @@ context_tokens≈28000
 ```
 [plan-rubric] PROCEED (Commit: 1d1b956) Backend cap API plan
 ```
+
+## Review (build)
+
+**Built:** `sub/AST-1875/AST-1916-runtime-cap-api` @ `abcd7ca3c`
+**Scope:** `max_auto_threads_min`/`_max` in `ASTRAL_CONFIG`; `get_auto_thread_cap()` / `set_auto_thread_cap()` in dispatcher with `_tick_loop` reading the cap every tick; admin `GET`/`POST /api/admin/scheduler/auto_thread_cap`.
+**Betty:** dispatcher getter/setter bounds + type rejection (bool, float, str, None), tick slot calc uses live cap, admin route 200/400/401 paths per AC 3–4. No linter is configured in this repo; compile + Flask test-client smoke only.
