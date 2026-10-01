@@ -202,3 +202,10 @@ Scope is single-file, one stage; explicit Decisions cover risk (optimistic UI, t
 “Pre-selected to `3`” and “1..100” describe today’s config/API, not TS literals; runtime range stays API-driven.
 
 context_tokens≈42000
+
+## Review (build)
+
+**Built:** `sub/AST-1875/AST-1917-header-dropdown` @ `774ace245`
+**Scope:** `AdminScheduledActions.tsx` only — `AutoThreadCap` type + path const, cap state, one-shot GET on mount (silent on failure), optimistic POST handler with revert + toast, header "Max AUTO threads" `<select>` with options generated from API `min..max`.
+**Checks:** `tsc -b --noEmit` clean; `npm run build` green; eslint on the page shows only the 2 pre-existing `no-extra-boolean-cast` errors (same as pre-change tree); no `\b100\b` in the page (AC 3); existing `test_AdminScheduledActions*.test.tsx` 79/79 green (new route unmocked → caught, dropdown hidden).
+**Betty:** new coverage needs mocks for GET (payload `{max_auto_threads, default, min, max}`) and POST (200 same payload / 400 `{error}`): default selected, `min..max` option count, POST body is a JSON number, revert + toast on 400.
