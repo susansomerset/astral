@@ -202,3 +202,46 @@ Proposed resolutions: <2-3 options, or "need guidance">
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1916
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `origin/sub/AST-1875/AST-1916-runtime-cap-api` @ `1d1b9563989e4d8e06b781b60d526b45e7d1b1d1`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.ui.single-gunicorn-worker | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.layers.import-direction | A | | |
+| astral.idioms.require-auth-on-protected-endpoints | A | | |
+| astral.standards.logging-via-utils | A | | |
+| astral.standards.in-scope-only | A | | |
+
+## Traceability
+
+Child AC 3→Stages 2–3; 4→Stage 3; 5→Stage 2 (live `get_auto_thread_cap()` each tick); 6→Stage 2 step 3; 7→Stage 2 (setter + existing `slots > 0` guard); 8→Stage 1 + Stage 2/3 reading bounds from `ASTRAL_CONFIG`; 9→module global `None` override. Parent AC 1–2 N/A (AST-1917 UI). Stages 1–3 trace to parent Purpose items 1–2, 4–5 and backend half of AC 8.
+
+## Findings
+
+**discuss** — Location: ticket `## Scope` vs plan Stage 3  
+Ticket Scope still says “POST/PUT”; plan commits to POST only with explicit Decision (AC 3, sibling route shape). Acceptable narrowing; optional Scope wording cleanup on next plan touch so dispatch text matches the contract.
+
+**acceptable** — Location: plan doc (no `## Self-assessment`)  
+Other dispatcher plans often carry Scope/Conf/Risk axes; this plan is small and decisions are explicit. Not `!!-NONE` conf; no escalation.
+
+**acceptable** — Location: `astral.idioms.require-auth-on-protected-endpoints`  
+Plan names `@require_admin`; statute examples say `@require_auth`. Matches existing `/scheduler/thread_status` and `require_admin` wraps `require_auth` — scored A on intent.
+
+context_tokens≈28000
+
+---
+
+```
+[plan-rubric] PROCEED (Commit: 1d1b956) Backend cap API plan
+```
