@@ -166,3 +166,31 @@ All edits are in `src/ui/frontend/src/pages/AdminSessionResumePaste.tsx`.
 ## Estimate
 
 Confirm Chuckles estimate: 1 — agree
+
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-1908
+**Overall:** APPROVED
+**Corpus:** bd68954dc854ca80fca1fc391821dff9ff288a7a
+**Publish ref:** origin/sub/AST-1899/AST-1908-save-to-candidate-session-resume-paste @ d1d9a425231c686889a6dd04dc7b855d3723ec12
+
+## Canon scores
+patt.artifact.write-operative | A | | Stage 1 handler + Verified assumptions #3 — existing PUT → save_candidate_data; no parallel write path
+patt.artifact.ui-consistency | A | | Stage 1 §2 body + Canon alignment — §5 save contract via candidate data API; Exception 3 (session paste)
+astral.standards.dry-and-focused-functions | A | | Scope gate + ⚠️ inline error mirror vs refactor — reuses route/shaping; no client duplicate of ingest/filter
+astral.layers.ui-config-driven-business-logic | A | | Handler sends parse as-is; sections-only structure; no React section/experience field lists
+astral.standards.in-scope-only | A | | Files Changed + self-check §9 — single page file; explicit out-of-scope backend/tests
+
+## Traceability
+AC1→Stage1 §3–6 (+ Betty `test_AdminSessionResumePaste` per Boundaries); AC2→Stage1 §2; AC3→Stage1 §2 + Verified #3; AC4→Stage1 §2 (sections-only, no accent); AC5→Stage1 §2 (base_resume passthrough); AC6→Stage1 §2; AC7→Scope + self-check §9; AC8→Stage1 §7
+
+## Findings
+(none)
+
+context_tokens≈14500
+```
+
+**Summary:** Plan matches parent Purpose, Functional/Technical scope, and child **## Scope** (one file). **Stage 1** maps all eight ACs; component/UAT coverage for AC1/3/5 stays on Betty/UAT as the ticket Boundaries state. Verified assumptions on `origin/ftr/AST-1899-add-save-to-candidate-button` support operative save, accent retention, and error JSON shape. **Canon Scope gap:** none material (`astral.ui.frontend-file-placement` / `astral.layers.import-direction` not required — modify-in-place only, no new files). **Discuss-only note (non-blocking):** `patt.artifact.ui-consistency` frontmatter still marks **draft** on `origin/dev` while the parent cites it as reuse authority; plan text aligns with Implementation §5 + Exception 3 regardless.
