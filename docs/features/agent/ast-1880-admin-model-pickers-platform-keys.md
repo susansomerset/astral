@@ -431,3 +431,52 @@ context_tokens≈45000
 - **discuss — AC 7 test-tree grep:** Betty fixed it (`0ede9b9a7`, merged as `eb81cfe3a`). No product change.
 - **discuss — Estimate, list-row decrypt:** took the `Default:` (not engineer items). Chuckles keeps 5, and the list decrypt ships as-is.
 - **Gates:** §9a dry-run merges into `origin/dev` and `origin/ftr/AST-1851-support-openrouter-api-models` are both clean. `validate-sub-log` is **blocked**: there are two `merge-tests(AST-1880)` commits on the sub (`e74930781`, `eb81cfe3a`). That is test-delivery history, so it went to Betty via `[qa-handoff]`. The ticket stays Review Posted.
+
+## Bug: AST-1909 — Manage Task modal: no Model dropdown of config-driven model keys
+
+> **Scope gate:** `src/ui/frontend/src/pages/AdminTaskPrompts.tsx` is not in AST-1851's Component scope, and this fix lives entirely in that file. The bug is at **Plan Discuss** with a `[scope-gate]` on Linear. The plan below is complete, pending that amendment.
+
+### As-is
+The Manage Task modal (`AdminTaskPrompts.tsx`) shows the model only as read-only text (`Model: <SKU>` from `editTask.model_code`). The config-driven model picker (`GET /api/admin/agents/models`) is only reachable from Manage Agents, so a model can't be chosen while editing a task.
+
+### To-be
+The Manage Task modal has a **Model** select filled from the config model catalog (`LLM_MODEL_CONFIG` keys, via `GET /api/admin/agents/models`) and a **Brain size** select listing only that model's sizes. Saving the task persists the selection.
+
+**Where the selection is stored (settled by the parent, not a new decision).** AST-1851 makes the model **per agent**. Its Purpose says "each agent picks a **model** and a **brain size** valid for that model", Functional scope 1 is "Per-agent model + brain size", and the original brief says "the agent table should point to the model". So the modal writes the **task's assigned agent's** `model_id` + `brain_setting` through the existing `PUT /api/admin/agents/<agent_id>`. There is no task-level model column, which would contradict the parent and need a schema change outside its scope.
+
+### Repro
+1. Admin → Manage Tasks → click any task whose agent is a real agent row (e.g. a task on `principal_recruiter_estelle`, which `data/admin/agent_task.json` assigns to 15 tasks).
+2. The modal header shows `Model: kimi-k2.6` as plain text. There is no select, so no model can be chosen.
+3. Fixture for the component test: `GET /api/admin/tasks/<key>` → `{agent_id: "principal_recruiter_estelle", model_code: "kimi-k2.6", ...}`; `GET /api/admin/agents/principal_recruiter_estelle` → `{model_id: "kimi-k2.6", brain_setting: "Big", ...}`; `GET /api/admin/agents/models` → the four-model catalog with `order` fields (AST-1880 shape).
+
+### Root cause
+AST-1880 (Stage 4) put the model + brain-size pickers only on Manage Agents, which is where AST-1851's Component scope assigned them (Functional scope 8, "Admin surfaces", names Manage Agents and Manage Candidates only). The Manage Task modal still renders the legacy read-only `model_code` line from before the per-agent catalog existed.
+
+### Proposed change
+All in `src/ui/frontend/src/pages/AdminTaskPrompts.tsx`. **No backend change**: every route needed already exists from AST-1880.
+
+1. **Catalog.** On mount, fetch `GET /api/admin/agents/models` into `models: ModelCatalog` (same `ModelRow` / `BrainSizeRow` types as `AdminAgentPrompts.tsx`, keyed by id). Add the same `byOrder` helper, because `jsonify` sorts keys and `order` carries catalog order. It's duplicated rather than shared because moving it to a shared module would touch a second unscoped file.
+2. **Load the agent's current model.** New state: `editModelId`, `editBrainSetting`, and `loadedAgentModel: {model_id, brain_setting} | null`. Whenever `editAgentId` is set (in `openEdit` and when the agent select changes), `GET /api/admin/agents/<editAgentId>` sets all three from the row's `model_id` / `brain_setting`. If the agent id is `""`, `"n/a"`, or a 404, set them to `""` / `null`. That case has no agent row, so no model can be picked.
+3. **Selects replace the read-only line.** Replace `<span><strong>Model:</strong> {editTask.model_code || "—"}</span>` with:
+   - **Model** `<select>`: `byOrder(models)`, option label `models[id].label`. When there is no agent row it is disabled, with the option "— no agent —".
+   - **Brain size** `<select>`: `byOrder(models[editModelId]?.brain_sizes)`.
+   - Changing the model keeps the size when the new model has it, otherwise it takes the model's first size. This is the same rule as Manage Agents (`sizeForModel`). Temperature and max tokens are not touched here; they stay agent fields edited in Manage Agents.
+   - A hint under the selects: `Applies to agent <editAgentId> — used by <N> task(s)`, where `N = tasks.filter(t => t.agent_id === editAgentId).length`. Every task on that agent changes, and Estelle has 15.
+4. **Save.** In `handleSave`, after the existing `PUT /api/admin/tasks/<task_key>` succeeds: if there is an agent row and `(editModelId, editBrainSetting)` differs from `loadedAgentModel`, send `PUT /api/admin/agents/<editAgentId>` with body `{model_id: editModelId, brain_setting: editBrainSetting}`.
+   - Non-OK response: throw the response's `error` into the existing error toast. The task fields are already saved, and the agent row is unchanged because the route returns 400 before writing (AST-1880 Stage 1 step 4).
+   - Success: the existing success toast and `loadAll()` re-fetch, so the list's Model column shows the new SKU (`_enrich_tasks` resolves it from the agent).
+   - When nothing changed, no agent PUT is sent.
+   - ⚠️ **Decision (two requests, task first):** the task route doesn't own agent fields and the agent route doesn't own task fields. Keeping them separate needs no backend change and no new scope. If the agent PUT fails, the user sees the error and can retry. Nothing is half-written within either row.
+5. **No literals.** Model and size options come only from the catalog response, so the AC 2 grep stays empty.
+
+### Blast radius
+- **Shared agents:** the selection changes the model for **every** task on that agent (`principal_recruiter_estelle` 15, `job_analyst_grace` 9, `college_intern_ruth` 7, `content_writer_judith` 6, `ats_expert_atlas` 3). This is the per-agent design working as intended, and the hint in step 3 makes it visible.
+- **Routes reused unchanged:** `GET /api/admin/agents/models`, `GET` / `PUT /api/admin/agents/<id>` (AST-1880 Stage 1), and the task `PUT`.
+- **Tests:** `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` (if present) mocks `api()` by URL. The modal now also calls `/api/admin/agents/models` and `/api/admin/agents/<id>`, so unmatched URLs in existing mocks may need defaults (Betty).
+- **No change** to Manage Agents, the dispatcher, or execution-history math.
+
+### What must still hold
+- AST-1880 AC 3 / parent AC 5: a Kimi model with brain size Medium is rejected with 400 and the agent row is unchanged. The modal can't offer Medium for Kimi, and the route still enforces it.
+- Parent AC 2: `rg -n -i "kimi|moonshot|openrouter|deepseek" src/ --glob '!src/utils/config.py'` stays empty.
+- Parent AC 12: Manage Agents' pickers behave exactly as before.
+- Task save without a model change sends the same single task `PUT` as today.
