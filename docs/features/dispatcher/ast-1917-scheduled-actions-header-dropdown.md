@@ -209,3 +209,61 @@ context_tokens≈42000
 **Scope:** `AdminScheduledActions.tsx` only — `AutoThreadCap` type + path const, cap state, one-shot GET on mount (silent on failure), optimistic POST handler with revert + toast, header "Max AUTO threads" `<select>` with options generated from API `min..max`.
 **Checks:** `tsc -b --noEmit` clean; `npm run build` green; eslint on the page shows only the 2 pre-existing `no-extra-boolean-cast` errors (same as pre-change tree); no `\b100\b` in the page (AC 3); existing `test_AdminScheduledActions*.test.tsx` 79/79 green (new route unmocked → caught, dropdown hidden).
 **Betty:** new coverage needs mocks for GET (payload `{max_auto_threads, default, min, max}`) and POST (200 same payload / 400 `{error}`): default selected, `min..max` option count, POST body is a JSON number, revert + toast on 400.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1917
+**Publish ref:** `fa250f863fc1f6f19bb3511989904f1be4952aa1` (`origin/sub/AST-1875/AST-1917-header-dropdown`)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.layers.ui-config-driven-business-logic | A | | |
+| astral.ui.frontend-file-placement | A | | |
+| astral.config.config-source-of-truth | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — all three ids match Joan’s plan-stage **A** grades.
+
+## Frame diff
+
+- [ ] **Acceptance criteria 1 vs silent GET failure:** Child AC 1 requires the dropdown on a healthy fresh start; plan Decision hides the control with no toast when GET fails. Engineer/UAT should confirm Susan accepts “missing control = broken cap API” vs adding a load-error toast later.
+
+(none required for resolve-child product work)
+
+## Findings
+
+**fix-now**
+
+(none)
+
+**discuss**
+
+- **Location:** `AdminScheduledActions.tsx` mount `useEffect` + plan Decision (silent GET failure)  
+  **Decision:** At UAT, is hiding the dropdown with no toast acceptable when `/api/admin/scheduler/auto_thread_cap` fails (vs surfacing load errors)?  
+  **Default:** Keep silent hide (matches `loadThreadStatus` idiom and existing page tests); revisit only if Susan wants visible load failures.
+
+**advisory**
+
+- **Epic stack in three-dot diff:** `git diff origin/dev...origin/sub/AST-1875/AST-1917-header-dropdown` also lists AST-1916 product files (`src/core/dispatcher.py`, `src/ui/api/api_admin.py`, `src/utils/config.py`) and sibling tests/bible — expected while #1 rides the same sub ancestry ahead of `origin/dev`; **AST-1917 product scope** for this review is only `src/ui/frontend/src/pages/AdminScheduledActions.tsx` (+ Betty’s `test_AdminScheduledActions_AST1917.test.tsx`).
+- **sibling test carry:** `tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx` (AST-1908), AST-1916 dispatcher/api tests — `merge-tests` / stacked commits; ignore for AST-1917 scoring.
+- **Plan fidelity:** Diff matches plan Stage 1 (type + path const, one-shot GET, optimistic POST with revert + toast, header `<select>` first in controls cluster, options from `min..max`). AC 3: no `\b100\b` in the page. POST body uses JSON number via `Number(e.target.value)` on server-generated options.
+- **Estimate footprint:** Chuckles estimate **1** — single TSX file + dedicated test file; fits.
+
+## What’s solid
+
+- Bounds and default come only from GET/POST payload; option list is `Array.from` over API `min`/`max` (AC 2–3).
+- No new page file or nested routes; change stays in flat `pages/AdminScheduledActions.tsx`.
+- Component tests cover default selection, dynamic bounds (2–6), POST numeric body, server-authoritative response, 400 revert + toast, network revert, and silent hide on GET failure.
+
+## Recommended actions (Chuckles / downstream — not Radia)
+
+- Append artifact; `docs(AST-1917): Radia review — clean`; post slim upshot `--as radia`; **Tests Passed → Review Posted**; datt **PROCEED** → **User Testing** (no canon fix-now for `resolve-child`).
+- Optional UAT note on silent GET failure (discuss default above).
+
+context_tokens≈22000
