@@ -3149,3 +3149,24 @@ Manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1880.
 - **AST-1901: Remove drops an unsaved row…:** the picker disappears once every server has a row. Remove returns that server to the picker, and a blank added row isn't sent.
 
 Manifest: **`docs/test-bible/data/database/candidates.md`** § QA test manifest (AST-1901).
+
+### AST-1909 · AST-1851 (bug: Manage Task modal model + brain size)
+
+`AdminTaskPrompts.tsx`: the read-only `Model: <sku>` line becomes **Model** and **Brain size** selects (dep-field labels) for the **task's agent**. They are filled from `GET /api/admin/agents/models` in `order`, with the current values from `GET /api/admin/agents/<agent_id>`. A model change keeps the size when the new model offers it, otherwise it takes the first size. The hint reads `Applies to agent <id> — used by <N> task(s)`. With no agent row (`""`, `n/a`, or 404), Model is disabled with "— no agent —". Save sends the task `PUT` first, then `PUT /api/admin/agents/<id>` `{model_id, brain_setting}` only when the pair changed. A non-OK agent response's `error` goes to the error toast.
+
+| Area | Tests |
+| --- | --- |
+| Existing suite kept working | `test_AdminTaskPrompts.test.tsx`: a file-local `installBaseApiMocks` wrapper (test handlers first) serves the catalog plus default `agent_a` / `agent_b` rows, a 404 for unknown ids, and an OK agent `PUT`. All 12 existing tests run through it. |
+| Repro (bug-repro), describe **AST-1909 task modal model + brain size** | selects show the agent's model + size in catalog order with the shared-agent hint (N=2) and no `Model:` line · the model change keeps or resets the size, then Save sends task PUT → agent PUT `{claude, Big}` → list re-fetch · Save with no change sends no agent PUT · changing the Agent select loads agent_b's model + hint · no agent selected: Model disabled, no agent PUT · agent 404 disables Model · agent PUT 400 → toast, after the task PUT |
+
+## QA test manifest (AST-1909)
+
+**Bug-repro (qa-fix):** all 7 tests in the AST-1909 describe are red on the pre-fix tree (`origin/sub/AST-1851/AST-1909-manage-task-model-dropdown` @ `bdbfa87a2`) because there is no labelled Model select and no agent fetch. test-fix must see all 7 flip green, with the other 12 tests in the file still green.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+```
+
+**Pass criterion:** both files green. AdminAgentPrompts covers parent AC 12 (Manage Agents pickers unchanged).
