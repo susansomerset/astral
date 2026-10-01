@@ -3170,3 +3170,33 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** both files green. AdminAgentPrompts covers parent AC 12 (Manage Agents pickers unchanged).
+
+### AST-1908 · AST-1899 (Save to Candidate on Session Resume Paste)
+
+`AdminSessionResumePaste.tsx`: a fourth row button, **Save to Candidate** (after Open HTML), PUTs the last parse to the existing `PUT /api/candidates/<selectedId>/data` with `{artifacts: {resume_structure: {sections}, base_resume}}`. The body has no `accent_color` and no `artifact_id`, and `base_resume` is sent as parsed. A `saving` state labels the button **Saving…** and disables all four buttons. Save is also disabled with no candidate, with no `lastParse`, or while Parse / Open HTML is in flight. OK → success toast. Non-OK → the JSON `error` (else `HTTP <status>`) goes to both the error toast and the inline error line, and `lastParse` is kept. The intro copy drops "does not save to the database". No backend change: the route's ingest/filter/operative write is reused, and its coverage stays with `api_candidate`.
+
+| AC | Tests (`test_AdminSessionResumePaste.test.tsx`, AST-987 describe) |
+| --- | --- |
+| 1 Button present + gated | **AST-1908 AC1: Save to Candidate is the fourth button…** · **…no selected candidate keeps Save disabled…** · **…Save disabled while Parse is in flight** · **…Save disabled while Open HTML is in flight** |
+| 2 Correct request (+ Saving… lock, success toast) | **AST-1908 AC2/AC6: one PUT with the exact parse body…** |
+| 6 Error feedback | **AST-1908 AC6: 400 error shows server message in toast + inline…** |
+| 8 Copy | **AST-1908 AC8: intro copy names Save to Candidate…** |
+| 3 / 4 / 5 persistence, layout, experience | UAT (DB row `current=1`, Base Resume Content editor) — product reuses the existing route unchanged |
+| 7 No backend change | grep/diff in manifest below |
+
+All 7 new tests are red against the `origin/dev` page and green on the publish tip (checked at QA). **Broken / obsolete:** none. The AST-1035 button-order assertion only lists the three original buttons, and the 7 existing tests stay green. **Integration:** no scenario covers Session Resume Paste or the candidate data PUT from this page, so nothing to revise.
+
+## QA test manifest (AST-1908)
+
+1. **Page Vitest (§6c routed page):** the whole file, 14 tests (7 existing + 7 AST-1908).
+2. **AC7 / AC8 greps** on the publish tip.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
+cd ../../.. && git diff origin/dev --stat -- src/ui/api src/core src/data src/utils   # expect empty
+grep -rn "session_resume/save" src/                                                    # expect nothing
+grep -n "does not save to the database" src/ui/frontend/src/pages/AdminSessionResumePaste.tsx   # expect nothing
+```
+
+**Pass criterion:** 14/14 green and all three commands print nothing.
