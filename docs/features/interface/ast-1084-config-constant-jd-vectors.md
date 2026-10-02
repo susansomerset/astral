@@ -802,3 +802,75 @@ Each combined string pins both halves at once: the general "X0 when silent" rule
 ```text
 [board-joan]  CANON: OK
 ```
+
+### Radia review-fix — AST-1911
+
+[code-rubric] CLEAN
+
+**Ticket:** AST-1911  
+**Publish ref:** `c18e32c959fb7f3af6804b6dc4c86e3bdcfef67b` (`origin/sub/AST-1898/AST-1911-pin-qc-never-x-tests`)  
+**Diff reviewed:** `origin/ftr/AST-1898-evaluate-jd-qc-forbid-x...origin/sub/AST-1898/AST-1911-pin-qc-never-x-tests` (interpretation below)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on this ref)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen **Canon Scope** on AST-1911 Linear Description: **none** (gap child; Joan fix-board `[board-joan] CANON: OK` for tests/bible-only). No directive rows to score; roll-up is vacuously clean.
+
+**Board overlap (informational only):** tests assert repo JSON + config literals already governed by AST-1910 product; no statute amendment and no contradicting in-force text — aligns with Joan’s skim.
+
+## Column diff vs plan stage
+
+`no plan-stage validate-plan scores attached` — fix-board Joan CANON: OK; Radia does not re-litigate F2/F3.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** **OK** — qa-fix delivery `b854c7fdc` adds three functions that pin **concrete** AST-1910 / plan **To-be** strings (not tautologies):
+  - `test_qc_content_forbids_x_and_grade_table_stays_abcf`: exact rule line on `lines[1]`, header on `lines[0]`, `A =` on `lines[2]`, `parse_trailing_grade_table_lines` → `["A","B","C","F"]`, `grade_descriptions` grades unchanged.
+  - `test_catalog_evaluate_jd_cache_prompt_qc_exception`: `_STEP3` and `_COMPLETENESS` literals (general X0 + QC exception) each `count == 1`.
+  - `test_fixture_evaluate_jd_row_lockstep_with_catalog`: same substrings on fixture + `fix == cat` for the `evaluate_jd` row.
+  - **Repro-first:** Betty’s `[bug-repro]` thread and Ada’s test-fix comment document red with dev `config.py` + `agent_task.json` swapped in, green on restored tip (stacked AST-1910 on ftr). Plausibly fails pre-fix for the stated root-cause reasons.
+  - **Advisory (tagging):** no first-line `[bug-repro]` marker in the test docstrings; commit message + `docs/test-bible/core/repo_admin_json.md` § AST-1911 manifest carry the gate (same pattern as AST-1905 / AST-1014 gap reviews). Not fix-now.
+
+- **`## What must still hold`:** **OK** on AST-1911 delivery (`b854c7fdc` + empty `code(AST-1911)` @ `c18e32c95`):
+  - `TestAst1084EvaluateJdCriteria`: three original methods unchanged; fourth method strengthens A/B/C/F pin (AC 2).
+  - No product edits in qa-fix commit (four files: two test modules + two bible paths only). Empty `code(AST-1911)` marker matches “tests-only gap” design.
+  - Whole-file AST-756 twin tests not touched in `b854c7fdc`; bible notes they stay out of scope.
+  - AST-1910 invariants exercised indirectly via assertions on tree product (strict QC X off-limits in text, X0 retained for others in combined prompt strings).
+
+## Findings
+
+**fix-now:** none  
+
+**discuss:** none  
+
+**advisory:**
+- **Three-dot carry (Chuckles):** `ftr...sub` at tip includes **~41 files / ~3.6k insertions** beyond AST-1911 — other tickets’ tests/bible (AST-1895, AST-1916, AST-1917, AST-1920, AST-1908/1909, …) plus **`src/**`, UI, and DB** from `merge-tests(AST-1911): origin/tests b854c7fdc`, `sync(dev)`, and publish-ref sync. **AST-1911’s own qa-fix footprint is commit `b854c7fdc` only (80 lines, four scoped files).** Do not score or merge-block on carry as AST-1911 work; attribute to `origin/tests` resync / sibling program when triaging CI or ftr rollup.
+- **Pre-existing failures:** Ada test-fix: full `test_config.py` + `test_repo_admin_json.py` → **39 failed** on sub vs ftr, **identical sets**, **0 new**; **+3 passes** are the new AST-1911 nodes; manifest § AST-1911 → **8 passed**.
+- **Canon Scope process:** no frozen list on gap bug (Archie comparability note only); not **ESCALATE**.
+
+## What’s solid
+
+- Plan `## Bug: AST-1911` matched byte-for-byte in tests (em dash / en dash literals, class placement after `TestAst1154GradedTaskCompletenessPrompts`, AST-1211-style lockstep).
+- Bible rows in `config.md` § AST-1084 and new `repo_admin_json.md` § AST-1911 with manifest + repro node ids.
+- Gap sequencing: product stays on AST-1910 / ftr; this ticket only guards regression.
+
+## Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship test gap on this ref) | 0 fix-now · 0 discuss · 0 advisory blocking |
+| Chuckles routing | **PROCEED** → Review Posted → User Testing (resolve-child skipped). Mini-parent **with ftr** (AST-1898): roll AST-1910 + AST-1911 into `ftr/AST-1898-evaluate-jd-qc-forbid-x`; treat three-dot carry separately when syncing `origin/tests` / dev product on the epic line. |
+
+## Chuckles disposition
+
+Clean **PROCEED** — `[bug-repro]` assertions and repro flip OK; plan fidelity and what-must-still-hold satisfied on `b854c7fdc`; isolate carry when merging.
+
+
+---
+
+[code-rubric] PROCEED (Commit: c18e32c9) QC never-X tests pinned
