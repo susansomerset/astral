@@ -176,6 +176,70 @@ class TestAst1879RouteHelpers:
         assert agent_mod._missing_server_key_result(None, "kimi")["error"].startswith("Candidate - ")
 
 
+# Branches (AST-1944 task_llm_server_id_or_none): strict path returns a server; ValueError + sentinel
+# agent_id ("" / "telescope" / no row) → None; ValueError + any other agent_id → re-raise.
+class TestAst1944TaskLlmServerIdOrNone:
+    _REAL = {"agent_id": "a1", "model_id": "deepseek-v4", "brain_setting": "Big"}
+
+    @staticmethod
+    def _data(
+        monkeypatch: pytest.MonkeyPatch, rows: Dict[str, Dict[str, Any]], agents: Dict[str, Dict[str, Any]]
+    ) -> None:
+        # Data layer only — _resolve_task_prompts (strict) runs for real.
+        monkeypatch.setattr(agent_mod, "get_agent_task", lambda k: rows.get(k))
+        monkeypatch.setattr(agent_mod, "get_agent", lambda i: agents.get(i))
+
+    @pytest.mark.parametrize(
+        "rows",
+        [
+            {"fetch_jd": {"task_key": "fetch_jd", "agent_id": "telescope"}},
+            {"fetch_jd": {"task_key": "fetch_jd", "agent_id": ""}},
+            {"fetch_jd": {"task_key": "fetch_jd", "agent_id": "  "}},
+            {},
+        ],
+        ids=["telescope", "empty", "blank", "no_row"],
+    )
+    def test_non_llm_sentinels_return_none(self, monkeypatch: pytest.MonkeyPatch, rows: Dict[str, Any]) -> None:
+        self._data(monkeypatch, rows, {})
+        assert agent_mod.task_llm_server_id_or_none("fetch_jd") is None
+
+    def test_llm_row_returns_catalog_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._data(monkeypatch, {"evaluate_jd": {"task_key": "evaluate_jd", "agent_id": "a1"}}, {"a1": self._REAL})
+        assert agent_mod.task_llm_server_id_or_none("evaluate_jd") == "deepseek"
+
+    def test_unknown_real_agent_reraises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._data(monkeypatch, {"evaluate_jd": {"task_key": "evaluate_jd", "agent_id": "ghost"}}, {})
+        with pytest.raises(ValueError, match="Agent 'ghost' referenced by task 'evaluate_jd' not found"):
+            agent_mod.task_llm_server_id_or_none("evaluate_jd")
+
+    def test_real_agent_without_model_reraises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._data(
+            monkeypatch,
+            {"evaluate_jd": {"task_key": "evaluate_jd", "agent_id": "a1"}},
+            {"a1": {**self._REAL, "model_id": ""}},
+        )
+        with pytest.raises(ValueError, match="has no model_id configured"):
+            agent_mod.task_llm_server_id_or_none("evaluate_jd")
+
+    def test_mailbox_fold_resolves_legacy_agent_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mc = cfg.METEORITE_EMAIL_PARSE_CONFIG
+        self._data(
+            monkeypatch,
+            {
+                mc["task_key"]: {"task_key": mc["task_key"], "agent_id": ""},
+                mc["legacy_agent_task_key"]: {"task_key": mc["legacy_agent_task_key"], "agent_id": "a1"},
+            },
+            {"a1": self._REAL},
+        )
+        # Fold still gated on the legacy agent's server — not treated as non-LLM.
+        assert agent_mod.task_llm_server_id_or_none(mc["task_key"]) == "deepseek"
+
+    def test_mailbox_fold_without_legacy_agent_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mc = cfg.METEORITE_EMAIL_PARSE_CONFIG
+        self._data(monkeypatch, {mc["task_key"]: {"task_key": mc["task_key"], "agent_id": ""}}, {})
+        assert agent_mod.task_llm_server_id_or_none(mc["task_key"]) is None
+
+
 # Branches: protocol "anthropic" → send_to_anthropic (SKU + override key); else → send_to_llm_compat.
 class TestAst1879SendToServer:
     _COMMON = dict(
