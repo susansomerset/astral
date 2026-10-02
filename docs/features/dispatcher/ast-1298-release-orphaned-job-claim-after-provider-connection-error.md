@@ -602,3 +602,13 @@ Single file, single function family: `src/core/agent.py`.
 - AST-1298 AC4 / AST-1191 debug trail: `do_task` provider-failure logging (`log_llm_batch_summary(..., error=)` hop error line, non-empty error coercion, AST-538 `debug=True` detail) is not touched by this change.
 - AST-1298 AC5: success path claim/process/clear unchanged (helper is only called on failure).
 - **Superseded on purpose:** AST-1298 AC2's "job is on `ERROR_BUILD_ARTIFACTS`" for provider failures — now held state instead.
+
+### Joan fix-board — AST-1941
+
+**Triage:** The change narrows the hop-label-true `hard` predicate back to `"Job not found"` / `"Missing candidate_data"` only, keeps AST-1298’s `finally` claim release, and holds state for all provider failures (balance included) so the next sweep can reclaim. That matches **`astral.batch.claim-process-release`** as AST-1298 scored it (“transition then release **when hard-fail applies**”), **`patt.task.dispatch-retry`** / AST-788–AST-596 retry-on-last-hop intent, and AST-897’s documented expectation that balance (and other provider) failures on this helper stay retryable — AST-1191’s provider clause was the regression, not canon law. **`astral.state.core-decides-transitions`**, debug/logging statutes, and **`astral.dispatch.run-next-is-chain-authority`** are untouched. Superseding AST-1298 AC2 (“on `ERROR_BUILD_ARTIFACTS`”) is an explicit, Susan-approved product correction in **What must still hold**, not an in-force statute amend. **`docs/test-bible/core/agent.md`** prose is Betty’s test-tree work (blast radius), not a statute/pattern landing — so not **CANON: REVISE**. No ambiguous new precedent or unbounded architectural call → not **ESCALATE**.
+
+```text
+[board-joan]  CANON: OK
+
+context_tokens≈14000
+```
