@@ -296,3 +296,55 @@ Confirm Chuckles estimate: 3 — agree
     "z-ai/glm-5.3": (0.19, 2.99, 0.15, "morph", True, 943718),
     "z-ai/glm-5.3-flash": (0.11, 0.35, 0.02, "near-ai", True, 943718),
 ```
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1938
+**Overall:** APPROVED
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on ref — `stat.logging.debug` read from `canon/directives/active/` on same tip)
+**Publish ref:** `57d2ef49cb3a65c4d0d058a0776c708b9de55b7c`
+
+## Canon scores
+
+stat.logging.debug | A | | Stage 2: leaves both `Calling messages.create` / `Response from messages.create` debug lines ungated and full-body; Scope gate cites statute
+
+## Traceability
+
+1→S1 `_build_openrouter_models` + Verification AC1 | 2→Appendix A + S1 pricing + Verification AC2 | 3→S1 `OPENROUTER_TIER_DEFAULTS` / reasoning flag + Verification AC3 (47+28; kimi Little/Big hand entry) | 4→Tests expected (Betty `qa-child`); product is catalog-only — existing admin PUT path | 5→S2 tier `request_extras` merge + Betty `test_llm_compat` | 6→Verification `rg` AC6 | 7→S1 `min(cap, max_out)` + Verification AC7 | 8→S1 `validate_llm_provider_environment` + Verification AC8 | parent FS6 / AC re task modal→N/A (AST-1939)
+
+## Findings
+
+### discuss
+
+- **Severity:** discuss
+- **Location:** Stage 1 decision (seven vs five lower Little caps)
+- **Finding:** Parent functional scope item 5 names five slugs with sub-16k Little defaults; the plan applies AC 7’s `min(16000, pinned max)` uniformly and documents two additional slugs (`meta-llama/llama-4-maverick`, `openai/gpt-oss-20b`) whose pinned-host max is 8192.
+- **Recommendation:** No plan change — AC 7 on the child ticket governs; Susan already signed brief-priced caps in Notes. Keep the documented decision for UAT expectations.
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** **Tests expected to move**
+- **Finding:** AC 4 and AC 5 component assertions are explicitly deferred to Betty (`qa-child`); engineer stages touch only `config.py` and `llm_compat.py`, matching child Scope and parent partition (#1 vs #2).
+- **Recommendation:** None — standard epic handoff; manifest should list AC 4/5 rows from plan.
+
+- **Severity:** acceptable
+- **Location:** **Snapshot source**
+- **Finding:** Live OpenRouter endpoint prices often differ from the brief; plan states brief wins (AC 2) and does not reconcile — correct for ledger intent.
+- **Recommendation:** None.
+
+- **Severity:** acceptable
+- **Location:** **Scope gate** / Boundaries
+- **Finding:** Files Changed and stages stay inside ticket `## Scope`; no `AdminTaskPrompts`, tests, or bible edits; sibling AST-1939 boundary repeated in plan intro.
+- **Recommendation:** None.
+
+- **Severity:** acceptable
+- **Location:** **Estimate**
+- **Finding:** Plan confirms estimate 3; large Appendix A is data paste, not extra engineering surface beyond two staged commits and verification scripts.
+- **Recommendation:** None.
+
+context_tokens≈52000
+
+[plan-rubric] PROCEED (Commit: 57d2ef49c) OpenRouter catalog plan clean
