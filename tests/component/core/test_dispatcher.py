@@ -26,11 +26,22 @@ def _clear_task_registry() -> None:
         dispatcher_mod._task_registry.clear()
 
 
+@pytest.fixture
+def real_server_gate() -> None:
+    """AST-1944 opt-out: request this fixture to run the real task_llm_server_id_or_none resolver.
+    A fixture, not a marker — pytest.ini runs --strict-markers."""
+    return None
+
+
 @pytest.fixture(autouse=True)
-def _task_server_anthropic(monkeypatch: pytest.MonkeyPatch) -> None:
-    """AST-1879: skip gate resolves the task agent's server — pin it so candidate stubs
-    carrying candidate_api_keys["anthropic"] reach dispatch without a seeded agent_task row."""
-    monkeypatch.setattr(dispatcher_mod, "task_llm_server_id", lambda task_key: "anthropic")
+def _task_server_anthropic(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    """AST-1879 / AST-1944: skip gate resolves the task agent's server via task_llm_server_id_or_none —
+    pin it so candidate stubs carrying candidate_api_keys["anthropic"] reach dispatch without a seeded
+    agent_task row. Tests requesting real_server_gate keep the real resolver."""
+    # Return before setattr so the repro also runs on pre-AST-1944 trees (attribute absent there).
+    if "real_server_gate" in request.fixturenames:
+        return
+    monkeypatch.setattr(dispatcher_mod, "task_llm_server_id_or_none", lambda task_key: "anthropic")
 
 
 def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1068,14 +1079,14 @@ class TestDispatchOne:
     async def test_gate_reads_key_for_task_agents_server(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        # AST-1879: the gate asks task_llm_server_id(task_key) which server to check.
+        # AST-1879 / AST-1944: the gate asks task_llm_server_id_or_none(task_key) which server to check.
         seen: List[str] = []
 
         def _server(task_key: str) -> str:
             seen.append(task_key)
             return "kimi"
 
-        monkeypatch.setattr(dispatcher_mod, "task_llm_server_id", _server)
+        monkeypatch.setattr(dispatcher_mod, "task_llm_server_id_or_none", _server)
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
@@ -1257,6 +1268,111 @@ class TestDispatchOne:
         monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=_process))
         task = {"id": 8, "task_key": "evaluate_jd", "candidate_id": "cand-1", "auto_mode": 0}
         await dispatcher_mod._dispatch_one(task)
+
+
+@pytest.mark.usefixtures("real_server_gate")
+class TestAst1944NonLlmGate:
+    """AST-1944: real resolver on the skip gate — patch the agent data layer, never the resolver.
+
+    agent_mod.get_agent_task / get_agent feed _resolve_task_prompts, task_llm_server_id(_or_none),
+    and _current_agent_task_run_next (dispatcher imports those from agent, so module globals apply).
+    """
+
+    @staticmethod
+    def _data(
+        monkeypatch: pytest.MonkeyPatch, rows: Dict[str, Dict[str, Any]], agents: Dict[str, Dict[str, Any]]
+    ) -> None:
+        from src.core import agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "get_agent_task", lambda k: rows.get(k))
+        monkeypatch.setattr(agent_mod, "get_agent", lambda i: agents.get(i))
+
+    @staticmethod
+    def _scaffold(monkeypatch: pytest.MonkeyPatch, candidate: Optional[Dict[str, Any]]) -> Tuple[AsyncMock, MagicMock]:
+        # Same dispatch scaffolding as TestDispatchOne.test_completes_click_dispatch.
+        monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda candidate_id: candidate)
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_check_circuit_breaker", MagicMock())
+        loop = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", loop)
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[44] = {"asyncio_task": None}
+        return loop, save_ledger
+
+    _TASK = {"id": 44, "task_key": "fetch_jd", "candidate_id": "cand-1", "auto_mode": 0}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "rows",
+        [
+            # "telescope" sentinel — agents has no telescope row, so the strict path raises first.
+            {"fetch_jd": {"task_key": "fetch_jd", "agent_id": "telescope", "current": 1}},
+            {"fetch_jd": {"task_key": "fetch_jd", "agent_id": "", "current": 1}},
+            # AST-537 invariant: no agent_task row at all.
+            {},
+        ],
+        ids=["telescope", "empty_agent_id", "no_row"],
+    )
+    async def test_non_llm_key_reaches_handler_without_any_api_key(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, rows: Dict[str, Any]
+    ) -> None:
+        # [bug-repro] AST-1944: red on origin/dev (strict resolver raises out of _dispatch_one), green after fix.
+        self._data(monkeypatch, rows, {})
+        loop, _ = self._scaffold(monkeypatch, {"astral_candidate_id": "cand-1", "candidate_api_keys": {}})
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one(dict(self._TASK))
+        loop.assert_awaited_once()
+        assert not any("skipped — no candidate" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_non_llm_key_missing_candidate_still_skipped(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        self._data(monkeypatch, {"fetch_jd": {"task_key": "fetch_jd", "agent_id": "telescope", "current": 1}}, {})
+        loop, save_ledger = self._scaffold(monkeypatch, None)
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one(dict(self._TASK))
+        loop.assert_not_awaited()
+        save_ledger.assert_not_called()
+        # No server for a non-LLM key — the warning's server slot prints None (AST-1944 plan).
+        assert any(
+            "cand-1 | dispatch fetch_jd skipped — no candidate or None API key" in r.getMessage()
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_llm_key_without_server_key_still_skipped(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # AST-1879 holds on the real resolver: deepseek-v4 / Big → server "deepseek"; an anthropic key does not count.
+        self._data(
+            monkeypatch,
+            {"evaluate_jd": {"task_key": "evaluate_jd", "agent_id": "a1", "current": 1}},
+            {"a1": {"agent_id": "a1", "model_id": "deepseek-v4", "brain_setting": "Big"}},
+        )
+        loop, save_ledger = self._scaffold(monkeypatch, {"astral_candidate_id": "cand-1", "candidate_api_keys": {"anthropic": "sk-ant"}})
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one({**self._TASK, "task_key": "evaluate_jd"})
+        loop.assert_not_awaited()
+        save_ledger.assert_not_called()
+        assert any(
+            "cand-1 | dispatch evaluate_jd skipped — no candidate or deepseek API key" in r.getMessage()
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_unknown_real_agent_still_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A misconfigured LLM task stays loud — no silent gate bypass.
+        self._data(monkeypatch, {"evaluate_jd": {"task_key": "evaluate_jd", "agent_id": "ghost", "current": 1}}, {})
+        loop, _ = self._scaffold(monkeypatch, {"astral_candidate_id": "cand-1", "candidate_api_keys": {"anthropic": "sk-ant"}})
+        with pytest.raises(ValueError, match="Agent 'ghost'"):
+            await dispatcher_mod._dispatch_one({**self._TASK, "task_key": "evaluate_jd"})
+        loop.assert_not_awaited()
 
 
 class TestAst841DispatchTerminalLogging:

@@ -503,7 +503,7 @@ class TestAst878FetchCulturePagesCatalogRow:
         row = by["fetch_culture_pages"]
         assert row["task_seq"] == 7
         assert row["task_group_name"] == "Gaze Review"
-        assert row["agent_id"] == "n/a"
+        assert row["agent_id"] == "telescope"
         assert row["task_name"] == row["task_key"] == "fetch_culture_pages"
         assert by["grade_get"]["task_seq"] == 6
         assert by["grade_like"]["task_seq"] == 8
@@ -1375,7 +1375,7 @@ class TestAst1222MeteoriteGradeAliasCatalogRows:
                 assert row["task_group_name"] == "Meteorite Review"
                 assert row["task_group_order"] == "4500"
                 assert row["task_seq"] == seq
-                assert row["agent_id"] == "n/a"
+                assert row["agent_id"] == "telescope"
                 assert row["task_name"] == key
                 assert row["task_key_uuid"] == self._UUID[key]
                 assert (row.get("run_next") or "") == ""
@@ -1420,7 +1420,7 @@ class TestAst1269AliasAgentTaskSeedRestore:
             assert row["task_key_uuid"] == self._UUID[key]
             assert row["task_group_order"] == "4500"
             assert row["task_seq"] == seq
-            assert row["agent_id"] == "n/a"
+            assert row["agent_id"] == "telescope"
             assert (row.get("run_next") or "") == ""
             assert all((row.get(f) or "") == "" for f in self._PROMPT_FIELDS)
 

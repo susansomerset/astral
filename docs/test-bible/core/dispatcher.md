@@ -658,16 +658,45 @@ Expect **23 passed** with AST-1867 product.
 
 ### AST-1879 · AST-1851 (skip gate on the task agent's server key)
 
-**Primary manifest:** [`agent.md`](agent.md) § QA test manifest (AST-1879). `_dispatch_one_body` checks `candidate_api_keys[task_llm_server_id(task_key)]`. With no candidate, no map, an empty key, or only another platform's key, it skips: no ledger, plus a warning naming the server ("This task is not starting").
+**Primary manifest:** [`agent.md`](agent.md) § QA test manifest (AST-1879). `_dispatch_one_body` checks `candidate_api_keys[task_llm_server_id_or_none(task_key)]` **only when a server id comes back** (AST-1944). A non-LLM key (`agent_id` `"telescope"` / empty / no `agent_task` row — the AST-537 invariant) has no server and skips the key check; a missing candidate is still skipped. For an LLM key with no candidate, no map, an empty key, or only another platform's key, it skips: no ledger, plus a warning naming the server ("This task is not starting").
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | No candidate → skip + server-naming warning, no ledger | `src/core/dispatcher.py` | `TestDispatchOne::test_skips_without_candidate_context` (now asserts; was assertion-free) |
 | Missing / empty / other-platform key → skip (4 params) | same | `TestDispatchOne::test_skips_without_task_servers_api_key` (replaces `test_skips_without_api_key`) |
-| Gate asks `task_llm_server_id(task_key)` which server to check | same | `TestDispatchOne::test_gate_reads_key_for_task_agents_server` |
-| Revised — candidate stubs `candidate_api_key` → `candidate_api_keys: {"anthropic": …}`; autouse `_task_server_anthropic` pins `task_llm_server_id` (no seeded agent_task rows in this file) | `test_dispatcher.py` | 13 stubs across `TestDispatchOne`, `TestAst841…`, `TestAst1847…`, `TestAst1867…`, `TestAst1829ScheduledSweep` |
+| Gate asks `task_llm_server_id_or_none(task_key)` which server to check | same | `TestDispatchOne::test_gate_reads_key_for_task_agents_server` |
+| Revised — candidate stubs `candidate_api_key` → `candidate_api_keys: {"anthropic": …}`; autouse `_task_server_anthropic` pins `task_llm_server_id_or_none` → `"anthropic"` (AST-1945; no seeded agent_task rows in this file). Opt-out: request the `real_server_gate` fixture (fixture, not marker — `--strict-markers`) | `test_dispatcher.py` | 13 stubs across `TestDispatchOne`, `TestAst841…`, `TestAst1847…`, `TestAst1867…`, `TestAst1829ScheduledSweep` |
+| AST-1944 — **`[bug-repro]`** non-LLM key (`telescope` / `empty_agent_id` / `no_row`) reaches `_run_dispatch_loop` with an empty key map on the **real** resolver (data layer patched: `agent_mod.get_agent_task` / `get_agent`) | same | `TestAst1944NonLlmGate::test_non_llm_key_reaches_handler_without_any_api_key` (3 params) |
+| AST-1944 — non-LLM key + missing candidate → skip, warning server slot `None`; LLM key (`deepseek-v4` / Big) with only an anthropic key → skip naming `deepseek`; unknown real agent (`ghost`) → `ValueError` out of `_dispatch_one` | same | `TestAst1944NonLlmGate::{test_non_llm_key_missing_candidate_still_skipped,test_llm_key_without_server_key_still_skipped,test_unknown_real_agent_still_raises}` |
 
 **Integration:** none.
+
+### AST-1945 · AST-1943 (non-LLM gate tests + telescope sentinel — test gap for AST-1944)
+
+**Publish:** `origin/sub/AST-1943/AST-1945-non-llm-gate-tests`. Test-only; product (`task_llm_server_id_or_none`, gated `_dispatch_one_body`, 12 `agent_task.json` rows `"n/a"` → `"telescope"`) landed by AST-1944 on `origin/ftr/AST-1943-non-llm-dispatch-key-gate`. Sentinel tuple is exactly `("", "telescope")` — no `"n/a"` transition tests. Helper unit tests: [`agent.md`](agent.md) § AST-1944.
+
+Also in this pass: `test_repo_admin_json.py` sentinel asserts (L506 / L1378 / L1423) read `"telescope"`; `docs/uat-fixtures/AST-756/expected-agent_task.json` 12 `"agent_id": "n/a"` → `"telescope"` (literal replace, otherwise byte-identical) so `TestAst1269AliasAgentTaskSeedRestore::test_alias_identity_lockstep_with_fixture` is green. L1378 / L1423 stay red on pre-existing `task_seq` drift (`assert 3 == 5`, AST-1239 wipe) — out of scope.
+
+## QA test manifest (AST-1945)
+
+1. **`[bug-repro]` (must flip):** `test_dispatcher.py::TestAst1944NonLlmGate::test_non_llm_key_reaches_handler_without_any_api_key` — 3 params red on `origin/dev` product (`Agent 'telescope' … not found` / `has no agent_id assigned` / `No agent_task row`), green on ftr.
+2. **Rest of the class + helper:** `TestAst1944NonLlmGate` (6) and `test_agent_ast1879.py::TestAst1944TaskLlmServerIdOrNone` (9) green.
+3. **Retargeted stubs:** `TestDispatchOne` green (autouse fixture no longer errors at setup).
+4. **Lockstep:** `TestAst1269AliasAgentTaskSeedRestore::test_alias_identity_lockstep_with_fixture` green; `rg -c '"n/a"' docs/uat-fixtures/AST-756/expected-agent_task.json` prints nothing.
+5. **No new reds:** full `test_dispatcher.py` = the 12 pre-existing failures (`TestRunUnified` ×2, `TestCircuitBreaker` ×3, `TestAst841…` ×2, `TestAst802…`, `TestAst814…`, `TestTaskThreadTarget`, `TestAst1259…`, `TestAst1022…`); `test_repo_admin_json.py` failure set unchanged except the lockstep node going green.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1944NonLlmGate \
+  tests/component/core/test_dispatcher.py::TestDispatchOne \
+  tests/component/core/test_agent_ast1879.py \
+  "tests/component/core/test_repo_admin_json.py::TestAst1269AliasAgentTaskSeedRestore::test_alias_identity_lockstep_with_fixture"
+rg -c '"n/a"' docs/uat-fixtures/AST-756/expected-agent_task.json data/admin/agent_task.json
+```
+
+**Pass criterion:** narrowed run green — not the zero-arg harness / branch-lock gate (pre-existing reds above).
+
+**Bible shasum (record after publish):** `git show origin/sub/AST-1943/AST-1945-non-llm-gate-tests:docs/test-bible/core/dispatcher.md | shasum`
 
 ### AST-1916 · AST-1875 (runtime AUTO-thread cap getter/setter + live tick read)
 
