@@ -1166,6 +1166,39 @@ class TestAst1154GradedTaskCompletenessPrompts:
             assert self._MARKER in by[key]["cache_prompt"], key
 
 
+class TestAst1910EvaluateJdQcNeverXPrompt:
+    """AST-1910 / AST-1911: evaluate_jd keeps X0-when-silent but names QC as the one never-X exception."""
+
+    # Each string pins the general X0 rule and the QC exception appended right after it.
+    _STEP3 = (
+        "use X0 when silent — never omit a code. Exception: QC (Quality Check) is never X — "
+        "if the job description is too thin to analyze, grade QC F with confidence 1–5 "
+        "(never QCX0, never QCF0)."
+    )
+    _COMPLETENESS = (
+        "When the source is silent, emit {code}X0 — never skip the segment. "
+        "The one exception is QC (Quality Check): never emit QCX — grade it F when there is "
+        "not enough to analyze."
+    )
+
+    def _current_by_key(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {r["task_key"]: r for r in rows if r.get("current") == 1}
+
+    def test_catalog_evaluate_jd_cache_prompt_qc_exception(self) -> None:
+        cache = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]["cache_prompt"]
+        assert cache.count(self._STEP3) == 1
+        assert cache.count(self._COMPLETENESS) == 1
+
+    def test_fixture_evaluate_jd_row_lockstep_with_catalog(self) -> None:
+        # Per-key lockstep (AST-1196 / AST-1211 style) — whole-file AST-756 twin is already red on dev, not ours.
+        cat = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]
+        fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")["evaluate_jd"]
+        assert self._STEP3 in fix["cache_prompt"]
+        assert self._COMPLETENESS in fix["cache_prompt"]
+        assert fix == cat
+
+
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)
 class TestAst1213MeteoriteEmailVisibleTextPrompts:
     """AST-1213: meteorite_email prompts describe visible text + LINKS, not raw HTML."""

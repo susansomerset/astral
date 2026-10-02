@@ -472,3 +472,405 @@ No other files. Do not import or reference the new constant from core/UI/data in
 - **fix-now:** none.
 - **discuss (stragglers):** acknowledged — `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` were Joan-Excluded against plan Files Changed `{utils}` but appear on the three-dot diff once plan + Betty test-tree landed. All three scored **conforms** in Radia's review; no product or plan change.
 - **src:** no change this pass (constant already matches Stage 1 @ `29d55902`).
+
+## Bug: AST-1910 — Forbid X grade for Quality Check in evaluate_jd (QC hydrate error)
+
+Fix child of orphaned mini-parent AST-1898 (`ftr/AST-1898-evaluate-jd-qc-forbid-x`). Susan's decision: **option (b)**. Forbid `X` for QC, so the model grades **F** when a JD is too thin. QC `grade_descriptions` stay A/B/C/F, and hydrate stays strict (no X→F mapping in code). This block patches only that delta. It does not reopen AST-1084's Stage 1.
+
+### As-is
+
+The evaluate_jd model grades the embedded QC / Quality Check vector `X` (segment `QCX0`). QC's `grade_descriptions` (Stage 1 above) have A/B/C/F rows only, so `_lookup_rubric_reason_for_grade` (`src/core/consult.py`) raises `No rubric description for vector 'Quality Check' grade X`. Every job in the batch errors with `ERROR_EVALUATE_JD [hydrate: …]` (Abrams batch `evaluate_jd-3aebf350-…`: 9/9 errors).
+
+### To-be
+
+The model never emits `X` for QC. When a JD is too thin to analyze, it emits QC **F** with confidence 1–5 (for example `QCF5`), and hydrate resolves F's existing description. Every other vector keeps the "use X0 when silent" rule.
+
+### Repro
+
+Data-shape fixture (no DB seed needed). Hydrate an evaluate_jd grade list containing `{"vector": "Quality Check", "grade": "X", "confidence": 0}` against `list(EMBEDDED_EVALUATE_JD_CRITERIA)`:
+
+```python
+from src.core.consult import _lookup_rubric_reason_for_grade
+from src.utils.config import EMBEDDED_EVALUATE_JD_CRITERIA
+_lookup_rubric_reason_for_grade(list(EMBEDDED_EVALUATE_JD_CRITERIA), "Quality Check", "X")
+# ValueError: No rubric description for vector 'Quality Check' grade X
+```
+
+That raise is **correct and stays**. The defect is upstream: the prompt tells the model to produce `X`. Live repro is any evaluate_jd batch where the model judges a JD silent or thin and so emits `QCX0`.
+
+### Root cause
+
+Every instruction the model sees says `X0` is always valid for a silent vector, and nothing names QC as an exception:
+
+1. **`data/admin/agent_task.json`, row `task_key: "evaluate_jd"`, `cache_prompt`**, in two places:
+   - STEP 3: `Confirm every rubric vector code appears exactly once; use X0 when silent — never omit a code.`
+   - `## GRADE SET COMPLETENESS (AST-1154)` paragraph: `When the source is silent, emit {code}X0 — never skip the segment.`
+2. **`src/utils/config.py` `_ENCODED_GRADE_SET_COMPLETENESS`** (~L4428). It is appended to every `grades_encoded*` `payload_instructions` (evaluate_jd uses `output_type: "grades_encoded"`, ~L672) and says `emit {code}X0` / `use X with confidence 0 when the source is silent`. It is shared by every encoded task.
+3. **`src/utils/config.py` `EMBEDDED_EVALUATE_JD_CRITERIA` QC `content`** (~L2462). This is what the model sees for QC via `{$RUBRIC_VECTORS}`. It lists A/B/C/F but never says X is off-limits, so the general X0 rule fills the gap.
+
+QC's own F row already means "not enough information to perform job fit analysis". The model just isn't told to use it instead of X.
+
+**Runtime reach (confirmed):**
+
+- **QC content:** `rubric_criteria_for_task` (`src/core/candidate.py` ~L1519) calls `_merge_embedded_evaluate_jd_criteria` **when criteria are read**, and the embedded copy wins on code. Editing the constant takes effect on deploy, with no DB sync or rubric re-save.
+- **Task prompt:** `REPO_ADMIN_JSON_CONFIG` (`config.py` ~L4391) is explicit: *"Server start does not apply these files (AST-1455)."* The only file-to-DB path is `revert_repo_admin_json_table("agent_task")` (`src/core/repo_admin_json.py`), reached through `POST /api/admin/repo_json/revert/agent_task` (the **Revert to file** action in `RepoJsonDivergenceBanner.tsx`). It reapplies **the whole `agent_task` table** from the file. Committing the JSON edit alone does **not** change the live prompt.
+
+### Proposed change
+
+Prompt and rubric text only, in two files. Hydrate, decode, and validation code are untouched.
+
+**1. `src/utils/config.py`, `EMBEDDED_EVALUATE_JD_CRITERIA[0]` (QC) `content`.** Insert one line **between** the header line and the `A = …` line:
+
+```python
+        "content": (
+            "Quality Check — is this enough of a JD to analyze?\n"
+            "Never grade Quality Check X — X is not a valid grade for this vector. If there is not enough to analyze, grade it F (confidence 1–5, never 0).\n"
+            "A = This is a valid job description …\n"
+            # B / C / F lines unchanged
+        ),
+```
+
+- **Placement constraint:** the line must go **before** the A row. `rubric_text.parse_trailing_grade_table_lines` reads the trailing block of grade lines, and hydrate falls back to it when `grade_descriptions` has no match (`consult.py` L300–306). A line after F would break that trailing block.
+- **Wording constraint:** the line must **not** begin with a grade letter followed by `=`, `==`, or `:`. `_GRADE_LINE` is `^([ABCDEFX])\s*(?:==|=|:)` (case-insensitive), so a line like `X = not valid` would be parsed as an X description and quietly defeat hydrate's strictness. Starting with "Never" is safe.
+- `grade_descriptions` is unchanged: still exactly A/B/C/F, with byte-identical descriptions. GC is unchanged.
+
+**2. `data/admin/agent_task.json`, row `task_key: "evaluate_jd"`, `cache_prompt` only.** Make two in-string appends and leave the existing text otherwise intact:
+
+- STEP 3: after `use X0 when silent — never omit a code.` append
+  ` Exception: QC (Quality Check) is never X — if the job description is too thin to analyze, grade QC F with confidence 1–5 (never QCX0, never QCF0).`
+- GRADE SET COMPLETENESS paragraph: after `When the source is silent, emit {code}X0 — never skip the segment.` append
+  ` The one exception is QC (Quality Check): never emit QCX — grade it F when there is not enough to analyze.`
+
+Edit by script: `json.load`, then replace the two substrings in that row's `cache_prompt`, then `json.dump(rows, f, indent=2, ensure_ascii=True)` plus a trailing `"\n"`. This round-trip is verified byte-identical on the current file. `git diff` must show exactly one changed line (that row's `cache_prompt`). Do not touch `updated_at`, other columns, or other rows. Assert that each target substring occurs exactly once before replacing.
+
+**2a. Scope amendment (Chuckles, after Betty's fix-board note): `docs/uat-fixtures/AST-756/expected-agent_task.json`.** This file is a byte-twin of `data/admin/agent_task.json`. Apply the identical `evaluate_jd` `cache_prompt` edit there with the same script, the same once-only assertions, and one changed line, touching no other rows. Four other rows in that fixture already drift from the admin file on dev. They are not part of this fix and stay as they are.
+
+**Why "confidence 1–5, never 0" is spelled out:** `src/core/agent.py` (L188 and L350) rejects any non-X grade with confidence 0. If the model swaps `QCX0` for `QCF0` out of habit, every job still errors, just with a different message. The instruction has to close that path too.
+
+**3. `_ENCODED_GRADE_SET_COMPLETENESS`: no change (AC 4).** The per-vector rule should win without it. It's stated three times, each next to the thing it governs (the QC rubric line, STEP 3, and the task's own completeness paragraph), and every statement names QC specifically, while the shared block is generic. QC F is also not "inventing a letter grade to fill a gap" in the shared block's sense, because F is QC's defined answer for "not enough information". Changing the shared block would touch every `grades_encoded*` task. If a post-deploy evaluate_jd batch still returns `QCX0`, that is the evidence for a follow-up ticket, not grounds to widen this one.
+
+**4. Deploy step (required to meet AC 2 at runtime).** After this lands on the target environment, an admin runs **Revert to file** for `agent_task` (`POST /api/admin/repo_json/revert/agent_task`). Check `GET /api/admin/repo_json/compare/agent_task` first: revert overwrites **every** `agent_task` row with repo content, so any live-only edits on other rows must be exported or accepted as lost. The QC content change (item 1) needs no admin step.
+
+**5. Tests (Betty's tree, `tests/component/utils/test_config.py` `TestAst1084EvaluateJdCriteria`).** Add an assertion that QC `content` contains the "Never grade Quality Check X" line and that `parse_trailing_grade_table_lines(qc["content"])` still returns grades `["A","B","C","F"]`. Keep `list(by_grade) == ["A","B","C","F"]`. The existing `in`-based content assertions stay green after the insert.
+
+### Blast radius
+
+- **`evaluate_meteorite` (latent, out of scope):** it also merges QC/GC (`candidate.py` L1527 and L1557) and its `cache_prompt` carries the same two X0 lines. Item 1 (the QC rubric line) reaches it automatically and should suppress `QCX` there too, but its task prompt still says X0 with no QC exception. If meteorite batches show the same hydrate error, that is a separate ticket. This one is scoped to the `evaluate_jd` row.
+- **Rubric fingerprint:** QC is not persisted through `sync_rubric_vectors_from_criteria` as a source of truth (the embedded copy wins at read and save merge), so no `rubric_vector` version churn is expected from the content edit.
+- **Revert to file** rewrites the whole `agent_task` table (see item 4).
+- **Tests that assume the current text:** `TestAst1084EvaluateJdCriteria` uses substring checks, so it is unaffected. No test pins `evaluate_jd` `cache_prompt` text verbatim as far as this pass saw. Betty confirms at fix-board.
+- **Not touched:** `consult.py` hydrate, `agent.py` decode/validation, `rubric_text.py`, GC, `_ENCODED_GRADE_SET_COMPLETENESS`, and other `agent_task` rows.
+
+### What must still hold
+
+- QC `grade_descriptions` are exactly A/B/C/F with unchanged descriptions (AST-1084 Stage 1 and AC). GC is unchanged (A/B/C/D/F/X).
+- `_lookup_rubric_reason_for_grade` still raises on an unknown grade, including QC X. There is no X→F mapping anywhere in code.
+- `parse_trailing_grade_table_lines(qc["content"])` still yields A/B/C/F, so the new line is not parsed as a grade row.
+- Every non-QC vector keeps "use X0 when silent" in both the evaluate_jd prompt and the shared completeness block.
+- `EMBEDDED_EVALUATE_JD_CRITERIA` stays the single definition site, appended by `_merge_embedded_evaluate_jd_criteria` with the embedded copy winning on code (AST-1085).
+- If QC comes back **F on every job** after the fix, JD content is likely arriving empty upstream. That is a separate bug (AST-1898 Boundaries), not a regression of this fix.
+
+### Joan fix-board — AST-1910
+
+— Read the `## Bug: AST-1910` plan-fix patch on `origin/sub/AST-1898/AST-1910-forbid-qc-x-grade` and skimmed in-force overlap via `canon/statutes/README.md` / `canon/docs/DIRECTIVES-DIRECTORY.md` (no `docs/canon-index.md` on this ref). Scope is prompt + embedded QC rubric text only (`EMBEDDED_EVALUATE_JD_CRITERIA` content, `evaluate_jd` `cache_prompt` in repo JSON); hydrate stays strict, no core validation change, `_ENCODED_GRADE_SET_COMPLETENESS` unchanged by design. That aligns with `astral.seed.agent-tables-in-repo-json` (repo JSON + Revert to file), `astral.config.config-source-of-truth` (criteria literals in config), and `astral.agent.confidence-bounds` (QC **F** with confidence 1–5, not **X**/**0**). `astral.agent.grade-vector-validation` is core-scoped and untouched; it does not require every vector to emit **X** when silent. No active statute/pattern mandates universal **X0** without per-vector rubric exceptions; QC **A/B/C/F** is already the AST-1084 product shape. **ESCALATE** not warranted (Susan option (b) is bounded; `evaluate_meteorite` prompt gap is explicitly out of scope).
+
+```text
+[board-joan]  CANON: OK
+```
+
+### Radia review-fix — AST-1910
+
+[code-rubric] CLEAN
+
+**Ticket:** AST-1910  
+**Publish ref:** `2bc48e66df30dbbd2298adb996f7eb9dc0b88902` (`origin/sub/AST-1898/AST-1910-forbid-qc-x-grade`)  
+**Diff reviewed:** `origin/ftr/AST-1898-evaluate-jd-qc-forbid-x...origin/sub/AST-1898/AST-1910-forbid-qc-x-grade`  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on this ref)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen **Canon Scope** on AST-1910 Linear Description: **none** (same fix-lane pattern as AST-1839 / AST-1847). No directive ids to score; roll-up from canon grades is vacuously clean.
+
+**Board overlap (informational only — not on frozen list):**
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| `astral.seed.agent-tables-in-repo-json` | A | | `evaluate_jd` `cache_prompt` edited in repo JSON + AST-756 byte-twin; deploy path documented (Revert to file) |
+| `astral.config.config-source-of-truth` | A | | QC rule line in `EMBEDDED_EVALUATE_JD_CRITERIA` literal block |
+| `astral.agent.confidence-bounds` | A | | Prompt/rubric text closes QCF0 / requires F with confidence 1–5 |
+| `astral.agent.grade-vector-validation` | A | | No `src/core/**` change; global `{A…X}` validation unchanged |
+
+## Column diff vs plan stage
+
+`no plan-stage validate-plan scores attached` — fix-board Joan `[board-joan] CANON: OK`; Radia aligns with board triage, not re-litigating F2.
+
+## Frame diff
+
+- [ ] **Acceptance criteria — runtime prompt:** AC 2 for live `agent_task` DB still requires admin **Revert to file** after deploy (plan item 4); engineer/UAT checklist only — product on tip is correct in repo JSON.
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** not applicable — clean board opt-out (Betty `TESTS: REVISE` → test work split to sibling **AST-1911**; qa-fix did not run; no `[bug-repro]` on this tip by design).
+- **`## What must still hold`:** OK — traced on product diff (`1cacc0635` + doc commits):
+  - QC `grade_descriptions` remain exactly A/B/C/F (unchanged in diff; verified at tip).
+  - `_lookup_rubric_reason_for_grade(…, "Quality Check", "X")` still raises (no hydrate/decode change).
+  - `parse_trailing_grade_table_lines(qc["content"])` still yields A/B/C/F only; new line is not parsed as a grade row (verified at tip).
+  - Non-QC vectors: evaluate_jd prompt retains universal X0 language plus QC-specific exceptions; `_ENCODED_GRADE_SET_COMPLETENESS` unchanged in diff.
+  - `EMBEDDED_EVALUATE_JD_CRITERIA` remains the embedded SSOT for QC content (single added prose line + placement comment).
+
+## Findings
+
+**fix-now:** none  
+
+**discuss:** none  
+
+**advisory:**
+- **Product footprint vs Linear scope:** Description still lists `tests/component/utils/test_config.py` under this ticket; Ada’s Code Complete / test-fix threads document **no `tests/` on this ref** — coverage lands on gap sibling **AST-1911** (same pattern as AST-1839 / AST-1846). Not a defect on this tip.
+- **Pre-existing ftr failures:** Ada’s test-fix comment: **77** failures, **identical** on `origin/ftr/AST-1898-evaluate-jd-qc-forbid-x` vs this sub tip; **0 new**. `TestAst1084EvaluateJdCriteria` passes. Do not treat the 77 as regressions from AST-1910.
+- **Three-dot diff** includes plan-fix / fix-board / scope-amendment **docs** (+105 lines in `ast-1084-config-constant-jd-vectors.md`); **product delta** is four files: `config.py` (QC content), `data/admin/agent_task.json` + `docs/uat-fixtures/AST-756/expected-agent_task.json` (one `cache_prompt` line each), matching plan items 1, 2, and 2a.
+- **Canon Scope process:** No frozen list on the bug ticket — note for Archie if fix children should carry explicit Discussion locks; not **ESCALATE** (Joan board OK; no off-list statute violation on shipped product).
+
+## What’s solid
+
+- QC “Never grade Quality Check X … grade F (confidence 1–5, never 0)” inserted **before** the A row with a safe non–`X=` prefix (plan placement constraints).
+- `evaluate_jd` `cache_prompt` gets both STEP 3 and GRADE SET COMPLETENESS QC exceptions while preserving X0 for other vectors.
+- AST-756 fixture mirrors the admin JSON edit on the same row (fix-board scope amendment).
+- Boundaries respected: no X→F mapping in code, no `_ENCODED_GRADE_SET_COMPLETENESS` widening, no GC change.
+
+## Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship product on this ref) | 0 fix-now · 0 discuss · 0 advisory blocking |
+| Chuckles routing | Clean → **Review Posted** → **User Testing** (resolve-child skipped). Mini-parent **with ftr** (AST-1898 In Progress): merge/stack via `ftr/AST-1898-evaluate-jd-qc-forbid-x`, not straight-to-`dev` finish-up until parent lane says so. Test/bible gap stays **AST-1911**. |
+
+## Chuckles disposition
+
+**PROCEED** — product matches `## Bug: AST-1910` plan-fix; board canon OK; what-must-still-hold intact; `[bug-repro]` N/A by opt-out.
+
+
+---
+
+[code-rubric] PROCEED (Commit: 2bc48e66) QC forbids X prompt fix
+
+### Resolution — AST-1910
+
+docs-acceptance: product-only fix. The regression tests and bible rows (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1911, stacked after this ticket on `ftr/AST-1898-evaluate-jd-qc-forbid-x`.
+
+## Bug: AST-1911 — Pin QC never-X rule and evaluate_jd QC prompt exception (test gap for AST-1910)
+
+Test-gap sibling of AST-1910, filed from Betty's `[board-betty] TESTS: REVISE` on AST-1910. Mini-parent AST-1898 (`ftr/AST-1898-evaluate-jd-qc-forbid-x`). **Tests and bible only:** qa-fix (Betty) lands them, and there are no product changes. AST-1910's product edits (`## Bug: AST-1910` above) are already on this sub's tip via sync-child.
+
+### As-is
+
+No test pins AST-1910's fix. The existing `TestAst1084EvaluateJdCriteria` and `TestAst1154GradedTaskCompletenessPrompts` use substring checks that were already green before AST-1910 and stay green after it. Deleting the QC rule line, or either `evaluate_jd` prompt exception, would bring `QCX0` and the 9/9 hydrate errors back with no red test.
+
+### To-be
+
+Three new test functions pin the fix. Each fails on `origin/dev` and passes on this tip:
+
+1. The QC rubric line, including its placement and the A/B/C/F grade table it must not disturb.
+2. Both QC exceptions in the catalog `evaluate_jd` `cache_prompt`.
+3. The `evaluate_jd` row lockstep between catalog and AST-756 fixture, per key.
+
+Two bible files point at them.
+
+### Repro
+
+Verified this pass with `git show <ref>:<path>`:
+
+| Check | `origin/dev` | this tip (`68418dd2`) |
+| --- | --- | --- |
+| `"Never grade Quality Check X"` in `src/utils/config.py` | absent | present (1) |
+| catalog `evaluate_jd` `cache_prompt` has STEP 3 exception / completeness exception | False / False | True / True |
+| fixture `evaluate_jd` `cache_prompt` has both exceptions | False / False | True / True |
+| catalog `evaluate_jd` row object-equal to fixture row | True | True |
+
+The new tests are therefore red on dev and green on the tip. Row equality alone is green on dev too, which is why the lockstep test (item 3 below) also asserts the exception text.
+
+### Root cause
+
+AST-1910 changed only appended text, so every pre-existing assertion still holds. No test asserts the *new* text, its *placement* (the QC line before the A row, which keeps the trailing grade-table parse at A/B/C/F), or that the fixture copy carries it. That is a missing guard, not a product defect.
+
+### Proposed change
+
+Scope is exactly the four files in AST-1911 `## Scope`. Literal strings below are copied from the tip and must match byte for byte, including the em dashes (`—`) and en dash (`–`).
+
+**1. `tests/component/utils/test_config.py`, `TestAst1084EvaluateJdCriteria`.** Add one method and leave the three existing methods untouched (AC 2):
+
+```python
+    def test_qc_content_forbids_x_and_grade_table_stays_abcf(self) -> None:
+        # AST-1910 / AST-1911: QC never X; rule line sits above the A row so the trailing table stays A/B/C/F.
+        from src.utils.rubric_text import parse_trailing_grade_table_lines
+
+        qc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[0]
+        rule = (
+            "Never grade Quality Check X — X is not a valid grade for this vector. "
+            "If there is not enough to analyze, grade it F (confidence 1–5, never 0)."
+        )
+        lines = qc["content"].split("\n")
+        assert lines[0] == "Quality Check — is this enough of a JD to analyze?"
+        assert lines[1] == rule
+        assert lines[2].startswith("A = ")
+        assert [r["grade"] for r in parse_trailing_grade_table_lines(qc["content"])] == ["A", "B", "C", "F"]
+        assert [g["grade"] for g in qc["grade_descriptions"]] == ["A", "B", "C", "F"]
+```
+
+On `origin/dev`, `lines[1]` is the `A = …` row, so the test fails. On the tip it passes.
+
+**2. `tests/component/core/test_repo_admin_json.py`.** Add a new class `TestAst1910EvaluateJdQcNeverXPrompt` **immediately after** `TestAst1154GradedTaskCompletenessPrompts`, shaped like `TestAst1211EvaluateCraftFixtureLockstep` (with a `_current_by_key` helper and `current == 1` rows). It is not decorated with the AST-1269 seed-wipe skip, since it reads only files.
+
+```python
+class TestAst1910EvaluateJdQcNeverXPrompt:
+    """AST-1910 / AST-1911: evaluate_jd keeps X0-when-silent but names QC as the one never-X exception."""
+
+    _STEP3 = (
+        "use X0 when silent — never omit a code. Exception: QC (Quality Check) is never X — "
+        "if the job description is too thin to analyze, grade QC F with confidence 1–5 "
+        "(never QCX0, never QCF0)."
+    )
+    _COMPLETENESS = (
+        "When the source is silent, emit {code}X0 — never skip the segment. "
+        "The one exception is QC (Quality Check): never emit QCX — grade it F when there is "
+        "not enough to analyze."
+    )
+
+    def _current_by_key(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {r["task_key"]: r for r in rows if r.get("current") == 1}
+
+    def test_catalog_evaluate_jd_cache_prompt_qc_exception(self) -> None:
+        cache = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]["cache_prompt"]
+        assert cache.count(self._STEP3) == 1
+        assert cache.count(self._COMPLETENESS) == 1
+
+    def test_fixture_evaluate_jd_row_lockstep_with_catalog(self) -> None:
+        # Per-key lockstep (AST-1196 / AST-1211 style) — whole-file AST-756 twin is already red on dev, not ours.
+        cat = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]
+        fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")["evaluate_jd"]
+        assert self._STEP3 in fix["cache_prompt"]
+        assert self._COMPLETENESS in fix["cache_prompt"]
+        assert fix == cat
+```
+
+Each combined string pins both halves at once: the general "X0 when silent" rule (AST-1910 AC 2, still there for every other vector) and the QC exception right after it. The `TestAst1154…` class is **not** edited.
+
+**3. `docs/test-bible/utils/config.md`, § `AST-1084 · AST-1077`.**
+- Add a table row: `| QC never-X rule line + A/B/C/F table (AST-1910 fix, pinned by AST-1911) | src/utils/config.py | **TestAst1084EvaluateJdCriteria::test_qc_content_forbids_x_and_grade_table_stays_abcf** |`.
+- Add one sentence after the table: QC `content` carries a "Never grade Quality Check X" line between the header and the A row (AST-1910). Grades stay A/B/C/F, and hydrate stays strict. Cross-ref `docs/test-bible/core/repo_admin_json.md` § AST-1911.
+- The existing run block (`::TestAst1084EvaluateJdCriteria`) already covers the new method and is unchanged.
+
+**4. `docs/test-bible/core/repo_admin_json.md`.** Append a section after the last one, in the same shape as § AST-1196 and § AST-1494:
+- Heading: `### AST-1911 · AST-1898 (gap — evaluate_jd QC never-X prompt; pins AST-1910)`.
+- **Parent** line linking AST-1898, and **Publish** `origin/sub/AST-1898/AST-1911-pin-qc-never-x-tests`.
+- One paragraph: the `evaluate_jd` `cache_prompt` keeps X0-when-silent and names QC as the never-X exception in STEP 3 and GRADE SET COMPLETENESS. The AST-756 fixture row is locked per key. Config SSOT is `docs/test-bible/utils/config.md` § AST-1084.
+- A table row: `| Prompt QC exception + per-key fixture lockstep | data/admin/agent_task.json, docs/uat-fixtures/AST-756/expected-agent_task.json | **TestAst1910EvaluateJdQcNeverXPrompt** |`.
+- `**Broken / obsolete:** none.` Then note that the whole-file AST-756 twin tests (`TestAst1494…::test_fixture_byte_identical_to_catalog`, `TestAst1773…::test_fixture_catalog_byte_lockstep`) are already red on `origin/dev` from four drifted rows. They are not revised here and not made worse.
+- `**Integration:** none.`
+- A run block:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1084EvaluateJdCriteria \
+  tests/component/core/test_repo_admin_json.py::TestAst1910EvaluateJdQcNeverXPrompt \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  -q
+```
+
+**Repro-first check (qa-fix):** run the three new functions against `origin/dev` product files and confirm they are red. For example, in a throwaway detached checkout of `origin/dev`, copy in the two edited test files and run the manifest above. Then confirm green on this tip. This host's component runner only finds Python 3.10–3.12, so use `ASTRAL_PYTHON=/home/susan/astral-AST-1851/.venv/bin/python`.
+
+### Blast radius
+
+- **No product files.** `src/`, `data/admin/`, and `docs/uat-fixtures/` stay as AST-1910 left them.
+- **Future edits to the `evaluate_jd` row** (in any column) must now be mirrored into the AST-756 fixture, or `test_fixture_evaluate_jd_row_lockstep_with_catalog` goes red. This is the intended per-key guard, the same contract AST-1211 imposes on its two keys.
+- **Future rewording** of QC `content` or the two prompt sentences will turn these tests red by design. The plan doc and these tests move together.
+- **Existing tests:** `TestAst1084…` (three methods) and `TestAst1154…` are unchanged and stay green. The 77 pre-existing failures across the touched files (AST-1910 test-fix comment) are not affected.
+
+### What must still hold
+
+- QC grades are still pinned to exactly A/B/C/F. `test_qc_grades_abcdef_subset_and_descriptions` is unchanged, and the new test strengthens the pin with the parse check and the placement check (AST-1911 AC 2).
+- No product code changes on this ticket (AC 3).
+- Every new test function fails on `origin/dev` and passes on the tip (AC 1).
+- The whole-file AST-756 twin tests are not revised and not made worse (Boundaries).
+- AST-1910's invariants are unchanged: hydrate stays strict on QC X, and every non-QC vector keeps X0-when-silent.
+
+### Joan fix-board — AST-1911
+
+— Read `## Bug: AST-1911` on `origin/sub/AST-1898/AST-1911-pin-qc-never-x-tests`. Scope is **tests + test-bible only** (new component tests pinning AST-1910 QC never-X rubric line and `evaluate_jd` prompt exceptions; bible rows in `config.md` and `repo_admin_json.md`). Blast radius explicitly excludes `src/`, `data/admin/`, and fixtures as product edits. Same shape as other gap siblings (e.g. AST-1848, AST-1850): no in-force statute or pattern amendment; registry skim (`canon/statutes/**`, no `docs/canon-index.md` on ref) has no overlap that these assertions would contradict.
+
+```text
+[board-joan]  CANON: OK
+```
+
+### Radia review-fix — AST-1911
+
+[code-rubric] CLEAN
+
+**Ticket:** AST-1911  
+**Publish ref:** `c18e32c959fb7f3af6804b6dc4c86e3bdcfef67b` (`origin/sub/AST-1898/AST-1911-pin-qc-never-x-tests`)  
+**Diff reviewed:** `origin/ftr/AST-1898-evaluate-jd-qc-forbid-x...origin/sub/AST-1898/AST-1911-pin-qc-never-x-tests` (interpretation below)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on this ref)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen **Canon Scope** on AST-1911 Linear Description: **none** (gap child; Joan fix-board `[board-joan] CANON: OK` for tests/bible-only). No directive rows to score; roll-up is vacuously clean.
+
+**Board overlap (informational only):** tests assert repo JSON + config literals already governed by AST-1910 product; no statute amendment and no contradicting in-force text — aligns with Joan’s skim.
+
+## Column diff vs plan stage
+
+`no plan-stage validate-plan scores attached` — fix-board Joan CANON: OK; Radia does not re-litigate F2/F3.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** **OK** — qa-fix delivery `b854c7fdc` adds three functions that pin **concrete** AST-1910 / plan **To-be** strings (not tautologies):
+  - `test_qc_content_forbids_x_and_grade_table_stays_abcf`: exact rule line on `lines[1]`, header on `lines[0]`, `A =` on `lines[2]`, `parse_trailing_grade_table_lines` → `["A","B","C","F"]`, `grade_descriptions` grades unchanged.
+  - `test_catalog_evaluate_jd_cache_prompt_qc_exception`: `_STEP3` and `_COMPLETENESS` literals (general X0 + QC exception) each `count == 1`.
+  - `test_fixture_evaluate_jd_row_lockstep_with_catalog`: same substrings on fixture + `fix == cat` for the `evaluate_jd` row.
+  - **Repro-first:** Betty’s `[bug-repro]` thread and Ada’s test-fix comment document red with dev `config.py` + `agent_task.json` swapped in, green on restored tip (stacked AST-1910 on ftr). Plausibly fails pre-fix for the stated root-cause reasons.
+  - **Advisory (tagging):** no first-line `[bug-repro]` marker in the test docstrings; commit message + `docs/test-bible/core/repo_admin_json.md` § AST-1911 manifest carry the gate (same pattern as AST-1905 / AST-1014 gap reviews). Not fix-now.
+
+- **`## What must still hold`:** **OK** on AST-1911 delivery (`b854c7fdc` + empty `code(AST-1911)` @ `c18e32c95`):
+  - `TestAst1084EvaluateJdCriteria`: three original methods unchanged; fourth method strengthens A/B/C/F pin (AC 2).
+  - No product edits in qa-fix commit (four files: two test modules + two bible paths only). Empty `code(AST-1911)` marker matches “tests-only gap” design.
+  - Whole-file AST-756 twin tests not touched in `b854c7fdc`; bible notes they stay out of scope.
+  - AST-1910 invariants exercised indirectly via assertions on tree product (strict QC X off-limits in text, X0 retained for others in combined prompt strings).
+
+## Findings
+
+**fix-now:** none  
+
+**discuss:** none  
+
+**advisory:**
+- **Three-dot carry (Chuckles):** `ftr...sub` at tip includes **~41 files / ~3.6k insertions** beyond AST-1911 — other tickets’ tests/bible (AST-1895, AST-1916, AST-1917, AST-1920, AST-1908/1909, …) plus **`src/**`, UI, and DB** from `merge-tests(AST-1911): origin/tests b854c7fdc`, `sync(dev)`, and publish-ref sync. **AST-1911’s own qa-fix footprint is commit `b854c7fdc` only (80 lines, four scoped files).** Do not score or merge-block on carry as AST-1911 work; attribute to `origin/tests` resync / sibling program when triaging CI or ftr rollup.
+- **Pre-existing failures:** Ada test-fix: full `test_config.py` + `test_repo_admin_json.py` → **39 failed** on sub vs ftr, **identical sets**, **0 new**; **+3 passes** are the new AST-1911 nodes; manifest § AST-1911 → **8 passed**.
+- **Canon Scope process:** no frozen list on gap bug (Archie comparability note only); not **ESCALATE**.
+
+## What’s solid
+
+- Plan `## Bug: AST-1911` matched byte-for-byte in tests (em dash / en dash literals, class placement after `TestAst1154GradedTaskCompletenessPrompts`, AST-1211-style lockstep).
+- Bible rows in `config.md` § AST-1084 and new `repo_admin_json.md` § AST-1911 with manifest + repro node ids.
+- Gap sequencing: product stays on AST-1910 / ftr; this ticket only guards regression.
+
+## Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship test gap on this ref) | 0 fix-now · 0 discuss · 0 advisory blocking |
+| Chuckles routing | **PROCEED** → Review Posted → User Testing (resolve-child skipped). Mini-parent **with ftr** (AST-1898): roll AST-1910 + AST-1911 into `ftr/AST-1898-evaluate-jd-qc-forbid-x`; treat three-dot carry separately when syncing `origin/tests` / dev product on the epic line. |
+
+## Chuckles disposition
+
+Clean **PROCEED** — `[bug-repro]` assertions and repro flip OK; plan fidelity and what-must-still-hold satisfied on `b854c7fdc`; isolate carry when merging.
+
+
+---
+
+[code-rubric] PROCEED (Commit: c18e32c9) QC never-X tests pinned

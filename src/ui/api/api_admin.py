@@ -33,6 +33,7 @@ from src.core.dispatcher import (
     count_dispatch_tasks_by_candidate, set_candidate_dispatch_tasks_from_template,
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
     meteorite_mailbox_trigger_allows,
+    get_auto_thread_cap, set_auto_thread_cap,
 )
 from src.core.candidate import (
     build_candidate_token_view,
@@ -2112,6 +2113,33 @@ def scheduler_thread_status():
 def scheduler_stop_all():
     killed = cancel_all_tasks()
     return jsonify({"killed": killed})
+
+
+def _auto_thread_cap_payload() -> Dict[str, int]:
+    """Effective AUTO thread cap plus config default and bounds (bounds drive the UI dropdown)."""
+    return {
+        "max_auto_threads": get_auto_thread_cap(),
+        "default": ASTRAL_CONFIG["max_auto_threads"],
+        "min": ASTRAL_CONFIG["max_auto_threads_min"],
+        "max": ASTRAL_CONFIG["max_auto_threads_max"],
+    }
+
+
+@admin_bp.route("/scheduler/auto_thread_cap")
+@require_admin
+def scheduler_get_auto_thread_cap():
+    return jsonify(_auto_thread_cap_payload())
+
+
+@admin_bp.route("/scheduler/auto_thread_cap", methods=["POST"])
+@require_admin
+def scheduler_set_auto_thread_cap():
+    body = request.get_json(silent=True) or {}
+    try:
+        set_auto_thread_cap(body.get("max_auto_threads"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(_auto_thread_cap_payload())
 
 
 # ---------------------------------------------------------------------------

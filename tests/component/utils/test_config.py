@@ -4134,6 +4134,22 @@ class TestAst1084EvaluateJdCriteria:
             assert f"{letter} = {desc}" in gc["content"]
         assert "Gut Check — is this even plausible for this candidate?" in gc["content"]
 
+    def test_qc_content_forbids_x_and_grade_table_stays_abcf(self) -> None:
+        # AST-1910 / AST-1911: QC never X; rule line sits above the A row so the trailing table stays A/B/C/F.
+        from src.utils.rubric_text import parse_trailing_grade_table_lines
+
+        qc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[0]
+        rule = (
+            "Never grade Quality Check X — X is not a valid grade for this vector. "
+            "If there is not enough to analyze, grade it F (confidence 1–5, never 0)."
+        )
+        lines = qc["content"].split("\n")
+        assert lines[0] == "Quality Check — is this enough of a JD to analyze?"
+        assert lines[1] == rule
+        assert lines[2].startswith("A = ")
+        assert [r["grade"] for r in parse_trailing_grade_table_lines(qc["content"])] == ["A", "B", "C", "F"]
+        assert [g["grade"] for g in qc["grade_descriptions"]] == ["A", "B", "C", "F"]
+
 
 # Branches: METEORITE_EMAIL_MAILBOX_CONFIG (AST-1467 rehome of AST-1088/1134 gaze shell).
 @pytest.mark.skipif(
