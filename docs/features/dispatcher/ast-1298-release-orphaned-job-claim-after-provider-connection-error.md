@@ -776,3 +776,11 @@ All edits in Betty's tree. Every other test in both classes stays byte-for-byte.
 - AC3: balance-hold, hop-label-false, and `Missing candidate_data` hard-string tests are unchanged and pass.
 - AC4: no product code on this ticket.
 - After this lands, `test_agent.py` + `test_llm_external.py` on this tip fail only on the 40 pre-existing nodes shared with the pre-fix baseline — the six AST-1941 nodes are green.
+
+### Joan fix-board — AST-1942
+
+```text
+[board-joan]  CANON: OK
+
+context_tokens≈18000
+```
