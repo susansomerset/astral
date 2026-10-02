@@ -118,3 +118,10 @@ Confirm Chuckles estimate: 1 — agree
 context_tokens≈64000
 
 [plan-rubric] PROCEED (Commit: 0afbf60cb) Task modal picker removal clean
+
+## Review
+
+- **Branch:** `origin/sub/AST-1937/AST-1939-remove-task-model-picker`
+- **Build tip:** `28cb84c7e` (Stage 1: `AdminTaskPrompts.tsx` picker, catalog fetch, agent load, and agent `PUT` removed; 2 insertions, 100 deletions)
+- **Build notes:** Built as planned, steps 1–11 in order, with no deviations. Both Compile / lint greps are empty, and `model_code`, `<th>Model</th>`, and the `row.model_code` cell are still present. `npm ci` was run in `src/ui/frontend`. `npm run build` passes. `npx eslint src/pages/AdminTaskPrompts.tsx` is clean. Repo-wide `npm run lint` reports the same 32 pre-existing problems (27 errors, 5 warnings) with and without this change, none of them in this file.
+- **For qa-child:** see **Tests expected to move** above. All 7 tests in the AST-1909 describe should now fail (no labelled Model select, no agent fetch).
