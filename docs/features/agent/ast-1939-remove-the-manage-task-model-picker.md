@@ -125,3 +125,58 @@ context_tokens≈64000
 - **Build tip:** `28cb84c7e` (Stage 1: `AdminTaskPrompts.tsx` picker, catalog fetch, agent load, and agent `PUT` removed; 2 insertions, 100 deletions)
 - **Build notes:** Built as planned, steps 1–11 in order, with no deviations. Both Compile / lint greps are empty, and `model_code`, `<th>Model</th>`, and the `row.model_code` cell are still present. `npm ci` was run in `src/ui/frontend`. `npm run build` passes. `npx eslint src/pages/AdminTaskPrompts.tsx` is clean. Repo-wide `npm run lint` reports the same 32 pre-existing problems (27 errors, 5 warnings) with and without this change, none of them in this file.
 - **For qa-child:** see **Tests expected to move** above. All 7 tests in the AST-1909 describe should now fail (no labelled Model select, no agent fetch).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1939
+**Publish ref:** `fb6a5e37e3039bd52f87ad2b1cab0c27f281732b` (`origin/sub/AST-1937/AST-1939-remove-task-model-picker`)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a`
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (Linear **Citations:** none; plan **Canon Scope:** none). No directive rows to score.
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded no canon rows; implementation matches Stage 1 steps 1–11 and ticket AC 9 on the product file.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Severity:** discuss  
+- **Location:** Manage Task modal UX (plan **Observations** / Joan discuss)  
+- **Finding:** After AST-1939, the edit modal shows Agent → Run next with no model surfaced in the modal; `model_code` remains only on the list column (AST-1909 had already removed the read-only `Model:` header). Plan explicitly chose not to restore that header.  
+- **@susan:** For UAT on AST-1937, is list-only model visibility on Manage Tasks acceptable, or should a follow-up ticket add a read-only model line in the modal?  
+- **Default:** Treat as acceptable for this ticket; no `resolve-child` UI add unless Susan amends Scope.
+
+### advisory
+
+- **Severity:** advisory  
+- **Location:** `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx`, `docs/test-bible/frontend/pages.md`  
+- **Finding:** Three-dot diff includes Betty/merge-tests work (AST-1909 describe retired → **AST-1939 no task-level model picker** with 3 tests; bible manifest updated). Expected on **Tests Passed**; not cross-ticket product scope.
+
+### fix-now
+
+(none)
+
+## What's solid
+
+- `AdminTaskPrompts.tsx` at tip: `useRef` and all catalog/agent-picker symbols removed; both AC greps are empty on the shipped file.  
+- `handleSave` is task `PUT` only (no agent `PUT` chain). Agent `onChange` no longer calls `loadAgentModel`.  
+- List **Model** column preserved (`model_code` type, `<th>Model</th>`, `row.model_code` cell).  
+- Component tests assert no Model/Brain selects, no `/api/admin/agents/models` or per-agent row fetch in the modal flow, save PUT set is only the task URL, and column still shows `claude` for `task_a`.  
+- Boundaries respected: no `config.py` / `llm_compat.py` / `AdminAgentPrompts.tsx` in diff.
+
+## Recommended actions
+
+- Chuckles: append this block to the issue doc, commit `docs(AST-1939): Radia review — clean`, push, post slim upshot `--as radia`, move **Review Posted**; datt **PROCEED** → **User Testing** path (no `resolve-child` unless Susan answers the discuss Default away from list-only).  
+- UAT: exercise Manage Task save after changing Agent only; confirm model edits happen in Manage Agents, not the task modal.
+
+context_tokens≈28000
