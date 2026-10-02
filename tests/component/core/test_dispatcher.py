@@ -3663,3 +3663,101 @@ class TestAst1829ScheduledSweep:
         assert run.await_count == 1
         assert seen_debug == [expect_debug]
         assert any("last_run_at" in c.kwargs for c in stamp.call_args_list)
+
+
+# Branches: get_auto_thread_cap override set / unset; set_auto_thread_cap type reject / range reject / accept;
+# _tick_loop slot math reads the live cap every tick (raise between ticks, lower below running count).
+class TestAst1916AutoThreadCap:
+    """AST-1916: runtime AUTO-thread cap — bounded setter, live read in _tick_loop, never cancels."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # monkeypatch restores the module global at teardown even after set_auto_thread_cap writes it,
+        # so no override leaks into the cfg["max_auto_threads"]-driven TestScheduler tick tests.
+        monkeypatch.setattr(dispatcher_mod, "_auto_thread_cap_override", None)
+
+    @staticmethod
+    def _registering_run_task(monkeypatch: pytest.MonkeyPatch) -> List[int]:
+        # Spawned ids land in the registry as AUTO so the next tick counts them as running.
+        spawned: List[int] = []
+
+        def _run(task_id: int, **_kw: Any) -> bool:
+            spawned.append(task_id)
+            with dispatcher_mod._registry_lock:
+                dispatcher_mod._task_registry[task_id] = {"is_auto": True}
+            return True
+
+        monkeypatch.setattr(dispatcher_mod, "run_task", _run)
+        return spawned
+
+    def test_getter_falls_back_to_config_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "max_auto_threads", 5)
+        assert dispatcher_mod.get_auto_thread_cap() == 5
+
+    @pytest.mark.parametrize("value", [1, 7, 100], ids=["min", "mid", "max"])
+    def test_setter_accepts_in_range_and_getter_reports_it(self, value: int) -> None:
+        assert dispatcher_mod.set_auto_thread_cap(value) == value
+        assert dispatcher_mod.get_auto_thread_cap() == value
+
+    # bool is an int subclass and 5.0 / "5" are numeric — the strict type() check must reject them all.
+    @pytest.mark.parametrize(
+        "value",
+        [0, 101, -1, "abc", 2.5, True, None, "5", 5.0],
+        ids=["zero", "over_max", "negative", "str", "float", "bool", "none", "numeric_str", "whole_float"],
+    )
+    def test_setter_rejects_and_keeps_prior_cap(self, value: Any) -> None:
+        dispatcher_mod.set_auto_thread_cap(7)
+        with pytest.raises(ValueError, match="whole number between 1 and 100"):
+            dispatcher_mod.set_auto_thread_cap(value)
+        assert dispatcher_mod.get_auto_thread_cap() == 7
+
+    def test_setter_bounds_come_from_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 8: moving the config bounds moves the accepted range (nothing hardcoded in the setter).
+        monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "max_auto_threads_min", 2)
+        monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "max_auto_threads_max", 4)
+        with pytest.raises(ValueError, match="between 2 and 4"):
+            dispatcher_mod.set_auto_thread_cap(1)
+        with pytest.raises(ValueError, match="between 2 and 4"):
+            dispatcher_mod.set_auto_thread_cap(5)
+        assert dispatcher_mod.set_auto_thread_cap(4) == 4
+
+    def test_tick_honours_raised_cap_on_next_tick(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 5 / 6: cap 1 on tick 1, raised to 3 during the sleep → tick 2 fills to 3, no restart.
+        due = [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}]
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: due)
+        monkeypatch.setattr(dispatcher_mod, "_meteorite_email_due_tasks", lambda: [])
+        spawned = self._registering_run_task(monkeypatch)
+        _run_one_tick(monkeypatch)
+        dispatcher_mod.set_auto_thread_cap(1)
+        waits: List[int] = []
+
+        def _raise_cap_then_stop(timeout: object = None) -> None:
+            waits.append(1)
+            if len(waits) == 1:
+                dispatcher_mod.set_auto_thread_cap(3)
+                return
+            raise StopIteration
+
+        monkeypatch.setattr(dispatcher_mod._tick_event, "wait", _raise_cap_then_stop)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        assert spawned == [1, 2, 3]
+
+    def test_lowering_below_running_spawns_none_and_cancels_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 7: 3 AUTO running, cap lowered to 1 → no spawn, registry untouched, nothing cancelled.
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: [{"id": 9}])
+        monkeypatch.setattr(dispatcher_mod, "_meteorite_email_due_tasks", lambda: [])
+        with dispatcher_mod._registry_lock:
+            for tid in (1, 2, 3):
+                dispatcher_mod._task_registry[tid] = {"is_auto": True}
+        cancel = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "cancel_task", cancel)
+        monkeypatch.setattr(dispatcher_mod, "cancel_all_tasks", cancel)
+        spawned = self._registering_run_task(monkeypatch)
+        dispatcher_mod.set_auto_thread_cap(1)
+        _run_one_tick(monkeypatch)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        assert spawned == []
+        assert sorted(dispatcher_mod._task_registry) == [1, 2, 3]
+        cancel.assert_not_called()

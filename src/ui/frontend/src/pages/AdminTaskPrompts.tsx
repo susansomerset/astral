@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useCandidate } from "../contexts/CandidateContext"
 import CollapsiblePanel from "../components/CollapsiblePanel"
 import Modal from "../components/Modal"
@@ -40,6 +40,27 @@ interface AgentTask {
   cache_prompt_d?: string
   nocache_prompt?: string
   [key: string]: unknown
+}
+
+/** `GET /api/admin/agents/models` — keyed by model id (same shape as AdminAgentPrompts).
+ *  JSON keys arrive sorted, so `order` carries catalog order. */
+interface BrainSizeRow {
+  order: number
+  default_temperature: number
+  default_max_tokens: number
+}
+interface ModelRow {
+  order: number
+  label: string
+  server_id: string
+  server_label: string
+  brain_sizes: Record<string, BrainSizeRow>
+}
+type ModelCatalog = Record<string, ModelRow>
+
+/** Ids of a keyed catalog object in catalog order. */
+function byOrder<T extends { order: number }>(o: Record<string, T> | undefined): string[] {
+  return Object.entries(o ?? {}).sort((a, b) => a[1].order - b[1].order).map(([id]) => id)
 }
 
 /** Edit accordion order — mirrors parent enumerated segment order */
@@ -178,6 +199,15 @@ export default function TaskPrompts() {
   const [editOpenPanel, setEditOpenPanel] = useState<TabKey | null>(null)
   const [defaultPanelPreference, setDefaultPanelPreference] = useState<TabKey>(() => readDefaultEditPanel())
 
+  // Model + brain size live on the task's agent row (per-agent model); the modal edits that row.
+  const [models, setModels] = useState<ModelCatalog>({})
+  const [editModelId, setEditModelId] = useState("")
+  const [editBrainSetting, setEditBrainSetting] = useState("")
+  // Agent row's saved pair — null when there is no agent row (blank, "n/a", 404), which disables the selects.
+  const [loadedAgentModel, setLoadedAgentModel] = useState<{ model_id: string; brain_setting: string } | null>(null)
+  // Latest agent id requested, so a slow response for a previous agent can't overwrite the current one.
+  const agentModelReq = useRef("")
+
   // Preview state
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewData, setPreviewData] = useState<Record<string, unknown> | null>(null)
@@ -213,6 +243,38 @@ export default function TaskPrompts() {
       void loadAll(true)
     })
   }, [loadAll])
+
+  useEffect(() => {
+    api("/api/admin/agents/models")
+      .then(r => (r.ok ? r.json() : {}))
+      .then(setModels)
+      .catch(() => setModels({}))
+  }, [])
+
+  function loadAgentModel(agentId: string) {
+    agentModelReq.current = agentId
+    setEditModelId("")
+    setEditBrainSetting("")
+    setLoadedAgentModel(null)
+    if (!agentId || agentId === "n/a") return
+    api(`/api/admin/agents/${encodeURIComponent(agentId)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then(row => {
+        if (!row || agentModelReq.current !== agentId) return
+        const pair = { model_id: row.model_id || "", brain_setting: row.brain_setting || "" }
+        setEditModelId(pair.model_id)
+        setEditBrainSetting(pair.brain_setting)
+        setLoadedAgentModel(pair)
+      })
+  }
+
+  /** Keep the size when the new model offers it, else the model's first size (Manage Agents rule). */
+  function handleModelChange(modelId: string) {
+    const sizes = byOrder(models[modelId]?.brain_sizes)
+    setEditModelId(modelId)
+    setEditBrainSetting(sizes.includes(editBrainSetting) ? editBrainSetting : (sizes[0] ?? ""))
+  }
 
   const sections = useMemo(() => {
     const bySectionKey: Record<string, AgentTask[]> = {}
@@ -300,6 +362,7 @@ export default function TaskPrompts() {
     api(`/api/admin/tasks/${row.task_key}`).then(r => r.json()).then(full => {
       setEditTask({ ...row, ...full })
       setEditAgentId(full.agent_id || "")
+      loadAgentModel(full.agent_id || "")
       setEditSystem(full.system_prompt || "")
       setEditCache(full.cache_prompt || "")
       setEditCacheB((full.cache_prompt_b as string) || "")
@@ -343,6 +406,18 @@ export default function TaskPrompts() {
       .then(r => {
         if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Update failed") })
         return r.json()
+      })
+      .then(() => {
+        // Task saved first; the agent PUT only goes out when the model/size actually changed.
+        const m = loadedAgentModel
+        if (!m || (editModelId === m.model_id && editBrainSetting === m.brain_setting)) return
+        return api(`/api/admin/agents/${encodeURIComponent(editAgentId)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model_id: editModelId, brain_setting: editBrainSetting }),
+        }).then(r => {
+          if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Agent update failed") })
+        })
       })
       .then(() => {
         setEditOpen(false)
@@ -453,12 +528,6 @@ export default function TaskPrompts() {
         title={editTask ? `Edit: ${editTask.task_key}` : ""}
         onSave={handleSave}
       >
-        {editTask && (
-          <div style={{ display: "flex", gap: 24, marginBottom: 12, fontSize: 13, color: "var(--text-secondary)" }}>
-            <span><strong>Model:</strong> {editTask.model_code || "—"}</span>
-          </div>
-        )}
-
         <div className="dep-field">
           <label className="dep-field-label">Group order</label>
           <input className="dep-input" value={editGroupOrder} onChange={e => setEditGroupOrder(e.target.value)} />
@@ -481,11 +550,34 @@ export default function TaskPrompts() {
           <select
             className="dep-input"
             value={editAgentId}
-            onChange={e => setEditAgentId(e.target.value)}
+            onChange={e => { setEditAgentId(e.target.value); loadAgentModel(e.target.value) }}
           >
             <option value="">— Select Agent —</option>
             {agentIds.map(id => <option key={id} value={id}>{id}</option>)}
           </select>
+        </div>
+
+        {/* Options come only from the catalog response — no model/server literals here. */}
+        <div className="dep-field">
+          <label className="dep-field-label">Model</label>
+          <select className="dep-input" value={editModelId} disabled={!loadedAgentModel}
+            onChange={e => handleModelChange(e.target.value)}>
+            {loadedAgentModel
+              ? byOrder(models).map(id => <option key={id} value={id}>{models[id].label}</option>)
+              : <option value="">— no agent —</option>}
+          </select>
+        </div>
+        <div className="dep-field">
+          <label className="dep-field-label">Brain size</label>
+          <select className="dep-input" value={editBrainSetting} disabled={!loadedAgentModel}
+            onChange={e => setEditBrainSetting(e.target.value)}>
+            {byOrder(models[editModelId]?.brain_sizes).map(bs => <option key={bs} value={bs}>{bs}</option>)}
+          </select>
+          {loadedAgentModel && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-secondary)" }}>
+              {`Applies to agent ${editAgentId} — used by ${tasks.filter(t => t.agent_id === editAgentId).length} task(s)`}
+            </div>
+          )}
         </div>
 
         <div className="dep-field">
