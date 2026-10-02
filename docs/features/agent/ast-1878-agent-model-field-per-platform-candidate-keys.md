@@ -951,3 +951,180 @@ no plan-stage canon scores attached (fix-board only)
 - Append artifact; `docs(AST-1901): Radia review — clean`; post slim upshot; **Review Posted** → fix-lane clean shortcut → **User Testing** (skip `resolve-child`).
 - **Parent shape:** normal batch on AST-1851 (diff base `origin/dev...sub/AST-1901` per spawn override — not orphaned).
 - Optional: clarify Linear bug text **model** → **server** if Susan wants ticket prose aligned.
+
+## Bug: AST-1920 — Manage Candidate modal has no api_key access
+
+UAT-batch bug on AST-1851. Susan's decision (AST-1920 Description, 2026-10-01) is **option 1, UI only**. It reverses the UI half of § Bug: AST-1901 step 4 (stored rows plus the "Add API key for…" picker). AST-1901's storage (`candidate.api_keys` array), the PUT contract and the `candidate_api_keys` hydrate are untouched.
+
+### As-is
+
+Manage Candidates → Edit renders one key field per **stored** `api_keys` entry, then an "Add API key for…" select. A candidate with no stored keys therefore shows no key text fields at all, only the select. On staging every candidate is in that state, because AST-1901's `DROP TABLE IF EXISTS candidate_key` deleted the UAT-entered keys by design.
+
+### To-be
+
+The Edit modal shows one API key field for **every** server in the model catalog (`GET /api/admin/agents/models`, deduped by server, catalog order), whether or not a key is set.
+- A server with a stored entry shows "(set — leave blank to keep current)" with Show / Clear.
+- A server without one shows "(not set)" with an empty field and Show.
+- There is no picker and no Remove button.
+
+Save still sends only the changed rows as `[{server, key}]` (`""` removes a stored entry) and omits `api_keys` when nothing changed.
+
+Out of scope (Susan): recovering dropped `candidate_key` rows, and carrying legacy `candidate_api_key` values into `api_keys`. Keys are re-entered by hand.
+
+### Repro
+
+On `origin/sub/AST-1851/AST-1920-manage-candidate-key-fields` @ `dd4d03c0d`, Manage Candidates with a candidate whose GET carries `api_keys: []`, and `/api/admin/agents/models` serving the catalog (anthropic, kimi, deepseek, openrouter):
+1. Click **Edit**.
+2. No `… API key` field renders. Only the "Add API key for…" select is present.
+3. With `api_keys: [{server: "kimi", label: "Kimi"}]`, only the Kimi field renders. Anthropic, DeepSeek and OpenRouter have no field.
+
+### Root cause
+
+AST-1901 step 4g derives `keyRows` from stored entries plus `addedServers`, so unset servers have no row until one is picked. Susan's AST-1901 "no fixed slots" was meant for the storage shape. In the UI it hid the key fields.
+
+### Proposed change
+
+**`src/ui/frontend/src/pages/AdminManageCandidates.tsx`** is the only product file. No API, data-layer or `Candidate.api_keys` type change.
+
+1. **State.**
+   - Delete `const [addedServers, setAddedServers] = useState<string[]>([])`.
+   - Change the comment above `keyServers` to `// Server catalog for the key fields, derived from /api/admin/agents/models (no literals).`
+   - Change the `keyInputs` comment to `// Key edits keyed by server id: typed value, show toggle, pending clear.`
+   - The mount-effect fetch that fills `keyServers` (dedupe by `server_id`, sort by `order`) stays as it is.
+
+2. **Opening Edit.** Delete the `setAddedServers([])` line next to `setKeyInputs({})` / `setShowKeys({})` / `setClearKeys({})`.
+
+3. **`keyRows` derivation.** Replace the `keyRows` + `addableServers` block above `return (` with:
+
+   ```ts
+   // One row per catalog server (AST-1920), set or not; stored entries the catalog no longer lists stay visible so they can be cleared.
+   const storedKeys = editTarget?.api_keys ?? []
+   const keyRows = [
+     ...keyServers.map(s => ({ ...s, stored: storedKeys.some(k => k.server === s.server) })),
+     ...storedKeys.filter(k => !keyServers.some(s => s.server === k.server)).map(k => ({ ...k, stored: true })),
+   ]
+   ```
+
+   ⚠️ **Decision:** a stored entry whose server isn't in the catalog (retired server) is appended after the catalog rows with its outbound label, which `_sanitize_candidate` falls back to the id for. This keeps the "no hidden key" to-be honest and lets an admin clear it. It also renders the stored rows during the moment before `/api/admin/agents/models` resolves.
+
+4. **Save payload.** In the `apiKeys` loop, change the iterated list from `[...(editTarget.api_keys ?? []).map(k => k.server), ...addedServers]` to `keyRows.map(r => r.server)`. The body stays the same: `clearKeys[sid]` gives `{server, key: ""}`, and a trimmed non-empty `keyInputs[sid]` gives `{server, key}`. Change the comment to `// Only rows that changed: typed key = set/replace, "" = remove a stored entry; omit when nothing changed.`. Clear only renders on stored rows, so `""` is only ever sent for a stored server.
+
+5. **Key fields.**
+   - Change the `{/* … */}` comment above `keyRows.map` to `{/* One key field per catalog server (AST-1920); labels come from the server, not literals. */}`.
+   - Label suffix: `{k.stored ? "(set — leave blank to keep current)" : "(not set)"}`, replacing `"(new)"`.
+   - Delete the `{!k.stored && ( … Remove … )}` button block with its comment.
+   - Delete the whole `{addableServers.length > 0 && ( … "Add API key for…" … )}` picker block with its comment.
+   - The Show/Hide button and the stored-only Clear button (confirm dialog) stay as they are.
+
+**Compile / lint:** `cd src/ui/frontend && npx tsc -b --noEmit && npx eslint src/pages/AdminManageCandidates.tsx`.
+
+### Blast radius
+
+- **AST-1901 frontend tests** (`tests/component/frontend/pages/test_AdminManageCandidates.test.tsx`) assert the picker, `(new)` rows and Remove: the main CRUD test, the "no keys … full picker" test, and "Remove drops an unsaved row …". Betty rewrites them, and updates `docs/test-bible/frontend/pages.md` § AST-1901 to say one field per catalog server.
+- The API Key list column (`api_key_status`, stored labels), `api_candidate.py`, `database.py`, and the AST-1879 routing / gates are untouched.
+
+### What must still hold
+
+- **AST-1901 storage and API contract:** the PUT carries only changed rows as `[{server, key}]`, `""` removes, and `api_keys` is omitted when nothing changed. No duplicate server is possible, because each server has exactly one row.
+- **Parent AC 2:** no server literals in the UI. Labels come from `/api/admin/agents/models` or the outbound `api_keys` label.
+- **No plaintext outbound:** the form never shows a stored key, only "(set …)".
+- **Parent AC 12, candidate half:** one key field per catalog server is restored (AST-1880's original shape), with stored state from the `api_keys` array.
+
+### Joan fix-board (AST-1920)
+
+#### Findings
+
+The patch is **frontend-only** (`AdminManageCandidates.tsx`): `keyRows` becomes one row per catalog server (plus orphan stored servers for Clear), with the AST-1901 add-picker / `addedServers` / Remove path removed. **AST-1901** storage (`candidate.api_keys` JSON array), PUT `[{server, key}]`, and in-memory **`candidate_api_keys`** are unchanged, so **Model → server catalog routing** and AST-1879 gates/routing need no canon adjustment.
+
+Susan’s **option 1 (UI only)** restores the parent **AC 12** candidate shape (one field per catalog server) without undoing the variable-length array on the row. That is product scope alignment, not a conflict with in-force directives. Labels still come from `/api/admin/agents/models` or outbound `{server, label}` (parent **AC 2**). No new API routes → no **stat.logging.info.api** impact. Betty’s bible/test updates are test-tree, not statute.
+
+No statute or pattern text requires the “stored rows + Add API key for…” UI or forbids fixed catalog rows while keeping array storage.
+
+---
+
+```
+[board-joan]  CANON: OK
+
+```
+[board-joan]  CANON: OK
+```
+
+### Radia review-fix (AST-1920)
+
+[code-rubric]
+**Ticket:** AST-1920
+**Publish ref:** 711621d1b
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+#### Canon scores
+
+(frozen list empty on AST-1920 — no `## Citations` directive ids; UAT-batch bound to parent **Model → server catalog routing** per Joan fix-board and AST-1878 parent scope)
+
+Model → server catalog routing | A | |
+stat.logging.debug | X | |
+stat.logging.error | X | |
+stat.logging.warning | X | |
+stat.logging.info.api | X | |
+
+#### Column diff vs plan stage
+
+no plan-stage canon scores attached (fix-board only; Joan **CANON: OK**)
+
+#### Frame diff
+
+(none)
+
+#### [bug-repro]
+
+**Verdict:** OK — Betty’s thread points at `origin/sub/AST-1851/AST-1920-manage-candidate-key-fields` @ `74087971d` (merge-tests); product tip `711621d1b`. `test_AdminManageCandidates.test.tsx` pins **to-be**: four catalog-order fields (deduped DeepSeek), `(set …)` vs `(not set)`, no picker/Remove, Clear only on stored rows, `api_keys: []` → four `(not set)` fields and Save **omits** `api_keys`, orphan `retired_srv` row after catalog + clear-only PUT, whitespace-only Anthropic not sent, changed rows only `[{server, key}]`. Main CRUD test rewritten from picker flow. Would fail on pre-fix AST-1901 (stored-only rows + “Add API key for…”).
+
+**Advisory:** qa-fix comment uses `[bug-repro]`; tests are named `AST-1920:` / file header comment — no first-line `[bug-repro]` tag in the test source (same pattern as AST-1909/1901).
+
+#### What must still hold
+
+**Verdict:** OK
+
+- **AST-1901 storage/API:** Save loop iterates `keyRows.map(r => r.server)`; only `clearKeys` / trimmed `keyInputs` become PUT rows; tests assert omit-when-unchanged and partial updates. No `api_candidate` / `database` change on `711621d1b`.
+- **Parent AC 2:** no vendor/server literals in `AdminManageCandidates.tsx`; labels from `keyServers` / outbound `api_keys` labels.
+- **No plaintext outbound:** stored rows still use password inputs + “(set — leave blank to keep current)”; no echo of ciphertext.
+- **Parent AC 12 (candidate half):** one field per catalog server restored; storage remains `api_keys` array (Susan option 1).
+
+#### Findings
+
+##### fix-now
+
+(none)
+
+##### discuss
+
+(none)
+
+##### advisory
+
+- **Severity:** advisory  
+- **Location:** `git diff origin/ftr/AST-1851-support-openrouter-api-models...origin/sub/AST-1851/AST-1920-manage-candidate-key-fields`  
+- **Finding:** Range includes **sibling** epic/fix work (AST-1909 `AdminTaskPrompts`, AST-1916/1917 tests, AST-1904/1905 `builder.py`, ast-1014 doc, etc.). **AST-1920 product** is single-file `711621d1b` (+ Betty `7c9610031` / merge `74087971d`).  
+- **Recommendation:** Merge/review AST-1920 on its commits; do not attribute sibling diffs to this bug.
+
+- **Severity:** advisory  
+- **Location:** UAT / data  
+- **Finding:** Plan and ticket: legacy `candidate_key` drop and dark `candidate_api_key` are **out of scope**; staging keys still require manual re-entry — UI fix does not recover DB rows.  
+- **Recommendation:** Parent UAT checklist only.
+
+#### What's solid
+
+- Plan patch followed: `addedServers` / picker / Remove removed; `keyRows` = full `keyServers` + orphan stored servers; suffix `(not set)`; save payload unchanged semantically.
+- Restores discoverable key entry without undoing AST-1901 array PUT contract or routing hydrate.
+- Bible § AST-1920 + manifest describe repro; picker-era AST-1901 tests retired as planned.
+
+#### Recommended actions (Chuckles)
+
+- Append artifact; `docs(AST-1920): Radia review — clean`; post slim upshot **`--as radia`**; **Review Posted** → fix-lane clean shortcut → **User Testing** (skip `resolve-child`).
+- **Parent shape:** AST-1851 live epic, UAT-batch — **not orphaned**; normal `sub` merge path (not straight-to-dev).
+
+context_tokens≈28000
+
+---
+
+`[code-rubric] PROCEED (Commit: 711621d1b) catalog key fields restored`

@@ -2466,6 +2466,8 @@ EMBEDDED_EVALUATE_JD_CRITERIA: tuple[dict, ...] = (
         "importance": 1,
         "content": (
             "Quality Check — is this enough of a JD to analyze?\n"
+            # Must precede the A row and not start "<grade> =": hydrate's trailing-table fallback would read it as a grade.
+            "Never grade Quality Check X — X is not a valid grade for this vector. If there is not enough to analyze, grade it F (confidence 1–5, never 0).\n"
             "A = This is a valid job description with full details of the role and requirements and information about the company the candidate would be working for.\n"
             "B = This is a valid job description with full details of the role and requirements, but limited information about the company the candidate would be working for.\n"
             "C = This content references a job with enough detail about the role and requirements to perform fit analysis for the candidate.\n"
@@ -4498,6 +4500,8 @@ ASTRAL_CONFIG = {
     # --- Dispatcher (dispatcher) ---
     "tick_rate_minutes": 3,           # how often the scheduler wakes to check which AUTO tasks are due
     "max_auto_threads": 3,            # max concurrent AUTO task threads; CLICK threads are excluded from this limit
+    "max_auto_threads_min": 1,        # lowest runtime override accepted for max_auto_threads (admin API / Scheduled Actions)
+    "max_auto_threads_max": 100,      # highest runtime override accepted for max_auto_threads (admin API / Scheduled Actions)
     "dispatch_timeout_seconds": 3600, # AUTO task timeout (60 min); CLICK tasks run unbounded
     # Outbound probe before batch claim (stdlib HTTP in src.utils.network — not Playwright).
     "dispatch_network_check_url": "https://www.anthropic.com/",

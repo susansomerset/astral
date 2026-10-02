@@ -21,6 +21,7 @@ export default function SessionResumePaste() {
   )
   const [parsing, setParsing] = useState(false)
   const [opening, setOpening] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [jsonOpen, setJsonOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -125,6 +126,43 @@ export default function SessionResumePaste() {
     }
   }
 
+  async function handleSave() {
+    if (!selectedId || !lastParse || saving || parsing || opening) return
+    setSaving(true)
+    setError(null)
+    try {
+      // Sections only — no accent_color — so the route replaces the layout and keeps the candidate's accent.
+      // base_resume goes as parsed: the route's ingest/filter owns shaping (no client-side reshape).
+      const r = await api(`/api/candidates/${selectedId}/data`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          artifacts: {
+            resume_structure: { sections: lastParse.resume_structure.sections },
+            base_resume: lastParse.base_resume,
+          },
+        }),
+      })
+      if (!r.ok) {
+        let msg = `HTTP ${r.status}`
+        try {
+          const data = await r.json()
+          if (typeof data.error === "string" && data.error) msg = data.error
+        } catch { /* non-JSON error body */ }
+        setError(msg)
+        setToast({ text: msg, variant: "error" })
+        return
+      }
+      setToast({ text: "Saved parse as the candidate's base resume.", variant: "success" })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Save failed"
+      setError(msg)
+      setToast({ text: msg, variant: "error" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div style={{ padding: 24, maxWidth: 900 }}>
       <h1 style={{ margin: "0 0 8px", fontSize: 22, color: "var(--text-primary)" }}>
@@ -132,7 +170,8 @@ export default function SessionResumePaste() {
       </h1>
       <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
         Paste a full resume, Parse to structure-keyed JSON, optionally View Parsed JSON, then Open HTML to Print → PDF.
-        Uses the selected candidate's API key for Ruth's model; does not save to the database.
+        Uses the selected candidate's API key for Ruth's model. Parse and Open HTML do not save; Save to Candidate writes
+        the parse as the selected candidate's base resume and section layout.
       </p>
 
       <textarea
@@ -157,7 +196,7 @@ export default function SessionResumePaste() {
           type="button"
           className="btn primary"
           onClick={() => void handleParse()}
-          disabled={!selectedId || !pasteText.trim() || parsing}
+          disabled={!selectedId || !pasteText.trim() || parsing || saving}
           title={selectedId ? undefined : "Select a candidate first — Parse runs on their API key"}
         >
           {parsing ? "Parsing…" : "Parse"}
@@ -166,7 +205,7 @@ export default function SessionResumePaste() {
           type="button"
           className="btn secondary"
           onClick={() => setJsonOpen(true)}
-          disabled={!lastParse || opening || parsing}
+          disabled={!lastParse || opening || parsing || saving}
         >
           View Parsed JSON
         </button>
@@ -174,9 +213,17 @@ export default function SessionResumePaste() {
           type="button"
           className="btn secondary"
           onClick={() => void handleOpenHtml()}
-          disabled={!lastParse || opening || parsing}
+          disabled={!lastParse || opening || parsing || saving}
         >
           {opening ? "Opening…" : "Open HTML"}
+        </button>
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => void handleSave()}
+          disabled={!selectedId || !lastParse || parsing || opening || saving}
+        >
+          {saving ? "Saving…" : "Save to Candidate"}
         </button>
       </div>
 
