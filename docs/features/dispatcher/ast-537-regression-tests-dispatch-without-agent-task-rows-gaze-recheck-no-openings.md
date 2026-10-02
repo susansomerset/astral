@@ -157,3 +157,21 @@ Alternatives considered and rejected:
 - `api_admin` Run/Auto key gate behavior is unchanged (AST-1880). Non-LLM tasks still need no key there.
 - `agent_task.json` changes only in `agent_id` on the 12 sentinel rows. Every other row and field is byte-identical, and there is no new `agent.json` row.
 - `"telescope"` never resolves to a real agent, so `do_task` / preview on a non-LLM key still raises `Agent 'telescope' … not found` (strict, unchanged).
+
+### Joan fix-board — AST-1944
+
+**Canon take on the transition-window item:** Neither default `("", "telescope")` nor adopted `("", "telescope", "n/a")` forces a statute or pattern edit. `astral.seed.agent-tables-in-repo-json` already treats repo JSON as authoritative in git while live `agent_task` may lag until operator Revert to file (AST-1492 kill-switch). Code that still accepts legacy `"n/a"` is a bounded DB/repo skew bridge, not a second seed source; repo rename to `"telescope"` remains the durable shape. Keeping only `telescope` in code is canon-clean but leaves non-LLM dispatch broken on any env that has deployed the fix without revert — an ops gap, not a canon violation. **Board canon view: OK to adopt the transition tuple** (no F3); follow-up removal is hygiene only.
+
+```text
+[board-joan]  CANON: OK
+
+Registry skim (not R1–R7): `astral.seed.agent-tables-in-repo-json` — renaming `agent_id` on the 12 non-LLM rows in `data/admin/agent_task.json` (`n/a` → `telescope`, no new `agent.json` row) is an Archie-approved repo-seed edit on the explicit Revert-to-file path; aligns with kill-switch / no boot-apply law. `task_llm_server_id_or_none` + gated `_dispatch_one_body` check restores the AST-537 / pre–AST-1879 dispatch invariant without weakening AST-1879 per-server key law for real LLM routes; no in-force directive encodes `"n/a"` as the canonical non-LLM sentinel or forbids `telescope`.
+
+`astral.standards.no-hardcoded-sets`: the `("", "telescope")` tuple interprets seed `agent_id` semantics (plus empty / missing row), not a parallel TASK_CONFIG membership set — no REVISE.
+
+**TRANSITION-WINDOW (`("", "telescope", "n/a")`):** Canon-neutral either way. Adopting accepts live DB rows still on `"n/a"` until each env runs `POST …/revert/agent_task`; consistent with seed statute’s repo-vs-DB split and does not require a new carve-out in corpus. Default-only `telescope` is also canon-OK but widens the post-deploy crash window where revert lags — ops, not statute. **Joan: adopt the transition tuple in make-fix** (one-line removal follow-up comment); no F3 unless Archie later wants sentinel semantics written into a directive (optional, not fix-board REVISE).
+
+context_tokens≈8500
+```
+
+**Chuckles routing:** the transition tuple is not adopted in make-fix. Susan's AST-1943 To-be says `"telescope"` *instead of* `"n/a"`, and accepting both is a product/deploy call she hasn't made. It is flagged to her on the AST-1943 PR. Default `("", "telescope")` stands, and the post-deploy `agent_task` revert is a required ops step.
