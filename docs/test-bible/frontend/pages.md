@@ -3154,24 +3154,35 @@ Manifest: **`docs/test-bible/data/database/candidates.md`** § QA test manifest 
 
 ### AST-1909 · AST-1851 (bug: Manage Task modal model + brain size)
 
-`AdminTaskPrompts.tsx`: the read-only `Model: <sku>` line becomes **Model** and **Brain size** selects (dep-field labels) for the **task's agent**. They are filled from `GET /api/admin/agents/models` in `order`, with the current values from `GET /api/admin/agents/<agent_id>`. A model change keeps the size when the new model offers it, otherwise it takes the first size. The hint reads `Applies to agent <id> — used by <N> task(s)`. With no agent row (`""`, `n/a`, or 404), Model is disabled with "— no agent —". Save sends the task `PUT` first, then `PUT /api/admin/agents/<id>` `{model_id, brain_setting}` only when the pair changed. A non-OK agent response's `error` goes to the error toast.
+**Retired by AST-1939.** The modal's Model / Brain size selects, the agent catalog/row fetches, and the post-save agent `PUT` were removed (Susan: the agent row is the only model source). The 7-test **AST-1909 task modal model + brain size** describe and its file-local catalog/agent mock wrapper are gone. Current coverage: § AST-1939 below.
 
-| Area | Tests |
+### AST-1939 · AST-1937 (remove the Manage Task model picker)
+
+`AdminTaskPrompts.tsx`: the modal drops the AST-1909 **Model** / **Brain size** selects, the "Applies to agent" hint, the `GET /api/admin/agents/models` and `GET /api/admin/agents/<id>` fetches, and the post-save `PUT /api/admin/agents/<id>`. The Agent select, the task `PUT` (which still carries `agent_id`), and the list's read-only **Model** column (`model_code`) are unchanged.
+
+| AC 9 bullet | Tests (`test_AdminTaskPrompts.test.tsx`, describe **AST-1939 no task-level model picker**) |
 | --- | --- |
-| Existing suite kept working | `test_AdminTaskPrompts.test.tsx`: a file-local `installBaseApiMocks` wrapper (test handlers first) serves the catalog plus default `agent_a` / `agent_b` rows, a 404 for unknown ids, and an OK agent `PUT`. All 12 existing tests run through it. |
-| Repro (bug-repro), describe **AST-1909 task modal model + brain size** | selects show the agent's model + size in catalog order with the shared-agent hint (N=2) and no `Model:` line · the model change keeps or resets the size, then Save sends task PUT → agent PUT `{claude, Big}` → list re-fetch · Save with no change sends no agent PUT · changing the Agent select loads agent_b's model + hint · no agent selected: Model disabled, no agent PUT · agent 404 disables Model · agent PUT 400 → toast, after the task PUT |
+| No Model / Brain size select in the modal | **modal has no Model or Brain size select and fetches neither the catalog nor the agent row** |
+| Save issues only the task update, no `/api/admin/agents/<id>` request | **changing the Agent then saving issues only the task PUT — no agent request** |
+| List keeps the read-only Model column | **task list keeps the read-only Model column showing model_code** |
+| No `agents/models` / `editModelId` / `editBrainSetting` / `loadAgentModel` / `Brain size` in the page | grep in manifest below |
 
-## QA test manifest (AST-1909)
+The first two tests are red against the `origin/dev` page and green on the publish tip; the column test is a guard and stays green on both (checked at QA). **Broken / obsolete (revised):** the 7 AST-1909 modal tests (removed, replaced by the describe above) and the file-local `installBaseApiMocks` wrapper (removed; the file now uses `test-utils` `installBaseApiMocks` directly, which throws on any unhandled URL). The other 12 tests in the file are unchanged and green. **Integration:** no scenario covers the Manage Task modal, so nothing to revise.
 
-**Bug-repro (qa-fix):** all 7 tests in the AST-1909 describe are red on the pre-fix tree (`origin/sub/AST-1851/AST-1909-manage-task-model-dropdown` @ `bdbfa87a2`) because there is no labelled Model select and no agent fetch. test-fix must see all 7 flip green, with the other 12 tests in the file still green.
+## QA test manifest (AST-1939)
+
+1. **Page Vitest (§6c routed page):** the whole file, 15 tests (12 existing + 3 AST-1939).
+2. **Manage Agents unchanged:** `test_AdminAgentPrompts.test.tsx` green (Boundaries).
+3. **AC 9 grep** on the publish tip — expect nothing.
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+cd ../../.. && rg -n "agents/models|editModelId|editBrainSetting|loadAgentModel|Brain size" src/ui/frontend/src/pages/AdminTaskPrompts.tsx
 ```
 
-**Pass criterion:** both files green. AdminAgentPrompts covers parent AC 12 (Manage Agents pickers unchanged).
+**Pass criterion:** both files green, grep empty.
 
 ### AST-1908 · AST-1899 (Save to Candidate on Session Resume Paste)
 
