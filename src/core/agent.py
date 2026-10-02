@@ -1839,6 +1839,23 @@ def task_llm_server_id(task_key: str) -> str:
     return _agent_llm_route(agent_row)["server_id"]
 
 
+def task_llm_server_id_or_none(task_key: str) -> Optional[str]:
+    """task_llm_server_id, or None when the task has no LLM agent (AST-1944).
+
+    No agent_task row, empty agent_id, or the "telescope" sentinel → no model, no server to gate on.
+    Any other resolution failure (unknown real agent, missing model_id) still raises — a
+    misconfigured LLM task must stay loud.
+    """
+    try:
+        # Strict path first: the stage_email_meteorite mailbox fold resolves a real agent here.
+        return task_llm_server_id(task_key)
+    except ValueError:
+        row = get_agent_task(resolve_task_key_for_content(task_key))
+        if ((row or {}).get("agent_id") or "").strip() in ("", "telescope"):
+            return None
+        raise
+
+
 def _candidate_server_key(
     ctx: Optional[Dict[str, Any]], candidate_id: Optional[str], server_id: str
 ) -> Optional[str]:
