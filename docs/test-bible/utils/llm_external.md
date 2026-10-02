@@ -6,6 +6,8 @@
 
 ---
 
+> **AST-1880:** `src/external/deepseek.py` and `tests/component/external/test_deepseek.py` are deleted. DeepSeek goes through `llm_compat` (see [`llm_compat.md`](../external/llm_compat.md)). Manifests below that cite `test_deepseek.py` are frozen historical records: drop those nodes when re-running.
+
 ### AST-687
 
 | Behavior | Sources | Manifest tests |

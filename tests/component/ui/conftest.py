@@ -29,17 +29,6 @@ def _ui_fail_closed_deploy_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _ui_default_anthropic_llm_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.utils import config as cfg_mod
-
-    monkeypatch.setattr(cfg_mod, "get_active_llm_provider", lambda: "anthropic")
-    import importlib
-
-    mod = importlib.import_module("src.ui.api.api_admin")
-    monkeypatch.setattr(mod, "get_active_llm_provider", lambda: "anthropic")
-
-
-@pytest.fixture(autouse=True)
 def _register_mock_authenticator(monkeypatch: pytest.MonkeyPatch) -> None:
     """AST-611: Stytch validate_bearer_token stub for UI route tests."""
     from src.utils import auth as utils_auth

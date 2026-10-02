@@ -141,9 +141,9 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         { field: "get_score", label: "GET" },
         { field: "like_score", label: "LIKE" },
       ],
-      // AST-1348 — Analysis section header score title template
+      // AST-1348 / AST-1872 — Analysis section header score title template ({score} = list phase score)
       phase_score_header_title_template:
-        "{phase_label} - score: {earned} out of {possible} possible ({max} max total)",
+        "{phase_label} - {score} - score: {earned} out of {possible} possible ({max} max total)",
       primary_actions_by_state: {
         RECOMMENDED: [
           {
@@ -171,8 +171,9 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         ],
       },
       report_top_tabs: [
-        { tab_id: "summary", nav_label: "Summary" },
+        // AST-1872: Analysis first (first entry = default tab)
         { tab_id: "analysis", nav_label: "Analysis" },
+        { tab_id: "summary", nav_label: "Summary" },
         { tab_id: "artifacts", nav_label: "Artifacts" },
         // AST-1550 / AST-1551: Discussion after Artifacts
         { tab_id: "discussion", nav_label: "Discussion" },

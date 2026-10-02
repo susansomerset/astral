@@ -33,6 +33,7 @@ from src.core.dispatcher import (
     count_dispatch_tasks_by_candidate, set_candidate_dispatch_tasks_from_template,
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
     meteorite_mailbox_trigger_allows,
+    get_auto_thread_cap, set_auto_thread_cap,
 )
 from src.core.candidate import (
     build_candidate_token_view,
@@ -50,18 +51,16 @@ from src.core.repo_admin_json import (
 )
 from src.utils.config import (
     ASTRAL_CONFIG,
-    AGENT_CONFIG,
     BUILD_CONFIG,
-    DEEPSEEK_MODEL_PRICING,
+    LLM_MODEL_CONFIG,
+    get_llm_server,
+    resolve_model_brain,
     get_manage_agents_tokens,
     get_manage_tasks_chain_tokens,
     get_repo_admin_json_table_keys,
     get_tokens,
     resolve_tokens,
     empty_render_for_prompts,
-    get_model,
-    admin_brain_setting_catalog,
-    brain_setting_for_anthropic_agent_key,
     TASK_CONFIG,
     TRACKER_CONFIG,
     UI_CONFIG,
@@ -88,11 +87,6 @@ from src.utils.config import (
     is_dispatch_chain_trigger,
     parse_dispatch_hop_label,
     is_registered_state,
-    get_active_llm_provider,
-    infer_brain_setting_from_legacy_model_code,
-    resolve_brain_setting_to_anthropic_agent_key,
-    resolve_brain_setting_to_deepseek_tier_meta,
-    validate_allowed_brain_setting,
     RUBRIC_FEEDBACK_CONFIG,
     rubric_owner_task_key_choices,
     rubric_owner_task_key,
@@ -108,6 +102,7 @@ from src.core.agent import (
     _chain_context,
     _caller_response_blob,
     _resolve_task_prompts,
+    task_llm_server_id,
 )
 from scripts.migrations.backfill_culture_links import run_backfill, EXCLUDE_STATES
 
@@ -135,39 +130,22 @@ def admin_config():
 # Agents
 # ---------------------------------------------------------------------------
 
-def _agent_admin_view(agent: Dict[str, Any]) -> Dict[str, Any]:
-    """Ensure brain_setting tier is visible for Manage Agents (AST-495); persisted column is canonical (AST-492)."""
-    if not agent:
-        return agent
-    d = dict(agent)
-    bs = (d.get("brain_setting") or "").strip()
-    if bs:
-        d["brain_setting"] = bs
-        return d
-    mk = d.get("model_code")
-    inferred = infer_brain_setting_from_legacy_model_code(mk if isinstance(mk, str) else None)
-    tier_from_key = brain_setting_for_anthropic_agent_key(mk if isinstance(mk, str) else None)
-    d["brain_setting"] = tier_from_key or inferred
-    return d
+def _api_completed(candidate_id: Optional[str], route: str, method: str, status: int) -> None:
+    """stat.logging.info.api: one completion line at the route that did the work."""
+    logger.info("%s | api %s completed: %s %s", candidate_id or "-", route, method, status)
 
 
 @admin_bp.route("/agents")
 @require_admin
 def list_agents():
-    return jsonify([_agent_admin_view(dict(a)) for a in database.list_agents()])
+    # database._expose_agent_public already coerces brain_setting and exposes model_id + SKU (AST-1878).
+    return jsonify([dict(a) for a in database.list_agents()])
 
 
 @admin_bp.route("/agents/ids")
 @require_admin
 def list_agent_ids():
     return jsonify([a["agent_id"] for a in database.list_agents()])
-
-
-@admin_bp.route("/agents/brain_settings")
-@require_admin
-def list_brain_settings():
-    """Config-backed tier catalog for Manage Agents (AST-495)."""
-    return jsonify(admin_brain_setting_catalog())
 
 
 def _resolve_agent_preview_candidate(candidate_id: str):
@@ -214,7 +192,25 @@ def preview_agent():
 @admin_bp.route("/agents/models")
 @require_admin
 def list_models():
-    return jsonify([{"model_code": code, **info} for code, info in AGENT_CONFIG.items()])
+    """Model → brain-size catalog for Manage Agents (AST-1880); sizes are the model's own.
+    jsonify sorts keys, so `order` carries catalog order for the UI."""
+    return jsonify({
+        mid: {
+            "order": i,
+            "label": m["label"],
+            "server_id": m["server"],
+            "server_label": get_llm_server(m["server"])["label"],
+            "brain_sizes": {
+                bs: {
+                    "order": j,
+                    "default_temperature": t["default_temperature"],
+                    "default_max_tokens": t["default_max_tokens"],
+                }
+                for j, (bs, t) in enumerate(m["brain_sizes"].items())
+            },
+        }
+        for i, (mid, m) in enumerate(LLM_MODEL_CONFIG.items())
+    })
 
 
 @admin_bp.route("/agents/<agent_id>")
@@ -223,7 +219,7 @@ def get_agent(agent_id):
     agent = database.get_agent(agent_id)
     if not agent:
         return jsonify({"error": f"Agent not found: {agent_id}"}), 404
-    return jsonify(_agent_admin_view(dict(agent)))
+    return jsonify(dict(agent))
 
 
 @admin_bp.route("/agents", methods=["POST"])
@@ -231,32 +227,25 @@ def get_agent(agent_id):
 def create_agent():
     body = request.get_json(silent=True) or {}
     agent_id = (body.get("agent_id") or "").strip()
-    content = body.get("content", "")
-    brain_setting = (body.get("brain_setting") or "").strip() or None
-    legacy_model_code = (body.get("model_code") or "").strip() or None
-    temperature = body.get("temperature")
-    max_tokens = body.get("max_tokens")
-
-    if not agent_id:
-        return jsonify({"error": "agent_id is required"}), 400
-    if brain_setting and legacy_model_code:
-        return jsonify({"error": "Specify either brain_setting or model_code, not both"}), 400
-    if brain_setting:
-        try:
-            validate_allowed_brain_setting(brain_setting)
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 400
-    elif legacy_model_code:
-        if legacy_model_code not in AGENT_CONFIG:
-            return jsonify({"error": f"Unknown model_code: {legacy_model_code}"}), 400
-        brain_setting = infer_brain_setting_from_legacy_model_code(legacy_model_code)
-    else:
-        return jsonify({"error": "brain_setting or a known model_code is required"}), 400
+    model_id = (body.get("model_id") or "").strip()
+    brain_setting = (body.get("brain_setting") or "").strip()
+    if not agent_id or not model_id or not brain_setting:
+        return jsonify({"error": "agent_id, model_id and brain_setting are required"}), 400
     if database.get_agent(agent_id):
         return jsonify({"error": f"Agent '{agent_id}' already exists"}), 409
-    database.save_agent(
-        agent_id, content, brain_setting=brain_setting, temperature=temperature, max_tokens=max_tokens
-    )
+    try:
+        # Data layer checks the size against the model's own sizes before writing (AST-1878).
+        database.save_agent(
+            agent_id,
+            body.get("content", ""),
+            model_id=model_id,
+            brain_setting=brain_setting,
+            temperature=body.get("temperature"),
+            max_tokens=body.get("max_tokens"),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    _api_completed(None, "/api/admin/agents", "POST", 201)
     return jsonify({"created": agent_id}), 201
 
 
@@ -267,31 +256,21 @@ def update_agent(agent_id):
     if not database.get_agent(agent_id):
         return jsonify({"error": f"Agent not found: {agent_id}"}), 404
 
-    bs_raw = body.get("brain_setting")
-    mc_raw = body.get("model_code")
-    has_bs_val = bs_raw not in (None, "") and str(bs_raw).strip() != ""
-    has_mc_val = mc_raw not in (None, "") and str(mc_raw).strip() != ""
-    if has_bs_val and has_mc_val:
-        return jsonify({"error": "Specify either brain_setting or model_code, not both"}), 400
-
-    if "brain_setting" in body and body["brain_setting"] not in (None, ""):
-        try:
-            validate_allowed_brain_setting(str(body["brain_setting"]).strip())
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 400
-    if "model_code" in body and "brain_setting" not in body:
-        legacy = (body.get("model_code") or "").strip()
-        if legacy and legacy not in AGENT_CONFIG:
-            return jsonify({"error": f"Unknown model_code: {legacy}"}), 400
-        if legacy:
-            body = {**body, "brain_setting": infer_brain_setting_from_legacy_model_code(legacy)}
-            body.pop("model_code", None)
-    kwargs = {k: body[k] for k in ("content", "brain_setting", "temperature", "max_tokens") if k in body}
+    kwargs = {
+        k: (body[k].strip() if isinstance(body[k], str) and k in ("model_id", "brain_setting") else body[k])
+        for k in ("content", "model_id", "brain_setting", "temperature", "max_tokens")
+        if k in body
+    }
     if not kwargs:
         return jsonify({"error": "No updatable fields provided"}), 400
-    database.update_agent(agent_id, **kwargs)
+    try:
+        # update_agent checks the effective (model, size) pair against the stored row before its UPDATE.
+        database.update_agent(agent_id, **kwargs)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     row = database.get_agent(agent_id)
-    return jsonify(_agent_admin_view(dict(row)) if row else {})
+    _api_completed(None, f"/api/admin/agents/{agent_id}", "PUT", 200)
+    return jsonify(dict(row) if row else {})
 
 
 @admin_bp.route("/agents/<agent_id>", methods=["DELETE"])
@@ -396,7 +375,7 @@ def _enrich_tasks(candidate_id: str) -> list:
             agent_id = t.get("agent_id") or ""
             cfg = TASK_CONFIG.get(task_key, {})
 
-            # Agent tiers + resolved SKU for cache threshold math (Anthropic vs DeepSeek catalog).
+            # Agent model + brain size → catalog SKU and pricing row for cache threshold math (AST-1880).
             full_task = database.get_agent_task(task_key) if task_key else None
             agent = database.get_agent(agent_id) if agent_id else None
             brain_setting_eff = ""
@@ -406,16 +385,16 @@ def _enrich_tasks(candidate_id: str) -> list:
             _cc = _chain_context(agent, cd, task_key, None, chain_entry=True) if agent else None
             if agent:
                 brain_setting_eff = (agent.get("brain_setting") or "").strip()
-                if not brain_setting_eff:
-                    brain_setting_eff = infer_brain_setting_from_legacy_model_code(agent.get("model_code"))
-                prov_l = get_active_llm_provider()
-                if prov_l == "anthropic":
-                    resolved_model_key = resolve_brain_setting_to_anthropic_agent_key(brain_setting_eff)
-                    model_cfg = AGENT_CONFIG.get(resolved_model_key, {})
-                elif prov_l == "deepseek":
-                    vm = resolve_brain_setting_to_deepseek_tier_meta(brain_setting_eff)["vendor_model"]
-                    resolved_model_key = vm
-                    model_cfg = DEEPSEEK_MODEL_PRICING.get(vm, {})
+                try:
+                    route = resolve_model_brain((agent.get("model_id") or "").strip(), brain_setting_eff)
+                    resolved_model_key = route["sku"]
+                    model_cfg = route["pricing"]
+                except ValueError as e:
+                    # Display row only — one misconfigured agent must not 500 the whole screen.
+                    logger.warning(
+                        "%s | task manager %s agent %s has no routable model: %s",
+                        candidate_id or "-", task_key, agent_id, e,
+                    )
             if full_task and agent:
                 system_content = resolved_task_system(
                     agent, full_task, cd, task_key, _cc, chain_entry=True
@@ -453,7 +432,7 @@ def _enrich_tasks(candidate_id: str) -> list:
             # When tokens unresolved: parsed_cache_tokens None; approximate total_cache below uses raw lengths.
             parsed_cache_tokens = len(combined_cache_probe) // CHARS_PER_TOKEN if task_ready else None
 
-            # Cache threshold (model_cfg populated from tier → Anthropic or DeepSeek pricing row)
+            # Cache threshold (model_cfg is the catalog pricing row for the agent's model + brain size)
             cache_min = model_cfg.get("cache_min_tokens", 0)
             total_cache = system_tokens + (
                 parsed_cache_tokens if parsed_cache_tokens is not None else base_cache_tokens
@@ -967,17 +946,19 @@ def list_dtasks():
         )
         # AST-1780: empty-render flag + force AUTO off when non-executable.
         er = _evaluate_dispatch_empty_render(row.get("candidate_id"), row.get("task_key") or "")
-        row["empty_render"] = bool(er.get("empty_render"))
+        key_err = _candidate_dispatch_api_key_error(row.get("candidate_id"), row.get("task_key") or "")
+        row["empty_render"] = bool(er.get("empty_render")) or bool(key_err)
         # AST-1819: missing prompt tokens for the Invalid tooltip ([] when valid or unvalidatable).
         row["empty_tokens"] = list(er.get("empty_tokens") or [])
+        # AST-1880: missing platform key reason for the Invalid tooltip ("" when the key is present).
+        row["invalid_reason"] = key_err or ""
         if row["empty_render"] and row.get("auto_mode"):
             update_dispatch_task(row["id"], auto_mode=0)
             row["auto_mode"] = 0
             tokens = er.get("empty_tokens") or []
             why = (
-                f"empty_render tokens={tokens}"
-                if tokens
-                else "empty_render (could not validate prompts)"
+                key_err
+                or (f"empty_render tokens={tokens}" if tokens else "empty_render (could not validate prompts)")
             )
             logger.warning(
                 "%s | dispatch_task id=%s task_key=%r %s — AUTO forced off",
@@ -1169,7 +1150,7 @@ def create_dtask():
     if sweep_err:
         return jsonify({"error": sweep_err}), 400
     if bool(data.get("auto_mode", False)):
-        err = _candidate_dispatch_api_key_error(data.get("candidate_id"))
+        err = _candidate_dispatch_api_key_error(data.get("candidate_id"), task_key)
         if err:
             return jsonify({"error": err}), 400
         err = _candidate_dispatch_empty_render_error(data.get("candidate_id"), task_key)
@@ -1211,6 +1192,7 @@ def create_dtask():
     # save_dispatch_task has no max_runs param; without this, form-created rows keep the column default 1.
     if "max_runs" in data and data.get("max_runs") is not None:
         update_dispatch_task(task_id, max_runs=int(data["max_runs"]))
+    _api_completed(data.get("candidate_id"), "/api/admin/dispatch_tasks", "POST", 201)
     return jsonify({"id": task_id}), 201
 
 
@@ -1376,7 +1358,7 @@ def update_dtask(task_id):
         return jsonify({"error": "No valid fields to update"}), 400
     if updates.get("auto_mode") == 1:
         cid = row.get("candidate_id")
-        err = _candidate_dispatch_api_key_error(cid)
+        err = _candidate_dispatch_api_key_error(cid, effective_task_key)
         if err:
             return jsonify({"error": err}), 400
         err = _candidate_dispatch_empty_render_error(cid, effective_task_key)
@@ -1396,6 +1378,7 @@ def update_dtask(task_id):
                 )
             }), 409
         return jsonify({"error": str(e)}), 500
+    _api_completed(row.get("candidate_id"), f"/api/admin/dispatch_tasks/{task_id}", "PUT", 200)
     return jsonify({"ok": True})
 
 
@@ -1554,28 +1537,16 @@ def _resolve_adhoc(body):
     if not agent:
         return None, (jsonify({"error": f"Agent not found: {agent_id}"}), 404)
 
-    brain_setting = (agent.get("brain_setting") or "").strip()
-    if not brain_setting:
-        brain_setting = infer_brain_setting_from_legacy_model_code(agent.get("model_code"))
-
-    provider = get_active_llm_provider()
-    tier_meta = None
-
-    if provider == "deepseek":
-        tier_meta = resolve_brain_setting_to_deepseek_tier_meta(brain_setting)
-        vendor_model = tier_meta["vendor_model"]
-        model_cfg = DEEPSEEK_MODEL_PRICING.get(vendor_model)
-        if not model_cfg:
-            return None, (jsonify({"error": f"Unknown DeepSeek vendor_model: {vendor_model!r}"}), 400)
-        model_code = vendor_model
-    elif provider == "anthropic":
-        model_code = resolve_brain_setting_to_anthropic_agent_key(brain_setting)
-        model_cfg = get_model(model_code)
-    else:
-        return None, (jsonify({"error": f"Unknown LLM active_provider {provider!r}"}), 400)
-
-    temperature = agent.get("temperature") if agent.get("temperature") is not None else model_cfg["default_temperature"]
-    max_tokens = agent.get("max_tokens") if agent.get("max_tokens") is not None else model_cfg["default_max_tokens"]
+    # Agent model + brain size → server, SKU and tier row (AST-1880); no global provider.
+    try:
+        route = resolve_model_brain(
+            (agent.get("model_id") or "").strip(), (agent.get("brain_setting") or "").strip()
+        )
+    except ValueError as e:
+        return None, (jsonify({"error": str(e)}), 400)
+    tier = route["tier"]
+    temperature = agent["temperature"] if agent.get("temperature") is not None else tier["default_temperature"]
+    max_tokens = agent["max_tokens"] if agent.get("max_tokens") is not None else tier["default_max_tokens"]
 
     candidate_id = (body.get("candidate_id") or "").strip()
     cd = {}
@@ -1592,11 +1563,10 @@ def _resolve_adhoc(body):
     agent_task_row = database.get_agent_task(task_key) if task_key != "adhoc" else None
     task_key_uuid = agent_task_row.get("task_key_uuid") if agent_task_row else None
 
-    # Candidate API key override (only if task requires it)
     task_cfg = TASK_CONFIG.get(task_key, {})
-    api_key_override = None
-    if candidate_id and task_cfg.get("requires_candidate_key") and candidate:
-        api_key_override = candidate.get("candidate_api_key")
+    # Every task requires the candidate key (AST-1877 assert); core run_adhoc picks the route's server
+    # key from this map and fails with no request when it is missing (AST-1879).
+    candidate_api_keys = (candidate or {}).get("candidate_api_keys")
 
     jc = None
     if task_cfg.get("entity_type") == "job":
@@ -1629,13 +1599,14 @@ def _resolve_adhoc(body):
         "cache_c": cache_c,
         "cache_d": cache_d,
         "nocache": resolve_tokens(body.get("nocache_prompt", ""), cd, task_key, _cc, jc),
-        "model_code": model_code,
-        "tier_meta": tier_meta,
+        "model_code": route["sku"],
+        "server_id": route["server_id"],
+        "tier": tier,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "candidate_id": candidate_id or None,
         "task_key_uuid": task_key_uuid,
-        "api_key_override": api_key_override,
+        "candidate_api_keys": candidate_api_keys,
     }, None
 
 
@@ -1694,10 +1665,11 @@ def adhoc_test():
             live_content=live_content,
             response_format=task_response_format,
             model_code=resolved["model_code"],
-            tier_meta=resolved.get("tier_meta"),
+            server_id=resolved["server_id"],
+            tier=resolved["tier"],
             temperature=resolved["temperature"],
             max_tokens=resolved["max_tokens"],
-            api_key_override=resolved["api_key_override"],
+            candidate_api_keys=resolved["candidate_api_keys"],
             task_key_uuid=resolved["task_key_uuid"],
             debug=ui_llm_debug(),
         ))
@@ -1729,6 +1701,7 @@ def adhoc_test():
         except Exception as e:
             hydrated = {"error": str(e)}
 
+    _api_completed(resolved["candidate_id"], "/api/admin/adhoc/test", "POST", 200)
     return jsonify({
         "success": True,
         "response_text": response_text,
@@ -1776,13 +1749,18 @@ def _decode_blob_values(row: dict) -> dict:
 @admin_bp.route("/session_resume/parse", methods=["POST"])
 @require_admin
 def session_resume_parse():
-    """AST-986/AST-1038: paste → simple_resume_parse (Ruth); response-only, no candidate bind."""
+    """AST-986/AST-1038: paste → simple_resume_parse (Ruth) on the selected candidate's key (AST-1880); response-only, no candidate write."""
     body = request.get_json(silent=True) or {}
     resume_text = body.get("resume_text")
+    candidate_id = (body.get("candidate_id") or "").strip()
+    # Core returns 400 with no request when candidate_id is missing (AST-1878).
     result_body, status = run_session_resume_parse(
         resume_text if isinstance(resume_text, str) else "",
+        candidate_id=candidate_id,
         debug=ui_llm_debug(),
     )
+    if status < 400:
+        _api_completed(candidate_id, "/api/admin/session_resume/parse", "POST", status)
     return jsonify(result_body), status
 
 
@@ -2069,17 +2047,21 @@ def _candidate_dispatch_empty_render_error(
     )
 
 
-def _candidate_dispatch_api_key_error(candidate_id: Optional[str]) -> Optional[str]:
-    """If set, return a user-facing message; dispatch Run/Auto need a real Anthropic key on the candidate."""
+def _candidate_dispatch_api_key_error(candidate_id: Optional[str], task_key: str) -> Optional[str]:
+    """User-facing reason when Run/Auto can't start: the candidate lacks the key for the task agent's server."""
     if not candidate_id:
         return "This dispatch task has no candidate; set one before Run or Auto."
     cand = database.get_candidate(candidate_id)
     if not cand:
         return f"Candidate not found: {candidate_id}"
-    key = cand.get("candidate_api_key")
-    if not key or not str(key).strip():
-        return "Set this candidate's Anthropic API key before using Run or Auto on dispatch tasks."
-    return None
+    try:
+        server_id = task_llm_server_id(task_key)
+    except ValueError:
+        # No agent/model behind this task (table runners, notify) — no platform key to require.
+        return None
+    if (cand.get("candidate_api_keys") or {}).get(server_id):
+        return None
+    return f"Set this candidate's {get_llm_server(server_id)['label']} API key before using Run or Auto on this task."
 
 
 @admin_bp.route("/dispatch_tasks/<int:task_id>/run", methods=["POST"])
@@ -2088,7 +2070,7 @@ def run_dtask(task_id):
     row = database.get_dispatch_task(task_id)
     if not row:
         return jsonify({"error": "Dispatch task not found", "started": False}), 404
-    err = _candidate_dispatch_api_key_error(row.get("candidate_id"))
+    err = _candidate_dispatch_api_key_error(row.get("candidate_id"), row.get("task_key") or "")
     if err:
         return jsonify({"error": err, "started": False}), 400
     err = _candidate_dispatch_empty_render_error(
@@ -2097,6 +2079,7 @@ def run_dtask(task_id):
     if err:
         return jsonify({"error": err, "started": False}), 400
     started = run_task(task_id, ui_initiated=True)
+    _api_completed(row.get("candidate_id"), f"/api/admin/dispatch_tasks/{task_id}/run", "POST", 200)
     return jsonify({"started": started})
 
 
@@ -2130,6 +2113,33 @@ def scheduler_thread_status():
 def scheduler_stop_all():
     killed = cancel_all_tasks()
     return jsonify({"killed": killed})
+
+
+def _auto_thread_cap_payload() -> Dict[str, int]:
+    """Effective AUTO thread cap plus config default and bounds (bounds drive the UI dropdown)."""
+    return {
+        "max_auto_threads": get_auto_thread_cap(),
+        "default": ASTRAL_CONFIG["max_auto_threads"],
+        "min": ASTRAL_CONFIG["max_auto_threads_min"],
+        "max": ASTRAL_CONFIG["max_auto_threads_max"],
+    }
+
+
+@admin_bp.route("/scheduler/auto_thread_cap")
+@require_admin
+def scheduler_get_auto_thread_cap():
+    return jsonify(_auto_thread_cap_payload())
+
+
+@admin_bp.route("/scheduler/auto_thread_cap", methods=["POST"])
+@require_admin
+def scheduler_set_auto_thread_cap():
+    body = request.get_json(silent=True) or {}
+    try:
+        set_auto_thread_cap(body.get("max_auto_threads"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(_auto_thread_cap_payload())
 
 
 # ---------------------------------------------------------------------------

@@ -54,6 +54,7 @@ def _agent_repo_row(
     *,
     content: str = "prompt",
     brain_setting: str = "Medium",
+    model_id: str | None = "claude",
     temperature: float | None = 0.2,
     max_tokens: int | None = 100,
     updated_at: str = "2026-06-24 00:00:00",
@@ -61,6 +62,8 @@ def _agent_repo_row(
     return {
         "agent_id": agent_id,
         "content": content,
+        # AST-1878: repo JSON rows require a catalog model whose sizes include brain_setting.
+        "model_id": model_id,
         "brain_setting": brain_setting,
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -118,3 +121,90 @@ class TestAst782AgentRepoJsonStartup:
                 db.apply_agent_repo_json_startup(conn, [{"agent_id": "a", "content": "x"}])
         finally:
             conn.close()
+
+
+class TestAst1878AgentModelField:
+    """AST-1878: agent.model_id (LLM_MODEL_CONFIG key); brain size validated against that model's sizes.
+
+    Branches: save insert with/without model; save update model-only / brain-only / neither; blank model;
+    update_agent model/brain re-check + missing row + blank model; repo JSON model required / wrong size;
+    _expose_agent_public SKU from model (None without model).
+    """
+
+    def test_save_with_model_exposes_catalog_sku(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent("a1", "p", brain_setting="Big", model_id=" kimi-k2.6 ")
+        row = db.get_agent("a1")
+        assert row["model_id"] == "kimi-k2.6"
+        assert row["model_code"] == row["resolved_model_key"] == "kimi-k2.6"
+        listed = {r["agent_id"]: r for r in db.list_agents()}
+        assert listed["a1"]["model_id"] == "kimi-k2.6"
+        assert listed["a1"]["resolved_model_key"] == "kimi-k2.6"
+
+    def test_model_less_row_exposes_no_sku_and_uses_global_tiers(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent("a1", "p", brain_setting="Medium")
+        row = db.get_agent("a1")
+        assert row["model_id"] is None
+        assert row["model_code"] is None and row["resolved_model_key"] is None
+        with pytest.raises(ValueError, match="Invalid brain_setting 'Huge'"):
+            db.save_agent("a2", "p", brain_setting="Huge")
+
+    def test_save_insert_rejects_size_model_lacks(self, sqlite_in_memory) -> None:
+        with pytest.raises(ValueError, match="Invalid brain_setting 'Medium' for model 'kimi-k2.6'"):
+            sqlite_in_memory.save_agent("a1", "p", brain_setting="Medium", model_id="kimi-k2.6")
+        assert sqlite_in_memory.get_agent("a1") is None
+
+    def test_save_rejects_blank_or_unknown_model(self, sqlite_in_memory) -> None:
+        with pytest.raises(ValueError, match="model_id must be non-empty"):
+            sqlite_in_memory.save_agent("a1", "p", brain_setting="Big", model_id="  ")
+        with pytest.raises(ValueError, match="Unknown LLM model"):
+            sqlite_in_memory.save_agent("a1", "p", brain_setting="Big", model_id="__nope__")
+
+    def test_save_update_rechecks_effective_pair(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent("a1", "p", brain_setting="Medium", model_id="claude")
+        # Model-only change re-checks the stored size against the new model.
+        with pytest.raises(ValueError, match="for model 'kimi-k2.6'"):
+            db.save_agent("a1", "p2", model_id="kimi-k2.6")
+        db.save_agent("a1", "p2", brain_setting="Big", model_id="kimi-k2.6")
+        # Brain-only change checks against the stored model.
+        with pytest.raises(ValueError, match="for model 'kimi-k2.6'"):
+            db.save_agent("a1", "p3", brain_setting="Medium")
+        # Neither passed: content-only update, no check.
+        db.save_agent("a1", "p4")
+        row = db.get_agent("a1")
+        assert (row["content"], row["model_id"], row["brain_setting"]) == ("p4", "kimi-k2.6", "Big")
+
+    def test_update_agent_model_and_brain_checks(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent("a1", "p", brain_setting="Little", model_id="deepseek-v4")
+        assert db.update_agent("a1", model_id="kimi-k2.6") == 1
+        with pytest.raises(ValueError, match="for model 'kimi-k2.6'"):
+            db.update_agent("a1", brain_setting="Medium")
+        with pytest.raises(ValueError, match="model_id must be non-empty"):
+            db.update_agent("a1", model_id=" ")
+        with pytest.raises(ValueError, match="model_id must be non-empty"):
+            db.update_agent("a1", model_id=None)
+        assert db.update_agent("missing", model_id="claude") == 0
+        assert db.get_agent("a1")["model_id"] == "kimi-k2.6"
+
+    def test_repo_json_requires_model_with_valid_size(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            with pytest.raises(ValueError, match="row 1: model_id required"):
+                db.apply_agent_repo_json_startup(conn, [_agent_repo_row("a", model_id=None)])
+            with pytest.raises(ValueError, match="row 1: model_id required"):
+                db.apply_agent_repo_json_startup(conn, [_agent_repo_row("a", model_id="  ")])
+            with pytest.raises(ValueError, match="row 2: Invalid brain_setting 'Medium' for model 'kimi-k2.6'"):
+                db.apply_agent_repo_json_startup(
+                    conn, [_agent_repo_row("a"), _agent_repo_row("b", model_id="kimi-k2.6")]
+                )
+            # Validation runs before any write.
+            assert db.list_agents() == []
+            db.apply_agent_repo_json_startup(conn, [_agent_repo_row("a", model_id="kimi-k2.6", brain_setting="Big")])
+            conn.commit()
+        finally:
+            conn.close()
+        assert db.get_agent("a")["model_id"] == "kimi-k2.6"

@@ -136,8 +136,9 @@ describe("JobsRecommended", () => {
     // AST-948: horizontal top tabs (not left side-tab rail)
     await waitFor(() => expect(document.querySelector(".recommended-report-tabs")).toBeTruthy())
     const bar = document.querySelector(".recommended-report-tabs") as HTMLElement
-    expect(within(bar).getByRole("button", { name: "Summary" })).toHaveClass("active")
-    expect(screen.getByText("Job Summary")).toBeInTheDocument()
+    // AST-1874: report opens on the first manifest tab (Analysis) — modal default, not list output
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Analysis" })).toHaveClass("active"))
+    expect(screen.getByText("JD Analysis")).toBeInTheDocument()
     expect(document.querySelector(".side-tab-list")).toBeNull()
     expect(screen.queryByText("State History")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Skip This Job" })).not.toBeInTheDocument()

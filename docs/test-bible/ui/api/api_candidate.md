@@ -445,3 +445,22 @@ See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
 ### AST-1768 · AST-1687 (bug)
 
 `GET /api/candidates/by_email?email=` (`@require_auth`, registered before `/<candidate_id>`) → `{"candidate_id": <id|null>}` via `get_candidate_id_for_query`; missing / no-`@` email → 400. Tests: **`test_api_candidate.py::TestAst1768CandidateByEmailApi`**. Full manifest: [`../../frontend/lib.md`](../../frontend/lib.md) § AST-1768.
+
+### AST-1880 · AST-1851 (per-server platform keys)
+
+`_sanitize_candidate` pops `candidate_api_keys` + `candidate_api_key` and adds `api_keys: {server_id: {label, set}}` for every catalog server (list rows load the map via `get_candidate`); `has_api_key` is gone. `PUT …/data` `api_keys: {sid: key|""}` sets (stripped) / clears per server; non-dict, unknown server or non-string key → 400 before any write; non-admin → 403. Tests: **`test_api_candidate.py::TestSanitizeCandidate`** (3 new), **`TestCandidateRoutes`** (`test_list_rows_carry_per_server_key_flags_only`, `test_get_returns_sanitized_candidate`, `test_update_sets_and_clears_api_keys_per_server`, `test_update_rejects_malformed_api_keys` ×5, `test_non_admin_cannot_create_delete_or_override_state`, AC 4 end-to-end `test_put_two_server_keys_stores_ciphertext_and_get_shows_flags_only` — two `candidate_key` ciphertext rows, GET flags only, clear one). Retired `test_strips_api_key_and_sets_flag`; `test_update_merges_data_state_and_api_key` → `test_update_merges_data_and_state` (key half moved; still red pre-existing on the `joblist_rubric` 400). Full manifest: [`api_admin.md`](api_admin.md) § AST-1880.
+
+### AST-1901 · AST-1851 (bug: api_keys array)
+
+> Supersedes the AST-1880 `api_keys` shapes above (`_api_keys_flags` helper removed).
+
+`_sanitize_candidate` sets `api_keys: [{server, label}]`, one entry per stored key in array order (label from `LLM_SERVER_CONFIG`, or the id itself when the id isn't in the catalog). It never looks candidates up per row, because list rows arrive hydrated. `PUT …/data` takes `api_keys: [{server, key}]` and makes one `update_candidate_api_keys` call with the stripped edits (`""` = remove). A non-array body gets 400 "api_keys must be an array of {server, key}"; a bad entry gets "Invalid api_keys entry for server …"; a duplicate server gets "Duplicate api_keys entry for server …". Error bodies never echo a key. Tests: **`TestSanitizeCandidate`** (3, rewritten) and **`TestCandidateRoutes`**:
+- `test_list_rows_carry_stored_key_servers_only`
+- `test_get_returns_sanitized_candidate`
+- `test_update_sends_api_keys_array_edits`
+- `test_update_rejects_malformed_api_keys` ×7, with exact error text
+- `test_update_rejects_duplicate_server_without_echoing_keys`
+- the end-to-end `test_put_two_server_keys_stores_ciphertext_array_and_get_lists_servers_only`: two ciphertext entries in `candidate.api_keys`, then GET, then remove one
+- the non-admin 403, now with an array body
+
+Full manifest: [`../../data/database/candidates.md`](../../data/database/candidates.md) § QA test manifest (AST-1901).

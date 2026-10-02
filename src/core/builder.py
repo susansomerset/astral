@@ -1026,10 +1026,14 @@ def _cover_letter_nonempty(cl: dict) -> bool:
 
 
 def _apply_contact_to_render_dict(render: dict, contact: dict, *, first: str = "", last: str = "", full: str = "") -> None:
-    """Overwrite identity/contact from name columns + contact blob (AST-1014)."""
+    """Overwrite ``candidate_name`` from name columns (AST-1014); fill ``candidate_contact_detail``
+    from the contact blob only when the render has no non-empty saved line (AST-1904)."""
     name = (full or "").strip() or f"{(first or '').strip()} {(last or '').strip()}".strip()
     if name:
         render["candidate_name"] = name
+    # AST-1904: a saved artifact contact line wins; the blob is only a fallback.
+    if str(render.get("candidate_contact_detail") or "").strip():
+        return
     parts: List[str] = []
     email = (contact.get("contact_email") or contact.get("reply_email") or "").strip()
     if email:

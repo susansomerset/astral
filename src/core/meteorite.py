@@ -756,8 +756,8 @@ async def _classify_stage_blob(
     task_ctx: Dict[str, Any] = {**(ctx or {}), "astral_candidate_id": cid}
     if ctx and ctx.get("candidate_data") is not None:
         task_ctx["candidate_data"] = ctx["candidate_data"]
-    if ctx and ctx.get("candidate_api_key") is not None:
-        task_ctx["candidate_api_key"] = ctx["candidate_api_key"]
+    if ctx and ctx.get("candidate_api_keys") is not None:
+        task_ctx["candidate_api_keys"] = ctx["candidate_api_keys"]
 
     token = _hold_log_batch(batch_id)
     try:

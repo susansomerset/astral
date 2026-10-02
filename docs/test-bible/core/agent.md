@@ -1532,3 +1532,92 @@ Thread AST-1698 harvest into generative lands: `do_task` passes `list(source_art
 | Non-rubric task never sets the flag | same | **`…::test_non_rubric_task_does_not_set_agent_failure`** (guard — green at base and tip) |
 
 **Integration:** none.
+
+### AST-1879 · AST-1851 (route agent calls by model → server)
+
+`do_task` resolves the agent row's `model_id` + `brain_setting` through `resolve_model_brain` (server, SKU, tier). It sends **only** the candidate's key for that server: `ctx["candidate_api_keys"]` when present, otherwise the map loaded by candidate id. There is no env key and no other platform's key. Dispatch goes by server `protocol` (`send_to_anthropic` vs `send_to_llm_compat`). With no key for the server, the call returns a failure envelope naming the server, sends no request and writes no prompt rows. The conversational brain override is gone. `run_adhoc` / `run_adhoc_workbench_test` take `server_id` / `tier` / `candidate_api_keys`. Pointers: dispatcher key gate ([`dispatcher.md`](dispatcher.md)), Estelle turn ctx ([`contact.md`](contact.md)), classify hand-off ([`meteorite.md`](meteorite.md)).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — `_candidate_server_key` (ctx map wins; DB load by id; explicit `{}` honoured; blank/no id → None) | `src/core/agent.py` | `test_agent_ast1879.py::TestAst1879CandidateServerKey` |
+| New — `_agent_llm_route`, `task_llm_server_id`, `_missing_server_key_result` | same | `…::TestAst1879RouteHelpers` |
+| New — `_send_to_server` protocol dispatch (anthropic SKU + override key; compat server/SKU/tier/key; `record_timesheet_entry`) | same | `…::TestAst1879SendToServer` |
+| AC 7 — right key, no fallback (intercept at `llm_compat._get_client` / `anthropic.Anthropic`; env key never used; four missing-key cases name the server, zero client calls, no prompt storage, warning line) | `do_task` | `…::TestAst1879RightKeyNoFallback` |
+| AC 8 — Kimi-routed Estelle task writes a catalog-priced `agent_timesheets` row | `do_task` → `send_to_llm_compat` → `record_timesheet_entry` | `…::TestAst1879KimiLedgerRow` |
+| AC 9 / 10 — contact turn at `contact_recruiter_estelle` seed model + brain on the candidate's kimi key; `agent.py` free of `default_brain_setting` / legacy provider symbols | `do_task` | `…::TestAst1879EstelleTurnRoute` |
+| AC 7 — `run_adhoc` routes by server; missing key → failure naming server, no request | `run_adhoc` | `test_agent.py::TestRunAdhoc` (revised + 3 new) |
+| Workbench wrapper forwards route + key map | `run_adhoc_workbench_test` | `test_agent.py::TestAst515AdhocWorkbenchLedger::test_forwards_server_route_and_key_map_to_run_adhoc` |
+| Revised — catalog route replaces `get_active_llm_provider` / `send_to_deepseek` / `resolve_brain_setting_to_*` stubs | `do_task` | `test_agent.py::TestAst492BrainSettingDoTask` (DeepSeek-tier test → compat route; unknown-provider / vendor-model tests → parametrized broken-model-config raise), `TestAst1380…` (Big thinking cases on Kimi Big — catalog DeepSeek Big is thinking-off), `TestAst1391DeepseekBigOutputFloor` (floor from tier `max_tokens_floor`), `TestAst1072ConversationalEnvelope::test_do_task_concern_preserves_outcome_at_agent_rows_own_brain` (AC 9: no Medium override), `TestAst1639…`, `TestAst1846…`, `TestAst1298…`, `TestDoTask::test_rejects_unknown_or_misconfigured_tasks` (model_id checked first) |
+| Revised — fixtures | `test_agent.py` | `_agent_rows(model_id="claude")`; autouse `_candidate_server_key_stub` (this file tests past the gate; key selection lives in `test_agent_ast1879.py`); `test_agent_ast1448.py` `_patch_prompts` stubs the key, bare `run_adhoc` passes a route |
+| Retired | — | `test_send_to_deepseek_receives_vendor_model_and_tier_meta`, `test_do_task_deepseek_raises_when_vendor_model_not_in_pricing`, `test_do_task_raises_on_unknown_llm_provider`, `TestRunAdhoc::test_with_tier_meta_sends_via_deepseek`, `test_non_craft_deepseek_big_keeps_thinking`, `test_do_task_concern_preserves_outcome_and_uses_medium_brain`: each is replaced by the catalog-route case named above |
+
+**AC 8 gap (flagged to Susan):** `agent_timesheets` has **no `provider` column**. The server id is only `_add_timesheet_entry`'s `provider` argument (SKU-on-server validation, plus the `anthropic_timesheets` mirror switch). So the test asserts: insert called with `provider="kimi"`, SKU `kimi-k2.6` (priced only on `kimi`), token columns, the per-type catalog cost sum, and no anthropic mirror. It cannot assert a stored provider. Adding a column is `database.py`, which is outside AST-1879's scope.
+
+**Handed to #4 (AST-1880):** `tests/component/core/conftest.py` `_core_default_anthropic_llm_provider` patches `cfg.get_active_llm_provider` without `raising=False`. That breaks when #4 deletes the symbol. Its agent-module loop is now a no-op (`hasattr` guard).
+
+**Integration:** none.
+
+## QA test manifest (AST-1879)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast1879.py \
+  tests/component/core/test_agent.py::TestDoTask::test_rejects_unknown_or_misconfigured_tasks \
+  tests/component/core/test_agent.py::TestDoTask::test_returns_api_failure_and_stores_agent_data \
+  tests/component/core/test_agent.py::TestDoTask::test_do_task_stores_agent_data_for_craft_null_entity_type \
+  tests/component/core/test_agent.py::TestDoTask::test_decodes_top_level_json_string_encoded_payload \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_chains_run_next_when_configured \
+  tests/component/core/test_agent.py::TestDoTask::test_chain_entry_log \
+  tests/component/core/test_agent.py::TestDoTask::test_hop_boundary_log_on_run_next \
+  tests/component/core/test_agent.py::TestDoTask::test_debug_flag_passed_to_child \
+  tests/component/core/test_agent.py::TestDoTask::test_ignores_invalid_run_next \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/core/test_agent.py::TestRunAdhoc \
+  tests/component/core/test_agent.py::TestAst531RunNextHopLedger \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError \
+  tests/component/core/test_agent.py::TestAst1298OrphanedJobClaimRelease \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  tests/component/core/test_agent.py::TestAst1576CraftPersistOperative \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_skips_hydrate_when_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_hydrate_hard_fails_without_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_reinjects_caller_on_recurse \
+  tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  tests/component/core/test_agent.py::TestAst1683ContactBaseResumeCurrentRead \
+  tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_cover_letter_land_passes_harvest \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_job_resume_land_still_passes_harvest_list \
+  tests/component/core/test_agent.py::TestAst1846DoTaskAgentFailureFlag \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_stores_prompt_before_provider_and_response_after \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_provider_raise_keeps_prompt_omits_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_storage_off_skips_prompt_and_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_prompt_persist_failure_still_calls_provider \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_debug_false_skips_persist_contract_lines \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_later_success_does_not_rewrite_interrupted_batch_prompts \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_stores_prompt_before_run_adhoc \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_raise_keeps_prompt_omits_response \
+  tests/component/core/test_dispatcher.py::TestDispatchOne \
+  tests/component/core/test_dispatcher.py::TestAst1847TimeoutPartialCounts \
+  tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_dispatcher.py::TestAst1829ScheduledSweep \
+  tests/component/core/test_contact.py::TestAst1879EstelleTurnCandidateCtx \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_listen_off_skips_do_task \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_success_posts_prefixed_reply \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_failure_does_not_post \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_skill_calls_run_for_resolved_candidate \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_handle_slack_event_attaches_estelle_turn \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  tests/component/core/test_contact.py::TestAst1561ContactPasteRouting \
+  tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume \
+  tests/component/core/test_meteorite.py::TestAst1879ClassifyKeyMapHandOff \
+  -q
+```
+
+**Pass criterion:** narrowed run green (169 passed), not the zero-arg harness. Every new `test_agent_ast1879.py` node is red on the `origin/ftr/AST-1851-support-openrouter-api-models` product (22/22). The full `tests/component` failure set on this tip has zero new entries against the same tree with `ftr` product (153 moved nodes back to green). Pre-existing reds in touched classes are left out of the manifest: `TestDoTask::{test_rejects_json_schema_and_confidence_failures, test_rejects_grade_vector_mismatch, test_decodes_encoded_payload_and_stores_success, test_returns_decode_and_post_decode_validation_errors, test_mid_chain_empty_caller_skips_api}`, `TestAst1264…::test_do_task_source_has_caller_reinject_and_hydrate_gates`, `TestAst1700…::test_craft_str_path_passes_harvest_not_dict_path`, `TestAst1448…::{test_do_task_debug_emits_prompt_found_recorded_before_provider, test_prompt_only_batch_is_not_latest_ref, test_bare_run_adhoc_does_not_store_agent_data}`, `TestAst841DispatchTerminalLogging` (2), `TestAst1073…::{test_concern_posts_and_logs_aside, test_debug_style_d_index_and_detail}`. LOCKED_AT_100: no line changed by AST-1879 in `agent.py` / `dispatcher.py` is uncovered.
