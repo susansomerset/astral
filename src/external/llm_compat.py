@@ -118,10 +118,11 @@ async def send_to_llm_compat(
             "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": content_blocks}],
         }
-        # Thinking + server extras are vendor body fields taken verbatim from config.
+        # Thinking + server extras + brain-size extras (OpenRouter provider pin) are vendor body fields
+        # taken verbatim from config; later wins on key collision, so the size's extras beat the server's.
         thinking_on = bool(tier.get("thinking"))
         thinking_body = (tier.get("thinking_params") or {}) if thinking_on else server["thinking_off_params"]
-        api_kwargs["extra_body"] = {**thinking_body, **server["request_extras"]}
+        api_kwargs["extra_body"] = {**thinking_body, **server["request_extras"], **tier.get("request_extras", {})}
         if temperature is not None and not thinking_on:
             api_kwargs["temperature"] = temperature
         if system_blocks:

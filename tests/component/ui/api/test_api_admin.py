@@ -164,6 +164,33 @@ class TestAdminConfigAndAgents:
         assert ok.status_code == 200
         assert (ok.get_json()["model_id"], ok.get_json()["brain_setting"]) == ("claude", "Medium")
 
+    def test_ast1938_shortlist_model_scoped_sizes_on_put(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory
+    ) -> None:
+        # AST-1938 AC 4 against the real data layer: new OpenRouter models offer Little (+ Medium if reasoning), never Big.
+        db = sqlite_in_memory
+        db.save_agent("or_agent", "sys", model_id="claude", brain_setting="Big")
+        ok = admin_client.put(
+            "/api/admin/agents/or_agent", json={"model_id": "qwen/qwen3-32b", "brain_setting": "Little"}, headers=auth_headers
+        )
+        assert ok.status_code == 200
+        got = admin_client.get("/api/admin/agents/or_agent", headers=auth_headers).get_json()
+        assert (got["model_id"], got["brain_setting"]) == ("qwen/qwen3-32b", "Little")
+        before = db.get_agent("or_agent")
+        for model_id, size in (("gryphe/mythomax-l2-13b", "Medium"), ("qwen/qwen3-32b", "Big")):
+            bad = admin_client.put(
+                "/api/admin/agents/or_agent", json={"model_id": model_id, "brain_setting": size}, headers=auth_headers
+            )
+            assert bad.status_code == 400, (model_id, size)
+            assert db.get_agent("or_agent") == before, (model_id, size)
+
+    def test_ast1938_models_route_lists_79(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1938 AC 8: 4 hand-written + 75 shortlist models (moonshotai/kimi-k2.6 stays kimi-k2.6-openrouter).
+        body = admin_client.get("/api/admin/agents/models", headers=auth_headers).get_json()
+        assert len(body) == 79
+        assert body["qwen/qwen3-32b"]["server_id"] == "openrouter"
+        assert "moonshotai/kimi-k2.6" not in body
+
     def test_delete_agent_paths(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
         assert admin_client.delete("/api/admin/agents/a1", headers=auth_headers).status_code == 404

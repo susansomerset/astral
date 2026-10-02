@@ -4500,3 +4500,51 @@ Config gains `LLM_SERVER_CONFIG` / `LLM_MODEL_CONFIG`, catalog resolvers, catalo
 ### AST-1916 · AST-1875 (runtime AUTO-thread cap bounds)
 
 `ASTRAL_CONFIG["max_auto_threads_min"]` = 1 / `["max_auto_threads_max"]` = 100 beside unchanged `max_auto_threads`. No test in `test_config.py`: values asserted via the admin GET payload (`tests/component/ui/api/test_api_admin.py::TestAst1916AutoThreadCapApi::test_get_reports_default_and_bounds`); setter reads them live (`tests/component/core/test_dispatcher.py::TestAst1916AutoThreadCap::test_setter_bounds_come_from_config`). Manifest: [`../core/dispatcher.md`](../core/dispatcher.md) § AST-1916.
+
+### AST-1938 · AST-1937 (OpenRouter model shortlist in the catalog)
+
+`OPENROUTER_MODEL_TABLE` (one row per brief slug: price, upstream provider routing slug, reasoning flag, pinned provider max output) is expanded by `_build_openrouter_models()` into `LLM_MODEL_CONFIG` after the hand-written entries. That gives 75 new OpenRouter models: `moonshotai/kimi-k2.6` is skipped because the hand-written `kimi-k2.6-openrouter` already prices it. Every new model offers Little; reasoning rows also offer Medium; none offers Big. Defaults are temperature 1.0 and `min(16000 Little | 32000 Medium, pinned max output)`. Brain-size rows gain optional `request_extras` (the `provider` pin, fallbacks off; `google/gemma-4-31b-it` also carries `quantizations: ["fp8"]`). `kimi-k2.6-openrouter` is pinned to SiliconFlow and repriced to 0.77 / 3.4 / 0.14, keeping Little / Big. `validate_llm_provider_environment` now also rejects a non-dict `request_extras` and any same-server ambiguous SKU. `llm_compat` merges tier extras last ([`../external/llm_compat.md`](../external/llm_compat.md) § AST-1938). Agent save on new models: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1938.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 every brief slug catalogued on openrouter; AC 2 brief pricing (incl. Kimi reprice), cache write 0 | `OPENROUTER_MODEL_TABLE` / `_build_openrouter_models` / `get_sku_pricing` | `TestAst1938OpenRouterShortlist::test_every_brief_slug_catalogued_on_openrouter` · `::test_pricing_matches_brief` · `::test_brief_fixture_has_76_slugs` |
+| New — AC 3 Little (+ Medium when reasoning), no Big; spot checks; Kimi-OpenRouter stays Little / Big | `_build_openrouter_models` | `…::test_brain_sizes_follow_reasoning_flag_no_big` |
+| New — AC 7 temperature 1.0, capped `default_max_tokens` (both sides of the `min`) | `_build_openrouter_models` | `…::test_defaults_temperature_one_and_capped_max_tokens` |
+| New — AC 8 79 models, skip branch for the hand-priced slug | `_build_openrouter_models` | `…::test_catalog_count_and_skip_of_hand_priced_slug` |
+| New — pin on every openrouter tier, fallbacks off; brief PROVIDER ↔ routing slug one-to-one; quantization branch | `_openrouter_pin` | `…::test_every_openrouter_tier_pins_its_table_provider_fallbacks_off` · `::test_table_provider_slug_is_a_bijection_of_brief_provider` · `::test_openrouter_pin_quantization_branch` |
+| New — startup rejects non-dict `request_extras` / same-server ambiguous SKU | `validate_llm_provider_environment` | `…::test_startup_rejects_non_dict_request_extras` · `::test_startup_rejects_same_server_ambiguous_sku` |
+| Revised — `__bad__` fixtures get `pricing: {}` so the new ambiguity check can't fire first on a cloned `kimi-k2.6` row | `validate_llm_provider_environment` | `TestAst1877LlmCatalogConfig::test_startup_rejects_model_without_brain_sizes` · `::test_startup_rejects_off_vocabulary_brain_size` |
+
+**Brief fixture:** `tests/component/utils/fixtures/ast1937_openrouter_brief.txt` is Susan's AST-1937 brief table verbatim (header + 76 rows). AC 1 / AC 2 compare config against it, not against config's own table. `TestAst1938OpenRouterShortlist.NEW` is a lazy property so this module still collects on a tree without the AST-1938 product.
+
+`LOCKED_AT_100`: every new `config.py` line and branch is covered by `TestAst1938OpenRouterShortlist` (builder add / skip, reasoning yes / no, pin with / without quantizations, both new validator raises) — `--cov-branch` on the publish tip reports no missing line or partial branch in the AST-1938 ranges.
+
+**Integration:** none (no `tests/integration/` scenario reads the LLM catalog).
+
+## QA test manifest
+
+1. **Component (narrowed):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst1938OpenRouterShortlist \
+  tests/component/external/test_llm_compat.py \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/core/test_agent_ast1879.py \
+  tests/component/data/database/test_timesheets.py \
+  tests/component/data/database/test_agents.py
+```
+
+2. **AC 6 (no slug literal outside config):**
+
+```bash
+rg -n "qwen/|z-ai/|meta-llama/|mistralai/|bytedance-seed/|nousresearch/|thedrummer/|undi95/|gryphe/|anthracite-org/|sao10k/|tencent/|xiaomi/|stepfun/|morph/|nvidia/|google/gemma|openai/gpt-oss|deepseek/deepseek" src/ --glob '!src/utils/config.py'
+```
+
+Expect no output.
+
+3. **AC 8 boot:** `ASTRAL_DB_DIR=$(mktemp -d) python -c "from src.utils.config import validate_llm_provider_environment as v; v()"` returns without raising.
+
+**Pass criterion:** item 1 green (134 on the publish tip), item 2 empty, item 3 clean. Not the zero-arg harness. Baseline (`origin/dev` product vs AST-1938 product, same files): exactly six existing nodes changed, all revised above (four in `test_llm_compat.py`, two in `TestAst1877LlmCatalogConfig`). The other reds in `test_config.py` / `test_api_admin.py` sit in unrelated classes and are identical with `origin/dev` product, so they are outside this manifest.

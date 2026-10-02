@@ -47,6 +47,10 @@ def _tier(model_id: str, size: str) -> dict:
     return cfg.LLM_MODEL_CONFIG[model_id]["brain_sizes"][size]
 
 
+# AST-1938: every shipped openrouter tier carries its upstream pin; Kimi's is SiliconFlow, fallbacks off.
+KIMI_OR_PIN = {"provider": {"order": ["siliconflow"], "allow_fallbacks": False}}
+
+
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> _RecordingClient:
     c = _RecordingClient()
@@ -76,7 +80,9 @@ class TestAst1877RequestExtras:
     ) -> None:
         extra = {"provider": {"ast1877_test_extra": True}}
         monkeypatch.setitem(cfg.LLM_SERVER_CONFIG["openrouter"], "request_extras", extra)
-        out = await _send()
+        # AST-1938: shipped openrouter tiers carry a pin that would win on `provider`; strip it to see the server's.
+        unpinned = {k: v for k, v in _tier("kimi-k2.6-openrouter", cfg.BRAIN_LITTLE).items() if k != "request_extras"}
+        out = await _send(tier=unpinned)
         assert out["success"] is True
         assert client.calls[0]["extra_body"]["provider"] == {"ast1877_test_extra": True}
 
@@ -84,7 +90,8 @@ class TestAst1877RequestExtras:
     async def test_shipped_openrouter_body_carries_no_zdr(self, client: _RecordingClient) -> None:
         await _send()
         body = client.calls[0]["extra_body"]
-        assert "provider" not in body
+        # AST-1938: `provider` is now the SiliconFlow pin — still no zdr anywhere in the request.
+        assert body["provider"] == KIMI_OR_PIN["provider"]
         assert "zdr" not in repr(client.calls[0])
 
 
@@ -97,7 +104,7 @@ class TestAst1877OutboundBody:
         assert call["model"] == "moonshotai/kimi-k2.6"
         assert call["max_tokens"] == 100
         assert call["messages"] == [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]
-        assert call["extra_body"] == cfg.LLM_SERVER_CONFIG["openrouter"]["thinking_off_params"]
+        assert call["extra_body"] == {**cfg.LLM_SERVER_CONFIG["openrouter"]["thinking_off_params"], **KIMI_OR_PIN}
         assert call["temperature"] == 0.6
         assert call["system"] == system
 
@@ -105,7 +112,7 @@ class TestAst1877OutboundBody:
     async def test_thinking_on_sends_tier_params_and_omits_temperature(self, client: _RecordingClient) -> None:
         await _send(tier=_tier("kimi-k2.6-openrouter", cfg.BRAIN_BIG), temperature=1.0)
         call = client.calls[0]
-        assert call["extra_body"] == {"thinking": {"type": "adaptive"}}
+        assert call["extra_body"] == {"thinking": {"type": "adaptive"}, **KIMI_OR_PIN}
         assert "temperature" not in call
         assert "system" not in call
 
@@ -114,6 +121,76 @@ class TestAst1877OutboundBody:
         monkeypatch.setitem(cfg.LLM_SERVER_CONFIG["kimi"], "request_extras", {"x_extra": 1})
         await _send(server_id="kimi", sku="kimi-k2.6", tier=_tier("kimi-k2.6", cfg.BRAIN_BIG))
         assert client.calls[0]["extra_body"] == {"thinking": {"type": "enabled"}, "x_extra": 1}
+
+
+class TestAst1938ProviderPin:
+    """AST-1938 AC 5: tier request_extras (OpenRouter upstream pin) land in extra_body after server extras.
+
+    Branches: tier pin present (shortlist model, hand-written Kimi-OpenRouter); tier without request_extras
+    (direct Kimi / DeepSeek → no `provider`); tier beats server on key collision; quantization filter row.
+    """
+
+    @staticmethod
+    async def _send_model(model_id: str, size: str) -> None:
+        m = cfg.LLM_MODEL_CONFIG[model_id]
+        await _send(server_id=m["server"], sku=m["brain_sizes"][size]["sku"], tier=_tier(model_id, size))
+
+    @pytest.mark.asyncio
+    async def test_shortlist_little_pins_brief_provider_fallbacks_off(self, client: _RecordingClient) -> None:
+        await self._send_model("qwen/qwen3-32b", cfg.BRAIN_LITTLE)
+        call = client.calls[0]
+        assert call["model"] == "qwen/qwen3-32b"
+        assert call["extra_body"] == {
+            **cfg.LLM_SERVER_CONFIG["openrouter"]["thinking_off_params"],
+            "provider": {"order": ["deepinfra"], "allow_fallbacks": False},
+        }
+
+    @pytest.mark.asyncio
+    async def test_shortlist_medium_keeps_thinking_and_pin(self, client: _RecordingClient) -> None:
+        await self._send_model("qwen/qwen3-32b", cfg.BRAIN_MEDIUM)
+        assert client.calls[0]["extra_body"] == {
+            "thinking": {"type": "adaptive"},
+            "provider": {"order": ["deepinfra"], "allow_fallbacks": False},
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("size", [cfg.BRAIN_LITTLE, cfg.BRAIN_BIG])
+    async def test_kimi_openrouter_names_only_siliconflow(self, client: _RecordingClient, size: str) -> None:
+        await self._send_model("kimi-k2.6-openrouter", size)
+        assert client.calls[0]["extra_body"]["provider"] == KIMI_OR_PIN["provider"]
+
+    @pytest.mark.asyncio
+    async def test_quantization_filter_rides_with_pin(self, client: _RecordingClient) -> None:
+        # Plan decision: DeepInfra hosts gemma-4-31b at two prices; fp8 is the brief's.
+        await self._send_model("google/gemma-4-31b-it", cfg.BRAIN_LITTLE)
+        assert client.calls[0]["extra_body"]["provider"] == {
+            "order": ["deepinfra"], "allow_fallbacks": False, "quantizations": ["fp8"],
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("model_id", ["kimi-k2.6", "deepseek-v4"])
+    @pytest.mark.parametrize("size", [cfg.BRAIN_LITTLE, cfg.BRAIN_BIG])
+    async def test_direct_compat_servers_carry_no_provider(
+        self, client: _RecordingClient, model_id: str, size: str
+    ) -> None:
+        await self._send_model(model_id, size)
+        assert "provider" not in client.calls[0]["extra_body"]
+
+    def test_non_openrouter_catalog_tiers_carry_no_pin(self) -> None:
+        # Claude rides send_to_anthropic, which never receives a tier — the catalog is the only leak path.
+        leaks = [
+            (mid, bs) for mid, m in cfg.LLM_MODEL_CONFIG.items() if m["server"] != "openrouter"
+            for bs, t in m["brain_sizes"].items() if "provider" in t.get("request_extras", {})
+        ]
+        assert leaks == []
+
+    @pytest.mark.asyncio
+    async def test_tier_extras_win_over_server_extras(self, monkeypatch: pytest.MonkeyPatch, client: _RecordingClient) -> None:
+        monkeypatch.setitem(cfg.LLM_SERVER_CONFIG["openrouter"], "request_extras", {"provider": {"server": 1}, "s_only": 2})
+        await self._send_model("qwen/qwen3-32b", cfg.BRAIN_LITTLE)
+        body = client.calls[0]["extra_body"]
+        assert body["provider"] == {"order": ["deepinfra"], "allow_fallbacks": False}
+        assert body["s_only"] == 2
 
 
 class TestAst1877Guards:
