@@ -410,3 +410,84 @@ Canon: AST-1895 lists no Canon Scope, so there are no ids to resolve.
 `[board-joan]  CANON: OK`
 
 AST-1895's plan-fix patch is qa-fix scope only — new `TestAst1895InvalidJobLinkError` in `test_consult.py` and a bible block in `docs/test-bible/core/consult.md`. No `src/` edits (AC2). The bug-repro assertions pin behavior that already matches in-force logging statutes (`stat.logging.warning` / consult `_log_fail_dest` who→dest [why], `stat.logging.debug` / `log_debug` via `_with_log_debug` on `_run_batch_consult`) once AST-1893's product fix is on the tree; they do not introduce a new product rule or contradict `patt.entity.batch-processing` / dispatch-retry routing. No Canon Scope ids on AST-1895; nothing in the roster calls for a statute or pattern amendment to land test+bible coverage.
+
+### Radia review-fix (AST-1895)
+
+[code-rubric]  
+**Ticket:** AST-1895  
+**Publish ref:** `e393232179af4d491f7d3901a5ab650abf892533` (`origin/sub/AST-1888/AST-1895-cover-invalid-job-link-error-tests-v2`)  
+**Diff base (fix-lane):** `658b7123e4b31a35e1e417130c0ce5b44392e094` (`origin/ftr/AST-1888-invalid-job-link-error-decorator`)  
+**Scored delta (ticket-owned, `ftr...v2` three-dot):** `tests/component/core/test_consult.py` (+`TestAst1895InvalidJobLinkError` only), `docs/test-bible/core/consult.md` (§ AST-1895), `docs/features/consult/ast-337-qualified-job-urls.md` (plan-fix patch). Full `ftr...v2` also carries **merge-tests** + **`sync(dev)`** (106 files) — dev/tests forward; **not** scored as AST-1895 product scope per spawn.  
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+**Omitted** — AST-1895 has **no frozen Canon Scope id list** (plan-fix + Linear). Do not infer a roster from Joan **fix-board** `CANON: OK`.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan fix-board only; no `validate-plan` per-id column.
+
+## Frame diff
+
+- [ ] Run bible manifest: `./scripts/testing/run_component_tests.sh tests/component/core/test_consult.py::TestAst1895InvalidJobLinkError -q` (4 passed on tip per Hedy/Betty).
+- [ ] Confirm **AST-1893** decorator fix remains on tree (`src/core/consult.py` on v2 tip **matches** `origin/ftr/...`; vs `origin/dev` only the two-line decorator move).
+
+## Fix-specific checks
+
+### [bug-repro] — OK (substance); advisory on tag shape
+
+**Present and meaningful** (qa-fix on v2; Betty/Hedy threads document repro-first):
+
+| Test | Tied to **To-be**? | Pre-fix plausibility |
+|------|-------------------|----------------------|
+| `test_empty_and_relative_job_link_fail_reason_names_error` | Yes — exact `_log_fail_dest` reasons `process_fn InvalidJobLinkError: empty job_link: ` and `relative job_link: /relative`; same `dest` via `_consult_batch_fail_dest`; `bad_grades` | Yes — pre-fix yields `no signature found` / wrong type (Hedy swap `origin/dev` `consult.py`: 3/4 red) |
+| `test_invalid_job_link_error_is_value_error_class` | Yes — `isinstance(..., type)` + `issubclass(..., ValueError)` | Yes — pre-fix name is decorator wrapper, not class |
+| `test_run_batch_consult_debug_scope[True]` | Yes — in-frame `log_debug` via `assemble_fn` capture | Yes — undecorated `_run_batch_consult` leaves `[False]` |
+| `test_run_batch_consult_debug_scope[False]` | Guard — `seen == [debug or before]` per Betty board tweak (ambient inherit, not forced off) | Passes on both trees by design |
+
+Assertions are **concrete**, not tautological (they pin strings, dest helper, and ContextVar behavior — not “no exception” alone).
+
+**Advisory:** Individual methods lack a **first-line** `# [bug-repro]` comment (class docstring + Betty’s Linear `[bug-repro]` carry the intent). Not fix-now given qa-fix thread + passing repro contract.
+
+### ## What must still hold — OK (with branch-shape notes)
+
+| Item | Verdict |
+|------|---------|
+| No **AST-1895-authored** `src/` product fix | **OK** — `git diff ftr v2 -- src/core/consult.py` empty; v2 vs `origin/dev` differs **only** `src/core/consult.py` (AST-1893 decorator). Tip commit documents test-gap-only intent. |
+| Bug-repro red on dev / green on tip | **OK** — documented in plan **Repro**, Betty qa-fix, Hedy test-fix (swap + restore). |
+| Existing tests unchanged | **OK** — `ftr...v2` diff in `test_consult.py` is **+84 lines** (`TestAst1895InvalidJobLinkError` only); `test_fails_short_title_and_relative_link` untouched. |
+| AST-1893 invariants (routing, one fail line, signature) | **OK** — new tests assert dest + reason format; no `src/` edits on this ticket’s owned delta. |
+
+**Advisory (branch topology, not test defect):** Tip includes `merge-tests(AST-1895)` + `sync(dev)` so **28** `src/**` files differ **ftr → v2** (dev parity). That is **not** in the three-file ticket delta; Chuckles retired the evil `merge-tests` parent on the old sub (`96d7ba059`) and replaced the publish ref with **v2** per `[bug-fix]`. Rollup should use **v2 only**; do not merge the retired sub.
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **merge-tests carry:** `ftr...v2` also changes **35** other `tests/**` paths (and many `docs/test-bible/**` entries) from `origin/tests` / `sync(dev)` — expected; **sibling test carry**; AST-1895 review scope stays the three paths above.
+- **Plan vs board:** Proposed change still says `assert seen == [debug]`; implemented `seen == [debug or before]` matches Betty **TESTS: REVISE** tweak — plan text slightly stale, implementation correct.
+- **Retired ref:** `sub/.../AST-1895-cover-invalid-job-link-error-tests` (pre-v2) must stay out of merge-child (history hazard documented by Hedy/Chuckles).
+
+### What’s solid
+
+- `TestAst1895InvalidJobLinkError` matches plan-fix **Proposed change** (fixtures, patches, exact reason strings, dest equality).
+- Bible § **AST-1895 · AST-1888** mirrors tests, tags bug-repro rows, manifest matches plan.
+- v2 repair path aligns tip with **dev** except AST-1893 fix on `consult.py` — correct stack for test-gap sibling.
+
+### Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (clean) | AST-1888 mini-parent + `origin/ftr/AST-1888-invalid-job-link-error-decorator` | → **Review Posted** → §3h clean shortcut → **User Testing** (`resolve-child` skipped). Merge **v2** only when rolling the cluster; old `...-tests` sub is retired. |
+
+context_tokens≈15000
+
+---
+
+[code-rubric] PROCEED (Commit: e39323217) Bug-repro tests+bible OK
