@@ -687,3 +687,92 @@ context_tokens≈22000
 ### Resolution — AST-1941
 
 docs-acceptance: product-only fix. The six `test_agent.py` flips and the bible update (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1942, stacked after this ticket on `ftr/AST-1940-hop-failure-preserve-state`.
+
+## Bug: AST-1942 — Flip hop provider-failure tests to held state
+
+**Linear:** [AST-1942](https://linear.app/astralcareermatch/issue/AST-1942) (test-gap sibling of AST-1941, mini-parent [AST-1940](https://linear.app/astralcareermatch/issue/AST-1940); filed from Betty's `[board-betty] TESTS: REVISE` on AST-1941)
+**Publish ref:** `origin/sub/AST-1940/AST-1942-flip-hop-provider-failure-tests` (ftr `ftr/AST-1940-hop-failure-preserve-state`)
+**Explicit scope:** AST-1942 `## Scope` — `tests/component/core/test_agent.py` (modified test functions only, no new fixtures) + `docs/test-bible/core/agent.md` (§ AST-1191 · AST-1164 and § AST-1298 · AST-1280 prose/rows). **No product code** (AC4). No Canon Scope list on AST-1942. Executor: Betty (test tree + bible).
+
+### As-is
+
+AST-1941's product fix (`75baf6cc`, already on this sub's tip via `ftr`) makes every provider failure on a hop-label-true BUILD_ARTIFACTS hop hold state and release the claim. Six existing `test_agent.py` tests still assert the superseded provider-failure → `ERROR_BUILD_ARTIFACTS` transition, so they fail on this tip. The bible's § AST-1191 · AST-1164 still says "non-balance provider failures apply `error_state`", and two § AST-1298 · AST-1280 rows describe the old Connection-error → `ERROR_BUILD_ARTIFACTS` outcome.
+
+### To-be
+
+The six tests assert the held-state rule ("no transition, claim released once"). The non-`ValueError`-still-releases invariant (AST-1298 Stage 1) stays covered by driving it with a hard error string. The bible states that provider failures hold state and only `Job not found` / `Missing candidate_data` apply `error_state`. Balance-hold, hop-label-false, and `Missing candidate_data` hard-string tests are untouched and green.
+
+### Repro
+
+Observed at AST-1941 test-fix (tip `75baf6cc`, same tests as this tip): tip with fix 46 failed / 355 passed vs. the same tree with `origin/ftr`'s pre-fix `src/core/agent.py` 40 / 361. The 40 shared failures pre-exist and are out of scope. The 6 new ones, and their messages:
+
+| Node (`tests/component/core/test_agent.py::…`) | Failure on fixed tip |
+|---|---|
+| `TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_transitions_and_releases` | `assert False is True` (`apply_error_state`) |
+| `TestAst1191ArtifactHopFailureRelease::test_do_task_provider_timeout_releases_and_errors` | transition `Called 0 times` |
+| `TestAst1191ArtifactHopFailureRelease::test_do_task_debug_emits_found_and_recorded` | transition `Called 0 times` |
+| `TestAst1191ArtifactHopFailureRelease::test_do_task_debug_false_skips_found_recorded` | transition `Called 0 times` |
+| `TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors` | transition `Called 0 times` |
+| `TestAst1298OrphanedJobClaimRelease::test_apply_transition_non_value_error_still_releases` | `DID NOT RAISE RuntimeError` |
+
+**Bug-repro node (AC1):** the revised apply-level test (Proposed change item 1). It must be **red** against `origin/dev`'s `src/core/agent.py` (the provider clause transitions → `transition.assert_not_called()` fails) and **green** on this tip. Verification recipe (test tree untouched by the engineer; `src/core/agent.py` restored afterwards):
+
+```bash
+NODE='tests/component/core/test_agent.py::TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases'
+git checkout origin/dev -- src/core/agent.py
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh "$NODE" -q   # expect 1 failed
+git checkout HEAD -- src/core/agent.py
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh "$NODE" -q   # expect 1 passed
+git status --short src/core/agent.py                                                                     # expect clean
+```
+
+### Root cause
+
+The tests were written for AST-1191 / AST-1298 when the `hard` predicate in `_apply_dispatch_chain_hop_failure` included `(provider_failed and not balance_hold)`. AST-1941 removed that clause on purpose (superseding AST-1298 AC2). The tests and bible pin the removed behavior; they are stale, not the product.
+
+### Proposed change
+
+All edits in Betty's tree. Every other test in both classes stays byte-for-byte.
+
+**`tests/component/core/test_agent.py`**
+
+1. **`TestAst1191ArtifactHopFailureRelease` class docstring** (~L6066): `"""AST-1191: provider hop failure → error_state + claim release + debug trail."""` → `"""AST-1191 / AST-1941: provider hop failure → held state + claim release + debug trail."""`
+2. **`test_apply_provider_failed_transitions_and_releases`** (~L6077) — **the bug repro.**
+   - ⚠️ **Decision — rename** to `test_apply_provider_failed_holds_state_and_releases`. The old name asserts the opposite of the new behavior; leaving it would make the node id lie. Only this test is renamed; the other five keep their names (each name still holds: `do_task` still returns `success=False` / "errors", debug still emits).
+   - Same inputs (ctx, `error="Provider call exceeded per-call time budget (600s)"`, `provider_failed=True`, `failure_class="provider_call_timeout"`).
+   - Replace the four assertions with:
+     ```python
+     assert out == {"apply_error_state": False, "error_state": "", "batch_released": True}
+     transition.assert_not_called()
+     release.assert_called_once_with("job-1191")
+     ```
+3. **`test_do_task_provider_timeout_releases_and_errors`** (~L6201), **`test_do_task_debug_emits_found_and_recorded`** (~L6248), **`test_do_task_debug_false_skips_found_recorded`** (~L6288): replace `transition.assert_called_once_with(["job-1191"], cfg.ERROR_BUILD_ARTIFACTS_STATE)` with `transition.assert_not_called()`. Keep `release.assert_called_once_with("job-1191")` and every other assertion.
+4. **`TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors`** (~L6375): same swap → `transition.assert_not_called()`; keep `out["success"] is False`, `out.get("error") == "Connection error."`, `release.assert_called_once_with("job-1298")`.
+5. **`TestAst1298OrphanedJobClaimRelease::test_apply_transition_non_value_error_still_releases`** (~L6305): change only `error="Connection error."` → `error="Job not found"` (a hard string, so the transition is attempted and the `RuntimeError` side effect fires). Leave `provider_failed=True` / `failure_class` as-is (the hard string decides `hard` regardless). Update the comment to: `# Non-ValueError from transition (hard string) must not skip finally release (AST-1298 Stage 1).` Assertions unchanged: `pytest.raises(RuntimeError, match="transition blew up")`, transition called once with `ERROR_BUILD_ARTIFACTS`, release called once.
+
+**`docs/test-bible/core/agent.md`**
+
+6. **§ AST-1191 · AST-1164 prose** (~L366): replace `non-balance provider failures apply \`error_state\` then \`release_job_dispatch_claim\`; balance refusal holds state but still releases claim;` with `provider failures (balance or otherwise) hold state — no \`error_state\` — and release the claim; only \`Job not found\` / \`Missing candidate_data\` apply \`error_state\` then release (**AST-1941**, supersedes the AST-1191 provider → \`error_state\` rule);`. Rest of the paragraph unchanged.
+7. **§ AST-1191 · AST-1164 table, row 1** (~L370): area `Hop failure apply + claim release + debug` → `Hop failure apply (provider → held state) + claim release + debug`. Add one row after it: `| Bug repro: provider failure holds state (AST-1941 / AST-1942) | \`src/core/agent.py\` | **\`TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases\`** |`.
+8. **§ AST-1298 · AST-1280 prose** (~L386): after `helper \`try\`/\`finally\` still releases when \`transition_job_state\` raises non-\`ValueError\`` insert ` (reachable on hard strings only since AST-1941)`.
+9. **§ AST-1298 · AST-1280 rows** (~L390–L391):
+   - `Transition non-\`ValueError\` still releases` → `Transition non-\`ValueError\` (hard string \`Job not found\`) still releases`.
+   - `` `draft_job_resume` Connection error → `ERROR_BUILD_ARTIFACTS` + release + debug `` → `` `draft_job_resume` Connection error → held state (no transition) + release + debug (AST-1941) ``.
+   - Node ids in those rows unchanged.
+
+⚠️ **Decision — no new bible section.** AST-1942 scope is "modified bible prose/rows for the AST-1191 / AST-1298 entries", so the repro and rule change go into those entries (items 6–9), not a new § AST-1941.
+
+### Blast radius
+
+- Only the six nodes above plus the one class docstring change in `test_agent.py`. The rename in item 2 changes one node id: the AST-1191 bible row added in item 7 carries the new id. Earlier Linear comments (AST-1941 test-fix) cite the old id as history — no edit needed.
+- **Unchanged and must stay green:** `TestAst1191…::test_apply_balance_hold_skips_error_state_but_releases`, `::test_apply_hop_label_false_job_provider_failed_releases`, `::test_apply_hop_label_false_non_job_returns_noop`, `TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts` (~L5603, `Missing candidate_data`), and the consult `TestAst371ResumeArtifactDispatch` release tests (they mock `do_task`; unaffected).
+- `tests/integration/`: no scenario touches this path (Betty confirmed at board).
+- No `src/**` edits.
+
+### What must still hold
+
+- AC1: the bug-repro node is red on `origin/dev`'s `src/core/agent.py` and green on this tip (recipe in Repro).
+- AC2: the repointed non-`ValueError` test still proves release runs when `transition_job_state` raises non-`ValueError` (transition attempted once, release once, `RuntimeError` propagates).
+- AC3: balance-hold, hop-label-false, and `Missing candidate_data` hard-string tests are unchanged and pass.
+- AC4: no product code on this ticket.
+- After this lands, `test_agent.py` + `test_llm_external.py` on this tip fail only on the 40 pre-existing nodes shared with the pre-fix baseline — the six AST-1941 nodes are green.
