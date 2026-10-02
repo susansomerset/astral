@@ -489,3 +489,116 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1298 | sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error |
 
 **Epic worktree:** `astral-AST-1280/` — one active sub checked out at a time.
+
+## Bug: AST-1941 — Hold state on BUILD_ARTIFACTS hop provider failure
+
+**Linear:** [AST-1941](https://linear.app/astralcareermatch/issue/AST-1941) (fix child of mini-parent [AST-1940](https://linear.app/astralcareermatch/issue/AST-1940) — BUG: BUILD_ARTIFACTS -> ERROR_BUILD_ARTIFACTS)
+**Publish ref:** `origin/sub/AST-1940/AST-1941-hold-state-on-hop-provider-failure` (ftr `ftr/AST-1940-hop-failure-preserve-state`)
+**Explicit scope:** AST-1941 `## Scope` (verbatim copy of AST-1940 Component/Technical scope). No ancestor scope imported. No Canon Scope list on AST-1941 / AST-1940; no canon ids resolved for this pass.
+
+### As-is
+
+When a provider call fails on a hop-label-true BUILD_ARTIFACTS dispatch-chain hop (for example a job on `BUILD_ARTIFACTS.anticipate_scan`, or `draft_job_resume` returning `Connection error.`), `_apply_dispatch_chain_hop_failure` in `src/core/agent.py` classes every **non-balance** provider failure as hard. It calls `transition_job_state([index], "ERROR_BUILD_ARTIFACTS")` and then releases the claim. The job leaves the BUILD_ARTIFACTS chain claim pool and the hop is never retried. Only provider balance refusals (AST-897) hold state today.
+
+### To-be
+
+A provider failure on a BUILD_ARTIFACTS hop does **not** change the job's state. The job keeps its last happy state / hop label, the claim is still released (`batch_id` cleared), and the next dispatch sweep reclaims it and retries the hop. `ERROR_BUILD_ARTIFACTS` is reserved for `Job not found` / `Missing candidate_data`. The provider ERROR line, Execution History against the batch_id, and the AST-538 debug detail are unchanged. No retry cap or backoff (Susan's rule).
+
+### Repro
+
+Read on worktree tip `de2664949` (`== origin/dev`; `src/core/agent.py` has no diff vs `origin/dev`). `src/core/agent.py` L1123–L1131:
+
+```python
+err_state = (task_config.get("error_state") or "").strip()
+balance_hold = provider_failed and is_provider_balance_refusal(
+    {"failure_class": failure_class}
+)
+hard = bool(err_state) and (
+    "Job not found" in error
+    or "Missing candidate_data" in error
+    or (provider_failed and not balance_hold)   # AST-1191 (7f5b132e) — the defect
+)
+```
+
+Fixture repro (no DB; same ctx shape as `TestAst1191ArtifactHopFailureRelease._dispatch_ctx`):
+
+```python
+ctx = {
+    "astral_candidate_id": "somerset",
+    "candidate_data": {"artifacts": {}},
+    "batch_entities": [{"astral_job_id": "job-1941"}],
+    "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,   # hop-label-true
+    "dispatch_chain_graduate_on_terminal": True,
+}
+agent._apply_dispatch_chain_hop_failure(
+    entity_type="job", index="job-1941", ctx=ctx,
+    task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+    error="Connection error.", debug=False,
+    provider_failed=True, failure_class="provider_connection_error",
+)
+# Today:  tracker.transition_job_state(["job-1941"], "ERROR_BUILD_ARTIFACTS") is called;
+#         returns {"apply_error_state": True, "error_state": "ERROR_BUILD_ARTIFACTS", "batch_released": True}
+# To-be:  transition_job_state not called;
+#         returns {"apply_error_state": False, "error_state": "", "batch_released": True}
+```
+
+Live shape: `do_task(...)` provider-failure branch (`src/core/agent.py` ~L2296) → `_close_hop_ledger(success=False, provider_failed=True, failure_class=…)` → this helper. The existing tests `TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_transitions_and_releases` and `TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors` already pin the broken behavior (they assert the `ERROR_BUILD_ARTIFACTS` transition).
+
+Retry path confirmed: for BUILD_ARTIFACTS chain triggers, `dispatcher` job claims use `dispatch_chain_claim_states_for_row` + `dispatch_chain_row_matches_job` (AST-596 / AST-803), so a job held on `BUILD_ARTIFACTS.<hop>` with a cleared `batch_id` is reclaimable on the next sweep.
+
+### Root cause
+
+AST-1191 (commit `7f5b132e`) added `or (provider_failed and not balance_hold)` to the `hard` predicate. That overrode the earlier rule (AST-596 / AST-788 / AST-803) that only `Job not found` / `Missing candidate_data` are hard and every other hop failure stays on the last happy compound state for retry. AST-1298 then hardened claim release around that same transition, but did not revisit the predicate. AST-1298 AC2 ("job is on `ERROR_BUILD_ARTIFACTS` … unless balance-refusal hold") is the half this fix deliberately supersedes; its claim-release half stays.
+
+### Proposed change
+
+Single file, single function family: `src/core/agent.py`.
+
+1. **`_apply_dispatch_chain_hop_failure`, hop-label-true branch** — replace L1123–L1131 (the `err_state` / `balance_hold` / `hard` block) with:
+
+   ```python
+   err_state = (task_config.get("error_state") or "").strip()
+   # Only a missing job / missing candidate_data is unrecoverable. Provider failures (balance
+   # or otherwise) hold the last happy state / hop label; the finally release below lets the
+   # next dispatch sweep reclaim and retry the hop. No retry cap by design.
+   hard = bool(err_state) and (
+       "Job not found" in error
+       or "Missing candidate_data" in error
+   )
+   ```
+
+   - `balance_hold` is deleted (its only purpose was to exempt balance refusals from the provider clause, which no longer exists).
+   - Everything after it stays byte-for-byte: `apply_error_state` / `batch_released` init, the `try` / inner `try … except ValueError` transition, the `finally` release (which on tip releases unconditionally on this branch — AST-1298 `91c81ba2`), and the return dict. With `hard` false, the result is `{"apply_error_state": False, "error_state": "", "batch_released": True}`.
+   - Hop-label-false branch (L1110–L1122) unchanged.
+
+2. **Import block** (`src/core/agent.py` L49–L53) — drop `is_provider_balance_refusal,` from the `from src.utils.llm_external import (…)` list. The helper above was its only use in `agent.py` (grep: no other `agent.py` reference, and nothing in `src/` / `tests/` / `scripts/` reaches it through `agent`). Leaving it would fail lint (unused import).
+
+3. ⚠️ **Decision — keep the `failure_class` parameter.** It becomes unused inside the helper. Keep it in the signature so the `_close_hop_ledger` → helper kwargs and the `do_task` provider-failure call site stay unchanged (AST-1298 Stage 1 step 4). Removing it would be a signature change outside this bug's delta.
+
+4. ⚠️ **Decision — no special-casing.** No `failure_class` allow-list, no `Connection error` substring check, no retry counter / backoff / cap, no new config keys. Balance refusal and every other provider failure now take the same hold-and-release path.
+
+5. Compile + lint `src/core/agent.py` before commit (`python -m py_compile src/core/agent.py` + repo lint). Engineer does not edit `tests/` or the bible.
+
+### Blast radius
+
+- **Callers:** only `_close_hop_ledger` inside `do_task` (L2183). Its result (`hop_fail_outcome`) is not read after assignment, so the outcome-dict change affects tests only. `consult._run_dispatch_chain_job_batch` and `dispatcher._run_unified` keep their own claim-release belts (AST-1298 Stage 2 / third belt) — untouched and still idempotent.
+- **Tests that assert the broken behavior (Betty's tree, `tests/component/core/test_agent.py`):**
+  - `TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_transitions_and_releases` → expect `apply_error_state is False`, `error_state == ""`, `batch_released is True`, `transition.assert_not_called()`, release called once.
+  - `TestAst1191ArtifactHopFailureRelease::test_do_task_provider_timeout_releases_and_errors`, `::test_do_task_debug_emits_found_and_recorded`, `::test_do_task_debug_false_skips_found_recorded` → `transition.assert_not_called()`; release still called once.
+  - `TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors` → `transition.assert_not_called()`; release still called once.
+  - `TestAst1298OrphanedJobClaimRelease::test_apply_transition_non_value_error_still_releases` → **breaks differently**: with `Connection error.` the transition is no longer attempted, so `pytest.raises(RuntimeError)` fails. To keep AST-1298's "non-`ValueError` from transition still releases" invariant covered, switch its `error` to a hard string (e.g. `"Job not found"`); expectations otherwise unchanged.
+  - Unchanged / still green: `TestAst1191…::test_apply_balance_hold_skips_error_state_but_releases`, `::test_apply_hop_label_false_*`, and the hard-string do_task test at ~L5603 (`Missing candidate_data` → `ERROR_BUILD_ARTIFACTS` + release).
+- **Test bible:** `docs/test-bible/core/agent.md` § AST-1191 · AST-1164 (L366) states "non-balance provider failures apply `error_state`" — Betty updates to the held-state rule.
+- **Runtime behavior:** a persistently failing provider is retried on every sweep (same as balance holds today). Approved by Susan in AST-1940; no cap added.
+- No `TASK_CONFIG` `error_state`, `JOB_STATES` / prior-states, `run_next`, hop topology, LLM adapter, or consult failure-branch change.
+
+### What must still hold
+
+- AST-1298 AC1 / AC3: after any provider failure on a hop-label-true BUILD_ARTIFACTS hop, the job row's `batch_id` is cleared and a later dispatch claim can reclaim it (`finally` release untouched; `batch_released: True`).
+- AST-1298 Stage 1: a non-`ValueError` raised by `transition_job_state` (now only reachable on hard strings) still cannot skip the release.
+- AST-1298 hop-label-false defense-in-depth release (job + `provider_failed`) unchanged; non-job / no-index hop-label-false still returns `_HOP_FAILURE_NOOP`.
+- `Job not found` / `Missing candidate_data` still transition to `ERROR_BUILD_ARTIFACTS` (configured `error_state`) and release.
+- AST-897 balance refusal still holds state and releases (now via the same path as every provider failure).
+- AST-1298 AC4 / AST-1191 debug trail: `do_task` provider-failure logging (`log_llm_batch_summary(..., error=)` hop error line, non-empty error coercion, AST-538 `debug=True` detail) is not touched by this change.
+- AST-1298 AC5: success path claim/process/clear unchanged (helper is only called on failure).
+- **Superseded on purpose:** AST-1298 AC2's "job is on `ERROR_BUILD_ARTIFACTS`" for provider failures — now held state instead.
