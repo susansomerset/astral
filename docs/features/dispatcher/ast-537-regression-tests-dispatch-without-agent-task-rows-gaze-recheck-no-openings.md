@@ -175,3 +175,75 @@ context_tokens≈8500
 ```
 
 **Chuckles routing:** the transition tuple is not adopted in make-fix. Susan's AST-1943 To-be says `"telescope"` *instead of* `"n/a"`, and accepting both is a product/deploy call she hasn't made. It is flagged to her on the AST-1943 PR. Default `("", "telescope")` stands, and the post-deploy `agent_task` revert is a required ops step.
+
+### Radia review-fix — AST-1944
+
+`[code-rubric]`  
+**Ticket:** AST-1944  
+**Publish ref:** `1c91606a25130ed65f020ae87bb9f9f72618e4b3` (`origin/sub/AST-1943/AST-1944-skip-key-gate-non-llm-tasks`)  
+**Diff base:** `origin/ftr/AST-1943-non-llm-dispatch-key-gate...origin/sub/AST-1943/AST-1944-skip-key-gate-non-llm-tasks` (mini-parent stacked on ftr — not orphaned)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on this ref)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+*(Frozen **Canon Scope** on Linear AST-1944 description: **none** — same fix-lane process pattern as other dispatcher bugs. Scored **fix-board Joan overlap** from plan-fix § `## Bug: AST-1944` / `### Joan fix-board — AST-1944`; not a substitute for a frozen list.)*
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.seed.agent-tables-in-repo-json | A | | 12× `agent_id` `n/a`→`telescope` in `data/admin/agent_task.json` only; no `agent.json` row; matches Revert-to-file / kill-switch shape |
+| astral.standards.no-hardcoded-sets | A | | `("", "telescope")` interprets seed sentinel semantics, not a parallel task membership set |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (no `validate-plan` plan-stage artifact on the issue doc for AST-1944; Joan fix-board only).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** not applicable — clean board opt-out. Fix-board **TESTS: REVISE**; regression work split to gap sibling **AST-1945**; **qa-fix did not run** on this tip. Not scored as missing.
+- **`## What must still hold`:** OK — traced each bullet against the diff:
+  - Missing / empty / `telescope` `agent_task` → `task_llm_server_id_or_none` returns `None`; gated check `if not ctx or (server_id and not …)` preserves candidate skip and skips server-key gate (AST-537 / no-row keys).
+  - LLM paths still call strict `task_llm_server_id` inside the helper first; misconfigured real agents still re-raise after row inspection.
+  - `_resolve_task_prompts` / `task_llm_server_id` bodies untouched; `api_admin` untouched.
+  - `stage_email_meteorite` fold: strict path attempted before `except` branch (matches plan).
+  - Repo JSON: `rg` shows **0** `"n/a"`, **12** `"agent_id": "telescope"`; diff is `agent_id` only on those rows.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Deploy / ops (plan § Proposed change deploy step; Susan routing on transition window)  
+  **Finding:** Code accepts only `("", "telescope")`, not live DB `"n/a"`. Environments that deploy this fix without `POST /api/admin/repo_json/revert/agent_task` keep crashing on non-LLM dispatch until revert — deliberate product choice (transition tuple **not** adopted).  
+  **Recommendation:** No code change on AST-1944; ensure AST-1943 land checklist / PR calls out revert.  
+  **Default:** Ship as-is; ops documents revert with parent deploy.
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list at Plan Approved; Radia scored Joan board overlap only.  
+  **Recommendation:** Archie may add a frozen list on future fix bugs for Joan/Radia column parity; not blocking this tip.
+
+### advisory
+
+- **Deploy-step risk:** Post-deploy window where live `agent_task` still has `"n/a"` while code no longer treats `"n/a"` as non-LLM at the gate — same as discuss item; monitor on first env roll.
+- **Sibling test gap (AST-1945):** Katherine’s test-fix comment documents `test_dispatcher.py` fixture retarget and `test_repo_admin_json.py` sentinel assertions (plus new `TestAst1269AliasAgentTaskSeedRestore` lockstep vs `docs/uat-fixtures/AST-756/expected-agent_task.json`); none of that is in this product diff — expected split, not AST-1944 scope creep.
+- **Plan fidelity:** Diff matches plan-fix steps 1–4 (helper, dispatcher gate, JSON rename, no other files). Estimate **1** fits footprint.
+- **What's solid:** Small, focused fix; `task_llm_server_id` callers outside dispatch unchanged; AST-1879 conditional preserves per-server key law when `server_id` is non-`None`.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Normal** (AST-1943 + `origin/ftr/AST-1943-non-llm-dispatch-key-gate`) | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Not orphaned — no straight-to-`dev` finish-up for this ticket alone. |
+
+context_tokens≈12000
+
+---
+
+`[code-rubric] PROCEED (Commit: 1c91606a2) Non-LLM gate clean`
