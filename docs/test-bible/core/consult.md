@@ -1419,3 +1419,21 @@ Scored Analysis apply: complete grade set of all literal `X` raises `AllLiteralX
 | Flipped (`total_errors` 0 into holding; parametrized primary/holding) | same | `TestAnalysisUpshotPrepAndBatch480::test_batch_company_missing_moves_to_retry` · `TestAnalysisUpshotPrepAndBatch480ExtraBranches::{test_batch_missing_company_transitions_and_counts_error,test_batch_do_task_failure_transitions_error}` · `TestAst642PerEntityBatchRetry::test_analysis_upshot_primary_failure_to_retry_holding` |
 
 **Integration:** none.
+
+### AST-1895 · AST-1888 (bug-repro — InvalidJobLinkError reason + _run_batch_consult debug scope)
+
+Regression lock for `c86d8b5ce` (fixed by **AST-1893**): `InvalidJobLinkError` is a real `ValueError` subclass (no decorator on the class); an empty/relative `job_link` on a passing `qualify_job_listings` job → same `_consult_batch_fail_dest` as today, `_log_fail_dest` reason `process_fn InvalidJobLinkError: {empty|relative} job_link: …` (never `no signature found`); `_run_batch_consult` is `@_with_log_debug` again — `debug=True` sets `log_debug` in-frame, `debug=False` inherits ambient, token reset on exit. Routing-only check stays in `TestQualifyJobListings::test_fails_short_title_and_relative_link` (unchanged).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty + relative `job_link` → same fail dest, exact reason names `InvalidJobLinkError` | `src/core/consult.py` | **`TestAst1895InvalidJobLinkError::test_empty_and_relative_job_link_fail_reason_names_error`** (**bug-repro**) |
+| `InvalidJobLinkError` is a class, subclasses `ValueError` | same | **`…::test_invalid_job_link_error_is_value_error_class`** (**bug-repro**) |
+| `_run_batch_consult` `debug=` scope (`True` sets; `False` inherits ambient; reset on exit) | same | **`…::test_run_batch_consult_debug_scope[True]`** (**bug-repro**) · **`…[False]`** (guard) |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1895InvalidJobLinkError \
+  -q
+```

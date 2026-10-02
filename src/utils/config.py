@@ -2466,6 +2466,8 @@ EMBEDDED_EVALUATE_JD_CRITERIA: tuple[dict, ...] = (
         "importance": 1,
         "content": (
             "Quality Check — is this enough of a JD to analyze?\n"
+            # Must precede the A row and not start "<grade> =": hydrate's trailing-table fallback would read it as a grade.
+            "Never grade Quality Check X — X is not a valid grade for this vector. If there is not enough to analyze, grade it F (confidence 1–5, never 0).\n"
             "A = This is a valid job description with full details of the role and requirements and information about the company the candidate would be working for.\n"
             "B = This is a valid job description with full details of the role and requirements, but limited information about the company the candidate would be working for.\n"
             "C = This content references a job with enough detail about the role and requirements to perform fit analysis for the candidate.\n"

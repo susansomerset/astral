@@ -1742,6 +1742,9 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Embedded QC/GC registry | `src/utils/config.py` | **`TestAst1084EvaluateJdCriteria`** |
+| QC never-X rule line + A/B/C/F table (AST-1910 fix, pinned by AST-1911) | `src/utils/config.py` | **`TestAst1084EvaluateJdCriteria::test_qc_content_forbids_x_and_grade_table_stays_abcf`** |
+
+QC `content` carries a "Never grade Quality Check X" line between the header and the A row (**AST-1910**); grades stay A/B/C/F and hydrate stays strict. Prompt-side exception + fixture lockstep: **`docs/test-bible/core/repo_admin_json.md`** § AST-1911.
 
 **Broken / obsolete:** none — additive constant; consume path covered under **AST-1085**.
 
