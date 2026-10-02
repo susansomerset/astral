@@ -3513,12 +3513,13 @@ debug_experience_jobs = _debug_experience_jobs
 
 
 def save_candidate_admin(candidate_id: str, **kwargs: Any) -> None:
-    """Direct candidate row updates from admin API (state override, api_key, etc.)."""
+    """Direct candidate row updates from admin API (state override, etc.). API keys: update_candidate_api_keys."""
     database.save_candidate(candidate_id, **kwargs)
 
 
-def clear_candidate_api_key(candidate_id: str) -> None:
-    database.clear_candidate_api_key(candidate_id)
+def update_candidate_api_keys(candidate_id: str, entries: List[Dict[str, str]]) -> None:
+    """Admin key edits on the candidate's api_keys array: key sets/replaces that server's entry, "" removes it."""
+    database.update_candidate_api_keys(candidate_id, entries)
 
 
 def get_pending_craft_generation(
@@ -3704,24 +3705,32 @@ async def run_requested_artifacts_dispatch(
 def run_session_resume_parse(
     resume_text: str,
     *,
+    candidate_id: Optional[str] = None,
     debug: bool = False,
 ) -> Tuple[Dict[str, Any], int]:
-    """Parse pasted resume text via simple_resume_parse (Ruth / Little); no candidate bind/persist.
+    """Parse pasted resume text via simple_resume_parse (Ruth / Little) on the selected candidate's API keys; no candidate bind/persist.
 
-    Returns (json_body, http_status) for Admin session-resume paste (AST-986 / AST-1038).
+    Returns (json_body, http_status) for Admin session-resume paste (AST-986 / AST-1038 / AST-1878).
     """
     if not isinstance(resume_text, str) or not resume_text.strip():
         return ({"success": False, "error": "resume_text is required"}, 400)
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return ({"success": False, "error": "candidate_id is required"}, 400)
+    cand = database.get_candidate(cid)
+    if not cand:
+        return ({"success": False, "error": f"Candidate not found: {cid}"}, 404)
 
     logger.set_debug_flag(debug)
     paste = resume_text.strip()
     structure = default_resume_structure()
-    # Synthetic token ctx only — no astral_candidate_id (do not load a real candidate).
+    # Synthetic token ctx + the selected candidate's key map only — no astral_candidate_id (no bind/persist).
     ctx = {
         "candidate_data": {
             "context": {"raw_resume": paste},
             "artifacts": {"resume_structure": structure},
         },
+        "candidate_api_keys": dict(cand.get("candidate_api_keys") or {}),
     }
 
     ledger_task_key = "user-session-parse-resume"

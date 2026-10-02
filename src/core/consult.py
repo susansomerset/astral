@@ -1564,11 +1564,11 @@ def _transition_batch_consult_failures(
     return sum(len(ids) for dest, ids in by_dest.items() if retry_base(dest))
 
 
-@_with_log_debug
 class InvalidJobLinkError(ValueError):
     """Model returned an empty or non-absolute job_link for a listing."""
 
 
+@_with_log_debug
 async def _run_batch_consult(
     task_key: str,
     batch_id: str,

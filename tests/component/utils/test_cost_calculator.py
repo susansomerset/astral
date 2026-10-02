@@ -10,7 +10,6 @@ from src.utils.config import LLM_MODEL_CONFIG
 from src.utils.cost_calculator import (
     calculate_cost,
     calculate_cost_components,
-    calculate_cost_components_deepseek_from_counts,
     calculate_cost_components_from_counts,
     calculate_cost_with_cache,
     sum_calc_cost_components,
@@ -71,11 +70,6 @@ class TestAst1877CatalogPricing:
     def test_from_counts_unknown_sku_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown SKU"):
             calculate_cost_components_from_counts(1, 1, 1, 0, sku="__no_sku__")
-
-    def test_legacy_deepseek_name_delegates_to_catalog(self) -> None:
-        assert calculate_cost_components_deepseek_from_counts(5, 6, 7, 0, "deepseek-v4-flash") == (
-            calculate_cost_components_from_counts(5, 6, 7, 0, sku="deepseek-v4-flash")
-        )
 
     def test_anthropic_alias_costs_read_catalog_pricing(self) -> None:
         usage = SimpleNamespace(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_input_tokens=0,

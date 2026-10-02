@@ -1736,6 +1736,18 @@ describe("AdminScheduledActions", () => {
       expect(invalidBtn.parentElement).toHaveAttribute("title", "Could not validate prompts")
     }, 20000)
 
+    it("AST-1880: missing platform key reason wins over the token list", async () => {
+      const reason = "Set this candidate's Kimi API key before using Run or Auto on this task."
+      const invalidBtn = await renderInvalid({ empty_tokens: ["FIRST_NAME"], invalid_reason: reason })
+      expect(invalidBtn.parentElement).toHaveAttribute("title", reason)
+      expect(invalidBtn).toBeDisabled()
+    }, 20000)
+
+    it("AST-1880: empty invalid_reason falls back to tokens", async () => {
+      const invalidBtn = await renderInvalid({ empty_tokens: ["FIRST_NAME"], invalid_reason: "" })
+      expect(invalidBtn.parentElement).toHaveAttribute("title", "FIRST_NAME")
+    }, 20000)
+
     it("no tooltip while the Invalid row is running (Stop overlay shows)", async () => {
       const invalidBtn = await renderInvalid(
         { empty_tokens: ["FIRST_NAME"] },

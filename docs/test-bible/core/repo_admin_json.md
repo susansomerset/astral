@@ -713,3 +713,42 @@ Primary numbered list: **`docs/test-bible/utils/config.md`** § AST-1773 (includ
 ## QA test manifest
 
 Primary: **`docs/test-bible/core/meteorite.md`** § AST-1796 (includes this module’s node id).
+
+### AST-1878 · AST-1851 (agent seed models + contact-Estelle agent)
+
+**Primary manifest:** **`docs/test-bible/data/database/candidates.md`** § AST-1878.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 3 catalog model + valid size on every row; AC 4 exact model/size per agent; contact-Estelle copies analysis content with null temperature/max_tokens; startup apply stores model ids | `data/admin/agent.json` | `TestAst1878AgentSeedModels` |
+| Revised — seven agents (adds `contact_recruiter_estelle`); repo columns include `model_id` | `data/admin/agent.json` | `TestAst787AgentRepoJsonSeed::test_repo_json_has_seven_sorted_persona_ids` · `::test_repo_rows_use_repo_columns_only` · `::test_startup_apply_loads_all_seven_agents` |
+| Revised — `contact_estelle_turn` → `contact_recruiter_estelle` | `data/admin/agent_task.json` | `TestAst1072ContactEstelleTurnCatalogRow::test_contact_estelle_turn_envelope_prompts` |
+| Revised — revert fixture agent names a model (repo JSON requires it) | fixture | `TestAst783RepoAdminJsonDivergence::test_revert_restores_db_from_repo_file` |
+
+### AST-1911 · AST-1898 (gap — evaluate_jd QC never-X prompt; pins AST-1910)
+
+**Parent:** [AST-1898](https://linear.app/astralcareermatch/issue/AST-1898). **Bug:** [AST-1911](https://linear.app/astralcareermatch/issue/AST-1911) (pins [AST-1910](https://linear.app/astralcareermatch/issue/AST-1910)). **Publish:** `origin/sub/AST-1898/AST-1911-pin-qc-never-x-tests`.
+
+The `evaluate_jd` `cache_prompt` keeps X0-when-silent and names QC as the one never-X exception in STEP 3 and GRADE SET COMPLETENESS; the AST-756 fixture `evaluate_jd` row is locked per key to the catalog. Config SSOT: **`docs/test-bible/utils/config.md`** § AST-1084.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt QC exception + per-key fixture lockstep | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1910EvaluateJdQcNeverXPrompt`** (bug-repro) |
+
+**Broken / obsolete:** none. Whole-file AST-756 twin tests (`TestAst1494…::test_fixture_byte_identical_to_catalog`, `TestAst1773…::test_fixture_catalog_byte_lockstep`) are already red on `origin/dev` from four drifted rows — not revised here, not made worse.
+
+**Integration:** none.
+
+**Repro-first (stacked — AST-1910 already on ftr):** with `origin/dev`'s `src/utils/config.py` + `data/admin/agent_task.json` swapped in, all three new functions red for the root-cause reason (QC line 2 is the A row; catalog lacks both exception strings → lockstep `fix == cat` fails); restored tip → 8 passed.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1084EvaluateJdCriteria \
+  tests/component/core/test_repo_admin_json.py::TestAst1910EvaluateJdQcNeverXPrompt \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  -q
+```
+
+Repro node ids: `test_config.py::TestAst1084EvaluateJdCriteria::test_qc_content_forbids_x_and_grade_table_stays_abcf`, `test_repo_admin_json.py::TestAst1910EvaluateJdQcNeverXPrompt::test_catalog_evaluate_jd_cache_prompt_qc_exception`, `::test_fixture_evaluate_jd_row_lockstep_with_catalog`.

@@ -51,16 +51,14 @@ from src.utils.llm_external import (
     is_provider_balance_refusal,
     normalize_provider_error,
 )
-from src.external.deepseek import send_to_deepseek
+from src.external.llm_compat import send_to_llm_compat
 from src.utils.config import (
     TASK_CONFIG, BASE_SCHEMA, BLOCK_TYPES, ASTRAL_CONFIG, BUILD_CONFIG,
     INFLOW_CONFIG,
-    resolve_tokens, get_model, CHARS_PER_TOKEN, DEEPSEEK_MODEL_PRICING,
+    resolve_tokens, CHARS_PER_TOKEN,
     chain_context_selected_agent,
-    get_active_llm_provider,
-    resolve_brain_setting_to_anthropic_agent_key,
-    resolve_brain_setting_to_deepseek_tier_meta,
-    deepseek_brain_max_tokens_floor,
+    get_llm_server,
+    resolve_model_brain,
     CALLER_HOP_TOKEN_NAMES,
     ENTITY_TYPES,
     _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
@@ -73,7 +71,6 @@ from src.utils.config import (
     CRAFT_RUBRIC_UI_TASK_KEYS,
     is_vector_feedback_task,
     is_conversational_task,
-    CONTACT_ESTELLE_CONFIG,
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
     rubric_owner_task_key,
     JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK,
@@ -1824,6 +1821,88 @@ async def run_cover_letter_artifact_chain_for_job(
     )
 
 
+def _agent_llm_route(agent_row: Dict[str, Any]) -> Dict[str, Any]:
+    """Agent model_id + brain_setting → resolve_model_brain route (server, SKU, tier). Raises on missing/invalid config."""
+    aid = agent_row.get("agent_id")
+    model_id = (agent_row.get("model_id") or "").strip()
+    if not model_id:
+        raise ValueError(f"Agent '{aid}' has no model_id configured.")
+    brain_setting = (agent_row.get("brain_setting") or "").strip()
+    if not brain_setting:
+        raise ValueError(f"Agent '{aid}' has no brain_setting configured.")
+    return resolve_model_brain(model_id, brain_setting)
+
+
+def task_llm_server_id(task_key: str) -> str:
+    """Catalog server behind task_key's agent model — dispatcher key gate (AST-1879)."""
+    agent_row, _ = _resolve_task_prompts(task_key)
+    return _agent_llm_route(agent_row)["server_id"]
+
+
+def _candidate_server_key(
+    ctx: Optional[Dict[str, Any]], candidate_id: Optional[str], server_id: str
+) -> Optional[str]:
+    """The candidate's key for server_id only — never env, never another platform's key (AST-1879).
+
+    ctx["candidate_api_keys"] wins (session paste carries a map but no candidate id);
+    otherwise load the map by candidate id (callers that pass only astral_candidate_id).
+    """
+    keys = (ctx or {}).get("candidate_api_keys")
+    if keys is None and candidate_id:
+        keys = (database.get_candidate(candidate_id) or {}).get("candidate_api_keys")
+    return (keys or {}).get(server_id) or None
+
+
+def _missing_server_key_result(candidate_id: Optional[str], server_id: str) -> Dict[str, Any]:
+    """Failure envelope when the candidate holds no key for the route's server — no request was sent."""
+    return {
+        "success": False,
+        "error": f"Candidate {candidate_id or '-'} has no API key for server {server_id!r}",
+        "api_response": None,
+        "parsed_response": None,
+        "timesheet": {},
+    }
+
+
+async def _send_to_server(
+    user_blocks: List[Dict[str, Any]],
+    *,
+    server_id: str,
+    sku: str,
+    tier: Dict[str, Any],
+    api_key: str,
+    system_blocks: List[Dict[str, Any]],
+    response_format: Optional[str],
+    prompt_label: str,
+    candidate_id: Optional[str],
+    temperature: Optional[float],
+    max_tokens: Optional[int],
+    debug: bool,
+    task_key_uuid: Optional[str],
+    no_cache_prompt_tokens: int,
+    no_cache_live_tokens: int,
+    batch_size: int = 1,
+) -> Dict[str, Any]:
+    """One outbound call on the server's protocol client: Anthropic SDK or the shared compat client."""
+    common = dict(
+        system_blocks=system_blocks,
+        response_format=response_format,
+        prompt_label=prompt_label,
+        candidate_id=candidate_id,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        task_key_uuid=task_key_uuid,
+        no_cache_prompt_tokens=no_cache_prompt_tokens,
+        no_cache_live_tokens=no_cache_live_tokens,
+        batch_size=batch_size,
+        record_timesheet=record_timesheet_entry,
+    )
+    if get_llm_server(server_id)["protocol"] == "anthropic":
+        # api_key is always non-empty here, so send_to_anthropic never takes its env-key client.
+        return await send_to_anthropic(user_blocks, model_code=sku, api_key_override=api_key, debug=debug, **common)
+    return await send_to_llm_compat(user_blocks, server_id=server_id, sku=sku, tier=tier, api_key=api_key, **common)
+
+
 @_with_log_debug
 async def do_task(
     task_key: str,
@@ -1849,7 +1928,7 @@ async def do_task(
             Land enrich (AST-1470) may pass ``qualify_meteorite_batch_{batch_id}`` with
             ``log_batch_id`` set — audit-only entity_id, not a job row UUID.
         candidate_data: Token-resolution dict (optional; ctx supersedes).
-        ctx: Full candidate raft dict. Extracts candidate_data + candidate_api_key.
+        ctx: Full candidate raft dict. Extracts candidate_data + candidate_api_keys (server → key map).
         debug: Emit verbose log lines.
         store_agent_data: When True, persist prompt/response blocks to agent_data table.
         chain_context: Optional extra chain-source token values (AST-303 parent hop → child).
@@ -1877,7 +1956,6 @@ async def do_task(
             task_key,
         )
 
-    api_key_override = None
     candidate_id = ctx.get("astral_candidate_id") if ctx else None
     if candidate_id:
         # Lazy import breaks agent↔candidate cycle (candidate imports agent paths).
@@ -1888,8 +1966,6 @@ async def do_task(
         arts = dict(cd.get("artifacts") or {})
         arts["company_search_terms"] = joined
         cd["artifacts"] = arts
-    if ctx and task_config.get("requires_candidate_key"):
-        api_key_override = ctx.get("candidate_api_key")
 
     agent_row, agent_task_row = _resolve_task_prompts(task_key)
     # AST-1698: harvest artifact pins from unresolved prompt templates (before resolve).
@@ -1971,42 +2047,32 @@ async def do_task(
         parent_caller_summary=parent_caller_summary or None,
     )
 
-    brain_setting = (agent_row.get("brain_setting") or "").strip()
-    # AST-1072: conversational CHAT turns use CONTACT_ESTELLE_CONFIG Medium — leave Estelle Big for upshot.
-    if is_conversational_task(task_key):
-        brain_setting = CONTACT_ESTELLE_CONFIG["default_brain_setting"]
-    elif not brain_setting:
-        raise ValueError(
-            f"Agent '{agent_row.get('agent_id')}' has no brain_setting configured."
+    # AST-1879: the agent row's model + brain size pick the server, SKU, and tier. Contact Estelle
+    # is her own agent row (AST-1878), so there is no conversational brain override.
+    route = _agent_llm_route(agent_row)
+    server_id = route["server_id"]
+    sku = route["sku"]
+    tier = route["tier"]
+    api_key = _candidate_server_key(ctx, candidate_id, server_id)
+    if not api_key:
+        logger.warning(
+            "%s | %s skipped — no %s API key on the candidate\n  This call is not going out",
+            candidate_id or "-",
+            task_key,
+            server_id,
         )
-
-    provider = get_active_llm_provider()
-    tier_meta: Optional[Dict[str, Any]] = None  # DeepSeek reasoning / vendor flags
-    if provider == "anthropic":
-        resolved_anthropic_key = resolve_brain_setting_to_anthropic_agent_key(brain_setting)
-        model_cfg = get_model(resolved_anthropic_key)
-    elif provider == "deepseek":
-        resolved_anthropic_key = ""
-        tier_meta = resolve_brain_setting_to_deepseek_tier_meta(brain_setting)
-        vm = tier_meta["vendor_model"]
-        model_cfg = DEEPSEEK_MODEL_PRICING.get(vm)
-        if not model_cfg:
-            raise ValueError(f"Unknown DeepSeek vendor_model for agent params: {vm!r}")
-    else:
-        raise ValueError(f"Unknown LLM active_provider {provider!r}")
-    agent_temperature = agent_row.get("temperature") if agent_row.get("temperature") is not None else model_cfg["default_temperature"]
-    agent_max_tokens = agent_row.get("max_tokens") if agent_row.get("max_tokens") is not None else model_cfg["default_max_tokens"]
+        return _with_harvest(_missing_server_key_result(candidate_id, server_id))
+    agent_temperature = agent_row.get("temperature") if agent_row.get("temperature") is not None else tier["default_temperature"]
+    agent_max_tokens = agent_row.get("max_tokens") if agent_row.get("max_tokens") is not None else tier["default_max_tokens"]
     # Craft rubrics emit long per-criterion content — floor so Get cannot truncate mid-JSON (AST-903).
     if task_key in CRAFT_RUBRIC_UI_TASK_KEYS:
         agent_max_tokens = max(int(agent_max_tokens), int(CRAFT_RUBRIC_MAX_TOKENS))
-        # AST-1380 Decision A: DeepSeek Big thinking shares max_tokens with the JSON answer —
+        # AST-1380 Decision A: thinking shares max_tokens with the JSON answer —
         # disable thinking so craft criteria are not starved mid-string.
-        if provider == "deepseek" and tier_meta is not None:
-            tier_meta = {**tier_meta, "thinking": False, "reasoning_effort": None}
-    if provider == "deepseek":
-        _ds_floor = deepseek_brain_max_tokens_floor(brain_setting)
-        if _ds_floor is not None:
-            agent_max_tokens = max(int(agent_max_tokens), _ds_floor)
+        tier = {**tier, "thinking": False}
+    # AST-1391: catalog per-tier output floor (None = no floor).
+    if tier.get("max_tokens_floor") is not None:
+        agent_max_tokens = max(int(agent_max_tokens), int(tier["max_tokens_floor"]))
 
     _hop_kw = dict(
         chain_entry=chain_entry,
@@ -2137,15 +2203,13 @@ async def do_task(
             log_batch_id.set(None)
         return outcome
 
-    assemble_model_tag = resolved_anthropic_key if provider == "anthropic" else tier_meta["vendor_model"]
-
     system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks_seven_segment(
         system_content=system_content,
         user_content=user_content,
         caches_resolved_four=caches_four,
         nocache_content=nocache_content,
         live_content=live_content,
-        model_code=assemble_model_tag,
+        model_code=sku,
         skip_cache=skip_cache,
         candidate_id=candidate_id,
     )
@@ -2172,51 +2236,29 @@ async def do_task(
         except Exception as exc:
             _log_swallowed_agent_data(index, task_key, exc)
 
-    send_fn_name = "send_to_anthropic" if provider == "anthropic" else "send_to_deepseek"
-    model_tag = resolved_anthropic_key if provider == "anthropic" else tier_meta["vendor_model"]
     logger.debug(
-        "Calling %s: [task_key=%s, provider=%s, model=%s, max_tokens=%s, temp=%s, skip_cache=%s, candidate=%s]",
-        send_fn_name, task_key, provider, model_tag, agent_max_tokens, agent_temperature,
-        skip_cache, candidate_id or "",
+        "Calling _send_to_server: [task_key=%s, server=%s, model=%s, max_tokens=%s, temp=%s, skip_cache=%s, candidate=%s]",
+        task_key, server_id, sku, agent_max_tokens, agent_temperature, skip_cache, candidate_id or "",
     )
-    if provider == "anthropic":
-        result = await send_to_anthropic(
-            user_blocks,
-            system_blocks=system_blocks,
-            response_format=response_format,
-            prompt_label=task_key,
-            candidate_id=candidate_id,
-            api_key_override=api_key_override,
-            model_code=resolved_anthropic_key,
-            temperature=agent_temperature,
-            max_tokens=agent_max_tokens,
-            debug=debug,
-            task_key_uuid=agent_task_row.get("task_key_uuid"),
-            no_cache_prompt_tokens=no_cache_prompt_tokens,
-            no_cache_live_tokens=no_cache_live_tokens,
-            batch_size=batch_size,
-            record_timesheet=record_timesheet_entry,
-        )
-    else:
-        result = await send_to_deepseek(
-            user_blocks,
-            system_blocks=system_blocks,
-            response_format=response_format,
-            prompt_label=task_key,
-            candidate_id=candidate_id,
-            api_key_override=api_key_override,
-            vendor_model=tier_meta["vendor_model"],
-            tier_meta=tier_meta,
-            temperature=agent_temperature,
-            max_tokens=agent_max_tokens,
-            debug=debug,
-            task_key_uuid=agent_task_row.get("task_key_uuid"),
-            no_cache_prompt_tokens=no_cache_prompt_tokens,
-            no_cache_live_tokens=no_cache_live_tokens,
-            batch_size=batch_size,
-            record_timesheet=record_timesheet_entry,
-        )
-    logger.debug("Response from %s: %s", send_fn_name, result)
+    result = await _send_to_server(
+        user_blocks,
+        server_id=server_id,
+        sku=sku,
+        tier=tier,
+        api_key=api_key,
+        system_blocks=system_blocks,
+        response_format=response_format,
+        prompt_label=task_key,
+        candidate_id=candidate_id,
+        temperature=agent_temperature,
+        max_tokens=agent_max_tokens,
+        debug=debug,
+        task_key_uuid=agent_task_row.get("task_key_uuid"),
+        no_cache_prompt_tokens=no_cache_prompt_tokens,
+        no_cache_live_tokens=no_cache_live_tokens,
+        batch_size=batch_size,
+    )
+    logger.debug("Response from _send_to_server: %s", result)
     result["runtime_prompt"] = runtime_prompt
     result["source_artifact_ids"] = list(source_artifact_ids)
 
@@ -3074,12 +3116,13 @@ async def run_adhoc_workbench_test(
     live_content: Optional[str] = None,
     model_code: Optional[str] = None,
     *,
-    tier_meta: Optional[Dict[str, Any]] = None,
+    server_id: Optional[str] = None,
+    tier: Optional[Dict[str, Any]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     response_format: Optional[str] = "text",
     context: Optional[str] = None,
-    api_key_override: Optional[str] = None,
+    candidate_api_keys: Optional[Dict[str, str]] = None,
     task_key_uuid: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
@@ -3135,8 +3178,8 @@ async def run_adhoc_workbench_test(
 
         try:
             logger.debug(
-                "Calling run_adhoc: [task_key=%s, candidate=%s, model=%s]",
-                workbench_task_key, candidate_id, model_code,
+                "Calling run_adhoc: [task_key=%s, candidate=%s, server=%s, model=%s]",
+                workbench_task_key, candidate_id, server_id, model_code,
             )
             result = await run_adhoc(
                 system_content=system_content,
@@ -3148,13 +3191,14 @@ async def run_adhoc_workbench_test(
                 nocache_content=nocache_content,
                 live_content=live_content,
                 model_code=model_code,
-                tier_meta=tier_meta,
+                server_id=server_id,
+                tier=tier,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format=response_format,
                 context=context,
                 candidate_id=candidate_id,
-                api_key_override=api_key_override,
+                candidate_api_keys=candidate_api_keys,
                 task_key_uuid=task_key_uuid,
                 debug=debug,
             )
@@ -3279,20 +3323,26 @@ async def run_adhoc(
     live_content: Optional[str] = None,
     model_code: Optional[str] = None,
     *,
-    tier_meta: Optional[Dict[str, Any]] = None,
+    server_id: Optional[str] = None,
+    tier: Optional[Dict[str, Any]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     response_format: Optional[str] = "text",
     context: Optional[str] = None,
     candidate_id: Optional[str] = None,
-    api_key_override: Optional[str] = None,
+    candidate_api_keys: Optional[Dict[str, str]] = None,
     task_key_uuid: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
     """Run an ad-hoc prompt without DB prompt resolution or agent_data storage.
-    Uses candidate's API key when available, falls back to system key."""
+    Routes by catalog server; sends only the candidate's key for that server (no fallback — AST-1879)."""
     if not model_code:
-        raise ValueError("run_adhoc requires model_code (Anthropic AGENT_CONFIG key or DeepSeek vendor_model)")
+        raise ValueError("run_adhoc requires model_code (catalog SKU)")
+    if not server_id or tier is None:
+        raise ValueError("run_adhoc requires server_id and tier (resolve_model_brain route)")
+    api_key = (candidate_api_keys or {}).get(server_id)
+    if not api_key:
+        return _missing_server_key_result(candidate_id, server_id)
 
     system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks_seven_segment(
         system_content=system_content,
@@ -3305,41 +3355,23 @@ async def run_adhoc(
         candidate_id=candidate_id,
     )
 
-    if tier_meta is not None:
-        result = await send_to_deepseek(
-            user_blocks,
-            system_blocks=system_blocks,
-            response_format=response_format,
-            prompt_label="adhoc",
-            vendor_model=model_code,
-            tier_meta=tier_meta,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            candidate_id=candidate_id,
-            api_key_override=api_key_override,
-            task_key_uuid=task_key_uuid,
-            debug=debug,
-            no_cache_prompt_tokens=no_cache_prompt_tokens,
-            no_cache_live_tokens=no_cache_live_tokens,
-            record_timesheet=record_timesheet_entry,
-        )
-    else:
-        result = await send_to_anthropic(
-            user_blocks,
-            system_blocks=system_blocks,
-            response_format=response_format,
-            prompt_label="adhoc",
-            model_code=model_code,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            candidate_id=candidate_id,
-            api_key_override=api_key_override,
-            task_key_uuid=task_key_uuid,
-            debug=debug,
-            no_cache_prompt_tokens=no_cache_prompt_tokens,
-            no_cache_live_tokens=no_cache_live_tokens,
-            record_timesheet=record_timesheet_entry,
-        )
+    result = await _send_to_server(
+        user_blocks,
+        server_id=server_id,
+        sku=model_code,
+        tier=tier,
+        api_key=api_key,
+        system_blocks=system_blocks,
+        response_format=response_format,
+        prompt_label="adhoc",
+        candidate_id=candidate_id,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        debug=debug,
+        task_key_uuid=task_key_uuid,
+        no_cache_prompt_tokens=no_cache_prompt_tokens,
+        no_cache_live_tokens=no_cache_live_tokens,
+    )
     result["runtime_prompt"] = runtime_prompt
     return result
 

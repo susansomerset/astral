@@ -310,7 +310,7 @@ Gazer batch debug + assembled persist: **`docs/test-bible/core/gazer.md`** (**AS
 
 ### AST-720 · AST-716
 
-**`select_job_page`** decomposed dispatch from **`PJL_READY`** — load **`pjl_assembled_content`** / **`pjl_scrape_pages`** (AST-719); **`JOBLIST_TITLES` → `JOBLIST_IDENTIFIED`** without parse or **`job_site`** column write; **`TRY_LINKS`** → **`PREFILTER_PASSED_RETRY`** + ledger append or **`NO_PJL_SELECTED`**; **`JOBSITE_SCRAPE_ISSUE`** / **`JOBLIST_NO_JOBS`** with **`suppress_job_site`**. Default admin trigger **`select_job_page` → `PJL_READY`**.
+**`select_job_page`** decomposed dispatch from **`PJL_READY`** — load **`pjl_assembled_content`** / **`pjl_scrape_pages`** (AST-719); **`JOBLIST_TITLES` → `JOBLIST_IDENTIFIED`** without parse or **`job_site`** column write; **`TRY_LINKS`** → **`PREFILTER_PASSED_RETRY`** + ledger append or **`NO_PJL_SELECTED`**; **`JOBSITE_SCRAPE_ISSUE`** with **`suppress_job_site`**; **`JOBLIST_NO_JOBS` → `NO_OPENINGS`** persists the selected page URL as **`job_site`** (**`NO_OPENINGS` ∈ `_PERSIST_PAGE_OPTION_URL_STATES`**, AST-1892) — suppression (AST-673) stays on **`JOBLIST_IDENTIFIED`** and **`TRY_LINKS`**-exhausted exits only. Default admin trigger **`select_job_page` → `PJL_READY`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -894,6 +894,26 @@ Canonical external map: [`external/telescope.md`](../external/telescope.md).
   tests/component/core/test_roster.py::TestAst1842SelectJobPageTimeoutHold \
   tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
   tests/component/core/test_roster.py::test_find_assembled_do_task_failure \
+  -q
+```
+
+### AST-1892 · AST-1887 (decomposed JOBLIST_NO_JOBS persists job_site)
+
+**Parent:** [AST-1887](https://linear.app/astralcareermatch/issue/AST-1887) (orphaned-bug mini-parent). Product: **AST-1892**; test/bible delivery on gap sibling **AST-1894** (`origin/sub/AST-1887/AST-1894-no-openings-job-site-tests`). Decomposed (`PJL_READY`) `JOBLIST_NO_JOBS` → `NO_OPENINGS` no longer passes `suppress_job_site`; `_save_company` → `_job_site_for_persist` writes the selected page URL so `recheck_no_openings` has a `job_site`. `[bug-repro]`: red on pre-fix `origin/dev` (`job_site=""`), green once AST-1892 is on the tree.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Decomposed no-jobs persists `job_site` | `src/core/roster.py` (`_check_parse_results`) | **`tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_joblist_no_jobs_persists_selected_job_site`** |
+| `JOBLIST_IDENTIFIED` still suppresses | same | existing **`::test_joblist_titles_identified_without_job_site_column`** |
+| `JOBSITE_SCRAPE_ISSUE` still suppresses (out of scope) | same | existing **`::test_jobsite_scrape_issue_suppresses_job_site`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch \
   -q
 ```
 

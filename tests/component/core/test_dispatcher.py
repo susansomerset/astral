@@ -26,6 +26,13 @@ def _clear_task_registry() -> None:
         dispatcher_mod._task_registry.clear()
 
 
+@pytest.fixture(autouse=True)
+def _task_server_anthropic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AST-1879: skip gate resolves the task agent's server — pin it so candidate stubs
+    carrying candidate_api_keys["anthropic"] reach dispatch without a seeded agent_task row."""
+    monkeypatch.setattr(dispatcher_mod, "task_llm_server_id", lambda task_key: "anthropic")
+
+
 def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
     # Raise StopIteration from a plain callable — generator.throw(StopIteration) becomes
     # RuntimeError under PEP 479 (breaks tick-loop tests on 3.9+).
@@ -1017,14 +1024,70 @@ def test_current_agent_task_run_next_missing_agent_task_row(monkeypatch: pytest.
 
 class TestDispatchOne:
     @pytest.mark.asyncio
-    async def test_skips_without_candidate_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_skips_without_candidate_context(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda candidate_id: None)
-        await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        save_ledger.assert_not_called()
+        assert any(
+            "cand-1 | dispatch evaluate_jd skipped — no candidate or anthropic API key" in r.getMessage()
+            and "This task is not starting" in r.getMessage()
+            for r in caplog.records
+        )
 
     @pytest.mark.asyncio
-    async def test_skips_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
-        await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+    @pytest.mark.parametrize(
+        "keys",
+        [
+            None,
+            {},
+            # AST-1879 AC 7: another platform's key does not open the gate.
+            {"kimi": "sk-kimi", "deepseek": "sk-ds"},
+            {"anthropic": ""},
+        ],
+    )
+    async def test_skips_without_task_servers_api_key(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, keys: Any
+    ) -> None:
+        row: Dict[str, Any] = {"astral_candidate_id": "cand-1"}
+        if keys is not None:
+            row["candidate_api_keys"] = keys
+        monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda candidate_id: row)
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        save_ledger.assert_not_called()
+        assert any("skipped — no candidate or anthropic API key" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_gate_reads_key_for_task_agents_server(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # AST-1879: the gate asks task_llm_server_id(task_key) which server to check.
+        seen: List[str] = []
+
+        def _server(task_key: str) -> str:
+            seen.append(task_key)
+            return "kimi"
+
+        monkeypatch.setattr(dispatcher_mod, "task_llm_server_id", _server)
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "sk-ant"}},
+        )
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        assert seen == ["evaluate_jd"]
+        save_ledger.assert_not_called()
+        assert any("no candidate or kimi API key" in r.getMessage() for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_run_next_chain_skips_dispatch_level_ledger(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1038,7 +1101,7 @@ class TestDispatchOne:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
@@ -1060,7 +1123,7 @@ class TestDispatchOne:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -1085,7 +1148,7 @@ class TestDispatchOne:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -1104,7 +1167,7 @@ class TestDispatchOne:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
         update_ledger = MagicMock()
@@ -1122,7 +1185,7 @@ class TestDispatchOne:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
         update_ledger = MagicMock()
@@ -1140,7 +1203,7 @@ class TestDispatchOne:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -1164,7 +1227,7 @@ class TestDispatchOne:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock(side_effect=RuntimeError("ledger")))
@@ -1180,7 +1243,7 @@ class TestDispatchOne:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -1206,7 +1269,7 @@ class TestAst841DispatchTerminalLogging:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(
             dispatcher_mod.database,
@@ -1235,7 +1298,7 @@ class TestAst841DispatchTerminalLogging:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(
             dispatcher_mod.database,
@@ -1274,7 +1337,7 @@ class TestAst1847TimeoutPartialCounts:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
         update_ledger = MagicMock()
@@ -1399,7 +1462,7 @@ class TestAst1867ProviderBalanceOutage:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         # a run_next chain would suppress the ledger id and with it the alert
         monkeypatch.setattr(dispatcher_mod, "_current_agent_task_run_next", lambda _tk: None)
@@ -3570,7 +3633,7 @@ class TestAst1829ScheduledSweep:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
         )
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock(return_value=1829))
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -3600,3 +3663,101 @@ class TestAst1829ScheduledSweep:
         assert run.await_count == 1
         assert seen_debug == [expect_debug]
         assert any("last_run_at" in c.kwargs for c in stamp.call_args_list)
+
+
+# Branches: get_auto_thread_cap override set / unset; set_auto_thread_cap type reject / range reject / accept;
+# _tick_loop slot math reads the live cap every tick (raise between ticks, lower below running count).
+class TestAst1916AutoThreadCap:
+    """AST-1916: runtime AUTO-thread cap — bounded setter, live read in _tick_loop, never cancels."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # monkeypatch restores the module global at teardown even after set_auto_thread_cap writes it,
+        # so no override leaks into the cfg["max_auto_threads"]-driven TestScheduler tick tests.
+        monkeypatch.setattr(dispatcher_mod, "_auto_thread_cap_override", None)
+
+    @staticmethod
+    def _registering_run_task(monkeypatch: pytest.MonkeyPatch) -> List[int]:
+        # Spawned ids land in the registry as AUTO so the next tick counts them as running.
+        spawned: List[int] = []
+
+        def _run(task_id: int, **_kw: Any) -> bool:
+            spawned.append(task_id)
+            with dispatcher_mod._registry_lock:
+                dispatcher_mod._task_registry[task_id] = {"is_auto": True}
+            return True
+
+        monkeypatch.setattr(dispatcher_mod, "run_task", _run)
+        return spawned
+
+    def test_getter_falls_back_to_config_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "max_auto_threads", 5)
+        assert dispatcher_mod.get_auto_thread_cap() == 5
+
+    @pytest.mark.parametrize("value", [1, 7, 100], ids=["min", "mid", "max"])
+    def test_setter_accepts_in_range_and_getter_reports_it(self, value: int) -> None:
+        assert dispatcher_mod.set_auto_thread_cap(value) == value
+        assert dispatcher_mod.get_auto_thread_cap() == value
+
+    # bool is an int subclass and 5.0 / "5" are numeric — the strict type() check must reject them all.
+    @pytest.mark.parametrize(
+        "value",
+        [0, 101, -1, "abc", 2.5, True, None, "5", 5.0],
+        ids=["zero", "over_max", "negative", "str", "float", "bool", "none", "numeric_str", "whole_float"],
+    )
+    def test_setter_rejects_and_keeps_prior_cap(self, value: Any) -> None:
+        dispatcher_mod.set_auto_thread_cap(7)
+        with pytest.raises(ValueError, match="whole number between 1 and 100"):
+            dispatcher_mod.set_auto_thread_cap(value)
+        assert dispatcher_mod.get_auto_thread_cap() == 7
+
+    def test_setter_bounds_come_from_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 8: moving the config bounds moves the accepted range (nothing hardcoded in the setter).
+        monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "max_auto_threads_min", 2)
+        monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "max_auto_threads_max", 4)
+        with pytest.raises(ValueError, match="between 2 and 4"):
+            dispatcher_mod.set_auto_thread_cap(1)
+        with pytest.raises(ValueError, match="between 2 and 4"):
+            dispatcher_mod.set_auto_thread_cap(5)
+        assert dispatcher_mod.set_auto_thread_cap(4) == 4
+
+    def test_tick_honours_raised_cap_on_next_tick(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 5 / 6: cap 1 on tick 1, raised to 3 during the sleep → tick 2 fills to 3, no restart.
+        due = [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}]
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: due)
+        monkeypatch.setattr(dispatcher_mod, "_meteorite_email_due_tasks", lambda: [])
+        spawned = self._registering_run_task(monkeypatch)
+        _run_one_tick(monkeypatch)
+        dispatcher_mod.set_auto_thread_cap(1)
+        waits: List[int] = []
+
+        def _raise_cap_then_stop(timeout: object = None) -> None:
+            waits.append(1)
+            if len(waits) == 1:
+                dispatcher_mod.set_auto_thread_cap(3)
+                return
+            raise StopIteration
+
+        monkeypatch.setattr(dispatcher_mod._tick_event, "wait", _raise_cap_then_stop)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        assert spawned == [1, 2, 3]
+
+    def test_lowering_below_running_spawns_none_and_cancels_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 7: 3 AUTO running, cap lowered to 1 → no spawn, registry untouched, nothing cancelled.
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: [{"id": 9}])
+        monkeypatch.setattr(dispatcher_mod, "_meteorite_email_due_tasks", lambda: [])
+        with dispatcher_mod._registry_lock:
+            for tid in (1, 2, 3):
+                dispatcher_mod._task_registry[tid] = {"is_auto": True}
+        cancel = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "cancel_task", cancel)
+        monkeypatch.setattr(dispatcher_mod, "cancel_all_tasks", cancel)
+        spawned = self._registering_run_task(monkeypatch)
+        dispatcher_mod.set_auto_thread_cap(1)
+        _run_one_tick(monkeypatch)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        assert spawned == []
+        assert sorted(dispatcher_mod._task_registry) == [1, 2, 3]
+        cancel.assert_not_called()

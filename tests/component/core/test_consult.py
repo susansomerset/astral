@@ -2902,6 +2902,90 @@ class TestQualifyJobListings:
         transition.assert_called()
 
 
+class TestAst1895InvalidJobLinkError:
+    """AST-1895 bug-repro: c86d8b5ce put @_with_log_debug on InvalidJobLinkError instead of
+    _run_batch_consult. Routing survived; the fail reason and debug= scoping did not."""
+
+    @pytest.mark.asyncio
+    async def test_empty_and_relative_job_link_fail_reason_names_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pre-fix: raise hits the decorator wrapper → "ValueError: no signature found ...".
+        fail_log = MagicMock()
+        monkeypatch.setattr(consult_mod, "_log_fail_dest", fail_log)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
+        # Without criteria, hydration raises before process_fn ever runs (AST-723).
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: [_rubric_item()])
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {"astral_job_id": "job-e", "grades": [_pass_grade()], "job_title": "Engineer", "job_link": ""},
+                            {"astral_job_id": "job-r", "grades": [_pass_grade()], "job_title": "Engineer", "job_link": "/relative"},
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [
+            {"astral_job_id": "job-e", "state": "VALID_TITLE", "company": "co", "job_data": {"raw_job_listing": "a"}},
+            {"astral_job_id": "job-r", "state": "VALID_TITLE", "company": "co", "job_data": {"raw_job_listing": "b"}},
+        ]
+        out = await consult_mod.qualify_job_listings("batch-x", jobs, {}, debug=False)
+        assert out["bad_grades"] == ["job-e", "job-r"]
+        # Keyed by entity id; both land on the same fail/retry destination.
+        calls = {c.args[0]: c.args for c in fail_log.call_args_list}
+        dest = consult_mod._consult_batch_fail_dest(
+            "VALID_TITLE", consult_mod.TASK_CONFIG["qualify_job_listings"].get("error_state")
+        )
+        assert calls["job-e"][1] == dest
+        assert calls["job-r"][1] == dest
+        # Exact match (trailing space on empty) also rules out "no signature found".
+        assert calls["job-e"][2] == "process_fn InvalidJobLinkError: empty job_link: "
+        assert calls["job-r"][2] == "process_fn InvalidJobLinkError: relative job_link: /relative"
+
+    def test_invalid_job_link_error_is_value_error_class(self) -> None:
+        # Pre-fix the module name is the decorator's plain-function wrapper.
+        assert isinstance(consult_mod.InvalidJobLinkError, type)
+        assert issubclass(consult_mod.InvalidJobLinkError, ValueError)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [True, False])
+    async def test_run_batch_consult_debug_scope(self, monkeypatch: pytest.MonkeyPatch, debug: bool) -> None:
+        # True is the bug-repro (undecorated frame never sets log_debug); False guards nothing is forced on.
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        # Envelope failure returns early — no rubric needed.
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value={"success": False, "error": "bad"}))
+        seen: List[Any] = []
+
+        def assemble(_jobs: List[Dict[str, Any]]) -> str:
+            # Runs inside the frame, before do_task.
+            seen.append(consult_mod.log_debug.get())
+            return "content"
+
+        before = consult_mod.log_debug.get()
+        await consult_mod._run_batch_consult(
+            "qualify_job_listings",
+            "batch-d",
+            [{"astral_job_id": "job-1", "state": "VALID_TITLE"}],
+            assemble,
+            lambda i, r, c: c["pass_state"],
+            {},
+            debug,
+        )
+        # debug=False inherits the ambient value rather than forcing False.
+        assert seen == [debug or before]
+        # Decorator reset its token on exit.
+        assert consult_mod.log_debug.get() is before
+
+
 class TestAst733QualifyIdentityCollision:
     @pytest.mark.asyncio
     async def test_collision_skips_save_and_transition_counts_failed(

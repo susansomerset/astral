@@ -1155,16 +1155,13 @@ class TestAst492LlmBrainTierConfig:
         with pytest.raises(ValueError, match="Invalid brain_setting"):
             cfg.validate_allowed_brain_setting("Small")
 
-    def test_resolve_deepseek_tier_meta(self) -> None:
-        little = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
-        assert little["vendor_model"] == "deepseek-v4-flash"
-        assert little["thinking"] is False
-        medium = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_MEDIUM)
-        assert medium["vendor_model"] == "deepseek-v4-pro"
-        assert medium["thinking"] is False
-        big = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_BIG)
-        assert big["vendor_model"] == "deepseek-v4-pro"
-        assert big["thinking"] is False
+    def test_deepseek_v4_catalog_tiers(self) -> None:
+        # AST-1880: DeepSeek tiers come from the catalog (resolve_brain_setting_to_deepseek_tier_meta retired).
+        little = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE)
+        assert (little["server_id"], little["sku"], little["tier"]["thinking"]) == ("deepseek", "deepseek-v4-flash", False)
+        for tier in (cfg.BRAIN_MEDIUM, cfg.BRAIN_BIG):
+            r = cfg.resolve_model_brain("deepseek-v4", tier)
+            assert (r["sku"], r["tier"]["thinking"]) == ("deepseek-v4-pro", False)
 
     def test_infer_brain_setting_from_legacy_model_code(self) -> None:
         assert cfg.infer_brain_setting_from_legacy_model_code("claude-haiku-4-5") == cfg.BRAIN_LITTLE
@@ -1174,29 +1171,27 @@ class TestAst492LlmBrainTierConfig:
         assert cfg.infer_brain_setting_from_legacy_model_code("") == cfg.BRAIN_MEDIUM
         assert cfg.infer_brain_setting_from_legacy_model_code("unknown-legacy-x") == cfg.BRAIN_MEDIUM
 
-    def test_get_active_llm_provider_strips_and_rejects_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", " deepseek ")
-        assert cfg.get_active_llm_provider() == "deepseek"
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "   ")
-        with pytest.raises(ValueError, match="invalid"):
-            cfg.get_active_llm_provider()
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", 999)  # type: ignore[arg-type]
-        with pytest.raises(ValueError, match="invalid"):
-            cfg.get_active_llm_provider()
+    def test_legacy_global_provider_symbols_retired(self) -> None:
+        # AST-1880 (parent AC 1 / AC 11): no global active_provider, no DeepSeek-only resolvers or pricing.
+        assert "active_provider" not in cfg.LLM_PROVIDER_CONFIG
+        assert "deepseek" not in cfg.LLM_PROVIDER_CONFIG["tier_map"]
+        assert "default_brain_setting" not in cfg.CONTACT_ESTELLE_CONFIG
+        for name in (
+            "get_active_llm_provider",
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            "deepseek_brain_max_tokens_floor",
+            "DEEPSEEK_MODEL_PRICING",
+            "DEEPSEEK_CONCURRENCY",
+        ):
+            assert not hasattr(cfg, name), name
 
     def test_resolve_anthropic_raises_when_tier_maps_to_unknown_agent_config_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG["tier_map"]["anthropic"], cfg.BRAIN_MEDIUM, {"agent_config_key": "__not_in_agent_config__"})
         with pytest.raises(ValueError, match="No Anthropic tier mapping"):
             cfg.resolve_brain_setting_to_anthropic_agent_key(cfg.BRAIN_MEDIUM)
 
-    def test_resolve_deepseek_raises_when_mapping_has_no_vendor_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG["tier_map"]["deepseek"], cfg.BRAIN_LITTLE, {"thinking": False})
-        with pytest.raises(ValueError, match="No DeepSeek tier mapping"):
-            cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
-
-    def test_validate_llm_provider_environment_ignores_active_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # AST-1877: startup validates the catalogs only; active_provider is no longer consulted.
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", "other-vendor")
+    def test_validate_llm_provider_environment_is_catalog_only(self) -> None:
+        # AST-1877: startup validates the catalogs only.
         assert cfg.validate_llm_provider_environment() is None
 
     def test_brain_setting_for_anthropic_agent_key_inverse(self) -> None:
@@ -1221,11 +1216,9 @@ class TestAst492LlmBrainTierConfig:
 
     def test_validate_llm_provider_environment_needs_no_provider_env_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # AST-1877: no platform key comes from env, so boot passes with every provider key unset.
-        for active in ("deepseek", "anthropic"):
-            monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG, "active_provider", active)
-            monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-            monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-            assert cfg.validate_llm_provider_environment() is None
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        assert cfg.validate_llm_provider_environment() is None
 
 
 class TestAst702PrefilterBatchConfig:
@@ -2250,21 +2243,17 @@ class TestAst903CraftRubricMaxTokens:
 
 
 class TestAst1391DeepseekBigMaxTokensFloor:
-    """AST-1391: 384000 lives on DeepSeek Big tier only — not the shared v4-pro SKU default."""
+    """AST-1391: 384000 lives on DeepSeek Big tier only — not the shared v4-pro SKU default.
+    AST-1880: read from the catalog tier row (deepseek_brain_max_tokens_floor retired)."""
 
-    def test_big_tier_floor_and_helper(self) -> None:
-        big = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_BIG)
-        little = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
-        medium = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_MEDIUM)
-        assert big["max_tokens"] == 384000
-        assert "max_tokens" not in little
-        assert "max_tokens" not in medium
-        assert cfg.DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"] == 16000
-        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG) == 384000
-        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_MEDIUM) is None
-        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_LITTLE) is None
+    def test_big_tier_floor(self) -> None:
+        tier = lambda b: cfg.resolve_model_brain("deepseek-v4", b)["tier"]  # noqa: E731
+        assert tier(cfg.BRAIN_BIG)["max_tokens_floor"] == 384000
+        assert tier(cfg.BRAIN_MEDIUM)["max_tokens_floor"] is None
+        assert tier(cfg.BRAIN_LITTLE)["max_tokens_floor"] is None
+        assert tier(cfg.BRAIN_MEDIUM)["default_max_tokens"] == 16000
         with pytest.raises(ValueError, match="Invalid brain_setting"):
-            cfg.deepseek_brain_max_tokens_floor("Small")
+            cfg.resolve_model_brain("deepseek-v4", "Small")
 
 
 class TestAst898NewRetryQualifyHolding:
@@ -3749,9 +3738,10 @@ class TestAst1072ConversationalEnvelopeConfig:
         # Global BASE_SCHEMA stays binary — concern is CHAT-only.
         assert "concern" not in cfg.BASE_SCHEMA["status"]["enum"]
 
-    def test_contact_estelle_config_medium_brain(self) -> None:
+    def test_contact_estelle_config_has_no_brain_override(self) -> None:
+        # AST-1880: the turn runs at contact_recruiter_estelle's own model + brain (no Medium override).
         assert cfg.CONTACT_ESTELLE_CONFIG["task_key"] == "contact_estelle_turn"
-        assert cfg.CONTACT_ESTELLE_CONFIG["default_brain_setting"] == cfg.BRAIN_MEDIUM
+        assert "default_brain_setting" not in cfg.CONTACT_ESTELLE_CONFIG
 
     def test_contact_estelle_turn_task_registration(self) -> None:
         entry = cfg.TASK_CONFIG["contact_estelle_turn"]
@@ -3813,7 +3803,6 @@ class TestAst1073ContactEstelleTurnConfig:
     def test_turn_context_trim_keys(self) -> None:
         assert cfg.CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] == 40
         assert cfg.CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] == 500
-        assert cfg.CONTACT_ESTELLE_CONFIG["default_brain_setting"] == cfg.BRAIN_MEDIUM
 
     def test_skill_calls_optional_on_chat_schema(self) -> None:
         schema = cfg.TASK_CONFIG["contact_estelle_turn"]["response_schema"]
@@ -4144,6 +4133,22 @@ class TestAst1084EvaluateJdCriteria:
         for letter, desc in by_grade.items():
             assert f"{letter} = {desc}" in gc["content"]
         assert "Gut Check — is this even plausible for this candidate?" in gc["content"]
+
+    def test_qc_content_forbids_x_and_grade_table_stays_abcf(self) -> None:
+        # AST-1910 / AST-1911: QC never X; rule line sits above the A row so the trailing table stays A/B/C/F.
+        from src.utils.rubric_text import parse_trailing_grade_table_lines
+
+        qc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[0]
+        rule = (
+            "Never grade Quality Check X — X is not a valid grade for this vector. "
+            "If there is not enough to analyze, grade it F (confidence 1–5, never 0)."
+        )
+        lines = qc["content"].split("\n")
+        assert lines[0] == "Quality Check — is this enough of a JD to analyze?"
+        assert lines[1] == rule
+        assert lines[2].startswith("A = ")
+        assert [r["grade"] for r in parse_trailing_grade_table_lines(qc["content"])] == ["A", "B", "C", "F"]
+        assert [g["grade"] for g in qc["grade_descriptions"]] == ["A", "B", "C", "F"]
 
 
 # Branches: METEORITE_EMAIL_MAILBOX_CONFIG (AST-1467 rehome of AST-1088/1134 gaze shell).
@@ -7086,9 +7091,6 @@ class TestAst1877LlmCatalogConfig:
     def test_shipped_openrouter_sends_no_zdr(self) -> None:
         # AC 9: ZDR enforcement is future scope — no provider.zdr in this release.
         assert "provider" not in cfg.LLM_SERVER_CONFIG["openrouter"]["request_extras"]
-
-    def test_deepseek_concurrency_is_alias_of_server_block(self) -> None:
-        assert cfg.DEEPSEEK_CONCURRENCY is cfg.LLM_SERVER_CONFIG["deepseek"]["concurrency"]
 
     def test_every_task_requires_candidate_key(self) -> None:
         assert [k for k, v in cfg.TASK_CONFIG.items() if v.get("requires_candidate_key") is not True] == []

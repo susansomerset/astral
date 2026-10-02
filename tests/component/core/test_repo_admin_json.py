@@ -190,7 +190,7 @@ class TestAst783RepoAdminJsonDivergence:
     ) -> None:
         agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
         db = sqlite_in_memory
-        db.save_agent("agent_a", "repo-copy", brain_setting="Little")
+        db.save_agent("agent_a", "repo-copy", brain_setting="Little", model_id="claude")
         conn = db._get_connection()
         try:
             file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
@@ -570,6 +570,8 @@ AST787_EXPECTED_AGENT_IDS = frozenset(
         "web_scraper_laslo",
     },
 )
+# AST-1878: separate contact-Estelle agent (Kimi K2.6 direct, Little).
+AST1878_EXPECTED_AGENT_IDS = AST787_EXPECTED_AGENT_IDS | {"contact_recruiter_estelle"}
 
 AST787_AGENT_REPO_COLUMNS = (
     "agent_id",
@@ -588,11 +590,11 @@ def _ast787_fixture_repo_row(fixture_row: dict[str, object]) -> dict[str, object
 class TestAst787AgentRepoJsonSeed:
     """AST-787 UAT: six persona rows in agent repo JSON mapped from UAT fixture."""
 
-    def test_repo_json_has_six_sorted_persona_ids(self) -> None:
+    def test_repo_json_has_seven_sorted_persona_ids(self) -> None:
         rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
-        assert len(rows) == 6
-        assert frozenset(row["agent_id"] for row in rows) == AST787_EXPECTED_AGENT_IDS
-        assert [row["agent_id"] for row in rows] == sorted(AST787_EXPECTED_AGENT_IDS)
+        assert len(rows) == 7
+        assert frozenset(row["agent_id"] for row in rows) == AST1878_EXPECTED_AGENT_IDS
+        assert [row["agent_id"] for row in rows] == sorted(AST1878_EXPECTED_AGENT_IDS)
 
     def test_repo_rows_match_fixture_repo_column_mapping(self) -> None:
         repo_rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
@@ -607,7 +609,7 @@ class TestAst787AgentRepoJsonSeed:
             assert repo_row == expected
 
     def test_repo_rows_use_repo_columns_only(self) -> None:
-        expected_cols = set(AST787_AGENT_REPO_COLUMNS)
+        expected_cols = set(AST787_AGENT_REPO_COLUMNS) | {"model_id"}
         for row in json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8")):
             assert set(row.keys()) == expected_cols
             assert "model_code" not in row
@@ -626,7 +628,7 @@ class TestAst787AgentRepoJsonSeed:
             assert str(row["content"]).strip()
             assert str(row["brain_setting"]).strip()
 
-    def test_startup_apply_loads_all_six_agents(
+    def test_startup_apply_loads_all_seven_agents(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         rows = repo_json_mod.load_repo_admin_json_file("agent")
@@ -635,7 +637,7 @@ class TestAst787AgentRepoJsonSeed:
             sqlite_in_memory.apply_agent_repo_json_startup(conn, rows)
             conn.commit()
             listed = {row["agent_id"] for row in sqlite_in_memory.list_agents()}
-            assert listed == AST787_EXPECTED_AGENT_IDS
+            assert listed == AST1878_EXPECTED_AGENT_IDS
             grace = sqlite_in_memory.get_agent("job_analyst_grace")
             assert grace is not None
             assert grace["brain_setting"] == "Medium"
@@ -733,7 +735,8 @@ class TestAst1072ContactEstelleTurnCatalogRow:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         row = by["contact_estelle_turn"]
-        assert row["agent_id"] == "principal_recruiter_estelle"
+        # AST-1878: contact turns run on the separate contact-Estelle agent.
+        assert row["agent_id"] == "contact_recruiter_estelle"
         assert row["task_group_name"] == "Contact Estelle"
         assert row["task_name"] == row["task_key"] == "contact_estelle_turn"
         assert row["task_seq"] == 1
@@ -1163,6 +1166,39 @@ class TestAst1154GradedTaskCompletenessPrompts:
             assert self._MARKER in by[key]["cache_prompt"], key
 
 
+class TestAst1910EvaluateJdQcNeverXPrompt:
+    """AST-1910 / AST-1911: evaluate_jd keeps X0-when-silent but names QC as the one never-X exception."""
+
+    # Each string pins the general X0 rule and the QC exception appended right after it.
+    _STEP3 = (
+        "use X0 when silent — never omit a code. Exception: QC (Quality Check) is never X — "
+        "if the job description is too thin to analyze, grade QC F with confidence 1–5 "
+        "(never QCX0, never QCF0)."
+    )
+    _COMPLETENESS = (
+        "When the source is silent, emit {code}X0 — never skip the segment. "
+        "The one exception is QC (Quality Check): never emit QCX — grade it F when there is "
+        "not enough to analyze."
+    )
+
+    def _current_by_key(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {r["task_key"]: r for r in rows if r.get("current") == 1}
+
+    def test_catalog_evaluate_jd_cache_prompt_qc_exception(self) -> None:
+        cache = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]["cache_prompt"]
+        assert cache.count(self._STEP3) == 1
+        assert cache.count(self._COMPLETENESS) == 1
+
+    def test_fixture_evaluate_jd_row_lockstep_with_catalog(self) -> None:
+        # Per-key lockstep (AST-1196 / AST-1211 style) — whole-file AST-756 twin is already red on dev, not ours.
+        cat = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]
+        fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")["evaluate_jd"]
+        assert self._STEP3 in fix["cache_prompt"]
+        assert self._COMPLETENESS in fix["cache_prompt"]
+        assert fix == cat
+
+
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)
 class TestAst1213MeteoriteEmailVisibleTextPrompts:
     """AST-1213: meteorite_email prompts describe visible text + LINKS, not raw HTML."""
@@ -1514,3 +1550,51 @@ class TestAst1712MailboxCatalogKey:
         assert not (mailbox.get("user_prompt") or "").strip()
         ruth = by_uuid["3bbd54c2-60a7-494e-b79a-e68aca7c2d77"]
         assert ruth["task_key"] == ruth["task_name"] == "stage_meteorite"
+
+
+class TestAst1878AgentSeedModels:
+    """AST-1878 AC 3 / AC 4: every seed agent names a catalog model with a size that model offers."""
+
+    AC4 = {
+        "ats_expert_atlas": ("deepseek-v4", "Big"),
+        "college_intern_ruth": ("deepseek-v4", "Little"),
+        "contact_recruiter_estelle": ("kimi-k2.6", "Little"),
+        "content_writer_judith": ("kimi-k2.6", "Big"),
+        "job_analyst_grace": ("deepseek-v4", "Medium"),
+        "principal_recruiter_estelle": ("kimi-k2.6", "Big"),
+        "web_scraper_laslo": ("deepseek-v4", "Medium"),
+    }
+
+    @staticmethod
+    def _rows() -> list[dict]:
+        return json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+
+    def test_ac3_every_row_is_catalog_model_with_valid_size(self) -> None:
+        from src.utils.config import LLM_MODEL_CONFIG
+
+        bad = [
+            r["agent_id"] for r in self._rows()
+            if r.get("model_id") not in LLM_MODEL_CONFIG
+            or r["brain_setting"] not in LLM_MODEL_CONFIG[r["model_id"]]["brain_sizes"]
+        ]
+        assert bad == []
+
+    def test_ac4_seed_models_and_sizes(self) -> None:
+        assert {r["agent_id"]: (r["model_id"], r["brain_setting"]) for r in self._rows()} == self.AC4
+
+    def test_contact_estelle_copies_analysis_content_with_catalog_defaults(self) -> None:
+        by = {r["agent_id"]: r for r in self._rows()}
+        contact = by["contact_recruiter_estelle"]
+        assert contact["content"] == by["principal_recruiter_estelle"]["content"]
+        assert contact["temperature"] is None and contact["max_tokens"] is None
+
+    def test_startup_apply_stores_model_ids(self, sqlite_in_memory) -> None:
+        rows = repo_json_mod.load_repo_admin_json_file("agent")
+        conn = sqlite_in_memory._get_connection()
+        try:
+            sqlite_in_memory.apply_agent_repo_json_startup(conn, rows)
+            conn.commit()
+        finally:
+            conn.close()
+        got = {a["agent_id"]: (a["model_id"], a["brain_setting"]) for a in sqlite_in_memory.list_agents()}
+        assert got == self.AC4

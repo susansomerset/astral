@@ -16,7 +16,8 @@ interface Candidate {
   last?: string
   full?: string
   pronouns?: string
-  has_api_key?: boolean
+  /** Stored keys only, in array order (AST-1901): server id + catalog label — never the key itself. */
+  api_keys?: { server: string; label: string }[]
   [key: string]: unknown
 }
 
@@ -69,7 +70,7 @@ function flattenCandidate(c: Candidate): Candidate & Record<string, unknown> {
     last: c.last ?? "",
     contact_email: contact.contact_email ?? "",
     slack_username: typeof contact.slack_username === "string" ? contact.slack_username : "",
-    api_key_status: c.has_api_key ? "Set" : "Not set",
+    api_key_status: (c.api_keys ?? []).map(k => k.label).join(", ") || "Not set",
   }
 }
 
@@ -150,14 +151,18 @@ export default function ManageCandidates() {
   const [editOpen, setEditOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Candidate | null>(null)
   const [editForm, setEditForm] = useState({
-    first: "", last: "", contact_email: "", pronouns: "", state: "", api_key: "",
+    first: "", last: "", contact_email: "", pronouns: "", state: "",
     slack_user_id: "", slack_channel_id: "",
   })
+  // Key edits keyed by server id: typed value, show toggle, pending clear.
+  const [keyInputs, setKeyInputs] = useState<Record<string, string>>({})
+  // Server catalog for the key fields, derived from /api/admin/agents/models (no literals).
+  const [keyServers, setKeyServers] = useState<{ server: string; label: string }[]>([])
   const [unboundSlackUsers, setUnboundSlackUsers] = useState<UnboundSlackUser[]>([])
   const [slackChannels, setSlackChannels] = useState<SlackChannelOption[]>([])
   const [channelMembershipWarn, setChannelMembershipWarn] = useState<string | null>(null)
-  const [showKey, setShowKey] = useState(false)
-  const [clearKey, setClearKey] = useState(false)
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
+  const [clearKeys, setClearKeys] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
   const { refresh } = useCandidate()
@@ -301,6 +306,12 @@ export default function ManageCandidates() {
   useEffect(() => {
     api("/api/shapes/candidates").then(r => r.json()).then(s => setShapes(s))
     api("/api/candidates/states").then(r => r.json()).then(s => setValidStates(Array.isArray(s) ? s : []))
+    // One picker option per server, catalog order (several models can share a server).
+    api("/api/admin/agents/models").then(r => r.json()).then((m: Record<string, { order: number; server_id: string; server_label: string }>) => {
+      const seen = new Set<string>()
+      setKeyServers(Object.values(m).sort((a, b) => a.order - b.order).flatMap(x =>
+        seen.has(x.server_id) ? [] : (seen.add(x.server_id), [{ server: x.server_id, label: x.server_label }])))
+    })
     loadAll()
     loadDispatchTaskCounts()
   }, [loadAll, loadDispatchTaskCounts])
@@ -365,12 +376,12 @@ export default function ManageCandidates() {
       contact_email: String(contact.contact_email ?? ""),
       pronouns: String(c.pronouns ?? ""),
       state: c.state || "",
-      api_key: "",
       slack_user_id: boundId,
       slack_channel_id: channelId,
     })
-    setShowKey(false)
-    setClearKey(false)
+    setKeyInputs({})
+    setShowKeys({})
+    setClearKeys({})
     setChannelMembershipWarn(null)
     setEditOpen(true)
     void loadUnboundSlackUsers()
@@ -397,7 +408,7 @@ export default function ManageCandidates() {
 
   async function handleEditSave() {
     if (!editTarget) return
-    const { first, last, contact_email, pronouns, state, api_key, slack_user_id, slack_channel_id } = editForm
+    const { first, last, contact_email, pronouns, state, slack_user_id, slack_channel_id } = editForm
     const contact: Record<string, string> = {
       contact_email: contact_email.trim(),
     }
@@ -419,8 +430,13 @@ export default function ManageCandidates() {
       contact,
       state,
     }
-    if (clearKey) payload.api_key = ""
-    else if (api_key.trim()) payload.api_key = api_key.trim()
+    // Only rows that changed: typed key = set/replace, "" = remove a stored entry; omit when nothing changed.
+    const apiKeys: { server: string; key: string }[] = []
+    for (const sid of keyRows.map(r => r.server)) {
+      if (clearKeys[sid]) apiKeys.push({ server: sid, key: "" })
+      else if ((keyInputs[sid] ?? "").trim()) apiKeys.push({ server: sid, key: keyInputs[sid].trim() })
+    }
+    if (apiKeys.length) payload.api_keys = apiKeys
     const url = `/api/candidates/${editTarget.astral_candidate_id}/data`
     const putOpts = {
       method: "PUT",
@@ -584,11 +600,15 @@ export default function ManageCandidates() {
     if (col.key === "api_key_status") {
       return {
         ...col,
-        render: (val: unknown) => (
-          <span style={{ color: val === "Set" ? "var(--success, #4caf50)" : "var(--warning, #ff9800)", fontWeight: 600, fontSize: 12 }}>
-            {val === "Set" ? "🔑 Set" : "⚠️ Not set"}
-          </span>
-        ),
+        // Value is the joined labels of servers with a stored key (AST-1901), or "Not set".
+        render: (val: unknown) => {
+          const isSet = typeof val === "string" && val !== "" && val !== "Not set"
+          return (
+            <span style={{ color: isSet ? "var(--success, #4caf50)" : "var(--warning, #ff9800)", fontWeight: 600, fontSize: 12 }}>
+              {isSet ? `🔑 ${val}` : "⚠️ Not set"}
+            </span>
+          )
+        },
       }
     }
     if (col.key === "dispatch_task_count") {
@@ -657,6 +677,13 @@ export default function ManageCandidates() {
       {channelMembershipWarn}
     </div>
   ) : null
+
+  // One row per catalog server (AST-1920), set or not; stored entries the catalog no longer lists stay visible so they can be cleared.
+  const storedKeys = editTarget?.api_keys ?? []
+  const keyRows = [
+    ...keyServers.map(s => ({ ...s, stored: storedKeys.some(k => k.server === s.server) })),
+    ...storedKeys.filter(k => !keyServers.some(s => s.server === k.server)).map(k => ({ ...k, stored: true })),
+  ]
 
   return (
     <>
@@ -829,46 +856,50 @@ export default function ManageCandidates() {
             {validStates.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        <div className="dep-field">
-          <label className="dep-field-label">Anthropic API Key (leave blank to keep current)</label>
-          <div style={{ display: "flex", gap: 6 }}>
-            <input
-              className="dep-input"
-              type={showKey ? "text" : "password"}
-              value={editForm.api_key}
-              onChange={e => setEditForm(p => ({ ...p, api_key: e.target.value }))}
-              placeholder="sk-ant-..."
-              autoComplete="off"
-              style={{ flex: 1 }}
-            />
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => setShowKey(v => !v)}
-            >
-              {showKey ? "Hide" : "Show"}
-            </button>
-            {editTarget?.has_api_key && !editForm.api_key && !clearKey && (
+        {/* One key field per catalog server (AST-1920); labels come from the server, not literals. */}
+        {keyRows.map(({ server: sid, ...k }) => (
+          <div className="dep-field" key={sid}>
+            <label className="dep-field-label">
+              {k.label} API key {k.stored ? "(set — leave blank to keep current)" : "(not set)"}
+            </label>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                className="dep-input"
+                type={showKeys[sid] ? "text" : "password"}
+                value={keyInputs[sid] ?? ""}
+                onChange={e => setKeyInputs(p => ({ ...p, [sid]: e.target.value }))}
+                autoComplete="off"
+                style={{ flex: 1 }}
+              />
               <button
                 type="button"
-                className="btn danger"
-                onClick={() => {
-                  void (async () => {
-                    const ok = await confirm(
-                      "Clear this candidate's API key? They won't be able to run tasks until a new key is set.",
-                      { title: "Clear API key", confirmLabel: "Clear key", variant: "danger" },
-                    )
-                    if (!ok) return
-                    setClearKey(true)
-                    setToast({ text: "Key will be cleared on save", variant: "info" })
-                  })()
-                }}
+                className="btn secondary"
+                onClick={() => setShowKeys(p => ({ ...p, [sid]: !p[sid] }))}
               >
-                Clear
+                {showKeys[sid] ? "Hide" : "Show"}
               </button>
-            )}
+              {k.stored && !keyInputs[sid] && !clearKeys[sid] && (
+                <button
+                  type="button"
+                  className="btn danger"
+                  onClick={() => {
+                    void (async () => {
+                      const ok = await confirm(
+                        `Clear this candidate's ${k.label} API key? Tasks on ${k.label} models won't run until a new key is set.`,
+                        { title: `Clear ${k.label} API key`, confirmLabel: "Clear key", variant: "danger" },
+                      )
+                      if (!ok) return
+                      setClearKeys(p => ({ ...p, [sid]: true }))
+                      setToast({ text: `${k.label} key will be cleared on save`, variant: "info" })
+                    })()
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        ))}
       </Modal>
 
       <Toast message={toast} onDone={clearToast} />

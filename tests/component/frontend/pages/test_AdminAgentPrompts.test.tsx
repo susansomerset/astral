@@ -12,44 +12,37 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 
 const mockedApi = vi.mocked(api)
 
-const models = [
-  {
-    model_code: "claude-sonnet",
-    model_label: "Claude Sonnet",
-    cpm_input: 3,
-    cpm_output: 15,
-    cpm_cache_write: 3.75,
-    cpm_cache_read: 0.3,
-    default_temperature: 0.2,
-    default_max_tokens: 4096,
+// AST-1880: GET /agents/models — keyed by model id, each model's own sizes; `order` carries catalog order.
+const models = {
+  "kimi-k2.6": {
+    order: 1,
+    label: "Kimi K2.6",
+    server_id: "kimi",
+    server_label: "Kimi",
+    brain_sizes: {
+      Big: { order: 1, default_temperature: 1, default_max_tokens: 32000 },
+      Little: { order: 0, default_temperature: 0.6, default_max_tokens: 8192 },
+    },
   },
-]
-
-const brainCatalog = [
-  {
-    brain_setting: "Little",
-    label: "Little",
-    default_temperature: 0.7,
-    default_max_tokens: 8192,
+  claude: {
+    order: 0,
+    label: "Claude",
+    server_id: "anthropic",
+    server_label: "Anthropic",
+    brain_sizes: {
+      Big: { order: 2, default_temperature: 1, default_max_tokens: 32000 },
+      Little: { order: 0, default_temperature: 0.7, default_max_tokens: 8192 },
+      Medium: { order: 1, default_temperature: 0.2, default_max_tokens: 64000 },
+    },
   },
-  {
-    brain_setting: "Medium",
-    label: "Medium",
-    default_temperature: 0.2,
-    default_max_tokens: 64000,
-  },
-  {
-    brain_setting: "Big",
-    label: "Big",
-    default_temperature: 1,
-    default_max_tokens: 32000,
-  },
-]
+}
 
 const agents = [
   {
     agent_id: "agent_a",
-    model_code: "claude-sonnet",
+    model_id: "claude",
+    brain_setting: "Medium",
+    model_code: "claude-sonnet-4-6",
     temperature: 0.2,
     max_tokens: 4096,
     task_count: 0,
@@ -58,7 +51,9 @@ const agents = [
   },
   {
     agent_id: "agent_b",
-    model_code: "missing-model",
+    model_id: "kimi-k2.6",
+    brain_setting: "Big",
+    model_code: "kimi-k2.6",
     temperature: 0.1,
     max_tokens: 1024,
     task_count: 2,
@@ -68,10 +63,19 @@ const agents = [
 ]
 
 describe("AdminAgentPrompts", () => {
+  let postBodies: Record<string, unknown>[] = []
+  let putBodies: Record<string, unknown>[] = []
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
+    postBodies = []
+    putBodies = []
   })
+
+  const field = (label: string) =>
+    screen.getByText(label, { selector: "label.dep-field-label" }).closest(".dep-field") as HTMLElement
+  const optionTexts = (label: string) =>
+    within(field(label)).getAllByRole("option").map(o => o.textContent)
 
   const agentTokens = ["FIRST_NAME", "LAST_NAME"]
 
@@ -90,15 +94,19 @@ describe("AdminAgentPrompts", () => {
         return { ok: true, json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
       if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
-      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
       if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
       if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
         return { ok: true, json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
       }
-      if (url === "/api/admin/agents/agent_a" && init?.method === "PUT")
+      if (url === "/api/admin/agents/agent_a" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
         return { ok: true, status: 200, json: async () => ({ agent_id: "agent_a", brain_setting: "Medium" }) } as Response
-      if (url === "/api/admin/agents" && init?.method === "POST") return { ok: true, json: async () => ({}) } as Response
+      }
+      if (url === "/api/admin/agents" && init?.method === "POST") {
+        postBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
       if (url === "/api/admin/agents/agent_a" && init?.method === "DELETE") return { ok: true, json: async () => ({}) } as Response
     })
   }
@@ -123,6 +131,54 @@ describe("AdminAgentPrompts", () => {
     await userEvent.click(deleteButtons[0])
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText(/Agent "agent_a" deleted/)).toBeInTheDocument())
+  }, 20000)
+
+  it("AST-1880: Add picks a model, then only that model's sizes; defaults follow model + size", async () => {
+    mockApi()
+    renderWithProviders(<AgentPrompts />)
+    await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+    // Model column shows the catalog label.
+    expect(screen.getByText("Claude")).toBeInTheDocument()
+    expect(screen.getByText("Kimi K2.6")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
+    // First model in catalog order, its first size, and that row's defaults.
+    expect(optionTexts("Model")).toEqual(["Claude", "Kimi K2.6"])
+    expect(within(field("Model")).getByRole("combobox")).toHaveValue("claude")
+    expect(optionTexts("Brain size")).toEqual(["Little", "Medium", "Big"])
+    expect(within(field("Brain size")).getByRole("combobox")).toHaveValue("Little")
+    await userEvent.selectOptions(within(field("Brain size")).getByRole("combobox"), "Medium")
+    expect(within(field("Temperature")).getByRole("spinbutton")).toHaveValue(0.2)
+    expect(within(field("Max Tokens")).getByRole("spinbutton")).toHaveValue(64000)
+
+    // Kimi has no Medium: size falls back to Kimi's first size and its defaults.
+    await userEvent.selectOptions(within(field("Model")).getByRole("combobox"), "kimi-k2.6")
+    expect(optionTexts("Brain size")).toEqual(["Little", "Big"])
+    expect(within(field("Brain size")).getByRole("combobox")).toHaveValue("Little")
+    expect(within(field("Temperature")).getByRole("spinbutton")).toHaveValue(0.6)
+    expect(within(field("Max Tokens")).getByRole("spinbutton")).toHaveValue(8192)
+
+    fireEvent.change(screen.getByPlaceholderText("e.g. job_analyst_grace"), { target: { value: "kimi agent" } })
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(postBodies).toHaveLength(1))
+    expect(postBodies[0]).toMatchObject({
+      model_id: "kimi-k2.6", brain_setting: "Little", temperature: 0.6, max_tokens: 8192,
+    })
+  }, 20000)
+
+  it("AST-1880: Edit shows the agent's model + size and sends model_id on Save", async () => {
+    mockApi()
+    renderWithProviders(<AgentPrompts />)
+    await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+    await userEvent.click(screen.getByText("agent_a"))
+    await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
+    expect(within(field("Model")).getByRole("combobox")).toHaveValue("claude")
+    expect(within(field("Brain size")).getByRole("combobox")).toHaveValue("Medium")
+    // Switching to Big keeps the model; Save carries both.
+    await userEvent.selectOptions(within(field("Brain size")).getByRole("combobox"), "Big")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(putBodies).toHaveLength(1))
+    expect(putBodies[0]).toMatchObject({ model_id: "claude", brain_setting: "Big" })
   }, 20000)
 
   it("shows validation and error toasts", async () => {
@@ -166,7 +222,7 @@ describe("AdminAgentPrompts", () => {
       if (url === "/api/admin/agents/meta/tokens") {
         return { ok: false, status: 500, json: async () => ({ error: "fail" }) } as Response
       }
-      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
       if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
         return { ok: true, json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
@@ -191,7 +247,7 @@ describe("AdminAgentPrompts", () => {
         return { ok: true, json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
       if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
-      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
       if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
         return { ok: true, json: async () => ({ ...agents[0], content: "Hello {$FIRST_NAME}" }) } as Response
@@ -235,7 +291,7 @@ describe("AdminAgentPrompts", () => {
       if (url === "/api/candidates") {
         return { ok: true, json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
-      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
       if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
     })
     renderWithProviders(<AgentPrompts />)

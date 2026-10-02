@@ -347,7 +347,10 @@ class TestBuildBaseResume:
 
 class TestBuilderHelpers:
     def test_applies_profile_contact_and_markers(self) -> None:
-        render = _resume_blob(professional_summary="__keep~~dash", experience={"role": "lead"})
+        # AST-1905: empty saved line so the blob-built contact line is exercised (AST-1904).
+        render = _resume_blob(
+            candidate_contact_detail="", professional_summary="__keep~~dash", experience={"role": "lead"}
+        )
         builder_mod._apply_contact_to_render_dict(
             render,
             {
@@ -377,7 +380,8 @@ class TestBuilderHelpers:
         assert builder_mod._resolve_cover_letter({"artifacts": {}}, {"context": {}}) is None
 
     def test_profile_uses_reply_email_and_skips_empty_name(self) -> None:
-        render = _resume_blob()
+        # AST-1905: empty saved line so the blob-built contact line is exercised (AST-1904).
+        render = _resume_blob(candidate_contact_detail="")
         builder_mod._apply_contact_to_render_dict(render, {"reply_email": "reply@example.com"})
         assert "reply@example.com" in render["candidate_contact_detail"]
         render = _resume_blob(candidate_name="Keep")
@@ -2963,6 +2967,26 @@ class TestAst1014BuilderContact:
         )
         assert render["candidate_name"] == "Ada Lovelace"
         assert "ada@example.com" in render["candidate_contact_detail"]
+
+    def test_saved_multi_part_contact_line_survives_email_only_blob(self) -> None:
+        # AST-1904 bug-repro: a saved line with more parts than the blob must not be replaced.
+        # Exact equality — pre-fix builder yields "hire@example.com", which a substring check would pass.
+        saved = "hire@example.com\u00a0• 415-555-0100\u00a0• linkedin.com/in/ada\u00a0• London, UK"
+        render = _resume_blob(candidate_name="Old", candidate_contact_detail=saved)
+        builder_mod._apply_contact_to_render_dict(
+            render, {"contact_email": "hire@example.com"}, full="Ada Lovelace"
+        )
+        assert render["candidate_contact_detail"] == saved
+        # Name-column overwrite still runs regardless of the saved contact line.
+        assert render["candidate_name"] == "Ada Lovelace"
+
+    def test_whitespace_saved_contact_line_falls_back_to_blob(self) -> None:
+        # AST-1904: whitespace-only saved line counts as empty; blob line is built.
+        render = _resume_blob(candidate_contact_detail="   ")
+        builder_mod._apply_contact_to_render_dict(
+            render, {"contact_email": "ada@example.com", "phone": "555"}
+        )
+        assert render["candidate_contact_detail"] == "ada@example.com\u00a0• 555"
 
 
 # Branches: fields type/required/string; optional to/subject; candidate miss/image accept/reject;
