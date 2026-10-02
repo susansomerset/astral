@@ -67,3 +67,54 @@ AC 9 grep → steps 2, 4–6, 10 · no Model / Brain size select in the modal �
 ## Estimate
 
 Confirm Chuckles estimate: 1 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1939
+**Overall:** APPROVED
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on ref)
+**Publish ref:** `0afbf60cb7add117f4a2f5198128386e7cdeed57`
+
+## Canon scores
+
+(none on frozen list — ticket § Citations and plan § Canon Scope: none; R3 N/A)
+
+## Traceability
+
+9→S1 steps 1–11 (grep/no-select/no agent PUT/column preserved) + Betty `qa-child` for component assertions listed under **Tests expected to move** | parent FS item 6 (agent row only model source)→S1 | parent AC 1–8→N/A (AST-1938 catalog slice)
+
+## Findings
+
+### discuss
+
+- **Severity:** discuss
+- **Location:** **Observations** / AST-1909 regression
+- **Finding:** After removal, the Manage Task modal shows no model at all (AST-1909 had already dropped the read-only `Model: <model_code>` header); only the list column still surfaces `model_code`. Plan explicitly defers restoring that header unless Scope is amended.
+- **Recommendation:** No plan change for build — if Susan wants model visible in the modal again, add a Scope line in a follow-up or Plan Discuss; UAT should expect list-only visibility.
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** **Scope gate** vs ticket `## Scope`
+- **Finding:** Ticket Scope names the component test file and `pages.md`; engineer **Files Changed** is only `AdminTaskPrompts.tsx` because pre-commit forbids `tests/` and bible edits — Betty owns the AST-1909 retire/invert pass in `qa-child`.
+- **Recommendation:** None — matches epic partition and AST-1938 pattern.
+
+- **Severity:** acceptable
+- **Location:** **Boundaries** / sibling
+- **Finding:** Plan and ticket repeat no `config.py` / `llm_compat.py`; no catalog or compat work.
+- **Recommendation:** None.
+
+- **Severity:** acceptable
+- **Location:** Stage 1 **Execution contract**
+- **Finding:** Line-numbered steps against a pinned file tip with “stop and comment if mismatch” reduces drift risk on a single-file deletion.
+- **Recommendation:** None.
+
+- **Severity:** acceptable
+- **Location:** **Estimate**
+- **Finding:** One-stage removal with build/lint + grep verification; estimate 1 confirmed.
+- **Recommendation:** None.
+
+context_tokens≈64000
+
+[plan-rubric] PROCEED (Commit: 0afbf60cb) Task modal picker removal clean
