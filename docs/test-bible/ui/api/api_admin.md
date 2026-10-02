@@ -1061,3 +1061,14 @@ cd src/ui/frontend && npm run test:component -- \
 | 4 no session 401, non-admin 403 (both verbs), cap untouched | both | `::TestAst1916AutoThreadCapApi::test_requires_admin` |
 
 **Broken / obsolete:** none. `TestDispatchTasks::test_scheduler_and_run_controls` (sibling `/scheduler/*` routes) unchanged.
+
+### AST-1938 · AST-1937 (OpenRouter shortlist — agent save respects model-scoped sizes)
+
+**Primary manifest:** **`docs/test-bible/utils/config.md`** § AST-1938. No `api_admin.py` change; the route already validates through the data layer against the catalog.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC 4 against real sqlite: PUT `qwen/qwen3-32b` + Little → 200 and re-GET returns both; `gryphe/mythomax-l2-13b` + Medium and `qwen/qwen3-32b` + Big → 400, row unchanged | `update_agent` → `database.update_agent` | `test_api_admin.py::TestAdminConfigAndAgents::test_ast1938_shortlist_model_scoped_sizes_on_put` |
+| AC 8: `GET /agents/models` lists 79 ids; shortlist slug served by openrouter; `moonshotai/kimi-k2.6` not a separate id | `list_models` | `…::test_ast1938_models_route_lists_79` |
+
+`test_list_models_is_per_model_brain_size_catalog` (AST-1880) iterates `LLM_MODEL_CONFIG`, so it covers all 79 entries unchanged.

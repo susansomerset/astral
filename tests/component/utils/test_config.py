@@ -7167,13 +7167,16 @@ class TestAst1877LlmCatalogConfig:
             cfg.validate_llm_provider_environment()
 
     def test_startup_rejects_model_without_brain_sizes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "brain_sizes": {}})
+        # pricing {}: a cloned kimi-k2.6 row would trip AST-1938's same-server ambiguity check on kimi-k2.6 first.
+        bad = {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "brain_sizes": {}, "pricing": {}}
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", bad)
         with pytest.raises(ValueError, match="'__bad__': no brain sizes"):
             cfg.validate_llm_provider_environment()
 
     def test_startup_rejects_off_vocabulary_brain_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
         base = cfg.LLM_MODEL_CONFIG["kimi-k2.6"]
-        bad = {**base, "brain_sizes": {"Huge": base["brain_sizes"][cfg.BRAIN_BIG]}}
+        # pricing {}: see test_startup_rejects_model_without_brain_sizes (AST-1938 ambiguity check).
+        bad = {**base, "brain_sizes": {"Huge": base["brain_sizes"][cfg.BRAIN_BIG]}, "pricing": {}}
         monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", bad)
         with pytest.raises(ValueError, match="brain size 'Huge' not in"):
             cfg.validate_llm_provider_environment()
@@ -7181,4 +7184,122 @@ class TestAst1877LlmCatalogConfig:
     def test_startup_rejects_unpriced_sku(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "pricing": {}})
         with pytest.raises(ValueError, match="SKU 'kimi-k2.6' has no pricing row"):
+            cfg.validate_llm_provider_environment()
+
+
+def _ast1937_brief() -> dict[str, tuple[str, float, float, float]]:
+    """slug → (PROVIDER, IN, OUT, CACHE) from Susan's verbatim AST-1937 brief (fixture, not config)."""
+    from pathlib import Path
+
+    rows = (Path(__file__).parent / "fixtures" / "ast1937_openrouter_brief.txt").read_text().splitlines()[1:]
+    out = {}
+    for line in rows:
+        # PROVIDER may hold a space ("Mancer 2", "Near AI"), so peel the five numeric columns off the right.
+        slug, *mid = line.split()
+        provider, cpm_in, cpm_out, cpm_cache = " ".join(mid[:-5]), *map(float, mid[-5:-2])
+        out[slug] = (provider, cpm_in, cpm_out, cpm_cache)
+    return out
+
+
+class TestAst1938OpenRouterShortlist:
+    """AST-1938: OPENROUTER_MODEL_TABLE expanded into LLM_MODEL_CONFIG (AC 1/2/3/7/8) + new startup checks.
+
+    Branches: builder adds row / skips slug already priced on openrouter (moonshotai/kimi-k2.6);
+    reasoning row → Little+Medium, else Little only; default_max_tokens min(cap, pinned max) both sides;
+    _openrouter_pin with / without quantizations; validate request_extras non-dict raise; same-server
+    ambiguous SKU raise.
+    """
+
+    BRIEF = _ast1937_brief()
+
+    @property
+    def NEW(self) -> list[str]:
+        # Lazy: a class-body read of OPENROUTER_MODEL_TABLE would break collection of this whole module
+        # on a tree without the AST-1938 product (e.g. origin/tests before the epic lands).
+        return [mid for mid in cfg.LLM_MODEL_CONFIG if mid in cfg.OPENROUTER_MODEL_TABLE]
+
+    def test_brief_fixture_has_76_slugs(self) -> None:
+        assert len(self.BRIEF) == 76
+
+    def test_every_brief_slug_catalogued_on_openrouter(self) -> None:
+        # AC 1
+        or_skus = {t["sku"] for m in cfg.LLM_MODEL_CONFIG.values() if m["server"] == "openrouter"
+                   for t in m["brain_sizes"].values()}
+        assert [s for s in self.BRIEF if s not in or_skus] == []
+
+    def test_pricing_matches_brief(self) -> None:
+        # AC 2 — includes moonshotai/kimi-k2.6 (hand-written kimi-k2.6-openrouter row, repriced).
+        bad = []
+        for slug, (_prov, cpm_in, cpm_out, cpm_cache) in self.BRIEF.items():
+            p = cfg.get_sku_pricing(slug, "openrouter")
+            got = (p["cpm_input"], p["cpm_output"], p["cpm_cache_read"], p["cpm_cache_write"])
+            if got != (cpm_in, cpm_out, cpm_cache, 0):
+                bad.append((slug, got))
+        assert bad == []
+
+    def test_brain_sizes_follow_reasoning_flag_no_big(self) -> None:
+        # AC 3
+        for mid in self.NEW:
+            want = (cfg.BRAIN_LITTLE, cfg.BRAIN_MEDIUM) if cfg.OPENROUTER_MODEL_TABLE[mid][4] else (cfg.BRAIN_LITTLE,)
+            assert cfg.model_brain_sizes(mid) == want, mid
+        assert cfg.model_brain_sizes("gryphe/mythomax-l2-13b") == (cfg.BRAIN_LITTLE,)
+        assert cfg.model_brain_sizes("qwen/qwen3-32b") == (cfg.BRAIN_LITTLE, cfg.BRAIN_MEDIUM)
+        assert cfg.model_brain_sizes("kimi-k2.6-openrouter") == (cfg.BRAIN_LITTLE, cfg.BRAIN_BIG)
+
+    def test_defaults_temperature_one_and_capped_max_tokens(self) -> None:
+        # AC 7 — cap side (mythomax 7372 < 16000) and budget side (qwen3-32b Medium 16384 < 32000 → 16384).
+        cap = {cfg.BRAIN_LITTLE: 16000, cfg.BRAIN_MEDIUM: 32000}
+        bad = [
+            (mid, bs) for mid in self.NEW for bs, t in cfg.LLM_MODEL_CONFIG[mid]["brain_sizes"].items()
+            if t["default_temperature"] != 1.0
+            or t["default_max_tokens"] != min(cap[bs], cfg.OPENROUTER_MODEL_TABLE[mid][5])
+        ]
+        assert bad == []
+        assert cfg.LLM_MODEL_CONFIG["gryphe/mythomax-l2-13b"]["brain_sizes"][cfg.BRAIN_LITTLE]["default_max_tokens"] == 7372
+
+    def test_table_provider_slug_is_a_bijection_of_brief_provider(self) -> None:
+        # Slug spelling is OpenRouter's (plan snapshot), so no name-normalizing guess here: each brief
+        # PROVIDER must map to exactly one routing slug and no two PROVIDERs may share one.
+        assert set(cfg.OPENROUTER_MODEL_TABLE) == set(self.BRIEF)
+        by_provider: dict[str, set[str]] = {}
+        for slug, (prov, *_rest) in self.BRIEF.items():
+            by_provider.setdefault(prov, set()).add(cfg.OPENROUTER_MODEL_TABLE[slug][3])
+        assert {p: s for p, s in by_provider.items() if len(s) != 1} == {}
+        slugs = [next(iter(s)) for s in by_provider.values()]
+        assert len(slugs) == len(set(slugs))
+        assert by_provider["SiliconFlow"] == {"siliconflow"} and by_provider["DeepInfra"] == {"deepinfra"}
+
+    def test_every_openrouter_tier_pins_its_table_provider_fallbacks_off(self) -> None:
+        # AC 5 config side — the wire side lives in test_llm_compat.py::TestAst1938ProviderPin.
+        for mid, m in cfg.LLM_MODEL_CONFIG.items():
+            if m["server"] != "openrouter":
+                continue
+            for bs, t in m["brain_sizes"].items():
+                pin = t["request_extras"]["provider"]
+                assert pin["order"] == [cfg.OPENROUTER_MODEL_TABLE[t["sku"]][3]], (mid, bs)
+                assert pin["allow_fallbacks"] is False, (mid, bs)
+
+    def test_openrouter_pin_quantization_branch(self) -> None:
+        assert cfg._openrouter_pin("qwen/qwen3-32b") == {"provider": {"order": ["deepinfra"], "allow_fallbacks": False}}
+        assert cfg._openrouter_pin("google/gemma-4-31b-it")["provider"]["quantizations"] == ["fp8"]
+
+    def test_catalog_count_and_skip_of_hand_priced_slug(self) -> None:
+        # AC 8: 4 hand-written + 75 new (kimi-k2.6 slug skipped — already priced by kimi-k2.6-openrouter).
+        assert len(cfg.LLM_MODEL_CONFIG) == 79
+        assert "moonshotai/kimi-k2.6" not in cfg.LLM_MODEL_CONFIG
+        assert len(self.NEW) == 75
+
+    def test_startup_rejects_non_dict_request_extras(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        base = cfg.LLM_MODEL_CONFIG["kimi-k2.6"]
+        # Own SKU so the ambiguity check can't fire first on a cloned kimi-k2.6 pricing row.
+        tier = {**base["brain_sizes"][cfg.BRAIN_BIG], "sku": "__x__", "request_extras": ["provider"]}
+        bad = {**base, "brain_sizes": {cfg.BRAIN_BIG: tier}, "pricing": {"__x__": {}}}
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", bad)
+        with pytest.raises(ValueError, match="'__bad__' Big: request_extras must be a dict"):
+            cfg.validate_llm_provider_environment()
+
+    def test_startup_rejects_same_server_ambiguous_sku(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dup = {**cfg.LLM_MODEL_CONFIG["qwen/qwen3-32b"]}
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__dup__", dup)
+        with pytest.raises(ValueError, match="'qwen/qwen3-32b' is priced on more than one server"):
             cfg.validate_llm_provider_environment()
