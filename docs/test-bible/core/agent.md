@@ -1544,6 +1544,7 @@ Thread AST-1698 harvest into generative lands: `do_task` passes `list(source_art
 | --- | --- | --- |
 | New — `_candidate_server_key` (ctx map wins; DB load by id; explicit `{}` honoured; blank/no id → None) | `src/core/agent.py` | `test_agent_ast1879.py::TestAst1879CandidateServerKey` |
 | New — `_agent_llm_route`, `task_llm_server_id`, `_missing_server_key_result` | same | `…::TestAst1879RouteHelpers` |
+| AST-1944 — `task_llm_server_id_or_none`: `telescope` / empty / blank `agent_id` / no row → `None`; LLM row → catalog server; unknown real agent and real agent without `model_id` re-raise; `stage_email_meteorite` mailbox fold resolves the legacy `parse_meteorite_email` agent's server, and returns `None` when there is no legacy agent. Data layer patched (`get_agent_task` / `get_agent`); strict `_resolve_task_prompts` runs for real | same | `…::TestAst1944TaskLlmServerIdOrNone` (9; AST-1945) |
 | New — `_send_to_server` protocol dispatch (anthropic SKU + override key; compat server/SKU/tier/key; `record_timesheet_entry`) | same | `…::TestAst1879SendToServer` |
 | AC 7 — right key, no fallback (intercept at `llm_compat._get_client` / `anthropic.Anthropic`; env key never used; four missing-key cases name the server, zero client calls, no prompt storage, warning line) | `do_task` | `…::TestAst1879RightKeyNoFallback` |
 | AC 8 — Kimi-routed Estelle task writes a catalog-priced `agent_timesheets` row | `do_task` → `send_to_llm_compat` → `record_timesheet_entry` | `…::TestAst1879KimiLedgerRow` |
