@@ -105,6 +105,12 @@ interface ThreadEntry {
   is_auto: boolean
 }
 
+// AST-1917: payload of GET/POST /api/admin/scheduler/auto_thread_cap (AST-1916). min/max come from
+// ASTRAL_CONFIG via the API so the dropdown range is never hardcoded in this page.
+type AutoThreadCap = { max_auto_threads: number; default: number; min: number; max: number }
+
+const AUTO_THREAD_CAP_PATH = "/api/admin/scheduler/auto_thread_cap"
+
 type SortDir = "asc" | "desc"
 
 const FROZEN_DATA_COLUMNS = 1 // AST-1818: only Task pinned; Entity/State scroll with the rest
@@ -354,6 +360,9 @@ export default function ScheduledActions() {
   // Stop All confirmation modal
   const [showStopAll, setShowStopAll] = useState(false)
   const [stoppingAll, setStoppingAll] = useState(false)
+
+  // AST-1917: live AUTO-thread cap for the header dropdown (null until loaded → dropdown hidden)
+  const [autoThreadCap, setAutoThreadCap] = useState<AutoThreadCap | null>(null)
   const [, forceUiConfig] = useState(0)
 
   useEffect(() => { loadUiConfig(() => forceUiConfig(n => n + 1)) }, [])
@@ -371,6 +380,18 @@ export default function ScheduledActions() {
     pollRef.current = setInterval(() => { void loadThreadStatus(true) }, 5_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [loadThreadStatus])
+
+  useEffect(() => {
+    // One-shot load on mount. Silent on failure, like loadThreadStatus: no dropdown rather than a wrong one.
+    void (async () => {
+      try {
+        const res = await api(AUTO_THREAD_CAP_PATH)
+        if (res.ok) setAutoThreadCap(await res.json())
+      } catch {
+        // network/parse failure → leave the dropdown hidden
+      }
+    })()
+  }, [])
 
   const [taskKeyFilter, setTaskKeyFilter] = useState("")
   const [sectionGroupFilter, setSectionGroupFilter] = useState("")
@@ -651,6 +672,26 @@ export default function ScheduledActions() {
     }
   }
 
+  const handleAutoThreadCapChange = async (next: number) => {
+    const prev = autoThreadCap
+    if (!prev) return
+    // Optimistic so the select doesn't snap back while the POST is in flight; reverted on any failure.
+    setAutoThreadCap({ ...prev, max_auto_threads: next })
+    try {
+      const res = await api(AUTO_THREAD_CAP_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Must be a JSON number — the dispatcher setter rejects strings (AST-1916 strict type check).
+        body: JSON.stringify({ max_auto_threads: next }),
+      })
+      if (!res.ok) await readApiError(res, AUTO_THREAD_CAP_PATH, "POST") // always throws ApiError
+      setAutoThreadCap(await res.json()) // server-returned value is authoritative
+    } catch (e) {
+      setAutoThreadCap(prev)
+      setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: "Failed to set max AUTO threads", variant: "error" })
+    }
+  }
+
   const activeThreads = useMemo(() =>
     Object.entries(threadStatus).filter(([, e]) => e.running),
     [threadStatus]
@@ -770,6 +811,23 @@ export default function ScheduledActions() {
       <div className="list-page-header">
         <h1 className="list-page-title">Scheduled Actions</h1>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          {autoThreadCap && (
+            <label
+              style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}
+              title={`Max AUTO tasks running at once (config default ${autoThreadCap.default}). Manual Run is not capped. Resets to the default on server restart.`}
+            >
+              Max AUTO threads
+              <select
+                value={autoThreadCap.max_auto_threads}
+                onChange={e => { void handleAutoThreadCapChange(Number(e.target.value)) }}
+              >
+                {/* min..max inclusive, step 1 — bounds from the API, never literals */}
+                {Array.from({ length: autoThreadCap.max - autoThreadCap.min + 1 }, (_, i) => autoThreadCap.min + i).map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {activeThreads.length > 0 && (
             <span className="dispatch-status-badge dispatch-status-warn">
               {activeThreads.length} running

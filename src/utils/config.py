@@ -4498,6 +4498,8 @@ ASTRAL_CONFIG = {
     # --- Dispatcher (dispatcher) ---
     "tick_rate_minutes": 3,           # how often the scheduler wakes to check which AUTO tasks are due
     "max_auto_threads": 3,            # max concurrent AUTO task threads; CLICK threads are excluded from this limit
+    "max_auto_threads_min": 1,        # lowest runtime override accepted for max_auto_threads (admin API / Scheduled Actions)
+    "max_auto_threads_max": 100,      # highest runtime override accepted for max_auto_threads (admin API / Scheduled Actions)
     "dispatch_timeout_seconds": 3600, # AUTO task timeout (60 min); CLICK tasks run unbounded
     # Outbound probe before batch claim (stdlib HTTP in src.utils.network — not Playwright).
     "dispatch_network_check_url": "https://www.anthropic.com/",
