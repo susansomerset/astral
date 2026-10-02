@@ -363,11 +363,12 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 
 ### AST-1191 · AST-1164
 
-**Dispatch-chain provider hop failure:** `_apply_dispatch_chain_hop_failure` — non-balance provider failures apply `error_state` then `release_job_dispatch_claim`; balance refusal holds state but still releases claim; `_close_hop_ledger` returns outcome on every exit. **`debug=True`:** found (duration/stop/tokens/`failure_class`, `n/a` not silent 0) + recorded (error / error_state|held / batch_released). Hop-label-false non-job (or no index) → `_HOP_FAILURE_NOOP`; hop-label-false **job** + `provider_failed` claim release is **AST-1298**.
+**Dispatch-chain provider hop failure:** `_apply_dispatch_chain_hop_failure` — provider failures (balance or otherwise) hold state — no `error_state` — and release the claim; only `Job not found` / `Missing candidate_data` apply `error_state` then release (**AST-1941**, supersedes the AST-1191 provider → `error_state` rule); `_close_hop_ledger` returns outcome on every exit. **`debug=True`:** found (duration/stop/tokens/`failure_class`, `n/a` not silent 0) + recorded (error / error_state|held / batch_released). Hop-label-false non-job (or no index) → `_HOP_FAILURE_NOOP`; hop-label-false **job** + `provider_failed` claim release is **AST-1298**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Hop failure apply + claim release + debug | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease`** |
+| Hop failure apply (provider → held state) + claim release + debug | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease`** |
+| Bug repro: provider failure holds state (AST-1941 / AST-1942) | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases`** |
 | Hard-string path still transitions (release added) | `src/core/agent.py` | **`TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts`** |
 
 **AST-1191** narrowed run:
@@ -379,16 +380,18 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
   -q
 ```
 
+**AST-1942 manifest (`[bug-repro]`, parent AST-1940):** repro node `TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases` — red on `origin/dev` `src/core/agent.py` (provider clause transitions → `assert_not_called` fails), green on the AST-1941 tip. Run the narrowed command above plus `tests/component/core/test_agent.py::TestAst1298OrphanedJobClaimRelease`; all green. `test_agent.py` + `test_llm_external.py` failures must equal the 40 pre-existing ftr-baseline nodes (none in these classes).
+
 ### AST-1298 · AST-1280
 
 **Parent:** [AST-1280 — Connection error on dispatch task did not clear the batch_id](https://linear.app/astralcareermatch/issue/AST-1280/connection-error-on-dispatch-task-did-not-clear-the-batch-id). **Publish:** `origin/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error`.
 
-Close orphaned job `batch_id` after provider Connection-style failure on hop-label-true BUILD_ARTIFACTS dispatch: helper `try`/`finally` still releases when `transition_job_state` raises non-`ValueError`; consult `_run_dispatch_chain_job_batch` releases when `do_task` raises; hop-label-false job+`provider_failed` defense-in-depth release (no error_state). No new debug contract strings; `debug=True` keeps recorded `batch_released=true`.
+Close orphaned job `batch_id` after provider Connection-style failure on hop-label-true BUILD_ARTIFACTS dispatch: helper `try`/`finally` still releases when `transition_job_state` raises non-`ValueError` (reachable on hard strings only since AST-1941); consult `_run_dispatch_chain_job_batch` releases when `do_task` raises; hop-label-false job+`provider_failed` defense-in-depth release (no error_state). No new debug contract strings; `debug=True` keeps recorded `batch_released=true`.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Transition non-`ValueError` still releases | `src/core/agent.py` | **`TestAst1298OrphanedJobClaimRelease::test_apply_transition_non_value_error_still_releases`** |
-| `draft_job_resume` Connection error → `ERROR_BUILD_ARTIFACTS` + release + debug | `src/core/agent.py` | **`TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors`** |
+| Transition non-`ValueError` (hard string `Job not found`) still releases | `src/core/agent.py` | **`TestAst1298OrphanedJobClaimRelease::test_apply_transition_non_value_error_still_releases`** |
+| `draft_job_resume` Connection error → held state (no transition) + release + debug (AST-1941) | `src/core/agent.py` | **`TestAst1298OrphanedJobClaimRelease::test_do_task_draft_job_resume_connection_error_releases_and_errors`** |
 | Hop-label-false job release (revised AST-1191 noop) | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease::test_apply_hop_label_false_job_provider_failed_releases`** |
 | Consult `do_task` raise → claim release | `src/core/consult.py` | **`TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_do_task_raise_releases_claim`** |
 | Regression: structured `success=False` still releases | `src/core/consult.py` | **`TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_failure_releases_claim`** |
