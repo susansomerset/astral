@@ -348,3 +348,11 @@ stat.logging.debug | A | | Stage 2: leaves both `Calling messages.create` / `Res
 context_tokens≈52000
 
 [plan-rubric] PROCEED (Commit: 57d2ef49c) OpenRouter catalog plan clean
+
+
+## Review
+
+- **Branch:** `origin/sub/AST-1937/AST-1938-openrouter-model-shortlist`
+- **Build tip:** `422ba2c73` (stages: `e6036a3b5` shortlist table + builder, tier `request_extras`, Kimi SiliconFlow pin + price, validation · `422ba2c73` `llm_compat` merges tier `request_extras` into `extra_body`)
+- **Build notes:** Built as planned, with one literal mismatch. Stage 2 step 1 quotes the comment and the `extra_body` line as adjacent, but `thinking_on` / `thinking_body` sit between them. Both lines were replaced in place with the planned text, and the lines between them are unchanged. Verified on the shipped tree: `validate_llm_provider_environment()` passes. AC 1 `[]`; AC 2 no mismatches; AC 3 47 × `('Little', 'Medium')` + 28 × `('Little',)`, `kimi-k2.6-openrouter` `('Little', 'Big')`; AC 6 grep empty; AC 7 no violators; 79 catalog models (AC 8). Stubbed-client smoke for AC 5: `qwen/qwen3-32b` Little/Medium → `provider.order == ["deepinfra"]`, `allow_fallbacks: False`. `kimi-k2.6-openrouter` Big → `["siliconflow"]`. `google/gemma-4-31b-it` adds `quantizations: ["fp8"]`. `kimi-k2.6` (Kimi direct) has no `provider` key. Lint: `py_compile` clean, `ruff --select F,E9` clean.
+- **For qa-child:** see **Tests expected to move** above. AC 4 and AC 5 need new component coverage.
