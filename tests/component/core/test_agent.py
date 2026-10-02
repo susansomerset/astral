@@ -6063,7 +6063,7 @@ class TestAst1190DoTaskEmptyProviderError:
 
 
 class TestAst1191ArtifactHopFailureRelease:
-    """AST-1191: provider hop failure → error_state + claim release + debug trail."""
+    """AST-1191 / AST-1941: provider hop failure → held state + claim release + debug trail."""
 
     def _dispatch_ctx(self) -> Dict[str, Any]:
         return {
@@ -6074,7 +6074,7 @@ class TestAst1191ArtifactHopFailureRelease:
             "dispatch_chain_graduate_on_terminal": True,
         }
 
-    def test_apply_provider_failed_transitions_and_releases(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_apply_provider_failed_holds_state_and_releases(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
         release = MagicMock()
         monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
@@ -6089,10 +6089,8 @@ class TestAst1191ArtifactHopFailureRelease:
             provider_failed=True,
             failure_class="provider_call_timeout",
         )
-        assert out["apply_error_state"] is True
-        assert out["error_state"] == cfg.ERROR_BUILD_ARTIFACTS_STATE
-        assert out["batch_released"] is True
-        transition.assert_called_once_with(["job-1191"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        assert out == {"apply_error_state": False, "error_state": "", "batch_released": True}
+        transition.assert_not_called()
         release.assert_called_once_with("job-1191")
 
     def test_apply_balance_hold_skips_error_state_but_releases(
@@ -6198,7 +6196,7 @@ class TestAst1191ArtifactHopFailureRelease:
             debug=False,
         )
         assert out["success"] is False
-        transition.assert_called_once_with(["job-1191"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        transition.assert_not_called()
         release.assert_called_once_with("job-1191")
 
     @pytest.mark.asyncio
@@ -6245,7 +6243,7 @@ class TestAst1191ArtifactHopFailureRelease:
         )
         assert out["success"] is False
         assert out.get("failure_class") == "provider_empty_response"
-        transition.assert_called_once_with(["job-1191"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        transition.assert_not_called()
         release.assert_called_once_with("job-1191")
 
     @pytest.mark.asyncio
@@ -6285,7 +6283,7 @@ class TestAst1191ArtifactHopFailureRelease:
             debug=False,
         )
         assert out["success"] is False
-        transition.assert_called_once_with(["job-1191"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        transition.assert_not_called()
         release.assert_called_once_with("job-1191")
 
 
@@ -6306,7 +6304,7 @@ class TestAst1298OrphanedJobClaimRelease:
     def test_apply_transition_non_value_error_still_releases(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Non-ValueError from transition must not skip finally release (Stage 1).
+        # Non-ValueError from transition (hard string) must not skip finally release (AST-1298 Stage 1).
         transition = MagicMock(side_effect=RuntimeError("transition blew up"))
         release = MagicMock()
         monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
@@ -6317,7 +6315,7 @@ class TestAst1298OrphanedJobClaimRelease:
                 index="job-1298",
                 ctx=self._dispatch_ctx(),
                 task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
-                error="Connection error.",
+                error="Job not found",
                 debug=False,
                 provider_failed=True,
                 failure_class="provider_connection_error",
@@ -6372,7 +6370,7 @@ class TestAst1298OrphanedJobClaimRelease:
         )
         assert out["success"] is False
         assert out.get("error") == "Connection error."
-        transition.assert_called_once_with(["job-1298"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        transition.assert_not_called()
         release.assert_called_once_with("job-1298")
 
 

@@ -48,7 +48,6 @@ from src.core.timesheets import record_timesheet_entry
 from src.external.anthropic import send_to_anthropic, getTimestampPrefix
 from src.utils.llm_external import (
     extract_api_response_text,
-    is_provider_balance_refusal,
     normalize_provider_error,
 )
 from src.external.llm_compat import send_to_llm_compat
@@ -1121,13 +1120,12 @@ def _apply_dispatch_chain_hop_failure(
             "batch_released": batch_released,
         }
     err_state = (task_config.get("error_state") or "").strip()
-    balance_hold = provider_failed and is_provider_balance_refusal(
-        {"failure_class": failure_class}
-    )
+    # Only a missing job / missing candidate_data is unrecoverable. Provider failures (balance
+    # or otherwise) hold the last happy state / hop label; the finally release below lets the
+    # next dispatch sweep reclaim and retry the hop. No retry cap by design.
     hard = bool(err_state) and (
         "Job not found" in error
         or "Missing candidate_data" in error
-        or (provider_failed and not balance_hold)
     )
     apply_error_state = False
     batch_released = False
