@@ -683,6 +683,8 @@ Locks craft/parse/finalize prompts + draft validate on the shared experience job
 
 **Integration:** no existing scenario asserts profile/contact library homes — no revision; do not invent new integration coverage.
 
+**AST-1904 / AST-1905:** saved contact line wins over a sparser blob. See **`docs/test-bible/core/builder.md`** § AST-1014 · AST-952 (bug-repro + revised **`TestBuilderHelpers`**). The narrowed run below already covers both classes whole.
+
 **AST-1014** narrowed run:
 
 ```bash
@@ -2354,5 +2356,6 @@ Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (l
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Revised — `set_candidate_api_key` / `clear_candidate_api_key(cid, server_id)` delegate to per-server DB helpers | `src/core/candidate.py` | `TestCandidateAdminFacades::test_save_candidate_admin_and_clear_api_key` |
+| **AST-1901:** the two wrappers are replaced by `update_candidate_api_keys(cid, [{server, key}])` | `src/core/candidate.py` | `TestCandidateAdminFacades::test_save_candidate_admin_and_update_api_keys` · `::test_per_server_set_clear_wrappers_retired` (manifest: [`../data/database/candidates.md`](../data/database/candidates.md) § AST-1901) |
 | New — session paste 400 without `candidate_id` / 404 unknown, before ledger or `do_task` | `run_session_resume_parse` | `TestAst986SessionResumeParse::test_400_requires_candidate_id_before_ledger_or_task` · `::test_404_unknown_candidate_before_ledger` |
 | Revised — session calls pass `candidate_id=`; 200 path reads the candidate once, ctx carries a copy of its `candidate_api_keys`, no bind/persist | `run_session_resume_parse` | `TestAst986SessionResumeParse` (all) · `TestAst996ExperienceJobArray::test_session_parse_returns_job_array_in_base_resume` |

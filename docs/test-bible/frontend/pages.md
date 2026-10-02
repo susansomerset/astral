@@ -70,7 +70,7 @@ Parent UAT on **`origin/ftr/AST-436-quickie-bugs`** surfaced gaps when manifests
 | --- | --- | --- | --- |
 | Candidate Profile | `src/ui/frontend/src/pages/CandidateProfile.tsx` | `tests/component/frontend/pages/test_CandidateProfile.test.tsx` — must render page + open signature-image tab | `/api/shapes/candidates`, `/api/ui_config`, `/api/candidates/{id}`, `/api/state_ui_manifest` (reject OK) |
 | Execution History | `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` | `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` — include date blur / clear behavior per **§6c** | `/api/candidates`, `/api/admin/dispatch_ledger`, ledger logs as needed |
-| Scheduled Actions | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` | candidates, dispatch tasks, thread status |
+| Scheduled Actions | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx`; header cap dropdown in `test_AdminScheduledActions_AST1917.test.tsx` | candidates, dispatch tasks, thread status, `/api/admin/scheduler/auto_thread_cap` (unmocked → caught, dropdown hidden) |
 | Signature image tab wiring | `TabbedTextArea.tsx` + `CandidateProfile.tsx` | **Both** `test_TabbedTextArea.test.tsx` (panel slot) **and** `test_CandidateProfile.test.tsx` (routed page) | see Candidate Profile row |
 
 ---
@@ -3137,3 +3137,127 @@ Primary numbered manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1830
 | `AdminSessionResumePaste.tsx`: Parse needs a selected candidate (disabled with a title otherwise); POST body `{resume_text, candidate_id}` | `test_AdminSessionResumePaste.test.tsx`: `mockApis` serves a candidate list; Parse-success test asserts the exact body; new **AST-1880: no selected candidate keeps Parse disabled…** |
 
 Manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-1880.
+
+### AST-1901 · AST-1851 (bug: Manage Candidates keys as an array)
+
+> Supersedes the AST-1880 `AdminManageCandidates` row above (no fixed per-server fields; the column red is closed).
+
+> **AST-1920:** the UI half below (stored-only fields, "Add API key for…" picker, `(new)` rows, Remove) is superseded. The Edit modal shows one key field per catalog server again; see § AST-1920. The array storage and PUT contract stay.
+
+`test_AdminManageCandidates.test.tsx`: the fixture `api_keys` is `[{server, label}]` (Kimi, OpenRouter). A file-local `installBaseApiMocks` wrapper serves `/api/admin/agents/models`; the catalog has two DeepSeek models, so the picker de-dupes by server.
+- **Main CRUD test:** fields appear only for stored entries (Clear on each). The picker lists servers without a row, in catalog order. Adding DeepSeek gives a "(new)" field (no Clear; Show; typed key). Kimi Clear goes through the confirm dialog. The PUT carries `api_keys: [{kimi, ""}, {deepseek, "sk-ds-new"}]`.
+- **AST-1901: API Key column joins the stored entries' labels.**
+- **AST-1901: no keys…:** Not set, no key fields, all four servers in the picker, and Save omits `api_keys`.
+- **AST-1901: Remove drops an unsaved row…:** the picker disappears once every server has a row. Remove returns that server to the picker, and a blank added row isn't sent.
+
+Manifest: **`docs/test-bible/data/database/candidates.md`** § QA test manifest (AST-1901).
+
+### AST-1909 · AST-1851 (bug: Manage Task modal model + brain size)
+
+`AdminTaskPrompts.tsx`: the read-only `Model: <sku>` line becomes **Model** and **Brain size** selects (dep-field labels) for the **task's agent**. They are filled from `GET /api/admin/agents/models` in `order`, with the current values from `GET /api/admin/agents/<agent_id>`. A model change keeps the size when the new model offers it, otherwise it takes the first size. The hint reads `Applies to agent <id> — used by <N> task(s)`. With no agent row (`""`, `n/a`, or 404), Model is disabled with "— no agent —". Save sends the task `PUT` first, then `PUT /api/admin/agents/<id>` `{model_id, brain_setting}` only when the pair changed. A non-OK agent response's `error` goes to the error toast.
+
+| Area | Tests |
+| --- | --- |
+| Existing suite kept working | `test_AdminTaskPrompts.test.tsx`: a file-local `installBaseApiMocks` wrapper (test handlers first) serves the catalog plus default `agent_a` / `agent_b` rows, a 404 for unknown ids, and an OK agent `PUT`. All 12 existing tests run through it. |
+| Repro (bug-repro), describe **AST-1909 task modal model + brain size** | selects show the agent's model + size in catalog order with the shared-agent hint (N=2) and no `Model:` line · the model change keeps or resets the size, then Save sends task PUT → agent PUT `{claude, Big}` → list re-fetch · Save with no change sends no agent PUT · changing the Agent select loads agent_b's model + hint · no agent selected: Model disabled, no agent PUT · agent 404 disables Model · agent PUT 400 → toast, after the task PUT |
+
+## QA test manifest (AST-1909)
+
+**Bug-repro (qa-fix):** all 7 tests in the AST-1909 describe are red on the pre-fix tree (`origin/sub/AST-1851/AST-1909-manage-task-model-dropdown` @ `bdbfa87a2`) because there is no labelled Model select and no agent fetch. test-fix must see all 7 flip green, with the other 12 tests in the file still green.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+```
+
+**Pass criterion:** both files green. AdminAgentPrompts covers parent AC 12 (Manage Agents pickers unchanged).
+
+### AST-1908 · AST-1899 (Save to Candidate on Session Resume Paste)
+
+`AdminSessionResumePaste.tsx`: a fourth row button, **Save to Candidate** (after Open HTML), PUTs the last parse to the existing `PUT /api/candidates/<selectedId>/data` with `{artifacts: {resume_structure: {sections}, base_resume}}`. The body has no `accent_color` and no `artifact_id`, and `base_resume` is sent as parsed. A `saving` state labels the button **Saving…** and disables all four buttons. Save is also disabled with no candidate, with no `lastParse`, or while Parse / Open HTML is in flight. OK → success toast. Non-OK → the JSON `error` (else `HTTP <status>`) goes to both the error toast and the inline error line, and `lastParse` is kept. The intro copy drops "does not save to the database". No backend change: the route's ingest/filter/operative write is reused, and its coverage stays with `api_candidate`.
+
+| AC | Tests (`test_AdminSessionResumePaste.test.tsx`, AST-987 describe) |
+| --- | --- |
+| 1 Button present + gated | **AST-1908 AC1: Save to Candidate is the fourth button…** · **…no selected candidate keeps Save disabled…** · **…Save disabled while Parse is in flight** · **…Save disabled while Open HTML is in flight** |
+| 2 Correct request (+ Saving… lock, success toast) | **AST-1908 AC2/AC6: one PUT with the exact parse body…** |
+| 6 Error feedback | **AST-1908 AC6: 400 error shows server message in toast + inline…** |
+| 8 Copy | **AST-1908 AC8: intro copy names Save to Candidate…** |
+| 3 / 4 / 5 persistence, layout, experience | UAT (DB row `current=1`, Base Resume Content editor) — product reuses the existing route unchanged |
+| 7 No backend change | grep/diff in manifest below |
+
+All 7 new tests are red against the `origin/dev` page and green on the publish tip (checked at QA). **Broken / obsolete:** none. The AST-1035 button-order assertion only lists the three original buttons, and the 7 existing tests stay green. **Integration:** no scenario covers Session Resume Paste or the candidate data PUT from this page, so nothing to revise.
+
+## QA test manifest (AST-1908)
+
+1. **Page Vitest (§6c routed page):** the whole file, 14 tests (7 existing + 7 AST-1908).
+2. **AC7 / AC8 greps** on the publish tip.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
+cd ../../.. && git diff origin/dev --stat -- src/ui/api src/core src/data src/utils   # expect empty
+grep -rn "session_resume/save" src/                                                    # expect nothing
+grep -n "does not save to the database" src/ui/frontend/src/pages/AdminSessionResumePaste.tsx   # expect nothing
+```
+
+**Pass criterion:** 14/14 green and all three commands print nothing.
+
+### AST-1917 · AST-1875 (Scheduled Actions header Max AUTO threads dropdown)
+
+**Parent:** [AST-1875](https://linear.app/astralcareermatch/issue/AST-1875). **Publish:** `origin/sub/AST-1875/AST-1917-header-dropdown`. `AdminScheduledActions.tsx` loads `GET /api/admin/scheduler/auto_thread_cap` once on mount (failure → dropdown hidden, no toast) and renders a "Max AUTO threads" `<select>` with options `min..max` from the payload. A pick POSTs `{"max_auto_threads": <number>}` optimistically; success shows the server-returned value, failure reverts and toasts. Backend contract: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1916.
+
+| AC | Source | Component tests (`tests/component/frontend/pages/test_AdminScheduledActions_AST1917.test.tsx`) |
+| --- | --- | --- |
+| 1 default pre-selected · 2 exactly 1..100 | page mount load + `<select>` | **`AC1/AC2: shows the live cap pre-selected with exactly 1..100 options`** |
+| 3 bounds from API, not literals | `<select>` options | **`AC3: option range follows the API bounds, not page literals`** (2..6 payload) + grep (manifest item 2) |
+| POST body is a JSON number; server value wins | `handleAutoThreadCapChange` | **`POSTs the pick as a JSON number and shows the server-returned value`** |
+| 400 → revert + API error toast · throw → revert + fallback toast | same | **`reverts to the prior cap and toasts the API error on a 400`**, **`reverts and shows the fallback toast when the POST throws`** |
+| load failure hides dropdown silently (non-ok / throw) | mount effect | **`hides the dropdown silently when the cap load fails`** (2 cases) |
+
+**Existing coverage (unchanged, must stay green):** `test_AdminScheduledActions.test.tsx` + `test_AdminScheduledActions_AST1104.test.tsx` — they don't mock the cap route; `installBaseApiMocks` throws `Unhandled api`, the page catches it, the dropdown stays hidden. **Broken / obsolete:** none. **Integration:** none.
+
+## QA test manifest (AST-1917)
+
+1. **Page Vitest (§6c routed page, required, green):** new file (7) + both existing Scheduled Actions files (79).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1917.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1104.test.tsx
+```
+
+Expect **86 passed**.
+
+2. **AC3 grep + scope:**
+
+```bash
+grep -nE '\b100\b' src/ui/frontend/src/pages/AdminScheduledActions.tsx    # expect nothing
+git diff --stat origin/ftr/AST-1875-runtime-auto-thread-cap...HEAD -- src/   # expect only AdminScheduledActions.tsx
+```
+
+**Pass criterion:** 86/86 green and both commands as stated. `test_AdminSessionResumePaste.test.tsx` (AST-1908; product AST-1899 not on dev) is red on this tip pre-existing — out of scope.
+
+**Bible shasum (publish tip):** fill after `merge-tests` — `docs/test-bible/frontend/pages.md`
+
+### AST-1920 · AST-1851 (bug: Manage Candidate key fields for every server)
+
+`AdminManageCandidates.tsx` Edit shows one API key field per server in `/api/admin/agents/models`, deduped by server, in catalog order. A server with a stored `api_keys` entry shows `(set — leave blank to keep current)` with Show and Clear; a server without one shows `(not set)` with Show only. A stored entry whose server isn't in the catalog is appended after the catalog rows and stays clearable. There is no picker and no Remove. Save sends only changed rows as `[{server, key}]` in row order (`""` = clear a stored entry) and omits `api_keys` when nothing changed. The array storage, PUT contract and list column are unchanged from AST-1901.
+
+| Area | Tests (`test_AdminManageCandidates.test.tsx`) |
+| --- | --- |
+| Rewritten (AST-1901 picker assertions removed) | main CRUD test: the four catalog-order labels (Kimi and OpenRouter set), 2 Clear buttons, no picker or Remove. DeepSeek `(not set)` gets Show plus a typed key, Kimi gets Clear, and the PUT carries `[{kimi, ""}, {deepseek, "sk-ds-new"}]` |
+| Repro (bug-repro) | **AST-1920: no keys shows Not set and a (not set) field for every catalog server…** (4 fields, 4 Show, no Clear, Save omits `api_keys`) · **AST-1920: a stored key for a server not in the catalog stays visible and clearable…** (5th row `retired_srv`; a whitespace-only Anthropic input isn't sent; PUT `[{retired_srv, ""}]`) |
+| Retired | **AST-1901: no keys … full picker**, **AST-1901: Remove drops an unsaved row …** |
+
+## QA test manifest (AST-1920)
+
+**Bug-repro (qa-fix):** the main CRUD test and both AST-1920 tests are red on the pre-fix tree (`origin/sub/AST-1851/AST-1920-manage-candidate-key-fields` @ `098705380`): only stored entries render (2 fields, or 0 with no keys). test-fix must see all 3 flip green, with the rest of the file still green.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```
+
+**Pass criterion:** the whole file green.

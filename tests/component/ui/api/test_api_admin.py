@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 from flask.testing import FlaskClient
 
+from src.core import dispatcher as dispatcher_mod
 from src.utils import config as cfg
 from ui.api import api_admin as admin_mod
 
@@ -4270,3 +4271,60 @@ class TestAst1831CreateMaxRuns:
         resp = admin_client.post("/api/admin/dispatch_tasks", json={**self._BODY, **extra}, headers=auth_headers)
         assert resp.status_code == 201
         update.assert_not_called()
+
+
+# Branches: GET payload (effective + default + bounds); POST setter accept → payload, ValueError → 400;
+# require_admin 401 / 403 on both verbs. Real dispatcher getter/setter (no stubs) so GET-after-POST is end-to-end.
+class TestAst1916AutoThreadCapApi:
+    """AST-1916: GET/POST /api/admin/scheduler/auto_thread_cap."""
+
+    _URL = "/api/admin/scheduler/auto_thread_cap"
+
+    @pytest.fixture(autouse=True)
+    def _reset_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # api_admin binds src.core.dispatcher's setter — restore that module's override after each test.
+        monkeypatch.setattr(dispatcher_mod, "_auto_thread_cap_override", None)
+
+    def _cap(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> int:
+        return admin_client.get(self._URL, headers=auth_headers).get_json()["max_auto_threads"]
+
+    def test_get_reports_default_and_bounds(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        resp = admin_client.get(self._URL, headers=auth_headers)
+        assert resp.status_code == 200
+        default = cfg.ASTRAL_CONFIG["max_auto_threads"]
+        assert resp.get_json() == {"max_auto_threads": default, "default": default, "min": 1, "max": 100}
+
+    @pytest.mark.parametrize("value", [1, 100], ids=["min", "max"])
+    def test_post_in_range_returns_payload_and_get_reflects(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], value: int
+    ) -> None:
+        resp = admin_client.post(self._URL, json={"max_auto_threads": value}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json()["max_auto_threads"] == value
+        assert resp.get_json()["default"] == cfg.ASTRAL_CONFIG["max_auto_threads"]
+        assert self._cap(admin_client, auth_headers) == value
+
+    # AC 3 values plus missing key / empty body (body.get → None) — all 400, prior cap kept.
+    @pytest.mark.parametrize(
+        "body",
+        [{"max_auto_threads": 0}, {"max_auto_threads": 101}, {"max_auto_threads": "abc"},
+         {"max_auto_threads": 2.5}, {}, None],
+        ids=["zero", "over_max", "str", "float", "missing_key", "no_body"],
+    )
+    def test_post_rejects_and_keeps_prior_cap(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], body: Any
+    ) -> None:
+        assert admin_client.post(self._URL, json={"max_auto_threads": 7}, headers=auth_headers).status_code == 200
+        resp = admin_client.post(self._URL, json=body, headers=auth_headers)
+        assert resp.status_code == 400
+        assert "whole number between 1 and 100" in resp.get_json()["error"]
+        assert self._cap(admin_client, auth_headers) == 7
+
+    @pytest.mark.parametrize("method", ["get", "post"])
+    def test_requires_admin(
+        self, admin_client: FlaskClient, non_admin_headers: dict[str, str], method: str
+    ) -> None:
+        call = getattr(admin_client, method)
+        assert call(self._URL, json={"max_auto_threads": 5}).status_code == 401
+        assert call(self._URL, json={"max_auto_threads": 5}, headers=non_admin_headers).status_code == 403
+        assert dispatcher_mod._auto_thread_cap_override is None
