@@ -356,3 +356,63 @@ context_tokens≈52000
 - **Build tip:** `422ba2c73` (stages: `e6036a3b5` shortlist table + builder, tier `request_extras`, Kimi SiliconFlow pin + price, validation · `422ba2c73` `llm_compat` merges tier `request_extras` into `extra_body`)
 - **Build notes:** Built as planned, with one literal mismatch. Stage 2 step 1 quotes the comment and the `extra_body` line as adjacent, but `thinking_on` / `thinking_body` sit between them. Both lines were replaced in place with the planned text, and the lines between them are unchanged. Verified on the shipped tree: `validate_llm_provider_environment()` passes. AC 1 `[]`; AC 2 no mismatches; AC 3 47 × `('Little', 'Medium')` + 28 × `('Little',)`, `kimi-k2.6-openrouter` `('Little', 'Big')`; AC 6 grep empty; AC 7 no violators; 79 catalog models (AC 8). Stubbed-client smoke for AC 5: `qwen/qwen3-32b` Little/Medium → `provider.order == ["deepinfra"]`, `allow_fallbacks: False`. `kimi-k2.6-openrouter` Big → `["siliconflow"]`. `google/gemma-4-31b-it` adds `quantizations: ["fp8"]`. `kimi-k2.6` (Kimi direct) has no `provider` key. Lint: `py_compile` clean, `ruff --select F,E9` clean.
 - **For qa-child:** see **Tests expected to move** above. AC 4 and AC 5 need new component coverage.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1938
+**Publish ref:** `efab2e87ca0af8fc604166387256a932242f6311` (`origin/sub/AST-1937/AST-1938-openrouter-model-shortlist`)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded `stat.logging.debug` **A**; diff leaves `logger.debug("Calling messages.create: …", api_kwargs)` and the response line ungated, so the merged `extra_body` (including tier `request_extras` / provider pin) still logs in full.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Severity:** discuss  
+- **Location:** **Boundaries** vs three-dot diff  
+- **Finding:** Ticket boundaries exclude the Manage Task modal (`AdminTaskPrompts.tsx`). The publish ref’s `origin/dev…origin/sub/AST-1937/AST-1938-openrouter-model-shortlist` diff includes the full AST-1939 modal removal (158-line hunk, identical to the AST-1939 sub), plus `docs/features/agent/ast-1939-remove-the-manage-task-model-picker.md` (with AST-1939 Radia artifact), from `sync(ftr)` / merged sibling history (`fb6a5e37e`, `69a946461`, etc.). AST-1938’s own product commits are `config.py` + `llm_compat.py` only.  
+- **@susan:** For child sign-off, is it acceptable that AST-1938’s publish ref is an epic rollup (both children) rather than a single-child diff, or should subs be rebased/split so each child’s review diff is scope-pure before **User Testing**?  
+- **Default:** Treat as pipeline rollup for parent UAT; attribute modal work to AST-1939 only in release notes; no AST-1938 `resolve-child` work on `AdminTaskPrompts.tsx`.
+
+### advisory
+
+- **Severity:** advisory  
+- **Location:** `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx`, `docs/test-bible/frontend/pages.md`  
+- **Finding:** Diff includes AST-1939 test/bible retire/invert plus AST-1938 coverage (`test_config.py`, `test_llm_compat.py`, `test_api_admin.py`, bibles). Expected after `merge-tests` / ftr sync on a shared parent; not AST-1938 product scope.
+
+### fix-now
+
+(none) — OpenRouter catalog work on tip matches plan stages and ticket ACs; engineer build notes and component tests cover AC 4–5 where Betty landed them.
+
+## What's solid
+
+- **`src/utils/config.py`:** 76-row `OPENROUTER_MODEL_TABLE`, `_build_openrouter_models()`, tier `request_extras` via `_openrouter_pin()`, Kimi OpenRouter pin + brief pricing, validation extended (`request_extras` dict + `get_sku_pricing` per tier). Local `validate_llm_provider_environment()` passes; **79** models total / **76** OpenRouter entries on tip.  
+- **`src/external/llm_compat.py`:** `extra_body` merge order thinking → server → tier (tier wins); debug lines unchanged and still log full `api_kwargs`.  
+- **Tests/bible:** AC 4 agent PUT size guards (`test_api_admin.py`), AC 5 wire pins (`test_llm_compat.py` describe), catalog/pricing/brief fixture (`test_config.py`, `ast1937_openrouter_brief.txt`), bibles updated.  
+- **AC 6:** No brief slug literals under `src/` outside `config.py` on the shipped tree (spot-checked via `git grep` on publish ref, excluding tests/docs).  
+- **Plan fidelity:** Stage 1–2 delivered; Stage 2 comment/`extra_body` ordering note in issue doc (thinking lines between comment and assignment) is cosmetic only.
+
+## Recommended actions
+
+- Chuckles: append artifact, `docs(AST-1938): Radia review — findings` (discuss rollup note) or `— clean` if Susan accepts default; post slim upshot; **Review Posted**.  
+- If scope-pure child diffs are required before UT: rebase AST-1938 sub to exclude AST-1939 product commits (downstream merge-child/ftr policy — not Radia product fix).  
+- UAT: Manage Agents catalog count (~79), spot OpenRouter models + pins; Manage Task modal behavior is AST-1939, not this ticket.
+
+context_tokens≈32000
+
