@@ -366,3 +366,78 @@ context_tokens≈12000
 ```
 
 **Chuckles routing:** Betty TESTS: REVISE on this test-gap ticket → `qa-fix` lands all plan steps, including the `docs/uat-fixtures/AST-756/expected-agent_task.json` twin (Betty's offer accepted, keeping it to one ticket and one publish).
+
+### Radia review-fix — AST-1945
+
+`[code-rubric]`  
+**Ticket:** AST-1945  
+**Publish ref:** `5cde1c750dd8f532e91130b011501dc64a19e71e` (`origin/sub/AST-1943/AST-1945-non-llm-gate-tests-clean`)  
+**Diff base:** `origin/ftr/AST-1943-non-llm-dispatch-key-gate...origin/sub/AST-1943/AST-1945-non-llm-gate-tests-clean` (test/bible/fixture delta only; AST-1944 product already on ftr)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (tree `canon/` at publish tip; no `docs/canon-index.md` on this ref)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+*(Frozen **Canon Scope** on Linear AST-1945 description: **none** — fix-lane / gap-ticket pattern. Scored **fix-board Joan overlap** from plan-fix § `## Bug: AST-1945` / `### Joan fix-board — AST-1945`.)*
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.seed.agent-tables-in-repo-json | A | | AST-756 `expected-agent_task.json` 12× `n/a`→`telescope` mirrors ftr repo seed; UAT twin alignment, not a second source of truth |
+| astral.standards.in-scope-only | A | | Diff is `tests/**`, `docs/test-bible/**`, fixture twin, issue doc — no `src/**` or `data/**` |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (no `validate-plan` plan-stage artifact; Joan fix-board only).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** **OK** — `TestAst1944NonLlmGate::test_non_llm_key_reaches_handler_without_any_api_key` (tagged at L1324) is the right gate:
+  - Uses `real_server_gate` so the autouse stub does not replace `task_llm_server_id_or_none`; patches `agent_mod.get_agent_task` / `get_agent` so the **real** helper and gate run.
+  - Parametrizes the three **To-be** shapes from AST-1944: `telescope`, empty `agent_id`, and **no row** (AST-537).
+  - Candidate with `candidate_api_keys: {}` — pins “no server key required for non-LLM.”
+  - Asserts `_run_dispatch_loop.assert_awaited_once()` (dispatch past the gate, not merely “no exception”) and denies skip warnings containing `skipped — no candidate`.
+  - Entry via `_dispatch_one` → `_dispatch_one_body` (same gate path as production).
+  - Would fail on pre-AST-1944 product (strict `task_llm_server_id` / `ValueError` before the loop); Betty’s qa-fix thread documents red-on-dev / green-on-ftr. Not tautological.
+- **`## What must still hold`:** **OK**
+  - AST-1879: `test_llm_key_without_server_key_still_skipped` uses real resolver, `deepseek` in warning, anthropic key ignored; existing `TestDispatchOne` gate/skip tests retargeted to `task_llm_server_id_or_none`.
+  - AST-537: `no_row` param on the repro; no raise at gate.
+  - Strictness: `test_unknown_real_agent_still_raises` + `TestAst1944TaskLlmServerIdOrNone` (ghost agent, empty `model_id`, mailbox fold cases).
+  - No `"n/a"` sentinel assertions left in `test_repo_admin_json.py` or AST-756 fixture (`rg` clean).
+  - Plan steps 1–7 reflected in diff (fixture, bible, agent unit class, dispatcher class).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list at Plan Approved; scored Joan board overlap only.  
+  **Recommendation:** Optional Archie hygiene for future gap tickets; not blocking.  
+  **Default:** Proceed without amending scope.
+
+### advisory
+
+- **Publish ref hygiene:** `docs/test-bible/core/dispatcher.md` § AST-1945 still names `origin/sub/AST-1943/AST-1945-non-llm-gate-tests` in one line; authoritative review ref is **`-clean`** per Chuckles rebuild note — doc nit only.
+- **Bible gap (minor):** Betty board cited `docs/test-bible/core/repo_admin_json.md`; plan steps 6–7 only updated `dispatcher.md` and `agent.md`. Sentinel flips are self-explanatory in tests; optional bible row for AST-1269 lockstep.
+- **Pre-existing reds (in scope boundary):** Plan and bible correctly document 12 legacy `test_dispatcher.py` failures and L1378/L1423 `task_seq` drift — unchanged by this ticket.
+- **Cross-ticket:** No product files in the ftr…clean diff; scope stays on AST-1945 test gap.
+- **qa-fix:** `[bug-repro]` comment on Linear (`8d557e83d` on pre-clean ref) matches the scored test body on **clean** tip.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Mini-parent **AST-1943** on `origin/ftr/AST-1943-non-llm-dispatch-key-gate` (stacked subs; not fix-intake “orphaned → dev only”) | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Coordinate with AST-1944 review; both subs sit on same ftr. |
+
+context_tokens≈11000
+
+---
+
+`[code-rubric] PROCEED (Commit: 5cde1c750) Bug-repro gate tests OK`
