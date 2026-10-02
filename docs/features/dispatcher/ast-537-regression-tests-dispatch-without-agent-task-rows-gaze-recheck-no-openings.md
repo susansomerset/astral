@@ -251,3 +251,106 @@ context_tokens≈12000
 ### Resolution — AST-1944
 
 docs-acceptance: product-only fix. The dispatcher fixture retarget, `[bug-repro]`, `"telescope"` sentinel assertions, AST-756 UAT fixture, and bible updates (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1945, stacked after this ticket on `ftr/AST-1943-non-llm-dispatch-key-gate`.
+
+## Bug: AST-1945 — Non-LLM dispatch gate tests + telescope sentinel (test gap for AST-1944)
+
+Test-only sibling of AST-1944, filed from Betty's `[board-betty] TESTS: REVISE`. AST-1944's product change (`task_llm_server_id_or_none`, the gated `_dispatch_one_body` check, and the 12 `"n/a"` → `"telescope"` rows) is already on `origin/ftr/AST-1943-non-llm-dispatch-key-gate`. Betty lands everything below (qa-fix). **No `src/**` or `data/**` changes.**
+
+### As-is
+
+- The autouse `_task_server_anthropic` fixture (`tests/component/core/test_dispatcher.py:29–33`) pins `dispatcher_mod.task_llm_server_id` → `"anthropic"` for every dispatcher test. So no test ever ran the real resolver on a non-LLM key, which is how the AST-1879 regression shipped.
+- After AST-1944 that attribute no longer exists, so the fixture's `monkeypatch.setattr` raises `AttributeError` at setup. Every test in `test_dispatcher.py` errors: 164 on the AST-1944 tip.
+- `test_repo_admin_json.py` still asserts `agent_id == "n/a"` at L506, L1378, and L1423.
+- `test_alias_identity_lockstep_with_fixture` (L1442) newly fails with `('meteorite_grade_do', 'agent_id'): 'telescope' == 'n/a'`. It compares the catalog with `docs/uat-fixtures/AST-756/expected-agent_task.json`, which still has 12 `"n/a"` rows.
+- `task_llm_server_id_or_none` has no unit tests.
+- The bible's dispatcher AST-1879 entry (`docs/test-bible/core/dispatcher.md:659–668`) doesn't describe the non-LLM carve-out.
+
+### To-be
+
+- The dispatcher tests run again, with the autouse fixture retargeted to `task_llm_server_id_or_none`.
+- A `[bug-repro]` runs `_dispatch_one_body` with the **real** resolver on non-LLM keys. It is red on `origin/dev` and green on this tip.
+- Agent unit tests cover all three branches of the new helper.
+- Sentinel assertions read `"telescope"`, and the AST-756 fixture is in lockstep.
+- Bible entries match. There are no `"n/a"` transition tests; the tuple is exactly `("", "telescope")`.
+
+### Repro
+
+The AST-1944 test-fix run is recorded in the comment on AST-1944. It ran on Python 3.14 from `/home/susan/astral/.venv`.
+- `test_dispatcher.py` on the AST-1944 tip: `164 errors`, all `AttributeError: <module 'src.core.dispatcher'> has no attribute 'task_llm_server_id'`.
+- Re-run with a throwaway `/tmp` plugin that points the new name at the patched one: 12 failed / 152 passed, the same 12 failures as on ftr before AST-1944. Those pre-existing failures are not this ticket's to fix.
+- `pytest …test_repo_admin_json.py::TestAst1269AliasAgentTaskSeedRestore::test_alias_identity_lockstep_with_fixture` gives `assert 'telescope' == 'n/a'`.
+
+### Root cause
+
+The test file stubbed the exact function whose behavior regressed: it patched the resolver everywhere rather than seeding data. The real non-LLM path was therefore never exercised, and the stub broke as soon as the import was renamed. The sentinel literals and the UAT lockstep fixture pin `"n/a"` by value.
+
+### Proposed change
+
+All paths below are Betty's (qa-fix).
+
+1. **`tests/component/core/test_dispatcher.py`: retarget the autouse fixture and add an opt-out.**
+   - Add a no-op fixture `real_server_gate` beside `_task_server_anthropic`. It is a plain `@pytest.fixture` returning `None`, with no marker, because `pytest.ini` runs with `--strict-markers` and a new marker would need registering in `pytest.ini`, outside scope.
+   - Change `_task_server_anthropic(monkeypatch, request)`:
+     ```python
+     if "real_server_gate" in request.fixturenames:
+         return
+     monkeypatch.setattr(dispatcher_mod, "task_llm_server_id_or_none", lambda task_key: "anthropic")
+     ```
+     Update its docstring to name `task_llm_server_id_or_none`.
+   - The opt-out returns **before** the `setattr`. That way the repro also runs on `origin/dev`, where the new attribute doesn't exist, and fails with the real product `ValueError` rather than a setup error.
+   - `TestDispatchOne::test_gate_reads_key_for_task_agents_server` (L1068–1090): change `monkeypatch.setattr(dispatcher_mod, "task_llm_server_id", _server)` to `"task_llm_server_id_or_none"`, and change the comment on L1071 to name `task_llm_server_id_or_none`. The assertions are unchanged.
+   - Update the `test_skips_without_*` / `test_completes_click_dispatch` docstrings or comments only if they name the old function; no logic change.
+
+2. **`tests/component/core/test_dispatcher.py`: new class `TestAst1944NonLlmGate`, opted out of the stub through `real_server_gate`.** Patch the **data layer**, not the resolver: `monkeypatch.setattr(agent_mod, "get_agent_task", lambda k: rows.get(k))` and `monkeypatch.setattr(agent_mod, "get_agent", lambda i: agents.get(i))`, with `from src.core import agent as agent_mod`. That covers `_resolve_task_prompts`, `task_llm_server_id_or_none`, and `_current_agent_task_run_next`, which the dispatcher imports from `agent`. For the dispatch scaffolding, reuse `test_completes_click_dispatch`'s stubs: `save_dispatch_ledger`, `update_dispatch_ledger`, `compute_batch_cost`, `flush_log_buffer`, `_db_update_dispatch_task`, `_check_circuit_breaker`, `_run_dispatch_loop` as `AsyncMock`, plus the registry entry.
+   - **`[bug-repro]` `test_non_llm_key_reaches_handler_without_any_api_key`**, parametrized over the agent_task row for `task_key="fetch_jd"`:
+     - `{"task_key": "fetch_jd", "agent_id": "telescope", "current": 1}` (`agents` has no `telescope`)
+     - `{"task_key": "fetch_jd", "agent_id": "", "current": 1}`
+     - no row (`rows = {}`, the AST-537 invariant)
+
+     Candidate: `{"astral_candidate_id": "cand-1", "candidate_api_keys": {}}`, with no key for any server. Assert `_run_dispatch_loop.assert_awaited_once()` and no `"skipped — no candidate"` warning in `caplog`.
+     - **Red on `origin/dev`:** the strict resolver raises out of `_dispatch_one`. The cases raise `Agent 'telescope' referenced by task 'fetch_jd' not found.`, `agent_task 'fetch_jd' has no agent_id assigned…`, and `No agent_task row for 'fetch_jd'…` respectively.
+     - **Green on this tip.**
+     - Betty proves red by running this node against `origin/dev`'s `src/` with this branch's test file.
+   - **`test_non_llm_key_missing_candidate_still_skipped`:** the telescope row, `get_candidate → None`. Assert `_run_dispatch_loop` and `save_dispatch_ledger` not called, and the warning `"cand-1 | dispatch fetch_jd skipped — no candidate or None API key"` (the AST-1944 plan accepts `None` in the server slot). Green on tip.
+   - **`test_llm_key_without_server_key_still_skipped`:** the real resolver with a real-looking agent. `rows["evaluate_jd"] = {"task_key": "evaluate_jd", "agent_id": "a1", "current": 1}`, `agents["a1"] = {"agent_id": "a1", "model_id": "deepseek-v4", "brain_setting": "Big"}`. Candidate keys `{"anthropic": "sk-ant"}`. Assert the skip warning names `deepseek`, and no ledger or loop. `resolve_model_brain("deepseek-v4", "Big")["server_id"] == "deepseek"`, which I checked on this tip. Green on both trees.
+   - **`test_unknown_real_agent_still_raises`:** `rows["evaluate_jd"]` with `agent_id: "ghost"` and no such agent. `pytest.raises(ValueError, match="Agent 'ghost'")` around `_dispatch_one`. This is loud as before; green on both trees.
+
+3. **`tests/component/core/test_agent_ast1879.py`: new class `TestAst1944TaskLlmServerIdOrNone`.** Betty can pick a new `test_agent_ast1944.py` instead; same content. It patches `agent_mod.get_agent_task` / `agent_mod.get_agent` the same way, which covers all three branches for LOCKED_AT_100 on `agent.py`:
+   - `"telescope"` row → `None`. Empty `agent_id` → `None`. No row → `None`.
+   - LLM row with a valid agent → the catalog server (strict path, no exception).
+   - `agent_id: "ghost"` (missing agent) → re-raises `ValueError("Agent 'ghost' …")`.
+   - A valid agent with `model_id: ""` → re-raises `"has no model_id configured"`, so misconfiguration stays loud.
+   - Mailbox fold: the `stage_email_meteorite` row has `agent_id: ""`, and the `parse_meteorite_email` row carries a valid agent → returns that agent's server, not `None`.
+   - Mailbox fold with no legacy agent: the `stage_email_meteorite` row is empty and there is no `parse_meteorite_email` row → `None`.
+
+4. **`tests/component/core/test_repo_admin_json.py`: sentinel literals.** At L506, L1378, and L1423, change `assert row["agent_id"] == "n/a"` to `"telescope"`.
+   - L506 is inside `@pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)` and stays skipped.
+   - L1378 / L1423 already fail earlier on ftr at `task_seq` (`assert 3 == 5`, L1377 / L1422, AST-1239 wipe drift). That pre-existing failure is **out of scope**, and those two stay red for that reason only.
+
+5. **`docs/uat-fixtures/AST-756/expected-agent_task.json`: update the fixture (recommended) rather than relax the test.** Do the same literal replace AST-1944 used: exactly 12 `"agent_id": "n/a"` → `"agent_id": "telescope"`, nothing else, byte-identical otherwise.
+   - Afterwards `rg -c '"n/a"'` on the fixture prints nothing.
+   - Why this option: L1378's loop asserts **one** literal across both the catalog and this fixture (`for src in (cat, fix)`). Relaxing the lockstep test alone would still leave L1378 split between `"telescope"` and `"n/a"`.
+   - With the fixture updated, `test_alias_identity_lockstep_with_fixture` (L1442) goes green with no test edit.
+
+6. **`docs/test-bible/core/dispatcher.md`: AST-1879 entry (L659–668), plus an AST-537 cross-reference.**
+   - Revise the gate description: `candidate_api_keys[task_llm_server_id_or_none(task_key)]` applies only when a server id comes back. A non-LLM key (`"telescope"` / empty `agent_id` / no row) skips the key check, and a missing candidate is still skipped.
+   - Revise the `_task_server_anthropic` row to name `task_llm_server_id_or_none` and the `real_server_gate` opt-out.
+   - Add an AST-1944 row for `TestAst1944NonLlmGate`, marking the `[bug-repro]` node.
+
+7. **`docs/test-bible/core/agent.md`: AST-1879 section (around L1536–1543).** Add an AST-1944 row for `TestAst1944TaskLlmServerIdOrNone`, or the new file, covering the branches listed in step 3.
+
+### Blast radius
+
+- `test_dispatcher.py`: every test depends on the autouse fixture. After step 1, the file should return to AST-1944's shim result, 12 failed / 152 passed, plus the new class all green. The 12 failures predate AST-1944 and are unchanged here.
+- `test_repo_admin_json.py`: only the three sentinel lines and the lockstep test change outcome.
+- `docs/uat-fixtures/AST-756/expected-agent_task.json`: also read by `TestAst1222…::test_alias_rows_grouping_only_and_fixture_lockstep`. Step 4 keeps that test's single literal consistent.
+- `test_agent_ast1879.py`: additive only, and the existing `TestAst1879RouteHelpers` is unchanged.
+- No product file changes. `api_admin`, `monitor`, and the `_resolve_task_prompts` tests are untouched.
+
+### What must still hold
+
+- AST-1879 dispatcher tests: an LLM task without its server's key is skipped with the server named in the warning, and another platform's key does not count.
+- AST-537: dispatch for a key with no `agent_task` row does not raise at the gate. The repro's no-row case is that invariant's first real-resolver test.
+- `_resolve_task_prompts` strictness: the existing `do_task` / preview tests keep their raises, and the new agent tests assert that `task_llm_server_id_or_none` re-raises for unknown or misconfigured real agents.
+- No test asserts `"n/a"` as an accepted sentinel, because there is no transition window.
+- The test-tree and bible edits are Betty's. The engineer touches none of steps 1–7.
