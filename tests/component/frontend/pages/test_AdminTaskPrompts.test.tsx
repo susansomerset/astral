@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import TaskPrompts from "../../../../src/ui/frontend/src/pages/AdminTaskPrompts"
-import { installBaseApiMocks as installBase, jsonResponse, renderWithProviders } from "../test-utils"
+import { installBaseApiMocks, jsonResponse, renderWithProviders } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
@@ -11,53 +11,6 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 })
 
 const mockedApi = vi.mocked(api)
-
-// AST-1909: model catalog (AST-1880 shape; jsonify sorts keys, `order` carries catalog order).
-const models = {
-  "kimi-k2.6": {
-    order: 1,
-    label: "Kimi K2.6",
-    server_id: "kimi",
-    server_label: "Kimi",
-    brain_sizes: {
-      Big: { order: 1, default_temperature: 1, default_max_tokens: 32000 },
-      Little: { order: 0, default_temperature: 0.6, default_max_tokens: 8192 },
-    },
-  },
-  claude: {
-    order: 0,
-    label: "Claude",
-    server_id: "anthropic",
-    server_label: "Anthropic",
-    brain_sizes: {
-      Big: { order: 2, default_temperature: 1, default_max_tokens: 32000 },
-      Little: { order: 0, default_temperature: 0.7, default_max_tokens: 8192 },
-      Medium: { order: 1, default_temperature: 0.2, default_max_tokens: 64000 },
-    },
-  },
-}
-const agentRows: Record<string, { agent_id: string; model_id: string; brain_setting: string }> = {
-  agent_a: { agent_id: "agent_a", model_id: "claude", brain_setting: "Medium" },
-  agent_b: { agent_id: "agent_b", model_id: "kimi-k2.6", brain_setting: "Big" },
-}
-
-/** Every test here also serves the catalog + agent GET/PUT the edit modal calls (AST-1909); test handlers win. */
-function installBaseApiMocks(m: typeof mockedApi, handler: (url: string, init?: RequestInit) => unknown) {
-  installBase(m, async (url: string, init?: RequestInit) => {
-    const routed = await handler(url, init)
-    if (routed !== undefined) return routed
-    if (url === "/api/admin/agents/models") return jsonResponse(models)
-    const agentId = /^\/api\/admin\/agents\/([^/?]+)$/.exec(url)?.[1]
-    if (agentId && agentId !== "ids" && agentId !== "models") {
-      if (init?.method === "PUT") return { ok: true, json: async () => ({}) } as Response
-      const row = agentRows[agentId]
-      return row
-        ? ({ ok: true, status: 200, json: async () => row } as Response)
-        : ({ ok: false, status: 404, json: async () => ({ error: `Agent not found: ${agentId}` }) } as Response)
-    }
-    return undefined
-  })
-}
 
 const tasks = [
   {
@@ -592,132 +545,59 @@ describe("AdminTaskPrompts", () => {
     }, 20000)
   })
 
-  // AST-1909: Manage Task modal picks the task's agent's model + brain size (catalog-driven, saved on the agent).
-  describe("AST-1909 task modal model + brain size", () => {
-    /** Field select by its dep-field label (page pattern). */
-    function selectByLabel(container: HTMLElement, label: string) {
-      return within(container).getByText(label, { selector: "label" }).closest(".dep-field")!.querySelector("select") as HTMLSelectElement
-    }
-    const optionLabels = (sel: HTMLSelectElement) => Array.from(sel.options).map(o => o.textContent)
-    const agentPuts = () => mockedApi.mock.calls.filter(([u, i]) => String(u).startsWith("/api/admin/agents/") && i?.method === "PUT")
-
-    /** mockApi() plus an extra task on agent_a, so the hint counts 2. */
-    function mockWithSharedAgent(taskOverrides: Record<string, unknown> = {}) {
-      mockApi()
-      const base = mockedApi.getMockImplementation()!
-      const shared = [...tasks, { ...tasks[1], task_key: "task_c", task_key_uuid: "uuid-c", agent_id: "agent_a", task_name: "task_c", task_seq: 3 }]
-      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-        if ((url.startsWith("/api/admin/tasks?") || url === "/api/admin/tasks") && !init?.method) return { json: async () => shared } as Response
-        if (url === "/api/admin/tasks/task_a" && !init?.method) {
-          const r = await base(url, init) as Response
-          const full = await r.json()
-          return { json: async () => ({ ...full, ...taskOverrides }) } as Response
-        }
-        return base(url, init)
-      })
-    }
+  // AST-1939 (reverses AST-1909): the agent row is the only model source — the modal has no Model / Brain
+  // size select and Save never writes the agent. The list's read-only Model column stays.
+  describe("AST-1939 no task-level model picker", () => {
+    // Any /api/admin/agents/<id> request (GET or PUT) — /ids feeds the Agent select and is allowed.
+    const agentRowCalls = () =>
+      mockedApi.mock.calls.filter(([u]) => /^\/api\/admin\/agents\/(?!ids$)[^/?]+$/.test(String(u)))
 
     async function openTaskA() {
       renderWithProviders(<TaskPrompts />)
       await waitFor(() => expect(screen.getByText("Manage Tasks")).toBeInTheDocument())
       await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
       await userEvent.click(screen.getByText("task_a"))
-      await waitFor(() => expect(screen.getByRole("heading", { name: /Edit: task_a/ })).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByDisplayValue("cache")).toBeInTheDocument())
       return screen.getByRole("heading", { name: /Edit: task_a/ }).closest(".modal-card") as HTMLElement
     }
 
-    it("selects show the agent's model + size in catalog order, with the shared-agent hint", async () => {
-      mockWithSharedAgent()
+    it("modal has no Model or Brain size select and fetches neither the catalog nor the agent row", async () => {
+      mockApi()
       const modal = await openTaskA()
-      await waitFor(() => expect(selectByLabel(modal, "Model")).toHaveValue("claude"))
-      expect(optionLabels(selectByLabel(modal, "Model"))).toEqual(["Claude", "Kimi K2.6"])
-      expect(selectByLabel(modal, "Brain size")).toHaveValue("Medium")
-      expect(optionLabels(selectByLabel(modal, "Brain size"))).toEqual(["Little", "Medium", "Big"])
-      expect(within(modal).getByText("Applies to agent agent_a — used by 2 task(s)")).toBeInTheDocument()
-      // Read-only "Model: <sku>" line is gone.
-      expect(within(modal).queryByText("Model:")).not.toBeInTheDocument()
-      expect(mockedApi.mock.calls.some(([u]) => u === "/api/admin/agents/agent_a")).toBe(true)
+      // Agent select still there; the AST-1909 selects and their "Applies to agent" hint are gone.
+      expect(within(modal).getByText("Agent", { selector: "label" })).toBeInTheDocument()
+      expect(within(modal).queryByText("Model", { selector: "label" })).not.toBeInTheDocument()
+      expect(within(modal).queryByText("Brain size", { selector: "label" })).not.toBeInTheDocument()
+      expect(within(modal).queryByText(/Applies to agent/)).not.toBeInTheDocument()
+      expect(mockedApi.mock.calls.some(([u]) => u === "/api/admin/agents/models")).toBe(false)
+      expect(agentRowCalls()).toHaveLength(0)
     }, 20000)
 
-    it("model change keeps the size when offered, else takes the first; Save PUTs task then agent", async () => {
-      mockWithSharedAgent()
+    it("changing the Agent then saving issues only the task PUT — no agent request", async () => {
+      mockApi()
       const modal = await openTaskA()
-      await waitFor(() => expect(selectByLabel(modal, "Model")).toHaveValue("claude"))
-      await userEvent.selectOptions(selectByLabel(modal, "Model"), "kimi-k2.6")
-      // Kimi has no Medium → first size.
-      expect(selectByLabel(modal, "Brain size")).toHaveValue("Little")
-      expect(optionLabels(selectByLabel(modal, "Brain size"))).toEqual(["Little", "Big"])
-      await userEvent.selectOptions(selectByLabel(modal, "Brain size"), "Big")
-      await userEvent.selectOptions(selectByLabel(modal, "Model"), "claude")
-      // Claude offers Big → kept.
-      expect(selectByLabel(modal, "Brain size")).toHaveValue("Big")
+      const agentSelect = within(modal).getByText("Agent", { selector: "label" }).closest(".dep-field")!
+        .querySelector("select") as HTMLSelectElement
+      await userEvent.selectOptions(agentSelect, "agent_b")
       await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
       await waitFor(() => expect(screen.getByText(/Task "task_a" updated/)).toBeInTheDocument())
-      const urls = mockedApi.mock.calls.map(([u, i]) => `${i?.method ?? "GET"} ${u}`)
-      const taskPut = urls.indexOf("PUT /api/admin/tasks/task_a")
-      const agentPut = urls.indexOf("PUT /api/admin/agents/agent_a")
-      expect(taskPut).toBeGreaterThan(-1)
-      expect(agentPut).toBeGreaterThan(taskPut)
-      expect(agentPuts()).toHaveLength(1)
-      expect(JSON.parse(String(agentPuts()[0][1]?.body))).toEqual({ model_id: "claude", brain_setting: "Big" })
-      // List re-fetch after save.
-      expect(urls.lastIndexOf("GET /api/admin/tasks")).toBeGreaterThan(agentPut)
+      const puts = mockedApi.mock.calls.filter(([, i]) => i?.method === "PUT").map(([u]) => u)
+      expect(puts).toEqual(["/api/admin/tasks/task_a"])
+      expect(JSON.parse(String(mockedApi.mock.calls.find(([, i]) => i?.method === "PUT")?.[1]?.body)).agent_id).toBe("agent_b")
+      expect(agentRowCalls()).toHaveLength(0)
     }, 20000)
 
-    it("Save without a model/size change sends only the task PUT", async () => {
-      mockWithSharedAgent()
-      const modal = await openTaskA()
-      await waitFor(() => expect(selectByLabel(modal, "Model")).toHaveValue("claude"))
-      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
-      await waitFor(() => expect(screen.getByText(/Task "task_a" updated/)).toBeInTheDocument())
-      expect(agentPuts()).toHaveLength(0)
-    }, 20000)
-
-    it("changing the Agent select loads that agent's model + size and hint", async () => {
-      mockWithSharedAgent()
-      const modal = await openTaskA()
-      await waitFor(() => expect(selectByLabel(modal, "Model")).toHaveValue("claude"))
-      await userEvent.selectOptions(selectByLabel(modal, "Agent"), "agent_b")
-      await waitFor(() => expect(selectByLabel(modal, "Model")).toHaveValue("kimi-k2.6"))
-      expect(selectByLabel(modal, "Brain size")).toHaveValue("Big")
-      expect(within(modal).getByText("Applies to agent agent_b — used by 1 task(s)")).toBeInTheDocument()
-    }, 20000)
-
-    it("no agent selected: Model disabled with — no agent —, Save sends no agent PUT", async () => {
-      mockWithSharedAgent()
-      const modal = await openTaskA()
-      await waitFor(() => expect(selectByLabel(modal, "Model")).toHaveValue("claude"))
-      await userEvent.selectOptions(selectByLabel(modal, "Agent"), "")
-      await waitFor(() => expect(selectByLabel(modal, "Model")).toBeDisabled())
-      expect(optionLabels(selectByLabel(modal, "Model"))).toContain("— no agent —")
-      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
-      await waitFor(() => expect(screen.getByText(/Task "task_a" updated/)).toBeInTheDocument())
-      expect(agentPuts()).toHaveLength(0)
-    }, 20000)
-
-    it("agent row 404 (no such agent) also disables Model", async () => {
-      mockWithSharedAgent({ agent_id: "ghost_agent" })
-      const modal = await openTaskA()
-      await waitFor(() => expect(mockedApi.mock.calls.some(([u]) => u === "/api/admin/agents/ghost_agent")).toBe(true))
-      await waitFor(() => expect(selectByLabel(modal, "Model")).toBeDisabled())
-      expect(optionLabels(selectByLabel(modal, "Model"))).toContain("— no agent —")
-    }, 20000)
-
-    it("agent PUT 400 surfaces its error in the toast after the task PUT", async () => {
-      mockWithSharedAgent()
-      const inner = mockedApi.getMockImplementation()!
-      mockedApi.mockImplementation(async (url: string, init?: RequestInit) =>
-        url === "/api/admin/agents/agent_a" && init?.method === "PUT"
-          ? ({ ok: false, status: 400, json: async () => ({ error: "Brain size not offered for this model" }) } as Response)
-          : inner(url, init),
-      )
-      const modal = await openTaskA()
-      await waitFor(() => expect(selectByLabel(modal, "Model")).toHaveValue("claude"))
-      await userEvent.selectOptions(selectByLabel(modal, "Brain size"), "Big")
-      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
-      await waitFor(() => expect(screen.getByText("Brain size not offered for this model")).toBeInTheDocument())
-      expect(mockedApi.mock.calls.some(([u, i]) => u === "/api/admin/tasks/task_a" && i?.method === "PUT")).toBe(true)
-      expect(agentPuts()).toHaveLength(1)
+    it("task list keeps the read-only Model column showing model_code", async () => {
+      mockApi()
+      renderWithProviders(<TaskPrompts />)
+      await waitFor(() => expect(screen.getByText("Manage Tasks")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+      const table = screen.getByText("task_a").closest("table") as HTMLElement
+      const headers = within(table).getAllByRole("columnheader").map(h => h.textContent)
+      expect(headers).toContain("Model")
+      const row = screen.getByText("task_a").closest("tr") as HTMLElement
+      const cells = within(row).getAllByRole("cell")
+      expect(cells[headers.indexOf("Model")]).toHaveTextContent("claude")
     }, 20000)
   })
 

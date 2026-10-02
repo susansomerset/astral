@@ -19,6 +19,7 @@ Config sections:
   AGENT_CONFIG    — Anthropic model catalog (pricing, defaults)
   LLM_SERVER_CONFIG — LLM servers (endpoint, auth, thinking-off body, request extras, concurrency) (AST-1851)
   LLM_MODEL_CONFIG  — LLM models → server + per-model brain sizes (SKU, thinking, floor, defaults) + per-SKU pricing (AST-1851)
+  OPENROUTER_MODEL_TABLE — OpenRouter shortlist rows expanded into LLM_MODEL_CONFIG (price, provider pin, reasoning, max output) (AST-1938)
   TASK_CONFIG     — task definitions (schemas, grading, job consult orchestration fields)
   COMPANY_STATES  — company state list + batch criteria
   CANDIDATE_STATES — candidate state registry (prior_states, companions, progress_rank)
@@ -5121,6 +5122,118 @@ LLM_SERVER_AUTH_STYLES = ("x-api-key", "bearer")
 ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
 
 # ---------------------------------------------------------------------------
+# OPENROUTER_MODEL_TABLE — OpenRouter shortlist (AST-1937 brief). slug → (cpm_input, cpm_output,
+#   cpm_cache_read, provider routing slug, reasoning-capable, pinned provider max output tokens).
+# Prices: Susan's brief (AST-1937, 2026-10). Provider slug / reasoning / max output:
+#   https://openrouter.ai/api/v1/models/<slug>/endpoints snapshot 2026-10-02 (brief's PROVIDER endpoint).
+# _build_openrouter_models() turns each row into an LLM_MODEL_CONFIG entry (model id = slug), skipping
+# slugs a hand-written entry already prices on openrouter.
+# ---------------------------------------------------------------------------
+OPENROUTER_MODEL_TABLE = {
+    "anthracite-org/magnum-v4-72b": (2.5, 5.0, 0.0, "mancer", False, 4096),
+    "bytedance-seed/seed-1.6": (0.25, 2.0, 0.0, "seed", True, 32768),
+    "bytedance-seed/seed-1.6-flash": (0.08, 0.3, 0.0, "seed", True, 32768),
+    "bytedance-seed/seed-2-1-turbo": (0.5, 2.5, 0.0, "seed", True, 235929),
+    "bytedance-seed/seed-2.0-code": (0.5, 3.0, 0.0, "seed", True, 131072),
+    "bytedance-seed/seed-2.0-lite": (0.25, 2.0, 0.0, "seed", True, 131072),
+    "bytedance-seed/seed-2.0-mini": (0.1, 0.4, 0.0, "seed", True, 131072),
+    "deepseek/deepseek-chat-v3-0324": (0.25, 1.0, 0.0, "siliconflow", False, 147456),
+    "deepseek/deepseek-chat-v3.1": (0.27, 1.0, 0.0, "siliconflow", True, 147456),
+    "deepseek/deepseek-r1-0528": (0.5, 2.18, 0.0, "siliconflow", True, 147456),
+    "deepseek/deepseek-v3.1-terminus": (0.27, 1.0, 0.0, "siliconflow", True, 147456),
+    "deepseek/deepseek-v3.2": (0.26, 0.42, 0.14, "siliconflow", True, 147456),
+    "deepseek/deepseek-v3.2-exp": (0.27, 0.41, 0.0, "siliconflow", True, 147456),
+    "deepseek/deepseek-v4-flash": (0.0, 1.6, 0.0, "open-inference", True, 943718),
+    "deepseek/deepseek-v4-flash-0731": (0.0, 1.6, 0.0, "open-inference", True, 943718),
+    "deepseek/deepseek-v4-flash-vision-exp": (0.22, 0.65, 0.01, "deepinfra", True, 262144),
+    "deepseek/deepseek-v4-pro": (1.3, 2.6, 0.1, "deepinfra", True, 16384),
+    "deepseek/deepseek-v4-pro-0813": (1.06, 3.17, 0.04, "nextbit", True, 943718),
+    "deepseek/deepseek-v4.1-flash": (0.02, 0.38, 0.01, "morph", True, 943718),
+    "google/gemma-3-27b-it": (0.08, 0.16, 0.0, "deepinfra", False, 16384),
+    "google/gemma-4-26b-a4b-it": (0.07, 0.34, 0.0, "deepinfra", True, 16384),
+    "google/gemma-4-31b-it": (0.15, 0.4, 0.0, "deepinfra", True, 16384),
+    "gryphe/mythomax-l2-13b": (0.35, 0.6, 0.0, "mancer", False, 7372),
+    "meta-llama/llama-3.1-70b-instruct": (0.4, 0.4, 0.0, "deepinfra", False, 16384),
+    "meta-llama/llama-3.3-70b-instruct": (0.1, 0.32, 0.0, "deepinfra", False, 16384),
+    "meta-llama/llama-4-maverick": (0.27, 0.85, 0.0, "novita", False, 8192),
+    "meta-llama/llama-4-scout": (0.1, 0.3, 0.0, "deepinfra", False, 16384),
+    "mistralai/mistral-nemo": (0.02, 0.03, 0.0, "dekallm", False, 104857),
+    "mistralai/mistral-small-24b-instruct-2501": (0.05, 0.08, 0.0, "deepinfra", False, 16384),
+    "mistralai/mistral-small-3.2-24b-instruct": (0.08, 0.2, 0.0, "deepinfra", False, 16384),
+    "moonshotai/kimi-k2-0905": (0.6, 2.5, 0.0, "novita", False, 98304),
+    "moonshotai/kimi-k2.6": (0.77, 3.4, 0.14, "siliconflow", True, 235929),  # priced + kept Little/Big by hand-written kimi-k2.6-openrouter (builder skips); pin reads this row
+    "moonshotai/kimi-k3": (1.35, 11.36, 0.29, "morph", True, 943718),
+    "morph/morph-v3-large": (0.9, 1.9, 0.0, "morph", False, 131072),
+    "nousresearch/hermes-3-llama-3.1-405b": (1.0, 1.0, 0.0, "deepinfra", False, 16384),
+    "nousresearch/hermes-3-llama-3.1-70b": (0.7, 0.7, 0.0, "deepinfra", False, 16384),
+    "nvidia/nemotron-3-nano-30b-a3b": (0.05, 0.2, 0.03, "crusoe", True, 235929),
+    "nvidia/nemotron-3-super-120b-a12b": (0.08, 0.45, 0.0, "dekallm", True, 235929),
+    "openai/gpt-oss-120b": (0.05, 0.28, 0.0, "mancer", True, 117964),
+    "openai/gpt-oss-20b": (0.04, 0.18, 0.0, "siliconflow", True, 8192),
+    "qwen/qwen-2.5-72b-instruct": (0.36, 0.4, 0.0, "deepinfra", False, 16384),
+    "qwen/qwen2.5-vl-72b-instruct": (0.8, 1.0, 0.4, "parasail", False, 115200),
+    "qwen/qwen3-14b": (0.12, 0.24, 0.0, "deepinfra", True, 16384),
+    "qwen/qwen3-235b-a22b-2507": (0.09, 0.58, 0.0, "novita", False, 16384),
+    "qwen/qwen3-30b-a3b": (0.12, 0.5, 0.0, "deepinfra", True, 16384),
+    "qwen/qwen3-30b-a3b-instruct-2507": (0.09, 0.3, 0.0, "siliconflow", False, 235929),
+    "qwen/qwen3-32b": (0.08, 0.28, 0.0, "deepinfra", True, 16384),
+    "qwen/qwen3-coder-30b-a3b-instruct": (0.07, 0.28, 0.0, "siliconflow", False, 235929),
+    "qwen/qwen3-next-80b-a3b-instruct": (0.09, 1.1, 0.0, "deepinfra", False, 16384),
+    "qwen/qwen3-vl-235b-a22b-instruct": (0.2, 0.88, 0.11, "deepinfra", False, 16384),
+    "qwen/qwen3-vl-30b-a3b-instruct": (0.15, 0.6, 0.0, "deepinfra", False, 16384),
+    "qwen/qwen3.5-27b": (0.25, 2.0, 0.0, "siliconflow", True, 235929),
+    "qwen/qwen3.5-35b-a3b": (0.14, 1.0, 0.05, "deepinfra", True, 81920),
+    "qwen/qwen3.5-397b-a17b": (0.45, 3.0, 0.22, "deepinfra", True, 81920),
+    "qwen/qwen3.5-9b": (0.1, 0.15, 0.0, "siliconflow", True, 235929),
+    "qwen/qwen3.6-27b": (0.3, 3.2, 0.0, "siliconflow", True, 235929),
+    "qwen/qwen3.6-35b-a3b": (0.1, 0.9, 0.05, "akashml", True, 235929),
+    "qwen/qwen3.8-2.4t-a95b": (2.0, 6.0, 0.25, "siliconflow", True, 131072),
+    "qwen/qwen3.8-27b": (0.09, 2.2, 0.09, "ionstream", True, 65536),
+    "sao10k/l3.1-euryale-70b": (0.85, 0.85, 0.0, "deepinfra", False, 16384),
+    "stepfun/step-3.7-flash": (0.2, 1.15, 0.04, "novita", True, 256000),
+    "tencent/hunyuan-a13b-instruct": (0.14, 0.57, 0.0, "siliconflow", True, 117964),
+    "tencent/hy-mt2-30b-a3b": (0.07, 0.3, 0.0, "tencent", False, 4096),
+    "tencent/hy-mt2-7b": (0.07, 0.3, 0.0, "tencent", False, 4096),
+    "tencent/hy4-preview": (0.83, 2.5, 0.04, "deepinfra", True, 131072),
+    "thedrummer/skyfall-36b-v2": (0.55, 0.8, 0.25, "parasail", False, 29491),
+    "undi95/remm-slerp-l2-13b": (0.35, 0.65, 0.0, "mancer", False, 5529),
+    "xiaomi/mimo-v2.5": (0.4, 2.0, 0.08, "venice", True, 65536),
+    "xiaomi/mimo-v2.6-flash": (0.14, 0.28, 0.0, "deepinfra", True, 943718),
+    "xiaomi/mimo-v2.6-pro": (0.43, 0.87, 0.0, "deepinfra", True, 943718),
+    "z-ai/glm-4.7-flash": (0.06, 0.4, 0.01, "venice", True, 16384),
+    "z-ai/glm-5": (1.0, 3.2, 0.2, "venice", True, 32000),
+    "z-ai/glm-5.1": (1.4, 4.4, 0.0, "nebius", True, 182476),
+    "z-ai/glm-5.2": (0.25, 3.07, 0.2, "morph", True, 943718),
+    "z-ai/glm-5.3": (0.19, 2.99, 0.15, "morph", True, 943718),
+    "z-ai/glm-5.3-flash": (0.11, 0.35, 0.02, "near-ai", True, 943718),
+}
+# Slug → extra OpenRouter quantization filter, for when the pinned provider hosts more than one
+# endpoint for the model and the brief's price is only one of them (DeepInfra turbo/fp4 vs fp8).
+OPENROUTER_PIN_QUANTIZATIONS = {
+    "google/gemma-4-31b-it": ("fp8",),
+}
+# Brain sizes a table row expands into. Medium only when the row is reasoning-capable; no Big.
+# default_max_tokens = min(max_tokens_cap, row's pinned max output).
+OPENROUTER_TIER_DEFAULTS = {
+    BRAIN_LITTLE: {"thinking": False, "thinking_params": {}, "default_temperature": 1.0, "max_tokens_cap": 16000},
+    BRAIN_MEDIUM: {
+        "thinking": True,
+        "thinking_params": {"thinking": {"type": "adaptive"}},
+        "default_temperature": 1.0,
+        "max_tokens_cap": 32000,
+    },
+}
+
+
+def _openrouter_pin(slug: str) -> Dict[str, Any]:
+    """Tier request_extras pinning a table slug to its upstream provider, fallbacks off."""
+    pin: Dict[str, Any] = {"order": [OPENROUTER_MODEL_TABLE[slug][3]], "allow_fallbacks": False}
+    if slug in OPENROUTER_PIN_QUANTIZATIONS:
+        pin["quantizations"] = list(OPENROUTER_PIN_QUANTIZATIONS[slug])
+    return {"provider": pin}
+
+
+# ---------------------------------------------------------------------------
 # LLM_MODEL_CONFIG — what an agent row picks (AST-1851). model id → server + ordered brain
 # sizes (dict order = UI order) + per-SKU pricing. Adding a model is a config edit only.
 #   brain_sizes[<size>]:
@@ -5129,6 +5242,8 @@ ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
 #     thinking_params     — body fields sent when thinking is True (ignored when False)
 #     max_tokens_floor    — int | None; output-token floor applied over the agent's max_tokens
 #     default_temperature / default_max_tokens — used when the agent row leaves them null
+#     request_extras      — optional dict (default {}): body fields for this size only, merged after the
+#                           server's request_extras (size wins). OpenRouter provider pin (AST-1938).
 #   pricing[<sku>]: model_label, cpm_input, cpm_output, cpm_cache_read, cpm_cache_write,
 #     cache_min_tokens (USD per million tokens; cache_write 0 where the vendor does not bill it)
 # ---------------------------------------------------------------------------
@@ -5177,6 +5292,7 @@ LLM_MODEL_CONFIG = {
                 "max_tokens_floor": None,
                 "default_temperature": 0.6,
                 "default_max_tokens": 16000,
+                "request_extras": _openrouter_pin("moonshotai/kimi-k2.6"),
             },
             BRAIN_BIG: {
                 "sku": "moonshotai/kimi-k2.6",
@@ -5185,15 +5301,16 @@ LLM_MODEL_CONFIG = {
                 "max_tokens_floor": None,
                 "default_temperature": 1.0,
                 "default_max_tokens": 32000,
+                "request_extras": _openrouter_pin("moonshotai/kimi-k2.6"),
             },
         },
-        # OpenRouter bills per upstream host; catalog uses Moonshot list price (conservative).
+        # Pinned to SiliconFlow (AST-1938); brief price 2026-10 — that host's OpenRouter rate.
         "pricing": {
             "moonshotai/kimi-k2.6": {
                 "model_label": "Kimi K2.6 (OpenRouter)",
-                "cpm_input": 0.95,
-                "cpm_output": 4.00,
-                "cpm_cache_read": 0.16,
+                "cpm_input": 0.77,
+                "cpm_output": 3.4,
+                "cpm_cache_read": 0.14,
                 "cpm_cache_write": 0.0,
                 "cache_min_tokens": 0,
             },
@@ -5283,6 +5400,47 @@ LLM_MODEL_CONFIG = {
         },
     },
 }
+
+
+def _build_openrouter_models() -> None:
+    """Append one LLM_MODEL_CONFIG entry per OPENROUTER_MODEL_TABLE row (AST-1938). Model id, label,
+    SKU and pricing key are all the slug; slugs a hand-written entry already prices on openrouter
+    are skipped so get_sku_pricing never sees a duplicate."""
+    priced = {sku for m in LLM_MODEL_CONFIG.values() if m["server"] == "openrouter" for sku in m["pricing"]}
+    for slug, (cpm_in, cpm_out, cpm_cache, _provider, reasoning, max_out) in OPENROUTER_MODEL_TABLE.items():
+        if slug in priced:
+            continue
+        sizes = (BRAIN_LITTLE, BRAIN_MEDIUM) if reasoning else (BRAIN_LITTLE,)
+        LLM_MODEL_CONFIG[slug] = {
+            "label": slug,
+            "server": "openrouter",
+            "brain_sizes": {
+                bs: {
+                    "sku": slug,
+                    "thinking": OPENROUTER_TIER_DEFAULTS[bs]["thinking"],
+                    "thinking_params": OPENROUTER_TIER_DEFAULTS[bs]["thinking_params"],
+                    "max_tokens_floor": None,
+                    "default_temperature": OPENROUTER_TIER_DEFAULTS[bs]["default_temperature"],
+                    # Capped at the pinned provider's max output so the vendor never rejects the default.
+                    "default_max_tokens": min(OPENROUTER_TIER_DEFAULTS[bs]["max_tokens_cap"], max_out),
+                    "request_extras": _openrouter_pin(slug),
+                }
+                for bs in sizes
+            },
+            "pricing": {
+                slug: {
+                    "model_label": slug,
+                    "cpm_input": cpm_in,
+                    "cpm_output": cpm_out,
+                    "cpm_cache_read": cpm_cache,
+                    "cpm_cache_write": 0.0,
+                    "cache_min_tokens": 0,
+                },
+            },
+        }
+
+
+_build_openrouter_models()
 
 
 def get_llm_server(server_id: str) -> Dict[str, Any]:
@@ -5428,6 +5586,10 @@ def validate_llm_provider_environment() -> None:
                 raise ValueError(f"LLM model {mid!r}: brain size {bs!r} not in {BRAIN_SETTINGS}")
             if tier["sku"] not in m["pricing"]:
                 raise ValueError(f"LLM model {mid!r} {bs}: SKU {tier['sku']!r} has no pricing row")
+            if not isinstance(tier.get("request_extras", {}), dict):
+                raise ValueError(f"LLM model {mid!r} {bs}: request_extras must be a dict")
+            # Raises on an unknown or ambiguous SKU for this server (AST-1938).
+            get_sku_pricing(tier["sku"], m["server"])
 
 
 # --- AST-495 helpers (thin layer on AST-492 tier_map; names kept for Admin UI / plans) ---
