@@ -683,3 +683,7 @@ context_tokens≈22000
 ```
 [code-rubric] PROCEED (Commit: 75baf6cc4dbf9e5dd302a5875ea25fd1ddd7c89f) product hold predicate
 ```
+
+### Resolution — AST-1941
+
+docs-acceptance: product-only fix. The six `test_agent.py` flips and the bible update (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1942, stacked after this ticket on `ftr/AST-1940-hop-failure-preserve-state`.
