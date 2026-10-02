@@ -82,21 +82,29 @@ function topTabBar() {
   return document.querySelector(".recommended-report-tabs") as HTMLElement
 }
 
+// AST-1874: Analysis opens by default; Summary-pane tests select Summary explicitly.
+async function openSummaryTab() {
+  await userEvent.click(within(topTabBar()).getByRole("button", { name: "Summary" }))
+}
+
 describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
   beforeEach(() => mockedApi.mockReset())
 
-  it("renders Summary / Analysis / Artifacts / Discussion horizontal tabs with Summary default", async () => {
+  it("renders Analysis / Summary / Artifacts / Discussion horizontal tabs with Analysis default (AST-1874)", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j948"))
     renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)
     await waitForShell()
     const bar = topTabBar()
-    expect(within(bar).getByRole("button", { name: "Summary" })).toHaveClass("active")
-    expect(within(bar).getByRole("button", { name: "Analysis" })).toBeInTheDocument()
-    expect(within(bar).getByRole("button", { name: "Artifacts" })).toBeInTheDocument()
+    // Default tab is picked by an effect after the tab bar paints — wait for it.
+    await waitFor(() => expect(within(bar).getByRole("button", { name: "Analysis" })).toHaveClass("active"))
     // AST-1551 / AST-1692: Discussion follows Artifacts; Meteorite filtered when related_meteorite null
-    expect(within(bar).getByRole("button", { name: "Discussion" })).toBeInTheDocument()
+    expect(within(bar).getAllByRole("button").map(t => t.textContent)).toEqual([
+      "Analysis", "Summary", "Artifacts", "Discussion",
+    ])
+    expect(screen.getByText("JD Analysis")).toBeInTheDocument()
     expect(document.querySelector(".side-tab-list")).toBeNull()
     // Summary section chrome (bodies filled by AST-949)
+    await openSummaryTab()
     expect(screen.getByText("Job Summary")).toBeInTheDocument()
     expect(screen.getByText("Company Upshot")).toBeInTheDocument()
     expect(screen.getByText("Noteworthy Caveats")).toBeInTheDocument()
@@ -331,6 +339,7 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     renderWithProviders(<JobAnalysisReportModal jobId="j-empty" onClose={() => {}} />)
     await waitForShell()
     // Shell chrome only — empty-state copy is AST-949 (sibling; may be absent on this tip)
+    await openSummaryTab()
     expect(screen.getByText("Job Summary")).toBeInTheDocument()
     expect(screen.queryByText("No analysis upshot on file.")).not.toBeInTheDocument()
   })
@@ -357,7 +366,7 @@ describe("JobAnalysisReportModal — AST-1334 footer opt-out", () => {
     renderWithProviders(<JobAnalysisReportModal jobId="j1334" onClose={onClose} />)
     await waitForShell()
     expect(document.querySelector(".modal-footer")).toBeNull()
-    // Summary tab: no footer Cancel — only Artifacts in-flight Cancel remains elsewhere
+    // Default (Analysis) tab: no footer Cancel — only Artifacts in-flight Cancel remains elsewhere
     expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -393,6 +402,7 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
     installBaseApiMocks(mockedApi, companyWithNotes)
     renderWithProviders(<JobAnalysisReportModal jobId="j949" onClose={() => {}} />)
     await waitForShell()
+    await openSummaryTab()
     expect(await screen.findByText("Strong thematic fit.")).toBeInTheDocument()
     expect(await screen.findByText("Steady growth, remote-friendly.")).toBeInTheDocument()
     expect(screen.getByText("Remote only")).toBeInTheDocument()
@@ -407,6 +417,7 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
     installBaseApiMocks(mockedApi, companyWithNotes)
     renderWithProviders(<JobAnalysisReportModal jobId="j949" onClose={() => {}} />)
     await waitForShell()
+    await openSummaryTab()
     await waitFor(() => expect(screen.getByText("Steady growth, remote-friendly.")).toBeInTheDocument())
     // job_summary + company + caveats + questions expanded; raw_jd collapsed
     expect(screen.getAllByRole("button", { name: "Collapse section" }).length).toBe(4)
@@ -432,6 +443,7 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
     })
     renderWithProviders(<JobAnalysisReportModal jobId="j949-empty" onClose={() => {}} />)
     await waitForShell()
+    await openSummaryTab()
     expect(await screen.findByText("No job summary on file.")).toBeInTheDocument()
     // company / caveats / questions / raw_jd start collapsed when empty — expand to read copy
     const expands = screen.getAllByRole("button", { name: "Expand section" })
@@ -474,6 +486,7 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
     })
     renderWithProviders(<JobAnalysisReportModal jobId="j949-notes" onClose={() => {}} />)
     await waitForShell()
+    await openSummaryTab()
     expect(await screen.findByText("FROM_COMPANY_API")).toBeInTheDocument()
     expect(screen.queryByText("FROM_JOB_DATA")).not.toBeInTheDocument()
   })
@@ -1179,7 +1192,7 @@ describe("JobAnalysisReportModal — AST-1348 Analysis score title chrome", () =
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Analysis" }))
     expect(
-      screen.getByText("JD Analysis - score: 137 out of 150 possible (321 max total)"),
+      screen.getByText("JD Analysis - 8.5 - score: 137 out of 150 possible (321 max total)"),
     ).toBeInTheDocument()
     expect(screen.getByText("DO Analysis")).toBeInTheDocument()
     expect(screen.queryByText(/^DO Analysis - score:/)).not.toBeInTheDocument()
@@ -1259,8 +1272,8 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
     // AST-1692: Meteorite omitted when related_meteorite null — Discussion still last visible
     const tabs = within(bar).getAllByRole("button")
     expect(tabs.map(t => t.textContent)).toEqual([
-      "Summary",
       "Analysis",
+      "Summary",
       "Artifacts",
       "Discussion",
     ])
@@ -1327,8 +1340,8 @@ describe("JobAnalysisReportModal — AST-1692 Meteorite tab", () => {
     await waitForShell()
     const bar = topTabBar()
     expect(within(bar).getAllByRole("button").map(t => t.textContent)).toEqual([
-      "Summary",
       "Analysis",
+      "Summary",
       "Artifacts",
       "Discussion",
       "Meteorite",
@@ -1350,8 +1363,8 @@ describe("JobAnalysisReportModal — AST-1692 Meteorite tab", () => {
     const bar = topTabBar()
     expect(within(bar).queryByRole("button", { name: "Meteorite" })).not.toBeInTheDocument()
     expect(within(bar).getAllByRole("button").map(t => t.textContent)).toEqual([
-      "Summary",
       "Analysis",
+      "Summary",
       "Artifacts",
       "Discussion",
     ])
@@ -1483,12 +1496,119 @@ describe("JobAnalysisReportModal — AST-1704 non-http job_link chrome", () => {
     const crumb = "From:a@x.com 9/17 14:05 Eastern To:b@y.com"
     installBaseApiMocks(
       mockedApi,
-      jobHandler("j-crumb", { job_link: crumb, state: "RECOMMENDED" }),
+      jobHandler("j-crumb", { job_link: crumb, listing_href: null, state: "RECOMMENDED" }),
     )
     renderWithProviders(<JobAnalysisReportModal jobId="j-crumb" onClose={() => {}} />)
     await waitForShell()
     expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
     expect(screen.getByText("Analyst")).toHaveClass("recommended-report-title")
     expect(screen.getByText(crumb)).toHaveClass("recommended-report-job-link-text")
+  })
+})
+
+describe("JobAnalysisReportModal — AST-1874 Analysis default, list score, Skip", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  const scored = (extra: Record<string, unknown> = {}) => ({
+    jd_grades: [{ vector: "Job Description (JD)", grade: "A", reason: "Strong match", confidence: 4 }],
+    jd_rubric: [{ code: "JD", label: "Job Description (JD)", importance: 1 }],
+    jd_score_breakdown: { earned: 42, possible: 50, max: 60 },
+    ...extra,
+  })
+
+  function skipHandler(jobId: string, detail: Record<string, unknown>, skipResponse?: Response) {
+    return (url: string, init?: RequestInit) => {
+      if (url === `/api/jobs/${jobId}/skip` && init?.method === "POST") return skipResponse
+      return jobHandler(jobId, detail)(url, init)
+    }
+  }
+
+  // AC1: per-job reset returns to the first manifest tab (Analysis), not a literal.
+  it("switching jobId after selecting Summary returns to Analysis", async () => {
+    installBaseApiMocks(mockedApi, (url, init) => jobHandler("j-a")(url, init) ?? jobHandler("j-b")(url, init))
+    const { rerender } = renderWithProviders(<JobAnalysisReportModal jobId="j-a" onClose={() => {}} />)
+    await waitForShell()
+    await openSummaryTab()
+    expect(within(topTabBar()).getByRole("button", { name: "Summary" })).toHaveClass("active")
+    rerender(<JobAnalysisReportModal jobId="j-b" onClose={() => {}} />)
+    await waitFor(() =>
+      expect(within(topTabBar()).getByRole("button", { name: "Analysis" })).toHaveClass("active"),
+    )
+    expect(within(topTabBar()).getByRole("button", { name: "Summary" })).not.toHaveClass("active")
+  })
+
+  // AC3: list score (one decimal) in the JD header; absent → segment dropped.
+  it("JD header carries the one-decimal list score", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j-s1", scored({ jd_score: 3.66 })))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-s1" onClose={() => {}} />)
+    await waitForShell()
+    expect(
+      await screen.findByText("JD Analysis - 3.7 - score: 42 out of 50 possible (60 max total)"),
+    ).toBeInTheDocument()
+  })
+
+  it("JD header drops the score segment when jd_score is absent", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j-s2", scored()))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-s2" onClose={() => {}} />)
+    await waitForShell()
+    expect(
+      await screen.findByText("JD Analysis - score: 42 out of 50 possible (60 max total)"),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/JD Analysis - (\u2014|-) /)).not.toBeInTheDocument()
+  })
+
+  // AC5: visibility is the server's can_skip only.
+  it.each([
+    [true, true],
+    [false, false],
+    [undefined, false],
+  ])("can_skip=%s → Skip this Job shown=%s (last in row when shown)", async (canSkip, shown) => {
+    installBaseApiMocks(mockedApi, jobHandler("j-v", { can_skip: canSkip }))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-v" onClose={() => {}} />)
+    await waitForShell()
+    const row = document.querySelector(".recommended-report-links") as HTMLElement
+    const buttons = within(row).getAllByRole("button")
+    if (shown) {
+      expect(buttons.at(-1)).toHaveTextContent("Skip this Job")
+    } else {
+      expect(within(row).queryByRole("button", { name: "Skip this Job" })).not.toBeInTheDocument()
+    }
+  })
+
+  // AC6: POST /skip → refresh + close once on 200; 409 → server message toast, stays open.
+  it("Skip success posts, refreshes once, closes once", async () => {
+    const onClose = vi.fn()
+    const onRefresh = vi.fn()
+    installBaseApiMocks(mockedApi, skipHandler("j-ok", { can_skip: true }, jsonResponse({ ok: true })))
+    renderWithProviders(<JobAnalysisReportModal jobId="j-ok" onClose={onClose} onRefresh={onRefresh} />)
+    await waitForShell()
+    await userEvent.click(screen.getByRole("button", { name: "Skip this Job" }))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+    expect(
+      mockedApi.mock.calls.filter(([u, i]) => u === "/api/jobs/j-ok/skip" && i?.method === "POST"),
+    ).toHaveLength(1)
+  })
+
+  it("Skip 409 shows the server message and keeps the modal open", async () => {
+    const onClose = vi.fn()
+    const onRefresh = vi.fn()
+    installBaseApiMocks(
+      mockedApi,
+      skipHandler(
+        "j-409",
+        { can_skip: true },
+        jsonResponse({ error: "Invalid transition: CANDIDATE_APPLIED -> CANDIDATE_SKIPPED" }, { ok: false, status: 409 }),
+      ),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j-409" onClose={onClose} onRefresh={onRefresh} />)
+    await waitForShell()
+    await userEvent.click(screen.getByRole("button", { name: "Skip this Job" }))
+    expect(
+      await screen.findByText("Invalid transition: CANDIDATE_APPLIED -> CANDIDATE_SKIPPED"),
+    ).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(onRefresh).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Skip this Job" })).toBeEnabled()
   })
 })

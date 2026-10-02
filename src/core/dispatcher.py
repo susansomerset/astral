@@ -27,7 +27,7 @@ from src.data.database import (
 )
 
 from src.data import database
-from src.core.agent import _current_agent_task_run_next, compute_batch_cost
+from src.core.agent import _current_agent_task_run_next, compute_batch_cost, task_llm_server_id
 from src.utils.deploy_status import is_local_deploy_env
 from src.utils.config import (
     ASTRAL_CONFIG,
@@ -1333,15 +1333,18 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         return
 
     ctx = database.get_candidate(candidate_id)
-    if not ctx or not ctx.get("candidate_api_key"):
+    # AST-1879: the key for the task agent's server only — another platform's key does not count.
+    server_id = task_llm_server_id(task_key)
+    if not ctx or not (ctx.get("candidate_api_keys") or {}).get(server_id):
         logger.debug(
-            "skipped — no candidate or API key task_key=%s candidate_id=%s",
-            task_key, candidate_id,
+            "skipped — no candidate or %s API key task_key=%s candidate_id=%s",
+            server_id, task_key, candidate_id,
         )
         logger.warning(
-            "%s | dispatch %s skipped — no candidate or API key\n  This task is not starting",
+            "%s | dispatch %s skipped — no candidate or %s API key\n  This task is not starting",
             candidate_id or "-",
             task_key,
+            server_id,
         )
         return
     ctx = dict(ctx)

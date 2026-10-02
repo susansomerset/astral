@@ -13,7 +13,6 @@ from src.core.candidate import (
     _stash_pending_craft_generation,
     apply_company_search_terms_save,
     apply_rubric_vectors_save,
-    clear_candidate_api_key,
     company_search_terms_joined_text,
     company_search_terms_lines_for_candidate,
     delete_candidate as core_delete_candidate,
@@ -42,15 +41,16 @@ from src.core.candidate import (
     prepare_resume_structure_sections_for_save,
     resolve_resume_structure,
     run_candidate_artifact_generation,
-    save_candidate_admin,
     save_candidate_data,
     start_requested_artifacts,
     transition_candidate_state,
+    update_candidate_api_keys,
 )
 from src.core.contact import resolve_pinned_base_resume
 from src.utils.config import (
     CANDIDATE_STATES,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
+    LLM_SERVER_CONFIG,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_EXTRA_ID_PATTERN,
@@ -122,9 +122,13 @@ def _validate_cover_letter_signature_image(value) -> None:
 
 
 def _sanitize_candidate(c: dict) -> dict:
-    """Strip ciphertext, inject has_api_key boolean. Applied to every outbound candidate."""
-    c["has_api_key"] = bool(c.get("candidate_api_key"))
+    """Strip every key (plaintext map + legacy ciphertext); expose the api_keys array as [{server, label}]. Applied to every outbound candidate."""
+    keys = c.pop("candidate_api_keys", None) or {}
     c.pop("candidate_api_key", None)
+    # One entry per stored key, in array order (AST-1901) — no fixed per-server slots, never the key itself.
+    c["api_keys"] = [
+        {"server": sid, "label": (LLM_SERVER_CONFIG.get(sid) or {}).get("label", sid)} for sid in keys
+    ]
     return c
 
 
@@ -285,7 +289,7 @@ def create_candidate():
 def update_candidate_data(candidate_id):
     """Update candidate_data fields (merge=True). If 'state' is in the body,
     applies it via transition_candidate_state (fail closed on illegal hops).
-    api_key handling: non-empty string = set/replace, empty string = clear to NULL."""
+    api_keys handling ([{server, key}]): non-empty key = set/replace that server's entry, "" = remove it; duplicate servers → 400."""
     body = request.get_json(silent=True) or {}
     if not body:
         return jsonify({"error": "No data provided"}), 400
@@ -302,12 +306,24 @@ def update_candidate_data(candidate_id):
     resume_structure_saved = False
     try:
         state_override = body.pop("state", None)
-        api_key = body.pop("api_key", None)
+        api_keys = body.pop("api_keys", None)
         confirm_override = body.pop("confirm_state_override", False)
         if not g.user.get("is_admin") and (
-            state_override is not None or api_key is not None or confirm_override is True
+            state_override is not None or api_keys is not None or confirm_override is True
         ):
             return jsonify({"error": "Admin access required"}), 403
+        if api_keys is not None:
+            if not isinstance(api_keys, list):
+                return jsonify({"error": "api_keys must be an array of {server, key}"}), 400
+            seen_servers: set = set()
+            for e in api_keys:
+                sid = e.get("server") if isinstance(e, dict) else None
+                if sid not in LLM_SERVER_CONFIG or not isinstance(e.get("key"), str):
+                    # Name the server only — never echo a submitted key.
+                    return jsonify({"error": f"Invalid api_keys entry for server {sid!r}"}), 400
+                if sid in seen_servers:
+                    return jsonify({"error": f"Duplicate api_keys entry for server {sid!r}"}), 400
+                seen_servers.add(sid)
         base_resume_in_save = False
         pilot_body = None
         resume_structure_body = None
@@ -486,11 +502,9 @@ def update_candidate_data(candidate_id):
                     }), 400
                 except ValueError as e:
                     return jsonify({"error": str(e)}), 400
-        if api_key is not None:
-            if api_key.strip():
-                save_candidate_admin(candidate_id, candidate_api_key=api_key.strip())
-            else:
-                clear_candidate_api_key(candidate_id)
+        # Edits land in the candidate's api_keys array; the data layer encrypts (AST-1901).
+        if api_keys:
+            update_candidate_api_keys(candidate_id, [{"server": e["server"], "key": e["key"].strip()} for e in api_keys])
     except Exception as e:
         # Failed Save: keep submitted criteria recoverable via GET …/pending
         logger.exception(
@@ -538,6 +552,17 @@ def update_candidate_data(candidate_id):
             200,
         )
     if resume_structure_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    # stat.logging.info.api: a keys-only save still completed work — one line, not doubled when an artifact line fired.
+    if api_keys and not (
+        strengths_saved or priorities_saved or deal_breakers_saved or bio_summary_saved
+        or ideal_day_saved or backstory_saved or writing_preferences_saved or resume_structure_saved
+    ):
         logger.info(
             "%s | api %s completed: PUT %s",
             candidate_id,

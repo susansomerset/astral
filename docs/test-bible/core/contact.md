@@ -460,3 +460,17 @@ Contact orchestration for admin channel picker / membership warn / snapshot: `li
 - `docs/test-bible/core/contact.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_contact.md` — *(filled after publish)*
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1879 · AST-1851 (Estelle turn passes the resolved candidate ctx)
+
+**Primary manifest:** [`agent.md`](agent.md) § QA test manifest (AST-1879). `run_contact_estelle_turn`: when the candidate id is missing, blank or unresolved, it returns `error="no_candidate"` before loading the Slack context or calling `do_task`, with a warning ("Estelle is not replying"). A resolved candidate goes to `do_task` as `ctx={astral_candidate_id, candidate_data, candidate_api_keys}` (a copied map; empty when the row has none) instead of `candidate_data=`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC 10 — None / "" / blank id and unresolved id → `no_candidate`, zero `do_task`, no post | `src/core/contact.py` | `TestAst1879EstelleTurnCandidateCtx::test_no_candidate_id_fails_before_do_task` (3 params), `…::test_unresolved_candidate_id_fails_before_do_task` |
+| Resolved candidate → `ctx` with id + key map, no `candidate_data=` kwarg | same | `…::test_resolved_candidate_passes_ctx_with_key_map`, `…::test_resolved_candidate_without_keys_sends_empty_map` |
+| Revised — turn stubs resolve a candidate row (`_turn_candidate_row`) | `test_contact.py` | `TestAst1073…` (`_patch_turn_deps`; success/failure turns carry `astral_candidate_id`; `test_skill_calls_acl_and_no_candidate` → `test_skill_calls_run_for_resolved_candidate`, and the no-candidate half now lives in `TestAst1879…`), `TestAst1515ContactEstelleTurnMarkup`, `TestAst1561ContactPasteRouting`, `TestAst1585…::test_estelle_turn_strips_blob_and_injects_pin` (reads `ctx["candidate_data"]`) |
+
+The turn's model/key route (contact agent row, kimi key) is covered in [`agent.md`](agent.md) `TestAst1879EstelleTurnRoute`.
+
+**Integration:** none.

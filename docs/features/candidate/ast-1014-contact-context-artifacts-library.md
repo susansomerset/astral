@@ -678,3 +678,351 @@ Joan plan-rubric verdict attached (APPROVED). Excluded set: `astral.debug.no-rep
 2. **fix-now / api_candidate** — `update_candidate_data` calls `save_candidate_data(..., debug=ui_llm_debug())` so Stage 3 / AC8 gated debug lines fire on primary PUT.
 3. **fix-now / agent.py** — lazy-import comment added on `build_candidate_token_view` (same cycle-break note as sibling import).
 4. **discuss** — engineer-test-tree-ban straggler: acknowledged; statute already conforms (Betty-only test/bible commits). No product change.
+
+---
+
+## Bug: AST-1904 — Keep full saved contact line on resume render
+
+Fix child of mini-parent AST-1902 (*Candidate Contact Detail is truncated after email*, project Astral Artifacts). Publish ref `sub/AST-1902/AST-1904-keep-full-saved-contact-line`, parent `ftr/AST-1902-candidate-contact-detail-truncated`. This block covers only the contact-line overwrite that Stage 3 step 8 above re-sourced. It does not bring in any other AST-1014 scope.
+
+### As-is
+
+`build_resume_from_job` and `build_base_resume` call `_apply_contact_to_render_dict` after content loads. Whenever at least one contact-blob field is non-empty, it replaces `render["candidate_contact_detail"]`, even when the blob has fewer parts than the saved line. A `job_resume` saved with `hire@susansomerset.com • 415-745-5238 • linkedin.com/in/susansomerset • California, USA (PST)` renders as `<div class="contact"><span>hire@susansomerset.com</span></div>` when the blob holds only the email.
+
+### To-be
+
+A non-empty saved `candidate_contact_detail` renders exactly as saved. The line built from the contact blob is used only when the saved content has no contact line (missing, empty, or whitespace-only).
+
+### Repro
+
+Fixture (persistence is JSON, so this is a literal dict, not a seeded DB row). Run against `origin/ftr/AST-1902-candidate-contact-detail-truncated` @ `777c04a81`:
+
+```python
+from src.core.builder import _apply_contact_to_render_dict as f
+r = {"candidate_name": "Susan Somerset",
+     "candidate_contact_detail": "hire@susansomerset.com • 415-745-5238 • linkedin.com/in/susansomerset • California, USA (PST)"}
+f(r, {"contact_email": "hire@susansomerset.com"}, full="Susan Somerset")
+r["candidate_contact_detail"]   # -> 'hire@susansomerset.com'   (BUG: phone / LinkedIn / location dropped)
+
+r = {"candidate_contact_detail": ""}
+f(r, {"contact_email": "a@b.c", "phone": "555"})
+r["candidate_contact_detail"]   # -> 'a@b.c\xa0• 555'           (fallback path, must keep working)
+```
+
+End to end, the same happens through `build_resume_from_job` (L255) and `build_base_resume` (L447). `_emit_html_document` (L1242) escapes and emits whatever `render["candidate_contact_detail"]` holds by then.
+
+### Root cause
+
+`src/core/builder.py` `_apply_contact_to_render_dict` (L1028–1050) ends with `if parts: render["candidate_contact_detail"] = "\u00a0• ".join(parts)`. It never checks whether the render already holds a contact line. This unconditional overwrite came over from the pre-AST-1014 `_apply_profile_to_render_dict`. Stage 3 step 8 only re-pointed it at the contact blob plus the name columns. The bug shows up when the blob is sparser than the saved artifact line.
+
+### Proposed change
+
+**Choice: option (a). A saved artifact `candidate_contact_detail` wins, and the contact blob is only a fallback.**
+
+Why (a) and not (b), "blob stays authoritative but never emits fewer parts than the saved line":
+
+- **Smaller change.** (a) changes one condition in one function. Neither the signature nor the two call sites change, and `src/utils/config.py` is untouched.
+- **No heuristic.** `candidate_contact_detail` is freeform text. To count its "parts", (b) would have to split on an assumed `•` separator, and nothing in config declares that separator. A line saved with `|`, `,` or line breaks would count as one part, so the bug would come back. Doing (b) properly would need a new config field for separator and precedence. That is a bigger change and a heuristic that has not been approved.
+- **Meets AC 1–3 directly.** AC1: the saved line is kept. AC2: both builders go through this one helper. AC3: an empty or missing saved line still falls back to the blob.
+
+Edit to `src/core/builder.py` `_apply_contact_to_render_dict`:
+
+1. Update the docstring to say that `candidate_name` is still overwritten from the name columns, and that `candidate_contact_detail` is filled from the contact blob only when the render has no non-empty saved line (AST-1904).
+2. Before building `parts`, return early when a saved line already exists. Normalize the value the same way `_emit_html_document` does at L1242:
+
+```python
+    # AST-1904: a saved artifact contact line wins; the blob is only a fallback.
+    if str(render.get("candidate_contact_detail") or "").strip():
+        return
+```
+
+   Place this **after** the `candidate_name` block (L1030–1032), so the name-column overwrite still runs whatever the contact line holds. Leave the rest of the function (the part list, `if parts:` assignment and NBSP-bullet join) unchanged. A whitespace-only saved value counts as empty and falls back to the blob.
+
+3. Do not change `build_resume_from_job`, `build_base_resume`, `build_resume_from_paste`, `_emit_html_document`, or `src/utils/config.py`.
+
+⚠️ **Decision (consequence of (a)):** if a job resume or base resume already has a saved contact line, later edits to the Profile contact blob will not change that resume's header. To change it, edit the saved `candidate_contact_detail`. This is the trade-off built into (a), which AST-1902 offered as acceptable, and the blob still covers resumes with no saved line.
+
+### Blast radius
+
+- **Callers:** `build_resume_from_job` (L255) and `build_base_resume` (L447) only. `build_resume_from_paste` already skips this helper (L528). Session builders (`build_session_base_resume`, etc.) do not call it.
+- **Tests that rely on the current overwrite.** `tests/component/core/test_builder.py`: the `_resume_blob()` fixture (L17–23) always sets `candidate_contact_detail: "ada@example.com"`, so under (a) these asserts change outcome:
+  - `TestBuilderHelpers::test_applies_profile_contact_and_markers`: `assert "555" in render["candidate_contact_detail"]` (L366) will fail, because the saved `ada@example.com` now wins.
+  - `TestBuilderHelpers::test_profile_uses_reply_email_and_skips_empty_name`: `assert "reply@example.com" in ...` (L382) will fail for the same reason.
+  - `TestAst1014BuilderContact::test_apply_contact_uses_full_column_over_first_last` (L2965) still passes, but only because the saved value and the blob value are both `ada@example.com`.
+  - For Betty (fix-board / qa-fix): these blob-fallback asserts need `_resume_blob(candidate_contact_detail="")`, or an equivalent, to keep testing the fallback path. The new AST-1904 regression goes in `TestAst1014BuilderContact`, as the scope lists. This plan does not touch `tests/`.
+- **Other suites** with `candidate_contact_detail` mentions (`test_candidate`, `test_config`, `test_tracker`, `test_agent`, `test_api_candidate`) do not call `_apply_contact_to_render_dict`, so they are not expected to change. test-fix confirms this.
+- **Data / UI:** no schema, contact-library, Profile UI, `.contact` CSS, or `draft_job_resume` change (AST-1904 Boundaries).
+
+### What must still hold
+
+- AST-1014 Stage 3 step 8: `candidate_name` is still taken from `full`, else `first last`, and is left alone when both are blank.
+- If there is no saved line, the header contact line is still built from the blob in this order: `contact_email`/`reply_email`, `phone`, `linkedin_url`, `github`, `location`, joined with `"\u00a0• "` (AST-1904 AC3).
+- The saved line is emitted exactly as saved, only HTML-escaped at L1242. The builder does not rewrite, merge, or reorder it (AC1).
+- Both `build_resume_from_job` and `build_base_resume` behave the same way, because both go through this one helper (AC2).
+- The paste path (`build_resume_from_paste`) is unchanged.
+
+### Joan fix-board — AST-1904
+
+```text
+[board-joan]  CANON: OK
+
+Overlap skim (no `docs/canon-index.md` on publish ref; `canon/docs/DIRECTIVES-DIRECTORY.md` + `canon/statutes/**` on tip): `src/core/builder.py` `_apply_contact_to_render_dict` only. Frozen Canon Scope on AST-1902 / AST-1904: none cited (mini-parent bug; triage via roster overlap, not R1–R7).
+
+`astral.config.config-source-of-truth` / `patt.config.block`: plan keeps join order and `CANDIDATE_LIBRARY_CONFIG` untouched; early-return when a non-empty saved `candidate_contact_detail` is present does not add literals or move precedence into `config.py`. Fallback path unchanged (AC3).
+
+`patt.core.logical-scope` (builder): one conditional guard; no layer/import/signature churn. `patt.artifact.parse-validate-persist` / build lifecycle: persisted resume JSON is still emitted HTML-escaped at render; fix stops sparser contact blob from overwriting a richer saved artifact line — no statute requires unconditional blob overwrite.
+
+Option (a) vs (b) and Profile-blob staleness when a saved line exists are product trade-offs already accepted in the AST-1902 / plan-fix patch, not an in-force statute conflict or new architectural precedent (`orch.pipeline.call-susan-for-product-decisions` scope is plan-fix, not F2 canon landing).
+
+No directive id needs amendment or a one-line carve-out for F3.
+
+context_tokens≈12000
+```
+
+### Radia review-fix — AST-1904
+
+```
+[code-rubric]
+**Ticket:** AST-1904
+**Publish ref:** 7479f320aaa372f734fa192769487e8473dafb1e (`origin/sub/AST-1902/AST-1904-keep-full-saved-contact-line`)
+**Diff base:** `origin/ftr/AST-1902-candidate-contact-detail-truncated...origin/sub/AST-1902/AST-1904-keep-full-saved-contact-line` (2 files: `src/core/builder.py` + plan-fix doc block)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish tip; no `docs/canon-index.md` on ref — same shape Joan used at fix-board)
+**Overall:** CLEAN
+
+## Canon scores
+
+(no rows) — AST-1904 Linear Description has no locked `## Canon Scope` / frozen directive ids; Joan `[board-joan] CANON: OK` on AST-1904 explicitly records *Frozen Canon Scope on AST-1902 / AST-1904: none cited* (mini-parent bug; roster overlap at F2, not R1–R7). Nothing on the frozen list to score; no off-list statute scored as a grade.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (`validate-plan` fix-mode did not run; fix-board only)
+
+## Frame diff
+
+(none)
+
+### Fix-specific checks
+
+- **[bug-repro]** not applicable — clean board opt-out: `qa-fix` did not run on this ticket; Betty’s `TESTS: REVISE` test work was gap-split to **AST-1905**. No `[bug-repro]` on this tip by design; not scored as missing here.
+- **`## What must still hold`** — OK. Traced against `src/core/builder.py` `_apply_contact_to_render_dict` @ publish tip:
+  - `candidate_name` still overwritten from `full` / `first last` **before** the AST-1904 guard (L1031–1033).
+  - Fallback path unchanged: same field order and `"\u00a0• ".join(parts)` (L1037–1054).
+  - Non-empty saved line preserved via early `return` after `.strip()` (L1035–1036); matches plan normalization intent vs `_emit_html_document` contact escape at L1246 (`str(... or "").strip()` on read path).
+  - `build_resume_from_job` / `build_base_resume` still call the helper only (L255, L447); `build_resume_from_paste` still skips it (L528) — untouched in diff.
+
+## Findings
+
+**advisory**
+
+- **Sibling test carry / split scope:** Diff is product-only (`builder.py` + `## Bug: AST-1904` plan patch). Two `TestBuilderHelpers` failures on tip vs ftr are expected per plan **Blast radius** and Ada’s test-fix comment; owned by **AST-1905**, not a defect on this publish ref.
+- **AC proof on tip:** Behavioral AC 1–3 are implemented by the guard; automated regression + helper fixture repoint land on AST-1905. Acceptable given explicit gap split; UAT should use plan **Repro** or wait for AST-1905 green manifest for full test lock.
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+## Notes
+
+- **Canon Scope:** Empty frozen list is consistent with fix-board; overlapping draft/statute skim (config SoT, logical-scope, artifact lifecycle) was already litigated at F2 with **CANON: OK**. No Canon Scope gap requiring **ESCALATE** for unstated ids on this micro-diff.
+- **Plan fidelity:** Matches plan-fix **Proposed change** option (a) — docstring update + early return after name block; no `config.py`, call-site, or paste-path edits.
+- **Estimate footprint:** Estimate **2** vs ~5-line product change + doc — fits.
+- **Parent shape (Chuckles §8):** Mini-parent **AST-1902** with live `ftr/AST-1902-candidate-contact-detail-truncated` — **not** the orphaned-parent → straight-`dev` merge path. Clean review → **Review Posted** → `do-all-the-things` §3h shortcut → **User Testing** (`resolve-child` skipped). Product fix may ride with AST-1905 test work on the same ftr stack; no `merge-child`/`prep-uat` epic semantics.
+
+## What’s solid
+
+- Minimal, plan-faithful guard; fallback and name precedence unchanged; boundaries respected (no schema/UI/config/test tree on this ticket).
+
+context_tokens≈9500
+```
+
+```
+[code-rubric] PROCEED (Commit: 7479f320a) saved line wins guard
+```
+
+### Resolution — AST-1904
+
+docs-acceptance: product-only fix. The regression test and the two `TestBuilderHelpers` fixture repoints (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1905, stacked after this ticket on `ftr/AST-1902-candidate-contact-detail-truncated`.
+
+---
+
+## Bug: AST-1905 — Cover saved contact line vs sparse contact blob on resume render
+
+Test-gap sibling of AST-1904, filed from Betty's `[board-betty] TESTS: REVISE` on AST-1904. Mini-parent AST-1902. Publish ref `sub/AST-1902/AST-1905-cover-saved-contact-line-tests`. **Tests and bible only.** Betty lands them via qa-fix, and nothing in `src/` changes. The product fix is AST-1904's early return, already on `ftr/AST-1902-candidate-contact-detail-truncated` @ `7479f320a` and brought onto this sub by sync-child.
+
+### As-is
+
+Now that AST-1904's early return is on the tip, two existing tests fail. `_resume_blob()` (`tests/component/core/test_builder.py` L17–23) always saves `candidate_contact_detail: "ada@example.com"`, and that saved line now wins over the blob:
+
+- `TestBuilderHelpers::test_applies_profile_contact_and_markers`: `assert "555" in render["candidate_contact_detail"]` (L366)
+- `TestBuilderHelpers::test_profile_uses_reply_email_and_skips_empty_name`: `assert "reply@example.com" in render["candidate_contact_detail"]` (L382)
+
+No test covers the AST-1904 bug itself (a multi-part saved line replaced by a sparser blob).
+
+### To-be
+
+- Both `TestBuilderHelpers` tests pass on the post-fix tip and still exercise the blob-built line.
+- A new regression test in `TestAst1014BuilderContact` fails on `origin/dev`'s pre-fix `src/core/builder.py` and passes on this tip.
+- The bible records the new and revised coverage.
+
+### Repro
+
+Checked with a standalone script that calls `_apply_contact_to_render_dict` with the exact inputs planned below. No `tests/` file was touched. It ran against `origin/dev`'s `src/core/builder.py` (pre-fix) and against this tip (`3fcc8388c`, which carries AST-1904's fix):
+
+| Scenario (inputs as in Proposed change) | `origin/dev` | tip |
+|---|---|---|
+| New regression: multi-part saved line + email-only blob keeps the saved line, and `candidate_name` is overwritten | **fails** | passes |
+| New guard: whitespace-only saved line falls back to the blob | passes | passes |
+| Repointed L366 (`candidate_contact_detail=""` + full blob → contains `"555"`) | passes | passes |
+| Repointed L382 (`candidate_contact_detail=""` + `reply_email` blob → contains `reply@example.com`) | passes | passes |
+
+The first row is the red→green bug-repro gate (AST-1905 AC1). The other rows guard AST-1904's "What must still hold" and are meant to pass on both trees.
+
+### Root cause
+
+The test gap: the only fixture feeding `_apply_contact_to_render_dict` always carries a non-empty saved contact line, so the helper tests only ever exercised blob-over-saved, never an empty saved line. When AST-1014 re-sourced the helper, no case paired a rich saved line with a sparse blob. That is why the bug shipped untested.
+
+### Proposed change
+
+All edits are in `tests/component/core/test_builder.py` and `docs/test-bible/core/{builder,candidate}.md`, and Betty makes them (qa-fix). Do not change `_resume_blob()` itself. Other suites rely on its saved `ada@example.com`, including `TestAst1014BuilderContact::test_apply_contact_uses_full_column_over_first_last` (L2955).
+
+1. **Repoint `TestBuilderHelpers::test_applies_profile_contact_and_markers` (L349).** Change the fixture call at L350 to `_resume_blob(candidate_contact_detail="", professional_summary="__keep~~dash", experience={"role": "lead"})`. Leave everything else as-is, including the five-field contact blob, the marker asserts, and `assert "555" in render["candidate_contact_detail"]`.
+
+2. **Repoint `TestBuilderHelpers::test_profile_uses_reply_email_and_skips_empty_name` (L379).** Change the first fixture call only (L380) to `_resume_blob(candidate_contact_detail="")`. Leave the second half (`_resume_blob(candidate_name="Keep")` with `{}` contact and blank names → `candidate_name == "Keep"`) unchanged. With an empty blob it produces no parts, so the saved line doesn't matter there.
+
+3. **Add `TestAst1014BuilderContact::test_saved_multi_part_contact_line_survives_email_only_blob`** (the AST-1904 bug-repro, which must fail on `origin/dev`):
+
+```python
+    def test_saved_multi_part_contact_line_survives_email_only_blob(self) -> None:
+        # AST-1904: a saved line with more parts than the blob must not be replaced.
+        saved = "hire@example.com\u00a0• 415-555-0100\u00a0• linkedin.com/in/ada\u00a0• London, UK"
+        render = _resume_blob(candidate_name="Old", candidate_contact_detail=saved)
+        builder_mod._apply_contact_to_render_dict(
+            render, {"contact_email": "hire@example.com"}, full="Ada Lovelace"
+        )
+        assert render["candidate_contact_detail"] == saved
+        assert render["candidate_name"] == "Ada Lovelace"
+```
+
+   Assert exact equality on `candidate_contact_detail`, not a substring check. On `origin/dev` the value becomes `"hire@example.com"`, and a substring check on the email would wrongly pass. The `candidate_name` assert locks AST-1904's rule that the name-column overwrite still runs.
+
+4. **Add `TestAst1014BuilderContact::test_whitespace_saved_contact_line_falls_back_to_blob`** (fallback guard, passes on both trees):
+
+```python
+    def test_whitespace_saved_contact_line_falls_back_to_blob(self) -> None:
+        # AST-1904: whitespace-only saved line counts as empty; blob line is built.
+        render = _resume_blob(candidate_contact_detail="   ")
+        builder_mod._apply_contact_to_render_dict(
+            render, {"contact_email": "ada@example.com", "phone": "555"}
+        )
+        assert render["candidate_contact_detail"] == "ada@example.com\u00a0• 555"
+```
+
+5. **Bible, `docs/test-bible/core/builder.md` § AST-1014 · AST-952 (L415).** Under the existing paragraph, add one line: AST-1904 revision (AST-1905): the saved `candidate_contact_detail` wins and the blob is the fallback. It names `TestAst1014BuilderContact::test_saved_multi_part_contact_line_survives_email_only_blob` (bug-repro, red on pre-fix builder) and `::test_whitespace_saved_contact_line_falls_back_to_blob`, and says the `TestBuilderHelpers` contact tests now pass `candidate_contact_detail=""` to exercise the blob-built line.
+
+6. **Bible cross-ref, `docs/test-bible/core/candidate.md` § AST-1014 · AST-952 (L667, the primary home).** Add a one-line cross-reference to `builder.md` § AST-1014 for the AST-1904/AST-1905 revision. No manifest change: that section's manifest (L694–695) already runs `TestAst1014BuilderContact` and `TestBuilderHelpers` whole-class, so the new functions are picked up automatically.
+
+**Verification command** (Betty, and test-fix after her):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1014BuilderContact \
+  tests/component/core/test_builder.py::TestBuilderHelpers -q
+```
+
+On this host set `ASTRAL_PYTHON` to a 3.10+ venv python. `ensure_component_venv.sh` only looks for `python3.10`–`3.12`, and the only interpreter here is `python3.14`. For the red gate, run the same command with `src/core/builder.py` temporarily checked out from `origin/dev`. Only `test_saved_multi_part_contact_line_survives_email_only_blob` may fail there.
+
+### Blast radius
+
+- **`tests/component/core/test_builder.py` only.** Two fixture-call edits in `TestBuilderHelpers` and two new functions in `TestAst1014BuilderContact`. `_resume_blob()` stays unchanged, so the other ~30 `candidate_contact_detail` references in the file are unaffected.
+- Betty's board read found no other resume-render test that asserts a blob-built line over a saved one. The cover from-block suites (`TestAst1139…`, `TestAst1148…`) do not call this helper.
+- **Bible:** `builder.md` and `candidate.md` § AST-1014 only. No other sections and no manifest edits.
+- **No `src/` change.** The helper's callers (`build_resume_from_job`, `build_base_resume`) aren't tested end to end here because both go through this one helper. AST-1904 AC2 holds through that single code path.
+
+### What must still hold
+
+- AST-1905 AC3: no product code change on this ticket.
+- The full `tests/component/core/test_builder.py` suite is green on this tip. On `origin/dev`'s builder only the new bug-repro test fails, and the rest matches the 190-pass ftr baseline.
+- The repointed `TestBuilderHelpers` tests still assert blob-built content (`"555"`, `reply@example.com`) and the NBSP marker behavior. They are repointed, not weakened.
+- `TestAst1014BuilderContact::test_apply_contact_uses_full_column_over_first_last` and `test_coerce_row_injects_name_columns_for_render` are left untouched.
+
+### Joan fix-board — AST-1905
+
+```text
+[board-joan]  CANON: OK
+
+Scope: **tests + `docs/test-bible/**` only** (AST-1905); no `src/**` on this publish ref. Product behavior is AST-1904 on ftr @ `7479f320a`. Frozen Canon Scope on AST-1902 / AST-1905: none cited.
+
+Overlap skim (no `docs/canon-index.md` on ref; `canon/docs/DIRECTIVES-DIRECTORY.md` + in-force `canon/statutes/**`): `orch.roles.betty-owns-test-tree`, `astral.git.betty-no-src-or-features`, `astral.git.engineer-test-tree-ban` — delivery matches Betty/qa-fix; no engineer product landing. `astral.docs.features-single-file-per-ticket` applies to `docs/features/**`; bible rows in `docs/test-bible/core/{builder,candidate}.md` are test-tree documentation, not statute/pattern corpus.
+
+No active directive requires amending canon to record AST-1904 precedence or test names; fixing fixture calls and adding `TestAst1014BuilderContact` regressions does not contradict `astral.config.config-source-of-truth` or any builder/contact statute (no product diff to score). Same fix-board pattern as other test-gap siblings (e.g. AST-1848): not F3 material.
+
+context_tokens≈14000
+```
+
+### Radia review-fix — AST-1905
+
+```
+[code-rubric]
+**Ticket:** AST-1905
+**Publish ref:** 5246ff91f9f395b2420959d9bee092e4491691d7 (`origin/sub/AST-1902/AST-1905-cover-saved-contact-line-tests`)
+**Diff base:** `origin/ftr/AST-1902-candidate-contact-detail-truncated...origin/sub/AST-1902/AST-1905-cover-saved-contact-line-tests` (11 files; **AST-1905-owned footprint** ≈ `test_builder.py` + `builder.md` / `candidate.md` § AST-1014 rows + `## Bug: AST-1905` plan block — no `src/**`)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish tip; no `docs/canon-index.md` on ref)
+**Overall:** CLEAN
+
+## Canon scores
+
+(no rows) — AST-1905 has no locked `## Canon Scope` / frozen directive ids; Joan `[board-joan] CANON: OK` records *Frozen Canon Scope on AST-1902 / AST-1905: none cited*. Delivery is tests + bible only (Betty/qa-fix path); not scored against off-list ids.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (`validate-plan` fix-mode skipped; fix-board only)
+
+## Frame diff
+
+(none)
+
+### Fix-specific checks
+
+- **[bug-repro]** **OK** — `TestAst1014BuilderContact::test_saved_multi_part_contact_line_survives_email_only_blob` (Betty manifest + qa-fix thread; bible item 1):
+  - Pins **concrete** multi-part `saved` string (NBSP `•` separators) vs email-only blob `{"contact_email": "hire@example.com"}`.
+  - **`assert render["candidate_contact_detail"] == saved`** (exact equality) — would **fail** pre-fix (`"hire@example.com"`); not a substring/tautology on email alone.
+  - **`assert render["candidate_name"] == "Ada Lovelace"`** locks AST-1904 name-column overwrite still running with a saved line present.
+  - Betty/Ada documented red→green against `origin/dev` `builder.py` with only this case failing — matches repro-first intent.
+  - **advisory (tagging):** test body comments say `AST-1904 bug-repro`, not a first-line `[bug-repro]` marker in the file; gate is carried in `docs/test-bible/core/builder.md` manifest. Not a fix-now if your machinery reads the bible manifest (Betty’s qa-fix comment names the node explicitly).
+- **`## What must still hold`** — **OK**
+  - No `src/` in three-dot diff (AC3).
+  - Repointed `TestBuilderHelpers` still assert blob-built `"555"` and `reply@example.com` with `candidate_contact_detail=""` (L350–369, L383–386).
+  - `test_whitespace_saved_contact_line_falls_back_to_blob` exact `ada@example.com\u00a0• 555` (AC3 fallback).
+  - `test_apply_contact_uses_full_column_over_first_last` unchanged (still uses default `_resume_blob()` saved line).
+  - Plan verification scope: full `test_builder.py` 192 green on tip with AST-1904 product on ftr (Ada manifest).
+
+## Findings
+
+**discuss**
+
+- **origin/tests merge carry (AST-1901) — Chuckles routing:** Tip includes `merge-tests(AST-1905): origin/tests` stacking commit `d3550e7ad` (`test(AST-1901): bug-repro — candidate api_keys JSON array…`) plus bible rows for AST-1901. **Not AST-1905 scope** — product for AST-1901 lives on `origin/ftr/AST-1851-support-openrouter-api-models` only. Affected paths: `tests/component/data/database/test_candidates.py`, `tests/component/ui/api/test_api_candidate.py`, `tests/component/core/test_candidate.py`, `tests/component/ui/frontend/pages/test_AdminManageCandidates.test.tsx`, `docs/test-bible/data/database/candidates.md`, `docs/test-bible/ui/api/api_candidate.md`, `docs/test-bible/frontend/pages.md`, and the AST-1901 table line in `candidate.md` (separate from the AST-1014 cross-ref). Ada’s test-fix comment: many failures in those suites on ftr `src/`; AST-1905 manifest is builder-only and green.
+  - **Default:** Treat Radia/plan fidelity and UAT for **AST-1905** as `test_builder.py` + § AST-1014 bible edits only; do not block 1905 on 1901 carry failures; land/validate 1901 on its own publish ref when that lane runs.
+
+**advisory**
+
+- **sibling test carry:** `review-child` §5.4 expected shape — noted once above; not cross-ticket **fix-now** on 1905 product (there is none).
+- **Estimate footprint:** Estimate **1** matches the owned delta (~28 LOC tests + bible); whole-branch stat is inflated by AST-1901 merge — attribute separately per discuss item.
+
+**fix-now:** (none)
+
+## Notes
+
+- **Plan fidelity (1905-owned):** Matches plan-fix **Proposed change** items 1–6 for builder tests and § AST-1014 bible text/cross-ref; no manifest edit (as planned).
+- **Stacking:** AST-1904 fix on ftr (`7479f320a`) is prerequisite; branch history includes `sync(ftr)` — consistent with gap-sibling design.
+- **Parent shape (Chuckles §8):** Mini-parent AST-1902 with live `ftr` — clean → **Review Posted** → §3h → **User Testing** (`resolve-child` skipped). Pair with already-reviewed AST-1904 product on ftr for end-to-end UAT.
+
+## What’s solid
+
+- Repro test is tight (exact equality + name guard); helper repoints preserve fallback assertions; bible manifest documents red gate and pass criterion.
+
+context_tokens≈10500
+```
+
+```
+[code-rubric] PROCEED (Commit: 5246ff91f) bug-repro plus bible
+```

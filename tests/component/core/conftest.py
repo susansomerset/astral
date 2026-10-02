@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -88,22 +87,6 @@ def _operative_current_read_stub(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     yield
     clear_operative_bases()
-
-
-@pytest.fixture(autouse=True)
-def _core_default_anthropic_llm_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Legacy core mocks patch send_to_anthropic; product default active_provider is deepseek."""
-    from src.utils import config as cfg_mod
-
-    monkeypatch.setattr(cfg_mod, "get_active_llm_provider", lambda: "anthropic")
-    import importlib
-
-    for mod_name in ("src.core.agent", "src.core.consult"):
-        mod = importlib.import_module(mod_name)
-        if hasattr(mod, "get_active_llm_provider"):
-            monkeypatch.setattr(mod, "get_active_llm_provider", lambda: "anthropic")
-        if hasattr(mod, "send_to_deepseek"):
-            monkeypatch.setattr(mod, "send_to_deepseek", AsyncMock())
 
 
 @pytest.fixture

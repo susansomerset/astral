@@ -655,3 +655,65 @@ Roster counting nodes: **`docs/test-bible/core/roster.md`** § AST-1867 · AST-1
 Expect **23 passed** with AST-1867 product.
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/dispatcher.md | shasum`
+
+### AST-1879 · AST-1851 (skip gate on the task agent's server key)
+
+**Primary manifest:** [`agent.md`](agent.md) § QA test manifest (AST-1879). `_dispatch_one_body` checks `candidate_api_keys[task_llm_server_id(task_key)]`. With no candidate, no map, an empty key, or only another platform's key, it skips: no ledger, plus a warning naming the server ("This task is not starting").
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No candidate → skip + server-naming warning, no ledger | `src/core/dispatcher.py` | `TestDispatchOne::test_skips_without_candidate_context` (now asserts; was assertion-free) |
+| Missing / empty / other-platform key → skip (4 params) | same | `TestDispatchOne::test_skips_without_task_servers_api_key` (replaces `test_skips_without_api_key`) |
+| Gate asks `task_llm_server_id(task_key)` which server to check | same | `TestDispatchOne::test_gate_reads_key_for_task_agents_server` |
+| Revised — candidate stubs `candidate_api_key` → `candidate_api_keys: {"anthropic": …}`; autouse `_task_server_anthropic` pins `task_llm_server_id` (no seeded agent_task rows in this file) | `test_dispatcher.py` | 13 stubs across `TestDispatchOne`, `TestAst841…`, `TestAst1847…`, `TestAst1867…`, `TestAst1829ScheduledSweep` |
+
+**Integration:** none.
+
+### AST-1916 · AST-1875 (runtime AUTO-thread cap getter/setter + live tick read)
+
+**Parent:** [AST-1875](https://linear.app/astralcareermatch/issue/AST-1875). **Publish:** `origin/sub/AST-1875/AST-1916-runtime-cap-api`. In-memory `_auto_thread_cap_override` (None = `ASTRAL_CONFIG["max_auto_threads"]`); `get_auto_thread_cap()` / `set_auto_thread_cap()` (strict `type(v) is int`, bounds from `max_auto_threads_min` / `_max`, raises `ValueError`, never cancels); `_tick_loop` computes `slots` from the getter every tick (capture-once `max_auto` removed). Admin routes: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1916. Config keys: [`../utils/config.md`](../utils/config.md) § AST-1916.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| getter default / override | `get_auto_thread_cap` | `tests/component/core/test_dispatcher.py::TestAst1916AutoThreadCap::{test_getter_falls_back_to_config_default,test_setter_accepts_in_range_and_getter_reports_it}` |
+| 3 bounds + type confusion (0, 101, -1, `"abc"`, 2.5, `True`, `None`, `"5"`, 5.0) keep prior cap | `set_auto_thread_cap` | `::TestAst1916AutoThreadCap::test_setter_rejects_and_keeps_prior_cap` |
+| 8 bounds read from config | same | `::TestAst1916AutoThreadCap::test_setter_bounds_come_from_config` |
+| 5 / 6 raised cap applies next tick, no restart | `_tick_loop` | `::TestAst1916AutoThreadCap::test_tick_honours_raised_cap_on_next_tick` |
+| 7 lowering below running: no spawn, registry intact, no cancel | `_tick_loop` | `::TestAst1916AutoThreadCap::test_lowering_below_running_spawns_none_and_cancels_none` |
+| 6 capture-once line gone · 9 override initialised `None` (restart resets) | `src/core/dispatcher.py` | shell grep (manifest item 2) |
+
+**Existing coverage (unchanged, must stay green):** `TestScheduler` tick tests set `cfg["max_auto_threads"]` with no override — getter falls through to that value. Class autouse `_reset_override` (monkeypatch) keeps setter writes from leaking into them.
+
+**Broken / obsolete:** none. **Integration:** none — no scenario exercises the tick cap or the new routes.
+
+## QA test manifest
+
+1. **New + neighbours (required, green):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1916AutoThreadCap \
+  tests/component/ui/api/test_api_admin.py::TestAst1916AutoThreadCapApi \
+  tests/component/core/test_dispatcher.py::TestScheduler \
+  tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch::test_tick_loop_calls_auto_off_debug_helper_before_spawn \
+  tests/component/core/test_dispatcher.py::TestAst1829ScheduledSweep::test_tick_passes_sweep_flag_and_logs_sweep_due \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  -q
+```
+
+Expect **40 passed** (27 new).
+
+2. **AC 6 / AC 9 greps:**
+
+```bash
+grep -n 'max_auto = ASTRAL_CONFIG' src/core/dispatcher.py        # expect no output
+grep -n '^_auto_thread_cap_override: Optional\[int\] = None' src/core/dispatcher.py   # expect 1 line
+```
+
+3. **Regression (no new reds):** `tests/component/core/test_dispatcher.py` + `tests/component/ui/api/test_api_admin.py` whole-file. **Baseline at QA time: 17 failures identical with `origin/dev` product and with AST-1916 product** (incl. `TestDispatchTasks::test_list_dispatch_tasks_and_keys`); AST-1916 adds 27 passes and zero failures. Pass = same failing set.
+4. **Branch lock:** `src/core/dispatcher.py` + `src/ui/api/api_admin.py` (`LOCKED_AT_100`) — item 1 covers every new line/arc (`get_auto_thread_cap`, `set_auto_thread_cap`, `_auto_thread_cap_payload`, both routes). Zero-arg harness gate unreliable on this tip given item 3 baseline reds.
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/core/dispatcher.md`
+- `docs/test-bible/ui/api/api_admin.md`
+- `docs/test-bible/utils/config.md`

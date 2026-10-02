@@ -38,8 +38,8 @@ class TestEmitLlmCallDebug:
     def test_uses_logger_name_parameter(self) -> None:
         with patch.object(llm_ext_mod, "get_logger", return_value=MagicMock()) as mock_get:
             llm_ext_mod.emit_llm_call_debug(
-                logger_name="src.external.deepseek",
-                func_name="send_to_deepseek",
+                logger_name="src.external.llm_compat",
+                func_name="send_to_llm_compat",
                 prompt_label="t",
                 model="deepseek-v4-flash",
                 duration=1.0,
@@ -49,7 +49,7 @@ class TestEmitLlmCallDebug:
                 cache_creation_tokens=0,
                 output_total=1,
             )
-            mock_get.assert_called_once_with("src.external.deepseek", debug_flag=True)
+            mock_get.assert_called_once_with("src.external.llm_compat", debug_flag=True)
 
 
 class TestAst897ProviderBalanceRefusal:
