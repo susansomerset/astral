@@ -416,3 +416,12 @@ context_tokens≈52000
 
 context_tokens≈32000
 
+
+
+## Resolution
+
+2026-10-02. Resolved against Radia's review at `c25ee00c9`, which was CLEAN with no fix-now items.
+
+- **Discuss (publish ref is an epic rollup):** Susan had not answered, so I took Radia's `Default:`. The AST-1939 Manage Task modal removal and its plan, tests, and bible appear in this sub's `origin/dev…` diff only because `sync(ftr)` brought the merged sibling in from `origin/ftr/AST-1937-openrouter-support-models`. That is pipeline rollup for parent UAT. The modal work is credited to AST-1939, and AST-1938 makes no change to `AdminTaskPrompts.tsx`. AST-1938's own product commits are still only `src/utils/config.py` and `src/external/llm_compat.py`. Susan can reverse this by asking for scope-pure child subs. That would be a merge-child / ftr policy change, not a product fix here.
+- **Advisory (sibling tests and bible in diff):** no action. This is expected after `merge-tests` and the ftr sync on a shared parent.
+- **Product changes in resolve:** none.
