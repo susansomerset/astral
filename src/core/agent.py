@@ -48,7 +48,6 @@ from src.core.timesheets import record_timesheet_entry
 from src.external.anthropic import send_to_anthropic, getTimestampPrefix
 from src.utils.llm_external import (
     extract_api_response_text,
-    is_provider_balance_refusal,
     normalize_provider_error,
 )
 from src.external.llm_compat import send_to_llm_compat
@@ -1121,13 +1120,12 @@ def _apply_dispatch_chain_hop_failure(
             "batch_released": batch_released,
         }
     err_state = (task_config.get("error_state") or "").strip()
-    balance_hold = provider_failed and is_provider_balance_refusal(
-        {"failure_class": failure_class}
-    )
+    # Only a missing job / missing candidate_data is unrecoverable. Provider failures (balance
+    # or otherwise) hold the last happy state / hop label; the finally release below lets the
+    # next dispatch sweep reclaim and retry the hop. No retry cap by design.
     hard = bool(err_state) and (
         "Job not found" in error
         or "Missing candidate_data" in error
-        or (provider_failed and not balance_hold)
     )
     apply_error_state = False
     batch_released = False
@@ -1837,6 +1835,23 @@ def task_llm_server_id(task_key: str) -> str:
     """Catalog server behind task_key's agent model — dispatcher key gate (AST-1879)."""
     agent_row, _ = _resolve_task_prompts(task_key)
     return _agent_llm_route(agent_row)["server_id"]
+
+
+def task_llm_server_id_or_none(task_key: str) -> Optional[str]:
+    """task_llm_server_id, or None when the task has no LLM agent (AST-1944).
+
+    No agent_task row, empty agent_id, or the "telescope" sentinel → no model, no server to gate on.
+    Any other resolution failure (unknown real agent, missing model_id) still raises — a
+    misconfigured LLM task must stay loud.
+    """
+    try:
+        # Strict path first: the stage_email_meteorite mailbox fold resolves a real agent here.
+        return task_llm_server_id(task_key)
+    except ValueError:
+        row = get_agent_task(resolve_task_key_for_content(task_key))
+        if ((row or {}).get("agent_id") or "").strip() in ("", "telescope"):
+            return None
+        raise
 
 
 def _candidate_server_key(
