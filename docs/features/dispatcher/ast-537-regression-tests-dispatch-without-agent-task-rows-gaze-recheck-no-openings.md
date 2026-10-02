@@ -247,3 +247,7 @@ context_tokens≈12000
 ---
 
 `[code-rubric] PROCEED (Commit: 1c91606a2) Non-LLM gate clean`
+
+### Resolution — AST-1944
+
+docs-acceptance: product-only fix. The dispatcher fixture retarget, `[bug-repro]`, `"telescope"` sentinel assertions, AST-756 UAT fixture, and bible updates (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1945, stacked after this ticket on `ftr/AST-1943-non-llm-dispatch-key-gate`.
