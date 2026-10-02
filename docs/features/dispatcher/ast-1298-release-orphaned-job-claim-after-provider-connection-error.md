@@ -612,3 +612,74 @@ Single file, single function family: `src/core/agent.py`.
 
 context_tokens≈14000
 ```
+
+### Radia review-fix — AST-1941
+
+[code-rubric]
+**Ticket:** AST-1941
+**Publish ref:** `75baf6cc4dbf9e5dd302a5875ea25fd1ddd7c89f` (`origin/sub/AST-1940/AST-1941-hold-state-on-hop-provider-failure`)
+**Corpus:** (none cited — frozen Canon Scope empty on Linear description; plan-fix records the same)
+**Overall:** CLEAN
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — plan-fix § Bug: AST-1941: “No Canon Scope list on AST-1941 / AST-1940; no canon ids resolved for this pass.” No directive ids to score; roll-up from canon grades is vacuously clean. Fix-board Joan `[board-joan] CANON: OK` overlap narrative is context only, not a substitute frozen list. Off-list statutes named in Joan’s triage were not graded per review-child §5.3.)*
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan fix-board only; no `validate-plan` fix-mode canon table on this ticket)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out: `qa-fix` did not run; fix-board `TESTS: REVISE` test/bible work was split to gap sibling **AST-1942** (per spawn prompt). Do not score missing `[bug-repro]` on this tip.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-1298 AC1/AC3: provider failure on hop-label-true BUILD_ARTIFACTS clears `batch_id` (`finally` release; `batch_released: True`) | OK — `try`/`finally` release block unchanged; only `hard` predicate narrowed |
+| AST-1298 Stage 1: non-`ValueError` from `transition_job_state` cannot skip release | OK — inner `try`/`except ValueError` + `finally` release intact; hard paths still reach transition |
+| Hop-label-false defense-in-depth (`provider_failed` + job) unchanged | OK — L1110–L1121 untouched |
+| `Job not found` / `Missing candidate_data` → configured `error_state` + release | OK — sole `hard` conditions retained |
+| AST-897 balance refusal holds state and releases | OK — now same hold-and-release path as all provider failures (plan decision § Proposed change item 4) |
+| AST-1298 AC4 / AST-1191 debug trail (`do_task` provider-failure logging) | OK — no edits outside `_apply_dispatch_chain_hop_failure` hop-label-true predicate + import trim |
+| AST-1298 AC5 success path | OK — helper only on failure path |
+| Superseded AST-1298 AC2 (provider → `ERROR_BUILD_ARTIFACTS`) | OK — intentionally reversed per plan **What must still hold** |
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling test carry / board split:** Product diff is `src/core/agent.py` only (+ plan doc). Linear **Scope** still lists `tests/component/core/test_agent.py`; board **TESTS: REVISE** and Katherine’s **test-fix** comment document **six** expected `tests/component/core/test_agent.py` failures on this tip, owned by **AST-1942** — not a product defect on AST-1941. Treat AST-1941 as the product slice; do not route product `resolve-child` for those reds.
+- **Plan fidelity:** Matches plan-fix **Proposed change** (remove `balance_hold` / provider clause from `hard`, drop unused `is_provider_balance_refusal` import, keep `failure_class` in signature, hop-label-false branch byte-stable).
+
+### Notes
+
+- **Diff base:** `origin/ftr/AST-1940-hop-failure-preserve-state...origin/sub/AST-1940/AST-1941-hold-state-on-hop-provider-failure` — 2 files, +126/−5 (docs plan patch + 8-line product change).
+- **Canon Scope gap → ESCALATE:** not warranted (empty list is explicit; board cleared canon at F2).
+- **Chuckles post-review (§8):** **PROCEED** + **Normal** parent shape — mini-parent **AST-1940** with live `ftr/AST-1940-hop-failure-preserve-state` (not fix-lane **ORPHANED** / dev-seeded). → **Review Posted** → clean-review shortcut → **User Testing** (skip `resolve-child`). Do **not** use orphaned finish-up merge-to-`dev` path for this ticket.
+
+### What's solid
+
+- Minimal, surgical predicate change with inline comment tying hold-and-release to AST-596 / sweep retry intent.
+- Blast-radius call sites (`_close_hop_ledger` / `do_task`) and AST-1298 release belt left intact.
+
+context_tokens≈22000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 75baf6cc4dbf9e5dd302a5875ea25fd1ddd7c89f) product hold predicate
+```
