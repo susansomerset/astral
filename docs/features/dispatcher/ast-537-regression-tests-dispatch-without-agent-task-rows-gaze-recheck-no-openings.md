@@ -354,3 +354,15 @@ All paths below are Betty's (qa-fix).
 - `_resolve_task_prompts` strictness: the existing `do_task` / preview tests keep their raises, and the new agent tests assert that `task_llm_server_id_or_none` re-raises for unknown or misconfigured real agents.
 - No test asserts `"n/a"` as an accepted sentinel, because there is no transition window.
 - The test-tree and bible edits are Betty's. The engineer touches none of steps 1–7.
+
+### Joan fix-board — AST-1945
+
+```text
+[board-joan]  CANON: OK
+
+Registry skim (not R1–R7; no `docs/canon-index.md` on publish ref `origin/sub/AST-1943/AST-1945-non-llm-gate-tests`): scope is `tests/**`, `docs/test-bible/**`, and `docs/uat-fixtures/AST-756/expected-agent_task.json` only — no in-force statute or pattern amendment. `astral.seed.agent-tables-in-repo-json` already treats UAT fixture twins as non-authoritative mirrors; updating the AST-756 lockstep file’s 12 `"n/a"` → `"telescope"` literals to match repo seed on ftr is alignment, not a second source of truth. Bible rows documenting `task_llm_server_id_or_none`, the `real_server_gate` opt-out, and `[bug-repro]` non-LLM gate behavior describe product law already on ftr (AST-1944); they do not introduce new carve-outs. Plan pins tests to `("", "telescope")` only (no `"n/a"` transition coverage) — canon-neutral with Joan’s AST-1944 board note that dual-sentinel adoption was product/ops, not corpus REVISE.
+
+context_tokens≈12000
+```
+
+**Chuckles routing:** Betty TESTS: REVISE on this test-gap ticket → `qa-fix` lands all plan steps, including the `docs/uat-fixtures/AST-756/expected-agent_task.json` twin (Betty's offer accepted, keeping it to one ticket and one publish).
