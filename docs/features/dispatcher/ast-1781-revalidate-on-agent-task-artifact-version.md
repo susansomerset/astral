@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-1781 archived 2026-10-02 -->
+
+## Linear archive (AST-1781)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1781/revalidate-on-agent-task-artifact-version-dispatch-validation  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** katherine  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1766 — Dispatch Validation  
+**Blocked by / blocks / related:** parent: AST-1766
+
+### Description
+
+## What this implements
+
+Owns hooks: new current `agent_task` version → revalidate that `task_key` across candidates’ `dispatch_task` rows; new current candidate artifact version → revalidate related rows whose prompts reference that artifact’s tokens; both force AUTO off via the same empty-render path as #2. After #1 (and shares force-off behavior with #2). Does not own list UI.
+
+## Citations
+
+`astral.dispatch.entity-state-bound`, `patt.artifact.write-operative`, `stat.logging.warning`, `stat.logging.error`.
+
+## Scope
+
+- [X] `src/data/database.py` — after new current `agent_task` version, revalidate that `task_key` across `dispatch_task` rows (force AUTO off when empty-render)
+- [X] `src/core/candidate.py` — after candidate artifact current rotation, revalidate related `dispatch_task` rows (force AUTO off when empty-render)
+
+## Acceptance criteria
+
+- [X] 5\. A row that was AUTO on becomes AUTO off after list enrichment / revalidation once empty-render is true (persisted). **Fail:** `auto_mode` remains on after enrichment when the flag is true.
+- [X] 6\. Saving a new current `agent_task` version for a `task_key` revalidates every `dispatch_task` with that key and forces AUTO off on rows that now empty-render under the candidate-scoped predicate. **Fail:** AUTO stays on for a candidate whose candidate-scoped tokens now resolve empty after the version bump.
+- [X] 7\. Writing a new current candidate artifact version revalidates related `dispatch_task` rows (prompts that reference tokens backed by that artifact) and forces AUTO off when empty-render. **Fail:** AUTO stays on after the artifact rotate while a referenced candidate artifact token is blank.
+
+## Boundaries
+
+- [X] Does not own the predicate helper (sibling #1), list enrichment / Run API gates (sibling #2), or React (sibling #4).
+
+## Notes for planning
+
+After #1. Shares force-off behavior with #2 — call the same empty-render / force-off path; do not duplicate the predicate.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1766-dispatch-validation`, child `sub/AST-1766/AST-1781-revalidate-on-agent-task-artifact-version`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. List by task_key: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_list_dispatch_tasks_for_task_key`
+2. Force AUTO off blank first: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_revalidate_forces_auto_off_when_first_blank`
+3. Keep AUTO filled: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_revalidate_keeps_auto_when_first_filled`
+4. Job token alone: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_job_token_alone_does_not_force_off`
+5. save_agent_task hook: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_save_agent_task_version_triggers_revalidate`
+6. Artifact revalidate blank strengths: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_revalidate_for_artifact_forces_off_when_strengths_blank`
+7. Unbacked artifact key: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_revalidate_for_artifact_skips_unbacked_key`
+8. Other candidate untouched: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_revalidate_for_artifact_other_candidate_untouched`
+9. Candidate str-path hook: `tests/component/core/test_candidate.py::TestAst1781ArtifactRotateRevalidateHook`
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender   tests/component/core/test_candidate.py::TestAst1781ArtifactRotateRevalidateHook   -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/data/database/dispatch_tasks.md` — `39ec3c840d95701369cb5add7df3839d02f60d52`
+* `docs/test-bible/core/candidate.md` — `5ef559cdc5c1af94a71b9211f519445792615442`
+
+**Publish tip:** `origin/sub/AST-1766/AST-1781-revalidate-on-agent-task-artifact-version` @ `cbacd921`
+
+### Comments
+
+#### radia — 2026-09-23T01:55:58.264Z
+[code-rubric] PROCEED (Commit: cbacd921) revalidation hooks clean
+
+#### betty — 2026-09-23T01:52:30.340Z
+`origin/sub/AST-1766/AST-1781-revalidate-on-agent-task-artifact-version` @ `cbacd921` · revalidate AUTO manifest
+
+#### joan — 2026-09-23T01:42:28.368Z
+[plan-rubric] PROCEED (Commit: 0caf0c6b3b31ab7b720689372354f29346f136f9) revalidation hooks clean
+
+#### katherine — 2026-09-23T01:39:50.354Z
+`origin/sub/AST-1766/AST-1781-revalidate-on-agent-task-artifact-version` @ `0caf0c6b3b31ab7b720689372354f29346f136f9` · plan ready
+
+---
+
 # AST-1781 — Revalidate on agent_task + artifact version
 
 - **Linear:** https://linear.app/astralcareermatch/issue/AST-1781
