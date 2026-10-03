@@ -496,3 +496,56 @@ context_tokens≈32000
   - Lint: `py_compile` and `ruff check --select F,E9` are clean. ruff was not on the host; it ran from a throwaway `pip install --target /tmp/ruffenv ruff`, with no repo or system change.
 - **Git note:** the spawn prompts pass `--ftr AST-1946`, but the parent ref is `ftr/AST-1946-big-brain-openrouter`, so `sync-child.sh` skipped the ftr merge. That changed nothing here: ftr is at `22810969c`, this sub's base. `validate-sub-log.sh --stage=build` passes against the full ref name.
 - **For qa-child:** manifest stays on `tests/component/utils/test_config.py` and `tests/component/external/test_llm_compat.py` (option A). See **Tests expected to move**. `test_repo_admin_json.py`, `test_agent.py` and `test_api_admin.py` stay red until AST-1948.
+
+
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-1947
+**Publish ref:** `0d5db0f6f839bb2668f3c2b0cff7ef010f8857c3` (`origin/sub/AST-1946/AST-1947-catalog-quant-mode`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+(aligned) — Joan: `stat.logging.debug` **A**; diff review matches.
+
+## Frame diff
+- [ ] **AC 6 (shared):** After AST-1948 / UI sibling land on `ftr`, `rg` for `default_temperature`, the four removed helper names, and `temperature` in `AdminAgentPrompts.tsx` is empty across `src/` (Linear AC text; config half satisfied on this sub).
+- [ ] **AC 8 (shared):** `GET /api/admin/agents/models` returns **98** on `ftr` after AST-1948 (endpoint read path uses `resolve_model_brain(..., mode)`).
+- [ ] **AC 9 (shared):** No `0.2` / `0.6` mode-temperature literals in `src/core/agent.py`, `src/ui/api/api_admin.py`, or `src/data/database.py` after AST-1948.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+- **Severity:** discuss  
+  **Location:** Linear **Acceptance criteria** AC 6 vs plan **Verification** / Joan **Traceability**  
+  **Finding:** AC 6 still requires whole-`src/` greps (including `AdminAgentPrompts.tsx`) that cannot pass until siblings #2–#3; the shipped diff correctly limits itself to the config half (stored tiers clean, `config.py` grep empty, `infer_brain_setting_from_legacy_model_code` removed). Remaining hits on `origin/dev` call sites (`agent.py`, `api_admin.py`, `AdminAgentPrompts.tsx`) are unchanged in this three-dot diff and are expected under sequencing option A.  
+  **@susan:** Keep treating shared AC 6 bullets as **ftr gates** after #2/#3, or narrow the Linear AC wording to match option A?  
+  **Default:** Leave Linear AC as-is; do not reopen AST-1947 — validate full AC 6 on `ftr` after AST-1948 and the UI child merge.
+
+### advisory
+- **sibling test carry:** `tests/component/utils/test_config.py`, `tests/component/external/test_llm_compat.py`, `docs/test-bible/utils/config.md`, `docs/test-bible/external/llm_compat.md`, fixture swap `ast1937` → `ast1946_openrouter_brief.txt` — expected Betty `merge-tests` on this sub; not product scope bleed.
+- **Import / app boot:** `src.data.database` and sibling component tests (`test_agent.py`, `test_api_admin.py`, `test_repo_admin_json.py`) remain broken until AST-1948 — documented in plan **Sequencing gap**; spawn prompt confirms this is expected.
+- **Tip commit:** `0d5db0f6f` is `merge-tests(AST-1947)` atop Katherine’s two code stages; product delta vs `origin/dev` is `config.py`, seed, AST-756 fixture, and test/bible only — no `llm_compat.py`, `database.py`, `agent.py`, or admin/UI paths.
+
+## What's solid
+- **Plan fidelity:** 95-row `OPENROUTER_MODEL_TABLE`, quantization → single brain size, `_openrouter_pin` with `quantizations`, `AGENT_MODE_CONFIG` + required `mode` on `resolve_model_brain`, stored tiers without thinking/temperature, `kimi-k2.6-openrouter` removed, repo-JSON column `mode`, seed/fixture modes — all match the issue doc stages.
+- **stat.logging.debug:** No new `logger.*` in `config.py`; `llm_compat.py` untouched — existing ungated `logger.debug` on `api_kwargs` / response still carries resolver-derived thinking, temperature, and pin (no `debug=` parameter added).
+- **Spot checks on workspace tree:** `validate_llm_provider_environment()` passes; `len(LLM_MODEL_CONFIG)==98`; stored-tier scan finds no `thinking` / `thinking_params` / `default_temperature`; mode wiring spots (glm Creative, mythomax cap 3686, invalid `Wild` → `ValueError`) behave as specified.
+
+## Recommended actions (downstream — not Radia)
+- Chuckles: append this artifact to the issue doc, commit `docs(AST-1947): Radia review — clean`, push, post slim upshot `--as radia`, move **Review Posted** → datt **PROCEED** path (no fix-now).
+- **resolve-child:** No canon fix-now; optional frame-diff ticks above are **ftr** checklist items, not this sub’s resolve work unless Susan narrows AC 6 in Linear.
+- After AST-1948 merges to `ftr`: run full AC 6/8/9 greps and admin models count before parent UAT.
+
+context_tokens≈28000
+```
