@@ -10,6 +10,16 @@ The agent row stops carrying `brain_setting` / `mode` and gains seven plain, opt
 
 Every file below is named in this ticket's `## Scope`. Tests and bibles listed there are Betty's (`qa-child`) — no test-tree edits here.
 
+## AC boundaries (checks this sub cannot close alone)
+
+| AC | Check | Closed here by | Closes on ftr after |
+|----|-------|----------------|---------------------|
+| 5 | `rg … src/` returns nothing | Stage 1 + Stage 2 Done-when `rg` over `config.py` / `database.py` | AST-1956 (`agent.py`, `llm_compat.py`) and AST-1957 (`api_admin.py`, `AdminAgentPrompts.tsx`) — per ticket **Boundaries** |
+| 6 | Model ids per SKU; old ids gone | Stage 1 step 8 + Done-when | — (closes here) |
+| 6 | **Stubbed client:** agent on `deepseek-v4-pro` with `max_tokens: 384000` sends `max_tokens == 384000` | **N/A on this sub.** The stubbed Anthropic SDK client is driven through `agent.do_task` → `llm_compat`, and AST-1956 rewrites that call path against `resolve_agent_settings`. This sub's part of the check: `resolve_agent_settings("deepseek-v4-pro", …)` returns `tier["max_tokens_floor"] is None` and `tier["default_max_tokens"] == 16000` (Stage 1 step 8), so nothing in the catalog raises or lowers an agent's own `max_tokens`. Betty can assert those two values in `tests/component/utils/test_config.py` on this sub. | AST-1956 — the wire assertion lives with the call-path tests (`test_llm_compat.py` / `test_agent.py`, Betty's manifest for AST-1956 or the ftr rollup) |
+| 7 | Default output budget | Stage 1 step 11 expected results | — (closes here) |
+| 8 | Seed carries the settings; fixture field-for-field; revert succeeds | Stage 3 | Revert-from-seed test collection — see **Sequencing risk** |
+
 ## Files Changed (planned)
 
 | File | Change | Layer |
@@ -373,7 +383,9 @@ All edits in `src/data/database.py` (shell-edit — see Editor note). `src/data/
 
 2. **`docs/uat-fixtures/AST-756/expected-agent.json`** (6 rows, `model_code`-keyed). For each row: delete `brain_setting` and `mode`; add `quantization: null`, `provider_allow_fallbacks: true`, `provider_only: null`, `provider_ignore: null`, `provider_sort: null`, `reasoning_effort: null`, and `temperature` = `0.2` where `mode` was `Deterministic` (`job_analyst_grace`, `web_scraper_laslo`, `college_intern_ruth`) and `0.6` where it was `Creative` (`ats_expert_atlas`, `content_writer_judith`, `principal_recruiter_estelle`). All its models are Claude SKUs, which could not think. `model_code`, `content`, `max_tokens`, `updated_at` and row order are unchanged. Serialize with `json.dumps(rows, indent=2, ensure_ascii=True, sort_keys=True) + "\n"` (the file's current format).
 
-   ⚠️ **Decision:** the fixture gets the same column add/drop as the seed, and its stale content and `model_code` stay as they are. That's the AST-1947 precedent (`131911492` edited both files' columns only). Its `model_code` values are already per-SKU Claude ids. If Joan or Susan read AC 8's "matches field-for-field" as "rebuild the fixture as a copy of the seed", that's a revision to this step.
+   ⚠️ **Decision:** the fixture gets the same column add/drop as the seed, and its stale content and `model_code` stay as they are. That's the AST-1947 precedent (`131911492` edited both files' columns only). Its `model_code` values are already per-SKU Claude ids.
+
+   **AC 8 "matches field-for-field" means, in this plan:** every fixture row carries the same seven settings fields as the seed, with values set by the same Functional scope 8 rule, and neither file has `brain_setting` or `mode`. It does **not** mean row parity with the 7-row seed: the fixture stays at 6 rows, keeps its `model_code` key, and keeps its stale `content`, as it has since AST-1947. If Susan wants the fixture rebuilt as a copy of the seed (7 rows, `model_id`, current content), this step changes to "write the seed rows, sorted keys, to the fixture" and needs a revision.
 
 3. Validate both files parse (`python3 -m json.tool` on each), then run the **Done when** checks.
 
@@ -384,6 +396,12 @@ Removing `resolve_model_brain` breaks the imports in `src/core/agent.py` and `sr
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Revisions
+
+Revision 1 — 2026-10-03
+Driven by: Joan `[plan-discuss] round=1 concern` (`99b70f203`) — fix-now: AC 6 stubbed-client check unmapped; discuss: AC 8 "field-for-field" meaning.
+Changes: Added **AC boundaries** after Scope gate. It maps AC 5–8, marks AC 6's stubbed-client `max_tokens` wire check N/A on this sub (closes with AST-1956's call path), and names this sub's catalog-side part of that check (`deepseek-v4-pro`: no floor, default 16000). Stage 3 step 2 now defines "field-for-field" as same settings fields and same value rule, not row parity with the seed, and names the exact change if Susan wants a seed copy instead. No stage steps, files or estimate changed.
 
 ## Joan validate
 
