@@ -292,7 +292,7 @@ context_tokens≈56000
 
 ## Frame diff
 - [ ] **Operator:** After AST-1946 deploy on each environment, run `python scripts/migrations/remap_openrouter_agents.py` (dry run), then `--apply` once; document in runbook that there is no `--db` flag (uses app `_get_connection`).
-- [ ] **Snapshot closure (build-time):** Before first production apply, confirm `REMAP ∪ REMOVED` equals 76 pre-epic OpenRouter ids from `origin/dev:src/utils/config.py` (plan § Verification step 2; not in component test once epic lands on `dev`).
+- [x] **Snapshot closure (build-time):** Before first production apply, confirm `REMAP ∪ REMOVED` equals 76 pre-epic OpenRouter ids from `origin/dev:src/utils/config.py` (plan § Verification step 2; not in component test once epic lands on `dev`).
 
 ## Findings
 
@@ -327,3 +327,13 @@ context_tokens≈56000
 - **No resolve-child** unless Susan wants runbook rows in Frame diff copied into Description.
 
 context_tokens≈18000
+
+## Resolution
+
+- **Date:** 2026-10-03. **Reviewed tip:** `41d48e82f` (review commit `97a719b98`). No product change in resolve.
+- **Fix-now:** none.
+- **Discuss (removed-model rows still get a starting `mode`):** no Susan answer in thread, so Radia's `Default:` applies. Behavior kept: model and size untouched, mode filled, and stdout prints `removed model: … left as-is`.
+- **Discuss (`_get_connection` seam, no `--db` flag):** Radia's `Default:` applies. Kept. The CLI writes to the app's own DB, so operators must run `--apply` only on the intended environment.
+- **Frame diff, snapshot closure:** ticked. Rechecked on this tip: `REMAP ∪ REMOVED` equals the 76 OpenRouter ids in `origin/dev:src/utils/config.py`.
+- **Frame diff, operator run:** left unchecked on purpose. It is a post-deploy step (dry run, then `--apply` once per environment) for finish-up / ops, not something this sub can validate.
+- **Advisory:** nothing to act on. The noisy `removed model:` line on an idempotent rerun is intentional and locked by `test_second_apply_changes_nothing`.
