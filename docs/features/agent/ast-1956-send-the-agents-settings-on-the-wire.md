@@ -288,3 +288,66 @@ context_tokens≈65000
 - **Branch:** `sub/AST-1953/AST-1956-send-settings-on-wire`
 - **Build commits:** `fbcf088ae` (Stage 1 clients) · `04533705b` (Stage 2 core)
 - **Build notes:** both stages executed as written; each stage's Done-when stub script printed `OK`, `import src.core.agent` succeeds, and both `rg` checks return nothing. Ruff `F` counts on the three files are unchanged from baseline (pre-existing only). No deviations.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1956  
+**Publish ref:** `7aa622ec786afd3883d030719f7bdd1ab471e302` (`origin/sub/AST-1953/AST-1956-send-settings-on-wire`)  
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.dispatch-retry | A | | |
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan validate: `patt.task.dispatch-retry` A, `stat.logging.debug` A.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `git diff origin/dev...origin/sub/AST-1953/AST-1956-send-settings-on-wire`
+- **Finding:** Three-dot diff vs `origin/dev` includes stacked AST-1955 / AST-1957 / AST-1958 product, seed, UI, migration script, and sibling tests/bible. AST-1956 engineer commits touch only `src/external/anthropic.py`, `src/external/llm_compat.py`, and `src/core/agent.py` (`fbcf088ae`, `04533705b`).
+- **Recommendation:** Score wire/routing work on those three files; treat the rest as sibling publish carry.
+
+- **Location:** Wire contract — `thinking_off_params` in `LLM_SERVER_CONFIG`
+- **Finding:** `llm_compat` no longer reads `server["thinking_off_params"]`; config key remains unused (plan defers to AST-1955 / optional later cleanup).
+- **Recommendation:** Optional Chuckles/config hygiene later; not blocking this sub.
+
+- **Location:** **Sequencing note** / stacked tip
+- **Finding:** This publish ref also carries AST-1957 (`api_admin` already on `resolve_agent_settings`), so `import src.core.agent` and much of `tests/component/core/` can collect here; parent AC 5’s full-`src/` `rg` still closes on ftr rollup.
+- **Recommendation:** None on AST-1956 tip.
+
+- **Location:** Estimate confirm **3**
+- **Finding:** Two client stages + core routing/debug align with confirmed points.
+- **Recommendation:** None.
+
+## What's solid
+
+- **Stage 1:** `_effort_body` matches plan; `send_to_anthropic` omits `temperature` when `None` and merges effort via `extra_body`; `llm_compat` drops tier thinking/pin assembly and sends temperature, `_effort_body(reasoning_effort)`, and `provider` with correct merge order. `llm_compat` diff does not alter `classify_provider_*` / failure envelopes (AC 4 / `patt.task.dispatch-retry`).
+- **Stage 2:** `_agent_llm_route` → `resolve_agent_settings`; craft rubric guard uses `reasoning_effort: "none"`; `_send_to_server` forwards `reasoning_effort` to Anthropic; `do_task` debug line includes `temp=%s, effort=%s`; `run_adhoc` gains matching callee-in debug. Done-when legacy-symbol `rg` clean on the three product files.
+- **AC map:** Betty’s `TestAst1956SettingsOnTheWire` covers debug `temp=None`, route/settings passthrough, craft guard, and parent AC 6 wire (`deepseek-v4-pro` + `max_tokens: 384000` unchanged on send).
+- **`stat.logging.debug`:** New/updated `logger.debug` callee-in lines are not gated with `if debug`; existing `Response from _send_to_server` retained.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-1956): Radia review — clean`, push publish ref, post slim upshot `--as radia`, **Review Posted** → **User Testing** per datt.
