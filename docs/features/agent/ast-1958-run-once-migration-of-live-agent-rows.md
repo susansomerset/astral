@@ -276,3 +276,9 @@ Confirm Chuckles estimate: 2 — agree
 - **Recommendation:** None.
 
 context_tokens≈58000
+
+## Review
+
+- **Branch:** `sub/AST-1953/AST-1958-migrate-agent-settings`
+- **Build commits:** `1960e4902` (Stage 1 migration script; AST-1950 script deleted)
+- **Build notes:** Stage 1 executed as written: script extracted verbatim from the plan block, compiled, `ruff check` clean, step 4 hand check on a temp SQLite DB matched every row of the expected table (dry run left rows and columns untouched; `--apply` dropped `brain_setting` / `mode`; second run reported nothing to migrate). No deviations. `tests/component/scripts/test_remap_openrouter_agents.py` and its bible are Betty's to delete (see **Sequencing**).
