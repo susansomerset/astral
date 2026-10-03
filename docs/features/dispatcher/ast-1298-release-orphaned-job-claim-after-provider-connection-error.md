@@ -784,3 +784,75 @@ All edits in Betty's tree. Every other test in both classes stays byte-for-byte.
 
 context_tokens≈18000
 ```
+
+### Radia review-fix — AST-1942
+
+[code-rubric]
+**Ticket:** AST-1942
+**Publish ref:** `48c4881a0bd4a7a180823bf207538282de98eec2` (`origin/sub/AST-1940/AST-1942-flip-hop-provider-failure-tests`)
+**Corpus:** (none cited — frozen Canon Scope empty on Linear description; plan-fix § Bug: AST-1942 records the same)
+**Overall:** CLEAN
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — plan-fix: “No Canon Scope list on AST-1942.” No directive ids to score; roll-up vacuously clean. Fix-board Joan `[board-joan] CANON: OK` only.)*
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan fix-board only; no `validate-plan` fix-mode canon table)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — Designated node `TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases` (qa-fix commit `779fae307`, Betty `[bug-repro]` Linear thread, bible § AST-1942 manifest). The body is not tautological: it calls `_apply_dispatch_chain_hop_failure` with hop-label-true ctx, `provider_failed=True`, and `failure_class="provider_call_timeout"`, then pins AST-1941 **To-be** with `assert out == {"apply_error_state": False, "error_state": "", "batch_released": True}`, `transition.assert_not_called()`, and `release.assert_called_once_with("job-1191")`. That fails on pre-fix product (transition + `apply_error_state` True / `ERROR_BUILD_ARTIFACTS`), which Betty and Katherine documented via temporary `origin/dev` `src/core/agent.py` checkout. Katherine’s test-fix comment confirms red→green on that node.
+
+**advisory (process, not assertion weakness):** The repro test has no first-line `# [bug-repro]` comment inside `test_agent.py` (unlike some older nodes); identification lives in bible + qa-fix Linear. Optional hygiene only.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| AC1: repro red on `origin/dev` `agent.py`, green on tip with AST-1941 fix | OK — test + qa-fix/test-fix evidence; stacked tip carries `75baf6cc` via `ftr` ancestry |
+| AC2: non-`ValueError` path still releases when transition raises | OK — `error="Job not found"`, `pytest.raises(RuntimeError)`, transition once + release once unchanged |
+| AC3: balance-hold, hop-label-false, `Missing candidate_data` tests untouched | OK — not in diff; only six nodes + class docstring |
+| AC4: no product code on this ticket | OK — `git diff origin/ftr/...origin/sub/...1942 -- src/**` empty; delta is `test_agent.py`, `agent.md`, plan doc |
+| AC5: six AST-1941 nodes green; only 40 pre-existing baseline failures remain | OK — per Katherine test-fix vs ftr baseline (0 new failures) |
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Plan fidelity:** Diff matches plan-fix **Proposed change** items 1–9 (rename + five `assert_not_called` flips, hard-string repoint + comment, bible prose/rows, AST-1942 manifest paragraph in bible).
+- **Cross-ticket:** Test/bible-only gap for AST-1941; no sibling **product** scope in diff.
+- **Sibling test carry:** N/A (this ticket owns the REVISE gap).
+- **40 baseline failures:** Pre-existing ftr/env nodes — out of scope per plan; not a finding on AST-1942.
+
+### Notes
+
+- **Diff base:** `origin/ftr/AST-1940-hop-failure-preserve-state...origin/sub/AST-1940/AST-1942-flip-hop-provider-failure-tests` — 3 files, +115/−17 (tests + bible + plan patch).
+- **Chuckles post-review (§8):** **PROCEED** + **Normal** mini-parent **AST-1940** (`ftr` present). → **Review Posted** → clean-review shortcut → **User Testing** (skip `resolve-child`). Not orphaned dev-merge path.
+
+### What's solid
+
+- Repro is apply-level (fast, direct helper) with a full outcome dict, not “no exception” hand-waving.
+- `test_apply_transition_non_value_error_still_releases` correctly preserves AST-1298 Stage 1 by driving a **hard** string after AST-1941 narrowed `hard`.
+- Bible rows and prose stay aligned with AST-1941 product semantics.
+
+context_tokens≈24000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 48c4881a0bd4a7a180823bf207538282de98eec2) tests bible gap closed
+```

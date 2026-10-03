@@ -1,3 +1,87 @@
+<!-- linear-archive: AST-1559 archived 2026-10-02 -->
+
+## Linear archive (AST-1559)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1559/check-inbox-monitoring-log-meteorite-ingress-staging-table  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1555 — Meteorite ingress: staging table + inbox/meteorite consolidation  
+**Blocked by / blocks / related:** parent: AST-1555; blocks: AST-1562
+
+### Description
+
+## What this implements
+
+After #1 and #2: `meteorite.check_inbox` — aliases → fetch → inline classify → fan-out N rows → archive on success → last-check stamp; always-on info monitoring helper + config format SSOT. Rehomes `meteorite_email` runner shell (file may still exist until #6). No unbound Trash hygiene. Does not own scrape/land transitions or Estelle.
+
+## Citations
+
+## Scope
+
+## Acceptance criteria
+
+- [X] A successful classify of one email that yields N jobs creates exactly N `meteorite` rows and archives the Gmail mid once; a classify LLM failure leaves the mid in inbox and creates zero rows.
+- [X] `not_job_content` (and other no-job classify outcomes) produce no `meteorite` row and no job; the always-on info monitoring line records the email + outcome.
+
+## Boundaries
+
+- [X] Does not own sibling slices: #1 meteorite table + claim helpers, #2 inbox candidate verbs + Manage Email filter, #4 stage / scrape / land transitions, #5 BOT_BLOCKED Estelle recovery + apply_paste, #6 Retention sweep + delete meteorite_email.
+
+## Notes for planning
+
+Citations and Scope above are authoritative for plan-child. Parent: AST-1555.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/AST-1555/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst1559CheckInbox`
+2. `tests/component/core/test_candidate.py::TestAst1559EmailAliasesForCandidate`
+3. `tests/component/utils/test_config.py::TestAst1559MonitoringConfig`
+4. `tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne`
+5. Revised: `TestAst1090GazeEmailRunnerConfig`, `TestAst1140GazeEmailSelectedConfig`, `TestAst1140RunMeteoriteEmailSelectedIds`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1559CheckInbox \
+  tests/component/core/test_candidate.py::TestAst1559EmailAliasesForCandidate \
+  tests/component/utils/test_config.py::TestAst1559MonitoringConfig \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  tests/component/core/test_meteorite_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
+  -q
+```
+
+**Bible shasums (publish tip):**
+
+* `docs/test-bible/core/meteorite.md`: b1e98dc9df565d078204099fa727cbadafd409e7f3ceaf19692ffb6c5d4575fb
+* `docs/test-bible/core/candidate.md`: de256de68dbbf745f41a639525dab32e95dfa65445eb3cec5deb289395325ee0
+* `docs/test-bible/core/dispatcher.md`: 9bbaec6e8484b0f2c91cf18de3f66c1e9a213351803e1dad9682ebd119fb861e
+* `docs/test-bible/core/meteorite_email.md`: c0fa776d35de4ad621324efca98cc60216d792d533c63df90fced0e6d955367d
+* `docs/test-bible/utils/config.md`: 14a97428a6a5c8787da81bc0b68aa91db90ef4bf773092246a37110e759ceaa3
+
+**Tests SHA: **`1dba5bf5` · **Sub tip: **`c8e5506a` (`merge-tests(AST-1559): origin/tests 1dba5bf5`)
+
+### Comments
+
+#### radia — 2026-08-31T23:18:23.975Z
+[code-rubric] REVIEW (Commit: c8e5506a) check_inbox faithful; Avail discuss
+
+#### betty — 2026-08-31T23:16:00.045Z
+`origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log` @ `c8e5506a` · check_inbox tests ready
+
+#### joan — 2026-08-31T23:01:59.568Z
+[plan-rubric] PROCEED (Commit: f55dab146b11fd5a084240d6f1de58a4853c75e1) check_inbox plan ready
+
+#### katherine — 2026-08-31T23:00:26.083Z
+`origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log` @ `f55dab146b11fd5a084240d6f1de58a4853c75e1` · check_inbox plan ready
+
+---
+
 # AST-1559 — check_inbox + monitoring log
 
 **Linear:** [AST-1559](https://linear.app/astralcareermatch/issue/AST-1559/check-inbox-monitoring-log-meteorite-ingress-staging-table-inboxmeteorite-consolidation)  

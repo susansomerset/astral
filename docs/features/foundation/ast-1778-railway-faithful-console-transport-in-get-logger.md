@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-1778 archived 2026-10-02 -->
+
+## Linear archive (AST-1778)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1778/railway-faithful-console-transport-in-get-logger-logging-levels  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1777 — Logging levels  
+**Blocked by / blocks / related:** parent: AST-1777
+
+### Description
+
+## What this implements
+
+Owns the `src/utils/logging.py` console handler/formatter change: stdout for product logs; Railway-env structured JSON with correct `level` mapping; plain format off-Railway; DB handler and DB-failure stderr left alone. Does **not** own Telescope logging, gunicorn, or call-site level rewrites.
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.info`, `stat.logging.warning`, `stat.logging.error`
+
+## Scope
+
+`src/utils/logging.py` — **modified** — sole platform console/DB logging facade; owns handler stream choice, Railway-structured console emit, and formatter apply path. / `src/utils/logging.py` / console setup — **modified**: stop defaulting the stdlib console handler to stderr; attach (or reconfigure) the console handler to **stdout** for product `get_logger` output. / `src/utils/logging.py` / Railway console emit — **new**: when a Railway environment signal is present (e.g. `RAILWAY_ENVIRONMENT`), emit one JSON object per line on stdout with at least `message` and `level` (Railway’s `debug`/`info`/`warn`/`error` vocabulary, mapping Python `WARNING`→`warn`); when that signal is absent, keep today’s plain `LEVEL name: message` text on stdout. / `src/utils/logging.py` / `_apply_console_formatter` — **modified**: keep applying the plain formatter only to non-DB console handlers in the non-Railway path; do not restyle the DB handler or the intentional DB-failure stderr writes. / `src/utils/logging.py` / `_DatabaseLogHandler` + `_db_handler_stderr` — **unchanged behavior**: DB buffer/flush and last-resort stderr failure lines remain; those stderr lines may still appear as Railway error (correct — they are transport failures).
+
+## Acceptance criteria
+
+1. On a Railway deploy after this lands, a deliberate `logger.info(...)` from a `get_logger` call site appears in Log Explorer with Railway severity **info** (not error). Fail: that line still filters under `@level:error` only / shows as error while the message text says `INFO`.
+2. On the same deploy, a deliberate `logger.warning(...)` appears with Railway severity **warn**. Fail: the line is severity error or info while the Python level was WARNING.
+3. On the same deploy, a deliberate `logger.error(...)` (or `exception`) appears with Railway severity **error**. Fail: the line is missing from `@level:error` or is only findable as info.
+4. Off-Railway local console for the same call sites still prints the pre-existing plain shape matching `LEVEL name: message` (grep-able; not required to be JSON). Fail: local `flask`/dispatcher console output is JSON-only or still bound to stderr for ordinary info lines.
+5. `app_log` rows for the same emits still store level / logger_name / message as today (no schema or column-semantics change). Fail: DB handler dropped, level column wrong, or message format for DB rows changed as part of the console work.
+6. Grep gate: no new product call site under `src/` starts using raw `logging.getLogger` / `print` for this fix — console changes live in `src/utils/logging.py` only. Fail: `rg -n 'logging\.getLogger|basicConfig' src/ --glob '!utils/logging.py'` shows new product emit paths added by this epic.
+
+## Boundaries
+
+Does not own Telescope `service/telescope/logging_util.py`, gunicorn/access/third-party loggers, call-site level rewrites, or Execution History UI filters.
+
+## Notes for planning
+
+Citations: `stat.logging.debug`, `stat.logging.info`, `stat.logging.warning`, `stat.logging.error`. Transport-only change inside the existing logging facade.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1777-logging-levels`, child `sub/AST-1777/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1777/AST-1778-railway-faithful-console-transport-in-get-logger` @ `859f46e9` (`merge-tests(AST-1778): origin/tests fad56323750d81c24fd3e041077553fc6232c0e6`)
+
+**Scope:** Railway-faithful console transport in `src/utils/logging.py` — stdout; JSON `level`+`message` when `RAILWAY_ENVIRONMENT` set; plain off-Railway; DB handler unchanged.
+
+ 1. Railway level map — `TestAst1778RailwayConsoleTransport::test_railway_json_formatter_maps_levels`
+ 2. stderr → stdout — `…::test_ensure_repoints_stderr_handler_to_stdout`
+ 3. Formatter env branch — `…::test_apply_formatter_switches_on_railway_env`
+ 4. Off-Railway plain — `…::test_off_railway_emit_is_plain_stdout_shape`
+ 5. On-Railway JSON warn — `…::test_on_railway_emit_is_json_with_level`
+ 6. DB hold on Railway — `…::test_db_buffer_levels_unchanged_when_on_railway`
+ 7. Plain formatter regression — `TestConsoleFormat`
+ 8. DEBUG persistence regression — `TestAst979DebugLevelPersistence`
+ 9. Batch summary regression — `tests/component/utils/test_logging_batch.py`
+10. AC6 grep gate: `rg -n 'logging\.getLogger|basicConfig' src/ --glob '!utils/logging.py'` (no new product emit paths vs this tip)
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/utils/test_debug_logging.py::TestAst1778RailwayConsoleTransport \
+  tests/component/utils/test_debug_logging.py::TestConsoleFormat \
+  tests/component/utils/test_debug_logging.py::TestAst979DebugLevelPersistence \
+  tests/component/utils/test_logging_batch.py \
+  -q
+```
+
+**Pass criterion:** pytest green on 1–9 + AC6 grep clean — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/utils/debug_logging.md`: `d42b845c4319c120467090f346405436916004e297ebfdff77fc4f86c118a351`
+
+### Comments
+
+#### radia — 2026-09-22T21:17:06.405Z
+[code-rubric] PROCEED (Commit: 859f46e9) Transport faithful; canon clean
+
+#### betty — 2026-09-22T21:14:05.568Z
+`origin/sub/AST-1777/AST-1778-railway-faithful-console-transport-in-get-logger` @ `859f46e9` · Railway console transport tests
+
+#### joan — 2026-09-22T21:04:14.146Z
+[plan-rubric] PROCEED (Commit: e498799d) Transport plan faithful
+
+#### ada — 2026-09-22T21:02:13.398Z
+`origin/sub/AST-1777/AST-1778-railway-faithful-console-transport-in-get-logger` @ `e498799d4e121fe159ab258269e2e3b335f04156` · plan ready transport
+
+---
+
 # AST-1778 — Railway-faithful console transport in get_logger
 
 - **Linear:** [AST-1778](https://linear.app/astralcareermatch/issue/AST-1778)

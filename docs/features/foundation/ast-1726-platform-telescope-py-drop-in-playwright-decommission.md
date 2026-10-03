@@ -1,3 +1,125 @@
+<!-- linear-archive: AST-1726 archived 2026-10-02 -->
+
+## Linear archive (AST-1726)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1726/platform-telescopepy-drop-in-and-playwright-decommission-astral  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** chuckles  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1721 — Astral Telescope — stateless headless-scraping microservice (per-URL)  
+**Blocked by / blocks / related:** parent: AST-1721; blocks: AST-1727
+
+### Description
+
+## What this implements
+
+Add `src/external/telescope.py` as the **full** drop-in port of today's `playwright.py` (same public names/params for core's import surface; HTTP pool dispatch + retry + env bearer for headless scrape paths; **all** former non-browser / post-render helpers — cull, delimiter splits, extract-from-HTML, etc. — live in this same file for Surfer reuse; no `page_parse.py`); delete `src/external/playwright.py`; change `roster.py` / `gazer.py` / `meteorite.py` import module path only; add Telescope pool/auth/timeout/concurrency keys in config; pin platform HTTP client in root requirements and drop platform Firefox launch deps. After #1. Does not own Railway service deploy or CI import fence (#3). Does not build Surfer.
+
+## Citations
+
+`patt.entity.batch-processing`; `patt.entity.batch-criteria`; `stat.logging.error`; `stat.logging.warning`; `stat.logging.info`; `stat.logging.debug`; new-pattern flag `patt.external.web-scraping-via-telescope` (pending Archie)
+
+## Scope
+
+- [X] `src/external/telescope.py` — **new** — full drop-in replacement for `playwright.py`: same public names/params; HTTP client for headless scrape surfaces; **all** former non-browser / post-render helpers live in this same file (Surfer-ready shared processing); no in-process Firefox.
+- [X] `src/external/playwright.py` — **deleted** — fully decommissioned; no thin-client leftover under this name.
+- [X] `src/core/roster.py` — **modified** — import module path `playwright` → `telescope` only; no call-site shape changes.
+- [X] `src/core/gazer.py` — **modified** — same import-path-only rewire.
+- [X] `src/core/meteorite.py` — **modified** — same import-path-only rewire.
+- [X] `src/utils/config.py` — **modified** — Telescope base URL(s), env bearer token key, client timeout, platform in-flight pool semaphore / per-node caps, and Telescope-facing defaults that must not live as literals in callers; drop or stop using `RAILWAY_CONFIG["playwright_browsers_path"]` once platform Firefox is gone.
+- [X] `requirements.txt` — **modified** — add direct `httpx` for the platform Telescope client; drop platform Playwright browser runtime needs once no process launches Firefox.
+- [X] `scripts/build_railway.sh` — **modified** — remove `PLAYWRIGHT_BROWSERS_PATH` export and `playwright install --with-deps firefox`.
+- [X] `scripts/setup_dev.sh` — **modified** — remove `"$VENV/bin/python" -m playwright install firefox`.
+- [X] `scripts/start_server.py` — **modified** — remove the `RAILWAY_CONFIG["playwright_browsers_path"]` → `PLAYWRIGHT_BROWSERS_PATH` env seed.
+
+## Acceptance criteria
+
+- [X] Parent AC 4 (cull default via platform helper)
+- [X] Parent AC 6 (playwright gone / no platform Firefox)
+- [X] Parent AC 7 (drop-in API)
+- [X] Parent AC 8 (shared post-render helpers in src)
+- [X] Parent AC 9 (platform points at separate host)
+- [X] Parent AC 13 (no Surfer build)
+
+## Boundaries
+
+- [X] Does not own Telescope service (#1) or Railway/CI (#3). Does not build Surfer extension.
+
+## Notes for planning
+
+`patt.entity.batch-processing`; `patt.entity.batch-criteria`; `stat.logging.error`; `stat.logging.warning`; `stat.logging.info`; `stat.logging.debug`; new-pattern flag `patt.external.web-scraping-via-telescope` (pending Archie)
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Classification:** Broken/obsolete (playwright → telescope retarget) + Gaps (HTTP pool / cull / TELESCOPE_CONFIG). Existing: roster infra prefix + readiness wiring (revised). Integration drift: none.
+
+1. `tests/component/external/test_telescope.py` — drop-in helpers, classifier (+ telescope_timeout), get_page PageHandle, HTTP pool failover/timeout/bearer, cull default, playwright module gone
+2. `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` — trimmed PLAYWRIGHT_CONFIG (no Firefox launch keys)
+3. `tests/component/utils/test_config.py::TestAst1726TelescopeConfig` — TELESCOPE_CONFIG + no playwright_browsers_path
+4. `tests/component/core/test_roster.py::TestAst689ScrapeReadiness` — wait_ready ready / empty (Telescope client)
+5. `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class` — import telescope; `[playwright:…]` prefix unchanged
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_telescope.py \
+  tests/component/utils/test_config.py::TestAst853PlaywrightConfig \
+  tests/component/utils/test_config.py::TestAst1726TelescopeConfig \
+  tests/component/core/test_roster.py::TestAst689ScrapeReadiness \
+  tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible:** `docs/test-bible/external/telescope.md` (canonical); `playwright.md` retired pointer; AST-1726 notes on roster/config; `LOCKED_AT_100` → `src/external/telescope.py`
+
+**Bible shasum** (`origin/sub/AST-1721/AST-1726-platform-telescope-py-drop-in-playwright-decommission`):
+
+* `docs/test-bible/external/telescope.md` — `0f24d59952b849feff44380f85e8b564add29acf`
+* `docs/test-bible/external/playwright.md` — `b4061f181354d7d9577f18dc06984653bf0fda95`
+* `docs/test-bible/core/roster.md` — `701e1ad703bc68961b5d03b1da0de8f4b1554c65`
+* `docs/test-bible/utils/config.md` — `6966d6014a1847bda00c8a130b0f41e1ddcf127a`
+* `docs/test-bible/README.md` — `e0865243163eaf72b311e9d0e85f996a06f372bd`
+
+### Comments
+
+#### radia — 2026-09-20T05:44:27.318Z
+[code-rubric] PROCEED (Commit: 8fcb5cc6e4e085cec7955b7e9a0cb999009e7730) Platform drop-in canon-clean
+
+#### betty — 2026-09-20T05:41:44.877Z
+`origin/sub/AST-1721/AST-1726-platform-telescope-py-drop-in-playwright-decommission` @ `8fcb5cc6` · telescope drop-in tests
+
+#### joan — 2026-09-20T05:33:02.291Z
+[plan-rubric] PROCEED (Commit: 0ee051dec110ebb320b024df35912f61af7c1290) Drop-in port plan sound
+
+#### hedy — 2026-09-20T05:31:08.680Z
+`origin/sub/AST-1721/AST-1726-platform-telescope-py-drop-in-playwright-decommission` @ `0ee051dec110ebb320b024df35912f61af7c1290` · plan ready drop-in
+
+#### hedy — 2026-09-20T05:29:11.160Z
+[scope-gate] Cannot finish Plan Ready without Scope rows for platform Firefox uninstall scripts.
+
+Needed files / change kinds (not in ticket ## Scope today):
+1. `scripts/build_railway.sh` — remove `PLAYWRIGHT_BROWSERS_PATH` export + `playwright install --with-deps firefox` (platform image must stop launching/installing Firefox once root `requirements.txt` drops `playwright`).
+2. `scripts/setup_dev.sh` — remove `"$VENV/bin/python" -m playwright install firefox`.
+3. `scripts/start_server.py` — remove the `RAILWAY_CONFIG["playwright_browsers_path"]` → `PLAYWRIGHT_BROWSERS_PATH` env seed (no platform browser runtime).
+
+Quoted Scope covering deps today:
+> `requirements.txt` — **modified** — add direct `httpx` …; drop platform Playwright browser runtime needs once no process launches Firefox.
+
+That covers the pip pin only. Leaving the install/env scripts in place after removing the package makes platform Railway/`setup_dev` fail on `playwright` not found — so the drop-in cannot ship inside declared Scope.
+
+Also in `src/utils/config.py` (already in Scope): drop or stop using `RAILWAY_CONFIG["playwright_browsers_path"]` once `start_server.py` is allowed to drop the env seed.
+
+Please amend ## Scope with those three script paths (and confirm config may remove `playwright_browsers_path`). Re-spawn plan-child after. Not tagging @susan — Chuckles can add the rows if the approach stays "uninstall platform Firefox + httpx client" as already defined.
+
+---
+
 # Platform telescope.py drop-in and playwright decommission
 
 **Linear:** [AST-1726](https://linear.app/astralcareermatch/issue/AST-1726)

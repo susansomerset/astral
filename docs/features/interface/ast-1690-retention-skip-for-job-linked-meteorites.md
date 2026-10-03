@@ -1,3 +1,82 @@
+<!-- linear-archive: AST-1690 archived 2026-10-02 -->
+
+## Linear archive (AST-1690)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1690/retention-skip-for-job-linked-meteorites-view-related-meteorite-record  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1685 — View related meteorite record data on recommended job modal  
+**Blocked by / blocks / related:** parent: AST-1685; blocks: AST-1692
+
+### Description
+
+## What this implements
+
+Exempt LANDED meteorite rows that still reference an existing job from age-based purge so Recommended provenance can stay on the live row. Does not own report API/UI (#2–#3).
+
+## Citations
+
+`stat.logging.info.entity`, `stat.logging.debug`, `stat.logging.error`.
+
+## Scope
+
+`src/core/meteorite.py` (`run_meteorite_retention` skip); `src/data/database.py` (retention helper adjustment only if SQL-side EXISTS is used); `src/utils/config.py` (only if a new retention literal/assert is required).
+
+## Acceptance criteria
+
+- [X] 7\. Given a LANDED meteorite older than `landed_purge_days` whose `astral_job_id` still resolves to a job row, one retention run does **not** delete that meteorite id. Fail: row deleted while the job still exists.
+- [X] 8\. Given a LANDED meteorite older than `landed_purge_days` with null `astral_job_id` or a missing job, retention may still purge it under existing age rules. Fail: all LANDED rows become immortal regardless of job link.
+- [X] 9\. Stage/scrape/land/qualify runners and Manage Email are unchanged except the retention skip above. Fail: land/email paths edited for display.
+
+## Boundaries
+
+- [X] Does not own report API/UI (#2–#3). Does not change stage/scrape/land/qualify.
+
+## Notes for planning
+
+Citations: `stat.logging.info.entity`, `stat.logging.debug`, `stat.logging.error`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Job-linked skip + orphan/blank/mixed: `tests/component/core/test_meteorite.py::TestAst1690RetentionJobLinkedSkip`
+2. Prior retention shell: `tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1690RetentionJobLinkedSkip \
+  tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/core/meteorite.md` — `f24ad20c23b66a12c9316aad079d9c08cfab307d`
+
+### Comments
+
+#### radia — 2026-09-16T22:56:39.798Z
+[code-rubric] PROCEED (Commit: 43652226) retention skip clean
+
+#### betty — 2026-09-16T22:53:12.284Z
+`origin/sub/AST-1685/AST-1690-retention-skip-job-linked-meteorites` @ `43652226c0e9afd1b3c03ba7c303384d4ddb871a` · retention skip coverage ready
+
+#### joan — 2026-09-16T22:41:25.081Z
+[plan-rubric] PROCEED (Commit: 3f93d358) retention skip plan clean
+
+#### ada — 2026-09-16T22:39:03.494Z
+`origin/sub/AST-1685/AST-1690-retention-skip-job-linked-meteorites` @ `3f93d3583a30a4e1302df908a04cd6fe58107c36` · retention skip plan
+
+---
+
 # AST-1690 — Retention skip for job-linked meteorites
 
 **Linear:** [AST-1690](https://linear.app/astralcareermatch/issue/AST-1690/retention-skip-for-job-linked-meteorites-view-related-meteorite-record)  
