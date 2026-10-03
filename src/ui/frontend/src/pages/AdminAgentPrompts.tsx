@@ -10,18 +10,14 @@ import api from "../lib/api"
 import { ApiError, errorToastFromApiError, readApiError } from "../lib/toastDiagnostics"
 import type { Column } from "../components/ListPage"
 
-/** GET /api/admin/agents/models — keyed by model id; each model lists only its own brain sizes (AST-1880).
- *  JSON keys arrive sorted, so `order` carries catalog order. */
-interface BrainSizeRow {
-  order: number
-  default_max_tokens: number
-}
+/** GET /api/admin/agents/models — keyed by model id (AST-1880, AST-1957). JSON keys arrive sorted, so `order`
+ *  carries catalog order; default_max_tokens is what a call uses when the agent leaves max_tokens empty. */
 interface ModelRow {
   order: number
   label: string
   server_id: string
   server_label: string
-  brain_sizes: Record<string, BrainSizeRow>
+  default_max_tokens: number
 }
 type ModelCatalog = Record<string, ModelRow>
 
@@ -30,27 +26,83 @@ function byOrder<T extends { order: number }>(o: Record<string, T> | undefined):
   return Object.entries(o ?? {}).sort((a, b) => a[1].order - b[1].order).map(([id]) => id)
 }
 
-/** Agent mode choices; must match AGENT_MODES in src/utils/config.py (AST-1947). The models endpoint does not send them. */
-const AGENT_MODES = ["Deterministic", "Creative"] as const
-
 interface Agent {
   agent_id: string
   content?: string
   content_length?: number
   model_id?: string | null
-  brain_setting?: string | null
-  mode?: string | null
+  quantization?: string | null
+  temperature?: number | null
+  reasoning_effort?: string | null
+  provider_allow_fallbacks?: boolean | null
+  provider_only?: string[] | null
+  provider_ignore?: string[] | null
+  provider_sort?: string | null
   max_tokens?: number
   task_count?: number
   updated_at?: string
   [key: string]: unknown
 }
 
+/** Plain agent settings as the form edits them (AST-1957): text inputs hold strings, lists are comma-separated. */
+interface SettingsForm {
+  quantization: string
+  temperature: string
+  reasoning_effort: string
+  provider_allow_fallbacks: boolean
+  provider_only: string
+  provider_ignore: string
+  provider_sort: string
+}
+
+// New agents start with fallbacks on (the data layer's new-row default) and everything else empty.
+const EMPTY_SETTINGS: SettingsForm = {
+  quantization: "", temperature: "", reasoning_effort: "", provider_allow_fallbacks: true,
+  provider_only: "", provider_ignore: "", provider_sort: "",
+}
+
+function settingsFromAgent(a: Agent): SettingsForm {
+  return {
+    quantization:             a.quantization ?? "",
+    temperature:              a.temperature != null ? String(a.temperature) : "",
+    reasoning_effort:         a.reasoning_effort ?? "",
+    // Stored null reads as the default (true); saving writes the checkbox value explicitly.
+    provider_allow_fallbacks: a.provider_allow_fallbacks ?? true,
+    provider_only:            (a.provider_only ?? []).join(", "),
+    provider_ignore:          (a.provider_ignore ?? []).join(", "),
+    provider_sort:            a.provider_sort ?? "",
+  }
+}
+
+/** Comma-separated slugs → list; blank → null (not sent on the wire). */
+function slugList(s: string): string[] | null {
+  const v = s.split(",").map(x => x.trim()).filter(Boolean)
+  return v.length ? v : null
+}
+
+/** Form → request body under the settings keys. Every key is always sent, so clearing an input clears the setting. */
+function settingsBody(f: SettingsForm): Record<string, unknown> {
+  return {
+    quantization:             f.quantization.trim() || null,
+    temperature:              f.temperature.trim() === "" ? null : Number(f.temperature),
+    reasoning_effort:         f.reasoning_effort.trim() || null,
+    provider_allow_fallbacks: f.provider_allow_fallbacks,
+    provider_only:            slugList(f.provider_only),
+    provider_ignore:          slugList(f.provider_ignore),
+    provider_sort:            f.provider_sort.trim() || null,
+  }
+}
+
 const LIST_COLUMNS: Column<Agent>[] = [
   { key: "agent_id",       label: "Agent ID",      sortable: true },
   { key: "model_label",    label: "Model",         sortable: true },
-  { key: "brain_setting", label: "Brain setting", sortable: true },
-  { key: "mode",           label: "Mode",          sortable: true },
+  { key: "quantization",             label: "Quant",     sortable: true },
+  { key: "temperature",              label: "Temp",      sortable: true },
+  { key: "reasoning_effort",         label: "Effort",    sortable: true },
+  { key: "provider_allow_fallbacks", label: "Fallbacks", sortable: true },
+  { key: "provider_only",            label: "Only",      sortable: true },
+  { key: "provider_ignore",          label: "Ignore",    sortable: true },
+  { key: "provider_sort",            label: "Sort",      sortable: true },
   { key: "max_tokens",     label: "Max Tok",       sortable: true },
   { key: "task_count",     label: "Tasks",         sortable: true },
   { key: "content_length", label: "Chars",         sortable: true },
@@ -72,12 +124,6 @@ function useAgentTokenList(): string[] {
   return tokenList
 }
 
-/** Verbatim tier for grid; absent / unknown-backed storage → em dash */
-function tierCell(a: Agent) {
-  const t = a.brain_setting
-  return (typeof t === "string" && t.length > 0) ? t : "—"
-}
-
 export default function AgentPrompts() {
   const { selectedId } = useCandidate()
   const tokenList = useAgentTokenList()
@@ -92,8 +138,7 @@ export default function AgentPrompts() {
   const [editAgent, setEditAgent]         = useState<Agent | null>(null)
   const [editContent, setEditContent]     = useState("")
   const [editModelId, setEditModelId]     = useState("")
-  const [editBrainSetting, setEditBrainSetting] = useState("")
-  const [editMode, setEditMode]           = useState("")
+  const [editSettings, setEditSettings]   = useState<SettingsForm>(EMPTY_SETTINGS)
   const [editMaxTok, setEditMaxTok]       = useState("")
 
   // Add state
@@ -101,8 +146,7 @@ export default function AgentPrompts() {
   const [addId, setAddId]                 = useState("")
   const [addContent, setAddContent]       = useState("")
   const [addModelId, setAddModelId]       = useState("")
-  const [addBrainSetting, setAddBrainSetting] = useState("")
-  const [addMode, setAddMode]             = useState("")
+  const [addSettings, setAddSettings]     = useState<SettingsForm>(EMPTY_SETTINGS)
   const [addMaxTok, setAddMaxTok]         = useState("")
 
   // Delete confirm state
@@ -132,46 +176,6 @@ export default function AgentPrompts() {
       .catch(() => {})
   }, [loadAll])
 
-  // When size changes in add/edit, fill the max-tokens default from that model's row for that size
-  function applyTierDefaults(modelId: string, setting: string, setMaxTok: (m: string) => void) {
-    const row = models[modelId]?.brain_sizes[setting]
-    if (!row)
-      return
-    setMaxTok(String(row.default_max_tokens))
-  }
-
-  // Model change keeps the size when the new model has it; otherwise the model's first size + its defaults.
-  function sizeForModel(modelId: string, current: string): string {
-    const sizes = byOrder(models[modelId]?.brain_sizes)
-    return sizes.includes(current) ? current : (sizes[0] ?? "")
-  }
-
-  function onAddTierChange(setting: string) {
-    setAddBrainSetting(setting)
-    applyTierDefaults(addModelId, setting, setAddMaxTok)
-  }
-
-  function onEditTierChange(setting: string) {
-    setEditBrainSetting(setting)
-    applyTierDefaults(editModelId, setting, setEditMaxTok)
-  }
-
-  function onAddModelChange(modelId: string) {
-    setAddModelId(modelId)
-    const size = sizeForModel(modelId, addBrainSetting)
-    setAddBrainSetting(size)
-    if (size !== addBrainSetting)
-      applyTierDefaults(modelId, size, setAddMaxTok)
-  }
-
-  function onEditModelChange(modelId: string) {
-    setEditModelId(modelId)
-    const size = sizeForModel(modelId, editBrainSetting)
-    setEditBrainSetting(size)
-    if (size !== editBrainSetting)
-      applyTierDefaults(modelId, size, setEditMaxTok)
-  }
-
   function openEdit(agent: Agent) {
     api(`/api/admin/agents/${agent.agent_id}`).then(async r => {
       if (!r.ok) await readApiError(r, `/api/admin/agents/${agent.agent_id}`, "GET")
@@ -180,10 +184,7 @@ export default function AgentPrompts() {
       setEditAgent(full)
       setEditContent(full.content || "")
       setEditModelId(typeof full.model_id === "string" ? full.model_id : "")
-      setEditBrainSetting(
-        typeof full.brain_setting === "string" ? full.brain_setting : "",
-      )
-      setEditMode(typeof full.mode === "string" ? full.mode : "")
+      setEditSettings(settingsFromAgent(full))
       setEditMaxTok(full.max_tokens != null ? String(full.max_tokens) : "")
       setEditOpen(true)
     }).catch(e => setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: e.message, variant: "error" }))
@@ -193,13 +194,11 @@ export default function AgentPrompts() {
     if (!editAgent) return
     const body: Record<string, unknown> = {
       content:     editContent,
-      mode:        editMode,
       max_tokens:  editMaxTok ? parseInt(editMaxTok) : undefined,
+      ...settingsBody(editSettings),
     }
     if (editModelId)
       body.model_id = editModelId
-    if (editBrainSetting)
-      body.brain_setting = editBrainSetting
     api(`/api/admin/agents/${editAgent.agent_id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -224,13 +223,11 @@ export default function AgentPrompts() {
     const body: Record<string, unknown> = {
       agent_id:    id,
       content:     addContent,
-      mode:        addMode,
       max_tokens:  addMaxTok ? parseInt(addMaxTok)   : undefined,
+      ...settingsBody(addSettings),
     }
     if (addModelId)
       body.model_id = addModelId
-    if (addBrainSetting)
-      body.brain_setting = addBrainSetting
     api("/api/admin/agents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -242,8 +239,7 @@ export default function AgentPrompts() {
       })
       .then(() => {
         setAddOpen(false); setAddId(""); setAddContent("")
-        setAddModelId(""); setAddBrainSetting("")
-        setAddMode(""); setAddMaxTok("")
+        setAddModelId(""); setAddSettings(EMPTY_SETTINGS); setAddMaxTok("")
         setToast({ text: `Agent "${id}" created`, variant: "success" })
         setRepoJsonRefresh(n => n + 1)
         loadAll()
@@ -292,17 +288,20 @@ export default function AgentPrompts() {
   const renderedAgents = agents.map(a => ({
     ...a,
     model_label: (a.model_id && models[a.model_id]?.label) || a.model_id || "—",
-    brain_setting: tierCell(a),
-    mode: a.mode || "—",
-  }))
+    quantization:             a.quantization || "—",
+    temperature:              a.temperature ?? "—",
+    reasoning_effort:         a.reasoning_effort || "—",
+    provider_allow_fallbacks: a.provider_allow_fallbacks == null ? "—" : a.provider_allow_fallbacks ? "yes" : "no",
+    provider_only:            a.provider_only?.length ? a.provider_only.join(", ") : "—",
+    provider_ignore:          a.provider_ignore?.length ? a.provider_ignore.join(", ") : "—",
+    provider_sort:            a.provider_sort || "—",
+    // Display strings in the grid cells; the row stays an Agent for ListPage (index signature).
+  }) as unknown as Agent)
 
   function openAddModal() {
-    const firstModel = byOrder(models)[0] ?? ""
-    const firstSize = byOrder(models[firstModel]?.brain_sizes)[0] ?? ""
-    setAddModelId(firstModel)
-    setAddBrainSetting(firstSize)
-    applyTierDefaults(firstModel, firstSize, setAddMaxTok)
-    setAddMode(AGENT_MODES[0])
+    setAddModelId(byOrder(models)[0] ?? "")
+    setAddSettings(EMPTY_SETTINGS)
+    setAddMaxTok("")
     setAddOpen(true)
   }
 
@@ -351,16 +350,14 @@ export default function AgentPrompts() {
         title={editAgent ? `Edit: ${editAgent.agent_id}` : ""}
         onSave={handleEditSave}
       >
-        <BrainSettingFields
+        <AgentSettingsFields
           models={models}
           modelId={editModelId}
-          onModelChange={onEditModelChange}
-          brainSetting={editBrainSetting}
-          mode={editMode}
+          onModelChange={setEditModelId}
           maxTok={editMaxTok}
-          onTierChange={onEditTierChange}
-          onModeChange={setEditMode}
           onMaxTokChange={setEditMaxTok}
+          settings={editSettings}
+          onSettingsChange={setEditSettings}
         />
         <div className="dep-field">
           <label className="dep-field-label">System Prompt Content</label>
@@ -400,16 +397,14 @@ export default function AgentPrompts() {
             placeholder="e.g. job_analyst_grace"
           />
         </div>
-        <BrainSettingFields
+        <AgentSettingsFields
           models={models}
           modelId={addModelId}
-          onModelChange={onAddModelChange}
-          brainSetting={addBrainSetting}
-          mode={addMode}
+          onModelChange={setAddModelId}
           maxTok={addMaxTok}
-          onTierChange={onAddTierChange}
-          onModeChange={setAddMode}
           onMaxTokChange={setAddMaxTok}
+          settings={addSettings}
+          onSettingsChange={setAddSettings}
         />
         <div className="dep-field">
           <label className="dep-field-label">System Prompt Content</label>
@@ -471,31 +466,39 @@ export default function AgentPrompts() {
   )
 }
 
-/** Model select, then that model's own brain sizes, the agent mode and max_tokens (catalog-driven; AST-1880, AST-1949) */
-function BrainSettingFields({
+/** Model select, max_tokens override and the agent's plain call settings, sent as stored (AST-1880, AST-1957). */
+function AgentSettingsFields({
   models,
   modelId,
   onModelChange,
-  brainSetting,
-  mode,
   maxTok,
-  onTierChange,
-  onModeChange,
   onMaxTokChange,
+  settings,
+  onSettingsChange,
 }: {
   models: ModelCatalog
   modelId: string
   onModelChange: (v: string) => void
-  brainSetting: string
-  mode: string
   maxTok: string
-  onTierChange: (v: string) => void
-  onModeChange:  (v: string) => void
   onMaxTokChange: (v: string) => void
+  settings: SettingsForm
+  onSettingsChange: (s: SettingsForm) => void
 }) {
-  const sizes = byOrder(models[modelId]?.brain_sizes)
   const noModelMatch = !!modelId && !models[modelId]
-  const noMatch = !!brainSetting && !sizes.includes(brainSetting)
+  const defaultMax = models[modelId]?.default_max_tokens
+  // One text input per string setting; key is the SettingsForm field it edits.
+  const text = (key: keyof SettingsForm, label: string, placeholder: string) => (
+    <div className="dep-field" style={{ flex: 1 }}>
+      <label className="dep-field-label">{label}</label>
+      <input
+        className="dep-input"
+        type="text"
+        value={settings[key] as string}
+        placeholder={placeholder}
+        onChange={e => onSettingsChange({ ...settings, [key]: e.target.value })}
+      />
+    </div>
+  )
   return (
     <>
       <div className="dep-field">
@@ -508,35 +511,46 @@ function BrainSettingFields({
           ))}
         </select>
       </div>
-      <div className="dep-field">
-        <label className="dep-field-label">Brain size</label>
-        <select className="dep-input" value={brainSetting} onChange={e => onTierChange(e.target.value)}>
-          {noMatch ? <option value={brainSetting}>— (unmapped) —</option> : null}
-          {brainSetting === "" ? <option value="">— choose size —</option> : null}
-          {sizes.map(bs => (
-            <option key={bs} value={bs}>{bs}</option>
-          ))}
-        </select>
-      </div>
       <div style={{ display: "flex", gap: 12 }}>
-        <div className="dep-field" style={{ flex: 1 }}>
-          <label className="dep-field-label">Mode</label>
-          <select className="dep-input" value={mode} onChange={e => onModeChange(e.target.value)}>
-            {mode === "" ? <option value="">— choose mode —</option> : null}
-            {AGENT_MODES.map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </div>
         <div className="dep-field" style={{ flex: 1 }}>
           <label className="dep-field-label">Max Tokens</label>
           <input
             className="dep-input"
             type="number" step="1" min="1"
             value={maxTok}
+            placeholder={defaultMax != null ? `default ${defaultMax}` : ""}
             onChange={e => onMaxTokChange(e.target.value)}
           />
         </div>
+        <div className="dep-field" style={{ flex: 1 }}>
+          <label className="dep-field-label">Temperature</label>
+          <input
+            className="dep-input"
+            type="number" step="any"
+            value={settings.temperature}
+            placeholder="not sent"
+            onChange={e => onSettingsChange({ ...settings, temperature: e.target.value })}
+          />
+        </div>
+        {text("reasoning_effort", "Effort", "e.g. high, none")}
+      </div>
+      <div style={{ display: "flex", gap: 12 }}>
+        {text("quantization", "Quantization", "e.g. bf16")}
+        {text("provider_sort", "Provider sort", "e.g. price")}
+        <div className="dep-field" style={{ flex: 1 }}>
+          <label className="dep-field-label">
+            <input
+              type="checkbox"
+              checked={settings.provider_allow_fallbacks}
+              onChange={e => onSettingsChange({ ...settings, provider_allow_fallbacks: e.target.checked })}
+            />{" "}
+            Allow provider fallbacks
+          </label>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 12 }}>
+        {text("provider_only", "Provider only", "comma-separated slugs")}
+        {text("provider_ignore", "Provider ignore", "comma-separated slugs")}
       </div>
     </>
   )
