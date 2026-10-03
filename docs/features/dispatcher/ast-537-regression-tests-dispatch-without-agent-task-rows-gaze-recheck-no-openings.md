@@ -441,3 +441,25 @@ context_tokens≈11000
 ---
 
 `[code-rubric] PROCEED (Commit: 5cde1c750) Bug-repro gate tests OK`
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/25418716f22841bc21973d4f47dd3051/747b09b3-8466-4ea6-872a-2d52c803f2ef/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/275e129f-dd31-4536-9a8c-ce41d6b5c6c3/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/25418716f22841bc21973d4f47dd3051/e0cf7d9e-ba31-41ff-8f3b-cd2a99fb1bb7/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1943 (parent) | ftr/AST-1943-non-llm-dispatch-key-gate |
+| AST-1944 | sub/AST-1943/AST-1944-skip-key-gate-non-llm-tasks |
+| AST-1945 | sub/AST-1943/AST-1945-non-llm-gate-tests-clean |
+
+**Epic worktree:** `astral-AST-1943/` — one active sub checked out at a time.
