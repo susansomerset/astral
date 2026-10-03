@@ -245,3 +245,40 @@ After this ticket, `import src.core.agent` works again, so `tests/component/core
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+
+**Ticket:** AST-1956  
+**Overall:** APPROVED  
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51  
+**Publish ref:** `sub/AST-1953/AST-1956-send-settings-on-wire` @ `5851456ca13c86d823bd762c8f0a9925e2989a1a`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.dispatch-retry | A | | |
+| stat.logging.debug | A | | |
+
+## Traceability
+
+1 → Stage 1 step 3 (`extra_body` provider merge) · 2 → Stage 1 steps 2–3 · 3 → Stage 1 (`_effort_body`, no tier thinking branch) · 4 → Stage 1 failure-path note + Stage 2 done-when `rg` · 5 → Stage 2 step 4 (`do_task` / `run_adhoc` debug) · parent AC 5 (`src/` proxies in these three files) → Stage 2 steps 1–3 + Stage 1 step 3 · parent AC 6 wire (`deepseek-v4-pro` / `max_tokens`) → **AC map** + unchanged `do_task` `max_tokens` (Betty stubbed-client)
+
+## Findings
+
+### acceptable
+
+- **Location:** Plan structure — no `## Self-assessment`
+- **Finding:** **AC map**, wire contract, and inline done-when stubs carry complexity; estimate confirm present.
+- **Recommendation:** None blocking.
+
+- **Location:** **Sequencing note**
+- **Finding:** `api_admin` / `resolve_model_brain` and legacy `test_llm_compat` thinking-pin cases called out for AST-1957 and Betty.
+- **Recommendation:** None.
+
+- **Location:** Wire contract — `thinking_off_params` unread
+- **Finding:** Documented as AST-1955 config leftover; no edit in this Scope.
+- **Recommendation:** Optional Chuckles cleanup on a later config pass; not blocking build.
+
+context_tokens≈65000
