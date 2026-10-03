@@ -234,3 +234,45 @@ if __name__ == "__main__":
 Confirm Chuckles estimate: 2 — agree
 
 ## Revisions
+
+
+## Joan validate
+
+[plan-rubric] PROCEED (Commit: eb7e78caa) Migration plan complete
+
+**Ticket:** AST-1958  
+**Overall:** APPROVED  
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51  
+**Publish ref:** `sub/AST-1953/AST-1958-migrate-agent-settings` @ `eb7e78caa570a9797619ca3d659ae80991fd6300`
+
+## Canon scores
+
+*(Frozen Canon Scope: none — ticket **Citations** and parent **Architectural definition** place `scripts/migrations/` outside directive territory; no ids to grade.)*
+
+## Traceability
+
+11 → Stage 1 (verbatim script, done-when gates, hand-check table vs parent AC 11 bullets) · parent Functional scope 8 → old-world rules + script snapshot + Stage 1 apply path
+
+## Findings
+
+### discuss
+
+- **Location:** Child AC 11 seed row “one row with null `mode`” vs Stage 1 hand-check table
+- **Finding:** Ticket does not fix `brain_setting` / `model_id` for that row; migration outcome depends on them (`null` mode → Creative only when `brain == "Big"`). Plan documents one concrete case (Big + thinking OpenRouter slug).
+- **Recommendation:** Betty’s component test should match that hand-check row (or document an alternate seed if Susan wants null-mode on Little/Medium).
+
+### acceptable
+
+- **Location:** Plan structure — no `## Self-assessment`
+- **Finding:** Estimate confirm + staged done-when + **Sequencing** carry risk; appropriate for a single-script child.
+- **Recommendation:** None blocking.
+
+- **Location:** Stage 1 — `_ensure_agent_schema(conn)` only on `--apply`
+- **Finding:** Matches AST-1955 DDL-only ensure on `ftr`; dry run stays read-only on legacy columns only, satisfying AC 11 “dry run writes nothing.”
+- **Recommendation:** None.
+
+- **Location:** **Sequencing**
+- **Finding:** `test_remap_openrouter_agents.py` collection break until Betty deletes per Scope is explicit.
+- **Recommendation:** None.
+
+context_tokens≈58000
