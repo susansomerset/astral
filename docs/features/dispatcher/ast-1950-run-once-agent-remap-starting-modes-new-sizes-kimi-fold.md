@@ -266,3 +266,12 @@ Confirm Chuckles estimate: 2 — agree
   **Recommendation:** Run snapshot check on the machine that builds; failure there blocks commit per plan.
 
 context_tokens≈56000
+
+## Review
+
+- **Branch:** `origin/sub/AST-1946/AST-1950-remap-migration`
+- **Build tip:** `f47ec6df2` (`code(AST-1950)`: new `scripts/migrations/remap_openrouter_agents.py`, spliced verbatim from Stage 1, mode `100644` like 11 of the 12 sibling migration scripts).
+- **Verified on the shipped file:** `py_compile` and `ruff check --select F,E9` clean. § Verification step 2: 64 `REMAP` / 12 `REMOVED`, every target passes `validate_brain_setting_for_model` with `model_brain_sizes == (size,)`, no removed slug in the catalog, and `REMAP ∪ REMOVED` equals the 76 OpenRouter ids on `origin/dev`. Step 3: on a temp DB with AC 13's eight rows, the dry run writes nothing and lists `morph/morph-v3-large`, `--apply` yields AC 13's rows exactly, non-removed rows pass model + size + mode validation, and a second `--apply` prints `No agent rows to change.`
+- **Joan's discuss items:** both say keep the plan as written; built unchanged. The default run uses the app's DB via `_get_connection` (no path flag). Removed-model rows still get a starting `mode`, and the output prints `removed model: … left as-is` for each.
+- **Git note:** this ref also carries `85e7b9026` (`docs(AST-1949)` plan). A sibling agent switched this shared worktree onto AST-1949 between plan-child's sync and commit. It is the same commit already on AST-1949's ref, so the ftr merge is a no-op for it; not force-pushed.
+- **For qa-child:** new AC 13 component test under `tests/component/scripts/`, per § Tests expected to move. No existing test should move.
