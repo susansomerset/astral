@@ -477,18 +477,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Katherine | engineer | `/home/susan/.cursor/chats/8675e3708318a1930b78ec858d53d9c0/5af8be6e-5434-4a78-8569-610b4b259765/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/76fc0138-37b1-4b19-a7a4-330a6a5a4aea/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/8675e3708318a1930b78ec858d53d9c0/599ee163-c3a6-4ef7-bab8-37ca369b84a1/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/de76a1b36e7e1cb208c1efd9d1691f98/89fe5cc8-a60f-4ace-b318-ebbda3c8c33c/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/585e29bd-b7a5-4f7d-a905-c9fde23d152a/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/de76a1b36e7e1cb208c1efd9d1691f98/24d43841-6ba2-4f33-826e-2406507906b9/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1280 (parent) | ftr/AST-1280-connection-error-on-dispatch-task-did-not-clear-the-batch-id |
-| AST-1298 | sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error |
+| AST-1940 (parent) | ftr/AST-1940-hop-failure-preserve-state |
+| AST-1941 | sub/AST-1940/AST-1941-hold-state-on-hop-provider-failure |
+| AST-1942 | sub/AST-1940/AST-1942-flip-hop-provider-failure-tests |
 
-**Epic worktree:** `astral-AST-1280/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-1940/` — one active sub checked out at a time.
 
 ## Bug: AST-1941 — Hold state on BUILD_ARTIFACTS hop provider failure
 
