@@ -1,3 +1,104 @@
+<!-- linear-archive: AST-1780 archived 2026-10-02 -->
+
+## Linear archive (AST-1780)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1780/list-enrich-autorun-gates-force-auto-off-dispatch-validation  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1766 — Dispatch Validation  
+**Blocked by / blocks / related:** parent: AST-1766; blocks: AST-1782
+
+### Description
+
+## What this implements
+
+Owns Scheduled Actions list enrichment, AUTO-on / Run API 400 gates, and persisting AUTO off when a row is non-executable. After #1. Does not own `agent_task` / artifact version hooks (sibling #3) or React (sibling #4).
+
+## Citations
+
+`astral.dispatch.entity-state-bound`, `stat.logging.info.api`, `stat.logging.warning`, `stat.logging.error`; patterns: none (`no established pattern applies`; mirror `_candidate_dispatch_api_key_error`).
+
+## Scope
+
+`src/ui/api/api_admin.py` — list enrichment boolean; create/update AUTO-on + `run_dtask` gates; force AUTO off when enrichment shows empty-render.
+
+## Acceptance criteria
+
+- [X] Predicate **A** (candidate-scoped): for a row whose prompts reference a candidate-source or candidate-backed artifact token that resolves to `""` for that row’s candidate, `GET /api/admin/dispatch_tasks` includes an explicit boolean on that row that is `true` for empty-render. **Fail:** flag missing, or `false` while such a token resolves blank.
+- [X] `PUT …/dispatch_tasks/<id>` with `auto_mode: true` on a failing row returns HTTP 400 and does not persist AUTO on. **Fail:** 200 with AUTO stored on.
+- [X] `POST …/dispatch_tasks/<id>/run` on a failing row returns HTTP 400 with `started: false` (or equivalent) and does not start the thread. **Fail:** thread starts or `started: true`.
+- [X] A row that was AUTO on becomes AUTO off after list enrichment / revalidation once empty-render is true (persisted). **Fail:** `auto_mode` remains on after enrichment when the flag is true. (List-enrichment force-off path; version-hook revalidation remains sibling #3.)
+- [X] A row whose candidate-scoped tokens all resolve non-empty keeps AUTO and Run/Sweep enabled (subject to existing API-key and Sweep/min_count rules), even if prompts also reference job tokens that would be blank without a job context. **Fail:** controls disabled solely because job tokens are empty.
+
+## Boundaries
+
+- [X] Does not own the predicate helper (sibling #1), `agent_task` / artifact version hooks (sibling #3), or React disable wiring (sibling #4).
+
+## Notes for planning
+
+After #1. Mirror `_candidate_dispatch_api_key_error` gate shape.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1766-dispatch-validation`, child `sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. List force off: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_list_sets_empty_render_and_forces_auto_off`
+2. List keeps AUTO: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_list_empty_render_false_keeps_auto`
+3. Create 400: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_create_auto_on_empty_render_400`
+4. PUT 400: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_put_auto_on_empty_render_400`
+5. Run 400: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_run_empty_render_400_started_false`
+6. Helper None: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_error_helper_none_when_evaluate_false`
+7. Revised run success: `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls`
+8. Revised create AUTO: `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success`
+9. Revised update AUTO: `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success`
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff   tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls   tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success   tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success   -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/ui/api/api_admin.md` — `abe45f830bb58ee1585f059eb400e21c03900e06`
+
+**Publish tip:** `origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` @ `acb25c82`
+
+### Comments
+
+#### hedy — 2026-09-23T02:00:13.118Z
+`origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` @ `c2690426` · stacked on ftr
+
+#### radia — 2026-09-23T01:58:24.471Z
+[code-rubric] PROCEED (Commit: acb25c82) list gates and force-off clean
+
+#### betty — 2026-09-23T01:55:42.175Z
+`origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` @ `acb25c82` · empty_render gates manifest
+
+#### hedy — 2026-09-23T01:51:37.291Z
+`origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` @ `3f1ff2eb` · tip rebuilt for Betty (1779 base + AST-1780-only)
+
+#### betty — 2026-09-23T01:48:33.500Z
+@susan — suspected scope issue: `origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` tip includes sibling AST-1781 product before this child’s own gates are reviewed.
+
+Evidence:
+- Tip history has `sync(publish-ref): origin/sub/.../AST-1781-…` then `code(AST-1781): empty-render revalidate helpers + force AUTO off` landing `src/data/database.py` (+218 / revalidate helpers), then `code(AST-1780)` on top.
+- Ticket Scope / plan Explicit scope gate: `api_admin.py` only — “Do not edit … `database.py`”; sibling #3 (version hooks) is AST-1781 and blockedBy this child, not the other way around.
+- `code(AST-1780)` itself is in-scope (`api_admin.py` only +113). The out-of-scope surface is the AST-1781 commits baked into this publish tip.
+
+Recommendation: rebuild / force the 1780 tip from AST-1779 tip + only `code(AST-1780)` / docs for this child (strip 1781 sync + `code(AST-1781)`), then Betty resumes qa-child. Do not advance to Tests Ready until the tip matches Scope.
+
+#### joan — 2026-09-23T01:42:18.789Z
+[plan-rubric] PROCEED (Commit: 8d65b7fbe0ef8074e538c809ed9f56e90e27a692) API gates plan clean
+
+#### hedy — 2026-09-23T01:39:38.474Z
+`origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off` @ `8d65b7fb` · plan ready
+
+---
+
 # AST-1780 — List enrich, AUTO/Run gates, force AUTO off
 
 - **Linear:** https://linear.app/astralcareermatch/issue/AST-1780

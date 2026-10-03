@@ -3272,3 +3272,32 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** the whole file green.
+
+### AST-1949 · AST-1946 (Manage Agents Mode select; temperature controls removed)
+
+`AdminAgentPrompts.tsx`: the add/edit form's Temperature input becomes a required **Mode** select. Its options are exactly `Deterministic` / `Creative` (the page-local `AGENT_MODES`, which mirrors `src/utils/config.py`). The selected value is sent as `mode` on both POST and PUT, and neither body has `temperature`. Add opens on `Deterministic`. Edit pre-selects the row's mode. A row with `mode: null` (not yet migrated by AST-1950) shows a `— choose mode —` placeholder until a mode is picked. Size and model changes pre-fill max tokens only and never touch the mode. The list swaps **Temp** for **Mode**, and a null mode shows `—`. The `Agent` / model types drop `temperature`, `model_code` and `default_temperature`. Backend contract: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1948.
+
+| AC | Tests (`test_AdminAgentPrompts.test.tsx`) |
+| --- | --- |
+| 8 Mode column, no Temp column | describe **AST-1949 Manage Agents mode** › **list has a Mode column showing each row's mode and no Temp column** |
+| 8 No temperature input for any model | › **no Temperature field renders in Add or Edit for any model or size** (every fixture model × size in Add, plus Edit) |
+| 8 Mode select with exactly two options; `mode` sent, no `temperature` | › **Edit switches mode and PUT sends the new mode without temperature** · revised **AST-1880: Add picks a model…** (options, Deterministic default, mode kept across size/model change, POST `mode: "Creative"` and no `temperature`) · revised **AST-1880: Edit shows the agent's model + size…** (pre-selected Deterministic, PUT carries `mode`, no `temperature`) |
+| Unmigrated row (plan discuss) | › **an unmigrated row (mode null) shows — in the list and a choose-mode placeholder in Edit** |
+| 7 (UI half) no `temperature` on the page | grep in manifest below |
+
+**Broken / obsolete (revised):** fixtures drop `default_temperature` / `model_code` / `temperature` and add `mode` (agent_a Deterministic, agent_b Creative). The two AST-1880 tests lose their `field("Temperature")` assertions and `temperature: 0.6` body. The other 8 tests are unchanged and green. **Repro:** with the `origin/ftr/AST-1946-big-brain-openrouter` page swapped in, all 6 revised or new tests are red and the other 8 green. On the publish tip all 14 are green. **Integration:** no scenario drives Manage Agents, so nothing to revise. AC 7's catalog / `src/` greps belong to AST-1947 / AST-1948 (composite on `ftr`, [`../core/agent.md`](../core/agent.md) § AST-1948).
+
+## QA test manifest (AST-1949)
+
+1. **Page Vitest (§6c routed page):** the whole file, 14 tests.
+2. **AC 7 grep (UI half)** on the publish tip. Expect nothing.
+3. **Scope:** only the page changed under `src/`.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+cd ../../.. && rg -n "temperature" src/ui/frontend/src/pages/AdminAgentPrompts.tsx
+git diff --stat origin/ftr/AST-1946-big-brain-openrouter...HEAD -- src/   # expect only AdminAgentPrompts.tsx
+```
+
+**Pass criterion:** 14/14 green, the grep prints nothing, and the scope diff lists only the page.

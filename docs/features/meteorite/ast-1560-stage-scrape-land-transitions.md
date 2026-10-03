@@ -1,3 +1,125 @@
+<!-- linear-archive: AST-1560 archived 2026-10-02 -->
+
+## Linear archive (AST-1560)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1560/stage-scrape-land-transitions-meteorite-ingress-staging-table  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1555 — Meteorite ingress: staging table + inbox/meteorite consolidation  
+**Blocked by / blocks / related:** parent: AST-1555; blocks: AST-1562; blocks: AST-1561
+
+### Description
+
+## What this implements
+
+After #1: dispatcher-driven single-transition handlers in `meteorite.py` (link→SCRAPE_LINK→Playwright→READY/BOT_BLOCKED/ERROR; text→READY; READY→job METEORITE_NEW→astral_job_id→LANDED). Retire inline enrich-in-front for this path; drop source-ref scrap synthesis. Does not own Estelle notify/paste or file delete.
+
+## Citations
+
+`pattern.batch.entity-claim-process-release`, `pattern.state.entity-state-transitions`, `astral.batch.claim-process-release`, `astral.state.no-daisy-chain-in-run`, `pattern.layers.import-discipline`
+
+## Scope
+
+`src/core/meteorite.py` (stage/scrape/land transitions; drop `_map_stage_jobs_to_scraps` synthesis; stop enrich-in-front on this path); `src/utils/config.py` + `data/admin/` + `src/core/dispatcher.py` for scrape/land task keys; `src/core/consult.py` only if cycle trim needed; Playwright via existing `src/external/playwright.py` (unchanged unless gap)
+
+## Acceptance criteria
+
+2. After fan-out, scrape and land each advance one row one state under their own claim/retry boundary; a Playwright failure on one row does not re-run classify for that email and does not block sibling rows.
+3. `READY` → land creates a job in `METEORITE_NEW`, sets `astral_job_id`, state `LANDED`; `qualify_meteorite` behavior from that point is unchanged.
+4. Source-ref synthesis (`email-<mid>`, `-2`, …) is not used for provenance on this path; empty `job_link` / `company_job_id` until qualify is acceptable.
+
+## Boundaries
+
+Does not own sibling slices: #1 meteorite table + claim helpers, #2 inbox candidate verbs + Manage Email filter, #3 check_inbox + monitoring log, #5 BOT_BLOCKED Estelle recovery + apply_paste, #6 Retention sweep + delete meteorite_email.
+
+## Notes for planning
+
+Citations and Scope above are authoritative for plan-child. Parent: AST-1555.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/AST-1555/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst1530StageMeteorite`
+2. `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite`
+3. `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite`
+4. `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite`
+5. `tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne`
+6. `tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1530StageMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
+  tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig \
+  -q
+```
+
+**Revised (AST-1560): **`TestAst1530StageMeteorite` — classify-only; scrap-map / land-via-stage tests removed.
+
+**Bible shasums @** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions` **@** `569d8f41`**:**
+
+* `docs/test-bible/core/meteorite.md`: `34e87479fc7af40badb4d3b78e1dfb79fdc9c03f3062e5828296c79d586ab963`
+* `docs/test-bible/core/dispatcher.md`: `d6437975d666f486d565517fdaf9441a55b0d47b564ce79350e4946dd6ce5cf9`
+* `docs/test-bible/utils/config.md`: `0349d5cfa7db23f27a05a1ff294e75aa1365041d7788b8fbe9ea971ac2f8cf34`
+
+**Integration:** none revised.
+
+### Comments
+
+#### radia — 2026-08-31T23:21:50.818Z
+[code-rubric] REVIEW (Commit: c8e5506a) transitions faithful; minor discusses
+
+#### betty — 2026-08-31T23:18:53.129Z
+origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions @ `569d8f41` · transition runners manifest
+
+#### betty — 2026-08-31T23:18:25.473Z
+origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions @ 9ba23c08 · transition manifest landed
+
+#### joan — 2026-08-31T23:05:11.235Z
+[plan-rubric] PROCEED (Commit: 395d3775c9544d95d4cfa77e511fccd768ba4213) transitions plan ready
+
+#### ada — 2026-08-31T23:04:17.820Z
+[plan-discuss] round=1 reply
+
+Fix-now (1): dispatcher mints one `entity_batch_id`, sets `log_batch_id`, passes `task["entity_batch_id"]`; runners use it for claim/get/clear — no second uuid in meteorite runners.
+
+Fix-now (2): extend `METEORITE_MONITORING_CONFIG` with `row_bot_blocked_line` / `row_error_line` / `row_landed_line`; Stage 2d adds `log_meteorite_row_transition`; scrape/land/stage ERROR paths + scrape BOT_BLOCKED + land LANDED call helper after state write.
+
+Discuss: `stage_meteorite` naming — documented in Stage 1 decision + module header note; custom branch precedes `_run_unified`.
+
+#### ada — 2026-08-31T23:04:16.803Z
+`origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions` @ `395d3775c9544d95d4cfa77e511fccd768ba4213` · Joan fix-now addressed
+
+#### joan — 2026-08-31T23:03:08.779Z
+[plan-rubric] REVIEW (Commit: 8434867243c5e28c15d839a090d79172c6365b3e) batch_id + row monitoring gaps
+
+#### ada — 2026-08-31T23:01:04.548Z
+`origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions` @ `8434867243c5e28c15d839a090d79172c6365b3e` · plan ready
+
+#### ada — 2026-08-31T22:59:10.729Z
+[scope-gate] ## Citations and ## Scope are empty on this ticket — cannot plan Files Changed / Stages against declared Scope.
+
+What this implements + Boundaries + AC rows name the slice, but Notes say "Citations and Scope above are authoritative for plan-child," and both sections are blank.
+
+Needed content already exists on parent AST-1555 proposed child #4 — please copy onto this ticket:
+
+**Citations:** `pattern.batch.entity-claim-process-release`, `pattern.state.entity-state-transitions`, `astral.batch.claim-process-release`, `astral.state.no-daisy-chain-in-run`, `pattern.layers.import-discipline`
+
+**Scope:** `src/core/meteorite.py` (stage/scrape/land transitions; drop `_map_stage_jobs_to_scraps` synthesis; stop enrich-in-front on this path); `src/utils/config.py` + `data/admin/` + `src/core/dispatcher.py` for scrape/land task keys; `src/core/consult.py` only if cycle trim needed; Playwright via existing `src/external/playwright.py` (unchanged unless gap)
+
+Without that, any Files Changed row would be scope invention. Status → Plan Discuss; no plan doc published. Re-spawn plan-child after Scope/Citations are filled.
+
+---
+
 # AST-1560 — stage / scrape / land transitions
 
 **Linear:** [AST-1560](https://linear.app/astralcareermatch/issue/AST-1560/stage-scrape-land-transitions)  

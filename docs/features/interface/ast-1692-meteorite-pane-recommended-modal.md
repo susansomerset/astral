@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-1692 archived 2026-10-02 -->
+
+## Linear archive (AST-1692)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1692/meteorite-pane-on-recommended-modal-view-related-meteorite-record-data  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1685 — View related meteorite record data on recommended job modal  
+**Blocked by / blocks / related:** parent: AST-1685
+
+### Description
+
+## What this implements
+
+Wire Meteorite top tab + read-only `JobMeteoritePane`; omit tab when `related_meteorite` is null. After #2.
+
+## Citations
+
+none — presentational React only; API/logging statutes owned by #2.
+
+## Scope
+
+`src/ui/frontend/src/contexts/StateUiContext.tsx`; `src/ui/frontend/src/components/JobAnalysisReportModal.tsx`; `src/ui/frontend/src/components/JobMeteoritePane.tsx`; `src/ui/frontend/src/App.css` (only if needed).
+
+## Acceptance criteria
+
+- [X] 1\. Opening a Recommended job that has a `meteorite` row with matching `astral_job_id` shows top tabs Summary | Analysis | Artifacts | Discussion | **Meteorite**. Fail: Meteorite missing when such a row exists, or Meteorite appears for a job with no related row.
+- [X] 2\. Meteorite pane timestamps match the staging row’s `created_at` / `updated_at` / `state_changed_at` (and `estelle_notified_at` when non-null). Fail: wrong values vs the row, or timestamps omitted when set.
+- [X] 3\. When `meteorite.link` starts with `http://` or `https://`, the pane exposes a navigable href; otherwise plain text (not an href). Fail: non-http breadcrumb treated as href, or http link not clickable.
+- [X] 4\. AI section shows `classify_outcome` and `content` only from the meteorite row (read-only) — no agent-story blocks and no company-stem fields required in this pane. Fail: stem/story content required for AC, values differ from the row, or section editable.
+
+## Boundaries
+
+- [X] Does not own retention (#1) or API/config (#2). After #2.
+
+## Notes for planning
+
+Citations: none — presentational React only.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. `tests/component/frontend/components/test_JobMeteoritePane.test.tsx`
+2. `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1692|AST-1551 Discussion"`
+3. Fixture: `tests/component/frontend/fixtures/stateUiManifestFixture.ts` (`report_meteorite_sections` + Meteorite top tab)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobMeteoritePane.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1692|AST-1551 Discussion"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/frontend/components.md` — `2e46a57bf0ebbd04866d675e41b6165d3efd3909`
+
+### Comments
+
+#### katherine — 2026-09-16T23:41:54.176Z
+`origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal` @ `1f2ee5417545c69121305c33b2cf6b9cc3e87261` · §9a clean · ftr dry-run clean
+
+#### betty — 2026-09-16T23:38:55.444Z
+origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal @ 40b9a5b5 · §9a clean
+
+#### katherine — 2026-09-16T23:35:32.322Z
+[check-linear] blocked: §9a ftr dry-run conflict in test tree
+
+`git merge-tree` / `git merge origin/ftr/AST-1685-view-related-meteorite-record-data` into `origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal` conflicts only in:
+
+- `tests/component/core/test_meteorite.py` (whitespace hunk after AST-1693 notify test — HEAD blank line vs ftr)
+
+Product files auto-merge clean. Engineer pre-commit hook blocks committing any `tests/` path, so I cannot land the merge commit.
+
+@Betty White — please resolve that one file on this publish ref (or re-publish merge-tests so ftr/sub agree), then reassign Katherine. Stay Review Posted until §9a is clean vs both `origin/dev` and `origin/ftr/AST-1685-view-related-meteorite-record-data`.
+
+`origin/dev` §9a dry-run: clean already.
+
+#### radia — 2026-09-16T23:33:12.557Z
+[code-rubric] PROCEED (Commit: 1090acb6) Meteorite pane clean
+
+#### betty — 2026-09-16T23:29:50.155Z
+origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal @ 1090acb6 · tests published
+
+#### joan — 2026-09-16T23:22:04.479Z
+[plan-rubric] PROCEED (Commit: bb3d0090) pane plan ready
+
+#### katherine — 2026-09-16T23:20:19.314Z
+`origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal` @ `bb3d0090ba0628b75125e58ded481b530ad7b0c1` · plan ready
+
+---
+
 # AST-1692 — Meteorite pane on Recommended modal
 
 **Linear:** [AST-1692](https://linear.app/astralcareermatch/issue/AST-1692/meteorite-pane-on-recommended-modal-view-related-meteorite-record-data)

@@ -1,3 +1,90 @@
+<!-- linear-archive: AST-1775 archived 2026-10-02 -->
+
+## Linear archive (AST-1775)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1775/ruth-duplicate-review-invoke-duplicate-map-meteorite-state-check  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1762 — Meteorite state CHECK_UNIQUE before LANDED  
+**Blocked by / blocks / related:** parent: AST-1762
+
+### Description
+
+## What this implements
+
+Owns Ruth invoke inside check-unique when SQL peers or null-field multi-LANDED peers exist: build full-content payloads, `do_task` duplicate-review agent_task, map duplicate → `DUPLICATE` (record LANDED peer id) and not-duplicate → `READY`. After #1; consumes #2 hook. Does not re-edit stage prompts or registry.
+
+## Citations
+
+`patt.entity.batch-processing`, `stat.logging.info.entity`, `stat.logging.debug`.
+
+## Scope
+
+- [X] `src/core/meteorite.py` — **modified** — Ruth invoke + outcome map on SQL-match and null-field multi-peer paths only; does not own SQL unique→READY (#2) or config/catalog (#1).
+
+## Acceptance criteria
+
+- [X] 7\. **Null peers → Ruth with full content** — When title and/or employer is empty and multiple LANDED rows have null title and/or null employer, Ruth duplicate-review runs with full CHECK_UNIQUE + LANDED row content. Fail: auto-`READY` or auto-`DUPLICATE` without Ruth in that scenario.
+- [X] 8\. **Peers → Ruth → DUPLICATE|READY** — Title+employer SQL match invokes Ruth; duplicate → `DUPLICATE` with peer id recorded; not-duplicate → `READY`. Fail: SQL peers auto-terminal without Ruth.
+- [X] 9\. **Land unchanged gate** — `land_meteorite` trigger remains `READY`; `DUPLICATE` and `CHECK_UNIQUE` are not landable. Fail: land claims `DUPLICATE`/`CHECK_UNIQUE`.
+
+## Boundaries
+
+- [X] Does not re-edit stage prompts or registry (#1). Does not own SQL unique→READY (#2). After #1; consumes #2 hook.
+
+## Notes for planning
+
+Citations as above. Estimate: 3.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+See `docs/test-bible/core/meteorite.md` § AST-1775.
+
+1. Ruth SQL duplicate: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_sql_peers_duplicate_maps_to_duplicate_with_peer_id`
+2. Ruth SQL not-duplicate: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_sql_peers_not_duplicate_maps_to_ready`
+3. Ruth null peers + content: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_null_peers_invoke_ruth_with_full_content`
+4. do_task fail stays CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_do_task_failure_leaves_check_unique`
+5. Invalid outcome stays: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_invalid_outcome_leaves_check_unique`
+6. Bad peer id stays: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_invalid_peer_id_leaves_check_unique`
+7. Land ignores DUPLICATE: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_land_does_not_claim_duplicate`
+8. Peer detection still (1774): `tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_title_employer_sql_peers_call_hook_leave_check_unique`
+9. Unique path still (1774): `tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_unique_promotes_to_ready`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke \
+  tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_title_employer_sql_peers_call_hook_leave_check_unique \
+  tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_unique_promotes_to_ready \
+  -q
+```
+
+**Bible shasum (publish tip** `9fde6215`**):**
+
+* `docs/test-bible/core/meteorite.md` — `d93c85cf5d7a32c0152a862a76d2a5f9e4e11a55`
+
+### Comments
+
+#### radia — 2026-09-22T02:45:19.225Z
+[code-rubric] PROCEED (Commit: 9fde6215) Ruth invoke+map clean
+
+#### betty — 2026-09-22T02:42:41.740Z
+`origin/sub/AST-1762/AST-1775-ruth-duplicate-review-invoke-duplicate-map` @ `9fde6215` · Ruth invoke covered
+
+#### joan — 2026-09-22T02:35:50.696Z
+[plan-rubric] PROCEED (Commit: 72e35015) Ruth hook invoke clear
+
+#### katherine — 2026-09-22T02:33:52.219Z
+`origin/sub/AST-1762/AST-1775-ruth-duplicate-review-invoke-duplicate-map` @ `72e3501591d98df2783230f34c011b5691f7c7cf` · plan ready
+
+---
+
 # AST-1775 — Ruth duplicate-review invoke + DUPLICATE map
 
 **Linear:** [AST-1775](https://linear.app/astralcareermatch/issue/AST-1775/ruth-duplicate-review-invoke-duplicate-map-meteorite-state-check-unique)  

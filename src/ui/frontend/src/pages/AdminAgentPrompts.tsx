@@ -14,7 +14,6 @@ import type { Column } from "../components/ListPage"
  *  JSON keys arrive sorted, so `order` carries catalog order. */
 interface BrainSizeRow {
   order: number
-  default_temperature: number
   default_max_tokens: number
 }
 interface ModelRow {
@@ -31,14 +30,16 @@ function byOrder<T extends { order: number }>(o: Record<string, T> | undefined):
   return Object.entries(o ?? {}).sort((a, b) => a[1].order - b[1].order).map(([id]) => id)
 }
 
+/** Agent mode choices; must match AGENT_MODES in src/utils/config.py (AST-1947). The models endpoint does not send them. */
+const AGENT_MODES = ["Deterministic", "Creative"] as const
+
 interface Agent {
   agent_id: string
   content?: string
   content_length?: number
-  model_code?: string
   model_id?: string | null
   brain_setting?: string | null
-  temperature?: number
+  mode?: string | null
   max_tokens?: number
   task_count?: number
   updated_at?: string
@@ -49,7 +50,7 @@ const LIST_COLUMNS: Column<Agent>[] = [
   { key: "agent_id",       label: "Agent ID",      sortable: true },
   { key: "model_label",    label: "Model",         sortable: true },
   { key: "brain_setting", label: "Brain setting", sortable: true },
-  { key: "temperature",    label: "Temp",          sortable: true },
+  { key: "mode",           label: "Mode",          sortable: true },
   { key: "max_tokens",     label: "Max Tok",       sortable: true },
   { key: "task_count",     label: "Tasks",         sortable: true },
   { key: "content_length", label: "Chars",         sortable: true },
@@ -92,7 +93,7 @@ export default function AgentPrompts() {
   const [editContent, setEditContent]     = useState("")
   const [editModelId, setEditModelId]     = useState("")
   const [editBrainSetting, setEditBrainSetting] = useState("")
-  const [editTemp, setEditTemp]           = useState("")
+  const [editMode, setEditMode]           = useState("")
   const [editMaxTok, setEditMaxTok]       = useState("")
 
   // Add state
@@ -101,7 +102,7 @@ export default function AgentPrompts() {
   const [addContent, setAddContent]       = useState("")
   const [addModelId, setAddModelId]       = useState("")
   const [addBrainSetting, setAddBrainSetting] = useState("")
-  const [addTemp, setAddTemp]             = useState("")
+  const [addMode, setAddMode]             = useState("")
   const [addMaxTok, setAddMaxTok]         = useState("")
 
   // Delete confirm state
@@ -131,12 +132,12 @@ export default function AgentPrompts() {
       .catch(() => {})
   }, [loadAll])
 
-  // When size changes in add/edit, fill defaults from that model's row for that size
-  function applyTierDefaults(modelId: string, setting: string, setter: (t: string, m: string) => void) {
+  // When size changes in add/edit, fill the max-tokens default from that model's row for that size
+  function applyTierDefaults(modelId: string, setting: string, setMaxTok: (m: string) => void) {
     const row = models[modelId]?.brain_sizes[setting]
     if (!row)
       return
-    setter(String(row.default_temperature), String(row.default_max_tokens))
+    setMaxTok(String(row.default_max_tokens))
   }
 
   // Model change keeps the size when the new model has it; otherwise the model's first size + its defaults.
@@ -147,12 +148,12 @@ export default function AgentPrompts() {
 
   function onAddTierChange(setting: string) {
     setAddBrainSetting(setting)
-    applyTierDefaults(addModelId, setting, (t, m) => { setAddTemp(t); setAddMaxTok(m) })
+    applyTierDefaults(addModelId, setting, setAddMaxTok)
   }
 
   function onEditTierChange(setting: string) {
     setEditBrainSetting(setting)
-    applyTierDefaults(editModelId, setting, (t, m) => { setEditTemp(t); setEditMaxTok(m) })
+    applyTierDefaults(editModelId, setting, setEditMaxTok)
   }
 
   function onAddModelChange(modelId: string) {
@@ -160,7 +161,7 @@ export default function AgentPrompts() {
     const size = sizeForModel(modelId, addBrainSetting)
     setAddBrainSetting(size)
     if (size !== addBrainSetting)
-      applyTierDefaults(modelId, size, (t, m) => { setAddTemp(t); setAddMaxTok(m) })
+      applyTierDefaults(modelId, size, setAddMaxTok)
   }
 
   function onEditModelChange(modelId: string) {
@@ -168,7 +169,7 @@ export default function AgentPrompts() {
     const size = sizeForModel(modelId, editBrainSetting)
     setEditBrainSetting(size)
     if (size !== editBrainSetting)
-      applyTierDefaults(modelId, size, (t, m) => { setEditTemp(t); setEditMaxTok(m) })
+      applyTierDefaults(modelId, size, setEditMaxTok)
   }
 
   function openEdit(agent: Agent) {
@@ -182,7 +183,7 @@ export default function AgentPrompts() {
       setEditBrainSetting(
         typeof full.brain_setting === "string" ? full.brain_setting : "",
       )
-      setEditTemp(full.temperature != null ? String(full.temperature) : "")
+      setEditMode(typeof full.mode === "string" ? full.mode : "")
       setEditMaxTok(full.max_tokens != null ? String(full.max_tokens) : "")
       setEditOpen(true)
     }).catch(e => setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: e.message, variant: "error" }))
@@ -192,7 +193,7 @@ export default function AgentPrompts() {
     if (!editAgent) return
     const body: Record<string, unknown> = {
       content:     editContent,
-      temperature: editTemp  ? parseFloat(editTemp)  : undefined,
+      mode:        editMode,
       max_tokens:  editMaxTok ? parseInt(editMaxTok) : undefined,
     }
     if (editModelId)
@@ -223,7 +224,7 @@ export default function AgentPrompts() {
     const body: Record<string, unknown> = {
       agent_id:    id,
       content:     addContent,
-      temperature: addTemp   ? parseFloat(addTemp)   : undefined,
+      mode:        addMode,
       max_tokens:  addMaxTok ? parseInt(addMaxTok)   : undefined,
     }
     if (addModelId)
@@ -242,7 +243,7 @@ export default function AgentPrompts() {
       .then(() => {
         setAddOpen(false); setAddId(""); setAddContent("")
         setAddModelId(""); setAddBrainSetting("")
-        setAddTemp(""); setAddMaxTok("")
+        setAddMode(""); setAddMaxTok("")
         setToast({ text: `Agent "${id}" created`, variant: "success" })
         setRepoJsonRefresh(n => n + 1)
         loadAll()
@@ -292,6 +293,7 @@ export default function AgentPrompts() {
     ...a,
     model_label: (a.model_id && models[a.model_id]?.label) || a.model_id || "—",
     brain_setting: tierCell(a),
+    mode: a.mode || "—",
   }))
 
   function openAddModal() {
@@ -299,7 +301,8 @@ export default function AgentPrompts() {
     const firstSize = byOrder(models[firstModel]?.brain_sizes)[0] ?? ""
     setAddModelId(firstModel)
     setAddBrainSetting(firstSize)
-    applyTierDefaults(firstModel, firstSize, (t, m) => { setAddTemp(t); setAddMaxTok(m) })
+    applyTierDefaults(firstModel, firstSize, setAddMaxTok)
+    setAddMode(AGENT_MODES[0])
     setAddOpen(true)
   }
 
@@ -353,10 +356,10 @@ export default function AgentPrompts() {
           modelId={editModelId}
           onModelChange={onEditModelChange}
           brainSetting={editBrainSetting}
-          temp={editTemp}
+          mode={editMode}
           maxTok={editMaxTok}
           onTierChange={onEditTierChange}
-          onTempChange={setEditTemp}
+          onModeChange={setEditMode}
           onMaxTokChange={setEditMaxTok}
         />
         <div className="dep-field">
@@ -402,10 +405,10 @@ export default function AgentPrompts() {
           modelId={addModelId}
           onModelChange={onAddModelChange}
           brainSetting={addBrainSetting}
-          temp={addTemp}
+          mode={addMode}
           maxTok={addMaxTok}
           onTierChange={onAddTierChange}
-          onTempChange={setAddTemp}
+          onModeChange={setAddMode}
           onMaxTokChange={setAddMaxTok}
         />
         <div className="dep-field">
@@ -468,26 +471,26 @@ export default function AgentPrompts() {
   )
 }
 
-/** Model select, then that model's own brain sizes + temperature / max_tokens (catalog-driven; AST-1880) */
+/** Model select, then that model's own brain sizes, the agent mode and max_tokens (catalog-driven; AST-1880, AST-1949) */
 function BrainSettingFields({
   models,
   modelId,
   onModelChange,
   brainSetting,
-  temp,
+  mode,
   maxTok,
   onTierChange,
-  onTempChange,
+  onModeChange,
   onMaxTokChange,
 }: {
   models: ModelCatalog
   modelId: string
   onModelChange: (v: string) => void
   brainSetting: string
-  temp: string
+  mode: string
   maxTok: string
   onTierChange: (v: string) => void
-  onTempChange:  (v: string) => void
+  onModeChange:  (v: string) => void
   onMaxTokChange: (v: string) => void
 }) {
   const sizes = byOrder(models[modelId]?.brain_sizes)
@@ -517,13 +520,13 @@ function BrainSettingFields({
       </div>
       <div style={{ display: "flex", gap: 12 }}>
         <div className="dep-field" style={{ flex: 1 }}>
-          <label className="dep-field-label">Temperature</label>
-          <input
-            className="dep-input"
-            type="number" step="0.1" min="0" max="1"
-            value={temp}
-            onChange={e => onTempChange(e.target.value)}
-          />
+          <label className="dep-field-label">Mode</label>
+          <select className="dep-input" value={mode} onChange={e => onModeChange(e.target.value)}>
+            {mode === "" ? <option value="">— choose mode —</option> : null}
+            {AGENT_MODES.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
         </div>
         <div className="dep-field" style={{ flex: 1 }}>
           <label className="dep-field-label">Max Tokens</label>

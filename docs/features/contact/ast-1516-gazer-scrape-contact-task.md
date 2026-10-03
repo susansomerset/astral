@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-1516 archived 2026-10-02 -->
+
+## Linear archive (AST-1516)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1516/gazer-scrape-contact-task-estelle-needs-to-be-able-to-use-our  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1414 — Estelle needs to be able to use our endpoints.  
+**Blocked by / blocks / related:** parent: AST-1414; blocks: AST-1517
+
+### Description
+
+## What this implements
+
+Implement the gazer contact-task scrape handler registered in sibling #1: visible text + links + blocked/ok/closed/missing. Same-event follow-up via #1 dispatch. Does not create a job.
+
+## Citations
+
+`pattern.layers.import-discipline`, `astral.layers.core-vs-external-bright-line`, `astral.standards.debug-contract-gated`, `astral.standards.dry-and-focused-functions`
+
+## Scope
+
+`src/core/gazer.py` (modified — contact-task scrape helper). Technical: async helper wrapping extant Playwright visible-text fetch + link extraction + `_classify_jd` outcome for a single URL.
+
+## Acceptance criteria
+
+- [X] 2. Given a job URL, Estelle can emit a scrape contact task and, in that same inbound Slack event (follow-up turn), tell the user whether the page looks blocked or ok (or closed/missing) and a gist of the visible content. No job is created. (Handler returns `visible_text` / `links` / `page_status`; same-event follow-up owned by AST-1515.)
+- [X] 3. Style D on scrape contact-task paths when debug=True.
+
+## Boundaries
+
+- [X] Does not create jobs. Does not own markup/dispatch framework (sibling #1).
+
+## Notes for planning
+
+After sibling #1. Blocks sibling #3 link-create path.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1414-estelle-endpoints`, child `sub/AST-1414/AST-NNN-gazer-scrape-contact-task`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-27T01:16:37.421Z
+[code-rubric] PROCEED (Commit: dd66a923) Gazer scrape handler clean
+
+#### betty — 2026-08-27T01:13:14.567Z
+`origin/sub/AST-1414/AST-1516-gazer-scrape-contact-task` @ `dd66a923` · gazer scrape manifest
+
+#### joan — 2026-08-27T01:01:12.543Z
+[plan-rubric] PROCEED (Commit: 072cf5a3) scrape handler ready
+
+#### hedy — 2026-08-27T00:58:48.646Z
+`origin/sub/AST-1414/AST-1516-gazer-scrape-contact-task` @ `072cf5a3bd464c5533bc89866c4ffd0c6f0a7ed7` · plan ready
+
+---
+
 # AST-1516 — Gazer scrape contact task
 
 **Linear:** [AST-1516](https://linear.app/astralcareermatch/issue/AST-1516/gazer-scrape-contact-task-estelle-needs-to-be-able-to-use-our-endpoints)  
