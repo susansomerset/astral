@@ -431,3 +431,71 @@ Confirm Chuckles estimate: 3 — agree
 - **Recommendation:** Betty manifest ordering only; no plan revision.
 
 context_tokens≈58000
+
+## Review
+
+- **Branch:** `sub/AST-1953/AST-1957-manage-agents-settings`
+- **Build commits:** `5d1e79562` (Stage 1 admin API) · `15ba5277d` (Stage 2 Manage Agents form and list)
+- **Build notes:** both stages executed as written, and each stage's Done-when checks passed (`py_compile` and `rg` for Stage 1; `tsc -b`, `eslint` and `rg` for Stage 2). One point the plan left open: in Stage 2 step 12, `tsc` rejected the display rows (grid cells are strings), as the plan anticipated. The plan's example annotation (`const renderedAgents: Agent[]`) does not compile, so the rows are cast per row with `as unknown as Agent`, following the existing `as unknown as CsvRow` in `AdminCostReconciliation.tsx`. `ListPage` is unchanged. Ruff on `api_admin.py` adds only two `UP006` hints for the helper's `Dict[str, Any]`, which matches the file's existing `Dict` annotations and the plan's code. `tests/component/ui/api/test_api_admin.py` still can't import on this sub until AST-1956 lands (see **Sequencing risk**).
+
+## Radia review
+
+**Ticket:** AST-1957  
+**Publish ref:** `9a514b8991db12f51be0beb8754124b62e2e30fe` (`origin/sub/AST-1953/AST-1957-manage-agents-settings`)  
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51  
+**Overall:** CLEAN  
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+
+### Column diff vs plan stage
+
+(aligned) — Joan validate: `stat.logging.info.api` A.
+
+### Frame diff
+
+(none)
+
+### Findings
+
+#### fix-now
+
+(none)
+
+#### discuss
+
+(none)
+
+#### advisory
+
+- **Location:** `git diff origin/dev...origin/sub/AST-1953/AST-1957-manage-agents-settings` (stacked publish ref)
+- **Finding:** Three-dot diff vs `origin/dev` includes AST-1955 product paths (`src/utils/config.py`, `src/data/database.py`, seed, fixture) and AST-1958 plan doc, because this sub stacks on AST-1955 (not on `dev` yet). AST-1957 commits are confined to `api_admin.py`, `AdminAgentPrompts.tsx`, and Betty tests/bible for those surfaces.
+- **Recommendation:** Treat as sibling/stack carry when reading the diff; score plan fidelity on the two in-scope product files only.
+
+- **Location:** `AdminAgentPrompts.tsx` list rows / `ListPage` typing (build notes)
+- **Finding:** Plan’s `renderedAgents: Agent[]` example does not type-check; tip uses per-row `as unknown as Agent` (same pattern as `AdminCostReconciliation.tsx`). Behavior matches plan; typing is a local compile workaround.
+- **Recommendation:** Optional one-line note in plan **Review** for the next doc publish; no product change required.
+
+- **Location:** **Sequencing risk** / bible § AST-1957
+- **Finding:** `tests/component/ui/api/test_api_admin.py` still fails collection until AST-1956 removes `resolve_model_brain` from `src/core/agent.py` (import chain). Frontend `test_AdminAgentPrompts.test.tsx` is the AC 10 closure path on this sub.
+- **Recommendation:** Betty/`test-child` manifest on ftr rollup after AST-1956; no change on AST-1957 tip.
+
+- **Location:** Estimate confirm **3**
+- **Finding:** Two-stage API + frontend surface plus manifests fits confirmed points despite stacked diff size.
+- **Recommendation:** None.
+
+### What's solid
+
+- Stage 1 matches plan: `_agent_settings_from_body`, create/update wiring, `list_models` drops `brain_sizes`, `_enrich_tasks` / `_resolve_adhoc` use `resolve_agent_settings`, `brain_setting` dropped from enrichment row; Done-when `rg` clean on `api_admin.py`.
+- Stage 2 matches plan: `AgentSettingsFields`, `settingsBody` / `settingsFromAgent`, list columns for seven settings, AC `rg` clean on `AdminAgentPrompts.tsx`; create/update still use `_api_completed` only (no new API `logger` lines).
+- `stat.logging.info.api`: no added/removed/changed route completion logging in the API diff; idempotent `GET /agents/models` remains silent.
+- Boundaries hold: no `agent.py` / `llm_compat.py` in this ticket’s product delta; parent AC 5 remainder still deferred to AST-1956 per **AC boundaries**.
+
+### Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-1957): Radia review — clean`, push publish ref, post slim upshot `--as radia`, **Review Posted** → PROCEED to **User Testing** (with AST-1955 already UT, merge-child/ftr ordering per parent workflow).
+
+context_tokens≈52000
