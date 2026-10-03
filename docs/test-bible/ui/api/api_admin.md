@@ -1072,3 +1072,29 @@ cd src/ui/frontend && npm run test:component -- \
 | AC 8: `GET /agents/models` lists 79 ids; shortlist slug served by openrouter; `moonshotai/kimi-k2.6` not a separate id | `list_models` | `…::test_ast1938_models_route_lists_79` |
 
 `test_list_models_is_per_model_brain_size_catalog` (AST-1880) iterates `LLM_MODEL_CONFIG`, so it covers all 79 entries unchanged.
+
+> **AST-1947 / AST-1948:** Frozen record. `test_ast1938_shortlist_model_scoped_sizes_on_put` → `test_ast1947_openrouter_one_size_by_quant_on_put`, and `test_ast1938_models_route_lists_79` → `test_ast1947_models_route_lists_98` (§ AST-1948 below).
+
+### AST-1948 · AST-1946 (admin agent routes: `mode` required, temperature retired)
+
+**Primary manifest:** **`docs/test-bible/core/agent.md`** § AST-1948.
+
+`POST /agents` requires `agent_id`, `model_id`, `brain_setting` and a non-blank string `mode`. Otherwise it returns 400 `agent_id, model_id, brain_setting and mode are required`. `PUT /agents/<id>` returns 400 `mode is required` unless the body has a non-blank string `mode`. The check runs after the 404 check and before any write. Neither route forwards `temperature` or `model_code`. The data layer rejects an unknown mode, which comes back as 400. `GET /agents/models` sizes carry only `order` + `default_max_tokens`. `_enrich_tasks` and `_resolve_adhoc` pass the agent's mode to `resolve_model_brain`, and adhoc `temperature` is `tier["temperature"]`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 7 against real sqlite: PUT `mode: "Creative"` round-trips (PUT body and re-GET show `mode`, with no `temperature` / `model_code` keys). PUT `"Wild"` and PUT without mode → 400, row unchanged. POST `"Wild"` → 400, nothing written | `create_agent` / `update_agent` → `database` | `TestAdminConfigAndAgents::test_ast1948_mode_round_trip_and_rejections` |
+| Revised — create needs mode (+3 params: missing, blank, non-string) with the new error string | `create_agent` | `TestAdminConfigAndAgents::test_create_agent_requires_id_model_brain_and_mode` (renamed from `…_requires_id_model_and_brain`; 9 params) |
+| Revised — create forwards a stripped `mode` and drops a stray `temperature` | `create_agent` | `…::test_create_agent_conflict_success_and_data_layer_rejection` |
+| Revised — PUT with no / blank / non-string mode → `mode is required` (five bodies), no write. A full PUT forwards `mode`, not `temperature` / `model_code` | `update_agent` | `…::test_update_agent_fields_strip_and_errors` |
+| Revised — `list_models` sizes have no `default_temperature` | `list_models` | `…::test_list_models_is_per_model_brain_size_catalog` |
+| Revised — real-DB size checks send `mode` | routes | `…::test_kimi_medium_rejected_on_create_and_update_row_unchanged` |
+| Revised (AST-1947 drift) — each OpenRouter model offers one size, chosen by host quantization: `qwen/qwen3-32b` Medium → 200; qwen Little / Big and mythomax Medium → 400, row unchanged | routes | `…::test_ast1947_openrouter_one_size_by_quant_on_put` (was `test_ast1938_shortlist_model_scoped_sizes_on_put`) |
+| Revised (AST-1947 AC 8 / parent AC 11) — `GET /agents/models` = 98 ids; `moonshotai/kimi-k2.6` on openrouter; `kimi-k2.6-openrouter` gone | `list_models` | `…::test_ast1947_models_route_lists_98` (was `test_ast1938_models_route_lists_79`) |
+| Revised — task-manager SKU resolves with the agent's mode. A mode-less / `"Wild"` agent blanks its row and warns (no 500) | `_enrich_tasks` | `TestEnrichTasks::test_enrich_tasks_covers_agent_and_cache_branches` · `::test_enrich_tasks_uses_catalog_pricing_for_agent_model` · `::test_enrich_tasks_unroutable_agent_leaves_row_blank_and_warns` (+`no_mode`, `unknown_mode`) |
+| Revised — adhoc temperature comes from the mode (Deterministic 0.2 / Creative 0.6, Kimi Big thinking follows mode), a stale row `temperature` is ignored, and the `max_tokens` override still wins. Mode-less / `"Wild"` → 400 | `_resolve_adhoc` | `TestAst1880ResolveAdhocCatalogRoute::test_deepseek_little_uses_catalog_sku_server_tier_and_defaults` · `::test_mode_sets_temperature_and_max_tokens_override_wins` (2; replaces `test_agent_overrides_win_including_zero`, since the row no longer has a temperature override) · `::test_adhoc_test_forwards_route_and_key_map_to_core` · `::test_unroutable_agent_returns_400` (+`no_mode`, `unknown_mode`) |
+| Revised — adhoc agent mocks carry `mode` | `_resolve_adhoc` | `TestAdhocHelpers::test_adhoc_entities_and_resolve` · `::test_resolve_adhoc_job_entity_resolves_visible_jd_token` · `TestApiAdminBranchGaps::test_resolve_adhoc_candidate_and_preview_errors` · `TestAst1411AdhocSevenSegment::test_resolve_preview_seven_segment_and_system_fallback` |
+
+**Known window (by design, plan Stage 2):** `AdminAgentPrompts.tsx` sends no `mode` until AST-1949. So on `ftr` between the two merges, UI edits get `400 mode is required` and UI creates get the create error. The frontend tests (`tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx`) are AST-1949's.
+
+**Integration:** none.
