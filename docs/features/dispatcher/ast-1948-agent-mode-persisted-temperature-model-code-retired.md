@@ -406,3 +406,59 @@ context_tokens≈48000
   - Greps: the AC 6 four-name grep across `src/` (minus frontend) is empty. AC 8's `0.2` / `0.6` literal grep and slug grep are empty. The remaining `temperature` / `model_code` hits in `database.py` are timesheet-ledger columns, the docstring and the drop loop.
   - Lint: `py_compile` is clean on all three files. `ruff check --select F,E9`: `agent.py` and `api_admin.py` 0 errors; `database.py` has 7, all pre-existing (unused `timedelta` / `Path` / `AGENT_CONFIG` / `SOURCE_ENTITY_TYPE_DEFAULT` / `validate_job_source`, two F811), the same as the baseline.
 - **For qa-child:** see § Tests expected to move. The `AdminAgentPrompts.tsx` `default_temperature` / `temperature` hits are AST-1949's. Until AST-1949 lands, the UI's PUT returns `400 mode is required` (accepted in Stage 2 step 5).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1948
+**Publish ref:** `51caab812c71c64d0bcaf535cf9cc0720bea25ab` (`origin/sub/AST-1946/AST-1948-agent-mode-row`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.info.api | A | | |
+
+## Column diff vs plan stage
+(aligned) — Joan: `stat.logging.debug` **A**, `stat.logging.info.api` **A**; diff review matches.
+
+## Frame diff
+- [ ] **AC 6 (UI half):** `rg -n "temperature" src/ui/frontend/src/pages/AdminAgentPrompts.tsx` is empty after AST-1949 (Manage Agents UI); backend + `config.py` halves satisfied on this sub.
+- [ ] **AC 13 / live rows:** Nullable `mode` on DB rows until AST-1950 migration; `do_task` / adhoc correctly fail closed when `mode` is missing on the agent row.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+- **Severity:** discuss  
+  **Location:** Linear **AC 6** vs **Boundaries** (“Does not touch the UI (#3)”)  
+  **Finding:** AC 6 still requires `AdminAgentPrompts.tsx` to have no `temperature` / `default_temperature` references; on this tip those hits remain (`default_temperature` type + pre-fill setter). Plan traceability assigns that grep to AST-1949; this three-dot diff does not modify the frontend.  
+  **@susan:** Treat AC 6’s TSX bullet as an **ftr gate after #3**, or split Linear AC 6 explicitly like the plan?  
+  **Default:** Do not reopen AST-1948; validate the TSX grep on `ftr` after AST-1949 merges.
+
+- **Severity:** discuss  
+  **Location:** `update_agent` route (Stage 2)  
+  **Finding:** Every PUT must include a non-empty `mode` (not only when changing mode), so partial edits (e.g. content-only) return 400 without `mode`. Matches the plan’s required-mode contract and build verification; operators using the current UI will see 400 until AST-1949 sends `mode`.  
+  **Default:** Accept as intentional; no API relaxation on this sub.
+
+### advisory
+- **Paired landing / three-dot diff:** `origin/dev...origin/sub/AST-1946/AST-1948-agent-mode-row` includes AST-1947’s `src/utils/config.py`, seed, fixture, and Betty tests — expected for option A (#2 built atop #1). AST-1948-owned product delta is `database.py`, `agent.py`, `api_admin.py` plus sibling test/bible carry (`test_agent.py`, `test_api_admin.py`, `test_repo_admin_json.py`, `test_agents.py`, bibles).
+- **`database.py`:** `.cursorignore` blocks in-editor reads; diff + build notes show DDL (`mode` in, `temperature` / `model_code` dropped), repo-JSON apply, `save_agent` / `update_agent` / public view changes, and removal of unused `resolve_model_brain` import after `_expose_agent_public` refactor. `python3 -c "import src.data.database"` succeeds on workspace.
+- **AC 6 / AC 8 greps (backend):** Four-name helper grep across `src/` (non-frontend) is clean; `0.2` / `0.6` mode-literal grep on `agent.py`, `api_admin.py`, and `database.py` is clean on shipped paths. Remaining `temperature` / `model_code` strings in `database.py` are ledger columns, docstring, or DROP-loop identifiers per build notes.
+
+## What's solid
+- **Plan fidelity:** Schema-ensure, repo-JSON `mode`, public view SKU via `get_llm_model` (mode-agnostic listing for NULL-mode rows pre-1950), `_agent_llm_route` + `do_task` / `_resolve_adhoc` / task enrich using `resolve_model_brain(..., mode)` and `tier["temperature"]`, admin create/update `mode` required, `list_models` drops `default_temperature` — matches issue doc Stages 1–2.
+- **stat.logging.debug:** No new `debug=` on the touched LLM route path; existing ungated `logger.debug` on `_send_to_server` still logs `temp=%s` from the mode-resolved tier. No new logging in `src/data/`.
+- **stat.logging.info.api:** `create_agent` / `update_agent` still emit single `_api_completed` info lines at 201/200; shape unchanged (`mode` was never in those lines).
+- **Sequencing repair:** AST-1947 caller breaks (`infer_brain_setting_from_legacy_model_code`, two-arg `resolve_model_brain`, `tier["default_temperature"]`) are addressed in this sub’s owned files; `ftr` boot path is the stated pairing goal with AST-1947.
+
+## Recommended actions (downstream — not Radia)
+- Chuckles: append artifact, `docs(AST-1948): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** (no fix-now).
+- **merge-child / ftr:** Land AST-1947 + AST-1948 pair per AST-1951 option A before expecting full Linear AC 6 (TSX) or parent UAT on Manage Agents.
+- **AST-1949:** UI must send `mode` on PUT and drop temperature/default_temperature pre-fill to match API contract.
+
+context_tokens≈22000
