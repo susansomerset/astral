@@ -403,53 +403,7 @@ Revision 1 — 2026-10-03
 Driven by: Joan `[plan-discuss] round=1 concern` (`99b70f203`) — fix-now: AC 6 stubbed-client check unmapped; discuss: AC 8 "field-for-field" meaning.
 Changes: Added **AC boundaries** after Scope gate. It maps AC 5–8, marks AC 6's stubbed-client `max_tokens` wire check N/A on this sub (closes with AST-1956's call path), and names this sub's catalog-side part of that check (`deepseek-v4-pro`: no floor, default 16000). Stage 3 step 2 now defines "field-for-field" as same settings fields and same value rule, not row parity with the seed, and names the exact change if Susan wants a seed copy instead. No stage steps, files or estimate changed.
 
-## Joan validate — round 1 (REVISE, superseded by round 2)
-
-[plan-discuss] round=1 concern  
-[plan-rubric] REVIEW (Commit: 3593697ee) AC6 stub untraced  
-
-**Ticket:** AST-1955  
-**Overall:** REVISE  
-**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51  
-**Publish ref:** `sub/AST-1953/AST-1955-plain-agent-settings` @ `3593697eeb3ad644b5ae012cc79b7ef60e650f11`
-
-## Canon scores
-
-| slug | grade | effort | one-line |
-|------|-------|--------|----------|
-| stat.logging.debug | A | | |
-
-## Traceability
-
-5 → Stage 1 (proxy symbols out of `config.py`; ticket **Boundaries** defer full `src/` AC5 until AST-1956/1957 on ftr) · 6 → Stage 1 catalog ids + resolver expectations; **stubbed-client send line untraced** · 7 → Stage 1 `resolve_agent_settings` + step 11 expected results · 8 → Stage 3 seed + AST-756 fixture + validation
-
-## Findings
-
-### fix-now
-
-- **Location:** Child AC 6 (stubbed client) vs plan stages / **Boundaries**
-- **Finding:** Ticket AC 6 includes “stubbed client: agent on `deepseek-v4-pro` with `max_tokens: 384000` sends `max_tokens == 384000`.” Stages map the id/catalog checks and resolver defaults (Stage 1 step 11) but never state where the wire-level stubbed check runs. **Boundaries** only defers AC 5’s full-`src/` `rg`, not this AC 6 bullet. R5 treats an unmapped AC check as blocking.
-- **Recommendation:** Add an explicit boundary (mirror AC 5): stubbed send assertions are N/A on this sub and land in AST-1956 / Betty manifest after call-path merge—or add a stage that names the manifest hook if Betty should still own it.
-
-### discuss
-
-- **Location:** Stage 3 step 2, child AC 8 (“matches field-for-field”)
-- **Finding:** Plan follows AST-1947 (6-row fixture, column parity, stale `model_code`/content retained) and flags ambiguity if AC 8 means “copy of seed.” That interpretation is reasonable but not spelled in the ticket AC.
-- **Recommendation:** If Susan intends twin-of-seed, revise Stage 3; otherwise one clarifying sentence in the plan (or ticket) that “field-for-field” means shared column shape, not row parity with the 7-row seed.
-
-### acceptable
-
-- **Location:** Plan structure — no `## Self-assessment` block
-- **Finding:** Estimate confirm only; complexity is carried in staged done-when gates and **Sequencing risk**.
-- **Recommendation:** None required for approve; optional conf/risk line if engineer wants parity with larger plans.
-
-- **Location:** **Sequencing risk**
-- **Finding:** `resolve_model_brain` removal vs `tests/component/core/` collection and AC 8 revert-from-seed is disclosed for Betty; consistent with parent sequencing.
-- **Recommendation:** None on plan text.
-
-context_tokens≈42000
-
-## Joan validate — round 2
+## Joan validate
 
 [plan-rubric] PROCEED (Commit: e4253c590) Plan traceability complete
 
@@ -496,3 +450,65 @@ AST-1955 plan approved.
 - **Branch:** `sub/AST-1953/AST-1955-plain-agent-settings`
 - **Build commits:** `2857d1738` (Stage 1 config) · `8376631f9` (Stage 2 database) · `8708be5fd` (Stage 3 seed + fixture)
 - **Build notes:** all three stages executed as written; each stage's Done-when checks were run green on a temp SQLite DB. No deviations. Imports of `src/core/agent.py`, `src/ui/api/api_admin.py` and `scripts/migrations/remap_openrouter_agents.py` break until AST-1956 / AST-1957 / AST-1958 land, as the parent's Sequencing section expects (see **Sequencing risk**).
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1955  
+**Publish ref:** `c2410f0cbe321b97ec060c9a99345349dea4ade9` (`origin/sub/AST-1953/AST-1955-plain-agent-settings`)  
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan validate round 2: `stat.logging.debug` A.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `docs/features/agent/ast-1955-plain-agent-settings-and-per-sku-direct-models.md` (plan tail)
+- **Finding:** Round-1 Joan validate artifact remains embedded in the published plan after round-2 APPROVED; Joan round 2 already flagged this for Chuckles strip on next plan publish.
+- **Recommendation:** Chuckles removes the superseded `## Joan validate — round 1` block when appending this review (doc hygiene only).
+
+- **Location:** `tests/component/core/test_repo_admin_json.py` + bible § AST-1955 sequencing
+- **Finding:** `resolve_model_brain` removal still breaks `tests/component/core/` collection until AST-1956 lands on `ftr`; Betty documented stub/local verification. Changes on this sub are API-aligned (`save_agent` / revert / validation), not sibling product scope.
+- **Recommendation:** No action on AST-1955 tip; keep revert-from-seed / full core collection on ftr rollup per plan **Sequencing risk**.
+
+- **Location:** Estimate confirm **3**
+- **Finding:** Diff is large (config + database + seed + fixture + manifests) but matches the three staged plan surfaces and Betty bible blocks; footprint fits the confirmed estimate.
+- **Recommendation:** None.
+
+## What's solid
+
+- Three-dot diff vs `origin/dev` is confined to planned product paths (`src/utils/config.py`, `src/data/database.py`, seed, AST-756 fixture) plus Betty tests/bible; no `agent.py`, `llm_compat.py`, or `api_admin.py` smuggling.
+- Stage 1 done-when proxies hold on tip: legacy symbols absent from `config.py`; `resolve_agent_settings` matches plan shape (provider object, tier fields, OpenRouter vs direct).
+- Stage 2 done-when proxies hold: brain/mode validation removed from `database.py`; public column list and settings encode/decode follow the plan contract.
+- Stage 3: seven seed rows carry all seven settings keys; fixture rows carry settings columns without `brain_setting` / `mode`.
+- `stat.logging.debug`: no new `logger.debug` / gated debug / `src/data` debug noise in the diff; pure resolver left logging-free per plan Stage 1 §13 and Stage 2 module rule.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append this artifact to the issue doc, `docs(AST-1955): Radia review — clean`, push `origin/sub/AST-1953/AST-1955-plain-agent-settings`, post slim upshot `--as radia`, move **Review Posted** → datt **PROCEED** path to **User Testing** (no fix-now canon items).
+- Optional doc hygiene: strip superseded Joan round-1 block from the plan file when writing the review commit.
+
+context_tokens≈48000
