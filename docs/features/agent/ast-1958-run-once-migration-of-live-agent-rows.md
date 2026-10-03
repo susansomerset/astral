@@ -282,3 +282,63 @@ context_tokens≈58000
 - **Branch:** `sub/AST-1953/AST-1958-migrate-agent-settings`
 - **Build commits:** `1960e4902` (Stage 1 migration script; AST-1950 script deleted)
 - **Build notes:** Stage 1 executed as written: script extracted verbatim from the plan block, compiled, `ruff check` clean, step 4 hand check on a temp SQLite DB matched every row of the expected table (dry run left rows and columns untouched; `--apply` dropped `brain_setting` / `mode`; second run reported nothing to migrate). No deviations. `tests/component/scripts/test_remap_openrouter_agents.py` and its bible are Betty's to delete (see **Sequencing**).
+
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1958  
+**Publish ref:** `27819cc7bb56c0e7e150581d5bb55e1820df0546` (`origin/sub/AST-1953/AST-1958-migrate-agent-settings`)  
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51  
+**Overall:** CLEAN  
+
+## Canon scores
+
+*(Frozen Canon Scope: none — `scripts/migrations/` is outside directive territory per ticket **Canon Scope** and Joan validate; no ids to grade.)*
+
+## Column diff vs plan stage
+
+no plan-stage canon rows (frozen scope empty)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `git diff origin/dev...origin/sub/AST-1953/AST-1958-migrate-agent-settings`
+- **Finding:** Three-dot diff vs `origin/dev` still includes AST-1955 / AST-1957 (and siblings’) product, seed, fixture, and UI/API changes because those subs are not on `dev` yet. AST-1958’s engineer commit (`1960e4902`) touches only `scripts/migrations/remap_agent_settings.py` (add) and `remap_openrouter_agents.py` (delete), matching “No product code changes” for this ticket.
+- **Recommendation:** Read stacked carry as sibling publish composition; judge AST-1958 on the migration script + Betty’s `test_remap_agent_settings` / bible swap.
+
+- **Location:** Joan validate discuss (null `mode` seed row)
+- **Finding:** Plan hand-check row (Big + thinking-capable slug) is pinned in `test_remap_agent_settings.py` as `a-null` (`openai/gpt-oss-120b`, Big, `mode` null → Creative + thinks → `temperature`/`reasoning_effort` null after apply).
+- **Recommendation:** None; Betty closed the plan discuss item.
+
+- **Location:** Estimate confirm **2**
+- **Finding:** Single scripted stage + retire prior migration script fits confirmed points.
+- **Recommendation:** None.
+
+## What's solid
+
+- `remap_agent_settings.py` on tip matches the plan’s embedded Stage 1 source (155 lines): `SKU_IDS`, `CAN_THINK` (58 ids), `MODE_TEMPERATURE`, dry-run print-only path, `--apply` with `_ensure_agent_schema` then `executemany` UPDATE (five bind params aligned with `?` placeholders) and both column drops before one `commit`.
+- `remap_openrouter_agents.py` removed on tip (AST-1950 superseded); Betty landed `test_remap_agent_settings.py` + `docs/test-bible/dev/remap_agent_settings.md` and retired `test_remap_openrouter_agents.py` / `remap_openrouter_agents.md` per Scope.
+- Migration logic reproduces documented old-world rules: SKU remap for six `(model_id, brain)` pairs, DeepSeek Big floor, kimi Big empty `max_tokens` → 32000, thinking gating on Creative + `CAN_THINK`, `reasoning_effort` `"none"` when not thinking on thinking-capable ids, explicit null provider fields + `provider_allow_fallbacks = 1`.
+- Idempotent second run: missing `brain_setting`/`mode` → message and exit 0.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-1958): Radia review — clean`, push publish ref, post slim upshot `--as radia`, **Review Posted** → **User Testing** when parent rollup allows.
+- Operators: run `python scripts/migrations/remap_agent_settings.py` (dry run) then `--apply` once after AST-1953 deploy on each environment (per script docstring).
+
+context_tokens≈45000
