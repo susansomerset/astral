@@ -123,3 +123,38 @@ The engineer does not edit these. Listed so Betty's manifest lines up with the c
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1949
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `origin/sub/AST-1946/AST-1949-manage-agents-mode` @ `85e7b90262265aad905c796ac2a16a95d546021d`
+
+## Canon scores
+(none — ticket § Citations and plan Canon Scope explicitly empty; no directives to score)
+
+## Traceability
+**AC7** → Stage 1 step 17 (`rg` no `temperature` on this page); catalog / `LLM_MODEL_CONFIG` / epic `src/` greps **N/A — AST-1947/1948**. **AC8** (parent **AC10** Manage Agents) → Stage 1 steps 4–16 (Mode column/select, save bodies `mode`, no temperature UI/pre-fill) + Betty `test_AdminAgentPrompts.test.tsx`. Parent **AC7** UI half → AC7 grep here; **AC8–9** → #2/#4; **AC1–6, AC11–13** → siblings / epic composite.
+
+## Findings
+
+### discuss
+- **Severity:** discuss  
+  **Location:** Stage 1 step 13 — `openAddModal`  
+  **Finding:** Add always pre-selects `AGENT_MODES[0]` (Deterministic) even when the first brain size is Big; parent item 8 sets **existing** seed/DB rows (Big → Creative), not Add-form automation.  
+  **Recommendation:** Acceptable unless Susan wants tier-change or size-change to derive default mode; would be a scope/product call, not a plan defect today.
+
+- **Severity:** discuss  
+  **Location:** Stage 1 step 8 decision  
+  **Finding:** Mode changes do not re-run `applyTierDefaults`; max-tokens pre-fill stays size-driven only while OpenRouter call caps are mode-driven on the backend.  
+  **Recommendation:** Documented and consistent with Scope; operators may see listing `default_max_tokens` that does not reflect Creative cap until they change size — acceptable for this ticket.
+
+### acceptable
+- **Severity:** acceptable  
+  **Location:** Step 2 — `AGENT_MODES` literal in TSX  
+  **Finding:** Duplicates `AGENT_MODE_CONFIG` in config; justified because backend is out of scope and `/agents/models` does not expose mode names.  
+  **Recommendation:** Keep; optional future API field is out of AST-1949.
+
+context_tokens≈52000
