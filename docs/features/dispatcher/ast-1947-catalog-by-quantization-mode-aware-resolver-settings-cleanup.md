@@ -549,3 +549,11 @@ context_tokens≈32000
 
 context_tokens≈28000
 ```
+
+## Resolution
+
+- **Date:** 2026-10-03. **Reviewed tip:** `0d5db0f6f` (review commit `e15f115cf`). No product change in resolve.
+- **Fix-now:** none.
+- **Discuss (shared AC 6 greps):** no Susan answer in thread, so Radia's `Default:` applies. The Linear AC text stays as written and AST-1947 is not reopened. The whole-`src/` AC 6 greps, the AC 8 `GET /api/admin/agents/models` = 98 count, and the AC 9 mode-literal grep run on `ftr/AST-1946-big-brain-openrouter` after AST-1948 and the UI child merge. Susan can reverse this by narrowing AC 6 in Linear.
+- **Frame diff rows:** left unchecked on purpose. They are ftr gates under option A ([AST-1951](https://linear.app/astralcareermatch/issue/AST-1951)) and cannot be validated on this sub. The config halves of AC 6 and AC 8 hold on this tip, per § Review.
+- **Advisory:** nothing to act on. The sibling test carry and the `src.data.database` import break until AST-1948 are both expected under § Sequencing gap.
