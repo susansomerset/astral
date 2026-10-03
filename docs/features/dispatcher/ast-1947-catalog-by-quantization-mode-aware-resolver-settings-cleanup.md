@@ -443,3 +443,39 @@ Blocked on the sequencing decision above (`[scope-gate]`), not on size.
     "z-ai/glm-5.3": (0.13, 2.99, 0.15, "morph", "fp8", True, 943718),
     "z-ai/glm-5.3-flash": (0.03, 0.93, 0.01, "open-inference", "fp4", True, 943718),
 ```
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1947
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `origin/sub/AST-1946/AST-1947-catalog-quant-mode` @ `52411898b5b376835b8d2b2cfee06cbc12012f5c`
+
+## Canon scores
+stat.logging.debug | A |
+
+## Traceability
+**AC1** → Stage 1 + Verification (`OPENROUTER_MODEL_TABLE` / builder; set-diff vs brief). **AC2** → Stage 1 step 5/11 (`OPENROUTER_QUANT_BRAIN_SIZE`, one tier per slug). **AC3** → Stage 1 + Appendix A prices. **AC4** → Stage 1 `_openrouter_pin` + `quantizations`. **AC5** → Stage 1 `resolve_model_brain` + `AGENT_MODE_CONFIG` caps. **AC6** → Stage 1 catalog reshape + greps on `config.py` / stored tiers; `AdminAgentPrompts.tsx` temperature grep **N/A on this sub** (#3). **AC7** → Stage 2 seed + AST-756 fixture. **AC8** → Stage 1 (`kimi-k2.6-openrouter`, `validate_llm_provider_environment`, `len==98`); `GET /api/admin/agents/models` count **on `ftr` after AST-1948** (option A, Chuckles AST-1947 comment). **AC9** → Verification slug `rg` + config-only ownership; `0.2`/`0.6` literal grep on `agent.py` / `api_admin.py` / `database.py` **paired with #2** (out of Files Changed). Parent **AC1–6** (catalog/mode/resolver) → Stages 1–2; **AC7** config half → AC6 greps here, UI half #3; **AC8–10** → #2/#3; **AC11** → AC8; **AC12** → AC9; **AC13** → #4.
+
+## Findings
+
+### discuss
+- **Severity:** discuss  
+  **Location:** `## Estimate` (plan tail)  
+  **Finding:** Still says “Blocked on the sequencing decision” though Susan chose **A** on AST-1951 and Chuckles recorded resolution on AST-1947.  
+  **Recommendation:** Optional plan tidy (confirm line only); does not block build under option A.
+
+- **Severity:** discuss  
+  **Location:** Verification vs child **AC6** / **AC9**  
+  **Finding:** Verification spells out config-half and slug grep; shared halves (frontend temperature grep, core/api/db mode literals) rely on option A + Betty manifest on `test_config.py` / `test_llm_compat.py` only.  
+  **Recommendation:** Keep qa-child manifest narrow per plan; run shared AC checks on `ftr` after #2/#3 as already stated for AC8 endpoint count.
+
+### acceptable
+- **Severity:** acceptable  
+  **Location:** `## Sequencing gap` heading  
+  **Finding:** Wording still reads “blocks Plan Ready” while status is Plan Ready post–option A.  
+  **Recommendation:** Historical scope-gate record; engineer may retitle when convenient.
+
+context_tokens≈32000
