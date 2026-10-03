@@ -12,39 +12,27 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 
 const mockedApi = vi.mocked(api)
 
-// AST-1880: GET /agents/models — keyed by model id, each model's own sizes; `order` carries catalog order.
-// AST-1948: sizes carry no default_temperature (the agent's mode decides temperature).
+// AST-1880 / AST-1957: GET /agents/models — keyed by model id; `order` carries catalog order; each model's own
+// default output budget, no brain sizes.
 const models = {
-  "kimi-k2.6": {
-    order: 1,
-    label: "Kimi K2.6",
-    server_id: "kimi",
-    server_label: "Kimi",
-    brain_sizes: {
-      Big: { order: 1, default_max_tokens: 32000 },
-      Little: { order: 0, default_max_tokens: 8192 },
-    },
-  },
-  claude: {
-    order: 0,
-    label: "Claude",
-    server_id: "anthropic",
-    server_label: "Anthropic",
-    brain_sizes: {
-      Big: { order: 2, default_max_tokens: 32000 },
-      Little: { order: 0, default_max_tokens: 8192 },
-      Medium: { order: 1, default_max_tokens: 64000 },
-    },
+  "kimi-k2.6": { order: 1, label: "Kimi K2.6", server_id: "kimi", server_label: "Kimi", default_max_tokens: 16000 },
+  "claude-haiku-4-5": {
+    order: 0, label: "Claude Haiku 4.5", server_id: "anthropic", server_label: "Anthropic", default_max_tokens: 8192,
   },
 }
 
-// AST-1948: agent rows carry mode; temperature / model_code are gone.
+// AST-1957: rows carry the seven plain settings as the data layer exposes them (lists decoded, bool fallbacks).
+const emptySettings = {
+  quantization: null, temperature: null, reasoning_effort: null, provider_allow_fallbacks: null,
+  provider_only: null, provider_ignore: null, provider_sort: null,
+}
 const agents = [
   {
     agent_id: "agent_a",
-    model_id: "claude",
-    brain_setting: "Medium",
-    mode: "Deterministic",
+    model_id: "claude-haiku-4-5",
+    ...emptySettings,
+    temperature: 0.2,
+    provider_allow_fallbacks: true,
     max_tokens: 4096,
     task_count: 0,
     content_length: 12,
@@ -53,8 +41,13 @@ const agents = [
   {
     agent_id: "agent_b",
     model_id: "kimi-k2.6",
-    brain_setting: "Big",
-    mode: "Creative",
+    quantization: "fp8",
+    temperature: null,
+    reasoning_effort: "none",
+    provider_allow_fallbacks: false,
+    provider_only: ["groq", "together"],
+    provider_ignore: ["deepinfra"],
+    provider_sort: "price",
     max_tokens: 1024,
     task_count: 2,
     content_length: 8,
@@ -99,9 +92,12 @@ describe("AdminAgentPrompts", () => {
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
         return { ok: true, json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
       }
-      if (url === "/api/admin/agents/agent_a" && init?.method === "PUT") {
+      if (url === "/api/admin/agents/agent_b" && !init?.method) {
+        return { ok: true, json: async () => ({ ...agents[1], content: "b prompt" }) } as Response
+      }
+      if (/^\/api\/admin\/agents\/agent_[ab]$/.test(url) && init?.method === "PUT") {
         putBodies.push(JSON.parse(String(init.body)))
-        return { ok: true, status: 200, json: async () => ({ agent_id: "agent_a", brain_setting: "Medium" }) } as Response
+        return { ok: true, status: 200, json: async () => ({ ...agents[0] }) } as Response
       }
       if (url === "/api/admin/agents" && init?.method === "POST") {
         postBodies.push(JSON.parse(String(init.body)))
@@ -133,136 +129,138 @@ describe("AdminAgentPrompts", () => {
     await waitFor(() => expect(screen.getByText(/Agent "agent_a" deleted/)).toBeInTheDocument())
   }, 20000)
 
-  it("AST-1880: Add picks a model, then only that model's sizes; defaults follow model + size", async () => {
-    mockApi()
-    renderWithProviders(<AgentPrompts />)
-    await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
-    // Model column shows the catalog label.
-    expect(screen.getByText("Claude")).toBeInTheDocument()
-    expect(screen.getByText("Kimi K2.6")).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
-    // First model in catalog order, its first size, and that row's max-tokens default.
-    expect(optionTexts("Model")).toEqual(["Claude", "Kimi K2.6"])
-    expect(within(field("Model")).getByRole("combobox")).toHaveValue("claude")
-    expect(optionTexts("Brain size")).toEqual(["Little", "Medium", "Big"])
-    expect(within(field("Brain size")).getByRole("combobox")).toHaveValue("Little")
-    // AST-1949: Add opens on Deterministic with exactly the two modes.
-    expect(optionTexts("Mode")).toEqual(["Deterministic", "Creative"])
-    expect(within(field("Mode")).getByRole("combobox")).toHaveValue("Deterministic")
-    await userEvent.selectOptions(within(field("Brain size")).getByRole("combobox"), "Medium")
-    expect(within(field("Max Tokens")).getByRole("spinbutton")).toHaveValue(64000)
-
-    // Kimi has no Medium: size falls back to Kimi's first size and its max-tokens default.
-    await userEvent.selectOptions(within(field("Model")).getByRole("combobox"), "kimi-k2.6")
-    expect(optionTexts("Brain size")).toEqual(["Little", "Big"])
-    expect(within(field("Brain size")).getByRole("combobox")).toHaveValue("Little")
-    expect(within(field("Max Tokens")).getByRole("spinbutton")).toHaveValue(8192)
-    // Size / model changes never touch the mode.
-    expect(within(field("Mode")).getByRole("combobox")).toHaveValue("Deterministic")
-    await userEvent.selectOptions(within(field("Mode")).getByRole("combobox"), "Creative")
-
-    fireEvent.change(screen.getByPlaceholderText("e.g. job_analyst_grace"), { target: { value: "kimi agent" } })
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
-    await waitFor(() => expect(postBodies).toHaveLength(1))
-    expect(postBodies[0]).toMatchObject({
-      model_id: "kimi-k2.6", brain_setting: "Little", mode: "Creative", max_tokens: 8192,
-    })
-    expect(postBodies[0]).not.toHaveProperty("temperature")
-  }, 20000)
-
-  it("AST-1880: Edit shows the agent's model + size and sends model_id on Save", async () => {
-    mockApi()
-    renderWithProviders(<AgentPrompts />)
-    await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
-    await userEvent.click(screen.getByText("agent_a"))
-    await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
-    expect(within(field("Model")).getByRole("combobox")).toHaveValue("claude")
-    expect(within(field("Brain size")).getByRole("combobox")).toHaveValue("Medium")
-    // AST-1949: the row's stored mode pre-selects.
-    expect(within(field("Mode")).getByRole("combobox")).toHaveValue("Deterministic")
-    // Switching to Big keeps the model; Save carries both plus mode, never temperature.
-    await userEvent.selectOptions(within(field("Brain size")).getByRole("combobox"), "Big")
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
-    await waitFor(() => expect(putBodies).toHaveLength(1))
-    expect(putBodies[0]).toMatchObject({ model_id: "claude", brain_setting: "Big", mode: "Deterministic" })
-    expect(putBodies[0]).not.toHaveProperty("temperature")
-  }, 20000)
-
-  // AST-1949 AC 8: Mode select (exactly Deterministic / Creative) sent as `mode`; no temperature
-  // control for any model; list has Mode, not Temp. Unmigrated rows (mode null, AST-1950) show — / a placeholder.
-  describe("AST-1949 Manage Agents mode", () => {
+  // AST-1957 AC 10: seven plain settings inputs replace brain size + mode — Quantization, Temperature, Effort,
+  // Allow provider fallbacks (checkbox), Provider only, Provider ignore, Provider sort — sent under the settings keys.
+  describe("AST-1957 Manage Agents plain settings", () => {
+    const textInput = (label: string) => within(field(label)).getByRole("textbox") as HTMLInputElement
+    const tempInput = () => within(field("Temperature")).getByRole("spinbutton") as HTMLInputElement
+    const maxTokInput = () => within(field("Max Tokens")).getByRole("spinbutton") as HTMLInputElement
+    const fallbacks = () => screen.getByRole("checkbox", { name: /allow provider fallbacks/i }) as HTMLInputElement
+    const textLabels = ["Quantization", "Effort", "Provider only", "Provider ignore", "Provider sort"]
     const headers = () =>
       screen.getAllByRole("columnheader").map(th => (th.textContent ?? "").replace(/[▲▼]/g, "").trim())
+    const noRetiredControls = () => {
+      for (const label of ["Brain size", "Mode"])
+        expect(screen.queryByText(label, { selector: "label.dep-field-label" })).not.toBeInTheDocument()
+    }
 
-    it("list has a Mode column showing each row's mode and no Temp column", async () => {
+    it("list shows the settings columns, not Brain setting / Mode", async () => {
       mockApi()
       renderWithProviders(<AgentPrompts />)
       await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
-      expect(headers()).toContain("Mode")
-      expect(headers()).not.toContain("Temp")
-      expect(screen.getByText("Deterministic")).toBeInTheDocument()
-      expect(screen.getByText("Creative")).toBeInTheDocument()
+      expect(headers()).toEqual(expect.arrayContaining(["Quant", "Temp", "Effort", "Fallbacks", "Only", "Ignore", "Sort"]))
+      expect(headers()).not.toContain("Brain setting")
+      expect(headers()).not.toContain("Mode")
+      const rowA = screen.getByText("agent_a").closest("tr") as HTMLElement
+      for (const cell of ["Claude Haiku 4.5", "0.2", "yes"]) expect(within(rowA).getByText(cell)).toBeInTheDocument()
+      const rowB = screen.getByText("agent_b").closest("tr") as HTMLElement
+      for (const cell of ["fp8", "none", "no", "groq, together", "deepinfra", "price"])
+        expect(within(rowB).getByText(cell)).toBeInTheDocument()
     }, 15000)
 
-    it("no Temperature field renders in Add or Edit for any model or size", async () => {
+    it("Add opens on the first model, empty settings with fallbacks on; Max Tokens placeholder follows the model", async () => {
       mockApi()
       renderWithProviders(<AgentPrompts />)
       await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
-      const noTemp = () => {
-        expect(screen.queryByText("Temperature", { selector: "label.dep-field-label" })).not.toBeInTheDocument()
-        expect(screen.queryByText(/temp/i, { selector: "label" })).not.toBeInTheDocument()
-      }
       await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
-      for (const [mid, m] of Object.entries(models)) {
-        await userEvent.selectOptions(within(field("Model")).getByRole("combobox"), mid)
-        for (const size of Object.keys(m.brain_sizes)) {
-          await userEvent.selectOptions(within(field("Brain size")).getByRole("combobox"), size)
-          noTemp()
-        }
-      }
-      await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
-      await userEvent.click(screen.getByText("agent_a"))
-      await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
-      noTemp()
+      noRetiredControls()
+      expect(optionTexts("Model")).toEqual(["Claude Haiku 4.5", "Kimi K2.6"])
+      expect(within(field("Model")).getByRole("combobox")).toHaveValue("claude-haiku-4-5")
+      for (const label of textLabels) expect(textInput(label)).toHaveValue("")
+      expect(tempInput()).toHaveValue(null)
+      expect(fallbacks()).toBeChecked()
+      // Empty max_tokens means the model default: shown as placeholder, never pre-filled.
+      expect(maxTokInput()).toHaveValue(null)
+      expect(maxTokInput()).toHaveAttribute("placeholder", "default 8192")
+      await userEvent.selectOptions(within(field("Model")).getByRole("combobox"), "kimi-k2.6")
+      expect(maxTokInput()).toHaveAttribute("placeholder", "default 16000")
+      expect(maxTokInput()).toHaveValue(null)
     }, 20000)
 
-    it("Edit switches mode and PUT sends the new mode without temperature", async () => {
+    it("Add saves every setting under its key (trimmed, lists split) with no brain_setting or mode", async () => {
       mockApi()
       renderWithProviders(<AgentPrompts />)
       await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
-      await userEvent.click(screen.getByText("agent_a"))
-      await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
-      expect(optionTexts("Mode")).toEqual(["Deterministic", "Creative"])
-      await userEvent.selectOptions(within(field("Mode")).getByRole("combobox"), "Creative")
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
+      fireEvent.change(screen.getByPlaceholderText("e.g. job_analyst_grace"), { target: { value: "kimi agent" } })
+      await userEvent.selectOptions(within(field("Model")).getByRole("combobox"), "kimi-k2.6")
+      fireEvent.change(textInput("Quantization"), { target: { value: " bf16 " } })
+      fireEvent.change(tempInput(), { target: { value: "0.7" } })
+      fireEvent.change(textInput("Effort"), { target: { value: "high" } })
+      await userEvent.click(fallbacks())
+      fireEvent.change(textInput("Provider only"), { target: { value: " groq, together ,, " } })
+      fireEvent.change(textInput("Provider sort"), { target: { value: "price" } })
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(postBodies).toHaveLength(1))
+      // Exact body: blank Provider ignore goes out as null; empty max_tokens is not sent.
+      expect(postBodies[0]).toEqual({
+        agent_id: "kimi_agent", content: "", model_id: "kimi-k2.6",
+        quantization: "bf16", temperature: 0.7, reasoning_effort: "high", provider_allow_fallbacks: false,
+        provider_only: ["groq", "together"], provider_ignore: null, provider_sort: "price",
+      })
+    }, 20000)
+
+    it("AC 10: Edit renders the seven settings from the row and saves them under the settings keys", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_b")).toBeInTheDocument())
+      await userEvent.click(screen.getByText("agent_b"))
+      await waitFor(() => expect(screen.getByDisplayValue("b prompt")).toBeInTheDocument())
+      noRetiredControls()
+      expect(within(field("Model")).getByRole("combobox")).toHaveValue("kimi-k2.6")
+      expect(textInput("Quantization")).toHaveValue("fp8")
+      expect(tempInput()).toHaveValue(null)
+      expect(textInput("Effort")).toHaveValue("none")
+      expect(fallbacks()).not.toBeChecked()
+      expect(textInput("Provider only")).toHaveValue("groq, together")
+      expect(textInput("Provider ignore")).toHaveValue("deepinfra")
+      expect(textInput("Provider sort")).toHaveValue("price")
+      // Set temperature, clear two settings, turn fallbacks on.
+      fireEvent.change(tempInput(), { target: { value: "0.3" } })
+      fireEvent.change(textInput("Quantization"), { target: { value: "" } })
+      fireEvent.change(textInput("Provider ignore"), { target: { value: "" } })
+      await userEvent.click(fallbacks())
       await userEvent.click(screen.getByRole("button", { name: "Save" }))
       await waitFor(() => expect(putBodies).toHaveLength(1))
-      expect(putBodies[0]).toMatchObject({ content: "system prompt", mode: "Creative" })
-      expect(putBodies[0]).not.toHaveProperty("temperature")
+      // Every settings key is sent, so a cleared input clears the stored setting.
+      expect(putBodies[0]).toEqual({
+        content: "b prompt", max_tokens: 1024, model_id: "kimi-k2.6",
+        quantization: null, temperature: 0.3, reasoning_effort: "none", provider_allow_fallbacks: true,
+        provider_only: ["groq", "together"], provider_ignore: null, provider_sort: "price",
+      })
     }, 20000)
 
-    it("an unmigrated row (mode null) shows — in the list and a choose-mode placeholder in Edit", async () => {
-      const unmigrated = { ...agents[0], mode: null }
+    it("a row with every setting empty shows — in the list, blanks in Edit with fallbacks checked, and saves fallbacks true", async () => {
+      const bare = { ...agents[0], ...emptySettings }
       installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
         if (url === "/api/candidates") return { ok: true, json: async () => [] } as Response
         if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
-        if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => [unmigrated] } as Response
+        if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => [bare] } as Response
         if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
         if (url === "/api/admin/agents/agent_a" && !init?.method) {
-          return { ok: true, json: async () => ({ ...unmigrated, content: "system prompt" }) } as Response
+          return { ok: true, json: async () => ({ ...bare, content: "system prompt" }) } as Response
+        }
+        if (url === "/api/admin/agents/agent_a" && init?.method === "PUT") {
+          putBodies.push(JSON.parse(String(init.body)))
+          return { ok: true, status: 200, json: async () => bare } as Response
         }
       })
       renderWithProviders(<AgentPrompts />)
       await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
       const row = screen.getByText("agent_a").closest("tr") as HTMLElement
-      expect(within(row).getByText("—")).toBeInTheDocument()
+      // One em dash per settings column.
+      expect(within(row).getAllByText("—")).toHaveLength(7)
       await userEvent.click(screen.getByText("agent_a"))
       await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
-      expect(within(field("Mode")).getByRole("combobox")).toHaveValue("")
-      expect(optionTexts("Mode")).toEqual(["— choose mode —", "Deterministic", "Creative"])
-      // Picking a mode drops the placeholder.
-      await userEvent.selectOptions(within(field("Mode")).getByRole("combobox"), "Deterministic")
-      expect(optionTexts("Mode")).toEqual(["Deterministic", "Creative"])
+      for (const label of textLabels) expect(textInput(label)).toHaveValue("")
+      expect(tempInput()).toHaveValue(null)
+      // Stored null reads as the new-row default; Save writes it explicitly.
+      expect(fallbacks()).toBeChecked()
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBodies).toHaveLength(1))
+      expect(putBodies[0]).toMatchObject({ ...emptySettings, provider_allow_fallbacks: true })
+      expect(putBodies[0]).not.toHaveProperty("brain_setting")
+      expect(putBodies[0]).not.toHaveProperty("mode")
     }, 20000)
   })
 
