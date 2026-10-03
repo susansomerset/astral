@@ -13,6 +13,7 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 const mockedApi = vi.mocked(api)
 
 // AST-1880: GET /agents/models — keyed by model id, each model's own sizes; `order` carries catalog order.
+// AST-1948: sizes carry no default_temperature (the agent's mode decides temperature).
 const models = {
   "kimi-k2.6": {
     order: 1,
@@ -20,8 +21,8 @@ const models = {
     server_id: "kimi",
     server_label: "Kimi",
     brain_sizes: {
-      Big: { order: 1, default_temperature: 1, default_max_tokens: 32000 },
-      Little: { order: 0, default_temperature: 0.6, default_max_tokens: 8192 },
+      Big: { order: 1, default_max_tokens: 32000 },
+      Little: { order: 0, default_max_tokens: 8192 },
     },
   },
   claude: {
@@ -30,20 +31,20 @@ const models = {
     server_id: "anthropic",
     server_label: "Anthropic",
     brain_sizes: {
-      Big: { order: 2, default_temperature: 1, default_max_tokens: 32000 },
-      Little: { order: 0, default_temperature: 0.7, default_max_tokens: 8192 },
-      Medium: { order: 1, default_temperature: 0.2, default_max_tokens: 64000 },
+      Big: { order: 2, default_max_tokens: 32000 },
+      Little: { order: 0, default_max_tokens: 8192 },
+      Medium: { order: 1, default_max_tokens: 64000 },
     },
   },
 }
 
+// AST-1948: agent rows carry mode; temperature / model_code are gone.
 const agents = [
   {
     agent_id: "agent_a",
     model_id: "claude",
     brain_setting: "Medium",
-    model_code: "claude-sonnet-4-6",
-    temperature: 0.2,
+    mode: "Deterministic",
     max_tokens: 4096,
     task_count: 0,
     content_length: 12,
@@ -53,8 +54,7 @@ const agents = [
     agent_id: "agent_b",
     model_id: "kimi-k2.6",
     brain_setting: "Big",
-    model_code: "kimi-k2.6",
-    temperature: 0.1,
+    mode: "Creative",
     max_tokens: 1024,
     task_count: 2,
     content_length: 8,
@@ -142,28 +142,33 @@ describe("AdminAgentPrompts", () => {
     expect(screen.getByText("Kimi K2.6")).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
-    // First model in catalog order, its first size, and that row's defaults.
+    // First model in catalog order, its first size, and that row's max-tokens default.
     expect(optionTexts("Model")).toEqual(["Claude", "Kimi K2.6"])
     expect(within(field("Model")).getByRole("combobox")).toHaveValue("claude")
     expect(optionTexts("Brain size")).toEqual(["Little", "Medium", "Big"])
     expect(within(field("Brain size")).getByRole("combobox")).toHaveValue("Little")
+    // AST-1949: Add opens on Deterministic with exactly the two modes.
+    expect(optionTexts("Mode")).toEqual(["Deterministic", "Creative"])
+    expect(within(field("Mode")).getByRole("combobox")).toHaveValue("Deterministic")
     await userEvent.selectOptions(within(field("Brain size")).getByRole("combobox"), "Medium")
-    expect(within(field("Temperature")).getByRole("spinbutton")).toHaveValue(0.2)
     expect(within(field("Max Tokens")).getByRole("spinbutton")).toHaveValue(64000)
 
-    // Kimi has no Medium: size falls back to Kimi's first size and its defaults.
+    // Kimi has no Medium: size falls back to Kimi's first size and its max-tokens default.
     await userEvent.selectOptions(within(field("Model")).getByRole("combobox"), "kimi-k2.6")
     expect(optionTexts("Brain size")).toEqual(["Little", "Big"])
     expect(within(field("Brain size")).getByRole("combobox")).toHaveValue("Little")
-    expect(within(field("Temperature")).getByRole("spinbutton")).toHaveValue(0.6)
     expect(within(field("Max Tokens")).getByRole("spinbutton")).toHaveValue(8192)
+    // Size / model changes never touch the mode.
+    expect(within(field("Mode")).getByRole("combobox")).toHaveValue("Deterministic")
+    await userEvent.selectOptions(within(field("Mode")).getByRole("combobox"), "Creative")
 
     fireEvent.change(screen.getByPlaceholderText("e.g. job_analyst_grace"), { target: { value: "kimi agent" } })
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(postBodies).toHaveLength(1))
     expect(postBodies[0]).toMatchObject({
-      model_id: "kimi-k2.6", brain_setting: "Little", temperature: 0.6, max_tokens: 8192,
+      model_id: "kimi-k2.6", brain_setting: "Little", mode: "Creative", max_tokens: 8192,
     })
+    expect(postBodies[0]).not.toHaveProperty("temperature")
   }, 20000)
 
   it("AST-1880: Edit shows the agent's model + size and sends model_id on Save", async () => {
@@ -174,12 +179,92 @@ describe("AdminAgentPrompts", () => {
     await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
     expect(within(field("Model")).getByRole("combobox")).toHaveValue("claude")
     expect(within(field("Brain size")).getByRole("combobox")).toHaveValue("Medium")
-    // Switching to Big keeps the model; Save carries both.
+    // AST-1949: the row's stored mode pre-selects.
+    expect(within(field("Mode")).getByRole("combobox")).toHaveValue("Deterministic")
+    // Switching to Big keeps the model; Save carries both plus mode, never temperature.
     await userEvent.selectOptions(within(field("Brain size")).getByRole("combobox"), "Big")
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(putBodies).toHaveLength(1))
-    expect(putBodies[0]).toMatchObject({ model_id: "claude", brain_setting: "Big" })
+    expect(putBodies[0]).toMatchObject({ model_id: "claude", brain_setting: "Big", mode: "Deterministic" })
+    expect(putBodies[0]).not.toHaveProperty("temperature")
   }, 20000)
+
+  // AST-1949 AC 8: Mode select (exactly Deterministic / Creative) sent as `mode`; no temperature
+  // control for any model; list has Mode, not Temp. Unmigrated rows (mode null, AST-1950) show — / a placeholder.
+  describe("AST-1949 Manage Agents mode", () => {
+    const headers = () =>
+      screen.getAllByRole("columnheader").map(th => (th.textContent ?? "").replace(/[▲▼]/g, "").trim())
+
+    it("list has a Mode column showing each row's mode and no Temp column", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      expect(headers()).toContain("Mode")
+      expect(headers()).not.toContain("Temp")
+      expect(screen.getByText("Deterministic")).toBeInTheDocument()
+      expect(screen.getByText("Creative")).toBeInTheDocument()
+    }, 15000)
+
+    it("no Temperature field renders in Add or Edit for any model or size", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      const noTemp = () => {
+        expect(screen.queryByText("Temperature", { selector: "label.dep-field-label" })).not.toBeInTheDocument()
+        expect(screen.queryByText(/temp/i, { selector: "label" })).not.toBeInTheDocument()
+      }
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
+      for (const [mid, m] of Object.entries(models)) {
+        await userEvent.selectOptions(within(field("Model")).getByRole("combobox"), mid)
+        for (const size of Object.keys(m.brain_sizes)) {
+          await userEvent.selectOptions(within(field("Brain size")).getByRole("combobox"), size)
+          noTemp()
+        }
+      }
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
+      await userEvent.click(screen.getByText("agent_a"))
+      await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
+      noTemp()
+    }, 20000)
+
+    it("Edit switches mode and PUT sends the new mode without temperature", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      await userEvent.click(screen.getByText("agent_a"))
+      await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
+      expect(optionTexts("Mode")).toEqual(["Deterministic", "Creative"])
+      await userEvent.selectOptions(within(field("Mode")).getByRole("combobox"), "Creative")
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBodies).toHaveLength(1))
+      expect(putBodies[0]).toMatchObject({ content: "system prompt", mode: "Creative" })
+      expect(putBodies[0]).not.toHaveProperty("temperature")
+    }, 20000)
+
+    it("an unmigrated row (mode null) shows — in the list and a choose-mode placeholder in Edit", async () => {
+      const unmigrated = { ...agents[0], mode: null }
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/candidates") return { ok: true, json: async () => [] } as Response
+        if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
+        if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => [unmigrated] } as Response
+        if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
+        if (url === "/api/admin/agents/agent_a" && !init?.method) {
+          return { ok: true, json: async () => ({ ...unmigrated, content: "system prompt" }) } as Response
+        }
+      })
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      const row = screen.getByText("agent_a").closest("tr") as HTMLElement
+      expect(within(row).getByText("—")).toBeInTheDocument()
+      await userEvent.click(screen.getByText("agent_a"))
+      await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
+      expect(within(field("Mode")).getByRole("combobox")).toHaveValue("")
+      expect(optionTexts("Mode")).toEqual(["— choose mode —", "Deterministic", "Creative"])
+      // Picking a mode drops the placeholder.
+      await userEvent.selectOptions(within(field("Mode")).getByRole("combobox"), "Deterministic")
+      expect(optionTexts("Mode")).toEqual(["Deterministic", "Creative"])
+    }, 20000)
+  })
 
   it("shows validation and error toasts", async () => {
     mockApi()
