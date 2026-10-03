@@ -874,3 +874,25 @@ Clean **PROCEED** — `[bug-repro]` assertions and repro flip OK; plan fidelity 
 ---
 
 [code-rubric] PROCEED (Commit: c18e32c9) QC never-X tests pinned
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/5221bab8f563b6e94617c06471bc48bf/1ad6cd19-5e32-425a-afeb-21cc905e5ad1/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/fc7b1823-4b21-4b12-8c1a-26e8df03d72a/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/5221bab8f563b6e94617c06471bc48bf/1dc5fc4d-1c4f-4ec1-93e0-f6b7824196c0/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1898 (parent) | ftr/AST-1898-evaluate-jd-qc-forbid-x |
+| AST-1910 | sub/AST-1898/AST-1910-forbid-qc-x-grade |
+| AST-1911 | sub/AST-1898/AST-1911-pin-qc-never-x-tests |
+
+**Epic worktree:** `astral-AST-1898/` — one active sub checked out at a time.
