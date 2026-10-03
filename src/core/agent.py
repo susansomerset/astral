@@ -1820,7 +1820,7 @@ async def run_cover_letter_artifact_chain_for_job(
 
 
 def _agent_llm_route(agent_row: Dict[str, Any]) -> Dict[str, Any]:
-    """Agent model_id + brain_setting → resolve_model_brain route (server, SKU, tier). Raises on missing/invalid config."""
+    """Agent model_id + brain_setting + mode → resolve_model_brain route (server, SKU, tier). Raises on missing/invalid config."""
     aid = agent_row.get("agent_id")
     model_id = (agent_row.get("model_id") or "").strip()
     if not model_id:
@@ -1828,7 +1828,10 @@ def _agent_llm_route(agent_row: Dict[str, Any]) -> Dict[str, Any]:
     brain_setting = (agent_row.get("brain_setting") or "").strip()
     if not brain_setting:
         raise ValueError(f"Agent '{aid}' has no brain_setting configured.")
-    return resolve_model_brain(model_id, brain_setting)
+    mode = (agent_row.get("mode") or "").strip()
+    if not mode:
+        raise ValueError(f"Agent '{aid}' has no mode configured.")
+    return resolve_model_brain(model_id, brain_setting, mode)
 
 
 def task_llm_server_id(task_key: str) -> str:
@@ -2077,7 +2080,8 @@ async def do_task(
             server_id,
         )
         return _with_harvest(_missing_server_key_result(candidate_id, server_id))
-    agent_temperature = agent_row.get("temperature") if agent_row.get("temperature") is not None else tier["default_temperature"]
+    # AST-1948: the agent's mode decides temperature (resolve_model_brain); the agent row has none.
+    agent_temperature = tier["temperature"]
     agent_max_tokens = agent_row.get("max_tokens") if agent_row.get("max_tokens") is not None else tier["default_max_tokens"]
     # Craft rubrics emit long per-criterion content — floor so Get cannot truncate mid-JSON (AST-903).
     if task_key in CRAFT_RUBRIC_UI_TASK_KEYS:

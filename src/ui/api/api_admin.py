@@ -203,7 +203,6 @@ def list_models():
             "brain_sizes": {
                 bs: {
                     "order": j,
-                    "default_temperature": t["default_temperature"],
                     "default_max_tokens": t["default_max_tokens"],
                 }
                 for j, (bs, t) in enumerate(m["brain_sizes"].items())
@@ -229,8 +228,10 @@ def create_agent():
     agent_id = (body.get("agent_id") or "").strip()
     model_id = (body.get("model_id") or "").strip()
     brain_setting = (body.get("brain_setting") or "").strip()
-    if not agent_id or not model_id or not brain_setting:
-        return jsonify({"error": "agent_id, model_id and brain_setting are required"}), 400
+    mode = body.get("mode")
+    mode = mode.strip() if isinstance(mode, str) else ""
+    if not agent_id or not model_id or not brain_setting or not mode:
+        return jsonify({"error": "agent_id, model_id, brain_setting and mode are required"}), 400
     if database.get_agent(agent_id):
         return jsonify({"error": f"Agent '{agent_id}' already exists"}), 409
     try:
@@ -240,7 +241,7 @@ def create_agent():
             body.get("content", ""),
             model_id=model_id,
             brain_setting=brain_setting,
-            temperature=body.get("temperature"),
+            mode=mode,
             max_tokens=body.get("max_tokens"),
         )
     except ValueError as e:
@@ -256,9 +257,13 @@ def update_agent(agent_id):
     if not database.get_agent(agent_id):
         return jsonify({"error": f"Agent not found: {agent_id}"}), 404
 
+    mode = body.get("mode")
+    if not isinstance(mode, str) or not mode.strip():
+        return jsonify({"error": "mode is required"}), 400
+
     kwargs = {
-        k: (body[k].strip() if isinstance(body[k], str) and k in ("model_id", "brain_setting") else body[k])
-        for k in ("content", "model_id", "brain_setting", "temperature", "max_tokens")
+        k: (body[k].strip() if isinstance(body[k], str) and k in ("model_id", "brain_setting", "mode") else body[k])
+        for k in ("content", "model_id", "brain_setting", "mode", "max_tokens")
         if k in body
     }
     if not kwargs:
@@ -386,7 +391,9 @@ def _enrich_tasks(candidate_id: str) -> list:
             if agent:
                 brain_setting_eff = (agent.get("brain_setting") or "").strip()
                 try:
-                    route = resolve_model_brain((agent.get("model_id") or "").strip(), brain_setting_eff)
+                    route = resolve_model_brain(
+                        (agent.get("model_id") or "").strip(), brain_setting_eff, (agent.get("mode") or "").strip()
+                    )
                     resolved_model_key = route["sku"]
                     model_cfg = route["pricing"]
                 except ValueError as e:
@@ -1540,12 +1547,14 @@ def _resolve_adhoc(body):
     # Agent model + brain size → server, SKU and tier row (AST-1880); no global provider.
     try:
         route = resolve_model_brain(
-            (agent.get("model_id") or "").strip(), (agent.get("brain_setting") or "").strip()
+            (agent.get("model_id") or "").strip(),
+            (agent.get("brain_setting") or "").strip(),
+            (agent.get("mode") or "").strip(),
         )
     except ValueError as e:
         return None, (jsonify({"error": str(e)}), 400)
     tier = route["tier"]
-    temperature = agent["temperature"] if agent.get("temperature") is not None else tier["default_temperature"]
+    temperature = tier["temperature"]
     max_tokens = agent["max_tokens"] if agent.get("max_tokens") is not None else tier["default_max_tokens"]
 
     candidate_id = (body.get("candidate_id") or "").strip()
