@@ -479,3 +479,20 @@ stat.logging.debug | A |
   **Recommendation:** Historical scope-gate record; engineer may retitle when convenient.
 
 context_tokens≈32000
+
+
+## Review
+
+- **Branch:** `origin/sub/AST-1946/AST-1947-catalog-quant-mode`
+- **Build tip:** `131911492`. Stages: `220dc5a0d` (OpenRouter catalog by quantization, agent mode constants and mode-aware resolver, settings cleanup in `config.py`) and `131911492` (agent seed and AST-756 fixture: `mode` in, `temperature` out).
+- **Sequencing:** built under option A ([AST-1951](https://linear.app/astralcareermatch/issue/AST-1951)). Until AST-1948 lands, `src.data.database` does not import on this sub, as § Sequencing gap expects. Joan's two optional tidy notes (the `## Estimate` tail line and the Sequencing gap heading) are left as the historical scope-gate record.
+- **Build notes:** built as planned. Stage 1 step 5 was spliced verbatim from this doc (step 5 code block plus Appendix A). Stage 2 was applied by the plan's line numbers, with each line's current text and its row's `agent_id` asserted before editing. Verified on the shipped tree:
+  - `validate_llm_provider_environment()` passes, with 98 models.
+  - AC 1–5 hold for all 95 brief slugs against the parent brief text (no set difference, no size / price / pin / mode-cap violations). Spot values: mythomax-l2-13b `('Big',)`, Creative 3686; qwen3-32b `('Medium',)`; kimi-k2.6 `('Little',)`; qwen3.5-27b 32000 / 16000; remm-slerp-l2-13b `mancer`/`fp8`; gemma-4-31b-it `deepinfra`/`fp4`.
+  - AC 6 (config half): no stored tier has `thinking` / `thinking_params` / `default_temperature`, direct SKUs / defaults / floors are unchanged, and the four-name grep on `config.py` is empty.
+  - AC 7: seed keys equal the config columns; atlas, judith and principal_estelle are Creative and the other four Deterministic; the fixture agrees per `agent_id`; no `temperature` remains.
+  - AC 8 (config half): `kimi-k2.6-openrouter` is gone. AC 9 slug grep is empty.
+  - Mode wiring matches § Verification for all seven cases, and `"Wild"` raises `ValueError`.
+  - Lint: `py_compile` and `ruff check --select F,E9` are clean. ruff was not on the host; it ran from a throwaway `pip install --target /tmp/ruffenv ruff`, with no repo or system change.
+- **Git note:** the spawn prompts pass `--ftr AST-1946`, but the parent ref is `ftr/AST-1946-big-brain-openrouter`, so `sync-child.sh` skipped the ftr merge. That changed nothing here: ftr is at `22810969c`, this sub's base. `validate-sub-log.sh --stage=build` passes against the full ref name.
+- **For qa-child:** manifest stays on `tests/component/utils/test_config.py` and `tests/component/external/test_llm_compat.py` (option A). See **Tests expected to move**. `test_repo_admin_json.py`, `test_agent.py` and `test_api_admin.py` stay red until AST-1948.
