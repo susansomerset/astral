@@ -384,3 +384,49 @@ Removing `resolve_model_brain` breaks the imports in `src/core/agent.py` and `sr
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-discuss] round=1 concern  
+[plan-rubric] REVIEW (Commit: 3593697ee) AC6 stub untraced  
+
+**Ticket:** AST-1955  
+**Overall:** REVISE  
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51  
+**Publish ref:** `sub/AST-1953/AST-1955-plain-agent-settings` @ `3593697eeb3ad644b5ae012cc79b7ef60e650f11`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+
+## Traceability
+
+5 → Stage 1 (proxy symbols out of `config.py`; ticket **Boundaries** defer full `src/` AC5 until AST-1956/1957 on ftr) · 6 → Stage 1 catalog ids + resolver expectations; **stubbed-client send line untraced** · 7 → Stage 1 `resolve_agent_settings` + step 11 expected results · 8 → Stage 3 seed + AST-756 fixture + validation
+
+## Findings
+
+### fix-now
+
+- **Location:** Child AC 6 (stubbed client) vs plan stages / **Boundaries**
+- **Finding:** Ticket AC 6 includes “stubbed client: agent on `deepseek-v4-pro` with `max_tokens: 384000` sends `max_tokens == 384000`.” Stages map the id/catalog checks and resolver defaults (Stage 1 step 11) but never state where the wire-level stubbed check runs. **Boundaries** only defers AC 5’s full-`src/` `rg`, not this AC 6 bullet. R5 treats an unmapped AC check as blocking.
+- **Recommendation:** Add an explicit boundary (mirror AC 5): stubbed send assertions are N/A on this sub and land in AST-1956 / Betty manifest after call-path merge—or add a stage that names the manifest hook if Betty should still own it.
+
+### discuss
+
+- **Location:** Stage 3 step 2, child AC 8 (“matches field-for-field”)
+- **Finding:** Plan follows AST-1947 (6-row fixture, column parity, stale `model_code`/content retained) and flags ambiguity if AC 8 means “copy of seed.” That interpretation is reasonable but not spelled in the ticket AC.
+- **Recommendation:** If Susan intends twin-of-seed, revise Stage 3; otherwise one clarifying sentence in the plan (or ticket) that “field-for-field” means shared column shape, not row parity with the 7-row seed.
+
+### acceptable
+
+- **Location:** Plan structure — no `## Self-assessment` block
+- **Finding:** Estimate confirm only; complexity is carried in staged done-when gates and **Sequencing risk**.
+- **Recommendation:** None required for approve; optional conf/risk line if engineer wants parity with larger plans.
+
+- **Location:** **Sequencing risk**
+- **Finding:** `resolve_model_brain` removal vs `tests/component/core/` collection and AC 8 revert-from-seed is disclosed for Betty; consistent with parent sequencing.
+- **Recommendation:** None on plan text.
+
+context_tokens≈42000
