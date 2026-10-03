@@ -1,3 +1,64 @@
+<!-- linear-archive: AST-1517 archived 2026-10-02 -->
+
+## Linear archive (AST-1517)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1517/create-contact-meteorite-estelle-needs-to-be-able-to-use-our-endpoints  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1414 — Estelle needs to be able to use our endpoints.  
+**Blocked by / blocks / related:** parent: AST-1414
+
+### Description
+
+## What this implements
+
+Implement the `create_contact_meteorite` handler registered in sibling #1. Link path uses #2 scrape helper; page-text path lands as given. Existing meteorite landing state; existing analysis dispatch.
+
+## Citations
+
+`pattern.state.entity-state-transitions`, `astral.state.job-prior-states-enforced`, `astral.standards.debug-contract-gated`, `astral.standards.dry-and-focused-functions`
+
+## Scope
+
+`src/core/meteorite.py` (modified — `create_contact_meteorite` wrapper). Technical: candidate-scoped entrypoint; link mode calls gazer scrape helper then `create_meteorite_job`; text mode calls `create_meteorite_job` directly; returns create result dict for contact dispatch.
+
+## Acceptance criteria
+
+- [X] 3. Given a job URL, Estelle can emit `create_contact_meteorite` for the Slack-resolved candidate. The job exists in the meteorite landing state with stored visible text and the link. Meteorite analysis is queued via existing dispatch.
+- [X] 4. Given pasted page text and no usable link, `create_contact_meteorite` lands a meteorite from that text (no fetch) for the same candidate.
+- [X] 5. Style D on create contact-task paths when debug=True.
+
+## Boundaries
+
+- [X] Does not own markup/dispatch (sibling #1) or scrape helper (sibling #2).
+
+## Notes for planning
+
+After sibling #2.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1414-estelle-endpoints`, child `sub/AST-1414/AST-NNN-create-contact-meteorite`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-27T03:54:01.936Z
+[code-rubric] PROCEED (Commit: b7456464) Contact meteorite create clean
+
+#### betty — 2026-08-27T03:49:38.156Z
+origin/sub/AST-1414/AST-1517-create-contact-meteorite @ `b7456464` · contact create tests ready
+
+#### joan — 2026-08-27T01:35:11.082Z
+[plan-rubric] PROCEED (Commit: 2e8da926) meteorite create ready
+
+#### katherine — 2026-08-27T01:32:57.430Z
+`origin/sub/AST-1414/AST-1517-create-contact-meteorite` @ `2e8da9268e503b9ffba5dda08f875f5098a50305` · create meteorite plan
+
+---
+
 # AST-1517 — create_contact_meteorite
 
 **Linear:** [AST-1517](https://linear.app/astralcareermatch/issue/AST-1517/create-contact-meteorite-estelle-needs-to-be-able-to-use-our-endpoints)  
