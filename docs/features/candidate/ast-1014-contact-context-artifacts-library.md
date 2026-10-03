@@ -1026,3 +1026,25 @@ context_tokens≈10500
 ```
 [code-rubric] PROCEED (Commit: 5246ff91f) bug-repro plus bible
 ```
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/e8272e629a217bd02a27f249de06d58c/e522f978-9961-4b4e-943e-882560eb17a6/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/67f91cff-de69-4be9-8fc1-908486c07703/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/e8272e629a217bd02a27f249de06d58c/1630eee1-dd2c-4d27-8934-d2134953201b/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1902 (parent) | ftr/AST-1902-candidate-contact-detail-truncated |
+| AST-1904 | sub/AST-1902/AST-1904-keep-full-saved-contact-line |
+| AST-1905 | sub/AST-1902/AST-1905-cover-saved-contact-line-tests |
+
+**Epic worktree:** `astral-AST-1902/` — one active sub checked out at a time.
