@@ -275,3 +275,55 @@ context_tokens≈56000
 - **Joan's discuss items:** both say keep the plan as written; built unchanged. The default run uses the app's DB via `_get_connection` (no path flag). Removed-model rows still get a starting `mode`, and the output prints `removed model: … left as-is` for each.
 - **Git note:** this ref also carries `85e7b9026` (`docs(AST-1949)` plan). A sibling agent switched this shared worktree onto AST-1949 between plan-child's sync and commit. It is the same commit already on AST-1949's ref, so the ftr merge is a no-op for it; not force-pushed.
 - **For qa-child:** new AC 13 component test under `tests/component/scripts/`, per § Tests expected to move. No existing test should move.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1950
+**Publish ref:** `41d48e82f6b919eeb359de467d07855e1522e55e` (`origin/sub/AST-1946/AST-1950-remap-migration`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+(none — frozen Citations / Canon Scope explicitly empty; no directives to score)
+
+## Column diff vs plan stage
+(aligned) — Joan: empty canon list; plan **APPROVED** with two **discuss** items (keep `_get_connection` seam; removed rows still receive starting `mode`). Shipped script matches Stage 1 verbatim; tests encode AC 13 and Joan’s decisions.
+
+## Frame diff
+- [ ] **Operator:** After AST-1946 deploy on each environment, run `python scripts/migrations/remap_openrouter_agents.py` (dry run), then `--apply` once; document in runbook that there is no `--db` flag (uses app `_get_connection`).
+- [ ] **Snapshot closure (build-time):** Before first production apply, confirm `REMAP ∪ REMOVED` equals 76 pre-epic OpenRouter ids from `origin/dev:src/utils/config.py` (plan § Verification step 2; not in component test once epic lands on `dev`).
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+- **Severity:** discuss  
+  **Location:** Joan plan finding — removed-model rows  
+  **Finding:** Rows on `REMOVED` slugs keep `model_id` / `brain_setting` but still receive a starting `mode` when NULL/empty (AC 13: `morph/morph-v3-large` → Deterministic). Parent “left unchanged” means model/size only; script and tests match AC, not a literal “no UPDATE.”  
+  **Default:** Keep behavior; operator stdout already prints `removed model: … left as-is` before any change line.
+
+- **Severity:** discuss  
+  **Location:** `_get_connection` seam vs `retarget_artifact_chain_trigger_state.py`  
+  **Finding:** Default CLI run mutates the same DB as the running app (no path flag). Matches `cleanup_duplicate_and_board_gaze_jobs.py` precedent and enables AC 13 temp-DB tests via monkeypatch.  
+  **Default:** Keep; ops must not run `--apply` against the wrong environment.
+
+### advisory
+- **Three-dot diff vs ticket scope:** `origin/dev...origin/sub/AST-1946/AST-1950-remap-migration` includes the full AST-1946 epic (#1–#3 product + tests). AST-1950’s **product** delta is only `scripts/migrations/remap_openrouter_agents.py` (`f47ec6df2`); tip `41d48e82f` adds Betty’s `tests/component/scripts/test_remap_openrouter_agents.py` and `docs/test-bible/dev/remap_openrouter_agents.md`. Not cross-ticket product smuggling.
+- **Branch history:** `85e7b9026` (`docs(AST-1949)` plan) sits on this ref from shared worktree timing; no AST-1949 product files in the 1950 code/test delta.
+- **Idempotent second run:** stdout still prints the `removed model:` line for rows on `REMOVED` even when `changes` is empty (test `test_second_apply_changes_nothing` locks this). Noisy but intentional.
+- **Estimate:** Confirm **2** — script + focused component test; footprint fits.
+
+## What's solid
+- **Plan fidelity:** `REMAP` (64) / `REMOVED` (12), mode-before-remap rule (`new_mode` before `REMAP.get`), Kimi fold, dry-run default, `--apply` idempotency, `print`-only reporting, run-once docstring — match Stage 1.
+- **AC 13:** Component tests cover dry run (no writes + `morph/morph-v3-large`), apply matrix (including Kimi Big → Creative on pre-remap size), validation on non-removed rows, second apply no-op, kept-mode + blank-mode edge cases, catalog snapshot integrity.
+- **Spot checks on workspace:** `py_compile` clean; snapshot loop (`model_brain_sizes`, `validate_brain_setting_for_model`, removed ∉ catalog) passes.
+
+## Recommended actions (downstream — not Radia)
+- Chuckles: append artifact, `docs(AST-1950): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED**.
+- **finish-up / ops:** Run migration once per env after #1–#2 deploy; keep dry-run transcript for removed-model agents.
+- **No resolve-child** unless Susan wants runbook rows in Frame diff copied into Description.
+
+context_tokens≈18000
