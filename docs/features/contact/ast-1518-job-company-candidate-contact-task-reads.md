@@ -1,3 +1,112 @@
+<!-- linear-archive: AST-1518 archived 2026-10-02 -->
+
+## Linear archive (AST-1518)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1518/job-company-candidate-contact-task-reads-estelle-needs-to-be-able-to  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1414 — Estelle needs to be able to use our endpoints.  
+**Blocked by / blocks / related:** parent: AST-1414
+
+### Description
+
+## What this implements
+
+Implement read handlers registered in sibling #1: `get_job_by_pattern`, `get_job_data`, `get_company_data`, `get_candidate_data`. Wrap extant getters; add pattern resolve + hydration where missing. Parallel with siblings #2/#3 after #1.
+
+## Citations
+
+`pattern.config.config-block`, `pattern.layers.import-discipline`, `astral.standards.in-scope-only`, `astral.standards.debug-contract-gated`
+
+## Scope
+
+`src/core/tracker.py` (modified — `get_job_by_pattern` + contact-task read wrappers). Technical: candidate-scoped pattern match; read helpers delegating to existing `get_job_data`, `roster.get_company_data`, `candidate.get_candidate`, and `agent.get_entity_agent_story`; refuse cross-candidate or unmatched patterns.
+
+## Acceptance criteria
+
+5. Estelle can emit `get_job_by_pattern` (and/or `get_job_data`) so Contact returns a fully hydrated job for that candidate (agent responses and dates included). She can then talk about a recommended job in Slack. A pattern that does not resolve to that candidate's job is refused.
+6. `get_company_data` and `get_candidate_data` return extant stored data via wrappers; they do not invent new persistence.
+7. Style D on read contact-task paths when debug=True.
+
+## Boundaries
+
+Does not create jobs. Does not run new analysis. Does not own markup/dispatch (sibling #1).
+
+## Notes for planning
+
+After sibling #1; parallel with #2/#3.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1414-estelle-endpoints`, child `sub/AST-1414/AST-NNN-job-company-candidate-contact-task-reads`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-27T04:16:11.358Z
+[merge-child] blocked: validate-sub-log missing plan(AST-1518) in sub-not-ftr range — need docs(AST-1518): plan — (or plan()) on publish tip then republish. @Ada Lovelace
+
+#### radia — 2026-08-27T01:22:17.525Z
+[code-rubric] PROCEED (Commit: fedf9209) Contact read handlers clean
+
+#### radia — 2026-08-27T01:18:20.165Z
+[code-rubric] ESCALATE (Commit: b85a8e37) Product missing on publish ref
+
+#### betty — 2026-08-27T01:15:17.119Z
+[check-linear]
+- Retargeted `TestAst1515ContactTaskMarkup::test_dispatch_handler_unavailable_for_listed_key` from `gazer_scrape` → `create_contact_meteorite` (AST-1516 handler now resolves).
+- Bible tracker §AST-1518 notes the [qa-handoff] return.
+- `origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` @ `b85a8e37` (`merge-tests(AST-1518): origin/tests 2b96f16f`)
+- Reassigned Ada for test-child; stay Tests Ready.
+
+#### ada — 2026-08-27T01:12:53.267Z
+[qa-handoff]
+@Betty White
+
+Manifest (bible tracker §AST-1518) failed on regression:
+`tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup::test_dispatch_handler_unavailable_for_listed_key`
+
+Command:
+```
+ASTRAL_PYTHON=/usr/bin/python3 ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1518ContactTaskReads \
+  tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  -q
+```
+
+Result: `TestAst1518ContactTaskReads` green; contact test expects `gazer_scrape` → `handler_unavailable`, but tip has AST-1516 `contact_task_gazer_scrape` so dispatch runs and returns `no_connectivity` (Playwright missing in this env).
+
+Bible already notes AST-1518 revise should retarget `handler_unavailable` fixtures to `create_contact_meteorite` (still sibling AST-1517) — this test still uses `gazer_scrape`. Please retarget (and any sibling assertions still pinned to landed handlers).
+
+Publish tip when I ran: `origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` @ `dbc8e343` (includes merge-tests `0310ece1`).
+
+#### betty — 2026-08-27T01:11:14.641Z
+`origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` @ `0310ece1` · contact-task reads manifest
+
+#### joan — 2026-08-27T01:04:34.695Z
+[plan-rubric] PROCEED (Commit: 6ad190a2) read handlers ready
+
+#### ada — 2026-08-27T01:03:34.097Z
+[plan-discuss] round=1 reply
+
+fix-now: Stage 1 adds `_job_owned_by_candidate(job, cid)` via `job["company"]` → `get_company` → `candidate_id` (same SoT as `_candidate_data_for_job`). Both `contact_task_get_job_by_pattern` and `contact_task_get_job_data` must refuse with `refused_cross_candidate` when that helper is false — no `job["candidate_id"]` gate.
+
+discuss: company handler param is `short_name` only; other identifiers → `not_found` (AST-1515 "or id" hint not implemented in this ticket).
+
+#### ada — 2026-08-27T01:03:33.250Z
+origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads @ `6ad190a2` · ownership helper fixed
+
+#### joan — 2026-08-27T01:00:58.794Z
+[plan-rubric] REVIEW (Commit: b2cfeb23) job ownership check gap
+
+#### ada — 2026-08-27T00:57:57.168Z
+origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads @ `b2cfeb23` · four read handlers planned
+
+---
+
 # AST-1518 — Job / company / candidate contact-task reads
 
 **Linear:** [AST-1518](https://linear.app/astralcareermatch/issue/AST-1518/job-company-candidate-contact-task-reads-estelle-needs-to-be-able-to)  
