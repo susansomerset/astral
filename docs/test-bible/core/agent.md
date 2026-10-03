@@ -1625,3 +1625,108 @@ Thread AST-1698 harvest into generative lands: `do_task` passes `list(source_art
 ```
 
 **Pass criterion:** narrowed run green (169 passed), not the zero-arg harness. Every new `test_agent_ast1879.py` node is red on the `origin/ftr/AST-1851-support-openrouter-api-models` product (22/22). The full `tests/component` failure set on this tip has zero new entries against the same tree with `ftr` product (153 moved nodes back to green). Pre-existing reds in touched classes are left out of the manifest: `TestDoTask::{test_rejects_json_schema_and_confidence_failures, test_rejects_grade_vector_mismatch, test_decodes_encoded_payload_and_stores_success, test_returns_decode_and_post_decode_validation_errors, test_mid_chain_empty_caller_skips_api}`, `TestAst1264…::test_do_task_source_has_caller_reinject_and_hydrate_gates`, `TestAst1700…::test_craft_str_path_passes_harvest_not_dict_path`, `TestAst1448…::{test_do_task_debug_emits_prompt_found_recorded_before_provider, test_prompt_only_batch_is_not_latest_ref, test_bare_run_adhoc_does_not_store_agent_data}`, `TestAst841DispatchTerminalLogging` (2), `TestAst1073…::{test_concern_posts_and_logs_aside, test_debug_style_d_index_and_detail}`. LOCKED_AT_100: no line changed by AST-1879 in `agent.py` / `dispatcher.py` is uncovered.
+
+> **AST-1948:** The manifest above calls `resolve_model_brain` with two arguments and puts `temperature` on agent rows. Both are gone (§ AST-1948 below). Do not re-run it as written.
+
+### AST-1948 · AST-1946 (agent mode persisted and applied; temperature and model_code retired from the agent row)
+
+The agent row now carries `mode` (`Deterministic` | `Creative`), and the mode decides thinking and temperature. `_agent_llm_route` passes the row's mode into `resolve_model_brain`. A blank or missing mode raises `Agent '<id>' has no mode configured.`, and an unknown mode raises `Invalid mode '<x>'`. There is no fallback. `do_task` sends `temperature = tier["temperature"]` (0.2 / 0.6 from `AGENT_MODE_CONFIG`). The row has no `temperature` or `model_code` column any more. Data layer: [`../data/database/agents.md`](../data/database/agents.md) § AST-1948. Admin routes: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1948. Repo JSON: [`repo_admin_json.md`](repo_admin_json.md) § AST-1948. Catalog / resolver: [`../utils/config.md`](../utils/config.md) § AST-1947.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 5 wire cases through `do_task`, with `send_to_llm_compat` / `send_to_anthropic` stubbed. The six compat cases (glm-4.6 Little Creative / Deterministic, phi-4 Big Creative, kimi-k2.6 Little Creative / Big Deterministic, deepseek-v4 Big Creative) check server, SKU, the `temperature` kwarg, `tier.thinking` / `thinking_params`, and the deepseek Big `max_tokens` floor of at least 384000. The Anthropic case is claude Medium Deterministic → `claude-sonnet-4-6` at 0.2 | `src/core/agent.py` (`_agent_llm_route`, `do_task`) | `test_agent.py::TestAst1948ModeOnTheWire` (7) |
+| New — mode-less (`None` / `""` / `"  "`) and unknown-mode routes raise | `_agent_llm_route` | `test_agent_ast1879.py::TestAst1879RouteHelpers::test_agent_llm_route_raises_without_mode` (3) · `::test_agent_llm_route_rejects_unknown_mode` |
+| New — broken-config raise also covers `mode: None` and `mode: "Wild"`, with no client call | `do_task` | `test_agent.py::TestAst492BrainSettingDoTask::test_do_task_raises_on_broken_agent_model_config` (+2 params) |
+| Revised — fixtures carry `mode` and drop `temperature`. Resolver calls take a mode: Deterministic by default, and Creative where the old case was a Kimi Big thinking case | `test_agent.py` `_agent_rows(mode=…)`, `_DEEPSEEK_BIG_FLOOR`; `test_agent_ast1879.py` `_seeded_rows`, `_REAL`; `test_agent_ast1448.py` | `TestAst1380CraftRubricThinkingOffAndFailureBanner` (Kimi Big Creative), `TestAst1072ConversationalEnvelope`, `TestAst1391DeepseekBigOutputFloor`, `TestAst1879…` |
+| Revised — `kimi-k2.6-openrouter` → `moonshotai/kimi-k2.6` (retired by AST-1947) | `test_agent_ast1879.py` | `TestAst1879SendToServer` compat parametrize · `TestAst1879RightKeyNoFallback` missing-key param |
+| Revised — the Estelle turn routes with the seed row's mode (Deterministic) and sends the tier temperature 0.2 | `do_task` | `TestAst1879EstelleTurnRoute` |
+
+**Broken / obsolete:** none retired. Every test that broke was repaired in place.
+
+**Pre-existing test-order leak (not AST-1948, flagged):** if `test_agent_ast1879.py` runs before `TestDoTask` run-next / `TestAst1264…` nodes in one session, those fail with `no such table: agent_timesheets`. The same pair fails the same way on pre-epic `ae494c618`. The manifest below runs `test_agent_ast1879.py` last. The fixture fix is a separate ticket.
+
+**Integration:** none (no `tests/integration/` scenario reads the agent row's mode or temperature).
+
+## QA test manifest (AST-1948)
+
+1. **Component (narrowed — must be all green, run in this order):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestDoTask::test_rejects_unknown_or_misconfigured_tasks \
+  tests/component/core/test_agent.py::TestDoTask::test_returns_api_failure_and_stores_agent_data \
+  tests/component/core/test_agent.py::TestDoTask::test_do_task_stores_agent_data_for_craft_null_entity_type \
+  tests/component/core/test_agent.py::TestDoTask::test_decodes_top_level_json_string_encoded_payload \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_chains_run_next_when_configured \
+  tests/component/core/test_agent.py::TestDoTask::test_chain_entry_log \
+  tests/component/core/test_agent.py::TestDoTask::test_hop_boundary_log_on_run_next \
+  tests/component/core/test_agent.py::TestDoTask::test_debug_flag_passed_to_child \
+  tests/component/core/test_agent.py::TestDoTask::test_ignores_invalid_run_next \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/core/test_agent.py::TestRunAdhoc \
+  tests/component/core/test_agent.py::TestAst531RunNextHopLedger \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError \
+  tests/component/core/test_agent.py::TestAst1298OrphanedJobClaimRelease \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  tests/component/core/test_agent.py::TestAst1576CraftPersistOperative \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_skips_hydrate_when_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_hydrate_hard_fails_without_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_reinjects_caller_on_recurse \
+  tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  tests/component/core/test_agent.py::TestAst1683ContactBaseResumeCurrentRead \
+  tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_cover_letter_land_passes_harvest \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_job_resume_land_still_passes_harvest_list \
+  tests/component/core/test_agent.py::TestAst1846DoTaskAgentFailureFlag \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_stores_prompt_before_provider_and_response_after \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_provider_raise_keeps_prompt_omits_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_storage_off_skips_prompt_and_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_prompt_persist_failure_still_calls_provider \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_debug_false_skips_persist_contract_lines \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_later_success_does_not_rewrite_interrupted_batch_prompts \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_stores_prompt_before_run_adhoc \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_raise_keeps_prompt_omits_response \
+  tests/component/core/test_agent.py::TestAst1948ModeOnTheWire \
+  tests/component/data/database/test_agents.py \
+  tests/component/core/test_repo_admin_json.py::TestExportRepoAdminJsonToFiles \
+  tests/component/core/test_repo_admin_json.py::TestAst783RepoAdminJsonDivergence \
+  tests/component/core/test_repo_admin_json.py::TestAst787AgentRepoJsonSeed::test_repo_rows_use_repo_columns_only \
+  tests/component/core/test_repo_admin_json.py::TestAst1878AgentSeedModels \
+  tests/component/ui/api/test_api_admin.py::TestAdminConfigAndAgents \
+  tests/component/ui/api/test_api_admin.py::TestEnrichTasks \
+  tests/component/ui/api/test_api_admin.py::TestAst1880ResolveAdhocCatalogRoute \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_adhoc_entities_and_resolve \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_resolve_adhoc_job_entity_resolves_visible_jd_token \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_resolve_adhoc_candidate_and_preview_errors \
+  tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment::test_resolve_preview_seven_segment_and_system_fallback \
+  tests/component/core/test_agent_ast1879.py \
+  -q
+```
+
+2. **Whole files (informational — pre-existing reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_agent_ast1448.py \
+  tests/component/core/test_agent_ast1879.py tests/component/core/test_repo_admin_json.py \
+  tests/component/data/database/test_agents.py tests/component/ui/api/test_api_admin.py -q --tb=line
+```
+
+Every failure here must also fail on pre-epic `ae494c618` with this test tree. That baseline covers the 43 core-agent reds, 18 `test_repo_admin_json.py` reds (catalog / fixture lockstep, `TestApplyRepoAdminJsonAtStartup` ×3, `TestAst1400…` craft pins) and 5 `test_api_admin.py` reds. `test_agents.py` is all green. Any other failure is real.
+
+3. **AC 6 / AC 8 greps (all three empty on the publish tip):**
+
+```bash
+rg -n "default_temperature|brain_setting_for_anthropic_agent_key|admin_brain_setting_catalog|infer_brain_setting_from_legacy_model_code" src/ --glob '!src/ui/frontend/**'
+rg -n "0\.6\b|0\.2\b" src/core/agent.py src/ui/api/api_admin.py src/data/database.py
+rg -n "apodex/|bytedance/ui-tars|ibm-granite/|inclusionai/|meta/muse|microsoft/|minimax/|sao10k/l3|thedrummer/|z-ai/glm-4|moonshotai/kimi-k2\.[57]" src/ --glob '!src/utils/config.py'
+```
+
+**Pass criterion:** item 1 green (206 passed on the publish tip), item 2 reds limited to the baseline set, item 3 empty. Not the zero-arg harness. **AC 6 is composite on `ftr`** (Joan, validate-plan discuss). Once both subs merge, re-run item 3 plus [`../utils/config.md`](../utils/config.md) § AST-1947 manifest item 1 on `origin/ftr/AST-1946-big-brain-openrouter`. The `temperature` grep on `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` belongs to AST-1949, so leave it out here. Between this merge and AST-1949, an agent edit from the UI returns `400 mode is required`. That is by design (plan Stage 2 decision), not a bug.

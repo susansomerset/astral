@@ -27,13 +27,14 @@ class TestAdminConfigAndAgents:
 
     def test_list_agents_and_ids(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         # AST-1880: rows go out as the data layer exposes them (no admin-side tier inference).
-        row = {"agent_id": "a1", "model_id": "kimi-k2.6", "brain_setting": "Big", "model_code": "kimi-k2.6"}
+        row = {"agent_id": "a1", "model_id": "kimi-k2.6", "brain_setting": "Big", "mode": "Creative"}
         monkeypatch.setattr(admin_mod.database, "list_agents", lambda: [dict(row)])
         assert admin_client.get("/api/admin/agents", headers=auth_headers).get_json() == [row]
         assert admin_client.get("/api/admin/agents/ids", headers=auth_headers).get_json() == ["a1"]
 
     def test_list_models_is_per_model_brain_size_catalog(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         # AST-1880 AC 3: each model lists only its own sizes with their defaults; `order` keeps catalog order.
+        # AST-1948: no default_temperature — the agent's mode decides temperature.
         resp = admin_client.get("/api/admin/agents/models", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.get_json()
@@ -45,7 +46,7 @@ class TestAdminConfigAndAgents:
                 "server_id": m["server"],
                 "server_label": cfg.LLM_SERVER_CONFIG[m["server"]]["label"],
                 "brain_sizes": {
-                    bs: {"order": j, "default_temperature": t["default_temperature"], "default_max_tokens": t["default_max_tokens"]}
+                    bs: {"order": j, "default_max_tokens": t["default_max_tokens"]}
                     for j, (bs, t) in enumerate(m["brain_sizes"].items())
                 },
             }
@@ -80,29 +81,40 @@ class TestAdminConfigAndAgents:
         "body",
         [
             {},
-            {"model_id": "claude", "brain_setting": "Little"},
-            {"agent_id": "a1", "brain_setting": "Little"},
-            {"agent_id": "a1", "model_id": "claude"},
-            {"agent_id": "a1", "model_id": "  ", "brain_setting": "Little"},
+            {"model_id": "claude", "brain_setting": "Little", "mode": "Creative"},
+            {"agent_id": "a1", "brain_setting": "Little", "mode": "Creative"},
+            {"agent_id": "a1", "model_id": "claude", "mode": "Creative"},
+            {"agent_id": "a1", "model_id": "  ", "brain_setting": "Little", "mode": "Creative"},
             # legacy shape: model_code alone no longer infers a tier
             {"agent_id": "a1", "model_code": "claude-haiku-4-5"},
+            # AST-1948: mode required — missing, blank, or non-string.
+            {"agent_id": "a1", "model_id": "claude", "brain_setting": "Little"},
+            {"agent_id": "a1", "model_id": "claude", "brain_setting": "Little", "mode": "  "},
+            {"agent_id": "a1", "model_id": "claude", "brain_setting": "Little", "mode": 1},
         ],
-        ids=["empty", "no_agent_id", "no_model_id", "no_brain", "blank_model_id", "legacy_model_code"],
+        ids=[
+            "empty", "no_agent_id", "no_model_id", "no_brain", "blank_model_id", "legacy_model_code",
+            "no_mode", "blank_mode", "non_str_mode",
+        ],
     )
-    def test_create_agent_requires_id_model_and_brain(
+    def test_create_agent_requires_id_model_brain_and_mode(
         self, body, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         save = MagicMock()
         monkeypatch.setattr(admin_mod.database, "save_agent", save)
         resp = admin_client.post("/api/admin/agents", json=body, headers=auth_headers)
         assert resp.status_code == 400
-        assert resp.get_json()["error"] == "agent_id, model_id and brain_setting are required"
+        assert resp.get_json()["error"] == "agent_id, model_id, brain_setting and mode are required"
         save.assert_not_called()
 
     def test_create_agent_conflict_success_and_data_layer_rejection(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        good = {"agent_id": " a1 ", "content": "sys", "model_id": " kimi-k2.6 ", "brain_setting": " Big ", "temperature": 0.2, "max_tokens": 100}
+        # AST-1948: a stray temperature in the body is not forwarded; mode is stripped and passed.
+        good = {
+            "agent_id": " a1 ", "content": "sys", "model_id": " kimi-k2.6 ", "brain_setting": " Big ",
+            "mode": " Creative ", "temperature": 0.2, "max_tokens": 100,
+        }
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id})
         assert admin_client.post("/api/admin/agents", json=good, headers=auth_headers).status_code == 409
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
@@ -110,7 +122,7 @@ class TestAdminConfigAndAgents:
         monkeypatch.setattr(admin_mod.database, "save_agent", save)
         created = admin_client.post("/api/admin/agents", json=good, headers=auth_headers)
         assert (created.status_code, created.get_json()) == (201, {"created": "a1"})
-        save.assert_called_once_with("a1", "sys", model_id="kimi-k2.6", brain_setting="Big", temperature=0.2, max_tokens=100)
+        save.assert_called_once_with("a1", "sys", model_id="kimi-k2.6", brain_setting="Big", mode="Creative", max_tokens=100)
         monkeypatch.setattr(admin_mod.database, "save_agent", MagicMock(side_effect=ValueError("size not offered")))
         bad = admin_client.post("/api/admin/agents", json=good, headers=auth_headers)
         assert (bad.status_code, bad.get_json()) == (400, {"error": "size not offered"})
@@ -124,21 +136,28 @@ class TestAdminConfigAndAgents:
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: dict(stored))
         update = MagicMock()
         monkeypatch.setattr(admin_mod.database, "update_agent", update)
-        assert admin_client.put("/api/admin/agents/a1", json={}, headers=auth_headers).status_code == 400
-        # legacy model_code is not an updatable key anymore
-        assert admin_client.put("/api/admin/agents/a1", json={"model_code": "claude-opus-4-6"}, headers=auth_headers).status_code == 400
+        # AST-1948: every PUT carries mode — missing / blank / non-string → 400 before any write.
+        for body in ({}, {"content": "x"}, {"model_code": "claude-opus-4-6"}, {"content": "x", "mode": " "}, {"mode": 1}):
+            resp = admin_client.put("/api/admin/agents/a1", json=body, headers=auth_headers)
+            assert (resp.status_code, resp.get_json()) == (400, {"error": "mode is required"}), body
         update.assert_not_called()
         resp = admin_client.put(
             "/api/admin/agents/a1",
-            json={"content": " keep ", "model_id": " deepseek-v4 ", "brain_setting": " Medium ", "temperature": 0.3, "max_tokens": 9, "model_code": "x"},
+            json={
+                "content": " keep ", "model_id": " deepseek-v4 ", "brain_setting": " Medium ", "mode": " Creative ",
+                "temperature": 0.3, "max_tokens": 9, "model_code": "x",
+            },
             headers=auth_headers,
         )
         assert (resp.status_code, resp.get_json()) == (200, stored)
+        # temperature / model_code are not forwarded.
         update.assert_called_once_with(
-            "a1", content=" keep ", model_id="deepseek-v4", brain_setting="Medium", temperature=0.3, max_tokens=9
+            "a1", content=" keep ", model_id="deepseek-v4", brain_setting="Medium", mode="Creative", max_tokens=9
         )
         monkeypatch.setattr(admin_mod.database, "update_agent", MagicMock(side_effect=ValueError("Medium not offered")))
-        bad = admin_client.put("/api/admin/agents/a1", json={"brain_setting": "Medium"}, headers=auth_headers)
+        bad = admin_client.put(
+            "/api/admin/agents/a1", json={"brain_setting": "Medium", "mode": "Deterministic"}, headers=auth_headers
+        )
         assert (bad.status_code, bad.get_json()) == (400, {"error": "Medium not offered"})
 
     def test_kimi_medium_rejected_on_create_and_update_row_unchanged(
@@ -146,50 +165,87 @@ class TestAdminConfigAndAgents:
     ) -> None:
         # AST-1880 AC 3 against the real data layer: Kimi offers Little/Big only.
         db = sqlite_in_memory
-        db.save_agent("kimi_agent", "sys", model_id="kimi-k2.6", brain_setting="Big")
+        db.save_agent("kimi_agent", "sys", mode="Deterministic", model_id="kimi-k2.6", brain_setting="Big")
         before = db.get_agent("kimi_agent")
-        put = admin_client.put("/api/admin/agents/kimi_agent", json={"brain_setting": "Medium"}, headers=auth_headers)
+        put = admin_client.put(
+            "/api/admin/agents/kimi_agent", json={"brain_setting": "Medium", "mode": "Deterministic"}, headers=auth_headers
+        )
         assert put.status_code == 400
         assert db.get_agent("kimi_agent") == before
         post = admin_client.post(
             "/api/admin/agents",
-            json={"agent_id": "kimi_med", "content": "", "model_id": "kimi-k2.6", "brain_setting": "Medium"},
+            json={"agent_id": "kimi_med", "content": "", "model_id": "kimi-k2.6", "brain_setting": "Medium", "mode": "Deterministic"},
             headers=auth_headers,
         )
         assert post.status_code == 400
         assert db.get_agent("kimi_med") is None
         ok = admin_client.put(
-            "/api/admin/agents/kimi_agent", json={"model_id": "claude", "brain_setting": "Medium"}, headers=auth_headers
+            "/api/admin/agents/kimi_agent",
+            json={"model_id": "claude", "brain_setting": "Medium", "mode": "Deterministic"},
+            headers=auth_headers,
         )
         assert ok.status_code == 200
         assert (ok.get_json()["model_id"], ok.get_json()["brain_setting"]) == ("claude", "Medium")
 
-    def test_ast1938_shortlist_model_scoped_sizes_on_put(
+    def test_ast1947_openrouter_one_size_by_quant_on_put(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory
     ) -> None:
-        # AST-1938 AC 4 against the real data layer: new OpenRouter models offer Little (+ Medium if reasoning), never Big.
+        # AST-1947 against the real data layer: each OpenRouter model offers exactly the size its host
+        # quantization maps to (qwen3-32b fp8 → Medium; mythomax-l2-13b → Big); any other size is 400.
         db = sqlite_in_memory
-        db.save_agent("or_agent", "sys", model_id="claude", brain_setting="Big")
+        db.save_agent("or_agent", "sys", mode="Deterministic", model_id="claude", brain_setting="Big")
         ok = admin_client.put(
-            "/api/admin/agents/or_agent", json={"model_id": "qwen/qwen3-32b", "brain_setting": "Little"}, headers=auth_headers
+            "/api/admin/agents/or_agent",
+            json={"model_id": "qwen/qwen3-32b", "brain_setting": "Medium", "mode": "Deterministic"},
+            headers=auth_headers,
         )
         assert ok.status_code == 200
         got = admin_client.get("/api/admin/agents/or_agent", headers=auth_headers).get_json()
-        assert (got["model_id"], got["brain_setting"]) == ("qwen/qwen3-32b", "Little")
+        assert (got["model_id"], got["brain_setting"]) == ("qwen/qwen3-32b", "Medium")
         before = db.get_agent("or_agent")
-        for model_id, size in (("gryphe/mythomax-l2-13b", "Medium"), ("qwen/qwen3-32b", "Big")):
+        for model_id, size in (
+            ("gryphe/mythomax-l2-13b", "Medium"), ("qwen/qwen3-32b", "Little"), ("qwen/qwen3-32b", "Big"),
+        ):
             bad = admin_client.put(
-                "/api/admin/agents/or_agent", json={"model_id": model_id, "brain_setting": size}, headers=auth_headers
+                "/api/admin/agents/or_agent",
+                json={"model_id": model_id, "brain_setting": size, "mode": "Deterministic"},
+                headers=auth_headers,
             )
             assert bad.status_code == 400, (model_id, size)
             assert db.get_agent("or_agent") == before, (model_id, size)
 
-    def test_ast1938_models_route_lists_79(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
-        # AST-1938 AC 8: 4 hand-written + 75 shortlist models (moonshotai/kimi-k2.6 stays kimi-k2.6-openrouter).
+    def test_ast1947_models_route_lists_98(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1947 catalog by quantization: 98 models; kimi-k2.6-openrouter retired → moonshotai/kimi-k2.6.
         body = admin_client.get("/api/admin/agents/models", headers=auth_headers).get_json()
-        assert len(body) == 79
+        assert len(body) == len(cfg.LLM_MODEL_CONFIG) == 98
         assert body["qwen/qwen3-32b"]["server_id"] == "openrouter"
-        assert "moonshotai/kimi-k2.6" not in body
+        assert body["moonshotai/kimi-k2.6"]["server_id"] == "openrouter"
+        assert "kimi-k2.6-openrouter" not in body
+
+    def test_ast1948_mode_round_trip_and_rejections(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory
+    ) -> None:
+        # AST-1948 AC 7 against the real data layer: mode persists; bad / missing mode leaves the row unchanged.
+        db = sqlite_in_memory
+        db.save_agent("m_agent", "sys", mode="Deterministic", model_id="claude", brain_setting="Medium")
+        ok = admin_client.put("/api/admin/agents/m_agent", json={"mode": "Creative"}, headers=auth_headers)
+        assert ok.status_code == 200
+        got = admin_client.get("/api/admin/agents/m_agent", headers=auth_headers).get_json()
+        for body in (ok.get_json(), got):
+            assert body["mode"] == "Creative"
+            assert "temperature" not in body and "model_code" not in body
+        before = db.get_agent("m_agent")
+        for body, err in (({"mode": "Wild"}, "Invalid mode 'Wild'"), ({"content": "x"}, "mode is required")):
+            bad = admin_client.put("/api/admin/agents/m_agent", json=body, headers=auth_headers)
+            assert bad.status_code == 400 and err in bad.get_json()["error"], body
+            assert db.get_agent("m_agent") == before, body
+        post = admin_client.post(
+            "/api/admin/agents",
+            json={"agent_id": "wild", "content": "", "model_id": "claude", "brain_setting": "Medium", "mode": "Wild"},
+            headers=auth_headers,
+        )
+        assert post.status_code == 400 and "Invalid mode 'Wild'" in post.get_json()["error"]
+        assert db.get_agent("wild") is None
 
     def test_delete_agent_paths(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
@@ -304,8 +360,8 @@ class TestEnrichTasks:
             lambda agent_id: {
                 "model_id": "claude",
                 "brain_setting": cfg.BRAIN_MEDIUM,
+                "mode": cfg.AGENT_MODE_DETERMINISTIC,
                 "content": "agent {$name}",
-                "temperature": 0.1,
                 "max_tokens": 10,
             }
             if agent_id
@@ -318,8 +374,8 @@ class TestEnrichTasks:
             lambda text, *args, **kwargs: text.replace("{$name}", "Susan" * 20000),
         )
         rows = admin_mod._enrich_tasks("cand-1")
-        # AST-1880: SKU + cache threshold from the agent's own model + brain size
-        route = cfg.resolve_model_brain("claude", cfg.BRAIN_MEDIUM)
+        # AST-1880: SKU + cache threshold from the agent's own model + brain size (+ mode, AST-1948)
+        route = cfg.resolve_model_brain("claude", cfg.BRAIN_MEDIUM, cfg.AGENT_MODE_DETERMINISTIC)
         assert (rows[0]["resolved_model_key"], rows[0]["model_code"]) == (route["sku"], route["sku"])
         assert rows[0]["cache_min_tokens"] == route["pricing"]["cache_min_tokens"] > 0
         assert rows[0]["cache_satisfied"] is True
@@ -369,16 +425,25 @@ class TestEnrichTasks:
 
     def test_enrich_tasks_uses_catalog_pricing_for_agent_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # AST-1880: a DeepSeek agent resolves its own SKU (no global provider switch).
-        self._one_agent_row(monkeypatch, {"model_id": "deepseek-v4", "brain_setting": cfg.BRAIN_LITTLE})
-        route = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE)
+        self._one_agent_row(
+            monkeypatch, {"model_id": "deepseek-v4", "brain_setting": cfg.BRAIN_LITTLE, "mode": cfg.AGENT_MODE_CREATIVE}
+        )
+        route = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_CREATIVE)
         row = admin_mod._enrich_tasks("")[0]
         assert (row["brain_setting"], row["resolved_model_key"]) == (cfg.BRAIN_LITTLE, "deepseek-v4-flash")
         assert row["cache_min_tokens"] == route["pricing"].get("cache_min_tokens", 0)
 
     @pytest.mark.parametrize(
         "agent",
-        [{"model_id": "kimi-k2.6", "brain_setting": cfg.BRAIN_MEDIUM}, {"model_id": "__no_model__", "brain_setting": cfg.BRAIN_BIG}, {"brain_setting": cfg.BRAIN_BIG}],
-        ids=["size_not_offered", "unknown_model", "no_model_id"],
+        [
+            {"model_id": "kimi-k2.6", "brain_setting": cfg.BRAIN_MEDIUM, "mode": cfg.AGENT_MODE_DETERMINISTIC},
+            {"model_id": "__no_model__", "brain_setting": cfg.BRAIN_BIG, "mode": cfg.AGENT_MODE_DETERMINISTIC},
+            {"brain_setting": cfg.BRAIN_BIG, "mode": cfg.AGENT_MODE_DETERMINISTIC},
+            # AST-1948: rows still awaiting a mode (AST-1950 migration) blank the row, not 500.
+            {"model_id": "kimi-k2.6", "brain_setting": cfg.BRAIN_BIG},
+            {"model_id": "kimi-k2.6", "brain_setting": cfg.BRAIN_BIG, "mode": "Wild"},
+        ],
+        ids=["size_not_offered", "unknown_model", "no_model_id", "no_mode", "unknown_mode"],
     )
     def test_enrich_tasks_unroutable_agent_leaves_row_blank_and_warns(
         self, agent: dict, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -1517,7 +1582,10 @@ class TestAdhocHelpers:
         monkeypatch.setattr(
             admin_mod.database,
             "get_agent",
-            lambda agent_id: {"agent_id": agent_id, "model_id": "claude", "brain_setting": cfg.BRAIN_LITTLE, "content": "sys", "temperature": None, "max_tokens": None},
+            lambda agent_id: {
+                "agent_id": agent_id, "model_id": "claude", "brain_setting": cfg.BRAIN_LITTLE,
+                "mode": cfg.AGENT_MODE_DETERMINISTIC, "content": "sys", "max_tokens": None,
+            },
         )
         monkeypatch.setattr(
             admin_mod.database, "get_candidate",
@@ -1538,7 +1606,10 @@ class TestAdhocHelpers:
         monkeypatch.setattr(
             admin_mod.database,
             "get_agent",
-            lambda agent_id: {"agent_id": agent_id, "content": "{$VISIBLE_JD}", "model_id": "claude", "brain_setting": cfg.BRAIN_LITTLE},
+            lambda agent_id: {
+                "agent_id": agent_id, "content": "{$VISIBLE_JD}", "model_id": "claude", "brain_setting": cfg.BRAIN_LITTLE,
+                "mode": cfg.AGENT_MODE_DETERMINISTIC,
+            },
         )
         monkeypatch.setattr(
             admin_mod.database,
@@ -1580,31 +1651,36 @@ class TestAst1880ResolveAdhocCatalogRoute:
         monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: {"agent_id": agent_id, "content": "sys", **agent})
 
     def test_deepseek_little_uses_catalog_sku_server_tier_and_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._agent(monkeypatch, model_id="deepseek-v4", brain_setting=cfg.BRAIN_LITTLE)
-        route = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE)
+        self._agent(monkeypatch, model_id="deepseek-v4", brain_setting=cfg.BRAIN_LITTLE, mode=cfg.AGENT_MODE_DETERMINISTIC)
+        route = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_DETERMINISTIC)
         payload, err = admin_mod._resolve_adhoc({"agent_id": "z1"})
         assert err is None
         assert (payload["model_code"], payload["server_id"], payload["tier"]) == ("deepseek-v4-flash", "deepseek", route["tier"])
-        assert (payload["temperature"], payload["max_tokens"]) == (
-            route["tier"]["default_temperature"], route["tier"]["default_max_tokens"],
-        )
+        # AST-1948: temperature from the mode's tier row.
+        assert (payload["temperature"], payload["max_tokens"]) == (0.2, route["tier"]["default_max_tokens"])
         assert payload["candidate_api_keys"] is None
         assert "tier_meta" not in payload
 
-    def test_agent_overrides_win_including_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # principal_recruiter_estelle shape: Kimi Big, temperature 0, max_tokens 384000
-        self._agent(monkeypatch, model_id="kimi-k2.6", brain_setting=cfg.BRAIN_BIG, temperature=0, max_tokens=384000)
+    @pytest.mark.parametrize(
+        ("mode", "thinking", "temperature"),
+        [(cfg.AGENT_MODE_CREATIVE, True, 0.6), (cfg.AGENT_MODE_DETERMINISTIC, False, 0.2)],
+    )
+    def test_mode_sets_temperature_and_max_tokens_override_wins(
+        self, mode: str, thinking: bool, temperature: float, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # principal_recruiter_estelle shape: Kimi Big, max_tokens 384000. AST-1948: a stale row temperature is ignored.
+        self._agent(monkeypatch, model_id="kimi-k2.6", brain_setting=cfg.BRAIN_BIG, mode=mode, temperature=0, max_tokens=384000)
         payload, err = admin_mod._resolve_adhoc({"agent_id": "z1"})
         assert err is None
         assert (payload["server_id"], payload["model_code"]) == ("kimi", "kimi-k2.6")
-        assert payload["tier"]["thinking"] is True
-        assert (payload["temperature"], payload["max_tokens"]) == (0, 384000)
+        assert payload["tier"]["thinking"] is thinking
+        assert (payload["temperature"], payload["max_tokens"]) == (temperature, 384000)
 
     def test_adhoc_test_forwards_route_and_key_map_to_core(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         captured: dict[str, Any] = {}
-        tier = cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_BIG)["tier"]
+        tier = cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_BIG, cfg.AGENT_MODE_CREATIVE)["tier"]
         monkeypatch.setattr(
             admin_mod, "_resolve_adhoc",
             lambda _b: ({"system": "s", "user": "u", "cache": "", "cache_a": "", "cache_b": "", "cache_c": "", "cache_d": "",
@@ -1628,12 +1704,15 @@ class TestAst1880ResolveAdhocCatalogRoute:
     @pytest.mark.parametrize(
         "agent",
         [
-            {"model_id": "kimi-k2.6", "brain_setting": cfg.BRAIN_MEDIUM},
-            {"model_id": "__no_model__", "brain_setting": cfg.BRAIN_BIG},
-            {"brain_setting": cfg.BRAIN_BIG},
+            {"model_id": "kimi-k2.6", "brain_setting": cfg.BRAIN_MEDIUM, "mode": cfg.AGENT_MODE_DETERMINISTIC},
+            {"model_id": "__no_model__", "brain_setting": cfg.BRAIN_BIG, "mode": cfg.AGENT_MODE_DETERMINISTIC},
+            {"brain_setting": cfg.BRAIN_BIG, "mode": cfg.AGENT_MODE_DETERMINISTIC},
             {"model_code": "claude-haiku-4-5"},
+            # AST-1948: no mode fallback — mode-less or unknown mode is a client error.
+            {"model_id": "kimi-k2.6", "brain_setting": cfg.BRAIN_BIG},
+            {"model_id": "kimi-k2.6", "brain_setting": cfg.BRAIN_BIG, "mode": "Wild"},
         ],
-        ids=["size_not_offered", "unknown_model", "no_model_id", "legacy_model_code_only"],
+        ids=["size_not_offered", "unknown_model", "no_model_id", "legacy_model_code_only", "no_mode", "unknown_mode"],
     )
     def test_unroutable_agent_returns_400(self, agent: dict, admin_client: FlaskClient, monkeypatch: pytest.MonkeyPatch) -> None:
         self._agent(monkeypatch, **agent)
@@ -2043,7 +2122,10 @@ class TestApiAdminBranchGaps:
         monkeypatch.setattr(
             admin_mod.database,
             "get_agent",
-            lambda agent_id: {"agent_id": agent_id, "model_id": "claude", "brain_setting": cfg.BRAIN_LITTLE, "content": "sys", "temperature": 0.2, "max_tokens": 5},
+            lambda agent_id: {
+                "agent_id": agent_id, "model_id": "claude", "brain_setting": cfg.BRAIN_LITTLE,
+                "mode": cfg.AGENT_MODE_DETERMINISTIC, "content": "sys", "max_tokens": 5,
+            },
         )
         monkeypatch.setattr(admin_mod, "resolve_tokens", lambda text, *args, **kwargs: text)
         payload, err = admin_mod._resolve_adhoc({"agent_id": "a1", "task_key": "adhoc"})
@@ -3248,7 +3330,7 @@ class TestAst1411AdhocSevenSegment:
                 "content": content,
                 "model_id": "claude",
                 "brain_setting": cfg.BRAIN_LITTLE,
-                "temperature": 0.1,
+                "mode": cfg.AGENT_MODE_DETERMINISTIC,
                 "max_tokens": 10,
             },
         )

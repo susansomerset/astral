@@ -95,7 +95,7 @@ class TestExportRepoAdminJsonToFiles:
                 "agent_id": "estelle",
                 "content": "prompt",
                 "brain_setting": "Medium",
-                "temperature": 0.2,
+                "mode": "Deterministic",
                 "max_tokens": 100,
                 "updated_at": "2026-06-24 00:00:00",
             },
@@ -152,7 +152,7 @@ class TestAst783RepoAdminJsonDivergence:
     ) -> None:
         agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
         db = sqlite_in_memory
-        db.save_agent("agent_a", "prompt-body", brain_setting="Medium")
+        db.save_agent("agent_a", "prompt-body", mode="Deterministic", brain_setting="Medium")
         conn = db._get_connection()
         try:
             file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
@@ -171,7 +171,7 @@ class TestAst783RepoAdminJsonDivergence:
     ) -> None:
         agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
         db = sqlite_in_memory
-        db.save_agent("agent_a", "on-disk", brain_setting="Medium")
+        db.save_agent("agent_a", "on-disk", mode="Deterministic", brain_setting="Medium")
         conn = db._get_connection()
         try:
             file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
@@ -179,7 +179,7 @@ class TestAst783RepoAdminJsonDivergence:
             conn.close()
         _write_json(agent_path, [file_row])
         _write_json(task_path, [])
-        db.save_agent("agent_a", "edited-in-db", brain_setting="Medium")
+        db.save_agent("agent_a", "edited-in-db", mode="Deterministic", brain_setting="Medium")
 
         status = repo_json_mod.get_repo_admin_json_divergence_status()
 
@@ -190,7 +190,7 @@ class TestAst783RepoAdminJsonDivergence:
     ) -> None:
         agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
         db = sqlite_in_memory
-        db.save_agent("agent_a", "repo-copy", brain_setting="Little", model_id="claude")
+        db.save_agent("agent_a", "repo-copy", mode="Deterministic", brain_setting="Little", model_id="claude")
         conn = db._get_connection()
         try:
             file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
@@ -198,7 +198,7 @@ class TestAst783RepoAdminJsonDivergence:
             conn.close()
         _write_json(agent_path, [file_row])
         _write_json(task_path, [])
-        db.save_agent("agent_a", "local-edit", brain_setting="Big")
+        db.save_agent("agent_a", "local-edit", mode="Creative", brain_setting="Big")
         assert repo_json_mod.get_repo_admin_json_divergence_status()["agent"]["diverged"] is True
 
         count = repo_json_mod.revert_repo_admin_json_table("agent")
@@ -208,7 +208,30 @@ class TestAst783RepoAdminJsonDivergence:
         assert row is not None
         assert row["content"] == "repo-copy"
         assert row["brain_setting"] == "Little"
+        # AST-1948: mode is a repo column — revert restores it too.
+        assert row["mode"] == "Deterministic"
         assert repo_json_mod.get_repo_admin_json_divergence_status()["agent"]["diverged"] is False
+
+    def test_revert_rejects_bad_mode_in_repo_file(
+        self, sqlite_in_memory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AST-1948 AC 7: a repo file with an unknown mode fails validation; DB row untouched.
+        agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
+        db = sqlite_in_memory
+        db.save_agent("agent_a", "db-copy", mode="Creative", brain_setting="Little", model_id="claude")
+        conn = db._get_connection()
+        try:
+            file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
+        finally:
+            conn.close()
+        _write_json(agent_path, [{**file_row, "content": "repo-copy", "mode": "Wild"}])
+        _write_json(task_path, [])
+
+        with pytest.raises(ValueError, match="Invalid mode 'Wild'"):
+            repo_json_mod.revert_repo_admin_json_table("agent")
+
+        row = db.get_agent("agent_a")
+        assert (row["content"], row["mode"]) == ("db-copy", "Creative")
 
     def test_revert_unknown_table_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown repo admin JSON table"):
@@ -609,10 +632,11 @@ class TestAst787AgentRepoJsonSeed:
             assert repo_row == expected
 
     def test_repo_rows_use_repo_columns_only(self) -> None:
-        expected_cols = set(AST787_AGENT_REPO_COLUMNS) | {"model_id"}
+        # AST-1948: mode replaces temperature; model_code stays gone.
+        expected_cols = (set(AST787_AGENT_REPO_COLUMNS) - {"temperature"}) | {"model_id", "mode"}
         for row in json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8")):
             assert set(row.keys()) == expected_cols
-            assert "model_code" not in row
+            assert "model_code" not in row and "temperature" not in row
 
     def test_spot_check_personas_have_content_and_brain_setting(self) -> None:
         by_id = {
@@ -1515,8 +1539,8 @@ class TestAst1400EstelleCraftSeedPins:
     def test_estelle_and_craft_match_ast1399_export(self) -> None:
         """[bug-repro] Red on origin/dev seed; green after AST-1399 catalog."""
         estelle = self._estelle()
-        assert "model_code" not in estelle
-        assert estelle["temperature"] == 0
+        # AST-1948: temperature retired from the agent row (mode decides it).
+        assert "model_code" not in estelle and "temperature" not in estelle
         assert estelle["max_tokens"] == 384000
         content = estelle["content"]
         assert content.startswith(self._ESTELLE_CONTENT_PREFIX)
@@ -1586,7 +1610,8 @@ class TestAst1878AgentSeedModels:
         by = {r["agent_id"]: r for r in self._rows()}
         contact = by["contact_recruiter_estelle"]
         assert contact["content"] == by["principal_recruiter_estelle"]["content"]
-        assert contact["temperature"] is None and contact["max_tokens"] is None
+        # AST-1948: no row temperature; mode + catalog decide it.
+        assert "temperature" not in contact and contact["max_tokens"] is None
 
     def test_startup_apply_stores_model_ids(self, sqlite_in_memory) -> None:
         rows = repo_json_mod.load_repo_admin_json_file("agent")

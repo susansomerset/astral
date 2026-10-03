@@ -30,14 +30,14 @@ _REPO_AGENTS = {
 
 
 def _seeded_rows(agent_id: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """_agent_rows prompts + the repo-seeded agent's model / brain / temperature / max_tokens (AST-1878)."""
+    """_agent_rows prompts + the repo-seeded agent's model / brain / mode / max_tokens (AST-1878, AST-1948)."""
     agent_row, task_row = _agent_rows()
     seed = _REPO_AGENTS[agent_id]
     agent_row.update(
         agent_id=agent_id,
         model_id=seed["model_id"],
         brain_setting=seed["brain_setting"],
-        temperature=seed["temperature"],
+        mode=seed["mode"],
         max_tokens=seed["max_tokens"],
     )
     task_row["agent_id"] = agent_id
@@ -145,8 +145,19 @@ class TestAst1879CandidateServerKey:
 
 class TestAst1879RouteHelpers:
     def test_agent_llm_route_resolves_catalog(self) -> None:
-        route = agent_mod._agent_llm_route({"agent_id": "a", "model_id": " kimi-k2.6 ", "brain_setting": " Big "})
-        assert route == cfg.resolve_model_brain("kimi-k2.6", "Big")
+        # AST-1948: the row's mode (stripped) is passed to the resolver.
+        row = {"agent_id": "a", "model_id": " kimi-k2.6 ", "brain_setting": " Big ", "mode": " Creative "}
+        assert agent_mod._agent_llm_route(row) == cfg.resolve_model_brain("kimi-k2.6", "Big", "Creative")
+
+    @pytest.mark.parametrize("mode", [None, "", "  "])
+    def test_agent_llm_route_raises_without_mode(self, mode: Any) -> None:
+        # AST-1948: no fallback mode — a mode-less row fails loudly, like a missing brain_setting.
+        with pytest.raises(ValueError, match="Agent 'a' has no mode configured"):
+            agent_mod._agent_llm_route({"agent_id": "a", "model_id": "claude", "brain_setting": "Medium", "mode": mode})
+
+    def test_agent_llm_route_rejects_unknown_mode(self) -> None:
+        with pytest.raises(ValueError, match="Invalid mode 'Wild'"):
+            agent_mod._agent_llm_route({"agent_id": "a", "model_id": "claude", "brain_setting": "Medium", "mode": "Wild"})
 
     def test_task_llm_server_id_uses_task_agent_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
         seen: List[str] = []
@@ -179,7 +190,7 @@ class TestAst1879RouteHelpers:
 # Branches (AST-1944 task_llm_server_id_or_none): strict path returns a server; ValueError + sentinel
 # agent_id ("" / "telescope" / no row) → None; ValueError + any other agent_id → re-raise.
 class TestAst1944TaskLlmServerIdOrNone:
-    _REAL = {"agent_id": "a1", "model_id": "deepseek-v4", "brain_setting": "Big"}
+    _REAL = {"agent_id": "a1", "model_id": "deepseek-v4", "brain_setting": "Big", "mode": "Deterministic"}
 
     @staticmethod
     def _data(
@@ -249,7 +260,7 @@ class TestAst1879SendToServer:
 
     async def test_anthropic_protocol(self, monkeypatch: pytest.MonkeyPatch) -> None:
         anth, compat = _clients(monkeypatch)
-        route = cfg.resolve_model_brain("claude", "Medium")
+        route = cfg.resolve_model_brain("claude", "Medium", "Deterministic")
         await agent_mod._send_to_server(
             [], server_id="anthropic", sku=route["sku"], tier=route["tier"], api_key="sk-ant", **self._COMMON
         )
@@ -259,10 +270,11 @@ class TestAst1879SendToServer:
         assert kw["record_timesheet"] is agent_mod.record_timesheet_entry
         assert kw["batch_size"] == 1 and kw["task_key_uuid"] == "u1"
 
-    @pytest.mark.parametrize("server_id,model_id", [("kimi", "kimi-k2.6"), ("openrouter", "kimi-k2.6-openrouter"), ("deepseek", "deepseek-v4")])
+    # AST-1947: kimi-k2.6-openrouter retired → moonshotai/kimi-k2.6 (Little).
+    @pytest.mark.parametrize("server_id,model_id", [("kimi", "kimi-k2.6"), ("openrouter", "moonshotai/kimi-k2.6"), ("deepseek", "deepseek-v4")])
     async def test_compat_protocol(self, monkeypatch: pytest.MonkeyPatch, server_id: str, model_id: str) -> None:
         anth, compat = _clients(monkeypatch)
-        route = cfg.resolve_model_brain(model_id, "Little")
+        route = cfg.resolve_model_brain(model_id, "Little", "Deterministic")
         await agent_mod._send_to_server(
             [], server_id=server_id, sku=route["sku"], tier=route["tier"], api_key="sk-x", batch_size=3, **self._COMMON
         )
@@ -322,7 +334,7 @@ class TestAst1879RightKeyNoFallback:
         "model_id,server_id,keys",
         [
             ("kimi-k2.6", "kimi", {"anthropic": "sk-ant", "openrouter": "sk-or", "deepseek": "sk-ds"}),
-            ("kimi-k2.6-openrouter", "openrouter", {"kimi": "sk-kimi"}),
+            ("moonshotai/kimi-k2.6", "openrouter", {"kimi": "sk-kimi"}),
             ("claude", "anthropic", {"kimi": "sk-kimi", "deepseek": "sk-ds"}),
             ("deepseek-v4", "deepseek", {}),
         ],
@@ -431,13 +443,14 @@ class TestAst1879EstelleTurnRoute:
         turn_ctx = {"astral_candidate_id": "somerset", "candidate_data": {}, "candidate_api_keys": {"kimi": "sk-kimi", "anthropic": "sk-ant"}}
         await agent_mod.do_task("contact_estelle_turn", live_content="hi", index="somerset", ctx=turn_ctx)
         anth.assert_not_called()
-        route = cfg.resolve_model_brain(agent_row["model_id"], agent_row["brain_setting"])
+        route = cfg.resolve_model_brain(agent_row["model_id"], agent_row["brain_setting"], agent_row["mode"])
         assert spy.builds == [(cfg.LLM_SERVER_CONFIG[route["server_id"]]["base_url"], "sk-kimi")]
         call = spy.calls[0]
         assert call["model"] == route["sku"]
-        # Seed row leaves max_tokens / temperature null → tier defaults (no conversational override).
+        # Seed row leaves max_tokens null → tier default; temperature is the seed mode's (Deterministic → 0.2).
+        assert agent_row["mode"] == "Deterministic"
         assert call["max_tokens"] == route["tier"]["default_max_tokens"]
-        assert call.get("temperature") == route["tier"]["default_temperature"]
+        assert call.get("temperature") == route["tier"]["temperature"] == 0.2
 
     def test_agent_py_has_no_default_brain_or_legacy_provider_symbols(self) -> None:
         src = Path(agent_mod.__file__).read_text()
