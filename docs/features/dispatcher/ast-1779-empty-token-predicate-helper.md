@@ -1,3 +1,86 @@
+<!-- linear-archive: AST-1779 archived 2026-10-02 -->
+
+## Linear archive (AST-1779)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1779/empty-token-predicate-helper-dispatch-validation  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1766 — Dispatch Validation  
+**Blocked by / blocks / related:** parent: AST-1766; blocks: AST-1781; blocks: AST-1780
+
+### Description
+
+## What this implements
+
+Owns the shared empty-render helper in config (all prompt fields + agent system; candidate-scoped scoring; ignore chain; extension seam for future entity contexts). Does not own API gates, force-off persistence, version hooks, or React.
+
+## Citations
+
+`astral.dispatch.entity-state-bound`; patterns: none for the helper itself (`no established pattern applies` beyond `TOKEN_SOURCES` / `resolve_tokens` reuse).
+
+## Scope
+
+`src/utils/config.py` — new empty-render helper over `TOKEN_SOURCES` / `resolve_tokens` across all `agent_task` prompt segments plus agent system text; scores candidate-scoped tokens only; ignores `source: chain`; optional entity-context extension seam for later entity types.
+
+## Acceptance criteria
+
+- [X] Predicate **A** (candidate-scoped): helper returns `empty_render: true` / `empty_tokens` when a referenced candidate-source or candidate-backed artifact token resolves to `""` for that candidate; list field name frozen as `empty_render` for sibling #2 `GET /api/admin/dispatch_tasks` enrichment. **Fail:** flag missing, or `false` while such a token resolves blank.
+- [X] The empty-render helper ignores `source: chain`, does **not** treat empty `source: job` (or other non-candidate entity) tokens as a failing check in this epic, and exposes an extension point (`entity_contexts`) so a later epic can score other entity types without replacing the helper. **Fail:** job emptiness flips the flag true in this epic’s behavior, or the helper is a sealed candidate-only function with no documented extension seam.
+- [X] Candidate-scoped tokens all non-empty → `empty_render: false` even when prompts also reference job tokens that would be blank without a job context (AUTO/Run enablement subject to sibling #2/#4 + existing API-key / Sweep rules). **Fail:** controls disabled solely because job tokens are empty.
+
+## Boundaries
+
+Does not own API gates, force-off persistence, version hooks (siblings #2/#3), or React (sibling #4).
+
+## Notes for planning
+
+Parent AST-1766 definition is authoritative. Candidate-scoped only this epic; leave room for entity-type expansion.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1766-dispatch-validation`, child `sub/AST-1766/AST-1779-empty-token-predicate-helper`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Blank candidate → empty_render: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_blank_candidate_token_sets_empty_render`
+2. Job ignored without seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_filled_candidate_ignores_blank_job_without_entity_contexts`
+3. Chain never scored: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_chain_only_never_scores`
+4. Job entity_contexts seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_job_seam_via_entity_contexts`
+5. warn_on_empty quiet: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_warn_on_empty_false_suppresses_empty_warning`
+6. Text tolerance + order: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_none_empty_and_non_str_texts_and_order`
+7. Rubric seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_rubric_scored_only_via_entity_contexts`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts \
+  -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/utils/config.md` — `f1eb18591b1dadc37aa399cb85319f830ca298d8`
+
+**Publish tip:** `origin/sub/AST-1766/AST-1779-empty-token-predicate-helper` @ `b2e9b13bf861fbe122632f29ab8337c3fbc7c0f8`
+
+### Comments
+
+#### radia — 2026-09-23T01:32:23.749Z
+[code-rubric] PROCEED (Commit: b2e9b13b) empty-render helper clean
+
+#### betty — 2026-09-23T01:29:01.072Z
+`origin/sub/AST-1766/AST-1779-empty-token-predicate-helper` @ `b2e9b13b` · empty-render manifest
+
+#### joan — 2026-09-23T01:22:08.122Z
+[plan-rubric] PROCEED (Commit: 8a6488d039f0f6243602e75312b9b5a8a8113231) helper plan clean
+
+#### ada — 2026-09-23T01:19:54.369Z
+`origin/sub/AST-1766/AST-1779-empty-token-predicate-helper` @ `8a6488d039f0f6243602e75312b9b5a8a8113231` · empty-render helper planned
+
+---
+
 # AST-1779 — Empty-token predicate helper
 
 - **Linear:** https://linear.app/astralcareermatch/issue/AST-1779
