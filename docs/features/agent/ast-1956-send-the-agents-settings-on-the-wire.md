@@ -282,3 +282,9 @@ Confirm Chuckles estimate: 3 — agree
 - **Recommendation:** Optional Chuckles cleanup on a later config pass; not blocking build.
 
 context_tokens≈65000
+
+## Review
+
+- **Branch:** `sub/AST-1953/AST-1956-send-settings-on-wire`
+- **Build commits:** `fbcf088ae` (Stage 1 clients) · `04533705b` (Stage 2 core)
+- **Build notes:** both stages executed as written; each stage's Done-when stub script printed `OK`, `import src.core.agent` succeeds, and both `rg` checks return nothing. Ruff `F` counts on the three files are unchanged from baseline (pre-existing only). No deviations.
