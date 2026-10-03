@@ -400,3 +400,34 @@ All edits are in `src/ui/frontend/src/pages/AdminAgentPrompts.tsx`. If `src/ui/f
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+**Ticket:** AST-1957  
+**Overall:** APPROVED  
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51  
+**Publish ref:** `sub/AST-1953/AST-1957-manage-agents-settings` @ `fb90852e7322b5b0bb801a9e7882d25dd9e16226`
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+
+### Traceability
+
+10 → Stage 2 (`AgentSettingsFields`, `settingsBody`, list columns, Done-when `rg`; form AC closes with Betty `test_AdminAgentPrompts.test.tsx` per **AC boundaries**) · 5 (parent) → **AC boundaries** + Stage 1/2 file-scoped `rg` (remainder AST-1956 on ftr)
+
+### Findings
+
+#### acceptable
+
+- **Location:** Plan structure — no `## Self-assessment`
+- **Finding:** Estimate confirm plus staged done-when and **Sequencing risk** carry complexity.
+- **Recommendation:** None blocking.
+
+- **Location:** **Sequencing risk**
+- **Finding:** `test_api_admin.py` collection blocked until AST-1956 merges `resolve_model_brain` removal; frontend test path unaffected. Matches parent sequencing and AST-1955 precedent.
+- **Recommendation:** Betty manifest ordering only; no plan revision.
+
+context_tokens≈58000
