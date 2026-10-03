@@ -431,3 +431,9 @@ Confirm Chuckles estimate: 3 — agree
 - **Recommendation:** Betty manifest ordering only; no plan revision.
 
 context_tokens≈58000
+
+## Review
+
+- **Branch:** `sub/AST-1953/AST-1957-manage-agents-settings`
+- **Build commits:** `5d1e79562` (Stage 1 admin API) · `15ba5277d` (Stage 2 Manage Agents form and list)
+- **Build notes:** both stages executed as written, and each stage's Done-when checks passed (`py_compile` and `rg` for Stage 1; `tsc -b`, `eslint` and `rg` for Stage 2). One point the plan left open: in Stage 2 step 12, `tsc` rejected the display rows (grid cells are strings), as the plan anticipated. The plan's example annotation (`const renderedAgents: Agent[]`) does not compile, so the rows are cast per row with `as unknown as Agent`, following the existing `as unknown as CsvRow` in `AdminCostReconciliation.tsx`. `ListPage` is unchanged. Ruff on `api_admin.py` adds only two `UP006` hints for the helper's `Dict[str, Any]`, which matches the file's existing `Dict` annotations and the plan's code. `tests/component/ui/api/test_api_admin.py` still can't import on this sub until AST-1956 lands (see **Sequencing risk**).
