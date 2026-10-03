@@ -426,7 +426,7 @@ context_tokens≈48000
 
 ## Frame diff
 - [ ] **AC 6 (UI half):** `rg -n "temperature" src/ui/frontend/src/pages/AdminAgentPrompts.tsx` is empty after AST-1949 (Manage Agents UI); backend + `config.py` halves satisfied on this sub.
-- [ ] **AC 13 / live rows:** Nullable `mode` on DB rows until AST-1950 migration; `do_task` / adhoc correctly fail closed when `mode` is missing on the agent row.
+- [x] **AC 13 / live rows:** Nullable `mode` on DB rows until AST-1950 migration; `do_task` / adhoc correctly fail closed when `mode` is missing on the agent row.
 
 ## Findings
 
@@ -462,3 +462,14 @@ context_tokens≈48000
 - **AST-1949:** UI must send `mode` on PUT and drop temperature/default_temperature pre-fill to match API contract.
 
 context_tokens≈22000
+
+## Resolution
+
+- **Date:** 2026-10-03. **Reviewed tip:** `51caab812` (review commit `08d24b17f`). No product change in resolve.
+- **Fix-now:** none.
+- **Discuss: AC 6 TSX grep.** No Susan answer in the thread, so Radia's `Default:` applies. AST-1948 is not reopened. The `AdminAgentPrompts.tsx` `temperature` / `default_temperature` grep is checked on `ftr/AST-1946-big-brain-openrouter` after AST-1949 merges, the same treatment as AST-1947's shared AC 6. Susan can reverse this by splitting AC 6 in Linear.
+- **Discuss: PUT requires `mode`.** Default applies, so the contract stays as built: every `PUT /api/admin/agents/<id>` needs a non-empty valid `mode` (AC 7; plan Stage 2 step 5 decision). AST-1949 must send `mode` on every save.
+- **Frame diff rows:**
+  - **AC 13 / live rows — ticked.** Checked on this tip. `_agent_llm_route` raises `Agent '<id>' has no mode configured.` on a mode-less row (build § Verification Stage 2 script; `TestAst1879RouteHelpers::test_agent_llm_route_raises_without_mode` green in test-child item 1). `_resolve_adhoc` returns 400 through the resolver's `Invalid mode ''`. The public view still lists mode-less rows (Stage 1 script).
+  - **AC 6 (UI half) — left unchecked on purpose.** It's an ftr gate after AST-1949, per the discuss default above, and can't be checked on this sub.
+- **Advisory:** nothing to act on. The paired three-dot diff with AST-1947 is expected under option A ([AST-1951](https://linear.app/astralcareermatch/issue/AST-1951)).
