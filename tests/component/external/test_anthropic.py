@@ -475,3 +475,66 @@ class TestAst1189ProviderCallBudgetTimeout:
         )
         assert out["success"] is True
         assert "failure_class" not in out
+
+
+# AST-1956: send_to_anthropic sends temperature / reasoning_effort only when set, exactly as given.
+# Branches: temperature None vs set (0.0 included); effort empty / "none" / other (via extra_body, no vocabulary);
+# a rejected setting is the ordinary failure envelope (no failure_class).
+class TestAst1956SettingsOnTheWire:
+    @staticmethod
+    def _recording(monkeypatch, fake_anthropic_client, **client_kwargs):
+        client = fake_anthropic_client(response_text="ok", **client_kwargs)
+        client.calls = []
+        real_create = client.create
+
+        def _create(**kwargs):
+            client.calls.append(kwargs)
+            return real_create(**kwargs)
+
+        client.create = _create
+        monkeypatch.setattr(anthropic_mod, "_get_client", lambda *_a, **_k: client)
+        return client
+
+    @staticmethod
+    async def _send(**kwargs):
+        return await anthropic_mod.send_to_anthropic(
+            [{"type": "text", "text": "hi"}], model_code="claude-sonnet-4-6", response_format="text", **kwargs
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_settings_send_nothing(self, monkeypatch, fake_anthropic_client) -> None:
+        # AC 2: the SDK would serialize temperature=None as null, so an empty one is left out entirely.
+        client = self._recording(monkeypatch, fake_anthropic_client)
+        out = await self._send()
+        assert out["success"] is True
+        assert not {"temperature", "extra_body", "thinking", "output_config"} & set(client.calls[0])
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("settings", "expected"),
+        [
+            ({"temperature": 0.3}, {"temperature": 0.3}),
+            ({"temperature": 0.0}, {"temperature": 0.0}),
+            ({"reasoning_effort": "high"}, {"extra_body": {"output_config": {"effort": "high"}}}),
+            ({"reasoning_effort": "none"}, {"extra_body": {"thinking": {"type": "disabled"}}}),
+            ({"reasoning_effort": "ultra"}, {"extra_body": {"output_config": {"effort": "ultra"}}}),
+            ({"temperature": 0.3, "reasoning_effort": "high"},
+             {"temperature": 0.3, "extra_body": {"output_config": {"effort": "high"}}}),
+        ],
+    )
+    async def test_ac3_temperature_and_effort_exactly_as_set(
+        self, monkeypatch, fake_anthropic_client, settings, expected
+    ) -> None:
+        client = self._recording(monkeypatch, fake_anthropic_client)
+        await self._send(**settings)
+        call = client.calls[0]
+        assert {k: call[k] for k in ("temperature", "extra_body") if k in call} == expected
+
+    @pytest.mark.asyncio
+    async def test_ac4_rejected_setting_is_a_plain_failure(self, monkeypatch, fake_anthropic_client) -> None:
+        msg = "Error code: 400 - Reasoning is mandatory for this endpoint and cannot be disabled"
+        client = self._recording(monkeypatch, fake_anthropic_client, raise_on_create=RuntimeError(msg))
+        out = await self._send(reasoning_effort="none")
+        assert client.calls[0]["extra_body"] == {"thinking": {"type": "disabled"}}
+        assert out["success"] is False and msg in out["error"]
+        assert "failure_class" not in out
