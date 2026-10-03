@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-1561 archived 2026-10-02 -->
+
+## Linear archive (AST-1561)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1561/bot-blocked-estelle-recovery-apply-paste-meteorite-ingress-staging  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1555 — Meteorite ingress: staging table + inbox/meteorite consolidation  
+**Blocked by / blocks / related:** parent: AST-1555; blocks: AST-1562
+
+### Description
+
+## What this implements
+
+After #4: notify scan, Estelle DM + stamps, `apply_paste` → READY, nag→ABANDONED, contact paste routing for the thread. Does not own retention purge or `meteorite_email.py` delete.
+
+## Citations
+
+## Scope
+
+## Acceptance criteria
+
+- [X] 4. `BOT_BLOCKED` rows get an Estelle DM once; candidate paste in that thread moves the row to `READY` without re-classify; exceeding nag limit moves the row to `ABANDONED`.
+
+## Boundaries
+
+- [X] Does not own sibling slices: #1 meteorite table + claim helpers, #2 inbox candidate verbs + Manage Email filter, #3 check_inbox + monitoring log, #4 stage / scrape / land transitions, #6 Retention sweep + delete meteorite_email.
+
+## Notes for planning
+
+Citations and Scope above are authoritative for plan-child. Parent: AST-1555.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/AST-1555/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst1561ApplyPaste`
+2. `tests/component/core/test_meteorite.py::TestAst1561BotBlockedLookup`
+3. `tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked`
+4. `tests/component/core/test_contact.py::TestAst1561ContactPasteRouting`
+5. `tests/component/utils/test_config.py::TestAst1561BotBlockedNotifyConfig`
+6. `tests/component/core/test_dispatcher.py::TestAst1561BotBlockedNotifyDispatchOne`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1561ApplyPaste \
+  tests/component/core/test_meteorite.py::TestAst1561BotBlockedLookup \
+  tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked \
+  tests/component/core/test_contact.py::TestAst1561ContactPasteRouting \
+  tests/component/utils/test_config.py::TestAst1561BotBlockedNotifyConfig \
+  tests/component/core/test_dispatcher.py::TestAst1561BotBlockedNotifyDispatchOne \
+  -q
+```
+
+**Bible shasums @** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste` **@** `f503e55c`**:**
+
+* `docs/test-bible/core/meteorite.md`: `f2a0cbd35b2cdfbdf39291f6933aa8db166ba319c5aa187665cb916b0912d4e3`
+* `docs/test-bible/core/dispatcher.md`: `d49d4a8175180af0d28f64aab5741cf724f54226a64f0fdf58aefcb7bab0e696`
+* `docs/test-bible/core/contact.md`: `93b61df002f3b9632980d3d6cdf16bd82d496e6fd2de54944656a9b69221a1d9`
+* `docs/test-bible/utils/config.md`: `f198ee5ea011694dd247cf63348313dc08d4b85d79a92a7eba7f61d20d1d8ed5`
+
+**Integration:** none revised.
+
+### Comments
+
+#### radia — 2026-08-31T23:38:48.182Z
+[code-rubric] PROCEED (Commit: f503e55c) paste recovery + notify faithful
+
+#### betty — 2026-08-31T23:36:22.244Z
+origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste @ `f503e55c` · paste recovery manifest
+
+#### joan — 2026-08-31T23:30:48.582Z
+[plan-rubric] PROCEED (Commit: fa4b19353058dfeb606ad7e44f2132a1a4bda826) Estelle recovery ready
+
+#### hedy — 2026-08-31T23:29:58.752Z
+[plan-discuss] round=1 reply
+
+Fix-now: Stage 1 §7 — `await run_notify_meteorite_bot_blocked` (no nested `asyncio.run` in async `_dispatch_one`).
+Discuss: Stage 3 §2 — thread match first; unprompted `paste` source_kind second (anchor optional).
+Acceptable: Stage 2 §5 — drop READY monitoring log (AST-1560 formats only BOT_BLOCKED/ERROR/LANDED).
+
+`origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste` @ `fa4b19353058dfeb606ad7e44f2132a1a4bda826`
+
+#### joan — 2026-08-31T23:29:19.500Z
+[plan-rubric] REVIEW (Commit: 116ca1352f65a3aa937b52ff00c450df1856fd08) await not asyncio.run
+
+#### hedy — 2026-08-31T23:27:45.203Z
+`origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste` @ `116ca1352f65a3aa937b52ff00c450df1856fd08` · Estelle paste recovery
+
+---
+
 # AST-1561 — BOT_BLOCKED Estelle recovery + apply_paste
 
 **Linear:** [AST-1561](https://linear.app/astralcareermatch/issue/AST-1561/bot-blocked-estelle-recovery-apply-paste)  
