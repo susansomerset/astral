@@ -1142,32 +1142,17 @@ class TestAst882DispatchClaimStates:
         ]
 
 
-# LLM_PROVIDER_CONFIG brain tiers, Anthropic / DeepSeek tier maps, startup env parity (AST-492).
+# Startup env parity + retired global provider symbols (AST-492). AST-1955 retired the brain-tier
+# maps (LLM_PROVIDER_CONFIG, BRAIN_*, tier → AGENT_CONFIG key) — see TestAst1955PlainAgentSettings.
 class TestAst492LlmBrainTierConfig:
-    def test_resolve_anthropic_tier_maps_to_agent_config_keys(self) -> None:
-        assert cfg.resolve_brain_setting_to_anthropic_agent_key(cfg.BRAIN_LITTLE) == "claude-haiku-4-5"
-        assert cfg.resolve_brain_setting_to_anthropic_agent_key(cfg.BRAIN_MEDIUM) == "claude-sonnet-4-6"
-        assert cfg.resolve_brain_setting_to_anthropic_agent_key(cfg.BRAIN_BIG) == "claude-opus-4-6"
-        for tier in (cfg.BRAIN_LITTLE, cfg.BRAIN_MEDIUM, cfg.BRAIN_BIG):
-            cfg.get_model(cfg.resolve_brain_setting_to_anthropic_agent_key(tier))
-
-    def test_validate_allowed_brain_setting_rejects_unknown(self) -> None:
-        with pytest.raises(ValueError, match="Invalid brain_setting"):
-            cfg.validate_allowed_brain_setting("Small")
-
-    def test_deepseek_v4_catalog_tiers(self) -> None:
-        # AST-1880: DeepSeek tiers come from the catalog (resolve_brain_setting_to_deepseek_tier_meta retired).
-        # AST-1947: can_think False, so even Creative resolves thinking off.
-        little = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_CREATIVE)
-        assert (little["server_id"], little["sku"], little["tier"]["thinking"]) == ("deepseek", "deepseek-v4-flash", False)
-        for tier in (cfg.BRAIN_MEDIUM, cfg.BRAIN_BIG):
-            r = cfg.resolve_model_brain("deepseek-v4", tier, cfg.AGENT_MODE_CREATIVE)
-            assert (r["sku"], r["tier"]["thinking"]) == ("deepseek-v4-pro", False)
+    def test_deepseek_v4_catalog_skus(self) -> None:
+        # AST-1880: DeepSeek comes from the catalog. AST-1955: one model id per SKU.
+        for mid in ("deepseek-v4-flash", "deepseek-v4-pro"):
+            r = cfg.resolve_agent_settings(mid, {})
+            assert (r["server_id"], r["sku"]) == ("deepseek", mid)
 
     def test_legacy_global_provider_symbols_retired(self) -> None:
         # AST-1880 (parent AC 1 / AC 11): no global active_provider, no DeepSeek-only resolvers or pricing.
-        assert "active_provider" not in cfg.LLM_PROVIDER_CONFIG
-        assert "deepseek" not in cfg.LLM_PROVIDER_CONFIG["tier_map"]
         assert "default_brain_setting" not in cfg.CONTACT_ESTELLE_CONFIG
         for name in (
             "get_active_llm_provider",
@@ -1175,22 +1160,18 @@ class TestAst492LlmBrainTierConfig:
             "deepseek_brain_max_tokens_floor",
             "DEEPSEEK_MODEL_PRICING",
             "DEEPSEEK_CONCURRENCY",
+            "LLM_PROVIDER_CONFIG",
         ):
             assert not hasattr(cfg, name), name
-
-    def test_resolve_anthropic_raises_when_tier_maps_to_unknown_agent_config_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(cfg.LLM_PROVIDER_CONFIG["tier_map"]["anthropic"], cfg.BRAIN_MEDIUM, {"agent_config_key": "__not_in_agent_config__"})
-        with pytest.raises(ValueError, match="No Anthropic tier mapping"):
-            cfg.resolve_brain_setting_to_anthropic_agent_key(cfg.BRAIN_MEDIUM)
 
     def test_validate_llm_provider_environment_is_catalog_only(self) -> None:
         # AST-1877: startup validates the catalogs only.
         assert cfg.validate_llm_provider_environment() is None
 
-    def test_anthropic_tiers_carry_output_default_not_temperature(self) -> None:
-        # AST-1947: AGENT_CONFIG keeps default_max_tokens per Claude size; default_temperature is gone (mode owns it).
-        for tier in cfg.BRAIN_SETTINGS:
-            m = cfg.get_model(cfg.resolve_brain_setting_to_anthropic_agent_key(tier))
+    def test_anthropic_skus_carry_output_default_not_temperature(self) -> None:
+        # AGENT_CONFIG keeps default_max_tokens per Claude SKU; default_temperature is gone (AST-1947).
+        for mid in ("claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"):
+            m = cfg.get_model(cfg.get_llm_model(mid)["sku"])
             assert isinstance(m["default_max_tokens"], int)
             assert "default_temperature" not in m
 
@@ -2223,18 +2204,14 @@ class TestAst903CraftRubricMaxTokens:
 
 
 class TestAst1391DeepseekBigMaxTokensFloor:
-    """AST-1391: 384000 lives on DeepSeek Big tier only — not the shared v4-pro SKU default.
-    AST-1880: read from the catalog tier row (deepseek_brain_max_tokens_floor retired)."""
+    """AST-1391: 384000 was the DeepSeek Big tier floor. AST-1955 (parent Functional scope 4) moved it to the
+    agent's own max_tokens, so no catalog SKU carries a floor that could raise or lower an agent's budget."""
 
-    def test_big_tier_floor(self) -> None:
-        # AST-1947: resolver takes the agent mode; direct models keep their stored size defaults in either mode.
-        tier = lambda b: cfg.resolve_model_brain("deepseek-v4", b, cfg.AGENT_MODE_DETERMINISTIC)["tier"]  # noqa: E731
-        assert tier(cfg.BRAIN_BIG)["max_tokens_floor"] == 384000
-        assert tier(cfg.BRAIN_MEDIUM)["max_tokens_floor"] is None
-        assert tier(cfg.BRAIN_LITTLE)["max_tokens_floor"] is None
-        assert tier(cfg.BRAIN_MEDIUM)["default_max_tokens"] == 16000
-        with pytest.raises(ValueError, match="Invalid brain_setting"):
-            cfg.resolve_model_brain("deepseek-v4", "Small", cfg.AGENT_MODE_DETERMINISTIC)
+    def test_no_catalog_floor_on_v4_skus(self) -> None:
+        # AST-1955 AC 6 (catalog half; the wire max_tokens == 384000 check lives with AST-1956's call path).
+        pro = cfg.resolve_agent_settings("deepseek-v4-pro", {"max_tokens": 384000})["tier"]
+        assert (pro["max_tokens_floor"], pro["default_max_tokens"]) == (None, 16000)
+        assert cfg.resolve_agent_settings("deepseek-v4-flash", {})["tier"]["max_tokens_floor"] is None
 
 
 class TestAst898NewRetryQualifyHolding:
@@ -7058,10 +7035,10 @@ class TestAst1808RetryRegistryPurge:
 class TestAst1877LlmCatalogConfig:
     """AST-1877: LLM_SERVER_CONFIG / LLM_MODEL_CONFIG, catalog resolvers, startup catalog validation.
 
-    Branches: get_llm_server / get_llm_model hit + unknown; validate_brain_setting_for_model ok + reject;
-    get_sku_pricing single hit / server narrowing / unknown / ambiguous; resolve_model_brain;
-    validate_llm_provider_environment each raise (protocol, auth, compat base_url, unknown server,
-    empty brain sizes, off-vocabulary brain size, unpriced SKU) + clean pass.
+    Branches: get_llm_server / get_llm_model hit + unknown; get_sku_pricing single hit / server narrowing /
+    unknown / ambiguous; validate_llm_provider_environment each raise (protocol, auth, compat base_url,
+    unknown server, unpriced SKU) + clean pass. AST-1955 retired the brain-size branches and moved the
+    resolver to resolve_agent_settings (TestAst1955PlainAgentSettings).
     """
 
     def test_timesheet_providers_derive_from_server_ids(self) -> None:
@@ -7080,21 +7057,11 @@ class TestAst1877LlmCatalogConfig:
 
     def test_get_llm_server_and_model_hit_and_unknown(self) -> None:
         assert cfg.get_llm_server("openrouter") is cfg.LLM_SERVER_CONFIG["openrouter"]
-        assert cfg.get_llm_model("claude") is cfg.LLM_MODEL_CONFIG["claude"]
+        assert cfg.get_llm_model("claude-sonnet-4-6") is cfg.LLM_MODEL_CONFIG["claude-sonnet-4-6"]
         with pytest.raises(ValueError, match="Unknown LLM server"):
             cfg.get_llm_server("__nope__")
         with pytest.raises(ValueError, match="Unknown LLM model"):
             cfg.get_llm_model("__nope__")
-
-    def test_model_brain_sizes_are_per_model_in_catalog_order(self) -> None:
-        assert cfg.model_brain_sizes("kimi-k2.6") == (cfg.BRAIN_LITTLE, cfg.BRAIN_BIG)
-        assert cfg.model_brain_sizes("claude") == (cfg.BRAIN_LITTLE, cfg.BRAIN_MEDIUM, cfg.BRAIN_BIG)
-        assert cfg.model_brain_sizes("deepseek-v4") == (cfg.BRAIN_LITTLE, cfg.BRAIN_MEDIUM, cfg.BRAIN_BIG)
-
-    def test_validate_brain_setting_for_model(self) -> None:
-        cfg.validate_brain_setting_for_model("kimi-k2.6", cfg.BRAIN_BIG)
-        with pytest.raises(ValueError, match="Invalid brain_setting 'Medium' for model 'kimi-k2.6'"):
-            cfg.validate_brain_setting_for_model("kimi-k2.6", cfg.BRAIN_MEDIUM)
 
     def test_get_sku_pricing_hit_narrowing_unknown(self) -> None:
         assert cfg.get_sku_pricing("kimi-k2.6") is cfg.LLM_MODEL_CONFIG["kimi-k2.6"]["pricing"]["kimi-k2.6"]
@@ -7111,28 +7078,6 @@ class TestAst1877LlmCatalogConfig:
         with pytest.raises(ValueError, match="more than one server"):
             cfg.get_sku_pricing("kimi-k2.6")
         assert cfg.get_sku_pricing("kimi-k2.6", "openrouter") is row
-
-    def test_resolve_model_brain_shape(self) -> None:
-        # AST-1947: kimi-k2.6-openrouter retired → moonshotai/kimi-k2.6 (Inceptron int4 → Little); tier = stored
-        # size + mode-derived thinking / thinking_params / temperature + mode-capped output default.
-        out = cfg.resolve_model_brain("moonshotai/kimi-k2.6", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_CREATIVE)
-        m = cfg.LLM_MODEL_CONFIG["moonshotai/kimi-k2.6"]
-        assert out == {
-            "model_id": "moonshotai/kimi-k2.6",
-            "server_id": "openrouter",
-            "server": cfg.LLM_SERVER_CONFIG["openrouter"],
-            "sku": "moonshotai/kimi-k2.6",
-            "tier": {
-                **m["brain_sizes"][cfg.BRAIN_LITTLE],
-                "thinking": True,
-                "thinking_params": {"thinking": {"type": "adaptive"}},
-                "temperature": 0.6,
-                "default_max_tokens": 32000,
-            },
-            "pricing": m["pricing"]["moonshotai/kimi-k2.6"],
-        }
-        with pytest.raises(ValueError, match="Invalid brain_setting"):
-            cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_MEDIUM, cfg.AGENT_MODE_CREATIVE)
 
     def test_shipped_catalog_passes_startup_validation(self) -> None:
         assert cfg.validate_llm_provider_environment() is None
@@ -7155,21 +7100,6 @@ class TestAst1877LlmCatalogConfig:
         with pytest.raises(ValueError, match="Unknown LLM server '__nope__'"):
             cfg.validate_llm_provider_environment()
 
-    def test_startup_rejects_model_without_brain_sizes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # pricing {}: a cloned kimi-k2.6 row would trip AST-1938's same-server ambiguity check on kimi-k2.6 first.
-        bad = {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "brain_sizes": {}, "pricing": {}}
-        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", bad)
-        with pytest.raises(ValueError, match="'__bad__': no brain sizes"):
-            cfg.validate_llm_provider_environment()
-
-    def test_startup_rejects_off_vocabulary_brain_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        base = cfg.LLM_MODEL_CONFIG["kimi-k2.6"]
-        # pricing {}: see test_startup_rejects_model_without_brain_sizes (AST-1938 ambiguity check).
-        bad = {**base, "brain_sizes": {"Huge": base["brain_sizes"][cfg.BRAIN_BIG]}, "pricing": {}}
-        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", bad)
-        with pytest.raises(ValueError, match="brain size 'Huge' not in"):
-            cfg.validate_llm_provider_environment()
-
     def test_startup_rejects_unpriced_sku(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "pricing": {}})
         with pytest.raises(ValueError, match="SKU 'kimi-k2.6' has no pricing row"):
@@ -7190,20 +7120,12 @@ def _ast1946_brief() -> dict[str, tuple[str, str, float, float, float]]:
 
 
 class TestAst1938OpenRouterShortlist:
-    """AST-1938: startup checks added with the OpenRouter table. Catalog content (table, sizes, pin,
-    pricing, count) is AST-1947's — see TestAst1947CatalogByQuantization.
+    """AST-1938: startup check added with the OpenRouter table. Catalog content (table, pricing) is
+    AST-1947's, per-SKU shape and count AST-1955's. AST-1955 retired the per-tier request_extras check
+    (no tier rows, no host pin).
 
-    Branches: validate request_extras non-dict raise; same-server ambiguous SKU raise.
+    Branches: same-server ambiguous SKU raise.
     """
-
-    def test_startup_rejects_non_dict_request_extras(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        base = cfg.LLM_MODEL_CONFIG["kimi-k2.6"]
-        # Own SKU so the ambiguity check can't fire first on a cloned kimi-k2.6 pricing row.
-        tier = {**base["brain_sizes"][cfg.BRAIN_BIG], "sku": "__x__", "request_extras": ["provider"]}
-        bad = {**base, "brain_sizes": {cfg.BRAIN_BIG: tier}, "pricing": {"__x__": {}}}
-        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", bad)
-        with pytest.raises(ValueError, match="'__bad__' Big: request_extras must be a dict"):
-            cfg.validate_llm_provider_environment()
 
     def test_startup_rejects_same_server_ambiguous_sku(self, monkeypatch: pytest.MonkeyPatch) -> None:
         dup = {**cfg.LLM_MODEL_CONFIG["qwen/qwen3-32b"]}
@@ -7212,17 +7134,9 @@ class TestAst1938OpenRouterShortlist:
             cfg.validate_llm_provider_environment()
 
 
-# AST-1946 ticket AC preamble, kept literal so a typo in config can't certify itself.
-_AST1947_QUANT_SIZE = {"int4": "Little", "fp4": "Little", "int8": "Medium", "fp8": "Medium", "fp16": "Big", "bf16": "Big"}
-
-
 class TestAst1947CatalogByQuantization:
-    """AST-1947: OpenRouter catalog = AST-1946 brief (95 slugs), one brain size per model from the host
-    quantization, host + quantization pin, agent mode constants, mode-aware resolve_model_brain, settings cleanup.
-
-    Branches: builder reasoning yes / no (can_think + thinking_params); resolver thinking = mode thinking AND
-    can_think (on/on, on/off, off/on); max_output_tokens present (OpenRouter → mode cap) / absent (direct →
-    stored default); validate_agent_mode ok / raise.
+    """AST-1947: OpenRouter catalog = AST-1946 brief (95 slugs) with brief pricing. AST-1955 retired the
+    quantization → brain size map, the host pin, can_think and the mode resolver (TestAst1955PlainAgentSettings).
     """
 
     BRIEF = _ast1946_brief()
@@ -7236,15 +7150,6 @@ class TestAst1947CatalogByQuantization:
         assert or_ids - set(self.BRIEF) == set()
         assert set(self.BRIEF) - or_ids == set()
 
-    def test_one_brain_size_per_model_from_quantization(self) -> None:
-        # AC 2
-        assert cfg.OPENROUTER_QUANT_BRAIN_SIZE == _AST1947_QUANT_SIZE
-        bad = [s for s, (_p, q, *_c) in self.BRIEF.items() if cfg.model_brain_sizes(s) != (_AST1947_QUANT_SIZE[q],)]
-        assert bad == []
-        assert cfg.model_brain_sizes("gryphe/mythomax-l2-13b") == (cfg.BRAIN_BIG,)
-        assert cfg.model_brain_sizes("qwen/qwen3-32b") == (cfg.BRAIN_MEDIUM,)
-        assert cfg.model_brain_sizes("moonshotai/kimi-k2.6") == (cfg.BRAIN_LITTLE,)
-
     def test_pricing_matches_brief(self) -> None:
         # AC 3
         bad = []
@@ -7255,161 +7160,168 @@ class TestAst1947CatalogByQuantization:
                 bad.append((slug, got))
         assert bad == []
 
-    def test_every_tier_pins_host_and_brief_quantization_fallbacks_off(self) -> None:
-        # AC 4 — host = the table's routing slug (endpoint snapshot); quantization = the brief's QUANT.
-        bad = []
-        for slug, (_p, quant, *_c) in self.BRIEF.items():
-            [tier] = cfg.LLM_MODEL_CONFIG[slug]["brain_sizes"].values()
-            host = cfg.OPENROUTER_MODEL_TABLE[slug][3]
-            if tier["request_extras"] != {"provider": {"order": [host], "allow_fallbacks": False, "quantizations": [quant]}}:
-                bad.append(slug)
-        assert bad == []
-        pin = lambda s: cfg._openrouter_pin(s)["provider"]  # noqa: E731
-        assert pin("undi95/remm-slerp-l2-13b") == {"order": ["mancer"], "allow_fallbacks": False, "quantizations": ["fp8"]}
-        assert pin("google/gemma-4-31b-it") == {"order": ["deepinfra"], "allow_fallbacks": False, "quantizations": ["fp4"]}
 
-    def test_brief_provider_maps_to_one_routing_slug(self) -> None:
-        # AST-1938 bijection on the new brief: no name-normalizing guess, each PROVIDER ↔ exactly one routing slug.
-        by_provider: dict[str, set[str]] = {}
-        for slug, (prov, *_rest) in self.BRIEF.items():
-            by_provider.setdefault(prov, set()).add(cfg.OPENROUTER_MODEL_TABLE[slug][3])
-        assert {p: s for p, s in by_provider.items() if len(s) != 1} == {}
-        slugs = [next(iter(s)) for s in by_provider.values()]
-        assert len(slugs) == len(set(slugs))
+# AST-1955 seed starting values (parent Functional scope 8, plan Stage 3 table), kept literal:
+# agent_id → (model_id, max_tokens, temperature, reasoning_effort).
+_AST1955_SEED = {
+    "ats_expert_atlas": ("deepseek-v4-pro", 384000, 0.6, None),
+    "college_intern_ruth": ("deepseek-v4-flash", 8192, 0.2, None),
+    "contact_recruiter_estelle": ("kimi-k2.6", None, 0.2, "none"),
+    "content_writer_judith": ("kimi-k2.6", 16000, None, None),
+    "job_analyst_grace": ("deepseek-v4-pro", 16000, 0.2, None),
+    "principal_recruiter_estelle": ("kimi-k2.6", 384000, None, None),
+    "web_scraper_laslo": ("deepseek-v4-pro", 16000, 0.2, None),
+}
+_AST1955_SETTINGS = (
+    "quantization", "temperature", "reasoning_effort", "provider_allow_fallbacks",
+    "provider_only", "provider_ignore", "provider_sort",
+)
 
-    def test_can_think_follows_host_reasoning_flag(self) -> None:
-        # Builder both branches; 57 reasoning-capable hosts per the parent's snapshot cross-check.
-        adaptive = {"thinking": {"type": "adaptive"}}
-        bad = [
-            s for s, row in cfg.OPENROUTER_MODEL_TABLE.items()
-            if (cfg.LLM_MODEL_CONFIG[s]["can_think"], cfg.LLM_MODEL_CONFIG[s]["thinking_params"])
-            != ((True, adaptive) if row[5] else (False, {}))
-        ]
-        assert bad == []
-        assert sum(row[5] for row in cfg.OPENROUTER_MODEL_TABLE.values()) == 57
 
-    def test_output_default_by_mode_capped_at_host_max(self) -> None:
-        # AC 5 — resolved default = min(16000 Deterministic | 32000 Creative, host max). Stored default is the
-        # Deterministic listing value (GET /agents/models + form pre-fill read it).
-        cap = {cfg.AGENT_MODE_DETERMINISTIC: 16000, cfg.AGENT_MODE_CREATIVE: 32000}
-        bad = []
-        for slug in self.BRIEF:
-            m = cfg.LLM_MODEL_CONFIG[slug]
-            [(size, stored)] = m["brain_sizes"].items()
-            host_max = cfg.OPENROUTER_MODEL_TABLE[slug][6]
-            if m["max_output_tokens"] != host_max or stored["default_max_tokens"] != min(16000, host_max):
-                bad.append((slug, "stored"))
-            bad += [(slug, mode) for mode, c in cap.items()
-                    if cfg.resolve_model_brain(slug, size, mode)["tier"]["default_max_tokens"] != min(c, host_max)]
-        assert bad == []
-        out = lambda s, b, mode: cfg.resolve_model_brain(s, b, mode)["tier"]["default_max_tokens"]  # noqa: E731
-        assert out("gryphe/mythomax-l2-13b", cfg.BRAIN_BIG, cfg.AGENT_MODE_CREATIVE) == 3686
-        assert out("qwen/qwen3.5-27b", cfg.BRAIN_MEDIUM, cfg.AGENT_MODE_CREATIVE) == 32000
-        assert out("qwen/qwen3.5-27b", cfg.BRAIN_MEDIUM, cfg.AGENT_MODE_DETERMINISTIC) == 16000
-        # No max_output_tokens (direct) → stored size default, not the mode cap.
-        assert out("kimi-k2.6", cfg.BRAIN_BIG, cfg.AGENT_MODE_DETERMINISTIC) == 32000
+class TestAst1955PlainAgentSettings:
+    """AST-1955: per-SKU direct models, slim OpenRouter table, resolve_agent_settings, agent repo-JSON columns + seed.
 
-    def test_stored_tiers_carry_no_thinking_or_temperature(self) -> None:
-        # AC 6 — these keys exist only on the tier resolve_model_brain returns.
-        bad = [
-            (mid, bs, k) for mid, m in cfg.LLM_MODEL_CONFIG.items() for bs, t in m["brain_sizes"].items()
-            for k in ("thinking", "thinking_params", "default_temperature") if k in t
-        ]
-        assert bad == []
+    Branches (resolve_agent_settings): OpenRouter vs direct (provider object vs None); each provider key set /
+    empty (omitted); every provider key empty → None; temperature / effort passed through as stored (0.0 kept,
+    "" → None). _build_openrouter_models default = min(16000, max output) on both sides of the cap.
+    """
 
-    def test_direct_models_unchanged_from_pre_epic(self) -> None:
-        # AC 6 — pre-epic origin/dev values: size → (sku, max_tokens_floor, default_max_tokens); pricing fields only
-        # (Claude pricing rows are the AGENT_CONFIG dicts, which lose default_temperature by Scope).
-        L, M, B = cfg.BRAIN_LITTLE, cfg.BRAIN_MEDIUM, cfg.BRAIN_BIG
-        sizes = {
-            "claude": {L: ("claude-haiku-4-5", None, 8192), M: ("claude-sonnet-4-6", None, 16000), B: ("claude-opus-4-6", None, 16000)},
-            "kimi-k2.6": {L: ("kimi-k2.6", None, 16000), B: ("kimi-k2.6", None, 32000)},
-            "deepseek-v4": {L: ("deepseek-v4-flash", None, 8192), M: ("deepseek-v4-pro", None, 16000), B: ("deepseek-v4-pro", 384000, 16000)},
+    def test_direct_models_one_id_per_sku(self) -> None:
+        # AC 6 — id → (label, server, sku, max_tokens_floor, default_max_tokens); pricing rows unchanged (AST-1947 pins).
+        want = {
+            "kimi-k2.6": ("Kimi K2.6", "kimi", "kimi-k2.6", None, 16000),
+            "claude-haiku-4-5": ("Claude Haiku 4.5", "anthropic", "claude-haiku-4-5", None, 8192),
+            "claude-sonnet-4-6": ("Claude Sonnet 4.6", "anthropic", "claude-sonnet-4-6", None, 16000),
+            "claude-opus-4-6": ("Claude Opus 4.6", "anthropic", "claude-opus-4-6", None, 16000),
+            "deepseek-v4-flash": ("DeepSeek V4 Flash", "deepseek", "deepseek-v4-flash", None, 8192),
+            "deepseek-v4-pro": ("DeepSeek V4 Pro", "deepseek", "deepseek-v4-pro", None, 16000),
         }
         pricing = {
-            "claude": {
-                "claude-haiku-4-5": ("Haiku", 1.0, 5.0, 0.1, 1.25, 4096),
-                "claude-sonnet-4-6": ("Sonnet", 3.0, 15.0, 0.3, 3.75, 2048),
-                "claude-opus-4-6": ("Opus", 5.0, 25.0, 0.5, 6.25, 4096),
-            },
-            "kimi-k2.6": {"kimi-k2.6": ("Kimi K2.6", 0.95, 4.0, 0.16, 0.0, 0)},
-            "deepseek-v4": {
-                "deepseek-v4-flash": ("DeepSeek V4 Flash", 0.14, 0.28, 0.0028, 0.0, 0),
-                "deepseek-v4-pro": ("DeepSeek V4 Pro", 0.435, 0.87, 3.625, 0.0, 0),
-            },
+            "claude-haiku-4-5": ("Haiku", 1.0, 5.0, 0.1, 1.25, 4096),
+            "claude-sonnet-4-6": ("Sonnet", 3.0, 15.0, 0.3, 3.75, 2048),
+            "claude-opus-4-6": ("Opus", 5.0, 25.0, 0.5, 6.25, 4096),
+            "kimi-k2.6": ("Kimi K2.6", 0.95, 4.0, 0.16, 0.0, 0),
+            "deepseek-v4-flash": ("DeepSeek V4 Flash", 0.14, 0.28, 0.0028, 0.0, 0),
+            "deepseek-v4-pro": ("DeepSeek V4 Pro", 0.435, 0.87, 3.625, 0.0, 0),
         }
         fields = ("model_label", "cpm_input", "cpm_output", "cpm_cache_read", "cpm_cache_write", "cache_min_tokens")
-        for mid in sizes:
-            m = cfg.LLM_MODEL_CONFIG[mid]
-            assert {bs: (t["sku"], t["max_tokens_floor"], t["default_max_tokens"]) for bs, t in m["brain_sizes"].items()} == sizes[mid]
-            assert {k: tuple(v[f] for f in fields) for k, v in m["pricing"].items()} == pricing[mid]
-            assert "max_output_tokens" not in m, mid
-        assert (cfg.LLM_MODEL_CONFIG["kimi-k2.6"]["can_think"], cfg.LLM_MODEL_CONFIG["kimi-k2.6"]["thinking_params"]) == (
-            True, {"thinking": {"type": "enabled"}})
-        assert [cfg.LLM_MODEL_CONFIG[mid]["can_think"] for mid in ("claude", "deepseek-v4")] == [False, False]
-
-    def test_kimi_openrouter_retired_and_catalog_boots_with_98(self) -> None:
-        # AC 8 (config half) + Scope § Removed. GET /api/admin/agents/models = 98 is checked on ftr after AST-1948.
-        assert "kimi-k2.6-openrouter" not in cfg.LLM_MODEL_CONFIG
-        assert len(cfg.LLM_MODEL_CONFIG) == 98
+        direct = {k: m for k, m in cfg.LLM_MODEL_CONFIG.items() if m["server"] != "openrouter"}
+        # dict order = picker order.
+        assert list(direct) == list(want)
+        for mid, m in direct.items():
+            assert (m["label"], m["server"], m["sku"], m["max_tokens_floor"], m["default_max_tokens"]) == want[mid]
+            assert {k: tuple(v[f] for f in fields) for k, v in m["pricing"].items()} == {mid: pricing[mid]}
+        assert "claude" not in cfg.LLM_MODEL_CONFIG and "deepseek-v4" not in cfg.LLM_MODEL_CONFIG
+        assert len(cfg.LLM_MODEL_CONFIG) == 101
         assert cfg.validate_llm_provider_environment() is None
+
+    def test_no_model_carries_brain_layer_or_thinking_fields(self) -> None:
+        # Scope § Modified direct models / OpenRouter builder: brain_sizes, can_think, thinking_params gone everywhere.
+        retired = ("brain_sizes", "can_think", "thinking_params", "max_output_tokens")
+        assert [(mid, k) for mid, m in cfg.LLM_MODEL_CONFIG.items() for k in retired if k in m] == []
+
+    def test_retired_symbols_absent(self) -> None:
+        # AC 5 (config half — the full src/ rg closes on ftr after AST-1956 / AST-1957).
         for name in (
-            "infer_brain_setting_from_legacy_model_code",
-            "brain_setting_for_anthropic_agent_key",
-            "admin_brain_setting_catalog",
-            "OPENROUTER_TIER_DEFAULTS",
-            "OPENROUTER_PIN_QUANTIZATIONS",
+            "AGENT_MODE_CONFIG", "AGENT_MODE_DETERMINISTIC", "AGENT_MODE_CREATIVE", "AGENT_MODES",
+            "validate_agent_mode", "OPENROUTER_QUANT_BRAIN_SIZE", "OPENROUTER_THINKING_PARAMS", "_openrouter_pin",
+            "resolve_model_brain", "model_brain_sizes", "validate_brain_setting_for_model",
+            "BRAIN_LITTLE", "BRAIN_MEDIUM", "BRAIN_BIG", "BRAIN_SETTINGS", "LLM_PROVIDER_CONFIG",
+            "validate_allowed_brain_setting", "resolve_brain_setting_to_anthropic_agent_key",
+            "anthropic_agent_key_for_brain_setting",
         ):
             assert not hasattr(cfg, name), name
 
-    def test_agent_mode_constants_and_validation(self) -> None:
-        assert cfg.AGENT_MODE_CONFIG == {
-            "Deterministic": {"thinking": False, "temperature": 0.2, "max_tokens_cap": 16000},
-            "Creative": {"thinking": True, "temperature": 0.6, "max_tokens_cap": 32000},
+    def test_openrouter_table_keeps_price_and_max_output_only(self) -> None:
+        # Host slug / quantization / reasoning columns gone: (cpm_in, cpm_out, cpm_cache, max_out).
+        assert len(cfg.OPENROUTER_MODEL_TABLE) == 95
+        assert {len(row) for row in cfg.OPENROUTER_MODEL_TABLE.values()} == {4}
+        assert cfg.OPENROUTER_MODEL_TABLE["z-ai/glm-4.6"] == (0.43, 1.75, 0.08, 16384)
+
+    def test_default_output_budget(self) -> None:
+        # AC 7 — OpenRouter default = min(16000, max output) for every slug; direct = the SKU's existing default.
+        assert cfg.OPENROUTER_DEFAULT_MAX_TOKENS == 16000
+        bad = [s for s, row in cfg.OPENROUTER_MODEL_TABLE.items()
+               if cfg.LLM_MODEL_CONFIG[s]["default_max_tokens"] != min(16000, row[3])]
+        assert bad == []
+        out = lambda mid: cfg.resolve_agent_settings(mid, {"max_tokens": None})["tier"]["default_max_tokens"]  # noqa: E731
+        assert out("gryphe/mythomax-l2-13b") == 3686
+        assert out("qwen/qwen3.5-27b") == 16000
+        assert out("claude-sonnet-4-6") == cfg.AGENT_CONFIG["claude-sonnet-4-6"]["default_max_tokens"] == 16000
+
+    def test_resolver_shape_direct_model(self) -> None:
+        # Same top-level keys as the retired resolve_model_brain; direct servers get no provider object.
+        out = cfg.resolve_agent_settings("claude-sonnet-4-6", {"temperature": 0.3, "reasoning_effort": "high"})
+        assert out == {
+            "model_id": "claude-sonnet-4-6",
+            "server_id": "anthropic",
+            "server": cfg.LLM_SERVER_CONFIG["anthropic"],
+            "sku": "claude-sonnet-4-6",
+            "tier": {
+                "sku": "claude-sonnet-4-6",
+                "max_tokens_floor": None,
+                "default_max_tokens": 16000,
+                "temperature": 0.3,
+                "reasoning_effort": "high",
+                "provider": None,
+            },
+            "pricing": cfg.AGENT_CONFIG["claude-sonnet-4-6"],
         }
-        assert cfg.AGENT_MODES == ("Deterministic", "Creative")
-        assert cfg.validate_agent_mode("Creative") is None
-        with pytest.raises(ValueError, match="Invalid mode 'Wild'"):
-            cfg.validate_agent_mode("Wild")
-        with pytest.raises(ValueError, match="Invalid mode 'Wild'"):
-            cfg.resolve_model_brain("claude", cfg.BRAIN_MEDIUM, "Wild")
 
     @pytest.mark.parametrize(
-        ("model_id", "size", "mode", "want"),
+        ("agent", "want"),
         [
-            ("z-ai/glm-4.6", "Little", "Creative", (True, {"thinking": {"type": "adaptive"}}, 0.6)),
-            ("z-ai/glm-4.6", "Little", "Deterministic", (False, {}, 0.2)),
-            ("microsoft/phi-4", "Big", "Creative", (False, {}, 0.6)),
-            ("kimi-k2.6", "Little", "Creative", (True, {"thinking": {"type": "enabled"}}, 0.6)),
-            ("deepseek-v4", "Big", "Creative", (False, {}, 0.6)),
-            ("claude", "Medium", "Deterministic", (False, {}, 0.2)),
+            # AC 1 (catalog half) — quantization + fallbacks only; no order pin.
+            ({"quantization": "bf16", "provider_allow_fallbacks": True},
+             {"quantizations": ["bf16"], "allow_fallbacks": True}),
+            ({"quantization": "bf16", "provider_allow_fallbacks": True, "provider_only": ["crusoe"], "provider_sort": "price"},
+             {"quantizations": ["bf16"], "allow_fallbacks": True, "only": ["crusoe"], "sort": "price"}),
+            # AC 2 (catalog half) — every setting empty except fallbacks.
+            ({"quantization": "", "provider_allow_fallbacks": True, "provider_only": [], "provider_ignore": None,
+              "provider_sort": None}, {"allow_fallbacks": True}),
+            ({"provider_allow_fallbacks": False, "provider_ignore": ["dekallm"]},
+             {"allow_fallbacks": False, "ignore": ["dekallm"]}),
+            # Nothing set at all → no provider object.
+            ({}, None),
         ],
     )
-    def test_mode_decides_thinking_and_temperature(self, model_id: str, size: str, mode: str, want: tuple) -> None:
-        # Creative thinks only where can_think; otherwise temperature 0.6 (llm_compat drops it when thinking is on).
-        t = cfg.resolve_model_brain(model_id, size, mode)["tier"]
-        assert (t["thinking"], t["thinking_params"], t["temperature"]) == want
+    def test_resolver_provider_object_from_agent_row(self, agent: dict, want: dict | None) -> None:
+        assert cfg.resolve_agent_settings("openai/gpt-oss-120b", agent)["tier"]["provider"] == want
 
-    def test_agent_repo_json_columns_and_seed_modes(self) -> None:
-        # AC 7 (config + seed half) — mode in, temperature out; Big agents start Creative, the rest Deterministic.
+    def test_resolver_passes_temperature_and_effort_as_stored(self) -> None:
+        # AC 3 (catalog half) — no gating: 0.0 is a value, "none" is passed through, a model whose old config
+        # said it couldn't think (microsoft/phi-4) still carries "high"; empty → None.
+        tier = lambda mid, a: cfg.resolve_agent_settings(mid, a)["tier"]  # noqa: E731
+        assert tier("openai/gpt-oss-120b", {"temperature": 0.0})["temperature"] == 0.0
+        assert tier("z-ai/glm-4.6", {"reasoning_effort": "none"})["reasoning_effort"] == "none"
+        assert tier("microsoft/phi-4", {"reasoning_effort": "high"})["reasoning_effort"] == "high"
+        empty = tier("microsoft/phi-4", {"temperature": None, "reasoning_effort": ""})
+        assert (empty["temperature"], empty["reasoning_effort"]) == (None, None)
+        with pytest.raises(ValueError, match="Unknown LLM model 'claude'"):
+            cfg.resolve_agent_settings("claude", {})
+
+    def test_agent_repo_json_columns_and_seed(self) -> None:
+        # AC 8 (config + seed + fixture). Revert-from-seed runs in tests/component/data/database/test_agents.py.
         import json
         from pathlib import Path
 
         cols = cfg.REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]
-        assert cols == ("agent_id", "content", "model_id", "brain_setting", "mode", "max_tokens", "updated_at")
+        assert cols == ("agent_id", "content", "model_id", "max_tokens", *_AST1955_SETTINGS, "updated_at")
         root = Path(__file__).resolve().parents[3]
         seed = json.loads((root / "data/admin/agent.json").read_text())
-        fixture = json.loads((root / "docs/uat-fixtures/AST-756/expected-agent.json").read_text())
         assert [tuple(r) for r in seed] == [cols] * len(seed)
-        seed_mode = {r["agent_id"]: r["mode"] for r in seed}
-        assert seed_mode == {
-            "ats_expert_atlas": "Creative",
-            "college_intern_ruth": "Deterministic",
-            "contact_recruiter_estelle": "Deterministic",
-            "content_writer_judith": "Creative",
-            "job_analyst_grace": "Deterministic",
-            "principal_recruiter_estelle": "Creative",
-            "web_scraper_laslo": "Deterministic",
+        assert {r["agent_id"]: (r["model_id"], r["max_tokens"], r["temperature"], r["reasoning_effort"])
+                for r in seed} == _AST1955_SEED
+        # Every row starts fallbacks true and the rest empty (Susan: no derived quantization).
+        assert {(r["quantization"], r["provider_allow_fallbacks"], r["provider_only"], r["provider_ignore"],
+                 r["provider_sort"]) for r in seed} == {(None, True, None, None, None)}
+        # Fixture: same settings fields, same Functional scope 8 rule (Claude SKUs couldn't think) — plan Stage 3
+        # step 2 meaning of "field-for-field"; it keeps its 6 rows, model_code and stale content (AST-1947 precedent).
+        fixture = json.loads((root / "docs/uat-fixtures/AST-756/expected-agent.json").read_text())
+        assert [r for r in fixture if "brain_setting" in r or "mode" in r or not set(_AST1955_SETTINGS) <= set(r)] == []
+        assert {r["agent_id"]: r["temperature"] for r in fixture} == {
+            "job_analyst_grace": 0.2, "ats_expert_atlas": 0.6, "content_writer_judith": 0.6,
+            "web_scraper_laslo": 0.2, "principal_recruiter_estelle": 0.6, "college_intern_ruth": 0.2,
         }
-        # Fixture is not a full twin (6 rows, legacy fields) — only mode agreement and no temperature.
-        assert [r["agent_id"] for r in fixture if "temperature" in r or r["mode"] != seed_mode[r["agent_id"]]] == []
+        assert {(r["quantization"], r["reasoning_effort"], r["provider_allow_fallbacks"], r["provider_only"],
+                 r["provider_ignore"], r["provider_sort"]) for r in fixture} == {(None, None, True, None, None, None)}

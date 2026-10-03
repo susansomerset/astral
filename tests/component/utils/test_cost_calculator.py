@@ -74,7 +74,8 @@ class TestAst1877CatalogPricing:
     def test_anthropic_alias_costs_read_catalog_pricing(self) -> None:
         usage = SimpleNamespace(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_input_tokens=0,
                                 cache_creation_input_tokens=0)
-        p = LLM_MODEL_CONFIG["claude"]["pricing"]["claude-haiku-4-5"]
+        # AST-1955: one model id per SKU.
+        p = LLM_MODEL_CONFIG["claude-haiku-4-5"]["pricing"]["claude-haiku-4-5"]
         assert calculate_cost(usage, "claude-haiku-4-5") == pytest.approx(p["cpm_input"] + p["cpm_output"])
         assert calculate_cost_with_cache(usage, "claude-haiku-4-5") == pytest.approx(p["cpm_input"] + p["cpm_output"])
 

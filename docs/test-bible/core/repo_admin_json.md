@@ -768,3 +768,20 @@ Repro node ids: `test_config.py::TestAst1084EvaluateJdCriteria::test_qc_content_
 `TestAst787AgentRepoJsonSeed::test_repo_rows_match_fixture_repo_column_mapping` is left alone. `AST787_AGENT_REPO_COLUMNS` still names `temperature` for the AST-756 UAT fixture mapping, and that test is already red on `ae494c618`. Schema-ensure (`PRAGMA table_info`) and repo-row mode validation at the data layer: [`../data/database/agents.md`](../data/database/agents.md) § AST-1948.
 
 **Integration:** none.
+
+### AST-1955 · AST-1953 (agent repo JSON: `brain_setting` / `mode` → plain settings)
+
+**Primary manifest:** [`../utils/config.md`](../utils/config.md) § AST-1955 (repo columns + seed values pinned there; seed round-trip + revert-from-seed in [`../data/database/agents.md`](../data/database/agents.md) § AST-1955, because this file cannot collect on the sub until AST-1956 lands).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New (replaces bad-mode test) — a repo file row with `temperature: "warm"` fails revert with `temperature must be int/float`; DB row unchanged | `revert_repo_admin_json_table` → `apply_agent_repo_json_startup` | `TestAst783RepoAdminJsonDivergence::test_revert_rejects_bad_setting_type_in_repo_file` |
+| Revised — `save_agent` fixtures drop `mode` / `brain_setting`; per-SKU `claude-haiku-4-5`; revert restores `temperature` + clears `provider_sort` | `src/data/database.py` | `TestAst783RepoAdminJsonDivergence` (3 revised) |
+| Revised — seed rows carry exactly the repo columns; spot check `model_id` (not size); Grace on `deepseek-v4-pro` | `data/admin/agent.json` | `TestAst787AgentRepoJsonSeed::test_repo_rows_use_repo_columns_only` · `::test_spot_check_personas_have_content_and_model` · `::test_startup_apply_loads_all_seven_agents` |
+| Revised — AC 4 map is per-SKU `model_id` only; contact Estelle `temperature 0.2` / effort `none` / no `max_tokens` | seed | `TestAst1878AgentSeedModels::test_ac3_every_row_is_catalog_model` · `::test_ac4_seed_models` · `::test_contact_estelle_copies_analysis_content_with_catalog_defaults` · `::test_startup_apply_stores_model_ids` |
+| Revised — export fixture row shape | fixture | `TestExportRepoAdminJsonToFiles::test_writes_utf8_arrays_for_both_tables` |
+| Revised (still pre-existing red) — Estelle `temperature is None`; still fails later on the AST-1399 craft-pin lengths | seed | `TestAst1400EstelleCraftSeedPins::test_estelle_and_craft_match_ast1399_export` |
+
+`TestAst787AgentRepoJsonSeed::test_repo_rows_match_fixture_repo_column_mapping` stays a pre-existing red (6-row fixture vs 7-row seed). **On `ftr` after AST-1956:** run the whole file — reds must match the `origin/dev` baseline (18 today), none new.
+
+**Integration:** none.
