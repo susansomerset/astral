@@ -3301,3 +3301,37 @@ git diff --stat origin/ftr/AST-1946-big-brain-openrouter...HEAD -- src/   # expe
 ```
 
 **Pass criterion:** 14/14 green, the grep prints nothing, and the scope diff lists only the page.
+
+### AST-1957 · AST-1953 (Manage Agents edits the plain settings; brain size and mode removed)
+
+Supersedes § AST-1880's size UX and § AST-1949's Mode select. `AdminAgentPrompts.tsx`: the form has Model, Max Tokens and seven settings inputs: **Quantization**, **Temperature** (number), **Effort**, an **Allow provider fallbacks** checkbox, **Provider only**, **Provider ignore** (comma-separated) and **Provider sort**. Brain size, Mode, `AGENT_MODES` and the size pre-fill are gone. Max Tokens is never pre-filled; its placeholder shows `default <n>` from the model's `default_max_tokens`. Add opens on the first catalog model with every setting empty and fallbacks checked. Edit fills the inputs from the row, and a stored null fallbacks reads as checked. Save sends **every** settings key: strings trimmed with blank → `null`, temperature as a number or `null`, lists split on commas with blank → `null`, and fallbacks as the checkbox value. So clearing an input clears the setting. Neither body has `brain_setting` or `mode`. The list swaps **Brain setting** / **Mode** for **Quant · Temp · Effort · Fallbacks · Only · Ignore · Sort**: lists comma-joined, fallbacks `yes` / `no`, empty `—`. Backend: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1957.
+
+| AC | Tests (`test_AdminAgentPrompts.test.tsx`, describe **AST-1957 Manage Agents plain settings**) |
+| --- | --- |
+| 10 The edit form renders the seven settings inputs and saves them under the settings keys, with no `brain_setting` / `mode` in the body | › **AC 10: Edit renders the seven settings from the row and saves them under the settings keys** (exact PUT body: set, cleared → `null`, fallbacks toggled) · › **Add saves every setting under its key (trimmed, lists split) with no brain_setting or mode** (exact POST body) |
+| 10 No retired control remains | Brain size / Mode label absence in both Add and Edit tests · › **list shows the settings columns, not Brain setting / Mode** · grep in manifest below |
+| Scope: list shows the settings; model types drop sizes | › **list shows the settings columns…** (headers + per-row cells) · › **Add opens on the first model, empty settings with fallbacks on; Max Tokens placeholder follows the model** |
+| Plan decision: a stored null fallbacks reads as the default and is saved explicitly | › **a row with every setting empty shows — in the list, blanks in Edit with fallbacks checked, and saves fallbacks true** |
+
+**Broken / obsolete (revised):** fixtures move to the flat catalog (`claude-haiku-4-5` 8192, `kimi-k2.6` 16000) and settings rows. Agent_b's GET mock is added, and PUT mocks for agent_a / agent_b return a settings row. **Retired:** **AST-1880: Add picks a model, then only that model's sizes…**, **AST-1880: Edit shows the agent's model + size…**, and the whole **AST-1949 Manage Agents mode** describe (4). Their surviving intent (model select, catalog order, model label column, no stray keys) is carried by the five new tests. The other 8 tests are unchanged. **Repro:** with the pre-epic page (`origin/tests`) swapped in, all 5 new tests are red. On the publish tip all 13 are green. **Integration:** no scenario drives Manage Agents.
+
+## QA test manifest (AST-1957)
+
+1. **Page Vitest (§6c routed page):** the whole file, 13 tests, green on the publish tip.
+2. **AC 10 grep (UI)** and the Stage 1 grep (API). Both must print nothing.
+3. **Admin API:** `test_api_admin.py` errors at collection on this sub until **AST-1956** lands on `ftr` ([`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1957 **Sequencing**). Once AST-1956 is merged, run it on `ftr`: everything green except the 5 pre-existing reds listed there.
+4. **Scope:** only the two product files changed under `src/`.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx
+cd ../../.. && rg -n "brain_setting|AGENT_MODES|Deterministic|Creative" src/ui/frontend/src/pages/AdminAgentPrompts.tsx
+rg -n 'brain_setting|brain_sizes|resolve_model_brain|AGENT_MODE|"mode"|\bmode\b *=' src/ui/api/api_admin.py
+git diff --stat origin/ftr/AST-1953-agent-settings...origin/sub/AST-1953/AST-1957-manage-agents-settings -- src/   # api_admin.py + AdminAgentPrompts.tsx
+# after AST-1956 is on ftr:
+./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py
+```
+
+**Pass criterion:** 13/13 green, both greps print nothing, and the scope diff lists only the two files. Step 3 is informational on this sub.
+
+**Bible shasums (after publish):** `for p in frontend/pages.md ui/api/api_admin.md; do git show origin/sub/AST-1953/AST-1957-manage-agents-settings:docs/test-bible/$p | shasum; done`
