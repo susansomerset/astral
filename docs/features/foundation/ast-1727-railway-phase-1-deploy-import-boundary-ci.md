@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-1727 archived 2026-10-02 -->
+
+## Linear archive (AST-1727)
+
+**Archived:** 2026-10-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1727/railway-phase-1-deploy-and-import-boundary-ci-astral-telescope  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** chuckles  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1721 — Astral Telescope — stateless headless-scraping microservice (per-URL)  
+**Blocked by / blocks / related:** parent: AST-1721
+
+### Description
+
+## What this implements
+
+Wire the Railway Telescope service from `service/telescope/` (private networking, env bearer secret, memory limits, start at 1 replica then fixed fan-out), and land the CI/lint rule that fails on `service/`↔`src/` imports in **either** direction. After #2 so end-to-end client+node can be validated on separate hosts/processes. No Phase 2 autoscaler. No Surfer extension.
+
+## Citations
+
+import-rules amendment request (service↔src bidirectional ban); `stat.logging.info`
+
+## Scope
+
+- [X] `service/telescope/railway.toml` (or equivalent Railway service config colocated with the service) — **new** — subdirectory deploy for the Telescope service.
+- [X] `.github/workflows/` (or a tracked lint script invoked by CI) — **modified/new** — fail the build if `service/telescope/` imports from `src/` **or** `src/` imports from `service/`.
+
+## Acceptance criteria
+
+- [X] Parent AC 2 (CI bidirectional fence)
+- [X] Parent AC 9 (deployed separate host — config-as-code + operator private-DNS checklist)
+- [X] Parent AC 12 (Phase 1 replicas)
+- [X] Parent AC 13 (no Phase 2 / no Surfer)
+
+## Boundaries
+
+- [X] Does not own service app code (#1) or platform client (#2). No Phase 2 autoscaler.
+
+## Notes for planning
+
+import-rules amendment request (service↔src bidirectional ban); `stat.logging.info`
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Classification:** Gaps (Railway toml + bidirectional CI fence). Broken/obsolete: none. Integration drift: none.
+
+1. `tests/component/service/test_telescope_deploy_ci.py::TestRailwayPhase1Toml` — `numReplicas = 1`, Dockerfile builder paths, 2 GiB memory, ON_FAILURE; no `healthcheckPath =` / Judoscale / serviceInstanceUpdate
+2. `…::TestBidirectionalImportFence::test_src_py_files_have_zero_service_imports` — `src/**` has no `service` imports
+3. `…::test_ci_fence_script_exits_zero` — `./scripts/ci/check-service-src-import-fence.sh` exit 0
+4. `…::test_ci_fence_script_catches_src_import_in_service` — probe import under `service/telescope/` fails the script
+5. `…::test_workflow_invokes_fence_script` — workflow runs the fence script on `dev` / `ftr/**`
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/service/test_telescope_deploy_ci.py -q
+```
+
+**Pass criterion:** pytest green on that path — not zero-arg harness / branch-lock gate.
+
+**Bible:** `docs/test-bible/service/telescope.md` § AST-1727
+
+**Bible shasum** (`origin/sub/AST-1721/AST-1727-railway-phase-1-deploy-import-boundary-ci`):
+
+* `docs/test-bible/service/telescope.md` — `354af402d6cd55bab9dacbec70841b016997d94e`
+
+### Comments
+
+#### radia — 2026-09-20T06:04:56.256Z
+[code-rubric] PROCEED (Commit: 3bca16a2396e9534e715a18959d49feaf6b3fbd1) Railway CI fence canon-clean
+
+#### betty — 2026-09-20T06:02:22.508Z
+`origin/sub/AST-1721/AST-1727-railway-phase-1-deploy-import-boundary-ci` @ `3bca16a2` · Railway CI fence tests
+
+#### joan — 2026-09-20T05:57:28.529Z
+[plan-rubric] PROCEED (Commit: b7d41e9426848c73a9d5d2c14c1b658f98ef9379) Railway CI fence sound
+
+#### katherine — 2026-09-20T05:56:10.476Z
+`origin/sub/AST-1721/AST-1727-railway-phase-1-deploy-import-boundary-ci` @ `b7d41e9426848c73a9d5d2c14c1b658f98ef9379` · plan ready
+
+---
+
 # Railway Phase 1 deploy and import-boundary CI
 
 **Linear:** [AST-1727](https://linear.app/astralcareermatch/issue/AST-1727)
