@@ -350,3 +350,44 @@ These are not edited here, since the test tree is off-limits to engineers. They'
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1948
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `origin/sub/AST-1946/AST-1948-agent-mode-row` @ `049f60cc92c4fb2693b3aac82c194389979ea92f`
+
+## Canon scores
+stat.logging.debug | A |
+stat.logging.info.api | A |
+
+## Traceability
+**AC5** → Stage 2 (`_agent_llm_route` + `do_task` `tier["temperature"]`; wire cases via Betty stubbed `test_agent.py`). **AC6** → Stage 1 import/caller repair + Stage 2 `default_temperature` removal; `LLM_MODEL_CONFIG` stored-tier shape + full `src/` helper grep **on paired ftr with AST-1947**; `AdminAgentPrompts.tsx` temperature grep **AST-1949**. **AC7** → Stage 1 schema/write/read/repo-JSON + Stage 2 create/update PUT `mode` required; revert via repo-JSON apply. **AC8** → Verification greps on `agent.py` / `api_admin.py` / `database.py` (no `0.2`/`0.6` literals; slug grep). Parent **AC5** → AC5; **AC6–7** config/DB halves here + #1/#3 splits per Notes; **AC8** → AC7; **AC9–10** → #3; **AC11** → Stage 2 `list_models` = 98; **AC12** → AC8; **AC13** → #4.
+
+## Findings
+
+### discuss
+- **Severity:** discuss  
+  **Location:** Stage 1 preamble — “sub tip `17e0a8004`”  
+  **Finding:** Publish tip is `049f60cc9`; line anchors may drift while quoted hunks still match (e.g. `_agent_llm_route` @ 1822 on tip).  
+  **Recommendation:** Build against quoted text per execution contract; refresh line numbers in a plan tidy if any hunk misses.
+
+- **Severity:** discuss  
+  **Location:** Child **AC6** vs plan **AC traceability**  
+  **Finding:** Ticket AC6 bundles catalog persistence checks with call-path cleanup; plan correctly assigns `LLM_MODEL_CONFIG` / epic-wide `src/` grep to AST-1947 on the paired tree and this ticket to imports, resolver args, and `tier["temperature"]`.  
+  **Recommendation:** Betty manifest should treat AC6 as composite on `ftr` after both subs merge, not re-litigate catalog on 1948-only diff.
+
+- **Severity:** discuss  
+  **Location:** Stage 2 step 5 decision — PUT requires `mode`  
+  **Finding:** Manage Agents edit returns 400 until AST-1949; explicitly accepted in plan.  
+  **Recommendation:** No plan change; keep deploy ordering visible in prep-uat notes.
+
+### acceptable
+- **Severity:** acceptable  
+  **Location:** Citations block vs `stat.logging.info.api` text  
+  **Finding:** Linear cites “`mode` in place of `temperature`” on info lines; statute shape is route/method/status only — plan keeps `_api_completed` unchanged, which is compliant.  
+  **Recommendation:** Citation prose is loose; implementation plan is right.
+
+context_tokens≈48000
