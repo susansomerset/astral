@@ -231,3 +231,38 @@ Run from the repo root on the epic worktree. Write throwaway scripts to `/tmp`, 
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1950
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `origin/sub/AST-1946/AST-1950-remap-migration` @ `2da2a906ab76b90783cf0dcbb0ab8010f216e1b4`
+
+## Canon scores
+(none — ticket § Citations and plan Canon Scope explicitly empty; `scripts/` outside frozen `src/**` statutes)
+
+## Traceability
+**AC13** → Stage 1 full script + Verification steps 2–3 (dry run no writes, `morph/morph-v3-large` listed, `--apply` row matrix, idempotent second run, non-removed validation via `validate_brain_setting_for_model` + `validate_agent_mode`); Betty component test per **Tests expected to move**. Parent **AC11** item 1 (starting mode from pre-remap brain size) → `new_mode` before `REMAP.get`; item 2 (OpenRouter size + Kimi fold) → `REMAP`; item 3 (removed listed, model/size untouched) → `REMOVED` branch + Scope. **AC1–12** → N/A — sibling / epic scope.
+
+## Findings
+
+### discuss
+- **Severity:** discuss  
+  **Location:** Stage 1 — `_get_connection` vs `retarget_artifact_chain_trigger_state.py`  
+  **Finding:** Plan deliberately diverges from the older hard-coded `ASTRAL_CONFIG` connect pattern in favor of `cleanup_duplicate_and_board_gaze_jobs.py` monkeypatch seam for AC 13.  
+  **Recommendation:** Keep; note for operators: default run uses the same DB as the app, not a path flag.
+
+- **Severity:** discuss  
+  **Location:** Stage 1 loop — removed-model rows  
+  **Finding:** Parent item 11 “left unchanged” is model/size only; AC 13 still sets `mode` on `morph/morph-v3-large` (Deterministic). Script matches AC, not a literal read of “unchanged” as “no UPDATE”.  
+  **Recommendation:** No plan change; operator output should make clear removed slugs are not remapped.
+
+### acceptable
+- **Severity:** acceptable  
+  **Location:** Verification step 2 — `git show origin/dev:src/utils/config.py`  
+  **Finding:** 76-id closure proof depends on dev tip at run time; publish ref alone is insufficient.  
+  **Recommendation:** Run snapshot check on the machine that builds; failure there blocks commit per plan.
+
+context_tokens≈56000
