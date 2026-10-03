@@ -391,3 +391,18 @@ stat.logging.info.api | A |
   **Recommendation:** Citation prose is loose; implementation plan is right.
 
 context_tokens≈48000
+
+
+## Review
+
+- **Branch:** `origin/sub/AST-1946/AST-1948-agent-mode-row`
+- **Build tip:** `d12ea1a03`. Stages: `800132f60` (agent table — `mode` column + validation, `temperature` / `model_code` dropped, `database.py`) and `d12ea1a03` (mode on the call path and admin routes, `agent.py` / `api_admin.py`).
+- **Build notes:** built as planned, against the quoted text (Joan's line-drift note; every hunk matched exactly once). One addition: Stage 1 also removes the now-unused `resolve_model_brain` import from `database.py`. Step 3 removed its only caller, and `ruff F401` flags it. Nothing imports it through `database` (`rg "database.resolve_model_brain"` across `src/` `tests/` `scripts/` is empty). `database.py` is under `.cursorignore`, so Stage 1 was applied with a script that asserted each old hunk matched exactly once.
+- **Verified on the shipped tree:**
+  - Stage 1 script (§ Verification) passes. Old-shape table → `mode` present, `temperature` / `model_code` gone. Seed loads with all seven modes. `"Wild"` / `None` / `""` are rejected in repo JSON. The public view gives `claude-sonnet-4-6` with no `model_code` on a mode-less row.
+  - Temp-DB CRUD: `save_agent` / `update_agent` / `get_agent` / `list_agents` round-trip `mode`. A bad mode raises `ValueError`, and no `temperature` / `model_code` key comes back.
+  - Stage 2 script passes (in `~/astral/.venv`; system Python lacks `asyncpg`). glm-4.6 Creative thinks with the adaptive payload; claude Medium Deterministic → `claude-sonnet-4-6` at 0.2; a mode-less row raises; `GET /agents/models` = **98** ids with no `default_temperature`.
+  - Route smoke (Flask test client, temp DB): POST without mode / `"Wild"` → 400, valid → 201. PUT without mode / `"Wild"` → 400, `"Creative"` → 200. Re-GET → `Creative`, no `temperature` or `model_code` key.
+  - Greps: the AC 6 four-name grep across `src/` (minus frontend) is empty. AC 8's `0.2` / `0.6` literal grep and slug grep are empty. The remaining `temperature` / `model_code` hits in `database.py` are timesheet-ledger columns, the docstring and the drop loop.
+  - Lint: `py_compile` is clean on all three files. `ruff check --select F,E9`: `agent.py` and `api_admin.py` 0 errors; `database.py` has 7, all pre-existing (unused `timedelta` / `Path` / `AGENT_CONFIG` / `SOURCE_ENTITY_TYPE_DEFAULT` / `validate_job_source`, two F811), the same as the baseline.
+- **For qa-child:** see § Tests expected to move. The `AdminAgentPrompts.tsx` `default_temperature` / `temperature` hits are AST-1949's. Until AST-1949 lands, the UI's PUT returns `400 mode is required` (accepted in Stage 2 step 5).
