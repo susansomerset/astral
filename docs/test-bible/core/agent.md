@@ -1730,3 +1730,108 @@ rg -n "apodex/|bytedance/ui-tars|ibm-granite/|inclusionai/|meta/muse|microsoft/|
 ```
 
 **Pass criterion:** item 1 green (206 passed on the publish tip), item 2 reds limited to the baseline set, item 3 empty. Not the zero-arg harness. **AC 6 is composite on `ftr`** (Joan, validate-plan discuss). Once both subs merge, re-run item 3 plus [`../utils/config.md`](../utils/config.md) § AST-1947 manifest item 1 on `origin/ftr/AST-1946-big-brain-openrouter`. The `temperature` grep on `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` belongs to AST-1949, so leave it out here. Between this merge and AST-1949, an agent edit from the UI returns `400 mode is required`. That is by design (plan Stage 2 decision), not a bug.
+
+> **AST-1956:** `mode` is gone from the agent row, and `TestAst1948ModeOnTheWire` is retired (§ AST-1956 below). Do not re-run the manifest above as written.
+
+### AST-1956 · AST-1953 (send the agent's settings on the wire)
+
+`_agent_llm_route` now calls `resolve_agent_settings(model_id, agent_row)` (AST-1955). The tier carries the row's `temperature`, `reasoning_effort` and the OpenRouter-only `provider` object exactly as stored. There is no mode, no brain size and no thinking-from-tier. The craft-rubric guard sets `tier["reasoning_effort"] = "none"` instead of thinking off. `_send_to_server` passes `reasoning_effort` to `send_to_anthropic`. The `Calling _send_to_server` debug line in `do_task`, and a new one in `run_adhoc` (`task_key=adhoc`), print `temp=%s, effort=%s` with what was actually sent (`temp=None` when the row's temperature is empty). Pre-SKU ids (`claude`, `deepseek-v4`) raise `Unknown LLM model`. Wire bodies: [`../external/llm_compat.md`](../external/llm_compat.md) § AST-1956 · [`../external/anthropic.md`](../external/anthropic.md) § AST-1956. Resolver: [`../utils/config.md`](../utils/config.md) § AST-1955.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 / AC 3 through `do_task`, `send_to_llm_compat` stubbed. gpt-oss-120b `bf16` → provider object; phi-4 temperature 0.3 + effort `high` with no gating; kimi-k2.6 effort `none`; deepseek-v4-pro `provider_only` on a direct server → `provider` None | `_agent_llm_route`, `do_task` | `test_agent.py::TestAst1956SettingsOnTheWire::test_compat_call_carries_row_settings` (4) |
+| New — Anthropic leg gets the row's temperature and `reasoning_effort` | `_send_to_server` | `::test_anthropic_call_carries_temperature_and_effort` |
+| New — AC 4: a 400 "Reasoning is mandatory…" from the compat client is `success: False` with the message in `error` and no `failure_class` | `do_task` → `send_to_llm_compat` | `::test_rejected_setting_is_an_ordinary_failure` |
+| New — AC 5: `do_task` debug line shows `temp=` / `effort=` as sent (`temp=None` when empty) | `do_task` | `::test_debug_line_shows_what_was_sent` (2) |
+| New — AC 5: `run_adhoc` forwards effort and logs the same line with `task_key=adhoc` | `run_adhoc` | `::test_run_adhoc_forwards_effort_and_logs_it` |
+| New — pre-SKU ids raise | `_agent_llm_route` | `test_agent_ast1879.py::TestAst1879RouteHelpers::test_agent_llm_route_raises_on_pre_sku_model_id` (2) |
+| Revised — route resolves catalog + row settings (moonshotai/kimi-k2.6, effort `ultra` passes through, provider `{"quantizations": ["int4"], "allow_fallbacks": false}`) | `_agent_llm_route` | `TestAst1879RouteHelpers::test_agent_llm_route_resolves_catalog` |
+| Revised — Anthropic protocol carries effort (None / `high` / `none`) and temperature 0.3 | `_send_to_server` | `TestAst1879SendToServer::test_anthropic_protocol` (3) |
+| Revised — Estelle turn sends the seed row's temperature 0.2 and `extra_body == {"thinking": {"type": "disabled"}}` | `do_task` | `TestAst1879EstelleTurnRoute` |
+| Revised — craft rubric forces effort `none`; non-craft keeps the stored effort (`high`) | craft guard | `TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_forces_effort_none` · `::test_non_craft_keeps_stored_effort` |
+| Revised — parent AC 6 wire half: deepseek-v4-pro row `max_tokens: 384000` → sent as 384000; flash sends the row's 100. Catalog floor lifts a low row; a row above the floor wins; Opus keeps the row; craft effort `none` still uses the catalog floor | `do_task` `max_tokens` | `TestAst1391DeepseekBigOutputFloor::test_catalog_floor_lifts_low_agent_row` · `::test_agent_row_above_catalog_floor_wins` · `::test_deepseek_sends_row_max_tokens_as_stored` · `::test_anthropic_opus_keeps_agent_row` · `::test_debug_true_max_tokens_line_shows_floor` · `::test_craft_effort_none_uses_catalog_floor` |
+| Revised — Anthropic routing by per-SKU id (claude-opus-4-6); broken-config params are `""`, `__no_such_model__`, `claude`, `deepseek-v4` | `do_task` | `TestAst492BrainSettingDoTask::test_send_to_anthropic_receives_row_per_sku_model` · `::test_do_task_raises_on_broken_agent_model_config` |
+| Revised — fixtures carry plain settings (`_agent_rows(model_id=…, **settings)`, `_route(model_id, **settings)`, `_STUB_FLOOR`; ast1879 `_SEED_KEYS`, `_REAL` = deepseek-v4-pro; ast1448 tier from `resolve_agent_settings`). `brain_setting` / `deepseek-v4` / `claude` ids → per-SKU ids | `test_agent.py`, `test_agent_ast1879.py`, `test_agent_ast1448.py` | `TestRunAdhoc`, `TestAst1072ConversationalEnvelope`, concern test, `TestAst1879…` |
+| Revised — needle test also forbids `resolve_model_brain` and `brain_setting` in `agent.py` | source scan | `TestAst1879…` needle test |
+| Revised — non-LLM gate row uses `model_id: deepseek-v4-pro` (was red on the dev product too; green now) | `dispatcher.py` | `test_dispatcher.py::TestAst1944NonLlmGate::test_llm_key_without_server_key_still_skipped` |
+
+**Broken / obsolete:** `TestAst1948ModeOnTheWire` (7) retired → `TestAst1956SettingsOnTheWire`. `test_agent_ast1879.py::TestAst1879RouteHelpers::test_agent_llm_route_raises_without_mode` (3) and `::test_agent_llm_route_rejects_unknown_mode` retired (no mode). Renamed in place: `test_send_to_anthropic_receives_resolved_key_for_big_tier`, `test_craft_get_rubric_deepseek_big_forces_thinking_false`, `test_non_craft_kimi_big_keeps_thinking`, and the `TestAst1391` deepseek Big / Medium / Little / anthropic-Big floor nodes (the size split no longer exists).
+
+**Pre-existing reds:** whole-file runs of `tests/component/core` + `tests/component/external` on this tip show zero new failures against the same test tree on the `origin/tests` (dev) product. The 40 `test_agent.py` reds, 3 `test_agent_ast1448.py` reds and `test_anthropic.py::TestAst1190…` red are all baseline. `test_candidate.py` `TestAst901…` reds are order-dependent (green alone and at file level).
+
+**LOCKED_AT_100:** `--cov-branch` reports no missing line or partial branch in any AST-1956 hunk of `agent.py`, `anthropic.py` or `llm_compat.py`. Mutants all caught: debug line printing a constant, a truthy temperature check (drops 0.0), the craft guard removed, server extras overriding the agent's `provider`.
+
+**Integration:** none (no `tests/integration/` scenario reads agent settings, effort, temperature or provider).
+
+## QA test manifest (AST-1956)
+
+1. **Component (narrowed — must be all green, run in this order):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestDoTask::test_rejects_unknown_or_misconfigured_tasks \
+  tests/component/core/test_agent.py::TestDoTask::test_returns_api_failure_and_stores_agent_data \
+  tests/component/core/test_agent.py::TestDoTask::test_do_task_stores_agent_data_for_craft_null_entity_type \
+  tests/component/core/test_agent.py::TestDoTask::test_decodes_top_level_json_string_encoded_payload \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast501_rejects_evaluate_jd_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_api_returns_bare_encoded_lines_without_envelope \
+  tests/component/core/test_agent.py::TestDoTask::test_ast503_rejects_grade_do_when_agent_payload_is_structured_json_object \
+  tests/component/core/test_agent.py::TestDoTask::test_chains_run_next_when_configured \
+  tests/component/core/test_agent.py::TestDoTask::test_chain_entry_log \
+  tests/component/core/test_agent.py::TestDoTask::test_hop_boundary_log_on_run_next \
+  tests/component/core/test_agent.py::TestDoTask::test_debug_flag_passed_to_child \
+  tests/component/core/test_agent.py::TestDoTask::test_ignores_invalid_run_next \
+  tests/component/core/test_agent.py::TestAst492BrainSettingDoTask \
+  tests/component/core/test_agent.py::TestRunAdhoc \
+  tests/component/core/test_agent.py::TestAst531RunNextHopLedger \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError \
+  tests/component/core/test_agent.py::TestAst1298OrphanedJobClaimRelease \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  tests/component/core/test_agent.py::TestAst1576CraftPersistOperative \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_skips_hydrate_when_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_hydrate_hard_fails_without_live_caller \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession::test_persist_craft_reinjects_caller_on_recurse \
+  tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  tests/component/core/test_agent.py::TestAst1683ContactBaseResumeCurrentRead \
+  tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_cover_letter_land_passes_harvest \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands::test_job_resume_land_still_passes_harvest_list \
+  tests/component/core/test_agent.py::TestAst1846DoTaskAgentFailureFlag \
+  tests/component/core/test_agent.py::TestAst1956SettingsOnTheWire \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_stores_prompt_before_provider_and_response_after \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_provider_raise_keeps_prompt_omits_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_storage_off_skips_prompt_and_response \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_prompt_persist_failure_still_calls_provider \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_debug_false_skips_persist_contract_lines \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_do_task_later_success_does_not_rewrite_interrupted_batch_prompts \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_stores_prompt_before_run_adhoc \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider::test_workbench_raise_keeps_prompt_omits_response \
+  tests/component/core/test_dispatcher.py::TestAst1944NonLlmGate \
+  tests/component/external/test_llm_compat.py \
+  tests/component/external/test_anthropic.py::TestSendToAnthropic \
+  tests/component/external/test_anthropic.py::TestAst1956SettingsOnTheWire \
+  tests/component/core/test_agent_ast1879.py \
+  -q
+```
+
+2. **Whole files (informational — pre-existing reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/core tests/component/external -q --tb=line
+```
+
+Every failure here must also fail with this test tree on the `origin/tests` (dev) product. Any other failure is real. `tests/component/ui/api/` is left out: `api_admin.py` still imports `resolve_model_brain` until AST-1957, so it does not collect on this sub alone.
+
+3. **AC 4 / parent AC 5 greps (both empty on the publish tip):**
+
+```bash
+rg -n "config_error|configuration_error" src/
+rg -n "_openrouter_pin|AGENT_MODE|OPENROUTER_QUANT_BRAIN_SIZE|resolve_model_brain|validate_agent_mode|brain_setting|brain_sizes|can_think|thinking_params" src/core/agent.py src/external/llm_compat.py src/external/anthropic.py
+```
+
+**Pass criterion:** item 1 green (185 passed on the publish tip), item 2 reds limited to the baseline set, item 3 empty. Not the zero-arg harness.

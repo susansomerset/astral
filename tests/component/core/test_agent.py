@@ -25,18 +25,18 @@ def _batch_entities(*job_ids: str) -> List[Dict[str, str]]:
 
 
 def _agent_rows(
-    *, run_next: str = "", brain_setting: str = "Little", model_id: str = "claude",
-    mode: str = cfg.AGENT_MODE_DETERMINISTIC,
+    *, run_next: str = "", model_id: str = "claude-haiku-4-5", **settings: Any,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    # AST-1948: agent row carries mode (decides thinking + temperature); temperature / model_code columns are gone.
+    # AST-1956: the row's plain settings go on the wire as stored (resolve_agent_settings); no brain size or mode.
+    # Default temperature 0.2 = what AST-1958 migrates a Deterministic row to; any setting kwarg overrides.
     return (
         {
             "content": "agent sys",
             "model_id": model_id,
-            "brain_setting": brain_setting,
-            "mode": mode,
             "agent_id": "agent-1",
             "max_tokens": 100,
+            "temperature": 0.2,
+            **settings,
         },
         {
             "user_prompt": "user",
@@ -50,8 +50,14 @@ def _agent_rows(
     )
 
 
-# AST-1879: DeepSeek V4 Big catalog tier floor (was deepseek_brain_max_tokens_floor).
-_DEEPSEEK_BIG_FLOOR = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_BIG, cfg.AGENT_MODE_DETERMINISTIC)["tier"]["max_tokens_floor"]
+def _route(model_id: str, **settings: Any) -> Dict[str, Any]:
+    """AST-1956: the call route do_task / run_adhoc callers build for an agent row with these settings."""
+    return cfg.resolve_agent_settings(model_id, settings)
+
+
+# AST-1955 moved the DeepSeek Big 384k floor onto the agent's own max_tokens; no catalog entry carries a floor.
+# do_task still honours one, so floor tests stub this value onto a catalog entry.
+_STUB_FLOOR = 384000
 
 
 def _api_response(text: str = "raw") -> Any:
@@ -1374,7 +1380,7 @@ class TestDoTask:
         with pytest.raises(ValueError, match="missing required response_schema"):
             await agent_mod.do_task("broken")
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: ({"agent_id": "a"}, {"agent_id": "a"}))
-        # AST-1879: model_id is checked before brain_setting (_agent_llm_route).
+        # AST-1879 / AST-1956: model_id is checked before the settings resolve (_agent_llm_route).
         with pytest.raises(ValueError, match="no model_id configured"):
             await agent_mod.do_task("evaluate_jd")
 
@@ -1532,7 +1538,7 @@ class TestDoTask:
     ) -> None:
         """Compat servers may return agent_payload as a string inside the envelope object."""
         monkeypatch.setattr(
-            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4")
+            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4-flash")
         )
         monkeypatch.setattr(
             agent_mod,
@@ -1903,10 +1909,10 @@ class TestDoTask:
         assert "Returning this hop only" in caplog.text
 
 
-# model_id + brain_setting → catalog route → send_to_anthropic or send_to_llm_compat (AST-492 / AST-1879).
+# model_id + plain settings → catalog route → send_to_anthropic or send_to_llm_compat (AST-492 / AST-1879 / AST-1956).
 class TestAst492BrainSettingDoTask:
     @pytest.mark.asyncio
-    async def test_send_to_anthropic_receives_resolved_key_for_big_tier(
+    async def test_send_to_anthropic_receives_row_per_sku_model(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
@@ -1916,7 +1922,7 @@ class TestAst492BrainSettingDoTask:
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big"),
+            lambda task_key: _agent_rows(model_id="claude-opus-4-6"),
         )
         send = AsyncMock(
             return_value={
@@ -1943,11 +1949,10 @@ class TestAst492BrainSettingDoTask:
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
     ) -> None:
-        # AST-1879: deepseek-v4 agent → compat client with the catalog server / SKU / tier row.
-        route = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_DETERMINISTIC)
-        monkeypatch.setattr(
-            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4")
-        )
+        # AST-1879 / AST-1956: deepseek-v4-flash agent → compat client with the resolved server / SKU / tier.
+        rows = _agent_rows(model_id="deepseek-v4-flash")
+        route = cfg.resolve_agent_settings("deepseek-v4-flash", rows[0])
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: rows)
         send_anth = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
         send_compat = AsyncMock(
@@ -1977,12 +1982,10 @@ class TestAst492BrainSettingDoTask:
         ("row_patch", "match"),
         [
             ({"model_id": ""}, "has no model_id configured"),
-            ({"brain_setting": ""}, "has no brain_setting configured"),
             ({"model_id": "__no_such_model__"}, "Unknown LLM model"),
-            ({"model_id": "kimi-k2.6", "brain_setting": "Medium"}, "Invalid brain_setting"),
-            # AST-1948: mode is required on the row — no fallback.
-            ({"mode": None}, "has no mode configured"),
-            ({"mode": "Wild"}, "Invalid mode 'Wild'"),
+            # AST-1956: a row AST-1958 has not migrated yet (pre-SKU id) fails loudly, never a silent fallback.
+            ({"model_id": "claude"}, "Unknown LLM model"),
+            ({"model_id": "deepseek-v4"}, "Unknown LLM model"),
         ],
     )
     async def test_do_task_raises_on_broken_agent_model_config(
@@ -2006,29 +2009,31 @@ class TestAst492BrainSettingDoTask:
         send_compat.assert_not_called()
 
 
-# AST-1948 AC 5: the agent row's mode decides thinking + temperature on every call; SKU / floors from the tier.
-# Branches: protocol compat (openrouter / kimi / deepseek) vs anthropic; mode thinking on/off × can_think on/off;
-# Big tier floor still applied. Wire bodies (temperature dropped when thinking) are test_llm_compat.py's.
-class TestAst1948ModeOnTheWire:
+# AST-1956: the agent row's plain settings ride the route to both clients as stored — no gating, no derivation.
+# Branches: compat (openrouter provider object / direct server → no provider) vs anthropic (effort kwarg);
+# settings set vs empty; craft guard (TestAst1380…); debug line temp/effort; rejected setting = plain failure.
+# Wire bodies (temperature / output_config / thinking / provider keys) are test_llm_compat.py / test_anthropic.py's.
+class TestAst1956SettingsOnTheWire:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        ("model_id", "size", "mode", "server_id", "sku", "thinking_params", "temperature"),
+        ("model_id", "settings", "server_id", "provider"),
         [
-            ("z-ai/glm-4.6", "Little", "Creative", "openrouter", "z-ai/glm-4.6", {"thinking": {"type": "adaptive"}}, 0.6),
-            ("z-ai/glm-4.6", "Little", "Deterministic", "openrouter", "z-ai/glm-4.6", None, 0.2),
-            ("microsoft/phi-4", "Big", "Creative", "openrouter", "microsoft/phi-4", None, 0.6),
-            ("kimi-k2.6", "Little", "Creative", "kimi", "kimi-k2.6", {"thinking": {"type": "enabled"}}, 0.6),
-            ("kimi-k2.6", "Big", "Deterministic", "kimi", "kimi-k2.6", None, 0.2),
-            ("deepseek-v4", "Big", "Creative", "deepseek", "deepseek-v4-pro", None, 0.6),
+            # AC 1: OpenRouter provider object built from the row only — no host pin.
+            ("openai/gpt-oss-120b", {"quantization": "bf16", "provider_allow_fallbacks": True, "temperature": None},
+             "openrouter", {"quantizations": ["bf16"], "allow_fallbacks": True}),
+            # AC 3: temperature + effort as stored, on a model the old config said could not think.
+            ("microsoft/phi-4", {"temperature": 0.3, "reasoning_effort": "high"}, "openrouter", None),
+            ("kimi-k2.6", {"reasoning_effort": "none"}, "kimi", None),
+            # Provider settings on a direct server never become a provider object.
+            ("deepseek-v4-pro", {"reasoning_effort": "high", "provider_only": ["crusoe"]}, "deepseek", None),
         ],
     )
-    async def test_compat_call_takes_thinking_and_temperature_from_mode(
+    async def test_compat_call_carries_row_settings(
         self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
-        model_id: str, size: str, mode: str, server_id: str, sku: str, thinking_params: Any, temperature: float,
+        model_id: str, settings: Dict[str, Any], server_id: str, provider: Any,
     ) -> None:
         monkeypatch.setattr(
-            agent_mod, "_resolve_task_prompts",
-            lambda task_key: _agent_rows(model_id=model_id, brain_setting=size, mode=mode),
+            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id=model_id, **settings)
         )
         send_anth = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
@@ -2039,21 +2044,20 @@ class TestAst1948ModeOnTheWire:
         assert out["success"] is True
         send_anth.assert_not_called()
         kwa = send_compat.await_args.kwargs
-        assert (kwa["server_id"], kwa["sku"], kwa["temperature"]) == (server_id, sku, temperature)
-        assert kwa["tier"]["thinking"] is (thinking_params is not None)
-        assert kwa["tier"]["thinking_params"] == (thinking_params or {})
-        if model_id == "deepseek-v4":
-            # Big floor still wins over the row's max_tokens (100).
-            assert kwa["max_tokens"] >= _DEEPSEEK_BIG_FLOOR == 384000
+        row = {"temperature": 0.2, **settings}
+        assert (kwa["server_id"], kwa["temperature"]) == (server_id, row["temperature"])
+        assert kwa["tier"]["reasoning_effort"] == row.get("reasoning_effort")
+        assert kwa["tier"]["provider"] == provider
 
     @pytest.mark.asyncio
-    async def test_claude_medium_deterministic_goes_to_anthropic_at_mode_temperature(
+    async def test_anthropic_call_carries_temperature_and_effort(
         self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
     ) -> None:
+        # AC 3 on the Anthropic client: same values, passed as send_to_anthropic kwargs.
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
             agent_mod, "_resolve_task_prompts",
-            lambda task_key: _agent_rows(model_id="claude", brain_setting="Medium", mode="Deterministic"),
+            lambda task_key: _agent_rows(model_id="claude-sonnet-4-6", temperature=0.3, reasoning_effort="high"),
         )
         send = AsyncMock(return_value=_strict_batch_llm_ok())
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
@@ -2061,7 +2065,80 @@ class TestAst1948ModeOnTheWire:
         out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_rubric_evaluate_jd_ctx())
         assert out["success"] is True
         kwa = send.await_args.kwargs
-        assert (kwa["model_code"], kwa["temperature"]) == ("claude-sonnet-4-6", 0.2)
+        assert (kwa["model_code"], kwa["temperature"], kwa["reasoning_effort"]) == ("claude-sonnet-4-6", 0.3, "high")
+
+    @pytest.mark.asyncio
+    async def test_rejected_setting_is_an_ordinary_failure(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any, stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # AC 4: the endpoint's 400 comes back through the real compat client as a plain failure — no new class.
+        msg = "Error code: 400 - Reasoning is mandatory for this endpoint and cannot be disabled"
+
+        class _Rejects:
+            messages = SimpleNamespace(create=MagicMock(side_effect=RuntimeError(msg)))
+
+        monkeypatch.setattr("src.external.llm_compat._get_client", lambda *_a, **_k: _Rejects())
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts",
+            lambda task_key: _agent_rows(model_id="openai/gpt-oss-120b", reasoning_effort="none"),
+        )
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_rubric_evaluate_jd_ctx())
+        assert out["success"] is False
+        assert msg in out["error"]
+        assert out.get("failure_class") is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("settings", "logged"),
+        [({"temperature": None}, "temp=None, effort=None"), ({"temperature": 0.3, "reasoning_effort": "high"}, "temp=0.3, effort=high")],
+    )
+    async def test_debug_line_shows_what_was_sent(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, batch_token: Any,
+        settings: Dict[str, Any], logged: str,
+    ) -> None:
+        # AC 5: an empty temperature logs temp=None, never a number.
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(**settings))
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value=_strict_batch_llm_ok()))
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        from src.utils.logging import log_debug
+
+        # logger.debug emits only under log_debug (a debug run); do_task keeps an outer True.
+        token = log_debug.set(True)
+        try:
+            with caplog.at_level(logging.DEBUG, logger="src.core.agent"):
+                await agent_mod.do_task("evaluate_jd", index="job-1", ctx=_rubric_evaluate_jd_ctx())
+        finally:
+            log_debug.reset(token)
+        lines = [r.getMessage() for r in caplog.records if "Calling _send_to_server: [task_key=evaluate_jd" in r.getMessage()]
+        assert len(lines) == 1 and logged in lines[0]
+
+    @pytest.mark.asyncio
+    async def test_run_adhoc_forwards_effort_and_logs_it(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, batch_token: Any,
+    ) -> None:
+        # run_adhoc gets the same debug line; the route's effort reaches the Anthropic client.
+        send = AsyncMock(return_value={"success": True, "parsed_response": "ok"})
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        route = _route("claude-sonnet-4-6", temperature=None, reasoning_effort="high")
+        from src.utils.logging import log_debug
+
+        token = log_debug.set(True)
+        try:
+            with caplog.at_level(logging.DEBUG, logger="src.core.agent"):
+                await agent_mod.run_adhoc(
+                    "sys", "usr", model_code=route["sku"], server_id=route["server_id"], tier=route["tier"],
+                    temperature=route["tier"]["temperature"], candidate_api_keys={"anthropic": "sk-ant"},
+                    candidate_id="somerset",
+                )
+        finally:
+            log_debug.reset(token)
+        assert (send.await_args.kwargs["temperature"], send.await_args.kwargs["reasoning_effort"]) == (None, "high")
+        assert any(
+            "Calling _send_to_server: [task_key=adhoc" in r.getMessage() and "temp=None, effort=high" in r.getMessage()
+            for r in caplog.records
+        )
 
 
 class TestAst469ResolveRunNextLive:
@@ -2241,7 +2318,7 @@ class TestRunAdhoc:
 
     async def test_compat_server_sends_via_llm_compat_with_that_servers_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # AST-1879 AC 7: only the route server's key goes out, never another platform's.
-        route = cfg.resolve_model_brain("deepseek-v4", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_DETERMINISTIC)
+        route = _route("deepseek-v4-flash")
         send_compat = AsyncMock(return_value={"success": True, "parsed_response": "ds-ok"})
         send_anth = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
@@ -2269,7 +2346,7 @@ class TestRunAdhoc:
         send_anth = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_llm_compat", send_compat)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
-        route = cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_DETERMINISTIC)
+        route = _route("kimi-k2.6")
         out = await agent_mod.run_adhoc(
             "sys",
             "usr",
@@ -2288,7 +2365,7 @@ class TestRunAdhoc:
     async def test_returns_runtime_prompt(self, monkeypatch: pytest.MonkeyPatch) -> None:
         send_anth = AsyncMock(return_value={"success": True, "parsed_response": "ok"})
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
-        route = cfg.resolve_model_brain("claude", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_DETERMINISTIC)
+        route = _route("claude-haiku-4-5")
         out = await agent_mod.run_adhoc(
             "system",
             "user",
@@ -5141,7 +5218,7 @@ class TestAst515AdhocWorkbenchLedger:
             return {"success": True, "parsed_response": {"agent_payload": "ok"}, "timesheet": {}}
 
         monkeypatch.setattr(agent_mod, "run_adhoc", _ok)
-        route = cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_DETERMINISTIC)
+        route = _route("kimi-k2.6")
         keys = {"kimi": "sk-kimi"}
         out = await agent_mod.run_adhoc_workbench_test(
             workbench_task_key="evaluate_jd",
@@ -6402,7 +6479,7 @@ class TestAst1298OrphanedJobClaimRelease:
             lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
         )
         monkeypatch.setattr(
-            agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next="", model_id="deepseek-v4")
+            agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next="", model_id="deepseek-v4-flash")
         )
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
@@ -6512,20 +6589,19 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
     )
 
     @pytest.mark.asyncio
-    async def test_craft_get_rubric_deepseek_big_forces_thinking_false(
+    async def test_craft_get_rubric_forces_effort_none(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # Kimi Creative tier starts thinking=True (AST-1948: mode decides); do_task must clear it for craft rubrics (Decision A).
+        # AST-1956: the row asks for effort "high"; do_task forces "none" (thinking off) for craft rubrics (Decision A).
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big", model_id="kimi-k2.6", mode=cfg.AGENT_MODE_CREATIVE),
+            lambda task_key: _agent_rows(model_id="kimi-k2.6", reasoning_effort="high"),
         )
-        assert cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_BIG, cfg.AGENT_MODE_CREATIVE)["tier"]["thinking"] is True
         criteria = [
             {"code": "GT", "label": "Get", "content": "full criterion body", "importance": 5},
         ]
@@ -6549,23 +6625,23 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         assert out["success"] is True
         assert send.await_args is not None
         tier = send.await_args.kwargs["tier"]
-        assert tier["thinking"] is False
+        assert tier["reasoning_effort"] == "none"
         # Kimi has no tier floor → craft floor wins over the row's 100.
         assert send.await_args.kwargs.get("max_tokens") == cfg.CRAFT_RUBRIC_MAX_TOKENS
 
     @pytest.mark.asyncio
-    async def test_non_craft_kimi_big_keeps_thinking(
+    async def test_non_craft_keeps_stored_effort(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # Decision A must not blanket-disable Creative thinking off craft rubric keys.
+        # Decision A must not blanket-disable thinking off craft rubric keys: the row's effort goes out as stored.
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big", model_id="kimi-k2.6", mode=cfg.AGENT_MODE_CREATIVE),
+            lambda task_key: _agent_rows(model_id="kimi-k2.6", reasoning_effort="high"),
         )
         send = AsyncMock(
             return_value={
@@ -6582,9 +6658,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
             ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
-        tier = send.await_args.kwargs["tier"]
-        assert tier["thinking"] is True
-        assert tier["thinking_params"] == {"thinking": {"type": "enabled"}}
+        assert send.await_args.kwargs["tier"]["reasoning_effort"] == "high"
 
     @pytest.mark.asyncio
     async def test_provider_failure_response_banner_prefixes_success_shaped_envelope(
@@ -6598,7 +6672,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big", model_id="deepseek-v4"),
+            lambda task_key: _agent_rows(model_id="deepseek-v4-pro"),
         )
         monkeypatch.setattr(
             agent_mod,
@@ -7028,15 +7102,12 @@ class TestAst1072ConversationalEnvelope:
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
     ) -> None:
-        # AST-1879 AC 9: no conversational brain override — the turn runs at its agent row's
-        # model + brain (Big here), not a CONTACT_ESTELLE / default_brain_setting Medium.
-        monkeypatch.setattr(
-            agent_mod,
-            "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big", model_id="kimi-k2.6"),
-        )
+        # AST-1879 AC 9 / AST-1956: no conversational override — the turn runs at its agent row's
+        # own model + settings, not a CONTACT_ESTELLE / default_brain_setting route.
+        rows = _agent_rows(model_id="kimi-k2.6", reasoning_effort="none")
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: rows)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
-        tier = cfg.resolve_model_brain("kimi-k2.6", cfg.BRAIN_BIG, cfg.AGENT_MODE_DETERMINISTIC)["tier"]
+        tier = cfg.resolve_agent_settings("kimi-k2.6", rows[0])["tier"]
         send_ds = AsyncMock(
             return_value={
                 "success": True,
@@ -7073,7 +7144,7 @@ class TestAst1072ConversationalEnvelope:
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big"),
+            lambda task_key: _agent_rows(model_id="claude-opus-4-6"),
         )
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
@@ -7107,7 +7178,7 @@ class TestAst1072ConversationalEnvelope:
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda task_key: _agent_rows(brain_setting="Big"),
+            lambda task_key: _agent_rows(model_id="claude-opus-4-6"),
         )
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
@@ -8879,13 +8950,14 @@ class TestAst1391DeepseekBigOutputFloor:
         self,
         monkeypatch: pytest.MonkeyPatch,
         *,
-        provider: str,
-        brain: str,
+        model_id: str,
         max_tokens: int = 100,
+        floor: Any = None,
     ) -> Tuple[AsyncMock, AsyncMock]:
-        # AST-1879: provider label → catalog model_id; floor now rides the tier row.
-        model_id = {"deepseek": "deepseek-v4", "anthropic": "claude"}[provider]
-        agent_row, prompts = _agent_rows(brain_setting=brain, model_id=model_id)
+        # AST-1956: per-SKU model_id on the row; `floor` stubs a catalog max_tokens_floor (none ship since AST-1955).
+        if floor is not None:
+            monkeypatch.setitem(cfg.LLM_MODEL_CONFIG[model_id], "max_tokens_floor", floor)
+        agent_row, prompts = _agent_rows(model_id=model_id)
         agent_row = {**agent_row, "max_tokens": max_tokens}
         monkeypatch.setattr(
             agent_mod, "_resolve_task_prompts", lambda _tk: (agent_row, prompts)
@@ -8906,84 +8978,65 @@ class TestAst1391DeepseekBigOutputFloor:
         )
 
     @pytest.mark.asyncio
-    async def test_deepseek_big_floors_low_agent_row(
+    async def test_catalog_floor_lifts_low_agent_row(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # AC1: stored 16000 must not starve Big — hop sends the config floor.
-        floor = _DEEPSEEK_BIG_FLOOR
+        # Floor mechanism kept by do_task: a stored 16000 under a catalog floor sends the floor.
         send_ds, send_anth = self._patch_evaluate_jd(
-            monkeypatch, provider="deepseek", brain=cfg.BRAIN_BIG, max_tokens=16000
+            monkeypatch, model_id="deepseek-v4-pro", max_tokens=16000, floor=_STUB_FLOOR
         )
         out = await self._evaluate_jd()
         assert out["success"] is True
         send_anth.assert_not_called()
-        assert send_ds.await_args.kwargs.get("max_tokens") == floor
+        assert send_ds.await_args.kwargs.get("max_tokens") == _STUB_FLOOR
 
     @pytest.mark.asyncio
-    async def test_deepseek_big_agent_row_above_floor_wins(
+    async def test_agent_row_above_catalog_floor_wins(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # Floor, not cap: a stored value already above 384000 is kept.
+        # Floor, not cap: a stored value already above the floor is kept.
         send_ds, _ = self._patch_evaluate_jd(
-            monkeypatch, provider="deepseek", brain=cfg.BRAIN_BIG, max_tokens=400000
+            monkeypatch, model_id="deepseek-v4-pro", max_tokens=400000, floor=_STUB_FLOOR
         )
         out = await self._evaluate_jd()
         assert out["success"] is True
         assert send_ds.await_args.kwargs.get("max_tokens") == 400000
 
     @pytest.mark.asyncio
-    async def test_deepseek_medium_keeps_agent_row(
+    @pytest.mark.parametrize(("model_id", "max_tokens"), [("deepseek-v4-pro", 384000), ("deepseek-v4-flash", 100)])
+    async def test_deepseek_sends_row_max_tokens_as_stored(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
+        model_id: str,
+        max_tokens: int,
     ) -> None:
-        # AC2: Medium shares v4-pro SKU; must not pick up the Big floor.
-        send_ds, _ = self._patch_evaluate_jd(
-            monkeypatch, provider="deepseek", brain=cfg.BRAIN_MEDIUM, max_tokens=100
-        )
+        # Parent AC 6 wire half: the old Big 384k lives on the row now; no shipped catalog floor changes it.
+        assert cfg.LLM_MODEL_CONFIG[model_id]["max_tokens_floor"] is None
+        send_ds, _ = self._patch_evaluate_jd(monkeypatch, model_id=model_id, max_tokens=max_tokens)
         out = await self._evaluate_jd()
         assert out["success"] is True
-        assert send_ds.await_args.kwargs.get("max_tokens") == 100
+        assert send_ds.await_args.kwargs.get("max_tokens") == max_tokens
 
     @pytest.mark.asyncio
-    async def test_deepseek_little_keeps_agent_row(
+    async def test_anthropic_opus_keeps_agent_row(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # AC3: Little budget unchanged.
-        send_ds, _ = self._patch_evaluate_jd(
-            monkeypatch, provider="deepseek", brain=cfg.BRAIN_LITTLE, max_tokens=100
-        )
+        # The old Anthropic Big (claude-opus-4-6) stays on the agent row — never a DeepSeek-sized floor.
+        _, send_anth = self._patch_evaluate_jd(monkeypatch, model_id="claude-opus-4-6", max_tokens=100)
         out = await self._evaluate_jd()
         assert out["success"] is True
-        assert send_ds.await_args.kwargs.get("max_tokens") == 100
-
-    @pytest.mark.asyncio
-    async def test_anthropic_big_does_not_use_deepseek_floor(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        batch_token: Any,
-        stub_agent_storage: Dict[str, MagicMock],
-    ) -> None:
-        # AC4: Anthropic Big stays on agent-row / Opus default — never 384000.
-        floor = _DEEPSEEK_BIG_FLOOR
-        _, send_anth = self._patch_evaluate_jd(
-            monkeypatch, provider="anthropic", brain=cfg.BRAIN_BIG, max_tokens=100
-        )
-        out = await self._evaluate_jd()
-        assert out["success"] is True
-        sent = send_anth.await_args.kwargs.get("max_tokens")
-        assert sent == 100
-        assert sent != floor
+        assert send_anth.await_args.kwargs.get("max_tokens") == 100
 
     @pytest.mark.asyncio
     async def test_debug_true_max_tokens_line_shows_floor(
@@ -9001,28 +9054,26 @@ class TestAst1391DeepseekBigOutputFloor:
             orig_info(msg, *args, **kwargs)
 
         monkeypatch.setattr(agent_mod.logger, "info", _info)
-        self._patch_evaluate_jd(
-            monkeypatch, provider="deepseek", brain=cfg.BRAIN_BIG, max_tokens=16000
-        )
+        self._patch_evaluate_jd(monkeypatch, model_id="deepseek-v4-pro", max_tokens=16000, floor=_STUB_FLOOR)
         out = await self._evaluate_jd(debug=True)
         assert out["success"] is True
         assert not any("[DEBUG] do_task(" in m for m in logged)
 
     @pytest.mark.asyncio
-    async def test_craft_deepseek_big_thinking_off_uses_big_floor(
+    async def test_craft_effort_none_uses_catalog_floor(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # AC6: AST-1380 thinking-off stays; Big floor (not craft 32000) is what gets sent.
-        floor = _DEEPSEEK_BIG_FLOOR
-        assert floor > cfg.CRAFT_RUBRIC_MAX_TOKENS
+        # AC6: AST-1380 thinking-off (effort "none") stays; a catalog floor above craft 32000 is what gets sent.
+        assert _STUB_FLOOR > cfg.CRAFT_RUBRIC_MAX_TOKENS
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG["deepseek-v4-pro"], "max_tokens_floor", _STUB_FLOOR)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
             "_resolve_task_prompts",
-            lambda _tk: _agent_rows(brain_setting=cfg.BRAIN_BIG, model_id="deepseek-v4"),
+            lambda _tk: _agent_rows(model_id="deepseek-v4-pro"),
         )
         send = AsyncMock(
             return_value={
@@ -9046,8 +9097,8 @@ class TestAst1391DeepseekBigOutputFloor:
             ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "abrams"}},
         )
         assert out["success"] is True
-        assert send.await_args.kwargs["tier"]["thinking"] is False
-        assert send.await_args.kwargs.get("max_tokens") == floor
+        assert send.await_args.kwargs["tier"]["reasoning_effort"] == "none"
+        assert send.await_args.kwargs.get("max_tokens") == _STUB_FLOOR
 
 
 # Branches: workbench success stringify via _caller_response_blob (dict/list JSON vs
@@ -9248,7 +9299,7 @@ class TestAst1639CandidateIdSystemPrefix:
         )
         # AST-1879: second hop on a compat-protocol model.
         monkeypatch.setattr(
-            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4")
+            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4-flash")
         )
         await agent_mod.do_task(
             "evaluate_jd",
@@ -9266,7 +9317,7 @@ class TestAst1639CandidateIdSystemPrefix:
     ) -> None:
         send = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
-        route = cfg.resolve_model_brain("claude", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_DETERMINISTIC)
+        route = _route("claude-haiku-4-5")
         with pytest.raises(ValueError, match="candidate id required"):
             await agent_mod.run_adhoc(
                 "sys",
@@ -9335,7 +9386,7 @@ class TestAst1683ContactBaseResumeCurrentRead:
             "src.core.candidate.get_candidate",
             lambda cid: self._row() if cid == self._CID else None,
         )
-        agent_row, task_row = _agent_rows(brain_setting="Big")
+        agent_row, task_row = _agent_rows(model_id="claude-opus-4-6")
         task_row = dict(task_row)
         task_row["user_prompt"] = "X{$BASE_RESUME}Y"
         monkeypatch.setattr(
@@ -9458,7 +9509,7 @@ class TestAst1698HarvestSourceArtifactIds:
         batch_token: Any,
     ) -> None:
         uid = self._pin_base_resume(seeded_db, "attach")
-        agent_row, task_row = _agent_rows(brain_setting="Big")
+        agent_row, task_row = _agent_rows(model_id="claude-opus-4-6")
         task_row = dict(task_row)
         task_row["user_prompt"] = "A{$BASE_RESUME}B{$BASE_RESUME}C"
         monkeypatch.setattr(
@@ -9743,7 +9794,7 @@ class TestAst1846DoTaskAgentFailureFlag:
     @staticmethod
     async def _run(monkeypatch: pytest.MonkeyPatch, envelope: Dict[str, Any]) -> Dict[str, Any]:
         monkeypatch.setattr(
-            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4")
+            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4-flash")
         )
         monkeypatch.setattr(
             agent_mod,

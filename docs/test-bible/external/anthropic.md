@@ -66,3 +66,17 @@ Hollow / unusable response fail-closed + blank exception `error=` normalize. Pri
 | `send_to_deepseek` success + timesheet buckets | **`TestSendToDeepseekTimesheetMapping::test_record_timesheet_kwargs_match_deepseek_buckets`** |
 | `_parse_api_response` (unchanged) | **`TestDeepseekParseApiResponse`** |
 | `do_task` → DeepSeek provider wiring | **`TestAst492BrainSettingDoTask::test_send_to_deepseek_receives_vendor_model_and_tier_meta`** (**§7.13zd**) |
+
+### AST-1956 · AST-1953 (send the agent's settings on the wire)
+
+**Primary manifest:** **`docs/test-bible/core/agent.md`** § AST-1956. Compat side: [`llm_compat.md`](llm_compat.md) § AST-1956.
+
+`send_to_anthropic` takes `reasoning_effort`. New `_effort_body(effort)`: empty → `{}`, `"none"` → `{"thinking": {"type": "disabled"}}`, anything else → `{"output_config": {"effort": v}}`, sent via `extra_body` (no SDK vocabulary). `temperature` is sent only when not `None`. Tests record the `messages.create` kwargs through `_recording` around `fake_anthropic_client`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 2 empty settings: no `temperature`, no effort body | `send_to_anthropic` | **`TestAst1956SettingsOnTheWire::test_empty_settings_send_nothing`** |
+| New — AC 3 temperature / effort exactly as set (incl. 0.0, `none`, free-form values) | `send_to_anthropic`, `_effort_body` | **`::test_ac3_temperature_and_effort_exactly_as_set`** (6) |
+| New — AC 4 a 400 rejection is a plain `success: False` | `send_to_anthropic` | **`::test_ac4_rejected_setting_is_a_plain_failure`** |
+
+**Broken / obsolete:** none. **Integration:** none.
