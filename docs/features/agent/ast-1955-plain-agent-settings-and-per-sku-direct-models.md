@@ -403,7 +403,7 @@ Revision 1 — 2026-10-03
 Driven by: Joan `[plan-discuss] round=1 concern` (`99b70f203`) — fix-now: AC 6 stubbed-client check unmapped; discuss: AC 8 "field-for-field" meaning.
 Changes: Added **AC boundaries** after Scope gate. It maps AC 5–8, marks AC 6's stubbed-client `max_tokens` wire check N/A on this sub (closes with AST-1956's call path), and names this sub's catalog-side part of that check (`deepseek-v4-pro`: no floor, default 16000). Stage 3 step 2 now defines "field-for-field" as same settings fields and same value rule, not row parity with the seed, and names the exact change if Susan wants a seed copy instead. No stage steps, files or estimate changed.
 
-## Joan validate
+## Joan validate — round 1 (REVISE, superseded by round 2)
 
 [plan-discuss] round=1 concern  
 [plan-rubric] REVIEW (Commit: 3593697ee) AC6 stub untraced  
@@ -448,3 +448,45 @@ Changes: Added **AC boundaries** after Scope gate. It maps AC 5–8, marks AC 6'
 - **Recommendation:** None on plan text.
 
 context_tokens≈42000
+
+## Joan validate — round 2
+
+[plan-rubric] PROCEED (Commit: e4253c590) Plan traceability complete
+
+**Ticket:** AST-1955  
+**Overall:** APPROVED  
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51  
+**Publish ref:** `sub/AST-1953/AST-1955-plain-agent-settings` @ `e4253c590d8eb099237f68a636a10657235c257f`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+
+## Traceability
+
+5 → **AC boundaries** + Stage 1/2 done-when `rg` (full `src/` deferred per table) · 6 → Stage 1 step 8/11 + **AC boundaries** (ids here; stub wire N/A → AST-1956; catalog floor/default in `test_config.py`) · 7 → Stage 1 step 11 expected results · 8 → Stage 3 + **AC boundaries** / **Sequencing risk** for revert collection
+
+## Findings
+
+### acceptable
+
+- **Location:** Plan tail — `## Joan validate` through prior REVISE artifact (after `## Revisions`)
+- **Finding:** Round-1 validate stdout was appended into the published plan doc; belongs on the issue doc only and still describes the pre-`e4253c590` traceability gap.
+- **Recommendation:** Chuckles strips that block on the next plan publish; no engineer stage change.
+
+- **Location:** Plan structure — no `## Self-assessment`
+- **Finding:** Estimate confirm + staged done-when + **Sequencing risk** carry complexity; same as prior pass.
+- **Recommendation:** None blocking.
+
+## Plan Discuss
+
+One completed round (`round=1 concern` / `round=1 reply`). Round-1 fix-now (AC 6 stub) and discuss (AC 8 wording) are addressed in **AC boundaries** and Stage 3 step 2.
+
+context_tokens≈52000
+[plan-rubric] PROCEED (Commit: e4253c590) Plan traceability complete
+```
+
+AST-1955 plan approved.
+[AST-1953 | AST-1955] Joan/validate validate-plan - complete a7560af8 model=composer-2.5 - (19s) > OK
