@@ -752,3 +752,19 @@ The `evaluate_jd` `cache_prompt` keeps X0-when-silent and names QC as the one ne
 ```
 
 Repro node ids: `test_config.py::TestAst1084EvaluateJdCriteria::test_qc_content_forbids_x_and_grade_table_stays_abcf`, `test_repo_admin_json.py::TestAst1910EvaluateJdQcNeverXPrompt::test_catalog_evaluate_jd_cache_prompt_qc_exception`, `::test_fixture_evaluate_jd_row_lockstep_with_catalog`.
+
+### AST-1948 · AST-1946 (agent repo JSON: `temperature` → `mode`)
+
+**Primary manifest:** **`docs/test-bible/core/agent.md`** § AST-1948. The repo-JSON agent columns and seed modes themselves are pinned in [`../utils/config.md`](../utils/config.md) § AST-1947 (`test_agent_repo_json_columns_and_seed_modes`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 7: a repo file row with `mode: "Wild"` fails revert with `Invalid mode 'Wild'`, and the DB row is unchanged | `revert_repo_admin_json_table` → `apply_agent_repo_json_startup` | `TestAst783RepoAdminJsonDivergence::test_revert_rejects_bad_mode_in_repo_file` |
+| Revised — `save_agent` fixtures pass `mode`. Revert restores `mode` along with content and size (local edit Creative → file Deterministic) | `src/data/database.py` | `TestAst783RepoAdminJsonDivergence` (3 revised) |
+| Revised — seed rows have `mode`, with no `temperature` / `model_code` | `data/admin/agent.json` | `TestAst787AgentRepoJsonSeed::test_repo_rows_use_repo_columns_only` · `TestAst1878AgentSeedModels::test_contact_estelle_copies_analysis_content_with_catalog_defaults` |
+| Revised — export fixture row shape (`mode`) | fixture | `TestExportRepoAdminJsonToFiles::test_writes_utf8_arrays_for_both_tables` |
+| Revised (still pre-existing red) — the `temperature == 0` pin is now `"temperature" not in estelle`. The test still fails later on the AST-1399 craft-pin lengths, as on `ae494c618` | seed | `TestAst1400EstelleCraftSeedPins::test_estelle_and_craft_match_ast1399_export` |
+
+`TestAst787AgentRepoJsonSeed::test_repo_rows_match_fixture_repo_column_mapping` is left alone. `AST787_AGENT_REPO_COLUMNS` still names `temperature` for the AST-756 UAT fixture mapping, and that test is already red on `ae494c618`. Schema-ensure (`PRAGMA table_info`) and repo-row mode validation at the data layer: [`../data/database/agents.md`](../data/database/agents.md) § AST-1948.
+
+**Integration:** none.

@@ -60,3 +60,23 @@ Narrow manifest (**agents cluster**):
 | --- | --- | --- |
 | New — `model_id` save/update/list, catalog SKU as `model_code` / `resolved_model_key` (None without model), per-model size check on insert/update/`update_agent`, repo JSON `model_id` required + size check before writes | `src/data/database.py` | `TestAst1878AgentModelField` |
 | Revised — repo JSON row helper carries `model_id` (default `claude`) | fixture | `_agent_repo_row` → `TestAst782AgentRepoJsonStartup` |
+
+### AST-1948 · AST-1946 (agent `mode` column; `temperature` / `model_code` dropped)
+
+**Primary manifest:** **`docs/test-bible/core/agent.md`** § AST-1948.
+
+`save_agent(agent_id, content, *, mode, …)` requires a valid mode on every write (insert and update) and has no `temperature` parameter. `update_agent` allows only {content, model_id, brain_setting, mode, max_tokens} and validates `mode` when it is passed. `_ensure_agent_schema` adds `mode` and drops `temperature` / `model_code` (native `ALTER TABLE … DROP COLUMN`). It is DDL only, so existing rows keep their data with `mode` NULL until AST-1950. `_expose_agent_public` no longer sets `model_code`. `resolved_model_key` is the catalog SKU and does not depend on mode, so mode-less rows still list. The repo JSON loader validates `mode` per row before any write.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 2 / 7: schema ensure on the pre-1948 table (with `model_code` + `temperature` and a live row). `PRAGMA table_info` shows `mode` and neither old column; content / max_tokens are kept; `mode` is None; the SKU still resolves; the row still lists | `_ensure_agent_schema`, `get_agent`, `list_agents` | `TestAst1948AgentModeColumn::test_schema_ensure_drops_retired_columns_and_adds_mode` |
+| New — `save_agent` `"Wild"` on insert (nothing written) and on update (row unchanged) | `save_agent` | `…::test_save_agent_rejects_unknown_mode` |
+| New — `update_agent` mode Creative ok; `"Wild"` / None raise; `temperature` / `model_code` kwargs ignored (rowcount 0) | `update_agent` | `…::test_update_agent_mode_validated_and_retired_keys_ignored` |
+| New — repo JSON `"Wild"` (row 2) / None mode raise; an old-shape row (`temperature` instead of `mode`) fails the key check; nothing written | `apply_agent_repo_json_startup` | `…::test_repo_json_rejects_bad_or_missing_mode` |
+| Revised — every `save_agent` call passes `mode`. Insert/update round-trip mode, and the row has no `temperature` / `model_code` | `save_agent` / `get_agent` / `list_agents` | `TestSaveAgent`, `TestListAgents`, `TestDeleteAgent`, `TestCountAgentTaskRefs`, `TestAst782AgentRepoJsonStartup`, `TestAst1878AgentModelField` |
+| Revised — `_agent_repo_row` `temperature` → `mode` (default Deterministic). Apply/export carry mode | fixture | `TestAst782AgentRepoJsonStartup` |
+| Revised — `model_code` assertions → `"model_code" not in row`. `resolved_model_key` is the only SKU field | `_expose_agent_public` | `TestAst1878AgentModelField::test_save_with_model_exposes_catalog_sku` · `::test_model_less_row_exposes_no_sku_and_uses_global_tiers` |
+
+Tool note: the workspace `.cursorignore` has an unanchored `data/` rule, so it also matches `tests/component/data/` and `docs/test-bible/data/`. Editor file tools refuse those paths, but shell and git work normally.
+
+**Integration:** none.
