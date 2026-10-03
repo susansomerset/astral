@@ -158,3 +158,15 @@ Confirm Chuckles estimate: 2 — agree
   **Recommendation:** Keep; optional future API field is out of AST-1949.
 
 context_tokens≈52000
+
+## Review
+
+- **Branch:** `origin/sub/AST-1946/AST-1949-manage-agents-mode`
+- **Build tip:** `06b26a4ee`. One stage (`AdminAgentPrompts.tsx`): Mode select and Mode column in, temperature input / Temp column / temperature pre-fill out. `Agent` / `BrainSizeRow` drop `temperature`, `model_code` and `default_temperature`.
+- **Build notes:** built as planned, steps 1–16 verbatim; Joan's two discuss items needed no change.
+- **Verified on the shipped tree:**
+  - Step 17 grep (`temperature|default_temperature|model_code|editTemp|addTemp|onTempChange` on the page) is empty, so AC 7's page grep holds.
+  - `npx tsc -b --noEmit` and `npm run build` pass. `eslint src/pages/AdminAgentPrompts.tsx` is clean.
+  - Project-wide `npm run lint` fails with 32 problems (27 errors, 5 warnings), all in other files (`ListPage.tsx`, `Toast.tsx`, `JobsSkipped.tsx`, …). That count is identical with and without this change, so it is pre-existing and outside this ticket. This plan's Stage 1 "Done when" line assumed a clean project lint.
+- **Process note:** the epic worktree was switched to `sub/AST-1946/AST-1950-remap-migration` by the AST-1950 build mid-run, so the first AST-1949 commit (`0dc3298e9`) landed on AST-1950's local branch. Its push was rejected (non-fast-forward), so nothing reached the wrong ref. The same tree change was recommitted onto `a7a58a0dc` as `06b26a4ee` and pushed. `0dc3298e9` was removed from the AST-1950 local branch with `reset --keep` (its uncommitted doc edit intact). `origin/sub/AST-1946/AST-1950-remap-migration` was never touched.
+- **For qa-child:** see § Tests expected to move. Fixtures still carry `default_temperature` / `model_code` / `temperature`. The Add test should expect `field("Mode")` = `Deterministic` with options `["Deterministic", "Creative"]` and a POST body with `mode` and no `temperature`. The Edit PUT body gains `mode`. An unmigrated row (`mode: null`) shows `—` in the list and `— choose mode —` in Edit.
