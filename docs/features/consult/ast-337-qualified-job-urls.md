@@ -491,3 +491,25 @@ context_tokens≈15000
 ---
 
 [code-rubric] PROCEED (Commit: e39323217) Bug-repro tests+bible OK
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/d18c19e0860ff92aeb5a9f117364d5db/62c59b06-204c-462a-bc99-5d192b4f2716/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/802bfb82-9139-4878-b6ac-f8e5faa36f92/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/d18c19e0860ff92aeb5a9f117364d5db/25939c39-ba27-4039-b981-ebfa3367a97d/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1888 (parent) | ftr/AST-1888-invalid-job-link-error-decorator |
+| AST-1893 | sub/AST-1888/AST-1893-restore-invalid-job-link-error-class |
+| AST-1895 | sub/AST-1888/AST-1895-cover-invalid-job-link-error-tests-v2 |
+
+**Epic worktree:** `astral-AST-1888/` — one active sub checked out at a time.
