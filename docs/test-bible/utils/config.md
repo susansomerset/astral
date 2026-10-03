@@ -4503,6 +4503,8 @@ Config gains `LLM_SERVER_CONFIG` / `LLM_MODEL_CONFIG`, catalog resolvers, catalo
 
 ### AST-1938 · AST-1937 (OpenRouter model shortlist in the catalog)
 
+> **AST-1947:** Frozen record. The 76-slug table, Little/Medium-by-reasoning sizes, temperature 1.0 defaults, `OPENROUTER_TIER_DEFAULTS` / `OPENROUTER_PIN_QUANTIZATIONS`, the hand-priced skip and `kimi-k2.6-openrouter` are gone, and so is `tests/component/utils/fixtures/ast1937_openrouter_brief.txt`. `TestAst1938OpenRouterShortlist` keeps only the two validator raises; catalog content moved to `TestAst1947CatalogByQuantization` (§ AST-1947 below). Do not re-run the manifest below as written.
+
 `OPENROUTER_MODEL_TABLE` (one row per brief slug: price, upstream provider routing slug, reasoning flag, pinned provider max output) is expanded by `_build_openrouter_models()` into `LLM_MODEL_CONFIG` after the hand-written entries. That gives 75 new OpenRouter models: `moonshotai/kimi-k2.6` is skipped because the hand-written `kimi-k2.6-openrouter` already prices it. Every new model offers Little; reasoning rows also offer Medium; none offers Big. Defaults are temperature 1.0 and `min(16000 Little | 32000 Medium, pinned max output)`. Brain-size rows gain optional `request_extras` (the `provider` pin, fallbacks off; `google/gemma-4-31b-it` also carries `quantizations: ["fp8"]`). `kimi-k2.6-openrouter` is pinned to SiliconFlow and repriced to 0.77 / 3.4 / 0.14, keeping Little / Big. `validate_llm_provider_environment` now also rejects a non-dict `request_extras` and any same-server ambiguous SKU. `llm_compat` merges tier extras last ([`../external/llm_compat.md`](../external/llm_compat.md) § AST-1938). Agent save on new models: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-1938.
 
 | Area | Source | Component tests |
@@ -4548,3 +4550,59 @@ Expect no output.
 3. **AC 8 boot:** `ASTRAL_DB_DIR=$(mktemp -d) python -c "from src.utils.config import validate_llm_provider_environment as v; v()"` returns without raising.
 
 **Pass criterion:** item 1 green (134 on the publish tip), item 2 empty, item 3 clean. Not the zero-arg harness. Baseline (`origin/dev` product vs AST-1938 product, same files): exactly six existing nodes changed, all revised above (four in `test_llm_compat.py`, two in `TestAst1877LlmCatalogConfig`). The other reds in `test_config.py` / `test_api_admin.py` sit in unrelated classes and are identical with `origin/dev` product, so they are outside this manifest.
+
+### AST-1947 · AST-1946 (catalog by quantization, mode-aware resolver, settings cleanup)
+
+`OPENROUTER_MODEL_TABLE` is now the AST-1946 brief's 95 slugs: `slug → (IN, OUT, CACHE, host routing slug, host quantization, reasoning, host max output)`. `_build_openrouter_models()` gives each row **one** brain size from `OPENROUTER_QUANT_BRAIN_SIZE` (int4/fp4 → Little, int8/fp8 → Medium, fp16/bf16 → Big), `can_think` + `thinking_params` (adaptive when the host reasons, else `{}`), `max_output_tokens`, a stored listing `default_max_tokens = min(16000, host max)`, and `request_extras = {"provider": {"order": [host], "allow_fallbacks": False, "quantizations": [quant]}}` on every row. `kimi-k2.6-openrouter` is retired (`moonshotai/kimi-k2.6` is a plain row, Inceptron int4 → Little); catalog = 98 models. `AGENT_MODE_CONFIG` (Deterministic: thinking off, 0.2, cap 16000; Creative: thinking on, 0.6, cap 32000) + `validate_agent_mode`. `resolve_model_brain(model_id, brain_setting, mode)` — `mode` required — returns the stored size plus `thinking = mode thinking AND can_think`, `thinking_params`, `temperature`, and on models with `max_output_tokens` a `default_max_tokens = min(mode cap, host max)`. Stored sizes carry no `thinking` / `thinking_params` / `default_temperature`; `AGENT_CONFIG` loses `default_temperature`. Removed: `infer_brain_setting_from_legacy_model_code`, `brain_setting_for_anthropic_agent_key`, `admin_brain_setting_catalog`, `OPENROUTER_TIER_DEFAULTS`, `OPENROUTER_PIN_QUANTIZATIONS`. `REPO_ADMIN_JSON_CONFIG` agent columns: `temperature` → `mode`; `data/admin/agent.json` + `docs/uat-fixtures/AST-756/expected-agent.json` follow (Big agents Creative). Wire side: [`../external/llm_compat.md`](../external/llm_compat.md) § AST-1947.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 openrouter ids = brief (both set differences); fixture is 95 rows | `OPENROUTER_MODEL_TABLE` / `_build_openrouter_models` | `TestAst1947CatalogByQuantization::test_openrouter_catalog_equals_brief` · `::test_brief_fixture_has_95_slugs` |
+| New — AC 2 one size per model from quantization (literal map + all 95 + spot checks) | `OPENROUTER_QUANT_BRAIN_SIZE` / builder | `…::test_one_brain_size_per_model_from_quantization` |
+| New — AC 3 brief pricing, cache write 0 | builder / `get_sku_pricing` | `…::test_pricing_matches_brief` |
+| New — AC 4 host + brief-quant pin, fallbacks off (all 95 + remm / gemma spots); brief PROVIDER ↔ one routing slug | `_openrouter_pin` | `…::test_every_tier_pins_host_and_brief_quantization_fallbacks_off` · `::test_brief_provider_maps_to_one_routing_slug` |
+| New — builder reasoning yes / no → `can_think` + payload; 57 reasoning hosts | builder | `…::test_can_think_follows_host_reasoning_flag` |
+| New — AC 5 resolved output default by mode ≤ host max (all 95 × 2 modes + spots); stored listing default; direct model keeps stored default (no cap) | `resolve_model_brain` | `…::test_output_default_by_mode_capped_at_host_max` |
+| New — AC 6 no stored tier keeps thinking / temperature keys; direct models (sizes, SKUs, floors, defaults, pricing fields) equal pre-epic `origin/dev`; direct `can_think` | `LLM_MODEL_CONFIG` | `…::test_stored_tiers_carry_no_thinking_or_temperature` · `::test_direct_models_unchanged_from_pre_epic` |
+| New — AC 8 (config half) Kimi-OpenRouter gone, 98 models, boot passes, removed symbols absent | catalog / `validate_llm_provider_environment` | `…::test_kimi_openrouter_retired_and_catalog_boots_with_98` |
+| New — mode constants, `validate_agent_mode` ok / raise, resolver rejects unknown mode | `AGENT_MODE_CONFIG` / `validate_agent_mode` / `resolve_model_brain` | `…::test_agent_mode_constants_and_validation` |
+| New — mode wiring (six plan cases: glm-4.6 both modes, phi-4 Creative, kimi-k2.6 Creative, deepseek-v4 Big Creative, claude Medium Deterministic) | `resolve_model_brain` | `…::test_mode_decides_thinking_and_temperature` |
+| New — AC 7 repo-JSON agent columns; seed modes (7 agents); fixture agrees per `agent_id`, no `temperature` | `REPO_ADMIN_JSON_CONFIG` + seed files | `…::test_agent_repo_json_columns_and_seed_modes` |
+| Revised — resolver takes `mode`; Kimi-OpenRouter → `moonshotai/kimi-k2.6` Little Creative (resolved tier shape) | `resolve_model_brain` | `TestAst1877LlmCatalogConfig::test_resolve_model_brain_shape` · `TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_tiers` · `TestAst1391DeepseekBigMaxTokensFloor::test_big_tier_floor` |
+| Revised — Claude tiers: output default kept, `default_temperature` gone (replaces `test_manage_agents_catalog_shape_via_resolve_matches_three_tiers`, whose `/agents/brain_settings` route no longer exists) | `AGENT_CONFIG` | `TestAst492LlmBrainTierConfig::test_anthropic_tiers_carry_output_default_not_temperature` |
+| Retired — helper removed by Scope (absence asserted in AC 8 test) | — | `TestAst492LlmBrainTierConfig::test_infer_brain_setting_from_legacy_model_code` · `::test_brain_setting_for_anthropic_agent_key_inverse` |
+| Retired — AST-1938 catalog content (76-slug brief, reasoning sizes, temp 1.0, quant one-off, 79 count) → AST-1947 rows above; `TestAst1938OpenRouterShortlist` keeps its two validator raises | — | `TestAst1938OpenRouterShortlist::test_brief_fixture_has_76_slugs` · `::test_every_brief_slug_catalogued_on_openrouter` · `::test_pricing_matches_brief` · `::test_brain_sizes_follow_reasoning_flag_no_big` · `::test_defaults_temperature_one_and_capped_max_tokens` · `::test_table_provider_slug_is_a_bijection_of_brief_provider` · `::test_every_openrouter_tier_pins_its_table_provider_fallbacks_off` · `::test_openrouter_pin_quantization_branch` · `::test_catalog_count_and_skip_of_hand_priced_slug` |
+
+**Brief fixture:** `tests/component/utils/fixtures/ast1946_openrouter_brief.txt` is the AST-1946 Original brief table verbatim (header + 95 rows, with QUANT). AC 1–4 compare config against it, not against config's own table. `ast1937_openrouter_brief.txt` is deleted (no reader left).
+
+`LOCKED_AT_100`: `--cov-branch` over `test_config.py` on the publish tip reports no missing line or partial branch in any AST-1947 hunk of `config.py` (builder, `_openrouter_pin`, mode constants, `validate_agent_mode`, `resolve_model_brain`).
+
+**Integration:** none (no `tests/integration/` scenario reads the LLM catalog or agent mode).
+
+**Sequencing (option A, AST-1951):** `src.data.database` does not import on this sub until sibling **AST-1948** lands, so every `test_config.py` node that lazily imports `database` / core fails with `ImportError: cannot import name 'infer_brain_setting_from_legacy_model_code'`. Those flip green on `ftr` after AST-1948; do not chase them here. `test_repo_admin_json.py`, `test_agent.py`, `test_api_admin.py` are AST-1948's.
+
+## QA test manifest
+
+1. **Component (narrowed — must be all green):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/utils/test_config.py::TestAst1391DeepseekBigMaxTokensFloor \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst1938OpenRouterShortlist \
+  tests/component/utils/test_config.py::TestAst1947CatalogByQuantization \
+  tests/component/external/test_llm_compat.py
+```
+
+2. **Whole files (informational — expected reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/utils/test_config.py tests/component/external/test_llm_compat.py -q --tb=line
+```
+
+Every failure must be either the `infer_brain_setting_from_legacy_model_code` ImportError (sibling gap above) or one of the 21 pre-existing `test_config.py` reds that fail identically on `origin/dev` product with this test tree (`TestAst1060…`, `TestAst1061…`, `TestAst1071…`, `TestAst1098…`, `TestAst1127…::test_schema_required_false`, `TestAst1195…` ×2, `TestAst1214…`, `TestAst1229…`, `TestAst1386…`, `TestAst1529…`, `TestAst1557…`, `TestAst1562…` ×2, `TestAst1621…`, `TestAst1726…`, `TestAst721…`, `TestAst853…`, `TestAst901…`, `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` · `::test_resolves_cover_letter_signature_from_profile`). Any other failure is real.
+
+3. **AC 9 (config half):** `rg -n "apodex/|bytedance/ui-tars|ibm-granite/|inclusionai/|meta/muse|microsoft/|minimax/|sao10k/l3|thedrummer/|z-ai/glm-4|moonshotai/kimi-k2\.[57]" src/ --glob '!src/utils/config.py'` and `rg -n "kimi-k2.6-openrouter" src/` — expect no output.
+
+**Pass criterion:** item 1 green (84 on the publish tip), item 2 reds limited to those two categories, item 3 empty. Not the zero-arg harness. On `ftr` after AST-1948: AC 6 / AC 9 `src/`-wide greps, `rg -n "temperature" src/ui/frontend/src/pages/AdminAgentPrompts.tsx` (AST-1949), and `GET /api/admin/agents/models` = 98.
