@@ -490,3 +490,9 @@ context_tokens≈52000
 
 AST-1955 plan approved.
 [AST-1953 | AST-1955] Joan/validate validate-plan - complete a7560af8 model=composer-2.5 - (19s) > OK
+
+## Review
+
+- **Branch:** `sub/AST-1953/AST-1955-plain-agent-settings`
+- **Build commits:** `2857d1738` (Stage 1 config) · `8376631f9` (Stage 2 database) · `8708be5fd` (Stage 3 seed + fixture)
+- **Build notes:** all three stages executed as written; each stage's Done-when checks were run green on a temp SQLite DB. No deviations. Imports of `src/core/agent.py`, `src/ui/api/api_admin.py` and `scripts/migrations/remap_openrouter_agents.py` break until AST-1956 / AST-1957 / AST-1958 land, as the parent's Sequencing section expects (see **Sequencing risk**).
