@@ -170,3 +170,57 @@ context_tokens≈52000
   - Project-wide `npm run lint` fails with 32 problems (27 errors, 5 warnings), all in other files (`ListPage.tsx`, `Toast.tsx`, `JobsSkipped.tsx`, …). That count is identical with and without this change, so it is pre-existing and outside this ticket. This plan's Stage 1 "Done when" line assumed a clean project lint.
 - **Process note:** the epic worktree was switched to `sub/AST-1946/AST-1950-remap-migration` by the AST-1950 build mid-run, so the first AST-1949 commit (`0dc3298e9`) landed on AST-1950's local branch. Its push was rejected (non-fast-forward), so nothing reached the wrong ref. The same tree change was recommitted onto `a7a58a0dc` as `06b26a4ee` and pushed. `0dc3298e9` was removed from the AST-1950 local branch with `reset --keep` (its uncommitted doc edit intact). `origin/sub/AST-1946/AST-1950-remap-migration` was never touched.
 - **For qa-child:** see § Tests expected to move. Fixtures still carry `default_temperature` / `model_code` / `temperature`. The Add test should expect `field("Mode")` = `Deterministic` with options `["Deterministic", "Creative"]` and a POST body with `mode` and no `temperature`. The Edit PUT body gains `mode`. An unmigrated row (`mode: null`) shows `—` in the list and `— choose mode —` in Edit.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1949
+**Publish ref:** `e55b2cf87decfd8464f4ff23fc42348100a1976c` (`origin/sub/AST-1946/AST-1949-manage-agents-mode`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+(none — ticket § Citations and plan Canon Scope explicitly empty; no frozen directives to score)
+
+## Column diff vs plan stage
+(aligned) — Joan: no canon rows; plan **APPROVED** with two **discuss** items; diff review matches plan Stages 1–16 and does not reopen either discuss item.
+
+## Frame diff
+- [ ] **AC 7 (epic composite):** Full `src/` helper grep and `LLM_MODEL_CONFIG` stored-tier checks remain **ftr** gates with AST-1947/1948 (this child owns only the `AdminAgentPrompts.tsx` temperature grep — satisfied on tip).
+- [ ] **Add-form default mode:** Optional product follow-up if Susan wants Big-first size to pre-select Creative on Add (Joan discuss; current behavior: always `Deterministic` on open).
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+- **Severity:** discuss  
+  **Location:** `openAddModal` / `setAddMode(AGENT_MODES[0])`  
+  **Finding:** Add always opens on Deterministic even when the first catalog size is Big; parent seed rule (Big → Creative) applies to DB/seed rows, not the Add modal default.  
+  **@susan:** Should Add derive initial mode from selected brain size, or keep Deterministic until the operator changes it?  
+  **Default:** Keep shipped behavior (plan + Joan discuss); no `resolve-child` change.
+
+- **Severity:** discuss  
+  **Location:** Edit save with `mode: null` from API  
+  **Finding:** Unmigrated rows show `— choose mode —`; Save still PUTs `mode: ""` until the operator picks a mode, which AST-1948 correctly answers with 400. No client-side block before submit.  
+  **Default:** Rely on API validation until AST-1950 fills modes; optional UX guard is out of scope unless Susan wants it in AST-1949 follow-up.
+
+### advisory
+- **Three-dot diff vs `origin/dev`:** Includes the full AST-1946 stack (#1–#2 product files, AST-1950 migration script/tests on this ref’s history, Betty bibles). AST-1949 **product** delta is a single file: `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` (`06b26a4ee`). Scope gate holds.
+- **sibling test carry:** `test_AdminAgentPrompts.test.tsx` + `docs/test-bible/frontend/pages.md` (AST-1949); `test_remap_openrouter_agents.py` appears on this ref from AST-1950 `merge-tests` ancestry — not AST-1949 product scope.
+- **Lint:** Build notes record project-wide `npm run lint` failures pre-existing in other files; `eslint` on `AdminAgentPrompts.tsx` clean. Stage 1 “Done when” assumed full-project lint green — document as known baseline gap, not a regression from this diff.
+- **Worktree / branch hygiene:** Issue doc Review records the AST-1950 worktree mix-up and recommit onto the correct ref; `origin/sub/AST-1946/AST-1949-manage-agents-mode` tip is authoritative for this review (read via `git show`, not shared checkout).
+
+## What's solid
+- **Plan fidelity:** `BrainSizeRow` drops `default_temperature`; `Agent` drops `temperature` / `model_code`, gains `mode`; list Temp → Mode; `applyTierDefaults` max-tokens only; POST/PUT bodies send `mode` not `temperature`; `BrainSettingFields` Mode `<select>` with exactly Deterministic / Creative; `AGENT_MODES` literal per plan decision.
+- **AC 7 (this child’s half):** Step-17 grep on the page is empty (`temperature`, `default_temperature`, `model_code`, legacy state names).
+- **AC 8 / tests:** Betty’s `test_AdminAgentPrompts.test.tsx` adds Mode column / no Temp, no Temperature field, POST/PUT with `mode` and without `temperature`, unmigrated `mode: null` placeholder behavior.
+- **Boundaries:** No `src/core`, `src/data`, or `src/ui/api` changes in AST-1949’s code commit; aligns with AST-1948 backend contract described in the plan preamble.
+
+## Recommended actions (downstream — not Radia)
+- Chuckles: append artifact, `docs(AST-1949): Radia review — clean`, push, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED**.
+- **merge-child:** Land with AST-1948 (and epic stack) before parent UAT; AST-1950 script on this ref history does not block AST-1949 UI review.
+- **Operators:** Run AST-1950 remap after deploy so Edit forms are not stuck on empty mode for live rows.
+
+context_tokens≈24000
