@@ -532,3 +532,84 @@ class TestAst1959ProbeHostLock:
 
         out = await _send(tier=_tier(**self.BF16), record_timesheet=boom)
         assert out["success"] is True and len(c.calls) == 2
+
+
+# AST-1966: every call gets a timesheet row. Branches (_timesheet_kwargs_for): token counts raise → zero tokens,
+# logged once; catalog price raises → zero calc_cost_*, logged once; both clean → unchanged (TestAst1877ResultContract).
+class TestAst1966UnpricedRowRecorded:
+    _ZERO_CALC = dict.fromkeys(("calc_cost_cache_write", "calc_cost_cache_read", "calc_cost_no_cache_input", "calc_cost_output"), 0.0)
+
+    @staticmethod
+    def _errors(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+        return [r for r in caplog.records if r.name == "src.external.llm_compat" and r.levelno >= logging.ERROR]
+
+    @pytest.mark.asyncio
+    async def test_pricing_raises_row_recorded_with_zero_cost_and_counts(
+        self, monkeypatch: pytest.MonkeyPatch, client: _RecordingClient, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # AC 3 (llm_compat half) — record_timesheet called once, calc_cost_* all 0, the response's token counts.
+        def unpriced(*_a: Any, **_k: Any) -> dict:
+            raise ValueError("Unknown SKU 'moonshotai/kimi-k2.6'")
+
+        monkeypatch.setattr(llm_compat, "calculate_cost_components_from_counts", unpriced)
+        recorded: list[dict] = []
+        with caplog.at_level(logging.ERROR, logger="src.external.llm_compat"):
+            out = await _send(record_timesheet=lambda **kw: recorded.append(kw))
+        assert out["success"] is True
+        assert len(recorded) == 1
+        row = recorded[0]
+        assert {k: row[k] for k in self._ZERO_CALC} == self._ZERO_CALC
+        # _Msg usage: input 100, output 25, cache read 50, cache write 5.
+        assert (row["cache_read_tokens"], row["total_no_cache_input_tokens"], row["total_output_tokens"], row["cache_write_tokens"]) == (50, 100, 25, 5)
+        assert (row["agent_req_id"], row["model_code"], row["provider"], row["agent_performance"]) == (
+            "msg_compat_test", "moonshotai/kimi-k2.6", "openrouter", "success")
+        errors = self._errors(caplog)
+        assert len(errors) == 1 and errors[0].exc_info and "timesheet catalog price" in errors[0].getMessage()
+
+    @pytest.mark.asyncio
+    async def test_probe_token_counts_raise_row_recorded_with_zero_tokens(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # The token-count fallback is live on the probe row only: the main call path reads usage itself
+        # before the helper (unchanged), so an unreadable usage there still fails the call. First read = probe.
+        monkeypatch.setattr(openrouter, "_hosts", {})
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: _HostClient())
+        real, reads = llm_compat.usage_to_token_counts, []
+
+        def unreadable_once(usage: Any) -> dict:
+            reads.append(usage)
+            if len(reads) == 1:
+                raise AttributeError("usage has no input_tokens")
+            return real(usage)
+
+        monkeypatch.setattr(llm_compat, "usage_to_token_counts", unreadable_once)
+        recorded: list[dict] = []
+        token = log_batch_id.set("batch-1966")
+        try:
+            with caplog.at_level(logging.ERROR, logger="src.external.llm_compat"):
+                out = await _send(tier=_tier(quantization="bf16", provider_allow_fallbacks=True),
+                                  record_timesheet=lambda **kw: recorded.append(kw))
+        finally:
+            log_batch_id.reset(token)
+        assert out["success"] is True
+        probe, call = recorded
+        assert (probe["cache_read_tokens"], probe["total_no_cache_input_tokens"], probe["total_output_tokens"], probe["cache_write_tokens"]) == (0, 0, 0, 0)
+        # Zero tokens priced on a real SKU = zero cost.
+        assert {k: probe[k] for k in self._ZERO_CALC} == self._ZERO_CALC
+        assert call["total_output_tokens"] == 25
+        errors = self._errors(caplog)
+        assert len(errors) == 1 and errors[0].exc_info and "timesheet token counts" in errors[0].getMessage()
+
+    @pytest.mark.asyncio
+    async def test_failure_path_unpriced_row_still_recorded(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Same helper feeds the failure rows: unparseable JSON + unpriced → one failure row, zero cost.
+        c = _RecordingClient(text="not json at all")
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: c)
+        monkeypatch.setattr(llm_compat, "calculate_cost_components_from_counts", lambda *_a, **_k: (_ for _ in ()).throw(ValueError("unpriced")))
+        recorded: list[dict] = []
+        out = await _send(response_format="json", record_timesheet=lambda **kw: recorded.append(kw))
+        assert out["success"] is False
+        assert [r["agent_performance"] for r in recorded] == ["failure"]
+        assert {k: recorded[0][k] for k in self._ZERO_CALC} == self._ZERO_CALC

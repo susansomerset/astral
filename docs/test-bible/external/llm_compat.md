@@ -124,3 +124,20 @@ git diff origin/dev...HEAD --stat -- src/core/dispatcher.py
 3. **Whole file (informational — expected reds only):** `.venv/bin/python -m pytest tests/component/utils/test_config.py -q --tb=line` gives exactly the 21 pre-existing reds listed in [`../utils/config.md`](../utils/config.md) § AST-1947 item 2, which fail the same way with `origin/dev` product. Any other failure is real.
 
 **Pass criterion:** item 1 green, item 2 empty, item 3 limited to those 21. Not the zero-arg harness.
+
+### AST-1966 · AST-1963 (unpriced calls still get a timesheet row)
+
+**Primary manifest:** [`../core/timesheets.md`](../core/timesheets.md) § AST-1966. `_timesheet_kwargs_for` always returns row kwargs: `calculate_cost_components_from_counts` raising → `calc_cost_*` all `0.0` (`CALC_COST_KEYS`) + one `logger.exception` ("timesheet catalog price"); `usage_to_token_counts` raising → counts 0 + one `logger.exception` ("timesheet token counts").
+
+**Reach of the token-count fallback:** the main call path reads `usage_to_token_counts(response.usage)` itself before calling the helper (unchanged from `origin/ftr`), so an unreadable usage on the real call still fails the call with no row. The fallback is live only on the probe row (`_record_probe` calls the helper directly). Not an AC gap (AC 3 covers pricing); noted so the manifest does not overclaim. The `if kw is not None` / `if _timesheet_kwargs is not None` guards around `record_timesheet` are now always true.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 3 (llm_compat half): pricing raises → call succeeds, `record_timesheet` once, `calc_cost_*` all 0, usage counts (50 / 100 / 25 / 5), one ERROR with traceback | `_timesheet_kwargs_for` | `TestAst1966UnpricedRowRecorded::test_pricing_raises_row_recorded_with_zero_cost_and_counts` |
+| New — probe response usage unreadable → probe row with zero tokens + zero cost, one ERROR; real call row normal | `_timesheet_kwargs_for` via `_record_probe` | `…::test_probe_token_counts_raise_row_recorded_with_zero_tokens` |
+| New — failure path (unparseable JSON) + unpriced → one `failure` row, zero cost | `_timesheet_kwargs_for` | `…::test_failure_path_unpriced_row_still_recorded` |
+| Kept — clean pricing row unchanged | — | `TestAst1877ResultContract::test_success_shape_and_timesheet_kwargs` |
+
+No coverage regression: the AST-1966 hunk (helper try/except pair) is fully covered; the only new uncovered arc is `_record_probe`'s `kw is None` exit (now unreachable).
+
+**Integration:** none.

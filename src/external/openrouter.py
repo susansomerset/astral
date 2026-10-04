@@ -4,6 +4,9 @@ OpenRouter routes every call on its own and prompt caches live on one host, so a
 and gather calls land on different hosts pays full input on every call. Servers opt in via the
 LLM_SERVER_CONFIG `probe` flag; send_to_llm_compat calls get_batch_host only when that flag is on and
 log_batch_id is set.
+
+get_generation_stats (AST-1963): one call's platform-billed cost, native token counts and serving host,
+by generation id (our agent_req_id) and the key that made the call. Never raises; retries are the caller's.
 """
 
 import asyncio
@@ -12,11 +15,14 @@ import threading
 from concurrent.futures import Future
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
+import httpx
+
 from src.utils.config import LLM_PROBE_MESSAGE
-from src.utils.llm_external import normalize_provider_error
+from src.utils.integration_io import require_controlled_external_io
+from src.utils.llm_external import normalize_provider_error, provider_call_http_timeout_seconds
 from src.utils.logging import get_logger
 
-__all__ = ["probe_host", "get_batch_host"]
+__all__ = ["probe_host", "get_batch_host", "get_generation_stats"]
 
 logger = get_logger(__name__)
 
@@ -25,6 +31,9 @@ logger = get_logger(__name__)
 # different event loops / worker threads; asyncio.wrap_future bridges each waiter to its own loop.
 _hosts: Dict[Tuple[str, str], Future] = {}
 _hosts_lock = threading.Lock()
+
+# Generation-stats endpoint (bearer auth, ?id=<generation id>). Stats can lag the response by a few seconds.
+GENERATION_URL = "https://openrouter.ai/api/v1/generation"
 
 
 def _batch_key(batch_id: str, api_kwargs: Dict[str, Any]) -> Tuple[str, str]:
@@ -84,3 +93,39 @@ async def get_batch_host(
     host, err = fut.result()
     logger.debug("Host map: batch=%s host=%s error=%s", batch_id, host, err)
     return host, err
+
+
+def get_generation_stats(generation_id: str, api_key: str) -> Dict[str, Any]:
+    """One call's billed stats by generation id and key: {"success": True, "total_cost", "native_tokens_prompt",
+    "native_tokens_completion", "native_tokens_cached", "native_tokens_reasoning", "provider_name"}, or
+    {"success": False, "error"} when the call fails or the record isn't ready (404 / no total_cost). Never raises."""
+    logger.debug("Calling GET generation: id=%s", generation_id)
+    try:
+        # Inside the try: the integration-mode guard's RuntimeError becomes an error result, not a raise.
+        require_controlled_external_io("openrouter.get_generation_stats")
+        resp = httpx.get(
+            GENERATION_URL,
+            params={"id": generation_id},
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=provider_call_http_timeout_seconds(),
+        )
+        # Never log the key — status and body only.
+        logger.debug("Response from GET generation: id=%s status=%s body=%s", generation_id, resp.status_code, resp.text)
+        if resp.status_code != 200:
+            return {"success": False, "error": f"Generation stats HTTP {resp.status_code}: {normalize_provider_error(resp.text, fallback='empty body')}"}
+        data = (resp.json() or {}).get("data") or {}
+        if data.get("total_cost") is None:
+            return {"success": False, "error": "Generation stats not ready: no total_cost"}
+        return {
+            "success": True,
+            "total_cost": float(data["total_cost"]),
+            "native_tokens_prompt": data.get("native_tokens_prompt"),
+            "native_tokens_completion": data.get("native_tokens_completion"),
+            "native_tokens_cached": data.get("native_tokens_cached"),
+            "native_tokens_reasoning": data.get("native_tokens_reasoning"),
+            "provider_name": data.get("provider_name"),
+        }
+    except Exception as e:
+        err = f"Generation stats lookup failed: {normalize_provider_error(e)}"
+        logger.debug("Response from GET generation: id=%s error=%s", generation_id, err)
+        return {"success": False, "error": err}

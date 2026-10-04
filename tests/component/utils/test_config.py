@@ -7347,3 +7347,63 @@ class TestAst1955PlainAgentSettings:
         }
         assert {(r["quantization"], r["reasoning_effort"], r["provider_allow_fallbacks"], r["provider_only"],
                  r["provider_ignore"], r["provider_sort"]) for r in fixture} == {(None, None, True, None, None, None)}
+
+
+class TestAst1964ModelRouting:
+    """AST-1964: `routing` (direct / openrouter) on every LLM_MODEL_CONFIG entry is the source of truth for
+    "this call went through OpenRouter"; get_model_routing for a timesheet row's (server, SKU); reconcile constants.
+
+    Branches: validator routing allowed → pass; missing / None / off-vocabulary → raise. resolve_agent_settings
+    provider object keyed on routing, not server (both mismatched directions). get_model_routing hit / unknown.
+    """
+
+    DIRECT = ["kimi-k2.6", "claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6", "deepseek-v4-flash", "deepseek-v4-pro"]
+
+    def test_routing_values_per_model(self) -> None:
+        # AC 1 — table-built entries are openrouter, the six hand-written entries direct, nothing else.
+        assert cfg.LLM_MODEL_ROUTING_TYPES == ("direct", "openrouter")
+        assert [s for s in cfg.OPENROUTER_MODEL_TABLE if cfg.LLM_MODEL_CONFIG[s]["routing"] != "openrouter"] == []
+        assert [k for k, m in cfg.LLM_MODEL_CONFIG.items() if m["routing"] == "direct"] == self.DIRECT
+        assert {m["routing"] for m in cfg.LLM_MODEL_CONFIG.values()} == set(cfg.LLM_MODEL_ROUTING_TYPES)
+
+    @pytest.mark.parametrize("routing", ["__missing__", None, "", "proxy", "OpenRouter"])
+    def test_startup_rejects_missing_or_unknown_routing(self, monkeypatch: pytest.MonkeyPatch, routing: object) -> None:
+        # AC 1 — missing key raises the routing ValueError (not KeyError); case matters. Own SKU so the real
+        # kimi-k2.6 entry earlier in the loop doesn't trip the ambiguous-SKU check first.
+        row = cfg.LLM_MODEL_CONFIG["kimi-k2.6"]["pricing"]["kimi-k2.6"]
+        bad = {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "sku": "__bad_sku__", "pricing": {"__bad_sku__": row}, "routing": routing}
+        if routing == "__missing__":
+            del bad["routing"]
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__bad__", bad)
+        with pytest.raises(ValueError, match=r"LLM model '__bad__': routing .* not in \('direct', 'openrouter'\)"):
+            cfg.validate_llm_provider_environment()
+
+    def test_resolver_provider_object_follows_routing_not_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 1 — the provider object is keyed on routing: an openrouter-server model routed direct gets none,
+        # a non-openrouter server routed openrouter gets one.
+        agent = {"quantization": "bf16", "provider_allow_fallbacks": True}
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__or_direct__", {**cfg.LLM_MODEL_CONFIG["openai/gpt-oss-120b"], "routing": "direct"})
+        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG, "__kimi_or__", {**cfg.LLM_MODEL_CONFIG["kimi-k2.6"], "routing": "openrouter"})
+        assert cfg.resolve_agent_settings("__or_direct__", agent)["tier"]["provider"] is None
+        assert cfg.resolve_agent_settings("__kimi_or__", agent)["tier"]["provider"] == {"quantizations": ["bf16"], "allow_fallbacks": True}
+        # Shipped models: same answer as before the switch.
+        assert cfg.resolve_agent_settings("openai/gpt-oss-120b", agent)["tier"]["provider"] == {"quantizations": ["bf16"], "allow_fallbacks": True}
+        assert cfg.resolve_agent_settings("kimi-k2.6", agent)["tier"]["provider"] is None
+
+    def test_get_model_routing_hit_and_unknown(self) -> None:
+        assert cfg.get_model_routing("openrouter", "z-ai/glm-4.7") == "openrouter"
+        assert cfg.get_model_routing("deepseek", "deepseek-v4-pro") == "direct"
+        assert cfg.get_model_routing("anthropic", "claude-sonnet-4-6") == "direct"
+        assert cfg.get_model_routing("kimi", "kimi-k2.6") == "direct"
+        # Both values must match one model: a real SKU on the wrong server is unknown.
+        with pytest.raises(ValueError, match="No LLM model for server 'kimi' and SKU 'z-ai/glm-4.7'"):
+            cfg.get_model_routing("kimi", "z-ai/glm-4.7")
+        with pytest.raises(ValueError, match="No LLM model for server 'openrouter' and SKU 'kimi-k2.6'"):
+            cfg.get_model_routing("openrouter", "kimi-k2.6")
+        with pytest.raises(ValueError, match="No LLM model"):
+            cfg.get_model_routing("__nope__", "__nope__")
+
+    def test_reconcile_retry_constants(self) -> None:
+        # AC 3 — 5 total tries; base wait 2 s (doubling is the reconcile's, AST-1966).
+        assert cfg.TIMESHEET_RECONCILE_RETRIES == 5
+        assert cfg.TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS == 2
