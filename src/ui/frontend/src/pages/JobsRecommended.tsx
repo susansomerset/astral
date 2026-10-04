@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import { legacyStateSectionLabel, unmappedJobStates } from "../lib/stateUiSections"
@@ -9,7 +9,7 @@ import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidateJobActions, type BulkActionResult } from "../hooks/useCandidateJobActions"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
-import { formatPhaseScore, primaryActionsForState } from "../lib/recommendedJobReport"
+import { buildPhaseListGradeRow, formatPhaseScore, primaryActionsForState } from "../lib/recommendedJobReport"
 import Time from "../components/Time"
 
 interface Job {
@@ -81,6 +81,8 @@ export default function Recommended() {
   const [sorts, setSorts] = useState<Record<string, SortState>>({})
   // Page-level selection keyed by astral_job_id; not persisted (AST-1968).
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Analysis toggle: on at page load, not persisted (AST-1968).
+  const [showAnalysis, setShowAnalysis] = useState(true)
 
   const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
@@ -115,6 +117,18 @@ export default function Recommended() {
     () => manifest?.jobs.recommended.phase_score_columns.map(c => c.field) ?? [],
     [manifest?.jobs.recommended.phase_score_columns],
   )
+
+  // Line order + grades_field from report_phase_tabs (modal order); short label from the
+  // matching phase_score_columns entry (jd_grades → jd_score → "JD"), else the tab nav_label.
+  const phaseLines = useMemo(() => {
+    const rec = manifest?.jobs.recommended
+    return (rec?.report_phase_tabs ?? []).map(tab => ({
+      gradesField: tab.grades_field,
+      label: rec?.phase_score_columns.find(
+        c => c.field === tab.grades_field.replace(/_grades$/, "_score"),
+      )?.label ?? tab.nav_label,
+    }))
+  }, [manifest])
 
   // Eligibility from manifest primary_actions_by_state — no hardcoded state list.
   const canGenerate = useCallback(
@@ -212,6 +226,10 @@ export default function Recommended() {
               </button>
             </>
           )}
+          <label className="recommended-analysis-toggle">
+            <input type="checkbox" checked={showAnalysis} onChange={e => setShowAnalysis(e.target.checked)} />
+            Analysis
+          </label>
         </div>
       </div>
       {loading ? (
@@ -226,6 +244,8 @@ export default function Recommended() {
         sections.map(sec => {
           const sort = sorts[sec.state] ?? { col: "state_changed_at", asc: false }
           const sorted = sortRecommendedJobs(sec.jobs, sort.col, sort.asc, phaseFields)
+          // checkbox + actions + title + company + state + phase cols + total + updated
+          const columnCount = 7 + manifest.jobs.recommended.phase_score_columns.length
           return (
             <div key={sec.state} style={{ marginBottom: 24 }}>
               <h2 style={{
@@ -275,37 +295,53 @@ export default function Recommended() {
                   </thead>
                   <tbody>
                     {sorted.map(job => (
-                      <tr key={job.astral_job_id} className="clickable" onClick={() => openJobReport(job.astral_job_id)}>
-                        <td onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            aria-label={`Select ${job.job_title || job.astral_job_id}`}
-                            checked={selected.has(job.astral_job_id)}
-                            onChange={() => toggleSelect(job.astral_job_id)}
-                          />
-                        </td>
-                        <td onClick={e => e.stopPropagation()}>
-                          <CandidateJobRowActions
-                            state={job.state}
-                            showViewAnalysis={false}
-                            onSkip={() => actions.skipJob(job.astral_job_id)}
-                            onAction={a => actions.requestAction(job.astral_job_id, a)}
-                            onGenerate={canGenerate(job.state) ? () => actions.generateJob(job.astral_job_id) : undefined}
-                          />
-                        </td>
-                        <td>{job.job_title || "\u2014"}</td>
-                        <td>{job.company}</td>
-                        <td>{job.state || "\u2014"}</td>
-                        {manifest.jobs.recommended.phase_score_columns.map(col => (
-                          <td key={col.field} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
-                            {formatPhaseScore(job[col.field])}
+                      <Fragment key={job.astral_job_id}>
+                        <tr className="clickable" onClick={() => openJobReport(job.astral_job_id)}>
+                          <td onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${job.job_title || job.astral_job_id}`}
+                              checked={selected.has(job.astral_job_id)}
+                              onChange={() => toggleSelect(job.astral_job_id)}
+                            />
                           </td>
-                        ))}
-                        <td style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
-                          {formatPhaseScore(totalScore(job, phaseFields))}
-                        </td>
-                        <td><Time value={job.state_changed_at} /></td>
-                      </tr>
+                          <td onClick={e => e.stopPropagation()}>
+                            <CandidateJobRowActions
+                              state={job.state}
+                              showViewAnalysis={false}
+                              onSkip={() => actions.skipJob(job.astral_job_id)}
+                              onAction={a => actions.requestAction(job.astral_job_id, a)}
+                              onGenerate={canGenerate(job.state) ? () => actions.generateJob(job.astral_job_id) : undefined}
+                            />
+                          </td>
+                          <td>{job.job_title || "\u2014"}</td>
+                          <td>{job.company}</td>
+                          <td>{job.state || "\u2014"}</td>
+                          {manifest.jobs.recommended.phase_score_columns.map(col => (
+                            <td key={col.field} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
+                              {formatPhaseScore(job[col.field])}
+                            </td>
+                          ))}
+                          <td style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
+                            {formatPhaseScore(totalScore(job, phaseFields))}
+                          </td>
+                          <td><Time value={job.state_changed_at} /></td>
+                        </tr>
+                        {showAnalysis && (
+                          <tr className="clickable recommended-analysis-row" onClick={() => openJobReport(job.astral_job_id)}>
+                            <td colSpan={columnCount}>
+                              <div className="recommended-analysis-lines">
+                                {phaseLines.map(p => (
+                                  <div key={p.gradesField} className="recommended-analysis-line">
+                                    <span className="recommended-analysis-line-label">{p.label}</span>
+                                    {buildPhaseListGradeRow(job, p.gradesField) ?? "\u2014"}
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
