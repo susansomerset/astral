@@ -89,6 +89,14 @@ Existing files referencing these symbols: `tests/component/ui/api/test_api_meteo
 Confirm Chuckles estimate: 2 — agree
 
 
+## Review
+
+- **Branch:** `origin/sub/AST-1971/AST-1980-created-col`
+- **Build commits:** `7beb35926` (Stage 1: `job_created_at` on the list join + `_LIST_KEYS` + Created config column)
+- **Build notes:** `python -c "import src.utils.config"` and `py_compile` on all three files exit 0. AC 9 `rg` on the `api_meteorite.py` diff returns nothing. `git diff origin/dev -- src/ui/frontend/src/pages/JobsMeteorites.tsx` is empty. This ticket's own diff touches no frontend file; the `src/ui/frontend/` lines in `git diff origin/dev` are sibling AST-1979, carried in from `origin/ftr/AST-1971-created-col`. No Python linter is configured (plan step 8).
+- **Deviation:** none.
+- **For QA:** existing failures are the same with and without this change: `test_config.py` has 21 identical failures before and after. `test_meteorites.py` fails to collect (`ImportError: METEORITE_STATES_RETENTION` is not in `config.py`). `test_api_meteorite.py` fails to collect (`ModuleNotFoundError: asyncpg` in this env). None of them assert the new key/column yet. No manual browser smoke run in this headless build.
+
 ## Joan validate
 
 ```text
