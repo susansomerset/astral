@@ -306,3 +306,34 @@ Frontend fixtures (`stateUiManifestFixture.ts`, `test_StateUiContext`, `test_Job
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-1974
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `origin/sub/AST-1970/AST-1974-jobs-nav` @ `93d9d557d432141d73ec87955dad6f6390d99fc6`
+
+## Canon scores
+stat.logging.info.api | A | |
+stat.logging.error | A | |
+
+## Traceability
+AC1→S3 NAV_CONFIG+counts; AC2→S3 ready view; AC3→S3 review view; AC4→S3 applied+delete repair; AC5→S2 skipped states/retry+S3 skipped view; AC6→S2 guard+S3 processing exclude; AC7→S2 assert/derive+S3 processing branch; AC8→S1 candidate_skip_job+S3 skip route; AC9→S3 skip logger.info only; AC10→S3 _get_job_counts; AC11→S3 backend rg (N/A frontend/tsx—AST-1975); AC12→S2–3 py import/compile (N/A npm—AST-1975).
+
+## Findings
+
+### discuss — Linear assignee
+- **Location:** AST-1974 ticket
+- **Finding:** Assignee is Ada, not Joan at fetch time.
+- **Recommendation:** Chuckles assigns Joan for validate-plan gate, then restores implementer per §8.
+
+### acceptable — Child AC 11–12 vs boundaries
+- **Location:** Ticket AC vs `## Boundaries` / plan Stage 3 Done when
+- **Finding:** AC 11–12 text still names frontend paths and `npm run build`; this child correctly limits verification to `config.py` + `src/ui/api` and defers React to AST-1975/1976.
+- **Recommendation:** No plan change; epic UAT must join siblings before parent AC 11–12 close.
+
+context_tokens≈28000
+```
