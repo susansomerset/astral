@@ -32,7 +32,8 @@ logger = get_logger(__name__)
 _hosts: Dict[Tuple[str, str], Future] = {}
 _hosts_lock = threading.Lock()
 
-# Generation-stats endpoint (bearer auth, ?id=<generation id>). Stats can lag the response by a few seconds.
+# Generation-stats endpoint (bearer auth, ?id=<generation id>). The record 404s for about 30s after
+# the call; reconcile_timesheet_platform waits that out before the first try.
 GENERATION_URL = "https://openrouter.ai/api/v1/generation"
 
 

@@ -25,6 +25,7 @@ from src.data.database import (
 from src.external.openrouter import get_generation_stats
 from src.utils.config import (
     TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS,
+    TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS,
     TIMESHEET_RECONCILE_RETRIES,
     get_model_routing,
 )
@@ -66,6 +67,13 @@ def reconcile_timesheet_platform(
             )
             return
         logger.debug("Beginning generation-stats loop on %s tries for %s", TIMESHEET_RECONCILE_RETRIES, agent_req_id)
+        # The generation record 404s until it propagates. The first lookup waits that out; later tries
+        # keep the doubling backoff for a record that is there but has no total_cost yet.
+        logger.debug(
+            "Waiting %s s before the first generation-stats lookup for %s",
+            TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS, agent_req_id,
+        )
+        time.sleep(TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS)
         for attempt in range(TIMESHEET_RECONCILE_RETRIES):
             if attempt:
                 # Base wait before the 2nd try, doubled before each later one (2, 4, 8, 16 s by default).
