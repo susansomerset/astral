@@ -57,7 +57,7 @@ from src.utils.config import (
     resolve_tokens, CHARS_PER_TOKEN,
     chain_context_selected_agent,
     get_llm_server,
-    resolve_model_brain,
+    resolve_agent_settings,
     CALLER_HOP_TOKEN_NAMES,
     ENTITY_TYPES,
     _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
@@ -1820,18 +1820,13 @@ async def run_cover_letter_artifact_chain_for_job(
 
 
 def _agent_llm_route(agent_row: Dict[str, Any]) -> Dict[str, Any]:
-    """Agent model_id + brain_setting + mode → resolve_model_brain route (server, SKU, tier). Raises on missing/invalid config."""
+    """Agent model_id + plain settings → resolve_agent_settings route (server, SKU, tier) (AST-1956).
+    Raises ValueError on a missing or unknown model_id; settings are passed through unchecked."""
     aid = agent_row.get("agent_id")
     model_id = (agent_row.get("model_id") or "").strip()
     if not model_id:
         raise ValueError(f"Agent '{aid}' has no model_id configured.")
-    brain_setting = (agent_row.get("brain_setting") or "").strip()
-    if not brain_setting:
-        raise ValueError(f"Agent '{aid}' has no brain_setting configured.")
-    mode = (agent_row.get("mode") or "").strip()
-    if not mode:
-        raise ValueError(f"Agent '{aid}' has no mode configured.")
-    return resolve_model_brain(model_id, brain_setting, mode)
+    return resolve_agent_settings(model_id, agent_row)
 
 
 def task_llm_server_id(task_key: str) -> str:
@@ -1917,7 +1912,10 @@ async def _send_to_server(
     )
     if get_llm_server(server_id)["protocol"] == "anthropic":
         # api_key is always non-empty here, so send_to_anthropic never takes its env-key client.
-        return await send_to_anthropic(user_blocks, model_code=sku, api_key_override=api_key, debug=debug, **common)
+        return await send_to_anthropic(
+            user_blocks, model_code=sku, api_key_override=api_key, debug=debug,
+            reasoning_effort=tier.get("reasoning_effort"), **common,
+        )
     return await send_to_llm_compat(user_blocks, server_id=server_id, sku=sku, tier=tier, api_key=api_key, **common)
 
 
@@ -2065,8 +2063,8 @@ async def do_task(
         parent_caller_summary=parent_caller_summary or None,
     )
 
-    # AST-1879: the agent row's model + brain size pick the server, SKU, and tier. Contact Estelle
-    # is her own agent row (AST-1878), so there is no conversational brain override.
+    # AST-1879 / AST-1956: the agent row's model + plain settings pick the server, SKU, and tier.
+    # Contact Estelle is her own agent row (AST-1878), so there is no conversational override.
     route = _agent_llm_route(agent_row)
     server_id = route["server_id"]
     sku = route["sku"]
@@ -2080,15 +2078,15 @@ async def do_task(
             server_id,
         )
         return _with_harvest(_missing_server_key_result(candidate_id, server_id))
-    # AST-1948: the agent's mode decides temperature (resolve_model_brain); the agent row has none.
+    # AST-1956: temperature is the agent row's own setting, sent as stored (None → not sent).
     agent_temperature = tier["temperature"]
     agent_max_tokens = agent_row.get("max_tokens") if agent_row.get("max_tokens") is not None else tier["default_max_tokens"]
     # Craft rubrics emit long per-criterion content — floor so Get cannot truncate mid-JSON (AST-903).
     if task_key in CRAFT_RUBRIC_UI_TASK_KEYS:
         agent_max_tokens = max(int(agent_max_tokens), int(CRAFT_RUBRIC_MAX_TOKENS))
         # AST-1380 Decision A: thinking shares max_tokens with the JSON answer —
-        # disable thinking so craft criteria are not starved mid-string.
-        tier = {**tier, "thinking": False}
+        # force thinking off (effort "none") so craft criteria are not starved mid-string.
+        tier = {**tier, "reasoning_effort": "none"}
     # AST-1391: catalog per-tier output floor (None = no floor).
     if tier.get("max_tokens_floor") is not None:
         agent_max_tokens = max(int(agent_max_tokens), int(tier["max_tokens_floor"]))
@@ -2256,8 +2254,8 @@ async def do_task(
             _log_swallowed_agent_data(index, task_key, exc)
 
     logger.debug(
-        "Calling _send_to_server: [task_key=%s, server=%s, model=%s, max_tokens=%s, temp=%s, skip_cache=%s, candidate=%s]",
-        task_key, server_id, sku, agent_max_tokens, agent_temperature, skip_cache, candidate_id or "",
+        "Calling _send_to_server: [task_key=%s, server=%s, model=%s, max_tokens=%s, temp=%s, effort=%s, skip_cache=%s, candidate=%s]",
+        task_key, server_id, sku, agent_max_tokens, agent_temperature, tier.get("reasoning_effort"), skip_cache, candidate_id or "",
     )
     result = await _send_to_server(
         user_blocks,
@@ -3358,7 +3356,7 @@ async def run_adhoc(
     if not model_code:
         raise ValueError("run_adhoc requires model_code (catalog SKU)")
     if not server_id or tier is None:
-        raise ValueError("run_adhoc requires server_id and tier (resolve_model_brain route)")
+        raise ValueError("run_adhoc requires server_id and tier (resolve_agent_settings route)")
     api_key = (candidate_api_keys or {}).get(server_id)
     if not api_key:
         return _missing_server_key_result(candidate_id, server_id)
@@ -3374,6 +3372,10 @@ async def run_adhoc(
         candidate_id=candidate_id,
     )
 
+    logger.debug(
+        "Calling _send_to_server: [task_key=adhoc, server=%s, model=%s, max_tokens=%s, temp=%s, effort=%s, candidate=%s]",
+        server_id, model_code, max_tokens, temperature, tier.get("reasoning_effort"), candidate_id or "",
+    )
     result = await _send_to_server(
         user_blocks,
         server_id=server_id,

@@ -19,6 +19,7 @@ from src.data.database import (
     list_vector_feedback,
     aggregate_vector_feedback_by_vector,
     list_rubric_vectors,
+    AGENT_SETTING_COLUMNS,
 )
 
 from src.core.consult import list_timesheets
@@ -54,7 +55,7 @@ from src.utils.config import (
     BUILD_CONFIG,
     LLM_MODEL_CONFIG,
     get_llm_server,
-    resolve_model_brain,
+    resolve_agent_settings,
     get_manage_agents_tokens,
     get_manage_tasks_chain_tokens,
     get_repo_admin_json_table_keys,
@@ -135,10 +136,16 @@ def _api_completed(candidate_id: Optional[str], route: str, method: str, status:
     logger.info("%s | api %s completed: %s %s", candidate_id or "-", route, method, status)
 
 
+def _agent_settings_from_body(body: Dict[str, Any]) -> Dict[str, Any]:
+    """The plain agent settings present in a request body, passed as-is (AST-1957).
+    Type checks live in the data layer (save_agent / update_agent raise ValueError → 400)."""
+    return {k: body[k] for k in AGENT_SETTING_COLUMNS if k in body}
+
+
 @admin_bp.route("/agents")
 @require_admin
 def list_agents():
-    # database._expose_agent_public already coerces brain_setting and exposes model_id + SKU (AST-1878).
+    # database._expose_agent_public decodes the settings and exposes model_id + SKU (AST-1878, AST-1955).
     return jsonify([dict(a) for a in database.list_agents()])
 
 
@@ -192,21 +199,15 @@ def preview_agent():
 @admin_bp.route("/agents/models")
 @require_admin
 def list_models():
-    """Model → brain-size catalog for Manage Agents (AST-1880); sizes are the model's own.
-    jsonify sorts keys, so `order` carries catalog order for the UI."""
+    """Model catalog for Manage Agents (AST-1880, AST-1957): label, server and the default output budget
+    used when an agent leaves max_tokens empty. jsonify sorts keys, so `order` carries catalog order for the UI."""
     return jsonify({
         mid: {
             "order": i,
             "label": m["label"],
             "server_id": m["server"],
             "server_label": get_llm_server(m["server"])["label"],
-            "brain_sizes": {
-                bs: {
-                    "order": j,
-                    "default_max_tokens": t["default_max_tokens"],
-                }
-                for j, (bs, t) in enumerate(m["brain_sizes"].items())
-            },
+            "default_max_tokens": m["default_max_tokens"],
         }
         for i, (mid, m) in enumerate(LLM_MODEL_CONFIG.items())
     })
@@ -227,22 +228,18 @@ def create_agent():
     body = request.get_json(silent=True) or {}
     agent_id = (body.get("agent_id") or "").strip()
     model_id = (body.get("model_id") or "").strip()
-    brain_setting = (body.get("brain_setting") or "").strip()
-    mode = body.get("mode")
-    mode = mode.strip() if isinstance(mode, str) else ""
-    if not agent_id or not model_id or not brain_setting or not mode:
-        return jsonify({"error": "agent_id, model_id, brain_setting and mode are required"}), 400
+    if not agent_id or not model_id:
+        return jsonify({"error": "agent_id and model_id are required"}), 400
     if database.get_agent(agent_id):
         return jsonify({"error": f"Agent '{agent_id}' already exists"}), 409
     try:
-        # Data layer checks the size against the model's own sizes before writing (AST-1878).
+        # Data layer checks model_id against the catalog and type-checks the settings (AST-1955).
         database.save_agent(
             agent_id,
             body.get("content", ""),
             model_id=model_id,
-            brain_setting=brain_setting,
-            mode=mode,
             max_tokens=body.get("max_tokens"),
+            **_agent_settings_from_body(body),
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -257,19 +254,15 @@ def update_agent(agent_id):
     if not database.get_agent(agent_id):
         return jsonify({"error": f"Agent not found: {agent_id}"}), 404
 
-    mode = body.get("mode")
-    if not isinstance(mode, str) or not mode.strip():
-        return jsonify({"error": "mode is required"}), 400
-
     kwargs = {
-        k: (body[k].strip() if isinstance(body[k], str) and k in ("model_id", "brain_setting", "mode") else body[k])
-        for k in ("content", "model_id", "brain_setting", "mode", "max_tokens")
+        k: (body[k].strip() if k == "model_id" and isinstance(body[k], str) else body[k])
+        for k in ("content", "model_id", "max_tokens", *AGENT_SETTING_COLUMNS)
         if k in body
     }
     if not kwargs:
         return jsonify({"error": "No updatable fields provided"}), 400
     try:
-        # update_agent checks the effective (model, size) pair against the stored row before its UPDATE.
+        # update_agent checks model_id and type-checks the settings before its UPDATE (AST-1955).
         database.update_agent(agent_id, **kwargs)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -380,20 +373,16 @@ def _enrich_tasks(candidate_id: str) -> list:
             agent_id = t.get("agent_id") or ""
             cfg = TASK_CONFIG.get(task_key, {})
 
-            # Agent model + brain size → catalog SKU and pricing row for cache threshold math (AST-1880).
+            # Agent model + settings → catalog SKU and pricing row for cache threshold math (AST-1880, AST-1957).
             full_task = database.get_agent_task(task_key) if task_key else None
             agent = database.get_agent(agent_id) if agent_id else None
-            brain_setting_eff = ""
             resolved_model_key = ""
             model_cfg: Dict = {}
             # List probe, not a hop — empty {$CALLER_*} is expected (AST-530 chain_entry).
             _cc = _chain_context(agent, cd, task_key, None, chain_entry=True) if agent else None
             if agent:
-                brain_setting_eff = (agent.get("brain_setting") or "").strip()
                 try:
-                    route = resolve_model_brain(
-                        (agent.get("model_id") or "").strip(), brain_setting_eff, (agent.get("mode") or "").strip()
-                    )
+                    route = resolve_agent_settings((agent.get("model_id") or "").strip(), agent)
                     resolved_model_key = route["sku"]
                     model_cfg = route["pricing"]
                 except ValueError as e:
@@ -439,7 +428,7 @@ def _enrich_tasks(candidate_id: str) -> list:
             # When tokens unresolved: parsed_cache_tokens None; approximate total_cache below uses raw lengths.
             parsed_cache_tokens = len(combined_cache_probe) // CHARS_PER_TOKEN if task_ready else None
 
-            # Cache threshold (model_cfg is the catalog pricing row for the agent's model + brain size)
+            # Cache threshold (model_cfg is the catalog pricing row for the agent's model)
             cache_min = model_cfg.get("cache_min_tokens", 0)
             total_cache = system_tokens + (
                 parsed_cache_tokens if parsed_cache_tokens is not None else base_cache_tokens
@@ -462,7 +451,6 @@ def _enrich_tasks(candidate_id: str) -> list:
                 "task_key_uuid":        task_key_uuid,
                 "agent_id":             agent_id,
                 "run_next":             t.get("run_next") or "",
-                "brain_setting":        brain_setting_eff,
                 "resolved_model_key":   resolved_model_key,
                 "model_code":           resolved_model_key,
                 "system_prompt_tokens": system_tokens,
@@ -1544,13 +1532,9 @@ def _resolve_adhoc(body):
     if not agent:
         return None, (jsonify({"error": f"Agent not found: {agent_id}"}), 404)
 
-    # Agent model + brain size → server, SKU and tier row (AST-1880); no global provider.
+    # Agent model + plain settings → server, SKU and tier (AST-1880, AST-1957); tier carries temperature, effort and provider.
     try:
-        route = resolve_model_brain(
-            (agent.get("model_id") or "").strip(),
-            (agent.get("brain_setting") or "").strip(),
-            (agent.get("mode") or "").strip(),
-        )
+        route = resolve_agent_settings((agent.get("model_id") or "").strip(), agent)
     except ValueError as e:
         return None, (jsonify({"error": str(e)}), 400)
     tier = route["tier"]
