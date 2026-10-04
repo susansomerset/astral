@@ -410,3 +410,63 @@ AC3 (`llm_compat`)→Stage 1; AC4→Stage 2 step 1 (non-blocking thread + direct
 - **Branch:** `sub/AST-1963/AST-1966-background-reconcile`
 - **Build commits:** `6669ea8e6` (Stage 1 unpriced calls still get a timesheet row) · `563eae750` (Stage 2 background platform cost reconcile per call)
 - **Build notes:** Both stages executed as written; both Done-when commands printed `STAGE1 OK` / `STAGE2 OK`, and `rg -n '"openrouter"' src/external/ src/core/timesheets.py src/data/database.py` finds nothing. `py_compile` is clean; no Python linter is installed on this host. Touched-area run (`test_llm_compat.py`, `core/test_timesheets.py`, `core/test_agent*.py`): 444 passed, 44 failed — 43 are pre-existing `test_agent.py` failures on the clean tree, and the 44th is `TestRecordTimesheetEntry::test_delegates_to_database_add`, the expected break flagged in § Test impact (no `model_code` on a row with a generation id). `validate-sub-log.sh --stage=build`: ok. No deviations.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1966
+**Publish ref:** `f4fd568df21a2c7a3ba6ee3abe8fcb43bcddadd2` (`origin/sub/AST-1963/AST-1966-background-reconcile`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+- `patt.entity.batch-processing` — Joan **B** → Radia **A** (closed-ledger refresh uses `sum_cost_by_batch` + `batch_id`; residual close-window race is documented and out of Boundaries, not a pattern violation in this diff)
+- `stat.logging.debug` — Joan **B** → Radia **A** (ungated loop begin/end, per-try call/response, retry-wait debug; `copy_context` on thread start; lookup call-in omits API key)
+- (aligned) — `stat.logging.warning`, `stat.logging.error` — Joan **A**, Radia **A**
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling stacked ref:** Three-dot diff vs `origin/dev` includes AST-1964/1965 product, tests, and docs on the same sub tip. Expected epic stacking / `merge-tests`. **Canon and plan fidelity for AST-1966** target Ada commits `6669ea8e6`, `563eae750`, `b44f5f650` (`llm_compat.py`, `timesheets.py`, related tests/bibles).
+- **Dependencies:** Spawn `Relations: blockedBy AST-1964, AST-1965 (both User Testing)` — sibling contracts (`get_model_routing`, reconcile constants, `get_generation_stats`, `update_timesheet_platform`, platform-first `sum_cost_by_batch`) are present on this ref.
+- **Canon Scope (off-list, not scored):** Joan flagged `astral.layers.import-direction` for `core` → `external.openrouter` / `data.database` imports. **Default:** keep as planned; Archie amends Discussion only if a layer pass is required.
+- **Residual race:** Platform write between batch-close total and `completed_at` can miss one closed-ledger refresh (plan § Decision). **Default:** accept for AST-1966; parent/dispatcher work if UAT hits the narrow window (Susan/Archie).
+- **Plan fidelity:** Stage 1 — `_timesheet_kwargs_for` always returns a row; zero counts/cost on raise with `logger.exception` per plan. Stage 2 — non-blocking daemon thread with `copy_context`; routing via `get_model_routing != "direct"` (no `"openrouter"` literal); retry/backoff from config constants; `provider_name` → writer `host`; closed-ledger-only refresh with dispatcher `entity_cost` rule; outer `logger.exception` swallows reconcile faults.
+- **AC grep:** `'"openrouter"'` absent from `src/external/`, `src/core/timesheets.py`, `src/data/database.py` on tip.
+- **Estimate:** Confirm **3** — two product modules + Betty core/external tests fits.
+- **Tests:** `test_delegates_to_database_add` revised with direct model + reconcile stub; AC 3–6 coverage in `test_llm_compat.py` / `core/test_timesheets.py` per plan § Test impact.
+
+## What's solid
+
+- Recording path never blocks on platform lookup; reconcile isolation keeps LLM callers unaffected.
+- Exactly one give-up `warning` per failed reconcile (after five tries); no-key path is a single warning with id + batch.
+- Ledger refresh recomputes from `sum_cost_by_batch` only when `completed_at` is set — idempotent and aligned with platform-first totals from AST-1965.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-1966): Radia review — clean`, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** to **User Testing**.
+- If parent UAT exercises batch-close vs late reconcile timing, track Joan’s residual-race note on AST-1963 — not resolve-child on this frozen canon list.
