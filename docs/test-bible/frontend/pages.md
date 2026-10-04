@@ -99,6 +99,8 @@ Generic **`apply_copy_output_table_upsert(table_name, json_payload)`**: parse JS
 
 ### AST-522 · AST-498
 
+**Revised by AST-1975.** `JobsRecommended.tsx` now serves Jobs → Review (`view=review`) and Jobs → Ready (`view=ready`), one state section each; the three-section page is gone. Current coverage: § AST-1975 below.
+
 Rebuild **`JobsRecommended.tsx`**: config-driven sections (**Recommended** / **In Progress** / **Ready**), plain numeric **JD / DO / GET / LIKE** from flattened API fields (no LIKE rubric grade-dot columns, no **`latest_score`** column). **`build_state_ui_manifest()["jobs"]["recommended"]`** + **`StateUiContext`** defaults mirror **`JOBS_RECOMMENDED_UI_SECTIONS`** / **`JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS`**.
 
 | Area | Source | Component tests |
@@ -286,6 +288,8 @@ Dispatch-only Execution History regression when parent UAT runs full epic: full 
 ---
 
 ### AST-549 · AST-550 · AST-484
+
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). The legacy unmapped-state case moved with it. Fixture key `in_review_sections` is now `processing_sections`. See § AST-1975.
 
 **AST-484 (parent):** Admin dispatch and job/company UI vocabulary must track live config — no parallel seed dicts or hardcoded frontend manifest. **AST-549** removes **`_DISPATCH_TASK_SEED`**, **`dispatch_task_seed_templates()`**, and **`_DISPATCH_TASK_TRIGGER_SEED`** / **`DISPATCH_TASK_SEED_KEYS`**. **`dispatch_task_admin_defaults(task_key)`** derives **`entity_type`**, **`trigger_state`**, **`sort_by`**, **`batch_call_mode`** from **`TASK_CONFIG`**, roster/inflow/board config blocks, and state registries; **`DISPATCH_SCHEDULABLE_TASK_KEYS`** bounds schedulable rows (artifact-only keys like **`anticipate_scan`** stay out). **`GET /api/admin/dispatch_tasks/task_keys`** is **TASK_CONFIG-first** with schedulable merge — seed cannot override config. **AST-550** deletes **`StateUiContext.EMPTY`** (duplicate of **`build_state_ui_manifest()`**); runtime vocabulary from **`GET /api/state_ui_manifest`** only; **`loadState`** loading/error guards on manifest consumers; legacy sections for row states absent from the current manifest.
 
@@ -955,6 +959,8 @@ Plus config:
 
 ### AST-893 · AST-886
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). The **`AST-893 Expand One default`** describe moved with it unchanged.
+
 Optional Expand All policy on sectioned lists: **Expand One** default (Manage Tasks list, In Review, Skipped) vs **Expand All** opt-in (Scheduled Actions) with **Expand all** / **Collapse all** chrome. Hook + chrome maps: `docs/test-bible/frontend/hooks.md`, `docs/test-bible/frontend/components.md`.
 
 | # | Scenario | Sources | Manifest tests |
@@ -1270,6 +1276,8 @@ UAT (historical): **Create** on matched list-row **Actions** column. **AST-1142*
 
 ### AST-1057 · AST-1052
 
+**Retired by AST-1975.** Meteorite-track jobs stay in their state section; the Meteorites sub-section, manifest `meteorite_section`, and the AST-1057 cases are gone. Current coverage: § AST-1975 below (no Meteorites heading; Source column).
+
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`.
 
 Recommended list partitions jobs whose `company` starts with manifest `meteorite_section.company_prefix` into a prepended **Meteorites** section; vetted-company Recommended / In Progress / Ready unchanged. Config: **`docs/test-bible/utils/config.md`** (**AST-1057**). Fixture: **`stateUiManifestFixture.ts`** carries `meteorite_section`.
@@ -1288,6 +1296,8 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 ### AST-1709 · AST-1707
+
+**Retired by AST-1975.** The meteorite partition is gone; the null-company no-throw check lives on in § AST-1975's **`AST-1975: no Meteorites sub-section…`** case.
 
 **Parent:** [AST-1707](https://linear.app/astralcareermatch/issue/AST-1707). **Publish:** `origin/sub/AST-1707/AST-1709-null-company-recommended-partition-test`. **Sibling product guard:** AST-1708 (`(job.company ?? "").startsWith(prefix)` on `JobsRecommended.tsx`).
 
@@ -1347,6 +1357,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1064 · AST-1059
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). The **`AST-1064`** describe moved with it unchanged.
+
 **Parent:** [AST-1059 — Issue with the rubric grade displays on the Jobs List pages](https://linear.app/astralcareermatch/issue/AST-1059/issue-with-the-rubric-grade-displays-on-the-jobs-list-pages). **Publish:** `origin/sub/AST-1059/AST-1064-group-by-aligned-rubric-jobs-list-tables`.
 
 Skipped + In Review list tables group by job-carried rubric fingerprint; columns from `*_rubric` (grades fallback); Score from `{prefix}_score` then `latest_score`. Helpers: **`docs/test-bible/frontend/components.md`** (**AST-1064**). Hydration payload: sibling **AST-1063**.
@@ -1371,6 +1383,8 @@ cd src/ui/frontend && npm run test:component -- \
 ---
 
 ### AST-1086 · AST-1078
+
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). The **`AST-1086`** describe moved with it (tooltip job title now `Tooltip Processing`).
 
 **Parent:** [AST-1078 — Small bug: Headers for Job Lists](https://linear.app/astralcareermatch/issue/AST-1078/small-bug-headers-for-job-lists). **Publish:** `origin/sub/AST-1078/AST-1086-compact-vector-codes-grade-dot-tooltips`.
 
@@ -1654,6 +1668,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 
 ### AST-1237 · AST-1173
+
+**AST-1975:** **Not now** navigates to `/` (Jobs home redirect), not `/jobs/recommended`.
 
 **Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
 
@@ -2066,6 +2082,8 @@ npm run test:component -- \
 
 ### AST-1410 · AST-1406
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). Its **`AST-1410 silent refetch`** case matches `view=processing`; the Recommended case matches `view=review`.
+
 **Parent:** [AST-1406 — Page refreshes and modals are closed (lost!)](https://linear.app/astralcareermatch/issue/AST-1406). **Publish:** `origin/sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces`.
 
 Remaining authenticated list surfaces consume `useInPlaceLiveRefresh` from **AST-1409**: first paint (and query-identity) may show `Loading…`; post-mutation / poll / modal-close `load*` is silent. Manage Tasks edit overlay stays outside the list gate. Artifact Cancel with no snapshot re-GETs last-saved tabs (no `window.location.reload`). Company Search Terms Cancel chrome stays snapshot-gated (`inReview = snapshot !== null`); the no-snapshot re-GET branch is covered on **`ArtifactEditor`**. Session-shell is **AST-1408**. Scheduled Actions is **AST-1409**.
@@ -2292,6 +2310,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1454 · AST-1446
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). Drift: the **`AST-1454`** case cited below was already absent from `test_JobsInReview.test.tsx` before the rename (`git log -S AST-1454` on the file finds nothing); not reconstructed.
+
 **Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
 
 `JobsSkipped` / `JobsInReview` pass `onRefresh={load}` into `JobDetailModal` so Save refreshes the list. Editor chrome: **`docs/test-bible/frontend/components.md`** § AST-1454.
@@ -2374,6 +2394,8 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 ### AST-1481 · AST-1463
+
+**AST-1975:** blank jobId and modal close navigate to `/`; the error link reads **Back to Jobs** (`href="/"`).
 
 **Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463). **Publish:** `origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal`.
 
@@ -2958,6 +2980,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1749 · AST-1741
 
+**AST-1976:** the same page file adds the landed-job **Job State** cell and an in-page job report link. Coverage: § AST-1976 below.
+
 **Parent:** [AST-1741 — Add "Meteorites" to the Jobs navigation](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
 
 Jobs → Meteorites routed page (`JobsMeteorites.tsx`): candidate-scoped list from AST-1748 APIs, empty honesty, candidate switch refetch, row → detail modal. Nav/route/config: **`docs/test-bible/utils/config.md`** § AST-1749. Modal: **`docs/test-bible/frontend/components.md`** § AST-1749. §6c page render required.
@@ -3338,6 +3362,8 @@ git diff --stat origin/ftr/AST-1953-agent-settings...origin/sub/AST-1953/AST-195
 
 ### AST-1968 · AST-1967 (Recommended list triage upgrades)
 
+**Revised by AST-1975.** Sections are per view now (Review / Ready; no In Progress). AC2: the generated job leaves Review. AC7: bulk Generate posts the selected Review rows. Ready: no row Generate, bulk Generate disabled at (0). See § AST-1975.
+
 **Parent:** [AST-1967](https://linear.app/astralcareermatch/issue/AST-1967). **Publish:** `origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades`.
 
 `JobsRecommended.tsx`: a checkbox column plus a header bulk bar (`Skip (N)` / `Applied (N)` / `Generate Artifacts (n)`, where n counts the selected jobs whose manifest `primary_actions_by_state` includes `generate_artifacts`). A row **G** Generate icon shows only where the manifest allows it. A default-on **Analysis** toggle adds a `tr.recommended-analysis-row` under each job with JD/DO/GET/LIKE lines of letterless circles, built by `buildPhaseListGradeRow`, which shares `phaseGradeCells` with the modal row. A sortable **Total** column (sum of the four phase scores, `—` if any is missing) sorts through `sortRecommendedJobs`. `useCandidateJobActions` gains `generateJob` / `skipJobs` / `generateJobs` / `requestBulkAction` (one notes modal for many jobs); `postGenerateArtifacts` lives in `lib/candidateJobActions.ts`. The list API already flattens `*_grades` / `*_rubric` to top level (`_flatten_grades`), which is where `buildJobListRubricColumnsForGroup` reads columns.
@@ -3401,3 +3427,87 @@ rg -n "function sortRecommendedJobs" src/ui/frontend/src/pages/JobsRecommended.t
 **Bible shasums (after publish):** `for p in frontend/pages.md frontend/components.md frontend/lib.md; do git show origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades:docs/test-bible/$p | shasum; done`
 
 **AST-1973 (pointer):** the analysis-row phase lines moved out of `JobsRecommended.tsx` into the shared `components/PhaseAnalysisLines.tsx`, which the Job Detail modal Info tab also renders. The page's AC9 / AC10 cases above are unedited and still own list parity. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1973.
+
+### AST-1975 · AST-1970 (Ready / Review / Processing pages, landing, and Jobs routes)
+
+**Parent:** [AST-1970 — Jobs Navigation changes](https://linear.app/astralcareermatch/issue/AST-1970). **Publish:** `origin/sub/AST-1970/AST-1975-jobs-nav`. Backend views / nav counts: **`docs/test-bible/ui/api/api_jobs.md`** § AST-1974.
+
+`JobsHomeRedirect` chooses the landing page: the first Jobs nav item with `count > 0`, else the first Jobs item. It waits for candidate hydration and serves `/` and `*`. Every old Recommended target (AdminRoute, surfer-consent decline, job-detail close / blank id / error link) now goes to `/`. `JobsRecommended.tsx` takes `view` / `title` and serves `/jobs/review` (`view=review`, RECOMMENDED) and `/jobs/ready` (`view=ready`, CANDIDATE_REVIEW). It adds a sortable **Source** column and drops the Meteorites split. `JobsInReview.tsx` became `JobsProcessing.tsx` (`view=processing`, manifest `processing_sections`). Responded is deleted.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 11 landing = first non-zero Jobs item, else first; waits for hydration; failure state | `components/JobsHomeRedirect.tsx` | **`components/test_JobsHomeRedirect.test.tsx`** › **`JobsHomeRedirect — AST-1975 landing page`** (8 cases) |
+| 11 index / catch-all; old targets → `/` | `routes.tsx`, `AdminRoute.tsx`, `CandidateSurferConsent.tsx`, `JobsJobDetail.tsx` | **`test_routes.test.tsx`** (ready / review / processing present; recommended / in_review / responded absent); revised **`test_AdminRoute`**, **`test_CandidateSurferConsent`** (decline → `/`), **`test_JobsJobDetail`** (close / blank id → `/`, **Back to Jobs**) |
+| 12 Processing replaces In Review; Responded gone | `pages/JobsProcessing.tsx` | **`pages/test_JobsProcessing.test.tsx`** (git-mv of `test_JobsInReview`; new **`titled Processing; fetches view=processing; BUILD_ARTIFACTS…`**); `test_JobsResponded.test.tsx` deleted |
+| 13 title, per-view fetch, Source cell + sort, no Meteorites, Generate only on Review | `pages/JobsRecommended.tsx`, `StateUiContext.tsx` | **`pages/test_JobsRecommended.test.tsx`** — **`Review: titled Review…`**, **`Ready: titled Ready, fetches view=ready…`**, **`AST-1975: no Meteorites sub-section; Source cell shows job.source; Source sorts`**, **`AC1/AC15`** (both), **`AC9: Ready keeps the Analysis toggle and Total`**; **`contexts/test_StateUiContext.test.tsx`** (`processing_sections`) |
+
+**Fixture:** `stateUiManifestFixture.ts` renames `in_review_sections` to `processing_sections` and adds BUILD_ARTIFACTS. It adds ERROR_BUILD_ARTIFACTS / BUILD_FAILED to Skipped (order, labels, retry map), sets `recommended.sections` to RECOMMENDED "Review" + CANDIDATE_REVIEW "Ready", and drops `meteorite_section`. All of this mirrors AST-1974 config.
+
+**Broken / obsolete (revised this pass):** the whole of `test_JobsRecommended.test.tsx` is rebuilt on per-view data, because each backend view returns only its own state. The stateful AST-1968 handler is view-scoped and every action drops the row. The AST-1057 / AST-1708 Meteorites cases are retired (one AST-1975 case replaces them). The AdminRoute ×2, CandidateSurferConsent ×1, JobsJobDetail ×4, and test_routes ×1 cases are retargeted to `/`. Historical blocks above carry **AST-1975** pointers.
+
+**Not revised:** `lib/test_sessionAuthMark.test.ts` uses `/jobs/recommended?foo=1` only as a sample in-app path for the generic `isSafeAuthReturnPath` guard. It still passes, and a stale saved return path lands on the catch-all redirect. The plan doc's Notes for QA expected it to fail; it does not.
+
+**Baseline reds (also red with this ticket's product reverted to `origin/ftr/AST-1970-jobs-nav`; not this ticket):** 40 cases across Artifacts* / Companies* / CandidateContext / candidateLabel / sessionExtend / JobAnalysisReportModal (Print Resume) / JobDetailModal (listing_href) / ProfileTextPage / CandidateIntake / JobsApplied (AST-1479 timeout).
+
+## QA test manifest
+
+1. **AST-1975 + revised suites (required, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobsHomeRedirect.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsProcessing.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx \
+  ../../../tests/component/frontend/contexts/test_StateUiContext.test.tsx \
+  ../../../tests/component/frontend/components/test_AdminRoute.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateSurferConsent.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsJobDetail.test.tsx
+```
+
+2. **Full frontend component suite:** `cd src/ui/frontend && npm run test:component`. It is green apart from the 40 baseline reds above (no new failures).
+
+3. **Greps (AC 12 / 13):**
+
+```bash
+rg -n "JobsInReview|JobsResponded|jobs/recommended|in_review_sections|\bmeteorite_section\b" src/ui/frontend/src -g '!lib/rubricDisplay.ts'   # nothing (rubricDisplay.ts:75 comment = plan's optional "discuss" finding, not AC)
+ls tests/component/frontend/pages/test_JobsInReview.test.tsx tests/component/frontend/pages/test_JobsResponded.test.tsx   # both absent
+```
+
+4. **AC 14:** in `src/ui/frontend`, `npm run build` exits 0 and `npm run lint` adds no problems absent on `origin/ftr/AST-1970-jobs-nav`.
+
+**Pass criterion:** items 1, 3, 4 hold; item 2 shows only the named baseline reds. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `for p in frontend/pages.md frontend/components.md; do git show origin/sub/AST-1970/AST-1975-jobs-nav:docs/test-bible/$p | shasum; done`
+
+### AST-1976 · AST-1970 (Meteorites landed-job state and job link)
+
+**Parent:** [AST-1970 — Jobs Navigation changes](https://linear.app/astralcareermatch/issue/AST-1970). **Publish:** `origin/sub/AST-1970/AST-1976-jobs-nav`. Backend `job_state` (live `LEFT JOIN job`, null when unlanded): **`docs/test-bible/ui/api/api_meteorite.md`** § AST-1974 and **`docs/test-bible/data/database/jobs.md`** § AST-1974.
+
+On `JobsMeteorites.tsx`, the **Job** cell is now a button that opens `JobAnalysisReportModal` in place (`stopPropagation`, so the row click doesn't also fire). The **Job State** cell shows raw `job_state` and falls back to `—`. The report's `onRefresh` reloads the list. The row click still opens `MeteoriteDetailModal`.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 14 Job State = job's state; `—` when unlanded (Job and Job State) | `pages/JobsMeteorites.tsx` | **`test_JobsMeteorites.test.tsx`** › **`JobsMeteorites — AST-1976 landed-job state and job link > Job State cell shows the landed job's state…`** |
+| 14 job link → report modal; URL stays `/jobs/meteorites`; no Meteorite modal | page + `JobAnalysisReportModal` | **`… > job link opens the Job Analysis Report in place…`** |
+| 14 elsewhere on the row → Meteorite modal, not the report | page | **`… > clicking elsewhere on a landed row opens the Meteorite modal…`** (regression guard; also green pre-ticket) |
+| 14 not stale: a report action reloads the list | page `onRefresh={load}` | **`… > Skip in the report reloads the list so Job State is not stale`** |
+| 15 build / lint / config import | source | commands below |
+
+The tests use the production `JOBS_METEORITES_LIST_COLUMNS` keys and labels (Job then Job State). On the pre-ticket page (`origin/ftr/AST-1970-jobs-nav`), the state-cell, job-link, and Skip-refresh cases are red, which proves they guard the change.
+
+**Broken / obsolete:** none. The four AST-1749 cases are unchanged and green, because their 3-column mock has no Job column.
+
+## QA test manifest
+
+1. **AST-1976 + AST-1749 page suite (required, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx
+```
+
+2. **AC 15:** `python -c "import src.utils.config"` exits 0. In `src/ui/frontend`, `npm run build` exits 0 and `npm run lint` adds no problems absent on `origin/dev`.
+
+**Pass criterion:** items 1 and 2 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-1970/AST-1976-jobs-nav:docs/test-bible/frontend/pages.md | shasum`

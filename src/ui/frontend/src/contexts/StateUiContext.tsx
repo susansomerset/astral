@@ -5,7 +5,7 @@ import { useAuth } from "./AuthContext"
 /** Mirrors `build_state_ui_manifest()` in `src/utils/config.py`. */
 export interface StateUiManifest {
   jobs: {
-    in_review_sections: Array<{ state: string; label: string }>
+    processing_sections: Array<{ state: string; label: string }>
     grade_field_by_job_state: Record<string, string>
     grade_rubric_by_field: Record<string, string>
     skipped: {
@@ -51,12 +51,6 @@ export interface StateUiManifest {
         nav_label: string
         default_expanded: boolean
       }>
-      // AST-1057: partition by METEORITE_CONFIG company prefix (manifest-driven).
-      meteorite_section?: {
-        section_id: string
-        label: string
-        company_prefix: string
-      }
     }
   }
   candidate: {

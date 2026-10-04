@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import ListPage, { type Column } from "../components/ListPage"
+import JobAnalysisReportModal from "../components/JobAnalysisReportModal"
 import MeteoriteDetailModal from "../components/MeteoriteDetailModal"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
 
-/** List row from GET /api/candidates/<id>/meteorites (AST-1748). */
+/** List row from GET /api/candidates/<id>/meteorites (AST-1748; job_state AST-1974). */
 interface MeteoriteRow {
   id: number
   candidate_id: string
@@ -14,6 +15,7 @@ interface MeteoriteRow {
   classify_outcome: string | null
   link: string | null
   astral_job_id: string | null
+  job_state: string | null
   [key: string]: unknown
 }
 
@@ -25,13 +27,14 @@ type ApiColumn = {
   type?: string
 }
 
-/** AST-1749: Jobs → Meteorites — candidate-scoped staging-row list (read-only). */
+/** AST-1749: Jobs → Meteorites — candidate-scoped staging-row list (read-only); AST-1976 landed-job state + in-page job report link. */
 export default function JobsMeteorites() {
   const { selectedId } = useCandidate()
   const [rows, setRows] = useState<MeteoriteRow[]>([])
   const [apiColumns, setApiColumns] = useState<ApiColumn[]>([])
   const [loading, setLoading] = useState(true)
   const [viewingId, setViewingId] = useState<number | null>(null)
+  const [reportJobId, setReportJobId] = useState<string | null>(null)
 
   const load = useCallback(() => {
     if (!selectedId) {
@@ -65,13 +68,40 @@ export default function JobsMeteorites() {
 
   const columns: Column<MeteoriteRow>[] = useMemo(
     () =>
-      apiColumns.map(c => ({
-        key: c.key,
-        label: c.label,
-        sortable: c.sortable !== false,
-        ...(c.defaultDesc ? { defaultDesc: true } : {}),
-        ...(c.type ? { type: c.type } : {}),
-      })),
+      apiColumns.map(c => {
+        const col: Column<MeteoriteRow> = {
+          key: c.key,
+          label: c.label,
+          sortable: c.sortable !== false,
+          ...(c.defaultDesc ? { defaultDesc: true } : {}),
+          ...(c.type ? { type: c.type } : {}),
+        }
+        // Job cell opens the landed job's report in place; stopPropagation keeps the row click (Meteorite modal) from also firing.
+        if (c.key === "astral_job_id") {
+          col.render = value => {
+            const jobId = String(value ?? "")
+            if (!jobId) return "—"
+            return (
+              <button
+                type="button"
+                className="dispatch-batch-link"
+                onClick={e => {
+                  e.stopPropagation()
+                  setReportJobId(jobId)
+                }}
+                title="Open job report"
+              >
+                {jobId}
+              </button>
+            )
+          }
+        }
+        // Raw job.state (matches GET /api/jobs/<id>.state); null = not landed or job row gone.
+        if (c.key === "job_state") {
+          col.render = value => (value ? String(value) : "—")
+        }
+        return col
+      }),
     [apiColumns],
   )
 
@@ -87,6 +117,11 @@ export default function JobsMeteorites() {
         onRowClick={row => setViewingId(Number(row.id))}
       />
       <MeteoriteDetailModal meteoriteId={viewingId} onClose={() => setViewingId(null)} />
+      <JobAnalysisReportModal
+        jobId={reportJobId}
+        onClose={() => setReportJobId(null)}
+        onRefresh={load}
+      />
     </>
   )
 }

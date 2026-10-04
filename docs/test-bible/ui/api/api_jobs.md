@@ -345,3 +345,102 @@ Job detail `related_meteorite`: when reverse `astral_job_id` miss, fall back to 
 **Integration:** none.
 
 **AST-1872 (pointer):** `GET /api/jobs/<id>` always includes boolean **`can_skip`** from core `job_state_admits_transition(state, "CANDIDATE_SKIPPED")` — **`TestAst1872DetailCanSkip`**. Manifest: **`docs/test-bible/core/tracker.md`** § AST-1872.
+
+---
+
+### AST-1974 · AST-1970
+
+**Parent:** [AST-1970 — Jobs Navigation changes](https://linear.app/astralcareermatch/issue/AST-1970). **Publish:** `origin/sub/AST-1970/AST-1974-jobs-nav`. Backend half of the Jobs re-cut: six lists (Ready, Review, Applied, Processing, Skipped, Meteorites). Processing = complement of `JOBS_PROCESSING_EXCLUDED_STATES` (Ready + Review + Applied + Skipped, import-time disjoint guard). `view=ready|review|processing` replace `in_review|recommended|responded` (default `ready`). Applied repair-on-read loop deleted (single `job.candidate_id`-scoped read). Skip route delegates to core `candidate_skip_job` (releases a held batch claim) and logs one completion info line.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Views + default + retired views | `src/ui/api/api_jobs.py` | `TestJobsRoutes::test_list_ready_review_and_default`, `test_retired_in_review_view_falls_through`, `test_list_processing_*` (3) |
+| Applied single read (supersedes AST-1498 repair) | `src/ui/api/api_jobs.py` | `TestJobsRoutes::test_list_applied_single_scoped_read_no_repair_ast1974` |
+| Skip route → core + one info line / 409 silent | `src/ui/api/api_jobs.py` | `TestJobsRoutes::test_skip_job_*` (4) |
+| Real-SQLite partition / nav counts / skip / AC 5 detail | api_jobs + api_system + tracker + database | **`TestAst1974JobsPartitionRealDb`** |
+| Config state model, nav, manifest, columns | `src/utils/config.py` | [`utils/config.md`](../../utils/config.md) § AST-1974 |
+| Six nav counts | `src/ui/api/api_system.py` | [`api_system.md`](api_system.md) § AST-1974 |
+| Core skip + facades | `src/core/tracker.py` | [`core/tracker.md`](../../core/tracker.md) § AST-1974 |
+| exclude_states + meteorite `job_state` join | `src/data/database.py` | [`data/database/jobs.md`](../../data/database/jobs.md) § AST-1974 |
+| Meteorites list `job_state` | `src/ui/api/api_meteorite.py` | [`api_meteorite.md`](api_meteorite.md) § AST-1974 |
+
+**Broken / obsolete revised this pass:** `test_list_in_review_*` → processing; `test_list_recommended_and_default` → ready/review/default; `test_list_applied_includes_stem_job_null_company_candidate_id_ast1498` → single-read (AC 4 removes the repair by design); skip tests mock `candidate_skip_job`; 13 `test_config.py` tests (`IN_REVIEW_STATES` / `JOBS_IN_REVIEW_UI_SECTIONS` / `RECOMMENDED_JOB_STATES` / meteorite_section / Responded / AST-1808 snapshot exemption for `CANDIDATE_SKIPPED`); `test_api_system.py` nav count path + Jobs stub test; integration `test_candidate_nav_api.py`. Fixture: `_meteorite_schema_ensured` added to `tests/component/ui/conftest.py` + `tests/integration/conftest.py` flag resets.
+
+**Frontend:** none here — `stateUiManifestFixture.ts`, `test_JobsInReview`, `test_JobsRecommended`, `test_StateUiContext`, `test_routes` follow **AST-1975** / **AST-1976**.
+
+## QA test manifest
+
+Pass criterion: every node below green. Narrowed runs only (zero-arg harness carries unrelated pre-existing reds on this tree).
+
+1. **API views / skip / real-DB partition (AC 1–6, 8–10):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes \
+  tests/component/ui/api/test_api_jobs.py::TestAst1974JobsPartitionRealDb \
+  -q
+```
+
+   Expect only `TestJobsRoutes::test_put_resume_content_persists_via_tracker` red — pre-existing on `origin/dev`, unrelated.
+
+2. **Config (AC 1, 5, 7, manifest contract):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1974JobsListPartition \
+  tests/component/utils/test_config.py::TestAst479LikePassStates \
+  tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig::test_score_gate_and_ui_manifests \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst1339MeteoriteNewRetryQualifyHolding::test_ui_sections_label_no_grade_field \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  tests/component/utils/test_config.py::TestAst1057MeteoriteRecommendedSection \
+  tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
+  tests/component/utils/test_config.py::TestAst1749JobsMeteoritesNav \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest \
+  -q
+```
+
+3. **Nav counts (AC 1, 10):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers \
+  -q
+```
+
+4. **Core skip + data + meteorite list (AC 6, 8, Meteorites `job_state`):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1974CandidateSkipJob \
+  tests/component/data/database/test_jobs.py::TestAst1974ExcludeStatesAndMeteoriteJobState \
+  tests/component/ui/api/test_api_meteorite.py \
+  -q
+```
+
+5. **Integration (revised existing scenario):**
+
+```bash
+./scripts/testing/run_integration_tests.sh tests/integration -q
+```
+
+6. **Greps / builds (AC 4, 7, 9, 11, 12 — backend half):**
+
+```bash
+rg -n "candidate_id=None" src/ui/api/api_jobs.py                                   # expect nothing
+rg -n "jobs/in_review|jobs/recommended|jobs/responded" src/utils/config.py src/ui/api  # expect nothing
+git diff origin/dev -- src/ui/api | rg "^\+.*logger\.info"                         # expect exactly the skip line
+git diff origin/dev -- src/core/tracker.py | rg "^\+.*logger\.info"                # expect nothing
+python -c "import src.utils.config"                                                # exit 0
+```
+
+   AC 11 frontend paths / `npm run build` / `npm run lint` are **AST-1975**.
+
+**Branch locks:** every added line/branch in `tracker.py`, `config.py`, `api_jobs.py`, `api_system.py` covered by the nodes above (checked with `--cov-branch` on the merged tree).
+
+**Known pre-existing (not this ticket):** `tests/component/data/database/test_meteorites.py` fails collection on `origin/dev` (imports `METEORITE_STATES_RETENTION`, removed 2026-09-20) — hence the meteorite join test lives in `test_jobs.py`.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1970/AST-1974-jobs-nav:docs/test-bible/ui/api/api_jobs.md | shasum` (same command for `utils/config.md`, `ui/api/api_system.md`, `ui/api/api_meteorite.md`, `core/tracker.md`, `data/database/jobs.md`, `integration/README.md`).

@@ -18,8 +18,10 @@ from src.utils.config import (
     METEORITE_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
-    IN_REVIEW_STATES,
-    RECOMMENDED_JOB_STATES,
+    APPLIED_JOB_STATES,
+    JOBS_PROCESSING_EXCLUDED_STATES,
+    READY_JOB_STATES,
+    REVIEW_JOB_STATES,
     SKIPPED_STATES,
     UI_CONFIG,
     BUILD_CONFIG,
@@ -85,12 +87,20 @@ def _get_job_counts(candidate_id: Optional[str]) -> dict:
         return {}
     try:
         from src.core.tracker import count_jobs, count_jobs_below_dispatch_score_floor
+        from src.data.database import list_meteorites_for_candidate
 
         below = count_jobs_below_dispatch_score_floor(candidate_id)
         return {
-            "/jobs/recommended": count_jobs(states=list(RECOMMENDED_JOB_STATES), candidate_id=candidate_id),
-            "/jobs/in_review": count_jobs(states=list(IN_REVIEW_STATES), candidate_id=candidate_id) - below,
+            "/jobs/ready": count_jobs(states=list(READY_JOB_STATES), candidate_id=candidate_id),
+            "/jobs/review": count_jobs(states=list(REVIEW_JOB_STATES), candidate_id=candidate_id),
+            "/jobs/applied": count_jobs(states=list(APPLIED_JOB_STATES), candidate_id=candidate_id),
+            # Below-floor rows render on Skipped, not Processing (mirrors api_jobs list_view).
+            "/jobs/processing": count_jobs(
+                exclude_states=list(JOBS_PROCESSING_EXCLUDED_STATES), candidate_id=candidate_id
+            ) - below,
             "/jobs/skipped": count_jobs(states=list(SKIPPED_STATES), candidate_id=candidate_id) + below,
+            # Same read the Meteorites list uses, so the badge equals the list length.
+            "/jobs/meteorites": len(list_meteorites_for_candidate(candidate_id)),
         }
     except Exception:
         _log.debug("Failed to compute job nav counts", exc_info=True)

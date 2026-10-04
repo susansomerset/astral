@@ -2612,7 +2612,7 @@ JOB_STATES = {
     # Upshot technical-hold after meteorite LIKE (mirrors PASSED_LIKE_RETRY) — sibling AST-1055.
     "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
     "ERROR_EVALUATE_JD":      {"prior_states": None},
-    "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, "RECOMMENDED"]},
+    "CANDIDATE_SKIPPED":      {"prior_states": []},  # AST-1974: derived after SKIPPED_STATES (Applied/Skipped complement)
 }
 
 # ---------------------------------------------------------------------------
@@ -3385,8 +3385,9 @@ SEED_CONFIG = {
     ),
 }
 
-# Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
-RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
+# AST-1974: Jobs → Ready / Review lists (two of the four explicit lists; Processing is their complement).
+READY_JOB_STATES = ["CANDIDATE_REVIEW"]
+REVIEW_JOB_STATES = ["RECOMMENDED"]
 
 # Applied jobs list + nav — post-applied candidate outcomes (AST-1488 re-land of AST-1479).
 APPLIED_JOB_STATES = [
@@ -3456,7 +3457,11 @@ JOBS_RECOMMENDED_PRIMARY_ACTIONS = {
     ],
 }
 
-assert all(state in RECOMMENDED_JOB_STATES for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS)
+# BUILD_ARTIFACTS Cancel stays — the report modal still offers it on a running build.
+assert all(
+    state in (*READY_JOB_STATES, *REVIEW_JOB_STATES, BUILD_ARTIFACTS_BASE_STATE)
+    for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS
+)
 
 # AST-948 / AST-1550 / AST-1691 / AST-1872: top-level Recommended report tabs — first entry is the default tab (Meteorite after Discussion).
 JOBS_RECOMMENDED_REPORT_TOP_TABS = [
@@ -3495,6 +3500,7 @@ JOBS_METEORITES_LIST_COLUMNS = [
     {"key": "classify_outcome", "label": "Classify", "sortable": True},
     {"key": "link", "label": "Link", "sortable": True},
     {"key": "astral_job_id", "label": "Job", "sortable": True},
+    {"key": "job_state", "label": "Job State", "sortable": True},
     {
         "key": "state_changed_at",
         "label": "State Changed",
@@ -3553,19 +3559,9 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
     },
 ]
 
-# Ordered state lists for Jobs UI views (single source of truth for API, nav counts, frontend).
-IN_REVIEW_STATES = [
-    "NEW", "VALID_TITLE", retry_of("VALID_TITLE"), retry_of("NEW"), "PASSED_JOBLIST", "JD_READY", retry_of("JD_READY"),
-    "PASSED_JD", retry_of("PASSED_JD"), "PASSED_DO", retry_of("PASSED_DO"), "PASSED_GET", "CULTURE_READY",
-    retry_of("CULTURE_READY"), "PASSED_LIKE", retry_of("PASSED_LIKE"),
-    "METEORITE_NEW", retry_of("METEORITE_NEW"), "METEORITE_QUALIFIED", retry_of("METEORITE_QUALIFIED"),
-    "METEORITE_PASSED_JD", retry_of("METEORITE_PASSED_JD"), "METEORITE_PASSED_DO", retry_of("METEORITE_PASSED_DO"),
-    "METEORITE_PASSED_GET", retry_of("METEORITE_PASSED_GET"),
-    "METEORITE_PASSED_LIKE", retry_of("METEORITE_PASSED_LIKE"),
-]
 # Consult PASSED_* / CULTURE_READY set for claim-sort (_dispatch_sort_by_for) and related helpers.
 # Claim uses latest_score >= score_floor on these states; UI treats misses as Skipped while DB
-# state stays PASSED (see api_jobs skipped / in_review). CULTURE_READY is score-gated so
+# state stays PASSED (see api_jobs skipped / processing). CULTURE_READY is score-gated so
 # grade_like keeps a floor after the culture hop (AST-874).
 # Jobs UI below-floor membership (score_floor_by_trigger_for_candidate) uses
 # dispatch_claim_uses_score_floor — which also returns True for transition outcomes such as
@@ -3962,7 +3958,19 @@ SKIPPED_STATES = [
     "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET",
     "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE",
     "ERROR_QUALIFY_JOB_LISTINGS", "ERROR_EVALUATE_JD",
+    "ERROR_BUILD_ARTIFACTS", "BUILD_FAILED",
     "CANDIDATE_SKIPPED",
+]
+
+# AST-1974: Ready + Review + Applied + Skipped — Processing = every job state NOT IN this list.
+# Derived, never typed out; the assert keeps the four lists pairwise disjoint (each job on exactly one list).
+JOBS_PROCESSING_EXCLUDED_STATES = [*READY_JOB_STATES, *REVIEW_JOB_STATES, *APPLIED_JOB_STATES, *SKIPPED_STATES]
+assert len(JOBS_PROCESSING_EXCLUDED_STATES) == len(set(JOBS_PROCESSING_EXCLUDED_STATES)), "Jobs lists overlap"
+
+# AST-1974: Skip is legal from every job state not already Applied or Skipped (hop labels / _RETRY
+# resolve through their base in _job_state_matches_prior / state_prior_states).
+JOB_STATES["CANDIDATE_SKIPPED"]["prior_states"] = [
+    s for s in JOB_STATES if s not in APPLIED_JOB_STATES and s not in SKIPPED_STATES
 ]
 
 # ---------------------------------------------------------------------------
@@ -3972,7 +3980,7 @@ SKIPPED_STATES = [
 JOBS_SKIPPED_BELOW_DISPATCH_KEY = "__BELOW_DISPATCH_FLOOR__"
 JOBS_SKIPPED_BELOW_DISPATCH_LABEL = "Below dispatch score floor"
 
-JOBS_IN_REVIEW_UI_SECTIONS = [
+JOBS_PROCESSING_UI_SECTIONS = [
     {"state": "NEW", "label": "New"},
     {"state": "VALID_TITLE", "label": "Valid Title"},
     {"state": retry_of("VALID_TITLE"), "label": "Valid Title (retry)"},
@@ -4001,28 +4009,15 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
     {"state": retry_of("METEORITE_PASSED_GET"), "label": "Meteorite Passed GET (retry)"},
     {"state": "METEORITE_PASSED_LIKE", "label": "Meteorite Passed LIKE"},
     {"state": retry_of("METEORITE_PASSED_LIKE"), "label": "Meteorite LIKE upshot (retry)"},
+    {"state": BUILD_ARTIFACTS_BASE_STATE, "label": "Building Artifacts"},
 ]
+# Processing rows must never name a state that lives on one of the four explicit lists.
+assert not any(row["state"] in JOBS_PROCESSING_EXCLUDED_STATES for row in JOBS_PROCESSING_UI_SECTIONS)
 
 JOBS_RECOMMENDED_UI_SECTIONS = [
-    {"state": "RECOMMENDED", "label": "Recommended"},
-    {"state": BUILD_ARTIFACTS_BASE_STATE, "label": "In Progress"},
+    {"state": "RECOMMENDED", "label": "Review"},
     {"state": "CANDIDATE_REVIEW", "label": "Ready"},
 ]
-
-# AST-1052 / AST-1057: Recommended page — distinct Meteorites section membership.
-# Jobs already land in RECOMMENDED / BUILD_ARTIFACTS / CANDIDATE_REVIEW after meteorite_upshot
-# (AST-1055); partition by company short_name prefix, not by a new job state.
-JOBS_RECOMMENDED_METEORITE_SECTION = {
-    "section_id": "meteorites",
-    "label": "Meteorites",
-    "company_prefix": METEORITE_CONFIG["short_name_prefix"],  # "meteorite-"
-}
-assert isinstance(JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"], str)
-assert JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"]
-assert (
-    JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"]
-    == METEORITE_CONFIG["short_name_prefix"]
-)
 
 JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS = [
     {"field": "jd_score", "label": "JD"},
@@ -4031,9 +4026,11 @@ JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS = [
     {"field": "like_score", "label": "LIKE"},
 ]
 
-assert all(row["state"] in RECOMMENDED_JOB_STATES for row in JOBS_RECOMMENDED_UI_SECTIONS)
+assert all(row["state"] in (*READY_JOB_STATES, *REVIEW_JOB_STATES) for row in JOBS_RECOMMENDED_UI_SECTIONS)
 
 JOBS_SKIPPED_SECTION_ORDER = [
+    "ERROR_BUILD_ARTIFACTS",
+    "BUILD_FAILED",
     "FAILED_LIKE",
     "FAILED_TECHNICAL_LIKE",
     "METEORITE_FAILED_LIKE",
@@ -4068,6 +4065,8 @@ JOBS_SKIPPED_SECTION_ORDER = [
 ]
 
 JOBS_SKIPPED_SECTION_LABELS = {
+    "ERROR_BUILD_ARTIFACTS": "Error Build Artifacts",
+    "BUILD_FAILED": "Build Failed",
     "FAILED_JOBLIST": "Failed Job List",
     "FAILED_JD": "Failed Job Description",
     "FAILED_TECHNICAL": "Failed Technical",
@@ -4163,6 +4162,9 @@ for _row in JOBS_RECOMMENDED_REPORT_PHASE_TABS:
 # AST-1156: Skipped Retry — from Skipped section state → claimable primary trigger.
 # Keys ⊆ JOBS_SKIPPED_SECTION_ORDER except CANDIDATE_SKIPPED (Resurrect-only).
 JOBS_SKIPPED_BULK_RETRY_TO_STATE = {
+    # AST-1974: artifact build failures — each state's only legal successor.
+    "ERROR_BUILD_ARTIFACTS": "RECOMMENDED",
+    "BUILD_FAILED": "CANDIDATE_REVIEW",
     # Regular rubric / qualify / JD
     "FAILED_JOBLIST": "NEW",
     "ERROR_QUALIFY_JOB_LISTINGS": "NEW",
@@ -4207,9 +4209,6 @@ assert set(JOBS_SKIPPED_BULK_RETRY_TO_STATE) == set(_skipped_retryable)
 
 def build_state_ui_manifest() -> Dict[str, Any]:
     """Single JSON blob for GET /api/state_ui_manifest (G1 — no parallel TS state vocabulary)."""
-    in_review_allowed = set(IN_REVIEW_STATES)
-    in_review_sections = [row for row in JOBS_IN_REVIEW_UI_SECTIONS if row["state"] in in_review_allowed]
-
     skipped_order = [s for s in JOBS_SKIPPED_SECTION_ORDER if s in JOB_STATES]
     skipped_labels = {
         s: JOBS_SKIPPED_SECTION_LABELS.get(s, s.replace("_", " ").title()) for s in skipped_order
@@ -4244,13 +4243,9 @@ def build_state_ui_manifest() -> Dict[str, Any]:
     grade_field = {**JOBS_IN_REVIEW_GRADE_FIELD, **JOBS_SKIPPED_GRADE_FIELD}
     assert all(is_registered_state(JOB_STATES, k) for k in grade_field)
 
-    recommended_sections = [
-        row for row in JOBS_RECOMMENDED_UI_SECTIONS if row["state"] in RECOMMENDED_JOB_STATES
-    ]
-
     return {
         "jobs": {
-            "in_review_sections": in_review_sections,
+            "processing_sections": list(JOBS_PROCESSING_UI_SECTIONS),
             "grade_field_by_job_state": grade_field,
             "grade_rubric_by_field": dict(JOBS_UI_GRADE_RUBRIC),
             "skipped": {
@@ -4262,7 +4257,7 @@ def build_state_ui_manifest() -> Dict[str, Any]:
             },
             "detail": {"already_skipped_state": "CANDIDATE_SKIPPED"},
             "recommended": {
-                "sections": recommended_sections,
+                "sections": list(JOBS_RECOMMENDED_UI_SECTIONS),
                 "phase_score_columns": list(JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS),
                 "primary_actions_by_state": {
                     state: list(actions)
@@ -4273,11 +4268,6 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "report_top_tabs": list(JOBS_RECOMMENDED_REPORT_TOP_TABS),
                 "report_summary_sections": list(JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS),
                 "phase_score_header_title_template": PHASE_SCORE_HEADER_TITLE_TEMPLATE,
-                "meteorite_section": {
-                    "section_id": JOBS_RECOMMENDED_METEORITE_SECTION["section_id"],
-                    "label": JOBS_RECOMMENDED_METEORITE_SECTION["label"],
-                    "company_prefix": JOBS_RECOMMENDED_METEORITE_SECTION["company_prefix"],
-                },
             },
         },
         "candidate": {
@@ -5615,12 +5605,12 @@ NAV_CONFIG = [
     {
         "label": "Jobs",
         "items": [
-            {"label": "In Review", "path": "/jobs/in_review"},
-            {"label": "Skipped", "path": "/jobs/skipped"},
-            {"label": "Recommended", "path": "/jobs/recommended"},
+            {"label": "Ready", "path": "/jobs/ready"},
+            {"label": "Review", "path": "/jobs/review"},
             {"label": "Applied", "path": "/jobs/applied"},
+            {"label": "Processing", "path": "/jobs/processing"},
+            {"label": "Skipped", "path": "/jobs/skipped"},
             {"label": "Meteorites", "path": "/jobs/meteorites"},
-            {"label": "Responded", "path": "/jobs/responded", "enabled": False},
         ],
     },
     {
