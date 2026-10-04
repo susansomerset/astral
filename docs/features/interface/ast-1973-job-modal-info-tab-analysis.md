@@ -249,3 +249,66 @@ context_tokens≈42000
   `InfoTab` reads `report_phase_tabs` / `phase_score_columns` from the StateUi manifest, so the test needs a manifest provider.
 - **Git note:** parent ref is `ftr/AST-1972-job-modal-info-analysis` (registry), not `ftr/AST-1972`; `sync-child --ftr AST-1972`
   skipped it, but it sits at `origin/dev` tip `e0cb0a540`, so nothing was missed. `validate-sub-log.sh --stage=build` with the full ref → ok.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1973
+**Publish ref:** `b794975073c04a857743f12870aaaf76dfc00648` (`origin/sub/AST-1972/AST-1973-job-modal-info-tab-analysis`)
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.ui.frontend-file-placement | A | | |
+| astral.layers.ui-config-driven-business-logic | A | | |
+| astral.standards.dry-and-focused-functions | A | | |
+| astral.standards.in-scope-only | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded all four **A** at plan; code diff matches those promises (shared `PhaseAnalysisLines` in `components/`, manifest-driven lines, move-not-copy, three scoped frontend files only).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `canon/canon_clerk.py expand` vs frozen statute ids
+- **Finding:** `expand` only serves `directives/active/`; these four ids resolve from `canon/statutes/**` at corpus tip (same SHA Joan used). Verdict is reproducible; optional downstream clerk roster gap only.
+- **Location:** diff includes `tests/component/frontend/components/test_JobDetailModal.test.tsx` + `docs/test-bible/frontend/{components,pages}.md`
+- **Finding:** Expected **Tests Passed** carry from Betty (`qa-child` / `test-child`), not sibling product scope; AC1–AC5 modal coverage aligns with plan handoff.
+
+## What's solid
+
+- `PhaseAnalysisLines.tsx` matches the plan snippet verbatim (memo, classes, em-dash fallback, `buildPhaseListGradeRow`).
+- AC6 hygiene: hosts import the shared component only; no `report_phase_tabs` / `buildPhaseListGradeRow` in `JobsRecommended.tsx` or `JobDetailModal.tsx`.
+- Info tab: **Analysis** → lines → **State History** in the right column; `JobDetail` index signature; block not state-gated (manifest-driven display only).
+- AC8: three-dot diff empty under `src/ui/api`, `src/core`, `src/data`, `src/utils`.
+
+## Recommended actions (for Chuckles / downstream — not executed here)
+
+- Append this artifact to `docs/features/interface/ast-1973-job-modal-info-tab-analysis.md`, commit `docs(AST-1973): Radia review — clean`, push publish ref, post slim upshot `--as radia`, move **Review Posted**; datt **PROCEED** → **User Testing** (no `resolve-child` canon work).
+
+---
+
+**Slim Linear upshot (Chuckles posts via `linear_proxy --as radia`):**
+
+```
+[code-rubric] PROCEED (Commit: b794975073c04a857743f12870aaaf76dfc00648) shared phase lines clean
+```
+
+context_tokens≈28000
