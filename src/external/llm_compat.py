@@ -15,7 +15,7 @@ import httpx as _httpx
 from src.external.anthropic import _effort_body, _parse_api_response, _parse_json_response, _parse_python_code_response
 from src.external.openrouter import get_batch_host
 from src.utils.config import PROVIDER_EMPTY_RESPONSE, get_llm_server
-from src.utils.cost_calculator import calculate_cost_components_from_counts, usage_to_token_counts
+from src.utils.cost_calculator import CALC_COST_KEYS, calculate_cost_components_from_counts, usage_to_token_counts
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.llm_external import (
     await_provider_call_with_budget,
@@ -136,9 +136,17 @@ async def send_to_llm_compat(
                 timeout_seconds=provider_call_wait_timeout_seconds(),
             )
 
-        def _timesheet_kwargs_for(response: Any) -> Optional[Dict[str, Any]]:
-            # None when cost can't be computed — callers then skip the timesheet row (unchanged behaviour).
-            counts = usage_to_token_counts(response.usage)
+        def _timesheet_kwargs_for(response: Any) -> Dict[str, Any]:
+            # Always a row (AST-1966): counts that can't be read are 0, cost that can't be priced is 0 —
+            # platform-routed rows get their billed cost from the background reconcile either way.
+            try:
+                counts = usage_to_token_counts(response.usage)
+            except Exception as exc:
+                logger.exception(
+                    "%s | timesheet token counts on %s %s\n  %s: %s\n  Recording the row with zero tokens",
+                    getattr(response, "id", None) or "-", server_id, sku, type(exc).__name__, exc,
+                )
+                counts = {"cache_read": 0, "cache_miss": 0, "output": 0, "cache_write": 0}
             try:
                 cost_parts = calculate_cost_components_from_counts(
                     counts["cache_read"],
@@ -148,8 +156,12 @@ async def send_to_llm_compat(
                     sku=sku,
                     server_id=server_id,
                 )
-            except Exception:
-                return None
+            except Exception as exc:
+                logger.exception(
+                    "%s | timesheet catalog price on %s %s\n  %s: %s\n  Recording the row with zero calculated cost",
+                    getattr(response, "id", None) or "-", server_id, sku, type(exc).__name__, exc,
+                )
+                cost_parts = dict.fromkeys(CALC_COST_KEYS, 0.0)
             return dict(
                 agent_req_id=getattr(response, "id", None),
                 task_key_uuid=task_key_uuid,
