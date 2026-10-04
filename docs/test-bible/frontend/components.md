@@ -1831,3 +1831,62 @@ cd src/ui/frontend && npm run test:component -- \
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/components.md`: filled after publish
 - `docs/test-bible/frontend/pages.md`: filled after publish
+
+### AST-1982 · AST-1981 (shared job-title renderer + list tables)
+
+**Parent:** [AST-1981](https://linear.app/astralcareermatch/issue/AST-1981). **Publish:** `origin/sub/AST-1981/AST-1982-job-title-renderer`.
+
+New **`components/JobTitleText.tsx`** cuts a title through `truncateForDisplay` at `resolveJobTitleTruncateChars(getUiConfig())` (`lib/uiConfig.ts`, fallback 50), served from **`UI_CONFIG["job_title_truncate_chars"] = 50`**. A short title renders as bare text. A cut title renders a `<span>`; hovering it portals a `role="tooltip"` `.job-title-tooltip` with the full title to `document.body`. Mouse-out or any scroll closes it. Empty title renders the caller's required `fallback`. Used by the Job Title `<td>` on `JobsRecommended` (Ready + Review), `JobsProcessing`, `JobsSkipped` (every table variant), `JobsApplied`, and by the Meteorites `job_title` column `render`. That element bypasses `ListPage`'s 30-char string cut, so other columns keep 30. Modal / report headers are sibling **AST-1983**.
+
+Shared page helper **`tests/component/frontend/pages/job-title-cell.ts`** (`jobTitleJobs`, `expectJobTitleCells`) seeds a 79-char title (word `Zanzibar` past char 50) and an exactly-50-char title, then checks AC 1–3 on one rendered table.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 long titles cut at 50 + `…` on every list | `JobTitleText.tsx`, five pages | **`test_JobTitleText`** › **`long title cut via the config length…`**; **`AST-1982`** tests in **`test_JobsRecommended`** (review + ready), **`test_JobsProcessing`**, **`test_JobsSkipped`** (below-floor + regular), **`test_JobsApplied`**, **`test_JobsMeteorites`** |
+| 2 ≤ 50 exact; no tooltip, no `title` | `JobTitleText.tsx` | **`test_JobTitleText`** › **`50-char title renders exactly…`**; every page test above (helper hovers the 50-char cell) |
+| 3 tooltip = full title, under `body`, outside table, wraps at fixed px width, gone on mouse-out | `JobTitleText.tsx`, `App.css` | **`test_JobTitleText`** › **`hover opens one tooltip…`**, **`any scroll closes…`**, **`tooltip style wraps…`** (reads the `.job-title-tooltip` rule; jsdom loads no CSS); every page test above. Multi-line `offsetHeight` for titles over 100 chars needs a real browser, so it is UAT only |
+| 4 Meteorites title 50, other columns 30 | `JobsMeteorites.tsx` | **`JobsMeteorites — AST-1982 Job Title cut`** › **`Title cut at 50…; other columns still cut at 30`** |
+| 5 one source for 50, one cut path | `config.py`, `uiConfig.ts` | **`test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_job_title_truncate_chars`**; **`test_uiConfig`** › **`resolveJobTitleTruncateChars…`**; **`test_JobTitleText`** › **`cut length follows UI_CONFIG…`** (served 20 → cut at 20); greps below |
+| 6 every surface uses the component | five pages | greps below |
+| 7 sort / search read the full title | `JobsRecommended.tsx`, `ListPage` | **`JobsRecommended — AST-1982 Job Title cut`** › **`ready: Job Title sort orders by the full title…`** (titles equal for 50 chars); **`JobsMeteorites — AST-1982`** › **`search for a word past char 50…`** |
+| 8 build / lint | source | item 4 below |
+
+**Broken / obsolete:** none. Every existing page fixture title is under 50 chars. No test asserted the raw `{job.job_title || "—"}` markup.
+
+**Pre-existing red (not this ticket; also red with `dev` product and no AST-1982 tests):** the **`AST-1979 Created column` › `…Created left of…`** tests in the four hand-built page files need **AST-1971** product, which is not on `origin/dev`. **`JobsApplied — AST-1479 › Interview → notes modal → candidate_action interview`** times out. **`test_api_system.py::TestAst1375InflightHideStatesManifest::test_manifest_includes_inflight_hide_states`** also fails. All are name-excluded below.
+
+**Integration:** none. Frontend plus one served config key, so do not invent one.
+
+## QA test manifest
+
+1. **AC 1–4, AC 5 component side, AC 7 (Vitest, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobTitleText.test.tsx \
+  ../../../tests/component/frontend/lib/test_uiConfig.test.ts \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsProcessing.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx \
+  --testNamePattern='^(?!.*(Created left of|candidate_action interview))'
+```
+
+2. **AC 5 served key (pytest):**
+
+```bash
+.venv/bin/python -m pytest tests/component/ui/api/test_api_system.py -q -k "ui_config"
+```
+
+3. **AC 5 / AC 6 greps:**
+   - `rg -l "JobTitleText" src/ui/frontend/src/pages` lists `JobsRecommended.tsx`, `JobsProcessing.tsx`, `JobsSkipped.tsx`, `JobsApplied.tsx`, `JobsMeteorites.tsx`.
+   - `rg -n '\{job\.job_title \|\| "\\u2014"\}' src/ui/frontend/src/pages` prints nothing.
+   - `rg -n "\.slice\(" src/ui/frontend/src/components/JobTitleText.tsx` prints nothing.
+   - `git diff origin/dev -- src/ui/frontend/src/pages src/ui/frontend/src/components | rg "^\+.*(\b50\b|job_title.*\.slice\()"` prints nothing.
+4. **AC 8:** `python -c "import src.utils.config"` exits 0. In `src/ui/frontend`, `npm run build` exits 0. `npm run lint` lists no problem that `origin/dev` does not already report.
+
+**Pass criterion:** items 1–2 green with the name exclusions above, and items 3–4 hold. Use the narrowed run, not the zero-arg harness.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/components.md`: filled after publish

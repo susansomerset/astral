@@ -4,8 +4,11 @@ import { useLocation } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { useCandidate } from "../../../../src/ui/frontend/src/contexts/CandidateContext"
 import api from "../../../../src/ui/frontend/src/lib/api"
+import { fmtTime } from "../../../../src/ui/frontend/src/lib/fmt"
+import { getUiConfig, loadUiConfig } from "../../../../src/ui/frontend/src/lib/uiConfig"
 import JobsMeteorites from "../../../../src/ui/frontend/src/pages/JobsMeteorites"
 import { renderWithProviders } from "../test-utils"
+import { CUT_TITLE, EDGE_TITLE, expectJobTitleCells, jobTitleJobs } from "./job-title-cell"
 import { candidateId, installBaseApiMocks, jsonResponse } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -188,18 +191,20 @@ describe("JobsMeteorites — AST-1749", () => {
 
 // AST-1976 AC 14: Job State cell = live job.state (AST-1974 LEFT JOIN), "—" when unlanded; the Job cell opens
 // the Job Analysis Report in place (URL stays /jobs/meteorites); elsewhere on the row still opens the Meteorite modal.
+// Production JOBS_METEORITES_LIST_COLUMNS keys/labels (src/utils/config.py): Job, Job State (AST-1976), Created (AST-1980).
+const PROD_COLUMNS = [
+  { key: "state", label: "State", sortable: true },
+  { key: "job_title", label: "Title", sortable: true },
+  { key: "employer_name", label: "Employer", sortable: true },
+  { key: "classify_outcome", label: "Classify", sortable: true },
+  { key: "link", label: "Link", sortable: true },
+  { key: "astral_job_id", label: "Job", sortable: true },
+  { key: "job_state", label: "Job State", sortable: true },
+  { key: "job_created_at", label: "Created", sortable: true, type: "datetime" },
+  { key: "state_changed_at", label: "State Changed", sortable: true, defaultDesc: true, type: "datetime" },
+]
+
 describe("JobsMeteorites — AST-1976 landed-job state and job link", () => {
-  // Production JOBS_METEORITES_LIST_COLUMNS keys/labels (src/utils/config.py), Job then Job State.
-  const PROD_COLUMNS = [
-    { key: "state", label: "State", sortable: true },
-    { key: "job_title", label: "Title", sortable: true },
-    { key: "employer_name", label: "Employer", sortable: true },
-    { key: "classify_outcome", label: "Classify", sortable: true },
-    { key: "link", label: "Link", sortable: true },
-    { key: "astral_job_id", label: "Job", sortable: true },
-    { key: "job_state", label: "Job State", sortable: true },
-    { key: "state_changed_at", label: "State Changed", sortable: true, defaultDesc: true, type: "datetime" },
-  ]
   const LANDED = { ...ROW_A, job_state: "RECOMMENDED" }
   const UNLANDED = { ...ROW_B, candidate_id: "c1", job_state: null }
   // Minimal GET /api/jobs/<id> body for JobAnalysisReportModal (same shape as the Recommended row-click test).
@@ -309,5 +314,96 @@ describe("JobsMeteorites — AST-1976 landed-job state and job link", () => {
     await user.click(await screen.findByRole("button", { name: "Skip this Job" }))
     await waitFor(() => expect(cellUnder("Title A", "Job State")).toHaveTextContent(/^CANDIDATE_SKIPPED$/))
     expect(document.querySelector(".recommended-report-tabs")).toBeNull()
+  })
+})
+
+// AST-1980 AC 6 / AC 7: config-served Created column = landed job's created_at (job_created_at), not the
+// meteorite's own created_at; "—" when unlanded; sorts through ListPage with no page code.
+describe("JobsMeteorites — AST-1980 Created column", () => {
+  // Own created_at is the same on every row and far from job_created_at, so showing it as Created can't pass.
+  const OWN_CREATED = "2026-02-01T00:00:00Z"
+  const EARLY = { ...ROW_A, created_at: OWN_CREATED, job_created_at: "2025-06-01T12:00:00Z" }
+  const UNLANDED = { ...ROW_B, candidate_id: "c1", astral_job_id: null, created_at: OWN_CREATED, job_created_at: null }
+  const LATE = { ...ROW_A, id: 33, job_title: "Title C", astral_job_id: "job-c", created_at: OWN_CREATED, job_created_at: "2025-09-15T08:30:00Z" }
+
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  it("Created sits left of State Changed, shows job_created_at (— when unlanded), and sorts / toggles", async () => {
+    installBaseApiMocks(mockedApi, url =>
+      url === listUrl(candidateId) ? jsonResponse({ columns: PROD_COLUMNS, meteorites: [EARLY, UNLANDED, LATE] }) : undefined)
+    // ListPage reads a module-level ui_config cache (earlier tests fill it with column_types: {}).
+    // Prime it, then give it production column_types.datetime so cells go through formatCell(…, "datetime").
+    await new Promise<void>(resolve => loadUiConfig(resolve))
+    const types = getUiConfig()!.column_types
+    const prior = types.datetime
+    types.datetime = { align: "left", number_format: "datetime" }
+    try {
+      await assertCreatedColumn()
+    } finally {
+      if (prior) types.datetime = prior
+      else delete types.datetime
+    }
+  })
+
+  async function assertCreatedColumn() {
+    renderWithProviders(<JobsMeteorites />)
+    await waitFor(() => expect(screen.getByText("Title C")).toBeInTheDocument())
+
+    const table = screen.getByText("Title C").closest("table")!
+    const headers = () => within(table).getAllByRole("columnheader")
+    const idx = (label: string) => headers().findIndex(h => (h.textContent ?? "").startsWith(label))
+    const created = idx("Created")
+    expect(created).toBeGreaterThan(-1)
+    expect(idx("State Changed")).toBe(created + 1)
+
+    const rowOf = (title: string) => screen.getByText(title).closest("tr")!
+    const createdCell = (title: string) => rowOf(title).children[created].textContent
+    expect(createdCell("Title A")).toBe(fmtTime(EARLY.job_created_at))
+    expect(createdCell("Title C")).toBe(fmtTime(LATE.job_created_at))
+    expect(createdCell("Title B")).toBe("\u2014")
+    expect(createdCell("Title A")).not.toBe(fmtTime(OWN_CREATED))
+
+    const titles = () => within(table).getAllByRole("row").slice(1).map(r => r.children[idx("Title")].textContent)
+    // No defaultDesc: first click ascending (null first), second click reverses; indicator on Created.
+    await userEvent.click(headers()[created])
+    expect(titles()).toEqual(["Title B", "Title A", "Title C"])
+    expect(headers()[created].textContent).toMatch(/^Created ▲/)
+    await userEvent.click(headers()[created])
+    expect(titles()).toEqual(["Title C", "Title A", "Title B"])
+    expect(headers()[created].textContent).toMatch(/^Created ▼/)
+  }
+})
+
+// AST-1982 AC 4 / AC 7: job_title escapes ListPage's 30-char cut (cut at 50 via JobTitleText); other columns keep 30;
+// search still reads the full raw title.
+describe("JobsMeteorites — AST-1982 Job Title cut", () => {
+  const LONG_EMPLOYER = "Employer Name That Runs Past Thirty Chars"
+  const rows = jobTitleJobs(ROW_A).map((r, i) => ({ ...r, id: 40 + i, employer_name: i === 0 ? LONG_EMPLOYER : "Short Co" }))
+
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+    installBaseApiMocks(mockedApi, url =>
+      url === listUrl(candidateId) ? jsonResponse({ columns: PROD_COLUMNS, meteorites: rows }) : undefined)
+  })
+
+  it("Title cut at 50 + … with portaled tooltip; 50-char title untouched; other columns still cut at 30", async () => {
+    renderWithProviders(<JobsMeteorites />)
+    await waitFor(() => expect(screen.getByText(EDGE_TITLE)).toBeInTheDocument())
+    await expectJobTitleCells(screen.getByText(EDGE_TITLE).closest("table")!, /^Title/)
+    expect(screen.getByText(`${LONG_EMPLOYER.slice(0, 30)}\u2026`)).toBeInTheDocument()
+    expect(screen.getByTitle(LONG_EMPLOYER)).toBeInTheDocument()
+  })
+
+  it("search for a word past char 50 of a title still returns that row", async () => {
+    renderWithProviders(<JobsMeteorites />)
+    await waitFor(() => expect(screen.getByText(EDGE_TITLE)).toBeInTheDocument())
+    expect(CUT_TITLE).not.toContain("Zanzibar")
+    await userEvent.type(screen.getByPlaceholderText("Search..."), "Zanzibar")
+    await waitFor(() => expect(screen.queryByText(EDGE_TITLE)).toBeNull())
+    expect(screen.getByText(CUT_TITLE)).toBeInTheDocument()
   })
 })

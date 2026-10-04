@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import JobsSkipped from "../../../../src/ui/frontend/src/pages/JobsSkipped"
 import { renderWithProviders } from "../test-utils"
-import { installBaseApiMocks, jobsViewHandler, jsonResponse } from "./page-mocks"
+import { createdColumnJobs, expectCreatedColumn, installTzCandidate } from "./created-column"
+import { expectJobTitleCells, jobTitleJobs } from "./job-title-cell"
+import { installBaseApiMocks, jobsViewHandler } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
@@ -384,4 +386,34 @@ describe("JobsSkipped", () => {
     })
   })
 
+})
+
+describe("JobsSkipped — AST-1979 Created column", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  // Below-floor variant labels the neighbour "Updated"; regular failed variant labels it "Failed At".
+  it.each([
+    ["below-floor", floorJob, /Below dispatch score floor/, /^Updated/],
+    ["regular", failedJob, /Failed LIKE/, /^Failed At/],
+  ] as const)("%s table: Created left of its time column, shows created_at in candidate tz, sorts and toggles; default unchanged", async (_variant, base, section, updatedLabel) => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("skipped", createdColumnJobs(base)))
+    installTzCandidate(mockedApi)
+    renderWithProviders(<JobsSkipped />)
+    await userEvent.click(await screen.findByRole("button", { name: section }))
+    await expectCreatedColumn(screen.getByRole("table"), updatedLabel)
+  })
+
+  // AST-1982: the title cell renders inside the section loop, so each table variant gets the check.
+  it.each([
+    ["below-floor", floorJob, /Below dispatch score floor/],
+    ["regular", failedJob, /Failed LIKE/],
+  ] as const)("AST-1982 %s table: long title cut at 50 + … with portaled tooltip; 50-char title untouched", async (_variant, base, section) => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("skipped", jobTitleJobs(base)))
+    renderWithProviders(<JobsSkipped />)
+    await userEvent.click(await screen.findByRole("button", { name: section }))
+    await expectJobTitleCells(screen.getByRole("table"))
+  })
 })

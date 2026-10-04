@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import JobsProcessing from "../../../../src/ui/frontend/src/pages/JobsProcessing"
 import { renderWithProviders } from "../test-utils"
+import { createdColumnJobs, expectCreatedColumn, installTzCandidate } from "./created-column"
+import { expectJobTitleCells, jobTitleJobs } from "./job-title-cell"
 import { installBaseApiMocks, jobsViewHandler } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -220,5 +222,27 @@ describe("JobsProcessing", () => {
       release({ ok: true, json: async () => jobs } as Response)
       await waitFor(() => expect(screen.getByText("Alpha Role")).toBeInTheDocument())
     })
+  })
+})
+
+describe("JobsProcessing — AST-1979 Created column", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  it("Created left of Updated, shows created_at in candidate tz, sorts and toggles; default unchanged", async () => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("processing", createdColumnJobs(jobs[0])))
+    installTzCandidate(mockedApi)
+    renderWithProviders(<JobsProcessing />)
+    await userEvent.click(await screen.findByRole("button", { name: /Passed Job List/ }))
+    await expectCreatedColumn(screen.getByRole("table"), /^Updated/)
+  })
+
+  it("AST-1982: long title cut at 50 + … with portaled full-title tooltip; 50-char title untouched", async () => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("processing", jobTitleJobs(jobs[0])))
+    renderWithProviders(<JobsProcessing />)
+    await userEvent.click(await screen.findByRole("button", { name: /Passed Job List/ }))
+    await expectJobTitleCells(screen.getByRole("table"))
   })
 })

@@ -3511,3 +3511,52 @@ cd src/ui/frontend && npm run test:component -- ../../../tests/component/fronten
 **Pass criterion:** items 1 and 2 hold. Narrowed runs, not the zero-arg harness.
 
 **Bible shasums (after publish):** `git show origin/sub/AST-1970/AST-1976-jobs-nav:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-1979 · AST-1971 (Created column on Jobs list tables)
+
+**Parent:** [AST-1971 — Add Created to the job list table](https://linear.app/astralcareermatch/issue/AST-1971). **Publish:** `origin/sub/AST-1971/AST-1979-created-col`. Meteorites Created (backend + config) is sibling AST-1971 #2, not covered here.
+
+Every job table on Ready / Review (`JobsRecommended.tsx`), Processing, Skipped (below-floor and regular), and Applied gets a sortable **Created** header just left of **Updated** / **Failed At**. Its cell is `<Time value={job.created_at} />`, and each page's existing sorter gains a `created_at` branch.
+
+**Shared helper:** `tests/component/frontend/pages/created-column.ts` holds `createdColumnJobs(base)` (3 rows whose created order — null, mid, late — differs from the default `state_changed_at`-desc order), `installTzCandidate` (candidate tz `Asia/Tokyo`, so a cell rendered in the wrong zone shows a different day), and `expectCreatedColumn(table, updatedLabel)`, which runs AC 1–4 on one table. Headers are read with `thead th`, not `getAllByRole`, because Skipped's below-floor spacer `<th aria-hidden>` still takes a cell slot.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 Created header immediately left of Updated / Failed At | all four pages | **`expectCreatedColumn`** via each page's **`… — AST-1979 Created column`** describe |
+| 2 cell = `fmtTime(created_at, candidate tz)`; Updated in the same tz; null → `—` | `<Time>` cell | same (`Asia/Tokyo` candidate; `12/15 23:30Z` → `12/16/25`) |
+| 3 first click ascending (null first, like null `state_changed_at`), second reverses, ▲/▼ on Created only | page sorters (`created_at` branch) | same |
+| 4 default load still `state_changed_at` desc; Created shows no indicator | unchanged sort defaults | same; Applied also asserts **`Updated▼`** at load |
+| 5 sorter count unchanged; `created_at` compare inside the existing sorter | source | grep below |
+| 6 build / lint | source | commands below |
+
+Cases: **`test_JobsRecommended`** › **`JobsRecommended — AST-1979 Created column`** (`review`, `ready`); **`test_JobsProcessing`** › **`JobsProcessing — AST-1979 Created column`**; **`test_JobsSkipped`** › **`JobsSkipped — AST-1979 Created column`** (`below-floor` → Updated, `regular` → Failed At); **`test_JobsApplied`** › **`JobsApplied — AST-1979 Created column`**. All six are red with the four pages reverted to `origin/dev`, so they guard the change.
+
+**AC 4 wording vs product:** AC 4 says the indicator is on Updated / Failed At at first load. On the section pages (Ready / Review, Processing, Skipped), `sortIndicator` only renders after a header click, so no header shows an indicator at load. That is true on `origin/dev` too. The plan makes no change to `sortIndicator`, and AC 4's Fail line only covers the default switching. The tests assert the default *order* plus no indicator on Created on every page, and **`Updated▼`** only on Applied, which seeds its sort state.
+
+**Broken / obsolete:** none. The existing header-index lookups find columns by label, `children[2]` (Job Title) sits left of the insert, and no test asserts `colSpan`. Lint cleanup: removed the unused `jsonResponse` import from `test_JobsSkipped.test.tsx`.
+
+**Baseline red (not this ticket):** `test_JobsApplied` › **`Interview → notes modal → candidate_action interview`** times out. It asserts the exact pre-AST-1498 POST body `{action, notes}`, but the product now adds `candidate_id` (see AST-1498 `[bug-repro]` beside it). It is already listed under § AST-1975's baseline reds.
+
+## QA test manifest
+
+1. **Four job page suites (required):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsProcessing.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx
+```
+
+Expect 54 passed and 1 failed (the baseline red above), with all six **`AST-1979`** cases green.
+
+2. **AC 5:** `rg -c "function sort" src/ui/frontend/src/pages/Jobs{Recommended,Processing,Skipped,Applied}.tsx` gives 2 per file (the same as `origin/dev`). `rg -n '"created_at"' src/ui/frontend/src/pages/Jobs{Recommended,Processing,Skipped,Applied}.tsx` shows each compare inside that file's existing sorter.
+
+3. **AC 6:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` adds no problems absent on `origin/dev`.
+
+**Pass criterion:** items 1–3 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-1971/AST-1979-created-col:docs/test-bible/frontend/pages.md | shasum`
+
+**AST-1982 (pointer):** Job Title cell on `JobsRecommended` (Ready + Review), `JobsProcessing`, `JobsSkipped` (both table variants), `JobsApplied`, and the Meteorites `job_title` column now renders `JobTitleText` (cut at 50 + `…`, portaled full-title tooltip). Page tests are named **`AST-1982 …`** and use the shared helper `tests/component/frontend/pages/job-title-cell.ts`. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1982.
