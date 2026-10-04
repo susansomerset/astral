@@ -350,3 +350,57 @@ The plan is binding. Run steps in order within each stage, and stages in order. 
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1966
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `sub/AST-1963/AST-1966-background-reconcile` @ `ad8068282`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | B | | Stage 2: closed-ledger refresh via `sum_cost_by_batch` + `batch_id` matches audit-trail cost; documented close-window race excluded per Boundaries |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+| stat.logging.debug | B | | Stage 2: retry loop begin/end, per-try call/response at debug, `copy_context` for ContextVar; call-in omits API key by design |
+
+## Traceability
+
+AC3 (`llm_compat`)→Stage 1; AC4→Stage 2 step 1 (non-blocking thread + direct skip); AC5 (reconcile)→Stage 2 step 1; parent AC8→Stage 2 step 1 (closed vs open ledger); parent AC1 grep→both stages Done-when. Config constant checks correctly deferred to AST-1964; DB unpriced-row half to AST-1965. No orphan stages.
+
+## Findings
+
+### discuss — Residual race (acceptable for this child)
+
+- **Location:** Stage 2 step 1, “Decision (residual race, not fixed here)”
+- **Finding:** Platform write between batch-close total and `completed_at` can miss one closed-ledger refresh until a later reconcile; Boundaries exclude `dispatcher` / batch-close changes.
+- **Recommendation:** Accept for AST-1966 scope; track as known limitation if UAT hits the narrow window (Susan/Archie), not a plan revise for this ticket.
+
+### acceptable — Definition fidelity
+
+- **Location:** Scope gate / intro
+- **Finding:** Only `llm_compat.py` and `timesheets.py` for product code; no new config, lookup, or schema; direct models never looked up; routing via `get_model_routing != "direct"` satisfies grep AC without `"openrouter"` literal.
+- **Recommendation:** None.
+
+### acceptable — Sibling contracts
+
+- **Location:** `## Contract used from siblings`
+- **Finding:** Names and shapes match AST-1964/1965 plans; reconcile maps `provider_name` → `host` on writer as specified.
+- **Recommendation:** None.
+
+### acceptable — Betty handoff
+
+- **Location:** `## Test impact`
+- **Finding:** `test_delegates_to_database_add` breakage, thread stubbing, direct `reconcile_timesheet_platform` for AC5/8, and `time.sleep` patch points are explicit.
+- **Recommendation:** None.
+
+### discuss — Canon Scope gap (not scored)
+
+- **Location:** Stage 2 imports (`core` → `external.openrouter`, `data.database`)
+- **Finding:** `astral.layers.import-direction` may govern layer edges; not on this ticket’s frozen list.
+- **Recommendation:** Archie may amend at Discussion if a layer pass is required; plan follows existing core/data/external patterns.
