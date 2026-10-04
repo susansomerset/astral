@@ -18,7 +18,7 @@ Config sections:
   RAILWAY_CONFIG  — gunicorn deployment settings (workers, timeout)
   AGENT_CONFIG    — Anthropic model catalog (pricing, output defaults)
   LLM_SERVER_CONFIG — LLM servers (endpoint, auth, thinking-off body, request extras, concurrency) (AST-1851)
-  LLM_MODEL_CONFIG  — LLM models (one id per vendor SKU) → server + SKU + output default/floor + pricing (AST-1851, AST-1955)
+  LLM_MODEL_CONFIG  — LLM models (one id per vendor SKU) → server + routing + SKU + output default/floor + pricing (AST-1851, AST-1955, AST-1963)
   OPENROUTER_MODEL_TABLE — OpenRouter catalog rows expanded into LLM_MODEL_CONFIG (price, max output) (AST-1938, AST-1955)
   TASK_CONFIG     — task definitions (schemas, grading, job consult orchestration fields)
   COMPANY_STATES  — company state list + batch criteria
@@ -5097,6 +5097,11 @@ LLM_PROBE_MESSAGE = "Respond with 1."
 
 # Timesheet rows (database ledgers): provider string validated on insert = a server id.
 ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
+# Platform cost reconcile for openrouter-routed timesheet rows (AST-1963). A not-ready / failed
+# generation-stats lookup is tried this many times in total; the wait before the 2nd try is the base,
+# doubled before each later try (2, 4, 8, 16 s). No cap — the retry count bounds it.
+TIMESHEET_RECONCILE_RETRIES = 5
+TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS = 2.0
 
 # ---------------------------------------------------------------------------
 # OPENROUTER_MODEL_TABLE — the OpenRouter catalog (AST-1946 brief, 95 slugs). slug → (cpm_input,
@@ -5205,6 +5210,9 @@ OPENROUTER_MODEL_TABLE = {
 }
 # Output default for an OpenRouter agent that leaves max_tokens empty, capped at the slug's max output (AST-1955).
 OPENROUTER_DEFAULT_MAX_TOKENS = 16000
+# Allowed LLM_MODEL_CONFIG `routing` values (AST-1963). The model's routing — not its server id — decides
+# whether a call goes through OpenRouter (provider object, platform cost lookup).
+LLM_MODEL_ROUTING_TYPES = ("direct", "openrouter")
 
 
 # ---------------------------------------------------------------------------
@@ -5212,6 +5220,8 @@ OPENROUTER_DEFAULT_MAX_TOKENS = 16000
 # dict order = UI order. Adding a model is a config edit only.
 #   label               — picker label
 #   server              — LLM_SERVER_CONFIG id
+#   routing             — LLM_MODEL_ROUTING_TYPES value: "openrouter" = billed cost is looked up on the
+#                         platform per call (AST-1963); "direct" = catalog price only
 #   sku                 — vendor model string sent as `model`
 #   max_tokens_floor    — int | None; output-token floor applied over the agent's max_tokens
 #   default_max_tokens  — used when the agent row leaves max_tokens empty
@@ -5222,6 +5232,7 @@ LLM_MODEL_CONFIG = {
     "kimi-k2.6": {
         "label": "Kimi K2.6",
         "server": "kimi",
+        "routing": "direct",
         "sku": "kimi-k2.6",
         "max_tokens_floor": None,
         "default_max_tokens": 16000,
@@ -5241,6 +5252,7 @@ LLM_MODEL_CONFIG = {
     "claude-haiku-4-5": {
         "label": "Claude Haiku 4.5",
         "server": "anthropic",
+        "routing": "direct",
         "sku": "claude-haiku-4-5",
         "max_tokens_floor": None,
         "default_max_tokens": AGENT_CONFIG["claude-haiku-4-5"]["default_max_tokens"],
@@ -5249,6 +5261,7 @@ LLM_MODEL_CONFIG = {
     "claude-sonnet-4-6": {
         "label": "Claude Sonnet 4.6",
         "server": "anthropic",
+        "routing": "direct",
         "sku": "claude-sonnet-4-6",
         "max_tokens_floor": None,
         "default_max_tokens": AGENT_CONFIG["claude-sonnet-4-6"]["default_max_tokens"],
@@ -5257,6 +5270,7 @@ LLM_MODEL_CONFIG = {
     "claude-opus-4-6": {
         "label": "Claude Opus 4.6",
         "server": "anthropic",
+        "routing": "direct",
         "sku": "claude-opus-4-6",
         "max_tokens_floor": None,
         "default_max_tokens": AGENT_CONFIG["claude-opus-4-6"]["default_max_tokens"],
@@ -5266,6 +5280,7 @@ LLM_MODEL_CONFIG = {
     "deepseek-v4-flash": {
         "label": "DeepSeek V4 Flash",
         "server": "deepseek",
+        "routing": "direct",
         "sku": "deepseek-v4-flash",
         "max_tokens_floor": None,
         "default_max_tokens": 8192,
@@ -5283,6 +5298,7 @@ LLM_MODEL_CONFIG = {
     "deepseek-v4-pro": {
         "label": "DeepSeek V4 Pro",
         "server": "deepseek",
+        "routing": "direct",
         "sku": "deepseek-v4-pro",
         "max_tokens_floor": None,
         "default_max_tokens": 16000,
@@ -5307,6 +5323,7 @@ def _build_openrouter_models() -> None:
         LLM_MODEL_CONFIG[slug] = {
             "label": slug,
             "server": "openrouter",
+            "routing": "openrouter",
             "sku": slug,
             "max_tokens_floor": None,
             "default_max_tokens": min(OPENROUTER_DEFAULT_MAX_TOKENS, max_out),
@@ -5342,6 +5359,15 @@ def get_llm_model(model_id: str) -> Dict[str, Any]:
     return m
 
 
+def get_model_routing(server_id: str, sku: str) -> str:
+    """Routing type for a timesheet row's (server id, SKU) — the two values the row carries (AST-1963).
+    Raises ValueError when no model has that server and SKU."""
+    for m in LLM_MODEL_CONFIG.values():
+        if m["server"] == server_id and m["sku"] == sku:
+            return m["routing"]
+    raise ValueError(f"No LLM model for server {server_id!r} and SKU {sku!r}")
+
+
 def get_sku_pricing(sku: str, server_id: Optional[str] = None) -> Dict[str, Any]:
     """Pricing row for a vendor SKU; server_id narrows the search. Raises on unknown or ambiguous SKU."""
     hits = [
@@ -5361,7 +5387,7 @@ def resolve_agent_settings(model_id: str, agent: Dict[str, Any]) -> Dict[str, An
     Settings pass through as stored; an empty one comes back None and is not sent. Nothing is derived or checked."""
     m = get_llm_model(model_id)
     provider = None
-    if m["server"] == "openrouter":
+    if m["routing"] == "openrouter":
         # Provider routing object from the agent row; empty keys omitted, no host pin.
         provider = {k: v for k, v in (
             ("quantizations", [agent["quantization"]] if agent.get("quantization") else None),
@@ -5447,6 +5473,8 @@ def validate_llm_provider_environment() -> None:
             raise ValueError(f"LLM server {sid!r}: probe must be True or False")
     for mid, m in LLM_MODEL_CONFIG.items():
         get_llm_server(m["server"])
+        if m.get("routing") not in LLM_MODEL_ROUTING_TYPES:
+            raise ValueError(f"LLM model {mid!r}: routing {m.get('routing')!r} not in {LLM_MODEL_ROUTING_TYPES}")
         if m["sku"] not in m["pricing"]:
             raise ValueError(f"LLM model {mid!r}: SKU {m['sku']!r} has no pricing row")
         # Raises on an unknown or ambiguous SKU for this server (AST-1938).
