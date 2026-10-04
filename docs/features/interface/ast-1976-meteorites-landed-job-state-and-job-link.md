@@ -180,3 +180,36 @@ an unlanded row shows `—`. Clicking the Job id opens the Job Analysis Report m
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1976
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `origin/sub/AST-1970/AST-1976-jobs-nav` @ `bf9af69eeecf26fce4b5ecdff836c5813755201a`
+
+### Canon scores
+(none on ticket — Citations: frontend-only, outside `stat.logging.info.api` / `stat.logging.error` territory)
+
+### Traceability
+AC14→S1 `job_state` render, Job link + `JobAnalysisReportModal` + `stopPropagation` + `onRefresh={load}`; AC15→S1 `npm run build`/`lint` gate + `import src.utils.config`. Parent AC1–13 N/A (siblings); AC11–13 not this child's ticket slice.
+
+### Findings
+
+#### acceptable — AST-1974 on ref
+- **Location:** `## Backend contract consumed` / Depends on
+- **Finding:** `job_state` column and row field come from #1; this worktree file may pre-#1 until merge.
+- **Recommendation:** build on a ref with AST-1974 merged; plan already states this.
+
+#### acceptable — Plan step 2 doc-comment typo
+- **Location:** Stage 1 step 2
+- **Finding:** Example ends with `*/.` instead of `*/`.
+- **Recommendation:** Fix when editing the interface comment; no plan revision required.
+
+#### discuss — eslint baseline
+- **Location:** Stage 1 step 7
+- **Finding:** Plan correctly forbids fixing existing `react-hooks/set-state-in-effect` on `load()` effect.
+- **Recommendation:** build-child documents baseline in handoff if lint output is questioned at qa-child.
+
+context_tokens≈42000
