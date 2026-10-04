@@ -147,6 +147,7 @@ Commit: `code(AST-1960): stage 2 — do_task records served host on the batch le
 - `TestAst531RunNextHopLedger` (and any other fixture that collects every `update_dispatch_ledger` call into a list) now sees one extra `(hop_batch_id, {"host": …})` entry per successful hop, ahead of the finalize update. Assertions that index `updates[0]` or count updates need to account for it.
 - AC 1 check: under a `log_batch_id` with a saved ledger row on a temp DB, stub `_send_to_server` to return `success: True` with `host: "DeepInfra"`; then `get_dispatch_ledger(<id>)["host"] == "DeepInfra"`.
 - AC 1 direct check: route to the `anthropic` server and stub a success result with no `host` key; the row's host is `"Anthropic"` (`LLM_SERVER_CONFIG["anthropic"]["label"]`).
+- Build result (Stage 2 verify): `TestAst531RunNextHopLedger::test_two_hop_chain_creates_distinct_ledger_rows` now fails at `assert len(updates) == 2` (two host writes join the two finalize updates). This is the only new failure. The other 40 failures in `test_agent.py` fail the same way on the pre-Stage-2 tree and are unrelated to this diff. `test_dispatch_ledger.py` passes.
 
 ## Out of scope (do not touch)
 
@@ -212,3 +213,9 @@ Confirm Chuckles estimate: 2 — agree
 context_tokens≈48000
 
 Slim upshot: `[plan-rubric] PROCEED (Commit: a0b5d2fdf) ledger host plan solid`
+
+## Review
+
+- **Publish ref:** `sub/AST-1954/AST-1960-ledger-host`
+- **Build commits:** `edfe7c643` (stage 1), `f576947c7` (stage 2)
+- **For Betty (`qa-child`):** see `## For Betty (qa-child)` above. One expected break (`TestAst531RunNextHopLedger` update count); 40 unrelated pre-existing `test_agent.py` failures.
