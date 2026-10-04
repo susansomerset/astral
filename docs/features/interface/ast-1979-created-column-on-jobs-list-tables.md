@@ -128,6 +128,14 @@ Proposed resolutions: <2-3 options, or "need guidance">
 
 Confirm Chuckles estimate: 2 — agree
 
+## Review
+
+- **Branch:** `origin/sub/AST-1971/AST-1979-created-col`
+- **Build commits:** `c08d5b436` (Stage 1 Created column + `created_at` sort on all four pages)
+- **Build notes:** `npx tsc -b --noEmit` and `npm run build` exit 0. `npm run lint` reports 31 problems before and after, and the line:col-stripped diff is empty, so nothing is new. `rg -c "function sort"` is still `2` per file. Each `"created_at"` comparison sits inside the page's existing sorter (Recommended:62, Processing:96, Skipped:102, Applied:32). `git diff --stat origin/dev` lists only the four pages + this doc.
+- **Deviation:** none.
+- **For QA:** no backend change; `created_at` comes from the existing `GET /api/jobs?view=…` rows. Skipped's one Created header/cell serves both `isFloor` variants. No manual browser smoke run in this headless build.
+
 ## Joan validate
 
 ```text
