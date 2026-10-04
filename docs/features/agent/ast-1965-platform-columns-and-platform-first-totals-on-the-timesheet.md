@@ -293,3 +293,60 @@ context_tokens≈42000
 - **Branch:** `sub/AST-1963/AST-1965-timesheet-platform-columns`
 - **Build commits:** `2c63ad738` (Stage 1 platform columns + `update_timesheet_platform`) · `eaf0bec10` (Stage 2 unpriced SKU + platform-first `sum_cost_by_batch`)
 - **Build notes:** Both stages executed as written, and every Done-when command passed. Neither the `rg -n '"openrouter"'` check nor the `rg -n "get_sku_pricing"` check on `src/data/database.py` finds anything. `py_compile` is clean; no Python linter is installed on this host. The INSERT/UPDATE re-audit is clean: every `agent_timesheets` insert/update names its columns, so appended columns don't shift any `?` tuple. `test_timesheets.py` run: 7 passed, 1 failed. The failure is `TestAst1878TimesheetCatalogValidation::test_rejects_sku_not_priced_on_server`, the expected reversal flagged in § Test impact. `validate-sub-log.sh --stage=build`: ok. Edits were applied by a shell script with exact one-match string replacement, because `.cursorignore`'s `data/` pattern also matches `src/data/` and blocks the IDE edit tools on `database.py`. The content is exactly the plan's. No deviations.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1965
+**Publish ref:** `7470f49c92a7ebb67932b650e0b3899e4fcc1873` (`origin/sub/AST-1963/AST-1965-timesheet-platform-columns`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan **A** on `patt.entity.batch-processing`; code review **A** on the same id.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling stacked ref:** `origin/dev...origin/sub/AST-1963/AST-1965-timesheet-platform-columns` also carries AST-1964 product/tests/docs (`config.py`, `openrouter.py`, `test_config.py`, `test_openrouter.py`, AST-1964 plan/review). Expected sub-branch stacking / `merge-tests`, not AST-1965 scope creep. **This review’s plan fidelity and canon pass target Katherine’s `database.py` + timesheet tests** (`2c63ad738`, `eaf0bec10`, `060a9a8dd`).
+- **Canon Scope (off-list, not scored):** Joan flagged `stat.data.batch-id-first` at plan for `sum_cost_by_batch`; frozen list is only `patt.entity.batch-processing`. Implementation keeps `batch_id IN (...)` grouping and caller contract. **Default:** unchanged — no resolve-child change unless Archie adds the statute at Discussion.
+- **Plan fidelity:** Stage 1–2 match issue doc — `_AGENT_TIMESHEET_PLATFORM_COLUMNS`, shared CREATE/ALTER paths, `update_timesheet_platform` (rowcount, `_utc_now()` stamp, no calc/token touch), SKU gate removed with server check kept, `COALESCE(platform_cost, calc sum)` in `sum_cost_by_batch`, `get_sku_pricing` import removed.
+- **AC grep:** `'"openrouter"'` and `get_sku_pricing` absent from `src/data/database.py` on tip.
+- **SQL bind audit (`update_timesheet_platform`):** seven `SET` placeholders + `WHERE agent_req_id = ?` matches eight-value bind tuple (cost, four natives, host, reconciled_at, id). INSERT path unchanged column list per build notes.
+- **Estimate:** Confirm **2** — single product file + Betty tests/bible fits.
+- **Betty:** `test_rejects_sku_not_priced_on_server` reversed per plan § Test impact; AC 3 db half, AC 4/5, migration/idempotency, and `platform_cost = 0.0` COALESCE edge covered in `test_timesheets.py`.
+
+## What's solid
+
+- Platform columns nullable with shared tuple for CREATE and ALTER — no drift between new and migrated DBs.
+- Writer isolation preserves calc and legacy token columns; Ada contract (`update_timesheet_platform` signature, field mapping, rowcount) matches plan § Contract for AST-1966.
+- `sum_cost_by_batch` implements parent “platform wins” per row while preserving batch-keyed aggregation (`patt.entity.batch-processing` audit/cost section).
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-1965): Radia review — clean`, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** to **User Testing** (no resolve-child for canon).
+- When merging siblings on ftr, ensure AST-1964 and AST-1965 reviews both posted before UT rollup — ref already contains both children’s code.
+
+context_tokens≈38000
+
+`[code-rubric] PROCEED (Commit: 7470f49c9) platform columns and totals`
