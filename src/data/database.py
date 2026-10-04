@@ -4177,7 +4177,7 @@ def get_meteorite(meteorite_id: int) -> Optional[Dict[str, Any]]:
 
 
 def list_meteorites_for_candidate(candidate_id: str) -> List[Dict[str, Any]]:
-    """Return all meteorite rows for candidate_id, newest state_changed_at first; job_state = landed job's current state (None when unlanded)."""
+    """Return all meteorite rows for candidate_id, newest state_changed_at first; job_state / job_created_at = landed job's current state / created_at (None when unlanded)."""
     if candidate_id is None or str(candidate_id).strip() == "":
         return []
     cid = str(candidate_id).strip()
@@ -4187,9 +4187,9 @@ def list_meteorites_for_candidate(candidate_id: str) -> List[Dict[str, Any]]:
         try:
             _ensure_meteorite_schema(conn)
             _ensure_job_schema(conn)
-            # LEFT JOIN keeps unlanded rows; alias avoids shadowing meteorite.state.
+            # LEFT JOIN keeps unlanded rows; aliases avoid shadowing meteorite.state / meteorite.created_at.
             rows = conn.execute(
-                """SELECT m.*, j.state AS job_state FROM meteorite m
+                """SELECT m.*, j.state AS job_state, j.created_at AS job_created_at FROM meteorite m
                    LEFT JOIN job j ON j.astral_job_id = m.astral_job_id
                    WHERE m.candidate_id = ?
                    ORDER BY m.state_changed_at DESC""",

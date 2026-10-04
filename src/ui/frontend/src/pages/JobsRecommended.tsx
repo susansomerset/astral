@@ -19,6 +19,7 @@ interface Job {
   company: string
   state: string
   state_changed_at: string | null
+  created_at?: string | null
   source?: string | null
   jd_score?: number | null
   do_score?: number | null
@@ -58,6 +59,8 @@ function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields
       cmp = (a.source || "").localeCompare(b.source || "")
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
+    } else if (col === "created_at") {
+      cmp = (a.created_at || "").localeCompare(b.created_at || "")
     } else if (col === "state") {
       cmp = (a.state || "").localeCompare(b.state || "")
     } else if (phaseFields.includes(col) || col === TOTAL_SCORE_COL) {
@@ -225,8 +228,8 @@ export default function Recommended({ view, title }: RecommendedProps) {
         sections.map(sec => {
           const sort = sorts[sec.state] ?? { col: "state_changed_at", asc: false }
           const sorted = sortRecommendedJobs(sec.jobs, sort.col, sort.asc, phaseFields)
-          // checkbox + actions + title + company + source + state + phase cols + total + updated
-          const columnCount = 8 + manifest.jobs.recommended.phase_score_columns.length
+          // checkbox + actions + title + company + source + state + phase cols + total + created + updated
+          const columnCount = 9 + manifest.jobs.recommended.phase_score_columns.length
           return (
             <div key={sec.state} style={{ marginBottom: 24 }}>
               <h2 style={{
@@ -272,6 +275,9 @@ export default function Recommended({ view, title }: RecommendedProps) {
                       >
                         Total{sortIndicator(sec.state, TOTAL_SCORE_COL)}
                       </th>
+                      <th className="sortable" onClick={() => handleSort(sec.state, "created_at")}>
+                        Created{sortIndicator(sec.state, "created_at")}
+                      </th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "state_changed_at")}>
                         Updated{sortIndicator(sec.state, "state_changed_at")}
                       </th>
@@ -310,6 +316,7 @@ export default function Recommended({ view, title }: RecommendedProps) {
                           <td style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
                             {formatPhaseScore(totalScore(job, phaseFields))}
                           </td>
+                          <td><Time value={job.created_at} /></td>
                           <td><Time value={job.state_changed_at} /></td>
                         </tr>
                         {showAnalysis && (

@@ -3501,6 +3501,7 @@ JOBS_METEORITES_LIST_COLUMNS = [
     {"key": "link", "label": "Link", "sortable": True},
     {"key": "astral_job_id", "label": "Job", "sortable": True},
     {"key": "job_state", "label": "Job State", "sortable": True},
+    {"key": "job_created_at", "label": "Created", "sortable": True, "type": "datetime"},
     {
         "key": "state_changed_at",
         "label": "State Changed",
