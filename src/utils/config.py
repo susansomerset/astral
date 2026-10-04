@@ -5097,10 +5097,12 @@ LLM_PROBE_MESSAGE = "Respond with 1."
 
 # Timesheet rows (database ledgers): provider string validated on insert = a server id.
 ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
-# Platform cost reconcile for openrouter-routed timesheet rows (AST-1963). A not-ready / failed
-# generation-stats lookup is tried this many times in total; the wait before the 2nd try is the base,
-# doubled before each later try (2, 4, 8, 16 s). No cap — the retry count bounds it.
+# Platform cost reconcile for openrouter-routed timesheet rows (AST-1963). OpenRouter 404s the
+# generation record for about 30s after the call, so the first lookup waits INITIAL_WAIT. A not-ready
+# or failed lookup is tried RETRIES times in total; the wait before the 2nd try is the base, doubled
+# before each later try (2, 4, 8, 16 s). No cap — the retry count bounds it.
 TIMESHEET_RECONCILE_RETRIES = 5
+TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS = 30.0
 TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS = 2.0
 
 # ---------------------------------------------------------------------------
