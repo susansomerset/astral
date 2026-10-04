@@ -219,3 +219,12 @@ Frozen list empty (child **Citations:** none; parent **Canon Scope:** none — l
 - Post slim upshot via `linear_proxy.py --as radia save-comment`; **Tests Passed** → **Review Posted**; datt **§3h** **PROCEED** toward **User Testing** unless Susan answers the company-fallback discuss with a scope widen.
 
 context_tokens≈22000
+
+## Resolution
+
+2026-10-04 — resolve against Radia review `0b4350f9f` (publish tip at review `7dc68e85d`).
+
+- **fix-now:** none.
+- **discuss — company-only Recommended Job Report header over 50 chars:** no direction from Susan in the thread, so took Radia's **Default: ship as implemented**. `RecommendedJobReportHeader` keeps `title={jobTitle} fallback={jobTitle}`; `JobAnalysisReportModal.tsx` is unchanged (outside Scope). To reverse, amend Scope to add that caller, pass the raw `job_title` as a new header prop, and keep `company || "Recommended Job Report"` as the fallback.
+- **advisory:** no action. The epic composite diff and sibling test carry are expected; `expectFullTitleTooltip` is Betty's.
+- **Product delta:** none in this pass. Build commit `6c6e1cb17` stands.
