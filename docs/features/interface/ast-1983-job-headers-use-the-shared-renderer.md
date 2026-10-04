@@ -117,3 +117,43 @@ Long job titles also stretch the modal and report headers. [AST-1982](https://li
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+
+**Ticket:** AST-1983  
+**Overall:** APPROVED  
+**Corpus:** e1f2699fad  
+**Publish ref:** `cb0d69b0641865e0447578e9db84557c5e06eff4`
+
+## Canon scores
+
+Frozen list is empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score.
+
+## Traceability
+
+AC5–8 → Stage 0–1 and **Acceptance criteria map** (parent AC1–4 / list tables / config / sort → N/A — AST-1982 and out of **Boundaries**; parent AC9–10 not in this child’s AC set).
+
+### Findings
+
+**discuss** | Stage 1 step 5 (Recommended Job Report header)  
+When `jobTitle` is the caller-resolved company string (no `job_title`), `JobTitleText` still cuts at 50 because `title` and `fallback` are the same non-empty string. Parent AC5 is written around a long **job** title; this path is documented and bounded (no `JobAnalysisReportModal` change). If product wants company-only report titles never cut, scope must widen — not a silent build change.
+
+**discuss** | **Codebase facts** sync tip `2237a05c0` vs publish `cb0d69b`  
+Cosmetic; line anchors checked against current tree (`Modal.tsx:8`, `JobDetailModal.tsx:244`, `modalTitle` 102–110, report header line 61) and match.
+
+**acceptable** | Prerequisite **AST-1982** on `origin/ftr/AST-1981-job-title-ellipsis`  
+Plan states correct `sync-child.sh --ftr AST-1981-job-title-ellipsis`; wrong `--ftr AST-1981` skips parent merge. `JobTitleText` is present on the epic worktree with the expected API.
+
+**acceptable** | **JobDetailModal** `title={…}` vs Info-tab Title row  
+`JobTitleText` with `title={job?.job_title}` leaves company / “Job Detail” uncut when `job_title` is empty (`!title` → fallback only). Info-tab input and read-only span untouched — AC6.
+
+**acceptable** | **Meteorite** `modalTitle` → `ReactNode`  
+Employer suffix as a sibling text node preserves whole ` — <employer>`; AC5 employer clause satisfied.
+
+### R6 (summary)
+
+Definition fidelity: four scoped files only; no AST-1982 surface edits; `Modal` widen is minimal. DRY: consumes `JobTitleText` as-is. Dependency and sync instructions are explicit. Betty note on header test expectations is helpful. Estimate confirm present. Plan Ready, assignee Joan Clarke; no `[plan-discuss]` rounds.
+
+context_tokens≈24000
