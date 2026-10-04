@@ -19,6 +19,7 @@ interface Job {
   company: string
   state: string
   state_changed_at: string | null
+  source?: string | null
   jd_score?: number | null
   do_score?: number | null
   get_score?: number | null
@@ -53,6 +54,8 @@ function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields
       cmp = (a.job_title || "").localeCompare(b.job_title || "")
     } else if (col === "company") {
       cmp = a.company.localeCompare(b.company)
+    } else if (col === "source") {
+      cmp = (a.source || "").localeCompare(b.source || "")
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
     } else if (col === "state") {
@@ -70,7 +73,10 @@ function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields
   })
 }
 
-export default function Recommended() {
+// AST-1975: one list component for Jobs → Ready and Jobs → Review; the route supplies both.
+interface RecommendedProps { view: "ready" | "review"; title: string }
+
+export default function Recommended({ view, title }: RecommendedProps) {
   const { manifest, loadState } = useStateUi()
   const { selectedId } = useCandidate()
   const [rows, setRows] = useState<Job[]>([])
@@ -88,7 +94,7 @@ export default function Recommended() {
   const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
     beginRefresh(showSpinner)
-    api(`/api/jobs?view=recommended&candidate_id=${encodeURIComponent(selectedId)}`)
+    api(`/api/jobs?view=${view}&candidate_id=${encodeURIComponent(selectedId)}`)
       .then(r => r.json())
       .then(data => {
         // Spinner loads are mount + candidate switch only — drop any prior selection there.
@@ -97,7 +103,7 @@ export default function Recommended() {
         setRows(Array.isArray(data) ? data : [])
       })
       .finally(() => endRefresh())
-  }, [selectedId, beginRefresh, endRefresh])
+  }, [selectedId, view, beginRefresh, endRefresh])
 
   // After any bulk action: one toast with the split, then clear selection (AC 8).
   const handleBulkDone = useCallback((r: BulkActionResult) => {
@@ -153,43 +159,19 @@ export default function Recommended() {
 
   const sections = useMemo(() => {
     if (!manifest) return []
-    const meteoriteSection = manifest.jobs.recommended.meteorite_section
-    const prefix = meteoriteSection?.company_prefix ?? ""
-    // Null company is not a meteorite-prefix match (runtime JSON can be null).
-    const isMeteoriteJob = (job: Job) =>
-      Boolean(prefix) && (job.company ?? "").startsWith(prefix)
-    const meteoriteRows = rows.filter(isMeteoriteJob)
-    const normalRows = rows.filter(job => !isMeteoriteJob(job))
     const byState: Record<string, Job[]> = {}
-    for (const job of normalRows) {
+    for (const job of rows) {
       if (!byState[job.state]) byState[job.state] = []
       byState[job.state].push(job)
     }
     const knownStates = manifest.jobs.recommended.sections.map(r => r.state)
     const normal = manifest.jobs.recommended.sections
       .filter(row => (byState[row.state]?.length ?? 0) > 0)
-      .map(row => ({
-        state: row.state,
-        label: row.label,
-        jobs: byState[row.state],
-      }))
-    const legacy = unmappedJobStates(normalRows, knownStates)
+      .map(row => ({ state: row.state, label: row.label, jobs: byState[row.state] }))
+    const legacy = unmappedJobStates(rows, knownStates)
       .filter(s => byState[s]?.length)
-      .map(s => ({
-        state: s,
-        label: legacyStateSectionLabel(s),
-        jobs: byState[s],
-      }))
-    const out = [...normal, ...legacy]
-    // AST-1057: prepend Meteorites when any post-upshot meteorite-company jobs exist.
-    if (meteoriteSection && meteoriteRows.length > 0) {
-      out.unshift({
-        state: meteoriteSection.section_id,
-        label: meteoriteSection.label,
-        jobs: meteoriteRows,
-      })
-    }
-    return out
+      .map(s => ({ state: s, label: legacyStateSectionLabel(s), jobs: byState[s] }))
+    return [...normal, ...legacy]
   }, [rows, manifest])
 
   function handleSort(sectionState: string, col: string) {
@@ -207,7 +189,7 @@ export default function Recommended() {
   return (
     <div className="page-container">
       <div className="list-page-header">
-        <h1 className="list-page-title">Recommended</h1>
+        <h1 className="list-page-title">{title}</h1>
         <div className="recommended-list-header-actions">
           {selectedIds.length > 0 && (
             <>
@@ -238,13 +220,13 @@ export default function Recommended() {
       ) : loadState === "error" || !manifest ? (
         <div className="list-page-status">State UI manifest unavailable.</div>
       ) : sections.length === 0 ? (
-        <div className="list-page-status">No recommended jobs yet</div>
+        <div className="list-page-status">{`No jobs in ${title}`}</div>
       ) : (
         sections.map(sec => {
           const sort = sorts[sec.state] ?? { col: "state_changed_at", asc: false }
           const sorted = sortRecommendedJobs(sec.jobs, sort.col, sort.asc, phaseFields)
-          // checkbox + actions + title + company + state + phase cols + total + updated
-          const columnCount = 7 + manifest.jobs.recommended.phase_score_columns.length
+          // checkbox + actions + title + company + source + state + phase cols + total + updated
+          const columnCount = 8 + manifest.jobs.recommended.phase_score_columns.length
           return (
             <div key={sec.state} style={{ marginBottom: 24 }}>
               <h2 style={{
@@ -266,6 +248,9 @@ export default function Recommended() {
                       </th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "company")}>
                         Company{sortIndicator(sec.state, "company")}
+                      </th>
+                      <th className="sortable" onClick={() => handleSort(sec.state, "source")}>
+                        Source{sortIndicator(sec.state, "source")}
                       </th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "state")}>
                         State{sortIndicator(sec.state, "state")}
@@ -315,6 +300,7 @@ export default function Recommended() {
                           </td>
                           <td>{job.job_title || "\u2014"}</td>
                           <td>{job.company}</td>
+                          <td>{job.source || "\u2014"}</td>
                           <td>{job.state || "\u2014"}</td>
                           {manifest.jobs.recommended.phase_score_columns.map(col => (
                             <td key={col.field} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
