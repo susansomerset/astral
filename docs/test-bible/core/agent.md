@@ -1835,3 +1835,54 @@ rg -n "_openrouter_pin|AGENT_MODE|OPENROUTER_QUANT_BRAIN_SIZE|resolve_model_brai
 ```
 
 **Pass criterion:** item 1 green (185 passed on the publish tip), item 2 reds limited to the baseline set, item 3 empty. Not the zero-arg harness.
+
+### AST-1960 · AST-1954 (served host on the dispatch ledger)
+
+**Primary manifest** (this file). Siblings: [`../data/database/dispatch_ledger.md`](../data/database/dispatch_ledger.md) § AST-1960 (`host` column); AST-1959's `host` on the compat result is [`../external/llm_compat.md`](../external/llm_compat.md) § AST-1959.
+
+After `_send_to_server`, `do_task` writes `host` to the `dispatch_ledger` row for `log_batch_id.get()` (a dispatcher batch, or the hop row `_open_run_next_hop_ledger` set), via `asyncio.to_thread(database.update_dispatch_ledger, id, host=…)`. It writes only when a batch id is set **and** `result["success"]`. The value is `result["host"]`, else `get_llm_server(server_id)["label"]` (Anthropic-direct results carry no host). A raising ledger write is logged (`logger.exception`, "Ledger host write failed for batch …") and the call still succeeds. `TestAst1960LedgerHost` runs on `sqlite_in_memory` with a saved ledger row and stubs both send functions at `agent_mod`. Its `ledger` fixture snapshots the core conftest `_SCHEMA_FLAGS` through `monkeypatch` (`raising=False`) before requesting `sqlite_in_memory`. That fixture sets the flags with plain `setattr` and never restores them, so without the snapshot every later `do_task` test in the run skips schema-ensure against the harness DB and fails "no such table" on a fresh `data/` (24 reds in this manifest on a new worktree).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 OpenRouter-routed success with `host: "DeepInfra"` → `get_dispatch_ledger(id)["host"] == "DeepInfra"` | `do_task` | `TestAst1960LedgerHost::test_ac1_compat_result_host_lands_on_ledger_row` |
+| New — AC 1 Anthropic-direct success, no `host` key → row host = `LLM_SERVER_CONFIG["anthropic"]["label"]` (`"Anthropic"`) | `do_task` | `…::test_ac1_anthropic_direct_records_server_label` |
+| New — failed call (carries the server label) does not overwrite a host already on the row | `do_task` | `…::test_failed_call_keeps_the_real_host` |
+| New — no `log_batch_id` → no ledger write | `do_task` | `…::test_no_batch_id_writes_nothing` |
+| New — ledger write raises → call still `success: True`, failure logged | `do_task` | `…::test_ledger_write_failure_never_fails_the_call` |
+| Revised — two-hop chain: each hop's host write (`(hop_id, {"host": "Anthropic"})`) lands on its own hop row before that hop's finalize; finalize updates still 2 × `COMPLETED` | `do_task` / hop ledger | `TestAst531RunNextHopLedger::test_two_hop_chain_creates_distinct_ledger_rows` |
+
+**Broken / obsolete:** `TestAst531RunNextHopLedger::test_two_hop_chain_creates_distinct_ledger_rows` (`len(updates) == 2`) — revised above. No other test counts `update_dispatch_ledger` calls.
+
+**Note:** existing `test_agent.py` tests that run a successful `do_task` under the `batch-1` token (no temp DB) now also send the host `UPDATE` to the harness DB (`ASTRAL_DB_DIR`, default `data/`). It matches no row, so nothing changes; left as is.
+
+`LOCKED_AT_100`: `--cov-branch` over `TestAst1960LedgerHost` reports no missing line or partial branch in the AST-1960 hunk of `agent.py`.
+
+**Integration:** none (no `tests/integration/` scenario calls `do_task` or reads the ledger; the conftest only resets `_dispatch_ledger_schema_ensured`).
+
+## QA test manifest (AST-1960)
+
+1. **Component (narrowed — must be all green, 67 on the publish tip):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1960LedgerHost \
+  tests/component/core/test_agent.py::TestAst531RunNextHopLedger \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1846DoTaskAgentFailureFlag \
+  tests/component/core/test_agent.py::TestAst1956SettingsOnTheWire \
+  tests/component/core/test_agent_ast1879.py \
+  tests/component/data/database/test_dispatch_ledger.py \
+  -q
+```
+
+2. **Whole files (informational — pre-existing reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_dispatcher.py -q --tb=line
+```
+
+Expect 40 reds in `test_agent.py` and 12 in `test_dispatcher.py`. Each one fails identically with this test tree on `origin/ftr/AST-1954-host-probe` product (no AST-1960). Causes: resume-section message drift, `KeyError: 'company_id'` / `'jobs'`, `empty agent_payload` wording, and others. Any other failure is real.
+
+3. **Boundary gate (expect no output):** `git diff origin/ftr/AST-1954-host-probe...HEAD --stat -- src/core/dispatcher.py src/external/ src/utils/`
+
+**Pass criterion:** item 1 green, item 2 limited to the baseline reds, item 3 empty. Not the zero-arg harness.
