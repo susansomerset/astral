@@ -4666,3 +4666,17 @@ Expect 34 failed. Every failure must be either (a) the `cannot import name 'reso
 **Pass criterion:** item 1 green, item 2 reds limited to those two categories, items 3–4 clean. Not the zero-arg harness (`tests/component/core/` cannot collect on this sub). On `ftr` after AST-1956 / AST-1957: `tests/component/core/test_repo_admin_json.py` (no new reds vs `origin/dev` baseline), and AC 5's `src/`-wide `rg`.
 
 **Bible shasums (after publish):** `for p in utils/config.md utils/cost_calculator.md data/database/agents.md core/repo_admin_json.md; do git show origin/sub/AST-1953/AST-1955-plain-agent-settings:docs/test-bible/$p | shasum; done`
+
+### AST-1959 · AST-1954 (server `probe` flag + probe message)
+
+**Primary manifest:** [`../external/llm_compat.md`](../external/llm_compat.md) § AST-1959. Every `LLM_SERVER_CONFIG` entry gains `probe` (bool; `True` on `openrouter` only); `LLM_PROBE_MESSAGE = "Respond with 1."`; `validate_llm_provider_environment` raises `LLM server '<sid>': probe must be True or False` when `probe` is missing or not a bool.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — every server's `probe` is a bool; the probing set is exactly `{"openrouter"}` | `LLM_SERVER_CONFIG` | `TestAst1959ServerProbeFlag::test_probe_flag_is_bool_everywhere_and_true_on_openrouter_only` |
+| New — probe message literal | `LLM_PROBE_MESSAGE` | `…::test_probe_message_constant` |
+| New — startup rejects `probe` None / `"yes"` / `1` / missing | `validate_llm_provider_environment` | `…::test_startup_rejects_missing_or_non_bool_probe` (4) |
+
+`LOCKED_AT_100`: `--cov-branch` over `test_config.py` on the publish tip reports no missing line or partial branch on the new validator check (pass arc via `TestAst1877LlmCatalogConfig::test_shipped_catalog_passes_startup_validation`, raise arc above).
+
+**Integration:** none.

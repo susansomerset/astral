@@ -71,3 +71,56 @@
 **Broken / obsolete:** `TestAst1938ProviderPin` (7, incl. `test_non_openrouter_catalog_tiers_carry_no_pin`) retired — host pins are gone. `TestAst1877OutboundBody::test_thinking_off_sends_server_off_params_and_temperature` · `::test_thinking_on_sends_tier_params_and_omits_temperature` · `::test_creative_on_non_thinking_host_sends_temperature` · `::test_extras_merge_after_thinking_body` retired / replaced by the revised rows above.
 
 **Integration:** none.
+
+### AST-1959 · AST-1954 (per-batch probe and host lock on the OpenRouter path)
+
+**Primary manifest** (this file). Siblings: [`openrouter.md`](openrouter.md) (probe + host map), [`../utils/config.md`](../utils/config.md) § AST-1959 (`probe` flag, `LLM_PROBE_MESSAGE`, startup check), [`../utils/logging_batch.md`](../utils/logging_batch.md) § AST-1959 (`host=` on the INFO line).
+
+On a `probe: True` server (OpenRouter only) with `log_batch_id` set, `send_to_llm_compat` asks `get_batch_host` for the batch key before the real call: success → `extra_body.provider = {**agent provider, "only": [host]}` (new dicts); remembered failure → `{"success": False, "error": "Host probe failed: …", "host": <label>}` with no request. Probe cost goes through `record_timesheet`. Every result carries `host` (response `provider`, else server label); the healthy summary passes `host=`. `_HostClient` (subclass of `_RecordingClient`) sets `provider` on responses and can raise on the probe only; `_is_probe` matches on the probe message content. `TestAst1959ProbeHostLock` clears `openrouter._hosts` per test and sets `log_batch_id` via the `batch` fixture.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 one awaited + three concurrent → 5 requests, first is the only probe | `send_to_llm_compat` | `TestAst1959ProbeHostLock::test_ac1_one_probe_per_batch_key_before_first_real_call` |
+| New — AC 1 four concurrent first callers → 5 requests, one probe, probe first | `send_to_llm_compat` | `…::test_ac1_concurrent_first_callers_wait_on_one_probe` |
+| New — AC 2 probe = real call minus content / system / host lock; no `cache_control`; agent's own `only` rides on the probe, host replaces it on the real call | `send_to_llm_compat` | `…::test_ac2_probe_matches_real_call_and_carries_no_cache` (2) |
+| New — AC 3 later requests `provider == {quantizations: [bf16], allow_fallbacks: True, only: [DeepInfra]}`; agent tier dict not mutated | `send_to_llm_compat` | `…::test_ac3_warm_and_gather_locked_to_probe_host` |
+| New — AC 4 probe 429 → exactly 1 request, all four calls `success: False`, `Host probe failed:`, host = label | `send_to_llm_compat` | `…::test_ac4_failed_probe_fails_the_batch_with_no_fallback` |
+| New — AC 5 kimi / deepseek in a batch, openrouter with no batch id → no probe, no `only`, host = server label | `send_to_llm_compat` | `…::test_ac5_no_probe_outside_scope` (3) |
+| New — AC 6 `host == "DeepInfra"` on result; one INFO line with `host=DeepInfra` | `send_to_llm_compat` | `…::test_ac6_host_on_result_and_info_line` |
+| New — probe row then real row on the timesheet (same server + batch); probe row success / no note | `_record_probe` | `…::test_probe_cost_lands_on_the_timesheet` |
+| New — a raising `record_timesheet` never fails the probe | `_record_probe` | `…::test_probe_timesheet_failure_never_fails_the_probe` |
+| Revised — result keys gain `host`; no response `provider` → `"OpenRouter"` label | `send_to_llm_compat` | `TestAst1877ResultContract::test_success_shape_and_timesheet_kwargs` |
+| Extended — create exception result carries `host` = label | `send_to_llm_compat` | `TestAst1877ResultContract::test_create_exception_returns_failure_dict` |
+
+**Broken / obsolete:** `TestAst1877ResultContract::test_success_shape_and_timesheet_kwargs` (exact key set) — revised above. Existing sends set no `log_batch_id`, so no prior test reaches the probe.
+
+**Integration:** none (no `tests/integration/` scenario reaches `llm_compat`, OpenRouter, or `log_batch_id`).
+
+## QA test manifest
+
+1. **Component (narrowed — must be all green, 157 on the publish tip):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_openrouter.py \
+  tests/component/external/test_llm_compat.py \
+  tests/component/utils/test_logging_batch.py \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst1959ServerProbeFlag \
+  tests/component/external/test_anthropic.py \
+  tests/component/core/test_agent_ast1879.py \
+  --deselect tests/component/external/test_anthropic.py::TestAst1190EmptyUnusableProviderResponse::test_hollow_stop_question_zero_tokens_fails_closed
+```
+
+`test_anthropic.py` / `test_agent_ast1879.py` are regression only (`anthropic.py` calls `log_llm_batch_summary` without `host`; agent routes to `send_to_llm_compat`). The deselected AST-1190 node asserts an ERROR record that AST-1839 made WARNING. It fails the same way with `origin/dev` product and is outside this ticket (same deselect as § AST-1877 in `utils/config.md`).
+
+2. **AC 5 greps (expect no output):**
+
+```bash
+rg -n '"openrouter"' src/external/
+git diff origin/dev...HEAD --stat -- src/core/dispatcher.py
+```
+
+3. **Whole file (informational — expected reds only):** `.venv/bin/python -m pytest tests/component/utils/test_config.py -q --tb=line` gives exactly the 21 pre-existing reds listed in [`../utils/config.md`](../utils/config.md) § AST-1947 item 2, which fail the same way with `origin/dev` product. Any other failure is real.
+
+**Pass criterion:** item 1 green, item 2 empty, item 3 limited to those 21. Not the zero-arg harness.

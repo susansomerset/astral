@@ -5,6 +5,8 @@ Outbound body is intercepted at the stubbed client's messages.create — no netw
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from types import SimpleNamespace
 from typing import Any, Optional
 
@@ -12,9 +14,10 @@ import httpx
 import pytest
 from anthropic import RateLimitError
 
-from src.external import llm_compat
+from src.external import llm_compat, openrouter
 from src.utils import config as cfg
 from src.utils.cost_calculator import calculate_cost_components_from_counts
+from src.utils.logging import log_batch_id
 
 
 class _Msg:
@@ -248,7 +251,9 @@ class TestAst1877ResultContract:
     async def test_success_shape_and_timesheet_kwargs(self, client: _RecordingClient) -> None:
         recorded: list[dict] = []
         out = await _send(record_timesheet=lambda **kw: recorded.append(kw), candidate_id="c1", task_key_uuid="t1")
-        assert set(out) == {"success", "api_response", "parsed_response", "timesheet"}
+        # AST-1959: `host` on every result; no router `provider` on the response → the server label.
+        assert set(out) == {"success", "api_response", "parsed_response", "timesheet", "host"}
+        assert out["host"] == "OpenRouter"
         assert out["success"] is True
         assert out["parsed_response"] == "ok"
         assert out["timesheet"]["inputtotal"] == 100
@@ -316,6 +321,7 @@ class TestAst1877ResultContract:
         assert out["api_response"] is None
         assert "boom" in out["error"]
         assert out["timesheet"]["inputtotal"] == 0
+        assert out["host"] == "OpenRouter"
 
 
 def _rate_limit() -> RateLimitError:
@@ -367,3 +373,162 @@ class TestAst1877ServerConcurrency:
         with pytest.raises(RateLimitError):
             llm_compat._create(c, {}, "srv", self.CONC)
         assert c.calls == 3
+
+
+def _is_probe(call: dict[str, Any]) -> bool:
+    return call["messages"] == [{"role": "user", "content": [{"type": "text", "text": cfg.LLM_PROBE_MESSAGE}]}]
+
+
+class _HostClient(_RecordingClient):
+    """Responses carry the router's `provider`; the probe alone can be made to raise."""
+
+    def __init__(self, provider: Optional[str] = "DeepInfra", raise_on_probe: Optional[Exception] = None) -> None:
+        super().__init__()
+        self.provider = provider
+        self.raise_on_probe = raise_on_probe
+
+    def create(self, **kwargs: Any) -> _Msg:
+        if self.raise_on_probe and _is_probe(kwargs):
+            self.calls.append(kwargs)
+            raise self.raise_on_probe
+        msg = super().create(**kwargs)
+        if self.provider is not None:
+            msg.provider = self.provider
+        return msg
+
+
+# AST-1959 — AC 1–6 through send_to_llm_compat with the stubbed client.
+# Branches: probe flag on + batch id → probe / lock; remembered probe failure → no request; flag off
+# (kimi, deepseek) or no batch id → today's request; host = response provider, else server label.
+class TestAst1959ProbeHostLock:
+    BF16 = dict(quantization="bf16", provider_allow_fallbacks=True)
+
+    @pytest.fixture(autouse=True)
+    def _fresh_host_map(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(openrouter, "_hosts", {})
+
+    @pytest.fixture
+    def batch(self):
+        token = log_batch_id.set("batch-1959")
+        yield "batch-1959"
+        log_batch_id.reset(token)
+
+    @staticmethod
+    def _install(monkeypatch: pytest.MonkeyPatch, c: _HostClient) -> _HostClient:
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: c)
+        return c
+
+    async def _one_then_three(self, **kw: Any) -> list[dict]:
+        # AC wording: one awaited call, then three concurrent calls for the same model and settings.
+        first = await _send(**kw)
+        return [first, *await asyncio.gather(*(_send(**kw) for _ in range(3)))]
+
+    @pytest.mark.asyncio
+    async def test_ac1_one_probe_per_batch_key_before_first_real_call(self, monkeypatch, batch) -> None:
+        c = self._install(monkeypatch, _HostClient())
+        outs = await self._one_then_three(tier=_tier(**self.BF16))
+        assert len(c.calls) == 5
+        assert _is_probe(c.calls[0]) and not any(_is_probe(x) for x in c.calls[1:])
+        assert all(o["success"] for o in outs)
+
+    @pytest.mark.asyncio
+    async def test_ac1_concurrent_first_callers_wait_on_one_probe(self, monkeypatch, batch) -> None:
+        c = self._install(monkeypatch, _HostClient())
+        await asyncio.gather(*(_send(tier=_tier(**self.BF16)) for _ in range(4)))
+        assert len(c.calls) == 5
+        assert _is_probe(c.calls[0]) and sum(map(_is_probe, c.calls)) == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("settings", "probe_only"),
+        [
+            ({}, None),
+            # The agent's own `only` rides on the probe; the real call's `only` is replaced by the host.
+            ({"provider_only": ["crusoe"]}, ["crusoe"]),
+        ],
+    )
+    async def test_ac2_probe_matches_real_call_and_carries_no_cache(
+        self, monkeypatch, batch, settings: dict, probe_only: Optional[list]
+    ) -> None:
+        c = self._install(monkeypatch, _HostClient())
+        tier = _tier(temperature=0.2, reasoning_effort="high", **self.BF16, **settings)
+        system = [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}]
+        await _send(tier=tier, temperature=0.2, system_blocks=system)
+        probe, real = c.calls
+        assert "system" not in probe and "cache_control" not in repr(probe)
+        assert real["system"] == system
+        assert probe["extra_body"]["provider"].get("only") == probe_only
+        # Everything but content / system / the host lock is identical (max_tokens, temperature, effort, provider).
+        unlocked = {**real["extra_body"], "provider": {k: v for k, v in real["extra_body"]["provider"].items() if k != "only"}}
+        if probe_only:
+            unlocked["provider"]["only"] = probe_only
+        assert {k: v for k, v in probe.items() if k != "messages"} == {
+            **{k: v for k, v in real.items() if k not in ("messages", "system")}, "extra_body": unlocked}
+
+    @pytest.mark.asyncio
+    async def test_ac3_warm_and_gather_locked_to_probe_host(self, monkeypatch, batch) -> None:
+        c = self._install(monkeypatch, _HostClient(provider="DeepInfra"))
+        tier = _tier(**self.BF16)
+        await self._one_then_three(tier=tier)
+        for call in c.calls[1:]:
+            assert call["extra_body"]["provider"] == {"quantizations": ["bf16"], "allow_fallbacks": True, "only": ["DeepInfra"]}
+        # The lock is a new dict: the agent's tier object is not mutated across the batch.
+        assert tier["provider"] == {"quantizations": ["bf16"], "allow_fallbacks": True}
+
+    @pytest.mark.asyncio
+    async def test_ac4_failed_probe_fails_the_batch_with_no_fallback(self, monkeypatch, batch) -> None:
+        c = self._install(monkeypatch, _HostClient(raise_on_probe=_rate_limit()))
+        outs = await self._one_then_three(tier=_tier(**self.BF16))
+        assert len(c.calls) == 1 and _is_probe(c.calls[0])
+        assert [o["success"] for o in outs] == [False] * 4
+        assert all(o["error"].startswith("Host probe failed:") and o["host"] == "OpenRouter" for o in outs)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("server_id", "sku", "in_batch", "label"),
+        [
+            ("kimi", "kimi-k2.6", True, "Kimi"),
+            ("deepseek", "deepseek-v4-flash", True, "DeepSeek"),
+            ("openrouter", "moonshotai/kimi-k2.6", False, "OpenRouter"),
+        ],
+    )
+    async def test_ac5_no_probe_outside_scope(self, monkeypatch, server_id, sku, in_batch, label) -> None:
+        c = self._install(monkeypatch, _HostClient(provider=None))
+        token = log_batch_id.set("batch-1959" if in_batch else "")
+        try:
+            outs = [await _send(server_id=server_id, sku=sku, tier=_tier(sku, **self.BF16)) for _ in range(2)]
+        finally:
+            log_batch_id.reset(token)
+        assert len(c.calls) == 2 and not any(map(_is_probe, c.calls))
+        assert not any("only" in (x["extra_body"].get("provider") or {}) for x in c.calls)
+        # No router `provider` on the response → host is the server's own label.
+        assert [o["host"] for o in outs] == [label, label]
+
+    @pytest.mark.asyncio
+    async def test_ac6_host_on_result_and_info_line(self, monkeypatch, batch, caplog) -> None:
+        self._install(monkeypatch, _HostClient(provider="DeepInfra"))
+        with caplog.at_level(logging.INFO):
+            out = await _send(tier=_tier(**self.BF16), prompt_label="gather_x")
+        assert out["host"] == "DeepInfra"
+        lines = [r.message for r in caplog.records if r.levelname == "INFO" and "task=gather_x" in r.message]
+        assert len(lines) == 1 and "host=DeepInfra" in lines[0]
+
+    @pytest.mark.asyncio
+    async def test_probe_cost_lands_on_the_timesheet(self, monkeypatch, batch) -> None:
+        self._install(monkeypatch, _HostClient())
+        recorded: list[dict] = []
+        await _send(tier=_tier(**self.BF16), record_timesheet=lambda **kw: recorded.append(kw))
+        # Probe row first, then the real call's row; both on this server and batch.
+        assert len(recorded) == 2
+        assert all(r["provider"] == "openrouter" and r["batch_id"] == "batch-1959" for r in recorded)
+        assert recorded[0]["agent_performance"] == "success" and recorded[0]["failure_note"] is None
+
+    @pytest.mark.asyncio
+    async def test_probe_timesheet_failure_never_fails_the_probe(self, monkeypatch, batch) -> None:
+        c = self._install(monkeypatch, _HostClient())
+
+        def boom(**_kw: Any) -> None:
+            raise RuntimeError("timesheet down")
+
+        out = await _send(tier=_tier(**self.BF16), record_timesheet=boom)
+        assert out["success"] is True and len(c.calls) == 2
