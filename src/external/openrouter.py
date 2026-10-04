@@ -50,10 +50,14 @@ async def probe_host(
     """Send the real call's request with the probe message as its only content and no system block;
     return the response's `provider`. Raises when the call fails or names no provider."""
     # Content swapped wholesale and system dropped → no cache_control can ride along. Everything else
-    # (max_tokens, temperature, effort, agent provider object) is the real call's, so OpenRouter
-    # filters eligible hosts exactly as it will for the batch.
+    # (max_tokens, temperature, effort, agent provider object) is the real call's. zdr is forced on a
+    # new provider dict so the host OpenRouter names is a zero-data-retention endpoint even when the
+    # account already enforces ZDR. The caller's kwargs stay unchanged; the batch pin happens later.
     probe_kwargs = {k: v for k, v in api_kwargs.items() if k not in ("messages", "system")}
     probe_kwargs["messages"] = [{"role": "user", "content": [{"type": "text", "text": LLM_PROBE_MESSAGE}]}]
+    extra = dict(probe_kwargs.get("extra_body") or {})
+    extra["provider"] = {**(extra.get("provider") or {}), "zdr": True}
+    probe_kwargs["extra_body"] = extra
     logger.debug("Calling messages.create (probe): %s", probe_kwargs)
     response = await send(probe_kwargs)
     logger.debug("Response from messages.create (probe): %s", response)

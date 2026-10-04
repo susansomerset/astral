@@ -66,12 +66,27 @@ class TestAst1959ProbeHost:
         probe = send.calls[0]
         assert probe["messages"] == [{"role": "user", "content": [{"type": "text", "text": cfg.LLM_PROBE_MESSAGE}]}]
         assert "system" not in probe and "cache_control" not in repr(probe)
-        # max_tokens, temperature, effort and the agent's provider object are the real call's, untouched.
-        assert {k: v for k, v in probe.items() if k != "messages"} == {
-            k: v for k, v in REAL.items() if k not in ("messages", "system")}
+        # max_tokens, temperature, effort and the agent's provider object are the real call's.
+        # zdr is added on the probe copy only.
+        expected = {k: v for k, v in REAL.items() if k not in ("messages", "system")}
+        expected["extra_body"] = {
+            **REAL["extra_body"],
+            "provider": {**REAL["extra_body"]["provider"], "zdr": True},
+        }
+        assert {k: v for k, v in probe.items() if k != "messages"} == expected
         # The real call's kwargs are not mutated by building the probe.
         assert REAL["system"] and REAL["messages"][0]["content"][0]["text"] == "entity 7"
+        assert "zdr" not in REAL["extra_body"]["provider"]
         assert [r.id for r in recorded] == ["probe_resp"]
+
+    @pytest.mark.asyncio
+    async def test_probe_forces_zdr_when_the_call_has_no_provider_object(self) -> None:
+        send, recorded = _Send(), []
+        bare = {"model": "openai/gpt-oss-120b", "max_tokens": 100, "messages": [{"role": "user", "content": "x"}]}
+        await openrouter.probe_host(bare, send, recorded.append)
+        assert send.calls[0]["extra_body"] == {"provider": {"zdr": True}}
+        assert "extra_body" not in bare
+        assert len(recorded) == 1
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("provider", [None, ""])
