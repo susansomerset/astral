@@ -82,7 +82,7 @@ On a `probe: True` server (OpenRouter only) with `log_batch_id` set, `send_to_ll
 | --- | --- | --- |
 | New — AC 1 one awaited + three concurrent → 5 requests, first is the only probe | `send_to_llm_compat` | `TestAst1959ProbeHostLock::test_ac1_one_probe_per_batch_key_before_first_real_call` |
 | New — AC 1 four concurrent first callers → 5 requests, one probe, probe first | `send_to_llm_compat` | `…::test_ac1_concurrent_first_callers_wait_on_one_probe` |
-| New — AC 2 probe = real call minus content / system / host lock; no `cache_control`; agent's own `only` rides on the probe, host replaces it on the real call | `send_to_llm_compat` | `…::test_ac2_probe_matches_real_call_and_carries_no_cache` (2) |
+| New — AC 2 probe = real call minus content / system / host lock, plus `provider.zdr` on the probe only; no `cache_control`; agent's own `only` rides on the probe, host replaces it on the real call | `send_to_llm_compat` | `…::test_ac2_probe_matches_real_call_and_carries_no_cache` (2) |
 | New — AC 3 later requests `provider == {quantizations: [bf16], allow_fallbacks: True, only: [DeepInfra]}`; agent tier dict not mutated | `send_to_llm_compat` | `…::test_ac3_warm_and_gather_locked_to_probe_host` |
 | New — AC 4 probe 429 → exactly 1 request, all four calls `success: False`, `Host probe failed:`, host = label | `send_to_llm_compat` | `…::test_ac4_failed_probe_fails_the_batch_with_no_fallback` |
 | New — AC 5 kimi / deepseek in a batch, openrouter with no batch id → no probe, no `only`, host = server label | `send_to_llm_compat` | `…::test_ac5_no_probe_outside_scope` (3) |
@@ -124,3 +124,20 @@ git diff origin/dev...HEAD --stat -- src/core/dispatcher.py
 3. **Whole file (informational — expected reds only):** `.venv/bin/python -m pytest tests/component/utils/test_config.py -q --tb=line` gives exactly the 21 pre-existing reds listed in [`../utils/config.md`](../utils/config.md) § AST-1947 item 2, which fail the same way with `origin/dev` product. Any other failure is real.
 
 **Pass criterion:** item 1 green, item 2 empty, item 3 limited to those 21. Not the zero-arg harness.
+
+### AST-1966 · AST-1963 (unpriced calls still get a timesheet row)
+
+**Primary manifest:** [`../core/timesheets.md`](../core/timesheets.md) § AST-1966. `_timesheet_kwargs_for` always returns row kwargs: `calculate_cost_components_from_counts` raising → `calc_cost_*` all `0.0` (`CALC_COST_KEYS`) + one `logger.exception` ("timesheet catalog price"); `usage_to_token_counts` raising → counts 0 + one `logger.exception` ("timesheet token counts").
+
+**Reach of the token-count fallback:** the main call path reads `usage_to_token_counts(response.usage)` itself before calling the helper (unchanged from `origin/ftr`), so an unreadable usage on the real call still fails the call with no row. The fallback is live only on the probe row (`_record_probe` calls the helper directly). Not an AC gap (AC 3 covers pricing); noted so the manifest does not overclaim. The `if kw is not None` / `if _timesheet_kwargs is not None` guards around `record_timesheet` are now always true.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 3 (llm_compat half): pricing raises → call succeeds, `record_timesheet` once, `calc_cost_*` all 0, usage counts (50 / 100 / 25 / 5), one ERROR with traceback | `_timesheet_kwargs_for` | `TestAst1966UnpricedRowRecorded::test_pricing_raises_row_recorded_with_zero_cost_and_counts` |
+| New — probe response usage unreadable → probe row with zero tokens + zero cost, one ERROR; real call row normal | `_timesheet_kwargs_for` via `_record_probe` | `…::test_probe_token_counts_raise_row_recorded_with_zero_tokens` |
+| New — failure path (unparseable JSON) + unpriced → one `failure` row, zero cost | `_timesheet_kwargs_for` | `…::test_failure_path_unpriced_row_still_recorded` |
+| Kept — clean pricing row unchanged | — | `TestAst1877ResultContract::test_success_shape_and_timesheet_kwargs` |
+
+No coverage regression: the AST-1966 hunk (helper try/except pair) is fully covered; the only new uncovered arc is `_record_probe`'s `kw is None` exit (now unreachable).
+
+**Integration:** none.

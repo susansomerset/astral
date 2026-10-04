@@ -14,7 +14,7 @@ Tables used (inventory):
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_id TEXT (LLM_MODEL_CONFIG key), max_tokens INTEGER, plain call settings sent as stored — quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER (bool), provider_only / provider_ignore TEXT (JSON array of provider slugs), provider_sort TEXT (AST-1955) — updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
-- agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
+- agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets, plus nullable platform columns (AST-1965: platform_cost — NULL = not reconciled, native_tokens_prompt/_completion/_cached/_reasoning, host, platform_reconciled_at) set by update_timesheet_platform; sum_cost_by_batch prefers platform_cost per row.
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, list_agent_data_batches, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984); nullable self-ref ref_agent_data_id points at earliest identical content row when set (AST-974 / AST-977).
 - scheduled_query — Admin Scheduled Queries (AST-1122): named SQL rows with active flag, interval_hours cadence, last_run_at / last_rows_affected; tick runner in dispatcher.
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
@@ -73,7 +73,6 @@ from src.utils.config import (
     AGENT_CONFIG,
     ALLOWED_TIMESHEET_PROVIDERS,
     LLM_MODEL_CONFIG,
-    get_sku_pricing,
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
     ASTRAL_CONFIG,
@@ -2463,6 +2462,19 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
     )
 
 
+# AST-1965: platform-billed facts per call (OpenRouter generation stats). Nullable; platform_cost NULL = not
+# reconciled. Appended after created_at so new and migrated tables share one PRAGMA column order.
+_AGENT_TIMESHEET_PLATFORM_COLUMNS = (
+    ("platform_cost",            "REAL"),
+    ("native_tokens_prompt",     "INTEGER"),
+    ("native_tokens_completion", "INTEGER"),
+    ("native_tokens_cached",     "INTEGER"),
+    ("native_tokens_reasoning",  "INTEGER"),
+    ("host",                     "TEXT"),
+    ("platform_reconciled_at",   "TIMESTAMP"),
+)
+
+
 def _create_anthropic_timesheets_table(conn: sqlite3.Connection) -> None:
     conn.execute("""
         CREATE TABLE anthropic_timesheets (
@@ -2490,7 +2502,7 @@ def _create_anthropic_timesheets_table(conn: sqlite3.Connection) -> None:
 
 
 def _create_agent_timesheets_table(conn: sqlite3.Connection) -> None:
-    conn.execute("""
+    conn.execute(f"""
         CREATE TABLE agent_timesheets (
             agent_req_id TEXT UNIQUE,
             task_key_uuid TEXT,
@@ -2510,7 +2522,8 @@ def _create_agent_timesheets_table(conn: sqlite3.Connection) -> None:
             calc_cost_output REAL DEFAULT 0,
             agent_performance TEXT,
             failure_note TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            {', '.join(f'{name} {col_def}' for name, col_def in _AGENT_TIMESHEET_PLATFORM_COLUMNS)}
         )
     """)
 
@@ -2556,6 +2569,13 @@ def _ensure_timesheets_schema(conn: sqlite3.Connection) -> None:
     if not _table_exists(conn, "agent_timesheets"):
         _create_agent_timesheets_table(conn)
         conn.commit()
+
+    # AST-1965: platform columns on pre-existing agent_timesheets. DDL only — old rows stay NULL (unreconciled).
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(agent_timesheets)").fetchall()}
+    for col, col_def in _AGENT_TIMESHEET_PLATFORM_COLUMNS:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE agent_timesheets ADD COLUMN {col} {col_def}")
+    conn.commit()
 
     n_agent = conn.execute("SELECT COUNT(*) FROM agent_timesheets").fetchone()[0]
     n_anth = conn.execute("SELECT COUNT(*) FROM anthropic_timesheets").fetchone()[0]
@@ -2603,12 +2623,10 @@ def _add_timesheet_entry(
     failure_note: Optional[str] = None,
     provider: str = "anthropic",
 ) -> bool:
-    """Anthropic completions mirror into anthropic_timesheets + agent_timesheets; other providers use agent_timesheets only."""
+    """Anthropic completions mirror into anthropic_timesheets + agent_timesheets; other providers use agent_timesheets only.
+    Server id must be a catalog server (ValueError otherwise); the SKU need not be catalog-priced (AST-1965)."""
     if provider not in ALLOWED_TIMESHEET_PROVIDERS:
         raise ValueError(f"Invalid timesheet provider {provider!r}")
-    if model_code:
-        # Ledger row must name a SKU the catalog prices on this server (raises ValueError otherwise).
-        get_sku_pricing(model_code, provider)
     row_vals = (
         agent_req_id, task_key_uuid, model_code, candidate_id, batch_id, batch_size,
         cache_write_tokens, cache_read_tokens, no_cache_prompt_tokens, no_cache_live_tokens,
@@ -2645,6 +2663,45 @@ def _add_timesheet_entry(
         return False
     finally:
         conn.close()
+
+
+def update_timesheet_platform(
+    agent_req_id: str,
+    platform_cost: float,
+    native_tokens_prompt: Optional[int],
+    native_tokens_completion: Optional[int],
+    native_tokens_cached: Optional[int],
+    native_tokens_reasoning: Optional[int],
+    host: Optional[str],
+) -> int:
+    """Set one agent_timesheets row's platform columns by agent_req_id; stamps platform_reconciled_at.
+    Never touches calc_cost_* or the original token columns. Returns rowcount (0 when no row matches)."""
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_timesheets_schema(conn)
+            cur = conn.execute(
+                """
+                UPDATE agent_timesheets
+                SET platform_cost = ?, native_tokens_prompt = ?, native_tokens_completion = ?,
+                    native_tokens_cached = ?, native_tokens_reasoning = ?, host = ?,
+                    platform_reconciled_at = ?
+                WHERE agent_req_id = ?
+                """,
+                (
+                    platform_cost, native_tokens_prompt, native_tokens_completion,
+                    native_tokens_cached, native_tokens_reasoning, host,
+                    _utc_now(), agent_req_id,
+                ),
+            )
+            conn.commit()
+            return cur.rowcount
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
 
 
 def backfill_agent_timesheet_costs(server_id: str) -> int:
@@ -2758,7 +2815,7 @@ def list_timesheets(
 
 
 def sum_cost_by_batch(batch_ids: List[str]) -> Dict[str, float]:
-    """Return {batch_id: total_calc_cost} for the given batch IDs."""
+    """Return {batch_id: total_cost} for the given batch IDs — per row, platform_cost when reconciled, else the calc_cost_* sum."""
     if not batch_ids:
         return {}
     def _with_conn() -> Dict[str, float]:
@@ -2768,7 +2825,7 @@ def sum_cost_by_batch(batch_ids: List[str]) -> Dict[str, float]:
             placeholders = ",".join("?" for _ in batch_ids)
             rows = conn.execute(
                 f"""SELECT batch_id,
-                    SUM(calc_cost_cache_write + calc_cost_cache_read + calc_cost_no_cache_input + calc_cost_output) AS total
+                    SUM(COALESCE(platform_cost, calc_cost_cache_write + calc_cost_cache_read + calc_cost_no_cache_input + calc_cost_output)) AS total
                     FROM agent_timesheets WHERE batch_id IN ({placeholders}) GROUP BY batch_id""",
                 batch_ids,
             ).fetchall()
