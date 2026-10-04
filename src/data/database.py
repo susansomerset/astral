@@ -73,7 +73,6 @@ from src.utils.config import (
     AGENT_CONFIG,
     ALLOWED_TIMESHEET_PROVIDERS,
     LLM_MODEL_CONFIG,
-    get_sku_pricing,
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
     ASTRAL_CONFIG,
@@ -2624,12 +2623,10 @@ def _add_timesheet_entry(
     failure_note: Optional[str] = None,
     provider: str = "anthropic",
 ) -> bool:
-    """Anthropic completions mirror into anthropic_timesheets + agent_timesheets; other providers use agent_timesheets only."""
+    """Anthropic completions mirror into anthropic_timesheets + agent_timesheets; other providers use agent_timesheets only.
+    Server id must be a catalog server (ValueError otherwise); the SKU need not be catalog-priced (AST-1965)."""
     if provider not in ALLOWED_TIMESHEET_PROVIDERS:
         raise ValueError(f"Invalid timesheet provider {provider!r}")
-    if model_code:
-        # Ledger row must name a SKU the catalog prices on this server (raises ValueError otherwise).
-        get_sku_pricing(model_code, provider)
     row_vals = (
         agent_req_id, task_key_uuid, model_code, candidate_id, batch_id, batch_size,
         cache_write_tokens, cache_read_tokens, no_cache_prompt_tokens, no_cache_live_tokens,
@@ -2818,7 +2815,7 @@ def list_timesheets(
 
 
 def sum_cost_by_batch(batch_ids: List[str]) -> Dict[str, float]:
-    """Return {batch_id: total_calc_cost} for the given batch IDs."""
+    """Return {batch_id: total_cost} for the given batch IDs — per row, platform_cost when reconciled, else the calc_cost_* sum."""
     if not batch_ids:
         return {}
     def _with_conn() -> Dict[str, float]:
@@ -2828,7 +2825,7 @@ def sum_cost_by_batch(batch_ids: List[str]) -> Dict[str, float]:
             placeholders = ",".join("?" for _ in batch_ids)
             rows = conn.execute(
                 f"""SELECT batch_id,
-                    SUM(calc_cost_cache_write + calc_cost_cache_read + calc_cost_no_cache_input + calc_cost_output) AS total
+                    SUM(COALESCE(platform_cost, calc_cost_cache_write + calc_cost_cache_read + calc_cost_no_cache_input + calc_cost_output)) AS total
                     FROM agent_timesheets WHERE batch_id IN ({placeholders}) GROUP BY batch_id""",
                 batch_ids,
             ).fetchall()
