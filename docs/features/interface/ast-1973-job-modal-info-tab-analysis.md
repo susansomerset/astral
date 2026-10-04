@@ -194,3 +194,42 @@ component renders an empty lines container under the label, the same thing the l
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1973
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref tip:** 41eb0553aa899048c00de43b74bba90735ba5679
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.ui.frontend-file-placement | A | | |
+| astral.layers.ui-config-driven-business-logic | A | | |
+| astral.standards.dry-and-focused-functions | A | | |
+| astral.standards.in-scope-only | A | | |
+
+## Traceability
+
+AC1–9 → Stage 2 (placement), Stage 1 (manifest lines, dashes, dots, shared component, list parity), Files Changed (frontend-only), Stage 1–2 build/lint gates (AC9); no unmapped AC or orphan stage.
+
+## Findings
+
+### acceptable
+
+- **Location:** `## Code facts this plan relies on` — tip `e0cb0a540`
+- **Finding:** Publish ref tip on origin is `41eb0553a`; Ada’s handoff comment matches the latter. One stale SHA in code facts is cosmetic.
+- **Recommendation:** Optional one-line refresh on next plan edit; not blocking build.
+
+### R6 (definition fidelity / adversarial)
+
+- Plan matches parent Purpose, functional scope 1–4, component/technical scope, and all nine ACs.
+- Files Changed and stages stay inside ticket `## Scope`; explicit scope gate documents AST-1970 collision boundary on `JobsRecommended.tsx`.
+- DRY: move into `PhaseAnalysisLines`, two hosts, no modal copy of derivation.
+- No sibling scope; monolith child is intentional per parent partition check.
+- `## Estimate` confirm line present; no `!!-NONE` self-assessment gap.
+
+context_tokens≈42000
