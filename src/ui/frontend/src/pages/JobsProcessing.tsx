@@ -109,7 +109,8 @@ function sortJobs(jobs: Job[], col: string, asc: boolean, gradeKey: string, cols
   })
 }
 
-export default function InReview() {
+// AST-1975: Jobs → Processing — every job not on Ready / Review / Applied / Skipped; rows open JobDetailModal (Skip).
+export default function Processing() {
   const { manifest, loadState } = useStateUi()
   const { selectedId } = useCandidate()
   const [rows, setRows]     = useState<Job[]>([])
@@ -120,7 +121,7 @@ export default function InReview() {
   const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
     beginRefresh(showSpinner)
-    api(`/api/jobs?view=in_review&candidate_id=${encodeURIComponent(selectedId)}`)
+    api(`/api/jobs?view=processing&candidate_id=${encodeURIComponent(selectedId)}`)
       .then(r => r.json())
       .then(data => setRows(Array.isArray(data) ? data : []))
       .finally(() => endRefresh())
@@ -135,9 +136,9 @@ export default function InReview() {
       if (!byState[job.state]) byState[job.state] = []
       byState[job.state].push(job)
     }
-    const order = manifest.jobs.in_review_sections.map(r => r.state)
+    const order = manifest.jobs.processing_sections.map(r => r.state)
     const labels: Record<string, string> = Object.fromEntries(
-      manifest.jobs.in_review_sections.map(r => [r.state, r.label]),
+      manifest.jobs.processing_sections.map(r => [r.state, r.label]),
     )
     const gradeMap = manifest.jobs.grade_field_by_job_state
     const knownStates = order
@@ -176,7 +177,7 @@ export default function InReview() {
   return (
     <div className="page-container">
       <div className="list-page-header">
-        <h1 className="list-page-title">In Review</h1>
+        <h1 className="list-page-title">Processing</h1>
       </div>
       {loading ? (
         <div className="list-page-status">Loading...</div>
@@ -185,7 +186,7 @@ export default function InReview() {
       ) : loadState === "error" || !manifest ? (
         <div className="list-page-status">State UI manifest unavailable.</div>
       ) : sections.length === 0 ? (
-        <div className="list-page-status">No jobs in review</div>
+        <div className="list-page-status">No jobs processing</div>
       ) : (
         sections.map(sec => {
           const sectionOpen = isExpanded(sec.state)

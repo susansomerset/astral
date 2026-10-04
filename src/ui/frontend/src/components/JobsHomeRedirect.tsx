@@ -11,8 +11,8 @@ const JOBS_NAV_GROUP_LABEL = "Jobs"
 
 /**
  * AST-1975: the only place the landing page is chosen. First Jobs nav item with
- * count > 0, else the first Jobs item. Serves `/`, the catch-all, and every former
- * `/jobs/recommended` target (they navigate to `/`).
+ * count > 0, else the first Jobs item. Serves `/`, the catch-all, and every place that
+ * used to send the user to the old Recommended page (they navigate to `/`).
  */
 export default function JobsHomeRedirect() {
   const { selectedId, candidatesHydrated } = useCandidate()
