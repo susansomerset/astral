@@ -248,3 +248,11 @@ context_tokens≈22000
 ---
 
 [plan-rubric] PROCEED (Commit: 5f4b9bf) List tables plan ready
+
+## Review
+
+- **Branch:** `origin/sub/AST-1981/AST-1982-job-title-renderer`
+- **Build commits:** `f13a4ec7d` (Stage 1 `JobTitleText` + `job_title_truncate_chars` UI config + resolver + `.job-title-tooltip`), `2d9f84400` (Stage 2 Job Title cells on Recommended / Processing / Skipped / Applied / Meteorites)
+- **Build notes:** `python -c "import src.utils.config"` exits 0 (`UI_CONFIG["job_title_truncate_chars"] == 50`); `npx tsc -b --noEmit` and `npm run build` exit 0. `npm run lint` before/after: 31 problems both, line:col-stripped diff empty, none in `JobTitleText.tsx`. AC 5/6 `rg` checks: five pages list `JobTitleText`; no raw `{job.job_title || "\u2014"}` cell; no `.slice(` in the component; no added `50` / `job_title…slice(` under `pages` / `components`.
+- **Deviation:** none in product code. Environment only: the epic worktree had no `node_modules`, so `npm ci` ran from the lockfile before the Stage 0 baseline (no tracked changes). `validate-sub-log.sh --stage=build` was scoped with `dev` instead of `ftr/AST-1981`, because `origin/ftr/AST-1981` does not exist yet (no sibling merged, so the range is the same). Joan's "stale tip" note: the codebase facts still matched at build tip `4a0dac401`.
+- **For QA:** AC 3 tooltip checks (portal under `document.body`, `white-space: normal`, `max-width: 320px`, multi-line over 100 chars, removed on mouse-out) and AC 4 Meteorites 50-vs-30 need a browser. No manual smoke run in this headless build. The tooltip also closes on any scroll (plan Stage 1 Decision).
