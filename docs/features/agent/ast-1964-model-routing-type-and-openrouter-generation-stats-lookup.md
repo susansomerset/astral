@@ -178,3 +178,55 @@ Proposed resolutions: <2-3 options, or "need guidance">
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1964
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `sub/AST-1963/AST-1964-routing-and-generation-lookup` @ `d51e4959f`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | B | | Stage 2: `get_generation_stats` commits to ungated `logger.debug` call-in/response-out (no API key), failures at debug only; retry-loop debug deferred to AST-1963 #3 per boundaries |
+
+## Traceability
+
+AC1→Stage 1 (routing, validator, resolver, grep); AC2→Stage 2 (`get_generation_stats`); AC3→Stage 1 step 7 (reconcile constants). No orphan stages; parent AC 4–8 correctly out of child scope.
+
+## Findings
+
+### discuss — Canon Scope gap (not scored)
+
+- **Location:** Stage 2 step 4 (`GENERATION_URL` module constant)
+- **Finding:** `astral.config.config-source-of-truth` plainly governs a new HTTP endpoint URL but is not on this ticket’s frozen Canon Scope list.
+- **Recommendation:** Archie may add it at Discussion if config-as-SoT should be enforced on this child; engineer’s documented rejection of `config.py` / `LLM_SERVER_CONFIG` is coherent for AC1 grep boundaries.
+
+### acceptable — Definition fidelity
+
+- **Location:** Boundaries / Files Changed
+- **Finding:** Plan stays inside child `## Scope` (only `config.py`, `openrouter.py` for product code; no `database.py`, `llm_compat.py`, `core/timesheets.py`).
+- **Recommendation:** None.
+
+### acceptable — Sibling contract
+
+- **Location:** `## Contract for AST-1963 #3`
+- **Finding:** Names, shapes, and constant values match parent Technical scope and child AC; Ada-facing table is explicit.
+- **Recommendation:** None.
+
+### acceptable — Adversarial / DRY
+
+- **Location:** Stages 1–2
+- **Finding:** Reuses `normalize_provider_error`, `require_controlled_external_io`, `provider_call_http_timeout_seconds`; routing replaces `server == "openrouter"` per parent intent; no sibling scope creep.
+- **Recommendation:** None.
+
+### acceptable — Self-assessment
+
+- **Location:** `## Estimate`
+- **Finding:** No formal self-assessment block; estimate confirm (3) matches ticket and plan depth.
+- **Recommendation:** Optional polish only.
+
+context_tokens≈28000
