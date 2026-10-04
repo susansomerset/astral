@@ -344,3 +344,45 @@ context_tokens≈28000
 - **Build commits:** `d9d7fcbbf` (Stage 1 data/core), `c28a61d58` (Stage 2 config state model), `a0b563d2f` (Stage 3 views/nav/manifest/meteorites)
 - **Build notes:** the six changed `.py` files compile and import (main venv). A local smoke run (temp DB plus Flask test client) checked AC 2–8 and AC 10: the five views partition every seeded job exactly once, nav counts match list lengths, the five Processing states return 200 on skip with `batch_id` cleared, and Applied returns 409. Adding `CANDIDATE_REVIEW` to Skipped makes the import raise `AssertionError: Jobs lists overlap`. Meteorite rows carry the landed `job_state`, or null when unlanded.
 - **For QA:** parent AC 13's `rg -n "meteorite_section" src` also matches the retained `report_meteorite_sections` key (report modal Meteorite pane, untouched by this epic) — that grep needs `\bmeteorite_section\b` or similar.
+
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-1974
+**Publish ref:** `92ec2f7c39b7e88708b0bb5366e7af923b0617ab` (`origin/sub/AST-1970/AST-1974-jobs-nav`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+stat.logging.info.api | A | |
+stat.logging.error | A | |
+
+## Column diff vs plan stage
+(aligned)
+
+## Frame diff
+(none)
+
+## Findings
+
+### advisory — sibling test carry
+- **Location:** `tests/component/**`, `tests/integration/scenarios/test_candidate_nav_api.py`, `docs/test-bible/**` in `origin/dev...origin/sub/AST-1970/AST-1974-jobs-nav`
+- **Finding:** Betty's `merge-tests` carry; expected on this sub. Product scope stays the six planned `src/**` modules.
+
+### advisory — parent AC 11 grep caveat
+- **Location:** Plan Stage 3 / build notes
+- **Finding:** `rg meteorite_section` on `src` still hits `report_meteorite_sections` in `api_system.py` (report modal key, untouched). Backend `rg` for removed symbols (`IN_REVIEW_STATES`, `RECOMMENDED_JOB_STATES`, `JOBS_RECOMMENDED_METEORITE_SECTION`, old nav paths) is clean on tip; frontend AC 11 remains AST-1975.
+
+## What's solid
+- Six-list partition matches plan: `READY_JOB_STATES` / `REVIEW_JOB_STATES`, `JOBS_PROCESSING_EXCLUDED_STATES` + disjointness assert, derived `CANDIDATE_SKIPPED` priors, Processing via `exclude_states` only.
+- `list_view` default `ready`; Applied repair-on-read removed; `candidate_skip_job` clears `batch_id` before transition with no core `logger.info`.
+- Skip POST: exactly one `logger.info` in `src/ui/api` diff (`api_jobs.py` skip route), format matches `stat.logging.info.api`; 404/409 paths log nothing.
+- Meteorite list: `job_state` from data-layer JOIN; handler still one `logger.exception` with live facts + next step on failure.
+- `database.py` `exclude_states` uses bound `?` placeholders; `count_jobs` mirrors `list_jobs`.
+
+## Recommended actions
+- Epic UAT: join AST-1975/1976 before parent AC 11–12 close; use word-boundary grep if Susan runs parent `meteorite_section` check.
+
+context_tokens≈22000
+```
