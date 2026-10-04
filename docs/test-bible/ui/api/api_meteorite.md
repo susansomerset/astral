@@ -100,3 +100,53 @@ Authenticated `GET /api/candidates/<candidate_id>/meteorites` → `{columns, met
 ### AST-1974 · AST-1970
 
 `_LIST_KEYS` gains `job_state` (landed job's current state; null when unlanded). **New:** `test_list_projects_landed_job_state_ast1974`. DB join: [`data/database/jobs.md`](../../data/database/jobs.md) § AST-1974. Manifest: [`api_jobs.md`](api_jobs.md) § AST-1974 item 4.
+
+### AST-1980 · AST-1971 (Meteorites Created from landed job)
+
+**Parent:** [AST-1971 — Add Created to the job list table](https://linear.app/astralcareermatch/issue/AST-1971). **Publish:** `origin/sub/AST-1971/AST-1980-created-col`. Job list pages are sibling AST-1979 ([`frontend/pages.md`](../../frontend/pages.md) § AST-1979).
+
+`list_meteorites_for_candidate` adds `j.created_at AS job_created_at` to the existing AST-1974 `LEFT JOIN job` select. `_LIST_KEYS` carries `job_created_at`. `JOBS_METEORITES_LIST_COLUMNS` gains `{"key": "job_created_at", "label": "Created", "sortable": True, "type": "datetime"}` immediately before `state_changed_at`. `JobsMeteorites.tsx` is unchanged, and `ListPage` formats and sorts the column.
+
+This is the single block for the ticket. It covers four test files across layers, so there are no per-file blocks.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 6 `job_created_at` = `job.created_at`; null when unlanded or the job row is gone; `meteorite.created_at` kept | `database.list_meteorites_for_candidate` | **`tests/component/data/database/test_jobs.py`** › **`TestAst1980MeteoriteJobCreatedAt::test_job_created_at_is_landed_jobs_and_meteorite_created_at_kept`** (real SQLite; the job row's `created_at` is set far from the meteorite's) |
+| 6 / 9 API projects `job_created_at` (null preserved) beside its own `created_at`; success path logs nothing | `api_meteorite._LIST_KEYS` | **`test_api_meteorite.py`** › **`test_list_projects_landed_job_created_at_ast1980`** |
+| 7 Created entry, exact dict, immediately before `state_changed_at` | `config.JOBS_METEORITES_LIST_COLUMNS` | **`tests/component/utils/test_config.py`** › **`TestAst1974JobsListPartition::test_meteorites_columns_gain_created_before_state_changed_ast1980`**. API `columns` equals config via the existing **`test_list_scopes_candidate_and_returns_columns`** |
+| 7 page: Created left of State Changed, `fmtTime(job_created_at)`, `—` when unlanded, first click ascending, second reverses, ▲/▼ on Created | `ListPage` (no page code) | **`tests/component/frontend/pages/test_JobsMeteorites.test.tsx`** › **`JobsMeteorites — AST-1980 Created column`** |
+| 8 one SELECT carries both landed-job fields; no per-row `get_job` | same read | **`TestAst1980MeteoriteJobCreatedAt::test_one_select_and_no_per_row_get_job`** (sqlite `set_trace_callback`; `get_job` patched to fail) |
+| 9 / 10 no new logger lines; config imports | source | greps below |
+
+The DB, API, and config cases are red with the three product files reverted to `origin/ftr/AST-1971-created-col` and green on the publish tip. The page case passes both ways, because `JobsMeteorites.tsx` is unchanged and the test serves the columns. It guards the `ListPage` side of the contract.
+
+**Test-tree notes:**
+- The DB cases sit in `test_jobs.py` beside the AST-1974 join case, because `test_meteorites.py` is still collection-red on dev (`METEORITE_STATES_RETENTION` import). `test_jobs.py` gains `import sqlite3`.
+- `test_JobsMeteorites.test.tsx` lifts the AST-1976 `PROD_COLUMNS` production mirror to module scope and adds the Created entry, so it matches `config.py` again. The AST-1976 cases find columns by label and stay green.
+- The page case primes `ListPage`'s module-level ui_config cache with `loadUiConfig`, sets production `column_types.datetime` on it, and restores it in `finally`. The result does not depend on test order.
+
+**Broken / obsolete:** none. The existing `job_state` config and API cases assert relative position and membership only.
+
+**Baseline red (not this ticket):** 21 cases in `test_config.py` across retention, meteorite, telescope, `TestResolveTokens`, and other classes. The failing set is identical with AST-1980's product reverted.
+
+## QA test manifest
+
+1. **Backend (required):**
+
+```bash
+.venv/bin/python -m pytest -q \
+  "tests/component/data/database/test_jobs.py::TestAst1980MeteoriteJobCreatedAt" \
+  "tests/component/data/database/test_jobs.py::TestAst1974ExcludeStatesAndMeteoriteJobState" \
+  tests/component/ui/api/test_api_meteorite.py \
+  "tests/component/utils/test_config.py::TestAst1974JobsListPartition"
+```
+
+Expect all green.
+
+2. **Page (required):** `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx` gives 9 passed.
+
+3. **AC 7 / 8 / 9 / 10 greps:** `git diff origin/dev -- src/ui/frontend/src/pages/JobsMeteorites.tsx` is empty. `git diff origin/dev -- src/ui/api/api_meteorite.py | rg "^\+.*logger\.(info|exception|warning|error)"` returns nothing. `rg -n "job_created_at" src/data/database.py` shows only the one `SELECT` (plus the docstring). `python -c "import src.utils.config"` exits 0.
+
+**Pass criterion:** items 1–3 hold. Narrowed runs, not the zero-arg harness. Full `test_config.py` shows only the baseline reds above.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1971/AST-1980-created-col:docs/test-bible/ui/api/api_meteorite.md | shasum`
