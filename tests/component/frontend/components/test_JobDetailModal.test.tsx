@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
@@ -7,6 +7,7 @@ import { buildPhaseListGradeRow } from "../../../../src/ui/frontend/src/lib/reco
 import JobDetailModal from "../../../../src/ui/frontend/src/components/JobDetailModal"
 import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 import { renderWithProviders, stubAuthPublicFetches } from "../test-utils"
+import { CUT_TITLE, LONG_TITLE, expectFullTitleTooltip } from "../pages/job-title-cell"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
@@ -625,5 +626,49 @@ describe("JobDetailModal — AST-1973 Info-tab analysis", () => {
     expect(block.querySelector(".confidence-bullets")).toBeNull()
     // Display-only: nothing clickable inside the block.
     expect(block.querySelector('[role="button"], button, a, .clickable')).toBeNull()
+  })
+})
+
+// AST-1983 AC 5 / AC 6: Modal <h2> cuts the job title (JobTitleText); Info-tab Title field and edit input stay full.
+describe("JobDetailModal — AST-1983 header title cut", () => {
+  function mockDetail(detail: Record<string, unknown>) {
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      if (url === "/api/candidates") return { json: async () => [] } as Response
+      if (url === "/api/jobs/j1" && !init) return { ok: true, json: async () => detail } as Response
+      throw new Error(url)
+    })
+  }
+
+  beforeEach(() => {
+    mockedApi.mockReset()
+  })
+
+  it("AC5: header shows first 50 chars + … with the full-title tooltip; AC6: read-only Title field is full", async () => {
+    mockDetail({ ...jobPayload, job_title: LONG_TITLE, fields_editable: false, legal_next_states: [] })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    const heading = await screen.findByRole("heading", { name: CUT_TITLE })
+    expect(heading.textContent).toBe(CUT_TITLE)
+    await expectFullTitleTooltip(within(heading).getByText(CUT_TITLE), heading.closest(".modal-overlay")!)
+    await userEvent.click(screen.getByText("Info"))
+    expect(screen.getByText(LONG_TITLE).closest(".modal-body")).toBeTruthy()
+  })
+
+  it("AC6: editable Title input holds the full title while the header is cut", async () => {
+    mockDetail({ ...jobPayload, job_title: LONG_TITLE, state: "CANDIDATE_SKIPPED", fields_editable: true, legal_next_states: ["NEW"], job_data: {} })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await screen.findByRole("heading", { name: CUT_TITLE })
+    const input = screen.getByDisplayValue(LONG_TITLE)
+    expect(input.tagName).toBe("INPUT")
+  })
+
+  it("empty title keeps the company / Job Detail header fallback", async () => {
+    mockDetail({ ...jobPayload, job_title: "" })
+    const { unmount } = renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    expect(await screen.findByRole("heading", { name: "Acme" })).toBeInTheDocument()
+    unmount()
+    mockDetail({ ...jobPayload, job_title: null, company: null })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    expect(await screen.findByRole("heading", { name: "Job Detail" })).toBeInTheDocument()
   })
 })

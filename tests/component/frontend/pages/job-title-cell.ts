@@ -40,14 +40,19 @@ export async function expectJobTitleCells(table: HTMLElement, header: RegExp = /
   expect(screen.queryByRole("tooltip")).toBeNull()
   await userEvent.unhover(edge!)
 
-  // AC3: cut title — one tooltip with the full title, portaled to body (outside the table), gone on mouse-out.
-  const span = within(long!).getByText(CUT_TITLE)
+  await expectFullTitleTooltip(within(long!).getByText(CUT_TITLE), table)
+}
+
+// AC3 (AST-1982): hovering the cut span shows one tooltip with the full title, portaled straight to body
+// (outside `host` — a table, or a modal / report header), gone on mouse-out.
+export async function expectFullTitleTooltip(span: HTMLElement, host: HTMLElement) {
   await userEvent.hover(span)
-  const tip = screen.getByRole("tooltip")
-  expect(tip.textContent).toBe(LONG_TITLE)
-  expect(tip).toHaveClass("job-title-tooltip")
-  expect(tip.parentElement).toBe(document.body)
-  expect(table.contains(tip)).toBe(false)
+  const tips = screen.getAllByRole("tooltip")
+  expect(tips).toHaveLength(1)
+  expect(tips[0].textContent).toBe(LONG_TITLE)
+  expect(tips[0]).toHaveClass("job-title-tooltip")
+  expect(tips[0].parentElement).toBe(document.body)
+  expect(host.contains(tips[0])).toBe(false)
   await userEvent.unhover(span)
   expect(screen.queryByRole("tooltip")).toBeNull()
 }

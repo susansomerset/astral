@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import MeteoriteDetailModal from "../../../../src/ui/frontend/src/components/MeteoriteDetailModal"
 import api from "../../../../src/ui/frontend/src/lib/api"
+import { CUT_TITLE, LONG_TITLE, expectFullTitleTooltip } from "../pages/job-title-cell"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
@@ -145,5 +146,43 @@ describe("MeteoriteDetailModal — AST-1749", () => {
     renderModal(404)
     await waitFor(() => expect(screen.getByText("Meteorite not found")).toBeInTheDocument())
     expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument()
+  })
+})
+
+// AST-1983 AC 5: only the job-title part of the header is cut (JobTitleText); the " — <employer>" suffix stays whole.
+describe("MeteoriteDetailModal — AST-1983 header title cut", () => {
+  const LONG_EMPLOYER = "Employer Name That Runs Well Past Fifty Characters Inc"
+
+  function serve(meteorite: Record<string, unknown>) {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/meteorites/7") {
+        return { ok: true, status: 200, json: async () => ({ sections: SECTIONS, meteorite }) } as Response
+      }
+      throw new Error(`unexpected ${url}`)
+    })
+  }
+
+  beforeEach(() => {
+    mockedApi.mockReset()
+  })
+
+  it("title + employer: cut title, whole employer, full-title tooltip on hover", async () => {
+    serve(detail({ job_title: LONG_TITLE, employer_name: LONG_EMPLOYER }))
+    renderModal(7)
+    const heading = await screen.findByRole("heading", { name: `${CUT_TITLE} — ${LONG_EMPLOYER}` })
+    expect(heading.textContent).toBe(`${CUT_TITLE} — ${LONG_EMPLOYER}`)
+    await expectFullTitleTooltip(within(heading).getByText(CUT_TITLE), heading.closest(".modal-overlay")!)
+  })
+
+  it("title only: header is the cut title", async () => {
+    serve(detail({ job_title: LONG_TITLE, employer_name: null }))
+    renderModal(7)
+    expect((await screen.findByRole("heading", { name: CUT_TITLE })).textContent).toBe(CUT_TITLE)
+  })
+
+  it("employer only: header is the whole employer, never cut", async () => {
+    serve(detail({ job_title: "  ", employer_name: LONG_EMPLOYER }))
+    renderModal(7)
+    expect((await screen.findByRole("heading", { name: LONG_EMPLOYER })).textContent).toBe(LONG_EMPLOYER)
   })
 })
