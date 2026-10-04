@@ -1890,3 +1890,48 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/components.md`: filled after publish
+
+### AST-1983 · AST-1981 (job headers use the shared renderer)
+
+**Parent:** [AST-1981](https://linear.app/astralcareermatch/issue/AST-1981). **Publish:** `origin/sub/AST-1981/AST-1983-job-title-headers`. Consumes **AST-1982**'s `JobTitleText` as-is.
+
+`Modal`'s `title` prop widens from `string` to `ReactNode`. It is still rendered only inside `<h2 className="modal-title">`. `JobDetailModal` passes `<JobTitleText title={job?.job_title} fallback={job?.company || "Job Detail"} />`. `MeteoriteDetailModal.modalTitle` returns `JobTitleText` for the title part plus a plain ` — <employer>` suffix (employer-only and id fallbacks unchanged). `RecommendedJobReportHeader` wraps `.recommended-report-title` content in `JobTitleText`. The Info-tab Title field (`<span>{job.job_title || "—"}</span>`) and edit input are untouched.
+
+`tests/component/frontend/pages/job-title-cell.ts` now exports **`expectFullTitleTooltip(span, host)`**: one tooltip, full title, direct child of `body`, outside `host`, gone on mouse-out. AST-1982's `expectJobTitleCells` calls it, and the header tests below reuse it with the `.modal-overlay` or header row as `host`.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 5 headers cut at 50 + `…`, employer suffix whole, AC-3 tooltip | `JobDetailModal.tsx`, `MeteoriteDetailModal.tsx`, `RecommendedJobReportHeader.tsx`, `Modal.tsx` | **`JobDetailModal — AST-1983 header title cut`** › **`AC5…`**, **`empty title keeps the company / Job Detail header fallback`**; **`MeteoriteDetailModal — AST-1983 header title cut`** (title + employer, title only, employer only); **`RecommendedJobReportHeader — AST-1983 title cut`** (long, 50-char) |
+| 6 Info-tab Title field and edit input full | `JobDetailModal.tsx` | **`JobDetailModal — AST-1983 …`** › **`AC5…; AC6: read-only Title field is full`**, **`AC6: editable Title input holds the full title…`** |
+| 7 every in-scope surface uses the component | source | grep below |
+| 8 build / lint | source | item 3 below |
+
+**Broken / obsolete:** none. Existing modal and header fixtures use short titles. `Modal`'s `title` is used only in the `<h2>`. The Meteorite `"Staff Eng — Acme"` lookup still matches, because both text nodes sit in one `<h2>`.
+
+**Pre-existing red (not this ticket; also red with the `ftr` versions of the four product files):** **`JobDetailModal — AST-1695 › read-only: null listing_href…`** (see AST-1865 / AST-1973). **`JobAnalysisReportModal — AST-948 › AST-1350: Print Resume unsupported toast…`** and **`… › AST-1546: Print Resume success…`**. All are name-excluded below.
+
+**Integration:** none. Frontend only, so do not invent one.
+
+## QA test manifest
+
+1. **AC 5–6 + host regressions (Vitest, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobTitleText.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx \
+  --testNamePattern='^(?!.*(null listing_href|Print Resume unsupported toast|Print Resume success))'
+```
+
+2. **AC 7 grep:** `rg -l "JobTitleText" src/ui/frontend/src/components` lists `JobDetailModal.tsx`, `MeteoriteDetailModal.tsx`, `RecommendedJobReportHeader.tsx` (plus `JobTitleText.tsx` itself).
+3. **AC 8:** in `src/ui/frontend`, `npm run build` exits 0 and `npx tsc -b --noEmit` exits 0. `npm run lint` lists no problem that `origin/dev` does not already report.
+
+**Pass criterion:** item 1 green with the name exclusions above, and items 2–3 hold. Use the narrowed run, not the zero-arg harness.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/components.md`: filled after publish

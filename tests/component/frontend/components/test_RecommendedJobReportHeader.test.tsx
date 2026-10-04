@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import RecommendedJobReportHeader from "../../../../src/ui/frontend/src/components/RecommendedJobReportHeader"
 import { renderWithProviders } from "../test-utils"
+import { CUT_TITLE, EDGE_TITLE, LONG_TITLE, expectFullTitleTooltip } from "../pages/job-title-cell"
 
 const base = {
   jobTitle: "Analyst",
@@ -287,5 +288,24 @@ describe("RecommendedJobReportHeader — AST-1873 title row, job-link line, Skip
   it("neither jobLink nor jobLinkText → no job-link line", () => {
     renderWithProviders(<RecommendedJobReportHeader {...base} {...noContacts} jobLink={null} jobLinkText={null} />)
     expect(document.querySelector(".recommended-report-job-link-text")).toBeNull()
+  })
+})
+
+// AST-1983 AC 5: .recommended-report-title renders through JobTitleText.
+describe("RecommendedJobReportHeader — AST-1983 title cut", () => {
+  it("long title: first 50 chars + … with the full-title tooltip, outside the header", async () => {
+    renderWithProviders(<RecommendedJobReportHeader {...base} applicationEmail={null} linkedInUrl={null} jobTitle={LONG_TITLE} />)
+    const title = document.querySelector<HTMLElement>(".recommended-report-title")!
+    expect(title.textContent).toBe(CUT_TITLE)
+    await expectFullTitleTooltip(within(title).getByText(CUT_TITLE), title.closest(".recommended-report-header-row")!)
+  })
+
+  it("50-char title: shown exactly, no tooltip, no title attribute", async () => {
+    renderWithProviders(<RecommendedJobReportHeader {...base} applicationEmail={null} linkedInUrl={null} jobTitle={EDGE_TITLE} />)
+    const title = document.querySelector<HTMLElement>(".recommended-report-title")!
+    expect(title.textContent).toBe(EDGE_TITLE)
+    expect(title.querySelector("[title]")).toBeNull()
+    await userEvent.hover(title)
+    expect(screen.queryByRole("tooltip")).toBeNull()
   })
 })
