@@ -87,3 +87,35 @@ Existing files referencing these symbols: `tests/component/ui/api/test_api_meteo
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-1980
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** 6cb5423c8511b461b43a14cc2fe9ddc7e8284658
+
+## Canon scores
+stat.logging.error | A |
+stat.logging.info.api | A |
+
+## Traceability
+AC 6 → steps 1, 4; AC 7 → steps 5, 10; AC 8 → step 1; AC 9 → logging decision + step 9; AC 10 → step 6; parent AC 1–5 N/A (sibling AST-1979 job list pages).
+
+### Findings
+
+**discuss** · Workflow · Assignee was Hedy, not Joan, at `get-issue` — Chuckles should assign Joan before validate-plan handoff per skill §1; review proceeded on request.
+
+**acceptable** · Plan intro · References AST-1976 for the existing `job_state` join while ticket notes cite AST-1970 — same landed-job join; fix typo in plan prose only if you want consistency.
+
+**acceptable** · Plan · `defaultDesc` omission + ListPage multi-column default sort tie-break (new `job_created_at` between `job_state` and `state_changed_at`) is argued in the Decision block; plausible and bounded to ties — monitor in UAT if sort feel matters.
+
+**acceptable** · Stage 1 step 11 · Directs engineer not to patch component tests and to hand list-key failures to Betty — matches qa-child ownership.
+
+**discuss** · Canon Scope gap (not scored) · `astral.config.config-source-of-truth` plainly governs `JOBS_METEORITES_LIST_COLUMNS`; plan correctly uses config, but id is not on the frozen two-statute list — optional parent Canon Scope amend only if Archie wants config cited on every config.py touch.
+
+context_tokens≈36000
+```
