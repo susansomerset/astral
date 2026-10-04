@@ -230,3 +230,9 @@ AC1→Stage 1 (routing, validator, resolver, grep); AC2→Stage 2 (`get_generati
 - **Recommendation:** Optional polish only.
 
 context_tokens≈28000
+
+## Review
+
+- **Branch:** `sub/AST-1963/AST-1964-routing-and-generation-lookup`
+- **Build commits:** `5070a23a7` (Stage 1 config) · `9780cf061` (Stage 2 OpenRouter lookup)
+- **Build notes:** both stages executed as written; each stage's Done-when checks passed (Stage 2 via a stubbed `httpx.get` one-off: 200 / 404 / `ReadTimeout` / null `total_cost`), the validator raises on missing and unknown routing, and both AC 1 `rg` checks return nothing. `py_compile` clean on both files (no Python linter is installed on this host). Existing `test_config.py` / `test_openrouter.py` run: 21 failures, identical before and after this build (pre-existing — e.g. `TestAst1562RetentionConfig`). `validate-sub-log.sh --stage=build` run against `dev` because `origin/ftr/AST-1963` is not published yet: ok. No deviations.
