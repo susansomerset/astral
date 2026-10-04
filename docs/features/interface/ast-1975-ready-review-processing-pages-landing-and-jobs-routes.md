@@ -372,3 +372,12 @@ AC11→S1 JobsHomeRedirect+targets, S2e index/catch-all; AC12→S2c/d/e deletion
 - **Recommendation:** Optional one-line comment tweak during Stage 2c; not AC-blocking.
 
 context_tokens≈36000
+
+## Review
+
+- **Branch:** `origin/sub/AST-1970/AST-1975-jobs-nav`
+- **Build commits:** `d5021e5a0` (Stage 1 JobsHomeRedirect + landing targets), `d15e73290` (Stage 2 manifest type, Ready/Review with Source, Processing, routes)
+- **Build notes:** `npm run build` and `npx tsc -b --noEmit` exit 0; `python -c "import src.utils.config"` exits 0. All Stage 2f greps return nothing, and `JobsInReview.tsx` / `JobsResponded.tsx` are gone (`JobsProcessing.tsx` via `git mv`). `npm run lint` reports 31 problems, the same count as the tree before this build. None are on added lines; the only one in a touched file is `JobsJobDetail.tsx:18` (`react-hooks/refs`, pre-existing, untouched line).
+- **Deviation (comment only):** Stage 1's prescribed `JobsHomeRedirect` doc comment contained the literal `` `/jobs/recommended` ``, which tripped the Stage 2f / AC 12 grep. It was reworded to "the old Recommended page"; the code is unchanged.
+- **Not done:** Joan's optional `rubricDisplay.ts` comment tweak, because the file is outside this ticket's Scope.
+- **For QA:** test and bible rows from Scope plus the broken-fixture list are in `## Notes for QA` above. No manual browser smoke run was done in this headless build. AC 11 / 13 behaviour is the manual check list above.
