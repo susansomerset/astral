@@ -236,3 +236,56 @@ context_tokens≈28000
 - **Branch:** `sub/AST-1963/AST-1964-routing-and-generation-lookup`
 - **Build commits:** `5070a23a7` (Stage 1 config) · `9780cf061` (Stage 2 OpenRouter lookup)
 - **Build notes:** both stages executed as written; each stage's Done-when checks passed (Stage 2 via a stubbed `httpx.get` one-off: 200 / 404 / `ReadTimeout` / null `total_cost`), the validator raises on missing and unknown routing, and both AC 1 `rg` checks return nothing. `py_compile` clean on both files (no Python linter is installed on this host). Existing `test_config.py` / `test_openrouter.py` run: 21 failures, identical before and after this build (pre-existing — e.g. `TestAst1562RetentionConfig`). `validate-sub-log.sh --stage=build` run against `dev` because `origin/ftr/AST-1963` is not published yet: ok. No deviations.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1964
+**Publish ref:** `d86e642ae39ffdb7c2da7f5a162e599bc733c710` (`origin/sub/AST-1963/AST-1964-routing-and-generation-lookup`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+- `stat.logging.debug` — Joan **B** (plan text commitment) → Radia **A** (`get_generation_stats` delivers ungated `logger.debug` call-in / response-out on success, HTTP failure, and exception paths; API key never logged; full `resp.text` on HTTP response line)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Canon Scope (off-list, not scored):** `astral.config.config-source-of-truth` would judge `GENERATION_URL` in `src/external/openrouter.py`. Frozen list is only `stat.logging.debug`. Joan flagged this at plan; the issue doc documents the rejection of `config.py` / `LLM_SERVER_CONFIG` for AC1 grep boundaries. **Default (unchanged):** keep the module constant per plan; Archie amends Canon Scope at Discussion only if SoT should bind this child.
+- **Plan fidelity:** `origin/dev...origin/sub/AST-1963/AST-1964-routing-and-generation-lookup` matches Stages 1–2 — routing on all models, validator, `resolve_agent_settings` / `get_model_routing`, reconcile constants (`5`, `2.0`), `get_generation_stats` contract, no `database.py` / `llm_compat.py` / `timesheets.py` product edits.
+- **Estimate:** Confirm **3** — footprint (`config.py`, `openrouter.py`, Betty tests/bibles) fits.
+- **Cross-ticket:** `Relations: (none)` — no sibling product scope in diff.
+- **AC grep:** `server"] == "openrouter"` absent in `config.py`; `'"openrouter"'` absent under `src/external/`, `timesheets.py`, `database.py` on tip.
+
+## What's solid
+
+- Routing is the provider-object switch (`m["routing"] == "openrouter"`), with table-built models `openrouter` and six hand-written `direct` entries.
+- `get_generation_stats` never raises; integration-mode guard, 404/500, not-ready `total_cost`, and `httpx` timeout map to `{"success": False, "error": ...}` without a cost key.
+- Component tests cover AC 1–3 including debug lines with `log_debug` enabled and key absence from log records.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append this artifact, `docs(AST-1964): Radia review — clean`, post slim upshot `--as radia`, move to **Review Posted**; datt **PROCEED** → **User Testing** (no fix-now canon).
+- Optional: if Susan wants every OpenRouter URL in `config.py`, that is a **parent / Canon Scope** change, not a resolve-child tweak on this frozen list.
+
+context_tokens≈52000
