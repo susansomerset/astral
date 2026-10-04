@@ -219,3 +219,67 @@ Slim upshot: `[plan-rubric] PROCEED (Commit: a0b5d2fdf) ledger host plan solid`
 - **Publish ref:** `sub/AST-1954/AST-1960-ledger-host`
 - **Build commits:** `edfe7c643` (stage 1), `f576947c7` (stage 2)
 - **For Betty (`qa-child`):** see `## For Betty (qa-child)` above. One expected break (`TestAst531RunNextHopLedger` update count); 40 unrelated pre-existing `test_agent.py` failures.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1960
+**Publish ref:** `c432cea62f04c873447f8400fb55dc911c19e40b` (`origin/sub/AST-1954/AST-1960-ledger-host`)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish tip; `docs/canon-index.md` absent on ref — ids resolved from `canon/directives/active/*.md`)
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded both **A**; code review matches.
+
+## Frame diff
+
+(none) — AC 1 is covered by `TestAst1960LedgerHost` and `TestAst1960LedgerHostColumn`; AC 2 remains parent UAT (live `anticipate_scan`), not a build-stage checkbox.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** Three-dot diff `origin/dev...origin/sub/AST-1954/AST-1960-ledger-host`
+- **Finding:** **Sibling product + test carry from AST-1959** (`src/external/llm_compat.py`, `src/external/openrouter.py`, `src/utils/config.py`, `src/utils/logging.py`, plus matching component tests and test-bible rows). AST-1960’s own product delta vs `origin/ftr/AST-1954-host-probe` is only `src/core/agent.py` (+19) and `src/data/database.py` (+6/−3).
+- **Recommendation:** Expected stacked sub-branch shape; score AST-1960 against its two citations on the combined tip, not as scope creep.
+
+- **Location:** `src/core/agent.py` — ledger write failure path
+- **Finding:** `logger.exception(...)` on failed `update_dispatch_ledger` (not gated debug). `stat.logging.error` is not on this ticket’s frozen list; Joan flagged the same at plan as optional Canon Scope parity.
+- **Recommendation:** No change required for this review; Archie may add `stat.logging.error` at Discussion if operator signal should be canon-scored on future agent DB paths.
+
+- **Location:** Linear Scope vs plan “readers” decision
+- **Finding:** No explicit reader diffs; `SELECT *` + `_row_to_dict` exposes `host` after DDL/migration — verified in `test_dispatch_ledger.py::TestAst1960LedgerHostColumn`.
+- **Recommendation:** Accept behavior; wording on the ticket is descriptive, not a missing implementation.
+
+## What's solid
+
+- **Stage 1:** `dispatch_ledger` CREATE + migration add `host TEXT`; `_LEDGER_UPDATE_COLS` includes `"host"`; dynamic `UPDATE` bind tuple (`vals = list(kwargs.values()) + [batch_id]`) stays consistent with column count.
+- **Stage 2:** After `_send_to_server`, writes `host` only when `log_batch_id` is set and `result["success"]`; uses `result.get("host") or get_llm_server(server_id)["label"]` for Anthropic-direct; `asyncio.to_thread` for the DB write; failures swallowed without failing the paid call.
+- **Batch-processing:** Host is persisted on the ledger row keyed by the active `log_batch_id` (dispatcher batch or hop row), with no new batch id or claim/release logic.
+- **Debug:** Ungated `logger.debug("Calling database.update_dispatch_ledger: [batch_id=%s, host=%s]", ...)` before the write; no new logging in `src/data/`.
+- **Boundaries:** `src/core/dispatcher.py` unchanged vs `origin/dev`; vs `origin/ftr/AST-1954-host-probe`, no edits under `src/external` or `src/utils`.
+
+## Recommended actions (downstream only — not executed in this session)
+
+1. Chuckles: append artifact, `docs(AST-1960): Radia review — clean`, push `sub/AST-1954/AST-1960-ledger-host`, post slim upshot `--as radia`, **Review Posted**.
+2. datt: **PROCEED** → **User Testing** (parent UAT still owns AC 2 live lock).
+
+```
+[code-rubric] PROCEED (Commit: c432cea62) ledger host on batch row
+```
