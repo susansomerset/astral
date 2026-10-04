@@ -256,3 +256,60 @@ context_tokens≈22000
 - **Build notes:** `python -c "import src.utils.config"` exits 0 (`UI_CONFIG["job_title_truncate_chars"] == 50`); `npx tsc -b --noEmit` and `npm run build` exit 0. `npm run lint` before/after: 31 problems both, line:col-stripped diff empty, none in `JobTitleText.tsx`. AC 5/6 `rg` checks: five pages list `JobTitleText`; no raw `{job.job_title || "\u2014"}` cell; no `.slice(` in the component; no added `50` / `job_title…slice(` under `pages` / `components`.
 - **Deviation:** none in product code. Environment only: the epic worktree had no `node_modules`, so `npm ci` ran from the lockfile before the Stage 0 baseline (no tracked changes). `validate-sub-log.sh --stage=build` was scoped with `dev` instead of `ftr/AST-1981`, because `origin/ftr/AST-1981` does not exist yet (no sibling merged, so the range is the same). Joan's "stale tip" note: the codebase facts still matched at build tip `4a0dac401`.
 - **For QA:** AC 3 tooltip checks (portal under `document.body`, `white-space: normal`, `max-width: 320px`, multi-line over 100 chars, removed on mouse-out) and AC 4 Meteorites 50-vs-30 need a browser. No manual smoke run in this headless build. The tooltip also closes on any scroll (plan Stage 1 Decision).
+
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1982  
+**Publish ref:** `01a29571bebc7d1b22776d005100f9b2a7759998` (`origin/sub/AST-1981/AST-1982-job-title-renderer`, tip `merge-tests(AST-1982): origin/tests 5f39a89a9` atop `f13a4ec7d` + `2d9f84400` product commits)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (`canon/` tree at publish tip; no `docs/canon-index.md` on ref; frozen list empty — no id resolution run)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score; not a §5.3 ESCALATE (parent rationale: no directive applies to these files). Joan plan-stage: same.
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded an empty frozen list with no per-id grades; code review adds no canon rows.
+
+## Frame diff
+
+(none) — Product diff matches the plan **Files Changed** table and scope gate; no new Description checklist rows required beyond what `resolve-child` already validates against parent AC1–8 / child AC map.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `tests/component/frontend/pages/created-column.ts` and Created-column assertions merged into page tests (AST-1979); `tests/component/data/database/test_jobs.py` (`TestAst1980MeteoriteJobCreatedAt`); `tests/component/utils/test_config.py` (`test_meteorites_columns_gain_created_before_state_changed_ast1980`); `tests/component/ui/api/test_api_admin.py`, `test_api_meteorite.py`, `test_AdminTaskPrompts.test.tsx` — expected `merge-tests` carry; no sibling **product** paths in `src/**` beyond this ticket’s planned set.
+- **tooltip a11y:** Hover-only full title (no keyboard focus path) matches plan AC3 and documented decisions; UAT may still want a follow-up if keyboard users need parity — out of scope for this child unless parent scope changes.
+- **Corpus line vs Joan validate:** Joan cited `e1f2699fad` at plan time; publish tip canon tree is `bd68954…` — immaterial here because the frozen canon list is empty.
+
+## What's solid
+
+- **Plan fidelity:** `UI_CONFIG["job_title_truncate_chars"] = 50`, `resolveJobTitleTruncateChars`, `JobTitleText` (truncate via `truncateForDisplay`, portaled `.job-title-tooltip`, scroll-close, required `fallback`), `.job-title-tooltip` CSS, and all five list surfaces wired as specified; `ListPage` / modal headers untouched (AST-1983).
+- **AC coverage in tests:** `test_JobTitleText.test.tsx` (cut boundary, portal, mouse-out, scroll-close, config-driven length, CSS contract read from `App.css`); shared `job-title-cell.ts` on four hand-built pages; Ready full-title sort + Meteorites 50-vs-30 + Zanzibar search; `test_api_system` + `test_uiConfig` for served key/resolver.
+- **Estimate footprint:** Confirmed **3** — scope stays UI config + one component + five page touch points + tests/bible; no API or schema churn.
+
+## Recommended actions (Chuckles — not Radia)
+
+- Append this block to `docs/features/interface/ast-1982-shared-job-title-renderer-list-tables.md`, commit `docs(AST-1982): Radia review — clean`, push publish ref.
+- Post slim upshot below via `linear_proxy.py --as radia save-comment`; move **Tests Passed** → **Review Posted**; datt **§3h** → **PROCEED** path toward **User Testing** (no `resolve-child` unless Susan/Chuckles override).
+
+context_tokens≈28000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 01a29571b) Clean list-title cut
+```
