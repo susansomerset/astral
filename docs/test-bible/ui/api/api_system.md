@@ -221,3 +221,17 @@ Open `GET /api/auth_session_policy` returns non-secret session duration + extend
   tests/component/ui/api/test_api_system.py::TestAst1808ProgressRankRetry \
   -q
 ```
+
+---
+
+### AST-1974 · AST-1970
+
+`_get_job_counts` emits six paths: Ready, Review, Applied, Processing (exclude list − below-floor), Skipped (+ below-floor), Meteorites (`len(list_meteorites_for_candidate)`).
+
+**New:** `TestSystemNavHelpers::test_job_counts_six_paths_with_floor_arithmetic`. Real-DB count == list length: `test_api_jobs.py::TestAst1974JobsPartitionRealDb::test_nav_counts_match_list_lengths`.
+
+**Revised:** `TestSystemAuthRoutes::test_nav_config_uses_candidate_state` (`/jobs/ready`); `TestSystemNavHelpers::test_resolve_nav_keeps_candidate_facing_groups_and_stubs` (Responded retired; all six Jobs items enabled — also clears the stale pre-AST-1479 Applied-disabled assert).
+
+**Integration (revised existing):** `tests/integration/scenarios/test_candidate_nav_api.py` — `/jobs/ready` enabled + every Jobs item carries `count`. Map: [`integration/README.md`](../../integration/README.md).
+
+Manifest: [`api_jobs.md`](api_jobs.md) § AST-1974 items 3 + 5.

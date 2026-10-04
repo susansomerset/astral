@@ -94,3 +94,9 @@ Authenticated `GET /api/candidates/<candidate_id>/meteorites` → `{columns, met
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 **Bible shasum (publish tip):** fill after `merge-tests`.
+
+---
+
+### AST-1974 · AST-1970
+
+`_LIST_KEYS` gains `job_state` (landed job's current state; null when unlanded). **New:** `test_list_projects_landed_job_state_ast1974`. DB join: [`data/database/jobs.md`](../../data/database/jobs.md) § AST-1974. Manifest: [`api_jobs.md`](api_jobs.md) § AST-1974 item 4.

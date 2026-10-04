@@ -287,6 +287,16 @@ class TestAst1748MeteoriteListDetailApi:
         assert body["meteorites"][0]["astral_job_id"] == "job-99"
         info.assert_not_called()
 
+    def test_list_projects_landed_job_state_ast1974(
+        self, meteorite_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1974: Meteorites list carries the landed job's current state (null when unlanded).
+        rows = [self._row(id=1, job_state="RECOMMENDED"), self._row(id=2, astral_job_id=None, job_state=None)]
+        monkeypatch.setattr(meteorite_api, "list_meteorites_for_candidate", lambda _cid: rows)
+        body = meteorite_client.get("/api/candidates/cand-A/meteorites", headers=auth_headers).get_json()
+        assert [m["job_state"] for m in body["meteorites"]] == ["RECOMMENDED", None]
+        assert "job_state" in meteorite_api._LIST_KEYS
+
     def test_list_empty_honesty(
         self, meteorite_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:

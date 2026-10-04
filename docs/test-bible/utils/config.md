@@ -4726,3 +4726,15 @@ Expect 21 failed, 602 passed, 4 skipped — the 21 pre-existing `test_config.py`
 **Pass criterion:** item 1 green, item 2 reds limited to those 21, item 3 empty. Not the zero-arg harness.
 
 **Bible shasums (after publish):** `for p in utils/config.md external/openrouter.md; do git show origin/sub/AST-1963/AST-1964-routing-and-generation-lookup:docs/test-bible/$p | shasum; done`
+
+---
+
+### AST-1974 · AST-1970
+
+`READY_JOB_STATES` / `REVIEW_JOB_STATES` replace `RECOMMENDED_JOB_STATES`; `IN_REVIEW_STATES` deleted (Processing = complement of `JOBS_PROCESSING_EXCLUDED_STATES`, import-time "Jobs lists overlap" assert); `SKIPPED_STATES` + section order/labels/bulk retry gain `ERROR_BUILD_ARTIFACTS` / `BUILD_FAILED`; `CANDIDATE_SKIPPED` priors derived (every state outside Applied + Skipped); `JOBS_IN_REVIEW_UI_SECTIONS` → `JOBS_PROCESSING_UI_SECTIONS` (+ Building Artifacts last); `JOBS_RECOMMENDED_METEORITE_SECTION` removed; manifest `jobs.processing_sections`, recommended sections Review/Ready; `JOBS_METEORITES_LIST_COLUMNS` gains `job_state`; Jobs `NAV_CONFIG` = six items.
+
+**New:** **`TestAst1974JobsListPartition`** (nav exact, retired constants, Skipped build failures, disjoint concatenation, overlap-at-import probe, derived skip priors, processing sections, manifest contract, Meteorites column).
+
+**Revised:** `TestAst479LikePassStates`, `TestAst803FlatBuildArtifactsChainDispatch`, `TestAst874…::test_score_gate_and_ui_manifests`, `TestAst898…::test_ui_sections_and_grade_field`, `TestAst1339…::test_ui_sections_label_no_grade_field`, `TestAst1053MeteoriteGdlJobStates` (2), `TestAst1057MeteoriteRecommendedSection` (now asserts retirement), `TestAst1155…::test_processing_ui_labels_and_grade_fields`, `TestAst1749JobsMeteoritesNav`, `TestBuildStateUiManifest::test_ast522_…`, `TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` (skips `CANDIDATE_SKIPPED` family — deliberately widened, pinned in AST-1974 class).
+
+Manifest: [`ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-1974 item 2.
