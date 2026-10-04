@@ -16,7 +16,6 @@ from anthropic import RateLimitError
 
 from src.external import llm_compat, openrouter
 from src.utils import config as cfg
-from src.utils.cost_calculator import calculate_cost_components_from_counts
 from src.utils.logging import log_batch_id
 
 
@@ -266,9 +265,12 @@ class TestAst1877ResultContract:
         assert row["candidate_id"] == "c1" and row["task_key_uuid"] == "t1"
         assert row["agent_req_id"] == "msg_compat_test"
         assert row["agent_performance"] == "success"
-        expected = calculate_cost_components_from_counts(50, 100, 25, 5, sku="moonshotai/kimi-k2.6", server_id="openrouter")
-        for k, v in expected.items():
-            assert row[k] == pytest.approx(v)
+        # openrouter routing: tokens only at insert; dollars from platform reconcile.
+        zero_calc = dict.fromkeys(
+            ("calc_cost_cache_write", "calc_cost_cache_read", "calc_cost_no_cache_input", "calc_cost_output"),
+            0.0,
+        )
+        assert {k: row[k] for k in zero_calc} == zero_calc
 
     @pytest.mark.asyncio
     async def test_json_parsed_and_agent_performance_propagates(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -462,6 +464,7 @@ class TestAst1959ProbeHostLock:
         unlocked = {**real["extra_body"], "provider": {k: v for k, v in real["extra_body"]["provider"].items() if k != "only"}}
         if probe_only:
             unlocked["provider"]["only"] = probe_only
+        unlocked["provider"]["zdr"] = True  # probe copy only (AST-1959)
         assert {k: v for k, v in probe.items() if k != "messages"} == {
             **{k: v for k, v in real.items() if k not in ("messages", "system")}, "extra_body": unlocked}
 
@@ -535,7 +538,7 @@ class TestAst1959ProbeHostLock:
 
 
 # AST-1966: every call gets a timesheet row. Branches (_timesheet_kwargs_for): token counts raise → zero tokens,
-# logged once; catalog price raises → zero calc_cost_*, logged once; both clean → unchanged (TestAst1877ResultContract).
+# logged once; direct routing + catalog price raises → zero calc_cost_*, logged once; openrouter routing skips catalog.
 class TestAst1966UnpricedRowRecorded:
     _ZERO_CALC = dict.fromkeys(("calc_cost_cache_write", "calc_cost_cache_read", "calc_cost_no_cache_input", "calc_cost_output"), 0.0)
 
@@ -544,25 +547,46 @@ class TestAst1966UnpricedRowRecorded:
         return [r for r in caplog.records if r.name == "src.external.llm_compat" and r.levelno >= logging.ERROR]
 
     @pytest.mark.asyncio
-    async def test_pricing_raises_row_recorded_with_zero_cost_and_counts(
+    async def test_openrouter_routing_skips_catalog_pricing(
         self, monkeypatch: pytest.MonkeyPatch, client: _RecordingClient, caplog: pytest.LogCaptureFixture
     ) -> None:
-        # AC 3 (llm_compat half) — record_timesheet called once, calc_cost_* all 0, the response's token counts.
-        def unpriced(*_a: Any, **_k: Any) -> dict:
-            raise ValueError("Unknown SKU 'moonshotai/kimi-k2.6'")
+        def boom(*_a: Any, **_k: Any) -> dict:
+            raise ValueError("catalog must not run")
 
-        monkeypatch.setattr(llm_compat, "calculate_cost_components_from_counts", unpriced)
+        monkeypatch.setattr(llm_compat, "calculate_cost_components_from_counts", boom)
         recorded: list[dict] = []
         with caplog.at_level(logging.ERROR, logger="src.external.llm_compat"):
             out = await _send(record_timesheet=lambda **kw: recorded.append(kw))
         assert out["success"] is True
+        assert {k: recorded[0][k] for k in self._ZERO_CALC} == self._ZERO_CALC
+        assert self._errors(caplog) == []
+
+    @pytest.mark.asyncio
+    async def test_direct_routing_pricing_raises_row_recorded_with_zero_cost(
+        self, monkeypatch: pytest.MonkeyPatch, client: _RecordingClient, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        def unpriced(*_a: Any, **_k: Any) -> dict:
+            raise ValueError("Unknown SKU 'kimi-k2.6'")
+
+        monkeypatch.setattr(llm_compat, "calculate_cost_components_from_counts", unpriced)
+        recorded: list[dict] = []
+        with caplog.at_level(logging.ERROR, logger="src.external.llm_compat"):
+            out = await llm_compat.send_to_llm_compat(
+                [{"type": "text", "text": "hi"}],
+                server_id="kimi",
+                sku="kimi-k2.6",
+                tier=_tier("kimi-k2.6"),
+                api_key="sk-candidate",
+                max_tokens=100,
+                response_format="text",
+                record_timesheet=lambda **kw: recorded.append(kw),
+            )
+        assert out["success"] is True
         assert len(recorded) == 1
         row = recorded[0]
         assert {k: row[k] for k in self._ZERO_CALC} == self._ZERO_CALC
-        # _Msg usage: input 100, output 25, cache read 50, cache write 5.
-        assert (row["cache_read_tokens"], row["total_no_cache_input_tokens"], row["total_output_tokens"], row["cache_write_tokens"]) == (50, 100, 25, 5)
-        assert (row["agent_req_id"], row["model_code"], row["provider"], row["agent_performance"]) == (
-            "msg_compat_test", "moonshotai/kimi-k2.6", "openrouter", "success")
+        assert (row["cache_read_tokens"], row["total_no_cache_input_tokens"], row["total_output_tokens"]) == (50, 100, 25)
+        assert (row["model_code"], row["provider"]) == ("kimi-k2.6", "kimi")
         errors = self._errors(caplog)
         assert len(errors) == 1 and errors[0].exc_info and "timesheet catalog price" in errors[0].getMessage()
 
