@@ -376,3 +376,9 @@ Confirm Chuckles estimate: 3 — agree
 context_tokens≈42000
 
 Upshot: `[plan-rubric] PROCEED (Commit: 059f2a444) probe lock plan solid`
+
+## Review
+
+- **Publish ref:** `sub/AST-1954/AST-1959-probe-host-lock`
+- **Build commits:** `895fcb0d2` (stage 1), `8fce75966` (stage 2), `958182117` (stage 3)
+- **For Betty (`qa-child`):** `tests/component/external/test_llm_compat.py::TestAst1877ResultContract::test_success_shape_and_timesheet_kwargs` fails only on the new `host` result key, which is expected per Stage 3. The 21 `tests/component/utils/test_config.py` failures were already failing and are unrelated to this diff (missing meteorite-retention / surfer / telescope config attributes). The host map `src.external.openrouter._hosts` is process-global, so tests need to clear it between cases.
