@@ -7496,3 +7496,10 @@ class TestAst1974JobsListPartition:
         assert keys[keys.index("astral_job_id") + 1] == "job_state"
         col = next(c for c in cfg.JOBS_METEORITES_LIST_COLUMNS if c["key"] == "job_state")
         assert col == {"key": "job_state", "label": "Job State", "sortable": True}
+
+    def test_meteorites_columns_gain_created_before_state_changed_ast1980(self) -> None:
+        # AST-1980 AC 7: sortable datetime Created (landed job's created_at) immediately left of State Changed.
+        keys = [c["key"] for c in cfg.JOBS_METEORITES_LIST_COLUMNS]
+        assert keys[keys.index("state_changed_at") - 1] == "job_created_at"
+        col = next(c for c in cfg.JOBS_METEORITES_LIST_COLUMNS if c["key"] == "job_created_at")
+        assert col == {"key": "job_created_at", "label": "Created", "sortable": True, "type": "datetime"}

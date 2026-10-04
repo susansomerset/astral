@@ -297,6 +297,25 @@ class TestAst1748MeteoriteListDetailApi:
         assert [m["job_state"] for m in body["meteorites"]] == ["RECOMMENDED", None]
         assert "job_state" in meteorite_api._LIST_KEYS
 
+    def test_list_projects_landed_job_created_at_ast1980(
+        self, meteorite_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1980 AC 6 / AC 9: list carries job_created_at (null when unlanded) beside the row's own created_at;
+        # the success path logs nothing.
+        rows = [
+            self._row(id=1, job_created_at="2025-06-01T12:00:00+00:00"),
+            self._row(id=2, astral_job_id=None, job_created_at=None),
+        ]
+        monkeypatch.setattr(meteorite_api, "list_meteorites_for_candidate", lambda _cid: rows)
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_api, "logger", log)
+        body = meteorite_client.get("/api/candidates/cand-A/meteorites", headers=auth_headers).get_json()
+        assert [m["job_created_at"] for m in body["meteorites"]] == ["2025-06-01T12:00:00+00:00", None]
+        assert [m["created_at"] for m in body["meteorites"]] == ["2024-01-01T00:00:00+00:00"] * 2
+        assert "job_created_at" in meteorite_api._LIST_KEYS
+        for level in ("info", "warning", "error", "exception"):
+            getattr(log, level).assert_not_called()
+
     def test_list_empty_honesty(
         self, meteorite_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
