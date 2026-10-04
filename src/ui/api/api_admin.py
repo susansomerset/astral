@@ -355,6 +355,13 @@ def _grouping_from_agent_task_row(task: dict | None, task_key: str) -> dict:
     }
 
 
+# AST-1978: Manage Tasks RSC column — the TOKEN_SOURCES name counted in raw prompt text, before
+# resolve_tokens substitutes it away. Fails at import if the registry ever drops/renames it.
+_RESPONSE_SCHEMA_TOKEN_NAME = "RESPONSE_SCHEMA"
+assert _RESPONSE_SCHEMA_TOKEN_NAME in get_tokens(), "RESPONSE_SCHEMA missing from TOKEN_SOURCES"
+_RESPONSE_SCHEMA_TOKEN = "{$" + _RESPONSE_SCHEMA_TOKEN_NAME + "}"
+
+
 def _enrich_tasks(candidate_id: str) -> list:
     """Assemble enriched task rows for the task manager screen.
     Resolves token counts against candidate_data, computes cache threshold status,
@@ -402,6 +409,19 @@ def _enrich_tasks(candidate_id: str) -> list:
             else:
                 system_content = ""
             system_tokens = len(system_content) // CHARS_PER_TOKEN
+
+            # AST-1978: RSC = raw {$RESPONSE_SCHEMA} occurrences across every segment the task sends.
+            # Counted pre-resolution (resolve_tokens replaces the token); candidate-independent.
+            # System segment mirrors resolved_task_system: task system_prompt when non-blank, else agent content.
+            _ft = full_task or {}
+            raw_system = (_ft.get("system_prompt") or "").strip() or ((agent or {}).get("content") or "")
+            response_schema_count = sum(
+                seg.count(_RESPONSE_SCHEMA_TOKEN)
+                for seg in (raw_system, *(_ft.get(k) or "" for k in (
+                    "cache_prompt", "cache_prompt_b", "cache_prompt_c", "cache_prompt_d",
+                    "nocache_prompt", "user_prompt",
+                )))
+            )
 
             # Prompt field token estimates (from DB char lengths + candidate resolution)
             len_a = int(t.get("cache_prompt_len") or 0)
@@ -454,6 +474,7 @@ def _enrich_tasks(candidate_id: str) -> list:
                 "resolved_model_key":   resolved_model_key,
                 "model_code":           resolved_model_key,
                 "system_prompt_tokens": system_tokens,
+                "response_schema_count": response_schema_count,
                 "base_cache_tokens":    base_cache_tokens,
                 "parsed_cache_tokens":  parsed_cache_tokens,
                 "cache_min_tokens":     cache_min,
