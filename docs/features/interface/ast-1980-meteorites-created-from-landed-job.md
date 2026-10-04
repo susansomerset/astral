@@ -127,3 +127,49 @@ AC 6 → steps 1, 4; AC 7 → steps 5, 10; AC 8 → step 1; AC 9 → logging dec
 
 context_tokens≈36000
 ```
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1980
+**Publish ref:** `02fc15a18bdd3f38482e8e0b9cd051cf91701304` (`origin/sub/AST-1971/AST-1980-created-col`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+stat.logging.error | A |
+stat.logging.info.api | A |
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored both statutes **A**; code review matches (handler unchanged; data layer still raises/logs-not; no new `logger.*` on the list route diff).
+
+## Frame diff
+
+(none)
+
+### Findings
+
+**advisory** · Three-dot diff · **Sibling product carry (not AST-1980 scope):** `src/ui/frontend/src/pages/Jobs{Recommended,Processing,Skipped,Applied}.tsx` and AST-1979 test/bible paths appear on the branch tip from epic/ftr/merge-tests. **AST-1980 product scope** is only `database.py`, `api_meteorite.py`, `config.py`; `git diff origin/dev...origin/sub/AST-1971/AST-1980-created-col -- src/ui/frontend/src/pages/JobsMeteorites.tsx` is **empty** (AC 7).
+
+**advisory** · `tests/**` + `docs/test-bible/**` · **Sibling test carry:** AST-1979 (`created-column.ts`, four Jobs page suites, `pages.md` § AST-1979) and AST-1978 (`test_api_admin.py`, `test_AdminTaskPrompts`, `api_admin.md`) ride merge-tests; Betty’s AST-1980 block lives in `api_meteorite.md` + `TestAst1980MeteoriteJobCreatedAt`, `test_list_projects_landed_job_created_at_ast1980`, config case, `test_JobsMeteorites` § AST-1980.
+
+**advisory** · Canon Scope · Joan noted optional future cite of `astral.config.config-source-of-truth` for `JOBS_METEORITES_LIST_COLUMNS` touches; frozen list is logging-only by design — not an ESCALATE (Discussion locked two statutes; implementation follows config column pattern correctly).
+
+### What's solid
+
+- **AC 6 / 8:** Single `SELECT` adds `j.created_at AS job_created_at` on the existing `LEFT JOIN`; `m.*` preserves meteorite `created_at`; `_LIST_KEYS` exposes `job_created_at` after `job_state`.
+- **AC 7:** Config inserts sortable datetime **Created** immediately before **State Changed**; page unchanged — `ListPage` formats/sorts via `type: "datetime"`.
+- **AC 9:** `api_meteorite.py` diff is `_LIST_KEYS` only; `rg` on added lines finds no new `logger.(info|exception|warning|error)`; existing `logger.exception` on list failure still wraps the read.
+- **AC 10:** Config import path is a one-line column dict — consistent with plan.
+- **Tests:** DB case proves landed vs unlanded/orphan `job_created_at`, distinct `created_at`, and one SELECT with trace + `get_job` fail guard; API case projects both timestamps and asserts no log calls on success; Vitest proves Created left of State Changed, `fmtTime(job_created_at)`, `—` unlanded, sort toggle without page edits.
+- **Plan fidelity / estimate 2:** Matches Stage 1 steps; no boundary violations on frontend page source.
+
+### Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-1980): Radia review — clean`, push publish ref, post slim upshot `--as radia`, **Review Posted** → **PROCEED** (no `resolve-child` unless datt says otherwise).
+- UAT (optional): Joan’s plan note — `defaultDesc`-less Created only affects multi-key tie-break order on Meteorites; watch sort feel if Susan cares.
+
+context_tokens≈42000
