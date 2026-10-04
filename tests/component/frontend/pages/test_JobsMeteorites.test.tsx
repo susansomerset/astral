@@ -1,5 +1,6 @@
-import { screen, waitFor } from "@testing-library/react"
+import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { useLocation } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { useCandidate } from "../../../../src/ui/frontend/src/contexts/CandidateContext"
 import api from "../../../../src/ui/frontend/src/lib/api"
@@ -182,5 +183,131 @@ describe("JobsMeteorites — AST-1749", () => {
       "/jobs/detail/job-a",
     )
     expect(mockedApi).toHaveBeenCalledWith("/api/meteorites/11")
+  })
+})
+
+// AST-1976 AC 14: Job State cell = live job.state (AST-1974 LEFT JOIN), "—" when unlanded; the Job cell opens
+// the Job Analysis Report in place (URL stays /jobs/meteorites); elsewhere on the row still opens the Meteorite modal.
+describe("JobsMeteorites — AST-1976 landed-job state and job link", () => {
+  // Production JOBS_METEORITES_LIST_COLUMNS keys/labels (src/utils/config.py), Job then Job State.
+  const PROD_COLUMNS = [
+    { key: "state", label: "State", sortable: true },
+    { key: "job_title", label: "Title", sortable: true },
+    { key: "employer_name", label: "Employer", sortable: true },
+    { key: "classify_outcome", label: "Classify", sortable: true },
+    { key: "link", label: "Link", sortable: true },
+    { key: "astral_job_id", label: "Job", sortable: true },
+    { key: "job_state", label: "Job State", sortable: true },
+    { key: "state_changed_at", label: "State Changed", sortable: true, defaultDesc: true, type: "datetime" },
+  ]
+  const LANDED = { ...ROW_A, job_state: "RECOMMENDED" }
+  const UNLANDED = { ...ROW_B, candidate_id: "c1", job_state: null }
+  // Minimal GET /api/jobs/<id> body for JobAnalysisReportModal (same shape as the Recommended row-click test).
+  const reportJob = (state: string) => ({
+    astral_job_id: "job-a",
+    job_title: "Title A",
+    company: "Employer A",
+    state,
+    can_skip: true,
+    job_data: {
+      job_description: "JD",
+      analysis_upshot: {
+        take_get: "x", take_do: "", take_like: "", take_jd: "", whole_jd_upshot: "Summary",
+        segment_upshots: [], candidate_questions: [], caveats: [],
+      },
+    },
+  })
+
+  function LocationProbe() {
+    return <p data-testid="pathname">{useLocation().pathname}</p>
+  }
+
+  function renderPage() {
+    renderWithProviders(
+      <>
+        <JobsMeteorites />
+        <LocationProbe />
+      </>,
+      { router: { initialEntries: ["/jobs/meteorites"] } },
+    )
+  }
+
+  // Cell under the named header, by header index (column order comes from the API).
+  const cellUnder = (rowText: string, header: string) => {
+    const row = screen.getByText(rowText).closest("tr")!
+    const headers = within(row.closest("table")!).getAllByRole("columnheader")
+    return row.children[headers.findIndex(h => (h.textContent ?? "").startsWith(header))] as HTMLElement
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  it("Job State cell shows the landed job's state; unlanded rows show — in Job and Job State", async () => {
+    installBaseApiMocks(mockedApi, url =>
+      url === listUrl(candidateId) ? jsonResponse({ columns: PROD_COLUMNS, meteorites: [LANDED, UNLANDED] }) : undefined)
+    renderPage()
+    await waitFor(() => expect(screen.getByText("Title A")).toBeInTheDocument())
+    expect(cellUnder("Title A", "Job State")).toHaveTextContent(/^RECOMMENDED$/)
+    expect(within(cellUnder("Title A", "Job")).getByRole("button", { name: "job-a" })).toBeInTheDocument()
+    expect(cellUnder("Title B", "Job State")).toHaveTextContent(/^—$/)
+    expect(cellUnder("Title B", "Job")).toHaveTextContent(/^—$/)
+    expect(within(cellUnder("Title B", "Job")).queryByRole("button")).toBeNull()
+  })
+
+  it("job link opens the Job Analysis Report in place; Meteorite modal stays closed", async () => {
+    const user = userEvent.setup()
+    installBaseApiMocks(mockedApi, url => {
+      if (url === listUrl(candidateId)) return jsonResponse({ columns: PROD_COLUMNS, meteorites: [LANDED] })
+      if (url === "/api/jobs/job-a") return jsonResponse(reportJob("RECOMMENDED"))
+      return undefined
+    })
+    renderPage()
+    await waitFor(() => expect(screen.getByText("Title A")).toBeInTheDocument())
+    await user.click(screen.getByRole("button", { name: "job-a" }))
+    await waitFor(() => expect(document.querySelector(".recommended-report-tabs")).toBeTruthy())
+    expect(mockedApi).toHaveBeenCalledWith("/api/jobs/job-a")
+    expect(screen.getByTestId("pathname")).toHaveTextContent(/^\/jobs\/meteorites$/)
+    expect(mockedApi.mock.calls.some(([u]) => u === "/api/meteorites/11")).toBe(false)
+    expect(screen.queryByText("Timestamps")).toBeNull()
+  })
+
+  it("clicking elsewhere on a landed row opens the Meteorite modal, not the report", async () => {
+    const user = userEvent.setup()
+    installBaseApiMocks(mockedApi, url => {
+      if (url === listUrl(candidateId)) return jsonResponse({ columns: PROD_COLUMNS, meteorites: [LANDED] })
+      if (url === "/api/meteorites/11") return jsonResponse({ sections: DETAIL_SECTIONS, meteorite: { ...LANDED } })
+      return undefined
+    })
+    renderPage()
+    await waitFor(() => expect(screen.getByText("Title A")).toBeInTheDocument())
+    await user.click(cellUnder("Title A", "Job State"))
+    await waitFor(() => expect(mockedApi).toHaveBeenCalledWith("/api/meteorites/11"))
+    expect(mockedApi.mock.calls.some(([u]) => u === "/api/jobs/job-a")).toBe(false)
+    expect(document.querySelector(".recommended-report-tabs")).toBeNull()
+    expect(screen.getByTestId("pathname")).toHaveTextContent(/^\/jobs\/meteorites$/)
+  })
+
+  it("Skip in the report reloads the list so Job State is not stale", async () => {
+    const user = userEvent.setup()
+    let jobState = "RECOMMENDED"
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === listUrl(candidateId)) {
+        return jsonResponse({ columns: PROD_COLUMNS, meteorites: [{ ...LANDED, job_state: jobState }] })
+      }
+      if (url === "/api/jobs/job-a" && !init) return jsonResponse(reportJob(jobState))
+      if (url === "/api/jobs/job-a/skip" && init?.method === "POST") {
+        jobState = "CANDIDATE_SKIPPED"
+        return jsonResponse({ ok: true })
+      }
+      return undefined
+    })
+    renderPage()
+    await waitFor(() => expect(cellUnder("Title A", "Job State")).toHaveTextContent(/^RECOMMENDED$/))
+    await user.click(screen.getByRole("button", { name: "job-a" }))
+    await user.click(await screen.findByRole("button", { name: "Skip this Job" }))
+    await waitFor(() => expect(cellUnder("Title A", "Job State")).toHaveTextContent(/^CANDIDATE_SKIPPED$/))
+    expect(document.querySelector(".recommended-report-tabs")).toBeNull()
   })
 })

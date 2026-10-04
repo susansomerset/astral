@@ -2980,6 +2980,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1749 · AST-1741
 
+**AST-1976:** the same page file adds the landed-job **Job State** cell and an in-page job report link. Coverage: § AST-1976 below.
+
 **Parent:** [AST-1741 — Add "Meteorites" to the Jobs navigation](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
 
 Jobs → Meteorites routed page (`JobsMeteorites.tsx`): candidate-scoped list from AST-1748 APIs, empty honesty, candidate switch refetch, row → detail modal. Nav/route/config: **`docs/test-bible/utils/config.md`** § AST-1749. Modal: **`docs/test-bible/frontend/components.md`** § AST-1749. §6c page render required.
@@ -3477,3 +3479,35 @@ ls tests/component/frontend/pages/test_JobsInReview.test.tsx tests/component/fro
 **Pass criterion:** items 1, 3, 4 hold; item 2 shows only the named baseline reds. Narrowed runs, not the zero-arg harness.
 
 **Bible shasums (after publish):** `for p in frontend/pages.md frontend/components.md; do git show origin/sub/AST-1970/AST-1975-jobs-nav:docs/test-bible/$p | shasum; done`
+
+### AST-1976 · AST-1970 (Meteorites landed-job state and job link)
+
+**Parent:** [AST-1970 — Jobs Navigation changes](https://linear.app/astralcareermatch/issue/AST-1970). **Publish:** `origin/sub/AST-1970/AST-1976-jobs-nav`. Backend `job_state` (live `LEFT JOIN job`, null when unlanded): **`docs/test-bible/ui/api/api_meteorite.md`** § AST-1974 and **`docs/test-bible/data/database/jobs.md`** § AST-1974.
+
+On `JobsMeteorites.tsx`, the **Job** cell is now a button that opens `JobAnalysisReportModal` in place (`stopPropagation`, so the row click doesn't also fire). The **Job State** cell shows raw `job_state` and falls back to `—`. The report's `onRefresh` reloads the list. The row click still opens `MeteoriteDetailModal`.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 14 Job State = job's state; `—` when unlanded (Job and Job State) | `pages/JobsMeteorites.tsx` | **`test_JobsMeteorites.test.tsx`** › **`JobsMeteorites — AST-1976 landed-job state and job link > Job State cell shows the landed job's state…`** |
+| 14 job link → report modal; URL stays `/jobs/meteorites`; no Meteorite modal | page + `JobAnalysisReportModal` | **`… > job link opens the Job Analysis Report in place…`** |
+| 14 elsewhere on the row → Meteorite modal, not the report | page | **`… > clicking elsewhere on a landed row opens the Meteorite modal…`** (regression guard; also green pre-ticket) |
+| 14 not stale: a report action reloads the list | page `onRefresh={load}` | **`… > Skip in the report reloads the list so Job State is not stale`** |
+| 15 build / lint / config import | source | commands below |
+
+The tests use the production `JOBS_METEORITES_LIST_COLUMNS` keys and labels (Job then Job State). On the pre-ticket page (`origin/ftr/AST-1970-jobs-nav`), the state-cell, job-link, and Skip-refresh cases are red, which proves they guard the change.
+
+**Broken / obsolete:** none. The four AST-1749 cases are unchanged and green, because their 3-column mock has no Job column.
+
+## QA test manifest
+
+1. **AST-1976 + AST-1749 page suite (required, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx
+```
+
+2. **AC 15:** `python -c "import src.utils.config"` exits 0. In `src/ui/frontend`, `npm run build` exits 0 and `npm run lint` adds no problems absent on `origin/dev`.
+
+**Pass criterion:** items 1 and 2 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-1970/AST-1976-jobs-nav:docs/test-bible/frontend/pages.md | shasum`
