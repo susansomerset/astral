@@ -6,10 +6,10 @@ import CandidateActionNotesModal from "../components/CandidateActionNotesModal"
 import CandidateJobRowActions from "../components/CandidateJobRowActions"
 import JobAnalysisReportModal from "../components/JobAnalysisReportModal"
 import Toast, { type ToastMessage } from "../components/Toast"
-import { useCandidateJobActions } from "../hooks/useCandidateJobActions"
+import { useCandidateJobActions, type BulkActionResult } from "../hooks/useCandidateJobActions"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
-import { formatPhaseScore } from "../lib/recommendedJobReport"
+import { formatPhaseScore, primaryActionsForState } from "../lib/recommendedJobReport"
 import Time from "../components/Time"
 
 interface Job {
@@ -79,6 +79,8 @@ export default function Recommended() {
   const openJobReport = useCallback((jobId: string) => setReportId(jobId), [])
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [sorts, setSorts] = useState<Record<string, SortState>>({})
+  // Page-level selection keyed by astral_job_id; not persisted (AST-1968).
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
@@ -89,7 +91,16 @@ export default function Recommended() {
       .finally(() => endRefresh())
   }, [selectedId, beginRefresh, endRefresh])
 
-  const actions = useCandidateJobActions(load)
+  // After any bulk action: one toast with the split, then clear selection (AC 8).
+  const handleBulkDone = useCallback((r: BulkActionResult) => {
+    setSelected(new Set())
+    setToast({
+      text: `${r.label}: ${r.succeeded} succeeded, ${r.failed} failed`,
+      variant: r.failed ? "error" : "success",
+    })
+  }, [])
+
+  const actions = useCandidateJobActions(load, handleBulkDone)
 
   useEffect(() => {
     if (actions.error) setToast({ text: actions.error, variant: "error" })
@@ -97,10 +108,35 @@ export default function Recommended() {
 
   useEffect(() => { load(true) }, [load])
 
+  // Candidate switch drops the previous candidate's selection.
+  useEffect(() => { setSelected(new Set()) }, [selectedId])
+
   const phaseFields = useMemo(
     () => manifest?.jobs.recommended.phase_score_columns.map(c => c.field) ?? [],
     [manifest?.jobs.recommended.phase_score_columns],
   )
+
+  // Eligibility from manifest primary_actions_by_state — no hardcoded state list.
+  const canGenerate = useCallback(
+    (state: string) => primaryActionsForState(manifest, state).some(a => a.action_key === "generate_artifacts"),
+    [manifest],
+  )
+
+  // Derived from current rows so ids that left the list (row action, refresh) never count.
+  const selectedIds = useMemo(
+    () => rows.filter(j => selected.has(j.astral_job_id)).map(j => j.astral_job_id),
+    [rows, selected],
+  )
+  const generateIds = useMemo(
+    () => rows.filter(j => selected.has(j.astral_job_id) && canGenerate(j.state)).map(j => j.astral_job_id),
+    [rows, selected, canGenerate],
+  )
+
+  const toggleSelect = useCallback((id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  }), [])
 
   const sections = useMemo(() => {
     if (!manifest) return []
@@ -159,6 +195,24 @@ export default function Recommended() {
     <div className="page-container">
       <div className="list-page-header">
         <h1 className="list-page-title">Recommended</h1>
+        <div className="recommended-list-header-actions">
+          {selectedIds.length > 0 && (
+            <>
+              <button type="button" className="btn secondary" disabled={actions.busy}
+                onClick={() => actions.skipJobs(selectedIds)}>
+                Skip ({selectedIds.length})
+              </button>
+              <button type="button" className="btn secondary" disabled={actions.busy}
+                onClick={() => actions.requestBulkAction(selectedIds, "applied", "Applied")}>
+                Applied ({selectedIds.length})
+              </button>
+              <button type="button" className="btn primary" disabled={actions.busy || generateIds.length === 0}
+                onClick={() => actions.generateJobs(generateIds)}>
+                Generate Artifacts ({generateIds.length})
+              </button>
+            </>
+          )}
+        </div>
       </div>
       {loading ? (
         <div className="list-page-status">Loading...</div>
@@ -186,6 +240,7 @@ export default function Recommended() {
                 <table className="list-page-table">
                   <thead>
                     <tr>
+                      <th style={{ width: 1 }} aria-label="Select" />
                       <th style={{ width: 1, whiteSpace: "nowrap" }}>Actions</th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "job_title")}>
                         Job Title{sortIndicator(sec.state, "job_title")}
@@ -222,11 +277,20 @@ export default function Recommended() {
                     {sorted.map(job => (
                       <tr key={job.astral_job_id} className="clickable" onClick={() => openJobReport(job.astral_job_id)}>
                         <td onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${job.job_title || job.astral_job_id}`}
+                            checked={selected.has(job.astral_job_id)}
+                            onChange={() => toggleSelect(job.astral_job_id)}
+                          />
+                        </td>
+                        <td onClick={e => e.stopPropagation()}>
                           <CandidateJobRowActions
                             state={job.state}
                             showViewAnalysis={false}
                             onSkip={() => actions.skipJob(job.astral_job_id)}
                             onAction={a => actions.requestAction(job.astral_job_id, a)}
+                            onGenerate={canGenerate(job.state) ? () => actions.generateJob(job.astral_job_id) : undefined}
                           />
                         </td>
                         <td>{job.job_title || "\u2014"}</td>
