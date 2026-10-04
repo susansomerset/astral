@@ -29,17 +29,15 @@ _REPO_AGENTS = {
 }
 
 
+_SEED_KEYS = ("model_id", "max_tokens", "quantization", "temperature", "reasoning_effort",
+              "provider_allow_fallbacks", "provider_only", "provider_ignore", "provider_sort")
+
+
 def _seeded_rows(agent_id: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """_agent_rows prompts + the repo-seeded agent's model / brain / mode / max_tokens (AST-1878, AST-1948)."""
+    """_agent_rows prompts + the repo-seeded agent's model / max_tokens / plain settings (AST-1878, AST-1955)."""
     agent_row, task_row = _agent_rows()
     seed = _REPO_AGENTS[agent_id]
-    agent_row.update(
-        agent_id=agent_id,
-        model_id=seed["model_id"],
-        brain_setting=seed["brain_setting"],
-        mode=seed["mode"],
-        max_tokens=seed["max_tokens"],
-    )
+    agent_row.update(agent_id=agent_id, **{k: seed[k] for k in _SEED_KEYS})
     task_row["agent_id"] = agent_id
     return agent_row, task_row
 
@@ -145,26 +143,27 @@ class TestAst1879CandidateServerKey:
 
 class TestAst1879RouteHelpers:
     def test_agent_llm_route_resolves_catalog(self) -> None:
-        # AST-1948: the row's mode (stripped) is passed to the resolver.
-        row = {"agent_id": "a", "model_id": " kimi-k2.6 ", "brain_setting": " Big ", "mode": " Creative "}
-        assert agent_mod._agent_llm_route(row) == cfg.resolve_model_brain("kimi-k2.6", "Big", "Creative")
+        # AST-1956: the stripped model_id + the whole row go to resolve_agent_settings; settings pass unchecked
+        # (an effort outside any vocabulary still comes back as stored).
+        row = {"agent_id": "a", "model_id": " moonshotai/kimi-k2.6 ", "temperature": 0.3,
+               "reasoning_effort": "ultra", "quantization": "int4", "provider_allow_fallbacks": False}
+        route = agent_mod._agent_llm_route(row)
+        assert route == cfg.resolve_agent_settings("moonshotai/kimi-k2.6", row)
+        assert route["tier"]["reasoning_effort"] == "ultra"
+        assert route["tier"]["provider"] == {"quantizations": ["int4"], "allow_fallbacks": False}
 
-    @pytest.mark.parametrize("mode", [None, "", "  "])
-    def test_agent_llm_route_raises_without_mode(self, mode: Any) -> None:
-        # AST-1948: no fallback mode — a mode-less row fails loudly, like a missing brain_setting.
-        with pytest.raises(ValueError, match="Agent 'a' has no mode configured"):
-            agent_mod._agent_llm_route({"agent_id": "a", "model_id": "claude", "brain_setting": "Medium", "mode": mode})
-
-    def test_agent_llm_route_rejects_unknown_mode(self) -> None:
-        with pytest.raises(ValueError, match="Invalid mode 'Wild'"):
-            agent_mod._agent_llm_route({"agent_id": "a", "model_id": "claude", "brain_setting": "Medium", "mode": "Wild"})
+    @pytest.mark.parametrize("model_id", ["claude", "deepseek-v4"])
+    def test_agent_llm_route_raises_on_pre_sku_model_id(self, model_id: str) -> None:
+        # AST-1956: no brain/mode checks remain; an unmigrated row (AST-1958) fails on its retired id.
+        with pytest.raises(ValueError, match="Unknown LLM model"):
+            agent_mod._agent_llm_route({"agent_id": "a", "model_id": model_id, "brain_setting": "Medium", "mode": "Wild"})
 
     def test_task_llm_server_id_uses_task_agent_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
         seen: List[str] = []
 
         def _resolve(task_key: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             seen.append(task_key)
-            return _agent_rows(model_id="deepseek-v4")
+            return _agent_rows(model_id="deepseek-v4-flash")
 
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", _resolve)
         assert agent_mod.task_llm_server_id("evaluate_jd") == "deepseek"
@@ -190,7 +189,7 @@ class TestAst1879RouteHelpers:
 # Branches (AST-1944 task_llm_server_id_or_none): strict path returns a server; ValueError + sentinel
 # agent_id ("" / "telescope" / no row) → None; ValueError + any other agent_id → re-raise.
 class TestAst1944TaskLlmServerIdOrNone:
-    _REAL = {"agent_id": "a1", "model_id": "deepseek-v4", "brain_setting": "Big", "mode": "Deterministic"}
+    _REAL = {"agent_id": "a1", "model_id": "deepseek-v4-pro", "temperature": 0.2}
 
     @staticmethod
     def _data(
@@ -258,23 +257,26 @@ class TestAst1879SendToServer:
         max_tokens=10, debug=False, task_key_uuid="u1", no_cache_prompt_tokens=1, no_cache_live_tokens=2,
     )
 
-    async def test_anthropic_protocol(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    @pytest.mark.parametrize("effort", [None, "high", "none"])
+    async def test_anthropic_protocol(self, monkeypatch: pytest.MonkeyPatch, effort: Any) -> None:
         anth, compat = _clients(monkeypatch)
-        route = cfg.resolve_model_brain("claude", "Medium", "Deterministic")
+        route = cfg.resolve_agent_settings("claude-sonnet-4-6", {"reasoning_effort": effort})
         await agent_mod._send_to_server(
             [], server_id="anthropic", sku=route["sku"], tier=route["tier"], api_key="sk-ant", **self._COMMON
         )
         compat.assert_not_called()
         kw = anth.await_args.kwargs
         assert (kw["model_code"], kw["api_key_override"]) == ("claude-sonnet-4-6", "sk-ant")
+        # AST-1956: the tier's effort reaches the Anthropic client as stored; temperature is the caller's.
+        assert (kw["reasoning_effort"], kw["temperature"]) == (effort, 0.3)
         assert kw["record_timesheet"] is agent_mod.record_timesheet_entry
         assert kw["batch_size"] == 1 and kw["task_key_uuid"] == "u1"
 
-    # AST-1947: kimi-k2.6-openrouter retired → moonshotai/kimi-k2.6 (Little).
-    @pytest.mark.parametrize("server_id,model_id", [("kimi", "kimi-k2.6"), ("openrouter", "moonshotai/kimi-k2.6"), ("deepseek", "deepseek-v4")])
+    # AST-1947: kimi-k2.6-openrouter retired → moonshotai/kimi-k2.6. AST-1955: deepseek-v4 → per-SKU ids.
+    @pytest.mark.parametrize("server_id,model_id", [("kimi", "kimi-k2.6"), ("openrouter", "moonshotai/kimi-k2.6"), ("deepseek", "deepseek-v4-flash")])
     async def test_compat_protocol(self, monkeypatch: pytest.MonkeyPatch, server_id: str, model_id: str) -> None:
         anth, compat = _clients(monkeypatch)
-        route = cfg.resolve_model_brain(model_id, "Little", "Deterministic")
+        route = cfg.resolve_agent_settings(model_id, {"reasoning_effort": "high", "provider_allow_fallbacks": True})
         await agent_mod._send_to_server(
             [], server_id=server_id, sku=route["sku"], tier=route["tier"], api_key="sk-x", batch_size=3, **self._COMMON
         )
@@ -325,7 +327,7 @@ class TestAst1879RightKeyNoFallback:
         monkeypatch.setattr(agent_mod, "record_timesheet_entry", lambda **kw: None)
         compat = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_llm_compat", compat)
-        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: _agent_rows(model_id="claude"))
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: _agent_rows(model_id="claude-haiku-4-5"))
         await agent_mod.do_task(_TASK, index="somerset", ctx=_ctx({"kimi": "sk-kimi", "anthropic": "sk-ant"}))
         compat.assert_not_called()
         assert built and all(b.get("api_key") == "sk-ant" for b in built)
@@ -335,8 +337,8 @@ class TestAst1879RightKeyNoFallback:
         [
             ("kimi-k2.6", "kimi", {"anthropic": "sk-ant", "openrouter": "sk-or", "deepseek": "sk-ds"}),
             ("moonshotai/kimi-k2.6", "openrouter", {"kimi": "sk-kimi"}),
-            ("claude", "anthropic", {"kimi": "sk-kimi", "deepseek": "sk-ds"}),
-            ("deepseek-v4", "deepseek", {}),
+            ("claude-haiku-4-5", "anthropic", {"kimi": "sk-kimi", "deepseek": "sk-ds"}),
+            ("deepseek-v4-flash", "deepseek", {}),
         ],
     )
     async def test_missing_server_key_fails_naming_server_and_sends_nothing(
@@ -375,7 +377,7 @@ class TestAst1879RightKeyNoFallback:
             agent_mod.database, "get_candidate",
             lambda cid: {"astral_candidate_id": cid, "candidate_api_keys": {"deepseek": "sk-ds-db", "anthropic": "sk-a"}},
         )
-        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: _agent_rows(model_id="deepseek-v4"))
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: _agent_rows(model_id="deepseek-v4-flash"))
         out = await agent_mod.do_task(_TASK, index="somerset", ctx=_ctx(None))
         assert out["success"] is True
         anth.assert_not_called()
@@ -389,7 +391,7 @@ class TestAst1879KimiLedgerRow:
     ) -> None:
         db = sqlite_in_memory
         agent_row, task_row = _seeded_rows("principal_recruiter_estelle")
-        assert (agent_row["model_id"], agent_row["brain_setting"]) == ("kimi-k2.6", "Big")
+        assert agent_row["model_id"] == "kimi-k2.6"
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda k: (agent_row, task_row))
         spy = _CompatClientSpy('{"search_terms": "alpha"}')
         monkeypatch.setattr(llm_compat, "_get_client", spy)
@@ -443,17 +445,20 @@ class TestAst1879EstelleTurnRoute:
         turn_ctx = {"astral_candidate_id": "somerset", "candidate_data": {}, "candidate_api_keys": {"kimi": "sk-kimi", "anthropic": "sk-ant"}}
         await agent_mod.do_task("contact_estelle_turn", live_content="hi", index="somerset", ctx=turn_ctx)
         anth.assert_not_called()
-        route = cfg.resolve_model_brain(agent_row["model_id"], agent_row["brain_setting"], agent_row["mode"])
+        route = cfg.resolve_agent_settings(agent_row["model_id"], agent_row)
         assert spy.builds == [(cfg.LLM_SERVER_CONFIG[route["server_id"]]["base_url"], "sk-kimi")]
         call = spy.calls[0]
         assert call["model"] == route["sku"]
-        # Seed row leaves max_tokens null → tier default; temperature is the seed mode's (Deterministic → 0.2).
-        assert agent_row["mode"] == "Deterministic"
+        # Seed row leaves max_tokens null → tier default. AST-1956: its stored settings reach the outbound body —
+        # temperature 0.2 and effort "none" as thinking disabled; kimi direct gets no provider object.
         assert call["max_tokens"] == route["tier"]["default_max_tokens"]
-        assert call.get("temperature") == route["tier"]["temperature"] == 0.2
+        assert call.get("temperature") == agent_row["temperature"] == 0.2
+        assert call["extra_body"] == {"thinking": {"type": "disabled"}}
 
     def test_agent_py_has_no_default_brain_or_legacy_provider_symbols(self) -> None:
         src = Path(agent_mod.__file__).read_text()
         for needle in ("default_brain_setting", "CONTACT_ESTELLE_CONFIG", "get_active_llm_provider",
-                       "send_to_" + "deepseek", "resolve_brain_setting_to_", "tier_meta"):
+                       "send_to_" + "deepseek", "resolve_brain_setting_to_", "tier_meta",
+                       # AST-1956: the brain / mode route is gone from the call path.
+                       "resolve_model_brain", "brain_setting"):
             assert needle not in src, needle

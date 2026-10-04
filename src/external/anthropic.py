@@ -202,12 +202,24 @@ def _parse_python_code_response(response_text: str) -> Dict[str, Any]:
     return result
 
 
+def _effort_body(reasoning_effort: Optional[str]) -> Dict[str, Any]:
+    """The agent's reasoning_effort as Messages-protocol body fields, sent as stored (AST-1956).
+    "none" turns thinking off; any other value goes in output_config.effort; empty sends nothing.
+    No vocabulary and no per-model check — an endpoint that rejects it fails the call."""
+    if not reasoning_effort:
+        return {}
+    if reasoning_effort == "none":
+        return {"thinking": {"type": "disabled"}}
+    return {"output_config": {"effort": reasoning_effort}}
+
+
 async def send_to_anthropic(
     content_blocks: List[Dict[str, Any]],
     *,
     system_blocks: Optional[List[Dict[str, Any]]] = None,
     model_code: Optional[str] = None,
     temperature: Optional[float] = None,
+    reasoning_effort: Optional[str] = None,
     max_tokens: Optional[int] = None,
     response_format: Optional[str] = None,
     prompt_label: str = "(unknown)",
@@ -225,6 +237,7 @@ async def send_to_anthropic(
 
     system_blocks → API `system` param (supports cache_control).
     content_blocks → messages[user].
+    temperature / reasoning_effort → sent only when set (AST-1956).
     Returns dict with success, api_response, parsed_response, timesheet, error."""
     require_controlled_external_io("anthropic.send_to_anthropic")
     start_time = datetime.now()
@@ -256,11 +269,16 @@ async def send_to_anthropic(
         api_kwargs: Dict[str, Any] = {
             "model": model_code,
             "max_tokens": max_tokens,
-            "temperature": temperature,
             "messages": [{"role": "user", "content": content_blocks}],
         }
         if system_blocks:
             api_kwargs["system"] = system_blocks
+        # Agent settings as stored (AST-1956): an empty one is not sent — the SDK would send null.
+        if temperature is not None:
+            api_kwargs["temperature"] = temperature
+        effort_body = _effort_body(reasoning_effort)
+        if effort_body:
+            api_kwargs["extra_body"] = effort_body
 
         has_documents = any(isinstance(b, dict) and b.get("type") == "document" for b in content_blocks)
         if has_documents:

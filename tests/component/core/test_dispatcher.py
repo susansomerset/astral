@@ -1349,11 +1349,12 @@ class TestAst1944NonLlmGate:
     async def test_llm_key_without_server_key_still_skipped(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        # AST-1879 holds on the real resolver: deepseek-v4 / Big → server "deepseek"; an anthropic key does not count.
+        # AST-1879 holds on the real resolver: deepseek-v4-pro → server "deepseek"; an anthropic key does not count.
+        # AST-1956: plain-settings row shape (no brain_setting / mode).
         self._data(
             monkeypatch,
             {"evaluate_jd": {"task_key": "evaluate_jd", "agent_id": "a1", "current": 1}},
-            {"a1": {"agent_id": "a1", "model_id": "deepseek-v4", "brain_setting": "Big"}},
+            {"a1": {"agent_id": "a1", "model_id": "deepseek-v4-pro", "temperature": 0.2}},
         )
         loop, save_ledger = self._scaffold(monkeypatch, {"astral_candidate_id": "cand-1", "candidate_api_keys": {"anthropic": "sk-ant"}})
         with caplog.at_level("WARNING", logger="src.core.dispatcher"):

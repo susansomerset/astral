@@ -4606,3 +4606,63 @@ Every failure must be either the `infer_brain_setting_from_legacy_model_code` Im
 3. **AC 9 (config half):** `rg -n "apodex/|bytedance/ui-tars|ibm-granite/|inclusionai/|meta/muse|microsoft/|minimax/|sao10k/l3|thedrummer/|z-ai/glm-4|moonshotai/kimi-k2\.[57]" src/ --glob '!src/utils/config.py'` and `rg -n "kimi-k2.6-openrouter" src/` — expect no output.
 
 **Pass criterion:** item 1 green (84 on the publish tip), item 2 reds limited to those two categories, item 3 empty. Not the zero-arg harness. On `ftr` after AST-1948: AC 6 / AC 9 `src/`-wide greps, `rg -n "temperature" src/ui/frontend/src/pages/AdminAgentPrompts.tsx` (AST-1949), and `GET /api/admin/agents/models` = 98.
+
+### AST-1955 · AST-1953 (plain agent settings, per-SKU direct models, `resolve_agent_settings`)
+
+Direct models are one id per vendor SKU: `kimi-k2.6`, `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`, `deepseek-v4-flash`, `deepseek-v4-pro` (`claude` / `deepseek-v4` gone; catalog = 101). Every entry is flat: `label`, `server`, `sku`, `max_tokens_floor` (all `None` — the old DeepSeek Big 384k floor moved to the agent's own `max_tokens`), `default_max_tokens`, `pricing` (rows unchanged). `OPENROUTER_MODEL_TABLE` rows are `(cpm_in, cpm_out, cpm_cache, max_out)`; `_build_openrouter_models()` sets `default_max_tokens = min(OPENROUTER_DEFAULT_MAX_TOKENS=16000, max_out)` and no `max_output_tokens`. `resolve_agent_settings(model_id, agent)` replaces `resolve_model_brain`: same top-level keys; `tier` = `sku`, `max_tokens_floor`, `default_max_tokens`, `temperature` (as stored), `reasoning_effort` (`""` → None), `provider` (OpenRouter only — `quantizations` / `allow_fallbacks` / `only` / `ignore` / `sort` from the row, empty keys omitted, all empty → None; no host pin). Startup check loses the brain-size / `request_extras` branches. Removed: mode table + constants, `validate_agent_mode`, `OPENROUTER_QUANT_BRAIN_SIZE`, `OPENROUTER_THINKING_PARAMS`, `_openrouter_pin`, `model_brain_sizes`, `validate_brain_setting_for_model`, `BRAIN_*`, `LLM_PROVIDER_CONFIG`, tier-map helpers. Agent repo-JSON columns: `agent_id, content, model_id, max_tokens, quantization, temperature, reasoning_effort, provider_allow_fallbacks, provider_only, provider_ignore, provider_sort, updated_at`. Data layer: [`../data/database/agents.md`](../data/database/agents.md) § AST-1955. Wire side (AC 1–4, 6 stubbed client, 8 debug line) is **AST-1956**'s.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 6 six direct ids, flat fields, picker order, pricing rows; old ids absent; 101 models; boot passes | `LLM_MODEL_CONFIG` | `TestAst1955PlainAgentSettings::test_direct_models_one_id_per_sku` |
+| New — no entry keeps `brain_sizes` / `can_think` / `thinking_params` / `max_output_tokens` | catalog + builder | `…::test_no_model_carries_brain_layer_or_thinking_fields` |
+| New — AC 5 (config half) retired symbols absent | `config.py` | `…::test_retired_symbols_absent` |
+| New — table rows are 4-tuples (95), `z-ai/glm-4.6` spot | `OPENROUTER_MODEL_TABLE` | `…::test_openrouter_table_keeps_price_and_max_output_only` |
+| New — AC 7 default output budget: all 95 = min(16000, max out); mythomax 3686, qwen3.5-27b 16000, Sonnet = SKU default | builder / resolver | `…::test_default_output_budget` |
+| New — resolver shape on a direct model (provider None, settings passed through) | `resolve_agent_settings` | `…::test_resolver_shape_direct_model` |
+| New — AC 1 / AC 2 (catalog half) provider object from the row: bf16 + fallbacks; + only/sort; all-empty-but-fallbacks; ignore + fallbacks false; nothing → None | `resolve_agent_settings` | `…::test_resolver_provider_object_from_agent_row` (5 cases) |
+| New — AC 3 (catalog half) no gating: 0.0 kept, `none` / `high` passed (phi-4 couldn't think), empty → None; retired id raises | `resolve_agent_settings` | `…::test_resolver_passes_temperature_and_effort_as_stored` |
+| New — AC 8 repo columns; seed = plan Stage 3 values (literal table) + fallbacks true / rest empty; fixture same settings fields + same rule (6 rows, `model_code` kept — plan's "field-for-field") | `REPO_ADMIN_JSON_CONFIG` + seed files | `…::test_agent_repo_json_columns_and_seed` (replaces `TestAst1947…::test_agent_repo_json_columns_and_seed_modes`) |
+| Revised — DeepSeek via per-SKU ids; retired-provider list adds `LLM_PROVIDER_CONFIG`; Claude SKU defaults via catalog ids | `LLM_MODEL_CONFIG` / `AGENT_CONFIG` | `TestAst492LlmBrainTierConfig::test_deepseek_v4_catalog_skus` · `::test_legacy_global_provider_symbols_retired` · `::test_anthropic_skus_carry_output_default_not_temperature` |
+| Revised — AC 6 (catalog half): `deepseek-v4-pro` floor None, default 16000 | `resolve_agent_settings` | `TestAst1391DeepseekBigMaxTokensFloor::test_no_catalog_floor_on_v4_skus` (was `test_big_tier_floor`) |
+| Revised — `get_llm_model` hit on `claude-sonnet-4-6` | `get_llm_model` | `TestAst1877LlmCatalogConfig::test_get_llm_server_and_model_hit_and_unknown` |
+| Retired — brain tiers / tier map / size validation / mode resolver (symbols gone; absence asserted above) | — | `TestAst492…::test_resolve_anthropic_tier_maps_to_agent_config_keys` · `::test_validate_allowed_brain_setting_rejects_unknown` · `::test_resolve_anthropic_raises_when_tier_maps_to_unknown_agent_config_key` · `TestAst1877…::test_model_brain_sizes_are_per_model_in_catalog_order` · `::test_validate_brain_setting_for_model` · `::test_resolve_model_brain_shape` · `::test_startup_rejects_model_without_brain_sizes` · `::test_startup_rejects_off_vocabulary_brain_size` · `TestAst1938…::test_startup_rejects_non_dict_request_extras` |
+| Retired — AST-1947 quantization sizes / host pin / routing-slug bijection / `can_think` / mode defaults / mode wiring / pre-epic direct shape / 98 count | — | `TestAst1947…::test_one_brain_size_per_model_from_quantization` · `::test_every_tier_pins_host_and_brief_quantization_fallbacks_off` · `::test_brief_provider_maps_to_one_routing_slug` · `::test_can_think_follows_host_reasoning_flag` · `::test_output_default_by_mode_capped_at_host_max` · `::test_stored_tiers_carry_no_thinking_or_temperature` · `::test_direct_models_unchanged_from_pre_epic` · `::test_kimi_openrouter_retired_and_catalog_boots_with_98` · `::test_agent_mode_constants_and_validation` · `::test_mode_decides_thinking_and_temperature` (6) |
+| Kept — AST-1946 brief: 95 slugs, catalog = brief, brief pricing | — | `TestAst1947CatalogByQuantization` (3 remaining) |
+
+`LOCKED_AT_100`: `--cov-branch` over `test_config.py` on the publish tip reports no missing line or partial branch in any AST-1955 hunk of `config.py` (builder, `resolve_agent_settings`, startup loop).
+
+**Integration:** none (no `tests/integration/` scenario reads the LLM catalog or agent rows).
+
+**Sequencing:** `src/core/agent.py` and `src/ui/api/api_admin.py` still import `resolve_model_brain` until **AST-1956** / **AST-1957** land on `ftr`. So every test under `tests/component/core/` (autouse conftest imports `candidate` → `agent`), all of `tests/component/ui/api/`, `test_llm_compat.py`, and 13 `test_config.py` nodes that lazily import core fail with that `ImportError` on this sub. `test_remap_openrouter_agents.py` is **AST-1958**'s (deleted there). `test_repo_admin_json.py` revisions (§ AST-1955 in [`../core/repo_admin_json.md`](../core/repo_admin_json.md)) were verified locally with a throwaway stub for that import; they run for real on `ftr`.
+
+## QA test manifest
+
+1. **Component (narrowed — must be all green, 72 on the publish tip):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst492LlmBrainTierConfig \
+  tests/component/utils/test_config.py::TestAst1391DeepseekBigMaxTokensFloor \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst1938OpenRouterShortlist \
+  tests/component/utils/test_config.py::TestAst1947CatalogByQuantization \
+  tests/component/utils/test_config.py::TestAst1955PlainAgentSettings \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/data/database/test_agents.py
+```
+
+2. **Whole files (informational — expected reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/utils/test_config.py tests/component/utils/test_cost_calculator.py tests/component/data/database/test_agents.py -q --tb=line
+```
+
+Expect 34 failed. Every failure must be either (a) the `cannot import name 'resolve_model_brain'` ImportError (13 — sibling gap above: `TestAst1055…`, `TestAst1127…::test_validate_allows_omit_null_empty`, `TestAst1333…`, `TestAst1339…`, `TestAst1405…` ×3, `TestAst1494…`, `TestAst1688…`, `TestAst1779…`, `TestAst1808…`, `TestAst898…`, `TestResolveTokens::test_base_resume_token_emits_section_json_not_markdown`) or (b) one of the 21 pre-existing `test_config.py` reds that fail identically on `origin/dev` product with this test tree — the same 21 listed in § AST-1947 item 2 above. Any other failure is real.
+
+3. **AC 5 / AC 6 (sub half):** `rg -n "_openrouter_pin|AGENT_MODE|OPENROUTER_QUANT_BRAIN_SIZE|resolve_model_brain|validate_agent_mode|brain_setting|brain_sizes|can_think" src/utils/config.py src/data/database.py` — expect no output.
+
+4. **AC 8 seed validates:** `ASTRAL_DB_DIR=/tmp .venv/bin/python -c "from src.core import repo_admin_json as r; from src.data import database as d; d._validate_agent_repo_json_rows(r.load_repo_admin_json_file('agent'))"` — exits 0 (revert-from-seed is `TestAst1955AgentSettings::test_seed_round_trips_and_revert_restores_it` in item 1).
+
+**Pass criterion:** item 1 green, item 2 reds limited to those two categories, items 3–4 clean. Not the zero-arg harness (`tests/component/core/` cannot collect on this sub). On `ftr` after AST-1956 / AST-1957: `tests/component/core/test_repo_admin_json.py` (no new reds vs `origin/dev` baseline), and AC 5's `src/`-wide `rg`.
+
+**Bible shasums (after publish):** `for p in utils/config.md utils/cost_calculator.md data/database/agents.md core/repo_admin_json.md; do git show origin/sub/AST-1953/AST-1955-plain-agent-settings:docs/test-bible/$p | shasum; done`
