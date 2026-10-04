@@ -5019,8 +5019,15 @@ class TestAst531RunNextHopLedger:
         assert saves[1][0][1] == "evaluate_jd"
         assert saves[0][0][2] == "c1"
         assert saves[0][1]["status"] == "RUNNING"
-        assert len(updates) == 2
-        assert all(u[1]["status"] == "COMPLETED" for u in updates)
+        # AST-1960: each successful hop writes its served host onto its own hop row before finalize.
+        hop_ids = [saves[0][0][0], saves[1][0][0]]
+        host_writes = [u for u in updates if "host" in u[1]]
+        finals = [u for u in updates if "host" not in u[1]]
+        assert host_writes == [(hop_ids[0], {"host": "Anthropic"}), (hop_ids[1], {"host": "Anthropic"})]
+        assert len(finals) == 2
+        assert all(u[1]["status"] == "COMPLETED" for u in finals)
+        # Host write precedes its hop's finalize.
+        assert updates.index(host_writes[0]) < updates.index(finals[0])
         assert agent_mod.log_batch_id.get() is None
 
     @pytest.mark.asyncio
@@ -5060,6 +5067,94 @@ class TestAst531RunNextHopLedger:
             assert agent_mod.log_batch_id.get() == "outer-batch-123"
         finally:
             agent_mod.log_batch_id.reset(token)
+
+
+# AST-1960 — do_task writes the served host onto the active batch's dispatch_ledger row (temp DB).
+# Branches: no log_batch_id → no write; failed call → no write (keeps a sibling's real host); success →
+# result host, else (Anthropic-direct, no host key) the server label; ledger write raises → call still succeeds.
+class TestAst1960LedgerHost:
+    BATCH = "batch-1960"
+    TASK = "craft_company_search_terms"
+    CTX = {"astral_candidate_id": "somerset", "candidate_data": {"artifacts": {}}}
+
+    @staticmethod
+    def _ok(**extra: Any) -> Dict[str, Any]:
+        return {"success": True, "parsed_response": {"search_terms": "alpha"}, "api_response": _api_response(),
+                "timesheet": {}, **extra}
+
+    @pytest.fixture
+    def ledger(self, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> Any:
+        from tests.component.core.conftest import _SCHEMA_FLAGS
+
+        # sqlite_in_memory flips the schema flags without restoring them; left True, every later test in
+        # the run skips schema-ensure against the harness DB ("no such table" on a fresh data/). Snapshot
+        # them through monkeypatch first so teardown puts them back.
+        # (raising=False: the shared list names a few flags database.py no longer has; undo deletes them again.)
+        for flag in _SCHEMA_FLAGS:
+            monkeypatch.setattr(database_mod, flag, getattr(database_mod, flag, None), raising=False)
+        db = request.getfixturevalue("sqlite_in_memory")
+        db.save_dispatch_ledger(self.BATCH, self.TASK, "somerset", "2026-10-04 00:00:00")
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        token = agent_mod.log_batch_id.set(self.BATCH)
+        yield db
+        agent_mod.log_batch_id.reset(token)
+
+    def _route(self, monkeypatch: pytest.MonkeyPatch, model_id: str, result: Dict[str, Any]) -> None:
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda _k: _agent_rows(model_id=model_id))
+        monkeypatch.setattr(agent_mod, "send_to_llm_compat", AsyncMock(return_value=result))
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value=result))
+
+    @pytest.mark.asyncio
+    async def test_ac1_compat_result_host_lands_on_ledger_row(self, monkeypatch: pytest.MonkeyPatch, ledger: Any) -> None:
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", self._ok(host="DeepInfra"))
+        out = await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        assert out["success"] is True
+        agent_mod.send_to_anthropic.assert_not_called()
+        assert ledger.get_dispatch_ledger(self.BATCH)["host"] == "DeepInfra"
+
+    @pytest.mark.asyncio
+    async def test_ac1_anthropic_direct_records_server_label(self, monkeypatch: pytest.MonkeyPatch, ledger: Any) -> None:
+        self._route(monkeypatch, "claude-haiku-4-5", self._ok())
+        await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        agent_mod.send_to_llm_compat.assert_not_called()
+        assert ledger.get_dispatch_ledger(self.BATCH)["host"] == cfg.LLM_SERVER_CONFIG["anthropic"]["label"] == "Anthropic"
+
+    @pytest.mark.asyncio
+    async def test_failed_call_keeps_the_real_host(self, monkeypatch: pytest.MonkeyPatch, ledger: Any) -> None:
+        ledger.update_dispatch_ledger(self.BATCH, host="DeepInfra")
+        failed = {"success": False, "api_response": None, "timesheet": {}, "error": "429", "host": "OpenRouter"}
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", failed)
+        out = await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        assert out["success"] is False
+        assert ledger.get_dispatch_ledger(self.BATCH)["host"] == "DeepInfra"
+
+    @pytest.mark.asyncio
+    async def test_no_batch_id_writes_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        update = MagicMock()
+        monkeypatch.setattr(agent_mod.database, "update_dispatch_ledger", update)
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", self._ok(host="DeepInfra"))
+        token = agent_mod.log_batch_id.set(None)
+        try:
+            out = await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        finally:
+            agent_mod.log_batch_id.reset(token)
+        assert out["success"] is True
+        update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ledger_write_failure_never_fails_the_call(
+        self, monkeypatch: pytest.MonkeyPatch, ledger: Any, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        def boom(*_a: Any, **_k: Any) -> None:
+            raise RuntimeError("database is locked")
+
+        monkeypatch.setattr(agent_mod.database, "update_dispatch_ledger", boom)
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", self._ok(host="DeepInfra"))
+        with caplog.at_level(logging.ERROR):
+            out = await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        assert out["success"] is True
+        assert any("Ledger host write failed for batch batch-1960" in r.getMessage() for r in caplog.records)
 
 
 # AST-515 — workbench Test writes dispatch_ledger + agent_data (parent AST-514).
