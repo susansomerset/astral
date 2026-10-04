@@ -157,3 +157,11 @@ Employer suffix as a sibling text node preserves whole ` — <employer>`; AC5 em
 Definition fidelity: four scoped files only; no AST-1982 surface edits; `Modal` widen is minimal. DRY: consumes `JobTitleText` as-is. Dependency and sync instructions are explicit. Betty note on header test expectations is helpful. Estimate confirm present. Plan Ready, assignee Joan Clarke; no `[plan-discuss]` rounds.
 
 context_tokens≈24000
+
+## Review
+
+- **Branch:** `origin/sub/AST-1981/AST-1983-job-title-headers`
+- **Build commit:** `6c6e1cb17` (Stage 1: `Modal.title` → `ReactNode`; Job Detail / Meteorite / Recommended Report headers render `JobTitleText`)
+- **Build notes:** `npx tsc -b --noEmit` and `npm run build` exit 0. `npm run lint` before/after: 31 problems both, line:col-stripped diff empty. `rg -l "JobTitleText"` lists `JobDetailModal.tsx`, `MeteoriteDetailModal.tsx`, `RecommendedJobReportHeader.tsx`. `JobDetailModal.tsx` diff is the import + `title=` line only (Info-tab Title row untouched). Diff vs `origin/ftr/AST-1981-job-title-ellipsis` names only the four planned files + this doc; no added `50` / `.slice(`.
+- **Deviation:** none.
+- **For QA:** header cut/tooltip (AC 5) and the Meteorite whole-employer suffix need a rendered DOM; no manual browser smoke in this headless build. Existing tests that assert a header's full text with a title over 50 chars will now see the cut text. Company-only report titles over 50 chars are also cut (plan Stage 1 step 5 Decision; Joan discuss).
