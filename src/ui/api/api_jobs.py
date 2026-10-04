@@ -12,6 +12,7 @@ from src.core.roster import get_company, update_company
 from src.core.tracker import (
     assemble_job_copy_snapshot,
     cancel_artifact_build,
+    candidate_skip_job,
     count_jobs,
     get_job,
     get_job_artifacts,
@@ -36,10 +37,10 @@ from src.data.database import (
 )
 from src.utils.config import (
     APPLIED_JOB_STATES,
-    IN_REVIEW_STATES,
-    METEORITE_CONFIG,
+    JOBS_PROCESSING_EXCLUDED_STATES,
     PHASE_SCORE_BREAKDOWN_KEY_SUFFIX,
-    RECOMMENDED_JOB_STATES,
+    READY_JOB_STATES,
+    REVIEW_JOB_STATES,
     SKIPPED_STATES,
     SOURCE_ENTITY_TYPE_METEORITE,
 )
@@ -108,59 +109,37 @@ def _attach_skipped_edit_meta(job: dict) -> dict:
     return job
 
 
-def _list_applied_jobs_for_candidate(candidate_id: Optional[str]) -> list[dict]:
-    """Applied rows via company.candidate_id scope, plus stem/meteorite repair-on-read."""
-    rows = list_jobs(
-        states=list(APPLIED_JOB_STATES),
-        candidate_id=candidate_id,
-        order_by="state_changed_at",
-    )
-    cid = (candidate_id or "").strip()
-    if not cid:
-        return rows
-
-    seen = {r.get("astral_job_id") for r in rows if r.get("astral_job_id")}
-    default_meteorite = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
-    suffix = f"-{cid}"
-
-    for job in list_jobs(states=list(APPLIED_JOB_STATES), candidate_id=None, order_by="state_changed_at"):
-        jid = job.get("astral_job_id")
-        if not jid or jid in seen:
-            continue
-        co_name = (job.get("company") or "").strip()
-        if not co_name or (co_name != default_meteorite and not co_name.endswith(suffix)):
-            continue
-        company = get_company(co_name)
-        if not company:
-            continue
-        existing = (company.get("candidate_id") or "").strip()
-        if existing == cid:
-            rows.append(job)
-            seen.add(jid)
-        elif existing == "":
-            update_company(co_name, candidate_id=cid)
-            rows.append(job)
-            seen.add(jid)
-
-    rows.sort(key=lambda j: (j.get("state_changed_at") or ""), reverse=True)
-    return rows
-
-
 @jobs_bp.route("")
 @require_auth
 def list_view():
     """List jobs filtered by view.
 
     Query params:
-      view: in_review | skipped | recommended | applied | responded
+      view: ready | review | applied | processing | skipped
       candidate_id: scope to one candidate
     """
-    view = request.args.get("view", "in_review")
+    view = request.args.get("view", "ready")
     candidate_id = request.args.get("candidate_id")
 
-    if view == "in_review":
-        rows = list_jobs(states=list(IN_REVIEW_STATES), candidate_id=candidate_id, order_by="state_changed_at")
+    if view == "ready":
+        rows = list_jobs(states=list(READY_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")
+        return jsonify([_flatten_grades(r) for r in rows])
+    elif view == "review":
+        rows = list_jobs(states=list(REVIEW_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")
+        return jsonify([_flatten_grades(r) for r in rows])
+    elif view == "applied":
+        # job.candidate_id scoping (AST-1598) covers every Applied row; no company-linkage repair.
+        rows = list_jobs(states=list(APPLIED_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")
+        return jsonify([_flatten_grades(r) for r in rows])
+    elif view == "processing":
+        # Complement of the four explicit lists — never an include-list (AST-1974).
+        rows = list_jobs(
+            exclude_states=list(JOBS_PROCESSING_EXCLUDED_STATES),
+            candidate_id=candidate_id,
+            order_by="state_changed_at",
+        )
         if candidate_id:
+            # Below-floor rows are virtual skips — they show on Skipped only.
             floors = score_floor_by_trigger_for_candidate(candidate_id)
             if floors:
                 rows = [r for r in rows if not job_misses_dispatch_score_floor(r, floors)]
@@ -179,12 +158,6 @@ def list_view():
                 out.append(_flatten_grades(ann))
         out.sort(key=lambda j: (j.get("state_changed_at") or ""), reverse=True)
         return jsonify(out)
-    elif view == "recommended":
-        rows = list_jobs(states=list(RECOMMENDED_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")
-        return jsonify([_flatten_grades(r) for r in rows])
-    elif view == "applied":
-        rows = _list_applied_jobs_for_candidate(candidate_id)
-        return jsonify([_flatten_grades(r) for r in rows])
     else:
         return jsonify([])
 
@@ -443,14 +416,20 @@ def put_job_proposed_answers(astral_job_id):
 @jobs_bp.route("/<astral_job_id>/skip", methods=["POST"])
 @require_auth
 def skip_job(astral_job_id):
-    """Manually skip a job — sets state to CANDIDATE_SKIPPED with state_history entry."""
+    """Candidate Skip from any non-Applied, non-Skipped state → CANDIDATE_SKIPPED; core releases a held batch claim."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
     try:
-        transition_job_state([astral_job_id], "CANDIDATE_SKIPPED")
+        candidate_skip_job(astral_job_id)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 409
+    logger.info(
+        "%s | api %s completed: POST %s",
+        job.get("candidate_id") or "-",
+        f"/api/jobs/{astral_job_id}/skip",
+        200,
+    )
     return jsonify({"ok": True})
 
 
