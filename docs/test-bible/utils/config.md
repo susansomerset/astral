@@ -4683,7 +4683,7 @@ Expect 34 failed. Every failure must be either (a) the `cannot import name 'reso
 
 ### AST-1964 · AST-1963 (model routing type, routing helper, reconcile constants)
 
-Every `LLM_MODEL_CONFIG` entry carries `routing` ∈ `LLM_MODEL_ROUTING_TYPES = ("direct", "openrouter")`: `openrouter` on every `_build_openrouter_models` entry (95), `direct` on the six hand-written ones. `resolve_agent_settings` builds the provider object when `routing == "openrouter"` (was `server == "openrouter"`). `validate_llm_provider_environment` raises `LLM model '<id>': routing <v> not in ('direct', 'openrouter')` on a missing / unknown value (checked right after the server lookup, before pricing). `get_model_routing(server_id, sku)` → routing, `ValueError("No LLM model for server … and SKU …")` when no entry matches both. `TIMESHEET_RECONCILE_RETRIES = 5`, `TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS = 2.0`. Lookup side: [`../external/openrouter.md`](../external/openrouter.md) § AST-1964. The retry loop / doubling waits are AST-1966's.
+Every `LLM_MODEL_CONFIG` entry carries `routing` ∈ `LLM_MODEL_ROUTING_TYPES = ("direct", "openrouter")`: `openrouter` on every `_build_openrouter_models` entry (95), `direct` on the six hand-written ones. `resolve_agent_settings` builds the provider object when `routing == "openrouter"` (was `server == "openrouter"`). `validate_llm_provider_environment` raises `LLM model '<id>': routing <v> not in ('direct', 'openrouter')` on a missing / unknown value (checked right after the server lookup, before pricing). `get_model_routing(server_id, sku)` → routing, `ValueError("No LLM model for server … and SKU …")` when no entry matches both. `TIMESHEET_RECONCILE_RETRIES = 5`, `TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS = 30.0`, `TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS = 2.0`. Lookup side: [`../external/openrouter.md`](../external/openrouter.md) § AST-1964. The retry loop / doubling waits are AST-1966's.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -4691,7 +4691,7 @@ Every `LLM_MODEL_CONFIG` entry carries `routing` ∈ `LLM_MODEL_ROUTING_TYPES = 
 | New — AC 1 startup rejects routing missing / `None` / `""` / `"proxy"` / `"OpenRouter"` (fake entry has its own SKU + pricing row so only the routing check can fire) | `validate_llm_provider_environment` | `…::test_startup_rejects_missing_or_unknown_routing` (5) |
 | New — AC 1 provider object keyed on routing, not server: openrouter-server entry routed `direct` → `None`; kimi-server entry routed `openrouter` → object; shipped models unchanged | `resolve_agent_settings` | `…::test_resolver_provider_object_follows_routing_not_server` |
 | New — helper hit (openrouter / deepseek / anthropic / kimi); real SKU on the wrong server and unknown pair raise | `get_model_routing` | `…::test_get_model_routing_hit_and_unknown` |
-| New — AC 3 retry count `5`, backoff base `2` | constants | `…::test_reconcile_retry_constants` |
+| New — AC 3 retry count `5`, initial wait `30`, backoff base `2` | constants | `…::test_reconcile_retry_constants` |
 | Kept — resolver / validator / catalog shape (entries copied from real models carry `routing`, so existing fake-entry tests still reach their intended raise) | — | `TestAst1877LlmCatalogConfig` · `TestAst1938OpenRouterShortlist` · `TestAst1947CatalogByQuantization` · `TestAst1955PlainAgentSettings` · `TestAst1959ServerProbeFlag` |
 
 `LOCKED_AT_100`: `--cov-branch` over the manifest on the publish tip covers both arcs of the routing check in the validator and in `resolve_agent_settings`, and both exits of `get_model_routing`.
