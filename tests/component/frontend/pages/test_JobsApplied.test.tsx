@@ -5,6 +5,7 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import JobsApplied from "../../../../src/ui/frontend/src/pages/JobsApplied"
 import { renderWithProviders } from "../test-utils"
 import { createdColumnJobs, expectCreatedColumn, installTzCandidate } from "./created-column"
+import { EDGE_TITLE, expectJobTitleCells, jobTitleJobs } from "./job-title-cell"
 import { installBaseApiMocks, jobsViewHandler, jsonResponse } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -118,5 +119,12 @@ describe("JobsApplied — AST-1979 Created column", () => {
     // Applied seeds its sort state, so the default indicator is visible on Updated (the section pages show none until a click).
     expect(screen.getByRole("columnheader", { name: /^Updated/ }).textContent).toBe("Updated\u25BC")
     await expectCreatedColumn(screen.getByRole("table"), /^Updated/)
+  })
+
+  it("AST-1982: long title cut at 50 + … with portaled full-title tooltip; 50-char title untouched", async () => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("applied", jobTitleJobs(appliedJob)))
+    renderWithProviders(<JobsApplied />)
+    await waitFor(() => expect(screen.getByText(EDGE_TITLE)).toBeInTheDocument())
+    await expectJobTitleCells(screen.getByRole("table"))
   })
 })

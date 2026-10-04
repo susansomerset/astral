@@ -5,6 +5,7 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import JobsSkipped from "../../../../src/ui/frontend/src/pages/JobsSkipped"
 import { renderWithProviders } from "../test-utils"
 import { createdColumnJobs, expectCreatedColumn, installTzCandidate } from "./created-column"
+import { expectJobTitleCells, jobTitleJobs } from "./job-title-cell"
 import { installBaseApiMocks, jobsViewHandler } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -403,5 +404,16 @@ describe("JobsSkipped — AST-1979 Created column", () => {
     renderWithProviders(<JobsSkipped />)
     await userEvent.click(await screen.findByRole("button", { name: section }))
     await expectCreatedColumn(screen.getByRole("table"), updatedLabel)
+  })
+
+  // AST-1982: the title cell renders inside the section loop, so each table variant gets the check.
+  it.each([
+    ["below-floor", floorJob, /Below dispatch score floor/],
+    ["regular", failedJob, /Failed LIKE/],
+  ] as const)("AST-1982 %s table: long title cut at 50 + … with portaled tooltip; 50-char title untouched", async (_variant, base, section) => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("skipped", jobTitleJobs(base)))
+    renderWithProviders(<JobsSkipped />)
+    await userEvent.click(await screen.findByRole("button", { name: section }))
+    await expectJobTitleCells(screen.getByRole("table"))
   })
 })

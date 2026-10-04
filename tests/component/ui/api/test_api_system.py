@@ -63,6 +63,11 @@ class TestSystemAuthRoutes:
         assert payload.get("list_table_frozen_data_columns") == 2
         assert payload.get("list_table_cell_truncate_chars") == 30
 
+    def test_ui_config_includes_job_title_truncate_chars(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1982: JobTitleText cut length is served from UI_CONFIG (one source for the 50).
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        assert payload.get("job_title_truncate_chars") == 50
+
     def test_ui_config_includes_preamble_config(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         # AST-1016: Intro + steps for AST-1017; route alias matches existing ui_config tests.
         from src.utils.config import PREAMBLE_CONFIG

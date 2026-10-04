@@ -5,6 +5,7 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import JobsProcessing from "../../../../src/ui/frontend/src/pages/JobsProcessing"
 import { renderWithProviders } from "../test-utils"
 import { createdColumnJobs, expectCreatedColumn, installTzCandidate } from "./created-column"
+import { expectJobTitleCells, jobTitleJobs } from "./job-title-cell"
 import { installBaseApiMocks, jobsViewHandler } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -236,5 +237,12 @@ describe("JobsProcessing — AST-1979 Created column", () => {
     renderWithProviders(<JobsProcessing />)
     await userEvent.click(await screen.findByRole("button", { name: /Passed Job List/ }))
     await expectCreatedColumn(screen.getByRole("table"), /^Updated/)
+  })
+
+  it("AST-1982: long title cut at 50 + … with portaled full-title tooltip; 50-char title untouched", async () => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("processing", jobTitleJobs(jobs[0])))
+    renderWithProviders(<JobsProcessing />)
+    await userEvent.click(await screen.findByRole("button", { name: /Passed Job List/ }))
+    await expectJobTitleCells(screen.getByRole("table"))
   })
 })
