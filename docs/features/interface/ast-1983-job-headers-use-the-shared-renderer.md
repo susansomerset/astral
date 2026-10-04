@@ -165,3 +165,57 @@ context_tokens≈24000
 - **Build notes:** `npx tsc -b --noEmit` and `npm run build` exit 0. `npm run lint` before/after: 31 problems both, line:col-stripped diff empty. `rg -l "JobTitleText"` lists `JobDetailModal.tsx`, `MeteoriteDetailModal.tsx`, `RecommendedJobReportHeader.tsx`. `JobDetailModal.tsx` diff is the import + `title=` line only (Info-tab Title row untouched). Diff vs `origin/ftr/AST-1981-job-title-ellipsis` names only the four planned files + this doc; no added `50` / `.slice(`.
 - **Deviation:** none.
 - **For QA:** header cut/tooltip (AC 5) and the Meteorite whole-employer suffix need a rendered DOM; no manual browser smoke in this headless build. Existing tests that assert a header's full text with a title over 50 chars will now see the cut text. Company-only report titles over 50 chars are also cut (plan Stage 1 step 5 Decision; Joan discuss).
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1983  
+**Publish ref:** `7dc68e85d867b86e1da77f78258b473435e8c744` (`origin/sub/AST-1981/AST-1983-job-title-headers`; product commit `6c6e1cb17` + `merge-tests(AST-1983): origin/tests 77c372511`)  
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (`canon/` at publish tip; no `docs/canon-index.md` on ref; frozen list empty)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score; not §5.3 ESCALATE (same rationale as Joan plan-stage).
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded an empty frozen list; code review adds no canon rows.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Recommended Job Report header — company-only fallback over 50 chars** (`RecommendedJobReportHeader.tsx`: `title={jobTitle} fallback={jobTitle}`)  
+  When the caller passes a resolved company string (no `job_title`), `JobTitleText` still truncates at 50 because `title` and `fallback` are the same non-empty string. Plan Stage 1 step 5 and Joan validate document this; tests cover a real long **job** title, not a long company-only `jobTitle`.  
+  **Question @susan:** Should company-only report headers stay full while job titles cut?  
+  **Default:** Ship as implemented (no `JobAnalysisReportModal` change) unless scope is amended before **User Testing** — smaller, reversible, matches approved plan.
+
+### advisory
+
+- **Epic composite vs `origin/dev`:** The three-dot diff includes the full AST-1982 stack (list tables, `JobTitleText`, config, CSS) because this publish ref builds on that work. AST-1983’s **product** delta is exactly the four scoped files in `6c6e1cb17`; scope gate for this ticket is honored.
+- **sibling test carry:** Same `merge-tests` bundle as AST-1982 (Created column, Meteorites `job_created_at`, admin/meteorite API tests, etc.) — expected; not scored against AST-1983 product scope.
+- **`expectFullTitleTooltip`** in `job-title-cell.ts` (refactor shared by list + header tests) — sensible DRY for AC3/AC5 tooltip assertions.
+
+## What's solid
+
+- **Plan fidelity:** `ModalProps.title` → `ReactNode` only; `JobDetailModal` import + `title=` with preserved fallback chain; `MeteoriteDetailModal` `modalTitle` → `ReactNode` with title-only cut and whole `` ` — ${employer}` `` suffix; `RecommendedJobReportHeader` wraps `.recommended-report-title` in `JobTitleText`. No edits to `JobTitleText.tsx`, pages, config, `App.css`, or `JobAnalysisReportModal.tsx`.
+- **AC6:** Info-tab Title input/read-only span unchanged in `JobDetailModal.tsx`; tests assert full `LONG_TITLE` in Info (read-only and editable input) while the `<h2>` shows `CUT_TITLE`.
+- **AC5 Meteorite:** Tests assert `${CUT_TITLE} — ${LONG_EMPLOYER}` with employer whole and tooltip on the title span only; employer-only header uncut.
+- **Estimate:** Confirmed **2** — four small component touch points + header-focused tests; footprint matches.
+
+## Recommended actions (Chuckles — not Radia)
+
+- Append this block to `docs/features/interface/ast-1983-job-headers-use-the-shared-renderer.md`, commit `docs(AST-1983): Radia review — clean`, push publish ref.
+- Post slim upshot via `linear_proxy.py --as radia save-comment`; **Tests Passed** → **Review Posted**; datt **§3h** **PROCEED** toward **User Testing** unless Susan answers the company-fallback discuss with a scope widen.
+
+context_tokens≈22000
