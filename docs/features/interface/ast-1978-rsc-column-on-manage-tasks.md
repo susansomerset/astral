@@ -184,3 +184,36 @@ before the next stage starts.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+
+**Ticket:** AST-1978  
+**Overall:** APPROVED  
+**Corpus:** e1f2699fad  
+**Publish ref:** `ea051b7575038952289c94a28e29f3cc75935bc1` (`origin/sub/AST-1977/AST-1978-rsc-column`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.layers.ui-config-driven-business-logic | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| astral.standards.in-scope-only | A | | |
+| astral.ui.naming-conventions | A | | |
+
+## Traceability
+
+AC1–7 → Stage 1 (API field, raw-segment count, agent fallback, candidate independence, AC7 registry token) + Stage 2 (column order, display, grep-clean client).
+
+## Findings
+
+- **acceptable** — `## Scope check` / Files Changed: only `api_admin.py` `_enrich_tasks` and `AdminTaskPrompts.tsx`; matches child `## Scope` and parent component/technical scope.  
+- **acceptable** — Stage 1 `raw_system` uses `.strip()` then agent content, aligned with `resolved_task_system` and parent functional scope; whitespace-only edge documented vs System token column.  
+- **acceptable** — Inline segment key tuple in `_enrich_tasks` justified as DB column names, not a config value set; `config.py` correctly out of scope.  
+- **acceptable** — Plan clerk note (`canon_clerk expand` unknown ids / no `docs/canon-index.md` in worktree): statutes read from `canon/statutes/astral/**`; index at clerk run reports `e1f2699fad` — not a plan defect.
+
+**R6 (summary):** Definition fidelity, two-file footprint, execution contract, and adversarial decisions match parent purpose and all seven ACs. No scope creep into editor, token math, or `AdminAnthropicAdHoc.tsx`. Self-assessment and estimate (2) match slice size. No `[plan-discuss]` rounds on thread (Plan Ready, assignee Joan).
+
+context_tokens≈22000
