@@ -72,11 +72,11 @@ an unlanded row shows `—`. Clicking the Job id opens the Job Analysis Report m
 
 2. In `interface MeteoriteRow`, add `job_state: string | null` on the line directly after
    `astral_job_id: string | null`. Change the interface's doc comment to
-   `/** List row from GET /api/candidates/<id>/meteorites (AST-1748; job_state AST-1974). */`.
+   `/** List row from GET /api/candidates/<id>/meteorites (AST-1748; job_state AST-1974). */`
 
 3. Change the component doc comment from
    `/** AST-1749: Jobs → Meteorites — candidate-scoped staging-row list (read-only). */` to
-   `/** AST-1749: Jobs → Meteorites — candidate-scoped staging-row list (read-only); AST-1976 landed-job state + in-page job report link. */`.
+   `/** AST-1749: Jobs → Meteorites — candidate-scoped staging-row list (read-only); AST-1976 landed-job state + in-page job report link. */`
 
 4. Directly below `const [viewingId, setViewingId] = useState<number | null>(null)`, add:
 
@@ -180,6 +180,14 @@ an unlanded row shows `—`. Clicking the Job id opens the Job Analysis Report m
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Review
+
+- **Branch:** `origin/sub/AST-1970/AST-1976-jobs-nav`
+- **Build commits:** `19badde6d` (Stage 1 Job State cell + in-page job report link)
+- **Build notes:** `npm run build` (includes `tsc -b`) exits 0; `python -c "import src.utils.config"` exits 0; `rg -n "navigate\(|useNavigate"` on the page returns nothing. `npx eslint src/pages/JobsMeteorites.tsx` reports the one baseline problem (`react-hooks/set-state-in-effect` on the existing `useEffect(() => { load() }, [load])`, identical on `origin/dev`) and nothing else — left unfixed per plan step 7.
+- **Deviation:** none. Joan's `*/.` note was a sentence period after the code span in steps 2–3; the code uses a plain `*/`, and the plan text was tidied.
+- **For QA:** see `## For QA (Betty)` above. No manual browser smoke run in this headless build.
 
 ## Joan validate
 
