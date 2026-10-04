@@ -163,3 +163,52 @@ Run stages in order and steps in order. Do not add files, helpers, imports or de
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1960
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `sub/AST-1954/AST-1960-ledger-host` @ `a0b5d2fdff1ee6fd4737947eb1593ae06f3c4e19`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| stat.logging.debug | A | | |
+
+## Traceability
+
+1 → Stage 1 (`host` DDL + `_LEDGER_UPDATE_COLS`) · Stage 2 (`do_task` write under `log_batch_id`) · Betty AC 1 stubs · parent epic functional item 5 (ledger host) → Stages 1–2 · 2 → UAT gate (live `anticipate_scan`; depends on AST-1959 probe/lock + this write — no build stage, Susan at parent UAT)
+
+## Findings
+
+### discuss
+
+- **Location:** Plan Files Changed decision (readers)
+- **Finding:** Ticket Scope says “Modified readers: return it” while Stage 1 edits schema and `_LEDGER_UPDATE_COLS` only. Plan argues `SELECT *` + `_row_to_dict` already expose new columns once migrated, with verify proving `get_dispatch_ledger` / `list_dispatch_ledger`.
+- **Recommendation:** Accept for build; if Technical scope was meant to require explicit reader diffs, Archie can clarify wording — behavior is covered.
+
+- **Location:** Stage 2 — ledger write failure path
+- **Finding:** `logger.exception` on a failed host write is appropriate operator signal but `stat.logging.error` is not on this child’s Canon Scope.
+- **Recommendation:** Optional Canon Scope add at Discussion for parity with other agent paths; not blocking — pattern matches existing “swallow DB hiccup, don’t fail the paid call” intent (AST-1842 comment in plan).
+
+### acceptable
+
+- **Location:** Plan structure — no `## Self-assessment`
+- **Finding:** Two stages, explicit decisions (success-only write, hop `log_batch_id`, Betty hop-fixture note), estimate confirm present.
+- **Recommendation:** None blocking.
+
+- **Location:** Stage 2 verify / `## For Betty`
+- **Finding:** Pre-Betty pytest may fail on extra `update_dispatch_ledger` calls in hop ledger tests; plan directs record-not-fix in build.
+- **Recommendation:** None blocking.
+
+- **Location:** Boundaries / verify
+- **Finding:** Empty diffs required for `dispatcher.py` and `src/external` + `src/utils` vs `origin/ftr/AST-1954-host-probe` keep this child off AST-1959’s surface.
+- **Recommendation:** None.
+
+context_tokens≈48000
+
+Slim upshot: `[plan-rubric] PROCEED (Commit: a0b5d2fdf) ledger host plan solid`
