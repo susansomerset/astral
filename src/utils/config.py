@@ -2612,7 +2612,7 @@ JOB_STATES = {
     # Upshot technical-hold after meteorite LIKE (mirrors PASSED_LIKE_RETRY) — sibling AST-1055.
     "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
     "ERROR_EVALUATE_JD":      {"prior_states": None},
-    "CANDIDATE_SKIPPED":      {"prior_states": ["CANDIDATE_REVIEW", BUILD_ARTIFACTS_BASE_STATE, "RECOMMENDED"]},
+    "CANDIDATE_SKIPPED":      {"prior_states": []},  # AST-1974: derived after SKIPPED_STATES (Applied/Skipped complement)
 }
 
 # ---------------------------------------------------------------------------
@@ -3385,6 +3385,10 @@ SEED_CONFIG = {
     ),
 }
 
+# AST-1974: Jobs → Ready / Review lists (two of the four explicit lists; Processing is their complement).
+READY_JOB_STATES = ["CANDIDATE_REVIEW"]
+REVIEW_JOB_STATES = ["RECOMMENDED"]
+
 # Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
 RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
 
@@ -3962,7 +3966,19 @@ SKIPPED_STATES = [
     "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET",
     "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE",
     "ERROR_QUALIFY_JOB_LISTINGS", "ERROR_EVALUATE_JD",
+    "ERROR_BUILD_ARTIFACTS", "BUILD_FAILED",
     "CANDIDATE_SKIPPED",
+]
+
+# AST-1974: Ready + Review + Applied + Skipped — Processing = every job state NOT IN this list.
+# Derived, never typed out; the assert keeps the four lists pairwise disjoint (each job on exactly one list).
+JOBS_PROCESSING_EXCLUDED_STATES = [*READY_JOB_STATES, *REVIEW_JOB_STATES, *APPLIED_JOB_STATES, *SKIPPED_STATES]
+assert len(JOBS_PROCESSING_EXCLUDED_STATES) == len(set(JOBS_PROCESSING_EXCLUDED_STATES)), "Jobs lists overlap"
+
+# AST-1974: Skip is legal from every job state not already Applied or Skipped (hop labels / _RETRY
+# resolve through their base in _job_state_matches_prior / state_prior_states).
+JOB_STATES["CANDIDATE_SKIPPED"]["prior_states"] = [
+    s for s in JOB_STATES if s not in APPLIED_JOB_STATES and s not in SKIPPED_STATES
 ]
 
 # ---------------------------------------------------------------------------
@@ -4034,6 +4050,8 @@ JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS = [
 assert all(row["state"] in RECOMMENDED_JOB_STATES for row in JOBS_RECOMMENDED_UI_SECTIONS)
 
 JOBS_SKIPPED_SECTION_ORDER = [
+    "ERROR_BUILD_ARTIFACTS",
+    "BUILD_FAILED",
     "FAILED_LIKE",
     "FAILED_TECHNICAL_LIKE",
     "METEORITE_FAILED_LIKE",
@@ -4068,6 +4086,8 @@ JOBS_SKIPPED_SECTION_ORDER = [
 ]
 
 JOBS_SKIPPED_SECTION_LABELS = {
+    "ERROR_BUILD_ARTIFACTS": "Error Build Artifacts",
+    "BUILD_FAILED": "Build Failed",
     "FAILED_JOBLIST": "Failed Job List",
     "FAILED_JD": "Failed Job Description",
     "FAILED_TECHNICAL": "Failed Technical",
@@ -4163,6 +4183,9 @@ for _row in JOBS_RECOMMENDED_REPORT_PHASE_TABS:
 # AST-1156: Skipped Retry — from Skipped section state → claimable primary trigger.
 # Keys ⊆ JOBS_SKIPPED_SECTION_ORDER except CANDIDATE_SKIPPED (Resurrect-only).
 JOBS_SKIPPED_BULK_RETRY_TO_STATE = {
+    # AST-1974: artifact build failures — each state's only legal successor.
+    "ERROR_BUILD_ARTIFACTS": "RECOMMENDED",
+    "BUILD_FAILED": "CANDIDATE_REVIEW",
     # Regular rubric / qualify / JD
     "FAILED_JOBLIST": "NEW",
     "ERROR_QUALIFY_JOB_LISTINGS": "NEW",
