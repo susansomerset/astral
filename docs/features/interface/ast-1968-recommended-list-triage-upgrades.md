@@ -799,3 +799,12 @@ AC 1–16 → Stages 1–6 and plan `## AC trace` (row/bulk generate, shared `po
 
 context_tokens≈24000
 ```
+
+## Review
+
+- **Branch:** `sub/AST-1967/AST-1968-recommended-list-triage-upgrades`
+- **Build commits:** `9524a2c68` (Stage 1 generate helper + hook bulk flows) · `1fbace403` (Stage 2 shared `phaseGradeCells`, letterless list row, CSS) · `85a6afb16` (Stage 3 row Generate control) · `f6341f34a` (Stage 4 Total column + sort) · `c5c3a9ab1` (Stage 5 selection, bulk bar, row Generate wiring) · `8cc4ca5fb` (Stage 6 Analysis toggle + expanded lines)
+- **Build notes:** All six stages executed as written. `npm run build` and `npx tsc -b --noEmit` exit 0 after every stage. AC 3 `rg -n "/generate_artifacts"` on page + component: no hits. AC 12 `sortRubricColumnsByImportanceAndGrade(` call lines in `recommendedJobReport.tsx`: 1. AC 14 `function sortRecommendedJobs`: 1 hit. `validate-sub-log.sh --stage=build`: ok.
+- **Open (held before Code Complete, see AST-1967 comments):**
+  - `npm run lint` does not exit 0 on `origin/dev` baseline (32 problems / 27 errors in ~25 out-of-scope files) — AC 16 as written is unreachable within Scope.
+  - Stage 5 step 4 (`useEffect(() => { setSelected(new Set()) }, [selectedId])`) adds one `react-hooks/set-state-in-effect` error (33 problems total). Every other stage adds zero.
