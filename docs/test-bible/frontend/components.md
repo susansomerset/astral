@@ -1780,3 +1780,50 @@ cd src/ui/frontend && npm run test:component -- \
 - `docs/test-bible/frontend/components.md` — *(filled after publish)*
 
 **AST-1968 (pointer):** `CandidateJobRowActions` takes an optional `onGenerate` that adds a **G** `icon-control` (`title="Generate Artifacts"`) in the review-like branch, passed only by Recommended for manifest-eligible rows — **`CandidateJobRowActions — AST-1968 Generate`**. Manifest: **`docs/test-bible/frontend/pages.md`** § AST-1968.
+
+### AST-1973 · AST-1972 (Job Detail Info-tab analysis via shared PhaseAnalysisLines)
+
+**Parent:** [AST-1972](https://linear.app/astralcareermatch/issue/AST-1972). **Publish:** `origin/sub/AST-1972/AST-1973-job-modal-info-tab-analysis`.
+
+New **`components/PhaseAnalysisLines.tsx`** owns the phase-lines block that AST-1968 had inline in `JobsRecommended.tsx`: it takes one job record and derives lines from manifest `report_phase_tabs` (order + `grades_field`) with short labels from `phase_score_columns`, falling back to `nav_label`. Each line renders `buildPhaseListGradeRow(job, gradesField) ?? "—"`. Recommended's analysis row now renders `<PhaseAnalysisLines job={job} />`, with the row, `colSpan`, click and toggle unchanged. `JobDetailModal` `InfoTab` right column renders an **Analysis** `entity-section-label` plus the component before **State History**, not gated on state. `JobDetail` gains `[key: string]: unknown`. No dedicated `test_PhaseAnalysisLines` file: both hosts exercise it.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 Analysis label → lines → State History, right column | `JobDetailModal.tsx` | **`test_JobDetailModal.test.tsx`** › **`JobDetailModal — AST-1973 Info-tab analysis > AC1/AC2…`** |
+| 2 one line per `report_phase_tabs`, JD/DO/GET/LIKE | `PhaseAnalysisLines.tsx` | **`… > AC1/AC2…`**; list side **`test_JobsRecommended`** › **`AST-1968 … AC9`** (unedited) |
+| 3 partial → em dash; no grades → four em dashes, modal renders; skipped state ungated | `PhaseAnalysisLines.tsx`, `JobDetailModal.tsx` | **`… > AC3: no phase grades…`**, **`… > AC3: JD + DO graded…`** |
+| 4 count / `dot-*` / order / `title` equal the list | `PhaseAnalysisLines.tsx` → `buildPhaseListGradeRow` | **`… > AC4…`** (modal line vs list row builder on AST-1771 fixture); builder ↔ modal-report parity **`recommendedJobReport — AST-1968 letterless list grade row`** (unedited) |
+| 5 letterless, no confidence, display-only | same | **`… > AC5…`**; list side **`AST-1968 … AC10`** (unedited) |
+| 6 one shared component | source | greps below |
+| 7 Recommended list unchanged | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** whole file (unedited; AC9 / AC10 assert the moved markup) |
+| 8 no backend / 9 build + lint | source | diff stat + build/lint below |
+
+**Broken / obsolete:** none. No existing test queries the modal's right column or the `Analysis` text inside it.
+
+**Pre-existing red (not this ticket):** `JobDetailModal — AST-1695 listing_href > read-only: null listing_href → no Link <a>…` (see AST-1865 block). Name-excluded below.
+
+**Integration:** none. Frontend only, so do not invent one.
+
+## QA test manifest
+
+1. **AC1–AC5, AC7 + host regressions (Vitest, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  --testNamePattern='^(?!.*null listing_href)'
+```
+
+2. **AC6 greps:** `rg -n "PhaseAnalysisLines" src/ui/frontend/src/pages/JobsRecommended.tsx src/ui/frontend/src/components/JobDetailModal.tsx` gives one or more hits in **each** file. `rg -n "report_phase_tabs|buildPhaseListGradeRow" src/ui/frontend/src/pages/JobsRecommended.tsx src/ui/frontend/src/components/JobDetailModal.tsx` prints **nothing**.
+3. **AC8:** `git diff origin/dev...origin/sub/AST-1972/AST-1973-job-modal-info-tab-analysis --stat -- src/ui/api src/core src/data src/utils` prints nothing.
+4. **AC9:** in `src/ui/frontend`, `npm run build` exits 0 and `npx tsc -b --noEmit` exits 0. `npm run lint` lists no problem that `origin/dev` does not already report.
+
+**Pass criterion:** item 1 green (88 pass, 1 name-skipped) and items 2–4 hold. Use the narrowed run, not the zero-arg harness.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/components.md`: filled after publish
+- `docs/test-bible/frontend/pages.md`: filled after publish

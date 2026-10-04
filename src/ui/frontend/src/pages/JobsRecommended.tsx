@@ -5,11 +5,12 @@ import { legacyStateSectionLabel, unmappedJobStates } from "../lib/stateUiSectio
 import CandidateActionNotesModal from "../components/CandidateActionNotesModal"
 import CandidateJobRowActions from "../components/CandidateJobRowActions"
 import JobAnalysisReportModal from "../components/JobAnalysisReportModal"
+import PhaseAnalysisLines from "../components/PhaseAnalysisLines"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidateJobActions, type BulkActionResult } from "../hooks/useCandidateJobActions"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
-import { buildPhaseListGradeRow, formatPhaseScore, primaryActionsForState } from "../lib/recommendedJobReport"
+import { formatPhaseScore, primaryActionsForState } from "../lib/recommendedJobReport"
 import Time from "../components/Time"
 
 interface Job {
@@ -127,18 +128,6 @@ export default function Recommended() {
     () => manifest?.jobs.recommended.phase_score_columns.map(c => c.field) ?? [],
     [manifest?.jobs.recommended.phase_score_columns],
   )
-
-  // Line order + grades_field from report_phase_tabs (modal order); short label from the
-  // matching phase_score_columns entry (jd_grades → jd_score → "JD"), else the tab nav_label.
-  const phaseLines = useMemo(() => {
-    const rec = manifest?.jobs.recommended
-    return (rec?.report_phase_tabs ?? []).map(tab => ({
-      gradesField: tab.grades_field,
-      label: rec?.phase_score_columns.find(
-        c => c.field === tab.grades_field.replace(/_grades$/, "_score"),
-      )?.label ?? tab.nav_label,
-    }))
-  }, [manifest])
 
   // Eligibility from manifest primary_actions_by_state — no hardcoded state list.
   const canGenerate = useCallback(
@@ -340,14 +329,7 @@ export default function Recommended() {
                         {showAnalysis && (
                           <tr className="clickable recommended-analysis-row" onClick={() => openJobReport(job.astral_job_id)}>
                             <td colSpan={columnCount}>
-                              <div className="recommended-analysis-lines">
-                                {phaseLines.map(p => (
-                                  <div key={p.gradesField} className="recommended-analysis-line">
-                                    <span className="recommended-analysis-line-label">{p.label}</span>
-                                    {buildPhaseListGradeRow(job, p.gradesField) ?? "\u2014"}
-                                  </div>
-                                ))}
-                              </div>
+                              <PhaseAnalysisLines job={job} />
                             </td>
                           </tr>
                         )}

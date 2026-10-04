@@ -3,6 +3,7 @@ import Modal from "./Modal"
 import SideTabPanel, { type SideTab } from "./SideTabPanel"
 import StateTimeline, { type StateEntry } from "./StateTimeline"
 import AgentStoryTab, { type AgentStoryEntry } from "./AgentStoryTab"
+import PhaseAnalysisLines from "./PhaseAnalysisLines"
 import BatchExecutionModal from "./BatchExecutionModal"
 import Time from "./Time"
 import api from "../lib/api"
@@ -32,6 +33,7 @@ interface JobDetail {
   agent_story?: AgentStoryEntry[]
   fields_editable?: boolean
   legal_next_states?: string[]
+  [key: string]: unknown
 }
 
 type FieldDraft = {
@@ -403,8 +405,12 @@ function InfoTab({
             </button>
           </div>
         </div>
-        {/* Right column: state history */}
+        {/* Right column: analysis + state history */}
         <div className="entity-summary-col">
+          <p className="entity-section-label">Analysis</p>
+          <div style={{ marginBottom: 16 }}>
+            <PhaseAnalysisLines job={job} />
+          </div>
           <p className="entity-section-label">State History</p>
           <StateTimeline history={job.state_history || []} onSelectRun={onSelectRun} />
         </div>
