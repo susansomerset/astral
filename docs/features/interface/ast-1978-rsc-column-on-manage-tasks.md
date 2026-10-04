@@ -217,3 +217,11 @@ AC1–7 → Stage 1 (API field, raw-segment count, agent fallback, candidate ind
 **R6 (summary):** Definition fidelity, two-file footprint, execution contract, and adversarial decisions match parent purpose and all seven ACs. No scope creep into editor, token math, or `AdminAnthropicAdHoc.tsx`. Self-assessment and estimate (2) match slice size. No `[plan-discuss]` rounds on thread (Plan Ready, assignee Joan).
 
 context_tokens≈22000
+
+## Review
+
+| Field | Value |
+|-------|-------|
+| Branch | `sub/AST-1977/AST-1978-rsc-column` |
+| Build tip | `b89597cce7cc9956dcbf7438c23100f126f9cb21` |
+| Status | Code Complete |
