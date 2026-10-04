@@ -749,3 +749,53 @@ Build + lint exit 0.
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-1968
+**Overall:** APPROVED
+**Corpus:** bd68954dc854ca80fca1fc391821dff9ff288a7a
+**Publish ref:** origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades @ 5c00918ee04b43bb6a391a2242ffe13d2b6052d6
+
+## Canon scores
+
+(no ids on frozen Canon Scope — parent AST-1967 locked **Canon Scope: empty** at Discussion; ticket mirrors that declaration. Not a missing-scope ESCALATE per validate-plan §4a.)
+
+## Traceability
+
+AC 1–16 → Stages 1–6 and plan `## AC trace` (row/bulk generate, shared `postGenerateArtifacts`, bulk bar + manifest `canGenerate`/`generateIds`, Analysis default-on + `phaseGradeCells`/`buildPhaseListGradeRow`, Total via `sortRecommendedJobs`; build+lint each stage; no orphan stages).
+
+## Findings
+
+### acceptable
+- **Location:** Ticket + parent `## Architectural definition` / `Canon Scope`
+- **Finding:** Deliberately empty directive list with documented rationale (frontend list page; no in-force UI list statute).
+- **Recommendation:** None — Radia will have the same empty list at review-child.
+
+### discuss
+- **Location:** Parent Canon Scope vs typical frontend touches
+- **Finding:** `astral.ui.frontend-file-placement` and `astral.standards.dry-and-focused-functions` would be the usual candidates if Archie had listed them; all planned paths stay under existing UI dirs and the plan explicitly factors grade ordering into `phaseGradeCells` rather than duplicating in `JobsRecommended.tsx`.
+- **Recommendation:** No plan change required; keep empty scope unless Archie amends at Discussion.
+
+### acceptable
+- **Location:** Plan doc (no `## Self-assessment`)
+- **Finding:** No `!!-NONE` confidence block; stages are concrete (full hook body, CSS, six stages with done-when gates).
+- **Recommendation:** None for approve; optional polish only.
+
+### acceptable
+- **Location:** Stage 1 — bulk toast shape vs AC 5 wording
+- **Finding:** Toast template is `"<label>: X succeeded, Y failed"`; AC 5 example `"3 succeeded"` is satisfied when Y=0.
+- **Recommendation:** None.
+
+### acceptable
+- **Location:** Stage 3 — `G` on Generate vs Ghosted on Applied list
+- **Finding:** Generate `G` only renders in `REVIEW_LIKE` when `onGenerate` is passed; Applied-page Ghosted `G` is a different branch.
+- **Recommendation:** None.
+
+**Definition fidelity (R6):** Plan matches parent Purpose and all four functional capabilities; files/stages align with child `## Scope` and explicit scope gate; no backend/modal behaviour change; `JobsApplied`’s separate `confirmPending` remains compatible with `pending.jobId` = `jobIds[0]`. Generate POST path matches modal (`/api/jobs/<id>/generate_artifacts`).
+
+context_tokens≈24000
+```
