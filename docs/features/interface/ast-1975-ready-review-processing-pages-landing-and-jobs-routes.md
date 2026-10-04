@@ -381,3 +381,54 @@ context_tokens≈36000
 - **Deviation (comment only):** Stage 1's prescribed `JobsHomeRedirect` doc comment contained the literal `` `/jobs/recommended` ``, which tripped the Stage 2f / AC 12 grep. It was reworded to "the old Recommended page"; the code is unchanged.
 - **Not done:** Joan's optional `rubricDisplay.ts` comment tweak, because the file is outside this ticket's Scope.
 - **For QA:** test and bible rows from Scope plus the broken-fixture list are in `## Notes for QA` above. No manual browser smoke run was done in this headless build. AC 11 / 13 behaviour is the manual check list above.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1975
+**Publish ref:** `031da688bbd69009df37b131eb599b6c507849dd` (`origin/sub/AST-1970/AST-1975-jobs-nav`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+(frozen list empty — ticket **§ Citations: none**; all scoped paths are `src/ui/frontend/**`, outside `stat.logging.info.api` / `stat.logging.error` territory per plan and Joan)
+
+## Column diff vs plan stage
+(aligned) — Joan recorded no directive rows; same conclusion on tip.
+
+## Frame diff
+(none)
+
+## Findings
+
+### advisory — sibling product + test carry on publish ref
+- **Location:** `src/core/**`, `src/data/**`, `src/ui/api/**`, `src/utils/config.py`, and Betty `tests/**` / `docs/test-bible/**` in `origin/dev...origin/sub/AST-1970/AST-1975-jobs-nav`
+- **Finding:** Three-dot diff includes AST-1974 backend commits stacked on this sub (`blockedBy` AST-1974). AST-1975’s own commits (`d5021e5a0`, `d15e73290`) touch only the nine frontend files in the plan; carry is expected, not 1975 scope creep.
+
+### advisory — Joan `rubricDisplay.ts` comment
+- **Location:** `src/ui/frontend/src/lib/rubricDisplay.ts` (~line 75)
+- **Finding:** Comment still says `JobsInReview`; file is outside Component scope; build notes document intentional skip.
+- **Default:** Leave unchanged unless Susan wants a drive-by comment fix in a later hygiene pass.
+
+### advisory — manual AC 11 / 13 smoke
+- **Location:** Issue doc **## Review** / **Manual check**
+- **Finding:** Build notes: no browser smoke on landing or Generate-on-Review vs Ready; component tests cover redirect/processing/recommended paths.
+- **Default:** Parent UAT or Susan spot-check before epic close; not a canon or plan blocker on this tip.
+
+### advisory — parent AC 13 `meteorite_section` grep
+- **Location:** `report_meteorite_sections` in `StateUiContext.tsx` / backend
+- **Finding:** Word-boundary grep required; frontend removed `meteorite_section` from manifest type and `JobsRecommended` split.
+
+## What's solid
+- **Landing:** `JobsHomeRedirect` is sole chooser (first Jobs item with `count > 0`, else first item); index + `*` use it; legacy targets (`AdminRoute`, detail modal, consent decline) go to `/`.
+- **Routes:** `jobs/ready` / `jobs/review` (shared `Recommended` with `view` + `title`), `jobs/processing` (`JobsProcessing`, `view=processing`, `processing_sections`), removed `in_review` / `recommended` / `responded` pages and routes.
+- **Ready/Review:** Meteorite sub-section removed; Source column + sort; Generate eligibility still manifest `primary_actions_by_state` (Review vs Ready behaviour follows backend manifest, not hardcoded states).
+- **Plan greps on tip:** Stage 2f patterns clean; deleted page files absent.
+- **Estimate footprint:** Frontend-only delta for 1975 commits fits confirmed **3** points.
+
+## Recommended actions
+- Chuckles: append verdict to `docs/features/interface/ast-1975-ready-review-processing-pages-landing-and-jobs-routes.md`, `docs(AST-1975): Radia review — clean`, push `sub/AST-1970/AST-1975-jobs-nav`, post slim upshot `--as radia`, **Review Posted** → PROCEED to **User Testing** (no `resolve-child` canon work).
+- Downstream: optional `rubricDisplay.ts` one-line rename; UAT landing/Generate spot-check when AST-1974 backend is on the same ref.
+
+context_tokens≈14000
