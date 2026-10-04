@@ -5578,6 +5578,8 @@ UI_CONFIG = {
     # AST-647: shared list-table layout — default frozen data columns (N) and cell truncate length.
     "list_table_frozen_data_columns": 2,
     "list_table_cell_truncate_chars": 30,
+    # AST-1981: job-title display cut (JobTitleText) — longer titles show the first N chars + "…" with a full-title tooltip.
+    "job_title_truncate_chars": 50,
     # AST-366: client + API validation for contact.cover_letter_signature_image (JPEG data URL).
     "cover_letter_signature_image": {
         "max_width_px": 400,
