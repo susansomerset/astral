@@ -382,3 +382,62 @@ Upshot: `[plan-rubric] PROCEED (Commit: 059f2a444) probe lock plan solid`
 - **Publish ref:** `sub/AST-1954/AST-1959-probe-host-lock`
 - **Build commits:** `895fcb0d2` (stage 1), `8fce75966` (stage 2), `958182117` (stage 3)
 - **For Betty (`qa-child`):** `tests/component/external/test_llm_compat.py::TestAst1877ResultContract::test_success_shape_and_timesheet_kwargs` fails only on the new `host` result key, which is expected per Stage 3. The 21 `tests/component/utils/test_config.py` failures were already failing and are unrelated to this diff (missing meteorite-retention / surfer / telescope config attributes). The host map `src.external.openrouter._hosts` is process-global, so tests need to clear it between cases.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1959
+**Publish ref:** `67b54753f9030a58287c844bca50064e52dd514e` (`origin/sub/AST-1954/AST-1959-probe-host-lock`)
+**Corpus:** `bd68954dc854ca80fca1fc391821dff9ff288a7a` (canon tree at publish tip; `docs/canon-index.md` absent on ref — ids resolved from `canon/directives/active/*.md`)
+**Overall:** CLEAN
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.task.dispatch-retry | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.info | A | | |
+
+### Column diff vs plan stage
+
+(aligned) — Joan graded all four **A**; code review matches.
+
+### Frame diff
+
+(none) — acceptance criteria 1–6 are exercised in `tests/component/external/test_llm_compat.py::TestAst1959ProbeHostLock`, `tests/component/external/test_openrouter.py`, `tests/component/utils/test_logging_batch.py`, and `tests/component/utils/test_config.py::TestAst1959ServerProbeFlag`. No Description checklist rows added.
+
+### Findings
+
+#### fix-now
+
+(none)
+
+#### discuss
+
+(none)
+
+#### advisory
+
+- **Location:** `src/external/openrouter.py` — `_hosts` map
+- **Finding:** Process-global, never evicted (per plan). Tests correctly clear via `monkeypatch.setattr(openrouter, "_hosts", {})` in autouse fixtures.
+- **Recommendation:** No change for this ticket; long-lived workers with unbounded distinct keys are a known operational tradeoff documented in the plan.
+
+- **Location:** Issue doc build handoff vs `test_config.py`
+- **Finding:** Build noted broader `test_config.py` failures unrelated to AST-1959; the three-dot diff only adds `TestAst1959ServerProbeFlag` (probe flag / validator / constant). No product change beyond probe wiring.
+- **Recommendation:** Treat any remaining `test_config` red as pre-existing hygiene, not AST-1959 scope.
+
+- **Location:** Joan validate corpus SHA `e1f2699…` vs review corpus `bd68954…`
+- **Finding:** Zero `canon/**` lines in `origin/dev...origin/sub/AST-1954/AST-1959-probe-host-lock`; directive text read at publish tip.
+- **Recommendation:** None.
+
+### What's solid
+
+- Product footprint matches the plan: `config.py` probe flag + `LLM_PROBE_MESSAGE`, new `openrouter.py` (`probe_host` / `get_batch_host` single-flight), `llm_compat.py` probe/lock before real send, remembered failure with no wire, `host` on all result shapes, optional `host=` on the existing INFO summary line.
+- `src/core/dispatcher.py` absent from diff; `rg '"openrouter"' src/external/` is clean on the reviewed tree (server choice stays config-driven via `server["probe"]`, not string literals in sibling modules).
+- Probe failure path returns ordinary `success: False` and uses `log_llm_batch_summary(..., error=...)` (WARNING), consistent with `patt.task.dispatch-retry` (no bespoke retry queue in this layer).
+
+context_tokens≈28000
+
+Upshot: `[code-rubric] PROCEED (Commit: 67b54753) canon clean probe lock`
