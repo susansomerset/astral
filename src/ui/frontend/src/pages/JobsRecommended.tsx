@@ -89,7 +89,12 @@ export default function Recommended() {
     beginRefresh(showSpinner)
     api(`/api/jobs?view=recommended&candidate_id=${encodeURIComponent(selectedId)}`)
       .then(r => r.json())
-      .then(data => setRows(Array.isArray(data) ? data : []))
+      .then(data => {
+        // Spinner loads are mount + candidate switch only — drop any prior selection there.
+        // Cleared in the async callback, not synchronously, so the mount effect stays lint-clean.
+        if (showSpinner) setSelected(new Set())
+        setRows(Array.isArray(data) ? data : [])
+      })
       .finally(() => endRefresh())
   }, [selectedId, beginRefresh, endRefresh])
 
@@ -104,14 +109,19 @@ export default function Recommended() {
 
   const actions = useCandidateJobActions(load, handleBulkDone)
 
-  useEffect(() => {
-    if (actions.error) setToast({ text: actions.error, variant: "error" })
-  }, [actions.error])
+  // Hook errors render as a derived toast (no setState-in-effect); memoized so Toast's
+  // timer only restarts when the error itself changes. Page toasts (bulk) take precedence.
+  const errorToast = useMemo<ToastMessage | null>(
+    () => (actions.error ? { text: actions.error, variant: "error" } : null),
+    [actions.error],
+  )
+  const { clearError } = actions
+  const dismissToast = useCallback(() => {
+    setToast(null)
+    clearError()
+  }, [clearError])
 
   useEffect(() => { load(true) }, [load])
-
-  // Candidate switch drops the previous candidate's selection.
-  useEffect(() => { setSelected(new Set()) }, [selectedId])
 
   const phaseFields = useMemo(
     () => manifest?.jobs.recommended.phase_score_columns.map(c => c.field) ?? [],
@@ -362,7 +372,7 @@ export default function Recommended() {
         onClose={actions.closePending}
         onConfirm={actions.confirmPending}
       />
-      <Toast message={toast} onDone={() => setToast(null)} />
+      <Toast message={toast ?? errorToast} onDone={dismissToast} />
     </div>
   )
 }
