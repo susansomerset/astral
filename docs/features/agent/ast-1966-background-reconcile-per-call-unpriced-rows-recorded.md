@@ -404,3 +404,9 @@ AC3 (`llm_compat`)→Stage 1; AC4→Stage 2 step 1 (non-blocking thread + direct
 - **Location:** Stage 2 imports (`core` → `external.openrouter`, `data.database`)
 - **Finding:** `astral.layers.import-direction` may govern layer edges; not on this ticket’s frozen list.
 - **Recommendation:** Archie may amend at Discussion if a layer pass is required; plan follows existing core/data/external patterns.
+
+## Review
+
+- **Branch:** `sub/AST-1963/AST-1966-background-reconcile`
+- **Build commits:** `6669ea8e6` (Stage 1 unpriced calls still get a timesheet row) · `563eae750` (Stage 2 background platform cost reconcile per call)
+- **Build notes:** Both stages executed as written; both Done-when commands printed `STAGE1 OK` / `STAGE2 OK`, and `rg -n '"openrouter"' src/external/ src/core/timesheets.py src/data/database.py` finds nothing. `py_compile` is clean; no Python linter is installed on this host. Touched-area run (`test_llm_compat.py`, `core/test_timesheets.py`, `core/test_agent*.py`): 444 passed, 44 failed — 43 are pre-existing `test_agent.py` failures on the clean tree, and the 44th is `TestRecordTimesheetEntry::test_delegates_to_database_add`, the expected break flagged in § Test impact (no `model_code` on a row with a generation id). `validate-sub-log.sh --stage=build`: ok. No deviations.
