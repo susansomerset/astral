@@ -329,3 +329,50 @@ Run stages in order and steps in order. Do not add files, helpers or dependencie
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1959
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `sub/AST-1954/AST-1959-probe-host-lock` @ `059f2a44498ee6759bc257e76bd9acc39ae08527`
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.task.dispatch-retry | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.info | A | | |
+
+### Traceability
+
+1 → Stages 2–3 (single-flight map + first real after probe) · 2 → Stage 2 `probe_host` / Stage 3 key before `only` merge · 3 → Stage 3 `extra_body.provider.only` · 4 → Stages 2–3 remembered failure, no wire on real call · 5 → Stage 1 `probe` flags, Stage 3 batch/server gates, verify `rg` + empty `dispatcher.py` diff · 6 → Stages 1 & 3 `host` on result + INFO segment · parent functional item 5 (ledger row) → N/A — AST-1960
+
+### Findings
+
+#### discuss
+
+- **Location:** Plan Stage 1 step 3 (probe message)
+- **Finding:** Parent functional scope still describes probe content as entity index plus “respond with 1”; this child’s Scope and AC 1 anchor on the config constant only. The plan documents that split explicitly and it matches the child partition.
+- **Recommendation:** No plan change required for build; keep the decision visible for UAT if anyone compares against parent prose only.
+
+#### acceptable
+
+- **Location:** Plan structure — no `## Self-assessment`
+- **Finding:** Three staged done-when blocks, inline decisions, and estimate confirm carry complexity; execution contract is explicit.
+- **Recommendation:** None blocking.
+
+- **Location:** Stage 3 verify / execution contract
+- **Finding:** Pre-Betty pytest may fail on new `host` key or INFO shape; plan directs engineer to record for `qa-child`, not patch tests in build.
+- **Recommendation:** None blocking.
+
+- **Location:** Out of scope / Boundaries
+- **Finding:** Ledger, `agent.py`, `database.py`, slug mapping, and `dispatcher.py` are cleanly deferred to AST-1960 or Susan’s tripwire; no scope creep into sibling files.
+- **Recommendation:** None.
+
+context_tokens≈42000
+
+Upshot: `[plan-rubric] PROCEED (Commit: 059f2a444) probe lock plan solid`
