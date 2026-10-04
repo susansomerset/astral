@@ -1038,6 +1038,22 @@ def cancel_artifact_build(astral_job_id: str) -> str:
     return "RECOMMENDED"
 
 
+def candidate_skip_job(astral_job_id: str) -> str:
+    """Candidate Skip: any state CANDIDATE_SKIPPED admits → CANDIDATE_SKIPPED; release a held batch claim first (AST-1974)."""
+    job = get_job(astral_job_id)
+    if not job:
+        raise ValueError(f"Job not found: {astral_job_id}")
+    state = job.get("state") or ""
+    # Legality first so an illegal skip (e.g. CANDIDATE_APPLIED) never drops a live claim.
+    if not job_state_admits_transition(state, "CANDIDATE_SKIPPED"):
+        raise ValueError(f"Invalid transition: {state} -> CANDIDATE_SKIPPED")
+    # Same lock release cancel_artifact_build does; a running chain hop can't land on a skipped job.
+    if job.get("batch_id"):
+        database.clear_job_batch_lock(astral_job_id)
+    transition_job_state([astral_job_id], "CANDIDATE_SKIPPED")
+    return "CANDIDATE_SKIPPED"
+
+
 def list_dispatch_tasks_for_candidate(
     candidate_id: str,
     *,
@@ -1579,15 +1595,19 @@ def list_jobs(
     states: Optional[List[str]] = None,
     candidate_id: Optional[str] = None,
     order_by: str = "state_changed_at",
+    exclude_states: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
-    return database.list_jobs(states=states, candidate_id=candidate_id, order_by=order_by)
+    return database.list_jobs(
+        states=states, candidate_id=candidate_id, order_by=order_by, exclude_states=exclude_states
+    )
 
 
 def count_jobs(
     states: Optional[List[str]] = None,
     candidate_id: Optional[str] = None,
+    exclude_states: Optional[List[str]] = None,
 ) -> int:
-    return database.count_jobs(states=states, candidate_id=candidate_id)
+    return database.count_jobs(states=states, candidate_id=candidate_id, exclude_states=exclude_states)
 
 
 def save_job(astral_job_id: str, **kwargs: Any) -> bool:
