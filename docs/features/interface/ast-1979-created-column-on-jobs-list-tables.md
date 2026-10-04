@@ -161,3 +161,46 @@ AC 1–6 → Stage 1 (steps 4–24) + ## Acceptance mapping; parent AC 6–10 N/
 
 context_tokens≈22000
 ```
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1979
+**Publish ref:** `7a4f7760eca2179e355e4e712c1f0ecfc9d81a32` (`origin/sub/AST-1971/AST-1979-created-col`)
+**Corpus:** e1f2699fad
+**Overall:** CLEAN
+
+## Canon scores
+
+(no ids on frozen list — intentional per child **Citations: none**; parent `stat.logging.*` belongs to sibling AST-1971 #2)
+
+## Column diff vs plan stage
+
+(aligned) — Joan also recorded no directive rows; plan APPROVED against the same empty frozen list.
+
+## Frame diff
+
+(none)
+
+### Findings
+
+**advisory** · `tests/**` + `docs/test-bible/**` · **sibling test carry:** `merge-tests(AST-1979)` on tip includes **AST-1978** artifacts from `origin/tests`: `tests/component/ui/api/test_api_admin.py` (`TestAst1978ResponseSchemaCount`), `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` (RSC header case), `docs/test-bible/ui/api/api_admin.md` (§ AST-1978). Expected per qa-child merge-tests; no product scope in `src/**` beyond the four Jobs pages.
+
+**advisory** · Issue doc `## Review` · Build notes still describe `git diff --stat origin/dev` as “four pages + this doc” only; tip also carries Betty’s AST-1979 test/bible commits and the AST-1978 carry above. Metadata drift only — product delivery matches plan Stage 1.
+
+**advisory** · Canon Scope · Parent epic cites logging statutes; this child deliberately carries **Citations: none** (frontend-only). Joan flagged optional future default `astral.standards.in-scope-only` at Discussion — not a review-time scope gap because Discussion locked “none” with rationale.
+
+### What's solid
+
+- **Product diff** is exactly the four in-scope pages: optional `created_at` on `Job`, sibling `created_at` sort branch to `state_changed_at`, Created `<th>`/`<td>` immediately left of Updated / Failed At, Recommended `columnCount` 9 + phase columns, cells use `<Time value={job.created_at} />` (Skipped keeps per-cell `setViewingId` on the new cell).
+- **AC 5:** sort helpers extended in place; no new `function sort` entries.
+- **AC 3–4:** defaults untouched (`state_changed_at` desc); null `created_at` uses `|| ""` parity with Updated.
+- **Tests:** shared `created-column.ts` exercises AC 1–4 on Ready/Review (both routes), Processing, Skipped (below-floor + regular), Applied; Tokyo tz proves fmt/timezone; Applied asserts `Updated▼` at load where sort state is seeded.
+- **Estimate 2** still matches footprint (four page files + focused component tests).
+
+### Recommended actions (downstream — not for Radia)
+
+- Chuckles: append this artifact to `docs/features/interface/ast-1979-created-column-on-jobs-list-tables.md`, commit `docs(AST-1979): Radia review — clean`, push publish ref, post slim upshot `--as radia`, move **Review Posted** → **PROCEED** path (no `resolve-child` unless datt routes otherwise).
+- Optional doc touch: refresh `## Review` on the issue doc to mention tip `7a4f7760e` and QA manifest (six AST-1979 cases).
+
+context_tokens≈38000
