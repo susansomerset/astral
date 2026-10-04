@@ -337,3 +337,10 @@ AC1→S3 NAV_CONFIG+counts; AC2→S3 ready view; AC3→S3 review view; AC4→S3 
 
 context_tokens≈28000
 ```
+
+## Review
+
+- **Branch:** `origin/sub/AST-1970/AST-1974-jobs-nav`
+- **Build commits:** `d9d7fcbbf` (Stage 1 data/core), `c28a61d58` (Stage 2 config state model), `a0b563d2f` (Stage 3 views/nav/manifest/meteorites)
+- **Build notes:** the six changed `.py` files compile and import (main venv). A local smoke run (temp DB plus Flask test client) checked AC 2–8 and AC 10: the five views partition every seeded job exactly once, nav counts match list lengths, the five Processing states return 200 on skip with `batch_id` cleared, and Applied returns 409. Adding `CANDIDATE_REVIEW` to Skipped makes the import raise `AssertionError: Jobs lists overlap`. Meteorite rows carry the landed `job_state`, or null when unlanded.
+- **For QA:** parent AC 13's `rg -n "meteorite_section" src` also matches the retained `report_meteorite_sections` key (report modal Meteorite pane, untouched by this epic) — that grep needs `\bmeteorite_section\b` or similar.
