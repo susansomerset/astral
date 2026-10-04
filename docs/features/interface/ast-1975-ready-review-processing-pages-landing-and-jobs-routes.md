@@ -338,3 +338,37 @@ Parent AC 1–10 are AST-1974; parent AC 14 (Meteorites) is AST-1976.
 ## Estimate
 
 Confirm Chuckles estimate: 5 — revise to 3 because it is one layer (frontend), reuses the existing Recommended and In Review list components nearly verbatim, and adds one small new component against an API contract AST-1974 already shipped.
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1975
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `origin/sub/AST-1970/AST-1975-jobs-nav` @ `1f25d594a3ae9ead314ecf3dfc8899f2cff6f396`
+
+## Canon scores
+(none on ticket — Citations: frontend-only, outside `stat.logging.info.api` / `stat.logging.error` territory)
+
+## Traceability
+AC11→S1 JobsHomeRedirect+targets, S2e index/catch-all; AC12→S2c/d/e deletions+routes, S2f greps; AC13→S2a manifest type, S2b Ready/Review+Source+no meteorite split; AC14→S1/S2f build+lint+config import. AC1–10 N/A (AST-1974); parent AC14 N/A (AST-1976).
+
+## Findings
+
+### acceptable — AST-1974 ordering
+- **Location:** Plan intro / `## Backend contract consumed`
+- **Finding:** Stage 2 manifest and `view=` shapes assume AST-1974 is on this ref.
+- **Recommendation:** build-child runs on a ref where #1 is merged; no plan change.
+
+### acceptable — tests deferred to qa-child
+- **Location:** Files Changed table; `## Notes for QA`
+- **Finding:** Scope lists test/bible deletions but build-child must not commit under `tests/` or `docs/test-bible/**`.
+- **Recommendation:** Betty updates per plan; engineer does not treat missing test diff as scope slip.
+
+### discuss — `rubricDisplay.ts` comment
+- **Location:** `src/ui/frontend/src/lib/rubricDisplay.ts` (~line 75)
+- **Finding:** Comment still names `JobsInReview`; plan does not rename to Processing.
+- **Recommendation:** Optional one-line comment tweak during Stage 2c; not AC-blocking.
+
+context_tokens≈36000
