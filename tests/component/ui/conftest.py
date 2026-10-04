@@ -87,6 +87,7 @@ _DB_SCHEMA_FLAGS = (
     "_company_search_terms_schema_ensured",
     "_company_search_terms_migration_swept",
     "_intake_session_schema_ensured",
+    "_meteorite_schema_ensured",  # AST-1974: nav meteorite count reads the table on fresh DBs
 )
 
 

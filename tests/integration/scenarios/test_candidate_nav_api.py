@@ -36,8 +36,10 @@ def test_nav_config_reflects_seeded_candidate_state(
     payload = resp.get_json()
     jobs = _jobs_group(payload)
     assert jobs is not None
-    in_review = next(item for item in jobs["items"] if item["path"] == "/jobs/in_review")
-    assert in_review["enabled"] is True
+    # AST-1974: Ready replaced In Review as the first Jobs list; every Jobs item carries a count.
+    ready = next(item for item in jobs["items"] if item["path"] == "/jobs/ready")
+    assert ready["enabled"] is True
+    assert all("count" in item for item in jobs["items"])
 
     # AST-1449: group-level visible is gone; NEW_CANDIDATE still gets candidate-facing groups.
     seeded_candidate.save_candidate(

@@ -569,3 +569,45 @@ class TestAst1701SourceEntitySchema:
         seed_blob = repr(cfg.SEED_CONFIG)
         assert "ast_1701" not in seed_blob
         assert "job_source_entity_backfill" not in seed_blob
+
+
+# AST-1974 · AST-1970: list_jobs / count_jobs exclude_states (NOT IN, combinable with IN);
+# list_meteorites_for_candidate carries landed job_state (None when unlanded / job row gone).
+# Meteorite join lives here: tests/component/data/database/test_meteorites.py is collection-red on dev
+# (imports METEORITE_STATES_RETENTION, removed from config 2026-09-20).
+class TestAst1974ExcludeStatesAndMeteoriteJobState:
+    def _seed(self, db) -> None:
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
+        for jid, state in (("j-new", "NEW"), ("j-rev", "RECOMMENDED"), ("j-app", "CANDIDATE_APPLIED")):
+            db.save_job(jid, company="acme", state=state, candidate_id="cand-1")
+
+    def test_exclude_states_list_and_count_agree(self, seeded_db) -> None:
+        db = seeded_db
+        self._seed(db)
+        rows = db.list_jobs(candidate_id="cand-1", exclude_states=["RECOMMENDED", "CANDIDATE_APPLIED"])
+        assert [r["astral_job_id"] for r in rows] == ["j-new"]
+        assert db.count_jobs(candidate_id="cand-1", exclude_states=["RECOMMENDED", "CANDIDATE_APPLIED"]) == 1
+        # IN + NOT IN compose (AND).
+        both = db.list_jobs(states=["NEW", "RECOMMENDED"], candidate_id="cand-1", exclude_states=["NEW"])
+        assert [r["astral_job_id"] for r in both] == ["j-rev"]
+        assert db.count_jobs(states=["NEW", "RECOMMENDED"], candidate_id="cand-1", exclude_states=["NEW"]) == 1
+        # Empty / None exclude = no filter.
+        assert db.count_jobs(candidate_id="cand-1", exclude_states=[]) == 3
+        assert len(db.list_jobs(candidate_id="cand-1")) == 3
+
+    def test_meteorite_rows_carry_landed_job_state(self, seeded_db) -> None:
+        db = seeded_db
+        self._seed(db)
+        landed, unlanded, orphan = db.insert_meteorite_rows([
+            {"candidate_id": "cand-1", "source_kind": "email", "source_id": "m1", "state": "LANDED"},
+            {"candidate_id": "cand-1", "source_kind": "email", "source_id": "m2"},
+            {"candidate_id": "cand-1", "source_kind": "email", "source_id": "m3", "state": "LANDED"},
+        ])
+        db.update_meteorite(landed, astral_job_id="j-rev")
+        db.update_meteorite(orphan, astral_job_id="j-gone")
+        by_id = {r["id"]: r for r in db.list_meteorites_for_candidate("cand-1")}
+        assert by_id[landed]["job_state"] == "RECOMMENDED"
+        # meteorite.state is not shadowed by the join alias.
+        assert by_id[landed]["state"] == "LANDED"
+        assert by_id[unlanded]["job_state"] is None
+        assert by_id[orphan]["job_state"] is None
