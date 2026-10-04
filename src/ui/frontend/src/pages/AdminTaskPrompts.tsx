@@ -22,6 +22,7 @@ interface AgentTask {
   task_seq: number | null
   task_name: string
   model_code: string | null
+  response_schema_count: number        // RSC: raw {$…} response-schema token count, served by /api/admin/tasks
   system_prompt_tokens: number
   base_cache_tokens: number
   parsed_cache_tokens: number | null   // null = TBD (unresolved tokens remain)
@@ -409,6 +410,7 @@ export default function TaskPrompts() {
                       <th>Run next</th>
                       <th>Agent</th>
                       <th>Model</th>
+                      <th style={{ textAlign: "right" }}>RSC</th>
                       <th style={{ textAlign: "right" }}>System</th>
                       <th style={{ textAlign: "right" }}>Base Cache</th>
                       <th style={{ textAlign: "right" }}>Parsed Cache</th>
@@ -429,6 +431,7 @@ export default function TaskPrompts() {
                         <td style={{ color: "var(--text-secondary)" }}>{row.run_next || "—"}</td>
                         <td style={{ color: "var(--text-secondary)" }}>{row.agent_id || "—"}</td>
                         <td style={{ color: "var(--text-secondary)" }}>{row.model_code || "—"}</td>
+                        <td style={{ textAlign: "right" }}>{row.response_schema_count}</td>
                         <td style={{ textAlign: "right" }}>{row.system_prompt_tokens.toLocaleString()}</td>
                         <td style={{ textAlign: "right" }}>{row.base_cache_tokens.toLocaleString()}</td>
                         <td style={{ textAlign: "right" }}>{row.parsed_cache_tokens != null ? row.parsed_cache_tokens.toLocaleString() : <span style={{ color: "var(--text-secondary)" }}>TBD</span>}</td>
