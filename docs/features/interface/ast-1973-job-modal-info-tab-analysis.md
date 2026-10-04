@@ -233,3 +233,19 @@ AC1–9 → Stage 2 (placement), Stage 1 (manifest lines, dashes, dots, shared c
 - `## Estimate` confirm line present; no `!!-NONE` self-assessment gap.
 
 context_tokens≈42000
+
+## Review
+
+- **Code commits on `origin/sub/AST-1972/AST-1973-job-modal-info-tab-analysis`:** `355e18687` (Stage 1), `49d5b789d` (Stage 2).
+- **Diff:** 3 frontend files, as planned in Files Changed; executed literally, no deviations.
+  `git diff origin/dev...HEAD --stat -- src/ui/api src/core src/data src/utils` empty (AC8).
+  AC6: `rg -n "report_phase_tabs|buildPhaseListGradeRow"` on both hosts returns nothing; `PhaseAnalysisLines` hits in both.
+- **Compile / lint / build:** `npx tsc -b --noEmit` clean; `npm run build` exit 0; `npm run lint` reports the same
+  31 problems as the pre-change tree (none in the three touched files) — no new lint (AC9).
+- **Existing tests (read-only run):** `test_JobsRecommended` 22/22 pass. `test_JobDetailModal` 14/15 — the one failure,
+  "AST-1695 read-only: null listing_href → no Link <a>", fails identically with Stage 2 stashed (pre-existing, also noted on AST-1865).
+- **For Betty (qa-child):** AC1–AC5 modal coverage is new work in `test_JobDetailModal.test.tsx`. The Analysis block is the
+  `.recommended-analysis-lines` element between the `Analysis` and `State History` `.entity-section-label`s in the Info tab;
+  `InfoTab` reads `report_phase_tabs` / `phase_score_columns` from the StateUi manifest, so the test needs a manifest provider.
+- **Git note:** parent ref is `ftr/AST-1972-job-modal-info-analysis` (registry), not `ftr/AST-1972`; `sync-child --ftr AST-1972`
+  skipped it, but it sits at `origin/dev` tip `e0cb0a540`, so nothing was missed. `validate-sub-log.sh --stage=build` with the full ref → ok.
