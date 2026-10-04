@@ -123,6 +123,37 @@ class TestAst1846ProviderErrorLevel:
         assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
 
+class TestAst1959ServedHostOnInfoLine:
+    """AST-1959: optional `host` rides the one INFO line; omitted (None / "") leaves today's line byte-for-byte."""
+
+    @pytest.mark.parametrize(
+        ("host", "expected"),
+        [
+            ("DeepInfra", "LLM openrouter host=DeepInfra task=gather_x 1.0s stop=end_turn tokens in=10 out=5"),
+            (None, "LLM openrouter task=gather_x 1.0s stop=end_turn tokens in=10 out=5"),
+            ("", "LLM openrouter task=gather_x 1.0s stop=end_turn tokens in=10 out=5"),
+        ],
+    )
+    def test_host_segment_on_single_info_line(
+        self, caplog: pytest.LogCaptureFixture, host: str | None, expected: str
+    ) -> None:
+        caplog.set_level(logging.INFO)
+        logger = logging.getLogger("test.ast1959.host")
+        token = logging_mod.log_batch_id.set("batch-1959")
+        try:
+            logging_mod.log_llm_batch_summary(
+                logger,
+                "openrouter",
+                "gather_x",
+                1.0,
+                response=SimpleNamespace(stop_reason="end_turn", usage=SimpleNamespace(input_tokens=10, output_tokens=5)),
+                host=host,
+            )
+        finally:
+            logging_mod.log_batch_id.reset(token)
+        assert [r.message for r in caplog.records if r.name == "test.ast1959.host"] == [expected]
+
+
 class TestAst1598LogCandidateId:
     """AST-1598: log_candidate_id ContextVar stamps app_log on flush; NULL when unset."""
 

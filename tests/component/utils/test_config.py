@@ -7106,6 +7106,28 @@ class TestAst1877LlmCatalogConfig:
             cfg.validate_llm_provider_environment()
 
 
+class TestAst1959ServerProbeFlag:
+    """AST-1959: `probe` bool on every LLM_SERVER_CONFIG entry (OpenRouter only), probe message constant,
+    startup check. Branches: validator probe bool → pass; missing / non-bool → raise.
+    """
+
+    def test_probe_flag_is_bool_everywhere_and_true_on_openrouter_only(self) -> None:
+        assert all(isinstance(s["probe"], bool) for s in cfg.LLM_SERVER_CONFIG.values())
+        assert {sid for sid, s in cfg.LLM_SERVER_CONFIG.items() if s["probe"]} == {"openrouter"}
+
+    def test_probe_message_constant(self) -> None:
+        assert cfg.LLM_PROBE_MESSAGE == "Respond with 1."
+
+    @pytest.mark.parametrize("probe", [None, "yes", 1, "__missing__"])
+    def test_startup_rejects_missing_or_non_bool_probe(self, monkeypatch: pytest.MonkeyPatch, probe: object) -> None:
+        bad = {**cfg.LLM_SERVER_CONFIG["kimi"], "probe": probe}
+        if probe == "__missing__":
+            del bad["probe"]
+        monkeypatch.setitem(cfg.LLM_SERVER_CONFIG, "__bad__", bad)
+        with pytest.raises(ValueError, match="'__bad__': probe must be True or False"):
+            cfg.validate_llm_provider_environment()
+
+
 def _ast1946_brief() -> dict[str, tuple[str, str, float, float, float]]:
     """slug → (PROVIDER, QUANT, IN, OUT, CACHE) from Susan's verbatim AST-1946 brief (fixture, not config)."""
     from pathlib import Path
