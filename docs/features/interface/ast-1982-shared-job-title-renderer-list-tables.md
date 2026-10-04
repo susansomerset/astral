@@ -204,3 +204,47 @@ Long job titles stretch the Jobs list tables. This ticket adds one served config
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+
+**Ticket:** AST-1982  
+**Overall:** APPROVED  
+**Corpus:** e1f2699fad  
+**Publish ref:** `5f4b9bf00ba81d86679534e4361437f859d21b1b`
+
+## Canon scores
+
+Frozen list is empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score; not an §4a list-missing ESCALATE because the parent explicitly declared an empty scope with rationale.
+
+## Traceability
+
+AC1–8 → Stages 0–2 and **Acceptance criteria map** (parent AC5 headers / AC6 info-tab Title → N/A this child per **Boundaries** and AST-1983; parent AC7–10 align with child AC5–8).
+
+### Findings
+
+**discuss** | Plan **Codebase facts** header (`verified at branch tip 3a78a9640`)  
+Stale vs publish tip `5f4b9bf`; facts still match the tree (ListPage string re-truncate bypass, line cites). Refresh the cited tip on the next plan edit so execution doesn’t chase the wrong SHA.
+
+**acceptable** | Stage 1 resolver fallback `50` in `uiConfig.ts`  
+Mirrors `resolveCellTruncateChars` / 30; AC5 `rg` scope is pages/components only; config key remains source of truth after load.
+
+**acceptable** | Tooltip scroll-close `useEffect`  
+Beyond AC3 mouse-out only; documented ⚠️ Decision; does not contradict AC3.
+
+**acceptable** | Empty canon list vs `astral.config.config-source-of-truth` / `astral.ui.frontend-file-placement`  
+Plan follows those conventions (UI_CONFIG key, `components/JobTitleText.tsx`); parent locked **none** at Discussion — not rescored here per §4b.
+
+### R6 (summary)
+
+Definition fidelity: implements child **Scope** only; no modal/header files; scope gate honored. DRY: reuses `truncateForDisplay` / `loadUiConfig` precedent; no duplicate slice path. No sibling creep (AST-1983 explicit). Stages are executable with cited line anchors and verification commands. Estimate confirm present; no `!!-NONE` conf block (optional convention only per recent plan-child direction).
+
+**Identity:** Plan Ready, assignee Joan Clarke — OK. No `[plan-discuss]` rounds.
+
+context_tokens≈22000
+
+---
+
+[plan-rubric] PROCEED (Commit: 5f4b9bf) List tables plan ready
