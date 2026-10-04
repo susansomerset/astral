@@ -233,3 +233,57 @@ The plan is binding. Run steps in order within each stage, and stages in order. 
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1965
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `sub/AST-1963/AST-1965-timesheet-platform-columns` @ `283783775`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+
+## Traceability
+
+AC3→Stage 2 step 1 (`_add_timesheet_entry` / unpriced SKU); AC4→Stage 1 steps 1–4 (`update_timesheet_platform` + schema); AC5→Stage 2 step 2 (`sum_cost_by_batch` COALESCE). Parent AC 1 grep boundary noted in plan AC table; AC 4–8 and reconcile/ledger work correctly deferred to AST-1966.
+
+## Findings
+
+### acceptable — Definition fidelity
+
+- **Location:** Scope gate / Boundaries (plan intro)
+- **Finding:** Single product file `database.py`; no OpenRouter calls, reconcile, `llm_compat`, or ledger refresh; matches child `## Scope` and parent partition for ticket #2.
+- **Recommendation:** None.
+
+### acceptable — Sibling contract
+
+- **Location:** `## Contract for AST-1966`
+- **Finding:** Writer signature, rowcount semantics, `platform_reconciled_at` ownership, and field mapping from `get_generation_stats` align with AST-1964 contract and parent Technical scope.
+- **Recommendation:** None.
+
+### acceptable — Betty handoff
+
+- **Location:** `## Test impact`
+- **Finding:** Explicit reversal of `test_rejects_sku_not_priced_on_server` expectations and schema-reset note for conftests — appropriate for qa-child, not a plan gap.
+- **Recommendation:** None.
+
+### discuss — Canon Scope gap (not scored)
+
+- **Location:** Stage 2 step 2 (`sum_cost_by_batch`)
+- **Finding:** `stat.data.batch-id-first` may govern batch-keyed reads/writes in data; parent locked only `patt.entity.batch-processing` for this child. Plan still honors batch_id grouping and existing callers (`dispatcher`, `agent.py`).
+- **Recommendation:** Archie may amend Canon Scope at Discussion if batch-id-first enforcement is desired on this pass; not required to proceed.
+
+### acceptable — Implementation binding
+
+- **Location:** Stage 1 step 2 (f-string CREATE)
+- **Finding:** Python ≥3.12 nested-quote note matches CI (`python-version: '3.12'`) and existing f-string DDL in `database.py`.
+- **Recommendation:** None.
+
+context_tokens≈42000
+
+`[plan-rubric] PROCEED (Commit: 283783775) platform columns and totals`
