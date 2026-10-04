@@ -3335,3 +3335,67 @@ git diff --stat origin/ftr/AST-1953-agent-settings...origin/sub/AST-1953/AST-195
 **Pass criterion:** 13/13 green, both greps print nothing, and the scope diff lists only the two files. Step 3 is informational on this sub.
 
 **Bible shasums (after publish):** `for p in frontend/pages.md ui/api/api_admin.md; do git show origin/sub/AST-1953/AST-1957-manage-agents-settings:docs/test-bible/$p | shasum; done`
+
+### AST-1968 · AST-1967 (Recommended list triage upgrades)
+
+**Parent:** [AST-1967](https://linear.app/astralcareermatch/issue/AST-1967). **Publish:** `origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades`.
+
+`JobsRecommended.tsx`: a checkbox column plus a header bulk bar (`Skip (N)` / `Applied (N)` / `Generate Artifacts (n)`, where n counts the selected jobs whose manifest `primary_actions_by_state` includes `generate_artifacts`). A row **G** Generate icon shows only where the manifest allows it. A default-on **Analysis** toggle adds a `tr.recommended-analysis-row` under each job with JD/DO/GET/LIKE lines of letterless circles, built by `buildPhaseListGradeRow`, which shares `phaseGradeCells` with the modal row. A sortable **Total** column (sum of the four phase scores, `—` if any is missing) sorts through `sortRecommendedJobs`. `useCandidateJobActions` gains `generateJob` / `skipJobs` / `generateJobs` / `requestBulkAction` (one notes modal for many jobs); `postGenerateArtifacts` lives in `lib/candidateJobActions.ts`. The list API already flattens `*_grades` / `*_rubric` to top level (`_flatten_grades`), which is where `buildJobListRubricColumnsForGroup` reads columns.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1, 15 row Generate only on RECOMMENDED; other callers omit it | `JobsRecommended.tsx`, `CandidateJobRowActions.tsx` | **`test_JobsRecommended.test.tsx`** › **`JobsRecommended — AST-1968 triage upgrades > AC1/AC15…`**; **`test_CandidateJobRowActions.test.tsx`** › **`CandidateJobRowActions — AST-1968 Generate`** |
+| 2 row Generate → POST, job moves to In Progress | page + hook + `candidateJobActions.ts` | **`… > AC2…`** |
+| 4 bulk bar counts | page | **`… > AC4…`** |
+| 5, 8 bulk Skip | page + hook | **`… > AC5/AC8…`** |
+| 6, 8 bulk Applied, one notes modal, same note | page + hook | **`… > AC6/AC8…`** |
+| 7, 8 bulk Generate sends eligible only | page + hook | **`… > AC7/AC8…`** |
+| 9 toggle default on, four lines, off removes rows | page | **`… > AC9…`** |
+| 10 letterless, no confidence (page) | page + `recommendedJobReport.tsx` | **`… > AC10…`** |
+| 10, 11 circles/colours/order/tooltips equal the modal row | `recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** › **`recommendedJobReport — AST-1968 letterless list grade row`** (3 cases, incl. modal row unchanged after refactor) |
+| 13 Total value / `—` | page | **`… > AC13…`** |
+| 14 Total sort + null placement like LIKE | page | **`… > AC14…`** |
+| 3, 12, 14 (single call sites), 16 (build/lint) | source | greps + build/lint below |
+
+**Broken / obsolete (revised this pass):** `test_JobsRecommended.test.tsx` › **`sorts by company within a section`** read every `row`; with Analysis on by default each job row is followed by an expanded row. It now filters out `.recommended-analysis-row` (default-on stays exercised).
+
+**Baseline reds (also red on `origin/dev` with the AST-1968 product reverted, checked at QA; not this ticket):** `test_JobsApplied.test.tsx` › **`AST-1479 … Interview → notes modal → candidate_action interview`** (15 s timeout); `test_JobAnalysisReportModal.test.tsx` › **`AST-1546: Print Resume success…`** and **`AST-1350: Print Resume unsupported toast…`** (no Print Resume button).
+
+**Bible drift noted, not reconstructed:** the AST-1477 / AST-1478 rows (`components.md`, `pages.md`) cite `test_JobsRecommended.test.tsx` cases (`AST-1477 mark applied from Recommended`, `AST-1478 report Applied and Skip`) that are not in that file (`git log -S` finds none).
+
+## QA test manifest
+
+1. **AST-1968 + revised + touched-module suites (required, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/components/test_CandidateJobRowActions.test.tsx
+```
+
+2. **AC 15 / hook regression (green except the baseline reds above):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+3. **Greps (AC 3 / 12 / 14):**
+
+```bash
+rg -n "generate_artifacts" src/ui/frontend/src/lib/candidateJobActions.ts            # ≥1 hit
+rg -n "/generate_artifacts" src/ui/frontend/src/pages/JobsRecommended.tsx src/ui/frontend/src/components/CandidateJobRowActions.tsx  # nothing
+rg -n "sortRubricColumnsByImportanceAndGrade\(" src/ui/frontend/src/lib/recommendedJobReport.tsx  # exactly 1
+rg -n "sortRubricColumnsByImportanceAndGrade" src/ui/frontend/src/pages/JobsRecommended.tsx      # nothing
+rg -n "function sortRecommendedJobs" src/ui/frontend/src/pages/JobsRecommended.tsx             # exactly 1
+```
+
+4. **AC 16:** in `src/ui/frontend`, `npm run build` exits 0; `npx tsc -b --noEmit` exits 0; `npm run lint` problem list has nothing absent on `origin/dev`, and the `react-hooks/set-state-in-effect` hit in `JobsRecommended.tsx` is gone.
+
+**Pass criterion:** items 1, 3, 4 hold; item 2 green apart from the three named baseline reds. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `for p in frontend/pages.md frontend/components.md frontend/lib.md; do git show origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades:docs/test-bible/$p | shasum; done`

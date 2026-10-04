@@ -137,3 +137,23 @@ describe("CandidateJobRowActions — AST-1477 Applied mark", () => {
     expect(screen.queryByRole("button", { name: "Applied" })).not.toBeInTheDocument()
   })
 })
+
+describe("CandidateJobRowActions — AST-1968 Generate", () => {
+  it("renders a G icon-control only when onGenerate is passed and calls it", async () => {
+    const onGenerate = vi.fn()
+    const { rerender } = render(
+      <CandidateJobRowActions state="RECOMMENDED" onSkip={() => {}} onAction={() => {}}
+        showViewAnalysis={false} onGenerate={onGenerate} />,
+    )
+    const gen = screen.getByRole("button", { name: "Generate Artifacts" })
+    expect(gen).toHaveClass("icon-control")
+    expect(gen).toHaveTextContent("G")
+    expect(gen).toHaveAttribute("title", "Generate Artifacts")
+    await userEvent.click(gen)
+    expect(onGenerate).toHaveBeenCalledOnce()
+
+    // Callers that don't pass onGenerate (Skipped / Applied / In Review) render no Generate.
+    rerender(<CandidateJobRowActions state="RECOMMENDED" onSkip={() => {}} onAction={() => {}} showViewAnalysis={false} />)
+    expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
+  })
+})

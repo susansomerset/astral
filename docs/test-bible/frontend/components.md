@@ -1778,3 +1778,5 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/components.md` — *(filled after publish)*
+
+**AST-1968 (pointer):** `CandidateJobRowActions` takes an optional `onGenerate` that adds a **G** `icon-control` (`title="Generate Artifacts"`) in the review-like branch, passed only by Recommended for manifest-eligible rows — **`CandidateJobRowActions — AST-1968 Generate`**. Manifest: **`docs/test-bible/frontend/pages.md`** § AST-1968.

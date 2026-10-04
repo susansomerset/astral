@@ -967,6 +967,53 @@ body {
   font-size: 11px;
 }
 
+/* AST-1968: Recommended list header — bulk buttons + Analysis toggle */
+.recommended-list-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recommended-analysis-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* AST-1968: expanded per-job analysis row (four stacked phase lines) */
+.list-page-table tbody tr.recommended-analysis-row td {
+  padding-top: 0;
+}
+
+.recommended-analysis-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.recommended-analysis-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recommended-analysis-line-label {
+  width: 36px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.recommended-list-phase-grade-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
 .recommended-report-empty {
   color: var(--text-secondary);
   font-size: 13px;
@@ -1092,6 +1139,13 @@ body {
 .dot-d { background: var(--grade-d); }
 .dot-f { background: var(--grade-f); color: #e8e4f0; }
 .dot-x { background: var(--grade-x); }
+
+/* AST-1968: colour-only grade circle for Recommended list analysis lines */
+.grade-dot-letterless {
+  width: 12px;
+  height: 12px;
+  font-size: 0;
+}
 
 .analysis-header {
   display: flex;

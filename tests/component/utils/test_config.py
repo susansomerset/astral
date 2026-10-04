@@ -7404,7 +7404,6 @@ class TestAst1964ModelRouting:
             cfg.get_model_routing("__nope__", "__nope__")
 
     def test_reconcile_retry_constants(self) -> None:
-        # AC 3 — 5 total tries; 30 s before the first lookup; base wait 2 s (doubling is the reconcile's).
+        # AC 3 — 5 total tries; base wait 2 s (doubling is the reconcile's, AST-1966).
         assert cfg.TIMESHEET_RECONCILE_RETRIES == 5
-        assert cfg.TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS == 30
         assert cfg.TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS == 2

@@ -2,6 +2,7 @@ import { render } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import {
   artifactHasContent,
+  buildPhaseListGradeRow,
   buildPhaseSectionGradeConfidenceRow,
   formatPhaseScore,
   formatPhaseSectionScoreTitle,
@@ -276,5 +277,59 @@ describe("recommendedJobReport — AST-1874 list score in phase header", () => {
     expect(formatPhaseSectionScoreTitle("DO Analysis", trio, "  ")).toBe(
       "DO Analysis - score: 42 out of 50 possible (60 max total)",
     )
+  })
+})
+
+describe("recommendedJobReport — AST-1968 letterless list grade row", () => {
+  // AST-1771 fixture: importance-then-grade order puts QC/B before EFW/A.
+  const grades = [
+    { vector: "Embedded/Firmware/Hardware Domain", grade: "A", confidence: 5, reason: "fit" },
+    { vector: "Quality Check", grade: "B", confidence: 4, reason: "ok" },
+  ]
+  const job = {
+    jd_grades: grades,
+    jd_rubric: [
+      { code: "EFW", label: "Embedded/Firmware/Hardware Domain", importance: 1, grade_descriptions: [] },
+      { code: "QC", label: "Quality Check", importance: 5, grade_descriptions: [] },
+    ],
+  }
+  const dotSig = (root: ParentNode) =>
+    [...root.querySelectorAll(".grade-dot")].map(d => ({
+      colour: [...d.classList].find(c => c.startsWith("dot-")),
+      title: d.getAttribute("title"),
+    }))
+
+  it("AC10/AC11: same circles, colours, order and tooltips as the modal row; no letters, no confidence", () => {
+    const list = render(<>{buildPhaseListGradeRow(job, "jd_grades")}</>).container
+    const modal = render(<>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>).container
+    expect(list.querySelector(".recommended-list-phase-grade-row")).toBeTruthy()
+    expect(dotSig(list)).toEqual(dotSig(modal))
+    expect(dotSig(list).map(d => d.colour)).toEqual(["dot-b", "dot-a"])
+    for (const dot of list.querySelectorAll(".grade-dot")) {
+      expect(dot).toHaveClass("grade-dot-letterless")
+      expect(dot.textContent).toBe("")
+    }
+    expect(list.querySelector(".confidence-bullets")).toBeNull()
+  })
+
+  it("modal row keeps letters and confidence after the shared-helper refactor", () => {
+    const modal = render(<>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>).container
+    const dots = [...modal.querySelectorAll(".grade-dot")]
+    expect(dots.map(d => d.textContent)).toEqual(["B", "A"])
+    expect(modal.querySelector(".grade-dot-letterless")).toBeNull()
+    expect(modal.querySelectorAll(".confidence-bullets")).toHaveLength(2)
+  })
+
+  // Columns come from top-level fields (list API flattens); grade values follow jobGradesForField
+  // (job_data first) — same source as the modal's renderAnalysisMetadata.
+  it("grade values prefer job_data via jobGradesForField; null with no grades", () => {
+    const both = {
+      jd_grades: [{ vector: "X", grade: "A", confidence: 1 }],
+      job_data: { jd_grades: [{ vector: "X", grade: "C", confidence: 1 }] },
+    }
+    const { container } = render(<>{buildPhaseListGradeRow(both, "jd_grades")}</>)
+    expect(container.querySelector(".grade-dot.dot-c")).toBeTruthy()
+    expect(container.querySelector(".grade-dot.dot-a")).toBeNull()
+    expect(buildPhaseListGradeRow({}, "jd_grades")).toBeNull()
   })
 })
