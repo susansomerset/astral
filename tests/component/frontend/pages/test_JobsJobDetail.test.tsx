@@ -73,7 +73,7 @@ function renderDetail(path: string) {
   renderWithProviders(
     <Routes>
       <Route path="/jobs/detail/:jobId" element={<JobsJobDetail />} />
-      <Route path="/jobs/recommended" element={<p>Recommended home</p>} />
+      <Route path="/" element={<p>Jobs home</p>} />
     </Routes>,
     { router: { initialEntries: [path] } },
   )
@@ -119,7 +119,7 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
     renderDetail("/jobs/detail/j-missing")
     await waitFor(() => expect(screen.getByRole("heading", { name: "Job unavailable" })).toBeInTheDocument())
     expect(screen.getByText("Job not found")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Back to Recommended" })).toHaveAttribute("href", "/jobs/recommended")
+    expect(screen.getByRole("link", { name: "Back to Jobs" })).toHaveAttribute("href", "/")
     expect(document.querySelector(".recommended-report-tabs")).toBeNull()
   })
 
@@ -132,21 +132,21 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
     })
     renderDetail("/jobs/detail/j-denied")
     await waitFor(() => expect(screen.getByText("Forbidden")).toBeInTheDocument())
-    expect(screen.getByRole("link", { name: "Back to Recommended" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Back to Jobs" })).toBeInTheDocument()
   })
 
-  it("navigates to recommended when the report modal closes", async () => {
+  it("navigates to Jobs home when the report modal closes", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j-close"))
     renderDetail("/jobs/detail/j-close")
     await waitForReportShell()
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
-    expect(navigate).toHaveBeenCalledWith("/jobs/recommended")
+    expect(navigate).toHaveBeenCalledWith("/")
   })
 
-  it("redirects blank jobId to recommended", async () => {
+  it("redirects blank jobId to Jobs home", async () => {
     installBaseApiMocks(mockedApi, () => undefined)
     renderDetail("/jobs/detail/%20%20")
-    await waitFor(() => expect(screen.getByText("Recommended home")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Jobs home")).toBeInTheDocument())
   })
 
   it("prefetches job and aligns admin candidate before opening the modal", async () => {

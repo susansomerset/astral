@@ -2,9 +2,9 @@ import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
-import JobsInReview from "../../../../src/ui/frontend/src/pages/JobsInReview"
+import JobsProcessing from "../../../../src/ui/frontend/src/pages/JobsProcessing"
 import { renderWithProviders } from "../test-utils"
-import { baseCandidate, installBaseApiMocks, jobsViewHandler, jsonResponse } from "./page-mocks"
+import { installBaseApiMocks, jobsViewHandler } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
@@ -34,15 +34,15 @@ const jobs = [
   },
 ]
 
-describe("JobsInReview", () => {
+describe("JobsProcessing", () => {
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
   })
 
   it("expands sections, sorts columns, and opens job details", async () => {
-    installBaseApiMocks(mockedApi, jobsViewHandler("in_review", jobs))
-    renderWithProviders(<JobsInReview />)
+    installBaseApiMocks(mockedApi, jobsViewHandler("processing", jobs))
+    renderWithProviders(<JobsProcessing />)
     await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
     await userEvent.click(screen.getByRole("columnheader", { name: /Job Title/ }))
@@ -56,20 +56,39 @@ describe("JobsInReview", () => {
   })
 
   it("shows empty when jobs response is invalid", async () => {
-    installBaseApiMocks(mockedApi, jobsViewHandler("in_review", { bad: true } as unknown as typeof jobs))
-    renderWithProviders(<JobsInReview />)
-    await waitFor(() => expect(screen.getByText("No jobs in review")).toBeInTheDocument())
+    installBaseApiMocks(mockedApi, jobsViewHandler("processing", { bad: true } as unknown as typeof jobs))
+    renderWithProviders(<JobsProcessing />)
+    await waitFor(() => expect(screen.getByText("No jobs processing")).toBeInTheDocument())
   })
 
-  it("shows a legacy section for unmapped in-review state", async () => {
-    installBaseApiMocks(mockedApi, jobsViewHandler("in_review", [{
+  // AST-1975: Processing replaces In Review; title, view key, and artifact-build jobs land here.
+  it("titled Processing; fetches view=processing; BUILD_ARTIFACTS jobs get a Building Artifacts section", async () => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("processing", [{
+      astral_job_id: "j-build",
+      job_title: "Build Role",
+      company: "BuildCo",
+      state: "BUILD_ARTIFACTS",
+      state_changed_at: "2026-01-01T00:00:00Z",
+    }]))
+    renderWithProviders(<JobsProcessing />)
+    await waitFor(() => expect(screen.getByRole("button", { name: /Building Artifacts \(1\)/ })).toBeInTheDocument())
+    expect(screen.getByRole("heading", { level: 1, name: "Processing" })).toBeInTheDocument()
+    expect(mockedApi.mock.calls.some(([url]) => String(url).startsWith("/api/jobs?view=processing&"))).toBe(true)
+    expect(mockedApi.mock.calls.some(([url]) => String(url).includes("view=in_review"))).toBe(false)
+    await userEvent.click(screen.getByRole("button", { name: /Building Artifacts/ }))
+    await userEvent.click(screen.getByText("Build Role"))
+    await waitFor(() => expect(mockedApi).toHaveBeenCalledWith("/api/jobs/j-build"))
+  })
+
+  it("shows a legacy section for unmapped processing state", async () => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("processing", [{
       astral_job_id: "j-legacy",
       job_title: "Legacy Role",
       company: "OldCo",
       state: "RETIRED_EXAMPLE_STATE",
       state_changed_at: "2026-01-01T00:00:00Z",
     }]))
-    renderWithProviders(<JobsInReview />)
+    renderWithProviders(<JobsProcessing />)
     await waitFor(() => expect(screen.getByText(/RETIRED EXAMPLE STATE.*legacy/i)).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: /RETIRED EXAMPLE STATE.*legacy/i }))
     expect(screen.getByText("Legacy Role")).toBeInTheDocument()
@@ -77,8 +96,8 @@ describe("JobsInReview", () => {
 
   describe("AST-893 Expand One default", () => {
     it("opening a second section closes the first; no Expand all chrome", async () => {
-      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", jobs))
-      renderWithProviders(<JobsInReview />)
+      installBaseApiMocks(mockedApi, jobsViewHandler("processing", jobs))
+      renderWithProviders(<JobsProcessing />)
       await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
       expect(screen.queryByRole("button", { name: "Expand all" })).not.toBeInTheDocument()
       expect(screen.queryByRole("button", { name: "Collapse all" })).not.toBeInTheDocument()
@@ -126,8 +145,8 @@ describe("JobsInReview", () => {
           latest_score: 0.2,
         },
       ]
-      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", grouped))
-      renderWithProviders(<JobsInReview />)
+      installBaseApiMocks(mockedApi, jobsViewHandler("processing", grouped))
+      renderWithProviders(<JobsProcessing />)
       await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
       await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
       expect(document.querySelectorAll(".list-page-table").length).toBeGreaterThanOrEqual(2)
@@ -143,8 +162,8 @@ describe("JobsInReview", () => {
 
   describe("AST-1086 compact headers and grade-dot tooltips", () => {
     it("grades-only Passed Job List shows compact JL header with full-name title", async () => {
-      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", [jobs[0]]))
-      renderWithProviders(<JobsInReview />)
+      installBaseApiMocks(mockedApi, jobsViewHandler("processing", [jobs[0]]))
+      renderWithProviders(<JobsProcessing />)
       await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
       await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
       const th = screen.getByRole("columnheader", { name: "JL" })
@@ -156,7 +175,7 @@ describe("JobsInReview", () => {
     it("grade-dot title includes reason and confidence parenthetical", async () => {
       const tipJob = {
         astral_job_id: "tip-ir",
-        job_title: "Tooltip In Review",
+        job_title: "Tooltip Processing",
         company: "TipCo",
         state: "PASSED_JOBLIST",
         state_changed_at: "2026-01-06T00:00:00Z",
@@ -167,8 +186,8 @@ describe("JobsInReview", () => {
           reason: "Clear joblist fit",
         }],
       }
-      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", [tipJob]))
-      renderWithProviders(<JobsInReview />)
+      installBaseApiMocks(mockedApi, jobsViewHandler("processing", [tipJob]))
+      renderWithProviders(<JobsProcessing />)
       await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
       await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
       const dot = document.querySelector(".grade-dot.dot-a")
@@ -181,8 +200,8 @@ describe("JobsInReview", () => {
 
   describe("AST-1410 silent refetch", () => {
     it("closing the job modal refreshes the list without Loading...", async () => {
-      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", jobs))
-      renderWithProviders(<JobsInReview />)
+      installBaseApiMocks(mockedApi, jobsViewHandler("processing", jobs))
+      renderWithProviders(<JobsProcessing />)
       await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
       await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
       await userEvent.click(screen.getByText("Alpha Role"))
@@ -190,7 +209,7 @@ describe("JobsInReview", () => {
       const inner = mockedApi.getMockImplementation()!
       let release: (value: Response) => void = () => {}
       mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-        if (typeof url === "string" && url.includes("view=in_review") && !init?.method) {
+        if (typeof url === "string" && url.includes("view=processing") && !init?.method) {
           return new Promise<Response>((resolve) => { release = resolve })
         }
         return inner(url, init)

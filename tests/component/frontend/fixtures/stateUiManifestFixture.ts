@@ -3,7 +3,8 @@ import type { StateUiManifest } from "../../../../src/ui/frontend/src/contexts/S
 /** Test-only snapshot aligned with `build_state_ui_manifest()` (not imported by production). */
 export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
   jobs: {
-    in_review_sections: [
+    // AST-1974: Processing sections (ex In Review); Building Artifacts last.
+    processing_sections: [
       { state: "NEW", label: "New" },
       { state: "VALID_TITLE", label: "Valid Title" },
       { state: "VALID_TITLE_RETRY", label: "Valid Title (retry)" },
@@ -16,6 +17,7 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
       { state: "PASSED_GET", label: "Passed GET" },
       { state: "PASSED_LIKE", label: "Passed LIKE" },
       { state: "PASSED_LIKE_RETRY", label: "LIKE upshot (retry)" },
+      { state: "BUILD_ARTIFACTS", label: "Building Artifacts" },
     ],
     grade_field_by_job_state: {
       VALID_TITLE_RETRY: "joblist_grades",
@@ -43,6 +45,8 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
       below_dispatch_key: "__BELOW_DISPATCH_FLOOR__",
       below_dispatch_label: "Below dispatch score floor",
       section_order: [
+        "ERROR_BUILD_ARTIFACTS",
+        "BUILD_FAILED",
         "FAILED_LIKE",
         "FAILED_TECHNICAL_LIKE",
         "FAILED_GET",
@@ -74,6 +78,8 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         "CANDIDATE_SKIPPED",
       ],
       section_labels: {
+        ERROR_BUILD_ARTIFACTS: "Error Build Artifacts",
+        BUILD_FAILED: "Build Failed",
         FAILED_JOBLIST: "Failed Job List",
         FAILED_JD: "Failed Job Description",
         FAILED_TECHNICAL: "Failed Technical",
@@ -96,6 +102,8 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         METEORITE_ERROR_QUALIFY: "Meteorite Error Qualify",
       },
       bulk_retry_to_state_by_from_state: {
+        ERROR_BUILD_ARTIFACTS: "RECOMMENDED",
+        BUILD_FAILED: "CANDIDATE_REVIEW",
         FAILED_JOBLIST: "NEW",
         ERROR_QUALIFY_JOB_LISTINGS: "NEW",
         INVALID_TITLE: "NEW",
@@ -131,8 +139,8 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
     detail: { already_skipped_state: "CANDIDATE_SKIPPED" },
     recommended: {
       sections: [
-        { state: "RECOMMENDED", label: "Recommended" },
-        { state: "BUILD_ARTIFACTS", label: "In Progress" },
+        // AST-1974: Review then Ready; BUILD_ARTIFACTS moved to processing_sections.
+        { state: "RECOMMENDED", label: "Review" },
         { state: "CANDIDATE_REVIEW", label: "Ready" },
       ],
       phase_score_columns: [
@@ -237,12 +245,6 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
           use_resume_structure: false,
         },
       ],
-      // AST-1057: Recommended Meteorites partition (METEORITE_CONFIG short_name_prefix).
-      meteorite_section: {
-        section_id: "meteorites",
-        label: "Meteorites",
-        company_prefix: "meteorite-",
-      },
     },
   },
   // AST-1253: expanded generate states + live-chain fields (api_system merges walk).
