@@ -1205,6 +1205,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1454 · AST-1446
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). Paths below that name `test_JobsInReview.test.tsx` now mean `test_JobsProcessing.test.tsx`.
+
 **Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
 
 When GET `fields_editable` is true: Info title/link inputs, state `<select>` from `legal_next_states` (+ No change), always-on Job Description textarea (empty JD ok), Modal Save → `PUT /api/jobs/<id>` + `onRefresh`. Non-editable stays display-only (no Save / no empty JD tab). Copy / Skip This Job unchanged. Persist: **AST-1453** / **`docs/test-bible/ui/api/api_jobs.md`**. Page `onRefresh={load}`: **`docs/test-bible/frontend/pages.md`**.
@@ -1782,6 +1784,8 @@ cd src/ui/frontend && npm run test:component -- \
 **AST-1968 (pointer):** `CandidateJobRowActions` takes an optional `onGenerate` that adds a **G** `icon-control` (`title="Generate Artifacts"`) in the review-like branch, passed only by Recommended for manifest-eligible rows — **`CandidateJobRowActions — AST-1968 Generate`**. Manifest: **`docs/test-bible/frontend/pages.md`** § AST-1968.
 
 ### AST-1973 · AST-1972 (Job Detail Info-tab analysis via shared PhaseAnalysisLines)
+
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). Run `test_JobsProcessing.test.tsx` where the manifest below says `test_JobsInReview.test.tsx`.
 
 **Parent:** [AST-1972](https://linear.app/astralcareermatch/issue/AST-1972). **Publish:** `origin/sub/AST-1972/AST-1973-job-modal-info-tab-analysis`.
 
