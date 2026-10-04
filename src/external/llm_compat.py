@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 from anthropic import Anthropic, RateLimitError
 import httpx as _httpx
 
-from src.external.anthropic import _parse_api_response, _parse_json_response, _parse_python_code_response
+from src.external.anthropic import _effort_body, _parse_api_response, _parse_json_response, _parse_python_code_response
 from src.utils.config import PROVIDER_EMPTY_RESPONSE, get_llm_server
 from src.utils.cost_calculator import calculate_cost_components_from_counts, usage_to_token_counts
 from src.utils.integration_io import require_controlled_external_io
@@ -118,13 +118,13 @@ async def send_to_llm_compat(
             "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": content_blocks}],
         }
-        # Thinking + server extras + brain-size extras (OpenRouter provider pin) are vendor body fields
-        # taken verbatim from config; later wins on key collision, so the size's extras beat the server's.
-        thinking_on = bool(tier.get("thinking"))
-        thinking_body = (tier.get("thinking_params") or {}) if thinking_on else server["thinking_off_params"]
-        api_kwargs["extra_body"] = {**thinking_body, **server["request_extras"], **tier.get("request_extras", {})}
-        if temperature is not None and not thinking_on:
+        # Agent settings go on the wire as stored (AST-1956): temperature when set, effort as body
+        # fields, and the OpenRouter provider object — nothing gated by model. Later wins on key
+        # collision, so the agent's provider object beats a server extra of the same name.
+        if temperature is not None:
             api_kwargs["temperature"] = temperature
+        provider = {"provider": tier["provider"]} if tier.get("provider") else {}
+        api_kwargs["extra_body"] = {**_effort_body(tier.get("reasoning_effort")), **server["request_extras"], **provider}
         if system_blocks:
             api_kwargs["system"] = system_blocks
 

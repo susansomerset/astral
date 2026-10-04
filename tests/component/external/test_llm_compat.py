@@ -43,13 +43,9 @@ class _RecordingClient:
         return _Msg(self._text, self._stop)
 
 
-def _tier(model_id: str, size: str, mode: str = cfg.AGENT_MODE_DETERMINISTIC) -> dict:
-    # AST-1947: stored sizes carry no thinking / temperature; the call tier comes from the mode-aware resolver.
-    return cfg.resolve_model_brain(model_id, size, mode)["tier"]
-
-
-# AST-1947: every shipped openrouter tier pins host + quantization, fallbacks off; Kimi's is Inceptron int4.
-KIMI_OR_PIN = {"provider": {"order": ["inceptron"], "allow_fallbacks": False, "quantizations": ["int4"]}}
+def _tier(model_id: str = "moonshotai/kimi-k2.6", **settings: Any) -> dict:
+    # AST-1956: the call tier is resolve_agent_settings over the agent row's plain settings (no mode / size).
+    return cfg.resolve_agent_settings(model_id, settings)["tier"]
 
 
 @pytest.fixture
@@ -63,7 +59,7 @@ async def _send(**overrides: Any) -> dict:
     kwargs: dict[str, Any] = dict(
         server_id="openrouter",
         sku="moonshotai/kimi-k2.6",
-        tier=_tier("moonshotai/kimi-k2.6", cfg.BRAIN_LITTLE),
+        tier=_tier(provider_allow_fallbacks=True),
         api_key="sk-candidate",
         max_tokens=100,
         response_format="text",
@@ -81,9 +77,8 @@ class TestAst1877RequestExtras:
     ) -> None:
         extra = {"provider": {"ast1877_test_extra": True}}
         monkeypatch.setitem(cfg.LLM_SERVER_CONFIG["openrouter"], "request_extras", extra)
-        # AST-1938: shipped openrouter tiers carry a pin that would win on `provider`; strip it to see the server's.
-        unpinned = {k: v for k, v in _tier("moonshotai/kimi-k2.6", cfg.BRAIN_LITTLE).items() if k != "request_extras"}
-        out = await _send(tier=unpinned)
+        # AST-1956: a row with no provider settings resolves provider None, so the server's extra survives.
+        out = await _send(tier=_tier())
         assert out["success"] is True
         assert client.calls[0]["extra_body"]["provider"] == {"ast1877_test_extra": True}
 
@@ -91,125 +86,123 @@ class TestAst1877RequestExtras:
     async def test_shipped_openrouter_body_carries_no_zdr(self, client: _RecordingClient) -> None:
         await _send()
         body = client.calls[0]["extra_body"]
-        # AST-1947: `provider` is the Inceptron int4 pin — still no zdr anywhere in the request.
-        assert body["provider"] == KIMI_OR_PIN["provider"]
-        assert "zdr" not in repr(client.calls[0])
+        # AST-1956: `provider` is the agent's own object (fallbacks only here) — no zdr, no host `order` pin.
+        assert body["provider"] == {"allow_fallbacks": True}
+        assert "zdr" not in repr(client.calls[0]) and "order" not in body["provider"]
 
 
 class TestAst1877OutboundBody:
     @pytest.mark.asyncio
-    async def test_thinking_off_sends_server_off_params_and_temperature(self, client: _RecordingClient) -> None:
-        # AST-1947: Deterministic → thinking off, mode temperature 0.2 on the wire.
+    async def test_body_shape_with_temperature_and_system(self, client: _RecordingClient) -> None:
         system = [{"type": "text", "text": "sys"}]
-        tier = _tier("moonshotai/kimi-k2.6", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_DETERMINISTIC)
-        await _send(tier=tier, temperature=tier["temperature"], system_blocks=system)
+        await _send(tier=_tier(temperature=0.2, provider_allow_fallbacks=True), temperature=0.2, system_blocks=system)
         call = client.calls[0]
         assert call["model"] == "moonshotai/kimi-k2.6"
         assert call["max_tokens"] == 100
         assert call["messages"] == [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]
-        assert call["extra_body"] == {**cfg.LLM_SERVER_CONFIG["openrouter"]["thinking_off_params"], **KIMI_OR_PIN}
+        assert call["extra_body"] == {"provider": {"allow_fallbacks": True}}
         assert call["temperature"] == 0.2
         assert call["system"] == system
 
     @pytest.mark.asyncio
-    async def test_thinking_on_sends_tier_params_and_omits_temperature(self, client: _RecordingClient) -> None:
-        # AST-1947: Creative on a reasoning host → adaptive thinking; the mode's 0.6 is dropped because thinking is on.
-        tier = _tier("moonshotai/kimi-k2.6", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_CREATIVE)
-        await _send(tier=tier, temperature=tier["temperature"])
-        call = client.calls[0]
-        assert call["extra_body"] == {"thinking": {"type": "adaptive"}, **KIMI_OR_PIN}
-        assert "temperature" not in call
-        assert "system" not in call
-
-    @pytest.mark.asyncio
-    async def test_creative_on_non_thinking_host_sends_temperature(self, client: _RecordingClient) -> None:
-        # AST-1947 "think, else 0.6": phi-4's host can't reason, so Creative sends thinking-off params + 0.6.
-        tier = _tier("microsoft/phi-4", cfg.BRAIN_BIG, cfg.AGENT_MODE_CREATIVE)
-        await _send(sku="microsoft/phi-4", tier=tier, temperature=tier["temperature"])
-        call = client.calls[0]
-        assert call["extra_body"] == {
-            **cfg.LLM_SERVER_CONFIG["openrouter"]["thinking_off_params"],
-            "provider": {"order": ["deepinfra"], "allow_fallbacks": False, "quantizations": ["bf16"]},
-        }
-        assert call["temperature"] == 0.6
-
-    @pytest.mark.asyncio
-    async def test_extras_merge_after_thinking_body(self, monkeypatch: pytest.MonkeyPatch, client: _RecordingClient) -> None:
-        monkeypatch.setitem(cfg.LLM_SERVER_CONFIG["kimi"], "request_extras", {"x_extra": 1})
-        await _send(server_id="kimi", sku="kimi-k2.6", tier=_tier("kimi-k2.6", cfg.BRAIN_BIG, cfg.AGENT_MODE_CREATIVE))
-        assert client.calls[0]["extra_body"] == {"thinking": {"type": "enabled"}, "x_extra": 1}
-
-
-class TestAst1938ProviderPin:
-    """AST-1938 AC 5: tier request_extras (OpenRouter upstream pin) land in extra_body after server extras.
-    AST-1947: pin = host + brief quantization on every row; tiers resolved per agent mode.
-
-    Branches: tier pin present (catalog model, both modes); tier without request_extras
-    (direct Kimi / DeepSeek → no `provider`); tier beats server on key collision; quantization filter row.
-    """
-
-    @staticmethod
-    async def _send_model(model_id: str, size: str, mode: str = cfg.AGENT_MODE_DETERMINISTIC) -> None:
-        r = cfg.resolve_model_brain(model_id, size, mode)
-        await _send(server_id=r["server_id"], sku=r["sku"], tier=r["tier"])
-
-    @pytest.mark.asyncio
-    async def test_catalog_deterministic_pins_host_quant_fallbacks_off(self, client: _RecordingClient) -> None:
-        await self._send_model("qwen/qwen3-32b", cfg.BRAIN_MEDIUM)
-        call = client.calls[0]
-        assert call["model"] == "qwen/qwen3-32b"
-        assert call["extra_body"] == {
-            **cfg.LLM_SERVER_CONFIG["openrouter"]["thinking_off_params"],
-            "provider": {"order": ["deepinfra"], "allow_fallbacks": False, "quantizations": ["fp8"]},
-        }
-
-    @pytest.mark.asyncio
-    async def test_catalog_creative_keeps_thinking_and_pin(self, client: _RecordingClient) -> None:
-        await self._send_model("qwen/qwen3-32b", cfg.BRAIN_MEDIUM, cfg.AGENT_MODE_CREATIVE)
-        assert client.calls[0]["extra_body"] == {
-            "thinking": {"type": "adaptive"},
-            "provider": {"order": ["deepinfra"], "allow_fallbacks": False, "quantizations": ["fp8"]},
-        }
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("mode", [cfg.AGENT_MODE_DETERMINISTIC, cfg.AGENT_MODE_CREATIVE])
-    async def test_kimi_on_openrouter_names_only_inceptron(self, client: _RecordingClient, mode: str) -> None:
-        await self._send_model("moonshotai/kimi-k2.6", cfg.BRAIN_LITTLE, mode)
-        assert client.calls[0]["extra_body"]["provider"] == KIMI_OR_PIN["provider"]
-
-    @pytest.mark.asyncio
-    async def test_quantization_filter_rides_with_pin(self, client: _RecordingClient) -> None:
-        # DeepInfra hosts gemma-4-31b at fp4 and fp8; the brief row is fp4 (→ Little).
-        await self._send_model("google/gemma-4-31b-it", cfg.BRAIN_LITTLE)
-        assert client.calls[0]["extra_body"]["provider"] == {
-            "order": ["deepinfra"], "allow_fallbacks": False, "quantizations": ["fp4"],
-        }
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("model_id", ["kimi-k2.6", "deepseek-v4"])
-    @pytest.mark.parametrize("size", [cfg.BRAIN_LITTLE, cfg.BRAIN_BIG])
-    @pytest.mark.parametrize("mode", [cfg.AGENT_MODE_DETERMINISTIC, cfg.AGENT_MODE_CREATIVE])
-    async def test_direct_compat_servers_carry_no_provider(
-        self, client: _RecordingClient, model_id: str, size: str, mode: str
+    async def test_server_extras_merge_after_effort_body(
+        self, monkeypatch: pytest.MonkeyPatch, client: _RecordingClient
     ) -> None:
-        await self._send_model(model_id, size, mode)
-        assert "provider" not in client.calls[0]["extra_body"]
-
-    def test_non_openrouter_catalog_tiers_carry_no_pin(self) -> None:
-        # Claude rides send_to_anthropic, which never receives a tier — the catalog is the only leak path.
-        leaks = [
-            (mid, bs) for mid, m in cfg.LLM_MODEL_CONFIG.items() if m["server"] != "openrouter"
-            for bs, t in m["brain_sizes"].items() if "provider" in t.get("request_extras", {})
-        ]
-        assert leaks == []
+        monkeypatch.setitem(cfg.LLM_SERVER_CONFIG["kimi"], "request_extras", {"x_extra": 1})
+        await _send(server_id="kimi", sku="kimi-k2.6", tier=_tier("kimi-k2.6", reasoning_effort="high"))
+        assert client.calls[0]["extra_body"] == {"output_config": {"effort": "high"}, "x_extra": 1}
 
     @pytest.mark.asyncio
-    async def test_tier_extras_win_over_server_extras(self, monkeypatch: pytest.MonkeyPatch, client: _RecordingClient) -> None:
+    async def test_agent_provider_wins_over_server_extra(
+        self, monkeypatch: pytest.MonkeyPatch, client: _RecordingClient
+    ) -> None:
+        # Later wins on key collision: the agent's provider object beats a server extra of the same name.
         monkeypatch.setitem(cfg.LLM_SERVER_CONFIG["openrouter"], "request_extras", {"provider": {"server": 1}, "s_only": 2})
-        await self._send_model("qwen/qwen3-32b", cfg.BRAIN_MEDIUM)
+        await _send(tier=_tier(quantization="fp8", provider_allow_fallbacks=False))
         body = client.calls[0]["extra_body"]
-        assert body["provider"] == {"order": ["deepinfra"], "allow_fallbacks": False, "quantizations": ["fp8"]}
+        assert body["provider"] == {"quantizations": ["fp8"], "allow_fallbacks": False}
         assert body["s_only"] == 2
+
+
+# AST-1956: the agent's settings go on the wire exactly as stored — nothing derived, nothing gated by model.
+# Branches: temperature None vs set (0.0 included); effort empty / "none" / other; provider object
+# present (OpenRouter) vs None (direct servers); a rejected setting returns the plain failure envelope.
+class TestAst1956SettingsOnTheWire:
+    @pytest.mark.asyncio
+    async def test_ac1_provider_object_from_the_agent_row(self, client: _RecordingClient) -> None:
+        await _send(sku="openai/gpt-oss-120b",
+                    tier=_tier("openai/gpt-oss-120b", quantization="bf16", provider_allow_fallbacks=True))
+        await _send(sku="openai/gpt-oss-120b",
+                    tier=_tier("openai/gpt-oss-120b", quantization="bf16", provider_allow_fallbacks=True,
+                               provider_only=["crusoe"], provider_sort="price"))
+        # Whole body equality: no other key, no `order` pin.
+        assert client.calls[0]["extra_body"] == {"provider": {"quantizations": ["bf16"], "allow_fallbacks": True}}
+        assert client.calls[1]["extra_body"] == {"provider": {
+            "quantizations": ["bf16"], "allow_fallbacks": True, "only": ["crusoe"], "sort": "price"}}
+
+    @pytest.mark.asyncio
+    async def test_ac2_empty_settings_send_nothing(self, client: _RecordingClient) -> None:
+        tier = _tier("openai/gpt-oss-120b", provider_allow_fallbacks=True)
+        await _send(sku="openai/gpt-oss-120b", tier=tier, temperature=tier["temperature"])
+        call = client.calls[0]
+        assert not {"temperature", "output_config", "thinking"} & set(call)
+        assert call["extra_body"] == {"provider": {"allow_fallbacks": True}}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("settings", "expected"),
+        [
+            ({"temperature": 0.3}, {"temperature": 0.3}),
+            # 0.0 is a value, not "empty".
+            ({"temperature": 0.0}, {"temperature": 0.0}),
+            ({"reasoning_effort": "high"}, {"extra_body": {"output_config": {"effort": "high"}}}),
+            ({"reasoning_effort": "none"}, {"extra_body": {"thinking": {"type": "disabled"}}}),
+            # No vocabulary: an effort no SDK literal knows still goes out verbatim.
+            ({"reasoning_effort": "ultra"}, {"extra_body": {"output_config": {"effort": "ultra"}}}),
+        ],
+    )
+    async def test_ac3_temperature_and_effort_exactly_as_set(
+        self, client: _RecordingClient, settings: dict, expected: dict
+    ) -> None:
+        tier = _tier("z-ai/glm-4.6", **settings)
+        await _send(sku="z-ai/glm-4.6", tier=tier, temperature=tier["temperature"])
+        call = client.calls[0]
+        for key, value in expected.items():
+            assert call[key] == value
+        if "temperature" not in expected:
+            assert "temperature" not in call
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("server_id", "model_id"),
+        # AST-1958 CAN_THINK snapshot: neither could think under the old config — "high" still goes out.
+        [("openrouter", "microsoft/phi-4"), ("deepseek", "deepseek-v4-pro")],
+    )
+    async def test_ac3_no_gating_on_models_that_could_not_think(
+        self, client: _RecordingClient, server_id: str, model_id: str
+    ) -> None:
+        await _send(server_id=server_id, sku=model_id, tier=_tier(model_id, reasoning_effort="high"))
+        assert client.calls[0]["extra_body"] == {"output_config": {"effort": "high"}}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("server_id", "model_id"), [("kimi", "kimi-k2.6"), ("deepseek", "deepseek-v4-flash")])
+    async def test_direct_servers_get_no_provider_object(
+        self, client: _RecordingClient, server_id: str, model_id: str
+    ) -> None:
+        # Provider settings stored on a direct-server agent never reach the body (resolver builds it for OpenRouter only).
+        tier = _tier(model_id, quantization="fp8", provider_allow_fallbacks=True, provider_only=["x"])
+        await _send(server_id=server_id, sku=model_id, tier=tier)
+        assert client.calls[0]["extra_body"] == {}
+
+    @pytest.mark.asyncio
+    async def test_ac4_rejected_setting_is_a_plain_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        msg = "Error code: 400 - Reasoning is mandatory for this endpoint and cannot be disabled"
+        c = _RecordingClient(raise_on_create=RuntimeError(msg))
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: c)
+        out = await _send(sku="openai/gpt-oss-120b", tier=_tier("openai/gpt-oss-120b", reasoning_effort="none"))
+        assert c.calls[0]["extra_body"] == {"thinking": {"type": "disabled"}}
+        assert out["success"] is False and msg in out["error"]
+        assert "failure_class" not in out
 
 
 class TestAst1877Guards:

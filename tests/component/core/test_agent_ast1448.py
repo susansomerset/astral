@@ -398,7 +398,7 @@ class TestAst1448PersistPromptBeforeProvider:
             user_content="usr",
             model_code="claude-haiku-4-5",
             server_id="anthropic",
-            tier=cfg.resolve_model_brain("claude", cfg.BRAIN_LITTLE, cfg.AGENT_MODE_DETERMINISTIC)["tier"],
+            tier=cfg.resolve_agent_settings("claude-haiku-4-5", {})["tier"],
             candidate_api_keys={"anthropic": "sk-ant"},
         )
         assert store_prompt.call_count == 0
