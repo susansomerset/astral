@@ -5,6 +5,7 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import JobsRecommended from "../../../../src/ui/frontend/src/pages/JobsRecommended"
 import { renderWithProviders } from "../test-utils"
 import { createdColumnJobs, expectCreatedColumn, installTzCandidate } from "./created-column"
+import { EDGE_TITLE, LONG_TITLE, expectJobTitleCells, jobTitleJobs } from "./job-title-cell"
 import { installBaseApiMocks, jobsViewHandler, jsonResponse } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -483,5 +484,43 @@ describe("JobsRecommended — AST-1979 Created column", () => {
     render()
     await waitFor(() => expect(screen.getByText("Created Late")).toBeInTheDocument())
     await expectCreatedColumn(screen.getByRole("table"), /^Updated/)
+  })
+})
+
+describe("JobsRecommended — AST-1982 Job Title cut", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  it.each([
+    ["review", reviewJobs[0], renderReview],
+    ["ready", readyJobs[0], renderReady],
+  ] as const)("%s: long title cut at 50 + … with portaled full-title tooltip; 50-char title untouched", async (view, base, render) => {
+    installBaseApiMocks(mockedApi, jobsViewHandler(view, jobTitleJobs(base)))
+    render()
+    await waitFor(() => expect(screen.getByText(EDGE_TITLE)).toBeInTheDocument())
+    await expectJobTitleCells(screen.getByRole("table"))
+  })
+
+  it("ready: Job Title sort orders by the full title, not the cut text", async () => {
+    // Identical first 50 chars — only the uncut tail decides the order.
+    const head = LONG_TITLE.slice(0, 50)
+    const jobs = [
+      { ...readyJobs[0], astral_job_id: "jt-z", job_title: `${head}Zeta Lab`, company: "Zulu Co" },
+      { ...readyJobs[0], astral_job_id: "jt-a", job_title: `${head}Alpha Lab`, company: "Acme Co" },
+    ]
+    installBaseApiMocks(mockedApi, jobsViewHandler("ready", jobs))
+    renderReady()
+    const section = (await screen.findByRole("heading", { name: /Ready \(2\)/ })).parentElement!
+    const companies = () =>
+      within(section).getAllByRole("row").slice(1)
+        .filter(r => !r.classList.contains("recommended-analysis-row"))
+        .map(r => (r.textContent ?? "").includes("Acme Co") ? "Acme Co" : "Zulu Co")
+    const titleHeader = within(section).getByRole("columnheader", { name: /Job Title/ })
+    await userEvent.click(titleHeader)
+    expect(companies()).toEqual(["Acme Co", "Zulu Co"])
+    await userEvent.click(titleHeader)
+    expect(companies()).toEqual(["Zulu Co", "Acme Co"])
   })
 })

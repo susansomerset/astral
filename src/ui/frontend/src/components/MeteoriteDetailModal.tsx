@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import Modal from "./Modal"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
+import JobTitleText from "./JobTitleText"
 import api from "../lib/api"
 
 type MeteoriteDetail = {
@@ -99,12 +100,14 @@ export default function MeteoriteDetailModal({ meteoriteId, onClose }: Props) {
   )
 }
 
-function modalTitle(m: MeteoriteDetail | null, id: number): string {
+function modalTitle(m: MeteoriteDetail | null, id: number): ReactNode {
   if (!m) return `Meteorite ${id}`
   const title = nonEmptyTrimmed(m.job_title)
   const employer = nonEmptyTrimmed(m.employer_name)
-  if (title && employer) return `${title} — ${employer}`
-  if (title) return title
+  // AST-1981: only the job-title part is cut (JobTitleText); the employer suffix stays whole.
+  // fallback={null} is never reached — title is non-empty in both branches.
+  if (title && employer) return <><JobTitleText title={title} fallback={null} />{` — ${employer}`}</>
+  if (title) return <JobTitleText title={title} fallback={null} />
   if (employer) return employer
   return `Meteorite ${id}`
 }

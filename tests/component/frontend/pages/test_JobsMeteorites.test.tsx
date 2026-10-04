@@ -8,6 +8,7 @@ import { fmtTime } from "../../../../src/ui/frontend/src/lib/fmt"
 import { getUiConfig, loadUiConfig } from "../../../../src/ui/frontend/src/lib/uiConfig"
 import JobsMeteorites from "../../../../src/ui/frontend/src/pages/JobsMeteorites"
 import { renderWithProviders } from "../test-utils"
+import { CUT_TITLE, EDGE_TITLE, expectJobTitleCells, jobTitleJobs } from "./job-title-cell"
 import { candidateId, installBaseApiMocks, jsonResponse } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -374,4 +375,35 @@ describe("JobsMeteorites — AST-1980 Created column", () => {
     expect(titles()).toEqual(["Title C", "Title A", "Title B"])
     expect(headers()[created].textContent).toMatch(/^Created ▼/)
   }
+})
+
+// AST-1982 AC 4 / AC 7: job_title escapes ListPage's 30-char cut (cut at 50 via JobTitleText); other columns keep 30;
+// search still reads the full raw title.
+describe("JobsMeteorites — AST-1982 Job Title cut", () => {
+  const LONG_EMPLOYER = "Employer Name That Runs Past Thirty Chars"
+  const rows = jobTitleJobs(ROW_A).map((r, i) => ({ ...r, id: 40 + i, employer_name: i === 0 ? LONG_EMPLOYER : "Short Co" }))
+
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+    installBaseApiMocks(mockedApi, url =>
+      url === listUrl(candidateId) ? jsonResponse({ columns: PROD_COLUMNS, meteorites: rows }) : undefined)
+  })
+
+  it("Title cut at 50 + … with portaled tooltip; 50-char title untouched; other columns still cut at 30", async () => {
+    renderWithProviders(<JobsMeteorites />)
+    await waitFor(() => expect(screen.getByText(EDGE_TITLE)).toBeInTheDocument())
+    await expectJobTitleCells(screen.getByText(EDGE_TITLE).closest("table")!, /^Title/)
+    expect(screen.getByText(`${LONG_EMPLOYER.slice(0, 30)}\u2026`)).toBeInTheDocument()
+    expect(screen.getByTitle(LONG_EMPLOYER)).toBeInTheDocument()
+  })
+
+  it("search for a word past char 50 of a title still returns that row", async () => {
+    renderWithProviders(<JobsMeteorites />)
+    await waitFor(() => expect(screen.getByText(EDGE_TITLE)).toBeInTheDocument())
+    expect(CUT_TITLE).not.toContain("Zanzibar")
+    await userEvent.type(screen.getByPlaceholderText("Search..."), "Zanzibar")
+    await waitFor(() => expect(screen.queryByText(EDGE_TITLE)).toBeNull())
+    expect(screen.getByText(CUT_TITLE)).toBeInTheDocument()
+  })
 })

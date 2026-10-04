@@ -12,6 +12,7 @@ import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import { formatPhaseScore, primaryActionsForState } from "../lib/recommendedJobReport"
 import Time from "../components/Time"
+import JobTitleText from "../components/JobTitleText"
 
 interface Job {
   astral_job_id: string
@@ -304,7 +305,7 @@ export default function Recommended({ view, title }: RecommendedProps) {
                               onGenerate={canGenerate(job.state) ? () => actions.generateJob(job.astral_job_id) : undefined}
                             />
                           </td>
-                          <td>{job.job_title || "\u2014"}</td>
+                          <td><JobTitleText title={job.job_title} fallback={"\u2014"} /></td>
                           <td>{job.company}</td>
                           <td>{job.source || "\u2014"}</td>
                           <td>{job.state || "\u2014"}</td>

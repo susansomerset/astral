@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import ListPage, { type Column } from "../components/ListPage"
 import JobAnalysisReportModal from "../components/JobAnalysisReportModal"
+import JobTitleText from "../components/JobTitleText"
 import MeteoriteDetailModal from "../components/MeteoriteDetailModal"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
@@ -99,6 +100,10 @@ export default function JobsMeteorites() {
         // Raw job.state (matches GET /api/jobs/<id>.state); null = not landed or job row gone.
         if (c.key === "job_state") {
           col.render = value => (value ? String(value) : "—")
+        }
+        // AST-1981: job title cut at the job-title length (not ListPage's 30) — element render bypasses ListPage string truncation.
+        if (c.key === "job_title") {
+          col.render = value => <JobTitleText title={typeof value === "string" ? value : null} fallback="—" />
         }
         return col
       }),

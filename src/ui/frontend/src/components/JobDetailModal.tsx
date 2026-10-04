@@ -6,6 +6,7 @@ import AgentStoryTab, { type AgentStoryEntry } from "./AgentStoryTab"
 import PhaseAnalysisLines from "./PhaseAnalysisLines"
 import BatchExecutionModal from "./BatchExecutionModal"
 import Time from "./Time"
+import JobTitleText from "./JobTitleText"
 import api from "../lib/api"
 import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
 import { useAuth } from "../contexts/AuthContext"
@@ -241,7 +242,7 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
       <Modal
         open={!!jobId}
         onClose={onClose}
-        title={job?.job_title || job?.company || "Job Detail"}
+        title={<JobTitleText title={job?.job_title} fallback={job?.company || "Job Detail"} />}
         size="wide"
         dirty={isDraftDirty}
         onSave={fieldsEditable ? () => { void handleSave() } : undefined}

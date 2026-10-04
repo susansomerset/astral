@@ -433,6 +433,23 @@ body {
 .nav-deploy-tickets-tooltip-line {
   white-space: nowrap;
 }
+/* AST-1981: JobTitleText full-title tooltip — portaled to body (position: fixed); z-index above modal stacks (1000/2000/2100). */
+.job-title-tooltip {
+  position: fixed;
+  z-index: 3000;
+  max-width: 320px;
+  padding: 6px 8px;
+  background: var(--bg-elevated, var(--bg-deep));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
 .nav-deploy-sep {
   margin: 0 4px;
   opacity: 0.6;
