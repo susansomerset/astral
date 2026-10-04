@@ -221,3 +221,46 @@ AC14→S1 `job_state` render, Job link + `JobAnalysisReportModal` + `stopPropaga
 - **Recommendation:** build-child documents baseline in handoff if lint output is questioned at qa-child.
 
 context_tokens≈42000
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1976
+**Publish ref:** `3f70dc43e015e2fe887c1197e2b3ed85ba8efe17` (`origin/sub/AST-1970/AST-1976-jobs-nav`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+### Canon scores
+(frozen list empty — ticket **§ Citations: none**; scope is `JobsMeteorites.tsx` only, outside `stat.logging.info.api` / `stat.logging.error` territory)
+
+### Column diff vs plan stage
+(aligned) — Joan: no directive rows; same on tip.
+
+### Frame diff
+(none)
+
+### Findings
+
+#### advisory — sibling stack + test carry
+- **Location:** AST-1974/1975 backend + frontend + `tests/**` / `docs/test-bible/**` in `origin/dev...origin/sub/AST-1970/AST-1976-jobs-nav`
+- **Finding:** Three-dot diff includes prior epic children on this sub; AST-1976 product commit `19badde6d` touches only `src/ui/frontend/src/pages/JobsMeteorites.tsx`. Betty test updates (e.g. `test_JobsMeteorites.test.tsx`) are expected merge-tests carry.
+
+#### advisory — manual AC 14 smoke
+- **Location:** Issue doc **## Review**
+- **Finding:** No browser smoke; build notes confirm compile/import/grep gates. Component tests extended per build handoff.
+- **Default:** Susan/parent UAT for modal stacking (job link vs row → meteorite modal) if not already covered in vitest.
+
+#### advisory — eslint baseline on `load()` effect
+- **Location:** `JobsMeteorites.tsx` (pre-existing `react-hooks/set-state-in-effect`)
+- **Finding:** Unchanged line; build left unfixed per plan — not introduced by this diff.
+
+### What's solid
+- **Scope gate:** Single-file diff matches plan: `job_state` on row type; `render` for `job_state` (`—` when empty) and `astral_job_id` (link button, `stopPropagation`, no navigation).
+- **AC 14 mechanics:** `JobAnalysisReportModal` with `jobId={reportJobId}`, `onClose` clears state, `onRefresh={load}` refreshes join-backed `job_state`; `MeteoriteDetailModal` + `onRowClick` unchanged.
+- **Boundaries:** No `navigate` / `useNavigate` on page; no API or sibling Jobs page edits in 1976 commit.
+- **Estimate:** Confirmed **2**; footprint is one focused UI change.
+
+### Recommended actions
+- Chuckles: append to `docs/features/interface/ast-1976-meteorites-landed-job-state-and-job-link.md`, commit `docs(AST-1976): Radia review — clean` on `sub/AST-1970/AST-1976-jobs-nav`, push, post slim upshot `--as radia`, **Review Posted** → PROCEED / **User Testing** (no `resolve-child`).
+
+context_tokens≈9000
