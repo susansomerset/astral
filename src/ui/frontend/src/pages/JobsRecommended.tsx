@@ -27,6 +27,24 @@ interface Job {
 
 interface SortState { col: string; asc: boolean }
 
+const TOTAL_SCORE_COL = "total_score"
+
+function finiteOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null
+}
+
+// Sum of manifest phase_score_columns; null if any phase score is missing (AST-1968).
+function totalScore(job: Job, phaseFields: string[]): number | null {
+  if (!phaseFields.length) return null
+  let sum = 0
+  for (const field of phaseFields) {
+    const n = finiteOrNull(job[field])
+    if (n === null) return null
+    sum += n
+  }
+  return sum
+}
+
 function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields: string[]): Job[] {
   return [...jobs].sort((a, b) => {
     let cmp = 0
@@ -38,11 +56,10 @@ function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
     } else if (col === "state") {
       cmp = (a.state || "").localeCompare(b.state || "")
-    } else if (phaseFields.includes(col)) {
-      const av = a[col]
-      const bv = b[col]
-      const an = typeof av === "number" && Number.isFinite(av) ? av : null
-      const bn = typeof bv === "number" && Number.isFinite(bv) ? bv : null
+    } else if (phaseFields.includes(col) || col === TOTAL_SCORE_COL) {
+      // Total shares the phase columns' null handling — one sorter, not two.
+      const an = col === TOTAL_SCORE_COL ? totalScore(a, phaseFields) : finiteOrNull(a[col])
+      const bn = col === TOTAL_SCORE_COL ? totalScore(b, phaseFields) : finiteOrNull(b[col])
       if (an === null && bn === null) cmp = 0
       else if (an === null) cmp = 1
       else if (bn === null) cmp = -1
@@ -189,6 +206,13 @@ export default function Recommended() {
                           {col.label}{sortIndicator(sec.state, col.field)}
                         </th>
                       ))}
+                      <th
+                        className="sortable"
+                        style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}
+                        onClick={() => handleSort(sec.state, TOTAL_SCORE_COL)}
+                      >
+                        Total{sortIndicator(sec.state, TOTAL_SCORE_COL)}
+                      </th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "state_changed_at")}>
                         Updated{sortIndicator(sec.state, "state_changed_at")}
                       </th>
@@ -213,6 +237,9 @@ export default function Recommended() {
                             {formatPhaseScore(job[col.field])}
                           </td>
                         ))}
+                        <td style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
+                          {formatPhaseScore(totalScore(job, phaseFields))}
+                        </td>
                         <td><Time value={job.state_changed_at} /></td>
                       </tr>
                     ))}
