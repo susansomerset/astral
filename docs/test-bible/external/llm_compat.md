@@ -82,7 +82,7 @@ On a `probe: True` server (OpenRouter only) with `log_batch_id` set, `send_to_ll
 | --- | --- | --- |
 | New — AC 1 one awaited + three concurrent → 5 requests, first is the only probe | `send_to_llm_compat` | `TestAst1959ProbeHostLock::test_ac1_one_probe_per_batch_key_before_first_real_call` |
 | New — AC 1 four concurrent first callers → 5 requests, one probe, probe first | `send_to_llm_compat` | `…::test_ac1_concurrent_first_callers_wait_on_one_probe` |
-| New — AC 2 probe = real call minus content / system / host lock, plus `provider.zdr` on the probe only; no `cache_control`; agent's own `only` rides on the probe, host replaces it on the real call | `send_to_llm_compat` | `…::test_ac2_probe_matches_real_call_and_carries_no_cache` (2) |
+| New — AC 2 probe = real call minus content / system / host lock; no `cache_control`; agent's own `only` rides on the probe, host replaces it on the real call | `send_to_llm_compat` | `…::test_ac2_probe_matches_real_call_and_carries_no_cache` (2) |
 | New — AC 3 later requests `provider == {quantizations: [bf16], allow_fallbacks: True, only: [DeepInfra]}`; agent tier dict not mutated | `send_to_llm_compat` | `…::test_ac3_warm_and_gather_locked_to_probe_host` |
 | New — AC 4 probe 429 → exactly 1 request, all four calls `success: False`, `Host probe failed:`, host = label | `send_to_llm_compat` | `…::test_ac4_failed_probe_fails_the_batch_with_no_fallback` |
 | New — AC 5 kimi / deepseek in a batch, openrouter with no batch id → no probe, no `only`, host = server label | `send_to_llm_compat` | `…::test_ac5_no_probe_outside_scope` (3) |

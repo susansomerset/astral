@@ -40,7 +40,7 @@ class TestRecordTimesheetEntry:
 # ---------------------------------------------------------------------------
 # AST-1966 background reconcile. Branches (record_timesheet_entry): no generation id → return; direct → return;
 # openrouter → thread started; unknown (server, SKU) → ValueError after the insert. Branches
-# (reconcile_timesheet_platform): no key → warn + stop; success on try N (initial wait, then base·2^(n-1)); all tries fail →
+# (reconcile_timesheet_platform): no key → warn + stop; success on try N (waits base·2^(n-1)); all tries fail →
 # one warning; success → platform write, then ledger: no batch / no ledger row / open / closed (processed > 0 or 0);
 # any exception → one logger.exception, nothing raised.
 # ---------------------------------------------------------------------------
@@ -97,8 +97,6 @@ class TestAst1966RecordNeverWaits:
         db = sqlite_in_memory
         gate, seen = threading.Event(), {}
         monkeypatch.setattr(timesheets_mod, "get_candidate", lambda cid: {"candidate_api_keys": {"openrouter": _KEY}})
-        # The propagation wait is real time. This test is about the caller returning, so the thread doesn't sit in it.
-        monkeypatch.setattr(timesheets_mod.time, "sleep", lambda _s: None)
 
         def blocked(generation_id: str, api_key: str) -> dict[str, Any]:
             seen.update(id=generation_id, key=api_key, batch=log_batch_id.get(), daemon=threading.current_thread().daemon)
@@ -148,14 +146,14 @@ class TestAst1966RecordNeverWaits:
 
 class TestAst1966RetryThenGiveUp:
     def test_not_ready_four_times_then_200(self, sqlite_in_memory, keyed: list[float], monkeypatch: pytest.MonkeyPatch) -> None:
-        # AC 5 — exactly 5 calls: 30 s, then the doubling waits. Platform columns set, calc_cost_* unchanged.
+        # AC 5 — exactly 5 calls, waits double from the base, platform columns set, calc_cost_* unchanged.
         db = sqlite_in_memory
         db._add_timesheet_entry(**_row_kwargs("gen-1", "batch-1"))
         stats = _Stats(_NOT_READY, _NOT_READY, _NOT_READY, _NOT_READY, _OK)
         monkeypatch.setattr(timesheets_mod, "get_generation_stats", stats)
         timesheets_mod.reconcile_timesheet_platform("gen-1", "openrouter", "cand-1", "batch-1")
         assert stats.calls == [("gen-1", _KEY)] * 5
-        assert keyed == [30, 2, 4, 8, 16]
+        assert keyed == [2, 4, 8, 16]
         row = _row(db, "gen-1")
         assert (row["platform_cost"], row["native_tokens_prompt"], row["native_tokens_completion"], row["native_tokens_cached"],
                 row["native_tokens_reasoning"], row["host"]) == (0.03, 1200, 300, 400, 50, "DeepInfra")
@@ -174,14 +172,14 @@ class TestAst1966RetryThenGiveUp:
         with caplog.at_level(logging.WARNING, logger="src.core.timesheets"):
             timesheets_mod.reconcile_timesheet_platform("gen-1", "openrouter", "cand-1", "batch-9")
         assert len(stats.calls) == 5
-        assert keyed == [30, 2, 4, 8, 16]
+        assert keyed == [2, 4, 8, 16]
         assert _row(db, "gen-1") == before
         warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1
         assert "gen-1" in warnings[0] and "batch-9" in warnings[0] and "5 tries" in warnings[0]
         assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
-    @pytest.mark.parametrize(("retries", "base", "waits"), [(3, 2.0, [30.0, 2.0, 4.0]), (4, 0.5, [30.0, 0.5, 1.0, 2.0]), (1, 2.0, [30.0])])
+    @pytest.mark.parametrize(("retries", "base", "waits"), [(3, 2.0, [2.0, 4.0]), (4, 0.5, [0.5, 1.0, 2.0]), (1, 2.0, [])])
     def test_count_and_base_come_from_config(
         self, sqlite_in_memory, keyed: list[float], monkeypatch: pytest.MonkeyPatch, retries: int, base: float, waits: list[float]
     ) -> None:

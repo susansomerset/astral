@@ -458,11 +458,8 @@ class TestAst1959ProbeHostLock:
         assert "system" not in probe and "cache_control" not in repr(probe)
         assert real["system"] == system
         assert probe["extra_body"]["provider"].get("only") == probe_only
-        assert probe["extra_body"]["provider"]["zdr"] is True
-        assert "zdr" not in real["extra_body"]["provider"]
-        # Everything but content / system / the host lock / the probe's zdr filter is identical.
+        # Everything but content / system / the host lock is identical (max_tokens, temperature, effort, provider).
         unlocked = {**real["extra_body"], "provider": {k: v for k, v in real["extra_body"]["provider"].items() if k != "only"}}
-        unlocked["provider"]["zdr"] = True
         if probe_only:
             unlocked["provider"]["only"] = probe_only
         assert {k: v for k, v in probe.items() if k != "messages"} == {
