@@ -225,3 +225,54 @@ context_tokens≈22000
 | Branch | `sub/AST-1977/AST-1978-rsc-column` |
 | Build tip | `b89597cce7cc9956dcbf7438c23100f126f9cb21` |
 | Status | Code Complete |
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1978
+**Publish ref:** a7ecce19cfb247b549c17af36210ce2cdf9a10ac (`origin/sub/AST-1977/AST-1978-rsc-column`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+astral.layers.ui-config-driven-business-logic | A | |
+astral.standards.no-hardcoded-sets | A | |
+astral.standards.in-scope-only | A | |
+astral.ui.naming-conventions | A | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded all four A at plan stage; diff confirms same.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Clerk resolution:** `canon_clerk.py expand` still rejects all four frozen statute ids (same migration gap as plan doc / AST-1872). Scoring used `canon/statutes/astral/**` bodies directly; `canon_clerk.py index --json` reports `corpus_dirty: false` at `e1f2699fad`.
+- **Plan vs System column edge:** Documented in plan — task with non-blank `system_prompt` and no agent shows `0` System tokens but RSC still counts raw task text; diff implements that intentionally (`raw_system` does not require `agent`).
+
+## What's solid
+
+- Product diff is exactly the two scoped files: `_RESPONSE_SCHEMA_TOKEN` + import-time `get_tokens()` assert; `_enrich_tasks` raw seven-segment sum; `response_schema_count` on the row dict; Manage Tasks **RSC** column between Model and System, grep-clean on the TSX page.
+- `raw_system` matches `resolved_task_system`’s strip-then-agent fallback (`src/core/agent.py` ~504–505); count is pre-resolution and candidate-independent; tests (`TestAst1978ResponseSchemaCount`, frontend header/cell test) track AC 1–5 and bible manifest § AST-1978.
+- AC7-style check: no `"RESPONSE_SCHEMA"` / `"{$RESPONSE_SCHEMA}"` string literals inside `_enrich_tasks` body; only `_RESPONSE_SCHEMA_TOKEN` and module-level registry tie-in.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append this artifact to `docs/features/interface/ast-1978-rsc-column-on-manage-tasks.md`, commit `docs(AST-1978): Radia review — clean`, push publish ref, post slim upshot `--as radia`, move **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no fix-now / discuss).
+
+context_tokens≈18000
