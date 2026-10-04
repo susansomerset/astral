@@ -12,7 +12,7 @@ Every test clears `openrouter._hosts` (autouse `_fresh_host_map`) — the map is
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| New — probe = real kwargs with content swapped for `LLM_PROBE_MESSAGE`, `system` dropped, no `cache_control`; max_tokens / temperature / effort / agent provider kept; `provider.zdr` forced on the probe copy; caller kwargs not mutated; probe recorded | `probe_host` | `TestAst1959ProbeHost::test_probe_swaps_content_drops_system_keeps_everything_else` · `::test_probe_forces_zdr_when_the_call_has_no_provider_object` |
+| New — probe = real kwargs with content swapped for `LLM_PROBE_MESSAGE`, `system` dropped, no `cache_control`; max_tokens / temperature / effort / provider untouched; caller kwargs not mutated; probe recorded | `probe_host` | `TestAst1959ProbeHost::test_probe_swaps_content_drops_system_keeps_everything_else` |
 | New — no `provider` (None / "") raises after the probe is recorded | `probe_host` | `…::test_no_provider_raises_after_recording` (2) |
 | New — send error propagates, nothing recorded | `probe_host` | `…::test_send_error_propagates_and_records_nothing` |
 | New — 4 concurrent first callers → one `send`, all `(host, None)` | `get_batch_host` | `TestAst1959BatchHostMap::test_concurrent_first_callers_share_one_probe` |
