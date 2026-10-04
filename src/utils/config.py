@@ -5039,6 +5039,8 @@ for _ct_key, _ct_meta in CONTACT_TASK_CONFIG.items():
 #   request_extras     — body fields sent on every request (e.g. OpenRouter provider.zdr —
 #                        NOT set in this release; ZDR enforcement is future scope)
 #   concurrency        — None, or process-wide in-flight cap + 429 backoff for this server
+#   probe              — True: one host-discovery probe per batch, then the batch is pinned to the
+#                        probe's host (src.external.openrouter, AST-1959). Only OpenRouter routes per call.
 # ---------------------------------------------------------------------------
 LLM_SERVER_CONFIG = {
     "anthropic": {
@@ -5049,6 +5051,7 @@ LLM_SERVER_CONFIG = {
         "thinking_off_params": {},
         "request_extras": {},
         "concurrency": None,
+        "probe": False,
     },
     "kimi": {
         "label": "Kimi",
@@ -5058,6 +5061,7 @@ LLM_SERVER_CONFIG = {
         "thinking_off_params": {"thinking": {"type": "disabled"}},
         "request_extras": {},
         "concurrency": None,
+        "probe": False,
     },
     "openrouter": {
         "label": "OpenRouter",
@@ -5067,6 +5071,7 @@ LLM_SERVER_CONFIG = {
         "thinking_off_params": {"thinking": {"type": "disabled"}},
         "request_extras": {},
         "concurrency": None,
+        "probe": True,
     },
     "deepseek": {
         "label": "DeepSeek",
@@ -5082,10 +5087,13 @@ LLM_SERVER_CONFIG = {
             "backoff_base_seconds": 2.0,
             "backoff_max_seconds": 30.0,
         },
+        "probe": False,
     },
 }
 LLM_SERVER_PROTOCOLS = ("anthropic", "anthropic_compat")
 LLM_SERVER_AUTH_STYLES = ("x-api-key", "bearer")
+# Probe request content (AST-1959): replaces the real call's content; system block dropped, no cache_control.
+LLM_PROBE_MESSAGE = "Respond with 1."
 
 # Timesheet rows (database ledgers): provider string validated on insert = a server id.
 ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
@@ -5435,6 +5443,8 @@ def validate_llm_provider_environment() -> None:
             raise ValueError(f"LLM server {sid!r}: auth {s['auth']!r} not in {LLM_SERVER_AUTH_STYLES}")
         if s["protocol"] == "anthropic_compat" and not s["base_url"]:
             raise ValueError(f"LLM server {sid!r}: anthropic_compat requires base_url")
+        if not isinstance(s.get("probe"), bool):
+            raise ValueError(f"LLM server {sid!r}: probe must be True or False")
     for mid, m in LLM_MODEL_CONFIG.items():
         get_llm_server(m["server"])
         if m["sku"] not in m["pricing"]:

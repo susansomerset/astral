@@ -37,3 +37,15 @@
 | --- | --- | --- |
 | Provider error → WARNING, no ERROR record | `src/utils/logging.py` | **`TestAst1846ProviderErrorLevel::test_provider_error_logs_warning_not_error`** (**bug-repro**) |
 | Flipped (blank error → WARNING) | same | `TestLogLlmBatchSummary::test_empty_error_string_uses_error_path_not_healthy_summary` |
+
+### AST-1959 · AST-1954 (served host on the INFO line)
+
+**Primary manifest:** [`../external/llm_compat.md`](../external/llm_compat.md) § AST-1959. `log_llm_batch_summary` gains keyword-only `host`; when truthy the INFO line reads `LLM <provider> host=<host> task=…`, still one line per call. `None` / `""` leave the line byte-for-byte as before (so `anthropic.py` callers are unchanged). The WARNING branch ignores `host`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — exact INFO message with `host=DeepInfra`; `None` / `""` → today's exact message; one record | `src/utils/logging.py` | `TestAst1959ServedHostOnInfoLine::test_host_segment_on_single_info_line` (3) |
+
+**Broken / obsolete:** none — existing `"LLM deepseek"` substring assertions still hold.
+
+**Integration:** none.

@@ -19,7 +19,7 @@ Tables used (inventory):
 - scheduled_query — Admin Scheduled Queries (AST-1122): named SQL rows with active flag, interval_hours cadence, last_run_at / last_rows_affected; tick runner in dispatcher.
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, list_dispatch_tasks_for_task_key, revalidate_dispatch_tasks_for_task_key, revalidate_dispatch_tasks_for_artifact, get_due_tasks). candidate_id required on save (AST-1134); meteorite_email live Avail is core (AST-1135 / AST-1466), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
-- dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
+- dispatch_ledger — Dispatcher run history incl. served LLM host (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries); id INTEGER PRIMARY KEY AUTOINCREMENT (writers omit id); nullable candidate_id (stamped when logging context has a candidate; NULL otherwise; AST-1598).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
   created_at, updated_at). Composite PRIMARY KEY (candidate_id, search_term). Source of truth for discovery terms (AST-524).
@@ -7631,7 +7631,8 @@ def _ensure_dispatch_ledger_schema(conn: sqlite3.Connection) -> None:
                 agent_note        TEXT,
                 total_cost        REAL DEFAULT 0.0,
                 entity_cost       REAL DEFAULT 0.0,
-                prompt_blocks     TEXT
+                prompt_blocks     TEXT,
+                host              TEXT
             )
         """)
         conn.commit()
@@ -7646,6 +7647,8 @@ def _ensure_dispatch_ledger_schema(conn: sqlite3.Connection) -> None:
             ("total_cost",        "REAL DEFAULT 0.0"),
             ("entity_cost",       "REAL DEFAULT 0.0"),
             ("prompt_blocks",     "TEXT"),
+            # AST-1960: served LLM host for the batch. AST-1497: DDL only — old rows stay NULL, no backfill.
+            ("host",              "TEXT"),
         ]
         for col, col_def in migrations:
             if col not in existing:
@@ -7684,7 +7687,7 @@ _LEDGER_UPDATE_COLS = {
     "completed_at", "status",
     "total_processed", "total_passed", "total_failed", "total_errors",
     "agent_performance", "agent_note", "total_cost", "entity_cost", "prompt_blocks",
-    "batch_size",
+    "batch_size", "host",
 }
 
 

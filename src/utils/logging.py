@@ -252,8 +252,9 @@ def log_llm_batch_summary(
     *,
     response: Any = None,
     error: Optional[str] = None,
+    host: Optional[str] = None,
 ) -> None:
-    """One INFO/WARNING per LLM call when log_batch_id is set (Execution History / app_log)."""
+    """One INFO/WARNING per LLM call when log_batch_id is set (Execution History / app_log); INFO names the served host when given."""
     if not log_batch_id.get():
         return
     # error is not None (incl. "") → WARNING path; never fake a healthy stop=? / zero-token INFO (AST-1190).
@@ -272,9 +273,12 @@ def log_llm_batch_summary(
     usage = getattr(response, "usage", None) if response is not None else None
     in_tok = getattr(usage, "input_tokens", 0) if usage else 0
     out_tok = getattr(usage, "output_tokens", 0) if usage else 0
+    # Served host (AST-1959) rides the same line, never a second one; omitted when the caller has none.
+    host_part = f" host={host}" if host else ""
     logger.info(
-        "LLM %s task=%s %.1fs stop=%s tokens in=%s out=%s",
+        "LLM %s%s task=%s %.1fs stop=%s tokens in=%s out=%s",
         provider,
+        host_part,
         prompt_label,
         duration,
         stop,

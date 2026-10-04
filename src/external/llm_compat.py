@@ -1,6 +1,6 @@
 """One client for every Anthropic-Messages-compatible server in LLM_SERVER_CONFIG (AST-1851).
 
-Parameterized by server id + SKU; key always passed by the caller (no env fallback).
+Parameterized by server id + SKU; key always passed by the caller (no env fallback). Probe-flagged servers lock each batch to one host (AST-1959).
 """
 
 import random
@@ -13,6 +13,7 @@ from anthropic import Anthropic, RateLimitError
 import httpx as _httpx
 
 from src.external.anthropic import _effort_body, _parse_api_response, _parse_json_response, _parse_python_code_response
+from src.external.openrouter import get_batch_host
 from src.utils.config import PROVIDER_EMPTY_RESPONSE, get_llm_server
 from src.utils.cost_calculator import calculate_cost_components_from_counts, usage_to_token_counts
 from src.utils.integration_io import require_controlled_external_io
@@ -128,24 +129,16 @@ async def send_to_llm_compat(
         if system_blocks:
             api_kwargs["system"] = system_blocks
 
-        def _make_api_call():
-            return _create(client, api_kwargs, server_id, server["concurrency"])
-
-        try:
-            logger.debug("Calling messages.create: server=%s %s", server_id, api_kwargs)
-            response = await await_provider_call_with_budget(
-                _make_api_call,
+        async def _send(kwargs: Dict[str, Any]) -> Any:
+            # One path to the wire for the probe and the real call: same client, same budget, same slots.
+            return await await_provider_call_with_budget(
+                lambda: _create(client, kwargs, server_id, server["concurrency"]),
                 timeout_seconds=provider_call_wait_timeout_seconds(),
             )
-            logger.debug("Response from messages.create: %s", response)
-            duration = (datetime.now() - start_time).total_seconds()
 
+        def _timesheet_kwargs_for(response: Any) -> Optional[Dict[str, Any]]:
+            # None when cost can't be computed — callers then skip the timesheet row (unchanged behaviour).
             counts = usage_to_token_counts(response.usage)
-            input_total = counts["cache_miss"]
-            input_cached = counts["cache_read"]
-            output_total = counts["output"]
-            cache_creation_tokens = counts["cache_write"]
-
             try:
                 cost_parts = calculate_cost_components_from_counts(
                     counts["cache_read"],
@@ -155,27 +148,73 @@ async def send_to_llm_compat(
                     sku=sku,
                     server_id=server_id,
                 )
-                _timesheet_kwargs = dict(
-                    agent_req_id=getattr(response, "id", None),
-                    task_key_uuid=task_key_uuid,
-                    model_code=sku,
-                    candidate_id=candidate_id,
-                    batch_id=log_batch_id.get(),
-                    batch_size=batch_size,
-                    cache_write_tokens=counts["cache_write"],
-                    cache_read_tokens=counts["cache_read"],
-                    no_cache_prompt_tokens=no_cache_prompt_tokens,
-                    no_cache_live_tokens=no_cache_live_tokens,
-                    total_no_cache_input_tokens=counts["cache_miss"],
-                    total_output_tokens=counts["output"],
-                    calc_cost_cache_write=cost_parts["calc_cost_cache_write"],
-                    calc_cost_cache_read=cost_parts["calc_cost_cache_read"],
-                    calc_cost_no_cache_input=cost_parts["calc_cost_no_cache_input"],
-                    calc_cost_output=cost_parts["calc_cost_output"],
-                    provider=server_id,
-                )
             except Exception:
-                _timesheet_kwargs = None
+                return None
+            return dict(
+                agent_req_id=getattr(response, "id", None),
+                task_key_uuid=task_key_uuid,
+                model_code=sku,
+                candidate_id=candidate_id,
+                batch_id=log_batch_id.get(),
+                batch_size=batch_size,
+                cache_write_tokens=counts["cache_write"],
+                cache_read_tokens=counts["cache_read"],
+                no_cache_prompt_tokens=no_cache_prompt_tokens,
+                no_cache_live_tokens=no_cache_live_tokens,
+                total_no_cache_input_tokens=counts["cache_miss"],
+                total_output_tokens=counts["output"],
+                calc_cost_cache_write=cost_parts["calc_cost_cache_write"],
+                calc_cost_cache_read=cost_parts["calc_cost_cache_read"],
+                calc_cost_no_cache_input=cost_parts["calc_cost_no_cache_input"],
+                calc_cost_output=cost_parts["calc_cost_output"],
+                provider=server_id,
+            )
+
+        def _record_probe(response: Any) -> None:
+            # Probe cost lands on the timesheet like any call; a recording failure never fails the probe.
+            if record_timesheet is None:
+                return
+            try:
+                kw = _timesheet_kwargs_for(response)
+                if kw is not None:
+                    record_timesheet(**kw, agent_performance="success", failure_note=None)
+            except Exception:
+                pass
+
+        # Host lock (AST-1959): flagged servers only, and only inside a batch (adhoc/workbench never probe).
+        batch_id = log_batch_id.get()
+        if server["probe"] and batch_id:
+            host, probe_err = await get_batch_host(batch_id, api_kwargs, _send, _record_probe)
+            if probe_err is not None:
+                # No fallback: nothing is sent; the entity takes the ordinary retry → error path.
+                duration = (datetime.now() - start_time).total_seconds()
+                log_llm_batch_summary(logger, server_id, prompt_label, duration, error=probe_err)
+                return {
+                    "success": False,
+                    "api_response": None,
+                    "timesheet": _empty_timesheet(),
+                    "error": probe_err,
+                    "host": server["label"],
+                }
+            # New dicts, not in-place edits: the agent's provider keys kept, only `only` replaced.
+            extra_body = api_kwargs["extra_body"]
+            api_kwargs["extra_body"] = {**extra_body, "provider": {**(extra_body.get("provider") or {}), "only": [host]}}
+
+        try:
+            logger.debug("Calling messages.create: server=%s %s", server_id, api_kwargs)
+            response = await _send(api_kwargs)
+            logger.debug("Response from messages.create: %s", response)
+            # Served host: the router's `provider` when present, else this server's own label (AST-1959).
+            host = getattr(response, "provider", None) or server["label"]
+            duration = (datetime.now() - start_time).total_seconds()
+
+            counts = usage_to_token_counts(response.usage)
+            input_total = counts["cache_miss"]
+            input_cached = counts["cache_read"]
+            output_total = counts["output"]
+            cache_creation_tokens = counts["cache_write"]
+
+            _timesheet_kwargs = _timesheet_kwargs_for(response)
 
             timesheet = {
                 "calltime": calltime, "duration": duration,
@@ -207,10 +246,11 @@ async def send_to_llm_compat(
                     "timesheet": timesheet,
                     "error": err,
                     "failure_class": PROVIDER_EMPTY_RESPONSE["failure_class"],
+                    "host": host,
                 }
 
             log_llm_batch_summary(
-                logger, server_id, prompt_label, duration, response=response
+                logger, server_id, prompt_label, duration, response=response, host=host
             )
 
             # JSON cut mid-string when output hits max_tokens — fail closed, do not heal (AST-903).
@@ -236,6 +276,7 @@ async def send_to_llm_compat(
                     "timesheet": timesheet,
                     "error": trunc_err,
                     "failure_class": "max_tokens",
+                    "host": host,
                 }
 
             parsed_response = None
@@ -270,6 +311,7 @@ async def send_to_llm_compat(
                         "parsed_response": None,
                         "timesheet": timesheet,
                         "error": parse_err_msg,
+                        "host": host,
                     }
 
             _ap_status = "success"
@@ -286,7 +328,7 @@ async def send_to_llm_compat(
                 except Exception:
                     pass
 
-            return {"success": True, "api_response": response, "parsed_response": parsed_response, "timesheet": timesheet}
+            return {"success": True, "api_response": response, "parsed_response": parsed_response, "timesheet": timesheet, "host": host}
 
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
@@ -296,7 +338,7 @@ async def send_to_llm_compat(
             else:
                 err = normalize_provider_error(e)
             log_llm_batch_summary(logger, server_id, prompt_label, duration, error=err)
-            out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": err}
+            out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": err, "host": server["label"]}
             if fc_timeout:
                 out["failure_class"] = fc_timeout
             else:
@@ -312,7 +354,7 @@ async def send_to_llm_compat(
         else:
             err = normalize_provider_error(e)
         log_llm_batch_summary(logger, server_id, prompt_label, duration, error=err)
-        out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": err}
+        out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": err, "host": server["label"]}
         if fc_timeout:
             out["failure_class"] = fc_timeout
         else:

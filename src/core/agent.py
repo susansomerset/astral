@@ -2276,6 +2276,25 @@ async def do_task(
         batch_size=batch_size,
     )
     logger.debug("Response from _send_to_server: %s", result)
+    # AST-1960: served host onto the active batch's ledger row — dispatcher batch, or the hop row
+    # _open_run_next_hop_ledger set log_batch_id to. Successful calls only: a call that never reached
+    # a host carries the server label, which must not overwrite the real host a sibling call wrote.
+    ledger_batch_id = log_batch_id.get()
+    if ledger_batch_id and result.get("success"):
+        # Anthropic-direct results carry no host; that server is its own host, so its label stands in.
+        host = result.get("host") or get_llm_server(server_id)["label"]
+        logger.debug("Calling database.update_dispatch_ledger: [batch_id=%s, host=%s]", ledger_batch_id, host)
+        try:
+            # Off the loop like the agent_data writes: a locked DB must not stall provider timers (AST-1842).
+            await asyncio.to_thread(database.update_dispatch_ledger, ledger_batch_id, host=host)
+        except Exception:
+            # The paid call already succeeded; a ledger hiccup must not turn it into a failure.
+            logger.exception(
+                "%s | %s\n  Ledger host write failed for batch %s\n  Continuing without the host on that ledger row",
+                index or "-",
+                task_key,
+                ledger_batch_id,
+            )
     result["runtime_prompt"] = runtime_prompt
     result["source_artifact_ids"] = list(source_artifact_ids)
 
