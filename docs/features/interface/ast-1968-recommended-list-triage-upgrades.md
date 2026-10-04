@@ -808,3 +808,68 @@ context_tokens≈24000
 - **Gate resolution (Susan, AST-1969):** Q1=2 — AC 16 = no new lint problems vs `origin/dev`, plus fix the baseline `set-state-in-effect` in `JobsRecommended.tsx`; Q2=1 — drop the Stage 5 selection-clear effect, clear in `load` when `showSpinner`.
 - **Gate fix commit:** `547d832b3` — `actions.error` toast is now derived (`useMemo` → `Toast message={toast ?? errorToast}`, `dismissToast` clears both); selection clear moved into `load`'s fetch `.then` behind `showSpinner` (a synchronous call in `load` is still traced through the mount effect by `react-hooks/set-state-in-effect`; the async callback is not — same pattern as `JobsSkipped`).
 - **Lint vs `origin/dev`:** 32 → 31 problems (27 → 26 errors); only diff is the removed `JobsRecommended.tsx` hit; zero new problems. `npm run build` + `tsc -b --noEmit` exit 0.
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-1968
+**Publish ref:** `0970ea6973c7945a9853c73fcfd97cf89d5e1dc7` (`origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades`)
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`
+**Overall:** CLEAN
+
+## Canon scores
+
+(frozen Canon Scope empty — no directive ids locked at Plan Approved; parent AST-1967 and ticket mirror “no in-force directive governs frontend list pages.” Nothing to score per validate-plan §4a; not a scope-gap ESCALATE.)
+
+## Column diff vs plan stage
+
+(aligned) — Joan: APPROVED with the same empty canon column; implementation matches the six-stage plan and AC trace.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `git diff origin/dev...origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades` — non-`src/ui/frontend` paths
+- **Finding:** **sibling test carry:** `tests/component/core/test_timesheets.py`, `tests/component/external/test_llm_compat.py`, `tests/component/external/test_openrouter.py`, `tests/component/utils/test_config.py` plus matching `docs/test-bible/**` edits (AST-1966 / AST-1959 lineage), not AST-1968 product scope.
+- **Recommendation:** No action for this child; expected merge-tests carry.
+
+- **Location:** Review pass
+- **Finding:** AC 16 (`npm run build` / lint delta vs `origin/dev`) was not re-run in this Radia session; relied on **Tests Passed**, issue doc build notes (`547d832b3` gate fix), and component tests covering AST-1968 ACs.
+- **Recommendation:** If Susan wants belt-and-suspenders before **User Testing**, re-run `npm run build` and `npm run lint` in `src/ui/frontend` on the publish tip.
+
+- **Location:** Notes — Canon Scope (off-list, not scored)
+- **Finding:** Joan’s plan discuss named `astral.ui.frontend-file-placement` and `astral.standards.dry-and-focused-functions` as usual candidates; diff stays within ticket Scope and centralizes grade ordering in `phaseGradeCells` — consistent with empty scope unless Archie amends Discussion.
+- **Recommendation:** No change unless Archie expands Canon Scope on the parent.
+
+## What's solid
+
+- **Scope:** Product diff is exactly the six scoped files (`JobsRecommended.tsx`, `CandidateJobRowActions.tsx`, `candidateJobActions.ts`, `useCandidateJobActions.ts`, `recommendedJobReport.tsx`, `App.css`); no backend routes or `config.py`.
+- **AC 3 / 12 / 14:** `postGenerateArtifacts` is the sole `generate_artifacts` client path in lib; page/component have no `/generate_artifacts` strings; one `sortRubricColumnsByImportanceAndGrade(` call site in `recommendedJobReport.tsx`; one `sortRecommendedJobs` in the page.
+- **Generate gating:** Manifest-driven `canGenerate` / `generateIds`; bulk generate filters to eligible ids; row `onGenerate` only when manifest allows.
+- **Grade parity:** `phaseGradeCells` shared by modal and list; `buildPhaseListGradeRow` letterless; tests assert modal/list dot signature match (AC 10–11).
+- **Bulk flows:** Sequential `runPerJob`, single notes modal for bulk Applied, selection cleared via `handleBulkDone` and `load(true)` spinner path (Susan gate: lint-safe vs dropped `selectedId` effect).
+- **Hook compat:** Optional `onBulkDone`; `pending.jobId` preserved for `JobsApplied.tsx`.
+- **Tests:** Dedicated `AST-1968` block on `test_JobsRecommended.test.tsx` covers AC 1–2, 4–10, 13–14; component/lib tests cover Generate prop and shared helper.
+
+## Recommended actions (for Chuckles — not Radia)
+
+1. Append this artifact to `docs/features/interface/ast-1968-recommended-list-triage-upgrades.md` under `## Review`.
+2. Commit `docs(AST-1968): Radia review — clean` on the publish ref and push.
+3. Post slim upshot via `linear_proxy.py --as radia save-comment`.
+4. Move ticket to **Review Posted**; datt **§3h** → **PROCEED** path toward **User Testing** (no fix-now canon or plan gaps).
+
+context_tokens≈28000
+```
