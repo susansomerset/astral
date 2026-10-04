@@ -20,6 +20,7 @@ import {
   type JobListRubricColumn,
 } from "../lib/rubricDisplay"
 import Time from "../components/Time"
+import JobTitleText from "../components/JobTitleText"
 
 interface Job {
   astral_job_id: string
@@ -360,7 +361,7 @@ export default function Skipped() {
                             </td>
                           )}
                           {isFloor && <td aria-hidden />}
-                          <td onClick={() => setViewingId(job.astral_job_id)}>{job.job_title || "\u2014"}</td>
+                          <td onClick={() => setViewingId(job.astral_job_id)}><JobTitleText title={job.job_title} fallback={"\u2014"} /></td>
                           <td onClick={() => setViewingId(job.astral_job_id)}>{job.company}</td>
                           {isFloor && (
                             <>

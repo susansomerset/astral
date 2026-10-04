@@ -7,6 +7,7 @@ import { useCandidateJobActions } from "../hooks/useCandidateJobActions"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import Time from "../components/Time"
+import JobTitleText from "../components/JobTitleText"
 
 interface Job {
   astral_job_id: string
@@ -150,7 +151,7 @@ export default function Applied() {
                       onAction={a => actions.requestAction(job.astral_job_id, a)}
                     />
                   </td>
-                  <td>{job.job_title || "\u2014"}</td>
+                  <td><JobTitleText title={job.job_title} fallback={"\u2014"} /></td>
                   <td>{job.company}</td>
                   <td>{job.state || "\u2014"}</td>
                   <td><Time value={job.state_changed_at} /></td>
