@@ -1,4 +1,5 @@
 """OpenRouter host discovery (AST-1959): probe_host + the per-batch single-flight host map.
+Generation-stats lookup (AST-1964): get_generation_stats against a stubbed httpx.get.
 
 `send` / `record_probe` are plain fakes here — the llm_compat wiring (stubbed client, AC 1–6) lives in
 tests/component/external/test_llm_compat.py::TestAst1959ProbeHostLock.
@@ -7,14 +8,17 @@ tests/component/external/test_llm_compat.py::TestAst1959ProbeHostLock.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 
 from src.external import openrouter
 from src.utils import config as cfg
+from src.utils.logging import log_debug
 
 # Branches (probe_host): provider present → host; provider None / "" / absent → raise after recording;
 # send raises → propagates, nothing recorded.
@@ -173,3 +177,93 @@ class TestAst1959BatchHostMap:
         waiter.join(5)
         assert results == {"owner": ("DeepInfra", None), "waiter": ("DeepInfra", None)}
         assert len(calls) == 1
+
+
+# Branches (get_generation_stats, AST-1964): 200 + total_cost → success; non-200 → error; 200 with no data /
+# null body / total_cost null → not-ready error; any exception (timeout, integration-mode guard) → error.
+_KEY = "sk-or-secret-key"
+
+
+class _Get:
+    """Stub for httpx.get (the stubbed lookup): records each call; answers with (status, json body) or raises."""
+
+    def __init__(self, status: int = 200, body: Any = None, raise_exc: Exception | None = None) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.status, self.body, self.raise_exc = status, body, raise_exc
+
+    def __call__(self, url: str, **kwargs: Any) -> Any:
+        self.calls.append({"url": url, **kwargs})
+        if self.raise_exc:
+            raise self.raise_exc
+        return SimpleNamespace(status_code=self.status, text=repr(self.body), json=lambda: self.body)
+
+
+class TestAst1964GenerationStats:
+    def _run(self, monkeypatch: pytest.MonkeyPatch, get: _Get) -> dict[str, Any]:
+        monkeypatch.setattr(openrouter.httpx, "get", get)
+        return openrouter.get_generation_stats("gen-123", _KEY)
+
+    def test_200_returns_billed_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 2 — values verbatim from the stub; request = generation endpoint, id param, bearer key, provider timeout.
+        get = _Get(body={"data": {"total_cost": 0.0123, "native_tokens_prompt": 1200, "native_tokens_completion": 300,
+                                  "native_tokens_cached": 400, "native_tokens_reasoning": 50, "provider_name": "DeepInfra"}})
+        out = self._run(monkeypatch, get)
+        assert out == {"success": True, "total_cost": 0.0123, "native_tokens_prompt": 1200, "native_tokens_completion": 300,
+                       "native_tokens_cached": 400, "native_tokens_reasoning": 50, "provider_name": "DeepInfra"}
+        assert get.calls == [{
+            "url": "https://openrouter.ai/api/v1/generation",
+            "params": {"id": "gen-123"},
+            "headers": {"Authorization": f"Bearer {_KEY}"},
+            "timeout": openrouter.provider_call_http_timeout_seconds(),
+        }]
+
+    def test_200_with_only_cost_passes_missing_fields_as_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC 2 stub body exactly; total_cost is the only required field, the rest pass through as sent.
+        out = self._run(monkeypatch, _Get(body={"data": {"total_cost": 0.0123, "native_tokens_cached": 400, "provider_name": "DeepInfra"}}))
+        assert (out["success"], out["total_cost"], out["native_tokens_cached"], out["provider_name"]) == (True, 0.0123, 400, "DeepInfra")
+        assert (out["native_tokens_prompt"], out["native_tokens_completion"], out["native_tokens_reasoning"]) == (None, None, None)
+
+    @pytest.mark.parametrize(
+        ("get", "error"),
+        [
+            (_Get(status=404, body={"error": {"message": "Generation not found"}}), "Generation stats HTTP 404"),
+            (_Get(status=500, body=None), "Generation stats HTTP 500"),
+            (_Get(raise_exc=httpx.ReadTimeout("read timed out")), "Generation stats lookup failed: read timed out"),
+            # Not ready yet: record exists but no cost, empty data, or a null body.
+            (_Get(body={"data": {"total_cost": None, "provider_name": "DeepInfra"}}), "not ready"),
+            (_Get(body={"data": None}), "not ready"),
+            (_Get(body=None), "not ready"),
+        ],
+        ids=["404", "500", "timeout", "cost-null", "data-null", "body-null"],
+    )
+    def test_failure_returns_error_and_no_cost(self, monkeypatch: pytest.MonkeyPatch, get: _Get, error: str) -> None:
+        # AC 2 — nothing raises, no cost key on any failure.
+        out = self._run(monkeypatch, get)
+        assert out["success"] is False and error in out["error"]
+        assert set(out) == {"success", "error"}
+
+    def test_integration_guard_becomes_error_without_http(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def blocked(caller: str) -> None:
+            raise RuntimeError(f"{caller}: live external I/O blocked in integration mode")
+
+        monkeypatch.setattr(openrouter, "require_controlled_external_io", blocked)
+        get = _Get(body={"data": {"total_cost": 1.0}})
+        out = self._run(monkeypatch, get)
+        assert out == {"success": False, "error": "Generation stats lookup failed: openrouter.get_generation_stats: live external I/O blocked in integration mode"}
+        assert get.calls == []
+
+    @pytest.mark.parametrize("get", [_Get(body={"data": {"total_cost": 0.5}}), _Get(raise_exc=httpx.ReadTimeout("t"))], ids=["ok", "timeout"])
+    def test_debug_request_and_response_never_the_key(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, get: _Get) -> None:
+        # stat.logging.debug — request and response logged at debug with the generation id; the key never appears.
+        # The project logger's debug() emits only while the log_debug context var is on.
+        token = log_debug.set(True)
+        try:
+            with caplog.at_level(logging.DEBUG, logger="src.external.openrouter"):
+                self._run(monkeypatch, get)
+        finally:
+            log_debug.reset(token)
+        lines = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG]
+        # debug() prefixes each line with the caller's line number ("<lineno>: …").
+        assert any("Calling GET generation: id=gen-123" in m for m in lines)
+        assert any("Response from GET generation: id=gen-123" in m for m in lines)
+        assert not any(_KEY in r.getMessage() for r in caplog.records)

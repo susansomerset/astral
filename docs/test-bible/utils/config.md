@@ -4680,3 +4680,49 @@ Expect 34 failed. Every failure must be either (a) the `cannot import name 'reso
 `LOCKED_AT_100`: `--cov-branch` over `test_config.py` on the publish tip reports no missing line or partial branch on the new validator check (pass arc via `TestAst1877LlmCatalogConfig::test_shipped_catalog_passes_startup_validation`, raise arc above).
 
 **Integration:** none.
+
+### AST-1964 · AST-1963 (model routing type, routing helper, reconcile constants)
+
+Every `LLM_MODEL_CONFIG` entry carries `routing` ∈ `LLM_MODEL_ROUTING_TYPES = ("direct", "openrouter")`: `openrouter` on every `_build_openrouter_models` entry (95), `direct` on the six hand-written ones. `resolve_agent_settings` builds the provider object when `routing == "openrouter"` (was `server == "openrouter"`). `validate_llm_provider_environment` raises `LLM model '<id>': routing <v> not in ('direct', 'openrouter')` on a missing / unknown value (checked right after the server lookup, before pricing). `get_model_routing(server_id, sku)` → routing, `ValueError("No LLM model for server … and SKU …")` when no entry matches both. `TIMESHEET_RECONCILE_RETRIES = 5`, `TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS = 2.0`. Lookup side: [`../external/openrouter.md`](../external/openrouter.md) § AST-1964. The retry loop / doubling waits are AST-1966's.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 1 allowed tuple; all 95 table slugs `openrouter`; direct set = the six ids in picker order; no third value | `LLM_MODEL_CONFIG` / `LLM_MODEL_ROUTING_TYPES` | `TestAst1964ModelRouting::test_routing_values_per_model` |
+| New — AC 1 startup rejects routing missing / `None` / `""` / `"proxy"` / `"OpenRouter"` (fake entry has its own SKU + pricing row so only the routing check can fire) | `validate_llm_provider_environment` | `…::test_startup_rejects_missing_or_unknown_routing` (5) |
+| New — AC 1 provider object keyed on routing, not server: openrouter-server entry routed `direct` → `None`; kimi-server entry routed `openrouter` → object; shipped models unchanged | `resolve_agent_settings` | `…::test_resolver_provider_object_follows_routing_not_server` |
+| New — helper hit (openrouter / deepseek / anthropic / kimi); real SKU on the wrong server and unknown pair raise | `get_model_routing` | `…::test_get_model_routing_hit_and_unknown` |
+| New — AC 3 retry count `5`, backoff base `2` | constants | `…::test_reconcile_retry_constants` |
+| Kept — resolver / validator / catalog shape (entries copied from real models carry `routing`, so existing fake-entry tests still reach their intended raise) | — | `TestAst1877LlmCatalogConfig` · `TestAst1938OpenRouterShortlist` · `TestAst1947CatalogByQuantization` · `TestAst1955PlainAgentSettings` · `TestAst1959ServerProbeFlag` |
+
+`LOCKED_AT_100`: `--cov-branch` over the manifest on the publish tip covers both arcs of the routing check in the validator and in `resolve_agent_settings`, and both exits of `get_model_routing`.
+
+**Integration:** none (no `tests/integration/` scenario reads the LLM catalog).
+
+## QA test manifest
+
+1. **Component (narrowed — must be all green, 66 on the publish tip):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_openrouter.py \
+  tests/component/utils/test_config.py::TestAst1964ModelRouting \
+  tests/component/utils/test_config.py::TestAst1877LlmCatalogConfig \
+  tests/component/utils/test_config.py::TestAst1938OpenRouterShortlist \
+  tests/component/utils/test_config.py::TestAst1947CatalogByQuantization \
+  tests/component/utils/test_config.py::TestAst1955PlainAgentSettings \
+  tests/component/utils/test_config.py::TestAst1959ServerProbeFlag
+```
+
+2. **Whole files (informational — expected reds only):**
+
+```bash
+.venv/bin/python -m pytest tests/component/utils/test_config.py tests/component/external/test_openrouter.py -q --tb=line
+```
+
+Expect 21 failed, 602 passed, 4 skipped — the 21 pre-existing `test_config.py` reds listed in § AST-1947 item 2 above (identical on `origin/dev` product). Any other failure is real.
+
+3. **AC 1 greps:** `rg -n '"openrouter"' src/external/ src/core/timesheets.py src/data/database.py` and `rg -n 'server"\] == "openrouter"' src/utils/config.py` — expect no output (re-check on `ftr` after AST-1965 / AST-1966).
+
+**Pass criterion:** item 1 green, item 2 reds limited to those 21, item 3 empty. Not the zero-arg harness.
+
+**Bible shasums (after publish):** `for p in utils/config.md external/openrouter.md; do git show origin/sub/AST-1963/AST-1964-routing-and-generation-lookup:docs/test-bible/$p | shasum; done`
