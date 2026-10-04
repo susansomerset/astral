@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import JobsApplied from "../../../../src/ui/frontend/src/pages/JobsApplied"
 import { renderWithProviders } from "../test-utils"
+import { createdColumnJobs, expectCreatedColumn, installTzCandidate } from "./created-column"
 import { installBaseApiMocks, jobsViewHandler, jsonResponse } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -100,5 +101,22 @@ describe("JobsApplied — AST-1479 applied list home", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Illegal state transition")).toBeInTheDocument())
     expect(screen.getByText("Applied Role")).toBeInTheDocument()
+  })
+})
+
+describe("JobsApplied — AST-1979 Created column", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  it("Created left of Updated, shows created_at in candidate tz, sorts and toggles; default unchanged", async () => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("applied", createdColumnJobs(appliedJob)))
+    installTzCandidate(mockedApi)
+    renderWithProviders(<JobsApplied />)
+    await waitFor(() => expect(screen.getByText("Created Late")).toBeInTheDocument())
+    // Applied seeds its sort state, so the default indicator is visible on Updated (the section pages show none until a click).
+    expect(screen.getByRole("columnheader", { name: /^Updated/ }).textContent).toBe("Updated\u25BC")
+    await expectCreatedColumn(screen.getByRole("table"), /^Updated/)
   })
 })

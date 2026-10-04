@@ -4409,3 +4409,79 @@ class TestAst1916AutoThreadCapApi:
         assert call(self._URL, json={"max_auto_threads": 5}).status_code == 401
         assert call(self._URL, json={"max_auto_threads": 5}, headers=non_admin_headers).status_code == 403
         assert dispatcher_mod._auto_thread_cap_override is None
+
+
+# AST-1978: Manage Tasks RSC — raw {$RESPONSE_SCHEMA} count served on every /api/admin/tasks row.
+# Branches: non-blank task system_prompt wins over agent content; blank / whitespace / None system_prompt
+# falls back to agent content; no task / no agent → 0; count is pre-resolution and candidate-independent.
+class TestAst1978ResponseSchemaCount:
+    RS = "{$RESPONSE_SCHEMA}"
+
+    @classmethod
+    def _wire(cls, monkeypatch: pytest.MonkeyPatch, task: dict | None, agent: dict | None) -> None:
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.return_value = None
+        monkeypatch.setattr(admin_mod, "_get_connection", lambda: conn)
+        monkeypatch.setattr(
+            admin_mod.database,
+            "list_candidate_tasks",
+            lambda: [{"task_key": "t_rsc", "task_key_uuid": None, "agent_id": "a1" if agent else "",
+                      "cache_prompt_len": 0, "nocache_prompt_len": 0}],
+        )
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda cid: {"candidate_data": {"name": "Susan"}})
+        monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
+        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda k: task)
+        monkeypatch.setattr(admin_mod.database, "get_agent", lambda a: agent)
+        # Resolution substitutes the token away — a served count > 0 proves RSC reads the raw text (AC 2).
+        monkeypatch.setattr(admin_mod, "resolve_tokens", lambda text, *a, **k: (text or "").replace(cls.RS, "SCHEMA"))
+        monkeypatch.setattr(admin_mod, "resolved_task_system", lambda *a, **k: "SCHEMA")
+
+    def _count(self, monkeypatch: pytest.MonkeyPatch, task: dict | None, agent: dict | None) -> Any:
+        self._wire(monkeypatch, task, agent)
+        return admin_mod._enrich_tasks("")[0]["response_schema_count"]
+
+    def test_sums_raw_token_across_all_seven_segments(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rs = self.RS
+        task = {
+            "system_prompt": f"a {rs} b {rs}",   # 2
+            "cache_prompt": rs,                    # 1
+            "cache_prompt_b": f"x{rs}",            # 1
+            "cache_prompt_c": "",                  # 0
+            "cache_prompt_d": f"{rs}\n",           # 1
+            "nocache_prompt": rs,                  # 1
+            "user_prompt": f"{rs} and {rs}",      # 2
+        }
+        # Agent content is ignored when the task's own system_prompt is non-blank.
+        count = self._count(monkeypatch, task, {"content": f"{rs} {rs} {rs}"})
+        assert type(count) is int and count == 8
+
+    @pytest.mark.parametrize("system_prompt", ["", "   \n", None], ids=["empty", "whitespace", "none"])
+    def test_blank_system_prompt_falls_back_to_agent_content(
+        self, monkeypatch: pytest.MonkeyPatch, system_prompt: str | None
+    ) -> None:
+        task = {"system_prompt": system_prompt, "cache_prompt": "no token", "user_prompt": "plain"}
+        assert self._count(monkeypatch, task, {"content": f"agent {self.RS} body"}) == 1
+
+    @pytest.mark.parametrize(
+        ("task", "agent", "expected"),
+        [
+            (None, None, 0),
+            (None, {"content": "agent {$RESPONSE_SCHEMA}"}, 1),
+            ({"system_prompt": "own {$RESPONSE_SCHEMA}"}, None, 1),
+            ({"system_prompt": "s", "user_prompt": "{$RESPONSE_SCHEMA_X} {$OTHER}"}, {"content": "c"}, 0),
+        ],
+        ids=["no_task_no_agent", "agent_only", "task_without_agent", "other_tokens_only"],
+    )
+    def test_missing_rows_and_other_tokens(
+        self, monkeypatch: pytest.MonkeyPatch, task: dict | None, agent: dict | None, expected: int
+    ) -> None:
+        count = self._count(monkeypatch, task, agent)
+        assert type(count) is int and count == expected
+
+    def test_route_serves_same_count_with_and_without_candidate(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._wire(monkeypatch, {"system_prompt": self.RS, "nocache_prompt": self.RS}, {"content": "c"})
+        bare = admin_client.get("/api/admin/tasks", headers=auth_headers).get_json()
+        scoped = admin_client.get("/api/admin/tasks?candidate_id=c1", headers=auth_headers).get_json()
+        assert [r["response_schema_count"] for r in bare] == [r["response_schema_count"] for r in scoped] == [2]

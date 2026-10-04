@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import JobsRecommended from "../../../../src/ui/frontend/src/pages/JobsRecommended"
 import { renderWithProviders } from "../test-utils"
+import { createdColumnJobs, expectCreatedColumn, installTzCandidate } from "./created-column"
 import { installBaseApiMocks, jobsViewHandler, jsonResponse } from "./page-mocks"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -463,5 +464,24 @@ describe("JobsRecommended — AST-1968 triage upgrades", () => {
     expect(jobTitles(rec)[2]).toBe("Rec Role")
     await userEvent.click(likeHeader)
     expect(jobTitles(rec)[0]).toBe("Rec Role")
+  })
+})
+
+describe("JobsRecommended — AST-1979 Created column", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  // Same component serves both routes; each gets its own table check.
+  it.each([
+    ["review", reviewJobs[0], renderReview],
+    ["ready", readyJobs[0], renderReady],
+  ] as const)("%s: Created left of Updated, shows created_at in candidate tz, sorts and toggles; default unchanged", async (view, base, render) => {
+    installBaseApiMocks(mockedApi, jobsViewHandler(view, createdColumnJobs(base)))
+    installTzCandidate(mockedApi)
+    render()
+    await waitFor(() => expect(screen.getByText("Created Late")).toBeInTheDocument())
+    await expectCreatedColumn(screen.getByRole("table"), /^Updated/)
   })
 })

@@ -1120,3 +1120,46 @@ Supersedes the agent-route rows of § AST-1880 / § AST-1948 above. `POST /agent
 **Sequencing:** `api_admin.py` imports `src.core.agent`, which still imports `resolve_model_brain` until **AST-1956** lands on `ftr`. On this sub, `test_api_admin.py` therefore errors at collection (`ImportError`), the same as AST-1955's `tests/component/core/`. The revisions were verified locally with a throwaway stub for that one import: 227 passed, plus 5 reds that fail identically on `origin/tests` (other epics: `TestAst781ListDtasksRetiredEntityType::test_list_dtasks_legacy_board_search_row_returns_zero_available_count`, `TestDispatchTasks::test_list_dispatch_tasks_and_keys`, `TestApiAdminBranchGaps::test_dispatch_task_keys_db_row_adds_orphan_key`, `TestAst783RepoJsonApi::test_repo_json_revert_invalid_table_key`, `TestAst1214AdminCatalogAlphabeticalWritable::test_mailbox_trigger_null_only_and_unsupported_craft_wording`). They run for real on `ftr` once AST-1956 is merged.
 
 **Integration:** none. No scenario touches agent settings or `/agents/models`.
+
+### AST-1978 · AST-1977 (Manage Tasks RSC column — `response_schema_count`)
+
+**Parent:** [AST-1977 — Indicate if {$RESPONSE_SCHEMA} is used](https://linear.app/astralcareermatch/issue/AST-1977). **Publish:** `origin/sub/AST-1977/AST-1978-rsc-column`.
+
+`_enrich_tasks` serves one new integer per row, `response_schema_count`. It counts the raw (pre-`resolve_tokens`) `{$RESPONSE_SCHEMA}` occurrences across the effective system block (task `system_prompt` when non-blank after `.strip()`, otherwise agent `content`), `cache_prompt`, `cache_prompt_b`–`_d`, `nocache_prompt`, and `user_prompt`. The token is the module-level `_RESPONSE_SCHEMA_TOKEN`, which an import-time assert ties to `get_tokens()`. `AdminTaskPrompts.tsx` renders it in a right-aligned **RSC** column directly left of **System**. No other row field changes.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 int field on every row (including no task / no agent → `0`) | `_enrich_tasks` | `test_api_admin.py::TestAst1978ResponseSchemaCount::test_missing_rows_and_other_tokens` (4 params: `no_task_no_agent`, `agent_only`, `task_without_agent`, `other_tokens_only`) |
+| 2 raw count summed across seven segments (8 total); agent content ignored when `system_prompt` non-blank; `resolve_tokens` / `resolved_task_system` mocked to substitute the token away | `_enrich_tasks` | `…::test_sums_raw_token_across_all_seven_segments` |
+| 3 blank system prompt → agent content counted (`1`) | `_enrich_tasks` | `…::test_blank_system_prompt_falls_back_to_agent_content` (3 params: `empty`, `whitespace`, `none`) |
+| 4 `GET /api/admin/tasks` same count with and without `?candidate_id=` | `list_tasks` → `_enrich_tasks` | `…::test_route_serves_same_count_with_and_without_candidate` |
+| 5 header order `Model \| RSC \| System \| Base Cache`; RSC right-aligned; cells `0` and `2` (never blank) | `pages/AdminTaskPrompts.tsx` | `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` › **`AST-1978 RSC column > header order is Model \| RSC \| System \| Base Cache and cells show served counts`** (fixtures gain `response_schema_count: 0` / `2`) |
+| 6 no client-side counting | page | grep (manifest item 3) |
+| 7 no bare literal inside `_enrich_tasks` | `api_admin.py` | grep (manifest item 3) |
+
+**Broken / obsolete:** none. There are no exact-key row assertions, `TestTaskRoutes::test_list_tasks_and_tokens` stubs `_enrich_tasks`, and `AdminAnthropicAdHoc` ignores the extra field. The five known cross-epic reds listed under § AST-1957 above still fail identically with and without this ticket. They are not in this manifest.
+
+**Integration:** none. No scenario reads `/api/admin/tasks`.
+
+## QA test manifest
+
+1. **Python (required, all green):**
+
+```bash
+.venv/bin/python -m pytest tests/component/ui/api/test_api_admin.py -q \
+  -k "Ast1978 or EnrichTasks or TaskRoutes or Ast1412 or test_enrich_tasks_agent_only_system_prompt"
+```
+
+2. **Vitest (required, all green — §6c routed page):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx
+```
+
+3. **AC 6 / AC 7 greps:** `grep -n "RESPONSE_SCHEMA" src/ui/frontend/src/pages/AdminTaskPrompts.tsx` prints nothing. `sed -n '/^def _enrich_tasks/,/^def /p' src/ui/api/api_admin.py | grep -nE "\"\{\\\$RESPONSE_SCHEMA\}\"|\"RESPONSE_SCHEMA\""` prints nothing.
+
+4. **Build / import:** item 1 collects without error (it imports `api_admin`, so the import-time `RESPONSE_SCHEMA in get_tokens()` assert holds). In `src/ui/frontend`, `npm run build` exits 0.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1977/AST-1978-rsc-column:docs/test-bible/ui/api/api_admin.md | shasum`
