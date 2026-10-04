@@ -3399,3 +3399,5 @@ rg -n "function sortRecommendedJobs" src/ui/frontend/src/pages/JobsRecommended.t
 **Pass criterion:** items 1, 3, 4 hold; item 2 green apart from the three named baseline reds. Narrowed runs, not the zero-arg harness.
 
 **Bible shasums (after publish):** `for p in frontend/pages.md frontend/components.md frontend/lib.md; do git show origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades:docs/test-bible/$p | shasum; done`
+
+**AST-1973 (pointer):** the analysis-row phase lines moved out of `JobsRecommended.tsx` into the shared `components/PhaseAnalysisLines.tsx`, which the Job Detail modal Info tab also renders. The page's AC9 / AC10 cases above are unedited and still own list parity. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1973.
