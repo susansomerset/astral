@@ -160,10 +160,14 @@ export function gradesForHeader(
   return []
 }
 
-function gradeDot(grade: string, tooltip: string) {
+// letterless: list rows show colour only (AST-1968); modal keeps the letter.
+function gradeDot(grade: string, tooltip: string, letterless = false) {
   return (
-    <span className={`grade-dot dot-${grade.toLowerCase()}`} title={tooltip || undefined}>
-      {grade}
+    <span
+      className={`grade-dot dot-${grade.toLowerCase()}${letterless ? " grade-dot-letterless" : ""}`}
+      title={tooltip || undefined}
+    >
+      {letterless ? null : grade}
     </span>
   )
 }
@@ -192,32 +196,60 @@ export function buildPhaseTabGradeDots(
   return <>{dots}</>
 }
 
-/** Horizontal grade + confidence row for Analysis section headers (AST-950 / AST-1327 / AST-1771). */
-export function buildPhaseSectionGradeConfidenceRow(
-  gradesRaw: unknown,
-  job: Record<string, unknown>,
-  gradesField: string,
-): ReactNode {
+/**
+ * Single source of column set, order, grade lookup and tooltip for a phase's grade row.
+ * Shared by the modal Analysis header and the Recommended list lines so they can't drift.
+ */
+function phaseGradeCells(gradesRaw: unknown, job: Record<string, unknown>, gradesField: string) {
   // Job-carried *_rubric (or grades-only) — never live candidate artifacts (AST-1327).
   const baseCols = buildJobListRubricColumnsForGroup({ gradeKey: gradesField, columnSourceJob: job })
   const cols = sortRubricColumnsByImportanceAndGrade(
     baseCols,
     col => gradeAndConfidenceForCol(gradesRaw, col).grade,
   )
-  const cells: ReactNode[] = []
+  const out: Array<{ key: string; grade: string; tooltip: string; confidence?: number }> = []
   for (const col of cols) {
     const { grade, confidence, reason } = gradeAndConfidenceForCol(gradesRaw, col)
     if (!grade) continue
-    const gradeTooltip = formatGradeDotTooltipWithVectorLabel(col, grade, reason, confidence)
-    cells.push(
-      <span key={col.code || col.label} className="recommended-report-phase-grade-cell">
-        {gradeDot(grade, gradeTooltip)}
-        <ConfidenceBullets confidence={confidence} />
-      </span>,
-    )
+    out.push({
+      key: col.code || col.label,
+      grade,
+      tooltip: formatGradeDotTooltipWithVectorLabel(col, grade, reason, confidence),
+      confidence,
+    })
   }
+  return out
+}
+
+/** Horizontal grade + confidence row for Analysis section headers (AST-950 / AST-1327 / AST-1771). */
+export function buildPhaseSectionGradeConfidenceRow(
+  gradesRaw: unknown,
+  job: Record<string, unknown>,
+  gradesField: string,
+): ReactNode {
+  const cells = phaseGradeCells(gradesRaw, job, gradesField)
   if (!cells.length) return null
-  return <div className="recommended-report-phase-grade-row">{cells}</div>
+  return (
+    <div className="recommended-report-phase-grade-row">
+      {cells.map(c => (
+        <span key={c.key} className="recommended-report-phase-grade-cell">
+          {gradeDot(c.grade, c.tooltip)}
+          <ConfidenceBullets confidence={c.confidence} />
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/** Recommended list line: same circles/order/tooltip as the modal, no letters, no confidence (AST-1968). */
+export function buildPhaseListGradeRow(job: Record<string, unknown>, gradesField: string): ReactNode {
+  const cells = phaseGradeCells(jobGradesForField(job, gradesField), job, gradesField)
+  if (!cells.length) return null
+  return (
+    <div className="recommended-list-phase-grade-row">
+      {cells.map(c => <span key={c.key}>{gradeDot(c.grade, c.tooltip, true)}</span>)}
+    </div>
+  )
 }
 
 export function formatPhaseTabNavLabel(prefix: string, dots: ReactNode): ReactNode {
