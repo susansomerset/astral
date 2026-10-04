@@ -14,6 +14,7 @@ interface Job {
   company: string
   state: string
   state_changed_at: string | null
+  created_at?: string | null
   [key: string]: unknown
 }
 
@@ -28,6 +29,8 @@ function sortAppliedJobs(jobs: Job[], col: string, asc: boolean): Job[] {
       cmp = a.company.localeCompare(b.company)
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
+    } else if (col === "created_at") {
+      cmp = (a.created_at || "").localeCompare(b.created_at || "")
     } else if (col === "state") {
       cmp = (a.state || "").localeCompare(b.state || "")
     }
@@ -136,6 +139,9 @@ export default function Applied() {
                 <th className="sortable" onClick={() => handleSort("state")}>
                   State{sortIndicator("state")}
                 </th>
+                <th className="sortable" onClick={() => handleSort("created_at")}>
+                  Created{sortIndicator("created_at")}
+                </th>
                 <th className="sortable" onClick={() => handleSort("state_changed_at")}>
                   Updated{sortIndicator("state_changed_at")}
                 </th>
@@ -153,6 +159,7 @@ export default function Applied() {
                   <td>{job.job_title || "\u2014"}</td>
                   <td>{job.company}</td>
                   <td>{job.state || "\u2014"}</td>
+                  <td><Time value={job.created_at} /></td>
                   <td><Time value={job.state_changed_at} /></td>
                 </tr>
               ))}
