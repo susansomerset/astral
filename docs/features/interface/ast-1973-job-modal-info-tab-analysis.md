@@ -312,3 +312,24 @@ context_tokens≈42000
 ```
 
 context_tokens≈28000
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/33022c9e6a1608e804235716dc9cbd1b/84abd99b-cb58-49de-af9c-c6dc660f406e/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/dea146a0-9b7f-496c-a041-d3a651fd10d8/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/33022c9e6a1608e804235716dc9cbd1b/7a1eb455-42cb-4b6a-9cb9-1c53ed98970f/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1972 (parent) | ftr/AST-1972-job-modal-info-analysis |
+| AST-1973 | sub/AST-1972/AST-1973-job-modal-info-tab-analysis |
+
+**Epic worktree:** `astral-AST-1972/` — one active sub checked out at a time.
