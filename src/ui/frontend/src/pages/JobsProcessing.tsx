@@ -8,6 +8,7 @@ import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import Time from "../components/Time"
+import JobTitleText from "../components/JobTitleText"
 import {
   analysisTimeScoreForJob,
   buildJobListRubricColumnsForGroup,
@@ -23,6 +24,7 @@ interface Job {
   company: string
   state: string
   state_changed_at: string | null
+  created_at?: string | null
   latest_score?: number | null
   [key: string]: unknown
 }
@@ -92,6 +94,8 @@ function sortJobs(jobs: Job[], col: string, asc: boolean, gradeKey: string, cols
       cmp = a.company.localeCompare(b.company)
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
+    } else if (col === "created_at") {
+      cmp = (a.created_at || "").localeCompare(b.created_at || "")
     } else if (col === "latest_score") {
       const av = analysisTimeScoreForJob(a as Record<string, unknown>, gradeKey)
       const bv = analysisTimeScoreForJob(b as Record<string, unknown>, gradeKey)
@@ -109,7 +113,8 @@ function sortJobs(jobs: Job[], col: string, asc: boolean, gradeKey: string, cols
   })
 }
 
-export default function InReview() {
+// AST-1975: Jobs → Processing — every job not on Ready / Review / Applied / Skipped; rows open JobDetailModal (Skip).
+export default function Processing() {
   const { manifest, loadState } = useStateUi()
   const { selectedId } = useCandidate()
   const [rows, setRows]     = useState<Job[]>([])
@@ -120,7 +125,7 @@ export default function InReview() {
   const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
     beginRefresh(showSpinner)
-    api(`/api/jobs?view=in_review&candidate_id=${encodeURIComponent(selectedId)}`)
+    api(`/api/jobs?view=processing&candidate_id=${encodeURIComponent(selectedId)}`)
       .then(r => r.json())
       .then(data => setRows(Array.isArray(data) ? data : []))
       .finally(() => endRefresh())
@@ -135,9 +140,9 @@ export default function InReview() {
       if (!byState[job.state]) byState[job.state] = []
       byState[job.state].push(job)
     }
-    const order = manifest.jobs.in_review_sections.map(r => r.state)
+    const order = manifest.jobs.processing_sections.map(r => r.state)
     const labels: Record<string, string> = Object.fromEntries(
-      manifest.jobs.in_review_sections.map(r => [r.state, r.label]),
+      manifest.jobs.processing_sections.map(r => [r.state, r.label]),
     )
     const gradeMap = manifest.jobs.grade_field_by_job_state
     const knownStates = order
@@ -176,7 +181,7 @@ export default function InReview() {
   return (
     <div className="page-container">
       <div className="list-page-header">
-        <h1 className="list-page-title">In Review</h1>
+        <h1 className="list-page-title">Processing</h1>
       </div>
       {loading ? (
         <div className="list-page-status">Loading...</div>
@@ -185,7 +190,7 @@ export default function InReview() {
       ) : loadState === "error" || !manifest ? (
         <div className="list-page-status">State UI manifest unavailable.</div>
       ) : sections.length === 0 ? (
-        <div className="list-page-status">No jobs in review</div>
+        <div className="list-page-status">No jobs processing</div>
       ) : (
         sections.map(sec => {
           const sectionOpen = isExpanded(sec.state)
@@ -239,6 +244,9 @@ export default function InReview() {
                             Score{sortIndicator(sortKey, "latest_score")}
                           </th>
                         )}
+                        <th className="sortable" onClick={() => handleSort(sortKey, "created_at")}>
+                          Created{sortIndicator(sortKey, "created_at")}
+                        </th>
                         <th className="sortable" onClick={() => handleSort(sortKey, "state_changed_at")}>
                           Updated{sortIndicator(sortKey, "state_changed_at")}
                         </th>
@@ -249,7 +257,7 @@ export default function InReview() {
                         const rowScore = analysisTimeScoreForJob(job as Record<string, unknown>, sec.gradeKey)
                         return (
                         <tr key={job.astral_job_id} className="clickable" onClick={() => setViewingId(job.astral_job_id)}>
-                          <td>{job.job_title || "\u2014"}</td>
+                          <td><JobTitleText title={job.job_title} fallback={"\u2014"} /></td>
                           <td>{job.company}</td>
                           {cols.map(c => {
                             const cell = gradeAndConfidenceForCol(job, sec.gradeKey, c)
@@ -271,6 +279,7 @@ export default function InReview() {
                               {rowScore != null ? rowScore.toFixed(2) : "\u2014"}
                             </td>
                           )}
+                          <td><Time value={job.created_at} /></td>
                           <td><Time value={job.state_changed_at} /></td>
                         </tr>
                         )

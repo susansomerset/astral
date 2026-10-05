@@ -28,12 +28,12 @@ describe("AdminRoute", () => {
       <MemoryRouter initialEntries={["/admin/secret"]}>
         <Routes>
           <Route path="/admin/secret" element={<AdminRoute><p>Admin panel</p></AdminRoute>} />
-          <Route path="/jobs/recommended" element={<p>Jobs recommended</p>} />
+          <Route path="/" element={<p>Jobs home</p>} />
         </Routes>
       </MemoryRouter>,
     )
 
-    expect(screen.getByText("Jobs recommended")).toBeInTheDocument()
+    expect(screen.getByText("Jobs home")).toBeInTheDocument()
     expect(screen.queryByText("Admin panel")).not.toBeInTheDocument()
   })
 
@@ -111,12 +111,12 @@ describe("AdminRoute", () => {
       <MemoryRouter initialEntries={["/admin/secret"]}>
         <Routes>
           <Route path="/admin/secret" element={<AdminRoute><p>Admin panel</p></AdminRoute>} />
-          <Route path="/jobs/recommended" element={<p>Jobs recommended</p>} />
+          <Route path="/" element={<p>Jobs home</p>} />
         </Routes>
       </MemoryRouter>,
     )
 
-    expect(screen.getByText("Jobs recommended")).toBeInTheDocument()
+    expect(screen.getByText("Jobs home")).toBeInTheDocument()
     expect(screen.queryByText("Admin panel")).not.toBeInTheDocument()
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
   })

@@ -786,3 +786,11 @@ Public **`job_state_admits_transition(current_state, to_state)`** wraps `_job_st
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/tracker.md` — *(filled after publish)*
+
+---
+
+### AST-1974 · AST-1970
+
+New `candidate_skip_job`: not found → ValueError; illegal (e.g. `CANDIDATE_APPLIED`) → ValueError with claim untouched; legal → clear held `batch_id`, transition to `CANDIDATE_SKIPPED` (hop labels resolve via base). `list_jobs` / `count_jobs` facades forward `exclude_states`.
+
+**New:** **`TestAst1974CandidateSkipJob`** (6, real SQLite with `candidate_id` seeds). Manifest: [`ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-1974 item 4.

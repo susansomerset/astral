@@ -12,7 +12,13 @@ describe("routes", () => {
     expect(navShell?.element).toBeTruthy()
     expect(navShell?.children?.some(child => child.index)).toBe(true)
     expect(navShell?.children?.some(child => child.path === "*")).toBe(true)
-    expect(navShell?.children?.some(child => child.path === "jobs/recommended")).toBe(true)
+    // AST-1975: Jobs → Ready / Review / Processing; Recommended, In Review, Responded retired
+    for (const path of ["jobs/ready", "jobs/review", "jobs/processing", "jobs/applied", "jobs/skipped"]) {
+      expect(navShell?.children?.some(child => child.path === path)).toBe(true)
+    }
+    for (const path of ["jobs/recommended", "jobs/in_review", "jobs/responded"]) {
+      expect(navShell?.children?.some(child => child.path === path)).toBe(false)
+    }
     expect(navShell?.children?.some(child => child.path === "jobs/meteorites")).toBe(true)
     expect(navShell?.children?.some(child => child.path === "candidate/board_searches")).toBe(false)
     expect(navShell?.children?.some(child => child.path === "candidate/title_patterns")).toBe(false)

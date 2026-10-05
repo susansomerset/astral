@@ -14,7 +14,7 @@ import httpx as _httpx
 
 from src.external.anthropic import _effort_body, _parse_api_response, _parse_json_response, _parse_python_code_response
 from src.external.openrouter import get_batch_host
-from src.utils.config import PROVIDER_EMPTY_RESPONSE, get_llm_server
+from src.utils.config import PROVIDER_EMPTY_RESPONSE, get_llm_server, get_model_routing
 from src.utils.cost_calculator import CALC_COST_KEYS, calculate_cost_components_from_counts, usage_to_token_counts
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.llm_external import (
@@ -137,8 +137,8 @@ async def send_to_llm_compat(
             )
 
         def _timesheet_kwargs_for(response: Any) -> Dict[str, Any]:
-            # Always a row (AST-1966): counts that can't be read are 0, cost that can't be priced is 0 —
-            # platform-routed rows get their billed cost from the background reconcile either way.
+            # Always a row (AST-1966): counts that can't be read are 0. Catalog calc_cost_* only for
+            # routing "direct"; openrouter-routed SKUs get platform_cost from background reconcile.
             try:
                 counts = usage_to_token_counts(response.usage)
             except Exception as exc:
@@ -147,20 +147,23 @@ async def send_to_llm_compat(
                     getattr(response, "id", None) or "-", server_id, sku, type(exc).__name__, exc,
                 )
                 counts = {"cache_read": 0, "cache_miss": 0, "output": 0, "cache_write": 0}
-            try:
-                cost_parts = calculate_cost_components_from_counts(
-                    counts["cache_read"],
-                    counts["cache_miss"],
-                    counts["output"],
-                    counts["cache_write"],
-                    sku=sku,
-                    server_id=server_id,
-                )
-            except Exception as exc:
-                logger.exception(
-                    "%s | timesheet catalog price on %s %s\n  %s: %s\n  Recording the row with zero calculated cost",
-                    getattr(response, "id", None) or "-", server_id, sku, type(exc).__name__, exc,
-                )
+            if get_model_routing(server_id, sku) == "direct":
+                try:
+                    cost_parts = calculate_cost_components_from_counts(
+                        counts["cache_read"],
+                        counts["cache_miss"],
+                        counts["output"],
+                        counts["cache_write"],
+                        sku=sku,
+                        server_id=server_id,
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "%s | timesheet catalog price on %s %s\n  %s: %s\n  Recording the row with zero calculated cost",
+                        getattr(response, "id", None) or "-", server_id, sku, type(exc).__name__, exc,
+                    )
+                    cost_parts = dict.fromkeys(CALC_COST_KEYS, 0.0)
+            else:
                 cost_parts = dict.fromkeys(CALC_COST_KEYS, 0.0)
             return dict(
                 agent_req_id=getattr(response, "id", None),

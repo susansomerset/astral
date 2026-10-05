@@ -75,7 +75,7 @@ export default function JobsJobDetail() {
   }, [jobId, company, isAdmin, candidatesHydrated])
 
   if (!jobId) {
-    return <Navigate to="/jobs/recommended" replace />
+    return <Navigate to="/" replace />
   }
 
   if (gate === "loading") {
@@ -91,7 +91,7 @@ export default function JobsJobDetail() {
       <div className="page-container">
         <h1 className="list-page-title">Job unavailable</h1>
         <p className="entity-error">{gateError}</p>
-        <Link to="/jobs/recommended" className="btn secondary">Back to Recommended</Link>
+        <Link to="/" className="btn secondary">Back to Jobs</Link>
       </div>
     )
   }
@@ -99,7 +99,7 @@ export default function JobsJobDetail() {
   return (
     <JobAnalysisReportModal
       jobId={jobId}
-      onClose={() => navigate("/jobs/recommended")}
+      onClose={() => navigate("/")}
     />
   )
 }

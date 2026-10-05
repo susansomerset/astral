@@ -6,6 +6,8 @@ export interface UiConfig {
   column_types: Record<string, ColumnTypeConfig>
   list_table_frozen_data_columns?: number
   list_table_cell_truncate_chars?: number
+  /** AST-1981: job-title display cut served from UI_CONFIG; read via resolveJobTitleTruncateChars. */
+  job_title_truncate_chars?: number
 }
 
 let _uiConfig: UiConfig | null = null
@@ -25,4 +27,10 @@ export function loadUiConfig(onReady: () => void) {
       .finally(() => { _uiConfigPending = null })
   }
   _uiConfigPending.then(onReady)
+}
+
+/** Job-title cut length; falls back to 50 until UI config loads (mirrors resolveCellTruncateChars). */
+export function resolveJobTitleTruncateChars(ui: UiConfig | null): number {
+  const n = ui?.job_title_truncate_chars
+  return typeof n === "number" && n > 0 ? n : 50
 }

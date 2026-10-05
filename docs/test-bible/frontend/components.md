@@ -1205,6 +1205,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1454 · AST-1446
 
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). Paths below that name `test_JobsInReview.test.tsx` now mean `test_JobsProcessing.test.tsx`.
+
 **Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
 
 When GET `fields_editable` is true: Info title/link inputs, state `<select>` from `legal_next_states` (+ No change), always-on Job Description textarea (empty JD ok), Modal Save → `PUT /api/jobs/<id>` + `onRefresh`. Non-editable stays display-only (no Save / no empty JD tab). Copy / Skip This Job unchanged. Persist: **AST-1453** / **`docs/test-bible/ui/api/api_jobs.md`**. Page `onRefresh={load}`: **`docs/test-bible/frontend/pages.md`**.
@@ -1780,3 +1782,156 @@ cd src/ui/frontend && npm run test:component -- \
 - `docs/test-bible/frontend/components.md` — *(filled after publish)*
 
 **AST-1968 (pointer):** `CandidateJobRowActions` takes an optional `onGenerate` that adds a **G** `icon-control` (`title="Generate Artifacts"`) in the review-like branch, passed only by Recommended for manifest-eligible rows — **`CandidateJobRowActions — AST-1968 Generate`**. Manifest: **`docs/test-bible/frontend/pages.md`** § AST-1968.
+
+### AST-1973 · AST-1972 (Job Detail Info-tab analysis via shared PhaseAnalysisLines)
+
+**AST-1975:** `JobsInReview.tsx` became `JobsProcessing.tsx` and `test_JobsInReview.test.tsx` was renamed `test_JobsProcessing.test.tsx` (`view=processing`). Run `test_JobsProcessing.test.tsx` where the manifest below says `test_JobsInReview.test.tsx`.
+
+**Parent:** [AST-1972](https://linear.app/astralcareermatch/issue/AST-1972). **Publish:** `origin/sub/AST-1972/AST-1973-job-modal-info-tab-analysis`.
+
+New **`components/PhaseAnalysisLines.tsx`** owns the phase-lines block that AST-1968 had inline in `JobsRecommended.tsx`: it takes one job record and derives lines from manifest `report_phase_tabs` (order + `grades_field`) with short labels from `phase_score_columns`, falling back to `nav_label`. Each line renders `buildPhaseListGradeRow(job, gradesField) ?? "—"`. Recommended's analysis row now renders `<PhaseAnalysisLines job={job} />`, with the row, `colSpan`, click and toggle unchanged. `JobDetailModal` `InfoTab` right column renders an **Analysis** `entity-section-label` plus the component before **State History**, not gated on state. `JobDetail` gains `[key: string]: unknown`. No dedicated `test_PhaseAnalysisLines` file: both hosts exercise it.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 Analysis label → lines → State History, right column | `JobDetailModal.tsx` | **`test_JobDetailModal.test.tsx`** › **`JobDetailModal — AST-1973 Info-tab analysis > AC1/AC2…`** |
+| 2 one line per `report_phase_tabs`, JD/DO/GET/LIKE | `PhaseAnalysisLines.tsx` | **`… > AC1/AC2…`**; list side **`test_JobsRecommended`** › **`AST-1968 … AC9`** (unedited) |
+| 3 partial → em dash; no grades → four em dashes, modal renders; skipped state ungated | `PhaseAnalysisLines.tsx`, `JobDetailModal.tsx` | **`… > AC3: no phase grades…`**, **`… > AC3: JD + DO graded…`** |
+| 4 count / `dot-*` / order / `title` equal the list | `PhaseAnalysisLines.tsx` → `buildPhaseListGradeRow` | **`… > AC4…`** (modal line vs list row builder on AST-1771 fixture); builder ↔ modal-report parity **`recommendedJobReport — AST-1968 letterless list grade row`** (unedited) |
+| 5 letterless, no confidence, display-only | same | **`… > AC5…`**; list side **`AST-1968 … AC10`** (unedited) |
+| 6 one shared component | source | greps below |
+| 7 Recommended list unchanged | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** whole file (unedited; AC9 / AC10 assert the moved markup) |
+| 8 no backend / 9 build + lint | source | diff stat + build/lint below |
+
+**Broken / obsolete:** none. No existing test queries the modal's right column or the `Analysis` text inside it.
+
+**Pre-existing red (not this ticket):** `JobDetailModal — AST-1695 listing_href > read-only: null listing_href → no Link <a>…` (see AST-1865 block). Name-excluded below.
+
+**Integration:** none. Frontend only, so do not invent one.
+
+## QA test manifest
+
+1. **AC1–AC5, AC7 + host regressions (Vitest, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  --testNamePattern='^(?!.*null listing_href)'
+```
+
+2. **AC6 greps:** `rg -n "PhaseAnalysisLines" src/ui/frontend/src/pages/JobsRecommended.tsx src/ui/frontend/src/components/JobDetailModal.tsx` gives one or more hits in **each** file. `rg -n "report_phase_tabs|buildPhaseListGradeRow" src/ui/frontend/src/pages/JobsRecommended.tsx src/ui/frontend/src/components/JobDetailModal.tsx` prints **nothing**.
+3. **AC8:** `git diff origin/dev...origin/sub/AST-1972/AST-1973-job-modal-info-tab-analysis --stat -- src/ui/api src/core src/data src/utils` prints nothing.
+4. **AC9:** in `src/ui/frontend`, `npm run build` exits 0 and `npx tsc -b --noEmit` exits 0. `npm run lint` lists no problem that `origin/dev` does not already report.
+
+**Pass criterion:** item 1 green (88 pass, 1 name-skipped) and items 2–4 hold. Use the narrowed run, not the zero-arg harness.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/components.md`: filled after publish
+- `docs/test-bible/frontend/pages.md`: filled after publish
+
+### AST-1982 · AST-1981 (shared job-title renderer + list tables)
+
+**Parent:** [AST-1981](https://linear.app/astralcareermatch/issue/AST-1981). **Publish:** `origin/sub/AST-1981/AST-1982-job-title-renderer`.
+
+New **`components/JobTitleText.tsx`** cuts a title through `truncateForDisplay` at `resolveJobTitleTruncateChars(getUiConfig())` (`lib/uiConfig.ts`, fallback 50), served from **`UI_CONFIG["job_title_truncate_chars"] = 50`**. A short title renders as bare text. A cut title renders a `<span>`; hovering it portals a `role="tooltip"` `.job-title-tooltip` with the full title to `document.body`. Mouse-out or any scroll closes it. Empty title renders the caller's required `fallback`. Used by the Job Title `<td>` on `JobsRecommended` (Ready + Review), `JobsProcessing`, `JobsSkipped` (every table variant), `JobsApplied`, and by the Meteorites `job_title` column `render`. That element bypasses `ListPage`'s 30-char string cut, so other columns keep 30. Modal / report headers are sibling **AST-1983**.
+
+Shared page helper **`tests/component/frontend/pages/job-title-cell.ts`** (`jobTitleJobs`, `expectJobTitleCells`) seeds a 79-char title (word `Zanzibar` past char 50) and an exactly-50-char title, then checks AC 1–3 on one rendered table.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 long titles cut at 50 + `…` on every list | `JobTitleText.tsx`, five pages | **`test_JobTitleText`** › **`long title cut via the config length…`**; **`AST-1982`** tests in **`test_JobsRecommended`** (review + ready), **`test_JobsProcessing`**, **`test_JobsSkipped`** (below-floor + regular), **`test_JobsApplied`**, **`test_JobsMeteorites`** |
+| 2 ≤ 50 exact; no tooltip, no `title` | `JobTitleText.tsx` | **`test_JobTitleText`** › **`50-char title renders exactly…`**; every page test above (helper hovers the 50-char cell) |
+| 3 tooltip = full title, under `body`, outside table, wraps at fixed px width, gone on mouse-out | `JobTitleText.tsx`, `App.css` | **`test_JobTitleText`** › **`hover opens one tooltip…`**, **`any scroll closes…`**, **`tooltip style wraps…`** (reads the `.job-title-tooltip` rule; jsdom loads no CSS); every page test above. Multi-line `offsetHeight` for titles over 100 chars needs a real browser, so it is UAT only |
+| 4 Meteorites title 50, other columns 30 | `JobsMeteorites.tsx` | **`JobsMeteorites — AST-1982 Job Title cut`** › **`Title cut at 50…; other columns still cut at 30`** |
+| 5 one source for 50, one cut path | `config.py`, `uiConfig.ts` | **`test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_job_title_truncate_chars`**; **`test_uiConfig`** › **`resolveJobTitleTruncateChars…`**; **`test_JobTitleText`** › **`cut length follows UI_CONFIG…`** (served 20 → cut at 20); greps below |
+| 6 every surface uses the component | five pages | greps below |
+| 7 sort / search read the full title | `JobsRecommended.tsx`, `ListPage` | **`JobsRecommended — AST-1982 Job Title cut`** › **`ready: Job Title sort orders by the full title…`** (titles equal for 50 chars); **`JobsMeteorites — AST-1982`** › **`search for a word past char 50…`** |
+| 8 build / lint | source | item 4 below |
+
+**Broken / obsolete:** none. Every existing page fixture title is under 50 chars. No test asserted the raw `{job.job_title || "—"}` markup.
+
+**Pre-existing red (not this ticket; also red with `dev` product and no AST-1982 tests):** the **`AST-1979 Created column` › `…Created left of…`** tests in the four hand-built page files need **AST-1971** product, which is not on `origin/dev`. **`JobsApplied — AST-1479 › Interview → notes modal → candidate_action interview`** times out. **`test_api_system.py::TestAst1375InflightHideStatesManifest::test_manifest_includes_inflight_hide_states`** also fails. All are name-excluded below.
+
+**Integration:** none. Frontend plus one served config key, so do not invent one.
+
+## QA test manifest
+
+1. **AC 1–4, AC 5 component side, AC 7 (Vitest, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobTitleText.test.tsx \
+  ../../../tests/component/frontend/lib/test_uiConfig.test.ts \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsProcessing.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx \
+  --testNamePattern='^(?!.*(Created left of|candidate_action interview))'
+```
+
+2. **AC 5 served key (pytest):**
+
+```bash
+.venv/bin/python -m pytest tests/component/ui/api/test_api_system.py -q -k "ui_config"
+```
+
+3. **AC 5 / AC 6 greps:**
+   - `rg -l "JobTitleText" src/ui/frontend/src/pages` lists `JobsRecommended.tsx`, `JobsProcessing.tsx`, `JobsSkipped.tsx`, `JobsApplied.tsx`, `JobsMeteorites.tsx`.
+   - `rg -n '\{job\.job_title \|\| "\\u2014"\}' src/ui/frontend/src/pages` prints nothing.
+   - `rg -n "\.slice\(" src/ui/frontend/src/components/JobTitleText.tsx` prints nothing.
+   - `git diff origin/dev -- src/ui/frontend/src/pages src/ui/frontend/src/components | rg "^\+.*(\b50\b|job_title.*\.slice\()"` prints nothing.
+4. **AC 8:** `python -c "import src.utils.config"` exits 0. In `src/ui/frontend`, `npm run build` exits 0. `npm run lint` lists no problem that `origin/dev` does not already report.
+
+**Pass criterion:** items 1–2 green with the name exclusions above, and items 3–4 hold. Use the narrowed run, not the zero-arg harness.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/components.md`: filled after publish
+
+### AST-1983 · AST-1981 (job headers use the shared renderer)
+
+**Parent:** [AST-1981](https://linear.app/astralcareermatch/issue/AST-1981). **Publish:** `origin/sub/AST-1981/AST-1983-job-title-headers`. Consumes **AST-1982**'s `JobTitleText` as-is.
+
+`Modal`'s `title` prop widens from `string` to `ReactNode`. It is still rendered only inside `<h2 className="modal-title">`. `JobDetailModal` passes `<JobTitleText title={job?.job_title} fallback={job?.company || "Job Detail"} />`. `MeteoriteDetailModal.modalTitle` returns `JobTitleText` for the title part plus a plain ` — <employer>` suffix (employer-only and id fallbacks unchanged). `RecommendedJobReportHeader` wraps `.recommended-report-title` content in `JobTitleText`. The Info-tab Title field (`<span>{job.job_title || "—"}</span>`) and edit input are untouched.
+
+`tests/component/frontend/pages/job-title-cell.ts` now exports **`expectFullTitleTooltip(span, host)`**: one tooltip, full title, direct child of `body`, outside `host`, gone on mouse-out. AST-1982's `expectJobTitleCells` calls it, and the header tests below reuse it with the `.modal-overlay` or header row as `host`.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 5 headers cut at 50 + `…`, employer suffix whole, AC-3 tooltip | `JobDetailModal.tsx`, `MeteoriteDetailModal.tsx`, `RecommendedJobReportHeader.tsx`, `Modal.tsx` | **`JobDetailModal — AST-1983 header title cut`** › **`AC5…`**, **`empty title keeps the company / Job Detail header fallback`**; **`MeteoriteDetailModal — AST-1983 header title cut`** (title + employer, title only, employer only); **`RecommendedJobReportHeader — AST-1983 title cut`** (long, 50-char) |
+| 6 Info-tab Title field and edit input full | `JobDetailModal.tsx` | **`JobDetailModal — AST-1983 …`** › **`AC5…; AC6: read-only Title field is full`**, **`AC6: editable Title input holds the full title…`** |
+| 7 every in-scope surface uses the component | source | grep below |
+| 8 build / lint | source | item 3 below |
+
+**Broken / obsolete:** none. Existing modal and header fixtures use short titles. `Modal`'s `title` is used only in the `<h2>`. The Meteorite `"Staff Eng — Acme"` lookup still matches, because both text nodes sit in one `<h2>`.
+
+**Pre-existing red (not this ticket; also red with the `ftr` versions of the four product files):** **`JobDetailModal — AST-1695 › read-only: null listing_href…`** (see AST-1865 / AST-1973). **`JobAnalysisReportModal — AST-948 › AST-1350: Print Resume unsupported toast…`** and **`… › AST-1546: Print Resume success…`**. All are name-excluded below.
+
+**Integration:** none. Frontend only, so do not invent one.
+
+## QA test manifest
+
+1. **AC 5–6 + host regressions (Vitest, all green):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobTitleText.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx \
+  --testNamePattern='^(?!.*(null listing_href|Print Resume unsupported toast|Print Resume success))'
+```
+
+2. **AC 7 grep:** `rg -l "JobTitleText" src/ui/frontend/src/components` lists `JobDetailModal.tsx`, `MeteoriteDetailModal.tsx`, `RecommendedJobReportHeader.tsx` (plus `JobTitleText.tsx` itself).
+3. **AC 8:** in `src/ui/frontend`, `npm run build` exits 0 and `npx tsc -b --noEmit` exits 0. `npm run lint` lists no problem that `origin/dev` does not already report.
+
+**Pass criterion:** item 1 green with the name exclusions above, and items 2–3 hold. Use the narrowed run, not the zero-arg harness.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/components.md`: filled after publish

@@ -1,11 +1,13 @@
-import { screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import { copyJobSnapshotToClipboard } from "../../../../src/ui/frontend/src/lib/copyJobSnapshot"
+import { buildPhaseListGradeRow } from "../../../../src/ui/frontend/src/lib/recommendedJobReport"
 import JobDetailModal from "../../../../src/ui/frontend/src/components/JobDetailModal"
 import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 import { renderWithProviders, stubAuthPublicFetches } from "../test-utils"
+import { CUT_TITLE, LONG_TITLE, expectFullTitleTooltip } from "../pages/job-title-cell"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
@@ -516,5 +518,157 @@ describe("JobDetailModal — AST-1865 admin state-history row opens the run", ()
     }
     await userEvent.click(screen.getByText("HOP"))
     expect(calledUrls().some(url => url.startsWith("/api/admin/"))).toBe(false)
+  })
+})
+
+describe("JobDetailModal — AST-1973 Info-tab analysis", () => {
+  // Detail payload shape after api_jobs._flatten_grades: *_grades / *_rubric at top level.
+  // AST-1771 fixture: importance-then-grade order puts QC/B before EFW/A.
+  const jdGrades = [
+    { vector: "Embedded/Firmware/Hardware Domain", grade: "A", confidence: 5, reason: "fit" },
+    { vector: "Quality Check", grade: "B", confidence: 4, reason: "ok" },
+  ]
+  const jdRubric = [
+    { code: "EFW", label: "Embedded/Firmware/Hardware Domain", importance: 1, grade_descriptions: [] },
+    { code: "QC", label: "Quality Check", importance: 5, grade_descriptions: [] },
+  ]
+  const partial = {
+    ...jobPayload,
+    state: "CANDIDATE_SKIPPED",
+    jd_grades: jdGrades,
+    jd_rubric: jdRubric,
+    do_grades: [{ vector: "Delivery", grade: "C", confidence: 3 }],
+  }
+
+  const dotSig = (root: ParentNode) =>
+    [...root.querySelectorAll(".grade-dot")].map(d => ({
+      colour: [...d.classList].find(c => c.startsWith("dot-")),
+      title: d.getAttribute("title"),
+    }))
+
+  async function renderInfo(detail: Record<string, unknown>) {
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") return { json: async () => [] } as Response
+      if (url === "/api/jobs/j1" && !init) return { ok: true, json: async () => detail } as Response
+      throw new Error(url)
+    })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Engineer" })).toBeInTheDocument())
+    // Lines appear once the manifest provider resolves.
+    await waitFor(() => expect(document.querySelectorAll(".recommended-analysis-line")).toHaveLength(4))
+    const block = document.querySelector(".recommended-analysis-lines") as HTMLElement
+    const lines = [...block.querySelectorAll(".recommended-analysis-line")] as HTMLElement[]
+    const line = (label: string) =>
+      lines.find(l => l.querySelector(".recommended-analysis-line-label")?.textContent === label)!
+    return { block, lines, line }
+  }
+
+  beforeEach(() => {
+    mockedApi.mockReset()
+    mockedCopy.mockReset()
+    mockedCopy.mockResolvedValue(true)
+  })
+
+  it("AC1/AC2: right column shows Analysis label, then JD/DO/GET/LIKE lines, then State History", async () => {
+    const { block, lines } = await renderInfo(jobPayload)
+    const cols = document.querySelectorAll(".entity-summary-top > .entity-summary-col")
+    const right = cols[cols.length - 1]
+    expect(block.closest(".entity-summary-col")).toBe(right)
+    const labels = [...right.querySelectorAll(".entity-section-label")]
+    expect(labels.map(l => l.textContent)).toEqual(["Analysis", "State History"])
+    // DOM order: Analysis label → lines → State History label.
+    expect(labels[0].compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(block.compareDocumentPosition(labels[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Manifest order (report_phase_tabs) + phase_score_columns short labels.
+    expect(lines.map(l => l.querySelector(".recommended-analysis-line-label")?.textContent))
+      .toEqual(["JD", "DO", "GET", "LIKE"])
+  })
+
+  it("AC3: no phase grades → all four lines show an em dash and the modal still renders", async () => {
+    const { block, lines } = await renderInfo(jobPayload)
+    expect(block.querySelector(".grade-dot")).toBeNull()
+    for (const l of lines) expect(l.textContent).toMatch(/\u2014$/)
+    expect(screen.getByText("State History")).toBeInTheDocument()
+  })
+
+  it("AC3: JD + DO graded, GET + LIKE not → circles on JD/DO, em dash on GET/LIKE (skipped state, ungated)", async () => {
+    const { line } = await renderInfo(partial)
+    expect(line("JD").querySelectorAll(".grade-dot")).toHaveLength(2)
+    expect(line("DO").querySelectorAll(".grade-dot")).toHaveLength(1)
+    for (const label of ["GET", "LIKE"]) {
+      expect(line(label).querySelector(".grade-dot")).toBeNull()
+      expect(line(label).textContent).toBe(`${label}\u2014`)
+    }
+    for (const label of ["JD", "DO"]) expect(line(label).textContent).not.toContain("\u2014")
+  })
+
+  it("AC4: circle count, dot-* colours, order and titles equal the list's row builder", async () => {
+    const { line } = await renderInfo(partial)
+    const list = render(<>{buildPhaseListGradeRow(partial, "jd_grades")}</>).container
+    expect(dotSig(line("JD"))).toEqual(dotSig(list))
+    expect(dotSig(line("JD")).map(d => d.colour)).toEqual(["dot-b", "dot-a"])
+    for (const d of dotSig(line("JD"))) expect(d.title).toBeTruthy()
+    const listDo = render(<>{buildPhaseListGradeRow(partial, "do_grades")}</>).container
+    expect(dotSig(line("DO"))).toEqual(dotSig(listDo))
+  })
+
+  it("AC5: modal circles carry no letter and the block has no confidence bullets", async () => {
+    const { block } = await renderInfo(partial)
+    const dots = block.querySelectorAll(".grade-dot")
+    expect(dots).toHaveLength(3)
+    for (const dot of dots) {
+      expect(dot).toHaveClass("grade-dot-letterless")
+      expect(dot.textContent).toBe("")
+    }
+    expect(block.querySelector(".confidence-bullets")).toBeNull()
+    // Display-only: nothing clickable inside the block.
+    expect(block.querySelector('[role="button"], button, a, .clickable')).toBeNull()
+  })
+})
+
+// AST-1983 AC 5 / AC 6: Modal <h2> cuts the job title (JobTitleText); Info-tab Title field and edit input stay full.
+describe("JobDetailModal — AST-1983 header title cut", () => {
+  function mockDetail(detail: Record<string, unknown>) {
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      if (url === "/api/candidates") return { json: async () => [] } as Response
+      if (url === "/api/jobs/j1" && !init) return { ok: true, json: async () => detail } as Response
+      throw new Error(url)
+    })
+  }
+
+  beforeEach(() => {
+    mockedApi.mockReset()
+  })
+
+  it("AC5: header shows first 50 chars + … with the full-title tooltip; AC6: read-only Title field is full", async () => {
+    mockDetail({ ...jobPayload, job_title: LONG_TITLE, fields_editable: false, legal_next_states: [] })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    const heading = await screen.findByRole("heading", { name: CUT_TITLE })
+    expect(heading.textContent).toBe(CUT_TITLE)
+    await expectFullTitleTooltip(within(heading).getByText(CUT_TITLE), heading.closest(".modal-overlay")!)
+    await userEvent.click(screen.getByText("Info"))
+    expect(screen.getByText(LONG_TITLE).closest(".modal-body")).toBeTruthy()
+  })
+
+  it("AC6: editable Title input holds the full title while the header is cut", async () => {
+    mockDetail({ ...jobPayload, job_title: LONG_TITLE, state: "CANDIDATE_SKIPPED", fields_editable: true, legal_next_states: ["NEW"], job_data: {} })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await screen.findByRole("heading", { name: CUT_TITLE })
+    const input = screen.getByDisplayValue(LONG_TITLE)
+    expect(input.tagName).toBe("INPUT")
+  })
+
+  it("empty title keeps the company / Job Detail header fallback", async () => {
+    mockDetail({ ...jobPayload, job_title: "" })
+    const { unmount } = renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    expect(await screen.findByRole("heading", { name: "Acme" })).toBeInTheDocument()
+    unmount()
+    mockDetail({ ...jobPayload, job_title: null, company: null })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    expect(await screen.findByRole("heading", { name: "Job Detail" })).toBeInTheDocument()
   })
 })

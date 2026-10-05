@@ -2742,3 +2742,68 @@ class TestAst1872JobStateAdmitsTransition:
         # Config typo must surface, not silently hide Skip.
         with pytest.raises(KeyError):
             tracker_mod.job_state_admits_transition("RECOMMENDED", "NOT_A_JOB_STATE")
+
+
+# AST-1974 · AST-1970: candidate_skip_job — not found / illegal (claim untouched) / legal with + without
+# batch claim / hop-label state; list_jobs + count_jobs facades forward exclude_states.
+class TestAst1974CandidateSkipJob:
+    def _seed(self, db, job_id: str, state: str, batch_id: str | None = None) -> None:
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
+        db.save_job(job_id, company="acme", state=state, candidate_id="cand-1")
+        if batch_id:
+            conn = db._get_connection()
+            try:
+                conn.execute(
+                    "UPDATE job SET batch_id = ?, batch_created_at = datetime('now') WHERE astral_job_id = ?",
+                    (batch_id, job_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def test_missing_job_raises(self, seeded_db) -> None:
+        with pytest.raises(ValueError, match="Job not found: nope"):
+            tracker_mod.candidate_skip_job("nope")
+
+    def test_illegal_from_applied_keeps_claim(self, seeded_db) -> None:
+        self._seed(seeded_db, "j-app", "CANDIDATE_APPLIED", batch_id="b-live")
+        with pytest.raises(ValueError, match="Invalid transition: CANDIDATE_APPLIED -> CANDIDATE_SKIPPED"):
+            tracker_mod.candidate_skip_job("j-app")
+        row = seeded_db.get_job("j-app")
+        # Legality checked first — an illegal skip never drops a live claim.
+        assert row["state"] == "CANDIDATE_APPLIED"
+        assert row["batch_id"] == "b-live"
+
+    def test_legal_skip_releases_held_claim(self, seeded_db) -> None:
+        self._seed(seeded_db, "j-new", "NEW", batch_id="b-1974")
+        assert tracker_mod.candidate_skip_job("j-new") == "CANDIDATE_SKIPPED"
+        row = seeded_db.get_job("j-new")
+        assert row["state"] == "CANDIDATE_SKIPPED"
+        assert row["batch_id"] is None
+
+    def test_legal_skip_without_claim_skips_lock_clear(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._seed(seeded_db, "j-rec", "RECOMMENDED")
+        clear = MagicMock()
+        monkeypatch.setattr(tracker_mod.database, "clear_job_batch_lock", clear)
+        assert tracker_mod.candidate_skip_job("j-rec") == "CANDIDATE_SKIPPED"
+        clear.assert_not_called()
+        assert seeded_db.get_job("j-rec")["state"] == "CANDIDATE_SKIPPED"
+
+    def test_hop_label_build_state_skips(self, seeded_db) -> None:
+        hop = cfg.resume_artifact_compound_state("anticipate_scan")
+        self._seed(seeded_db, "j-hop", hop, batch_id="b-hop")
+        assert tracker_mod.candidate_skip_job("j-hop") == "CANDIDATE_SKIPPED"
+        row = seeded_db.get_job("j-hop")
+        assert row["state"] == "CANDIDATE_SKIPPED"
+        assert row["batch_id"] is None
+
+    def test_facades_forward_exclude_states(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen: list[tuple[str, dict]] = []
+        monkeypatch.setattr(tracker_mod.database, "list_jobs", lambda **kw: seen.append(("list", kw)) or [])
+        monkeypatch.setattr(tracker_mod.database, "count_jobs", lambda **kw: seen.append(("count", kw)) or 0)
+        tracker_mod.list_jobs(candidate_id="cand-1", exclude_states=["X"])
+        tracker_mod.count_jobs(candidate_id="cand-1", exclude_states=["X"])
+        assert seen == [
+            ("list", {"states": None, "candidate_id": "cand-1", "order_by": "state_changed_at", "exclude_states": ["X"]}),
+            ("count", {"states": None, "candidate_id": "cand-1", "exclude_states": ["X"]}),
+        ]

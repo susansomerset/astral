@@ -23,6 +23,7 @@ const tasks = [
     task_seq: 1,
     task_name: "task_a",
     model_code: "claude",
+    response_schema_count: 0,
     system_prompt_tokens: 10,
     base_cache_tokens: 20,
     parsed_cache_tokens: null,
@@ -44,6 +45,7 @@ const tasks = [
     task_seq: 2,
     task_name: "task_b",
     model_code: "claude",
+    response_schema_count: 2,
     system_prompt_tokens: 11,
     base_cache_tokens: 21,
     parsed_cache_tokens: 22,
@@ -598,6 +600,25 @@ describe("AdminTaskPrompts", () => {
       const row = screen.getByText("task_a").closest("tr") as HTMLElement
       const cells = within(row).getAllByRole("cell")
       expect(cells[headers.indexOf("Model")]).toHaveTextContent("claude")
+    }, 20000)
+  })
+
+  // AST-1978: RSC column sits directly left of System and shows the served integer — 0 included, never blank.
+  describe("AST-1978 RSC column", () => {
+    it("header order is Model | RSC | System | Base Cache and cells show served counts", async () => {
+      mockApi()
+      renderWithProviders(<TaskPrompts />)
+      await waitFor(() => expect(screen.getByText("Manage Tasks")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+      const table = screen.getByText("task_a").closest("table") as HTMLElement
+      const headers = within(table).getAllByRole("columnheader").map(h => h.textContent)
+      const rsc = headers.indexOf("RSC")
+      expect(headers.slice(rsc - 1, rsc + 3)).toEqual(["Model", "RSC", "System", "Base Cache"])
+      expect(within(table).getAllByRole("columnheader")[rsc]).toHaveStyle({ textAlign: "right" })
+      // Body rows in task_seq order (task_a, task_b); 0 must render as "0", not blank.
+      const rscCells = within(table).getAllByRole("row").slice(1)
+        .map(r => within(r).getAllByRole("cell")[rsc].textContent)
+      expect(rscCells).toEqual(["0", "2"])
     }, 20000)
   })
 

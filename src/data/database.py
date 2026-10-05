@@ -9,7 +9,7 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company_id (nullable real employer; AST-1701), candidate_id (required owning candidate; AST-1598 / AST-1594), company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (company|meteorite parent/track; AST-1701 repurpose of AST-1469) + source_entity_id (company short_name or meteorite id text), etc.
-- meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; reverse lookup via `get_meteorite_by_astral_job_id(astral_job_id)`; candidate-scoped listing via `list_meteorites_for_candidate(candidate_id)`; listing-href fallback reverse lookup via `get_meteorite_link_by_astral_job_id(astral_job_id)` (AST-1694 — link column only; not AST-1685 provenance); columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, electronic_contact (AST-1689; config literal from AST-1688), job_title, employer_name (AST-1713; Ruth stage_meteorite response keys), astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
+- meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; reverse lookup via `get_meteorite_by_astral_job_id(astral_job_id)`; candidate-scoped listing via `list_meteorites_for_candidate(candidate_id)` (+ landed `job_state`, AST-1974); listing-href fallback reverse lookup via `get_meteorite_link_by_astral_job_id(astral_job_id)` (AST-1694 — link column only; not AST-1685 provenance); columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, electronic_contact (AST-1689; config literal from AST-1688), job_title, employer_name (AST-1713; Ruth stage_meteorite response keys), astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (legacy — not read or written since AST-1878), api_keys TEXT JSON array [{"server": LLM_SERVER_CONFIG id, "key": Fernet ciphertext}] — at most one entry per server; hydrated as candidate_api_keys {server: plaintext} (AST-1901), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_id TEXT (LLM_MODEL_CONFIG key), max_tokens INTEGER, plain call settings sent as stored — quantization TEXT, temperature REAL, reasoning_effort TEXT, provider_allow_fallbacks INTEGER (bool), provider_only / provider_ignore TEXT (JSON array of provider slugs), provider_sort TEXT (AST-1955) — updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
@@ -2322,8 +2322,9 @@ def list_jobs(
     states: Optional[List[str]] = None,
     candidate_id: Optional[str] = None,
     order_by: str = "state_changed_at",
+    exclude_states: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
-    """List jobs with optional state IN filter and required candidate_id scope (AST-1598).
+    """List jobs with optional state IN / NOT IN filters and required candidate_id scope (AST-1598).
     Scopes via job.candidate_id (no company subquery). Raises if candidate_id omitted/blank.
     order_by: column name; falls back to rowid if not a known sortable column."""
     cid = (candidate_id or "").strip()
@@ -2340,6 +2341,9 @@ def list_jobs(
             if states:
                 clauses.append(f"state IN ({','.join('?' for _ in states)})")
                 params.extend(states)
+            if exclude_states:
+                clauses.append(f"state NOT IN ({','.join('?' for _ in exclude_states)})")
+                params.extend(exclude_states)
             where = f" WHERE {' AND '.join(clauses)}"
             col = order_by if order_by in _SORTABLE else "rowid"
             if col == "company":
@@ -2357,6 +2361,7 @@ def list_jobs(
 def count_jobs(
     states: Optional[List[str]] = None,
     candidate_id: Optional[str] = None,
+    exclude_states: Optional[List[str]] = None,
 ) -> int:
     """COUNT(*) version of list_jobs — avoids fetching full rows just for length.
     candidate_id required (AST-1598); scopes via job.candidate_id."""
@@ -2373,6 +2378,9 @@ def count_jobs(
             if states:
                 clauses.append(f"state IN ({','.join('?' for _ in states)})")
                 params.extend(states)
+            if exclude_states:
+                clauses.append(f"state NOT IN ({','.join('?' for _ in exclude_states)})")
+                params.extend(exclude_states)
             where = f" WHERE {' AND '.join(clauses)}"
             row = conn.execute(f"SELECT COUNT(*) FROM job{where}", params).fetchone()
             return row[0] if row else 0
@@ -4169,7 +4177,7 @@ def get_meteorite(meteorite_id: int) -> Optional[Dict[str, Any]]:
 
 
 def list_meteorites_for_candidate(candidate_id: str) -> List[Dict[str, Any]]:
-    """Return all meteorite rows for candidate_id, newest state_changed_at first."""
+    """Return all meteorite rows for candidate_id, newest state_changed_at first; job_state / job_created_at = landed job's current state / created_at (None when unlanded)."""
     if candidate_id is None or str(candidate_id).strip() == "":
         return []
     cid = str(candidate_id).strip()
@@ -4178,10 +4186,13 @@ def list_meteorites_for_candidate(candidate_id: str) -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
             _ensure_meteorite_schema(conn)
+            _ensure_job_schema(conn)
+            # LEFT JOIN keeps unlanded rows; aliases avoid shadowing meteorite.state / meteorite.created_at.
             rows = conn.execute(
-                """SELECT * FROM meteorite
-                   WHERE candidate_id = ?
-                   ORDER BY state_changed_at DESC""",
+                """SELECT m.*, j.state AS job_state, j.created_at AS job_created_at FROM meteorite m
+                   LEFT JOIN job j ON j.astral_job_id = m.astral_job_id
+                   WHERE m.candidate_id = ?
+                   ORDER BY m.state_changed_at DESC""",
                 (cid,),
             ).fetchall()
             return [_meteorite_row_to_dict(r) for r in rows]

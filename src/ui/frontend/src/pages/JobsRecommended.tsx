@@ -5,12 +5,14 @@ import { legacyStateSectionLabel, unmappedJobStates } from "../lib/stateUiSectio
 import CandidateActionNotesModal from "../components/CandidateActionNotesModal"
 import CandidateJobRowActions from "../components/CandidateJobRowActions"
 import JobAnalysisReportModal from "../components/JobAnalysisReportModal"
+import PhaseAnalysisLines from "../components/PhaseAnalysisLines"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidateJobActions, type BulkActionResult } from "../hooks/useCandidateJobActions"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
-import { buildPhaseListGradeRow, formatPhaseScore, primaryActionsForState } from "../lib/recommendedJobReport"
+import { formatPhaseScore, primaryActionsForState } from "../lib/recommendedJobReport"
 import Time from "../components/Time"
+import JobTitleText from "../components/JobTitleText"
 
 interface Job {
   astral_job_id: string
@@ -18,6 +20,8 @@ interface Job {
   company: string
   state: string
   state_changed_at: string | null
+  created_at?: string | null
+  source?: string | null
   jd_score?: number | null
   do_score?: number | null
   get_score?: number | null
@@ -52,8 +56,12 @@ function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields
       cmp = (a.job_title || "").localeCompare(b.job_title || "")
     } else if (col === "company") {
       cmp = a.company.localeCompare(b.company)
+    } else if (col === "source") {
+      cmp = (a.source || "").localeCompare(b.source || "")
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
+    } else if (col === "created_at") {
+      cmp = (a.created_at || "").localeCompare(b.created_at || "")
     } else if (col === "state") {
       cmp = (a.state || "").localeCompare(b.state || "")
     } else if (phaseFields.includes(col) || col === TOTAL_SCORE_COL) {
@@ -69,7 +77,10 @@ function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields
   })
 }
 
-export default function Recommended() {
+// AST-1975: one list component for Jobs → Ready and Jobs → Review; the route supplies both.
+interface RecommendedProps { view: "ready" | "review"; title: string }
+
+export default function Recommended({ view, title }: RecommendedProps) {
   const { manifest, loadState } = useStateUi()
   const { selectedId } = useCandidate()
   const [rows, setRows] = useState<Job[]>([])
@@ -87,7 +98,7 @@ export default function Recommended() {
   const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
     beginRefresh(showSpinner)
-    api(`/api/jobs?view=recommended&candidate_id=${encodeURIComponent(selectedId)}`)
+    api(`/api/jobs?view=${view}&candidate_id=${encodeURIComponent(selectedId)}`)
       .then(r => r.json())
       .then(data => {
         // Spinner loads are mount + candidate switch only — drop any prior selection there.
@@ -96,7 +107,7 @@ export default function Recommended() {
         setRows(Array.isArray(data) ? data : [])
       })
       .finally(() => endRefresh())
-  }, [selectedId, beginRefresh, endRefresh])
+  }, [selectedId, view, beginRefresh, endRefresh])
 
   // After any bulk action: one toast with the split, then clear selection (AC 8).
   const handleBulkDone = useCallback((r: BulkActionResult) => {
@@ -128,18 +139,6 @@ export default function Recommended() {
     [manifest?.jobs.recommended.phase_score_columns],
   )
 
-  // Line order + grades_field from report_phase_tabs (modal order); short label from the
-  // matching phase_score_columns entry (jd_grades → jd_score → "JD"), else the tab nav_label.
-  const phaseLines = useMemo(() => {
-    const rec = manifest?.jobs.recommended
-    return (rec?.report_phase_tabs ?? []).map(tab => ({
-      gradesField: tab.grades_field,
-      label: rec?.phase_score_columns.find(
-        c => c.field === tab.grades_field.replace(/_grades$/, "_score"),
-      )?.label ?? tab.nav_label,
-    }))
-  }, [manifest])
-
   // Eligibility from manifest primary_actions_by_state — no hardcoded state list.
   const canGenerate = useCallback(
     (state: string) => primaryActionsForState(manifest, state).some(a => a.action_key === "generate_artifacts"),
@@ -164,43 +163,19 @@ export default function Recommended() {
 
   const sections = useMemo(() => {
     if (!manifest) return []
-    const meteoriteSection = manifest.jobs.recommended.meteorite_section
-    const prefix = meteoriteSection?.company_prefix ?? ""
-    // Null company is not a meteorite-prefix match (runtime JSON can be null).
-    const isMeteoriteJob = (job: Job) =>
-      Boolean(prefix) && (job.company ?? "").startsWith(prefix)
-    const meteoriteRows = rows.filter(isMeteoriteJob)
-    const normalRows = rows.filter(job => !isMeteoriteJob(job))
     const byState: Record<string, Job[]> = {}
-    for (const job of normalRows) {
+    for (const job of rows) {
       if (!byState[job.state]) byState[job.state] = []
       byState[job.state].push(job)
     }
     const knownStates = manifest.jobs.recommended.sections.map(r => r.state)
     const normal = manifest.jobs.recommended.sections
       .filter(row => (byState[row.state]?.length ?? 0) > 0)
-      .map(row => ({
-        state: row.state,
-        label: row.label,
-        jobs: byState[row.state],
-      }))
-    const legacy = unmappedJobStates(normalRows, knownStates)
+      .map(row => ({ state: row.state, label: row.label, jobs: byState[row.state] }))
+    const legacy = unmappedJobStates(rows, knownStates)
       .filter(s => byState[s]?.length)
-      .map(s => ({
-        state: s,
-        label: legacyStateSectionLabel(s),
-        jobs: byState[s],
-      }))
-    const out = [...normal, ...legacy]
-    // AST-1057: prepend Meteorites when any post-upshot meteorite-company jobs exist.
-    if (meteoriteSection && meteoriteRows.length > 0) {
-      out.unshift({
-        state: meteoriteSection.section_id,
-        label: meteoriteSection.label,
-        jobs: meteoriteRows,
-      })
-    }
-    return out
+      .map(s => ({ state: s, label: legacyStateSectionLabel(s), jobs: byState[s] }))
+    return [...normal, ...legacy]
   }, [rows, manifest])
 
   function handleSort(sectionState: string, col: string) {
@@ -218,7 +193,7 @@ export default function Recommended() {
   return (
     <div className="page-container">
       <div className="list-page-header">
-        <h1 className="list-page-title">Recommended</h1>
+        <h1 className="list-page-title">{title}</h1>
         <div className="recommended-list-header-actions">
           {selectedIds.length > 0 && (
             <>
@@ -249,13 +224,13 @@ export default function Recommended() {
       ) : loadState === "error" || !manifest ? (
         <div className="list-page-status">State UI manifest unavailable.</div>
       ) : sections.length === 0 ? (
-        <div className="list-page-status">No recommended jobs yet</div>
+        <div className="list-page-status">{`No jobs in ${title}`}</div>
       ) : (
         sections.map(sec => {
           const sort = sorts[sec.state] ?? { col: "state_changed_at", asc: false }
           const sorted = sortRecommendedJobs(sec.jobs, sort.col, sort.asc, phaseFields)
-          // checkbox + actions + title + company + state + phase cols + total + updated
-          const columnCount = 7 + manifest.jobs.recommended.phase_score_columns.length
+          // checkbox + actions + title + company + source + state + phase cols + total + created + updated
+          const columnCount = 9 + manifest.jobs.recommended.phase_score_columns.length
           return (
             <div key={sec.state} style={{ marginBottom: 24 }}>
               <h2 style={{
@@ -278,6 +253,9 @@ export default function Recommended() {
                       <th className="sortable" onClick={() => handleSort(sec.state, "company")}>
                         Company{sortIndicator(sec.state, "company")}
                       </th>
+                      <th className="sortable" onClick={() => handleSort(sec.state, "source")}>
+                        Source{sortIndicator(sec.state, "source")}
+                      </th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "state")}>
                         State{sortIndicator(sec.state, "state")}
                       </th>
@@ -297,6 +275,9 @@ export default function Recommended() {
                         onClick={() => handleSort(sec.state, TOTAL_SCORE_COL)}
                       >
                         Total{sortIndicator(sec.state, TOTAL_SCORE_COL)}
+                      </th>
+                      <th className="sortable" onClick={() => handleSort(sec.state, "created_at")}>
+                        Created{sortIndicator(sec.state, "created_at")}
                       </th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "state_changed_at")}>
                         Updated{sortIndicator(sec.state, "state_changed_at")}
@@ -324,8 +305,9 @@ export default function Recommended() {
                               onGenerate={canGenerate(job.state) ? () => actions.generateJob(job.astral_job_id) : undefined}
                             />
                           </td>
-                          <td>{job.job_title || "\u2014"}</td>
+                          <td><JobTitleText title={job.job_title} fallback={"\u2014"} /></td>
                           <td>{job.company}</td>
+                          <td>{job.source || "\u2014"}</td>
                           <td>{job.state || "\u2014"}</td>
                           {manifest.jobs.recommended.phase_score_columns.map(col => (
                             <td key={col.field} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
@@ -335,19 +317,13 @@ export default function Recommended() {
                           <td style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
                             {formatPhaseScore(totalScore(job, phaseFields))}
                           </td>
+                          <td><Time value={job.created_at} /></td>
                           <td><Time value={job.state_changed_at} /></td>
                         </tr>
                         {showAnalysis && (
                           <tr className="clickable recommended-analysis-row" onClick={() => openJobReport(job.astral_job_id)}>
                             <td colSpan={columnCount}>
-                              <div className="recommended-analysis-lines">
-                                {phaseLines.map(p => (
-                                  <div key={p.gradesField} className="recommended-analysis-line">
-                                    <span className="recommended-analysis-line-label">{p.label}</span>
-                                    {buildPhaseListGradeRow(job, p.gradesField) ?? "\u2014"}
-                                  </div>
-                                ))}
-                              </div>
+                              <PhaseAnalysisLines job={job} />
                             </td>
                           </tr>
                         )}

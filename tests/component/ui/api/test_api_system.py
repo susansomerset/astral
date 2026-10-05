@@ -63,6 +63,11 @@ class TestSystemAuthRoutes:
         assert payload.get("list_table_frozen_data_columns") == 2
         assert payload.get("list_table_cell_truncate_chars") == 30
 
+    def test_ui_config_includes_job_title_truncate_chars(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1982: JobTitleText cut length is served from UI_CONFIG (one source for the 50).
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        assert payload.get("job_title_truncate_chars") == 50
+
     def test_ui_config_includes_preamble_config(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         # AST-1016: Intro + steps for AST-1017; route alias matches existing ui_config tests.
         from src.utils.config import PREAMBLE_CONFIG
@@ -99,7 +104,7 @@ class TestSystemAuthRoutes:
     def test_nav_config_uses_candidate_state(self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("ui.api.api_system.get_candidate", lambda candidate_id: {"state": "ACTIVE_SEARCH"})
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {"/companies/watch_list": 4})
-        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {"/jobs/in_review": 1})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {"/jobs/ready": 1})
         resp = system_client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers)
         payload = resp.get_json()
         assert resp.status_code == 200
@@ -260,12 +265,40 @@ class TestSystemNavHelpers:
     def test_job_counts_without_candidate(self) -> None:
         assert system_mod._get_job_counts(None) == {}
 
+    def test_job_counts_six_paths_with_floor_arithmetic(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1974 AC 10: six keys; below-floor moves from Processing to Skipped; Meteorites = list length.
+        from src.utils import config as cfg
+
+        def _count(states=None, candidate_id=None, exclude_states=None):
+            assert candidate_id == "cand-1"
+            if exclude_states is not None:
+                assert states is None and exclude_states == list(cfg.JOBS_PROCESSING_EXCLUDED_STATES)
+                return 10
+            return {
+                tuple(cfg.READY_JOB_STATES): 1,
+                tuple(cfg.REVIEW_JOB_STATES): 2,
+                tuple(cfg.APPLIED_JOB_STATES): 3,
+                tuple(cfg.SKIPPED_STATES): 4,
+            }[tuple(states)]
+
+        monkeypatch.setattr("src.core.tracker.count_jobs", _count)
+        monkeypatch.setattr("src.core.tracker.count_jobs_below_dispatch_score_floor", lambda candidate_id: 2)
+        monkeypatch.setattr("src.data.database.list_meteorites_for_candidate", lambda candidate_id: [{}, {}, {}])
+        assert system_mod._get_job_counts("cand-1") == {
+            "/jobs/ready": 1,
+            "/jobs/review": 2,
+            "/jobs/applied": 3,
+            "/jobs/processing": 8,
+            "/jobs/skipped": 6,
+            "/jobs/meteorites": 3,
+        }
+
     def test_job_counts_swallow_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("src.core.tracker.count_jobs_below_dispatch_score_floor", lambda candidate_id: (_ for _ in ()).throw(RuntimeError("boom")))
         assert system_mod._get_job_counts("cand-1") == {}
 
     def test_resolve_nav_keeps_candidate_facing_groups_and_stubs(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # AST-1449: no group-level visible skip; Applied/Responded stay disabled stubs.
+        # AST-1449: no group-level visible skip. AST-1974: Responded stub retired; all six Jobs lists live.
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
         facing = {"Jobs", "Companies", "Artifacts", "Candidate"}
@@ -274,10 +307,8 @@ class TestSystemNavHelpers:
             labels = {group["label"] for group in nav}
             assert facing <= labels
             jobs = next(group for group in nav if group["label"] == "Jobs")
-            applied = next(item for item in jobs["items"] if item["label"] == "Applied")
-            responded = next(item for item in jobs["items"] if item["label"] == "Responded")
-            assert applied["enabled"] is False
-            assert responded["enabled"] is False
+            assert "Responded" not in [item["label"] for item in jobs["items"]]
+            assert all(item["enabled"] is True for item in jobs["items"])
         nav_ready = system_mod._resolve_nav("RESUME_READY", "cand-1")
         artifacts = next(group for group in nav_ready if group["label"] == "Artifacts")
         assert all(item["enabled"] for item in artifacts["items"])

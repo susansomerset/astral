@@ -3,8 +3,10 @@ import Modal from "./Modal"
 import SideTabPanel, { type SideTab } from "./SideTabPanel"
 import StateTimeline, { type StateEntry } from "./StateTimeline"
 import AgentStoryTab, { type AgentStoryEntry } from "./AgentStoryTab"
+import PhaseAnalysisLines from "./PhaseAnalysisLines"
 import BatchExecutionModal from "./BatchExecutionModal"
 import Time from "./Time"
+import JobTitleText from "./JobTitleText"
 import api from "../lib/api"
 import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
 import { useAuth } from "../contexts/AuthContext"
@@ -32,6 +34,7 @@ interface JobDetail {
   agent_story?: AgentStoryEntry[]
   fields_editable?: boolean
   legal_next_states?: string[]
+  [key: string]: unknown
 }
 
 type FieldDraft = {
@@ -239,7 +242,7 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
       <Modal
         open={!!jobId}
         onClose={onClose}
-        title={job?.job_title || job?.company || "Job Detail"}
+        title={<JobTitleText title={job?.job_title} fallback={job?.company || "Job Detail"} />}
         size="wide"
         dirty={isDraftDirty}
         onSave={fieldsEditable ? () => { void handleSave() } : undefined}
@@ -403,8 +406,12 @@ function InfoTab({
             </button>
           </div>
         </div>
-        {/* Right column: state history */}
+        {/* Right column: analysis + state history */}
         <div className="entity-summary-col">
+          <p className="entity-section-label">Analysis</p>
+          <div style={{ marginBottom: 16 }}>
+            <PhaseAnalysisLines job={job} />
+          </div>
           <p className="entity-section-label">State History</p>
           <StateTimeline history={job.state_history || []} onSelectRun={onSelectRun} />
         </div>

@@ -382,12 +382,11 @@ class TestAst479LikePassStates:
     def test_grade_like_pass_state_is_passed_like_not_build_artifacts(self) -> None:
         assert cfg.TASK_CONFIG["grade_like"]["pass_state"] == "PASSED_LIKE"
 
-    def test_recommended_job_states_post_synthesis_exclude_passed_like(self) -> None:
-        states = cfg.RECOMMENDED_JOB_STATES
-        assert states[0] == "RECOMMENDED"
-        assert states[-1] == "CANDIDATE_REVIEW"
-        assert "PASSED_LIKE" not in states
-        assert states[1:-1] == [cfg.BUILD_ARTIFACTS_BASE_STATE]
+    def test_ready_review_lists_post_synthesis_exclude_passed_like(self) -> None:
+        # AST-1974: RECOMMENDED_JOB_STATES split into Review / Ready; PASSED_LIKE stays Processing.
+        assert cfg.REVIEW_JOB_STATES == ["RECOMMENDED"]
+        assert cfg.READY_JOB_STATES == ["CANDIDATE_REVIEW"]
+        assert "PASSED_LIKE" not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
 
 
 class TestAst309CoverLetterTaskConfig:
@@ -535,11 +534,8 @@ class TestBuildStateUiManifest:
     def test_ast522_recommended_manifest_sections_and_phase_columns(self) -> None:
         manifest = cfg.build_state_ui_manifest()
         rec = manifest["jobs"]["recommended"]
-        assert [row["state"] for row in rec["sections"]] == [
-            "RECOMMENDED",
-            cfg.BUILD_ARTIFACTS_BASE_STATE,
-            "CANDIDATE_REVIEW",
-        ]
+        # AST-1974: BUILD_ARTIFACTS row moved to processing_sections.
+        assert [row["state"] for row in rec["sections"]] == ["RECOMMENDED", "CANDIDATE_REVIEW"]
         assert [col["field"] for col in rec["phase_score_columns"]] == [
             "jd_score",
             "do_score",
@@ -807,12 +803,13 @@ class TestAst803FlatBuildArtifactsChainDispatch:
         assert cfg.ERROR_BUILD_ARTIFACTS_STATE in cfg.JOB_STATES
         assert cfg.JOB_STATES[cfg.BUILD_ARTIFACTS_BASE_STATE]["prior_states"] == ["RECOMMENDED"]
 
-    def test_recommended_job_states_uses_flat_build_artifacts(self) -> None:
-        assert cfg.RECOMMENDED_JOB_STATES == [
-            "RECOMMENDED",
-            cfg.BUILD_ARTIFACTS_BASE_STATE,
-            "CANDIDATE_REVIEW",
-        ]
+    def test_flat_build_artifacts_is_processing_section(self) -> None:
+        # AST-1974: flat BUILD_ARTIFACTS moved from Recommended to the last Processing section.
+        assert cfg.BUILD_ARTIFACTS_BASE_STATE not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
+        assert cfg.JOBS_PROCESSING_UI_SECTIONS[-1] == {
+            "state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "label": "Building Artifacts",
+        }
 
     def test_legacy_and_flat_build_artifacts_helpers(self) -> None:
         legacy = cfg.resume_artifact_compound_state("anticipate_scan")
@@ -1440,10 +1437,11 @@ class TestAst874FetchCulturePagesConfig:
 
     def test_score_gate_and_ui_manifests(self) -> None:
         assert "CULTURE_READY" in cfg.PASSED_SCORE_GATED_STATES
-        assert "CULTURE_READY" in cfg.IN_REVIEW_STATES
+        # AST-1974: Processing (ex In Review) = complement of the four explicit lists.
+        assert "CULTURE_READY" not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
         assert "NEED_CULTURE_CONTENT" in cfg.SKIPPED_STATES
         assert "NO_CULTURE_LINKS" in cfg.SKIPPED_STATES
-        review_states = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        review_states = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
         assert review_states.index("PASSED_GET") < review_states.index("CULTURE_READY")
         assert review_states.index("CULTURE_READY") < review_states.index("PASSED_LIKE")
         assert cfg.JOBS_SKIPPED_SECTION_ORDER.index("NEED_WEBSITE_CONTENT") < cfg.JOBS_SKIPPED_SECTION_ORDER.index(
@@ -2238,10 +2236,10 @@ class TestAst898NewRetryQualifyHolding:
         assert "NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "FAILED_JOBLIST")
 
     def test_ui_sections_and_grade_field(self) -> None:
-        assert "NEW_RETRY" in cfg.IN_REVIEW_STATES
-        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        assert "NEW_RETRY" not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
+        review = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
         assert review.index("VALID_TITLE_RETRY") < review.index("NEW_RETRY")
-        row = next(r for r in cfg.JOBS_IN_REVIEW_UI_SECTIONS if r["state"] == "NEW_RETRY")
+        row = next(r for r in cfg.JOBS_PROCESSING_UI_SECTIONS if r["state"] == "NEW_RETRY")
         assert row["label"] == "New (retry)"
         assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["NEW_RETRY"] == "joblist_grades"
         assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["VALID_TITLE_RETRY"] == "joblist_grades"
@@ -2278,12 +2276,12 @@ class TestAst1339MeteoriteNewRetryQualifyHolding:
         }
 
     def test_ui_sections_label_no_grade_field(self) -> None:
-        assert "METEORITE_NEW_RETRY" in cfg.IN_REVIEW_STATES
-        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        assert "METEORITE_NEW_RETRY" not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
+        review = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
         assert review.index("METEORITE_NEW") < review.index("METEORITE_NEW_RETRY")
         assert review.index("METEORITE_NEW_RETRY") < review.index("METEORITE_QUALIFIED")
         row = next(
-            r for r in cfg.JOBS_IN_REVIEW_UI_SECTIONS if r["state"] == "METEORITE_NEW_RETRY"
+            r for r in cfg.JOBS_PROCESSING_UI_SECTIONS if r["state"] == "METEORITE_NEW_RETRY"
         )
         assert row["label"] == "Meteorite New (retry)"
         assert "METEORITE_NEW_RETRY" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
@@ -3072,16 +3070,17 @@ class TestAst1053MeteoriteGdlJobStates:
         # No CULTURE_READY hop on meteorite LIKE; no extra meteorite culture/need keys.
         assert "METEORITE_CULTURE_READY" not in js
 
-    def test_in_review_and_skipped_membership(self) -> None:
+    def test_processing_and_skipped_membership(self) -> None:
+        # AST-1974: Processing (ex In Review) = complement of JOBS_PROCESSING_EXCLUDED_STATES.
         for state in self._PASS:
-            assert state in cfg.IN_REVIEW_STATES, state
+            assert state not in cfg.JOBS_PROCESSING_EXCLUDED_STATES, state
             assert state not in cfg.SKIPPED_STATES, state
         for state in self._FAIL:
             assert state in cfg.SKIPPED_STATES, state
-            assert state not in cfg.IN_REVIEW_STATES, state
+            assert state in cfg.JOBS_PROCESSING_EXCLUDED_STATES, state
 
     def test_ui_sections_labels_order_and_grades(self) -> None:
-        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        review = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
         for state in self._PASS:
             assert state in review, state
         assert review.index("PASSED_LIKE_RETRY") < review.index("METEORITE_NEW")
@@ -3089,7 +3088,7 @@ class TestAst1053MeteoriteGdlJobStates:
         assert review.index("METEORITE_NEW_RETRY") < review.index("METEORITE_QUALIFIED")
         assert review.index("METEORITE_QUALIFIED") < review.index("METEORITE_PASSED_JD")
         assert review.index("METEORITE_PASSED_GET") < review.index("METEORITE_PASSED_LIKE")
-        labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
+        labels = {row["state"]: row["label"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS}
         assert labels["METEORITE_NEW"] == "Meteorite New (pre-AI)"
         assert labels["METEORITE_NEW_RETRY"] == "Meteorite New (retry)"
         assert labels["METEORITE_QUALIFIED"] == "Meteorite Qualified"
@@ -3639,29 +3638,16 @@ class TestAst1055MeteoriteLikeUpshotTasks:
 
 
 class TestAst1057MeteoriteRecommendedSection:
-    """AST-1057: Recommended Meteorites section config + state UI manifest."""
+    """AST-1057 Recommended Meteorites section — retired by AST-1974 (Jobs → Meteorites list owns it)."""
 
-    def test_jobs_recommended_meteorite_section_block(self) -> None:
-        sec = cfg.JOBS_RECOMMENDED_METEORITE_SECTION
-        assert sec["section_id"] == "meteorites"
-        assert sec["label"] == "Meteorites"
-        assert sec["company_prefix"] == cfg.METEORITE_CONFIG["short_name_prefix"]
-        assert sec["company_prefix"] == "meteorite-"
+    def test_jobs_recommended_meteorite_section_constant_removed(self) -> None:
+        assert not hasattr(cfg, "JOBS_RECOMMENDED_METEORITE_SECTION")
 
-    def test_manifest_exposes_meteorite_section(self) -> None:
+    def test_manifest_drops_meteorite_section(self) -> None:
         rec = cfg.build_state_ui_manifest()["jobs"]["recommended"]
-        ms = rec["meteorite_section"]
-        assert ms == {
-            "section_id": "meteorites",
-            "label": "Meteorites",
-            "company_prefix": "meteorite-",
-        }
-        # Non-meteorite Recommended section contract unchanged (AST-522 smoke).
-        assert [row["state"] for row in rec["sections"]] == [
-            "RECOMMENDED",
-            cfg.BUILD_ARTIFACTS_BASE_STATE,
-            "CANDIDATE_REVIEW",
-        ]
+        assert "meteorite_section" not in rec
+        # AST-1974 Recommended sections: Review then Ready (BUILD_ARTIFACTS moved to Processing).
+        assert [row["state"] for row in rec["sections"]] == ["RECOMMENDED", "CANDIDATE_REVIEW"]
 
 
 
@@ -4747,11 +4733,11 @@ class TestAst1155GradedRetryHoldings:
             assert cfg.dispatch_claim_states(primary, "job") == [primary, holding], primary
             assert cfg.dispatch_claim_states(holding, "job") == [holding], holding
 
-    def test_in_review_ui_labels_and_grade_fields(self) -> None:
-        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
-        labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
+    def test_processing_ui_labels_and_grade_fields(self) -> None:
+        review = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
+        labels = {row["state"]: row["label"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS}
         for primary, holding in self._PAIRS:
-            assert holding in cfg.IN_REVIEW_STATES, holding
+            assert holding not in cfg.JOBS_PROCESSING_EXCLUDED_STATES, holding
             assert holding in review, holding
             assert review.index(primary) < review.index(holding), (primary, holding)
         assert labels["PASSED_JD_RETRY"] == "Passed JD (retry)"
@@ -5443,7 +5429,8 @@ class TestAst1749JobsMeteoritesNav:
         assert item.get("enabled") is not False
         labels = [it.get("label") for it in jobs["items"]]
         assert labels.index("Meteorites") > labels.index("Applied")
-        assert labels.index("Meteorites") < labels.index("Responded")
+        # AST-1974: Responded retired; Meteorites is the last Jobs item.
+        assert labels[-1] == "Meteorites"
 
     def test_companies_meteorite_still_present(self) -> None:
         companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
@@ -7013,6 +7000,9 @@ class TestAst1808RetryRegistryPurge:
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
             assert set(targets) == set(pinned[name]), name
             for t in targets:
+                # AST-1974 deliberately widened CANDIDATE_SKIPPED priors (pinned in TestAst1974JobsListPartition).
+                if name == "JOB_STATES" and cfg.registered_base(reg, t) == "CANDIDATE_SKIPPED":
+                    continue
                 derived = cfg.state_prior_states(reg, t)
                 want = pinned[name][t]
                 if want is None:
@@ -7407,3 +7397,109 @@ class TestAst1964ModelRouting:
         # AC 3 — 5 total tries; base wait 2 s (doubling is the reconcile's, AST-1966).
         assert cfg.TIMESHEET_RECONCILE_RETRIES == 5
         assert cfg.TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS == 2
+
+
+# AST-1974 · AST-1970: Jobs nav re-cut — six lists, four explicit + Processing complement.
+class TestAst1974JobsListPartition:
+    """AC 1 nav shape, AC 5 Skipped build-failure states, AC 7 disjoint lists + derived priors."""
+
+    def test_nav_jobs_items_exact(self) -> None:
+        # AC 1 — labels / paths / order; In Review / Recommended / Responded gone.
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        assert [(it["label"], it["path"]) for it in jobs["items"]] == [
+            ("Ready", "/jobs/ready"),
+            ("Review", "/jobs/review"),
+            ("Applied", "/jobs/applied"),
+            ("Processing", "/jobs/processing"),
+            ("Skipped", "/jobs/skipped"),
+            ("Meteorites", "/jobs/meteorites"),
+        ]
+
+    def test_ready_review_lists_and_retired_constants(self) -> None:
+        assert cfg.READY_JOB_STATES == ["CANDIDATE_REVIEW"]
+        assert cfg.REVIEW_JOB_STATES == ["RECOMMENDED"]
+        # AC 7 — no hand-typed Processing / legacy In Review registry survives.
+        for gone in ("IN_REVIEW_STATES", "RECOMMENDED_JOB_STATES", "JOBS_IN_REVIEW_UI_SECTIONS",
+                     "JOBS_RECOMMENDED_METEORITE_SECTION"):
+            assert not hasattr(cfg, gone), gone
+
+    def test_skipped_gains_build_failure_states(self) -> None:
+        # AC 5 — terminal build failures live on Skipped with labels + only-legal-successor retry.
+        for s in ("ERROR_BUILD_ARTIFACTS", "BUILD_FAILED"):
+            assert s in cfg.SKIPPED_STATES, s
+        assert cfg.JOBS_SKIPPED_SECTION_ORDER[:2] == ["ERROR_BUILD_ARTIFACTS", "BUILD_FAILED"]
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["ERROR_BUILD_ARTIFACTS"] == "Error Build Artifacts"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["BUILD_FAILED"] == "Build Failed"
+        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["ERROR_BUILD_ARTIFACTS"] == "RECOMMENDED"
+        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["BUILD_FAILED"] == "CANDIDATE_REVIEW"
+
+    def test_excluded_list_is_disjoint_concatenation(self) -> None:
+        # AC 6 / AC 7 — Processing exclusion is derived from the four explicit lists, no overlap.
+        assert cfg.JOBS_PROCESSING_EXCLUDED_STATES == [
+            *cfg.READY_JOB_STATES, *cfg.REVIEW_JOB_STATES, *cfg.APPLIED_JOB_STATES, *cfg.SKIPPED_STATES,
+        ]
+        assert len(set(cfg.JOBS_PROCESSING_EXCLUDED_STATES)) == len(cfg.JOBS_PROCESSING_EXCLUDED_STATES)
+
+    def test_overlap_raises_at_import(self) -> None:
+        # AC 7 — re-exec config source with CANDIDATE_REVIEW also on Skipped; the guard must fire.
+        import re
+        import types
+        from pathlib import Path
+
+        src = Path(cfg.__file__).read_text()
+        probe, n = re.subn(r"(?m)^SKIPPED_STATES = \[", 'SKIPPED_STATES = [\n    "CANDIDATE_REVIEW",', src, count=1)
+        assert n == 1
+        mod = types.ModuleType("cfg_ast1974_overlap_probe")
+        mod.__file__ = cfg.__file__  # config resolves repo paths from __file__ at import
+        # Fake filename keeps coverage from attributing probe lines to config.py.
+        with pytest.raises(AssertionError, match="Jobs lists overlap"):
+            exec(compile(probe, "<ast1974-overlap-probe>", "exec"), mod.__dict__)
+
+    def test_candidate_skipped_priors_derived(self) -> None:
+        # AC 7 / AC 8 — skip legal from every state outside Applied + Skipped; derived, not literal.
+        priors = cfg.JOB_STATES["CANDIDATE_SKIPPED"]["prior_states"]
+        assert priors == [
+            s for s in cfg.JOB_STATES if s not in cfg.APPLIED_JOB_STATES and s not in cfg.SKIPPED_STATES
+        ]
+        for s in ("NEW", "PASSED_JD", "METEORITE_QUALIFIED", cfg.BUILD_ARTIFACTS_BASE_STATE,
+                  "CANDIDATE_REVIEW", "RECOMMENDED"):
+            assert s in priors, s
+        for s in ("CANDIDATE_APPLIED", "ERROR_BUILD_ARTIFACTS", "BUILD_FAILED", "CANDIDATE_SKIPPED"):
+            assert s not in priors, s
+
+    def test_processing_sections_end_with_build_and_avoid_explicit_lists(self) -> None:
+        assert cfg.JOBS_PROCESSING_UI_SECTIONS[-1] == {
+            "state": cfg.BUILD_ARTIFACTS_BASE_STATE, "label": "Building Artifacts",
+        }
+        assert not [r for r in cfg.JOBS_PROCESSING_UI_SECTIONS if r["state"] in cfg.JOBS_PROCESSING_EXCLUDED_STATES]
+
+    def test_manifest_jobs_block_contract(self) -> None:
+        # Sibling contract (AST-1975 / AST-1976): processing_sections rename, recommended reshape.
+        jobs = cfg.build_state_ui_manifest()["jobs"]
+        assert "in_review_sections" not in jobs
+        assert jobs["processing_sections"] == list(cfg.JOBS_PROCESSING_UI_SECTIONS)
+        rec = jobs["recommended"]
+        assert rec["sections"] == [
+            {"state": "RECOMMENDED", "label": "Review"},
+            {"state": "CANDIDATE_REVIEW", "label": "Ready"},
+        ]
+        assert "meteorite_section" not in rec
+        # Report modal still offers Cancel on a running build.
+        assert rec["primary_actions_by_state"][cfg.BUILD_ARTIFACTS_BASE_STATE][0]["action_key"] == "cancel_build"
+        sk = jobs["skipped"]
+        assert sk["section_order"][:2] == ["ERROR_BUILD_ARTIFACTS", "BUILD_FAILED"]
+        assert sk["section_labels"]["BUILD_FAILED"] == "Build Failed"
+        assert sk["bulk_retry_to_state_by_from_state"]["ERROR_BUILD_ARTIFACTS"] == "RECOMMENDED"
+
+    def test_meteorites_columns_gain_job_state_after_job(self) -> None:
+        keys = [c["key"] for c in cfg.JOBS_METEORITES_LIST_COLUMNS]
+        assert keys[keys.index("astral_job_id") + 1] == "job_state"
+        col = next(c for c in cfg.JOBS_METEORITES_LIST_COLUMNS if c["key"] == "job_state")
+        assert col == {"key": "job_state", "label": "Job State", "sortable": True}
+
+    def test_meteorites_columns_gain_created_before_state_changed_ast1980(self) -> None:
+        # AST-1980 AC 7: sortable datetime Created (landed job's created_at) immediately left of State Changed.
+        keys = [c["key"] for c in cfg.JOBS_METEORITES_LIST_COLUMNS]
+        assert keys[keys.index("state_changed_at") - 1] == "job_created_at"
+        col = next(c for c in cfg.JOBS_METEORITES_LIST_COLUMNS if c["key"] == "job_created_at")
+        assert col == {"key": "job_created_at", "label": "Created", "sortable": True, "type": "datetime"}

@@ -29,7 +29,7 @@ meteorite_bp = Blueprint("meteorite", __name__, url_prefix="/api")
 # List omits heavy content; detail carries full content + AC metadata.
 _LIST_KEYS: Tuple[str, ...] = (
     "id", "candidate_id", "state", "job_title", "employer_name",
-    "classify_outcome", "link", "astral_job_id",
+    "classify_outcome", "link", "astral_job_id", "job_state", "job_created_at",
     "created_at", "updated_at", "state_changed_at",
     "source_kind", "source_id",
 )
