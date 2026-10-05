@@ -5,7 +5,8 @@ import { ConfirmContext } from "./UserPrompt"
 export interface ModalProps {
   open: boolean
   onClose: () => void
-  title: string
+  /** AST-1981: node, not string — headers host JobTitleText (cut + tooltip). Plain strings still work. */
+  title: ReactNode
   children: ReactNode
   onSave?: () => void
   dirty?: boolean

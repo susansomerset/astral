@@ -1,3 +1,5 @@
+import JobTitleText from "./JobTitleText"
+
 interface Props {
   jobTitle: string
   /** AST-1694 listing_href — hyperlink target for the job-link line; only http(s) values are linked. */
@@ -58,7 +60,7 @@ export default function RecommendedJobReportHeader({
       {/* Title block (left, wraps) and button row (right, no shrink) share one row. */}
       <div className="recommended-report-header-row">
         <div className="recommended-report-title-block">
-          <span className="recommended-report-title">{jobTitle}</span>
+          <span className="recommended-report-title"><JobTitleText title={jobTitle} fallback={jobTitle} /></span>
           {link && (
             <div className="recommended-report-job-link-text">
               {href ? (

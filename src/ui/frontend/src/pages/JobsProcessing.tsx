@@ -8,6 +8,7 @@ import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import Time from "../components/Time"
+import JobTitleText from "../components/JobTitleText"
 import {
   analysisTimeScoreForJob,
   buildJobListRubricColumnsForGroup,
@@ -23,6 +24,7 @@ interface Job {
   company: string
   state: string
   state_changed_at: string | null
+  created_at?: string | null
   latest_score?: number | null
   [key: string]: unknown
 }
@@ -92,6 +94,8 @@ function sortJobs(jobs: Job[], col: string, asc: boolean, gradeKey: string, cols
       cmp = a.company.localeCompare(b.company)
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
+    } else if (col === "created_at") {
+      cmp = (a.created_at || "").localeCompare(b.created_at || "")
     } else if (col === "latest_score") {
       const av = analysisTimeScoreForJob(a as Record<string, unknown>, gradeKey)
       const bv = analysisTimeScoreForJob(b as Record<string, unknown>, gradeKey)
@@ -240,6 +244,9 @@ export default function Processing() {
                             Score{sortIndicator(sortKey, "latest_score")}
                           </th>
                         )}
+                        <th className="sortable" onClick={() => handleSort(sortKey, "created_at")}>
+                          Created{sortIndicator(sortKey, "created_at")}
+                        </th>
                         <th className="sortable" onClick={() => handleSort(sortKey, "state_changed_at")}>
                           Updated{sortIndicator(sortKey, "state_changed_at")}
                         </th>
@@ -250,7 +257,7 @@ export default function Processing() {
                         const rowScore = analysisTimeScoreForJob(job as Record<string, unknown>, sec.gradeKey)
                         return (
                         <tr key={job.astral_job_id} className="clickable" onClick={() => setViewingId(job.astral_job_id)}>
-                          <td>{job.job_title || "\u2014"}</td>
+                          <td><JobTitleText title={job.job_title} fallback={"\u2014"} /></td>
                           <td>{job.company}</td>
                           {cols.map(c => {
                             const cell = gradeAndConfidenceForCol(job, sec.gradeKey, c)
@@ -272,6 +279,7 @@ export default function Processing() {
                               {rowScore != null ? rowScore.toFixed(2) : "\u2014"}
                             </td>
                           )}
+                          <td><Time value={job.created_at} /></td>
                           <td><Time value={job.state_changed_at} /></td>
                         </tr>
                         )

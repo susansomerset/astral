@@ -20,6 +20,7 @@ import {
   type JobListRubricColumn,
 } from "../lib/rubricDisplay"
 import Time from "../components/Time"
+import JobTitleText from "../components/JobTitleText"
 
 interface Job {
   astral_job_id: string
@@ -27,6 +28,7 @@ interface Job {
   company: string
   state: string
   state_changed_at: string | null
+  created_at?: string | null
   latest_score?: number | null
   /** API: PASSED_* job not claimable until latest_score >= dispatch score_floor */
   virtual_skip?: boolean
@@ -98,6 +100,8 @@ function sortJobs(jobs: Job[], col: string, asc: boolean, gradeKey: string, cols
       cmp = a.company.localeCompare(b.company)
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
+    } else if (col === "created_at") {
+      cmp = (a.created_at || "").localeCompare(b.created_at || "")
     } else if (col === "latest_score") {
       const av = analysisTimeScoreForJob(a as Record<string, unknown>, gradeKey)
       const bv = analysisTimeScoreForJob(b as Record<string, unknown>, gradeKey)
@@ -335,6 +339,9 @@ export default function Skipped() {
                             Score{sortIndicator(sortKey, "latest_score")}
                           </th>
                         )}
+                        <th className="sortable" onClick={() => handleSort(sortKey, "created_at")}>
+                          Created{sortIndicator(sortKey, "created_at")}
+                        </th>
                         <th className="sortable" onClick={() => handleSort(sortKey, "state_changed_at")}>
                           {isFloor ? "Updated" : "Failed At"}{sortIndicator(sortKey, "state_changed_at")}
                         </th>
@@ -360,7 +367,7 @@ export default function Skipped() {
                             </td>
                           )}
                           {isFloor && <td aria-hidden />}
-                          <td onClick={() => setViewingId(job.astral_job_id)}>{job.job_title || "\u2014"}</td>
+                          <td onClick={() => setViewingId(job.astral_job_id)}><JobTitleText title={job.job_title} fallback={"\u2014"} /></td>
                           <td onClick={() => setViewingId(job.astral_job_id)}>{job.company}</td>
                           {isFloor && (
                             <>
@@ -395,6 +402,7 @@ export default function Skipped() {
                               {rowScore != null ? rowScore.toFixed(2) : "\u2014"}
                             </td>
                           )}
+                          <td onClick={() => setViewingId(job.astral_job_id)}><Time value={job.created_at} /></td>
                           <td onClick={() => setViewingId(job.astral_job_id)}><Time value={job.state_changed_at} /></td>
                         </tr>
                         )
