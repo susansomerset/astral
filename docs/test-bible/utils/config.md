@@ -4748,3 +4748,17 @@ Manifest: [`ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-1974 item 2.
 **Revised:** **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** — pinned AST-1806 fixture predates the rename; test translates `COMPANY_STATES` `BOT_BLOCK*` keys/priors to `BOT_BLOCKED*` in-memory (fixture JSON left as captured).
 
 Manifest: **`docs/test-bible/core/roster.md`** § AST-2004.
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `resolve_tokens(..., empty_tokens=[...])` appends each recognized token whose substituted value is blank (`.strip() == ""`), ordered-unique, and forces `warn_on_empty=False`; unrecognized names stay literal and are not collected; the default call is unchanged. Supersedes the AST-530 row's mid-chain empty-caller guard (folded into the `do_task` guard — **`core/agent.md`** § AST-2006).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Collects candidate + job + chain (`CALLER_*`) blanks, ordered-unique; collector path never warns | `resolve_tokens` | **`TestAst2006ResolveTokensEmptyCollector::test_collects_blank_names_ordered_unique_across_sources`** |
+| Unrecognized `{$NOT_A_TOKEN}` literal, not collected | same | **`…::test_unrecognized_token_stays_literal_and_is_not_collected`** |
+| Default call (no collector) output + WARNING unchanged | same | **`…::test_default_call_unchanged_still_warns`** |
+
+**Broken / obsolete:** none — `TestResolveTokens` / `TestAst1779*` use default args. (`TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` / `::test_resolves_cover_letter_signature_from_profile` are pre-existing reds, identical with and without this pass.)
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
