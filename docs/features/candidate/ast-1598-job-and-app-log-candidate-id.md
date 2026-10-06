@@ -666,3 +666,7 @@ context_tokens≈12000
 ```
 [code-rubric] PROCEED (Commit: f9b447782) Plan matches stamp pairing
 ```
+
+### Resolution — AST-1988
+
+docs-acceptance: product-only fix. The repro and set/clear pairing tests (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1991, stacked after this ticket on `ftr/AST-1987-railway-log-batch-candidate-ids`.
