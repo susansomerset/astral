@@ -28,4 +28,14 @@ The retry suffix is universal, configured as a string element in astral_config, 
 
 # When this doesn't apply
 
-- THIS PATTERN ALWAYS APPLIES (even with daisy-chain tasks.)
+- **Pre-provider data failure — empty runtime tokens.** When `do_task` finds a
+  token in the outgoing prompt that resolves empty, the prompt is never sent and
+  the result carries `empty_tokens`. The fault is in our data, not the agent's
+  response, so a retry would render the same blank prompt. That entity skips
+  the `_RETRY` companion and goes **straight** to the task's configured
+  `error_state` — mid-chain hops included. When the configured `error_state` is
+  itself a `_RETRY` holding, or the flow configures none, it goes to the
+  terminal error state that flow already uses (e.g. `FAILED_TECHNICAL`). Arc 5
+  still holds: the entity never stays in its trigger, hop-label or input state.
+- Every other failed attempt: THIS PATTERN ALWAYS APPLIES (even with
+  daisy-chain tasks.)
