@@ -735,3 +735,98 @@ no plan-stage validate-plan scores for AST-2005 (Joan fix-board **CANON: OK** re
 - **Parent:** AST-1986 orphaned mini-parent, live `ftr/AST-1986-runtime-empty-token-error`.
 
 context_tokens≈22000
+
+## Bug: AST-2006 — Runtime empty-token guard tests + bible
+
+- **Linear:** https://linear.app/astralcareermatch/issue/AST-2006 (test-gap child of orphaned bug [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986), its mini-parent; sibling of [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000) product and [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) canon, both merged on the ftr)
+- **Publish ref:** `sub/AST-1986/AST-2006-empty-token-guard-tests` · **ftr:** `ftr/AST-1986-runtime-empty-token-error`
+- **Canon:** `astral.dispatch.entity-state-bound` (inherited from AST-1779) — tests pin destinations that are existing registered states only; no `dispatch_task` / claim fixture change. `patt.task.dispatch-retry` (carve-out landed by AST-2005) is the rule the routing tests assert: `empty_tokens` → never `_RETRY`, never stays.
+- **Explicit scope:** AST-2006 `## Scope` — `tests/component/**` and `docs/test-bible/**` only. **Betty lands every file in qa-fix**; this block plans what must be covered and the `[bug-repro]`. No product source change.
+- **Binding inputs:** AST-2000 `### To-be` / `### Proposed change` (above, as shipped), Betty's fix-board round-1 `TESTS: REVISE` and her round-2 note in AST-2006's Description, Susan's AST-1986 ruling ("Do not retry. Just go straight to error state (even for midhops).").
+
+### As-is
+
+1. No test or bible entry covers the AST-2000 runtime guard: nothing asserts that `do_task` withholds a prompt with a blank token, returns `empty_tokens` / `empty_token_task`, or logs one ERROR; nothing exercises `resolve_tokens(empty_tokens=[...])`; no routing test stubs a `do_task` result carrying `empty_tokens`.
+2. `TestDoTask::test_mid_chain_empty_caller_skips_api` (`tests/component/core/test_agent.py:1816`) pins the deleted AST-530 contract (`"CALLER_SYSTEM" in error`) **and already fails before AST-2000** on its fixture: `do_task` hydrates caller context first (`_hydrate_caller_chain_context`, `agent.py` ~2028), the test stubs no entity row, so it returns `"job not found: job-1 (hop='evaluate_jd')"` before any guard runs (observed in AST-2000 test-fix on the pre-fix tree `2cfcf9e7` and on the ftr tip).
+3. `_enrich_tasks` probe silence (AST-2000 edit 8) has no assertion; the existing `test_api_admin.py` `empty_tokens` cases cover the AST-1779/1819 admin-time predicate field, not logging.
+
+### To-be
+
+Every AST-2000 behavior in `### To-be` 1–3 is pinned by a component test and described in the matching bible page; the AST-530 test asserts the new contract and passes; one `[bug-repro]` is red on `origin/dev` and green on `origin/ftr/AST-1986-runtime-empty-token-error`.
+
+### Repro
+
+Verified on refs (read-only):
+
+- `origin/dev`: `src/core/agent.py` still defines and calls `_mid_chain_empty_caller_tokens` (lines 695 / 2162); `resolve_tokens` has `warn_on_empty` but **no** `empty_tokens` keyword; `consult.py` / `roster.py` / `candidate.py` / `intake.py` have zero `empty_tokens` references. An entry-hop prompt with a blank non-caller token is therefore sent to the provider.
+- ftr: `consult._empty_token_fail_dest` (1555), `roster._locate_empty_token_error` (2212), the `do_task` guard and the collector are present.
+- `pytest tests/component/core/test_agent.py::TestDoTask::test_mid_chain_empty_caller_skips_api` → fails `job not found: job-1` on both trees.
+
+### Root cause
+
+AST-2000 was planned with tests split to this sibling (fix-board round 1), so the product landed with no coverage, and the one adjacent test was already broken by an earlier hydration change (AST-1264-era caller hydration) that its fixture never stubbed.
+
+### Proposed change
+
+All files are Betty's (qa-fix). Exact class/function names are her call; the assertions below are the bar. Shared conventions: stub the provider (`send_to_anthropic` `AsyncMock`) and assert `not called` for "no model call"; `caplog` for log assertions; stub `do_task` with `{"success": False, "error": "Empty tokens: X (task=T)", "empty_tokens": ["X"], "empty_token_task": "T"}` for routing tests.
+
+**1. `[bug-repro]` — `tests/component/core/test_agent.py`, new `do_task` entry-hop guard test (AST-2000 Repro 2).**
+`_resolve_task_prompts` → `_agent_rows()` with `system_prompt = "Deal breakers: {$DEAL_BREAKERS}"`; `ctx` candidate data with `deal_breakers: ""`; provider stubbed. Assert: provider **not called**; `success is False`; `empty_tokens == ["DEAL_BREAKERS"]`; `empty_token_task == <task_key>`; exactly **one** ERROR record containing the task key and `DEAL_BREAKERS`; **zero** `resolved to empty` WARNINGs. **Red on `origin/dev`** (provider called, no `empty_tokens` key — dev has no general guard), **green on the ftr**. Tag the qa-fix handoff `[bug-repro]` with this node id.
+
+**2. `tests/component/core/test_agent.py` — rewrite `TestDoTask::test_mid_chain_empty_caller_skips_api`.**
+Fix the fixture path: `monkeypatch.setattr(agent_mod, "_hydrate_caller_chain_context", lambda *a, **k: ({"CALLER_SYSTEM": "", "CALLER_RESPONSE": "x"}, None))` (same seam the AST-1264 tests at ~8378 patch; `_merge_hydrated_caller_context` keeps the hydrated blank). Assert: provider not called; `success is False`; `empty_tokens == ["CALLER_SYSTEM"]`; `empty_token_task == "evaluate_jd"` (the **hop's** key); one ERROR; no `"Required caller token"` text. Drop the `"CALLER_SYSTEM" in error` substring as the primary assertion.
+
+**3. `tests/component/core/test_agent.py` — guard edges.**
+- Fully populated prompt → provider called once, no `empty_tokens` key (byte-identical path).
+- Whitespace-only value (`"  "`) counts as empty.
+- `{$SELECTED_AGENT}` rule: blank agent content with **no** segment referencing `{$SELECTED_AGENT}` → provider called; with a reference → guarded.
+- Intake snapshot: a blank in a segment the `intake_prompt_snapshot` replaces does not trigger the guard.
+
+**4. `tests/component/utils/test_config.py` — `resolve_tokens` collector.**
+- `empty_tokens=[]` collects blank recognized names, ordered-unique across repeats, for at least candidate + job + chain (`CALLER_*`) sources.
+- Collector path emits **no** per-token WARNING (implies `warn_on_empty=False`).
+- Unrecognized `{$NOT_A_TOKEN}` stays literal and is **not** collected.
+- Default call (no `empty_tokens`) output and WARNINGs unchanged — existing `TestAst1779*` / `TestResolveTokens` keep passing.
+
+**5. `tests/component/core/test_consult.py` — straight to terminal, never `_RETRY`.**
+- `_empty_token_fail_dest`: first non-retry wins; retry-only / `None` → `"FAILED_TECHNICAL"`; order respected (hop before entry).
+- `_run_batch_consult` (AST-2000 Repro 3): job at a primary state with a `retry_state` → transitions to the task `error_state` (e.g. `grade_do` → `FAILED_TECHNICAL_DO`), `retried == 0`, never the retry state.
+- `_run_analysis_upshot_batch`: `error_state` is a retry holding → `FAILED_TECHNICAL`; `errors` incremented.
+- `render_verdict`: returns `to_state == error_state`, transitions there.
+- `_run_dispatch_chain_job_batch` mid-chain: `empty_token_task` = a hop with an `error_state` → that state (e.g. `ERROR_BUILD_ARTIFACTS`); hop with none → entry's `error_state`; transition raising `ValueError` → `FAILED_TECHNICAL`; claim released; `errors += 1`; job never left at the hop label.
+- Control: a generic `success: False` (no `empty_tokens`) still routes via `_consult_batch_fail_dest` to the retry holding.
+
+**6. `tests/component/core/test_roster.py` — company terminals.**
+- Prefilter batch → every company `ERROR_PREFILTER`; summary `retried == 0`.
+- `_find_job_page_from_assembled` select failure with `empty_tokens` → `ERROR_LOCATE_JOB_PAGE`, `"error"` key present, **no** `NO_JOBLIST` save, no `state_held`.
+- `_finalize_joblist_titles_select_only` → `ERROR_LOCATE_JOB_PAGE`.
+- `_fetch_parse_job_list` returns `{"empty_tokens", "error"}` (no notes save); `run_parse_job_list_dispatch` from `JOBLIST_IDENTIFIED` **and** `JOBLIST_IDENTIFIED_RETRY` → `COULD_NOT_PARSE_JOBLIST`, `"error"` in result.
+
+**7. `tests/component/core/test_candidate.py` — requested-artifacts.**
+- `run_requested_artifacts_dispatch`, `empty_tokens` response → `REQUESTED_ARTIFACTS_ERROR` (and `REQUESTED_RESUME_ERROR` for the resume stage); `total_errors == 1`; no `_RETRY` transition; no `RuntimeError`.
+- Hardening (resolve-child): `transition_candidate_state` raises `ValueError` → one WARNING (`skipped error_state …`), result still `total_errors == 1`, no retry transition, no raise.
+
+**8. `tests/component/core/test_intake.py` — ledger counts.** Both `do_task` failure branches with `empty_tokens` → `update_dispatch_ledger(..., total_errors=1)`, **no** `total_failed=1`; status `"FAILED"`. Control: non-empty-token failure still writes `total_failed=1`.
+
+**9. `tests/component/ui/api/test_api_admin.py` — probe silent.** `_enrich_tasks` for a task whose prompt references `source: job` tokens with a candidate and no job → **zero** `resolved to empty` WARNINGs; token counts / `task_ready` unchanged. Control: `/api/admin/tasks/<task>/preview` path still warns (default `warn_on_empty`).
+
+**10. Bible (`docs/test-bible/**`)** — one `### AST-2006 · AST-2000 (bug)` section per page, manifest lines naming the nodes above: `utils/config.md` (4), `core/agent.md` (1–3, `[bug-repro]` called out), `core/consult.md` (5), `core/roster.md` (6), `core/candidate.md` (7), `core/intake.md` (8), `ui/api/api_admin.md` (9). Meteorite: no entry (AST-2000 boundary, Betty round 2).
+
+⚠️ **Decision:** One `[bug-repro]` (item 1), not one per call site. The defect is "a blank prompt goes out"; the routing items are coverage that is red on dev by construction (helpers don't exist there) and would make a noisy repro set.
+
+⚠️ **Decision:** Item 2 rewrites the AST-530 test in place rather than deleting it — mid-chain `CALLER_*` on a hop is the one case item 1 doesn't reach, and it pins `empty_token_task` = the hop's key, which `_run_dispatch_chain_job_batch` routing depends on.
+
+⚠️ **Decision:** The 157 pre-existing component failures (identical set on pre-fix `2cfcf9e7` and the ftr, AST-2000 test-fix) are **out of scope**; only `test_mid_chain_empty_caller_skips_api` from that set is fixed here, because the ticket names it.
+
+### Blast radius
+
+- Test tree and bible only, seven test files + seven bible pages above. No `src/**`, schema, canon.
+- Shared fixtures: `_agent_rows` / `_batch_entities` reused, not changed; if Betty adds a token-bearing helper, scope it to the new tests so other `TestDoTask` cases stay token-free.
+- Pre-existing failing set must not grow (compare against the 157-node baseline).
+
+### What must still hold
+
+- `[bug-repro]` red on `origin/dev`, green on the ftr; all new/rewritten nodes green on the ftr.
+- Existing `TestAst1779*`, `TestResolveTokens`, `test_api_admin.py` `empty_tokens` predicate cases unchanged and green (default `resolve_tokens` path untouched).
+- Generic (non-`empty_tokens`) failure routing assertions keep expecting `_RETRY` holdings — the carve-out is narrow.
+- No product source edits on this sub.
