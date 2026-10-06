@@ -367,13 +367,28 @@ Gazer batch debug + assembled persist: **`docs/test-bible/core/gazer.md`** (**AS
 
 ### AST-719 · AST-716
 
-**PJL ledger helpers** — **`_scrape_pjl_page`**, **`_merge_pjl_scrape_record`**, **`_assemble_pjl_content`**, **`_merge_pjl_nav_links`**; gazer **`fetch_job_pages_batch`** imports these for additive scrape. Does not write **`job_site`**.
+**PJL ledger helpers** — **`_scrape_pjl_page`**, **`_merge_pjl_scrape_record`**, **`_assemble_pjl_content`**, **`_merge_pjl_nav_links`**; gazer **`fetch_job_pages_batch`** imports these for ~~additive~~ scrape (**AST-1995**: `_merge_pjl_scrape_record` is an upsert by `normalize_link`; `_pjl_scrape_ledger_keys` deleted — § AST-1999). Does not write **`job_site`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Additive merge + assembled content + nav append | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
+| ~~Additive~~ Upsert merge + assembled content + nav append | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
 
 Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/core/consult.md`** (**AST-719**).
+
+---
+
+### AST-1999 · AST-1994 (gap — PJL upsert; product AST-1995)
+
+**Publish:** `origin/sub/AST-1994/AST-1999-fetch-refresh-tests`. Product: **AST-1995**. `_merge_pjl_scrape_record`: error or empty text → existing unchanged (error-with-text too); otherwise build the row as before and replace the first `normalize_link`-matching row in place (whole row — missing `enumerated_nav_links` drops the key), else append; caller's list not mutated.
+
+| Area | Source | Component tests (`TestAst719PjlRosterHelpers::`) |
+| --- | --- | --- |
+| Duplicate URL replaces (was skip); empty skipped; new appends | `src/core/roster.py` | `test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty` (rename of `…_skips_duplicate_and_empty`, first assert flipped) |
+| Replace in place by `normalize_link` (scheme/case/slash), order stable, no mutation | same | `test_ast1995_upsert_replaces_matching_row_in_place` |
+| `error` record discarded even with text (new + existing URL) | same | `test_ast1995_error_record_discarded_even_with_text` |
+| Whole-row replace drops `enumerated_nav_links` | same | `test_ast1995_whole_row_replace_drops_enumerated_nav_links` |
+
+`_merge_pjl_nav_links` unchanged — `test_merge_pjl_nav_links_appends_deduped` still holds. Gazer nodes, `[bug-repro]` list, and manifest: **`docs/test-bible/core/gazer.md`** § AST-1999.
 
 ---
 

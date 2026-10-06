@@ -476,3 +476,350 @@ No unresolved conflicts.
 - Gazer-orchestrated batch + `pjl_nav_links` persistence accepted; AST-720 consumes `pjl_assembled_content` / scrape ledger.
 
 **Publish ref:** `origin/sub/AST-716/fetch-job-pages-batch-scrape`
+
+---
+
+## Bug: AST-1995 — fetch_job_pages re-scrapes every PJL URL and replaces the stored page
+
+**Mini-parent:** AST-1994 (orphaned bug, `ftr/AST-1994-fetch-refresh` off `origin/dev`). **Publish ref:** `origin/sub/AST-1994/AST-1995-fetch-refresh`. Supersedes AC3 above ("additive — re-run does not duplicate visible text") and Stage 2/5's `skipped-already-scraped` path. Everything else in this doc stands.
+
+### As-is
+
+`gazer.fetch_job_pages_batch` (~L668–L683) builds `ledger = _pjl_scrape_ledger_keys(pjl_pages)` from `company_data.pjl_scrape_pages`. It scrapes only `pending` (candidate URLs not in the ledger) and logs the rest as `skipped-already-scraped`. `roster._merge_pjl_scrape_record` (~L2486) also returns `existing_pages` unchanged when the URL is already recorded. `pjl_nav_links` is built by `_merge_pjl_nav_links(cd["pjl_nav_links"], new_nav_urls)`, which only appends. Once a careers page is captured, its `visible_text` never changes. `pjl_assembled_content` (the `select_job_page` input) keeps serving the stale board, and links that have vanished stay in `pjl_nav_links` forever.
+
+### To-be
+
+Every `fetch_job_pages` run re-scrapes every URL in `possible_joblist_links`. A successful capture (no `error`, non-empty `visible_text`) replaces that URL's `pjl_scrape_pages` row in its existing position, or is appended if the URL is new. A failed or empty capture keeps the prior row. `pjl_assembled_content` is rebuilt from the refreshed rows. `pjl_nav_links` is rebuilt from this run's links, so dead links drop off.
+
+### Repro
+
+Fixture (company dict passed to `fetch_job_pages_batch`, `_scrape_pjl_page` mocked):
+
+```python
+company = {
+    "short_name": "acme",
+    "company_data": {
+        "possible_joblist_links": ["acme.com/careers"],
+        "pjl_scrape_pages": [
+            {"url": "https://acme.com/careers", "visible_text": "OLD BOARD: Role A",
+             "enumerated_nav_links": "1: https://acme.com/jobs/a"},
+        ],
+        "pjl_nav_links": "1: https://acme.com/jobs/a",
+    },
+}
+# _scrape_pjl_page("acme.com/careers", ...) would return:
+fresh = {"url": "https://acme.com/careers", "visible_text": "NEW BOARD: Role B",
+         "page_links": ["https://acme.com/jobs/b"],
+         "enumerated_nav_links": "1: https://acme.com/jobs/b"}
+```
+
+Current result: `_scrape_pjl_page` is never called (`skipped-already-scraped`). The saved `pjl_scrape_pages[0].visible_text == "OLD BOARD: Role A"`, `pjl_assembled_content` still contains `OLD BOARD`, and `pjl_nav_links` still lists `/jobs/a`.
+Expected result: `_scrape_pjl_page` is called once. `pjl_scrape_pages == [{url: https://acme.com/careers, visible_text: "NEW BOARD: Role B", enumerated_nav_links: "1: https://acme.com/jobs/b"}]`, `pjl_assembled_content` contains `NEW BOARD` and not `OLD BOARD`, and `pjl_nav_links == "1: https://acme.com/jobs/b"`.
+
+### Root cause
+
+AST-719 made the ledger skip-if-present on purpose (AC3, Stage 2 "additive skip", Stage 5 decision). That rule is applied in two places: the gazer `pending` filter and the early return in `_merge_pjl_scrape_record`. Because of it, a URL's row is written once and then never refreshed. `_merge_pjl_nav_links` only appends onto the old enum, so it can never drop a link. AST-1810 already removed the same skip from `fetch_website_batch`. This is the PJL equivalent.
+
+### Proposed change
+
+**`src/core/roster.py`**
+
+1. **`_merge_pjl_scrape_record(existing_pages, new_record)`**: change from skip-if-present to upsert by `normalize_link`:
+   - `text = (new_record.get("visible_text") or "").strip()`. If `new_record.get("error")` or `not text`, return `existing_pages` unchanged. This is the keep-prior-row-on-failure rule. It now also covers the rare record that has both an `error` and some text, which today gets stored.
+   - Build `row` exactly as today (`url`, `visible_text`, optional `enumerated_nav_links`).
+   - `key = normalize_link(new_record.get("url") or "")`. Copy `existing_pages` to a list. Find the first index whose `normalize_link(prior.get("url") or "") == key`, replace that element with `row`, and return the list. If there is no match, return `pages + [row]`.
+   - Replace the whole row, not a field merge. If a fresh capture has no `enumerated_nav_links`, the row loses that key.
+2. **`_pjl_scrape_ledger_keys`**: delete it. After step 5 below and the step 1 rewrite, nothing calls it. No test or bible entry references it.
+3. **`_merge_pjl_nav_links`**: no signature change. Gazer calls it with `existing_enum=""`, which makes it a dedupe-and-enumerate pass over the run's URL list.
+
+**`src/core/gazer.py` — `fetch_job_pages_batch`**
+
+4. Imports: drop `_pjl_scrape_ledger_keys` from the `src.core.roster` import block (~L30). Add `parse_enumerate_array` to the `src.utils.formatting` import if it isn't already there.
+5. Replace the ledger/`pending` block (~L668–L683):
+   - Delete `ledger`, `pending`, and the whole `skipped-already-scraped` debug loop.
+   - Before the loop, add `prior_by_key = {normalize_link(r["url"]): r for r in pjl_pages if r.get("url")}`. This is a snapshot of the rows from before this run.
+   - Rename `new_nav_urls` to `run_nav_urls`.
+6. Loop over **all** `candidate_urls` (`for url_idx, url in enumerate(candidate_urls, start=1)`). Use `total=len(candidate_urls) or 1` in the per-URL `debug_index`. Keep the scrape and debug lines as they are.
+   - After `pjl_pages = _merge_pjl_scrape_record(pjl_pages, record)`, collect nav links:
+     - If the capture succeeded (`not record.get("error") and (record.get("visible_text") or "").strip()`): `run_nav_urls.extend(record.get("page_links") or [])`.
+     - Otherwise, if `prior = prior_by_key.get(normalize_link(url))` exists: carry that row's links forward with `prior_map = parse_enumerate_array(prior.get("enumerated_nav_links") or "")` and then `run_nav_urls.extend(prior_map[k] for k in sorted(prior_map))`. That row's `enumerated_nav_links` is `enumerate_array("", nav_urls)` from its own capture (roster ~L1604), so these are that URL's last-known links.
+7. After the loop:
+   - `assembled = _assemble_pjl_content(pjl_pages)` (unchanged).
+   - `nav = _merge_pjl_nav_links("", run_nav_urls)`.
+   - Save `{"pjl_scrape_pages": pjl_pages, "pjl_assembled_content": assembled, "pjl_nav_links": nav}`. Always write `pjl_nav_links`, even when it is `""`. A stale value must not survive. Readers already fall back to homepage `nav_links` when it is empty (roster ~L2571, ~L2578).
+8. In the pass debug outcome, replace `pending_scraped={len(pending)}` with `scraped={len(candidate_urls)}`. Update the docstring: "Scrape possible_joblist_links (refresh: upsert per URL, AST-1995)".
+9. Leave the pass/fail branch alone. It still checks `if pjl_pages:`. Transitions to `PJL_READY` / `JOBSITE_SCRAPE_ISSUE` and the `prefilter_company_notes` failure note stay unchanged.
+
+⚠️ **Decision (nav links on failure):** if a URL's re-scrape fails, its prior row's links are kept in `pjl_nav_links`. This matches keeping the row itself in `pjl_scrape_pages` and `pjl_assembled_content`. If a URL never had a stored row and fails now, it contributes no links.
+
+⚠️ **Decision (rows for URLs no longer in candidates):** `possible_joblist_links` is replaced wholesale by each homepage scrape (roster ~L3194), so it can shrink. Rows in `pjl_scrape_pages` for URLs no longer in the candidate set are **left in place**, in their positions. The upsert only touches URLs scraped this run, and Susan didn't approve pruning. Their links are **not** carried into `pjl_nav_links`, because only this run's candidates contribute. Pruning those rows would be a separate change that needs her OK.
+
+**Out of scope:** `fetch_culture_pages_batch` / `_website_content_is_recorded` (AST-874 cache, unchecked by Susan), `fetch_jd`, `fetch_website`, `_assemble_pjl_content`, `_scrape_pjl_page`, config, and data shapes. There are no new tables or fields.
+
+### Blast radius
+
+- `_merge_pjl_scrape_record` and `_pjl_scrape_ledger_keys` have no other `src/` callers. Only gazer imports them.
+- `_merge_pjl_nav_links` has no other callers. Its behavior is unchanged; only gazer's input changes.
+- AST-720 `select_job_page` (`_pjl_maps_from_company_data`, `_build_select_job_page_live_content`, `_resolve_try_link_normalized`) reads `pjl_scrape_pages` / `pjl_assembled_content` / `pjl_nav_links`. Shapes are unchanged. `pjl_nav_links` indices can renumber between runs. That's fine because selection reads the current value after fetch.
+- AST-759 (`ast-759-shared-page-scrape-fetch-job-pages-nav-links.md`) has nav-links doc references. Its behavior is not re-planned here.
+- Tests (Betty's tree, fix-board / qa-fix): two tests will flip. `test_gazer.py::TestFetchJobPagesBatch::test_additive_skips_already_scraped_url` asserts one scrape, of the new URL only; after the fix both URLs are scraped. `test_roster.py::TestAst719PjlRosterHelpers::test_merge_pjl_scrape_record_skips_duplicate_and_empty` has a first assert expecting the duplicate URL to be discarded; after the fix it replaces the row. Its empty-text and append asserts still hold. `test_merge_pjl_nav_links_appends_deduped` still passes because the helper is unchanged. Matching entries are in `docs/test-bible/core/gazer.md` and `roster.md`.
+- Runtime cost: every run now does one Playwright navigation per candidate URL, up from one per new URL only. Concurrency stays capped by the batch semaphore.
+
+### What must still hold
+
+- `PJL_READY` on at least one stored row and `JOBSITE_SCRAPE_ISSUE` plus the failure note on zero rows, exactly as today (AST-719 Stage 3 as shipped).
+- No `job_site` writes on this hop (AST-673).
+- `pjl_scrape_pages` row shape is `{url, visible_text, enumerated_nav_links?}`. No duplicate rows per `normalize_link` key.
+- Row order is stable: replaced rows keep their index and new URLs append at the end. `pjl_assembled_content` page numbering follows it.
+- Scheme-less candidates still get `https://` prepended (Radia fix-now, `_scrape_pjl_page`).
+- Style D per-URL `debug_index` is still emitted for every scraped URL when `debug=True`, with no production log chatter added.
+- A transient failure never deletes stored content: an errored or empty re-scrape leaves that URL's row and its nav links intact.
+
+
+## Fix-board Joan findings (AST-1995)
+
+## [board-joan] verdict (for Chuckles to post)
+
+```
+[board-joan]  CANON: OK
+```
+
+### Triage notes
+
+- **Read:** `docs/features/roster/ast-719-fetch-job-pages-gazer-batch-and-pjl-ready-state.md` § **Bug: AST-1995** on `origin/sub/AST-1994/AST-1995-fetch-refresh` (As-is / To-be / Repro / Root cause / Proposed change / Blast radius / What must still hold).
+- **Canon Scope:** No frozen list on orphaned mini-parent AST-1994 / child AST-1995 (same pattern as AST-1847, AST-1892). Overlap skim via `canon/docs/DIRECTIVES-DIRECTORY.md`; `docs/canon-index.md` is not on this ref.
+- **Question answered:** The proposed gazer/roster refresh (re-scrape all `possible_joblist_links`, upsert `pjl_scrape_pages`, rebuild `pjl_nav_links` from the run) does **not** conflict with any **in-force** directive and does **not** require a statute/pattern edit before `make-fix`.
+- **Overlap skim (not R1–R7):**
+  - `patt.entity.batch-processing` / `patt.core.logical-scope` — batch shell, claim/process/release, and gazer→roster helper split stay as today; only per-URL persistence semantics change.
+  - `stat.logging.debug` — still per-URL Style D when `debug=True`; pass outcome string changes (`scraped=` vs `pending_scraped=` / dropping `skipped-already-scraped`). That is observability wording, not a statute carve-out.
+  - Failure/empty capture keeps prior rows and nav (plan **What must still hold**) — aligned with coat-check idiom (`astral.idioms.coat-check-never-store-empty` in corpus; no active directive names PJL).
+- **Not canon:** Superseding AST-719 AC3 / Stage 2 “additive skip” lives in the **feature plan archive** and **test-bible** entries (`gazer.md` AST-719/759), not in `canon/directives/active/`. Root cause already cites **AST-1810** `fetch_website_batch` re-scrape as the parallel product fix — no new Archie precedent.
+- **Not ESCALATE:** Open product choices (orphan `pjl_scrape_pages` rows, no pruning, nav carry-forward on failed re-scrape) are documented in plan-fix with Susan gates; that is scope in the patch, not an ambiguous statute.
+- **Chuckles routing:** With **CANON: OK**, no F3 spawn from Joan’s side. Expect Betty **TESTS: REVISE** (plan names two component tests and bible lines for additive skip / `skipped-already-scraped`).
+
+### Stdout (fix-board § Joan)
+
+```text
+AST-1995 board-joan done — CANON: OK.
+```
+
+
+**Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-1995 proceeds to make-fix on product only.
+
+
+## Radia review (AST-1995)
+
+**Ticket:** AST-1995  
+**Publish ref:** `c9303baa2935f57fa61319f6618a30f16ba9e6d9` (`origin/sub/AST-1994/AST-1995-fetch-refresh`)  
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | stat.logging.debug | A | | Per-URL Style D `debug_index`/`debug_detail` unchanged; outcome string `scraped=` vs removed `skipped-already-scraped` loop — observability only (statute explicitly excludes Style D from `logger.debug` contract) |
+| 2 | patt.entity.batch-processing | X | | Diff touches only in-batch PJL persistence; claim/process/release and `batch_id` shell untouched |
+| 3 | patt.core.logical-scope | A | | Gazer still orchestrates `fetch_job_pages_batch`; scrape/merge helpers stay in `roster.py` — see Notes on id resolution |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-board Joan only; no validate-plan fix-mode column for AST-1995)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out (Betty TESTS: REVISE → sibling AST-1999; no `[bug-repro]` on this ticket per spawn brief)
+
+**## What must still hold** — OK  
+- **PJL_READY / JOBSITE_SCRAPE_ISSUE:** `if pjl_pages:` pass branch and fail branch with `prefilter_company_notes` unchanged (`gazer.py` ~718–746).  
+- **No `job_site` writes:** `save_company_data` only writes `pjl_scrape_pages`, `pjl_assembled_content`, `pjl_nav_links`.  
+- **Row shape / no duplicate keys on upsert path:** `_merge_pjl_scrape_record` builds `{url, visible_text, optional enumerated_nav_links}` and replaces first matching `normalize_link` or appends.  
+- **Stable order:** in-place index replace before append (`roster.py` ~2490–2495).  
+- **Scheme-less `https://`:** still in `_scrape_pjl_page` (~2443–2445), untouched.  
+- **Style D when `debug=True`:** per-candidate `debug_index` with `total=len(candidate_urls)` for every scrape (~674–690).  
+- **Transient failure preserves content:** `error` or empty text → return `existing_pages`; failed re-scrape carries prior `enumerated_nav_links` into `run_nav_urls` (~697–704).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Doc carry in diff:** `docs/features/candidate/ast-1598-job-and-app-log-candidate-id.md` gains epic-registry **Threads** block — unrelated to AST-1995 product; doc-only on this tip vs `origin/ftr/AST-1994-fetch-refresh`.  
+- **Sibling test gap:** AST-719 additive-skip / `skipped-already-scraped` component coverage intentionally deferred to AST-1999 (Betty REVISE); product fix stands without repro on this ticket.
+
+## Notes
+
+- **Canon list shape:** No frozen Canon Scope on orphaned mini-parent AST-1994; scored Joan fix-board **overlap skim** ids from spawn brief.  
+- **`patt.core.logical-scope`:** `canon_clerk.py expand` returns *unknown directive id* — listed in `canon/docs/DIRECTIVES-DIRECTORY.md` but no `canon/directives/active/` file. Behavioral check matches directory intent (A); id should be promoted or directory entry retired (Archie housekeeping — not a merge blocker here given Joan F2 **CANON: OK**).  
+- **Plan fidelity:** Diff matches plan-fix **Proposed change** (ledger removed, full candidate loop, upsert merge, `pjl_nav_links` rebuild with failure carry-forward, always persist `pjl_nav_links` including `""`).
+
+## What's solid
+
+- Tight two-file product change aligned with AST-1810 website refresh precedent.  
+- Success/failure symmetry between `_merge_pjl_scrape_record` and `run_nav_urls` collection avoids wiping nav on transient scrape errors while still dropping dead links on successful runs.
+
+
+**docs-acceptance:** test/bible delivery for this fix lives on sibling gap AST-1999 (Betty qa-fix); no test() on this product sub. Routing: orphaned mini-parent with own ftr → merge-child into ftr/AST-1994-fetch-refresh (not straight-to-dev).
+
+---
+
+## Bug: AST-1999 — PJL refresh tests (test gap, retroactive)
+
+**Gap for:** AST-1995 (`[board-betty] TESTS: REVISE`). **Publish ref:** `origin/sub/AST-1994/AST-1999-fetch-refresh-tests`. Written retroactively, after Betty's delivery and the red→green check.
+
+### As-is
+
+The AST-719 tests assert the old additive skip. `test_additive_skips_already_scraped_url` expects one scrape, of the new URL only. The first assertion in `test_merge_pjl_scrape_record_skips_duplicate_and_empty` expects a duplicate URL to be discarded. Nothing covers the refresh behavior: re-scrape, upsert in place, nav rebuild, or carry-forward on failure. `TestFetchJobPagesBatch` also called an undefined `_mock_browser_context` helper, so all four of its tests were red no matter what the product did.
+
+### To-be
+
+The tests assert the AST-1995 behavior in `## Bug: AST-1995` → `### What must still hold`, and the bible entries describe the same behavior.
+
+### Repro
+
+This is Betty's `[bug-repro]` set, commit `e583d0a97`:
+
+- In `tests/component/core/test_gazer.py::TestFetchJobPagesBatch`:
+  - `test_refresh_rescrapes_already_scraped_url`
+  - `test_ast1995_repro_rescrape_replaces_row_and_rebuilds_nav`
+  - `test_ast1995_failed_rescrape_keeps_prior_row_and_carries_its_nav`
+  - `test_ast1995_failed_scrape_without_prior_row_contributes_no_nav`
+  - `test_ast1995_nav_written_empty_and_non_candidate_rows_kept`
+- In `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers`:
+  - `test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty`
+  - `test_ast1995_upsert_replaces_matching_row_in_place`
+  - `test_ast1995_error_record_discarded_even_with_text`
+  - `test_ast1995_whole_row_replace_drops_enumerated_nav_links`
+
+Verified (Hedy, test-fix):
+- **Red on the pre-fix tree:** 9 of 9 fail on ftr parent `a65581d77` with Betty's test files applied. Every failure is an `AssertionError` or a mock-await assertion, not a harness error.
+- **Green after the fix:** after `sync-child` merged in ftr with AST-1995 (`c9303baa2`), 9 of 9 pass, along with 38 of 38 across the PJL classes.
+
+### Root cause
+
+The AST-719 tests encoded the additive-skip design, which AST-1995 deliberately reverses. The broken `_mock_browser_context` reference had been hiding the gazer tests' results.
+
+### Proposed change
+
+Test and bible changes only, owned by Betty and already landed in `e583d0a97` / `c0c22e2ea`:
+- `test_gazer.py` and `test_roster.py` are rewritten and extended as listed above.
+- `docs/test-bible/core/gazer.md` and `roster.md` are updated.
+
+There is no product `src/` change, since the product fix is on AST-1995.
+
+### Blast radius
+
+- `tests/component/core/test_gazer.py`, `test_roster.py`
+- `docs/test-bible/core/gazer.md`, `roster.md`
+
+`test_gazer_scrape_failure.py` (AST-2002 / AST-1997) came along via merge-tests and is not part of this gap.
+
+### What must still hold
+
+- The ~53 pre-existing `test_gazer` / `test_roster` failures named on AST-1995 are unchanged. No new failures were introduced.
+- The four `TestFetchJobPagesBatch` tests that were already failing now pass.
+- All AST-1995 `### What must still hold` invariants are asserted by the nodes above.
+
+
+## Radia review (AST-1999)
+
+**Ticket:** AST-1999  
+**Publish ref:** `69f5bd55cfa42600d93f9e5735591197769f8e7c` (`origin/sub/AST-1994/AST-1999-fetch-refresh-tests`)  
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+(no frozen Canon Scope on orphaned mini-parent AST-1994 / gap child AST-1999 — same pattern as AST-1995; diff is `tests/**` + `docs/test-bible/**` + plan patch only; no product `src/` on this sub)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (retroactive gap doc + Betty delivery; no validate-plan fix-mode column for AST-1999)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** OK — nine manifest nodes pin AST-1995 **To-be** with concrete values (not tautologies); each would fail on pre-fix `a65581d77` and pass with AST-1995 product on ftr:
+
+| Node | What it pins (pre-fix would break) |
+|------|-----------------------------------|
+| `test_refresh_rescrapes_already_scraped_url` | Both candidates awaited; index-0 replace + append; no `skipped-already-scraped` in Style D outcomes |
+| `test_ast1995_repro_rescrape_replaces_row_and_rebuilds_nav` | Plan **Repro** fixture: `scrape.assert_awaited_once()`, `NEW BOARD` / not `OLD BOARD`, nav `…/jobs/b`, `PJL_READY` |
+| `test_ast1995_failed_rescrape_keeps_prior_row_and_carries_its_nav` | Prior row + assembled text preserved; `pjl_nav_links` from row enum only (stale global `/jobs/dead` dropped); `error=` debug line |
+| `test_ast1995_failed_scrape_without_prior_row_contributes_no_nav` | Whitespace-only second URL stores no row; nav only from successful URL’s `page_links` |
+| `test_ast1995_nav_written_empty_and_non_candidate_rows_kept` | Orphan row at index 0; careers upsert at 1; `pjl_nav_links == ""` always written |
+| `test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty` | Duplicate URL replaces (was skip) |
+| `test_ast1995_upsert_replaces_matching_row_in_place` | `normalize_link` match, order, no input mutation |
+| `test_ast1995_error_record_discarded_even_with_text` | `error` + text → unchanged existing |
+| `test_ast1995_whole_row_replace_drops_enumerated_nav_links` | Whole-row replace drops optional key |
+
+**Note:** Test methods do not carry a first-line `# [bug-repro]` comment (Betty convention); the nine names are authoritative in plan **Repro**, bible § AST-1999, and **QA test manifest**. Assertions are still repro-first quality.
+
+**## What must still hold** — OK (by code review + spawn/test-fix context; not re-run in this pass)
+
+- **AST-1995 invariants:** Covered by the nine nodes above (maps to AST-1995 plan **What must still hold**).
+- **Four broken `TestFetchJobPagesBatch` nodes:** `_mock_browser_context` restored at module level (~L207–213); stale `"errors": 0` removed from expected batch dicts; parametrized missing-links / all-empty fail paths preserved.
+- **~53 unrelated gazer/roster reds unchanged:** Accepted per Hedy test-fix report in plan **Repro**; AST-1999 manifest scopes pass criterion to the two PJL classes only (not zero-arg full-file gate).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **merge-tests carry:** `tests/component/core/test_gazer_scrape_failure.py` + `docs/test-bible/core/gazer.md` § AST-2002 — **AST-1997/AST-2002** scope, not AST-1999; outside QA manifest; may red until that product lands (do not score as AST-1999 defect).
+- **`[bug-repro]` tagging:** Consider adding first-line `[bug-repro]` comments on the nine methods for grep parity with fix-lane machinery (optional hygiene).
+- **`test_success_transitions_pjl_ready_and_persists`:** Still does not assert `pjl_nav_links` always persisted (AST-1995 behavior); dedicated AST-1995 nodes cover empty/rebuild — pre-existing guard gap.
+
+## Notes
+
+- **Plan fidelity:** Matches plan-fix **Proposed change** (gazer class rewrite/extension, roster upsert nodes, bible updates).
+- **Non-canon:** No sibling **product** scope smuggled; only test/bible/doc on this diff vs `origin/ftr/AST-1994-fetch-refresh`.
+- **Parent routing:** Orphaned mini-parent AST-1994 with own **ftr** → after clean review, **merge-child** into `ftr/AST-1994-fetch-refresh` (not straight-to-dev for the epic); AST-1995 product already on ftr per spawn context.
+
+## What's solid
+
+- `_run_pjl` helper keeps repro fixtures readable and isolates first `save_company_data` payload (fail-path notes save excluded correctly).
+- Bible § AST-1999 tables mirror test names and red→green story; obsolete additive-skip language struck consistently.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/2affa466983e714518349d35337fb659/57db8c7d-a7e7-4c00-9687-ec700dc4b3b6/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/7be6b20e-07de-4954-9f06-627b2f497f75/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/2affa466983e714518349d35337fb659/3130a2fc-156f-4420-a8f4-d0837aa5607b/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1994 (parent) | ftr/AST-1994-fetch-refresh |
+| AST-1995 | sub/AST-1994/AST-1995-fetch-refresh |
+| AST-1999 | sub/AST-1994/AST-1999-fetch-refresh-tests |
+
+**Epic worktree:** `astral-AST-1994/` — one active sub checked out at a time.
