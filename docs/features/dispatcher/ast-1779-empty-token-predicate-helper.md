@@ -587,3 +587,4 @@ context_tokens≈32000
 - **Discuss (meteorite staging unchanged):** Default taken — plan boundary stands; no `METEORITE_STATES` terminal invented. Reopen only if Susan wants new meteorite error states (separate ticket).
 - **Advisory:** none actionable.
 - **Tests:** none on this ticket — sibling [AST-2006](https://linear.app/astralcareermatch/issue/AST-2006) (incl. a case for this guarded candidate branch).
+- **Docs-acceptance:** no test-tree delivery on this sub (no `test(AST-2000):` / `merge-tests(AST-2000):`) — Betty board TESTS: OK; all AST-2000 tests land on sibling [AST-2006](https://linear.app/astralcareermatch/issue/AST-2006).
