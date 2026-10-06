@@ -365,3 +365,35 @@ Single file, single function: `src/core/agent.py` / `_system_text_with_candidate
 - No separator between `]` and body; body after the marker run is byte-for-byte untouched.
 - `stat.logging.error`: no new `logger.error` / `logger.exception` at the raise site. `stat.logging.debug`: no new log lines.
 - Existing `TestAst1639CandidateIdSystemPrefix` stays green.
+
+
+## Fix-board Joan findings (AST-1990)
+
+## [board-joan] verdict (for Chuckles → `linear_proxy --as joan save-comment`)
+
+```
+[board-joan]  CANON: OK
+```
+
+## Triage notes
+
+Read `## Bug: AST-1990` on `origin/sub/AST-1985/AST-1990-candidate-prefix-dedupe` (`docs/features/agent/ast-1639-candidate-id-system-prompt-prefix.md`). Scope is one helper in `src/core/agent.py`: strip a leading run of `[astral-…]` markers, then emit exactly one `[astral-<cid>]`; `ValueError` on missing id unchanged and still without a new log at the raise site.
+
+**Corpus:** No `docs/canon-index.md` on this ref (same as other fix-board passes). Skimmed `canon/docs/DIRECTIVES-DIRECTORY.md` overlap for `agent.py` / logging / prefix-shaped strings; resolved the ticket’s frozen citations `stat.logging.debug` and `stat.logging.error` from `canon/directives/active/`.
+
+**Logging statutes:** Proposed change adds no `logger.debug` / `logger.error` / `logger.exception` at the helper. That matches `stat.logging.debug` (no new gated joints) and `stat.logging.error` (detection site raises; handler logs once — unchanged).
+
+**Prefix / AST-1639:** In-force directives do not define the AST-1639 wire marker, idempotence, or “same-id vs any-id” strip policy. That behavior lives in the archived AST-1639 feature ACs and this plan-fix patch (including Susan-approved strip-any-leading-run and fail-closed-before-body). The fix closes a chokepoint gap vs double-prefixing; it does not contradict an active statute or pattern. No new carve-out or statute edit is required for F3.
+
+**ESCALATE not warranted:** Architectural choices (strip any id, regex shape, no migration for stacked rows) are already recorded in the patch; they are product/plan decisions, not unset canon intent.
+
+**Chuckles branch hint:** If Betty is **OK**, lane can go **Plan Approved → make-fix** with no F3. If Betty is **REVISE** (new idempotence tests per patch), still **OK** here → Plan Discuss + **qa-fix** only.
+
+---
+
+```text
+AST-1990 board-joan done — CANON: OK.
+```
+
+
+**Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-1990 proceeds to make-fix on product only.
