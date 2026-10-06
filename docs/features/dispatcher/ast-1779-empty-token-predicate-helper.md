@@ -689,3 +689,49 @@ If Susan later wants meteorite empty-token failures terminal, that is **new regi
 - **Scope:** `patt.task.dispatch-retry.md` only — conforms to `astral.standards.in-scope-only` for this child.
 
 **docs-acceptance — AST-2005:** canon-only (Betty TESTS: OK — no test/bible reads `patt.task.dispatch-retry`). Check on publish tip: `canon_clerk.py expand patt.task.dispatch-retry` exit 0 serving the new `# When this doesn't apply` section; `canon_clerk.py index` exit 0, unchanged (body-only edit). No test() delivery owed.
+
+### Radia review — AST-2005
+
+**Diff base:** `origin/ftr/AST-1986-runtime-empty-token-error...origin/sub/AST-1986/AST-2005-dispatch-retry-carve-out` (2 paths: `canon/directives/active/patt.task.dispatch-retry.md` + plan-fix doc append; no `src/**`, no `tests/**`)  
+**Corpus:** `2344ae3265b15125a8f4a655946fcfe66b3e1def` (moved from ftr’s `e1f2699fa…`; `corpus_dirty`: false on clerk `expand` at review time)  
+**Overall:** CLEAN  
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — qa-fix did not run; Betty TESTS: OK; canon-only ticket.
+- **## What must still hold** — OK: Abstract, Arc 1–5, Canonical implementation, and frontmatter untouched in the canon diff; `# When this doesn't apply` matches the plan verbatim; no product/test/bible/schema hunks.
+
+## Canon scores
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | patt.task.dispatch-retry | A | | Carve-out names `do_task` / `empty_tokens`, skip `_RETRY`, straight to `error_state` / flow terminal, mid-chain; retains “always applies” for all other failures; aligns with Susan’s binding rule and AST-2000 on ftr. |
+
+## Column diff vs plan stage
+
+no plan-stage validate-plan scores for AST-2005 (Joan fix-board **CANON: OK** recorded in issue doc)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- Tip commit subject `test(AST-2005): docs-acceptance…` documents clerk grep/sanity only; diff has no test-tree files — consistent with plan and Betty OK.
+- Meteorite staging gap intentionally **not** in canon text per Joan board rule in spawn brief — **not** scored as a defect; traceability stays in AST-2000 / AST-2005 plan blocks.
+- After this lands on ftr/dev, re-read `patt.task.dispatch-retry` when scoring AST-2000 product should show conform (carve-out was the round-1 gap).
+
+## What’s solid
+
+- Body-only edit; `python3 canon/canon_clerk.py expand patt.task.dispatch-retry` serves the new section (verified read-only).
+- Narrow `empty_tokens` marker (no ticket id, no generic “data failure” license).
+- Precedent commit present on branch: `docs(AST-2005): canon — patt.task.dispatch-retry empty-token data-failure carve-out`.
+
+## Notes for Chuckles
+
+- **Gate:** PROCEED — artifact complete → **Review Posted** → fix-lane clean shortcut to **User Testing** (no `resolve-child` unless you hold for process).
+- **Parent:** AST-1986 orphaned mini-parent, live `ftr/AST-1986-runtime-empty-token-error`.
+
+context_tokens≈22000
