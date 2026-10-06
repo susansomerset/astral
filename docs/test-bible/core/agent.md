@@ -1919,3 +1919,16 @@ Expect 40 reds in `test_agent.py` and 12 in `test_dispatcher.py`. Each one fails
 3. **Boundary gate (expect no output):** `git diff origin/ftr/AST-1954-host-probe...HEAD --stat -- src/core/dispatcher.py src/external/ src/utils/`
 
 **Pass criterion:** item 1 green, item 2 limited to the baseline reds, item 3 empty. Not the zero-arg harness.
+
+### AST-2001 · AST-1884 (bug-repro — AST-1996 decode-line isolation, agent side)
+
+Test gap for **AST-1996** (`96bc0471d`): `_decode_payload` records grades-only trailing content (a token failing `_GRADE_SEG`, e.g. `DEC35`) in `decode_failures` (`astral_job_id`, `pos`, `reason` — reason text identical to the old `ValueError`) and skips that line; clean lines in the same payload still decode. Key present **only** when a line failed. `_meta` / `_notes` output types keep the tail as meta/notes (never a decode failure). Bad position, X-confidence, non-X confidence bounds, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload. Routing / batch side: **`core/consult.md`** (**AST-2001**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Trailing content → `decode_failures` entry, `jobs == []` (flipped from raise; bad-position + X-confidence raises kept) | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta`** (**bug-repro**) |
+| Repro A — malformed line 0 isolated, line 1 decodes (`DE/C/3`, `EC/C/3`, `OR/X/0`) | same | **`…::test_ast1996_malformed_line_isolated_clean_line_decodes`** (**bug-repro**) |
+| Clean payload has no `decode_failures` key | same | **`…::test_ast1996_clean_payload_has_no_decode_failures_key`** (guard) |
+| `grades_encoded_notes` tail stays `notes`, no `decode_failures` | same | **`…::test_ast1996_notes_type_tail_is_not_a_decode_failure`** (guard) |
+
+**Integration:** none.
