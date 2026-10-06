@@ -4766,3 +4766,7 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ### AST-2008 · AST-2007 (TIMESHEET_RECONCILE_ENABLED)
 
 **New:** `TestAst1964ModelRouting::test_reconcile_ships_disabled` — `TIMESHEET_RECONCILE_ENABLED is False`. Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.
+
+### AST-2010 · AST-2009 (OpenRouter retry block + `PROVIDER_RATE_LIMIT`)
+
+**New:** `TestAst2010OpenRouterRetryConfig`. OpenRouter `concurrency == {"rate_limit_retries": 5, "backoff_base_seconds": 2.0, "exhausted_stops_batch": True}`. The DeepSeek block is unchanged, and only OpenRouter sets `exhausted_stops_batch`. The `PROVIDER_RATE_LIMIT` registry is pinned. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.

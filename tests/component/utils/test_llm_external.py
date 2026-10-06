@@ -90,6 +90,47 @@ class TestAst897ProviderBalanceRefusal:
         assert llm_ext_mod.is_provider_balance_refusal("nope") is False  # type: ignore[arg-type]
 
 
+class TestAst2010ProviderRateLimit:
+    """AST-2010: classify an exhausted 429 (exception or probe string); predicate on result dicts."""
+
+    FC = "provider_rate_limit"
+    # AST-2009 log body — what str(anthropic.RateLimitError) / the host-probe error carries
+    BODY = "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error', 'message': 'Rate limit exceeded'}}"
+
+    def test_classify_by_status_code_attr(self) -> None:
+        exc = type("E", (Exception,), {"status_code": 429})("slow down")
+        assert llm_ext_mod.classify_provider_rate_limit(exc) == self.FC
+
+    def test_classify_by_response_status_code(self) -> None:
+        exc = type("E", (Exception,), {})("nope")
+        exc.response = SimpleNamespace(status_code=429)
+        assert llm_ext_mod.classify_provider_rate_limit(exc) == self.FC
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            BODY,
+            f"Host probe failed: {BODY}",  # probe path hands the classifier a string
+            "upstream said rate_limit_error",
+        ],
+    )
+    def test_classify_by_message_substring(self, msg: str) -> None:
+        assert llm_ext_mod.classify_provider_rate_limit(RuntimeError(msg)) == self.FC
+        assert llm_ext_mod.classify_provider_rate_limit(msg) == self.FC
+
+    def test_classify_ignores_unrelated_errors(self) -> None:
+        assert llm_ext_mod.classify_provider_rate_limit(RuntimeError("timeout")) is None
+        assert llm_ext_mod.classify_provider_rate_limit("Error code: 402 - Insufficient Balance") is None
+        assert llm_ext_mod.classify_provider_rate_limit(type("E", (Exception,), {"status_code": 500})("x")) is None
+
+    def test_is_provider_rate_limit_predicate(self) -> None:
+        assert llm_ext_mod.is_provider_rate_limit({"failure_class": self.FC}) is True
+        assert llm_ext_mod.is_provider_rate_limit({"failure_class": "provider_balance_refusal"}) is False
+        assert llm_ext_mod.is_provider_rate_limit({"success": False}) is False
+        assert llm_ext_mod.is_provider_rate_limit(None) is False
+        assert llm_ext_mod.is_provider_rate_limit("nope") is False  # type: ignore[arg-type]
+
+
 class TestAst1190EmptyResponseHelpers:
     """AST-1190: normalize blank errors; hollow conjunction; empty-response predicate."""
 

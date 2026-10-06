@@ -125,3 +125,7 @@
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-2010 · AST-2009 (`classify_provider_rate_limit` / `is_provider_rate_limit`)
+
+**New:** `TestAst2010ProviderRateLimit`. It covers status 429 (`status_code` or `response.status_code`) and the substrings `error code: 429` / `rate_limit_error` on an exception **or** a string (the host-probe error is a string). It also covers unrelated / 402 / 500 → `None` and the predicate on dicts / `None` / non-dict. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.

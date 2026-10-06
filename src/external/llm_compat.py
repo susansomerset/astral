@@ -6,6 +6,7 @@ Parameterized by server id + SKU; key always passed by the caller (no env fallba
 import random
 import threading
 import time
+from contextlib import nullcontext
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -14,13 +15,14 @@ import httpx as _httpx
 
 from src.external.anthropic import _effort_body, _parse_api_response, _parse_json_response, _parse_python_code_response
 from src.external.openrouter import get_batch_host
-from src.utils.config import PROVIDER_EMPTY_RESPONSE, get_llm_server, get_model_routing
+from src.utils.config import PROVIDER_EMPTY_RESPONSE, PROVIDER_RATE_LIMIT, get_llm_server, get_model_routing
 from src.utils.cost_calculator import CALC_COST_KEYS, calculate_cost_components_from_counts, usage_to_token_counts
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.llm_external import (
     await_provider_call_with_budget,
     classify_provider_balance_refusal,
     classify_provider_call_timeout,
+    classify_provider_rate_limit,
     is_unusable_provider_response,
     normalize_provider_error,
     provider_call_http_timeout_seconds,
@@ -52,15 +54,18 @@ _slots_lock = threading.Lock()
 
 
 def _create(client: Anthropic, api_kwargs: Dict[str, Any], server_id: str, concurrency: Optional[Dict[str, Any]]) -> Any:
-    """Blocking messages.create in a worker thread; servers with a concurrency block get a
-    process-wide slot cap and jittered 429 backoff (slot held only during the call)."""
+    """Blocking messages.create in a worker thread; servers with a concurrency block get jittered,
+    doubling 429 backoff. The process-wide slot cap (held only during the call) and the delay
+    ceiling apply only when max_concurrent / backoff_max_seconds are configured (AST-2010)."""
     if not concurrency:
         return client.messages.create(**api_kwargs)
-    with _slots_lock:
-        sem = _slots.setdefault(server_id, threading.BoundedSemaphore(int(concurrency["max_concurrent"])))
+    sem: Any = nullcontext()
+    if concurrency.get("max_concurrent"):
+        with _slots_lock:
+            sem = _slots.setdefault(server_id, threading.BoundedSemaphore(int(concurrency["max_concurrent"])))
     attempts = int(concurrency["rate_limit_retries"]) + 1
     base = float(concurrency["backoff_base_seconds"])
-    cap = float(concurrency["backoff_max_seconds"])
+    cap = concurrency.get("backoff_max_seconds")
     for attempt in range(attempts):
         try:
             with sem:
@@ -68,7 +73,10 @@ def _create(client: Anthropic, api_kwargs: Dict[str, Any], server_id: str, concu
         except RateLimitError:
             if attempt == attempts - 1:
                 raise
-            delay = min(base * (2 ** attempt), cap) * random.uniform(0.5, 1.0)
+            delay = base * (2 ** attempt)
+            if cap is not None:
+                delay = min(delay, float(cap))
+            delay *= random.uniform(0.5, 1.0)
             logger.warning("%s 429; retry %d/%d in %.1fs", server_id, attempt + 1, attempts - 1, delay)
             time.sleep(delay)
 
@@ -101,6 +109,8 @@ async def send_to_llm_compat(
         raise ValueError("sku is required for send_to_llm_compat")
     if not api_key:
         raise ValueError(f"No API key for server {server_id!r}")
+    # Opt-in (AST-2010): only these servers tag a 429 still refused after their retries, so the dispatcher stops the batch.
+    stops_batch = bool((server["concurrency"] or {}).get("exhausted_stops_batch"))
 
     start_time = datetime.now()
     calltime = start_time.strftime("%Y-%m-%d %H:%M:%S")
@@ -204,13 +214,17 @@ async def send_to_llm_compat(
                 # No fallback: nothing is sent; the entity takes the ordinary retry → error path.
                 duration = (datetime.now() - start_time).total_seconds()
                 log_llm_batch_summary(logger, server_id, prompt_label, duration, error=probe_err)
-                return {
+                out = {
                     "success": False,
                     "api_response": None,
                     "timesheet": _empty_timesheet(),
                     "error": probe_err,
                     "host": server["label"],
                 }
+                # Waiters share the cached probe error string, so every caller in the batch is tagged alike.
+                if stops_batch and classify_provider_rate_limit(probe_err):
+                    out["failure_class"] = PROVIDER_RATE_LIMIT["failure_class"]
+                return out
             # New dicts, not in-place edits: the agent's provider keys kept, only `only` replaced.
             extra_body = api_kwargs["extra_body"]
             api_kwargs["extra_body"] = {**extra_body, "provider": {**(extra_body.get("provider") or {}), "only": [host]}}
@@ -357,7 +371,7 @@ async def send_to_llm_compat(
             if fc_timeout:
                 out["failure_class"] = fc_timeout
             else:
-                fc = classify_provider_balance_refusal(e)
+                fc = classify_provider_balance_refusal(e) or (stops_batch and classify_provider_rate_limit(e))
                 if fc:
                     out["failure_class"] = fc
             return out
@@ -373,7 +387,7 @@ async def send_to_llm_compat(
         if fc_timeout:
             out["failure_class"] = fc_timeout
         else:
-            fc = classify_provider_balance_refusal(e)
+            fc = classify_provider_balance_refusal(e) or (stops_batch and classify_provider_rate_limit(e))
             if fc:
                 out["failure_class"] = fc
         return out
