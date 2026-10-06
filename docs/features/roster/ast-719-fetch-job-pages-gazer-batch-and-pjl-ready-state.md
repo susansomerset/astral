@@ -730,3 +730,75 @@ There is no product `src/` change, since the product fix is on AST-1995.
 - The ~53 pre-existing `test_gazer` / `test_roster` failures named on AST-1995 are unchanged. No new failures were introduced.
 - The four `TestFetchJobPagesBatch` tests that were already failing now pass.
 - All AST-1995 `### What must still hold` invariants are asserted by the nodes above.
+
+
+## Radia review (AST-1999)
+
+**Ticket:** AST-1999  
+**Publish ref:** `69f5bd55cfa42600d93f9e5735591197769f8e7c` (`origin/sub/AST-1994/AST-1999-fetch-refresh-tests`)  
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+(no frozen Canon Scope on orphaned mini-parent AST-1994 / gap child AST-1999 — same pattern as AST-1995; diff is `tests/**` + `docs/test-bible/**` + plan patch only; no product `src/` on this sub)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (retroactive gap doc + Betty delivery; no validate-plan fix-mode column for AST-1999)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** OK — nine manifest nodes pin AST-1995 **To-be** with concrete values (not tautologies); each would fail on pre-fix `a65581d77` and pass with AST-1995 product on ftr:
+
+| Node | What it pins (pre-fix would break) |
+|------|-----------------------------------|
+| `test_refresh_rescrapes_already_scraped_url` | Both candidates awaited; index-0 replace + append; no `skipped-already-scraped` in Style D outcomes |
+| `test_ast1995_repro_rescrape_replaces_row_and_rebuilds_nav` | Plan **Repro** fixture: `scrape.assert_awaited_once()`, `NEW BOARD` / not `OLD BOARD`, nav `…/jobs/b`, `PJL_READY` |
+| `test_ast1995_failed_rescrape_keeps_prior_row_and_carries_its_nav` | Prior row + assembled text preserved; `pjl_nav_links` from row enum only (stale global `/jobs/dead` dropped); `error=` debug line |
+| `test_ast1995_failed_scrape_without_prior_row_contributes_no_nav` | Whitespace-only second URL stores no row; nav only from successful URL’s `page_links` |
+| `test_ast1995_nav_written_empty_and_non_candidate_rows_kept` | Orphan row at index 0; careers upsert at 1; `pjl_nav_links == ""` always written |
+| `test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty` | Duplicate URL replaces (was skip) |
+| `test_ast1995_upsert_replaces_matching_row_in_place` | `normalize_link` match, order, no input mutation |
+| `test_ast1995_error_record_discarded_even_with_text` | `error` + text → unchanged existing |
+| `test_ast1995_whole_row_replace_drops_enumerated_nav_links` | Whole-row replace drops optional key |
+
+**Note:** Test methods do not carry a first-line `# [bug-repro]` comment (Betty convention); the nine names are authoritative in plan **Repro**, bible § AST-1999, and **QA test manifest**. Assertions are still repro-first quality.
+
+**## What must still hold** — OK (by code review + spawn/test-fix context; not re-run in this pass)
+
+- **AST-1995 invariants:** Covered by the nine nodes above (maps to AST-1995 plan **What must still hold**).
+- **Four broken `TestFetchJobPagesBatch` nodes:** `_mock_browser_context` restored at module level (~L207–213); stale `"errors": 0` removed from expected batch dicts; parametrized missing-links / all-empty fail paths preserved.
+- **~53 unrelated gazer/roster reds unchanged:** Accepted per Hedy test-fix report in plan **Repro**; AST-1999 manifest scopes pass criterion to the two PJL classes only (not zero-arg full-file gate).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **merge-tests carry:** `tests/component/core/test_gazer_scrape_failure.py` + `docs/test-bible/core/gazer.md` § AST-2002 — **AST-1997/AST-2002** scope, not AST-1999; outside QA manifest; may red until that product lands (do not score as AST-1999 defect).
+- **`[bug-repro]` tagging:** Consider adding first-line `[bug-repro]` comments on the nine methods for grep parity with fix-lane machinery (optional hygiene).
+- **`test_success_transitions_pjl_ready_and_persists`:** Still does not assert `pjl_nav_links` always persisted (AST-1995 behavior); dedicated AST-1995 nodes cover empty/rebuild — pre-existing guard gap.
+
+## Notes
+
+- **Plan fidelity:** Matches plan-fix **Proposed change** (gazer class rewrite/extension, roster upsert nodes, bible updates).
+- **Non-canon:** No sibling **product** scope smuggled; only test/bible/doc on this diff vs `origin/ftr/AST-1994-fetch-refresh`.
+- **Parent routing:** Orphaned mini-parent AST-1994 with own **ftr** → after clean review, **merge-child** into `ftr/AST-1994-fetch-refresh` (not straight-to-dev for the epic); AST-1995 product already on ftr per spawn context.
+
+## What's solid
+
+- `_run_pjl` helper keeps repro fixtures readable and isolates first `save_company_data` payload (fail-path notes save excluded correctly).
+- Bible § AST-1999 tables mirror test names and red→green story; obsolete additive-skip language struck consistently.
+
