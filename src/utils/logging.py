@@ -6,7 +6,7 @@ Uses Python's standard logging module with consistent formatting.
 
 Log output goes to both stdout and the app_log database table. Console is always
 stdout: on Railway (`RAILWAY_ENVIRONMENT` set) each line is JSON with `level` +
-`message`; off-Railway the plain `LEVEL name: message` format remains. The
+`message`, plus `batch_id` / `candidate_id` when set; off-Railway the plain `LEVEL name: message` format remains. The
 database handler stores message only — level and logger_name are columns.
 Switching to Better Stack or another provider means updating this module only.
 Telescope and gunicorn console setup are out of scope.
@@ -19,9 +19,9 @@ automatically tagged with the batch_id. Callers never set it directly.
 
 The `log_candidate_id` context var is optional (AST-1598), parallel to
 `log_batch_id`: when set, DB log rows are stamped with that candidate_id;
-when unset, candidate_id is NULL. Callers that want a stamp set the
-contextvar (dispatcher/UI wiring is out of AST-1598 scope — this module
-only defines and reads it).
+when unset, candidate_id is NULL. Set alongside `log_batch_id` at each
+candidate-owned batch start and cleared at the same teardown. Read by the DB
+handler and the Railway JSON formatter.
 
 The `log_debug` context var is the emit gate for `logger.debug` (stat.logging.debug).
 The run entry sets it; call sites always call `logger.debug` and do not inspect it.
@@ -82,19 +82,21 @@ def _on_railway() -> bool:
 
 
 class _RailwayJsonFormatter(logging.Formatter):
-    """One JSON object per line for Railway severity filters."""
+    """One JSON object per line for Railway severity filters; batch_id / candidate_id added when their contextvars are set."""
 
     def format(self, record: logging.LogRecord) -> str:
         msg = f"{record.name}: {record.getMessage()}"
         if record.exc_info:
             msg = msg + "\n" + self.formatException(record.exc_info)
-        return json.dumps(
-            {
-                "level": _RAILWAY_LEVEL.get(record.levelno, "error"),
-                "message": msg,
-            },
-            ensure_ascii=False,
-        )
+        payload = {"level": _RAILWAY_LEVEL.get(record.levelno, "error"), "message": msg}
+        # Omit (never null) when unset so batch-less lines keep today's exact shape.
+        batch_id = log_batch_id.get()
+        if batch_id:
+            payload["batch_id"] = batch_id
+        candidate_id = log_candidate_id.get()
+        if candidate_id:
+            payload["candidate_id"] = candidate_id
+        return json.dumps(payload, ensure_ascii=False)
 
 
 _RAILWAY_JSON_FORMATTER = _RailwayJsonFormatter()

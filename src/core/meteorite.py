@@ -67,16 +67,19 @@ from src.utils.config import (
     format_job_link_breadcrumb,
 )
 from src.utils.formatting import normalize_pasted_list_email_html, uuid_path_segment_from_url
-from src.utils.logging import get_logger, log_batch_id, log_debug
+from src.utils.logging import get_logger, log_batch_id, log_candidate_id, log_debug
 
 logger = get_logger(__name__)
 
 
-def _hold_log_batch(batch_id: str):
-    """Stamp log_batch_id only when a parent dispatch batch is not already set."""
+def _hold_log_batch(batch_id: str, candidate_id: Optional[str]):
+    """Stamp log_batch_id + log_candidate_id only when a parent dispatch batch is not already set.
+
+    Returns (batch_token, candidate_token) to reset, or None when the parent batch owns both.
+    """
     if log_batch_id.get():
         return None
-    return log_batch_id.set(batch_id)
+    return log_batch_id.set(batch_id), log_candidate_id.set(candidate_id or None)
 
 
 def _resolve_company_job_id(ai_company_job_id: str, job_link: str) -> str:
@@ -637,7 +640,7 @@ async def enrich_meteorite_land_packet(
 
     batch_id = f"{task_key}-land-{uuid.uuid4()}"
     do_index = f"{task_key}_batch_{batch_id}"
-    token = _hold_log_batch(batch_id)
+    token = _hold_log_batch(batch_id, cid)
     try:
         logger.debug(
             "Calling agent.do_task: [task_key=%s, index=%s, scraps=%s]",
@@ -699,7 +702,8 @@ async def enrich_meteorite_land_packet(
         return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
     finally:
         if token is not None:
-            log_batch_id.reset(token)
+            log_batch_id.reset(token[0])
+            log_candidate_id.reset(token[1])
 
 
 def _land_rollup_outcome(outcomes: List[Dict[str, Any]]) -> str:
@@ -759,7 +763,7 @@ async def _classify_stage_blob(
     if ctx and ctx.get("candidate_api_keys") is not None:
         task_ctx["candidate_api_keys"] = ctx["candidate_api_keys"]
 
-    token = _hold_log_batch(batch_id)
+    token = _hold_log_batch(batch_id, cid)
     try:
         logger.debug(
             "Calling agent.do_task: [task_key=%s, index=%s, source_kind=%s]",
@@ -825,7 +829,8 @@ async def _classify_stage_blob(
         }
     finally:
         if token is not None:
-            log_batch_id.reset(token)
+            log_batch_id.reset(token[0])
+            log_candidate_id.reset(token[1])
 
 
 def _stage_field(job: Dict[str, Any], key: str) -> Optional[str]:
@@ -1997,7 +2002,7 @@ async def _review_duplicate_meteorite_hook(
     peer_key = REVIEW_DUPLICATE_METEORITE_CONFIG["peer_id_response_key"]
     task_ctx: Dict[str, Any] = {"astral_candidate_id": cid}
     do_index = f"{task_key}_{row_id}_{batch_id}"
-    token = _hold_log_batch(batch_id)
+    token = _hold_log_batch(batch_id, cid)
     try:
         logger.debug(
             "Calling agent.do_task: [task_key=%s, index=%s, peer_ids=%s]",
@@ -2013,7 +2018,8 @@ async def _review_duplicate_meteorite_hook(
         logger.debug("Response from agent.do_task: %s", result)
     finally:
         if token is not None:
-            log_batch_id.reset(token)
+            log_batch_id.reset(token[0])
+            log_candidate_id.reset(token[1])
 
     if not result.get("success"):
         _warn_item(

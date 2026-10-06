@@ -101,7 +101,7 @@ from src.utils.config import (
     state_prior_states,
 )
 from src.utils.formatting import value_to_str
-from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
+from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_candidate_id, truncate_debug_content
 
 logger = get_logger(__name__)
 
@@ -3912,6 +3912,7 @@ def run_candidate_artifact_generation(
             batch_size=1,
         )
         log_batch_id.set(batch_id)
+        log_candidate_id.set(candidate_id)
         logger.info(
             "UI generate started task_key=%r ledger_task_key=%s batch_id=%s candidate_id=%s",
             task_key,
@@ -4122,3 +4123,4 @@ def run_candidate_artifact_generation(
     finally:
         flush_log_buffer()
         log_batch_id.set(None)
+        log_candidate_id.set(None)

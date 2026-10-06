@@ -5030,6 +5030,51 @@ class TestAst531RunNextHopLedger:
         assert updates.index(host_writes[0]) < updates.index(finals[0])
         assert agent_mod.log_batch_id.get() is None
 
+    # AST-1988: each hop open stamps log_candidate_id beside its hop batch; the hop close clears both.
+    @pytest.mark.asyncio
+    async def test_ast1988_hop_open_stamps_candidate_and_close_clears(
+        self, monkeypatch: pytest.MonkeyPatch, hop_ledger_trackers: Dict[str, Any]
+    ) -> None:
+        # test_two_hop_chain_creates_distinct_ledger_rows setup; the LLM mock records (batch, candidate) per hop.
+        def resolve(task_key: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            if task_key == "qualify_job_listings":
+                return _agent_rows(run_next="evaluate_jd")
+            return _agent_rows(run_next="")
+
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve)
+        _patch_strict_batch_anthropic(monkeypatch)
+        seen: List[Tuple[Any, Any]] = []
+
+        async def _send(*_a: Any, **_k: Any) -> Dict[str, Any]:
+            seen.append((agent_mod.log_batch_id.get(), agent_mod.log_candidate_id.get()))
+            return _strict_batch_llm_ok(api_label=f"hop{len(seen)}")
+
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(side_effect=_send))
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        tb = agent_mod.log_batch_id.set(None)
+        tc = agent_mod.log_candidate_id.set(None)
+        try:
+            out = await agent_mod.do_task(
+                "qualify_job_listings",
+                index="job-1",
+                ctx={
+                    "astral_candidate_id": "c1",
+                    "candidate_api_keys": {"anthropic": "key"},
+                    "candidate_data": {},
+                    "batch_entities": _batch_entities("job-1"),
+                },
+            )
+            assert out["success"] is True
+            saves = hop_ledger_trackers["saves"]
+            assert len(seen) == 2
+            assert [s[0] for s in seen] == [saves[0][0][0], saves[1][0][0]]
+            assert [s[1] for s in seen] == ["c1", "c1"]
+            assert agent_mod.log_batch_id.get() is None
+            assert agent_mod.log_candidate_id.get() is None
+        finally:
+            agent_mod.log_candidate_id.reset(tc)
+            agent_mod.log_batch_id.reset(tb)
+
     @pytest.mark.asyncio
     async def test_single_hop_without_run_next_does_not_open_hop_ledger(
         self, monkeypatch: pytest.MonkeyPatch
@@ -5281,6 +5326,50 @@ class TestAst515AdhocWorkbenchLedger:
         assert agent_mod.log_batch_id.get() is None
         assert any("This test is recorded FAILED" in r.message for r in caplog.records)
         assert any(r.exc_info is not None for r in caplog.records)
+
+    # AST-1988: workbench batch stamps log_candidate_id beside log_batch_id; outer finally clears both.
+    # Branches: run_adhoc returns → cleared; run_adhoc raises → still cleared.
+    async def _ast1988_workbench(self, monkeypatch: pytest.MonkeyPatch, raise_exc: Any) -> List[Tuple[Any, Any]]:
+        seen: List[Tuple[Any, Any]] = []
+
+        async def _run(**kwargs: Any) -> Dict[str, Any]:
+            seen.append((agent_mod.log_batch_id.get(), agent_mod.log_candidate_id.get()))
+            if raise_exc is not None:
+                raise raise_exc
+            return {"success": True, "parsed_response": {"agent_payload": "ok"}, "timesheet": {}}
+
+        monkeypatch.setattr(agent_mod, "run_adhoc", _run)
+        # Start both at None (tokens) so a leak elsewhere can't green the post-run checks.
+        tb = agent_mod.log_batch_id.set(None)
+        tc = agent_mod.log_candidate_id.set(None)
+        try:
+            call = agent_mod.run_adhoc_workbench_test(workbench_task_key="evaluate_jd", candidate_id="c1")
+            if raise_exc is None:
+                await call
+            else:
+                with pytest.raises(type(raise_exc)):
+                    await call
+            assert agent_mod.log_batch_id.get() is None
+            assert agent_mod.log_candidate_id.get() is None
+        finally:
+            agent_mod.log_candidate_id.reset(tc)
+            agent_mod.log_batch_id.reset(tb)
+        return seen
+
+    async def test_ast1988_workbench_stamps_candidate_and_clears(
+        self, monkeypatch: pytest.MonkeyPatch, ledger_trackers: Dict[str, Any]
+    ) -> None:
+        seen = await self._ast1988_workbench(monkeypatch, None)
+        assert len(seen) == 1
+        assert seen[0][0].startswith("adhoc-evaluate_jd-")
+        assert seen[0][1] == "c1"
+
+    async def test_ast1988_workbench_raise_still_clears_candidate(
+        self, monkeypatch: pytest.MonkeyPatch, ledger_trackers: Dict[str, Any]
+    ) -> None:
+        seen = await self._ast1988_workbench(monkeypatch, RuntimeError("boom"))
+        assert len(seen) == 1
+        assert seen[0][1] == "c1"
 
     async def test_prefixed_workbench_key_does_not_double_adhoc(
         self, monkeypatch: pytest.MonkeyPatch, ledger_trackers: Dict[str, Any]
