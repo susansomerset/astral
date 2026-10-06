@@ -583,3 +583,11 @@ log_candidate_id.reset(token[1])
 - `_hold_log_batch` still no-ops when a parent dispatch batch is set (AST-1560-era rule), now for both contextvars.
 - No new tables, columns, or UI / Execution History filter changes (AST-1988 Boundaries).
 
+
+### Joan fix-board — AST-1988
+
+```text
+[board-joan]  CANON: OK
+
+context_tokens≈14000
+```
