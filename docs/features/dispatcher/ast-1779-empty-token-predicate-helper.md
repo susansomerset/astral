@@ -455,3 +455,36 @@ Eight edits, in this order. Every file is in AST-2000 `## Scope`; nothing else c
 - Fully populated prompts: `do_task` behavior byte-identical (provider called, hop ledger, harvest, chain).
 - Provider balance refusal / call-budget holds, hop-label success writes, AST-1298 claim release on raise, and existing retry routing for non-empty-token failures — unchanged.
 - No schema change; no `dispatch_task` row change (`astral.dispatch.entity-state-bound`).
+
+### Joan fix-board — AST-2000
+
+[board-joan]  CANON: REVISE
+What: patt.task.dispatch-retry — record AST-2000 carve-out (empty_tokens: skip _RETRY detour; input-state hold when error_state unset/retry-holding) — plan contradicts “always applies” + “failure never stays in state”
+
+context_tokens≈24000
+
+**`astral.standards.in-scope-only`:** Valid active harvest statute at `canon/statutes/astral/standards/astral.standards.in-scope-only.md`. A canon-clerk `expand: unknown directive id` is a tooling/index gap, not a missing id. For this pass, scope is the AST-2000 plan’s explicit eight-file list; no conflict with “touch only what’s scoped” assuming Linear `## Scope` matches that list.
+
+**Comment body (for Chuckles → `linear_proxy --as joan save-comment`):**
+
+```
+[board-joan]  CANON: REVISE
+What: patt.task.dispatch-retry — record AST-2000 carve-out (empty_tokens: skip _RETRY detour; input-state hold when error_state unset/retry-holding) — plan contradicts “always applies” + “failure never stays in state”
+
+context_tokens≈24000
+```
+
+**Stdout:**
+
+```
+AST-2000 board-joan done — CANON: REVISE — dispatch-retry carve-out.
+```
+
+---
+
+**Rationale (not for Linear):**
+
+- **`astral.dispatch.entity-state-bound`:** Conforms. No `dispatch_task` / claim-helper / registry-pair edits; transitions use existing configured states only (plan “What must still hold”).
+- **`astral.standards.in-scope-only`:** Conforms if ticket scope matches the named files; no silent creep beyond the plan block.
+- **`patt.task.dispatch-retry`:** Conflicts. The pattern says it **always** applies and that a failure **must not** remain in the same state, while AST-2000 routes `empty_tokens` **around** retry holdings (`_empty_token_fail_dest` treats retry-base `error_state` as “none”) and explicitly allows **stay at input state** + reclaim (select/parse paths, upshot tasks, no `error_state`). That needs a documented exception (F3 `validate-plan` fix mode), not silent implementation.
+- **Logging (`stat.logging.error` / `stat.logging.warning`):** Secondary tension — configured miss without throw is normally WARNING, but `do_task` uses one ERROR for the guard; acceptable if the dispatch-retry carve-out names empty-token as a pre-provider terminal guard. Not ESCALATE: Susan’s decisions are in-plan; this is canon text, not an open architecture fork.
