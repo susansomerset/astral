@@ -1392,6 +1392,39 @@ Shared assembly prepends `[astral-<id>]` as the first bytes of the first system 
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix:docs/test-bible/core/agent.md | shasum`
 
+### AST-1992 · AST-1985 (gap — candidate-prefix idempotence; product AST-1990)
+
+**Parent:** [AST-1985](https://linear.app/astralcareermatch/issue/AST-1985) (orphaned mini-parent). **Publish:** `origin/sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-1990** — product fix (`_system_text_with_candidate_prefix` strips any leading `[astral-…]` run, then prepends one `[astral-<cid>]`) is **AST-1990** (`origin/sub/AST-1985/AST-1990-candidate-prefix-dedupe`); this ticket is test tree + bible only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Already-prefixed / 5× stacked (AST-1985 sample) collapse to one marker | `src/core/agent.py` | `TestAst1639CandidateIdSystemPrefix::test_helper_already_prefixed_input_keeps_one_marker`, `::test_helper_five_stacked_markers_collapse_to_one` |
+| Other-id leading marker replaced by current cid (Susan-approved any-id strip) | same | `::test_helper_other_id_leading_marker_replaced_by_current_cid` |
+| Byte-zero run only — leading whitespace / mid-body markers untouched | same | `::test_helper_non_leading_marker_left_in_body` (green pre- and post-fix guard) |
+| Fail closed with marker already in body | same | `::test_helper_blank_id_raises_even_when_body_already_prefixed` (green pre- and post-fix guard) |
+| AC3 parity on re-fed text (wire + runtime system) | same | `::test_assemble_already_prefixed_system_keeps_one_marker` |
+
+**Broken / obsolete:** none — un-prefixed output unchanged; existing AST-1639 nodes stay green. Monkeypatched helper stubs elsewhere in `test_agent.py` don't assert stacking.
+
+**Integration:** none.
+
+**Sequencing deviation (gap child):** product not on ftr yet. `[bug-repro]` proven both ways — **RED on pre-fix tree** (4 nodes: already-prefixed, 5× stacked, other-id, assemble parity; stacked-marker assertion diffs) and **GREEN with AST-1990 plan `## Proposed change` overlaid** on `src/core/agent.py` (scratch, restored, not committed).
+
+## QA test manifest (AST-1992)
+
+1. `[bug-repro]` nodes (must flip red→green under `test-fix` once AST-1990 lands): `test_helper_already_prefixed_input_keeps_one_marker`, `test_helper_five_stacked_markers_collapse_to_one`, `test_helper_other_id_leading_marker_replaced_by_current_cid`, `test_assemble_already_prefixed_system_keeps_one_marker`
+2. Guards + existing AST-1639 suite stay green: full `TestAst1639CandidateIdSystemPrefix`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  -q
+```
+
+**Pass criterion:** pytest green on the class (13 nodes) with AST-1990 product merged — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests:docs/test-bible/core/agent.md | shasum`
+
 ### AST-1679 · AST-1677
 
 **Parent:** [AST-1677](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
