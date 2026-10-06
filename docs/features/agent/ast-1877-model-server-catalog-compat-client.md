@@ -767,3 +767,143 @@ stat.logging.error | A | |
 - Optional downstream: tick Frame diff Boundaries row if Susan wants Linear Scope aligned with plan.
 
 context_tokens≈42000
+
+## Bug: AST-2010 — OpenRouter 429 retry (5× doubling) and batch error on exhausted rate limit
+
+Fix child of orphaned bug AST-2009. Scope = AST-2010 `## Scope` (amended per its `[scope-gate]`: `consult.py` + `roster.py` added; option 1, no module-level registry). The ticket carries no Canon Scope list.
+
+### As-is
+
+An OpenRouter 429 (`rate_limit_error`, upstream shared-pool host) gets exactly one attempt. `PROVIDER_CALL_BUDGET["max_retries"]` is `0` (AST-1189), so the SDK never retries. `LLM_SERVER_CONFIG["openrouter"]["concurrency"]` is `None` (this ticket's Stage 4 deferred limits), so `llm_compat._create` skips its backoff loop. The entity goes to its technical-fail state (`METEORITE_FAILED_TECHNICAL_LIKE` in the AST-2009 log), and the batch keeps calling the same rate-limited pool for every remaining entity. The ledger finishes `COMPLETED`.
+
+### To-be
+
+1. An OpenRouter 429 is retried **5 times with doubling backoff** (6 calls max). Susan: "5 retries with doubling backoff."
+2. If the 6th call still 429s, the result is tagged `provider_rate_limit`. The dispatcher **stops the batch** (no further provider calls this run) and the dispatch ledger finishes **`FAILED`**. Susan: "If it ever fails after 5 retries for 429, then error the whole batch to the error state."
+3. Entity routing does not change. The entity whose call exhausted takes the same failure route it takes today (no hold). Entities not yet called are skipped, and their claim is released, exactly like the AST-1867 balance-outage short-circuit.
+4. No concurrency cap and no backoff ceiling on OpenRouter.
+
+### Repro
+
+Component-level fixture (no DB row needed). Patch the Anthropic client so `messages.create` raises `anthropic.RateLimitError` (status 429) whose `str()` is the AST-2009 body: `Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error', ...}, 'metadata': {'provider_name': 'DekaLLM', 'limit_source': 'upstream_provider_shared_pool', ...}}`. Patch `time.sleep` and `random.uniform` so they record calls. Then:
+
+- `send_to_llm_compat(..., server_id="openrouter", ...)` with no `log_batch_id` set (no probe). **Today:** 1 `create` call, result has no `failure_class`. **After:** 6 calls, 5 sleeps (base × 1, 2, 4, 8, 16 × jitter), result `failure_class == "provider_rate_limit"`.
+- Dispatcher: `_run_unified` on a 2-entity `meteorite_like` task (`batch_call_mode=0`, `_warm_then_gather`) with `consult.run_consult_task` stubbed to return `{**summary, "failure_class": "provider_rate_limit"}` for the warm entity. **After:** the gather entity is never sent, `ctx["provider_rate_limit_outage"]` is set, and the ledger's `final_status == "FAILED"`.
+
+### Root cause
+
+Two gaps:
+
+1. **No retry.** `openrouter.concurrency = None`. On top of that, `_create` treats a `concurrency` block as all-or-nothing: it requires `max_concurrent` and `backoff_max_seconds`. So turning on retry alone would force an invented cap and ceiling.
+2. **No batch stop.** Nothing classifies a 429 as its own failure class. Even if `llm_compat` tagged it, `consult.py` and `roster.py` only pass `failure_class` upward when `is_provider_balance_refusal(result)` is true, so the tag would be dropped before `dispatcher._run_unified` saw it.
+
+### Proposed change
+
+**`src/utils/config.py`**
+
+- `LLM_SERVER_CONFIG["openrouter"]["concurrency"]` becomes `{"rate_limit_retries": 5, "backoff_base_seconds": 2.0}`. There are no `max_concurrent` and no `backoff_max_seconds` keys. The `2.0` is ⚠️ Decision 1.
+- Header comment line `concurrency — …` becomes: `None, or 429 retry for this server: rate_limit_retries + backoff_base_seconds (delay doubles per retry); optional max_concurrent (process-wide in-flight cap) and backoff_max_seconds (delay ceiling).`
+- DeepSeek's block is unchanged.
+- New dict directly after `PROVIDER_BALANCE_REFUSAL`, with a one-line comment `# PROVIDER_RATE_LIMIT — 429 still refused after the server's retries (AST-2010).`:
+
+  ```python
+  PROVIDER_RATE_LIMIT = {
+      "failure_class": "provider_rate_limit",
+      "http_status_codes": (429,),
+      "message_substrings": ("error code: 429", "rate_limit_error"),
+  }
+  ```
+
+  The substrings are lower-case, matched against `str(...).lower()`. `"error code: 429"` is the Anthropic SDK's `APIStatusError` prefix. It is what lets the host-probe **string** error be classified.
+
+**`src/utils/llm_external.py`**
+
+- Import `PROVIDER_RATE_LIMIT`.
+- `classify_provider_rate_limit(exc_or_msg: Any) -> Optional[str]`. Same body shape as `classify_provider_balance_refusal`: status from `status_code` or `response.status_code` in `http_status_codes`, otherwise substring match on `str(exc_or_msg).lower()`. It returns `PROVIDER_RATE_LIMIT["failure_class"]` or `None`, and accepts an exception **or** a string (the probe path hands it a string).
+- `is_provider_rate_limit(result) -> bool`: mirror of `is_provider_balance_refusal`.
+
+**`src/external/llm_compat.py`**
+
+- `_create`: `max_concurrent` and `backoff_max_seconds` become optional.
+  - Semaphore: only when `concurrency.get("max_concurrent")`. Otherwise use `contextlib.nullcontext()`.
+  - Delay: `base * 2 ** attempt`, then `min(…, cap)` only when `backoff_max_seconds` is present, then `* random.uniform(0.5, 1.0)` (⚠️ Decision 1).
+  - The retry count, the "raise on last attempt" rule and the WARNING line stay as they are.
+  - The docstring says the cap and ceiling apply only when configured.
+- Tagging, gated on the server having a retry block (`server["concurrency"]` truthy). Only those servers have actually retried, so only their 429s are "exhausted":
+  - **Both `except Exception` blocks in `send_to_llm_compat`** (inner and outer). After the timeout check, the existing `fc = classify_provider_balance_refusal(e)` becomes `fc = classify_provider_balance_refusal(e) or (server["concurrency"] and classify_provider_rate_limit(e))`. Balance wins on a tie, and timeout already wins over both.
+  - **Host probe failure branch** (`if probe_err is not None:`). Add `"failure_class": PROVIDER_RATE_LIMIT["failure_class"]` to the returned dict when `server["concurrency"] and classify_provider_rate_limit(probe_err)`.
+  - The probe already goes through `_send` → `_create` with `server["concurrency"]`, so it gets the same 5 retries. No change to `openrouter.py`. Waiters on the same batch key get the same cached `probe_err` string, so they are tagged identically.
+
+**`src/core/consult.py`**
+
+Import `is_provider_rate_limit`. Add a private one-liner:
+
+```python
+def _rate_limit_tag(r) -> Dict[str, Any]:
+    return {"failure_class": r["failure_class"]} if is_provider_rate_limit(r) else {}
+```
+
+Splice `**_rate_limit_tag(<inner result>)` into these returns. Routing, state transitions and counts are unchanged at every site:
+
+1. `render_verdict` final generic failure: `return {**_fail(...), **_rate_limit_tag(result)}`.
+2. `run_consult_task`, single-entity grade/LIKE path (`if len(entities) == 1:`): both returns carry `**_rate_limit_tag(rv)`. The success return can't carry a tag, so in practice only the failure return does.
+3. `_run_batch_consult`, envelope failure generic return (after `_transition_batch_consult_failures`): `**_rate_limit_tag(result)`. The wrappers (`meteorite_like_batch` → `_consult_scored_dispatch_batch_encoded`, `evaluate_*`, qualify) already preserve extra keys (`dict(result)` / `{**result}`).
+4. `run_consult_task`, final batch normalizer (`# Normalize batch result shapes`): `**_rate_limit_tag(r)`.
+5. `run_consult_task`, company `prefilter_company` normalizer: `**_rate_limit_tag(r)`.
+6. `_run_analysis_upshot_batch` per-row loop: keep `rl = {}`; in the `if not result.get("success"):` branch set `rl = rl or _rate_limit_tag(result)`; add `**rl` to the final summary return.
+
+**`src/core/roster.py`**
+
+Import `is_provider_rate_limit`, plus the same private `_rate_limit_tag` one-liner.
+
+1. `_find_job_page_from_assembled`, generic `select_job_page` failure return (`state="NO_JOBLIST"`, `response_type: "SELECT_FAILED"`): add `**_rate_limit_tag(res)`. `run_select_job_page_dispatch` and `jobs_found_process_job_site` already return it unchanged.
+2. `run_company_task`, `JOBS_FOUND` branch: `tag = _rate_limit_tag(result)` right after the call. Splice `**tag` into the branch's three returns (errors / passed / failed).
+3. `run_company_task`, `select_job_page` branch: same, into its three returns after the balance check.
+4. `_run_batch_company_prefilter`, generic `do_task` failure return (`{"passed": 0, ..., "retried": retried}`): add `**_rate_limit_tag(result)`. `prefilter_company_batch` keeps keys.
+
+**`src/core/dispatcher.py`**
+
+- Import `is_provider_rate_limit`.
+- New `_note_provider_rate_limit_outage(ctx, task, result)` beside `_note_provider_balance_outage`.
+  - On first hit it sets `ctx["provider_rate_limit_outage"] = {"error": result.get("error") or ""}`. Later hits are no-ops.
+  - It logs one WARNING: `"%s | dispatch %s %s\n  LLM provider rate limit: still 429 after retries (%s)\n  The batch is stopping"`.
+- `_run_unified`, all three call sites (`_consult_chunk`, the full-batch call, `_one`): after the balance check, `if is_provider_rate_limit(result): _note_provider_rate_limit_outage(ctx, task, result)`. The two short-circuit guards become `if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage"):`.
+- `_run_dispatch_loop`: the post-run outage break also breaks on `ctx.get("provider_rate_limit_outage")`, with a debug line `loop stop: provider rate limit run_count=%s`.
+- Run finalize (`_dispatch_one_body`, after `await _tracked()`): if `ctx.get("provider_rate_limit_outage")`, then `final_status = "FAILED"`; elif balance outage, `INTERRUPTED` (unchanged). FAILED takes precedence if both are set. The circuit breaker already runs only on `COMPLETED`.
+- The `monitor.provider_balance_outage` alert branch is unchanged. A FAILED run with `total_errors > 0` already gets `monitor.auto_run_error`.
+
+### ⚠️ Decisions for review
+
+1. **Starting delay and jitter.** Proposed: `backoff_base_seconds: 2.0` (same as DeepSeek), keeping today's `× uniform(0.5, 1.0)` jitter. That gives retry waits of about 1–2, 2–4, 4–8, 8–16 and 16–32s, at most 62s of sleep per call, well inside the 610s `PROVIDER_CALL_BUDGET` wait. Jitter keeps parallel chunks that hit the same shared pool from retrying in lock-step.
+   - A different base is a one-number config edit.
+   - Dropping jitter for OpenRouter only would need a new per-server key, because jitter is shared code with DeepSeek. Dropping it everywhere also changes DeepSeek.
+2. **Which servers stop the batch.** Proposed: tagging applies to **any** server with a retry block. So DeepSeek's exhausted 429 (after its own 4 retries) also stops the batch and fails the ledger.
+   - Kimi and Anthropic have no retry block and don't change.
+   - Alternative: OpenRouter only, which needs a new opt-in key in its block.
+
+### Blast radius
+
+- **DeepSeek:** `_create` behavior is identical, since its block keeps `max_concurrent` and `backoff_max_seconds`. If Decision 2 stands, a DeepSeek exhausted 429 now FAILs the batch.
+- **AST-1959 / AST-1960 probe pin:** the probe now retries on 429. A probe that exhausts is tagged, so every caller in the batch returns a tagged failure and the batch stops. `openrouter.py` is unchanged.
+- **AST-1867 balance outage:** separate ctx key, same guards. Balance-only runs still finish `INTERRUPTED`.
+- **Known limits (unchanged from the balance precedent):**
+  - Calls already in flight in a `gather` finish.
+  - The `_run_analysis_upshot_batch` row loop keeps going for its remaining rows. The dispatcher only stops at chunk/entity boundaries.
+  - The meteorite ingress runners (`ctx={}`) and company paths without a balance branch (`resolve_*`, `vet_inflow`, `parse_job_list`, gazer fetches) don't forward the tag.
+  - The AST-1867 single-entity grade path still drops *balance* `failure_class`. That's a pre-existing gap, out of scope.
+- **Tests (Betty):**
+  - `tests/component/external/test_llm_compat.py`: any test raising `RateLimitError` on `openrouter` (probe or call) now loops 6× and calls `time.sleep`, so patch sleep.
+  - `test_dispatcher.py`: outage / final_status tests.
+  - `test_config.py`: `LLM_SERVER_CONFIG` shape.
+  - New: llm_external classifier/predicate, consult/roster forwarding.
+
+### What must still hold
+
+- AST-1877 AC: no vendor/server names in `llm_compat.py`; behavior comes from `LLM_SERVER_CONFIG` only.
+- `_create` holds the slot only during the call, never during the sleep, for capped servers.
+- `PROVIDER_CALL_BUDGET["max_retries"]` stays `0`. All retrying is ours.
+- The timeout class still wins over balance, and balance over rate limit.
+- AST-1867: balance refusal still holds entity state, stops the batch and finishes `INTERRUPTED`.
+- AST-1189 / AST-1842 select_job_page hold-on-timeout is unchanged.
+- Kimi / Anthropic: a 429 behaves exactly as today.
+- No concurrency cap or backoff ceiling is added for OpenRouter.
