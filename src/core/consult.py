@@ -360,14 +360,15 @@ def _should_decode_as_encoded_line(text: str) -> bool:
     """True when a pipe line has AST-357 encoded grade segments (e.g. RCA3), not letter-pipe grades."""
     from src.core.agent import _GRADE_SEG
 
-    line = next((ln.strip() for ln in text.splitlines() if ln.strip()), text.strip())
-    fields = [f.strip() for f in line.split("|")]
-    if fields and re.match(r"^\d{1,3}$", fields[0]):
-        fields = fields[1:]
-    for f in fields:
-        norm = "".join(ch for ch in f if ch not in " -:")
-        if _GRADE_SEG.match(norm):
-            return True
+    # Any line, not just the first — a fully malformed first line must not misroute the batch (AST-1996).
+    for line in (ln.strip() for ln in text.splitlines() if ln.strip()):
+        fields = [f.strip() for f in line.split("|")]
+        if fields and re.match(r"^\d{1,3}$", fields[0]):
+            fields = fields[1:]
+        for f in fields:
+            norm = "".join(ch for ch in f if ch not in " -:")
+            if _GRADE_SEG.match(norm):
+                return True
     return False
 
 
@@ -1702,9 +1703,22 @@ async def _run_batch_consult(
     received_ids = {rj["astral_job_id"] for rj in response_jobs}
     missing = sent_ids - received_ids
     fabricated = received_ids - sent_ids
+    # Per-line decode slips (AST-1996) — a clean row for the same entity wins.
+    decode_failed = {
+        f["astral_job_id"]: f["reason"]
+        for f in (parsed.get("decode_failures") or [])
+        if f.get("astral_job_id") and f["astral_job_id"] not in received_ids
+    }
+    missing -= decode_failed.keys()
     missing_rows: List[Dict[str, Any]] = []
     missing_dest_counts: Dict[str, int] = {}
     retried = 0
+
+    # One call per entity so each fail-dest log line carries its own malformed line.
+    for aid, reason in decode_failed.items():
+        retried += _transition_batch_consult_failures(
+            task_key, [input_by_id[aid]], error_state, reason=f"decode: {reason}",
+        )
 
     if missing:
         missing_rows = [input_by_id[mid] for mid in missing if mid in input_by_id]
@@ -1807,6 +1821,8 @@ async def _run_batch_consult(
         errors.append(f"fabricated {len(fabricated)} IDs: {sorted(fabricated)}")
     if bad_grades:
         errors.append(f"bad grades on {len(bad_grades)} IDs: {sorted(bad_grades)}")
+    if decode_failed:
+        errors.append(f"decode failed on {len(decode_failed)} IDs: {sorted(decode_failed)}")
     truncated_note = None
     if missing:
         missing_dests_set = {
@@ -1826,7 +1842,7 @@ async def _run_batch_consult(
     )
 
     return {
-        "success": not fabricated and not bad_grades,
+        "success": not fabricated and not bad_grades and not decode_failed,
         "passed": passed,
         "failed": failed,
         "total": len(jobs),
@@ -1834,6 +1850,7 @@ async def _run_batch_consult(
         "missing": sorted(missing) if missing else None,
         "fabricated": sorted(fabricated) if fabricated else None,
         "bad_grades": sorted(bad_grades) if bad_grades else None,
+        "decode_failed": sorted(decode_failed) if decode_failed else None,
         "error": "; ".join(errors) if errors else None,
         "truncated_note": truncated_note,
     }
