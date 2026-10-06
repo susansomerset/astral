@@ -813,3 +813,76 @@ AST-1996 board-joan done — CANON: OK.
 
 **Triage (read-only):** Against the AST-1996 plan-fix patch and the six ids at corpus `e1f2699fad` (`patt.task.dispatch-retry`, `patt.entity.batch-processing`, `astral.batch.claim-process-release`, `stat.logging.warning` / `error` / `debug`), the proposed change **implements** dispatch-retry per entity (malformed line → `_consult_batch_fail_dest`, clean lines still process) without widening `_GRADE_SEG`, without claim/release edits, and reusing `_log_fail_dest` for WARNING/ERROR. No active directive requires payload-level `ValueError` on trailing grades-only content or forbids a `decode_failures` side channel; that behavior lived in product/tests, not canon. **F3 (`validate-plan` fix mode) not indicated** from this board pass.
 ```
+
+
+### Radia review — AST-1996
+
+[code-rubric]
+**Ticket:** AST-1996
+**Publish ref:** `96bc0471d810eaebb7adfa6e7ac5e1ca8a1100a9` (`origin/sub/AST-1884/AST-1996-decode-line-retry`)
+**Diff base:** `origin/ftr/AST-1884-decode-line-retry` (`a65581d7`) … publish ref (3-dot)
+**Corpus:** `e1f2699fad` (frozen list in issue doc; no `docs/canon-index.md` on this ref — ids read from `canon/` at publish tip)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — no `[bug-repro]` on this ticket; spawn Relations: test-gap sibling **AST-2001** (Betty REVISE); board clean opt-out / deferred component+bible updates per plan §Blast radius.
+
+**## What must still hold** — OK (traced against diff)
+- AST-1155 AC1–AC3: `process_fn` / `IncompleteGradeSetError` paths untouched; only decode + batch routing changed.
+- `patt.task.dispatch-retry`: decode slips call `_transition_batch_consult_failures` → `_consult_batch_fail_dest` per entity; no entity left in trigger state.
+- `_GRADE_SEG` / AST-357 strictness: regex and segment logic unchanged; trailing meta → `decode_failures`, not coercion.
+- AST-1513 duplicate codes + confidence-bound errors: still `raise` (unchanged branches).
+- Clean payload shape: `decode_failures` only when non-empty.
+- Envelope / `do_task` `success=False` whole-batch path: unchanged block at L1627–1659.
+- Claim/release: no edits outside `_run_batch_consult` reconciliation; no `batch_id` / `finally` changes.
+
+## Canon scores
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | patt.task.dispatch-retry | A | | Per-entity fail-dest via existing retry/error routing; clean lines still processed. |
+| 2 | patt.entity.batch-processing | A | | Still processes claimed batch rows only; no claim/release drift. |
+| 3 | astral.batch.claim-process-release | A | | No claim/clear path changes in diff. |
+| 4 | stat.logging.warning | A | | Fail-dest WARNING via existing `_log_fail_dest` (AST-1839); no new ad-hoc warns. |
+| 5 | stat.logging.error | A | | Terminal fail-dest still ERROR through same helper. |
+| 6 | stat.logging.debug | A | | Existing decode/batch debug lines preserved; no new noisy paths. |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** triage only (`[board-joan] CANON: OK`); substance matches implemented diff (per-entity decode isolation, no `_GRADE_SEG` widening, no claim/release edits).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+- **Sibling test carry / debt:** `tests/component/core/test_agent.py::test_rejects_bad_positions_and_trailing_meta` still expects `ValueError` on trailing meta at publish tip; plan assigns flip to **AST-2001**. Product change is intentional; keep merge order / manifest scope clear so ftr+sub does not land without 2001 if full component suite is required.
+- **Unrelated doc delta:** `docs/features/candidate/ast-1598-job-and-app-log-candidate-id.md` gains epic-registry **Threads** mirror (`docs(AST-1987)` on branch) — not AST-1996 scope; doc-only noise in three-dot diff.
+
+## What's solid
+
+- Plan §Proposed change matches tip: `_decode_payload` record+`continue`, conditional `decode_failures`, multi-line `_should_decode_as_encoded_line`, `_run_batch_consult` `decode_failed` routing with clean-row-wins and `success`/`errors`/`retried` accounting.
+- Single product commit `96bc0471d` on top of ftr; scope stays `src/core/agent.py` + `src/core/consult.py` as planned.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | AST-1884 mini-parent, diff vs **`ftr/AST-1884-decode-line-retry`** (spawn did **not** set `ORPHANED — target dev`) | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Coordinate **AST-2001** for test/bible before any merge that assumes full `test_agent` green. |
+
+**Recommended actions (downstream only — not executed here):** Chuckles append this artifact to issue doc, `docs(AST-1996): Radia review — clean`, push sub; post slim upshot `--as radia`; advance status per table above.
+
+context_tokens≈11000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 96bc0471d) Per-line decode retry OK
+```
