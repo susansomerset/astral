@@ -591,3 +591,78 @@ log_candidate_id.reset(token[1])
 
 context_tokens≈14000
 ```
+
+### Radia review-fix — AST-1988
+
+Review-fix for **AST-1988** (read-only). Diff base per spawn: `origin/ftr/AST-1987-railway-log-batch-candidate-ids...origin/sub/AST-1987/AST-1988-stamp-log-batch-candidate-ids`. Publish tip: `f9b447782bafaa173ce36014ac2cfc9ac786c475`.
+
+---
+
+```
+[code-rubric]
+**Ticket:** AST-1988
+**Publish ref:** f9b447782bafaa173ce36014ac2cfc9ac786c475 (`origin/sub/AST-1987/AST-1988-stamp-log-batch-candidate-ids`)
+**Corpus:** bd68954dc854ca80fca1fc391821dff9ff288a7a (no `docs/canon-index.md` on this ref — ids resolved from `canon/` tree at publish tip when needed)
+**Overall:** CLEAN
+
+## Canon scores
+
+(frozen Canon Scope list empty on AST-1988 Linear description — no directive ids locked at Plan Approved; nothing to score per id)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan `[board-joan] CANON: OK` on fix-board only; no `validate-plan` fix-mode score table for AST-1988)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out: `qa-fix` did not run on this ticket; fix-board `[board-betty] TESTS: REVISE` coverage split to sibling **AST-1991**. Not scored as missing on this tip (per spawn prompt).
+
+**## What must still hold — OK**
+
+- AST-1598 Stage 3: `_DatabaseLogHandler` / `_flush_buffer` untouched; unset contextvar still → NULL; no new raise paths in logging callers.
+- AST-1778: `_CONSOLE_FORMATTER` / `_apply_console_formatter` / `_RAILWAY_LEVEL` unchanged; Railway still one JSON object per line with `level` + `"<name>: <msg>"`; batch-less lines omit keys via truthiness (byte-identical to pre-fix when contextvars unset).
+- `log_batch_id` lifecycle at every touched site unchanged; `log_candidate_id` mirrors set/clear pairing only.
+- `candidate.py` session sentinel batch: no `log_candidate_id` sets added (only `run_candidate_artifact_generation` path stamped).
+- `_hold_log_batch`: still no-ops when `log_batch_id.get()` is already set; when it stamps, returns `(batch_token, candidate_token)` and reset sites use `reset` on both.
+- Boundaries: no schema/UI changes in diff.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Board test gap (sibling):** Betty’s `[board-betty] TESTS: REVISE` (Railway JSON keys + set/clear pairing / `_hold_log_batch`) is explicitly deferred to **AST-1991**; this product-only tip has no `tests/**` changes — expected for the split, not a defect of this diff.
+- **Intake stamp gap (Susan-flagged out of scope):** `src/core/intake.py` preamble / `_run_intake_task` batch openers still set `log_batch_id` only — after this fix their Railway lines gain `batch_id` from the formatter but `app_log.candidate_id` stays NULL until a follow-up or scope amend. Documented in plan `### Blast radius`; not scored as a defect of this diff (per spawn prompt).
+- **Canon intake note:** AST-1988 description has no frozen Canon Scope table; Joan’s board pass was registry-level `CANON: OK` without per-id rows. If Archie wants fix-lane tickets to always carry a frozen list, that is process — not a merge blocker on this tip.
+
+## Plan fidelity
+
+Diff matches `## Bug: AST-1988` **Proposed change** in `docs/features/candidate/ast-1598-job-and-app-log-candidate-id.md`: formatter payload + docstrings; dispatcher four blocks; agent hop + workbench; candidate artifact batch; meteorite `_hold_log_batch(batch_id, candidate_id)` + tuple reset at three callers. `rg 'log_candidate_id\.set'` on tip shows set/clear sites only in those modules (plus meteorite hold), not `intake.py`.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (clean, C7 complete) | **Normal mini-parent** (AST-1987 with live `ftr/AST-1987-railway-log-batch-candidate-ids` — not fix-intake “ORPHANED → dev” seed) → **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Not straight-to-`dev` orphaned merge. |
+
+## What's solid
+
+Mechanical contextvar pairing follows the plan’s AC 4 rule; AC 2 “omit keys, never null” implemented in `_RailwayJsonFormatter.format` with an inline comment; unified dispatch block 4 keeps both stamps inside `if not has_run_next_chain:` while teardown clears both unconditionally (same shape as pre-fix `log_batch_id` teardown).
+
+context_tokens≈12000
+```
+
+```
+[code-rubric] PROCEED (Commit: f9b447782) Plan matches stamp pairing
+```
