@@ -570,3 +570,5 @@ context_tokens≈9500
 **Chuckles note on discuss item:** the `ast-1598` hunk is `40d0fe70e`, already on `origin/dev` (pulled in by sync-child); zero diff vs dev — no revert needed.
 
 ```
+
+**Test delivery (AST-1997):** docs-acceptance on this child — no test-tree change here; the `[bug-repro]` (`tests/component/core/test_gazer_scrape_failure.py`) is carried by test-gap sibling AST-2002 per fix-board TESTS: REVISE routing.
