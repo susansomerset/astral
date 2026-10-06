@@ -476,3 +476,101 @@ No unresolved conflicts.
 - Gazer-orchestrated batch + `pjl_nav_links` persistence accepted; AST-720 consumes `pjl_assembled_content` / scrape ledger.
 
 **Publish ref:** `origin/sub/AST-716/fetch-job-pages-batch-scrape`
+
+---
+
+## Bug: AST-1995 — fetch_job_pages re-scrapes every PJL URL and replaces the stored page
+
+**Mini-parent:** AST-1994 (orphaned bug, `ftr/AST-1994-fetch-refresh` off `origin/dev`). **Publish ref:** `origin/sub/AST-1994/AST-1995-fetch-refresh`. Supersedes AC3 above ("additive — re-run does not duplicate visible text") and Stage 2/5's `skipped-already-scraped` path. Everything else in this doc stands.
+
+### As-is
+
+`gazer.fetch_job_pages_batch` (~L668–L683) builds `ledger = _pjl_scrape_ledger_keys(pjl_pages)` from `company_data.pjl_scrape_pages`. It scrapes only `pending` (candidate URLs not in the ledger) and logs the rest as `skipped-already-scraped`. `roster._merge_pjl_scrape_record` (~L2486) also returns `existing_pages` unchanged when the URL is already recorded. `pjl_nav_links` is built by `_merge_pjl_nav_links(cd["pjl_nav_links"], new_nav_urls)`, which only appends. Once a careers page is captured, its `visible_text` never changes. `pjl_assembled_content` (the `select_job_page` input) keeps serving the stale board, and links that have vanished stay in `pjl_nav_links` forever.
+
+### To-be
+
+Every `fetch_job_pages` run re-scrapes every URL in `possible_joblist_links`. A successful capture (no `error`, non-empty `visible_text`) replaces that URL's `pjl_scrape_pages` row in its existing position, or is appended if the URL is new. A failed or empty capture keeps the prior row. `pjl_assembled_content` is rebuilt from the refreshed rows. `pjl_nav_links` is rebuilt from this run's links, so dead links drop off.
+
+### Repro
+
+Fixture (company dict passed to `fetch_job_pages_batch`, `_scrape_pjl_page` mocked):
+
+```python
+company = {
+    "short_name": "acme",
+    "company_data": {
+        "possible_joblist_links": ["acme.com/careers"],
+        "pjl_scrape_pages": [
+            {"url": "https://acme.com/careers", "visible_text": "OLD BOARD: Role A",
+             "enumerated_nav_links": "1: https://acme.com/jobs/a"},
+        ],
+        "pjl_nav_links": "1: https://acme.com/jobs/a",
+    },
+}
+# _scrape_pjl_page("acme.com/careers", ...) would return:
+fresh = {"url": "https://acme.com/careers", "visible_text": "NEW BOARD: Role B",
+         "page_links": ["https://acme.com/jobs/b"],
+         "enumerated_nav_links": "1: https://acme.com/jobs/b"}
+```
+
+Current result: `_scrape_pjl_page` is never called (`skipped-already-scraped`). The saved `pjl_scrape_pages[0].visible_text == "OLD BOARD: Role A"`, `pjl_assembled_content` still contains `OLD BOARD`, and `pjl_nav_links` still lists `/jobs/a`.
+Expected result: `_scrape_pjl_page` is called once. `pjl_scrape_pages == [{url: https://acme.com/careers, visible_text: "NEW BOARD: Role B", enumerated_nav_links: "1: https://acme.com/jobs/b"}]`, `pjl_assembled_content` contains `NEW BOARD` and not `OLD BOARD`, and `pjl_nav_links == "1: https://acme.com/jobs/b"`.
+
+### Root cause
+
+AST-719 made the ledger skip-if-present on purpose (AC3, Stage 2 "additive skip", Stage 5 decision). That rule is applied in two places: the gazer `pending` filter and the early return in `_merge_pjl_scrape_record`. Because of it, a URL's row is written once and then never refreshed. `_merge_pjl_nav_links` only appends onto the old enum, so it can never drop a link. AST-1810 already removed the same skip from `fetch_website_batch`. This is the PJL equivalent.
+
+### Proposed change
+
+**`src/core/roster.py`**
+
+1. **`_merge_pjl_scrape_record(existing_pages, new_record)`**: change from skip-if-present to upsert by `normalize_link`:
+   - `text = (new_record.get("visible_text") or "").strip()`. If `new_record.get("error")` or `not text`, return `existing_pages` unchanged. This is the keep-prior-row-on-failure rule. It now also covers the rare record that has both an `error` and some text, which today gets stored.
+   - Build `row` exactly as today (`url`, `visible_text`, optional `enumerated_nav_links`).
+   - `key = normalize_link(new_record.get("url") or "")`. Copy `existing_pages` to a list. Find the first index whose `normalize_link(prior.get("url") or "") == key`, replace that element with `row`, and return the list. If there is no match, return `pages + [row]`.
+   - Replace the whole row, not a field merge. If a fresh capture has no `enumerated_nav_links`, the row loses that key.
+2. **`_pjl_scrape_ledger_keys`**: delete it. After step 5 below and the step 1 rewrite, nothing calls it. No test or bible entry references it.
+3. **`_merge_pjl_nav_links`**: no signature change. Gazer calls it with `existing_enum=""`, which makes it a dedupe-and-enumerate pass over the run's URL list.
+
+**`src/core/gazer.py` — `fetch_job_pages_batch`**
+
+4. Imports: drop `_pjl_scrape_ledger_keys` from the `src.core.roster` import block (~L30). Add `parse_enumerate_array` to the `src.utils.formatting` import if it isn't already there.
+5. Replace the ledger/`pending` block (~L668–L683):
+   - Delete `ledger`, `pending`, and the whole `skipped-already-scraped` debug loop.
+   - Before the loop, add `prior_by_key = {normalize_link(r["url"]): r for r in pjl_pages if r.get("url")}`. This is a snapshot of the rows from before this run.
+   - Rename `new_nav_urls` to `run_nav_urls`.
+6. Loop over **all** `candidate_urls` (`for url_idx, url in enumerate(candidate_urls, start=1)`). Use `total=len(candidate_urls) or 1` in the per-URL `debug_index`. Keep the scrape and debug lines as they are.
+   - After `pjl_pages = _merge_pjl_scrape_record(pjl_pages, record)`, collect nav links:
+     - If the capture succeeded (`not record.get("error") and (record.get("visible_text") or "").strip()`): `run_nav_urls.extend(record.get("page_links") or [])`.
+     - Otherwise, if `prior = prior_by_key.get(normalize_link(url))` exists: carry that row's links forward with `prior_map = parse_enumerate_array(prior.get("enumerated_nav_links") or "")` and then `run_nav_urls.extend(prior_map[k] for k in sorted(prior_map))`. That row's `enumerated_nav_links` is `enumerate_array("", nav_urls)` from its own capture (roster ~L1604), so these are that URL's last-known links.
+7. After the loop:
+   - `assembled = _assemble_pjl_content(pjl_pages)` (unchanged).
+   - `nav = _merge_pjl_nav_links("", run_nav_urls)`.
+   - Save `{"pjl_scrape_pages": pjl_pages, "pjl_assembled_content": assembled, "pjl_nav_links": nav}`. Always write `pjl_nav_links`, even when it is `""`. A stale value must not survive. Readers already fall back to homepage `nav_links` when it is empty (roster ~L2571, ~L2578).
+8. In the pass debug outcome, replace `pending_scraped={len(pending)}` with `scraped={len(candidate_urls)}`. Update the docstring: "Scrape possible_joblist_links (refresh: upsert per URL, AST-1995)".
+9. Leave the pass/fail branch alone. It still checks `if pjl_pages:`. Transitions to `PJL_READY` / `JOBSITE_SCRAPE_ISSUE` and the `prefilter_company_notes` failure note stay unchanged.
+
+⚠️ **Decision (nav links on failure):** if a URL's re-scrape fails, its prior row's links are kept in `pjl_nav_links`. This matches keeping the row itself in `pjl_scrape_pages` and `pjl_assembled_content`. If a URL never had a stored row and fails now, it contributes no links.
+
+⚠️ **Decision (rows for URLs no longer in candidates):** `possible_joblist_links` is replaced wholesale by each homepage scrape (roster ~L3194), so it can shrink. Rows in `pjl_scrape_pages` for URLs no longer in the candidate set are **left in place**, in their positions. The upsert only touches URLs scraped this run, and Susan didn't approve pruning. Their links are **not** carried into `pjl_nav_links`, because only this run's candidates contribute. Pruning those rows would be a separate change that needs her OK.
+
+**Out of scope:** `fetch_culture_pages_batch` / `_website_content_is_recorded` (AST-874 cache, unchecked by Susan), `fetch_jd`, `fetch_website`, `_assemble_pjl_content`, `_scrape_pjl_page`, config, and data shapes. There are no new tables or fields.
+
+### Blast radius
+
+- `_merge_pjl_scrape_record` and `_pjl_scrape_ledger_keys` have no other `src/` callers. Only gazer imports them.
+- `_merge_pjl_nav_links` has no other callers. Its behavior is unchanged; only gazer's input changes.
+- AST-720 `select_job_page` (`_pjl_maps_from_company_data`, `_build_select_job_page_live_content`, `_resolve_try_link_normalized`) reads `pjl_scrape_pages` / `pjl_assembled_content` / `pjl_nav_links`. Shapes are unchanged. `pjl_nav_links` indices can renumber between runs. That's fine because selection reads the current value after fetch.
+- AST-759 (`ast-759-shared-page-scrape-fetch-job-pages-nav-links.md`) has nav-links doc references. Its behavior is not re-planned here.
+- Tests (Betty's tree, fix-board / qa-fix): two tests will flip. `test_gazer.py::TestFetchJobPagesBatch::test_additive_skips_already_scraped_url` asserts one scrape, of the new URL only; after the fix both URLs are scraped. `test_roster.py::TestAst719PjlRosterHelpers::test_merge_pjl_scrape_record_skips_duplicate_and_empty` has a first assert expecting the duplicate URL to be discarded; after the fix it replaces the row. Its empty-text and append asserts still hold. `test_merge_pjl_nav_links_appends_deduped` still passes because the helper is unchanged. Matching entries are in `docs/test-bible/core/gazer.md` and `roster.md`.
+- Runtime cost: every run now does one Playwright navigation per candidate URL, up from one per new URL only. Concurrency stays capped by the batch semaphore.
+
+### What must still hold
+
+- `PJL_READY` on at least one stored row and `JOBSITE_SCRAPE_ISSUE` plus the failure note on zero rows, exactly as today (AST-719 Stage 3 as shipped).
+- No `job_site` writes on this hop (AST-673).
+- `pjl_scrape_pages` row shape is `{url, visible_text, enumerated_nav_links?}`. No duplicate rows per `normalize_link` key.
+- Row order is stable: replaced rows keep their index and new URLs append at the end. `pjl_assembled_content` page numbering follows it.
+- Scheme-less candidates still get `https://` prepended (Radia fix-now, `_scrape_pjl_page`).
+- Style D per-URL `debug_index` is still emitted for every scraped URL when `debug=True`, with no production log chatter added.
+- A transient failure never deletes stored content: an errored or empty re-scrape leaves that URL's row and its nav links intact.
