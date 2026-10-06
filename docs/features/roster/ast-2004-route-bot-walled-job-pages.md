@@ -188,3 +188,58 @@ context_tokens≈42000
 - **Stage 1:** `6d13bce65` — `BOT_BLOCKED` rename + shared `is_bot_wall`
 - **Stage 2:** `f7680ff89` — reroute bot-walled `NO_JOBLIST` to `BOT_BLOCKED`
 - **Build notes:** executed as planned, no deviations. Repo has no configured linter; checks were `py_compile`, `git diff --check`, and the AC1/AC7/AC8 greps (all pass). In-memory mock smoke (not committed) matched AC2–AC6.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2004
+**Publish ref:** `0e59c7a7163135acaa1c3b216104925d8c095af6` (`origin/sub/AST-1998/AST-2004-route-bot-walled-job-pages`)
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.info.entity | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `stat.logging.debug` A, `stat.logging.info.entity` A; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `docs/test-bible/core/agent.md`, `docs/test-bible/core/consult.md`, `tests/component/core/test_agent.py`, `tests/component/core/test_consult.py` — AST-2001 / AST-1996 decode-line isolation (merge-tests from `origin/tests`); not AST-2004 product scope.
+- **sibling test carry:** Tip commit is `merge-tests(AST-2004): origin/tests bb791a2bd` — expected Betty publish shape; product delta remains the three planned `src/` files.
+- **qa manifest note:** `docs/test-bible/core/roster.md` documents 74 pre-existing component reds unchanged with/without this pass — out of AST-2004 scope; UAT / broader harness should not treat them as regressions from this child.
+
+## What's solid
+
+- Stage 1–2 match the plan: `BOT_BLOCK` → `BOT_BLOCKED`, `is_bot_wall` single detector, decomposed-only `_first_bot_walled_page` + `_check_parse_results` branch, `BOT_BLOCKED` in `_PERSIST_PAGE_OPTION_URL_STATES`, guard comment on `terminal_ok`.
+- `_first_bot_walled_page` implements the frozen debug contract (loop begin/end, per-page Calling/Response around `is_bot_wall`) without call-site `if debug` gating.
+- `BOT_BLOCKED` persistence uses `_save_company` → `transition_company_state` → `_entity_info(..., "company", "state", "<from> -> BOT_BLOCKED")`; no new `logger.info` in the diff.
+- Component tests in the diff cover AC1–AC8 intent (including legacy `decomposed=False` guard).
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append this artifact to `docs/features/roster/ast-2004-route-bot-walled-job-pages.md`, commit `docs(AST-2004): Radia review — clean`, push sub branch, post slim upshot `--as radia`, move to **Review Posted**; datt **§3h** PROCEED → **User Testing** (no fix-now).
+- If Susan wants legacy locate paths (`decomposed=False`) to also route bot walls to `BOT_BLOCKED`, that is a **new** product decision (explicitly excluded in plan); no action on this ticket.
+
+context_tokens≈28000
+
+[code-rubric] PROCEED (Commit: 0e59c7a7) logging + reroute match plan
