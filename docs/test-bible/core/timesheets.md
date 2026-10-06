@@ -63,3 +63,7 @@ No other test reaches the real reconcile: a throwaway autouse spy on `reconcile_
 **Pass criterion:** item 1 green; item 2 no reds beyond the `origin/ftr` baseline. Not the zero-arg harness.
 
 **Bible shasums (after publish):** `for p in core/timesheets.md external/llm_compat.md; do git show origin/sub/AST-1963/AST-1966-background-reconcile:docs/test-bible/$p | shasum; done`
+
+### AST-2008 · AST-2007 (TIMESHEET_RECONCILE_ENABLED switch)
+
+`record_timesheet_entry` returns right after the insert when `TIMESHEET_RECONCILE_ENABLED` is False (ships False). **New:** `TestAst2008ReconcileSwitch::test_flag_off_inserts_row_and_starts_no_thread` (no `threading.Thread`, no routing lookup). **Revised:** module fixture `reconcile_on` (flag True, `raising=False`) on `TestRecordTimesheetEntry` + `TestAst1966RecordNeverWaits` so the AST-1966 routing/thread/`ValueError` branches stay covered for `LOCKED_AT_100`; blocked-lookup test also zeroes `TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS`. **Known drift (not AST-2008):** `TestAst1966RetryThenGiveUp` expected waits omit the initial wait. Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.
