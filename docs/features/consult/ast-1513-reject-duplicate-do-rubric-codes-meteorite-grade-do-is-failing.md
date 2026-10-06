@@ -193,3 +193,70 @@ if result.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]:
 - **AST-1960:** a failed call never overwrites `host`. The ledger write is non-fatal and runs via `asyncio.to_thread`.
 - **AST-1189:** `PROVIDER_CALL_BUDGET` (600s, `max_retries: 0`) is unchanged. The retry is a state hop, not a provider re-send.
 - **AST-1963:** `reconcile_timesheet_platform`, the `TIMESHEET_RECONCILE_*` tunables, `get_generation_stats`, and `get_batch_host` stay in code, unchanged.
+
+
+## Radia review — AST-2008 (review-fix)
+
+[code-rubric]
+**Ticket:** AST-2008
+**Publish ref:** `9efa75aa35cc7ca08c2553b2f7d4995206cea4bb` (`origin/sub/AST-2007/AST-2008-rubric-codes-timeout-ledger`)
+**Corpus:** n/a — `docs/canon-index.md` absent on publish ref; empty frozen list scored per fix-lane pattern
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK — Betty F4 + manifest `docs/test-bible/core/candidate.md` § AST-2008 items 1–5 tie assertions to **To-be** / Repro steps:
+| # | Area | Pin |
+|---|------|-----|
+| 1 | `TestAst2008RubricCodeUptick` | No raise (Repro 1); `TP,TX,SD`; `TP,TY,TX`; purity; Decision C |
+| 2 | `TestAst2008SyncRetiresDuplicateCurrentRows` | Current `TP`/`TX`, r1 kept, r2 retired (Repro 3) |
+| 3 | `TestAst2008RenderVerdictTimeoutRetry` | `METEORITE_PASSED_JD` → `_RETRY`; `_RETRY` → `METEORITE_FAILED_TECHNICAL_DO` (Repro 4) |
+| 4 | `TestAst1960LedgerHost` + `TestAst2008LedgerCallOutcomeColumns` | `613.9` / `provider_call_timeout`; NULL class on success; no `host` on failure; last-call-wins / `provider_failed` (Repro 5) |
+| 5 | `TestAst2008ReconcileSwitch` + `test_reconcile_ships_disabled` | Insert, no thread/routing (Repro 6) |
+
+`test_normalize_accepts_duplicate_do_rubric_codes` is raise-only; uptick values are covered by siblings in the same class (plan: uptick on `apply_rubric_vectors_save`).
+
+**`## What must still hold`:** OK — AST-1513 read guards unchanged; AST-1085 merge-then-uptick tested; AST-723/642/1960/1189/1963 constraints match diff (`render_verdict` hop only; host success-only; reconcile gated, body untouched; Decision B — no Performance Monitor).
+
+## Canon scores
+
+(no frozen canon list on Linear Description — fix-lane pattern; zero ids locked at Plan Approved; scored set empty)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (no F3 validate-plan artifact; Joan `[board-joan] CANON: OK` only)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon ids on AST-2008; Joan F2 OK without enumerated list.  
+  **Recommendation:** No scope amendment unless Archie wants explicit ids on every fix bug.  
+  **Default:** Proceed on empty scored set.
+
+### advisory
+
+- **Location:** Linear Description vs spawn  
+  **Finding:** Description says “orphaned mini-parent”; spawn says **live** AST-2007, base `origin/ftr/AST-2007-meteorite-grade-do-timeout` — use **normal** merge path, not orphaned finish-up-to-dev.
+
+- **Location:** `docs/test-bible/core/candidate.md` § AST-2008  
+  **Finding:** Pre-existing reds outside manifest (e.g. `TestAst1966RetryThenGiveUp`) documented by Betty; not in this ftr…sub regression set.
+
+## Plan fidelity (§5.4)
+
+`git diff origin/ftr/AST-2007-meteorite-grade-do-timeout...origin/sub/AST-2007/AST-2008-rubric-codes-timeout-ledger`: 21 files, +587/−44 — Steps 1–6 + scope-gate `sync_rubric_vectors_from_criteria` duplicate retire; no cross-sibling product smuggle; Estimate **5** plausible.
+
+## Chuckles — post-review branching
+
+**PROCEED** + C7 complete + **normal parent** → **Review Posted** → clean-review shortcut → **User Testing**; **resolve-child** skipped.
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 9efa75aa) four-part meteorite fix clean
+```
