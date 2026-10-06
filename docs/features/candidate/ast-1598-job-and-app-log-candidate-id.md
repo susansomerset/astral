@@ -791,3 +791,87 @@ AST-1988 went product-only through fix-board. Betty's board verdict split the re
 
 context_tokens≈22000
 ```
+
+### Radia review-fix — AST-1991
+
+Review-fix for **AST-1991** (read-only). **Scored delta:** AST-1991 test/bible work (`test(AST-1991)` @ `2a5fb3dae`, merged on tip @ `d6b36d6a1`). **Excluded from scoring:** commits/files from AST-1985/AST-1990/AST-1992 visible on `origin/ftr/AST-1987-railway-log-batch-candidate-ids...origin/sub/AST-1987/AST-1991-cover-railway-log-id-tests` (ftr behind `origin/dev`). **Tip parity check** vs `origin/sub/AST-1987/AST-1988-stamp-log-batch-candidate-ids` still applied for out-of-scope carry.
+
+---
+
+```
+[code-rubric]
+**Ticket:** AST-1991
+**Publish ref:** d6b36d6a1d531b17d5a7f87b1e0efc1fb95b7920 (`origin/sub/AST-1987/AST-1991-cover-railway-log-id-tests`)
+**Corpus:** bd68954dc854ca80fca1fc391821dff9ff288a7a (no `docs/canon-index.md` on this ref)
+**Overall:** DISCUSS
+
+## Canon scores
+
+(frozen Canon Scope list empty on AST-1991 Linear description — no directive ids locked at Plan Approved; nothing to score per id)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan `[board-betjoan] CANON: OK` on fix-board only; no `validate-plan` fix-mode score table)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK**
+
+- **#1** `TestAst1988RailwayJsonIds::test_formatter_adds_batch_and_candidate_when_set`: whole-dict equality on `batch_id` / `candidate_id` tied to AST-1988 To-be (not key-only tautology); Betty/Hedy confirmed red with `origin/dev` `logging.py`, green on tip.
+- **#14** `TestAst1988HoldLogBatchPairing::test_hold_sets_both_and_returns_token_pair`: asserts two-arg signature, tuple tokens, and reset — fails pre-fix with `TypeError` (one-arg `_hold_log_batch`); matches Root cause.
+- **#6** (bible-tagged **bug-repro**): `test_ast1988_unified_run_stamps_candidate_with_batch_and_clears` captures in-run `(batch, candidate)` with `candidate == "cand-1"` — pins opener behavior that is absent pre-fix; not a fake-green duplicate of product logic in the assertion itself.
+
+Betty’s `[bug-repro]` thread documents stacked check (dev swap on logging + meteorite) and Hedy’s gate flip; credible repro-first bar met for the AST-1988 gap.
+
+**## What must still hold — OK** (test/bible side)
+
+- Add-only in the seven files touched by `2a5fb3dae`; no edits to existing test bodies called out in plan.
+- `TestAst1778RailwayConsoleTransport` / `TestConsoleFormat` / `TestAst1598LogCandidateId` not modified in AST-1991 commit.
+- Plan §6: no duplicate DB-flush test in `test_logging_batch.py`.
+- Contextvar hygiene (tokens + `finally`, start from `None`) present on formatter, dispatcher, agent, candidate, and meteorite tests reviewed.
+- All 17 named tests present; bible §§7–8 rows + manifest nodes in `debug_logging.md` / `logging_batch.md` match plan.
+
+## Findings
+
+### fix-now
+
+(none on the AST-1991 test/bible delta)
+
+### discuss
+
+- **Cross-ticket carry on publish ref (AC 4 / Boundaries)** @susan  
+  **Question:** AST-1991 requires tests+bible only, but the **1991 tip vs 1988 sibling tip** still includes **AST-1990 product and docs** from earlier `resync(tests)` / dev merge on this branch — not authored in `test(AST-1991)` but **on the ref under review**.  
+  **Evidence:** `src/core/agent.py` gains `_CANDIDATE_PREFIX_RUN_RE` / idempotent `_system_text_with_candidate_prefix`; `docs/features/agent/ast-1639-candidate-id-system-prompt-prefix.md` appends `## Bug: AST-1990`; `docs/test-bible/core/agent.md` carries AST-1990 gap material. None of this is in AST-1991 `## Scope`.  
+  **Default:** Before User Testing / ftr merge from this sub, reset those paths to match `origin/sub/AST-1987/AST-1988-stamp-log-batch-candidate-ids` so AST-1991 lands **test-only**; ship AST-1990 via its own sub/ftr or an explicit Susan-approved ftr←dev sync — do not piggyback on the AST-1988 test-gap child.
+
+### advisory
+
+- **Plan vs pre-fix color (#15):** Plan predicted `test_hold_noop_under_parent_batch` green on dev; Betty/Hedy note it is also red pre-fix (`TypeError` on one-arg `_hold_log_batch`). Behavior is still correct on tip; update plan prose optional hygiene only.
+- **Pre-fix #8 / #13:** Hedy’s `AttributeError` (`log_candidate_id` missing on dev modules) is an import artifact for negative control, not a test defect — consistent with gap-child stacked-on-1988-product model.
+- **ftr three-dot noise:** `ftr...1991` log includes AST-1985/1990/1992/resync commits; ignored for scoring per spawn — tip-vs-1988 parity check is the authoritative scope guard for this review.
+- **Board test debt:** Original Betty REVISE on AST-1991 plan tip is satisfied by qa-fix + test-fix; no remaining board gap on the 17-test spec itself.
+
+## Plan fidelity (AST-1991 delta only)
+
+Implements plan §1–§5 and §7–§8: five formatter tests, three dispatcher, three agent, two candidate, four meteorite; bible updates and manifest lines as specified. Product dependency: AST-1988 on ftr (present on branch before tests).
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **REVIEW** (discuss: cross-ticket carry on tip) | **Normal mini-parent** AST-1987 → **Review Posted** → `resolve-child` (strip stray AST-1990 product/docs **or** Susan confirms intentional bundle) → re-run Radia or proceed to **User Testing** once tip matches AC 4 → then clean-review shortcut. |
+
+context_tokens≈14000
+```
+
+```
+[code-rubric] REVIEW (Commit: d6b36d6a1) Tests OK; tip carries AST-1990
+```
+
+### Resolution — AST-1991
+
+Radia's one discuss item (AST-1990 product/docs on this tip) is not a carry: every AST-1990 commit (`code(AST-1990)` 2b0b74f00 and its docs/bible) is already an ancestor of `origin/dev`. The sub picked it up from the routine dev sync because `origin/ftr/AST-1987-railway-log-batch-candidate-ids` was cut before AST-1990 landed. Against `origin/dev`, this tip differs in `src/core/agent.py` only by AST-1988's `log_candidate_id` lines, and `docs/features/agent/ast-1639-…md` / `docs/test-bible/core/agent.md` differ by zero lines. Resetting those paths to the AST-1988 tip would revert AST-1990 on dev when this ftr lands, so no resolve-child: tests/bible delta is clean (no fix-now).
