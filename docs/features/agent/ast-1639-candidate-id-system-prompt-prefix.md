@@ -397,3 +397,59 @@ AST-1990 board-joan done — CANON: OK.
 
 
 **Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-1990 proceeds to make-fix on product only.
+
+
+## Radia review (AST-1990)
+
+**Ticket:** AST-1990  
+**Publish ref:** `origin/sub/AST-1985/AST-1990-candidate-prefix-dedupe` @ `2b0b74f0012a39b75f23099bc35b7b16c298e7bb`  
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`  
+**Overall:** CLEAN  
+
+**Diff base:** `origin/ftr/AST-1985-candidate-prefix-dedupe...origin/sub/AST-1985/AST-1990-candidate-prefix-dedupe` (product: `src/core/agent.py` only; plan-fix + board notes in `docs/features/agent/ast-1639-candidate-id-system-prompt-prefix.md`).
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — clean board opt-out. Betty **TESTS: REVISE** routed idempotence coverage to sibling **AST-1992** (`origin/sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests`, not in this diff). Spawn notes: Ada verified six idempotence tests pass against this tip; no `[bug-repro]` on AST-1990.
+- **## What must still hold — OK** — Traced plan-fix list against shipped helper:
+  - **AC1/AC2:** `_assemble_blocks_seven_segment` still sets first system block via `_system_text_with_candidate_prefix`; cache/user segments unchanged. Unprefixed input is byte-identical to pre-fix; prefixed input collapses to one marker at byte zero.
+  - **AC3:** Same helper at assembly (~L1212), `do_task` store (~L2254), `preview_prompt` (~L3046), workbench store (~L3208); idempotent helper makes double application at store+assembly safe.
+  - **AC4:** Strip uses only `system_content` + `candidate_id` argument; regex does not read ctx/contact fields.
+  - **AC7:** `cid` strip + `ValueError` remain **before** `_CANDIDATE_PREFIX_RUN_RE.sub`; prefixed body with blank id still fails closed (no pass-through of markers).
+  - **No separator / body preservation:** Still `f"[astral-{cid}]{body}"`; `sub` removes only anchored leading marker run; no trim on remainder.
+  - **Logging:** No new `logger.*` in diff; raise site unchanged (no `logger.exception` at detection).
+  - **Existing `TestAst1639CandidateIdSystemPrefix`:** Blast radius claim holds for single-pass paths; idempotence asserts deferred to AST-1992 per lane split (advisory below, not a regression in this product diff).
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | No new debug joints; helper change is pure string/id logic |
+| stat.logging.error | A | | Missing-id path still raises without logging at the raise site |
+
+## Column diff vs plan stage
+
+(aligned) — Joan **[board-joan] CANON: OK** on the AST-1990 patch matches both **A** grades; no separate validate-plan per-id table on this bug patch.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Sibling test carry:** Idempotence cases from plan **Repro** / fix-board are not committed on this publish ref; they live on **AST-1992**. Product fix is still reviewable without them per board opt-out; merge AST-1992 (or equivalent) before treating idempotence as repo-guarded on `dev`.
+- **Docs in diff:** Large `## Bug: AST-1990` append is plan-fix/board artifact, not product scope creep.
+- **Pre-existing failures:** Spawn notes 40× `test_agent.py` failures on pre-fix commit — out of scope for this three-dot diff; do not attribute to AST-1990.
+
+## What's solid
+
+Implementation matches **Proposed change** verbatim: module-level `_CANDIDATE_PREFIX_RUN_RE`, fail-closed block unchanged and first, idempotent strip-then-prepend, docstring updated. Scope stays one helper; call sites untouched. Regex `^(?:\[astral-[^\]]*\])+` with `count=1` removes an entire stacked leading run in one substitution — matches Susan-approved “strip any leading run” decision.
+
+
+**docs-acceptance:** test/bible delivery for this fix lives on sibling gap AST-1992 (Betty qa-fix); no test() on this product sub.
