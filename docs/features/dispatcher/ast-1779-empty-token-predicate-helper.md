@@ -495,3 +495,23 @@ AST-2000 board-joan done — CANON: REVISE — dispatch-retry carve-out.
 - **`astral.standards.in-scope-only`:** Conforms if ticket scope matches the named files; no silent creep beyond the plan block.
 - **`patt.task.dispatch-retry`:** Conflicts. The pattern says it **always** applies and that a failure **must not** remain in the same state, while AST-2000 routes `empty_tokens` **around** retry holdings (`_empty_token_fail_dest` treats retry-base `error_state` as “none”) and explicitly allows **stay at input state** + reclaim (select/parse paths, upshot tasks, no `error_state`). That needs a documented exception (F3 `validate-plan` fix mode), not silent implementation.
 - **Logging (`stat.logging.error` / `stat.logging.warning`):** Secondary tension — configured miss without throw is normally WARNING, but `do_task` uses one ERROR for the guard; acceptable if the dispatch-retry carve-out names empty-token as a pre-provider terminal guard. Not ESCALATE: Susan’s decisions are in-plan; this is canon text, not an open architecture fork.
+
+### Joan fix-board round 2 — AST-2000
+
+[board-joan]  CANON: OK
+
+context_tokens≈28000
+
+**Rationale (not for Linear):**
+
+**Round 1 vs revised plan:** Susan’s binding rule is reflected in To-be §2 and `_empty_token_fail_dest` / roster paths: no `_RETRY`, no hop-label or input-state hold for dispatch entities (jobs → configured terminal or `FAILED_TECHNICAL`; companies → `ROSTER_CONFIG` terminals; candidates → stage `error_state`). That removes the round-1 product conflict with `patt.task.dispatch-retry` (“failure never stays in state”) for everything this ticket actually routes.
+
+**`patt.task.dispatch-retry` + AST-2005:** The remaining corpus gap is the **carve-out** (empty_tokens skip the retry companion; pre-provider data defect). The plan no longer implements the old “stay and reclaim” shape Joan flagged; it assigns the statute/pattern edit to sibling **AST-2005**. For fix-board on **AST-2000** only, that split is correct — this child does not need to land canon text, and the proposed product change is not a silent violation once AST-2005 is in the lane (blocked-after-2000 ordering is Chuckles’ graph, not a second REVISE on this plan).
+
+**`astral.dispatch.entity-state-bound` / `astral.standards.in-scope-only`:** Still conform — registered states only, no `dispatch_task` / schema invention, eight-file scope unchanged.
+
+**Meteorite (Ada’s flagged decision):** Leaving `meteorite.py` unchanged means some `do_task` empty-token failures can still leave staging rows at `READY` / `CHECK_UNIQUE` with no registered error transition. That is a **documented product boundary** (no reachable `METEORITE_STATES` error from those labels; follow-up ticket if Susan wants terminals), not a conflict with harvest statutes cited here or with `patt.task.dispatch-retry` as written (dispatch-entity retry machine). It does **not** warrant ESCALATE on AST-2000 unless Susan reopens scope to invent states — the plan states that explicitly.
+
+**Logging:** Single `do_task` ERROR for the guard remains; blast radius already ties secondary `stat.logging.*` wording to AST-2005 — no new canon blocker on this revision.
+
+**AST-2006:** Test/bible work stays out of Joan’s product canon question for this pass.
