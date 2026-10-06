@@ -783,3 +783,11 @@ AST-1988 went product-only through fix-board. Betty's board verdict split the re
 - AST-1778: `TestAst1778RailwayConsoleTransport` and `TestConsoleFormat` stay green unchanged. Off-Railway plain format is untouched.
 - AST-1598: `TestAst1598LogCandidateId` stays green unchanged. `app_log.candidate_id` stays NULL when unset.
 - Engineer test-tree ban: Hedy does not commit under `tests/` or `docs/test-bible/`. Betty lands every item in §1–§8.
+
+### Joan fix-board — AST-1991
+
+```text
+[board-joan]  CANON: OK
+
+context_tokens≈22000
+```
