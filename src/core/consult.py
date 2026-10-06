@@ -55,9 +55,14 @@ from src.utils.config import (
 )
 from src.utils.formatting import enumerate_array, normalize_link
 from src.utils.logging import get_logger, log_batch_id, log_debug
-from src.utils.llm_external import is_provider_balance_refusal
+from src.utils.llm_external import is_provider_balance_refusal, is_provider_rate_limit
 
 logger = get_logger(__name__)
+
+
+def _rate_limit_tag(r: Dict[str, Any]) -> Dict[str, Any]:
+    """AST-2010: carry an exhausted-429 failure_class up to the dispatcher (routing unchanged)."""
+    return {"failure_class": r["failure_class"]} if is_provider_rate_limit(r) else {}
 
 
 def _with_log_debug(fn):
@@ -1217,6 +1222,7 @@ async def _run_analysis_upshot_batch(
     """AST-480 / AST-1055: synthesis upshot; persist job_data.analysis_upshot → pass_state."""
     task_cfg = TASK_CONFIG[task_key]
     processed = passed = failed = errors = 0
+    rl: Dict[str, Any] = {}  # AST-2010: first exhausted-429 tag seen in this loop
     base_ctx = dict(ctx or {})
     logger.debug("Beginning %s loop on %s items", task_key, len(entities))
     for job in entities:
@@ -1262,6 +1268,7 @@ async def _run_analysis_upshot_batch(
         )
         logger.debug("Response from agent.do_task: %s", result)
         if not result.get("success"):
+            rl = rl or _rate_limit_tag(result)
             if is_provider_balance_refusal(result):
                 logger.debug(
                     "provider_balance_refusal aid=%s error=%r current_state=%r",
@@ -1307,6 +1314,7 @@ async def _run_analysis_upshot_batch(
         "total_passed": passed,
         "total_failed": failed,
         "total_errors": errors,
+        **rl,
     }
 
 
@@ -1484,7 +1492,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
                 _transition_job_state_for_task(agent_task, [astral_job_id], dest)
             return {"success": False, "to_state": dest, "error": result.get("error"),
                     "failure_class": result.get("failure_class")}
-        return _fail(result.get("error", "do_task failed"))
+        return {**_fail(result.get("error", "do_task failed")), **_rate_limit_tag(result)}
 
     parsed = result["parsed_response"]
     jobs_parse = parsed.get("jobs") if isinstance(parsed, dict) else None
@@ -1694,6 +1702,7 @@ async def _run_batch_consult(
         return {
             "success": False, "error": result.get("error"),
             "passed": 0, "failed": 0, "total": len(jobs), "retried": retried,
+            **_rate_limit_tag(result),
         }
 
     parsed = result["parsed_response"]
@@ -2756,6 +2765,7 @@ async def run_consult_task(
                 "total_passed": passed,
                 "total_failed": failed,
                 "total_errors": errors,
+                **_rate_limit_tag(r),
             }
         if task_key == "vet_inflow_discovery":
             r = await _debug_await(
@@ -2915,7 +2925,8 @@ async def run_consult_task(
                 return {"total_processed": 1, "total_passed": passed, "total_failed": 1 - passed, "total_errors": 0}
             # AST-1839: incomplete grades routed to a retry holding are not a run error
             retried = not rv.get("state_held") and retry_base(rv.get("to_state"))
-            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0 if retried else 1}
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0 if retried else 1,
+                    **_rate_limit_tag(rv)}
         if task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
             _batch = {
                 "grade_do": grade_do_batch,
@@ -2965,7 +2976,8 @@ async def run_consult_task(
     passed = r.get("passed", 0)
     failed = r.get("failed", 0)
     errors = max(0, total - passed - failed - r.get("retried", 0))
-    return {"total_processed": total, "total_passed": passed, "total_failed": failed, "total_errors": errors}
+    return {"total_processed": total, "total_passed": passed, "total_failed": failed, "total_errors": errors,
+            **_rate_limit_tag(r)}
 
 
 # ---- Timesheets (read side) ----

@@ -260,3 +260,24 @@ no plan-stage scores attached (no F3 validate-plan artifact; Joan `[board-joan] 
 ```
 [code-rubric] PROCEED (Commit: 9efa75aa) four-part meteorite fix clean
 ```
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/257ed1c8ffb6f79f3e218ee5bced71d1/5f381b98-c56b-4496-a8d3-fa987a08c37a/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/31d79645-41ca-48d9-a0b4-a15d1e4b3397/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/257ed1c8ffb6f79f3e218ee5bced71d1/4b735e56-0439-4882-aaed-3bf394e4b55b/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2007 (parent) | ftr/AST-2007-meteorite-grade-do-timeout |
+| AST-2008 | sub/AST-2007/AST-2008-rubric-codes-timeout-ledger |
+
+**Epic worktree:** `astral-AST-2007/` — one active sub checked out at a time.

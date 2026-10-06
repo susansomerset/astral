@@ -51,7 +51,7 @@ from src.utils.config import (
     DISPATCH_RETIRED_TASK_KEYS,
 )
 from src.utils.network import check_internet_reachable
-from src.utils.llm_external import is_provider_balance_refusal
+from src.utils.llm_external import is_provider_balance_refusal, is_provider_rate_limit
 from src.utils.logging import get_logger, log_batch_id, log_candidate_id, log_debug, flush_log_buffer
 
 logger = get_logger(__name__)
@@ -623,6 +623,21 @@ def _note_provider_balance_outage(ctx: Dict, task: Dict, result: Dict) -> None:
     outage["held"] += int(result.get("total_held", 0) or 0)
 
 
+def _note_provider_rate_limit_outage(ctx: Dict, task: Dict, result: Dict) -> None:
+    """AST-2010: first exhausted-429 result in a run sets ctx["provider_rate_limit_outage"] and logs one
+    WARNING; the batch stops and the run finishes FAILED."""
+    if ctx.get("provider_rate_limit_outage") is not None:
+        return
+    outage = ctx["provider_rate_limit_outage"] = {"error": result.get("error") or ""}
+    logger.warning(
+        "%s | dispatch %s %s\n  LLM provider rate limit: still 429 after retries (%s)\n  The batch is stopping",
+        ctx.get("astral_candidate_id") or task.get("candidate_id") or "-",
+        task.get("entity_type") or "-",
+        task.get("task_key") or "-",
+        outage["error"],
+    )
+
+
 async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     """Claim a batch for the given task and dispatch to consult.run_consult_task.
     Reads entity_type, trigger_state, sort_by, batch_call_mode from the DB task row.
@@ -815,8 +830,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 logger.debug("Beginning consult chunk loop on %s items", len(chunks))
 
                 async def _consult_chunk(ci: int, chunk_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-                    # AST-1867: provider already refused for balance — no further calls this run
-                    if ctx.get("provider_balance_outage"):
+                    # AST-1867 / AST-2010: provider refused for balance or rate limit — no further calls this run
+                    if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage"):
                         return dict(_SUMMARY_ZERO)
                     logger.debug(
                         "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=%s, batch=%s, task_key=%s]",
@@ -835,6 +850,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                     logger.debug("Response from consult.run_consult_task: %s", result)
                     if is_provider_balance_refusal(result):
                         _note_provider_balance_outage(ctx, task, result)
+                    if is_provider_rate_limit(result):
+                        _note_provider_rate_limit_outage(ctx, task, result)
                     return result
 
                 head = await _consult_chunk(0, chunks[0])
@@ -860,12 +877,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 logger.debug("Response from consult.run_consult_task: %s", result)
                 if is_provider_balance_refusal(result):
                     _note_provider_balance_outage(ctx, task, result)
+                if is_provider_rate_limit(result):
+                    _note_provider_rate_limit_outage(ctx, task, result)
                 for k in s:
                     s[k] += result.get(k, 0)
         else:
             async def _one(e):
-                # AST-1867: provider already refused for balance — skip (not processed); finally releases the claim
-                if ctx.get("provider_balance_outage"):
+                # AST-1867 / AST-2010: provider refused for balance or rate limit — skip (not processed); finally releases the claim
+                if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage"):
                     return dict(_SUMMARY_ZERO)
                 logger.debug(
                     "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=1, batch=%s, task_key=%s]",
@@ -878,6 +897,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 logger.debug("Response from consult.run_consult_task: %s", result)
                 if is_provider_balance_refusal(result):
                     _note_provider_balance_outage(ctx, task, result)
+                if is_provider_rate_limit(result):
+                    _note_provider_rate_limit_outage(ctx, task, result)
                 return result
             results = await _warm_then_gather(_one, entities, _SUMMARY_ZERO)
             for r in results:
@@ -1422,8 +1443,11 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         )
         await _tracked()
         logger.debug("Response from _run_dispatch_loop: %s", accumulated)
-        # AST-1867: run cut short by provider outage — non-COMPLETED keeps it out of the circuit breaker
-        if ctx.get("provider_balance_outage"):
+        # AST-1867: run cut short by provider outage — non-COMPLETED keeps it out of the circuit breaker.
+        # AST-2010: an exhausted rate limit errors the whole batch — FAILED wins over balance INTERRUPTED.
+        if ctx.get("provider_rate_limit_outage"):
+            final_status = "FAILED"
+        elif ctx.get("provider_balance_outage"):
             final_status = "INTERRUPTED"
     except asyncio.TimeoutError as exc:
         final_status = "INTERRUPTED"
@@ -1612,6 +1636,10 @@ async def _run_dispatch_loop(
         # AST-1867: held entities stay eligible — claiming again would re-hit the refusing provider
         if ctx.get("provider_balance_outage"):
             logger.debug("loop stop: provider balance refusal run_count=%s", run_count)
+            logger.debug("End dispatch loop after %s run(s)", run_count)
+            break
+        if ctx.get("provider_rate_limit_outage"):
+            logger.debug("loop stop: provider rate limit run_count=%s", run_count)
             logger.debug("End dispatch loop after %s run(s)", run_count)
             break
         if summary.get("total_processed", 0) == 0:
