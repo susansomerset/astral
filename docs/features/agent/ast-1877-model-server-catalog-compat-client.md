@@ -927,3 +927,68 @@ Decision 2 (DeepSeek exhausted 429 also stops the batch) is a bounded product ch
 No F3 `validate-plan` fix mode for canon unless product later chooses to codify provider-outage semantics; this triage pass does not require it.
 
 context_tokens≈42000
+
+### Radia review-fix (AST-2010)
+
+## Canon scores
+
+(no frozen Canon Scope list in AST-2010 description — zero ids to score; fix-board `[board-joan] CANON: OK` was qualitative overlap only, not per-directive grades)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (no `validate-plan` fix-mode column; Joan fix-board only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — qa-fix landed on this branch (`32053a727` → product at tip). Repro nodes pin concrete To-be behavior, not tautologies:
+- `test_llm_compat.py::TestAst2010OpenRouterRateLimit::test_retry_only_block_doubles_with_no_cap_or_ceiling` — 6 `_create` attempts, sleeps `[2,4,8,16,32]`, no `_slots` (pre-fix `KeyError: 'max_concurrent'`).
+- `::test_openrouter_exhausted_429_is_tagged` — 6 SDK calls, 5 sleeps, `failure_class == "provider_rate_limit"`.
+- `test_dispatcher.py::TestAst2010ProviderRateLimitOutage::test_bug_repro_rate_limit_stops_batch_ledger_failed` — 2-entity `meteorite_like` / warm-then-gather: `consult.await_count == 1`, ledger `FAILED`, `1/…/1` errors (pre-fix `6` consult calls, `COMPLETED`).
+- `test_consult.py::TestAst2010RateLimitForwarding::test_run_consult_task_single_entity_forwards_tag` — AST-2009 meteorite_like path forwards tag (pre-fix drop).
+- `TestAst1959ProbeHostLock::test_ac4_failed_probe_fails_the_batch_with_no_fallback` revised: 6 probe attempts, sleep patched, all four callers tagged.
+
+**## What must still hold — OK** (traced on diff `origin/ftr/AST-2009-openrouter-429-retry...origin/sub/AST-2009/AST-2010-openrouter-429-retry`):
+| Item | Verdict |
+|------|---------|
+| AST-1877 AC: no vendor/server names in `llm_compat.py`; behavior from `LLM_SERVER_CONFIG` | OK — OpenRouter retry/tagging via `concurrency` + `exhausted_stops_batch`; literals in `config.py` / `PROVIDER_RATE_LIMIT`. |
+| `_create` holds slot only during call, not during sleep (capped servers) | OK — `time.sleep` remains outside `with sem:`; DeepSeek block unchanged in config test. |
+| `PROVIDER_CALL_BUDGET["max_retries"]` stays `0` | OK — not touched (`5446` still `0`). |
+| Timeout > balance > rate limit | OK — both except paths check `classify_provider_call_timeout` before balance/rate-limit merge. |
+| AST-1867 balance: hold, batch stop, `INTERRUPTED` | OK — balance paths untouched; `TestAst1867ProviderBalanceOutage` kept in manifest; rate limit uses separate ctx key. |
+| AST-1189 / AST-1842 select_job_page hold-on-timeout | OK — no timeout/hold logic changed; rate-limit tags ride generic failure returns without `state_held`. |
+| Kimi / Anthropic 429 unchanged | OK — Kimi `concurrency` still absent (`test_exhausted_429_untagged_without_opt_in` → 1 call). |
+| DeepSeek retry + exhausted 429 untagged, no batch stop | OK — config assertion unchanged; llm_compat + dispatcher untagged guard tests. |
+| No OpenRouter cap or backoff ceiling | OK — retry-only block; last sleep 32s proves no ceiling. |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+- Ticket carries **no frozen canon list** — canon rubric is empty by design on this fix child; if Archie wants bug fixes scored like feature children, amend Canon Scope on the ticket (not blocking this diff).
+- Issue doc Joan fix-board prose still says “Decision 2 (DeepSeek exhausted 429 also stops the batch)” in one sentence; **resolved decisions** in the same block say **OpenRouter only** — doc typo only, matches code.
+- UAT flags from plan: `backoff_base_seconds: 2.0` and OpenRouter-only batch stop (Susan can flip in config).
+
+## What's solid
+
+- Plan-fix patch implemented end-to-end: config registry, optional cap/ceiling `_create`, opt-in tagging (call + probe string), consult/roster `_rate_limit_tag` at every planned site, dispatcher mirror of AST-1867 with `FAILED` precedence.
+- Betty manifest breadth matches blast radius (classifier, forwarding, dispatcher three call sites, AST-1959 AC4 revision, AST-1867/897 regressions).
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | **Normal** (AST-2009 live, `origin/ftr/AST-2009-openrouter-429-retry` base) → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+context_tokens≈55000
+```
+
+```
+[code-rubric] PROCEED (Commit: d2d8bd3b2) OpenRouter 429 batch stop
+```
