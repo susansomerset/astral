@@ -886,3 +886,8 @@ context_tokens≈11000
 ```
 [code-rubric] PROCEED (Commit: 96bc0471d) Per-line decode retry OK
 ```
+
+
+### Test delivery — AST-1996
+
+No test-tree delivery on this sub (docs-acceptance). Betty's `[board-betty] TESTS: REVISE` coverage — the `test_rejects_bad_positions_and_trailing_meta` flip, repro A/B, and `_run_batch_consult` decode-failure routing — lands on test-gap sibling AST-2001, which is blocked by this ticket.
