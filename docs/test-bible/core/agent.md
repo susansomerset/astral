@@ -1919,3 +1919,46 @@ Expect 40 reds in `test_agent.py` and 12 in `test_dispatcher.py`. Each one fails
 3. **Boundary gate (expect no output):** `git diff origin/ftr/AST-1954-host-probe...HEAD --stat -- src/core/dispatcher.py src/external/ src/utils/`
 
 **Pass criterion:** item 1 green, item 2 limited to the baseline reds, item 3 empty. Not the zero-arg harness.
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `do_task` resolves every segment with an `empty_tokens` collector; any blank recognized token in a segment that is actually sent → no provider call, no hop ledger, one ERROR (`<index> | <task> skipped — empty tokens …`), result carries `empty_tokens` + `empty_token_task` (the failing hop's key on a mid-chain hop). Agent content counts only when a segment references `{$SELECTED_AGENT}`; intake-snapshot-replaced segments are dropped. AST-530 `_mid_chain_empty_caller_tokens` is folded into this guard. Siblings: config collector **`utils/config.md`**, routing **`core/consult.md`** / **`core/roster.md`** / **`core/candidate.md`** / **`core/intake.md`**, probe **`ui/api/api_admin.md`** (all § AST-2006).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** entry hop blank `{$DEAL_BREAKERS}` → provider not called; `empty_tokens == ["DEAL_BREAKERS"]`, `empty_token_task`; one ERROR; no `resolved to empty` WARNING | `do_task` guard | **`TestAst2006DoTaskEmptyTokenGuard::test_bug_repro_entry_hop_blank_token_is_not_sent`** |
+| Populated prompt → sent once, no `empty_tokens` key | same | **`…::test_populated_prompt_is_sent_without_empty_tokens`** |
+| Whitespace-only value is empty | same | **`…::test_whitespace_only_value_counts_as_empty`** |
+| `{$SELECTED_AGENT}` rule (no reference → sent; reference → guarded) | same | **`…::test_blank_agent_content_ignored_without_selected_agent_reference`** · **`…::test_blank_agent_content_guarded_when_selected_agent_referenced`** |
+| Intake snapshot drops replaced segment (control: no snapshot → guarded) | same | **`…::test_intake_snapshot_replaced_segment_not_guarded`** (2 params) |
+| Mid-chain blank `{$CALLER_SYSTEM}` → `empty_tokens`, `empty_token_task` = hop key, one ERROR | same | **`TestDoTask::test_mid_chain_empty_caller_skips_api`** (rewritten in place) |
+
+Fixtures: module helper `_ast2006_guard_ctx` (candidate row with name columns → token view from ctx, no DB); class-local `_rows` / `_ctx` patch `candidate.get_candidate` + `company_search_terms_joined_text` so sent prompts need no DB. Shared `_agent_rows` unchanged (token-free).
+
+**Broken / obsolete:** `TestDoTask::test_mid_chain_empty_caller_skips_api` — pinned AST-530 contract (`"CALLER_SYSTEM" in error`) and was already red on its unstubbed caller hydration (`job not found: job-1`). Rewritten in place: stubs `_hydrate_caller_chain_context` (AST-1264 seam), asserts the AST-2000 result fields + single ERROR.
+
+**Red / green:** `[bug-repro]` red on `origin/dev` `65e23b71b` (provider called with `[astral-cand-1]Deal breakers: `), green on `origin/ftr/AST-1986-runtime-empty-token-error`. 29 of the 39 new/rewritten nodes are red on dev; the 10 dev-green are controls / unchanged behavior. Clean detached worktrees, temp `ASTRAL_DB_DIR`.
+
+**Pre-existing failures (not AST-2006):** hermetic full `tests/component` run on the ftr product: 359 failing nodes without this pass, 357 with it — zero new; fixed = the rewritten mid-chain test plus `TestIntakeSessionFlow::test_background_initiate_failure_writes_assistant_error` (not touched — timing-dependent, not claimed). Five collection errors (`test_meteorite_email.py`, `test_page_intake.py`, `test_surfer.py`, `database/test_meteorites.py`, `database/test_surfer_batches.py`) are pre-existing. Out of scope.
+
+**Integration:** none — no `tests/integration/` scenario exercises `do_task` prompt assembly or empty-token routing.
+
+## QA test manifest — AST-2006
+
+1. **New + rewritten pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst2006DoTaskEmptyTokenGuard \
+  tests/component/core/test_agent.py::TestDoTask::test_mid_chain_empty_caller_skips_api \
+  tests/component/utils/test_config.py::TestAst2006ResolveTokensEmptyCollector \
+  tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts \
+  tests/component/core/test_consult.py::TestAst2006EmptyTokenRouting \
+  tests/component/core/test_roster.py::TestAst2006EmptyTokenCompanyTerminals \
+  tests/component/core/test_candidate.py::TestAst2006RequestedArtifactsEmptyTokens \
+  tests/component/core/test_intake.py::TestAst2006IntakeEmptyTokenLedger \
+  tests/component/ui/api/test_api_admin.py::TestAst2006EnrichTasksProbeSilent \
+  -q
+```
+
+2. **[bug-repro] flip:** `tests/component/core/test_agent.py::TestAst2006DoTaskEmptyTokenGuard::test_bug_repro_entry_hop_blank_token_is_not_sent` — red on `origin/dev`, green on ftr.

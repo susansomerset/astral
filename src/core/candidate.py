@@ -3671,6 +3671,21 @@ async def run_requested_artifacts_dispatch(
             ctx=task_ctx,
             debug=debug,
         )
+        if response and response.get("empty_tokens") and is_registered_state(CANDIDATE_STATES, bare_trigger):
+            # AST-2000: data defect — stage error_state from trigger / hop label / _RETRY, never retry.
+            err_state = CANDIDATE_STATES[registered_base(CANDIDATE_STATES, bare_trigger) or bare_trigger]["error_state"]
+            logger.debug("empty_tokens route candidate_id=%s dest=%s", candidate_id, err_state)
+            try:
+                transition_candidate_state(candidate_id, err_state)
+            except ValueError as exc:
+                # Caught here so it can't reach the broad except below, whose target can be a retry holding.
+                logger.warning(
+                    "%s skipped error_state %s — %s\n  The candidate is still counted as an error",
+                    candidate_id,
+                    err_state,
+                    exc,
+                )
+            return {**zero, "total_processed": 1, "total_errors": 1}
         if not response or not response.get("success"):
             raise RuntimeError(
                 (response or {}).get("error") if response else f"do_task None for {start_key}"

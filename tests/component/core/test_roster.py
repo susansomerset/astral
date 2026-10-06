@@ -6761,3 +6761,85 @@ class TestAst1846PrefilterRetryWarnThenError:
         # fetch_website routes scrape failures to WFR / CANNOT_READ_WEBSITE — never an error_state.
         assert _ast1846_levels(caplog, "company homepage scrape") == ["WARNING"]
         assert not [r for r in caplog.records if r.levelno >= 40]
+
+
+class TestAst2006EmptyTokenCompanyTerminals:
+    """AST-2006 / AST-2000: empty_tokens on a company flow → that flow's terminal error state, no retry, no save."""
+
+    _EMPTY = {"success": False, "error": "Empty tokens: X (task=t)", "empty_tokens": ["X"], "empty_token_task": "t"}
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_goes_to_error_prefilter(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        trans = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        companies = [{"short_name": sn, "state": "HOMEPAGE_READY", "company_data": {}} for sn in ("a", "b")]
+        out = await roster_mod._run_batch_company_prefilter("b-2006", companies)
+        assert ROSTER_CONFIG["prefilter"]["error_state"] == "ERROR_PREFILTER"
+        assert trans.call_args_list == [call("a", "ERROR_PREFILTER"), call("b", "ERROR_PREFILTER")]
+        assert out == {"passed": 0, "failed": 0, "total": 2, "retried": 0}
+
+    @pytest.mark.asyncio
+    async def test_select_job_page_goes_to_error_locate_without_no_joblist(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        trans, saver = MagicMock(), MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme", company_website="https://cw", assembled_content="asm",
+            page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
+            nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
+        )
+        assert ROSTER_CONFIG["locate_job_page"]["error_state"] == "ERROR_LOCATE_JOB_PAGE"
+        trans.assert_called_once_with("acme", "ERROR_LOCATE_JOB_PAGE")
+        assert out["state"] == "ERROR_LOCATE_JOB_PAGE" and out["error"] == self._EMPTY["error"]
+        assert "state_held" not in out
+        saver.assert_not_called()  # no NO_JOBLIST save
+
+    @pytest.mark.asyncio
+    async def test_fetch_parse_job_list_surfaces_empty_tokens_without_notes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        out = await roster_mod._fetch_parse_job_list("<html/>", "acme")
+        assert out == {"empty_tokens": ["X"], "error": self._EMPTY["error"]}
+        save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_select_only_parse_goes_to_error_locate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        trans, save_data = MagicMock(), MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "save_company_data", save_data)
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "find_job_containers", MagicMock(return_value=["s"]))
+        monkeypatch.setattr(roster_mod, "_fetch_parse_job_list", AsyncMock(return_value={"empty_tokens": ["X"], "error": "e"}))
+        out = await roster_mod._finalize_joblist_titles_select_only(
+            {"job_titles": ["Dev"], "response_type": "JOBLIST_TITLES"}, "acme", "https://cw", "https://js",
+            {"blob": "<div><a>H</a></div>"}, "blob", "JOBLIST_TITLES", False, {}, {},
+        )
+        trans.assert_called_once_with("acme", "ERROR_LOCATE_JOB_PAGE")
+        assert out["state"] == "ERROR_LOCATE_JOB_PAGE" and out["error"] == "e"
+        # job_titles persist before the parse hop; the empty-token branch adds no parse notes.
+        assert not any("parse_job_list_notes" in c.args[1] for c in save_data.call_args_list)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("state", ["JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY"])
+    async def test_parse_dispatch_goes_to_terminal_from_either_trigger(
+        self, monkeypatch: pytest.MonkeyPatch, state: str,
+    ) -> None:
+        # AST-721 harness; the parse hop reports empty tokens → COULD_NOT_PARSE_JOBLIST, never JOBLIST_IDENTIFIED_RETRY.
+        company = TestAst721ParseJobListDispatch._identified_company(state=state)
+        trans, save_co = MagicMock(), MagicMock()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "_save_company", save_co)
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "create_browser_context", TestAst721ParseJobListDispatch._browser_cm())
+        monkeypatch.setattr(roster_mod, "_scrape_list_page_dom_for_parse", AsyncMock(return_value="<html>dom</html>"))
+        monkeypatch.setattr(roster_mod, "find_job_containers", MagicMock(return_value=["<div>Engineer</div>"]))
+        monkeypatch.setattr(roster_mod, "_fetch_parse_job_list", AsyncMock(return_value={"empty_tokens": ["X"], "error": "e"}))
+        out = await roster_mod.run_parse_job_list_dispatch(company, "b-2006")
+        assert ROSTER_CONFIG["parse_job_list"]["terminal_fail_state"] == "COULD_NOT_PARSE_JOBLIST"
+        trans.assert_called_once_with(company["short_name"], "COULD_NOT_PARSE_JOBLIST")
+        assert out["state"] == "COULD_NOT_PARSE_JOBLIST" and out["error"] == "e"
+        save_co.assert_not_called()

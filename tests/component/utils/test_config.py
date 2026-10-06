@@ -6884,6 +6884,47 @@ class TestAst1779EmptyRenderForPrompts:
         assert out == {"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}
 
 
+class TestAst2006ResolveTokensEmptyCollector:
+    """AST-2006 / AST-2000: resolve_tokens(empty_tokens=[...]) collects blank recognized names quietly."""
+
+    _TASK = "grade_get"
+
+    def test_collects_blank_names_ordered_unique_across_sources(self, caplog) -> None:
+        # candidate + job + mid-chain CALLER_* blanks, FIRST_NAME repeated; collector path never warns.
+        import logging
+
+        got: list = []
+        with caplog.at_level(logging.WARNING):
+            out = cfg.resolve_tokens(
+                "{$FIRST_NAME} {$VISIBLE_JD} {$FIRST_NAME} {$CALLER_RESPONSE} {$LAST_NAME}",
+                {"first": "", "last": "Lee"},
+                self._TASK,
+                chain_context={"CALLER_RESPONSE": ""},
+                job_context={"VISIBLE_JD": "  "},
+                empty_tokens=got,
+            )
+        assert got == ["FIRST_NAME", "VISIBLE_JD", "CALLER_RESPONSE"]
+        assert out.endswith("Lee")
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    def test_unrecognized_token_stays_literal_and_is_not_collected(self) -> None:
+        got: list = []
+        out = cfg.resolve_tokens("{$NOT_A_TOKEN} {$FIRST_NAME}", {"first": "Ada"}, self._TASK, empty_tokens=got)
+        assert out == "{$NOT_A_TOKEN} Ada"
+        assert got == []
+
+    def test_default_call_unchanged_still_warns(self, caplog) -> None:
+        # No collector → same substitution and the existing per-token WARNING.
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            out = cfg.resolve_tokens("Hi {$FIRST_NAME}", {"first": "", "full": ""}, self._TASK)
+        assert out == "Hi "
+        assert [r.message for r in caplog.records if "resolved to empty" in r.message] == [
+            "Token {$FIRST_NAME} resolved to empty (path=first, task=grade_get)"
+        ]
+
+
 class TestAst1788ManageListAndProfileSlackChannelShapes:
     """AST-1788: manage list slack_username + profile channel id/name after username."""
 

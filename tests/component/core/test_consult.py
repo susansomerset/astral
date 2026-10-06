@@ -7344,3 +7344,113 @@ class TestAst1846ConsultRetryWarnThenError:
         else:
             transition.assert_not_called()
         assert self._levels(caplog, f"j1 -> {dest or '-'} [") == ["ERROR"]
+
+
+class TestAst2006EmptyTokenRouting:
+    """AST-2006 / AST-2000: empty_tokens do_task failures go straight to a terminal error state — never _RETRY,
+    never left at the input / hop-label state (patt.task.dispatch-retry carve-out, AST-2005)."""
+
+    _EMPTY = {"success": False, "error": "Empty tokens: VISIBLE_JD (task=grade_do)", "empty_tokens": ["VISIBLE_JD"], "empty_token_task": "grade_do"}
+
+    @pytest.mark.parametrize(
+        ("states", "want"),
+        [
+            (("ERROR_A", "ERROR_B"), "ERROR_A"),  # hop before entry: first configured wins
+            (("PASSED_LIKE_RETRY", "ERROR_B"), "ERROR_B"),  # a retry holding is skipped
+            (("PASSED_LIKE_RETRY",), "FAILED_TECHNICAL"),
+            ((None, "  "), "FAILED_TECHNICAL"),
+        ],
+        ids=["first_wins", "skip_retry", "retry_only", "unset"],
+    )
+    def test_empty_token_fail_dest(self, states: tuple, want: str) -> None:
+        assert consult_mod._empty_token_fail_dest(*states) == want
+
+    async def _batch(self, monkeypatch: pytest.MonkeyPatch, result: Dict[str, Any]) -> tuple:
+        trans = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: [])
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value=result))
+        out = await consult_mod._run_batch_consult(
+            "grade_do", "b-2006", [{"astral_job_id": "j1", "state": "PASSED_JD"}],
+            lambda rows: "content", lambda i, r, c: c["pass_state"], None, False,
+        )
+        return out, [c.args[2] for c in trans.call_args_list]
+
+    @pytest.mark.asyncio
+    async def test_run_batch_consult_goes_to_error_state_not_retry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2000 Repro 3: PASSED_JD has retry_state PASSED_JD_RETRY; empty tokens skip it.
+        out, dests = await self._batch(monkeypatch, dict(self._EMPTY))
+        assert dests == ["FAILED_TECHNICAL_DO"]
+        assert out["retried"] == 0 and out["failed"] == 0 and out["total"] == 1
+        assert out["success"] is False
+
+    @pytest.mark.asyncio
+    async def test_run_batch_consult_generic_failure_still_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Control: no empty_tokens → today's _consult_batch_fail_dest retry holding (carve-out is narrow).
+        _out, dests = await self._batch(monkeypatch, {"success": False, "error": "schema boom"})
+        assert dests == ["PASSED_JD_RETRY"]
+
+    @pytest.mark.asyncio
+    async def test_analysis_upshot_retry_error_state_falls_to_failed_technical(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = {"astral_job_id": "j1", "company": "co", "job_data": {}, "state": "PASSED_LIKE"}
+        monkeypatch.setattr(consult_mod.tracker, "get_job", MagicMock(return_value=job))
+        monkeypatch.setattr(consult_mod.tracker, "get_company", MagicMock(return_value={"short_name": "co"}))
+        monkeypatch.setattr(consult_mod, "_prep_analysis_upshot_live_content", AsyncMock(return_value="x"))
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value={**self._EMPTY, "empty_token_task": "analysis_upshot"}))
+        trans = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
+        out = await consult_mod._run_analysis_upshot_batch("b-2006", [job], {}, False)
+        # analysis_upshot error_state is PASSED_LIKE_RETRY (a retry holding) → FAILED_TECHNICAL.
+        assert [c.args[1:] for c in trans.call_args_list] == [(["j1"], "FAILED_TECHNICAL")]
+        assert out["total_errors"] == 1 and out["total_passed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_transitions_to_error_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}, "state": "PASSED_JD"}
+        trans = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
+        out = await consult_mod.render_verdict("grade_do", "job-1")
+        assert out["success"] is False
+        assert out["to_state"] == "FAILED_TECHNICAL_DO"
+        assert [c.args[1:] for c in trans.call_args_list] == [(["job-1"], "FAILED_TECHNICAL_DO")]
+
+    async def _chain(
+        self, monkeypatch: pytest.MonkeyPatch, *, hop: str, dispatch_key: str, state: str, transition: MagicMock,
+    ) -> tuple:
+        released: list = []
+        monkeypatch.setattr("src.core.consult.do_task", AsyncMock(return_value={**self._EMPTY, "empty_token_task": hop}))
+        monkeypatch.setattr("src.core.agent._current_agent_task_run_next", lambda tk: "")
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda aid: {"astral_job_id": aid, "state": state})
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
+        monkeypatch.setattr(consult_mod.tracker, "release_job_dispatch_claim", lambda aid: released.append(aid))
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        out = await consult_mod._run_dispatch_chain_job_batch("b-2006", [{"astral_job_id": "job-1"}], {}, False, dispatch_key, state)
+        return out, released
+
+    @pytest.mark.asyncio
+    async def test_dispatch_chain_mid_hop_goes_to_hop_error_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Mid-chain: the row sits on a hop label; the failing hop's error_state wins, never the label.
+        hop_label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        trans = MagicMock()
+        out, released = await self._chain(monkeypatch, hop="contemplate_job", dispatch_key="contemplate_job", state=hop_label, transition=trans)
+        assert [c.args for c in trans.call_args_list] == [(["job-1"], "ERROR_BUILD_ARTIFACTS")]
+        assert released == ["job-1"]
+        assert out["total_errors"] == 1 and out["total_passed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_dispatch_chain_hop_without_error_state_uses_entry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # draft_cover_letter has no error_state → the entry dispatch task's (anticipate_scan → ERROR_BUILD_ARTIFACTS).
+        assert TASK_CONFIG["draft_cover_letter"].get("error_state") is None
+        trans = MagicMock()
+        await self._chain(monkeypatch, hop="draft_cover_letter", dispatch_key="anticipate_scan", state=cfg.BUILD_ARTIFACTS_BASE_STATE, transition=trans)
+        assert [c.args for c in trans.call_args_list] == [(["job-1"], "ERROR_BUILD_ARTIFACTS")]
+
+    @pytest.mark.asyncio
+    async def test_dispatch_chain_invalid_edge_falls_to_failed_technical(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        trans = MagicMock(side_effect=[ValueError("bad edge"), None])
+        out, released = await self._chain(monkeypatch, hop="anticipate_scan", dispatch_key="anticipate_scan", state=cfg.BUILD_ARTIFACTS_BASE_STATE, transition=trans)
+        assert [c.args for c in trans.call_args_list] == [(["job-1"], "ERROR_BUILD_ARTIFACTS"), (["job-1"], "FAILED_TECHNICAL")]
+        assert released == ["job-1"] and out["total_errors"] == 1
