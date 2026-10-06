@@ -578,3 +578,78 @@ context_tokens≈9500
 Plan: fix-board on AST-1997 returned `[board-betty] TESTS: REVISE` — no test asserted `failure_message` / outcome `message` text in `process_gazer_batch`. Orphaned-bug routing filed this gap child instead of running qa-fix inline on AST-1997. Deliverable: a `[bug-repro]` asserting `Scrape failed: <ExceptionType>: <msg>` (plus the empty-message form) and `No job_site to scrape` on both `record_to_company_job_scan` and outcomes, debug=False and True; red on pre-fix ftr, green once AST-1997 lands. Bible: `docs/test-bible/core/gazer.md` § AST-2002.
 
 **Product delivery (AST-2002):** none — test-only gap child; product change is AST-1997 (`src/core/gazer.py`). Repro: `tests/component/core/test_gazer_scrape_failure.py::TestProcessGazerBatchFailureMessage` (red pre-fix, green on ftr — verified in test-fix).
+
+## Radia review (AST-2002)
+
+```
+[code-rubric]
+**Ticket:** AST-2002
+**Publish ref:** `44a2bce7da1dedd1d394bff2f767f3fa8f192cce` (`origin/sub/AST-1928/AST-2002-scrape-failure-message-coverage`)
+**Diff reviewed:** `origin/ftr/AST-1928-gaze-scrape-failure-reason...origin/sub/AST-1928/AST-2002-scrape-failure-message-coverage`
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen **Canon Scope** on AST-2002 is empty (Linear Description has no directive list; test-gap child scoped to tests + bible only). No directive rows on the frozen list; roll-up from canon grades is vacuously clean.
+
+**Board overlap (informational only — not on frozen list):**
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| `patt.test.component-isolation` / bible hygiene | A | | Mocks `check_connectivity`, `scrape_one`, `record_to_company_job_scan`; no DB; bible § AST-2002 names node + manifest. |
+| `stat.logging.warning` | X | | Product path under test, not modified on this tip. |
+
+## Column diff vs plan stage
+
+`no plan-stage validate-plan scores attached` — gap child filed from AST-1997 fix-board Betty `TESTS: REVISE`; no Joan F3 column on this ticket.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** OK — `tests/component/core/test_gazer_scrape_failure.py::TestProcessGazerBatchFailureMessage` pins concrete `_EXPECTED` strings aligned with AST-1997 plan § Proposed change / To-be (`RuntimeError` with message, bare `TimeoutError` → no trailing `": "`, `No job_site to scrape`). Asserts both outcome `message` and `record_to_company_job_scan(..., failure_message=…)`; `@pytest.mark.parametrize("debug", [False, True])`. Would fail on pre-fix `process_gazer_batch` (hard-coded `"Scrape failed"` for scrape failures and nosite); credible repro-first per Betty thread + Hedy test-fix note. Module docstring names bug-repro; file lacks a first-line `# [bug-repro]` tag (see advisory).
+- **`## What must still hold`:** **discuss (process)** — plan-fix patch on `ast-104-track-scan-results.md` § Bug: AST-2002 has no `## What must still hold` block (only deliverable summary). For a test-only gap child, implicit bar is “no `src/**` change; existing gazer/roster nodes stay green.” **Default:** treat Boundaries + bible manifest as sufficient; no recall unless Chuckles wants a formal hold list on gap tickets.
+
+**Trace against implicit holds (on diff):** no `src/**` changes; bible manifest runs new node plus existing `TestProcessGazerBatch` / `TestProcessGazerBatchDebugBranchCoverage` — matches board brief.
+
+## Findings
+
+**fix-now:** none
+
+**discuss:**
+- **Missing `## What must still hold` in plan-fix patch** — see fix-specific check; **Default:** no engineer action before UT.
+
+**advisory:**
+- Add optional first-line `# [bug-repro]` (or docstring tag) in `test_gazer_scrape_failure.py` for parity with qa-fix grep conventions; not required for assertion quality.
+- Hedy `validate-sub-log` heads-up (`plan`/`docs`/`resolve` tokens on gap child) — Chuckles merge-child / commit-shape only; not a Radia product finding.
+- Tip `44a2bce` includes `code(AST-2002): no product change` after Betty qa-fix @ `5115871eb`; review used current `origin/sub/...` after fetch.
+
+## What’s solid
+
+- One parametrized test covers three failure shapes and both debug modes without tautology.
+- `_log` mock prevents `debug=True` from leaking global debug state into later tests.
+- Bible § AST-2002 documents red/green contract and manifest command.
+
+## Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship tests) | 0 fix-now |
+| optional | first-line `[bug-repro]` tag; formal hold list on gap plan template |
+
+## Chuckles disposition
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal (AST-1928 mini-epic, `ftr` live) | → **Review Posted** → §3h clean-review shortcut → **User Testing**; `resolve-child` **skipped** unless Susan wants the discuss default acted on. Stack assumes AST-1997 product already on `origin/ftr/AST-1928-gaze-scrape-failure-reason`. |
+
+context_tokens≈7200
+```
+
+```
+[code-rubric] PROCEED (Commit: 44a2bce) bug-repro coverage landed
+```
+```
