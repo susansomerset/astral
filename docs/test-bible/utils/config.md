@@ -4738,3 +4738,13 @@ Expect 21 failed, 602 passed, 4 skipped — the 21 pre-existing `test_config.py`
 **Revised:** `TestAst479LikePassStates`, `TestAst803FlatBuildArtifactsChainDispatch`, `TestAst874…::test_score_gate_and_ui_manifests`, `TestAst898…::test_ui_sections_and_grade_field`, `TestAst1339…::test_ui_sections_label_no_grade_field`, `TestAst1053MeteoriteGdlJobStates` (2), `TestAst1057MeteoriteRecommendedSection` (now asserts retirement), `TestAst1155…::test_processing_ui_labels_and_grade_fields`, `TestAst1749JobsMeteoritesNav`, `TestBuildStateUiManifest::test_ast522_…`, `TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` (skips `CANDIDATE_SKIPPED` family — deliberately widened, pinned in AST-1974 class).
 
 Manifest: [`ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-1974 item 2.
+
+### AST-2004 · AST-1998 (company `BOT_BLOCK` → `BOT_BLOCKED`)
+
+`COMPANY_STATES["BOT_BLOCKED"] = {}` (terminal); three `company_state_transitions` tuples renamed; `("PJL_READY", "BOT_BLOCKED")` added. Job/meteorite `BOT_BLOCKED` registries (AST-1195 / AST-1560) are separate and untouched.
+
+**New:** **`TestAst2004CompanyBotBlocked`** (rename complete + terminal; no `BOT_BLOCK` tuples; TO_WATCH / JOBS_FOUND / PREFILTER_PASSED / PJL_READY → `BOT_BLOCKED`).
+
+**Revised:** **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** — pinned AST-1806 fixture predates the rename; test translates `COMPANY_STATES` `BOT_BLOCK*` keys/priors to `BOT_BLOCKED*` in-memory (fixture JSON left as captured).
+
+Manifest: **`docs/test-bible/core/roster.md`** § AST-2004.

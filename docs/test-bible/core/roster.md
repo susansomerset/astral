@@ -1081,3 +1081,53 @@ Sibling pages: **`core/consult.md`**, **`core/agent.md`**, **`core/candidate.md`
 1. See **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870 manifest (includes `TestAst1867BalanceHeldCounting` + `TestAst897HoldStateOnBalanceRefusal`).
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/roster.md | shasum`
+
+### AST-2004 · AST-1998 (bot-walled select fall-through → BOT_BLOCKED + job_site)
+
+**Parent:** [AST-1998](https://linear.app/astralcareermatch/issue/AST-1998). **Publish:** `origin/sub/AST-1998/AST-2004-route-bot-walled-job-pages`. Decomposed `PJL_READY` select (`decomposed=True` only): at the final `_check_parse_results` `NO_JOBLIST` fall-through, `_first_bot_walled_page` scans shown pages in `pjl_scrape_pages` order via `gazer.is_bot_wall`; first hit → `BOT_BLOCKED` with that URL as `page_option_url` (`BOT_BLOCKED` ∈ `_PERSIST_PAGE_OPTION_URL_STATES` → `job_site` written). `run_company_task` counts `BOT_BLOCKED` as `total_failed` (guard comment only). Legacy `decomposed=False` locate path unchanged. Shared detector: **`docs/test-bible/core/gazer.md`** § AST-2004. Config rename + transition: **`docs/test-bible/utils/config.md`** § AST-2004.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC2 bot wall → `BOT_BLOCKED`, `job_site` = walled URL | `_check_parse_results` / `_first_bot_walled_page` | **`TestAst2004BotWalledSelect::test_bot_wall_routes_bot_blocked_with_job_site`** |
+| AC3 no wall → `NO_JOBLIST`, pre-run `job_site` kept | same | **`…::test_no_bot_wall_stays_no_joblist_job_site_unchanged`** |
+| AC4 `JOBLIST_TITLES` wins | `_find_job_page_from_assembled` | **`…::test_found_job_list_wins_over_bot_wall`** |
+| AC5 first walled page wins | `_first_bot_walled_page` | **`…::test_first_walled_page_wins`** |
+| AC6 rollup fail 1 / pass 0 / error 0 | `run_company_task` PJL_READY | **`…::test_rollup_counts_bot_blocked_as_fail`** |
+| Legacy `decomposed=False` not rerouted (plan decision) | `_check_parse_results` | **`…::test_legacy_locate_path_not_rerouted`** |
+
+**Broken / obsolete:** `tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` (company key rename vs pinned snapshot) — revised; see config bible.
+
+**Pre-existing failures (not AST-2004):** 74 cases across `test_roster.py` / `test_config.py` red identically with and without this pass (stale `roster.get_page`, `_is_verified_job_site_distinct`, `CANNOT_READ_WEBSITE` vs `PREFILTER_PASSED`, retention/admin-nav literals). Out of scope — not touched.
+
+**Integration:** none — no `tests/integration/` scenario exercises select_job_page / `_classify_jd`.
+
+## QA test manifest
+
+1. **New + revised pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2004BotWalledSelect \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch \
+  tests/component/core/test_roster.py::TestCheckParseResults \
+  tests/component/core/test_roster.py::TestCheckParseResultsBranches \
+  tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue \
+  tests/component/core/test_gazer.py::TestAst2004IsBotWall \
+  tests/component/core/test_gazer.py::TestAst1197ChallengeBotSignals \
+  tests/component/core/test_gazer.py::TestAst1195BotBlockedErrorState \
+  tests/component/utils/test_config.py::TestAst2004CompanyBotBlocked \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge \
+  -q
+```
+
+2. **Grep acceptance (AC1 / AC7 / AC8):**
+
+```bash
+rg -n '"BOT_BLOCK"' src/                 # expect no output
+rg -n "bot_signals" src/core/            # expect exactly 1 hit (gazer.is_bot_wall)
+rg -in "linkedin" src/core/roster.py     # expect no output
+```
+
+3. **Branch lock:** `src/core/roster.py`, `src/core/gazer.py`, `src/utils/config.py` are `LOCKED_AT_100`; new branches (`_first_bot_walled_page` hit/miss, `walled_url` true/false) are covered by item 1. Zero-arg harness lock gate is subject to the pre-existing reds above.
+
+**Bible shasums (record after publish):** `git show origin/sub/AST-1998/AST-2004-route-bot-walled-job-pages:docs/test-bible/core/roster.md | shasum` (likewise `core/gazer.md`, `utils/config.md`).

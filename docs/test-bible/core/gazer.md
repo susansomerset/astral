@@ -499,3 +499,14 @@ Shared `jd_classifier.bot_signals` widened so parent-captured Cloudflare interst
   tests/component/core/test_gazer.py::TestProcessGazerBatchDebugBranchCoverage \
   -q
 ```
+
+### AST-2004 · AST-1998 (shared `is_bot_wall`)
+
+Public `is_bot_wall(text)` = the `jd_classifier` bot-signal count vs `bot_threshold`; `_classify_jd` delegates (one detector — roster select calls the same helper). `None` text safe.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| threshold hit / single-signal miss / `None` | `src/core/gazer.py` | **`TestAst2004IsBotWall::test_threshold_hit_and_miss`** |
+| `_classify_jd` routes through `is_bot_wall` | same | **`TestAst2004IsBotWall::test_classify_jd_delegates`** |
+
+Regression guards unchanged: **`TestAst1197ChallengeBotSignals`**, **`TestAst1195BotBlockedErrorState`**. Manifest: **`docs/test-bible/core/roster.md`** § AST-2004.

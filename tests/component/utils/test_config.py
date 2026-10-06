@@ -6995,6 +6995,11 @@ class TestAst1808RetryRegistryPurge:
         from pathlib import Path
 
         pinned = json.loads((Path(__file__).parent / "fixtures" / "ast1806_prior_snapshot.json").read_text())
+        # AST-2004 renamed company BOT_BLOCK → BOT_BLOCKED after the snapshot; translate keys + priors.
+        ren = lambda s: s.replace("BOT_BLOCK", "BOT_BLOCKED")  # noqa: E731
+        pinned["COMPANY_STATES"] = {
+            ren(k): (None if v is None else [ren(p) for p in v]) for k, v in pinned["COMPANY_STATES"].items()
+        }
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7503,3 +7508,16 @@ class TestAst1974JobsListPartition:
         assert keys[keys.index("state_changed_at") - 1] == "job_created_at"
         col = next(c for c in cfg.JOBS_METEORITES_LIST_COLUMNS if c["key"] == "job_created_at")
         assert col == {"key": "job_created_at", "label": "Created", "sortable": True, "type": "datetime"}
+
+
+# AST-2004 · AST-1998: company BOT_BLOCK → BOT_BLOCKED (terminal) + PJL_READY → BOT_BLOCKED transition.
+class TestAst2004CompanyBotBlocked:
+    def test_rename_complete_and_terminal(self) -> None:
+        assert "BOT_BLOCKED" in cfg.COMPANY_STATES and "BOT_BLOCK" not in cfg.COMPANY_STATES
+        assert cfg.COMPANY_STATES["BOT_BLOCKED"] == {}
+
+    def test_transitions_renamed_and_pjl_ready_added(self) -> None:
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert not [t for t in transitions if "BOT_BLOCK" in t]
+        for src in ("TO_WATCH", "JOBS_FOUND", "PREFILTER_PASSED", "PJL_READY"):
+            assert (src, "BOT_BLOCKED") in transitions, src
