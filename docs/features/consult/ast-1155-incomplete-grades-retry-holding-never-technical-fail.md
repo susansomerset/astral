@@ -1007,3 +1007,10 @@ AST-2001 board-joan done — CANON: OK.
 
 **Triage:** AST-2001’s plan-fix patch is **test tree + `docs/test-bible` only** — no product edits. Proposed work flips/adds component tests and bible rows that **encode AST-1996’s already-shipped contract** (`decode_failures`, per-entity `_run_batch_consult` routing, multi-line `_should_decode_as_encoded_line`, clean-row-wins). That contract was already aligned with the cited fix-lane canon on AST-1996 (`patt.task.dispatch-retry`, batch claim/process/release unchanged, existing `_log_fail_dest` logging). This ticket does not change statutes, patterns, or product behavior; bible rows document **coverage**, not new in-force directives. No canon update, carve-out, or Archie gate indicated. **F3 not indicated.**
 ```
+
+### Make-fix — AST-2001 (verify-only)
+
+No product change — AST-1996 (`96bc0471d`) already on `ftr/AST-1884-decode-line-retry`; `src/` unchanged since. On merged sub tip `fe098451b`:
+
+- Betty's `[bug-repro]` nodes — `test_agent.py::TestDecodePayload`, `test_consult.py::TestEncodedDecodeIsolation`, `test_agent.py::TestAst699LetterPipePositionPrefix::test_should_decode_as_encoded_line_routing` → **12 passed**.
+- `run_component_tests.sh test_agent.py test_consult.py` → 60 failed / 635 passed; every AST-1996 added line and branch in `src/core/agent.py` / `src/core/consult.py` covered (0 missing). All 60 failures are in the pre-fix baseline set (`57ed90983`) — none new.
