@@ -181,3 +181,10 @@ AC1→Stage1; AC2–AC3, AC5–AC6→Stage2; AC4→unchanged `JOBLIST_TITLES` pa
 context_tokens≈42000
 
 [plan-rubric] PROCEED (Commit: ecc3bd6c2) logging + reroute plan solid
+
+## Review
+
+- **Branch:** `sub/AST-1998/AST-2004-route-bot-walled-job-pages`
+- **Stage 1:** `6d13bce65` — `BOT_BLOCKED` rename + shared `is_bot_wall`
+- **Stage 2:** `f7680ff89` — reroute bot-walled `NO_JOBLIST` to `BOT_BLOCKED`
+- **Build notes:** executed as planned, no deviations. Repo has no configured linter; checks were `py_compile`, `git diff --check`, and the AC1/AC7/AC8 greps (all pass). In-memory mock smoke (not committed) matched AC2–AC6.
