@@ -1746,7 +1746,7 @@ Board REVISE: no save-time duplicate rubric-code guard. Product fix lands on AST
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Save-time duplicate-code guard | `src/core/candidate.py` (`normalize_rubric_artifacts_on_save`) | **`TestAst1513DuplicateRubricCodes::test_normalize_rejects_duplicate_do_rubric_codes`** (**[bug-repro]**) |
+| Save-time duplicate-code guard | `src/core/candidate.py` (`normalize_rubric_artifacts_on_save`) | ~~`TestAst1513DuplicateRubricCodes::test_normalize_rejects_duplicate_do_rubric_codes`~~ — **superseded by AST-2008** (raise reversed to uptick; class rewritten as `TestAst2008RubricCodeUptick`, see below) |
 
 **Broken / obsolete:** none — additive guard; existing `TestNormalizeRubricArtifactsOnSaveExtended` unique-code paths unchanged.
 
@@ -1761,6 +1761,56 @@ Board REVISE: no save-time duplicate rubric-code guard. Product fix lands on AST
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_candidate.py::TestAst1513DuplicateRubricCodes \
+  -q
+```
+
+---
+
+### AST-2008 · AST-2007 (fix lane — rubric code uptick, consult timeout retry, ledger call outcome, reconcile off)
+
+**Parent:** AST-2007 (orphaned mini-parent off `origin/dev`). **Publish:** `origin/sub/AST-2007/AST-2008-rubric-codes-timeout-ledger`. Plan: `docs/features/consult/ast-1513-reject-duplicate-do-rubric-codes-meteorite-grade-do-is-failing.md` § Bug: AST-2008. Primary manifest lives here; component pointers in `core/consult.md`, `core/agent.md`, `core/timesheets.md`, `data/database/rubric_vectors.md`, `data/database/dispatch_ledger.md`, `utils/config.md`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Revised (was AST-1513 raise) — duplicate codes no longer raise on save (Repro 1) | `normalize_rubric_artifacts_on_save` | `TestAst2008RubricCodeUptick::test_normalize_accepts_duplicate_do_rubric_codes` |
+| New — later duplicate re-lettered `TP`→`TX` + one WARNING (artifact key, code, new code) | `_uptick_duplicate_rubric_codes` | `…::test_uptick_reletters_later_duplicate_and_logs` |
+| New — reserved originals: `TP,TP,TX` → `TP,TY,TX` (Repro 2) | `_uptick_duplicate_rubric_codes` | `…::test_uptick_never_takes_a_later_original_code` |
+| New — pure: new list, shallow copy for re-lettered item, input untouched; non-dict + blank code pass through | `_uptick_duplicate_rubric_codes` | `…::test_uptick_is_pure_and_passes_non_dict_and_blank_codes` |
+| New — Decision C: all 26 candidates reserved → kept + WARNING, never raises | `_uptick_duplicate_rubric_codes` | `…::test_uptick_exhausted_keeps_duplicate_and_warns` |
+| New — shared save path upticks before sync (UI + craft) | `apply_rubric_vectors_save` | `…::test_apply_save_upticks_before_sync` |
+| New — uptick after QC/GC merge; embedded codes untouched (AST-1085 holds) | `apply_rubric_vectors_save` | `…::test_apply_save_upticks_after_embedded_merge` |
+
+**Broken / obsolete (rewritten this pass):** `TestAst1513DuplicateRubricCodes::test_normalize_rejects_duplicate_do_rubric_codes` (replaced, not annotated); `test_agent.py::TestAst1960LedgerHost::test_ledger_write_failure_never_fails_the_call` (message → "call outcome", now also on failed calls); `test_timesheets.py::TestAst1966RecordNeverWaits::test_openrouter_row_returns_before_blocked_lookup` + `TestRecordTimesheetEntry` (`reconcile_on` fixture — flag on so AST-1966 branches stay covered; initial wait zeroed in the blocked-lookup test); `…::test_unknown_model_raises_after_insert_without_thread` (same fixture — flag-off return would skip the routing `ValueError`).
+
+**Pre-existing reds on this tree (not AST-2008, not in manifest):** `test_timesheets.py::TestAst1966RetryThenGiveUp` (expected waits omit `TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS`); `test_rubric_vectors.py` backfill/purge classes (seed state `NEW`); ~100 more across `test_candidate` / `test_consult` / `test_agent` / `test_config` — identical set before and after this pass.
+
+**Integration:** none (no `tests/integration/` scenario saves rubrics, times out a consult, or reads ledger call columns).
+
+## QA test manifest
+
+1. **[bug-repro] rubric uptick:** `tests/component/core/test_candidate.py::TestAst2008RubricCodeUptick`
+2. **[bug-repro] sync duplicate retire:** `tests/component/data/database/test_rubric_vectors.py::TestAst2008SyncRetiresDuplicateCurrentRows`
+3. **[bug-repro] timeout → retry hop:** `tests/component/core/test_consult.py::TestAst2008RenderVerdictTimeoutRetry`
+4. **[bug-repro] ledger call outcome:** `tests/component/core/test_agent.py::TestAst1960LedgerHost` + `tests/component/data/database/test_dispatch_ledger.py::TestAst2008LedgerCallOutcomeColumns`
+5. **[bug-repro] reconcile off:** `tests/component/core/test_timesheets.py::TestAst2008ReconcileSwitch` + `tests/component/utils/test_config.py::TestAst1964ModelRouting::test_reconcile_ships_disabled`
+6. **Regression (green pre- and post-fix):** `tests/component/core/test_timesheets.py::TestRecordTimesheetEntry`, `…::TestAst1966RecordNeverWaits`, `tests/component/data/database/test_rubric_vectors.py::TestAst723SyncRubricVectors`, `tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal`
+7. **Branch locks:** `candidate.py`, `consult.py`, `agent.py`, `timesheets.py` stay 100% — new branches covered by items 1–5.
+
+**Pass criterion:** items 1–5 red on the pre-fix tree (verified: 21 nodes, each red for the plan's Root cause, not import/fixture); all green after make-fix; item 6 green throughout.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2008RubricCodeUptick \
+  tests/component/data/database/test_rubric_vectors.py::TestAst2008SyncRetiresDuplicateCurrentRows \
+  tests/component/data/database/test_rubric_vectors.py::TestAst723SyncRubricVectors \
+  tests/component/core/test_consult.py::TestAst2008RenderVerdictTimeoutRetry \
+  tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_agent.py::TestAst1960LedgerHost \
+  tests/component/data/database/test_dispatch_ledger.py \
+  tests/component/core/test_timesheets.py::TestAst2008ReconcileSwitch \
+  tests/component/core/test_timesheets.py::TestRecordTimesheetEntry \
+  tests/component/core/test_timesheets.py::TestAst1966RecordNeverWaits \
+  tests/component/utils/test_config.py::TestAst1964ModelRouting \
   -q
 ```
 

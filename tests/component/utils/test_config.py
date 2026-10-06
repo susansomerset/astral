@@ -7444,6 +7444,10 @@ class TestAst1964ModelRouting:
         assert cfg.TIMESHEET_RECONCILE_RETRIES == 5
         assert cfg.TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS == 2
 
+    def test_reconcile_ships_disabled(self) -> None:
+        # AST-2008: platform-cost reconcile off pending a new epic (AST-2007); rows keep catalog cost.
+        assert cfg.TIMESHEET_RECONCILE_ENABLED is False
+
 
 # AST-1974 · AST-1970: Jobs nav re-cut — six lists, four explicit + Processing complement.
 class TestAst1974JobsListPartition:

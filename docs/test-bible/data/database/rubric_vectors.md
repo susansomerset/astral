@@ -114,3 +114,7 @@ Capture hook: **`docs/test-bible/core/agent.md`**. Admin API columns: **`docs/te
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Content + importance on list rows | `src/data/database.py` | `TestAst808ListVectorFeedbackContent` |
+
+### AST-2008 · AST-2007 (sync retires duplicate current rows)
+
+`sync_rubric_vectors_from_criteria`: current rows read `ORDER BY rowid`; a later row whose code is already tracked is retired. **New:** `TestAst2008SyncRetiresDuplicateCurrentRows::test_later_duplicate_row_retired_on_next_sync` (somerset `TP`/`TP` → r1 kept with new importance, r2 `current = 0`, `TX` inserted). Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.

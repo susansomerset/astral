@@ -376,23 +376,81 @@ class TestNormalizeRubricArtifactsOnSaveExtended:
         assert item["importance"] == 7
 
 
-class TestAst1513DuplicateRubricCodes:
-    """AST-1513: reject duplicate rubric vector codes on save (somerset Do TP collision)."""
-
+# AST-2008 (reverses AST-1513's save-time raise): duplicate codes self-heal by re-lettering the later
+# code's last char (X, Y, Z, A … W) before every rubric save. Branches (_uptick_duplicate_rubric_codes):
+# non-dict / blank code pass through; first occurrence kept; later duplicate → first unreserved letter
+# (reserved = every original code, so a later original is never stolen); all 26 taken → kept + warning.
+class TestAst2008RubricCodeUptick:
     _HT_LABEL = "Hands-On Technical Partnership With Engineers"
     _TP_LABEL = "Speaking Truth to Power With Diplomacy"
 
-    def _duplicate_tp_do_rubric(self) -> list:
+    def _somerset_do_rubric(self) -> list:
         return [
             _criterion(code="TP", label=self._HT_LABEL),
-            _criterion(code="TP", label=self._TP_LABEL),
+            _criterion(code="TP", label=self._HT_LABEL),
+            _criterion(code="SD", label=self._TP_LABEL),
         ]
 
-    def test_normalize_rejects_duplicate_do_rubric_codes(self) -> None:
-        with pytest.raises(ValueError, match=r"duplicate code.*TP"):
-            candidate_mod.normalize_rubric_artifacts_on_save(
-                {"do_rubric": self._duplicate_tp_do_rubric()}
-            )
+    def test_normalize_accepts_duplicate_do_rubric_codes(self) -> None:
+        # Repro 1 — today raises "duplicate code 'TP'"; the save must not raise on duplicates.
+        candidate_mod.normalize_rubric_artifacts_on_save({"do_rubric": self._somerset_do_rubric()})
+
+    def test_uptick_reletters_later_duplicate_and_logs(self, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level("WARNING")
+        out = candidate_mod._uptick_duplicate_rubric_codes(self._somerset_do_rubric(), "do_rubric")
+        assert [c["code"] for c in out] == ["TP", "TX", "SD"]
+        msgs = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert any("duplicate code TP" in m and "-> TX" in m and "do_rubric" in m for m in msgs)
+
+    def test_uptick_never_takes_a_later_original_code(self) -> None:
+        # Repro 2 — TX is reserved by the third item, so the duplicate TP skips to TY.
+        crit = [_criterion(code="TP"), _criterion(code="TP"), _criterion(code="TX")]
+        out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
+        assert [c["code"] for c in out] == ["TP", "TY", "TX"]
+
+    def test_uptick_is_pure_and_passes_non_dict_and_blank_codes(self) -> None:
+        raw, blank = "raw", _criterion(code="  ")
+        first, dup = _criterion(code="TP"), _criterion(code="TP")
+        crit = [raw, blank, first, dup]
+        out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
+        assert out is not crit
+        assert out[0] is raw and out[1] is blank and out[2] is first
+        # Shallow copy for the re-lettered item; the input dict (may be an EMBEDDED_* ref) is untouched.
+        assert out[3] is not dup and out[3]["code"] == "TX" and dup["code"] == "TP"
+        assert [c.get("code") for c in crit[1:]] == ["  ", "TP", "TP"]
+
+    def test_uptick_exhausted_keeps_duplicate_and_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        # Decision C — every T? candidate is an original code, so the duplicate TA stays TA (never raises).
+        caplog.set_level("WARNING")
+        crit = [_criterion(code=f"T{ch}") for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"] + [_criterion(code="TA")]
+        out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
+        assert [c["code"] for c in out] == [c["code"] for c in crit]
+        assert any(r.levelname == "WARNING" and "TA" in r.getMessage() for r in caplog.records)
+
+    def test_apply_save_upticks_before_sync(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # UI save and craft persist share apply_rubric_vectors_save — one call site covers both.
+        synced: list[tuple[str, str, list]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "sync_rubric_vectors_from_criteria",
+            lambda cid, owner, val: synced.append((cid, owner, list(val))),
+        )
+        arts: Dict[str, Any] = {"do_rubric": self._somerset_do_rubric()}
+        candidate_mod.apply_rubric_vectors_save("somerset", arts)
+        assert synced[0][:2] == ("somerset", "grade_do")
+        assert [c["code"] for c in synced[0][2]] == ["TP", "TX", "SD"]
+
+    def test_apply_save_upticks_after_embedded_merge(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1085 still holds: QC/GC appended and never re-lettered; the candidate duplicate is.
+        synced: list[tuple[str, str, list]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "sync_rubric_vectors_from_criteria",
+            lambda cid, owner, val: synced.append((cid, owner, list(val))),
+        )
+        arts: Dict[str, Any] = {"jobdesc_rubric": [_criterion(code="JD"), _criterion(code="JD")]}
+        candidate_mod.apply_rubric_vectors_save("c2008", arts)
+        assert [c["code"] for c in synced[0][2]] == ["JD", "JX", "QC", "GC"]
 
 
 class TestNormalizeImportanceValue:

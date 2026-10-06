@@ -267,6 +267,40 @@ class TestAst723SyncRubricVectors:
         assert db.count_rubric_vectors_for_candidate_task("cand-1", "grade_do", current_only=False) == 2
 
 
+
+# AST-2008 Step 2: two current rows sharing a code (legacy somerset TP/TP). Branch: code already in
+# current_by_code -> retire the later row (rowid order) instead of overwriting the earlier one.
+class TestAst2008SyncRetiresDuplicateCurrentRows:
+    def _seed(self, db, task_uuid: str, label: str, content: str) -> str:
+        return db.insert_rubric_vector_row(
+            candidate_id="somerset", task_key="grade_do", task_key_uuid=task_uuid, code="TP", label=label,
+            content=content, importance=5,
+            content_fingerprint=rubric_text.rubric_vector_content_fingerprint(label, content),
+        )
+
+    def test_later_duplicate_row_retired_on_next_sync(self, seeded_db) -> None:
+        # Repro 3 - today the dict keeps r2, so r1 is never matched and r2 is re-inserted: TP, TP, TX.
+        db = seeded_db
+        db.save_agent_task("grade_do", agent_id="a1", user_prompt="p")
+        task_uuid = db.get_current_agent_task_uuid("grade_do")
+        r1 = self._seed(db, task_uuid, "Hands-On Technical Partnership", "partner body")
+        r2 = self._seed(db, task_uuid, "Speaking Truth to Power", "truth body")
+        db.sync_rubric_vectors_from_criteria(
+            "somerset",
+            "grade_do",
+            [
+                {"code": "TP", "label": "Hands-On Technical Partnership", "content": "partner body", "importance": 7},
+                {"code": "TX", "label": "Speaking Truth to Power", "content": "truth body", "importance": 5},
+            ],
+        )
+        current = {r["code"]: r for r in db.list_rubric_vectors("somerset", "grade_do", current_only=True)}
+        assert sorted(current) == ["TP", "TX"]
+        assert current["TP"]["rubric_vector_uuid"] == r1
+        assert current["TP"]["importance"] == 7
+        all_rows = {r["rubric_vector_uuid"]: r for r in db.list_rubric_vectors("somerset", "grade_do", current_only=False)}
+        assert all_rows[r2]["current"] == 0
+        assert len(all_rows) == 3
+
 class TestAst723RubricTokenMigration:
     def test_replaces_legacy_rubric_tokens_on_agent_task(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory

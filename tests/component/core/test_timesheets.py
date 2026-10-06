@@ -14,6 +14,28 @@ from src.core import timesheets as timesheets_mod
 from src.utils.logging import log_batch_id
 
 
+@pytest.fixture
+def reconcile_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AST-2008: TIMESHEET_RECONCILE_ENABLED ships False; the AST-1966 routing/thread branches run only when on."""
+    monkeypatch.setattr(timesheets_mod, "TIMESHEET_RECONCILE_ENABLED", True, raising=False)
+
+
+# AST-2008 Step 6: flag off → row inserted, then return before routing — no thread, no lookup.
+class TestAst2008ReconcileSwitch:
+    def test_flag_off_inserts_row_and_starts_no_thread(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Repro 6 — today an openrouter-routed row always spawns the reconcile thread.
+        db = sqlite_in_memory
+        thread, routing = MagicMock(), MagicMock(return_value="openrouter")
+        monkeypatch.setattr(timesheets_mod, "TIMESHEET_RECONCILE_ENABLED", False, raising=False)
+        monkeypatch.setattr(timesheets_mod.threading, "Thread", thread)
+        monkeypatch.setattr(timesheets_mod, "get_model_routing", routing)
+        timesheets_mod.record_timesheet_entry(**_row_kwargs("gen-x", "batch-1"))
+        thread.assert_not_called()
+        routing.assert_not_called()
+        assert _row(db, "gen-x")["platform_cost"] is None
+
+
+@pytest.mark.usefixtures("reconcile_on")
 class TestRecordTimesheetEntry:
     def test_delegates_to_database_add(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # AST-1966: a row with a generation id must name a catalog model (routing lookup); direct → no reconcile.
@@ -90,6 +112,7 @@ def keyed(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return waits
 
 
+@pytest.mark.usefixtures("reconcile_on")
 class TestAst1966RecordNeverWaits:
     def test_openrouter_row_returns_before_blocked_lookup(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
         # AC 4 — lookup blocked on a gate: record returns at once, row exists with NULL platform cost; the
@@ -97,6 +120,8 @@ class TestAst1966RecordNeverWaits:
         db = sqlite_in_memory
         gate, seen = threading.Event(), {}
         monkeypatch.setattr(timesheets_mod, "get_candidate", lambda cid: {"candidate_api_keys": {"openrouter": _KEY}})
+        # Real sleep on the thread — skip the pre-lookup wait so the 5s poll below can see the write.
+        monkeypatch.setattr(timesheets_mod, "TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS", 0)
 
         def blocked(generation_id: str, api_key: str) -> dict[str, Any]:
             seen.update(id=generation_id, key=api_key, batch=log_batch_id.get(), daemon=threading.current_thread().daemon)
