@@ -2429,14 +2429,6 @@ async def jobs_found_process_job_site(
         )
 
 
-def _pjl_scrape_ledger_keys(pjl_scrape_pages: list) -> Set[str]:
-    return {
-        normalize_link(row["url"])
-        for row in (pjl_scrape_pages or [])
-        if row.get("url")
-    }
-
-
 _DOWNLOAD_URL_SUFFIXES = (
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".csv",
 )
@@ -2486,16 +2478,23 @@ async def _scrape_pjl_page(
 
 
 def _merge_pjl_scrape_record(existing_pages: list, new_record: dict) -> list:
-    if normalize_link(new_record.get("url") or "") in _pjl_scrape_ledger_keys(existing_pages):
-        return existing_pages
+    """Upsert a PJL capture by normalize_link (AST-1995): replace in place, else append.
+    Errored or empty captures never overwrite — the prior row survives a transient failure."""
     text = (new_record.get("visible_text") or "").strip()
-    if not text:
+    if new_record.get("error") or not text:
         return existing_pages
     row: Dict[str, Any] = {"url": new_record["url"], "visible_text": text}
     enum_nav = (new_record.get("enumerated_nav_links") or "").strip()
     if enum_nav:
         row["enumerated_nav_links"] = enum_nav
-    return list(existing_pages or []) + [row]
+    key = normalize_link(new_record.get("url") or "")
+    pages = list(existing_pages or [])
+    for i, prior in enumerate(pages):
+        # Whole-row replace keeps the page's position (assembled content page numbering).
+        if normalize_link(prior.get("url") or "") == key:
+            pages[i] = row
+            return pages
+    return pages + [row]
 
 
 def _merge_pjl_nav_links(existing_enum: str, new_urls: List[str]) -> str:
