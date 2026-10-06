@@ -360,14 +360,15 @@ def _should_decode_as_encoded_line(text: str) -> bool:
     """True when a pipe line has AST-357 encoded grade segments (e.g. RCA3), not letter-pipe grades."""
     from src.core.agent import _GRADE_SEG
 
-    line = next((ln.strip() for ln in text.splitlines() if ln.strip()), text.strip())
-    fields = [f.strip() for f in line.split("|")]
-    if fields and re.match(r"^\d{1,3}$", fields[0]):
-        fields = fields[1:]
-    for f in fields:
-        norm = "".join(ch for ch in f if ch not in " -:")
-        if _GRADE_SEG.match(norm):
-            return True
+    # Any line, not just the first — a fully malformed first line must not misroute the batch (AST-1996).
+    for line in (ln.strip() for ln in text.splitlines() if ln.strip()):
+        fields = [f.strip() for f in line.split("|")]
+        if fields and re.match(r"^\d{1,3}$", fields[0]):
+            fields = fields[1:]
+        for f in fields:
+            norm = "".join(ch for ch in f if ch not in " -:")
+            if _GRADE_SEG.match(norm):
+                return True
     return False
 
 
@@ -1268,6 +1269,12 @@ async def _run_analysis_upshot_batch(
                 _warn_job(aid, row.get("state") or "-", "provider balance refusal — state held")
                 errors += 1
                 continue
+            if result.get("empty_tokens"):
+                dest = _empty_token_fail_dest(task_cfg.get("error_state"))
+                logger.debug("empty_tokens route aid=%s dest=%s", aid, dest)
+                _transition_job_state_for_task(task_key, [aid], dest)
+                errors += 1
+                continue
             dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest)
@@ -1463,6 +1470,11 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
             }
+        if result.get("empty_tokens"):
+            dest = _empty_token_fail_dest(error_state)
+            logger.debug("empty_tokens route aid=%s dest=%s", astral_job_id, dest)
+            _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+            return {"success": False, "to_state": dest, "error": result.get("error")}
         return _fail(result.get("error", "do_task failed"))
 
     parsed = result["parsed_response"]
@@ -1539,6 +1551,16 @@ def _consult_batch_fail_dest(entity_state: Optional[str], error_state: Optional[
         # analysis_upshot: TASK_CONFIG error_state IS the retry holding (PASSED_LIKE_RETRY)
         return "FAILED_TECHNICAL"
     return error_state
+
+
+def _empty_token_fail_dest(*error_states: Optional[str]) -> str:
+    """AST-2000: empty-token do_task → first configured non-retry error_state, else FAILED_TECHNICAL.
+    Never a _RETRY holding — a retry renders the same blank (data defect, not an agent goof)."""
+    for es in error_states:
+        es = (es or "").strip()
+        if es and not retry_base(es):
+            return es
+    return "FAILED_TECHNICAL"
 
 
 def _transition_batch_consult_failures(
@@ -1645,6 +1667,14 @@ async def _run_batch_consult(
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
             }
+        if result.get("empty_tokens"):
+            dest = _empty_token_fail_dest(error_state)
+            logger.debug("empty_tokens route task=%s ids=%s dest=%s", task_key, astral_ids, dest)
+            _transition_job_state_for_task(task_key, astral_ids, dest)
+            return {
+                "success": False, "error": result.get("error"),
+                "passed": 0, "failed": 0, "total": len(jobs), "retried": 0,
+            }
         logger.debug(
             "do_task failed task=%s error=%r error_state=%r",
             task_key, result.get("error"), error_state,
@@ -1702,9 +1732,22 @@ async def _run_batch_consult(
     received_ids = {rj["astral_job_id"] for rj in response_jobs}
     missing = sent_ids - received_ids
     fabricated = received_ids - sent_ids
+    # Per-line decode slips (AST-1996) — a clean row for the same entity wins.
+    decode_failed = {
+        f["astral_job_id"]: f["reason"]
+        for f in (parsed.get("decode_failures") or [])
+        if f.get("astral_job_id") and f["astral_job_id"] not in received_ids
+    }
+    missing -= decode_failed.keys()
     missing_rows: List[Dict[str, Any]] = []
     missing_dest_counts: Dict[str, int] = {}
     retried = 0
+
+    # One call per entity so each fail-dest log line carries its own malformed line.
+    for aid, reason in decode_failed.items():
+        retried += _transition_batch_consult_failures(
+            task_key, [input_by_id[aid]], error_state, reason=f"decode: {reason}",
+        )
 
     if missing:
         missing_rows = [input_by_id[mid] for mid in missing if mid in input_by_id]
@@ -1807,6 +1850,8 @@ async def _run_batch_consult(
         errors.append(f"fabricated {len(fabricated)} IDs: {sorted(fabricated)}")
     if bad_grades:
         errors.append(f"bad grades on {len(bad_grades)} IDs: {sorted(bad_grades)}")
+    if decode_failed:
+        errors.append(f"decode failed on {len(decode_failed)} IDs: {sorted(decode_failed)}")
     truncated_note = None
     if missing:
         missing_dests_set = {
@@ -1826,7 +1871,7 @@ async def _run_batch_consult(
     )
 
     return {
-        "success": not fabricated and not bad_grades,
+        "success": not fabricated and not bad_grades and not decode_failed,
         "passed": passed,
         "failed": failed,
         "total": len(jobs),
@@ -1834,6 +1879,7 @@ async def _run_batch_consult(
         "missing": sorted(missing) if missing else None,
         "fabricated": sorted(fabricated) if fabricated else None,
         "bad_grades": sorted(bad_grades) if bad_grades else None,
+        "decode_failed": sorted(decode_failed) if decode_failed else None,
         "error": "; ".join(errors) if errors else None,
         "truncated_note": truncated_note,
     }
@@ -2530,6 +2576,21 @@ async def _run_dispatch_chain_job_batch(
             tracker.release_job_dispatch_claim(aid)
             raise
         if not result.get("success"):
+            if result.get("empty_tokens"):
+                # Failing hop's error_state first (mid-chain included), then the entry task's.
+                dest = _empty_token_fail_dest(
+                    TASK_CONFIG.get(result.get("empty_token_task") or "", {}).get("error_state"),
+                    TASK_CONFIG.get(dispatch_task_key, {}).get("error_state"),
+                )
+                logger.debug("empty_tokens route aid=%s dest=%s", aid, dest)
+                try:
+                    tracker.transition_job_state([aid], dest)
+                except ValueError:
+                    # FAILED_TECHNICAL has no prior_states — the job never stays on its hop label.
+                    tracker.transition_job_state([aid], "FAILED_TECHNICAL")
+                tracker.release_job_dispatch_claim(aid)
+                errors += 1
+                continue
             tracker.release_job_dispatch_claim(aid)
             _warn_job(aid, row.get("state") or "-", result.get("error") or "do_task failed")
             errors += 1

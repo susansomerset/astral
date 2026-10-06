@@ -386,7 +386,8 @@ def _enrich_tasks(candidate_id: str) -> list:
             resolved_model_key = ""
             model_cfg: Dict = {}
             # List probe, not a hop — empty {$CALLER_*} is expected (AST-530 chain_entry).
-            _cc = _chain_context(agent, cd, task_key, None, chain_entry=True) if agent else None
+            # AST-2000: token-count probe, not a model call — empty tokens are expected, stay quiet.
+            _cc = _chain_context(agent, cd, task_key, None, chain_entry=True, warn_on_empty=False) if agent else None
             if agent:
                 try:
                     route = resolve_agent_settings((agent.get("model_id") or "").strip(), agent)
@@ -400,11 +401,11 @@ def _enrich_tasks(candidate_id: str) -> list:
                     )
             if full_task and agent:
                 system_content = resolved_task_system(
-                    agent, full_task, cd, task_key, _cc, chain_entry=True
+                    agent, full_task, cd, task_key, _cc, chain_entry=True, warn_on_empty=False
                 )
             elif agent:
                 system_content = resolve_tokens(
-                    agent.get("content") or "", cd, task_key, _cc, chain_entry=True
+                    agent.get("content") or "", cd, task_key, _cc, chain_entry=True, warn_on_empty=False
                 )
             else:
                 system_content = ""
@@ -438,7 +439,7 @@ def _enrich_tasks(candidate_id: str) -> list:
             if full_task and agent_id:
                 for ck in ("cache_prompt", "cache_prompt_b", "cache_prompt_c", "cache_prompt_d"):
                     txt = resolve_tokens(
-                        full_task.get(ck) or "", cd, task_key, _cc, chain_entry=True
+                        full_task.get(ck) or "", cd, task_key, _cc, chain_entry=True, warn_on_empty=False
                     )
                     cache_probe_parts.append(txt)
                 combined_cache_probe = "\n---\n".join(cache_probe_parts)

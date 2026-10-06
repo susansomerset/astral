@@ -6884,6 +6884,47 @@ class TestAst1779EmptyRenderForPrompts:
         assert out == {"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}
 
 
+class TestAst2006ResolveTokensEmptyCollector:
+    """AST-2006 / AST-2000: resolve_tokens(empty_tokens=[...]) collects blank recognized names quietly."""
+
+    _TASK = "grade_get"
+
+    def test_collects_blank_names_ordered_unique_across_sources(self, caplog) -> None:
+        # candidate + job + mid-chain CALLER_* blanks, FIRST_NAME repeated; collector path never warns.
+        import logging
+
+        got: list = []
+        with caplog.at_level(logging.WARNING):
+            out = cfg.resolve_tokens(
+                "{$FIRST_NAME} {$VISIBLE_JD} {$FIRST_NAME} {$CALLER_RESPONSE} {$LAST_NAME}",
+                {"first": "", "last": "Lee"},
+                self._TASK,
+                chain_context={"CALLER_RESPONSE": ""},
+                job_context={"VISIBLE_JD": "  "},
+                empty_tokens=got,
+            )
+        assert got == ["FIRST_NAME", "VISIBLE_JD", "CALLER_RESPONSE"]
+        assert out.endswith("Lee")
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    def test_unrecognized_token_stays_literal_and_is_not_collected(self) -> None:
+        got: list = []
+        out = cfg.resolve_tokens("{$NOT_A_TOKEN} {$FIRST_NAME}", {"first": "Ada"}, self._TASK, empty_tokens=got)
+        assert out == "{$NOT_A_TOKEN} Ada"
+        assert got == []
+
+    def test_default_call_unchanged_still_warns(self, caplog) -> None:
+        # No collector → same substitution and the existing per-token WARNING.
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            out = cfg.resolve_tokens("Hi {$FIRST_NAME}", {"first": "", "full": ""}, self._TASK)
+        assert out == "Hi "
+        assert [r.message for r in caplog.records if "resolved to empty" in r.message] == [
+            "Token {$FIRST_NAME} resolved to empty (path=first, task=grade_get)"
+        ]
+
+
 class TestAst1788ManageListAndProfileSlackChannelShapes:
     """AST-1788: manage list slack_username + profile channel id/name after username."""
 
@@ -6995,6 +7036,11 @@ class TestAst1808RetryRegistryPurge:
         from pathlib import Path
 
         pinned = json.loads((Path(__file__).parent / "fixtures" / "ast1806_prior_snapshot.json").read_text())
+        # AST-2004 renamed company BOT_BLOCK → BOT_BLOCKED after the snapshot; translate keys + priors.
+        ren = lambda s: s.replace("BOT_BLOCK", "BOT_BLOCKED")  # noqa: E731
+        pinned["COMPANY_STATES"] = {
+            ren(k): (None if v is None else [ren(p) for p in v]) for k, v in pinned["COMPANY_STATES"].items()
+        }
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7503,3 +7549,16 @@ class TestAst1974JobsListPartition:
         assert keys[keys.index("state_changed_at") - 1] == "job_created_at"
         col = next(c for c in cfg.JOBS_METEORITES_LIST_COLUMNS if c["key"] == "job_created_at")
         assert col == {"key": "job_created_at", "label": "Created", "sortable": True, "type": "datetime"}
+
+
+# AST-2004 · AST-1998: company BOT_BLOCK → BOT_BLOCKED (terminal) + PJL_READY → BOT_BLOCKED transition.
+class TestAst2004CompanyBotBlocked:
+    def test_rename_complete_and_terminal(self) -> None:
+        assert "BOT_BLOCKED" in cfg.COMPANY_STATES and "BOT_BLOCK" not in cfg.COMPANY_STATES
+        assert cfg.COMPANY_STATES["BOT_BLOCKED"] == {}
+
+    def test_transitions_renamed_and_pjl_ready_added(self) -> None:
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        assert not [t for t in transitions if "BOT_BLOCK" in t]
+        for src in ("TO_WATCH", "JOBS_FOUND", "PREFILTER_PASSED", "PJL_READY"):
+            assert (src, "BOT_BLOCKED") in transitions, src

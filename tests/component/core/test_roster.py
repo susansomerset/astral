@@ -732,12 +732,13 @@ class TestAst826DedupeSelectJobPageNav:
 class TestAst719PjlRosterHelpers:
     """AST-719: additive PJL scrape ledger helpers."""
 
-    def test_merge_pjl_scrape_record_skips_duplicate_and_empty(self) -> None:
+    def test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty(self) -> None:
         existing = [{"url": "https://acme.com/careers", "visible_text": "keep"}]
+        # AST-1995: same URL is an upsert (refresh), not a skip.
         assert roster_mod._merge_pjl_scrape_record(
             existing,
             {"url": "https://acme.com/careers", "visible_text": "dup"},
-        ) == existing
+        ) == [{"url": "https://acme.com/careers", "visible_text": "dup"}]
         assert roster_mod._merge_pjl_scrape_record(
             existing,
             {"url": "https://acme.com/jobs", "visible_text": "  "},
@@ -748,6 +749,39 @@ class TestAst719PjlRosterHelpers:
         )
         assert len(merged) == 2
         assert merged[1]["visible_text"] == "new page"
+
+    def test_ast1995_upsert_replaces_matching_row_in_place(self) -> None:
+        existing = [
+            {"url": "https://acme.com/careers", "visible_text": "a"},
+            {"url": "https://acme.com/jobs", "visible_text": "b"},
+            {"url": "https://acme.com/team", "visible_text": "c"},
+        ]
+        snapshot = [dict(r) for r in existing]
+        # Scheme / case / trailing slash differ — still the same normalize_link key.
+        merged = roster_mod._merge_pjl_scrape_record(
+            existing, {"url": "http://ACME.com/jobs/", "visible_text": " fresh "},
+        )
+        assert merged == [
+            snapshot[0],
+            {"url": "http://ACME.com/jobs/", "visible_text": "fresh"},
+            snapshot[2],
+        ]
+        assert existing == snapshot  # caller's list not mutated
+
+    def test_ast1995_error_record_discarded_even_with_text(self) -> None:
+        existing = [{"url": "https://acme.com/careers", "visible_text": "keep"}]
+        for url in ("https://acme.com/careers", "https://acme.com/jobs"):
+            assert roster_mod._merge_pjl_scrape_record(
+                existing, {"url": url, "visible_text": "partial", "error": "boom"},
+            ) == existing
+
+    def test_ast1995_whole_row_replace_drops_enumerated_nav_links(self) -> None:
+        existing = [{"url": "https://acme.com/careers", "visible_text": "old",
+                     "enumerated_nav_links": "1: https://acme.com/jobs/a"}]
+        merged = roster_mod._merge_pjl_scrape_record(
+            existing, {"url": "https://acme.com/careers", "visible_text": "new"},
+        )
+        assert merged == [{"url": "https://acme.com/careers", "visible_text": "new"}]
 
     def test_merge_pjl_scrape_record_persists_enumerated_nav_links(self) -> None:
         merged = roster_mod._merge_pjl_scrape_record(
@@ -6727,3 +6761,184 @@ class TestAst1846PrefilterRetryWarnThenError:
         # fetch_website routes scrape failures to WFR / CANNOT_READ_WEBSITE — never an error_state.
         assert _ast1846_levels(caplog, "company homepage scrape") == ["WARNING"]
         assert not [r for r in caplog.records if r.levelno >= 40]
+
+
+# AST-2004 · AST-1998: decomposed select NO_JOBLIST fall-through → BOT_BLOCKED when a shown page is a bot wall.
+# Branches: _first_bot_walled_page hit / miss (full loop); _check_parse_results walled_url true / false;
+# decomposed=False never runs the check (legacy locate path unchanged).
+class TestAst2004BotWalledSelect:
+    _HOME = ("https://acme.com", "Welcome to Acme. We build widgets. About us. Contact.")
+    # Two jd_classifier bot signals ("New to LinkedIn? Join now" + "Sign in with Email") = threshold 2.
+    _WALL_TEXT = "Acme | LinkedIn. New to LinkedIn? Join now. Sign in with Email. Agree & Join LinkedIn."
+    _WALL_1 = "https://www.linkedin.com/company/acme/jobs"
+    _WALL_2 = "https://www.linkedin.com/company/acme/life"
+    _PRE_RUN_JOB_SITE = "https://old.acme.com/jobs"
+
+    def _company(self, pages: List[tuple]) -> Dict[str, Any]:
+        assembled = "\n".join(f"=== PAGE {i}: {u} ===\n{t}" for i, (u, t) in enumerate(pages, 1))
+        return _company(
+            state="PJL_READY",
+            company_website="https://acme.com",
+            job_site=self._PRE_RUN_JOB_SITE,
+            company_data={
+                "pjl_assembled_content": assembled,
+                "pjl_scrape_pages": [{"url": u, "visible_text": t} for u, t in pages],
+                "possible_joblist_links": [u for u, _ in pages],
+                "nav_links": "",
+            },
+        )
+
+    def _wire(self, monkeypatch: pytest.MonkeyPatch, company: Dict[str, Any], parsed: Dict[str, Any]) -> Dict[str, MagicMock]:
+        mocks = {"update": MagicMock(), "transition": MagicMock()}
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "update_company", mocks["update"])
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", mocks["transition"])
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": parsed}))
+        return mocks
+
+    _NO_JOBLIST = {"response_type": "NO_JOBLIST_FOUND", "selected_page": 0}
+
+    @pytest.mark.asyncio
+    async def test_bot_wall_routes_bot_blocked_with_job_site(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC2: page 2 is a LinkedIn auth wall → BOT_BLOCKED, job_site = walled URL (not website, not pre-run).
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT)])
+        mocks = self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "BOT_BLOCKED"
+        assert out["job_site"] == self._WALL_1
+        mocks["transition"].assert_called_once_with("acme", "BOT_BLOCKED")
+        assert mocks["update"].call_args.kwargs["job_site"] == self._WALL_1
+
+    @pytest.mark.asyncio
+    async def test_no_bot_wall_stays_no_joblist_job_site_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC3: no page reaches the threshold → NO_JOBLIST, job_site keeps its pre-run value.
+        company = self._company([self._HOME, ("https://acme.com/about", "Our team and mission.")])
+        mocks = self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "NO_JOBLIST"
+        mocks["transition"].assert_called_once_with("acme", "NO_JOBLIST")
+        assert mocks["update"].call_args.kwargs["job_site"] == self._PRE_RUN_JOB_SITE
+
+    @pytest.mark.asyncio
+    async def test_found_job_list_wins_over_bot_wall(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC4: same walled pages, Grace found titles on page 1 → JOBLIST_IDENTIFIED.
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT)])
+        parsed = {"response_type": "JOBLIST_TITLES", "selected_page": 1, "job_titles": ["Engineer"]}
+        mocks = self._wire(monkeypatch, company, parsed)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "JOBLIST_IDENTIFIED"
+        mocks["transition"].assert_called_once_with("acme", "JOBLIST_IDENTIFIED")
+
+    @pytest.mark.asyncio
+    async def test_first_walled_page_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC5: pages 2 and 3 both walled → job_site is page 2's URL.
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT), (self._WALL_2, self._WALL_TEXT)])
+        self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "BOT_BLOCKED"
+        assert out["job_site"] == self._WALL_1
+
+    @pytest.mark.asyncio
+    async def test_rollup_counts_bot_blocked_as_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC6: run_company_task on the AC2 fixture → 1 fail, 0 pass, 0 error.
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT)])
+        self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_company_task(
+            "PJL_READY", company, "batch-2004", dispatch_task_key="select_job_page",
+        )
+        assert (out["total_failed"], out["total_passed"], out["total_errors"]) == (1, 0, 0)
+
+    @pytest.mark.asyncio
+    async def test_legacy_locate_path_not_rerouted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Plan decision: decomposed=False (legacy TO_WATCH/JOBS_FOUND/PREFILTER_PASSED) stays NO_JOBLIST.
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", save)
+        out = await roster_mod._check_parse_results(
+            {"response_type": "NO_JOBLIST_FOUND"}, "NO_JOBLIST_FOUND", "acme", "https://acme.com", "",
+            page_dom_map={}, decomposed=False, page_url_map={1: self._WALL_1}, visible_map={1: self._WALL_TEXT},
+        )
+        assert out["state"] == "NO_JOBLIST"
+        assert save.call_args.kwargs["state"] == "NO_JOBLIST"
+
+
+class TestAst2006EmptyTokenCompanyTerminals:
+    """AST-2006 / AST-2000: empty_tokens on a company flow → that flow's terminal error state, no retry, no save."""
+
+    _EMPTY = {"success": False, "error": "Empty tokens: X (task=t)", "empty_tokens": ["X"], "empty_token_task": "t"}
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_goes_to_error_prefilter(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        trans = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        companies = [{"short_name": sn, "state": "HOMEPAGE_READY", "company_data": {}} for sn in ("a", "b")]
+        out = await roster_mod._run_batch_company_prefilter("b-2006", companies)
+        assert ROSTER_CONFIG["prefilter"]["error_state"] == "ERROR_PREFILTER"
+        assert trans.call_args_list == [call("a", "ERROR_PREFILTER"), call("b", "ERROR_PREFILTER")]
+        assert out == {"passed": 0, "failed": 0, "total": 2, "retried": 0}
+
+    @pytest.mark.asyncio
+    async def test_select_job_page_goes_to_error_locate_without_no_joblist(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        trans, saver = MagicMock(), MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme", company_website="https://cw", assembled_content="asm",
+            page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
+            nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
+        )
+        assert ROSTER_CONFIG["locate_job_page"]["error_state"] == "ERROR_LOCATE_JOB_PAGE"
+        trans.assert_called_once_with("acme", "ERROR_LOCATE_JOB_PAGE")
+        assert out["state"] == "ERROR_LOCATE_JOB_PAGE" and out["error"] == self._EMPTY["error"]
+        assert "state_held" not in out
+        saver.assert_not_called()  # no NO_JOBLIST save
+
+    @pytest.mark.asyncio
+    async def test_fetch_parse_job_list_surfaces_empty_tokens_without_notes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        out = await roster_mod._fetch_parse_job_list("<html/>", "acme")
+        assert out == {"empty_tokens": ["X"], "error": self._EMPTY["error"]}
+        save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_select_only_parse_goes_to_error_locate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        trans, save_data = MagicMock(), MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "save_company_data", save_data)
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        monkeypatch.setattr(roster_mod, "find_job_containers", MagicMock(return_value=["s"]))
+        monkeypatch.setattr(roster_mod, "_fetch_parse_job_list", AsyncMock(return_value={"empty_tokens": ["X"], "error": "e"}))
+        out = await roster_mod._finalize_joblist_titles_select_only(
+            {"job_titles": ["Dev"], "response_type": "JOBLIST_TITLES"}, "acme", "https://cw", "https://js",
+            {"blob": "<div><a>H</a></div>"}, "blob", "JOBLIST_TITLES", False, {}, {},
+        )
+        trans.assert_called_once_with("acme", "ERROR_LOCATE_JOB_PAGE")
+        assert out["state"] == "ERROR_LOCATE_JOB_PAGE" and out["error"] == "e"
+        # job_titles persist before the parse hop; the empty-token branch adds no parse notes.
+        assert not any("parse_job_list_notes" in c.args[1] for c in save_data.call_args_list)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("state", ["JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY"])
+    async def test_parse_dispatch_goes_to_terminal_from_either_trigger(
+        self, monkeypatch: pytest.MonkeyPatch, state: str,
+    ) -> None:
+        # AST-721 harness; the parse hop reports empty tokens → COULD_NOT_PARSE_JOBLIST, never JOBLIST_IDENTIFIED_RETRY.
+        company = TestAst721ParseJobListDispatch._identified_company(state=state)
+        trans, save_co = MagicMock(), MagicMock()
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "_save_company", save_co)
+        monkeypatch.setattr(roster_mod, "transition_company_state", trans)
+        monkeypatch.setattr(roster_mod, "create_browser_context", TestAst721ParseJobListDispatch._browser_cm())
+        monkeypatch.setattr(roster_mod, "_scrape_list_page_dom_for_parse", AsyncMock(return_value="<html>dom</html>"))
+        monkeypatch.setattr(roster_mod, "find_job_containers", MagicMock(return_value=["<div>Engineer</div>"]))
+        monkeypatch.setattr(roster_mod, "_fetch_parse_job_list", AsyncMock(return_value={"empty_tokens": ["X"], "error": "e"}))
+        out = await roster_mod.run_parse_job_list_dispatch(company, "b-2006")
+        assert ROSTER_CONFIG["parse_job_list"]["terminal_fail_state"] == "COULD_NOT_PARSE_JOBLIST"
+        trans.assert_called_once_with(company["short_name"], "COULD_NOT_PARSE_JOBLIST")
+        assert out["state"] == "COULD_NOT_PARSE_JOBLIST" and out["error"] == "e"
+        save_co.assert_not_called()

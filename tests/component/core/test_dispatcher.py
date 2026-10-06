@@ -1209,6 +1209,74 @@ class TestDispatchOne:
         await dispatcher_mod._dispatch_one(task)
         assert update_ledger.call_args.kwargs["status"] == "FAILED"
 
+    # AST-1988: unified entity run stamps log_candidate_id beside log_batch_id and clears both in finally.
+    # Branches: loop ok → stamped mid-run, cleared; loop raises → still cleared; run_next chain → neither stamped here.
+    def _ast1988_run(self, monkeypatch: pytest.MonkeyPatch, task_id: int, loop_side_effect) -> list:
+        # test_completes_click_dispatch patch set; the loop mock records (batch, candidate) mid-run.
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_keys": {"anthropic": "key"}},
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_check_circuit_breaker", MagicMock())
+        seen: list = []
+
+        async def _loop(*_a, **_k):
+            seen.append((dispatcher_mod.log_batch_id.get(), dispatcher_mod.log_candidate_id.get()))
+            if loop_side_effect is not None:
+                raise loop_side_effect
+
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=_loop))
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[task_id] = {"asyncio_task": None}
+        return seen
+
+    async def _ast1988_dispatch(self, task: Dict[str, Any]) -> None:
+        # Start both vars at None (tokens) so a leak elsewhere can't green the post-run checks.
+        tb = dispatcher_mod.log_batch_id.set(None)
+        tc = dispatcher_mod.log_candidate_id.set(None)
+        try:
+            await dispatcher_mod._dispatch_one(task)
+            assert dispatcher_mod.log_batch_id.get() is None
+            assert dispatcher_mod.log_candidate_id.get() is None
+        finally:
+            dispatcher_mod.log_candidate_id.reset(tc)
+            dispatcher_mod.log_batch_id.reset(tb)
+
+    @pytest.mark.asyncio
+    async def test_ast1988_unified_run_stamps_candidate_with_batch_and_clears(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = self._ast1988_run(monkeypatch, 1988, None)
+        await self._ast1988_dispatch({"id": 1988, "task_key": "evaluate_jd", "candidate_id": "cand-1", "auto_mode": 0})
+        assert len(seen) == 1
+        assert seen[0][0].startswith("evaluate_jd-")
+        assert seen[0][1] == "cand-1"
+
+    @pytest.mark.asyncio
+    async def test_ast1988_failed_run_still_clears_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen = self._ast1988_run(monkeypatch, 19881, RuntimeError("boom"))
+        await self._ast1988_dispatch({"id": 19881, "task_key": "evaluate_jd", "candidate_id": "cand-1", "auto_mode": 0})
+        assert len(seen) == 1
+        assert seen[0][1] == "cand-1"
+
+    @pytest.mark.asyncio
+    async def test_ast1988_run_next_chain_leaves_candidate_unset_like_batch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Same chain setup as test_run_next_chain_skips_dispatch_level_ledger: the agent hop opener owns the stamp.
+        monkeypatch.setattr(dispatcher_mod, "_current_agent_task_run_next", lambda task_key: "contemplate_job")
+        seen = self._ast1988_run(monkeypatch, 19882, None)
+        await self._ast1988_dispatch(
+            {"id": 19882, "task_key": "anticipate_scan", "candidate_id": "cand-1", "auto_mode": 0}
+        )
+        assert seen == [(None, None)]
+
     @pytest.mark.asyncio
     async def test_auto_run_error_on_auto_failures(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(

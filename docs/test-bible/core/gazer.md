@@ -46,7 +46,7 @@ Equivalent harness:
 
 ### AST-759 · AST-753
 
-**`fetch_job_pages_batch`** debug outcomes report **`visible_chars`** + **`nav_links`** count per URL; skipped ledger URLs log **`skipped-already-scraped`** when **`debug=True`**. Persist path unchanged — enriched **`_scrape_pjl_page`** records carry **`enumerated_nav_links`** into **`pjl_scrape_pages`** / **`pjl_assembled_content`**.
+**`fetch_job_pages_batch`** debug outcomes report **`visible_chars`** + **`nav_links`** count per URL. ~~Skipped ledger URLs log **`skipped-already-scraped`** when **`debug=True`**.~~ (**AST-1995**: no ledger skip — every candidate URL is scraped and gets its own per-URL line; see § AST-1999.) Persist path unchanged — enriched **`_scrape_pjl_page`** records carry **`enumerated_nav_links`** into **`pjl_scrape_pages`** / **`pjl_assembled_content`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -66,11 +66,11 @@ Roster contract + select live content: **`docs/test-bible/core/roster.md`** (**A
 
 ### AST-719 · AST-716
 
-**`fetch_job_pages_batch`** — additive Playwright scrape of **`possible_joblist_links`** (AST-718 ledger); persist **`pjl_scrape_pages`**, **`pjl_assembled_content`**, optional **`pjl_nav_links`**; pass **`PJL_READY`**, fail **`JOBSITE_SCRAPE_ISSUE`**. Consult routes **`dispatch_task_key=fetch_job_pages`** before **`run_company_task`**. Config: **`PJL_READY`**, **`GAZER_CONFIG["fetch_job_pages"]`**, dispatch registry.
+**`fetch_job_pages_batch`** — ~~additive~~ Playwright scrape of **`possible_joblist_links`** (AST-718 ledger; **AST-1995** replaced additive skip with refresh/upsert — § AST-1999); persist **`pjl_scrape_pages`**, **`pjl_assembled_content`**, optional **`pjl_nav_links`**; pass **`PJL_READY`**, fail **`JOBSITE_SCRAPE_ISSUE`**. Consult routes **`dispatch_task_key=fetch_job_pages`** before **`run_company_task`**. Config: **`PJL_READY`**, **`GAZER_CONFIG["fetch_job_pages"]`**, dispatch registry.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| **`fetch_job_pages_batch`** connectivity / missing ledger / pass / additive skip / empty fail | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchJobPagesBatch` |
+| **`fetch_job_pages_batch`** connectivity / missing ledger / pass / refresh re-scrape (was additive skip) / empty fail | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchJobPagesBatch` |
 | **`run_consult_task`** company routing | `src/core/consult.py` | `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_job_pages_batch` |
 | PJL ledger helpers | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
 | Config state + dispatch registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig` |
@@ -89,6 +89,45 @@ Roster helpers + config cross-refs: **`docs/test-bible/core/roster.md`** · **`d
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-1999 · AST-1994 (gap — PJL refresh; product AST-1995)
+
+**Parent:** [AST-1994](https://linear.app/astralcareermatch/issue/AST-1994) (orphaned mini-parent). **Publish:** `origin/sub/AST-1994/AST-1999-fetch-refresh-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-1995** — product (re-scrape every candidate URL, upsert `pjl_scrape_pages` by `normalize_link`, rebuild + always write `pjl_nav_links` from this run, failed/empty re-scrape keeps the prior row and carries its nav links) is **AST-1995** (`origin/sub/AST-1994/AST-1995-fetch-refresh`); this ticket is test tree + bible only. Plan: `docs/features/roster/ast-719-fetch-job-pages-gazer-batch-and-pjl-ready-state.md` § Bug: AST-1995.
+
+| Area | Source | Component tests (`TestFetchJobPagesBatch::`) |
+| --- | --- | --- |
+| Stored URL re-scraped; replaced row keeps index, new URL appends; per-URL Style D line, no `skipped-already-scraped` | `src/core/gazer.py` | `test_refresh_rescrapes_already_scraped_url` (rewrite of `test_additive_skips_already_scraped_url`) |
+| Plan repro — row replaced, assembled drops OLD BOARD, nav rebuilt (dead link gone), `PJL_READY` | same | `test_ast1995_repro_rescrape_replaces_row_and_rebuilds_nav` |
+| Failed re-scrape with prior row — row + its nav kept, stale global nav dropped, debug `error=` line | same | `test_ast1995_failed_rescrape_keeps_prior_row_and_carries_its_nav` |
+| Failed/empty capture with no prior row contributes no nav | same | `test_ast1995_failed_scrape_without_prior_row_contributes_no_nav` |
+| `pjl_nav_links` written even when `""`; non-candidate rows left in place (no pruning) | same | `test_ast1995_nav_written_empty_and_non_candidate_rows_kept` |
+| Fail paths `debug` False/True (`LOCKED_AT_100` pairs) | same | `test_missing_possible_joblist_links_fails[*]`, `test_all_scrapes_empty_fails_with_notes[*]` (parametrized) |
+
+Roster upsert nodes: **`docs/test-bible/core/roster.md`** § AST-1999.
+
+**Broken / obsolete:** `test_additive_skips_already_scraped_url` — rewritten (refresh semantics). Pre-existing drift fixed in the same class: module helper **`_mock_browser_context`** (renamed away by AST-853 for `fetch_website`; `fetch_job_pages_batch` still opens `create_browser_context`) restored — four AST-719 nodes were `NameError`; stale `"errors": 0` in expected return dicts removed (`fetch_job_pages_batch` never returns `errors`).
+
+**Integration:** none.
+
+**Sequencing deviation (gap child):** product not on ftr yet. `[bug-repro]` proven both ways — **RED on pre-fix tree** (9 nodes across gazer + roster; assertion diffs, no import/name errors) and **GREEN with AST-1995 plan `## Proposed change` overlaid** on `src/core/gazer.py` + `src/core/roster.py` (scratch, restored, not committed); overlay coverage of `fetch_job_pages_batch` + `_merge_pjl_scrape_record` 100% lines/branches.
+
+## QA test manifest (AST-1999)
+
+1. `[bug-repro]` nodes (must flip red→green under `test-fix` once AST-1995 lands): gazer `test_refresh_rescrapes_already_scraped_url`, `test_ast1995_repro_rescrape_replaces_row_and_rebuilds_nav`, `test_ast1995_failed_rescrape_keeps_prior_row_and_carries_its_nav`, `test_ast1995_failed_scrape_without_prior_row_contributes_no_nav`, `test_ast1995_nav_written_empty_and_non_candidate_rows_kept`; roster `test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty`, `test_ast1995_upsert_replaces_matching_row_in_place`, `test_ast1995_error_record_discarded_even_with_text`, `test_ast1995_whole_row_replace_drops_enumerated_nav_links`
+2. Guards stay green: rest of both classes (connectivity, missing links ×2, success persist, all-empty fail ×2, assemble ×2, nav-links append, enumerated-nav persist)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestFetchJobPagesBatch \
+  tests/component/core/test_roster.py::TestAst719PjlRosterHelpers \
+  -q
+```
+
+**Pass criterion:** pytest green on both classes (19 nodes) with AST-1995 product merged — not zero-arg harness / branch-lock gate (both files carry ~53 unrelated pre-existing reds on this tip, outside this gap).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1994/AST-1999-fetch-refresh-tests:docs/test-bible/core/gazer.md | shasum`
 
 ---
 
@@ -438,3 +477,36 @@ Shared `jd_classifier.bot_signals` widened so parent-captured Cloudflare interst
 **Broken / obsolete this pass:** `test_skips_meteorite_company_roster_still_fails` — retargeted to `source` SoT (+ real `company_id` must stay skipped).
 
 **Integration:** none.
+
+### AST-2002 · AST-1928 (bug-repro for AST-1997)
+
+**Parent:** AST-1928 (gaze scrape failure reason). **Publish:** `origin/sub/AST-1928/AST-2002-scrape-failure-message-coverage`. Product fix: **AST-1997** (`process_gazer_batch` only).
+
+`process_gazer_batch` failure branch records the real reason in `record_to_company_job_scan(failure_message=…)` and the outcome `message`: `Scrape failed: <ExceptionType>: <str(e)>`, `Scrape failed: <ExceptionType>` when `str(e)` is empty, `No job_site to scrape` for a blank `job_site`. Same text for `debug=False` and `debug=True`. **Red on pre-fix tree** (hard-coded `"Scrape failed"`); flips green when AST-1997 lands.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scrape-failure reason on scan row + outcome, debug on/off | `src/core/gazer.py` | **`test_gazer_scrape_failure.py::TestProcessGazerBatchFailureMessage`** (new) |
+
+**Broken / obsolete this pass:** none. `TestProcessGazerBatch` / `TestProcessGazerBatchDebugBranchCoverage` assert status/call counts only; `test_roster.py` `"scrape failed"` asserts cover `_fetch_job_links_content`, not gaze.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer_scrape_failure.py::TestProcessGazerBatchFailureMessage \
+  tests/component/core/test_gazer.py::TestProcessGazerBatch \
+  tests/component/core/test_gazer.py::TestProcessGazerBatchDebugBranchCoverage \
+  -q
+```
+
+### AST-2004 · AST-1998 (shared `is_bot_wall`)
+
+Public `is_bot_wall(text)` = the `jd_classifier` bot-signal count vs `bot_threshold`; `_classify_jd` delegates (one detector — roster select calls the same helper). `None` text safe.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| threshold hit / single-signal miss / `None` | `src/core/gazer.py` | **`TestAst2004IsBotWall::test_threshold_hit_and_miss`** |
+| `_classify_jd` routes through `is_bot_wall` | same | **`TestAst2004IsBotWall::test_classify_jd_delegates`** |
+
+Regression guards unchanged: **`TestAst1197ChallengeBotSignals`**, **`TestAst1195BotBlockedErrorState`**. Manifest: **`docs/test-bible/core/roster.md`** § AST-2004.

@@ -50,6 +50,12 @@ def _agent_rows(
     )
 
 
+def _ast2006_guard_ctx(first: str = "Ann", **context: str) -> Dict[str, Any]:
+    """AST-2006: candidate row with name columns → token view built from ctx (no get_candidate / DB read).
+    No astral_candidate_id and no batch_entities, so neither company search terms nor job context load."""
+    return {"first": first, "last": "Lee", "full": f"{first} Lee".strip(), "candidate_data": {"context": dict(context)}}
+
+
 def _route(model_id: str, **settings: Any) -> Dict[str, Any]:
     """AST-1956: the call route do_task / run_adhoc callers build for an agent row with these settings."""
     return cfg.resolve_agent_settings(model_id, settings)
@@ -229,14 +235,42 @@ class TestDecodePayload:
         assert "pos 1 out of range" in caplog.text
         assert "This line is not being graded" in caplog.text
 
-    def test_rejects_bad_positions_and_trailing_meta(self) -> None:
+    def test_rejects_bad_positions_and_records_trailing_meta(self) -> None:
         ctx = {"batch_entities": _batch_entities("job-1")}
         with pytest.raises(ValueError, match="bad position"):
             agent_mod._decode_payload("task", "grades", "bad|CRA2", ctx)
-        with pytest.raises(ValueError, match="unexpected trailing content"):
-            agent_mod._decode_payload("task", "grades", "0|CRA2|extra", ctx)
+        # AST-1996: grades-only trailing content is a per-line decode failure, not a payload raise.
+        out = agent_mod._decode_payload("task", "grades", "0|CRA2|extra", ctx)
+        assert out["jobs"] == []
+        assert out["decode_failures"] == [{
+            "astral_job_id": "job-1",
+            "pos": 0,
+            "reason": "[task] unexpected trailing content in grades-only line: '0|CRA2|extra'",
+        }]
         with pytest.raises(ValueError, match="grade X requires confidence digit 0"):
             agent_mod._decode_payload("task", "grades", "0|CRX2", ctx)
+
+    def test_ast1996_malformed_line_isolated_clean_line_decodes(self) -> None:
+        # AST-1996 repro A (AST-1884 production shape): DEC35 fails _GRADE_SEG on line 0 only.
+        ctx = {"batch_entities": _batch_entities("job-0", "job-1")}
+        out = agent_mod._decode_payload("task", "grades", "0|DEC35|ECC35|ORX0\n1|DEC3|ECC3|ORX0", ctx)
+        assert [j["astral_job_id"] for j in out["jobs"]] == ["job-1"]
+        assert [(g["vector"], g["grade"], g["confidence"]) for g in out["jobs"][0]["grades"]] == [
+            ("DE", "C", 3), ("EC", "C", 3), ("OR", "X", 0),
+        ]
+        assert [(f["astral_job_id"], f["pos"]) for f in out["decode_failures"]] == [("job-0", 0)]
+
+    def test_ast1996_clean_payload_has_no_decode_failures_key(self) -> None:
+        out = agent_mod._decode_payload("task", "grades", "0|CRA2", {"batch_entities": _batch_entities("job-1")})
+        assert "decode_failures" not in out
+
+    def test_ast1996_notes_type_tail_is_not_a_decode_failure(self) -> None:
+        # Only grades-only output types take the decode_failures branch; _notes keeps the tail.
+        out = agent_mod._decode_payload(
+            "task", "grades_encoded_notes", "0|CRA2|note text", {"batch_entities": _batch_entities("job-1")},
+        )
+        assert out["jobs"][0]["notes"] == "note text"
+        assert "decode_failures" not in out
 
     def test_decodes_x_zero_notes_and_bare_notes_line(self) -> None:
         ctx = {"batch_entities": _batch_entities("job-1")}
@@ -1817,10 +1851,19 @@ class TestDoTask:
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
+        # AST-2006: AST-530's mid-chain caller check is folded into the AST-2000 empty-token guard.
+        # Hydration is stubbed (AST-1264 seam) so the hop reaches the guard with a blank CALLER_SYSTEM.
+        caplog.set_level(logging.WARNING)
         agent_row, child_row = _agent_rows()
         child_row["system_prompt"] = "sys {$CALLER_SYSTEM}"
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, child_row))
+        monkeypatch.setattr(
+            agent_mod,
+            "_hydrate_caller_chain_context",
+            lambda *a, **k: ({"CALLER_SYSTEM": "", "CALLER_RESPONSE": "x"}, None),
+        )
         send = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
@@ -1828,16 +1871,20 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_ast2006_guard_ctx(),
             chain_context={
                 "CALLER_SYSTEM": "",
                 "CALLER_RESPONSE": "x",
                 "_hop_parent_task_key": "anticipate_scan",
             },
         )
-        assert out["success"] is False
-        assert "CALLER_SYSTEM" in (out.get("error") or "")
         send.assert_not_called()
+        assert out["success"] is False
+        assert out["empty_tokens"] == ["CALLER_SYSTEM"]
+        # The hop's own key — _run_dispatch_chain_job_batch routes on it.
+        assert out["empty_token_task"] == "evaluate_jd"
+        assert "Required caller token" not in (out.get("error") or "")
+        assert len([r for r in caplog.records if r.levelno == logging.ERROR]) == 1
 
     @pytest.mark.asyncio
     async def test_debug_flag_passed_to_child(
@@ -5030,6 +5077,51 @@ class TestAst531RunNextHopLedger:
         assert updates.index(host_writes[0]) < updates.index(finals[0])
         assert agent_mod.log_batch_id.get() is None
 
+    # AST-1988: each hop open stamps log_candidate_id beside its hop batch; the hop close clears both.
+    @pytest.mark.asyncio
+    async def test_ast1988_hop_open_stamps_candidate_and_close_clears(
+        self, monkeypatch: pytest.MonkeyPatch, hop_ledger_trackers: Dict[str, Any]
+    ) -> None:
+        # test_two_hop_chain_creates_distinct_ledger_rows setup; the LLM mock records (batch, candidate) per hop.
+        def resolve(task_key: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            if task_key == "qualify_job_listings":
+                return _agent_rows(run_next="evaluate_jd")
+            return _agent_rows(run_next="")
+
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve)
+        _patch_strict_batch_anthropic(monkeypatch)
+        seen: List[Tuple[Any, Any]] = []
+
+        async def _send(*_a: Any, **_k: Any) -> Dict[str, Any]:
+            seen.append((agent_mod.log_batch_id.get(), agent_mod.log_candidate_id.get()))
+            return _strict_batch_llm_ok(api_label=f"hop{len(seen)}")
+
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(side_effect=_send))
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        tb = agent_mod.log_batch_id.set(None)
+        tc = agent_mod.log_candidate_id.set(None)
+        try:
+            out = await agent_mod.do_task(
+                "qualify_job_listings",
+                index="job-1",
+                ctx={
+                    "astral_candidate_id": "c1",
+                    "candidate_api_keys": {"anthropic": "key"},
+                    "candidate_data": {},
+                    "batch_entities": _batch_entities("job-1"),
+                },
+            )
+            assert out["success"] is True
+            saves = hop_ledger_trackers["saves"]
+            assert len(seen) == 2
+            assert [s[0] for s in seen] == [saves[0][0][0], saves[1][0][0]]
+            assert [s[1] for s in seen] == ["c1", "c1"]
+            assert agent_mod.log_batch_id.get() is None
+            assert agent_mod.log_candidate_id.get() is None
+        finally:
+            agent_mod.log_candidate_id.reset(tc)
+            agent_mod.log_batch_id.reset(tb)
+
     @pytest.mark.asyncio
     async def test_single_hop_without_run_next_does_not_open_hop_ledger(
         self, monkeypatch: pytest.MonkeyPatch
@@ -5281,6 +5373,50 @@ class TestAst515AdhocWorkbenchLedger:
         assert agent_mod.log_batch_id.get() is None
         assert any("This test is recorded FAILED" in r.message for r in caplog.records)
         assert any(r.exc_info is not None for r in caplog.records)
+
+    # AST-1988: workbench batch stamps log_candidate_id beside log_batch_id; outer finally clears both.
+    # Branches: run_adhoc returns → cleared; run_adhoc raises → still cleared.
+    async def _ast1988_workbench(self, monkeypatch: pytest.MonkeyPatch, raise_exc: Any) -> List[Tuple[Any, Any]]:
+        seen: List[Tuple[Any, Any]] = []
+
+        async def _run(**kwargs: Any) -> Dict[str, Any]:
+            seen.append((agent_mod.log_batch_id.get(), agent_mod.log_candidate_id.get()))
+            if raise_exc is not None:
+                raise raise_exc
+            return {"success": True, "parsed_response": {"agent_payload": "ok"}, "timesheet": {}}
+
+        monkeypatch.setattr(agent_mod, "run_adhoc", _run)
+        # Start both at None (tokens) so a leak elsewhere can't green the post-run checks.
+        tb = agent_mod.log_batch_id.set(None)
+        tc = agent_mod.log_candidate_id.set(None)
+        try:
+            call = agent_mod.run_adhoc_workbench_test(workbench_task_key="evaluate_jd", candidate_id="c1")
+            if raise_exc is None:
+                await call
+            else:
+                with pytest.raises(type(raise_exc)):
+                    await call
+            assert agent_mod.log_batch_id.get() is None
+            assert agent_mod.log_candidate_id.get() is None
+        finally:
+            agent_mod.log_candidate_id.reset(tc)
+            agent_mod.log_batch_id.reset(tb)
+        return seen
+
+    async def test_ast1988_workbench_stamps_candidate_and_clears(
+        self, monkeypatch: pytest.MonkeyPatch, ledger_trackers: Dict[str, Any]
+    ) -> None:
+        seen = await self._ast1988_workbench(monkeypatch, None)
+        assert len(seen) == 1
+        assert seen[0][0].startswith("adhoc-evaluate_jd-")
+        assert seen[0][1] == "c1"
+
+    async def test_ast1988_workbench_raise_still_clears_candidate(
+        self, monkeypatch: pytest.MonkeyPatch, ledger_trackers: Dict[str, Any]
+    ) -> None:
+        seen = await self._ast1988_workbench(monkeypatch, RuntimeError("boom"))
+        assert len(seen) == 1
+        assert seen[0][1] == "c1"
 
     async def test_prefixed_workbench_key_does_not_double_adhoc(
         self, monkeypatch: pytest.MonkeyPatch, ledger_trackers: Dict[str, Any]
@@ -9329,6 +9465,51 @@ class TestAst1639CandidateIdSystemPrefix:
             with pytest.raises(ValueError, match="candidate id required"):
                 agent_mod._system_text_with_candidate_prefix("BODY", bad)  # type: ignore[arg-type]
 
+    # AST-1990 [bug-repro]: helper is idempotent — any leading [astral-…] run collapses to one [astral-<cid>].
+    def test_helper_already_prefixed_input_keeps_one_marker(self) -> None:
+        f = agent_mod._system_text_with_candidate_prefix
+        once = f("NOTE: Please see ...", "somerset")
+        assert once == "[astral-somerset]NOTE: Please see ..."
+        assert f(once, "somerset") == once
+
+    def test_helper_five_stacked_markers_collapse_to_one(self) -> None:
+        # AST-1985 observed sample: five stacked markers ahead of the body.
+        stacked = "[astral-somerset]" * 5 + "NOTE: Please see ..."
+        assert agent_mod._system_text_with_candidate_prefix(stacked, "somerset") == "[astral-somerset]NOTE: Please see ..."
+
+    def test_helper_other_id_leading_marker_replaced_by_current_cid(self) -> None:
+        # Susan-approved: strip any leading marker run regardless of id.
+        f = agent_mod._system_text_with_candidate_prefix
+        assert f("[astral-other]BODY", "somerset") == "[astral-somerset]BODY"
+        assert f("[astral-other][astral-somerset][astral-x]BODY", "somerset") == "[astral-somerset]BODY"
+
+    def test_helper_non_leading_marker_left_in_body(self) -> None:
+        # Only a byte-zero run is stripped; leading whitespace or mid-body markers stay untouched.
+        f = agent_mod._system_text_with_candidate_prefix
+        assert f(" [astral-somerset]BODY", "somerset") == "[astral-somerset] [astral-somerset]BODY"
+        assert f("BODY [astral-other] tail", "somerset") == "[astral-somerset]BODY [astral-other] tail"
+
+    def test_helper_blank_id_raises_even_when_body_already_prefixed(self) -> None:
+        # Fail closed: an existing marker never passes through without a candidate id.
+        for bad in (None, "", "  "):
+            with pytest.raises(ValueError, match="candidate id required"):
+                agent_mod._system_text_with_candidate_prefix("[astral-somerset]BODY", bad)  # type: ignore[arg-type]
+
+    def test_assemble_already_prefixed_system_keeps_one_marker(self) -> None:
+        # AC3 parity on re-fed preview/stored text: wire + runtime system text carry exactly one marker.
+        system_blocks, _, runtime, _, _ = agent_mod._assemble_blocks_seven_segment(
+            system_content="[astral-somerset][astral-somerset]shared-sys",
+            user_content="user",
+            caches_resolved_four=(None, None, None, None),
+            nocache_content=None,
+            live_content=None,
+            model_code="claude-haiku-4-5",
+            skip_cache=False,
+            candidate_id="somerset",
+        )
+        assert system_blocks[0]["text"] == "[astral-somerset]shared-sys"
+        assert runtime[0]["system_prompt"]["content"] == "[astral-somerset]shared-sys"
+
     def test_assemble_first_system_block_leads_with_prefix(self) -> None:
         system_blocks, user_blocks, runtime, _, _ = agent_mod._assemble_blocks_seven_segment(
             system_content="shared-sys",
@@ -9961,3 +10142,99 @@ class TestAst1846DoTaskAgentFailureFlag:
         envelope = {"agent_performance": {"status": "failure", "failure_note": "parked domain"}, "agent_payload": "000|RCA5"}
         out = await self._run(monkeypatch, envelope)
         assert out.get("agent_failure") is not True
+
+
+class TestAst2006DoTaskEmptyTokenGuard:
+    """AST-2006 / AST-2000: a prompt with any blank token is never sent — one ERROR, empty_tokens on the result."""
+
+    @staticmethod
+    def _rows(monkeypatch: pytest.MonkeyPatch, agent_content: str = "agent sys", **task: str) -> AsyncMock:
+        # Token-bearing rows stay local to this class; the shared _agent_rows fixture stays token-free.
+        agent_row, task_row = _agent_rows()
+        agent_row["content"] = agent_content
+        task_row.update(task)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, task_row))
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        send = AsyncMock(return_value=_strict_batch_llm_ok())
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        # Sent prompts need a candidate id (system prefix); keep its two lookups off the DB.
+        monkeypatch.setattr("src.core.candidate.get_candidate", lambda cid: None)
+        monkeypatch.setattr("src.core.candidate.company_search_terms_joined_text", lambda cid: "")
+        return send
+
+    @staticmethod
+    def _ctx(first: str = "Ann", **context: str) -> Dict[str, Any]:
+        return {**_ast2006_guard_ctx(first, **context), "astral_candidate_id": "cand-1"}
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_entry_hop_blank_token_is_not_sent(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # [bug-repro] AST-2000 Repro 2: dev sends "Deal breakers: " to the provider; ftr withholds it.
+        caplog.set_level(logging.WARNING)
+        send = self._rows(monkeypatch, system_prompt="Deal breakers: {$DEAL_BREAKERS}")
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=self._ctx(deal_breakers=""))
+        send.assert_not_called()
+        assert out["success"] is False
+        assert out["empty_tokens"] == ["DEAL_BREAKERS"]
+        assert out["empty_token_task"] == "evaluate_jd"
+        errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(errors) == 1
+        assert "evaluate_jd" in errors[0] and "DEAL_BREAKERS" in errors[0]
+        assert not any("resolved to empty" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_populated_prompt_is_sent_without_empty_tokens(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        send = self._rows(monkeypatch, system_prompt="Deal breakers: {$DEAL_BREAKERS}")
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=self._ctx(deal_breakers="no travel"))
+        send.assert_awaited_once()
+        assert "empty_tokens" not in out
+        assert "Deal breakers: no travel" in str(send.await_args)
+
+    @pytest.mark.asyncio
+    async def test_whitespace_only_value_counts_as_empty(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        send = self._rows(monkeypatch, user_prompt="Go {$DEAL_BREAKERS}")
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=self._ctx(deal_breakers="   "))
+        send.assert_not_called()
+        assert out["empty_tokens"] == ["DEAL_BREAKERS"]
+
+    @pytest.mark.asyncio
+    async def test_blank_agent_content_ignored_without_selected_agent_reference(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        # Non-blank system_prompt → agent content is neither the system fallback nor injected → never sent.
+        send = self._rows(monkeypatch, agent_content="Agent {$FIRST_NAME}", system_prompt="sys")
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=self._ctx(first=""))
+        send.assert_awaited_once()
+        assert "empty_tokens" not in out
+
+    @pytest.mark.asyncio
+    async def test_blank_agent_content_guarded_when_selected_agent_referenced(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        send = self._rows(monkeypatch, agent_content="Agent {$FIRST_NAME}", system_prompt="{$SELECTED_AGENT}")
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=self._ctx(first=""))
+        send.assert_not_called()
+        assert out["empty_tokens"] == ["FIRST_NAME"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("snapshot", [None, {"cache_a": "snapshot cache"}], ids=["no_snapshot", "snapshot"])
+    async def test_intake_snapshot_replaced_segment_not_guarded(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any, snapshot: Any,
+    ) -> None:
+        # The blank lives in cache_a; an intake snapshot replaces cache_a, so that blank is never sent.
+        send = self._rows(monkeypatch, cache_prompt="Hi {$FIRST_NAME}")
+        ctx = self._ctx(first="")
+        if snapshot is not None:
+            ctx["intake_prompt_snapshot"] = snapshot
+        out = await agent_mod.do_task("intake_initiate_candidate", index="cand-1", ctx=ctx)
+        if snapshot is None:
+            send.assert_not_called()
+            assert out["empty_tokens"] == ["FIRST_NAME"]
+        else:
+            send.assert_awaited_once()
+            assert "empty_tokens" not in out

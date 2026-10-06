@@ -82,7 +82,7 @@ from src.utils.rubric_feedback import (
     parse_vector_reviews_diagnostic,
 )
 from src.utils.formatting import clean_encoded_agent_payload, coerce_grades_encoded_json_parse
-from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_debug
+from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_candidate_id, log_debug
 
 logger = get_logger(__name__)
 
@@ -243,7 +243,8 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     raw 2-char code when the map is absent or incomplete. _render_pass_fail ignores vector names;
     _render_score requires rubric criteria with labels — callers guard with `if rubric_list` before scoring (AST-429).
     "_meta" in output_type determines whether metadata fields after grades are accepted;
-    trailing non-grade content raises ValueError for grades-only types.
+    trailing non-grade content on a grades-only line is recorded in "decode_failures"
+    (id, pos, reason) and the line is skipped; other per-line errors still raise (AST-1996).
     "grades_encoded_notes" (do/get/like): non-segment tail rejoins to job["notes"] only (optional).
     """
     with_meta = "_meta" in output_type or output_type == "grades_encoded_prefilter_links"
@@ -305,6 +306,7 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
 
     vector_labels: Dict[str, str] = (ctx or {}).get("vector_labels") or {}
     result_rows: List[Dict[str, Any]] = []
+    decode_failures: List[Dict[str, Any]] = []
     logger.debug("Beginning decode loop on %s items", len(lines))
     for line in lines:
         fields = [f.strip() for f in line.split("|")]
@@ -332,7 +334,14 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
                 meta.append(f)
 
         if meta and not with_meta and not with_notes:
-            raise ValueError(f"[{task_key}] unexpected trailing content in grades-only line: {line!r}")
+            # One malformed line must not sink the batch — caller routes this entity retry/error (AST-1996).
+            # Reason text matches the old ValueError so existing log greps keep working.
+            decode_failures.append({
+                id_key: batch_entities[pos][id_key],
+                "pos": pos,
+                "reason": f"[{task_key}] unexpected trailing content in grades-only line: {line!r}",
+            })
+            continue
 
         codes = [seg[:2] for seg in grade_segs]
         if len(codes) != len(set(codes)):
@@ -386,7 +395,11 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
         result_rows.append(row)
 
     logger.debug("End decode loop after %s items", len(result_rows))
-    return {array_key: result_rows}
+    out: Dict[str, Any] = {array_key: result_rows}
+    # Key only when a line failed — clean payloads keep the exact {array_key: [...]} shape.
+    if decode_failures:
+        out["decode_failures"] = decode_failures
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +512,8 @@ def resolved_task_system(
     chain_entry: bool = False,
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
+    warn_on_empty: bool = True,
+    empty_tokens: Optional[list] = None,
 ) -> str:
     """System block text: per-task ``system_prompt`` when non-empty, else agent ``content`` (AST-305 / AST-361)."""
     raw = (agent_task_row.get("system_prompt") or "").strip()
@@ -512,6 +527,8 @@ def resolved_task_system(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key,
         parent_caller_summary=parent_caller_summary,
+        warn_on_empty=warn_on_empty,
+        empty_tokens=empty_tokens,
     )
 
 
@@ -561,6 +578,8 @@ def resolved_agent_content(
     chain_entry: bool = False,
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
+    warn_on_empty: bool = True,
+    empty_tokens: Optional[list] = None,
 ) -> str:
     """Resolve non-chain tokens in agent.content before SELECTED_AGENT injection (AST-631)."""
     return resolve_tokens(
@@ -572,6 +591,8 @@ def resolved_agent_content(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key,
         parent_caller_summary=parent_caller_summary,
+        warn_on_empty=warn_on_empty,
+        empty_tokens=empty_tokens,
     )
 
 
@@ -585,6 +606,8 @@ def _chain_context(
     chain_entry: bool = False,
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
+    warn_on_empty: bool = True,
+    empty_tokens: Optional[list] = None,
 ) -> Dict[str, str]:
     """Chain/runtime tokens for resolve_tokens (AST-304). SELECTED_AGENT = resolved agent body (AST-631)."""
     resolved_body = resolved_agent_content(
@@ -595,6 +618,8 @@ def _chain_context(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key,
         parent_caller_summary=parent_caller_summary,
+        warn_on_empty=warn_on_empty,
+        empty_tokens=empty_tokens,
     )
     base = chain_context_selected_agent(resolved_body)
     if not extra:
@@ -690,23 +715,6 @@ def _referenced_caller_tokens(*texts: Optional[str]) -> set[str]:
             if name in CALLER_HOP_TOKEN_NAMES:
                 needed.add(name)
     return needed
-
-
-def _mid_chain_empty_caller_tokens(
-    *,
-    callee_task_key: str,
-    parent_task_key: str,
-    chain_context: Dict[str, str],
-    segment_texts: Dict[str, str],
-) -> Optional[str]:
-    needed = _referenced_caller_tokens(*segment_texts.values())
-    for tok in needed:
-        if (chain_context.get(tok) or "").strip() == "":
-            return (
-                f"Required caller token {{${tok}}} is empty on mid-chain hop "
-                f"(task={callee_task_key}, parent={parent_task_key})"
-            )
-    return None
 
 
 # AST-597: mid-chain resume — hydrate {$CALLER_*} from stored agent_data
@@ -1166,15 +1174,24 @@ def _build_context(task_key: str, task_config: Dict[str, Any], index: Optional[s
         return fmt.replace("{index}", index)
 
 
+# Leading run of AST-1639 cache-isolation markers, any id, no separators between them.
+_CANDIDATE_PREFIX_RUN_RE = re.compile(r"^(?:\[astral-[^\]]*\])+")
+
+
 def _system_text_with_candidate_prefix(system_content: str, candidate_id: Optional[str]) -> str:
-    """Leading cache-isolation marker: first system bytes are ``[astral-<id>]`` then body."""
+    """Leading cache-isolation marker: first system bytes are ``[astral-<id>]`` then body.
+
+    Idempotent: any leading ``[astral-…]`` run is replaced by exactly one ``[astral-<cid>]``.
+    """
     cid = (candidate_id or "").strip()
     if not cid:
         raise ValueError(
             "candidate id required for agent system prompt "
             "(no omit / no sentinel — every agent call must carry an Astral candidate id)"
         )
-    return f"[astral-{cid}]{system_content}"
+    # Idempotent: drop any existing leading marker run (any id) so re-fed text gets exactly one.
+    body = _CANDIDATE_PREFIX_RUN_RE.sub("", system_content, count=1)
+    return f"[astral-{cid}]{body}"
 
 
 def _assemble_blocks_seven_segment(
@@ -2052,6 +2069,14 @@ async def do_task(
         if k in (effective_chain_context or {})
     }
     _jc = _job_context_for_call(ctx, index, cd, debug=debug)
+    # AST-2000: per-segment empty-token collectors (snapshot-replaced segments are dropped below).
+    _empties: Dict[str, list] = {
+        seg: [] for seg in ("selected_agent", "system", "user", "cache_a", "cache_b", "cache_c", "cache_d", "nocache")
+    }
+    # Agent content only reaches the model via {$SELECTED_AGENT} (system fallback collects itself).
+    _selects_agent = any(
+        "{$SELECTED_AGENT}" in s for s in _task_prompt_texts(agent_task_row, None).values()
+    )
     _cc = _chain_context(
         agent_row,
         cd,
@@ -2061,6 +2086,8 @@ async def do_task(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key or None,
         parent_caller_summary=parent_caller_summary or None,
+        warn_on_empty=False,
+        empty_tokens=_empties["selected_agent"] if _selects_agent else None,
     )
 
     # AST-1879 / AST-1956: the agent row's model + plain settings pick the server, SKU, and tier.
@@ -2098,19 +2125,33 @@ async def do_task(
     )
     _rt_kw = {**_hop_kw}
 
-    system_content = resolved_task_system(agent_row, agent_task_row, cd, task_key, _cc, _jc, **_rt_kw)
-    user_content = resolve_tokens(agent_task_row.get("user_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rca = resolve_tokens(agent_task_row.get("cache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rcb = resolve_tokens(agent_task_row.get("cache_prompt_b") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rcc = resolve_tokens(agent_task_row.get("cache_prompt_c") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rcd = resolve_tokens(agent_task_row.get("cache_prompt_d") or "", cd, task_key, _cc, _jc, **_hop_kw)
+    system_content = resolved_task_system(
+        agent_row, agent_task_row, cd, task_key, _cc, _jc, **_rt_kw, empty_tokens=_empties["system"]
+    )
+    user_content = resolve_tokens(
+        agent_task_row.get("user_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["user"]
+    )
+    rca = resolve_tokens(
+        agent_task_row.get("cache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_a"]
+    )
+    rcb = resolve_tokens(
+        agent_task_row.get("cache_prompt_b") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_b"]
+    )
+    rcc = resolve_tokens(
+        agent_task_row.get("cache_prompt_c") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_c"]
+    )
+    rcd = resolve_tokens(
+        agent_task_row.get("cache_prompt_d") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_d"]
+    )
 
     def _slot(res: str) -> Optional[str]:
         v = (res or "").strip()
         return v if v else None
 
     caches_four = (_slot(rca), _slot(rcb), _slot(rcc), _slot(rcd))
-    nocache_content = resolve_tokens(agent_task_row.get("nocache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw) or None
+    nocache_content = resolve_tokens(
+        agent_task_row.get("nocache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["nocache"]
+    ) or None
 
     if is_vector_feedback_task(task_key):
         _fb_suffix = (RUBRIC_FEEDBACK_CONFIG.get("prompt_suffix") or "").strip()
@@ -2124,51 +2165,37 @@ async def do_task(
     if isinstance(snap, dict) and snap and task_key.startswith("intake_"):
         if "system" in snap:
             system_content = snap.get("system") or ""
+            _empties["system"] = []
         rca = snap.get("cache_a") or ""
         rcb = snap.get("cache_b") or ""
         rcc = snap.get("cache_c") or ""
         rcd = snap.get("cache_d") or ""
         caches_four = (_slot(rca), _slot(rcb), _slot(rcc), _slot(rcd))
+        for _seg in ("cache_a", "cache_b", "cache_c", "cache_d"):
+            _empties[_seg] = []
         if "nocache" in snap:
             nocache_content = snap.get("nocache") or None
+            _empties["nocache"] = []
 
-    if not chain_entry:
-        segment_texts = {
-            "system": (agent_task_row.get("system_prompt") or "").strip() or (agent_row.get("content") or ""),
-            "user": agent_task_row.get("user_prompt") or "",
-            "cache_a": agent_task_row.get("cache_prompt") or "",
-            "cache_b": agent_task_row.get("cache_prompt_b") or "",
-            "cache_c": agent_task_row.get("cache_prompt_c") or "",
-            "cache_d": agent_task_row.get("cache_prompt_d") or "",
-            "nocache": agent_task_row.get("nocache_prompt") or "",
-            "live": live_content or "",
-            "system_resolved": system_content or "",
-            "user_resolved": user_content or "",
-            "cache_a_resolved": rca or "",
-            "cache_b_resolved": rcb or "",
-            "cache_c_resolved": rcc or "",
-            "cache_d_resolved": rcd or "",
-            "nocache_resolved": nocache_content or "",
-        }
-        guard_err = _mid_chain_empty_caller_tokens(
-            callee_task_key=task_key,
-            parent_task_key=parent_task_key or "",
-            chain_context=_cc,
-            segment_texts=segment_texts,
+    # dict.fromkeys = ordered-unique across segments (segment order above).
+    empty_names = list(dict.fromkeys(n for names in _empties.values() for n in names))
+    if empty_names:
+        # AST-2000: an incomplete prompt is never sent — one ERROR, no per-token WARNINGs.
+        logger.error(
+            "%s | %s skipped — empty tokens %s\n  This call is not going out",
+            index or candidate_id or "-",
+            task_key,
+            ", ".join(empty_names),
         )
-        if guard_err:
-            logger.warning(
-                "%s skipped — %s\n  This hop is not calling the model",
-                task_key,
-                guard_err,
-            )
-            return _with_harvest({
-                "success": False,
-                "error": guard_err,
-                "api_response": None,
-                "parsed_response": None,
-                "timesheet": {},
-            })
+        return _with_harvest({
+            "success": False,
+            "error": f"Empty tokens: {', '.join(empty_names)} (task={task_key})",
+            "empty_tokens": empty_names,
+            "empty_token_task": task_key,
+            "api_response": None,
+            "parsed_response": None,
+            "timesheet": {},
+        })
 
     context = _build_context(task_key, task_config, index)
     response_format = task_config.get("response_format", "text")
@@ -2218,6 +2245,7 @@ async def do_task(
         hop_ledger_closed = True
         if clear_log:
             log_batch_id.set(None)
+            log_candidate_id.set(None)
         return outcome
 
     system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks_seven_segment(
@@ -3095,6 +3123,7 @@ def _open_run_next_hop_ledger(
         batch_size=batch_size,
     )
     log_batch_id.set(hop_batch_id)
+    log_candidate_id.set(candidate_id)
     return hop_batch_id
 
 
@@ -3181,6 +3210,7 @@ async def run_adhoc_workbench_test(
         batch_size=1,
     )
     log_batch_id.set(batch_id)
+    log_candidate_id.set(candidate_id or None)
     logger.info(
         "%s | dispatch %s starting %s — 1 available (batch: %s)",
         candidate_id or "-",
@@ -3346,6 +3376,7 @@ async def run_adhoc_workbench_test(
     finally:
         flush_log_buffer()
         log_batch_id.set(None)
+        log_candidate_id.set(None)
 
 
 async def run_adhoc(

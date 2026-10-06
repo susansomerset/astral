@@ -367,13 +367,28 @@ Gazer batch debug + assembled persist: **`docs/test-bible/core/gazer.md`** (**AS
 
 ### AST-719 · AST-716
 
-**PJL ledger helpers** — **`_scrape_pjl_page`**, **`_merge_pjl_scrape_record`**, **`_assemble_pjl_content`**, **`_merge_pjl_nav_links`**; gazer **`fetch_job_pages_batch`** imports these for additive scrape. Does not write **`job_site`**.
+**PJL ledger helpers** — **`_scrape_pjl_page`**, **`_merge_pjl_scrape_record`**, **`_assemble_pjl_content`**, **`_merge_pjl_nav_links`**; gazer **`fetch_job_pages_batch`** imports these for ~~additive~~ scrape (**AST-1995**: `_merge_pjl_scrape_record` is an upsert by `normalize_link`; `_pjl_scrape_ledger_keys` deleted — § AST-1999). Does not write **`job_site`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Additive merge + assembled content + nav append | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
+| ~~Additive~~ Upsert merge + assembled content + nav append | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` |
 
 Gazer batch + consult routing: **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/core/consult.md`** (**AST-719**).
+
+---
+
+### AST-1999 · AST-1994 (gap — PJL upsert; product AST-1995)
+
+**Publish:** `origin/sub/AST-1994/AST-1999-fetch-refresh-tests`. Product: **AST-1995**. `_merge_pjl_scrape_record`: error or empty text → existing unchanged (error-with-text too); otherwise build the row as before and replace the first `normalize_link`-matching row in place (whole row — missing `enumerated_nav_links` drops the key), else append; caller's list not mutated.
+
+| Area | Source | Component tests (`TestAst719PjlRosterHelpers::`) |
+| --- | --- | --- |
+| Duplicate URL replaces (was skip); empty skipped; new appends | `src/core/roster.py` | `test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty` (rename of `…_skips_duplicate_and_empty`, first assert flipped) |
+| Replace in place by `normalize_link` (scheme/case/slash), order stable, no mutation | same | `test_ast1995_upsert_replaces_matching_row_in_place` |
+| `error` record discarded even with text (new + existing URL) | same | `test_ast1995_error_record_discarded_even_with_text` |
+| Whole-row replace drops `enumerated_nav_links` | same | `test_ast1995_whole_row_replace_drops_enumerated_nav_links` |
+
+`_merge_pjl_nav_links` unchanged — `test_merge_pjl_nav_links_appends_deduped` still holds. Gazer nodes, `[bug-repro]` list, and manifest: **`docs/test-bible/core/gazer.md`** § AST-1999.
 
 ---
 
@@ -1066,3 +1081,69 @@ Sibling pages: **`core/consult.md`**, **`core/agent.md`**, **`core/candidate.md`
 1. See **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870 manifest (includes `TestAst1867BalanceHeldCounting` + `TestAst897HoldStateOnBalanceRefusal`).
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/roster.md | shasum`
+
+### AST-2004 · AST-1998 (bot-walled select fall-through → BOT_BLOCKED + job_site)
+
+**Parent:** [AST-1998](https://linear.app/astralcareermatch/issue/AST-1998). **Publish:** `origin/sub/AST-1998/AST-2004-route-bot-walled-job-pages`. Decomposed `PJL_READY` select (`decomposed=True` only): at the final `_check_parse_results` `NO_JOBLIST` fall-through, `_first_bot_walled_page` scans shown pages in `pjl_scrape_pages` order via `gazer.is_bot_wall`; first hit → `BOT_BLOCKED` with that URL as `page_option_url` (`BOT_BLOCKED` ∈ `_PERSIST_PAGE_OPTION_URL_STATES` → `job_site` written). `run_company_task` counts `BOT_BLOCKED` as `total_failed` (guard comment only). Legacy `decomposed=False` locate path unchanged. Shared detector: **`docs/test-bible/core/gazer.md`** § AST-2004. Config rename + transition: **`docs/test-bible/utils/config.md`** § AST-2004.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC2 bot wall → `BOT_BLOCKED`, `job_site` = walled URL | `_check_parse_results` / `_first_bot_walled_page` | **`TestAst2004BotWalledSelect::test_bot_wall_routes_bot_blocked_with_job_site`** |
+| AC3 no wall → `NO_JOBLIST`, pre-run `job_site` kept | same | **`…::test_no_bot_wall_stays_no_joblist_job_site_unchanged`** |
+| AC4 `JOBLIST_TITLES` wins | `_find_job_page_from_assembled` | **`…::test_found_job_list_wins_over_bot_wall`** |
+| AC5 first walled page wins | `_first_bot_walled_page` | **`…::test_first_walled_page_wins`** |
+| AC6 rollup fail 1 / pass 0 / error 0 | `run_company_task` PJL_READY | **`…::test_rollup_counts_bot_blocked_as_fail`** |
+| Legacy `decomposed=False` not rerouted (plan decision) | `_check_parse_results` | **`…::test_legacy_locate_path_not_rerouted`** |
+
+**Broken / obsolete:** `tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` (company key rename vs pinned snapshot) — revised; see config bible.
+
+**Pre-existing failures (not AST-2004):** 74 cases across `test_roster.py` / `test_config.py` red identically with and without this pass (stale `roster.get_page`, `_is_verified_job_site_distinct`, `CANNOT_READ_WEBSITE` vs `PREFILTER_PASSED`, retention/admin-nav literals). Out of scope — not touched.
+
+**Integration:** none — no `tests/integration/` scenario exercises select_job_page / `_classify_jd`.
+
+## QA test manifest
+
+1. **New + revised pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2004BotWalledSelect \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch \
+  tests/component/core/test_roster.py::TestCheckParseResults \
+  tests/component/core/test_roster.py::TestCheckParseResultsBranches \
+  tests/component/core/test_roster.py::TestAst692JobsiteScrapeIssue \
+  tests/component/core/test_gazer.py::TestAst2004IsBotWall \
+  tests/component/core/test_gazer.py::TestAst1197ChallengeBotSignals \
+  tests/component/core/test_gazer.py::TestAst1195BotBlockedErrorState \
+  tests/component/utils/test_config.py::TestAst2004CompanyBotBlocked \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge \
+  -q
+```
+
+2. **Grep acceptance (AC1 / AC7 / AC8):**
+
+```bash
+rg -n '"BOT_BLOCK"' src/                 # expect no output
+rg -n "bot_signals" src/core/            # expect exactly 1 hit (gazer.is_bot_wall)
+rg -in "linkedin" src/core/roster.py     # expect no output
+```
+
+3. **Branch lock:** `src/core/roster.py`, `src/core/gazer.py`, `src/utils/config.py` are `LOCKED_AT_100`; new branches (`_first_bot_walled_page` hit/miss, `walled_url` true/false) are covered by item 1. Zero-arg harness lock gate is subject to the pre-existing reds above.
+
+**Bible shasums (record after publish):** `git show origin/sub/AST-1998/AST-2004-route-bot-walled-job-pages:docs/test-bible/core/roster.md | shasum` (likewise `core/gazer.md`, `utils/config.md`).
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. Company flows send an `empty_tokens` failure to the flow's terminal error state with no save / no retry; the dispatcher counts it as an error via the returned `"error"`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prefilter batch → every company `ERROR_PREFILTER`; summary `retried == 0` | `_run_batch_company_prefilter` | **`TestAst2006EmptyTokenCompanyTerminals::test_prefilter_batch_goes_to_error_prefilter`** |
+| select_job_page → `ERROR_LOCATE_JOB_PAGE`, `"error"`, no `state_held`, no `NO_JOBLIST` save | `_find_job_page_from_assembled` / `_locate_empty_token_error` | **`…::test_select_job_page_goes_to_error_locate_without_no_joblist`** |
+| parse hop returns `{empty_tokens, error}`, no notes save | `_fetch_parse_job_list` | **`…::test_fetch_parse_job_list_surfaces_empty_tokens_without_notes`** |
+| select-only parse → `ERROR_LOCATE_JOB_PAGE`, no parse notes | `_finalize_joblist_titles_select_only` | **`…::test_select_only_parse_goes_to_error_locate`** |
+| Parse dispatch from `JOBLIST_IDENTIFIED` and `_RETRY` → `COULD_NOT_PARSE_JOBLIST`, `"error"`, no save | `run_parse_job_list_dispatch` | **`…::test_parse_dispatch_goes_to_terminal_from_either_trigger`** (2 params) |
+
+**Broken / obsolete:** none.
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.

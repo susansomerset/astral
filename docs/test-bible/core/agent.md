@@ -1392,6 +1392,39 @@ Shared assembly prepends `[astral-<id>]` as the first bytes of the first system 
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix:docs/test-bible/core/agent.md | shasum`
 
+### AST-1992 · AST-1985 (gap — candidate-prefix idempotence; product AST-1990)
+
+**Parent:** [AST-1985](https://linear.app/astralcareermatch/issue/AST-1985) (orphaned mini-parent). **Publish:** `origin/sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-1990** — product fix (`_system_text_with_candidate_prefix` strips any leading `[astral-…]` run, then prepends one `[astral-<cid>]`) is **AST-1990** (`origin/sub/AST-1985/AST-1990-candidate-prefix-dedupe`); this ticket is test tree + bible only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Already-prefixed / 5× stacked (AST-1985 sample) collapse to one marker | `src/core/agent.py` | `TestAst1639CandidateIdSystemPrefix::test_helper_already_prefixed_input_keeps_one_marker`, `::test_helper_five_stacked_markers_collapse_to_one` |
+| Other-id leading marker replaced by current cid (Susan-approved any-id strip) | same | `::test_helper_other_id_leading_marker_replaced_by_current_cid` |
+| Byte-zero run only — leading whitespace / mid-body markers untouched | same | `::test_helper_non_leading_marker_left_in_body` (green pre- and post-fix guard) |
+| Fail closed with marker already in body | same | `::test_helper_blank_id_raises_even_when_body_already_prefixed` (green pre- and post-fix guard) |
+| AC3 parity on re-fed text (wire + runtime system) | same | `::test_assemble_already_prefixed_system_keeps_one_marker` |
+
+**Broken / obsolete:** none — un-prefixed output unchanged; existing AST-1639 nodes stay green. Monkeypatched helper stubs elsewhere in `test_agent.py` don't assert stacking.
+
+**Integration:** none.
+
+**Sequencing deviation (gap child):** product not on ftr yet. `[bug-repro]` proven both ways — **RED on pre-fix tree** (4 nodes: already-prefixed, 5× stacked, other-id, assemble parity; stacked-marker assertion diffs) and **GREEN with AST-1990 plan `## Proposed change` overlaid** on `src/core/agent.py` (scratch, restored, not committed).
+
+## QA test manifest (AST-1992)
+
+1. `[bug-repro]` nodes (must flip red→green under `test-fix` once AST-1990 lands): `test_helper_already_prefixed_input_keeps_one_marker`, `test_helper_five_stacked_markers_collapse_to_one`, `test_helper_other_id_leading_marker_replaced_by_current_cid`, `test_assemble_already_prefixed_system_keeps_one_marker`
+2. Guards + existing AST-1639 suite stay green: full `TestAst1639CandidateIdSystemPrefix`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  -q
+```
+
+**Pass criterion:** pytest green on the class (13 nodes) with AST-1990 product merged — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests:docs/test-bible/core/agent.md | shasum`
+
 ### AST-1679 · AST-1677
 
 **Parent:** [AST-1677](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
@@ -1886,3 +1919,59 @@ Expect 40 reds in `test_agent.py` and 12 in `test_dispatcher.py`. Each one fails
 3. **Boundary gate (expect no output):** `git diff origin/ftr/AST-1954-host-probe...HEAD --stat -- src/core/dispatcher.py src/external/ src/utils/`
 
 **Pass criterion:** item 1 green, item 2 limited to the baseline reds, item 3 empty. Not the zero-arg harness.
+
+### AST-2001 · AST-1884 (bug-repro — AST-1996 decode-line isolation, agent side)
+
+Test gap for **AST-1996** (`96bc0471d`): `_decode_payload` records grades-only trailing content (a token failing `_GRADE_SEG`, e.g. `DEC35`) in `decode_failures` (`astral_job_id`, `pos`, `reason` — reason text identical to the old `ValueError`) and skips that line; clean lines in the same payload still decode. Key present **only** when a line failed. `_meta` / `_notes` output types keep the tail as meta/notes (never a decode failure). Bad position, X-confidence, non-X confidence bounds, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload. Routing / batch side: **`core/consult.md`** (**AST-2001**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Trailing content → `decode_failures` entry, `jobs == []` (flipped from raise; bad-position + X-confidence raises kept) | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta`** (**bug-repro**) |
+| Repro A — malformed line 0 isolated, line 1 decodes (`DE/C/3`, `EC/C/3`, `OR/X/0`) | same | **`…::test_ast1996_malformed_line_isolated_clean_line_decodes`** (**bug-repro**) |
+| Clean payload has no `decode_failures` key | same | **`…::test_ast1996_clean_payload_has_no_decode_failures_key`** (guard) |
+| `grades_encoded_notes` tail stays `notes`, no `decode_failures` | same | **`…::test_ast1996_notes_type_tail_is_not_a_decode_failure`** (guard) |
+
+**Integration:** none.
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `do_task` resolves every segment with an `empty_tokens` collector; any blank recognized token in a segment that is actually sent → no provider call, no hop ledger, one ERROR (`<index> | <task> skipped — empty tokens …`), result carries `empty_tokens` + `empty_token_task` (the failing hop's key on a mid-chain hop). Agent content counts only when a segment references `{$SELECTED_AGENT}`; intake-snapshot-replaced segments are dropped. AST-530 `_mid_chain_empty_caller_tokens` is folded into this guard. Siblings: config collector **`utils/config.md`**, routing **`core/consult.md`** / **`core/roster.md`** / **`core/candidate.md`** / **`core/intake.md`**, probe **`ui/api/api_admin.md`** (all § AST-2006).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** entry hop blank `{$DEAL_BREAKERS}` → provider not called; `empty_tokens == ["DEAL_BREAKERS"]`, `empty_token_task`; one ERROR; no `resolved to empty` WARNING | `do_task` guard | **`TestAst2006DoTaskEmptyTokenGuard::test_bug_repro_entry_hop_blank_token_is_not_sent`** |
+| Populated prompt → sent once, no `empty_tokens` key | same | **`…::test_populated_prompt_is_sent_without_empty_tokens`** |
+| Whitespace-only value is empty | same | **`…::test_whitespace_only_value_counts_as_empty`** |
+| `{$SELECTED_AGENT}` rule (no reference → sent; reference → guarded) | same | **`…::test_blank_agent_content_ignored_without_selected_agent_reference`** · **`…::test_blank_agent_content_guarded_when_selected_agent_referenced`** |
+| Intake snapshot drops replaced segment (control: no snapshot → guarded) | same | **`…::test_intake_snapshot_replaced_segment_not_guarded`** (2 params) |
+| Mid-chain blank `{$CALLER_SYSTEM}` → `empty_tokens`, `empty_token_task` = hop key, one ERROR | same | **`TestDoTask::test_mid_chain_empty_caller_skips_api`** (rewritten in place) |
+
+Fixtures: module helper `_ast2006_guard_ctx` (candidate row with name columns → token view from ctx, no DB); class-local `_rows` / `_ctx` patch `candidate.get_candidate` + `company_search_terms_joined_text` so sent prompts need no DB. Shared `_agent_rows` unchanged (token-free).
+
+**Broken / obsolete:** `TestDoTask::test_mid_chain_empty_caller_skips_api` — pinned AST-530 contract (`"CALLER_SYSTEM" in error`) and was already red on its unstubbed caller hydration (`job not found: job-1`). Rewritten in place: stubs `_hydrate_caller_chain_context` (AST-1264 seam), asserts the AST-2000 result fields + single ERROR.
+
+**Red / green:** `[bug-repro]` red on `origin/dev` `65e23b71b` (provider called with `[astral-cand-1]Deal breakers: `), green on `origin/ftr/AST-1986-runtime-empty-token-error`. 29 of the 39 new/rewritten nodes are red on dev; the 10 dev-green are controls / unchanged behavior. Clean detached worktrees, temp `ASTRAL_DB_DIR`.
+
+**Pre-existing failures (not AST-2006):** hermetic full `tests/component` run on the ftr product: 359 failing nodes without this pass, 357 with it — zero new; fixed = the rewritten mid-chain test plus `TestIntakeSessionFlow::test_background_initiate_failure_writes_assistant_error` (not touched — timing-dependent, not claimed). Five collection errors (`test_meteorite_email.py`, `test_page_intake.py`, `test_surfer.py`, `database/test_meteorites.py`, `database/test_surfer_batches.py`) are pre-existing. Out of scope.
+
+**Integration:** none — no `tests/integration/` scenario exercises `do_task` prompt assembly or empty-token routing.
+
+## QA test manifest — AST-2006
+
+1. **New + rewritten pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst2006DoTaskEmptyTokenGuard \
+  tests/component/core/test_agent.py::TestDoTask::test_mid_chain_empty_caller_skips_api \
+  tests/component/utils/test_config.py::TestAst2006ResolveTokensEmptyCollector \
+  tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts \
+  tests/component/core/test_consult.py::TestAst2006EmptyTokenRouting \
+  tests/component/core/test_roster.py::TestAst2006EmptyTokenCompanyTerminals \
+  tests/component/core/test_candidate.py::TestAst2006RequestedArtifactsEmptyTokens \
+  tests/component/core/test_intake.py::TestAst2006IntakeEmptyTokenLedger \
+  tests/component/ui/api/test_api_admin.py::TestAst2006EnrichTasksProbeSilent \
+  -q
+```
+
+2. **[bug-repro] flip:** `tests/component/core/test_agent.py::TestAst2006DoTaskEmptyTokenGuard::test_bug_repro_entry_hop_blank_token_is_not_sent` — red on `origin/dev`, green on ftr.

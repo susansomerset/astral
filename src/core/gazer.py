@@ -27,7 +27,6 @@ from src.core.roster import (
     _assemble_pjl_content,
     _merge_pjl_nav_links,
     _merge_pjl_scrape_record,
-    _pjl_scrape_ledger_keys,
     _scrape_pjl_page,
 )
 from src.utils.config import (
@@ -64,6 +63,7 @@ from src.utils.formatting import (
     collapse_consecutive_blank_lines,
     normalize_link,
     normalize_pasted_list_email_html,
+    parse_enumerate_array,
 )
 from src.utils.logging import get_logger, truncate_debug_content
 
@@ -134,6 +134,15 @@ def _prune_jd(text: str, job_title: str = "") -> str:
     return text.strip()
 
 
+def is_bot_wall(text: str) -> bool:
+    """True when page text trips the shared bot/challenge detector in TRACKER_CONFIG['jd_classifier'].
+    Single source for JD classification and roster select_job_page (AST-2004) — do not copy the loop."""
+    cfg = TRACKER_CONFIG.get("jd_classifier", {})
+    text_lower = (text or "").lower()
+    hits = sum(1 for s in cfg.get("bot_signals", []) if s.lower() in text_lower)
+    return hits >= cfg.get("bot_threshold", 2)
+
+
 def _classify_jd(text: str) -> str:
     """Classify scraped page content. Returns 'ok', 'cookie', 'bot', 'missing', or 'closed'.
     Check order matters: closed → bot → cookie → missing → ok.
@@ -148,8 +157,7 @@ def _classify_jd(text: str) -> str:
             return "closed"
 
     # --- Bot Blocked --- (checked before cookie; LinkedIn auth pages mention "Cookie Policy")
-    bot_hits = sum(1 for s in cfg.get("bot_signals", []) if s.lower() in text_lower)
-    if bot_hits >= cfg.get("bot_threshold", 2):
+    if is_bot_wall(text):
         return "bot"
 
     # --- Cookie Block ---
@@ -618,7 +626,7 @@ async def fetch_job_pages_batch(
     companies: List[Dict[str, Any]],
     debug: bool = False,
 ) -> Dict[str, int]:
-    """Scrape possible_joblist_links additively for PREFILTER_PASSED companies (AST-719).
+    """Scrape possible_joblist_links (refresh: upsert per URL, AST-1995) for PREFILTER_PASSED companies (AST-719).
     Transitions each company to PJL_READY (pass) or JOBSITE_SCRAPE_ISSUE (fail).
     Returns {"passed": N, "failed": N, "total": N}."""
     if not await check_connectivity():
@@ -666,22 +674,12 @@ async def fetch_job_pages_batch(
                 return
 
             pjl_pages = list(cd.get("pjl_scrape_pages") or [])
-            ledger = _pjl_scrape_ledger_keys(pjl_pages)
-            pending = [u for u in candidate_urls if normalize_link(u) not in ledger]
-            new_nav_urls: List[str] = []
+            # Pre-run snapshot: a failed re-scrape carries that URL's last-known nav links forward.
+            prior_by_key = {normalize_link(r["url"]): r for r in pjl_pages if r.get("url")}
+            run_nav_urls: List[str] = []
 
-            if debug:
-                skipped = [u for u in candidate_urls if normalize_link(u) in ledger]
-                for skip_idx, url in enumerate(skipped, start=1):
-                    _log.debug_index(
-                        func="gazer.fetch_job_pages_batch",
-                        index=skip_idx,
-                        total=len(skipped) or 1,
-                        identifier=short_name,
-                        outcome=f"pjl url {url!r} skipped-already-scraped",
-                    )
-
-            for url_idx, url in enumerate(pending, start=1):
+            # AST-1995: every candidate is re-scraped each run — no already-scraped skip.
+            for url_idx, url in enumerate(candidate_urls, start=1):
                 record = await _scrape_pjl_page(url, browser_context, debug=debug)
                 if debug:
                     err = record.get("error")
@@ -694,7 +692,7 @@ async def fetch_job_pages_batch(
                     _log.debug_index(
                         func="gazer.fetch_job_pages_batch",
                         index=url_idx,
-                        total=len(pending) or 1,
+                        total=len(candidate_urls) or 1,
                         identifier=short_name,
                         outcome=f"pjl url {url!r} {outcome}",
                     )
@@ -704,17 +702,26 @@ async def fetch_job_pages_batch(
                             f"enumerated_nav_chars={len(enum_nav)} collapsed_visible_chars={chars}"
                         )
                 pjl_pages = _merge_pjl_scrape_record(pjl_pages, record)
-                new_nav_urls.extend(record.get("page_links") or [])
+                # Same success test as _merge_pjl_scrape_record: no error and non-empty text.
+                if not record.get("error") and (record.get("visible_text") or "").strip():
+                    run_nav_urls.extend(record.get("page_links") or [])
+                else:
+                    prior = prior_by_key.get(normalize_link(url))
+                    if prior:
+                        prior_map = parse_enumerate_array(prior.get("enumerated_nav_links") or "")
+                        run_nav_urls.extend(prior_map[k] for k in sorted(prior_map))
 
             assembled = _assemble_pjl_content(pjl_pages)
-            merged_nav = _merge_pjl_nav_links(cd.get("pjl_nav_links") or "", new_nav_urls)
-            data_to_save: Dict[str, Any] = {
-                "pjl_scrape_pages": pjl_pages,
-                "pjl_assembled_content": assembled,
-            }
-            if merged_nav:
-                data_to_save["pjl_nav_links"] = merged_nav
-            save_company_data(short_name, data_to_save)
+            # Rebuilt from this run only (empty base) so vanished links drop off; always written,
+            # even "" — readers fall back to homepage nav_links when empty.
+            save_company_data(
+                short_name,
+                {
+                    "pjl_scrape_pages": pjl_pages,
+                    "pjl_assembled_content": assembled,
+                    "pjl_nav_links": _merge_pjl_nav_links("", run_nav_urls),
+                },
+            )
 
             if pjl_pages:
                 transition_company_state(short_name, pass_state)
@@ -727,7 +734,7 @@ async def fetch_job_pages_batch(
                         identifier=_gazer_company_identifier(company),
                         outcome=(
                             f"passed -> {pass_state} ({len(pjl_pages)} pages "
-                            f"pending_scraped={len(pending)})"
+                            f"scraped={len(candidate_urls)})"
                         ),
                     )
             else:
@@ -1029,8 +1036,13 @@ async def process_gazer_batch(
                 )
                 _log.debug_detail(f"job_site={js!r}")
     results_by_short_name: Dict[str, Tuple[str, str, str]] = {}
+    # Real scrape failure reason per company, kept regardless of debug (AST-1997).
+    scrape_errors: Dict[str, str] = {}
     for i, r in enumerate(results):
         if isinstance(r, Exception):
+            sn, _ = to_scrape[i]
+            # Bare exceptions (e.g. asyncio.TimeoutError()) have empty str(); drop the trailing ": ".
+            scrape_errors[sn] = f"Scrape failed: {type(r).__name__}: {r}" if str(r) else f"Scrape failed: {type(r).__name__}"
             continue
         short_name, job_site, page_html = r
         results_by_short_name[short_name] = (short_name, job_site, page_html)
@@ -1053,12 +1065,14 @@ async def process_gazer_batch(
                     outcome="failure — scrape failed",
                 )
                 _log.debug_detail(f"job_site={(c.get('job_site') or '').strip()!r}")
+            # Only blank-job_site companies reach here without a scrape error (never added to to_scrape).
+            failure_message = scrape_errors.get(short_name, "No job_site to scrape")
             record_to_company_job_scan(
                 batch_id, short_name, scan_completed_at,
                 total_found=None, new=None, duplicates=None,
-                status="failure", failure_message="Scrape failed",
+                status="failure", failure_message=failure_message,
             )
-            outcomes.append({"short_name": short_name, "status": "failure", "message": "Scrape failed", "new": None, "duplicates": None})
+            outcomes.append({"short_name": short_name, "status": "failure", "message": failure_message, "new": None, "duplicates": None})
             continue
 
         _, job_site, page_html = results_by_short_name[short_name]

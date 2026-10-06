@@ -101,7 +101,7 @@ from src.utils.config import (
     state_prior_states,
 )
 from src.utils.formatting import value_to_str
-from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
+from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_candidate_id, truncate_debug_content
 
 logger = get_logger(__name__)
 
@@ -3671,6 +3671,21 @@ async def run_requested_artifacts_dispatch(
             ctx=task_ctx,
             debug=debug,
         )
+        if response and response.get("empty_tokens") and is_registered_state(CANDIDATE_STATES, bare_trigger):
+            # AST-2000: data defect — stage error_state from trigger / hop label / _RETRY, never retry.
+            err_state = CANDIDATE_STATES[registered_base(CANDIDATE_STATES, bare_trigger) or bare_trigger]["error_state"]
+            logger.debug("empty_tokens route candidate_id=%s dest=%s", candidate_id, err_state)
+            try:
+                transition_candidate_state(candidate_id, err_state)
+            except ValueError as exc:
+                # Caught here so it can't reach the broad except below, whose target can be a retry holding.
+                logger.warning(
+                    "%s skipped error_state %s — %s\n  The candidate is still counted as an error",
+                    candidate_id,
+                    err_state,
+                    exc,
+                )
+            return {**zero, "total_processed": 1, "total_errors": 1}
         if not response or not response.get("success"):
             raise RuntimeError(
                 (response or {}).get("error") if response else f"do_task None for {start_key}"
@@ -3912,6 +3927,7 @@ def run_candidate_artifact_generation(
             batch_size=1,
         )
         log_batch_id.set(batch_id)
+        log_candidate_id.set(candidate_id)
         logger.info(
             "UI generate started task_key=%r ledger_task_key=%s batch_id=%s candidate_id=%s",
             task_key,
@@ -4122,3 +4138,4 @@ def run_candidate_artifact_generation(
     finally:
         flush_log_buffer()
         log_batch_id.set(None)
+        log_candidate_id.set(None)
