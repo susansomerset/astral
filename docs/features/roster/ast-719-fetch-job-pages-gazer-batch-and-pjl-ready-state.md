@@ -574,3 +574,34 @@ AST-719 made the ledger skip-if-present on purpose (AC3, Stage 2 "additive skip"
 - Scheme-less candidates still get `https://` prepended (Radia fix-now, `_scrape_pjl_page`).
 - Style D per-URL `debug_index` is still emitted for every scraped URL when `debug=True`, with no production log chatter added.
 - A transient failure never deletes stored content: an errored or empty re-scrape leaves that URL's row and its nav links intact.
+
+
+## Fix-board Joan findings (AST-1995)
+
+## [board-joan] verdict (for Chuckles to post)
+
+```
+[board-joan]  CANON: OK
+```
+
+### Triage notes
+
+- **Read:** `docs/features/roster/ast-719-fetch-job-pages-gazer-batch-and-pjl-ready-state.md` § **Bug: AST-1995** on `origin/sub/AST-1994/AST-1995-fetch-refresh` (As-is / To-be / Repro / Root cause / Proposed change / Blast radius / What must still hold).
+- **Canon Scope:** No frozen list on orphaned mini-parent AST-1994 / child AST-1995 (same pattern as AST-1847, AST-1892). Overlap skim via `canon/docs/DIRECTIVES-DIRECTORY.md`; `docs/canon-index.md` is not on this ref.
+- **Question answered:** The proposed gazer/roster refresh (re-scrape all `possible_joblist_links`, upsert `pjl_scrape_pages`, rebuild `pjl_nav_links` from the run) does **not** conflict with any **in-force** directive and does **not** require a statute/pattern edit before `make-fix`.
+- **Overlap skim (not R1–R7):**
+  - `patt.entity.batch-processing` / `patt.core.logical-scope` — batch shell, claim/process/release, and gazer→roster helper split stay as today; only per-URL persistence semantics change.
+  - `stat.logging.debug` — still per-URL Style D when `debug=True`; pass outcome string changes (`scraped=` vs `pending_scraped=` / dropping `skipped-already-scraped`). That is observability wording, not a statute carve-out.
+  - Failure/empty capture keeps prior rows and nav (plan **What must still hold**) — aligned with coat-check idiom (`astral.idioms.coat-check-never-store-empty` in corpus; no active directive names PJL).
+- **Not canon:** Superseding AST-719 AC3 / Stage 2 “additive skip” lives in the **feature plan archive** and **test-bible** entries (`gazer.md` AST-719/759), not in `canon/directives/active/`. Root cause already cites **AST-1810** `fetch_website_batch` re-scrape as the parallel product fix — no new Archie precedent.
+- **Not ESCALATE:** Open product choices (orphan `pjl_scrape_pages` rows, no pruning, nav carry-forward on failed re-scrape) are documented in plan-fix with Susan gates; that is scope in the patch, not an ambiguous statute.
+- **Chuckles routing:** With **CANON: OK**, no F3 spawn from Joan’s side. Expect Betty **TESTS: REVISE** (plan names two component tests and bible lines for additive skip / `skipped-already-scraped`).
+
+### Stdout (fix-board § Joan)
+
+```text
+AST-1995 board-joan done — CANON: OK.
+```
+
+
+**Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-1995 proceeds to make-fix on product only.
