@@ -991,3 +991,19 @@ Test tree + bible only. `test_agent.py::TestDecodePayload` (one existing test ed
 - `test_should_decode_as_encoded_line_routing` single-line asserts unchanged.
 - AST-1155 coverage (`TestAst1155IncompleteGradeRetry`, incomplete-grade first/second strike) unchanged.
 - No product code on this sub — engineer pass is verify-only.
+
+
+### Joan fix-board — AST-2001
+
+```
+[board-joan]  CANON: OK
+
+context_tokens≈14000
+```
+
+```text
+AST-2001 board-joan done — CANON: OK.
+```
+
+**Triage:** AST-2001’s plan-fix patch is **test tree + `docs/test-bible` only** — no product edits. Proposed work flips/adds component tests and bible rows that **encode AST-1996’s already-shipped contract** (`decode_failures`, per-entity `_run_batch_consult` routing, multi-line `_should_decode_as_encoded_line`, clean-row-wins). That contract was already aligned with the cited fix-lane canon on AST-1996 (`patt.task.dispatch-retry`, batch claim/process/release unchanged, existing `_log_fail_dest` logging). This ticket does not change statutes, patterns, or product behavior; bible rows document **coverage**, not new in-force directives. No canon update, carve-out, or Archie gate indicated. **F3 not indicated.**
+```
