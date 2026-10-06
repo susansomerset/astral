@@ -1458,3 +1458,19 @@ Test gap for **AST-1996** (`96bc0471d`). `_should_decode_as_encoded_line` scans 
 ```
 
 `TestAst699LetterPipePositionPrefix::{test_position_prefixed_letter_pipe_bracket_tails,test_bare_letter_pipe_bracket_tails}` fail with `KeyError: 'jobs'` identically on pre-fix `57ed90983` — pre-existing, not AST-1996.
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `_empty_token_fail_dest(*error_states)` → first configured non-retry state, else `FAILED_TECHNICAL`. Four call sites route a `do_task` result carrying `empty_tokens` there — never `_RETRY`, never left at input / hop label; generic failures keep `_consult_batch_fail_dest`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper: first wins (hop before entry); retry holding skipped; retry-only / unset → `FAILED_TECHNICAL` | `_empty_token_fail_dest` | **`TestAst2006EmptyTokenRouting::test_empty_token_fail_dest`** (4 params) |
+| AST-2000 Repro 3: `grade_do` @ `PASSED_JD` → `FAILED_TECHNICAL_DO`, `retried == 0` (control: generic failure → `PASSED_JD_RETRY`) | `_run_batch_consult` | **`…::test_run_batch_consult_goes_to_error_state_not_retry`** · **`…::test_run_batch_consult_generic_failure_still_retries`** |
+| `analysis_upshot` (`error_state` = retry holding) → `FAILED_TECHNICAL`, counted error | `_run_analysis_upshot_batch` | **`…::test_analysis_upshot_retry_error_state_falls_to_failed_technical`** |
+| `to_state` = orchestration `error_state`, transitioned | `render_verdict` | **`…::test_render_verdict_transitions_to_error_state`** |
+| Mid-chain hop label → hop's `ERROR_BUILD_ARTIFACTS`; hop with none → entry's; `ValueError` → `FAILED_TECHNICAL`; claim released, error counted | `_run_dispatch_chain_job_batch` | **`…::test_dispatch_chain_mid_hop_goes_to_hop_error_state`** · **`…::test_dispatch_chain_hop_without_error_state_uses_entry`** · **`…::test_dispatch_chain_invalid_edge_falls_to_failed_technical`** |
+
+**Broken / obsolete:** none — existing routing tests stub generic `success: False` (no `empty_tokens`). `render_verdict` case is green on dev too (`grade_do`'s `error_state` is not a retry holding); kept as the AST-2000 contract pin.
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.

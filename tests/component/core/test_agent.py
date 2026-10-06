@@ -50,6 +50,12 @@ def _agent_rows(
     )
 
 
+def _ast2006_guard_ctx(first: str = "Ann", **context: str) -> Dict[str, Any]:
+    """AST-2006: candidate row with name columns → token view built from ctx (no get_candidate / DB read).
+    No astral_candidate_id and no batch_entities, so neither company search terms nor job context load."""
+    return {"first": first, "last": "Lee", "full": f"{first} Lee".strip(), "candidate_data": {"context": dict(context)}}
+
+
 def _route(model_id: str, **settings: Any) -> Dict[str, Any]:
     """AST-1956: the call route do_task / run_adhoc callers build for an agent row with these settings."""
     return cfg.resolve_agent_settings(model_id, settings)
@@ -1845,10 +1851,19 @@ class TestDoTask:
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
+        # AST-2006: AST-530's mid-chain caller check is folded into the AST-2000 empty-token guard.
+        # Hydration is stubbed (AST-1264 seam) so the hop reaches the guard with a blank CALLER_SYSTEM.
+        caplog.set_level(logging.WARNING)
         agent_row, child_row = _agent_rows()
         child_row["system_prompt"] = "sys {$CALLER_SYSTEM}"
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, child_row))
+        monkeypatch.setattr(
+            agent_mod,
+            "_hydrate_caller_chain_context",
+            lambda *a, **k: ({"CALLER_SYSTEM": "", "CALLER_RESPONSE": "x"}, None),
+        )
         send = AsyncMock()
         monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
@@ -1856,16 +1871,20 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx=_ast2006_guard_ctx(),
             chain_context={
                 "CALLER_SYSTEM": "",
                 "CALLER_RESPONSE": "x",
                 "_hop_parent_task_key": "anticipate_scan",
             },
         )
-        assert out["success"] is False
-        assert "CALLER_SYSTEM" in (out.get("error") or "")
         send.assert_not_called()
+        assert out["success"] is False
+        assert out["empty_tokens"] == ["CALLER_SYSTEM"]
+        # The hop's own key — _run_dispatch_chain_job_batch routes on it.
+        assert out["empty_token_task"] == "evaluate_jd"
+        assert "Required caller token" not in (out.get("error") or "")
+        assert len([r for r in caplog.records if r.levelno == logging.ERROR]) == 1
 
     @pytest.mark.asyncio
     async def test_debug_flag_passed_to_child(
@@ -10123,3 +10142,99 @@ class TestAst1846DoTaskAgentFailureFlag:
         envelope = {"agent_performance": {"status": "failure", "failure_note": "parked domain"}, "agent_payload": "000|RCA5"}
         out = await self._run(monkeypatch, envelope)
         assert out.get("agent_failure") is not True
+
+
+class TestAst2006DoTaskEmptyTokenGuard:
+    """AST-2006 / AST-2000: a prompt with any blank token is never sent — one ERROR, empty_tokens on the result."""
+
+    @staticmethod
+    def _rows(monkeypatch: pytest.MonkeyPatch, agent_content: str = "agent sys", **task: str) -> AsyncMock:
+        # Token-bearing rows stay local to this class; the shared _agent_rows fixture stays token-free.
+        agent_row, task_row = _agent_rows()
+        agent_row["content"] = agent_content
+        task_row.update(task)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, task_row))
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        send = AsyncMock(return_value=_strict_batch_llm_ok())
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        # Sent prompts need a candidate id (system prefix); keep its two lookups off the DB.
+        monkeypatch.setattr("src.core.candidate.get_candidate", lambda cid: None)
+        monkeypatch.setattr("src.core.candidate.company_search_terms_joined_text", lambda cid: "")
+        return send
+
+    @staticmethod
+    def _ctx(first: str = "Ann", **context: str) -> Dict[str, Any]:
+        return {**_ast2006_guard_ctx(first, **context), "astral_candidate_id": "cand-1"}
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_entry_hop_blank_token_is_not_sent(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # [bug-repro] AST-2000 Repro 2: dev sends "Deal breakers: " to the provider; ftr withholds it.
+        caplog.set_level(logging.WARNING)
+        send = self._rows(monkeypatch, system_prompt="Deal breakers: {$DEAL_BREAKERS}")
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=self._ctx(deal_breakers=""))
+        send.assert_not_called()
+        assert out["success"] is False
+        assert out["empty_tokens"] == ["DEAL_BREAKERS"]
+        assert out["empty_token_task"] == "evaluate_jd"
+        errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(errors) == 1
+        assert "evaluate_jd" in errors[0] and "DEAL_BREAKERS" in errors[0]
+        assert not any("resolved to empty" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_populated_prompt_is_sent_without_empty_tokens(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        send = self._rows(monkeypatch, system_prompt="Deal breakers: {$DEAL_BREAKERS}")
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=self._ctx(deal_breakers="no travel"))
+        send.assert_awaited_once()
+        assert "empty_tokens" not in out
+        assert "Deal breakers: no travel" in str(send.await_args)
+
+    @pytest.mark.asyncio
+    async def test_whitespace_only_value_counts_as_empty(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        send = self._rows(monkeypatch, user_prompt="Go {$DEAL_BREAKERS}")
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=self._ctx(deal_breakers="   "))
+        send.assert_not_called()
+        assert out["empty_tokens"] == ["DEAL_BREAKERS"]
+
+    @pytest.mark.asyncio
+    async def test_blank_agent_content_ignored_without_selected_agent_reference(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        # Non-blank system_prompt → agent content is neither the system fallback nor injected → never sent.
+        send = self._rows(monkeypatch, agent_content="Agent {$FIRST_NAME}", system_prompt="sys")
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=self._ctx(first=""))
+        send.assert_awaited_once()
+        assert "empty_tokens" not in out
+
+    @pytest.mark.asyncio
+    async def test_blank_agent_content_guarded_when_selected_agent_referenced(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        send = self._rows(monkeypatch, agent_content="Agent {$FIRST_NAME}", system_prompt="{$SELECTED_AGENT}")
+        out = await agent_mod.do_task("evaluate_jd", index="job-1", ctx=self._ctx(first=""))
+        send.assert_not_called()
+        assert out["empty_tokens"] == ["FIRST_NAME"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("snapshot", [None, {"cache_a": "snapshot cache"}], ids=["no_snapshot", "snapshot"])
+    async def test_intake_snapshot_replaced_segment_not_guarded(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any, snapshot: Any,
+    ) -> None:
+        # The blank lives in cache_a; an intake snapshot replaces cache_a, so that blank is never sent.
+        send = self._rows(monkeypatch, cache_prompt="Hi {$FIRST_NAME}")
+        ctx = self._ctx(first="")
+        if snapshot is not None:
+            ctx["intake_prompt_snapshot"] = snapshot
+        out = await agent_mod.do_task("intake_initiate_candidate", index="cand-1", ctx=ctx)
+        if snapshot is None:
+            send.assert_not_called()
+            assert out["empty_tokens"] == ["FIRST_NAME"]
+        else:
+            send.assert_awaited_once()
+            assert "empty_tokens" not in out

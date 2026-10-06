@@ -4485,3 +4485,54 @@ class TestAst1978ResponseSchemaCount:
         bare = admin_client.get("/api/admin/tasks", headers=auth_headers).get_json()
         scoped = admin_client.get("/api/admin/tasks?candidate_id=c1", headers=auth_headers).get_json()
         assert [r["response_schema_count"] for r in bare] == [r["response_schema_count"] for r in scoped] == [2]
+
+
+class TestAst2006EnrichTasksProbeSilent:
+    """AST-2006 / AST-2000: the Manage Tasks token-count probe never logs empty-token WARNINGs; preview still does."""
+
+    _SYSTEM = "JD {$VISIBLE_JD}\n{$ANALYSIS_JD}"
+
+    def test_enrich_tasks_job_tokens_without_job_are_silent(self, monkeypatch: pytest.MonkeyPatch, caplog) -> None:
+        # Real resolve_tokens / resolved_task_system / _chain_context; candidate present, no job → job tokens blank.
+        import logging
+
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.return_value = None
+        monkeypatch.setattr(admin_mod, "_get_connection", lambda: conn)
+        monkeypatch.setattr(
+            admin_mod.database, "list_candidate_tasks",
+            lambda: [{"task_key": "anticipate_scan", "task_key_uuid": "u1", "agent_id": "agent-1", "cache_prompt_len": 0, "nocache_prompt_len": 0}],
+        )
+        monkeypatch.setattr(
+            admin_mod.database, "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "first": "Ann", "candidate_data": {}},
+        )
+        monkeypatch.setattr(admin_mod.database, "get_current_artifact", lambda *a: None)
+        monkeypatch.setattr(
+            admin_mod.database, "get_agent_task",
+            lambda task_key: {"system_prompt": self._SYSTEM, "cache_prompt": "do {$ANALYSIS_DO}", "task_key_uuid": "u1"},
+        )
+        monkeypatch.setattr(
+            admin_mod.database, "get_agent",
+            lambda agent_id: {"model_id": "claude-sonnet-4-6", "temperature": 0.2, "content": "agent", "max_tokens": 10},
+        )
+        with caplog.at_level(logging.WARNING):
+            rows = admin_mod._enrich_tasks("cand-1")
+        assert not [r.getMessage() for r in caplog.records if "resolved to empty" in r.getMessage()]
+        # Token counting still runs on the (blank-substituted) system text.
+        assert len(rows) == 1 and rows[0]["system_prompt_tokens"] > 0
+
+    def test_preview_resolution_still_warns(self, monkeypatch: pytest.MonkeyPatch, caplog) -> None:
+        # Control: /tasks/<task>/preview → preview_task_prompt → agent.preview_prompt keeps default warn_on_empty.
+        import logging
+
+        from src.core import agent as agent_mod
+
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts",
+            lambda task_key: ({"content": "agent", "model_id": "claude-sonnet-4-6"}, {"system_prompt": self._SYSTEM}),
+        )
+        with caplog.at_level(logging.WARNING):
+            agent_mod.preview_prompt("anticipate_scan", {"first": "Ann", "_astral_candidate_id": "cand-1"})
+        msgs = [r.getMessage() for r in caplog.records if "resolved to empty (job_context, task=anticipate_scan)" in r.getMessage()]
+        assert len(msgs) == 2  # VISIBLE_JD + ANALYSIS_JD

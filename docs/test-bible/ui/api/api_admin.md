@@ -1163,3 +1163,16 @@ cd src/ui/frontend && npm run test:component -- ../../../tests/component/fronten
 **Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1977/AST-1978-rsc-column:docs/test-bible/ui/api/api_admin.md | shasum`
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `_enrich_tasks` resolves with `warn_on_empty=False` (token-count probe, not a model call) → zero `resolved to empty` WARNINGs; counts unchanged. Admin preview keeps default warnings.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Real resolvers, candidate + no job, `source: job` tokens → zero `resolved to empty`; `system_prompt_tokens > 0` | `_enrich_tasks` | **`TestAst2006EnrichTasksProbeSilent::test_enrich_tasks_job_tokens_without_job_are_silent`** |
+| Control: preview resolution still warns (2 job tokens) | `preview_task` → `preview_task_prompt` → `agent.preview_prompt` | **`…::test_preview_resolution_still_warns`** |
+
+**Broken / obsolete:** none — existing `TestEnrichTasks` stubs the resolvers.
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.

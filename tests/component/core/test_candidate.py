@@ -7287,3 +7287,53 @@ class TestAst1781ArtifactRotateRevalidateHook:
         )
         assert out is None
         assert calls == []
+
+
+class TestAst2006RequestedArtifactsEmptyTokens:
+    """AST-2006 / AST-2000: empty_tokens on a requested-stage run → stage error_state, counted as an error, no retry."""
+
+    _EMPTY = {"success": False, "error": "Empty tokens: X (task=t)", "empty_tokens": ["X"], "empty_token_task": "t"}
+
+    def _patch(self, monkeypatch: pytest.MonkeyPatch, state: str, trans: MagicMock) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": state, "candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("trigger", "want"),
+        [
+            ("REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_ERROR"),
+            ("REQUESTED_ARTIFACTS_RETRY", "REQUESTED_ARTIFACTS_ERROR"),
+            (dispatch_hop_label("REQUESTED_ARTIFACTS", "craft_do_rubric"), "REQUESTED_ARTIFACTS_ERROR"),  # mid-chain
+            ("REQUESTED_RESUME", "REQUESTED_RESUME_ERROR"),
+        ],
+        ids=["trigger", "retry_holding", "hop_label", "resume_stage"],
+    )
+    async def test_goes_straight_to_stage_error_state(
+        self, monkeypatch: pytest.MonkeyPatch, trigger: str, want: str,
+    ) -> None:
+        trans = MagicMock()
+        self._patch(monkeypatch, trigger, trans)
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1", trigger_state=trigger)
+        trans.assert_called_once_with("c1", want)
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+
+    @pytest.mark.asyncio
+    async def test_invalid_edge_warns_and_still_counts_error(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # Hardening: a ValueError on the error edge must not fall into the broad except (retry target).
+        import logging
+
+        trans = MagicMock(side_effect=ValueError("bad edge"))
+        self._patch(monkeypatch, "REQUESTED_ARTIFACTS", trans)
+        with caplog.at_level(logging.WARNING):
+            out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_ERROR")
+        assert out["total_errors"] == 1 and out["total_failed"] == 0
+        warns = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        assert len([m for m in warns if "skipped error_state REQUESTED_ARTIFACTS_ERROR" in m]) == 1

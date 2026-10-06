@@ -499,6 +499,8 @@ def resolved_task_system(
     chain_entry: bool = False,
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
+    warn_on_empty: bool = True,
+    empty_tokens: Optional[list] = None,
 ) -> str:
     """System block text: per-task ``system_prompt`` when non-empty, else agent ``content`` (AST-305 / AST-361)."""
     raw = (agent_task_row.get("system_prompt") or "").strip()
@@ -512,6 +514,8 @@ def resolved_task_system(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key,
         parent_caller_summary=parent_caller_summary,
+        warn_on_empty=warn_on_empty,
+        empty_tokens=empty_tokens,
     )
 
 
@@ -561,6 +565,8 @@ def resolved_agent_content(
     chain_entry: bool = False,
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
+    warn_on_empty: bool = True,
+    empty_tokens: Optional[list] = None,
 ) -> str:
     """Resolve non-chain tokens in agent.content before SELECTED_AGENT injection (AST-631)."""
     return resolve_tokens(
@@ -572,6 +578,8 @@ def resolved_agent_content(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key,
         parent_caller_summary=parent_caller_summary,
+        warn_on_empty=warn_on_empty,
+        empty_tokens=empty_tokens,
     )
 
 
@@ -585,6 +593,8 @@ def _chain_context(
     chain_entry: bool = False,
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
+    warn_on_empty: bool = True,
+    empty_tokens: Optional[list] = None,
 ) -> Dict[str, str]:
     """Chain/runtime tokens for resolve_tokens (AST-304). SELECTED_AGENT = resolved agent body (AST-631)."""
     resolved_body = resolved_agent_content(
@@ -595,6 +605,8 @@ def _chain_context(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key,
         parent_caller_summary=parent_caller_summary,
+        warn_on_empty=warn_on_empty,
+        empty_tokens=empty_tokens,
     )
     base = chain_context_selected_agent(resolved_body)
     if not extra:
@@ -690,23 +702,6 @@ def _referenced_caller_tokens(*texts: Optional[str]) -> set[str]:
             if name in CALLER_HOP_TOKEN_NAMES:
                 needed.add(name)
     return needed
-
-
-def _mid_chain_empty_caller_tokens(
-    *,
-    callee_task_key: str,
-    parent_task_key: str,
-    chain_context: Dict[str, str],
-    segment_texts: Dict[str, str],
-) -> Optional[str]:
-    needed = _referenced_caller_tokens(*segment_texts.values())
-    for tok in needed:
-        if (chain_context.get(tok) or "").strip() == "":
-            return (
-                f"Required caller token {{${tok}}} is empty on mid-chain hop "
-                f"(task={callee_task_key}, parent={parent_task_key})"
-            )
-    return None
 
 
 # AST-597: mid-chain resume — hydrate {$CALLER_*} from stored agent_data
@@ -2061,6 +2056,14 @@ async def do_task(
         if k in (effective_chain_context or {})
     }
     _jc = _job_context_for_call(ctx, index, cd, debug=debug)
+    # AST-2000: per-segment empty-token collectors (snapshot-replaced segments are dropped below).
+    _empties: Dict[str, list] = {
+        seg: [] for seg in ("selected_agent", "system", "user", "cache_a", "cache_b", "cache_c", "cache_d", "nocache")
+    }
+    # Agent content only reaches the model via {$SELECTED_AGENT} (system fallback collects itself).
+    _selects_agent = any(
+        "{$SELECTED_AGENT}" in s for s in _task_prompt_texts(agent_task_row, None).values()
+    )
     _cc = _chain_context(
         agent_row,
         cd,
@@ -2070,6 +2073,8 @@ async def do_task(
         chain_entry=chain_entry,
         parent_task_key=parent_task_key or None,
         parent_caller_summary=parent_caller_summary or None,
+        warn_on_empty=False,
+        empty_tokens=_empties["selected_agent"] if _selects_agent else None,
     )
 
     # AST-1879 / AST-1956: the agent row's model + plain settings pick the server, SKU, and tier.
@@ -2107,19 +2112,33 @@ async def do_task(
     )
     _rt_kw = {**_hop_kw}
 
-    system_content = resolved_task_system(agent_row, agent_task_row, cd, task_key, _cc, _jc, **_rt_kw)
-    user_content = resolve_tokens(agent_task_row.get("user_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rca = resolve_tokens(agent_task_row.get("cache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rcb = resolve_tokens(agent_task_row.get("cache_prompt_b") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rcc = resolve_tokens(agent_task_row.get("cache_prompt_c") or "", cd, task_key, _cc, _jc, **_hop_kw)
-    rcd = resolve_tokens(agent_task_row.get("cache_prompt_d") or "", cd, task_key, _cc, _jc, **_hop_kw)
+    system_content = resolved_task_system(
+        agent_row, agent_task_row, cd, task_key, _cc, _jc, **_rt_kw, empty_tokens=_empties["system"]
+    )
+    user_content = resolve_tokens(
+        agent_task_row.get("user_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["user"]
+    )
+    rca = resolve_tokens(
+        agent_task_row.get("cache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_a"]
+    )
+    rcb = resolve_tokens(
+        agent_task_row.get("cache_prompt_b") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_b"]
+    )
+    rcc = resolve_tokens(
+        agent_task_row.get("cache_prompt_c") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_c"]
+    )
+    rcd = resolve_tokens(
+        agent_task_row.get("cache_prompt_d") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["cache_d"]
+    )
 
     def _slot(res: str) -> Optional[str]:
         v = (res or "").strip()
         return v if v else None
 
     caches_four = (_slot(rca), _slot(rcb), _slot(rcc), _slot(rcd))
-    nocache_content = resolve_tokens(agent_task_row.get("nocache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw) or None
+    nocache_content = resolve_tokens(
+        agent_task_row.get("nocache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw, empty_tokens=_empties["nocache"]
+    ) or None
 
     if is_vector_feedback_task(task_key):
         _fb_suffix = (RUBRIC_FEEDBACK_CONFIG.get("prompt_suffix") or "").strip()
@@ -2133,51 +2152,37 @@ async def do_task(
     if isinstance(snap, dict) and snap and task_key.startswith("intake_"):
         if "system" in snap:
             system_content = snap.get("system") or ""
+            _empties["system"] = []
         rca = snap.get("cache_a") or ""
         rcb = snap.get("cache_b") or ""
         rcc = snap.get("cache_c") or ""
         rcd = snap.get("cache_d") or ""
         caches_four = (_slot(rca), _slot(rcb), _slot(rcc), _slot(rcd))
+        for _seg in ("cache_a", "cache_b", "cache_c", "cache_d"):
+            _empties[_seg] = []
         if "nocache" in snap:
             nocache_content = snap.get("nocache") or None
+            _empties["nocache"] = []
 
-    if not chain_entry:
-        segment_texts = {
-            "system": (agent_task_row.get("system_prompt") or "").strip() or (agent_row.get("content") or ""),
-            "user": agent_task_row.get("user_prompt") or "",
-            "cache_a": agent_task_row.get("cache_prompt") or "",
-            "cache_b": agent_task_row.get("cache_prompt_b") or "",
-            "cache_c": agent_task_row.get("cache_prompt_c") or "",
-            "cache_d": agent_task_row.get("cache_prompt_d") or "",
-            "nocache": agent_task_row.get("nocache_prompt") or "",
-            "live": live_content or "",
-            "system_resolved": system_content or "",
-            "user_resolved": user_content or "",
-            "cache_a_resolved": rca or "",
-            "cache_b_resolved": rcb or "",
-            "cache_c_resolved": rcc or "",
-            "cache_d_resolved": rcd or "",
-            "nocache_resolved": nocache_content or "",
-        }
-        guard_err = _mid_chain_empty_caller_tokens(
-            callee_task_key=task_key,
-            parent_task_key=parent_task_key or "",
-            chain_context=_cc,
-            segment_texts=segment_texts,
+    # dict.fromkeys = ordered-unique across segments (segment order above).
+    empty_names = list(dict.fromkeys(n for names in _empties.values() for n in names))
+    if empty_names:
+        # AST-2000: an incomplete prompt is never sent — one ERROR, no per-token WARNINGs.
+        logger.error(
+            "%s | %s skipped — empty tokens %s\n  This call is not going out",
+            index or candidate_id or "-",
+            task_key,
+            ", ".join(empty_names),
         )
-        if guard_err:
-            logger.warning(
-                "%s skipped — %s\n  This hop is not calling the model",
-                task_key,
-                guard_err,
-            )
-            return _with_harvest({
-                "success": False,
-                "error": guard_err,
-                "api_response": None,
-                "parsed_response": None,
-                "timesheet": {},
-            })
+        return _with_harvest({
+            "success": False,
+            "error": f"Empty tokens: {', '.join(empty_names)} (task={task_key})",
+            "empty_tokens": empty_names,
+            "empty_token_task": task_key,
+            "api_response": None,
+            "parsed_response": None,
+            "timesheet": {},
+        })
 
     context = _build_context(task_key, task_config, index)
     response_format = task_config.get("response_format", "text")
