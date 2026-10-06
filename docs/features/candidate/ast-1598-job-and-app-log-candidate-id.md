@@ -448,3 +448,225 @@ context_tokens≈62000
 
 **Product / test-tree:** unchanged this resolve pass.
 
+## Bug: AST-1988 — Stamp batch_id and candidate_id on Railway log lines and app_log
+
+**Mini-parent:** [AST-1987](https://linear.app/astralcareermatch/issue/AST-1987) · **Publish ref:** `sub/AST-1987/AST-1988-stamp-log-batch-candidate-ids` · **Parent ftr:** `ftr/AST-1987-railway-log-batch-candidate-ids`
+
+This is the follow-up Stage 3's ⚠️ Decision above deferred (no `log_candidate_id.set(...)` sites). Scope is AST-1988's own `## Scope` only — nothing from AST-1598's Stages 1–2 is reopened.
+
+### As-is
+
+On Railway, every product log line is `{"level": …, "message": …}` — no `batch_id`, no `candidate_id` — so Log Explorer cannot filter a run by batch or candidate. In `app_log`, `batch_id` is stamped but `candidate_id` is `NULL` on every row, including candidate-owned runs like `check_job_resume`.
+
+### To-be
+
+Railway JSON lines emitted inside a batch carry top-level `batch_id`, and inside a candidate-owned run also `candidate_id`, alongside `level` / `message`. `app_log` rows for those runs have `candidate_id` populated. Lines outside any batch keep today's exact shape; the off-Railway `LEVEL name: message` format is unchanged.
+
+### Repro
+
+Formatter half (run on publish tip `cc256733f`, before fix):
+
+```python
+import logging
+from src.utils.logging import _RAILWAY_JSON_FORMATTER as f, log_batch_id, log_candidate_id
+log_batch_id.set("check_job_resume-0b86"); log_candidate_id.set("somerset")
+r = logging.LogRecord("src.core.agent", logging.DEBUG, "x.py", 1, "hello", None, None)
+print(f.format(r))
+# actual:   {"level": "debug", "message": "src.core.agent: hello"}
+# expected: {"level": "debug", "message": "src.core.agent: hello", "batch_id": "check_job_resume-0b86", "candidate_id": "somerset"}
+```
+
+Stamp half: `rg 'log_candidate_id\.' src/` returns only the read in `_DatabaseLogHandler.emit` (`src/utils/logging.py`) — zero `.set(...)` calls anywhere, so the flush always writes `candidate_id=None`. Susan's report on AST-1987 (`check_job_resume-0b86c465-…` rows, `candidate_id: null`) is the production shape of the same gap.
+
+### Root cause
+
+1. `_RailwayJsonFormatter.format` (`src/utils/logging.py`, AST-1778) builds its dict from `record.levelno` + `record.getMessage()` only; it never reads `log_batch_id` / `log_candidate_id`, which `_DatabaseLogHandler.emit` already reads.
+2. Nothing in `src/` calls `log_candidate_id.set(...)`. Every batch opener that sets `log_batch_id` with a candidate id already in hand skips the candidate contextvar, and every matching teardown clears only the batch.
+
+### Proposed change
+
+**Pairing rule (AC 4) — applies to every core site below:** wherever this plan adds a `log_candidate_id.set(<cid>)`, it sits on the line immediately after the existing `log_batch_id.set(<batch>)`, inside the same conditional (if any). Wherever the matching teardown does `log_batch_id.set(None)`, add `log_candidate_id.set(None)` on the line immediately after. Where the teardown uses `log_batch_id.reset(token)` (meteorite), reset the candidate token in the same `if`. No candidate set without a batch set; no batch clear without a candidate clear. This mirrors the batch contextvar's existing lifecycle exactly, so the candidate cannot outlive the batch on any path where the batch does not.
+
+⚠️ **Decision (AC 2): omit keys when unset, never emit `null`.** Lines outside a batch keep today's byte-identical shape (`{"level","message"}`), which is what AC 2 / AST-1987 To-be ("look exactly as they do today") asks for, and Railway turns every top-level key into a filterable attribute — a `null` attribute on every batch-less line is noise with no filter value. Truthiness test (`if value:`), so an empty-string id is also omitted.
+
+**1. `src/utils/logging.py`**
+
+a. `_RailwayJsonFormatter.format`: build the dict into a local, then add the ids only when set:
+
+```python
+payload = {"level": _RAILWAY_LEVEL.get(record.levelno, "error"), "message": msg}
+batch_id = log_batch_id.get()
+if batch_id:
+    payload["batch_id"] = batch_id
+candidate_id = log_candidate_id.get()
+if candidate_id:
+    payload["candidate_id"] = candidate_id
+return json.dumps(payload, ensure_ascii=False)
+```
+
+Key names `batch_id` / `candidate_id` match the `app_log` column names. Class docstring: "One JSON object per line for Railway severity filters; batch_id / candidate_id added when their contextvars are set."
+
+b. Module docstring:
+- Console sentence (currently "each line is JSON with `level` + `message`"): append "plus `batch_id` / `candidate_id` when set".
+- `log_candidate_id` paragraph: drop "(dispatcher/UI wiring is out of AST-1598 scope — this module only defines and reads it)". Replace with: "Set alongside `log_batch_id` at each candidate-owned batch start and cleared at the same teardown. Read by the DB handler and the Railway JSON formatter."
+
+c. No change to `_DatabaseLogHandler`, `_CONSOLE_FORMATTER`, `_RAILWAY_LEVEL`, `log_debug`, or `_apply_console_formatter`.
+
+**2. `src/core/dispatcher.py`** — add `log_candidate_id` to the `from src.utils.logging import …` line (L55). In `_dispatch_one_body`:
+
+| Block | Batch set (current) | Add after it | Teardown (current, in `finally`) | Add after it |
+|---|---|---|---|---|
+| AST-1560 meteorite ingress transition | `log_batch_id.set(entity_batch_id)` ~L1031 | `log_candidate_id.set(ledger_cid)` | `log_batch_id.set(None)` ~L1098 | `log_candidate_id.set(None)` |
+| AST-1561 BOT_BLOCKED notify | ~L1131 | `log_candidate_id.set(ledger_cid)` | ~L1200 | `log_candidate_id.set(None)` |
+| AST-1134 inbox mailbox | ~L1253 | `log_candidate_id.set(ledger_cid)` | ~L1325 | `log_candidate_id.set(None)` |
+| Unified entity run | ~L1379, inside `if not has_run_next_chain:` | `log_candidate_id.set(candidate_id)` inside that same `if` | ~L1505 (unconditional, after monitor alerts) | `log_candidate_id.set(None)` |
+
+`ledger_cid` is already the normalized `str(candidate_id or "").strip() or None` (blocks 1–2) or a non-empty string (block 3). Block 4's `candidate_id` has passed the `database.get_candidate` guard. When block 4 skips the batch set (run_next chain), the agent hop opener (§3a) stamps both instead — same as the batch today.
+
+**3. `src/core/agent.py`** — add `log_candidate_id` to the import (L85).
+
+a. Hop batch: in `_open_run_next_hop_ledger`, after `log_batch_id.set(hop_batch_id)` (~L3097) add `log_candidate_id.set(candidate_id)` (the function's own `candidate_id` param; its only caller passes it only when truthy). In `do_task`'s nested `_close_hop_ledger`, inside `if clear_log:` after `log_batch_id.set(None)` (~L2220) add `log_candidate_id.set(None)`. That clear is already gated on `hop_ledger_batch_id` being opened and not yet closed, so it pairs 1:1 with the open.
+
+b. Workbench batch: in `run_adhoc_workbench_test`, after `log_batch_id.set(batch_id)` (~L3183) add `log_candidate_id.set(candidate_id or None)`; in the outer `finally` after `log_batch_id.set(None)` (~L3348) add `log_candidate_id.set(None)`.
+
+**4. `src/core/candidate.py`** — add `log_candidate_id` to the import (L104).
+
+- `run_candidate_artifact_generation`: after `log_batch_id.set(batch_id)` (~L3914, inside `if not skip_outer_ledger:`) add `log_candidate_id.set(candidate_id)` inside the same `if`; in the outer `finally` after `log_batch_id.set(None)` (~L4124) add `log_candidate_id.set(None)`. `candidate_id` has passed the `database.get_candidate` 404 guard.
+- `user-session-parse-resume` "session" sentinel batch (~L3747 / ~L3873): **no change** — no real candidate; `NULL` is correct (AC 3).
+
+**5. `src/core/meteorite.py` — in scope: a candidate id is reachable at every `_hold_log_batch` caller.** `enrich_meteorite_land_packet` and `_classify_stage_blob` both early-return unless `cid` is non-empty; `_review_duplicate_meteorite_hook` has `cid = str(row.get("candidate_id") or "").strip()`. These are reachable outside a dispatcher batch (that is why `_hold_log_batch` exists), so without a stamp here those runs stay `NULL`.
+
+a. Add `log_candidate_id` to the import (L70).
+
+b. Change `_hold_log_batch(batch_id: str)` → `_hold_log_batch(batch_id: str, candidate_id: Optional[str])`:
+
+```python
+def _hold_log_batch(batch_id: str, candidate_id: Optional[str]):
+    """Stamp log_batch_id + log_candidate_id only when a parent dispatch batch is not already set.
+
+    Returns (batch_token, candidate_token) to reset, or None when the parent batch owns both.
+    """
+    if log_batch_id.get():
+        return None
+    return log_batch_id.set(batch_id), log_candidate_id.set(candidate_id or None)
+```
+
+When a parent batch is already set, the parent opener (dispatcher / agent / candidate, per §2–4) already stamped its candidate, so the hold stays a no-op for both — same rule as today.
+
+c. Callers pass their `cid`: `_hold_log_batch(batch_id, cid)` at ~L640, ~L762, ~L2000.
+
+d. Reset sites (~L702, ~L828, ~L2016) — the existing `if token is not None:` body becomes:
+
+```python
+log_batch_id.reset(token[0])
+log_candidate_id.reset(token[1])
+```
+
+(`Optional` is already imported in meteorite.py L29.)
+
+**Not changed:** `src/core/intake.py` (see Blast radius), any `src/ui/**`, any table/column, `log_debug` gating, the level map, Telescope / gunicorn console.
+
+### Blast radius
+
+- **Every Railway log line inside a batch** gains one or two top-level keys. Railway Log Explorer surfaces them as attributes (the AST-1987 sample shows `level` landing in `attributes`); no consumer parses the line by position.
+- **Existing tests** in `tests/component/utils/test_debug_logging.py` (`test_railway_json_formatter_maps_levels`, `test_on_railway_emit_is_json_with_level`) assert `payload["level"]` / `payload["message"]` by key, not whole-dict equality, and run without contextvars set — expected to stay green. `tests/component/utils/test_logging_batch.py` (AST-1598 flush stamp) sets `log_candidate_id` directly — unaffected. New coverage for the added keys / set-clear pairing is Betty's call at the board (AST-1987 step 5).
+- **`_hold_log_batch` signature change** — three in-file callers only; no other `src/` module and no test references `_hold_log_batch`.
+- **Hop clear inside `_close_hop_ledger`** now clears the candidate too; it already cleared the batch on the same path, so any dispatcher-scoped line after a hop close already had no batch — it now consistently has neither.
+- **⚠️ Known out-of-scope gap — `src/core/intake.py`.** Two more candidate-owned batch openers set `log_batch_id` with `candidate_id` in hand and are not in AST-1988's Scope: preamble validation (~L67 set / ~L135 clear, `preamble-<task_key>-…`) and `_run_intake_task` (~L577 set / ~L623 clear). After this fix their Railway lines will carry `batch_id` (formatter change) but **not** `candidate_id`, and their `app_log.candidate_id` stays `NULL`. The same two-line pairing would close it. Not added here per the explicit scope gate; Susan / fix-board decide whether to amend Scope or file a follow-up.
+
+### What must still hold
+
+- AST-1598 Stage 3: `app_log.candidate_id` stays nullable; unset contextvar → `NULL`; a missing candidate never raises into the logging caller (`_DatabaseLogHandler.emit` / `_flush_buffer` untouched).
+- AST-1778: off-Railway console is still `LEVEL name: message`; Railway lines are still one JSON object per line with `level` (Railway vocabulary from `_RAILWAY_LEVEL`) and `message` (`"<name>: <msg>"` plus formatted exception); batch-less Railway lines are byte-identical to today.
+- `log_batch_id` lifecycle is unchanged at every site — this fix only shadows it.
+- `candidate.py` "session" sentinel batch rows stay `candidate_id = NULL`.
+- `_hold_log_batch` still no-ops when a parent dispatch batch is set (AST-1560-era rule), now for both contextvars.
+- No new tables, columns, or UI / Execution History filter changes (AST-1988 Boundaries).
+
+
+### Joan fix-board — AST-1988
+
+```text
+[board-joan]  CANON: OK
+
+context_tokens≈14000
+```
+
+### Radia review-fix — AST-1988
+
+Review-fix for **AST-1988** (read-only). Diff base per spawn: `origin/ftr/AST-1987-railway-log-batch-candidate-ids...origin/sub/AST-1987/AST-1988-stamp-log-batch-candidate-ids`. Publish tip: `f9b447782bafaa173ce36014ac2cfc9ac786c475`.
+
+---
+
+```
+[code-rubric]
+**Ticket:** AST-1988
+**Publish ref:** f9b447782bafaa173ce36014ac2cfc9ac786c475 (`origin/sub/AST-1987/AST-1988-stamp-log-batch-candidate-ids`)
+**Corpus:** bd68954dc854ca80fca1fc391821dff9ff288a7a (no `docs/canon-index.md` on this ref — ids resolved from `canon/` tree at publish tip when needed)
+**Overall:** CLEAN
+
+## Canon scores
+
+(frozen Canon Scope list empty on AST-1988 Linear description — no directive ids locked at Plan Approved; nothing to score per id)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan `[board-joan] CANON: OK` on fix-board only; no `validate-plan` fix-mode score table for AST-1988)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out: `qa-fix` did not run on this ticket; fix-board `[board-betty] TESTS: REVISE` coverage split to sibling **AST-1991**. Not scored as missing on this tip (per spawn prompt).
+
+**## What must still hold — OK**
+
+- AST-1598 Stage 3: `_DatabaseLogHandler` / `_flush_buffer` untouched; unset contextvar still → NULL; no new raise paths in logging callers.
+- AST-1778: `_CONSOLE_FORMATTER` / `_apply_console_formatter` / `_RAILWAY_LEVEL` unchanged; Railway still one JSON object per line with `level` + `"<name>: <msg>"`; batch-less lines omit keys via truthiness (byte-identical to pre-fix when contextvars unset).
+- `log_batch_id` lifecycle at every touched site unchanged; `log_candidate_id` mirrors set/clear pairing only.
+- `candidate.py` session sentinel batch: no `log_candidate_id` sets added (only `run_candidate_artifact_generation` path stamped).
+- `_hold_log_batch`: still no-ops when `log_batch_id.get()` is already set; when it stamps, returns `(batch_token, candidate_token)` and reset sites use `reset` on both.
+- Boundaries: no schema/UI changes in diff.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Board test gap (sibling):** Betty’s `[board-betty] TESTS: REVISE` (Railway JSON keys + set/clear pairing / `_hold_log_batch`) is explicitly deferred to **AST-1991**; this product-only tip has no `tests/**` changes — expected for the split, not a defect of this diff.
+- **Intake stamp gap (Susan-flagged out of scope):** `src/core/intake.py` preamble / `_run_intake_task` batch openers still set `log_batch_id` only — after this fix their Railway lines gain `batch_id` from the formatter but `app_log.candidate_id` stays NULL until a follow-up or scope amend. Documented in plan `### Blast radius`; not scored as a defect of this diff (per spawn prompt).
+- **Canon intake note:** AST-1988 description has no frozen Canon Scope table; Joan’s board pass was registry-level `CANON: OK` without per-id rows. If Archie wants fix-lane tickets to always carry a frozen list, that is process — not a merge blocker on this tip.
+
+## Plan fidelity
+
+Diff matches `## Bug: AST-1988` **Proposed change** in `docs/features/candidate/ast-1598-job-and-app-log-candidate-id.md`: formatter payload + docstrings; dispatcher four blocks; agent hop + workbench; candidate artifact batch; meteorite `_hold_log_batch(batch_id, candidate_id)` + tuple reset at three callers. `rg 'log_candidate_id\.set'` on tip shows set/clear sites only in those modules (plus meteorite hold), not `intake.py`.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (clean, C7 complete) | **Normal mini-parent** (AST-1987 with live `ftr/AST-1987-railway-log-batch-candidate-ids` — not fix-intake “ORPHANED → dev” seed) → **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Not straight-to-`dev` orphaned merge. |
+
+## What's solid
+
+Mechanical contextvar pairing follows the plan’s AC 4 rule; AC 2 “omit keys, never null” implemented in `_RailwayJsonFormatter.format` with an inline comment; unified dispatch block 4 keeps both stamps inside `if not has_run_next_chain:` while teardown clears both unconditionally (same shape as pre-fix `log_batch_id` teardown).
+
+context_tokens≈12000
+```
+
+```
+[code-rubric] PROCEED (Commit: f9b447782) Plan matches stamp pairing
+```
+
+### Resolution — AST-1988
+
+docs-acceptance: product-only fix. The repro and set/clear pairing tests (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1991, stacked after this ticket on `ftr/AST-1987-railway-log-batch-candidate-ids`.

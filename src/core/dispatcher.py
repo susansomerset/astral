@@ -52,7 +52,7 @@ from src.utils.config import (
 )
 from src.utils.network import check_internet_reachable
 from src.utils.llm_external import is_provider_balance_refusal
-from src.utils.logging import get_logger, log_batch_id, log_debug, flush_log_buffer
+from src.utils.logging import get_logger, log_batch_id, log_candidate_id, log_debug, flush_log_buffer
 
 logger = get_logger(__name__)
 
@@ -1029,6 +1029,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             entity_type="meteorite",
         )
         log_batch_id.set(entity_batch_id)
+        log_candidate_id.set(ledger_cid)
         dispatch_ledger_id = entity_batch_id
         task["entity_batch_id"] = entity_batch_id
         with _registry_lock:
@@ -1096,6 +1097,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                     )
             flush_log_buffer()
             log_batch_id.set(None)
+            log_candidate_id.set(None)
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
@@ -1129,6 +1131,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             entity_type="meteorite",
         )
         log_batch_id.set(entity_batch_id)
+        log_candidate_id.set(ledger_cid)
         dispatch_ledger_id = entity_batch_id
         task["entity_batch_id"] = entity_batch_id
         with _registry_lock:
@@ -1198,6 +1201,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                     )
             flush_log_buffer()
             log_batch_id.set(None)
+            log_candidate_id.set(None)
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
@@ -1251,6 +1255,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             entity_type=None,
         )
         log_batch_id.set(entity_batch_id)
+        log_candidate_id.set(ledger_cid)
         dispatch_ledger_id = entity_batch_id
         with _registry_lock:
             entry = _task_registry.get(task_id)
@@ -1323,6 +1328,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                     )
             flush_log_buffer()
             log_batch_id.set(None)
+            log_candidate_id.set(None)
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
@@ -1377,6 +1383,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             entity_type=task_entity_type,
         )
         log_batch_id.set(entity_batch_id)
+        log_candidate_id.set(candidate_id)
         dispatch_ledger_id = entity_batch_id
     logger.info(
         "%s | dispatch %s starting %s — %d available (batch: %s)",
@@ -1503,6 +1510,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                 task_key, dispatch_ledger_id, accumulated, final_status, candidate_id
             )
         log_batch_id.set(None)
+        log_candidate_id.set(None)
         try:
             _db_update_dispatch_task(task_id, last_run_at=_now_iso())
         except Exception as e:
