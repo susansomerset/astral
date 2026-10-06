@@ -887,3 +887,27 @@ no plan-stage validate-plan table for AST-2006 (Joan fix-board **CANON: OK** in 
 - **Parent:** AST-1986 orphaned mini-parent, `ftr/AST-1986-runtime-empty-token-error` (AST-2000 + AST-2005 already there).
 
 context_tokens≈28000
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/f0a75aef789ee42caac941d18f28106f/34aaeabe-4695-4001-a3c7-efe11486c218/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/f0a75aef789ee42caac941d18f28106f/ef8ca9e2-3491-4731-8c1e-b09d9d177747/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/59053c5f-3440-4c3e-9814-c71d7dea1800/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/f0a75aef789ee42caac941d18f28106f/09c049fb-14f5-4389-8960-c8babfe4d299/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1986 (parent) | ftr/AST-1986-runtime-empty-token-error |
+| AST-2000 | sub/AST-1986/AST-2000-runtime-empty-token-error |
+| AST-2005 | sub/AST-1986/AST-2005-dispatch-retry-carve-out |
+| AST-2006 | sub/AST-1986/AST-2006-empty-token-guard-tests |
+
+**Epic worktree:** `astral-AST-1986/` — one active sub checked out at a time.
