@@ -481,3 +481,11 @@ Single file: `src/core/gazer.py`, function `process_gazer_batch`. No other funct
 - AST-622 debug instrumentation: `debug=True` output byte-identical (`scrape failed: {r!s}` + `job_site=` detail; `failure — scrape failed` for un-logged failures).
 - Success, no-containers, parse, and tracker-exception paths unchanged (AC 4).
 - Companies with empty `short_name` still skipped; no schema change; no ERROR_GAZE transition change (Boundaries).
+
+## Joan fix-board (AST-1997)
+
+Registry skim (`canon/docs/DIRECTIVES-DIRECTORY.md` + grep on `canon/directives/active/` and `canon/statutes/astral/**` for gazer / `failure_message` / `ERROR_GAZE`): nothing in force fixes the literal `"Scrape failed"` or forbids storing exception text in `company_job_scan.failure_message`. The change is single-file `gazer.py`, keeps AST-622 debug paths byte-identical per plan, does not change transitions (`astral.state.core-decides-transitions` / roster wiring), and only enriches the roster warning "why" (`stat.logging.warning` shape) — i.e. conformance with archived AST-104 Outcome 5 intent, not a new carve-out or statute edit. No frozen Canon Scope on the bug ticket; overlap triage only.
+
+```
+[board-joan]  CANON: OK
+```
