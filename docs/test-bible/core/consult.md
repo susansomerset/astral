@@ -1437,3 +1437,24 @@ Regression lock for `c86d8b5ce` (fixed by **AST-1893**): `InvalidJobLinkError` i
   tests/component/core/test_consult.py::TestAst1895InvalidJobLinkError \
   -q
 ```
+
+### AST-2001 · AST-1884 (bug-repro — AST-1996 decode-line isolation, consult side)
+
+Test gap for **AST-1996** (`96bc0471d`). `_should_decode_as_encoded_line` scans **every** non-empty line (true on the first `_GRADE_SEG` match anywhere) — a fully malformed first line no longer misroutes the payload to `_job_from_letter_pipe`; single-line routing (**AST-699** rows above) unchanged. `_run_batch_consult` routes each `decode_failures` entity separately through `_transition_batch_consult_failures` → `_consult_batch_fail_dest` (first strike → `*_RETRY` holding, already-in-holding → `error_state`); decode-failed ids are removed from `missing`; a clean row for the same id wins (failure ignored). Return: `decode_failed` (sorted ids or `None`), `success` false when non-empty, `error` carries `decode failed on N IDs: [...]`. Decoder side: **`core/agent.md`** (**AST-2001**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Repro B — later-line routing + end-to-end `_normalize_rubric_task_response` (`jobs` J1, `decode_failures` J0) | `src/core/consult.py` (`_should_decode_as_encoded_line`) | **`TestEncodedDecodeIsolation::test_routing_scans_past_fully_malformed_first_line`** (**bug-repro**) |
+| First strike → `METEORITE_QUALIFIED_RETRY`, second → `METEORITE_ERROR_EVALUATE_JD`, clean J2 passes; `missing is None`; `decode_failed` / `success` / `error` shape | `src/core/consult.py` (`_run_batch_consult`) | **`…::test_decode_failures_route_first_and_second_strike`** (**bug-repro**, branch lock) |
+| Clean row wins over a decode failure for the same id | same | **`…::test_clean_row_wins_over_decode_failure`** (guard) |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestDecodePayload \
+  tests/component/core/test_consult.py::TestEncodedDecodeIsolation \
+  -q
+```
+
+`TestAst699LetterPipePositionPrefix::{test_position_prefixed_letter_pipe_bracket_tails,test_bare_letter_pipe_bracket_tails}` fail with `KeyError: 'jobs'` identically on pre-fix `57ed90983` — pre-existing, not AST-1996.

@@ -229,14 +229,42 @@ class TestDecodePayload:
         assert "pos 1 out of range" in caplog.text
         assert "This line is not being graded" in caplog.text
 
-    def test_rejects_bad_positions_and_trailing_meta(self) -> None:
+    def test_rejects_bad_positions_and_records_trailing_meta(self) -> None:
         ctx = {"batch_entities": _batch_entities("job-1")}
         with pytest.raises(ValueError, match="bad position"):
             agent_mod._decode_payload("task", "grades", "bad|CRA2", ctx)
-        with pytest.raises(ValueError, match="unexpected trailing content"):
-            agent_mod._decode_payload("task", "grades", "0|CRA2|extra", ctx)
+        # AST-1996: grades-only trailing content is a per-line decode failure, not a payload raise.
+        out = agent_mod._decode_payload("task", "grades", "0|CRA2|extra", ctx)
+        assert out["jobs"] == []
+        assert out["decode_failures"] == [{
+            "astral_job_id": "job-1",
+            "pos": 0,
+            "reason": "[task] unexpected trailing content in grades-only line: '0|CRA2|extra'",
+        }]
         with pytest.raises(ValueError, match="grade X requires confidence digit 0"):
             agent_mod._decode_payload("task", "grades", "0|CRX2", ctx)
+
+    def test_ast1996_malformed_line_isolated_clean_line_decodes(self) -> None:
+        # AST-1996 repro A (AST-1884 production shape): DEC35 fails _GRADE_SEG on line 0 only.
+        ctx = {"batch_entities": _batch_entities("job-0", "job-1")}
+        out = agent_mod._decode_payload("task", "grades", "0|DEC35|ECC35|ORX0\n1|DEC3|ECC3|ORX0", ctx)
+        assert [j["astral_job_id"] for j in out["jobs"]] == ["job-1"]
+        assert [(g["vector"], g["grade"], g["confidence"]) for g in out["jobs"][0]["grades"]] == [
+            ("DE", "C", 3), ("EC", "C", 3), ("OR", "X", 0),
+        ]
+        assert [(f["astral_job_id"], f["pos"]) for f in out["decode_failures"]] == [("job-0", 0)]
+
+    def test_ast1996_clean_payload_has_no_decode_failures_key(self) -> None:
+        out = agent_mod._decode_payload("task", "grades", "0|CRA2", {"batch_entities": _batch_entities("job-1")})
+        assert "decode_failures" not in out
+
+    def test_ast1996_notes_type_tail_is_not_a_decode_failure(self) -> None:
+        # Only grades-only output types take the decode_failures branch; _notes keeps the tail.
+        out = agent_mod._decode_payload(
+            "task", "grades_encoded_notes", "0|CRA2|note text", {"batch_entities": _batch_entities("job-1")},
+        )
+        assert out["jobs"][0]["notes"] == "note text"
+        assert "decode_failures" not in out
 
     def test_decodes_x_zero_notes_and_bare_notes_line(self) -> None:
         ctx = {"batch_entities": _batch_entities("job-1")}
