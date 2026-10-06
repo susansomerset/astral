@@ -662,3 +662,138 @@ Full active statute set (65) scored in-session — 0 fix-now. Live-ran all three
 | Joan/Radia note: any `process_fn` failure first-strikes to retry | **Documented** — intentional AST-642 behavior once `retry_state` exists; infra paths outside `process_fn` still use `error_state`. |
 
 No fix-now items. No test-tree edits.
+
+---
+
+## Bug: AST-1996 — Isolate malformed encoded grade lines → per-entity retry, not hop error
+
+**Linear:** [AST-1996](https://linear.app/astralcareermatch/issue/AST-1996) · **Mini-parent:** [AST-1884](https://linear.app/astralcareermatch/issue/AST-1884) · **Publish ref:** `sub/AST-1884/AST-1996-decode-line-retry` · **Project:** Astral Dispatcher
+
+**Canon (resolved @ corpus `e1f2699fad`):** `patt.task.dispatch-retry` (read — invalid response for an entity → retry or error by *current* state; a failure never persists in state), `patt.entity.batch-processing` (read — process only claimed rows; release unchanged). Id-only for make-fix: `astral.batch.claim-process-release`, `stat.logging.warning`, `stat.logging.error`, `stat.logging.debug`.
+
+### As-is
+
+`evaluate_meteorite` / `evaluate_jd` (`output_type: "grades_encoded"`, grades-only) decode every line of the batch in one `_decode_payload` call. When **any** line carries a token that fails `_GRADE_SEG` (e.g. `DEC35` — two confidence digits), that token lands in `meta`, and `_decode_payload` raises `ValueError: unexpected trailing content in grades-only line` for the **whole payload**. `do_task` returns `success=False`, so `_run_batch_consult` sends **every** claimed job through `_transition_batch_consult_failures` — clean lines are thrown away with the bad one, and every job in the batch burns one of its two strikes.
+
+Second path, same class: `_should_decode_as_encoded_line` inspects only the **first** non-empty line. If that line has *no* valid segment at all (e.g. `000|DEC35|ECC35`, no `X0` to match), the payload skips the decoder, falls into `_job_from_letter_pipe`, and comes back as one job with no `astral_job_id` → schema validation fails → whole batch to fail dest again.
+
+### To-be
+
+A format slip on one encoded line is a per-entity miss: that line's job routes through the existing `_consult_batch_fail_dest` (first strike → `*_RETRY` holding, already-in-holding → `error_state`), and every well-formed line in the same response still decodes, scores, and transitions normally. No coercion of the bad token, no `_GRADE_SEG` widening.
+
+### Repro
+
+Fixture (no DB — `batch_entities` + raw `agent_payload`, as `_run_batch_consult` passes them):
+
+```python
+from src.core.consult import _normalize_rubric_task_response
+from src.utils.config import TASK_CONFIG
+cfg = TASK_CONFIG["evaluate_meteorite"]
+ents = [{"astral_job_id": "J0", "state": "METEORITE_QUALIFIED"},
+        {"astral_job_id": "J1", "state": "METEORITE_QUALIFIED"}]
+# A — malformed line carries a valid X0 segment (the AST-1884 production shape)
+_normalize_rubric_task_response("evaluate_meteorite", cfg,
+    {"agent_payload": "000|DEC35|ECC35|ORX0\n001|DEC3|ECC3|ORX0"}, {"batch_entities": ents})
+# today: ValueError unexpected trailing content … '000|DEC35|ECC35|ORX0'  (J1 lost)
+# B — malformed line is first and has no valid segment at all
+_normalize_rubric_task_response("evaluate_meteorite", cfg,
+    {"agent_payload": "000|DEC35|ECC35\n001|DEC3|ECC3"}, {"batch_entities": ents})
+# today: {'jobs': [{'grades': [], 'possible_job_links': []}]}  — no astral_job_id, J1 lost
+```
+
+Production log (AST-1884): `000|DEC35|ECC35|EFA45|…|ORX0|…` on a batch of 1 → `METEORITE_ERROR_EVALUATE_JD`.
+
+### Root cause
+
+1. `src/core/agent.py::_decode_payload` treats a per-line format error (grades-only trailing content) as a payload-level failure — `raise` instead of recording the line and continuing. The decode loop already has a per-line skip precedent (out-of-range `pos` → `continue`), but the trailing-content branch never adopted it.
+2. `src/core/consult.py::_should_decode_as_encoded_line` routes on the first line only, so a fully malformed first line misroutes the whole payload away from the decoder.
+
+**Why the AST-1884 job hit `*_ERROR_*` and not the holding:** `METEORITE_QUALIFIED` already has `retry_state` → `METEORITE_QUALIFIED_RETRY` (AST-1155; resolved via `retry_of` since AST-1806), and the whole-hop failure path already routes per entity through `_consult_batch_fail_dest`. The logged run shows `error:1` and an `[ERROR]` fail-dest line — since AST-1839 (2026-09-28) retry-routed jobs log WARNING and are subtracted from `total_errors`. So that job was almost certainly already in `METEORITE_QUALIFIED_RETRY` (second strike — DeepSeek repeated the slip), and `METEORITE_ERROR_EVALUATE_JD` was the correct AST-1155 terminal. The real defect is the **batch blast radius** (and the lost per-line reason), not a missing holding. **No `src/utils/config.py` change is needed** — `evaluate_meteorite` (`METEORITE_QUALIFIED`) and `evaluate_jd` (`JD_READY`) both already resolve to a retry holding:
+
+```text
+_consult_batch_fail_dest('METEORITE_QUALIFIED', 'METEORITE_ERROR_EVALUATE_JD')       -> METEORITE_QUALIFIED_RETRY
+_consult_batch_fail_dest('METEORITE_QUALIFIED_RETRY', 'METEORITE_ERROR_EVALUATE_JD') -> METEORITE_ERROR_EVALUATE_JD
+_consult_batch_fail_dest('JD_READY', 'ERROR_EVALUATE_JD')                            -> JD_READY_RETRY
+```
+
+### Proposed change
+
+Two files, three edits. One `code(AST-1996)` commit.
+
+**1. `src/core/agent.py::_decode_payload` — isolate the bad line (job/company decode loop, not the vet branch).**
+
+- Before the loop, add `decode_failures: List[Dict[str, Any]] = []`.
+- Replace the trailing-content `raise` with a record + `continue`:
+
+  ```python
+  if meta and not with_meta and not with_notes:
+      # One malformed line must not sink the batch — caller routes this entity retry/error (AST-1996).
+      decode_failures.append({
+          id_key: batch_entities[pos][id_key],
+          "pos": pos,
+          "reason": f"[{task_key}] unexpected trailing content in grades-only line: {line!r}",
+      })
+      continue
+  ```
+
+  The reason string is the exact text of today's `ValueError` so existing log greps keep matching.
+- Return: build `out = {array_key: result_rows}`; add `out["decode_failures"] = decode_failures` **only when non-empty** (clean payloads keep today's exact `{"jobs": [...]}` shape).
+- Docstring: replace "trailing non-grade content raises ValueError for grades-only types" with "trailing non-grade content on a grades-only line is recorded in `decode_failures` (id, pos, reason) and the line is skipped; other per-line errors still raise".
+- **Unchanged (still raise for the whole payload):** bad position field, duplicate vector code (AST-1513), X-with-nonzero / non-X-out-of-1–5 confidence, the entire `grades_encoded_vet_meta` branch. Only the trailing-content branch changes. `_GRADE_SEG` untouched.
+
+**2. `src/core/consult.py::_should_decode_as_encoded_line` — scan every line, not just the first.**
+
+Change the single `line = next(...)` lookup into a loop over all non-empty lines; return `True` on the first `_GRADE_SEG` match in any line, `False` after all lines. Body per line is unchanged (strip leading `\d{1,3}` pos field, normalize `" -:"`, match). Single-letter letter-pipe payloads still never match a 4-char segment, so their routing is unchanged. If **no** line anywhere has a valid segment, routing is unchanged (letter-pipe → schema failure → whole batch to fail dest — correct, every line is bad).
+
+`_normalize_rubric_task_response` itself needs no edit — it already returns the decoded dict as-is, so `decode_failures` passes through to `do_task`'s `parsed_response`. `_validate_response_schema` ignores unknown keys and accepts an empty `jobs` list, so an all-lines-failed payload (`{"jobs": [], "decode_failures": [...]}`) still reaches `_run_batch_consult`.
+
+**3. `src/core/consult.py::_run_batch_consult` — route decode failures per entity.**
+
+Immediately after `missing = sent_ids - received_ids` / `fabricated = …`:
+
+```python
+# Per-line decode slips (AST-1996) — a clean row for the same entity wins.
+decode_failed = {
+    f["astral_job_id"]: f["reason"]
+    for f in (parsed.get("decode_failures") or [])
+    if f.get("astral_job_id") and f["astral_job_id"] not in received_ids
+}
+missing -= decode_failed.keys()
+```
+
+Then, after the existing `retried = 0` and before the existing `if missing:` transition block:
+
+```python
+for aid, reason in decode_failed.items():
+    retried += _transition_batch_consult_failures(
+        task_key, [input_by_id[aid]], error_state, reason=f"decode: {reason}",
+    )
+```
+
+One call per entity so each fail-dest log line carries its own malformed line; `_transition_batch_consult_failures` → `_log_fail_dest` already emits WARNING on a retry holding / ERROR on terminal (AST-1839) — **no new log calls**.
+
+Return dict: add `"decode_failed": sorted(decode_failed) if decode_failed else None`; `success` becomes `not fabricated and not bad_grades and not decode_failed`; when non-empty append `f"decode failed on {len(decode_failed)} IDs: {sorted(decode_failed)}"` to `errors`. `run_consult_task`'s `errors = total - passed - failed - retried` then counts a first-strike decode failure as retried (0 errors) and a second-strike one as 1 error — no dispatcher change.
+
+⚠️ **Decision — first strike vs second strike.** AC1 "lands in its retry holding state" is the **first-strike** outcome. An entity already in `*_RETRY` that slips again goes to `error_state` — unchanged `patt.task.dispatch-retry` / AST-1155 contract (one retry, no loop). A batch-of-1 replay of the exact AST-1884 log from `METEORITE_QUALIFIED_RETRY` will still land `METEORITE_ERROR_EVALUATE_JD`; that is correct, not a regression.
+
+⚠️ **Decision — clean row wins.** If a response carries both a malformed line and a clean line for the same `pos`, the clean row is processed and the decode failure is ignored (the entity received a valid grade set; `process_fn`'s `_require_complete_grade_set` still guards it).
+
+⚠️ **Decision — no `src/utils/config.py` edit.** Scope allowed one only if the retry holding was missing; it isn't (see Root cause).
+
+### Blast radius
+
+- **`_decode_payload` callers:** `consult._normalize_rubric_task_response` (rubric-encoded `do_task` path — the fix target); `agent.do_task` non-rubric `_encoded` branch and `api_admin` ad-hoc test hydrate. The changed branch is reachable only for plain `grades_encoded` — today exactly `evaluate_jd` and `evaluate_meteorite`. `grades_encoded_notes` (grade_do/get/like/meteorite_like), `grades_encoded_meta` (qualify), `grades_encoded_prefilter_links` (company prefilter — roster) and `grades_encoded_vet_meta` never enter it. Admin ad-hoc test on a malformed line now shows partial `jobs` + `decode_failures` instead of `{"error": …}` — read-only debug view, acceptable, no edit.
+- **`_should_decode_as_encoded_line`:** called only from `_normalize_rubric_task_response` — shared by every rubric-encoded consult task and the prefilter company path. Scanning all lines can only flip a payload *into* the decoder when some later line has a valid segment; letter-pipe single-letter grades cannot match.
+- **`_run_batch_consult` callers:** `evaluate_jd_batch` / `evaluate_meteorite_batch`, `qualify_job_listings`, `grade_*_batch`, `_consult_scored_dispatch_batch_encoded`. Non-`grades_encoded` tasks never produce `decode_failures`, so `decode_failed` is empty and behavior is byte-identical.
+- **Roster prefilter batch:** untouched (never produces `decode_failures`).
+- **Tests that assume today's behavior (Betty's tree — make-fix does not edit):** `tests/component/core/test_agent.py::…::test_rejects_bad_positions_and_trailing_meta` asserts `_decode_payload("task", "grades", "0|CRA2|extra", …)` raises `unexpected trailing content` — **flips** (now returns `{"jobs": [], "decode_failures": [{astral_job_id: "job-1", pos: 0, reason: …}]}`); its bad-position and X-confidence asserts still hold. `test_should_decode_as_encoded_line_routing` uses single-line inputs only — still green. fix-board / qa-fix own the rewrite.
+
+### What must still hold
+
+- **AST-1155 AC1–AC3:** incomplete/extra vector sets still raise `IncompleteGradeSetError` in `process_fn` and route first strike → holding, second → technical; complete sets incl. `X`/`0` score as before; Style D incomplete debug unchanged.
+- **`patt.task.dispatch-retry`:** exactly one retry; routing decided by current state via `_consult_batch_fail_dest`; a decode-failed entity always transitions (never left in its trigger state).
+- **`_GRADE_SEG` strictness (AST-357 / AST-483):** regex unchanged; `DEC35` is never coerced to `DEC3`/`DEC5`.
+- **Duplicate-code rejection (AST-1513)** and confidence-bound errors still fail the whole payload — out of scope here.
+- **Clean payload shape:** no `decode_failures` key unless a line failed.
+- **Envelope / provider failures** (`do_task` `success=False`, provider balance hold) keep their existing whole-batch handling.
+- **Claim/release:** no change to claim, batch_id, or `finally` release.
