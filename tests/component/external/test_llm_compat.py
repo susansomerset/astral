@@ -377,6 +377,88 @@ class TestAst1877ServerConcurrency:
         assert c.calls == 3
 
 
+# AST-2009 log body (the SDK's APIStatusError prefix + router envelope).
+_AST2009_429 = (
+    "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error', 'message': 'Rate limit exceeded'}, "
+    "'metadata': {'provider_name': 'DekaLLM', 'limit_source': 'upstream_provider_shared_pool'}}"
+)
+
+
+def _rate_limit_2009() -> RateLimitError:
+    req = httpx.Request("POST", "https://example.invalid/v1/messages")
+    return RateLimitError(_AST2009_429, response=httpx.Response(429, request=req), body=None)
+
+
+# AST-2010 — retry-only block (no max_concurrent / backoff_max_seconds) doubles with jitter and
+# no cap; OpenRouter (exhausted_stops_batch) tags an exhausted 429 provider_rate_limit; DeepSeek
+# (retry block, no opt-in) and Kimi (no block) keep today's untagged result; balance wins a tie.
+class TestAst2010OpenRouterRateLimit:
+    FC = "provider_rate_limit"
+
+    @pytest.fixture(autouse=True)
+    def _no_sleep(self, monkeypatch: pytest.MonkeyPatch) -> list[float]:
+        sleeps: list[float] = []
+        monkeypatch.setattr(llm_compat.time, "sleep", sleeps.append)
+        monkeypatch.setattr(llm_compat.random, "uniform", lambda _a, _b: 1.0)
+        monkeypatch.setattr(llm_compat, "_slots", {})
+        return sleeps
+
+    def test_retry_only_block_doubles_with_no_cap_or_ceiling(self, _no_sleep: list[float]) -> None:
+        # [bug-repro] pre-fix: _create demands max_concurrent → KeyError before the first call.
+        c = _FlakyClient(fails=99)
+        with pytest.raises(RateLimitError):
+            llm_compat._create(c, {}, "srv", {"rate_limit_retries": 5, "backoff_base_seconds": 2.0})
+        assert c.calls == 6
+        # 32s on the last retry: no ceiling clipped the doubling
+        assert _no_sleep == [2.0, 4.0, 8.0, 16.0, 32.0]
+        # no max_concurrent → no process-wide slot
+        assert llm_compat._slots == {}
+
+    def test_retry_only_block_keeps_jitter(self, monkeypatch: pytest.MonkeyPatch, _no_sleep: list[float]) -> None:
+        bounds: list[tuple] = []
+        monkeypatch.setattr(llm_compat.random, "uniform", lambda a, b: bounds.append((a, b)) or 0.5)
+        c = _FlakyClient(fails=2)
+        assert llm_compat._create(c, {}, "srv", {"rate_limit_retries": 5, "backoff_base_seconds": 2.0}) == "resp"
+        assert c.calls == 3
+        assert _no_sleep == [1.0, 2.0] and bounds == [(0.5, 1.0)] * 2
+
+    @pytest.mark.asyncio
+    async def test_openrouter_exhausted_429_is_tagged(self, monkeypatch: pytest.MonkeyPatch, _no_sleep) -> None:
+        # [bug-repro] pre-fix: one call (concurrency None), result untagged.
+        c = _RecordingClient(raise_on_create=_rate_limit_2009())
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: c)
+        out = await _send()
+        assert len(c.calls) == 6 and len(_no_sleep) == 5
+        assert out["success"] is False
+        assert out["failure_class"] == self.FC
+        assert out["host"] == "OpenRouter"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("server_id", "sku", "calls"),
+        [("deepseek", "deepseek-v4-flash", 5), ("kimi", "kimi-k2.6", 1)],
+    )
+    async def test_exhausted_429_untagged_without_opt_in(
+        self, monkeypatch: pytest.MonkeyPatch, server_id: str, sku: str, calls: int
+    ) -> None:
+        # DeepSeek keeps its 4 retries and today's untagged result; Kimi has no retry block at all.
+        c = _RecordingClient(raise_on_create=_rate_limit_2009())
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: c)
+        out = await _send(server_id=server_id, sku=sku, tier=_tier(sku))
+        assert len(c.calls) == calls
+        assert out["success"] is False
+        assert "failure_class" not in out
+
+    @pytest.mark.asyncio
+    async def test_balance_wins_over_rate_limit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        req = httpx.Request("POST", "https://example.invalid/v1/messages")
+        exc = RateLimitError("Error code: 429 - insufficient credit", response=httpx.Response(429, request=req), body=None)
+        c = _RecordingClient(raise_on_create=exc)
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: c)
+        out = await _send()
+        assert out["failure_class"] == "provider_balance_refusal"
+
+
 def _is_probe(call: dict[str, Any]) -> bool:
     return call["messages"] == [{"role": "user", "content": [{"type": "text", "text": cfg.LLM_PROBE_MESSAGE}]}]
 
@@ -480,11 +562,17 @@ class TestAst1959ProbeHostLock:
 
     @pytest.mark.asyncio
     async def test_ac4_failed_probe_fails_the_batch_with_no_fallback(self, monkeypatch, batch) -> None:
-        c = self._install(monkeypatch, _HostClient(raise_on_probe=_rate_limit()))
+        # AST-2010: the probe rides _create's OpenRouter retry block — 1 + 5 retries, never a real call;
+        # the exhausted 429 tags every caller in the batch (waiters share the cached probe error).
+        monkeypatch.setattr(llm_compat.time, "sleep", lambda _s: None)
+        monkeypatch.setattr(llm_compat, "_slots", {})
+        # Real SDK str ("Error code: 429 - …"): the probe hands the classifier a string, not the exception.
+        c = self._install(monkeypatch, _HostClient(raise_on_probe=_rate_limit_2009()))
         outs = await self._one_then_three(tier=_tier(**self.BF16))
-        assert len(c.calls) == 1 and _is_probe(c.calls[0])
+        assert len(c.calls) == 6 and all(map(_is_probe, c.calls))
         assert [o["success"] for o in outs] == [False] * 4
         assert all(o["error"].startswith("Host probe failed:") and o["host"] == "OpenRouter" for o in outs)
+        assert [o.get("failure_class") for o in outs] == ["provider_rate_limit"] * 4
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

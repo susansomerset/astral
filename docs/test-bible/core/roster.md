@@ -1147,3 +1147,7 @@ rg -in "linkedin" src/core/roster.py     # expect no output
 **Broken / obsolete:** none.
 
 Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
+
+### AST-2010 · AST-2009 (exhausted-429 `failure_class` forwarded)
+
+**New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` rides `_find_job_page_from_assembled`'s generic select failure (still NO_JOBLIST + saved), `run_company_task` select_job_page (still counted passed via NO_JOBLIST) and JOBS_FOUND (still `error_state` + `total_errors`), and the `prefilter_company_batch` generic failure (still retried). There is no `total_held` and no `state_held`. An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.

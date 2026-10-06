@@ -7164,6 +7164,32 @@ class TestAst1959ServerProbeFlag:
             cfg.validate_llm_provider_environment()
 
 
+class TestAst2010OpenRouterRetryConfig:
+    """AST-2010: OpenRouter retry-only block (no cap / ceiling) with the batch-stop opt-in;
+    DeepSeek block unchanged and not opted in; PROVIDER_RATE_LIMIT registry."""
+
+    def test_openrouter_retry_block(self) -> None:
+        assert cfg.LLM_SERVER_CONFIG["openrouter"]["concurrency"] == {
+            "rate_limit_retries": 5, "backoff_base_seconds": 2.0, "exhausted_stops_batch": True,
+        }
+
+    def test_deepseek_block_unchanged_and_not_opted_in(self) -> None:
+        assert cfg.LLM_SERVER_CONFIG["deepseek"]["concurrency"] == {
+            "max_concurrent": 20, "rate_limit_retries": 4, "backoff_base_seconds": 2.0, "backoff_max_seconds": 30.0,
+        }
+        # only OpenRouter stops the batch on an exhausted 429
+        assert {
+            sid for sid, s in cfg.LLM_SERVER_CONFIG.items() if (s["concurrency"] or {}).get("exhausted_stops_batch")
+        } == {"openrouter"}
+
+    def test_provider_rate_limit_registry(self) -> None:
+        assert cfg.PROVIDER_RATE_LIMIT == {
+            "failure_class": "provider_rate_limit",
+            "http_status_codes": (429,),
+            "message_substrings": ("error code: 429", "rate_limit_error"),
+        }
+
+
 def _ast1946_brief() -> dict[str, tuple[str, str, float, float, float]]:
     """slug → (PROVIDER, QUANT, IN, OUT, CACHE) from Susan's verbatim AST-1946 brief (fixture, not config)."""
     from pathlib import Path

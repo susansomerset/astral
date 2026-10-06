@@ -1856,6 +1856,166 @@ class TestAst1867ProviderBalanceOutage:
         edges["breaker"].assert_not_called()
 
 
+# AST-2010 branches: first exhausted-429 result marks ctx["provider_rate_limit_outage"] at all three
+# _run_unified call sites (per-entity, chunk, full batch); remaining work skipped; loop stops after
+# the run; ledger FAILED (wins over balance INTERRUPTED), breaker skipped; untagged 429 never marks ctx.
+class TestAst2010ProviderRateLimitOutage:
+    """AST-2010: OpenRouter 429 still refused after retries stops the batch; ledger FAILED."""
+
+    _FC = "provider_rate_limit"
+    _ERR = "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error'}}"
+    _edges = staticmethod(TestAst1867ProviderBalanceOutage._edges)
+    _claim_companies = staticmethod(TestAst1867ProviderBalanceOutage._claim_companies)
+
+    def _summary(self, **extra: Any) -> Dict[str, Any]:
+        return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1, **extra}
+
+    @staticmethod
+    def _claim_jobs(monkeypatch: pytest.MonkeyPatch, n: int, state: str) -> MagicMock:
+        jobs = [{"astral_job_id": f"j{i}", "state": state} for i in range(n)]
+        monkeypatch.setattr("src.core.tracker.get_new_job_batch", MagicMock(return_value=("bid-2010", jobs)))
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.tracker.clear_job_batch", clear)
+        return clear
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_rate_limit_stops_batch_ledger_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2009: 2-entity meteorite_like, per-entity warm-then-gather. Pre-fix: every
+        # entity is sent on every run (2 × 3 = 6) and the ledger finishes COMPLETED.
+        edges = self._edges(monkeypatch, 2010)
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda _t: 24)
+        clear = self._claim_jobs(monkeypatch, 2, "LIKE_READY")
+        consult = AsyncMock(return_value=self._summary(failure_class=self._FC, error=self._ERR))
+        monkeypatch.setattr("src.core.consult.run_consult_task", consult)
+        task = {
+            "id": 2010, "task_key": "meteorite_like", "candidate_id": "cand-1", "entity_type": "job",
+            "trigger_state": "LIKE_READY", "batch_call_mode": 0, "batch_size": 2, "auto_mode": 1, "max_runs": 3,
+        }
+        await dispatcher_mod._dispatch_one(task)
+
+        # warm entity exhausted → gather entity never sent, no second run
+        assert consult.await_count == 1
+        clear.assert_called_once_with("bid-2010")
+        kw = edges["update_dispatch_ledger"].call_args.kwargs
+        assert kw["status"] == "FAILED"
+        assert (kw["total_processed"], kw["total_errors"]) == (1, 1)
+        edges["provider_balance_outage"].assert_not_called()
+        edges["breaker"].assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_unified_per_entity_skips_after_rate_limit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._edges(monkeypatch, 20102)
+        claimed = self._claim_companies(monkeypatch, 3)
+        consult = AsyncMock(return_value=self._summary(failure_class=self._FC, error=self._ERR))
+        monkeypatch.setattr("src.core.consult.run_consult_task", consult)
+        task = {
+            "id": 20102, "task_key": "select_job_page", "entity_type": "company",
+            "trigger_state": "PJL_READY", "batch_call_mode": 0, "batch_size": 3,
+        }
+        ctx: Dict[str, Any] = {"astral_candidate_id": "cand-1"}
+        out = await dispatcher_mod._run_unified(task, ctx, False)
+
+        assert consult.await_count == 1
+        # failure_class / error stay off the summary — update_dispatch_ledger rejects unknown keys
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        assert ctx["provider_rate_limit_outage"] == {"error": self._ERR}
+        assert "provider_balance_outage" not in ctx
+        claimed["clear"].assert_called_once_with("bid-1867")
+
+    @pytest.mark.asyncio
+    async def test_run_unified_chunk_split_skips_tail_after_head_rate_limit(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._edges(monkeypatch, 20103)
+        self._claim_jobs(monkeypatch, 3, "JD_READY")
+        consult = AsyncMock(return_value=self._summary(failure_class=self._FC, error=self._ERR))
+        monkeypatch.setattr("src.core.consult.run_consult_task", consult)
+        task = {
+            "id": 20103, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY",
+            "batch_call_mode": 1, "batch_size": 1, "score_floor": 0.5,
+        }
+        ctx: Dict[str, Any] = {"astral_candidate_id": "cand-1"}
+        await dispatcher_mod._run_unified(task, ctx, False)
+
+        assert consult.await_count == 1
+        assert ctx["provider_rate_limit_outage"] == {"error": self._ERR}
+
+    @pytest.mark.asyncio
+    async def test_run_unified_full_batch_marks_rate_limit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._edges(monkeypatch, 20104)
+        self._claim_jobs(monkeypatch, 2, "JD_READY")
+        consult = AsyncMock(return_value=self._summary(failure_class=self._FC, error=self._ERR))
+        monkeypatch.setattr("src.core.consult.run_consult_task", consult)
+        # batch_size ≥ claimed → one consult call for the whole batch (no chunk split)
+        task = {
+            "id": 20104, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY",
+            "batch_call_mode": 1, "batch_size": 5, "score_floor": 0.5,
+        }
+        ctx: Dict[str, Any] = {"astral_candidate_id": "cand-1"}
+        await dispatcher_mod._run_unified(task, ctx, False)
+
+        assert consult.await_count == 1
+        assert ctx["provider_rate_limit_outage"] == {"error": self._ERR}
+
+    @pytest.mark.asyncio
+    async def test_run_unified_untagged_429_does_not_skip(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # DeepSeek / Kimi exhausted 429 arrives untagged — today's behavior, every entity still sent
+        self._edges(monkeypatch, 20105)
+        self._claim_companies(monkeypatch, 3)
+        consult = AsyncMock(return_value=self._summary(error=self._ERR))
+        monkeypatch.setattr("src.core.consult.run_consult_task", consult)
+        task = {
+            "id": 20105, "task_key": "select_job_page", "entity_type": "company",
+            "trigger_state": "PJL_READY", "batch_call_mode": 0, "batch_size": 3,
+        }
+        ctx: Dict[str, Any] = {"astral_candidate_id": "cand-1"}
+        out = await dispatcher_mod._run_unified(task, ctx, False)
+
+        assert consult.await_count == 3
+        assert "provider_rate_limit_outage" not in ctx
+        assert out["total_errors"] == 3
+
+    @pytest.mark.asyncio
+    async def test_run_dispatch_loop_stops_after_rate_limit_run(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            dispatcher_mod.database, "count_eligible_for_dispatch_task", MagicMock(side_effect=[24, 24, 24, 0]),
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+
+        async def _run(task, ctx, debug):
+            ctx["provider_rate_limit_outage"] = {"error": self._ERR}
+            return self._summary()
+
+        run_task = AsyncMock(side_effect=_run)
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run_task)
+        task = {"id": 20106, "task_key": "meteorite_like", "entity_type": "job", "auto_mode": 1, "max_runs": 0}
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        await dispatcher_mod._run_dispatch_loop({"astral_candidate_id": "cand-1"}, task, "meteorite_like", "bid", accumulated, "bid")
+
+        assert run_task.await_count == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("with_balance", [False, True])
+    async def test_dispatch_one_rate_limit_outage_failed(
+        self, monkeypatch: pytest.MonkeyPatch, with_balance: bool,
+    ) -> None:
+        edges = self._edges(monkeypatch, 20107)
+
+        async def _loop(ctx, task, task_key, batch_id, accumulated, dispatch_ledger_id):
+            ctx["provider_rate_limit_outage"] = {"error": self._ERR}
+            if with_balance:
+                ctx["provider_balance_outage"] = {"error": "Error code: 402 - Insufficient Balance", "held": 1}
+            accumulated["total_processed"] = 1
+
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=_loop))
+        task = {"id": 20107, "task_key": "meteorite_like", "candidate_id": "cand-1", "auto_mode": 1}
+        await dispatcher_mod._dispatch_one(task)
+
+        # FAILED wins over the balance outage's INTERRUPTED
+        assert edges["update_dispatch_ledger"].call_args.kwargs["status"] == "FAILED"
+        edges["breaker"].assert_not_called()
+
+
 class TestRunDispatchLoop:
     @pytest.mark.asyncio
     async def test_skips_when_queue_below_min_count(self, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -656,6 +656,24 @@ Expect **23 passed** with AST-1867 product.
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/dispatcher.md | shasum`
 
+### AST-2010 · AST-2009 (qa-fix bug-repro — exhausted OpenRouter 429 stops the batch, ledger FAILED)
+
+**Primary manifest:** [`../external/llm_compat.md`](../external/llm_compat.md) § AST-2010. Contract: the first result satisfying `is_provider_rate_limit` sets `ctx["provider_rate_limit_outage"] = {"error"}`. This happens at all three `_run_unified` call sites (per-entity `_one`, chunk `_consult_chunk`, full-batch call). Remaining entities and chunks are then skipped, and the claim is still released. `_run_dispatch_loop` breaks after the run. `_dispatch_one_body` finishes **FAILED**, which wins over a balance outage's INTERRUPTED, and never reaches the breaker. Untagged results (DeepSeek / Kimi 429) never set the key. Red at `c08219c32`: `assert 6 == 1` (2 entities × 3 runs) and status `COMPLETED`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AST-2009 shape: 2-entity `meteorite_like`, `batch_call_mode=0`, warm entity exhausted → 1 consult call, claim released, ledger FAILED `1/…/1`, no balance alert, no breaker | `_dispatch_one_body` / `_run_dispatch_loop` / `_run_unified` | **`tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage::test_bug_repro_rate_limit_stops_batch_ledger_failed`** (**bug-repro**) |
+| Per-entity skip; summary carries no `failure_class` / `error`; ctx marker `{"error"}`; no balance key | `_one` | **`::TestAst2010ProviderRateLimitOutage::test_run_unified_per_entity_skips_after_rate_limit`** |
+| Chunk split: head tagged → tail chunks skipped | `_consult_chunk` | **`::…::test_run_unified_chunk_split_skips_tail_after_head_rate_limit`** |
+| Full-batch call marks ctx | full-batch branch | **`::…::test_run_unified_full_batch_marks_rate_limit`** |
+| Untagged 429 → every entity called, no marker (guard, green both) | `_one` | **`::…::test_run_unified_untagged_429_does_not_skip`** |
+| Loop stops after the outage run | `_run_dispatch_loop` | **`::…::test_run_dispatch_loop_stops_after_rate_limit_run`** |
+| FAILED alone and with a balance outage (FAILED wins); breaker skipped | `_dispatch_one_body` | **`::…::test_dispatch_one_rate_limit_outage_failed[False/True]`** |
+
+**Kept:** `TestAst1867ProviderBalanceOutage` (balance-only still INTERRUPTED + alert).
+
+**Integration:** none — do not invent.
+
 ### AST-1879 · AST-1851 (skip gate on the task agent's server key)
 
 **Primary manifest:** [`agent.md`](agent.md) § QA test manifest (AST-1879). `_dispatch_one_body` checks `candidate_api_keys[task_llm_server_id_or_none(task_key)]` **only when a server id comes back** (AST-1944). A non-LLM key (`agent_id` `"telescope"` / empty / no `agent_task` row — the AST-537 invariant) has no server and skips the key check; a missing candidate is still skipped. For an LLM key with no candidate, no map, an empty key, or only another platform's key, it skips: no ledger, plus a warning naming the server ("This task is not starting").

@@ -4073,6 +4073,111 @@ class TestAst897HoldStateOnBalanceRefusal:
         trans.assert_not_called()
 
 
+# AST-2010 — an exhausted-429 result's failure_class reaches run_consult_task's caller on every
+# failure return the dispatcher reads; routing / counts are unchanged (no hold); an untagged
+# failure (DeepSeek / Kimi 429, ordinary error) still carries no failure_class.
+class TestAst2010RateLimitForwarding:
+    FC = "provider_rate_limit"
+    ERR = "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error'}}"
+
+    def _tagged(self) -> Dict[str, Any]:
+        return {"success": False, "error": self.ERR, "failure_class": self.FC}
+
+    def _render_verdict_edges(self, monkeypatch: pytest.MonkeyPatch, result: Dict[str, Any]) -> MagicMock:
+        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}, "state": "VALID_TITLE"}
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value=result))
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        return transition
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_generic_failure_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = self._render_verdict_edges(monkeypatch, self._tagged())
+        out = await consult_mod.render_verdict("grade_do", "job-1")
+        assert out["success"] is False
+        assert out["failure_class"] == self.FC
+        # same failure route as today — not a hold
+        assert out.get("state_held") is not True
+        transition.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_untagged_failure_has_no_failure_class(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._render_verdict_edges(monkeypatch, {"success": False, "error": self.ERR})
+        out = await consult_mod.render_verdict("grade_do", "job-1")
+        assert out["success"] is False
+        assert "failure_class" not in out
+
+    @pytest.mark.asyncio
+    async def test_run_consult_task_single_entity_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2009 path: meteorite_like, one entity → render_verdict; pre-fix drops failure_class.
+        monkeypatch.setattr(
+            consult_mod, "_consult_orchestration_for_entity", lambda task_key, entity_state=None: {"pass_state": "PASSED_LIKE"},
+        )
+        rv = {"success": False, "to_state": "ERROR_LIKE", "error": self.ERR, "failure_class": self.FC}
+        monkeypatch.setattr(consult_mod, "render_verdict", AsyncMock(return_value=rv))
+        out = await consult_mod.run_consult_task(
+            "job", "LIKE_READY", [{"astral_job_id": "j1", "state": "LIKE_READY"}], "b2010",
+            dispatch_task_key="meteorite_like",
+        )
+        assert (out["total_processed"], out["total_passed"], out["total_failed"], out["total_errors"]) == (1, 0, 0, 1)
+        assert out["failure_class"] == self.FC
+
+    @pytest.mark.asyncio
+    async def test_batch_consult_envelope_failure_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        jobs = [{"astral_job_id": "job-1", "state": "VALID_TITLE"}]
+        out = await consult_mod._run_batch_consult(
+            "qualify_job_listings", "batch-2010", jobs,
+            lambda rows: "content",
+            lambda input_job, response_job, cfg: cfg["pass_state"],
+            None, False,
+        )
+        assert out["success"] is False
+        assert out["failure_class"] == self.FC
+        assert out.get("state_held") is not True
+        # whole batch still takes the ordinary failure route
+        transition.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_run_consult_task_batch_normalizer_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        batch = AsyncMock(return_value={"success": False, "passed": 0, "failed": 0, "total": 2, "retried": 0,
+                                        "error": self.ERR, "failure_class": self.FC})
+        monkeypatch.setattr(consult_mod, "meteorite_like_batch", batch)
+        jobs = [{"astral_job_id": f"j{i}", "state": "LIKE_READY"} for i in range(2)]
+        out = await consult_mod.run_consult_task("job", "LIKE_READY", jobs, "b2010", dispatch_task_key="meteorite_like")
+        assert (out["total_processed"], out["total_errors"]) == (2, 2)
+        assert out["failure_class"] == self.FC
+
+    @pytest.mark.asyncio
+    async def test_run_consult_task_prefilter_company_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import roster as roster_mod
+
+        batch = AsyncMock(return_value={"passed": 0, "failed": 0, "total": 1, "retried": 0, "failure_class": self.FC})
+        monkeypatch.setattr(roster_mod, "prefilter_company_batch", batch)
+        out = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", [{"short_name": "acme", "state": "HOMEPAGE_READY"}], "b2010",
+            dispatch_task_key="prefilter_company",
+        )
+        assert (out["total_processed"], out["total_errors"]) == (1, 1)
+        assert out["failure_class"] == self.FC
+
+    @pytest.mark.asyncio
+    async def test_analysis_upshot_batch_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = {"astral_job_id": "j1", "company": "co", "job_data": {}, "state": "PASSED_LIKE"}
+        monkeypatch.setattr(consult_mod.tracker, "get_job", MagicMock(return_value=job))
+        monkeypatch.setattr(consult_mod.tracker, "get_company", MagicMock(return_value={"short_name": "co"}))
+        monkeypatch.setattr(consult_mod, "_prep_analysis_upshot_live_content", AsyncMock(return_value="x"))
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        out = await consult_mod._run_analysis_upshot_batch("b2010", [job], {}, False)
+        assert out["failure_class"] == self.FC
+        assert out["total_passed"] == 0
+
+
 class TestAst898QualifyNewRetry:
     """AST-898: NEW_RETRY AI hop + fail dest; skip title re-screen; drain VALID_TITLE_RETRY."""
 

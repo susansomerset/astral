@@ -1478,3 +1478,7 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ### AST-2008 · AST-2007 (render_verdict provider_call_timeout → retry hop)
 
 `render_verdict`: `failure_class == PROVIDER_CALL_BUDGET["failure_class"]` routes via `_consult_batch_fail_dest` (AST-642 one hop) instead of `_fail`. **New:** `TestAst2008RenderVerdictTimeoutRetry` — primary `METEORITE_PASSED_JD` → `METEORITE_PASSED_JD_RETRY` (WARNING), `_RETRY` → `METEORITE_FAILED_TECHNICAL_DO` (ERROR), no dest → no transition; `failure_class` on the return. Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.
+
+### AST-2010 · AST-2009 (exhausted-429 `failure_class` forwarded)
+
+**New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` reaches the caller on `render_verdict`'s generic failure, the `run_consult_task` single-entity grade/LIKE path (the AST-2009 `meteorite_like` repro), the `_run_batch_consult` envelope failure, the batch normalizer (`meteorite_like_batch`), the `prefilter_company` normalizer, and the `_run_analysis_upshot_batch` summary. Routing and counts are unchanged (no hold). An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
