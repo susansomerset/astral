@@ -891,3 +891,103 @@ context_tokens≈11000
 ### Test delivery — AST-1996
 
 No test-tree delivery on this sub (docs-acceptance). Betty's `[board-betty] TESTS: REVISE` coverage — the `test_rejects_bad_positions_and_trailing_meta` flip, repro A/B, and `_run_batch_consult` decode-failure routing — lands on test-gap sibling AST-2001, which is blocked by this ticket.
+
+---
+
+## Bug: AST-2001 — Decode-failure isolation tests + bible (test gap for AST-1996)
+
+**Linear:** [AST-2001](https://linear.app/astralcareermatch/issue/AST-2001) · **Mini-parent:** [AST-1884](https://linear.app/astralcareermatch/issue/AST-1884) · **Publish ref:** `sub/AST-1884/AST-2001-decode-line-retry-tests` · **Blocked by:** AST-1996 (product fix `96bc0471d`, on `ftr/AST-1884-decode-line-retry`)
+
+**Who lands what:** test tree + bible only — **Betty (qa-fix)** writes every file below. No product code; the engineer pass for this ticket is verify-only.
+
+### As-is
+
+AST-1996 shipped with no test asserting its contract. On the AST-1996 tip the agent + consult component suites show:
+
+- `test_agent.py::TestDecodePayload::test_rejects_bad_positions_and_trailing_meta` **fails** — it still expects `_decode_payload("task", "grades", "0|CRA2|extra", …)` to raise `unexpected trailing content`; it now returns a `decode_failures` entry.
+- `src/core/consult.py::_run_batch_consult` has two **uncovered** branches added by AST-1996 (LOCKED_AT_100 file): the per-entity routing loop body (`for aid, reason in decode_failed.items(): retried += _transition_batch_consult_failures(…)`) and the summary line (`if decode_failed: errors.append(f"decode failed on …")`). `src/core/agent.py`'s new branches are executed today only by the failing test above.
+- No test pins repro A (multi-line partial decode) or repro B (later-line routing in `_should_decode_as_encoded_line`).
+
+### To-be
+
+Tests assert AST-1996's contract, both repros are red on the pre-fix tree (`57ed90983`) and green on the fix, the flipped test passes, and `agent.py` / `consult.py` stay at 100% branch coverage. Bible rows record the new coverage.
+
+### Repro
+
+```bash
+ASTRAL_PYTHON=<3.10+ venv python> ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestDecodePayload -q
+# -> FAILED test_rejects_bad_positions_and_trailing_meta (DID NOT RAISE)
+```
+
+Coverage after running `test_agent.py` + `test_consult.py` on the fix tip (`tests/.coverage/component.json`): `src/core/consult.py` missing branches in `_run_batch_consult` at the decode-failure loop body and the `decode failed on N IDs` append (both arcs `if/for → body`).
+
+### Root cause
+
+Fix-board routed Betty's `TESTS: REVISE` to this sibling instead of a qa-fix pass on AST-1996, so the product change merged without its tests (by design — not a defect in AST-1996).
+
+### Proposed change
+
+Six test items, each with literal fixtures and expected values. All item numbers are for Betty's manifest; "red on pre-fix" means fails against `57ed90983` (AST-1996 parent), the AC2 gate.
+
+**`tests/component/core/test_agent.py` — `class TestDecodePayload`**
+
+1. **Flip `test_rejects_bad_positions_and_trailing_meta`.** Keep its `bad position` and `grade X requires confidence digit 0` raises unchanged. Replace only the trailing-content `pytest.raises` with:
+
+   ```python
+   out = agent_mod._decode_payload("task", "grades", "0|CRA2|extra", ctx)   # ctx = _batch_entities("job-1")
+   assert out["jobs"] == []
+   assert out["decode_failures"] == [{
+       "astral_job_id": "job-1", "pos": 0,
+       "reason": "[task] unexpected trailing content in grades-only line: '0|CRA2|extra'",
+   }]
+   ```
+
+   (Rename optional — e.g. `…_records_trailing_meta`; keep it in the same class.)
+
+2. **New — repro A, multi-line partial decode (red on pre-fix).** `ctx = {"batch_entities": _batch_entities("job-0", "job-1")}`, payload `"0|DEC35|ECC35|ORX0\n1|DEC3|ECC3|ORX0"`, output type `"grades"`:
+   - `[j["astral_job_id"] for j in out["jobs"]] == ["job-1"]`, with three grade rows (`DE`/`C`/3, `EC`/`C`/3, `OR`/`X`/0).
+   - `[f["astral_job_id"] for f in out["decode_failures"]] == ["job-0"]`, `pos == 0`.
+   - Pre-fix: raises `ValueError` → test fails. ✔ AC2.
+
+3. **New — clean payload has no `decode_failures` key.** `_decode_payload("task", "grades", "0|CRA2", _batch_entities ctx)` → `"decode_failures" not in out` (pins the "key only when a line failed" invariant).
+
+4. **New — `_meta` / `_notes` types unaffected.** Payload `"0|CRA2|note text"` with output type `"grades_encoded_notes"` → `jobs[0]["notes"] == "note text"` and no `decode_failures` key. (Guards that only grades-only types take the new branch.)
+
+**`tests/component/core/test_consult.py`**
+
+5. **New — repro B, later-line routing (red on pre-fix).** Two assertions in one test (or two tests in a small class, e.g. `TestEncodedDecodeIsolation`):
+   - `consult_mod._should_decode_as_encoded_line("000|DEC35|ECC35\n001|DEC3|ECC3") is True` — pre-fix returns `False`. ✔ AC2.
+   - End-to-end through normalize: `consult_mod._normalize_rubric_task_response("evaluate_meteorite", TASK_CONFIG["evaluate_meteorite"], {"agent_payload": "000|DEC35|ECC35\n001|DEC3|ECC3"}, {"batch_entities": [{"astral_job_id": "J0"}, {"astral_job_id": "J1"}]})` → `jobs` ids `["J1"]`, `decode_failures` ids `["J0"]`. Pre-fix returns one letter-pipe job with no `astral_job_id`.
+   - Keep existing `test_should_decode_as_encoded_line_routing` (`test_agent.py`) as-is — its single-line asserts still hold.
+
+6. **New — `_run_batch_consult` per-entity decode-failure routing.** Use the `TestRunBatchConsultBranches` harness: `monkeypatch` `_transition_job_state_for_task` → `MagicMock()`, `_hydrate_response_jobs_grade_reasons` → `MagicMock()`, `ensure_batch_response_entity_ids` → `MagicMock()`, `do_task` → `AsyncMock` returning `{"success": True, "parsed_response": <below>, "timesheet": {}}`. Task `"evaluate_meteorite"`, `process_fn = lambda i, r, cfg: cfg["pass_state"]`, `ctx={}`.
+
+   ⚠️ **Must stub `_hydrate_response_jobs_grade_reasons`.** Tests that don't (e.g. `TestRunBatchConsult::test_counts_passed_and_failed_rows`, `TestRemainingConsultBranches::test_batch_retries_missing_ids`) currently fail on the ftr trunk with `ValueError: rubric criteria missing or empty; cannot hydrate grade reasons` — pre-existing, outside this ticket; do not copy that pattern.
+
+   Entities: `J0` state `METEORITE_QUALIFIED`, `J1` state `METEORITE_QUALIFIED_RETRY`, `J2` state `METEORITE_QUALIFIED`.
+
+   - **6a — first strike / second strike / clean applies.** `parsed = {"jobs": [{"astral_job_id": "J2", "grades": []}], "decode_failures": [{"astral_job_id": "J0", "pos": 0, "reason": "r0"}, {"astral_job_id": "J1", "pos": 1, "reason": "r1"}]}`. Expect:
+     - transitions (via `_transition_job_state_for_task` calls, positional `(task_key, ids, dest)`): `(["J0"], "METEORITE_QUALIFIED_RETRY")` and `(["J1"], "METEORITE_ERROR_EVALUATE_JD")` — one call each.
+     - `out["success"] is False`, `out["passed"] == 1`, `out["retried"] == 1`, `out["missing"] is None`, `out["decode_failed"] == ["J0", "J1"]`, `out["error"] == "decode failed on 2 IDs: ['J0', 'J1']"`.
+     - Covers both uncovered `consult.py` branches. ✔ AC1.
+   - **6b — clean row wins.** `parsed = {"jobs": [{"astral_job_id": j, "grades": []} for j in ("J0", "J1", "J2")], "decode_failures": [{"astral_job_id": "J0", "pos": 0, "reason": "r0"}]}` → no transition calls, `success is True`, `passed == 3`, `decode_failed is None`, `error is None`.
+   - **6c — decode-failed id is not double-counted as missing.** Covered by 6a's `missing is None` (J0/J1 absent from `jobs` but present in `decode_failures`).
+
+   Values above were confirmed by an inline replay against `96bc0471d` during AST-1996 make-fix.
+
+**`docs/test-bible/**`**
+
+7. `docs/test-bible/core/agent.md` — `_decode_payload` / `TestDecodePayload` entry: grades-only trailing content → `decode_failures` (id, pos, reason), line skipped; clean payload has no key; `_meta`/`_notes` unaffected; other per-line errors still raise. Rows for items 1–4.
+8. `docs/test-bible/core/consult.md` — `_should_decode_as_encoded_line` scans every line (item 5); `_run_batch_consult` decode-failure routing first/second strike, clean-row-wins, `decode_failed` / `success` / `error` shape (item 6).
+
+### Blast radius
+
+Test tree + bible only. `test_agent.py::TestDecodePayload` (one existing test edited, three added); `test_consult.py` (new tests only — no existing test edited); two bible pages. No product file changes. The ~60 failures that already exist in these two files on the ftr trunk (same reasons on the pre-fix tree — e.g. `KeyError: 'company_id'`, empty-rubric hydrate) are **not** this ticket's to fix; the LOCKED_AT_100 judgement for AC1 is on AST-1996's new branches.
+
+### What must still hold
+
+- Existing `bad position`, X-confidence, duplicate-code (AST-1513) raise assertions in `TestDecodePayload` stay as raises.
+- `test_should_decode_as_encoded_line_routing` single-line asserts unchanged.
+- AST-1155 coverage (`TestAst1155IncompleteGradeRetry`, incomplete-grade first/second strike) unchanged.
+- No product code on this sub — engineer pass is verify-only.
