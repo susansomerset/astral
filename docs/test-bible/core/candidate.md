@@ -2359,3 +2359,16 @@ Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (l
 | **AST-1901:** the two wrappers are replaced by `update_candidate_api_keys(cid, [{server, key}])` | `src/core/candidate.py` | `TestCandidateAdminFacades::test_save_candidate_admin_and_update_api_keys` · `::test_per_server_set_clear_wrappers_retired` (manifest: [`../data/database/candidates.md`](../data/database/candidates.md) § AST-1901) |
 | New — session paste 400 without `candidate_id` / 404 unknown, before ledger or `do_task` | `run_session_resume_parse` | `TestAst986SessionResumeParse::test_400_requires_candidate_id_before_ledger_or_task` · `::test_404_unknown_candidate_before_ledger` |
 | Revised — session calls pass `candidate_id=`; 200 path reads the candidate once, ctx carries a copy of its `candidate_api_keys`, no bind/persist | `run_session_resume_parse` | `TestAst986SessionResumeParse` (all) · `TestAst996ExperienceJobArray::test_session_parse_returns_job_array_in_base_resume` |
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `run_requested_artifacts_dispatch`: an `empty_tokens` response on a registered stage trigger → that stage's `CANDIDATE_STATES` `error_state`, counted `total_errors == 1`, no `RuntimeError` / retry path; an invalid edge (`ValueError`) logs one WARNING and still counts the error.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Trigger / `_RETRY` / mid-chain hop label → `REQUESTED_ARTIFACTS_ERROR`; resume stage → `REQUESTED_RESUME_ERROR` | `run_requested_artifacts_dispatch` | **`TestAst2006RequestedArtifactsEmptyTokens::test_goes_straight_to_stage_error_state`** (4 params) |
+| `ValueError` on the error edge → one `skipped error_state …` WARNING, `total_errors == 1`, no raise | same | **`…::test_invalid_edge_warns_and_still_counts_error`** |
+
+**Broken / obsolete:** none. (`retry_holding` param is green on dev too — `_RETRY` → `error_state` was already the second-strike route.)
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
