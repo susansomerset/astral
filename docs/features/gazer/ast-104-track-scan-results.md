@@ -489,3 +489,84 @@ Registry skim (`canon/docs/DIRECTIVES-DIRECTORY.md` + grep on `canon/directives/
 ```
 [board-joan]  CANON: OK
 ```
+
+## Radia review (AST-1997)
+
+```
+[code-rubric]
+**Ticket:** AST-1997
+**Publish ref:** `a00abace71dc3d2e55a7c644850b5809235752ad` (`origin/sub/AST-1928/AST-1997-surface-scrape-exception`)
+**Diff reviewed:** `origin/ftr/AST-1928-gaze-scrape-failure-reason...origin/sub/AST-1928/AST-1997-surface-scrape-exception`
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen **Canon Scope** on AST-1997 is empty (Linear Description has no directive list; Joan fix-board: “No frozen Canon Scope on the bug ticket; overlap triage only”). No directive rows on the frozen list; roll-up from canon grades is vacuously clean.
+
+**Board overlap (informational only — not on frozen list):**
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| `astral.state.core-decides-transitions` | A | | No roster/state transition logic changed; only `failure_message` / outcome `message` text in `process_gazer_batch`. |
+| `stat.logging.warning` | A | | Richer per-item “why” on gaze failure path; roster still logs `-> ERROR_GAZE [message]` — conforms to who+why intent. |
+| `patt.entity.batch-processing` | X | | Gazer batch shape unchanged; not a batch-claim/dispatch change. |
+
+## Column diff vs plan stage
+
+`no plan-stage validate-plan scores attached` — fix-board Joan `CANON: OK`; Radia aligns with board triage, not re-litigating F2.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** not applicable — clean board opt-out (`[board-betty] TESTS: REVISE` routed to sibling **AST-2002**; no `[bug-repro]` on this tip per spawn).
+- **`## What must still hold`:** OK — traced on product diff (`src/core/gazer.py` only):
+  - AST-104 Outcome 5 scrape-failure shape: `status="failure"`, `total_found/new/duplicates=None`; `update_company_last_scan_at` still only on success path below the edited branch.
+  - AST-622: `if debug:` scrape-failure loop (`scrape failed: {r!s}`, `job_site=`) untouched; failure-branch debug still `outcome="failure — scrape failed"` + `job_site=` for non-logged failures (e.g. blank `job_site`).
+  - Success / parse / ingest / no-containers paths: no edits in diff hunks.
+  - Empty `short_name` still `continue`; no schema or ERROR_GAZE transition change.
+
+## Findings
+
+**fix-now:** none
+
+**discuss:**
+- **Unrelated doc hunk on publish ref** — `docs/features/candidate/ast-1598-job-and-app-log-candidate-id.md` gains an AST-1987 epic `## Threads` mirror; plan-fix scoped **only** `src/core/gazer.py` + `ast-104` bug patch. @susan: keep the stray mirror on this sub for registry convenience, or drop it before merge? **Default:** revert that file to `origin/ftr/AST-1928-gaze-scrape-failure-reason` on the next doc-only commit so the bug branch stays single-purpose (no product impact).
+
+**advisory:**
+- Three-dot diff product footprint is one commit’s worth in `gazer.py` (`scrape_errors` map + `failure_message` / outcome `message`); matches `## Proposed change` (including empty-`str(e)` `TimeoutError` form).
+- Message assertions / `[bug-repro]` live on **AST-2002** per Betty board; existing gazer tests that only check `status`/counts remain valid per plan blast radius.
+- Publish tip (`a00abace`) is ahead of Hedy’s Linear note (`275837548`); review used current `origin/sub/...` tip after fetch.
+
+## What’s solid
+
+- Exception capture uses `to_scrape[i]` index parity with `asyncio.gather` — correct mapping per company.
+- `scrape_errors.get(short_name, "No job_site to scrape")` cleanly separates scrape-raised vs never-scraped blank `job_site`.
+- Debug and non-debug paths share the same stored reason without altering AST-622 log strings.
+
+## Recommended actions
+
+| Action | Item |
+|--------|------|
+| none (ship product) | 0 fix-now |
+| optional doc hygiene | discuss default: revert unrelated `ast-1598` threads hunk |
+
+## Chuckles disposition
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal (AST-1928 mini-epic, `ftr` live) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing**; `resolve-child` **skipped**. Test-gap sibling **AST-2002** remains separate. |
+
+context_tokens≈9500
+```
+
+```
+[code-rubric] PROCEED (Commit: a00abace) scrape errors surfaced
+```
+
+**Chuckles note on discuss item:** the `ast-1598` hunk is `40d0fe70e`, already on `origin/dev` (pulled in by sync-child); zero diff vs dev — no revert needed.
+
+```
