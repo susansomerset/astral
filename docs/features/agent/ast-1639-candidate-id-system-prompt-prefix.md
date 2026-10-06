@@ -528,3 +528,53 @@ no plan-stage scores attached (gap child; board Betty REVISE / Joan CANON OK on 
 
 Repro matches plan **Repro** asserts and Susan-approved **any-id** strip. Guards cover regex anchor (leading space, mid-body marker) and fail-closed with prefixed body. Bible table + manifest align with six new nodes and full-class run command.
 
+
+---
+
+## Bug: AST-1992 — idempotence tests for candidate-id system prefix (test gap, retroactive)
+
+- **Linear:** [AST-1992](https://linear.app/astralcareermatch/issue/AST-1992) · mini-parent [AST-1985](https://linear.app/astralcareermatch/issue/AST-1985) · product fix [AST-1990](https://linear.app/astralcareermatch/issue/AST-1990)
+- **Publish ref:** `sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests`
+- **Retroactive:** written after the fact for the sub-log gate. Gap child opened from `[board-betty] TESTS: REVISE` on AST-1990; it never ran plan-fix/make-fix.
+
+### As-is
+
+`TestAst1639CandidateIdSystemPrefix` had no idempotence coverage: nothing asserted that already-prefixed system text comes out with exactly one `[astral-<cid>]`, so the AST-1985 stacking bug had no test guarding it.
+
+### To-be
+
+The class covers re-fed and stacked input on both the helper and the assembly paths, plus guard tests for the regex anchor and fail-closed behavior. Bible § AST-1992 lists the nodes and the manifest.
+
+### Repro
+
+`[bug-repro]` nodes Betty landed in `tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix`:
+- `test_helper_already_prefixed_input_keeps_one_marker`
+- `test_helper_five_stacked_markers_collapse_to_one`
+- `test_helper_other_id_leading_marker_replaced_by_current_cid`
+- `test_assemble_already_prefixed_system_keeps_one_marker`
+
+Verified red→green (AST-1992 test-fix):
+- **Red:** pre-fix `src/core/agent.py` @ `cc256733f` gave 4 failed, 9 passed. The two guard tests (`test_helper_non_leading_marker_left_in_body`, `test_helper_blank_id_raises_even_when_body_already_prefixed`) pass both before and after the fix.
+- **Green:** synced tip with AST-1990 `2b0b74f00` gave 4/4, and the full class passed 13/13.
+
+### Root cause
+
+AST-1639's suite only asserted single-pass output. The double-prefix contract was enforced by call-site discipline, so no test ever fed already-prefixed text back in.
+
+### Proposed change
+
+Test tree and bible only, Betty-owned, already landed (`37574314a`, merged via `merge-tests`):
+- six new nodes in `TestAst1639CandidateIdSystemPrefix`;
+- `docs/test-bible/core/agent.md` § AST-1992 and its manifest.
+
+No product `src/` change; the product fix is AST-1990.
+
+### Blast radius
+
+`tests/component/core/test_agent.py` (one class) and `docs/test-bible/core/agent.md` (one section). Existing AST-1639 nodes are unchanged. Nothing else in `test_agent.py` asserts stacking.
+
+### What must still hold
+
+- Full `TestAst1639CandidateIdSystemPrefix` stays green with AST-1990 merged.
+- The 4 repro nodes stay red against a non-idempotent helper.
+- The AST-1990 `## What must still hold` invariants are unaffected.
