@@ -32,7 +32,7 @@
 .venv/bin/python -m pytest tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
 ```
 
-**Console format:** off-Railway stdout is `%(levelname)s %(name)s: %(message)s`; on Railway (`RAILWAY_ENVIRONMENT`) stdout is one JSON object per line with `level` (`debug`/`info`/`warn`/`error`) + `message`. `_DatabaseLogHandler` stays `%(message)s` — `level` and `logger_name` are `app_log` columns. **`TestConsoleFormat`**, **`TestAst1778RailwayConsoleTransport`**.
+**Console format:** off-Railway stdout is `%(levelname)s %(name)s: %(message)s`; on Railway (`RAILWAY_ENVIRONMENT`) stdout is one JSON object per line with `level` (`debug`/`info`/`warn`/`error`) + `message`, plus top-level `batch_id` / `candidate_id` when those contextvars are set (omitted, never null, when unset; AST-1988). **`TestAst1988RailwayJsonIds`**. `_DatabaseLogHandler` stays `%(message)s` — `level` and `logger_name` are `app_log` columns. **`TestConsoleFormat`**, **`TestAst1778RailwayConsoleTransport`**.
 
 ### AST-1778 · AST-1777
 
@@ -53,6 +53,22 @@ Railway-faithful console transport in `get_logger`: product console always on **
 
 **Integration:** none — no existing `tests/integration/` scenario asserts console transport.
 
+### AST-1988 · AST-1987 (bug-repro — Railway JSON ids)
+
+**Tests landed under gap sibling AST-1991.** `_RailwayJsonFormatter.format` adds top-level `batch_id` / `candidate_id` from `log_batch_id` / `log_candidate_id` when truthy; unset or `""` leaves the batch-less line byte-identical to the AST-1778 shape (omit, never null). Opener set/clear pairing lives in [`logging_batch.md`](logging_batch.md) § AST-1988.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Both ids set → whole-dict equality | `src/utils/logging.py` | **`TestAst1988RailwayJsonIds::test_formatter_adds_batch_and_candidate_when_set`** (**bug-repro**) |
+| Batch only → no `candidate_id` key | same | **`…::test_formatter_batch_only_omits_candidate`** |
+| Both `None` → exact pre-fix string | same | **`…::test_formatter_unset_is_byte_identical`** |
+| Both `""` → exact pre-fix string | same | **`…::test_formatter_blank_ids_omitted`** |
+| On-Railway emit through `get_logger` carries ids | same | **`…::test_on_railway_emit_carries_ids`** |
+
+**Broken / obsolete:** none — `TestAst1778RailwayConsoleTransport` asserts by key with the contextvars unset.
+
+**Integration:** none.
+
 ## QA test manifest
 
 1. Railway level map: `tests/component/utils/test_debug_logging.py::TestAst1778RailwayConsoleTransport::test_railway_json_formatter_maps_levels`
@@ -72,16 +88,19 @@ rg -n 'logging\.getLogger|basicConfig' src/ --glob '!utils/logging.py'
 
 Expect no new product emit paths from this tip vs `origin/dev` (transport-only in `src/utils/logging.py`).
 
+11. AST-1988 Railway JSON ids (bug-repro #1): `tests/component/utils/test_debug_logging.py::TestAst1988RailwayJsonIds`
+
 ```bash
 .venv/bin/python -m pytest \
   tests/component/utils/test_debug_logging.py::TestAst1778RailwayConsoleTransport \
   tests/component/utils/test_debug_logging.py::TestConsoleFormat \
   tests/component/utils/test_debug_logging.py::TestAst979DebugLevelPersistence \
+  tests/component/utils/test_debug_logging.py::TestAst1988RailwayJsonIds \
   tests/component/utils/test_logging_batch.py \
   -q
 ```
 
-**Pass criterion:** pytest green on items 1–9 + AC6 grep clean — not zero-arg harness / branch-lock gate.
+**Pass criterion:** pytest green on items 1–9 and 11 + AC6 grep clean — not zero-arg harness / branch-lock gate.
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/utils/debug_logging.md`
