@@ -664,3 +664,26 @@ Publish as one commit on the publish ref, AST-1846 shape: `docs(AST-2005): canon
 - Agent-response failures (malformed / invalid / missing response, decode / validation failures) keep the two-attempt `_RETRY` → `error_state` route, daisy-chain tasks included.
 - Frontmatter unchanged; the clerk serves the directive (`expand` exit 0).
 - No product, test, bible or schema change on this ticket.
+
+### Joan fix-board — AST-2005
+
+[board-joan]  CANON: OK
+
+context_tokens≈32000
+
+### Meteorite gap — explicit rule (for the board)
+
+**Canon does not need to mention the meteorite gap** for this ticket. Ada’s “silent” choice is correct.
+
+`patt.task.dispatch-retry` is the dispatch-entity retry pattern (trigger / `_RETRY` / `error_state` on job, company, and candidate registries). The proposed carve-out names the observable product contract AST-2000 already implements for those routers: `do_task` returns `empty_tokens` → skip `_RETRY` → terminal `error_state` (or flow fallback). Meteorite staging (`READY` / `CHECK_UNIQUE`, no reachable error label) is **not** licensed or excused by this bullet; it is also **not** empty-token-specific (those callers already leave rows in place on many failures). Putting that gap in canon (option 2) would bake a transient registry hole into durable law; option 3 would gut Arc 5 and Susan’s ruling. Traceability stays in the feature plan + AST-2000 boundary, not in `patt.task.dispatch-retry.md`.
+
+If Susan later wants meteorite empty-token failures terminal, that is **new registered states + product routing** — a separate ticket, not an amendment to this carve-out.
+
+---
+
+**Rationale (not for Linear):**
+
+- **Self-fit:** Proposed `# When this doesn't apply` text matches Susan’s AST-1986 binding, Joan round-1 gap, and merged AST-2000 behavior (`empty_tokens` only, narrow, no ticket id in canon).
+- **Arc 5:** Read with pattern scope: empty-token failures on **dispatch-routed** entities must not persist at trigger / hop / input; the carve-out’s terminal routing satisfies that. Do not read the closing Arc-5 sentence as a guarantee for every `do_task` consumer (meteorite).
+- **Other directives:** No conflict requiring edits to `stat.logging.error` / `stat.logging.warning` or `astral.dispatch.entity-state-bound`; body-only clerk path is as described.
+- **Scope:** `patt.task.dispatch-retry.md` only — conforms to `astral.standards.in-scope-only` for this child.
