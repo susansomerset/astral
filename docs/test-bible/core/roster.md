@@ -1081,3 +1081,19 @@ Sibling pages: **`core/consult.md`**, **`core/agent.md`**, **`core/candidate.md`
 1. See **`docs/test-bible/core/dispatcher.md`** § AST-1867 · AST-1870 manifest (includes `TestAst1867BalanceHeldCounting` + `TestAst897HoldStateOnBalanceRefusal`).
 
 **Bible shasum (record after publish):** `git show origin/sub/AST-1860/AST-1870-provider-balance-outage-tests:docs/test-bible/core/roster.md | shasum`
+
+### AST-2006 · AST-2000 (bug — runtime empty-token guard)
+
+**Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. Company flows send an `empty_tokens` failure to the flow's terminal error state with no save / no retry; the dispatcher counts it as an error via the returned `"error"`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prefilter batch → every company `ERROR_PREFILTER`; summary `retried == 0` | `_run_batch_company_prefilter` | **`TestAst2006EmptyTokenCompanyTerminals::test_prefilter_batch_goes_to_error_prefilter`** |
+| select_job_page → `ERROR_LOCATE_JOB_PAGE`, `"error"`, no `state_held`, no `NO_JOBLIST` save | `_find_job_page_from_assembled` / `_locate_empty_token_error` | **`…::test_select_job_page_goes_to_error_locate_without_no_joblist`** |
+| parse hop returns `{empty_tokens, error}`, no notes save | `_fetch_parse_job_list` | **`…::test_fetch_parse_job_list_surfaces_empty_tokens_without_notes`** |
+| select-only parse → `ERROR_LOCATE_JOB_PAGE`, no parse notes | `_finalize_joblist_titles_select_only` | **`…::test_select_only_parse_goes_to_error_locate`** |
+| Parse dispatch from `JOBLIST_IDENTIFIED` and `_RETRY` → `COULD_NOT_PARSE_JOBLIST`, `"error"`, no save | `run_parse_job_list_dispatch` | **`…::test_parse_dispatch_goes_to_terminal_from_either_trigger`** (2 params) |
+
+**Broken / obsolete:** none.
+
+Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
