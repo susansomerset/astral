@@ -453,3 +453,78 @@ Implementation matches **Proposed change** verbatim: module-level `_CANDIDATE_PR
 
 
 **docs-acceptance:** test/bible delivery for this fix lives on sibling gap AST-1992 (Betty qa-fix); no test() on this product sub.
+
+
+## Radia review (AST-1992)
+
+**Ticket:** AST-1992  
+**Publish ref:** `origin/sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests` @ `149518fb1ae2d605a0801153ebcf6a6488d912da`  
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`  
+**Overall:** CLEAN  
+
+**Diff base:** `origin/ftr/AST-1985-candidate-prefix-dedupe...origin/sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests` — **78 lines**, `tests/component/core/test_agent.py` (+45), `docs/test-bible/core/agent.md` (+33). No `src/**`.
+
+**Status gate:** Spawn prompt **Tests Passed** / assignee Ada — trusted.
+
+## Fix-specific checks
+
+### [bug-repro] — OK
+
+Betty thread + bible manifest name **four** repro nodes (red on pre-fix `cc256733f`, green with AST-1990 `2b0b74f00` per Ada). Block comment `# AST-1990 [bug-repro]:` precedes the new tests; assertions call **real** `agent_mod._system_text_with_candidate_prefix` / `_assemble_blocks_seven_segment`, not reimplemented strip logic.
+
+| Test | Pins (concrete) | Pre-fix fail? |
+|------|-----------------|---------------|
+| `test_helper_already_prefixed_input_keeps_one_marker` | Exact `NOTE: Please see ...` / `[astral-somerset]…`; `f(once, "somerset") == once` | Yes — stacks second marker |
+| `test_helper_five_stacked_markers_collapse_to_one` | 5× `[astral-somerset]` + body → single marker | Yes — six markers |
+| `test_helper_other_id_leading_marker_replaced_by_current_cid` | `[astral-other]BODY` → `[astral-somerset]BODY`; mixed run → one marker | Yes — keeps stale/other ids |
+| `test_assemble_already_prefixed_system_keeps_one_marker` | Wire `system_blocks[0]["text"]` and `runtime[0]["system_prompt"]["content"]` == `[astral-somerset]shared-sys` | Yes — double prefix on re-fed assembly |
+
+Not tautologies; tied to AST-1990 **## To-be** / **Repro** fixtures.
+
+**Also added (guards, not repro-first):** `test_helper_non_leading_marker_left_in_body` (byte-zero-only strip; green pre/post-fix), `test_helper_blank_id_raises_even_when_body_already_prefixed` (AC7 with marker in body). Correctly documented in bible as pre/post green guards.
+
+### ## What must still hold (AST-1990 plan-fix) — OK
+
+Tests **encode** the listed invariants without weakening existing class nodes:
+
+- **AC1/AC2 / separator:** Existing `test_helper_prefixes_without_separator`, `test_assemble_first_system_block_leads_with_prefix`, provider tests unchanged in diff.
+- **AC3:** New assemble-on-prefixed-input node; existing preview/store parity tests untouched.
+- **AC4:** Cases use opaque ids (`somerset`, `other`, `x`) only.
+- **AC7:** New prefixed-body + blank id cases plus existing `test_helper_rejects_blank_or_whitespace_id`.
+- **Logging statutes:** No product/logging changes in diff.
+- **Class stays green:** Manifest runs full `TestAst1639CandidateIdSystemPrefix` (13 nodes with fix merged — Ada).
+
+## Canon scores
+
+**Notes:** Linear **Description** has **no frozen `## Citations` list** (Boundaries: “Joan CANON: OK — no canon gap” for this test-only gap). Nothing in diff touches `src/**` logging.
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| *(no frozen list on ticket)* | — | | Test/bible-only delivery; product canon scored on AST-1990 |
+
+If process requires rows: treat as **N/A** — not mis-selected product statutes; no **ESCALATE** (Joan already OK’d gap at board).
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (gap child; board Betty REVISE / Joan CANON OK on AST-1990)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Branch stack vs ftr:** Publish ref **tip still has pre-fix** `_system_text_with_candidate_prefix` (no `_CANDIDATE_PREFIX_RUN_RE`). Four `[bug-repro]` nodes **fail** on sub alone; **pass** when AST-1990 product is on the tree (Ada: via ftr @ `2b0b74f00`). Chuckles landing to `dev` must **include AST-1990 product + this sub** (or merge ftr then sub) so CI matches test-fix proof.
+- **merge-tests:** Tip commit `149518fb1` merges `origin/tests` resync (`e2412644`); three-dot vs ftr shows only AST-1992 test/bible deltas — expected Betty/Ada workflow; not cross-ticket **product** scope.
+- **Bible wording:** New `### AST-1992` section (accurate) vs Scope line “§ AST-1639 entries gain” (slightly imprecise) — doc nit only.
+
+## What's solid
+
+Repro matches plan **Repro** asserts and Susan-approved **any-id** strip. Guards cover regex anchor (leading space, mid-body marker) and fail-closed with prefixed body. Bible table + manifest align with six new nodes and full-class run command.
+
