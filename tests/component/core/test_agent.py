@@ -9329,6 +9329,51 @@ class TestAst1639CandidateIdSystemPrefix:
             with pytest.raises(ValueError, match="candidate id required"):
                 agent_mod._system_text_with_candidate_prefix("BODY", bad)  # type: ignore[arg-type]
 
+    # AST-1990 [bug-repro]: helper is idempotent — any leading [astral-…] run collapses to one [astral-<cid>].
+    def test_helper_already_prefixed_input_keeps_one_marker(self) -> None:
+        f = agent_mod._system_text_with_candidate_prefix
+        once = f("NOTE: Please see ...", "somerset")
+        assert once == "[astral-somerset]NOTE: Please see ..."
+        assert f(once, "somerset") == once
+
+    def test_helper_five_stacked_markers_collapse_to_one(self) -> None:
+        # AST-1985 observed sample: five stacked markers ahead of the body.
+        stacked = "[astral-somerset]" * 5 + "NOTE: Please see ..."
+        assert agent_mod._system_text_with_candidate_prefix(stacked, "somerset") == "[astral-somerset]NOTE: Please see ..."
+
+    def test_helper_other_id_leading_marker_replaced_by_current_cid(self) -> None:
+        # Susan-approved: strip any leading marker run regardless of id.
+        f = agent_mod._system_text_with_candidate_prefix
+        assert f("[astral-other]BODY", "somerset") == "[astral-somerset]BODY"
+        assert f("[astral-other][astral-somerset][astral-x]BODY", "somerset") == "[astral-somerset]BODY"
+
+    def test_helper_non_leading_marker_left_in_body(self) -> None:
+        # Only a byte-zero run is stripped; leading whitespace or mid-body markers stay untouched.
+        f = agent_mod._system_text_with_candidate_prefix
+        assert f(" [astral-somerset]BODY", "somerset") == "[astral-somerset] [astral-somerset]BODY"
+        assert f("BODY [astral-other] tail", "somerset") == "[astral-somerset]BODY [astral-other] tail"
+
+    def test_helper_blank_id_raises_even_when_body_already_prefixed(self) -> None:
+        # Fail closed: an existing marker never passes through without a candidate id.
+        for bad in (None, "", "  "):
+            with pytest.raises(ValueError, match="candidate id required"):
+                agent_mod._system_text_with_candidate_prefix("[astral-somerset]BODY", bad)  # type: ignore[arg-type]
+
+    def test_assemble_already_prefixed_system_keeps_one_marker(self) -> None:
+        # AC3 parity on re-fed preview/stored text: wire + runtime system text carry exactly one marker.
+        system_blocks, _, runtime, _, _ = agent_mod._assemble_blocks_seven_segment(
+            system_content="[astral-somerset][astral-somerset]shared-sys",
+            user_content="user",
+            caches_resolved_four=(None, None, None, None),
+            nocache_content=None,
+            live_content=None,
+            model_code="claude-haiku-4-5",
+            skip_cache=False,
+            candidate_id="somerset",
+        )
+        assert system_blocks[0]["text"] == "[astral-somerset]shared-sys"
+        assert runtime[0]["system_prompt"]["content"] == "[astral-somerset]shared-sys"
+
     def test_assemble_first_system_block_leads_with_prefix(self) -> None:
         system_blocks, user_blocks, runtime, _, _ = agent_mod._assemble_blocks_seven_segment(
             system_content="shared-sys",
