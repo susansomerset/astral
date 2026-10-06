@@ -732,12 +732,13 @@ class TestAst826DedupeSelectJobPageNav:
 class TestAst719PjlRosterHelpers:
     """AST-719: additive PJL scrape ledger helpers."""
 
-    def test_merge_pjl_scrape_record_skips_duplicate_and_empty(self) -> None:
+    def test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty(self) -> None:
         existing = [{"url": "https://acme.com/careers", "visible_text": "keep"}]
+        # AST-1995: same URL is an upsert (refresh), not a skip.
         assert roster_mod._merge_pjl_scrape_record(
             existing,
             {"url": "https://acme.com/careers", "visible_text": "dup"},
-        ) == existing
+        ) == [{"url": "https://acme.com/careers", "visible_text": "dup"}]
         assert roster_mod._merge_pjl_scrape_record(
             existing,
             {"url": "https://acme.com/jobs", "visible_text": "  "},
@@ -748,6 +749,39 @@ class TestAst719PjlRosterHelpers:
         )
         assert len(merged) == 2
         assert merged[1]["visible_text"] == "new page"
+
+    def test_ast1995_upsert_replaces_matching_row_in_place(self) -> None:
+        existing = [
+            {"url": "https://acme.com/careers", "visible_text": "a"},
+            {"url": "https://acme.com/jobs", "visible_text": "b"},
+            {"url": "https://acme.com/team", "visible_text": "c"},
+        ]
+        snapshot = [dict(r) for r in existing]
+        # Scheme / case / trailing slash differ — still the same normalize_link key.
+        merged = roster_mod._merge_pjl_scrape_record(
+            existing, {"url": "http://ACME.com/jobs/", "visible_text": " fresh "},
+        )
+        assert merged == [
+            snapshot[0],
+            {"url": "http://ACME.com/jobs/", "visible_text": "fresh"},
+            snapshot[2],
+        ]
+        assert existing == snapshot  # caller's list not mutated
+
+    def test_ast1995_error_record_discarded_even_with_text(self) -> None:
+        existing = [{"url": "https://acme.com/careers", "visible_text": "keep"}]
+        for url in ("https://acme.com/careers", "https://acme.com/jobs"):
+            assert roster_mod._merge_pjl_scrape_record(
+                existing, {"url": url, "visible_text": "partial", "error": "boom"},
+            ) == existing
+
+    def test_ast1995_whole_row_replace_drops_enumerated_nav_links(self) -> None:
+        existing = [{"url": "https://acme.com/careers", "visible_text": "old",
+                     "enumerated_nav_links": "1: https://acme.com/jobs/a"}]
+        merged = roster_mod._merge_pjl_scrape_record(
+            existing, {"url": "https://acme.com/careers", "visible_text": "new"},
+        )
+        assert merged == [{"url": "https://acme.com/careers", "visible_text": "new"}]
 
     def test_merge_pjl_scrape_record_persists_enumerated_nav_links(self) -> None:
         merged = roster_mod._merge_pjl_scrape_record(
