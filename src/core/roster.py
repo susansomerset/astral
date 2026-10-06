@@ -56,7 +56,7 @@ from src.data.database import (
     ensure_batch_response_entity_ids,
 )
 from src.utils.logging import get_logger, log_batch_id
-from src.utils.llm_external import is_provider_balance_refusal
+from src.utils.llm_external import is_provider_balance_refusal, is_provider_rate_limit
 from src.utils.config import (
     ASTRAL_CONFIG,
     COMPANY_STATES,
@@ -80,6 +80,11 @@ from src.utils.formatting import (
 
 # Logger for this module
 logger = get_logger(__name__)
+
+
+def _rate_limit_tag(r: Dict[str, Any]) -> Dict[str, Any]:
+    """AST-2010: carry an exhausted-429 failure_class up to the dispatcher (routing unchanged)."""
+    return {"failure_class": r["failure_class"]} if is_provider_rate_limit(r) else {}
 
 
 def _entity_info(entity_id: Any, entity_type: str, event: str, detail: Any) -> None:
@@ -915,6 +920,7 @@ async def run_company_task(
                 short_name, company_website, job_site_entity, debug=debug, ctx=ctx,
             )
             error_state = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
+            tag = _rate_limit_tag(result)
             if result.get("error"):  # pragma: no branch
                 # AST-1867: provider refused for balance — held (AST-897 kept state), not an entity error;
                 # failure_class travels up so the dispatcher can stop the batch and alert once.
@@ -934,11 +940,11 @@ async def run_company_task(
                     and not is_provider_balance_refusal(result)
                 ):  # pragma: no branch
                     transition_company_state(short_name, error_state)
-                return {**zero, "total_errors": 1}
+                return {**zero, "total_errors": 1, **tag}
             pass_states = ROSTER_CONFIG.get("locate_job_page", {}).get("pass_states", [])
             if result.get("state") in pass_states:  # pragma: no branch
-                return {**zero, "total_passed": 1}
-            return {**zero, "total_failed": 1}
+                return {**zero, "total_passed": 1, **tag}
+            return {**zero, "total_failed": 1, **tag}
 
         elif input_state == ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]:
             tk = (dispatch_task_key or "").strip()
@@ -952,9 +958,10 @@ async def run_company_task(
             if is_provider_balance_refusal(result):
                 logger.debug("%s | company select_job_page held: provider_balance_refusal error=%r", short_name, result.get("error"))
                 return {**zero, "total_held": 1, "failure_class": result.get("failure_class"), "error": result.get("error")}
+            tag = _rate_limit_tag(result)
             if result.get("error"):
                 _warn_company(short_name, "-", result["error"])
-                return {**zero, "total_errors": 1}
+                return {**zero, "total_errors": 1, **tag}
             # BOT_BLOCKED deliberately absent: bot-blocked is fail-only (AST-1751 / AST-2004).
             terminal_ok = frozenset({
                 sel_cfg.get("identified_state"),
@@ -965,8 +972,8 @@ async def run_company_task(
                 "NO_JOBLIST",
             })
             if result.get("state") in sel_cfg.get("pass_states", []) or result.get("state") in terminal_ok:
-                return {**zero, "total_passed": 1}
-            return {**zero, "total_failed": 1}
+                return {**zero, "total_passed": 1, **tag}
+            return {**zero, "total_failed": 1, **tag}
 
         elif input_state in (
             ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"],
@@ -2055,7 +2062,7 @@ async def _run_batch_company_prefilter(
             agent_failure=bool(result.get("agent_failure")),
             reason=result.get("error") or "do_task failed",
         )
-        return {"passed": 0, "failed": 0, "total": len(companies), "retried": retried}
+        return {"passed": 0, "failed": 0, "total": len(companies), "retried": retried, **_rate_limit_tag(result)}
 
     parsed = result.get("parsed_response") or {}
     response_companies = parsed.get("companies") or []
@@ -2285,7 +2292,8 @@ async def _find_job_page_from_assembled(
             _save_company(short_name=short_name, company_website=company_website,
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "SELECT_FAILED", "error": res.get("error"), "api": res})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "SELECT_FAILED"}
+            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "SELECT_FAILED",
+                    **_rate_limit_tag(res)}
 
         pp = res.get("run_next_parent_parsed")
         parsed_top = pp if pp is not None else res.get("parsed_response")  # type: ignore[assignment]

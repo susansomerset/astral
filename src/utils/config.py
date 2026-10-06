@@ -42,6 +42,7 @@ Config sections:
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
+  PROVIDER_RATE_LIMIT — LLM 429 still refused after retries match rules (AST-2010)
   PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
@@ -5030,7 +5031,10 @@ for _ct_key, _ct_meta in CONTACT_TASK_CONFIG.items():
 #   thinking_off_params — body fields that turn thinking off on this server
 #   request_extras     — body fields sent on every request (e.g. OpenRouter provider.zdr —
 #                        NOT set in this release; ZDR enforcement is future scope)
-#   concurrency        — None, or process-wide in-flight cap + 429 backoff for this server
+#   concurrency        — None, or 429 retry for this server: rate_limit_retries + backoff_base_seconds
+#                        (delay doubles per retry); optional max_concurrent (process-wide in-flight cap),
+#                        backoff_max_seconds (delay ceiling), exhausted_stops_batch (True: a 429 still
+#                        refused after the retries stops the dispatch batch, ledger FAILED — AST-2010)
 #   probe              — True: one host-discovery probe per batch, then the batch is pinned to the
 #                        probe's host (src.external.openrouter, AST-1959). Only OpenRouter routes per call.
 # ---------------------------------------------------------------------------
@@ -5062,7 +5066,8 @@ LLM_SERVER_CONFIG = {
         "auth": "bearer",
         "thinking_off_params": {"thinking": {"type": "disabled"}},
         "request_extras": {},
-        "concurrency": None,
+        # AST-2010 (Susan): 5 retries, doubling; no in-flight cap and no delay ceiling.
+        "concurrency": {"rate_limit_retries": 5, "backoff_base_seconds": 2.0, "exhausted_stops_batch": True},
         "probe": True,
     },
     "deepseek": {
@@ -5422,6 +5427,14 @@ PROVIDER_BALANCE_REFUSAL = {
         "out of credit",
         "payment required",
     ),
+}
+
+# PROVIDER_RATE_LIMIT — 429 still refused after the server's retries (AST-2010).
+# Substrings are lower-case; "error code: 429" is the SDK's error prefix, so the host-probe string matches too.
+PROVIDER_RATE_LIMIT = {
+    "failure_class": "provider_rate_limit",
+    "http_status_codes": (429,),
+    "message_substrings": ("error code: 429", "rate_limit_error"),
 }
 
 # PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).

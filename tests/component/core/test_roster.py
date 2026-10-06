@@ -6337,6 +6337,79 @@ class TestAst897HoldStateOnBalanceRefusal:
         transition.assert_not_called()
 
 
+# AST-2010 — exhausted-429 failure_class travels up the company paths the dispatcher reads;
+# routing / counts unchanged (no hold): select failure still NO_JOBLIST, JOBS_FOUND error still
+# error_state + total_errors, prefilter batch still on the ordinary failure ladder.
+class TestAst2010RateLimitForwarding:
+    FC = "provider_rate_limit"
+    ERR = "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error'}}"
+
+    def _tagged(self) -> Dict[str, Any]:
+        return {"success": False, "error": self.ERR, "failure_class": self.FC}
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_select_failure_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        saver = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme", company_website="https://cw", assembled_content="asm",
+            page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
+            nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
+        )
+        assert (out["state"], out["response_type"]) == ("NO_JOBLIST", "SELECT_FAILED")
+        assert out["failure_class"] == self.FC
+        assert out.get("state_held") is not True
+        saver.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_select_job_page_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        inner = {"short_name": "acme", "state": "NO_JOBLIST", "response_type": "SELECT_FAILED", "failure_class": self.FC}
+        monkeypatch.setattr(roster_mod, "run_select_job_page_dispatch", AsyncMock(return_value=inner))
+        out = await roster_mod.run_company_task(
+            "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b2010", dispatch_task_key="select_job_page",
+        )
+        # NO_JOBLIST is terminal_ok today — count unchanged, tag rides along
+        assert (out["total_processed"], out["total_passed"], out["total_errors"]) == (1, 1, 0)
+        assert out["failure_class"] == self.FC
+        assert "total_held" not in out
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_jobs_found_error_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ent = _company(state="JOBS_FOUND", job_site="https://jobs")
+        inner = {"error": self.ERR, "state": "JOBS_FOUND", "failure_class": self.FC}
+        monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", AsyncMock(return_value=inner))
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b2010")
+        assert out["total_errors"] == 1
+        assert out["failure_class"] == self.FC
+        assert "total_held" not in out
+        # still the ordinary error route (locate error_state), not a hold
+        transition.assert_called_once_with(ent["short_name"], ROSTER_CONFIG["locate_job_page"]["error_state"])
+
+    @pytest.mark.asyncio
+    async def test_batch_prefilter_generic_failure_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        companies = [{"short_name": "acme", "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}}]
+        out = await roster_mod.prefilter_company_batch("batch-2010", companies, debug=False)
+        assert (out["passed"], out["failed"], out["total"]) == (0, 0, 1)
+        assert out["failure_class"] == self.FC
+        assert out.get("state_held") is not True
+        transition.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_untagged_failure_has_no_failure_class(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # DeepSeek / Kimi 429 arrives untagged — nothing invents a tag on the way up
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": False, "error": self.ERR}))
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        companies = [{"short_name": "acme", "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}}]
+        out = await roster_mod.prefilter_company_batch("batch-2010", companies, debug=False)
+        assert "failure_class" not in out
+
+
 # Branches: select_job_page balance hold → held (no _warn_company); AST-1189 call-budget
 # state_held (no balance failure_class) still an error on select_job_page + JOBS_FOUND.
 class TestAst1867BalanceHeldCounting:
