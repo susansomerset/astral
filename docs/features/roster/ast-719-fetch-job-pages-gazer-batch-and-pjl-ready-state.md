@@ -605,3 +605,69 @@ AST-1995 board-joan done — CANON: OK.
 
 
 **Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-1995 proceeds to make-fix on product only.
+
+
+## Radia review (AST-1995)
+
+**Ticket:** AST-1995  
+**Publish ref:** `c9303baa2935f57fa61319f6618a30f16ba9e6d9` (`origin/sub/AST-1994/AST-1995-fetch-refresh`)  
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | stat.logging.debug | A | | Per-URL Style D `debug_index`/`debug_detail` unchanged; outcome string `scraped=` vs removed `skipped-already-scraped` loop — observability only (statute explicitly excludes Style D from `logger.debug` contract) |
+| 2 | patt.entity.batch-processing | X | | Diff touches only in-batch PJL persistence; claim/process/release and `batch_id` shell untouched |
+| 3 | patt.core.logical-scope | A | | Gazer still orchestrates `fetch_job_pages_batch`; scrape/merge helpers stay in `roster.py` — see Notes on id resolution |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-board Joan only; no validate-plan fix-mode column for AST-1995)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out (Betty TESTS: REVISE → sibling AST-1999; no `[bug-repro]` on this ticket per spawn brief)
+
+**## What must still hold** — OK  
+- **PJL_READY / JOBSITE_SCRAPE_ISSUE:** `if pjl_pages:` pass branch and fail branch with `prefilter_company_notes` unchanged (`gazer.py` ~718–746).  
+- **No `job_site` writes:** `save_company_data` only writes `pjl_scrape_pages`, `pjl_assembled_content`, `pjl_nav_links`.  
+- **Row shape / no duplicate keys on upsert path:** `_merge_pjl_scrape_record` builds `{url, visible_text, optional enumerated_nav_links}` and replaces first matching `normalize_link` or appends.  
+- **Stable order:** in-place index replace before append (`roster.py` ~2490–2495).  
+- **Scheme-less `https://`:** still in `_scrape_pjl_page` (~2443–2445), untouched.  
+- **Style D when `debug=True`:** per-candidate `debug_index` with `total=len(candidate_urls)` for every scrape (~674–690).  
+- **Transient failure preserves content:** `error` or empty text → return `existing_pages`; failed re-scrape carries prior `enumerated_nav_links` into `run_nav_urls` (~697–704).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Doc carry in diff:** `docs/features/candidate/ast-1598-job-and-app-log-candidate-id.md` gains epic-registry **Threads** block — unrelated to AST-1995 product; doc-only on this tip vs `origin/ftr/AST-1994-fetch-refresh`.  
+- **Sibling test gap:** AST-719 additive-skip / `skipped-already-scraped` component coverage intentionally deferred to AST-1999 (Betty REVISE); product fix stands without repro on this ticket.
+
+## Notes
+
+- **Canon list shape:** No frozen Canon Scope on orphaned mini-parent AST-1994; scored Joan fix-board **overlap skim** ids from spawn brief.  
+- **`patt.core.logical-scope`:** `canon_clerk.py expand` returns *unknown directive id* — listed in `canon/docs/DIRECTIVES-DIRECTORY.md` but no `canon/directives/active/` file. Behavioral check matches directory intent (A); id should be promoted or directory entry retired (Archie housekeeping — not a merge blocker here given Joan F2 **CANON: OK**).  
+- **Plan fidelity:** Diff matches plan-fix **Proposed change** (ledger removed, full candidate loop, upsert merge, `pjl_nav_links` rebuild with failure carry-forward, always persist `pjl_nav_links` including `""`).
+
+## What's solid
+
+- Tight two-file product change aligned with AST-1810 website refresh precedent.  
+- Success/failure symmetry between `_merge_pjl_scrape_record` and `run_nav_urls` collection avoids wiping nav on transient scrape errors while still dropping dead links on successful runs.
+
+
+**docs-acceptance:** test/bible delivery for this fix lives on sibling gap AST-1999 (Betty qa-fix); no test() on this product sub. Routing: orphaned mini-parent with own ftr → merge-child into ftr/AST-1994-fetch-refresh (not straight-to-dev).
