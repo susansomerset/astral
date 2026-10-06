@@ -671,3 +671,62 @@ no plan-stage scores attached (fix-board Joan only; no validate-plan fix-mode co
 
 
 **docs-acceptance:** test/bible delivery for this fix lives on sibling gap AST-1999 (Betty qa-fix); no test() on this product sub. Routing: orphaned mini-parent with own ftr → merge-child into ftr/AST-1994-fetch-refresh (not straight-to-dev).
+
+---
+
+## Bug: AST-1999 — PJL refresh tests (test gap, retroactive)
+
+**Gap for:** AST-1995 (`[board-betty] TESTS: REVISE`). **Publish ref:** `origin/sub/AST-1994/AST-1999-fetch-refresh-tests`. Written retroactively, after Betty's delivery and the red→green check.
+
+### As-is
+
+The AST-719 tests assert the old additive skip. `test_additive_skips_already_scraped_url` expects one scrape, of the new URL only. The first assertion in `test_merge_pjl_scrape_record_skips_duplicate_and_empty` expects a duplicate URL to be discarded. Nothing covers the refresh behavior: re-scrape, upsert in place, nav rebuild, or carry-forward on failure. `TestFetchJobPagesBatch` also called an undefined `_mock_browser_context` helper, so all four of its tests were red no matter what the product did.
+
+### To-be
+
+The tests assert the AST-1995 behavior in `## Bug: AST-1995` → `### What must still hold`, and the bible entries describe the same behavior.
+
+### Repro
+
+This is Betty's `[bug-repro]` set, commit `e583d0a97`:
+
+- In `tests/component/core/test_gazer.py::TestFetchJobPagesBatch`:
+  - `test_refresh_rescrapes_already_scraped_url`
+  - `test_ast1995_repro_rescrape_replaces_row_and_rebuilds_nav`
+  - `test_ast1995_failed_rescrape_keeps_prior_row_and_carries_its_nav`
+  - `test_ast1995_failed_scrape_without_prior_row_contributes_no_nav`
+  - `test_ast1995_nav_written_empty_and_non_candidate_rows_kept`
+- In `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers`:
+  - `test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty`
+  - `test_ast1995_upsert_replaces_matching_row_in_place`
+  - `test_ast1995_error_record_discarded_even_with_text`
+  - `test_ast1995_whole_row_replace_drops_enumerated_nav_links`
+
+Verified (Hedy, test-fix):
+- **Red on the pre-fix tree:** 9 of 9 fail on ftr parent `a65581d77` with Betty's test files applied. Every failure is an `AssertionError` or a mock-await assertion, not a harness error.
+- **Green after the fix:** after `sync-child` merged in ftr with AST-1995 (`c9303baa2`), 9 of 9 pass, along with 38 of 38 across the PJL classes.
+
+### Root cause
+
+The AST-719 tests encoded the additive-skip design, which AST-1995 deliberately reverses. The broken `_mock_browser_context` reference had been hiding the gazer tests' results.
+
+### Proposed change
+
+Test and bible changes only, owned by Betty and already landed in `e583d0a97` / `c0c22e2ea`:
+- `test_gazer.py` and `test_roster.py` are rewritten and extended as listed above.
+- `docs/test-bible/core/gazer.md` and `roster.md` are updated.
+
+There is no product `src/` change, since the product fix is on AST-1995.
+
+### Blast radius
+
+- `tests/component/core/test_gazer.py`, `test_roster.py`
+- `docs/test-bible/core/gazer.md`, `roster.md`
+
+`test_gazer_scrape_failure.py` (AST-2002 / AST-1997) came along via merge-tests and is not part of this gap.
+
+### What must still hold
+
+- The ~53 pre-existing `test_gazer` / `test_roster` failures named on AST-1995 are unchanged. No new failures were introduced.
+- The four `TestFetchJobPagesBatch` tests that were already failing now pass.
+- All AST-1995 `### What must still hold` invariants are asserted by the nodes above.
