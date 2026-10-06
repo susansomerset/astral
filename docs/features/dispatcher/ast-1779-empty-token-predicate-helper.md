@@ -687,3 +687,5 @@ If Susan later wants meteorite empty-token failures terminal, that is **new regi
 - **Arc 5:** Read with pattern scope: empty-token failures on **dispatch-routed** entities must not persist at trigger / hop / input; the carve-out’s terminal routing satisfies that. Do not read the closing Arc-5 sentence as a guarantee for every `do_task` consumer (meteorite).
 - **Other directives:** No conflict requiring edits to `stat.logging.error` / `stat.logging.warning` or `astral.dispatch.entity-state-bound`; body-only clerk path is as described.
 - **Scope:** `patt.task.dispatch-retry.md` only — conforms to `astral.standards.in-scope-only` for this child.
+
+**docs-acceptance — AST-2005:** canon-only (Betty TESTS: OK — no test/bible reads `patt.task.dispatch-retry`). Check on publish tip: `canon_clerk.py expand patt.task.dispatch-retry` exit 0 serving the new `# When this doesn't apply` section; `canon_clerk.py index` exit 0, unchanged (body-only edit). No test() delivery owed.
