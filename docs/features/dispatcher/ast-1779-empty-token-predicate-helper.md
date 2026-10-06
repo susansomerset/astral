@@ -842,3 +842,48 @@ context_tokens≈35000
 AST-2006 is **tests + `docs/test-bible/**` only**; no `canon/**` or product edits. The plan asserts behavior already shipped on the ftr and licensed by **AST-2005** (`empty_tokens` → skip `_RETRY`, straight to terminal / flow fallback). Routing tests pin **existing** registered states only — consistent with **`astral.dispatch.entity-state-bound`**. No statute or pattern text needs amending, carving out, or restating in the bible.
 
 Omitting meteorite coverage matches the **AST-2005 / AST-2000** boundary (gap documented in product plan, not canon). **`[bug-repro]`** and bible sections **describe** the contract for Betty’s manifest; they are not directive authoring. Control cases that keep generic `success: False` on `_RETRY` holdings preserve the narrow carve-out vs normal agent failures.
+
+### Radia review — AST-2006
+
+**Corpus:** `2344ae3265b15125a8f4a655946fcfe66b3e1def` (unchanged on this sub; AST-2005 canon already on ftr)  
+**Overall:** CLEAN  
+
+## Fix-specific checks
+
+- **[bug-repro]** **OK** — `TestAst2006DoTaskEmptyTokenGuard::test_bug_repro_entry_hop_blank_token_is_not_sent` exercises **real** `do_task` (not a stubbed `empty_tokens` dict): blank `{$DEAL_BREAKERS}` via `_resolve_task_prompts` + ctx, provider `send_to_anthropic` **not called**, `success is False`, `empty_tokens == ["DEAL_BREAKERS"]`, `empty_token_task == "evaluate_jd"`, exactly one ERROR containing task + token, zero `resolved to empty` WARNINGs. Pins AST-2000 To-be §1 / Repro 2; would fail on dev (provider sends `"Deal breakers: "`). Not tautological.
+- **## What must still hold** — **OK**: no product edits; `[bug-repro]` + routing nodes documented red-on-dev / green-on-ftr in bible; `TestAst1779*` / default `resolve_tokens` control in collector test; generic-failure controls keep `_RETRY` (`test_run_batch_consult_generic_failure_still_retries`, intake `generic_control` → `total_failed`).
+
+## Canon scores
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | astral.dispatch.entity-state-bound | A | | Routing tests assert existing registry destinations only (`FAILED_TECHNICAL_DO`, `ERROR_BUILD_ARTIFACTS`, `ERROR_PREFILTER`, `REQUESTED_ARTIFACTS_ERROR`, etc.); no `dispatch_task` / claim-helper fixture churn. |
+
+## Column diff vs plan stage
+
+no plan-stage validate-plan table for AST-2006 (Joan fix-board **CANON: OK** in issue doc)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Process (spawn brief):** `merge-tests(AST-2006)` is a single-commit test-tree delivery; three-dot diff shows no AST-2001/AST-2004 spill — only AST-2006 tests/bible/plan.
+- **Coverage map:** Plan items 1–10 reflected in `TestAst2006*` classes + rewritten `test_mid_chain_empty_caller_skips_api` (hydration stub, `empty_token_task` = hop key); candidate `test_invalid_edge_warns_and_still_counts_error` matches ftr product `ValueError` guard (no retry via broad `except`).
+- **Repro flip:** Engineer attestation on tip commit (`bug-repro` red on `origin/dev`, green on ftr); Radia did not re-run pytest in this pass.
+
+## What’s solid
+
+- Routing suite encodes Susan’s rule: `retried == 0`, terminal `error_state` / flow fallback, never hop-label hold (`dispatch_chain_mid_hop`, `select` / parse terminals, `REQUESTED_ARTIFACTS_RETRY` → `REQUESTED_ARTIFACTS_ERROR`).
+- `_enrich_tasks` silent vs `preview_prompt` still warns (control).
+- Bible `### AST-2006 · AST-2000` sections + manifest item 1 list all new nodes; `[bug-repro]` called out on `core/agent.md`.
+
+## Notes for Chuckles
+
+- **Gate:** PROCEED — artifact complete → **Review Posted** → clean-review shortcut to **User Testing**.
+- **Parent:** AST-1986 orphaned mini-parent, `ftr/AST-1986-runtime-empty-token-error` (AST-2000 + AST-2005 already there).
+
+context_tokens≈28000
