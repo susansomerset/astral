@@ -830,3 +830,15 @@ Fix the fixture path: `monkeypatch.setattr(agent_mod, "_hydrate_caller_chain_con
 - Existing `TestAst1779*`, `TestResolveTokens`, `test_api_admin.py` `empty_tokens` predicate cases unchanged and green (default `resolve_tokens` path untouched).
 - Generic (non-`empty_tokens`) failure routing assertions keep expecting `_RETRY` holdings — the carve-out is narrow.
 - No product source edits on this sub.
+
+### Joan fix-board — AST-2006
+
+[board-joan]  CANON: OK
+
+context_tokens≈35000
+
+**Rationale (not for Linear):**
+
+AST-2006 is **tests + `docs/test-bible/**` only**; no `canon/**` or product edits. The plan asserts behavior already shipped on the ftr and licensed by **AST-2005** (`empty_tokens` → skip `_RETRY`, straight to terminal / flow fallback). Routing tests pin **existing** registered states only — consistent with **`astral.dispatch.entity-state-bound`**. No statute or pattern text needs amending, carving out, or restating in the bible.
+
+Omitting meteorite coverage matches the **AST-2005 / AST-2000** boundary (gap documented in product plan, not canon). **`[bug-repro]`** and bible sections **describe** the contract for Betty’s manifest; they are not directive authoring. Control cases that keep generic `success: False` on `_RETRY` holdings preserve the narrow carve-out vs normal agent failures.
