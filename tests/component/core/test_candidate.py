@@ -806,6 +806,34 @@ class TestRunCandidateArtifactGeneration:
         assert updates[-1][1]["status"] == "FAILED"
         assert updates[-1][1]["total_failed"] == 1
 
+    # AST-1988: UI generate batch stamps log_candidate_id beside log_batch_id; outer finally clears both.
+    def test_ast1988_ui_generate_stamps_candidate_and_clears(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # test_returns_500_on_failed_task patches; asyncio.run records (batch, candidate) mid-run.
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        seen: list = []
+
+        def _run(coro: Any) -> dict:
+            coro.close()  # never awaited; close to avoid the RuntimeWarning
+            seen.append((candidate_mod.log_batch_id.get(), candidate_mod.log_candidate_id.get()))
+            return {"success": False, "error": "bad"}
+
+        monkeypatch.setattr(candidate_mod, "asyncio", MagicMock(run=MagicMock(side_effect=_run)))
+        # Sync test: pin both at None with tokens so nothing leaks onto the test thread.
+        tb = candidate_mod.log_batch_id.set(None)
+        tc = candidate_mod.log_candidate_id.set(None)
+        try:
+            candidate_mod.run_candidate_artifact_generation("somerset", "craft_resume_base", "text")
+            assert len(seen) == 1
+            assert seen[0][0].startswith("user-craft_resume_base-")
+            assert seen[0][1] == "somerset"
+            assert candidate_mod.log_batch_id.get() is None
+            assert candidate_mod.log_candidate_id.get() is None
+        finally:
+            candidate_mod.log_candidate_id.reset(tc)
+            candidate_mod.log_batch_id.reset(tb)
+
     def test_returns_500_when_task_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
         monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
@@ -2231,6 +2259,30 @@ class TestAst986SessionResumeParse:
         assert saves[0][0][2] == "session"
         assert saves[0][1]["entity_type"] is None
         assert updates[-1][1]["status"] == "FAILED"
+
+    # AST-1988 AC 3: the "session" sentinel batch stays unstamped even with a real candidate id for the key map.
+    def test_ast1988_session_sentinel_batch_stays_unstamped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        seen: list = []
+
+        def _run(coro: Any) -> dict:
+            coro.close()  # never awaited; close to avoid the RuntimeWarning
+            seen.append((candidate_mod.log_batch_id.get(), candidate_mod.log_candidate_id.get()))
+            return {"success": False, "error": "bad"}
+
+        monkeypatch.setattr(candidate_mod, "asyncio", MagicMock(run=MagicMock(side_effect=_run)))
+        tb = candidate_mod.log_batch_id.set(None)
+        tc = candidate_mod.log_candidate_id.set(None)
+        try:
+            candidate_mod.run_session_resume_parse("paste me", candidate_id="somerset")
+            assert len(seen) == 1
+            assert seen[0][0].startswith("user-session-parse-resume-")
+            assert seen[0][1] is None
+            assert candidate_mod.log_batch_id.get() is None
+            assert candidate_mod.log_candidate_id.get() is None
+        finally:
+            candidate_mod.log_candidate_id.reset(tc)
+            candidate_mod.log_batch_id.reset(tb)
 
     def test_500_on_task_exception_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._patch_ledger(monkeypatch)

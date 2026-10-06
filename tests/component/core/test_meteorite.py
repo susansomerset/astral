@@ -3442,3 +3442,90 @@ class TestAst1879ClassifyKeyMapHandOff:
         task_ctx = await self._run(monkeypatch, ctx)
         assert "candidate_api_keys" not in task_ctx
         assert task_ctx["astral_candidate_id"] == "cand-1879"
+
+
+# AST-1988: _hold_log_batch stamps batch + candidate as a token pair, or no-ops under a parent batch.
+# Branches: no parent → (batch_tok, cand_tok); parent batch set → None, parent ids kept; blank cid → candidate None;
+# _classify_stage_blob caller resets both tokens in finally.
+class TestAst1988HoldLogBatchPairing:
+    """log_candidate_id rides _hold_log_batch (AST-1988 AC 4); #14 is the bug-repro."""
+
+    @staticmethod
+    def _ids() -> tuple:
+        from src.utils.logging import log_batch_id, log_candidate_id
+
+        return log_batch_id.get(), log_candidate_id.get()
+
+    @staticmethod
+    def _start(batch=None, cand=None) -> tuple:
+        # Pin a known start state so a leak from another test can't green these.
+        from src.utils.logging import log_batch_id, log_candidate_id
+
+        return log_batch_id.set(batch), log_candidate_id.set(cand)
+
+    @staticmethod
+    def _restore(tokens: tuple) -> None:
+        from src.utils.logging import log_batch_id, log_candidate_id
+
+        log_candidate_id.reset(tokens[1])
+        log_batch_id.reset(tokens[0])
+
+    def test_hold_sets_both_and_returns_token_pair(self) -> None:
+        # bug-repro: pre-fix _hold_log_batch takes one arg (TypeError) and returns a single token.
+        from src.utils.logging import log_batch_id, log_candidate_id
+
+        start = self._start()
+        try:
+            tok = meteorite_mod._hold_log_batch("b-1988", "cand-1988")
+            assert isinstance(tok, tuple) and len(tok) == 2
+            assert self._ids() == ("b-1988", "cand-1988")
+            log_batch_id.reset(tok[0])
+            log_candidate_id.reset(tok[1])
+            assert self._ids() == (None, None)
+        finally:
+            self._restore(start)
+
+    def test_hold_noop_under_parent_batch(self) -> None:
+        start = self._start("parent-b", "parent-c")
+        try:
+            assert meteorite_mod._hold_log_batch("b-1988", "cand-1988") is None
+            assert self._ids() == ("parent-b", "parent-c")
+        finally:
+            self._restore(start)
+
+    def test_hold_blank_candidate_stamps_none(self) -> None:
+        from src.utils.logging import log_batch_id, log_candidate_id
+
+        start = self._start()
+        try:
+            tok = meteorite_mod._hold_log_batch("b-1988", "")
+            assert self._ids() == ("b-1988", None)
+            log_batch_id.reset(tok[0])
+            log_candidate_id.reset(tok[1])
+        finally:
+            self._restore(start)
+
+    @pytest.mark.asyncio
+    async def test_classify_stage_blob_stamps_and_releases(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Same do_task patch as TestAst1879ClassifyKeyMapHandOff._run, capturing ids mid-run.
+        import src.core.agent as agent_mod
+
+        seen: list = []
+
+        async def _do_task(**kwargs):
+            seen.append(self._ids())
+            return {"success": False, "error": "stop"}
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        start = self._start()
+        try:
+            await meteorite_mod._classify_stage_blob(
+                "cand-1988", "blob", source_kind="email", source_id="msg-1988"
+            )
+            assert len(seen) == 1
+            batch, cand = seen[0]
+            assert batch.startswith(meteorite_mod.STAGE_METEORITE_CONFIG["task_key"] + "-stage-")
+            assert cand == "cand-1988"
+            assert self._ids() == (None, None)
+        finally:
+            self._restore(start)

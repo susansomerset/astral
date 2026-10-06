@@ -383,3 +383,89 @@ class TestAst1778RailwayConsoleTransport:
         finally:
             monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
             logging_mod._apply_console_formatter()
+
+
+# AST-1988: Railway JSON carries batch_id / candidate_id only when their contextvars are truthy.
+# Branches: both set → both keys; batch only → candidate omitted; both None / both "" → exact pre-fix string.
+class TestAst1988RailwayJsonIds:
+    """Railway JSON id keys (AST-1988 AC 1–2); #1 is the bug-repro."""
+
+    BARE = '{"level": "info", "message": "src.core.agent: hello"}'
+
+    @staticmethod
+    def _format(batch, cand) -> str:
+        # Tokens + finally so the ids never leak into later tests on this thread.
+        tb = logging_mod.log_batch_id.set(batch)
+        tc = logging_mod.log_candidate_id.set(cand)
+        try:
+            record = logging.LogRecord("src.core.agent", logging.INFO, __file__, 0, "hello", (), None)
+            return logging_mod._RailwayJsonFormatter().format(record)
+        finally:
+            logging_mod.log_candidate_id.reset(tc)
+            logging_mod.log_batch_id.reset(tb)
+
+    def test_formatter_adds_batch_and_candidate_when_set(self) -> None:
+        # bug-repro: pre-fix formatter never reads either contextvar.
+        assert json.loads(self._format("b-1988", "cand-1988")) == {
+            "level": "info",
+            "message": "src.core.agent: hello",
+            "batch_id": "b-1988",
+            "candidate_id": "cand-1988",
+        }
+
+    def test_formatter_batch_only_omits_candidate(self) -> None:
+        payload = json.loads(self._format("b-1988", None))
+        assert payload == {"level": "info", "message": "src.core.agent: hello", "batch_id": "b-1988"}
+        assert "candidate_id" not in payload
+
+    def test_formatter_unset_is_byte_identical(self) -> None:
+        # Exact string, not parsed: omit, never null (AC 2).
+        assert self._format(None, None) == self.BARE
+
+    def test_formatter_blank_ids_omitted(self) -> None:
+        assert self._format("", "") == self.BARE
+
+    def test_on_railway_emit_carries_ids(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Same root-handler swap as test_on_railway_emit_is_json_with_level.
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT", "1")
+        root = logging.getLogger()
+        root.setLevel(logging.INFO)
+        captured = io.StringIO()
+
+        class _StdoutCapture(logging.StreamHandler):
+            def __init__(self) -> None:
+                logging.Handler.__init__(self)
+                self.stream = sys.stdout
+
+            def emit(self, record: logging.LogRecord) -> None:
+                try:
+                    captured.write(self.format(record) + self.terminator)
+                except Exception:
+                    self.handleError(record)
+
+        for h in list(root.handlers):
+            if isinstance(h, logging_mod._DatabaseLogHandler):
+                continue
+            if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) in (
+                sys.stdout,
+                sys.stderr,
+            ):
+                root.removeHandler(h)
+        capture_h = _StdoutCapture()
+        root.addHandler(capture_h)
+        tb = logging_mod.log_batch_id.set("b-1988")
+        tc = logging_mod.log_candidate_id.set("cand-1988")
+        try:
+            get_logger("test.ast1988.railway").warning("soft fail")
+            assert json.loads(captured.getvalue().strip()) == {
+                "level": "warn",
+                "message": "test.ast1988.railway: soft fail",
+                "batch_id": "b-1988",
+                "candidate_id": "cand-1988",
+            }
+        finally:
+            logging_mod.log_candidate_id.reset(tc)
+            logging_mod.log_batch_id.reset(tb)
+            root.removeHandler(capture_h)
+            monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+            logging_mod._apply_console_formatter()
