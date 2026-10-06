@@ -82,7 +82,7 @@ from src.utils.rubric_feedback import (
     parse_vector_reviews_diagnostic,
 )
 from src.utils.formatting import clean_encoded_agent_payload, coerce_grades_encoded_json_parse
-from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_debug
+from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_candidate_id, log_debug
 
 logger = get_logger(__name__)
 
@@ -2218,6 +2218,7 @@ async def do_task(
         hop_ledger_closed = True
         if clear_log:
             log_batch_id.set(None)
+            log_candidate_id.set(None)
         return outcome
 
     system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks_seven_segment(
@@ -3095,6 +3096,7 @@ def _open_run_next_hop_ledger(
         batch_size=batch_size,
     )
     log_batch_id.set(hop_batch_id)
+    log_candidate_id.set(candidate_id)
     return hop_batch_id
 
 
@@ -3181,6 +3183,7 @@ async def run_adhoc_workbench_test(
         batch_size=1,
     )
     log_batch_id.set(batch_id)
+    log_candidate_id.set(candidate_id or None)
     logger.info(
         "%s | dispatch %s starting %s — 1 available (batch: %s)",
         candidate_id or "-",
@@ -3346,6 +3349,7 @@ async def run_adhoc_workbench_test(
     finally:
         flush_log_buffer()
         log_batch_id.set(None)
+        log_candidate_id.set(None)
 
 
 async def run_adhoc(
