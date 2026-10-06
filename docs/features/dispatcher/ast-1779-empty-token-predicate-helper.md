@@ -588,3 +588,79 @@ context_tokens≈32000
 - **Advisory:** none actionable.
 - **Tests:** none on this ticket — sibling [AST-2006](https://linear.app/astralcareermatch/issue/AST-2006) (incl. a case for this guarded candidate branch).
 - **Docs-acceptance:** no test-tree delivery on this sub (no `test(AST-2000):` / `merge-tests(AST-2000):`) — Betty board TESTS: OK; all AST-2000 tests land on sibling [AST-2006](https://linear.app/astralcareermatch/issue/AST-2006).
+
+## Bug: AST-2005 — dispatch-retry carve-out for empty-token data failures
+
+- **Linear:** https://linear.app/astralcareermatch/issue/AST-2005 (canon-gap sibling of [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000), mini-parent [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986); filed from Joan's round-1 `[board-joan] CANON: REVISE`)
+- **Publish ref:** `sub/AST-1986/AST-2005-dispatch-retry-carve-out` · **ftr:** `ftr/AST-1986-runtime-empty-token-error` (AST-2000 already merged there)
+- **Explicit scope (AST-2005 `## Scope`):** `canon/directives/active/patt.task.dispatch-retry.md` only — canon text edit; no product code, tests or schema.
+- **Precedent:** AST-1846 landed its `stat.logging.*` carve-out as a single `docs(AST-1846): canon — …` commit (`e1f2699fa`). Same shape here.
+- **Binding:** Susan on AST-1986 (2026-10-06 05:25) — *"Do not retry. Just go straight to error state (even for midhops). This is because we retry in the event that an agent goofed up, but in this case specifically a retry will not resolve the problem. The problem is with our data, not the agent's response."*
+
+### As-is
+
+`patt.task.dispatch-retry` § "When this doesn't apply" reads only `THIS PATTERN ALWAYS APPLIES (even with daisy-chain tasks.)`, and Arc 4 requires every first failure to go to the `_RETRY` companion. AST-2000 (merged on the ftr) routes a `do_task` `empty_tokens` failure **straight** to the configured `error_state`, skipping `_RETRY`, mid-chain hops included — so the shipped routing contradicts the pattern as written (Joan round 1: "plan contradicts 'always applies'").
+
+### To-be
+
+The pattern names one exception: a **pre-provider data failure** — `do_task` found a token in the outgoing prompt that resolves empty, so the prompt was never sent (`empty_tokens` on the result). That entity skips the `_RETRY` companion and goes straight to the task's configured `error_state` (or the flow's existing terminal error state when the configured one is a `_RETRY` holding or absent), mid-chain hops included. Arc 5 ("A FAILURE DOES NOT PERSIST IN STATE") still holds, unchanged. Every other failed attempt follows the pattern exactly as today, daisy-chain tasks included.
+
+### Repro
+
+Read-only canon check — no fixture needed:
+
+```bash
+python3 canon/canon_clerk.py expand patt.task.dispatch-retry
+```
+
+**Today:** body's `# When this doesn't apply` is the single line `- THIS PATTERN ALWAYS APPLIES (even with daisy-chain tasks.)`; nothing licenses AST-2000's `_empty_token_fail_dest` / consult / roster / candidate empty-token branches skipping `_RETRY`. **After:** the same section names the empty-token exception and keeps "always applies" for every other failure.
+
+### Root cause
+
+The pattern's premise (Abstract: *"Sometimes the agents return malformed or invalid responses"*) is that a failure is an agent goof a second attempt can fix. An empty runtime token is a defect in our data, detected before any agent call; a retry renders the identical blank prompt. The pattern had no way to say so, so the only literal reading forced a pointless `_RETRY` hop that Susan has ruled out.
+
+### Proposed change
+
+**One file:** `canon/directives/active/patt.task.dispatch-retry.md`. Frontmatter (`id`, `kind`, `scope`, `point`), Abstract, Arc and Canonical implementation are **unchanged**. Replace the body of `# When this doesn't apply` — currently the single bullet `- THIS PATTERN ALWAYS APPLIES (even with daisy-chain tasks.)` — with exactly:
+
+```markdown
+# When this doesn't apply
+
+- **Pre-provider data failure — empty runtime tokens.** When `do_task` finds a
+  token in the outgoing prompt that resolves empty, the prompt is never sent and
+  the result carries `empty_tokens`. The fault is in our data, not the agent's
+  response, so a retry would render the same blank prompt. That entity skips
+  the `_RETRY` companion and goes **straight** to the task's configured
+  `error_state` — mid-chain hops included. When the configured `error_state` is
+  itself a `_RETRY` holding, or the flow configures none, it goes to the
+  terminal error state that flow already uses (e.g. `FAILED_TECHNICAL`). Arc 5
+  still holds: the entity never stays in its trigger, hop-label or input state.
+- Every other failed attempt: THIS PATTERN ALWAYS APPLIES (even with
+  daisy-chain tasks.)
+```
+
+Publish as one commit on the publish ref, AST-1846 shape: `docs(AST-2005): canon — patt.task.dispatch-retry empty-token data-failure carve-out`. Verify after edit: `python3 canon/canon_clerk.py expand patt.task.dispatch-retry` exits 0 and serves the new section (no frontmatter churn → no clerk index change).
+
+⚠️ **Decision:** Narrow carve-out keyed on the `empty_tokens` marker, not a general "any data failure" clause. Susan's ruling is about this failure; a broader clause would license skipping `_RETRY` for failures nobody has ruled on. Future data-failure classes amend this bullet deliberately.
+
+⚠️ **Decision:** No ticket id in the canon text — the bullet names the observable contract (`do_task` / `empty_tokens`) so it stays true after the ticket archives. Traceability lives here and in the commit subject.
+
+⚠️ **Decision (for the board) — meteorite staging is NOT written into the carve-out.** AST-2000's documented boundary leaves `meteorite` staging rows at `READY` / `CHECK_UNIQUE` after an empty-token failure because `METEORITE_STATES` has no error state reachable from either (`READY` → `LANDED` only; `CHECK_UNIQUE` → `READY` / `DUPLICATE` only). Read against Arc 5 ("A FAILURE DOES NOT PERSIST IN STATE") that is a **non-conformance**, but it is **pre-existing and not empty-token-specific** — those meteorite callers leave rows in place on *every* `do_task` failure today (e.g. review-duplicate "stays CHECK_UNIQUE for retry"). Options considered:
+  1. **Silent (chosen):** carve-out keeps Arc 5 absolute; meteorite staging stays a recorded known gap (here + AST-2000 plan), to be closed by a follow-up that registers meteorite error states — Susan to file if she wants it. Canon does not bless the gap.
+  2. Name it as a known gap inside canon — puts a transient defect into durable law; rejected.
+  3. Add "stays in state when no error state is registered" — directly contradicts Arc 5 and Susan's "never stays"; rejected.
+  Board: if Joan rules canon must acknowledge it, option 2's wording would be one extra bullet; no product change either way.
+
+### Blast radius
+
+- **Canon readers:** Joan (`validate-plan` / `fix-board`) and Radia (`review-fix` / `review-child`) score `patt.task.dispatch-retry` from this text. AST-2000's empty-token branches (`consult._empty_token_fail_dest` + call sites, roster `ERROR_PREFILTER` / `_locate_empty_token_error` / parse terminal, candidate stage `error_state`) become conformant; nothing else changes grade.
+- **Product / tests:** none on this ticket. AST-2000 product is already on the ftr; tests are sibling [AST-2006](https://linear.app/astralcareermatch/issue/AST-2006).
+- **Clerk:** body-only edit; `id` / `kind` / `scope` / `point` unchanged, so `canon_clerk.py index` output is unchanged and `expand` serves the new body. `corpus_sha` moves on merge (expected — reviewers record the new sha).
+- **Related canon:** `stat.logging.error` already says ERROR when the entity lands in an error / terminal state — consistent with `do_task`'s single ERROR guard line; no edit (Joan rated the logging tension secondary, resolved by this carve-out naming the guard as pre-provider and terminal).
+
+### What must still hold
+
+- Arc 1–5 text unchanged; **Arc 5 absolute** — no failure persists in state, carve-out included.
+- Agent-response failures (malformed / invalid / missing response, decode / validation failures) keep the two-attempt `_RETRY` → `error_state` route, daisy-chain tasks included.
+- Frontmatter unchanged; the clerk serves the directive (`expand` exit 0).
+- No product, test, bible or schema change on this ticket.
