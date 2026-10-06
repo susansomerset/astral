@@ -7,6 +7,7 @@ from src.utils.config import (
     PROVIDER_BALANCE_REFUSAL,
     PROVIDER_CALL_BUDGET,
     PROVIDER_EMPTY_RESPONSE,
+    PROVIDER_RATE_LIMIT,
 )
 from src.utils.logging import get_logger
 
@@ -31,6 +32,27 @@ def is_provider_balance_refusal(result: Optional[Dict[str, Any]]) -> bool:
     if not isinstance(result, dict):
         return False
     return result.get("failure_class") == PROVIDER_BALANCE_REFUSAL["failure_class"]
+
+
+def classify_provider_rate_limit(exc_or_msg: Any) -> Optional[str]:
+    """Return PROVIDER_RATE_LIMIT failure_class when exc_or_msg is a 429 — an exception or, on the
+    host-probe path, its error string (AST-2010)."""
+    status = getattr(exc_or_msg, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc_or_msg, "response", None), "status_code", None)
+    if status in PROVIDER_RATE_LIMIT["http_status_codes"]:
+        return PROVIDER_RATE_LIMIT["failure_class"]
+    msg = str(exc_or_msg).lower()
+    if any(s in msg for s in PROVIDER_RATE_LIMIT["message_substrings"]):
+        return PROVIDER_RATE_LIMIT["failure_class"]
+    return None
+
+
+def is_provider_rate_limit(result: Optional[Dict[str, Any]]) -> bool:
+    """True when an agent/provider result dict was tagged as an exhausted rate limit."""
+    if not isinstance(result, dict):
+        return False
+    return result.get("failure_class") == PROVIDER_RATE_LIMIT["failure_class"]
 
 
 def provider_call_http_timeout_seconds() -> float:
