@@ -80,13 +80,15 @@ async def validate_preamble_answer(
         if not result or not result.get("success"):
             err = result.get("error", "preamble validation failed") if result else "do_task returned None"
             total_cost = compute_batch_cost(batch_id)
+            # AST-2000: empty-token prompt is an error, not a failed judgment.
+            fail_col = "total_errors" if result and result.get("empty_tokens") else "total_failed"
             database.update_dispatch_ledger(
                 batch_id,
                 status="FAILED",
                 completed_at=completed_at,
                 total_processed=1,
-                total_failed=1,
                 total_cost=total_cost,
+                **{fail_col: 1},
             )
         else:
             parsed = result.get("parsed_response")
@@ -593,13 +595,15 @@ async def _run_intake_task(
         if not result or not result.get("success"):
             err = result.get("error", "intake task failed") if result else "do_task returned None"
             total_cost = compute_batch_cost(batch_id)
+            # AST-2000: empty-token prompt is an error, not a failed judgment.
+            fail_col = "total_errors" if result and result.get("empty_tokens") else "total_failed"
             database.update_dispatch_ledger(
                 batch_id,
                 status="FAILED",
                 completed_at=completed_at,
                 total_processed=1,
-                total_failed=1,
                 total_cost=total_cost,
+                **{fail_col: 1},
             )
             return {"success": False, "error": err, "batch_id": batch_id, "parsed_response": None}
         total_cost = compute_batch_cost(batch_id)

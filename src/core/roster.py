@@ -1238,6 +1238,11 @@ async def run_parse_job_list_dispatch(
                 notes="containers not found for titles", response_type="PARSE_DISPATCH_NO_CONTAINERS",
             )
         parsed = await _fetch_parse_job_list(dom_joined, short_name, debug=debug, ctx=ctx)
+        if parsed.get("empty_tokens"):
+            # AST-2000: terminal parse state, no retry — "error" makes the dispatcher count an error.
+            terminal = ROSTER_CONFIG["parse_job_list"]["terminal_fail_state"]
+            transition_company_state(short_name, terminal)
+            return {"short_name": short_name, "state": terminal, "error": parsed.get("error")}
         container = (parsed.get("job_container") or "").strip()
         job_tag = (parsed.get("job_tag") or "").strip()
         if not container or not job_tag:
@@ -2037,6 +2042,12 @@ async def _run_batch_company_prefilter(
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
             }
+        if result.get("empty_tokens"):
+            # AST-2000: data defect — straight to ERROR_PREFILTER, never a retry holding.
+            for company in companies:
+                if company.get("short_name"):
+                    transition_company_state(company["short_name"], cfg["error_state"])
+            return {"passed": 0, "failed": 0, "total": len(companies), "retried": 0}
         logger.debug("Response from agent.do_task: do_task failed error=%r", result.get("error"))
         retried = _transition_prefilter_batch_failures(
             companies, cfg, debug=debug, fail_class="do_task",
@@ -2198,6 +2209,19 @@ async def prefilter_company_batch(
 
 # ---- Find job page ----
 
+def _locate_empty_token_error(short_name: str, company_website: str, res: Dict[str, Any]) -> Dict[str, Any]:
+    """AST-2000: empty-token select/parse in the locate flow → ERROR_LOCATE_JOB_PAGE (no retry, no NO_JOBLIST)."""
+    err_st = ROSTER_CONFIG["locate_job_page"]["error_state"]
+    transition_company_state(short_name, err_st)
+    return {
+        "short_name": short_name,
+        "state": err_st,
+        "job_site": company_website,
+        "response_type": "SELECT_FAILED",
+        "error": res.get("error"),
+    }
+
+
 async def _find_job_page_from_assembled(
     *,
     short_name: str,
@@ -2255,6 +2279,8 @@ async def _find_job_page_from_assembled(
                     "failure_class": res.get("failure_class"),
                     "state_held": True,
                 }
+            if res.get("empty_tokens"):
+                return _locate_empty_token_error(short_name, company_website, res)
             _save_company(short_name=short_name, company_website=company_website,
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "SELECT_FAILED", "error": res.get("error"), "api": res})
@@ -2831,6 +2857,8 @@ async def _finalize_joblist_titles_select_only(
     full_dom_html = dom_html
 
     parsed = await _fetch_parse_job_list(dom_joined, short_name, debug=debug, ctx=ctx)
+    if parsed.get("empty_tokens"):
+        return _locate_empty_token_error(short_name, company_website, parsed)
 
     container = (parsed.get("job_container") or "").strip()
     job_tag = (parsed.get("job_tag") or "").strip()
@@ -3342,6 +3370,9 @@ async def _fetch_parse_job_list(dom_html: str, short_name: str, debug: bool = Fa
         ctx=ctx,
     )
     logger.debug("Response from agent.do_task: %s", response)
+    if response and response.get("empty_tokens"):
+        # AST-2000: callers route this to a terminal error state, not the parse-failure saves.
+        return {"empty_tokens": response["empty_tokens"], "error": response.get("error")}
     if not response or not response.get("success"):
         err = (response or {}).get("error", "no parsed_response")
         _warn_company(short_name, "-", f"parse_job_list failed: {err}")

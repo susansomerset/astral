@@ -1268,6 +1268,12 @@ async def _run_analysis_upshot_batch(
                 _warn_job(aid, row.get("state") or "-", "provider balance refusal — state held")
                 errors += 1
                 continue
+            if result.get("empty_tokens"):
+                dest = _empty_token_fail_dest(task_cfg.get("error_state"))
+                logger.debug("empty_tokens route aid=%s dest=%s", aid, dest)
+                _transition_job_state_for_task(task_key, [aid], dest)
+                errors += 1
+                continue
             dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest)
@@ -1463,6 +1469,11 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
             }
+        if result.get("empty_tokens"):
+            dest = _empty_token_fail_dest(error_state)
+            logger.debug("empty_tokens route aid=%s dest=%s", astral_job_id, dest)
+            _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+            return {"success": False, "to_state": dest, "error": result.get("error")}
         return _fail(result.get("error", "do_task failed"))
 
     parsed = result["parsed_response"]
@@ -1539,6 +1550,16 @@ def _consult_batch_fail_dest(entity_state: Optional[str], error_state: Optional[
         # analysis_upshot: TASK_CONFIG error_state IS the retry holding (PASSED_LIKE_RETRY)
         return "FAILED_TECHNICAL"
     return error_state
+
+
+def _empty_token_fail_dest(*error_states: Optional[str]) -> str:
+    """AST-2000: empty-token do_task → first configured non-retry error_state, else FAILED_TECHNICAL.
+    Never a _RETRY holding — a retry renders the same blank (data defect, not an agent goof)."""
+    for es in error_states:
+        es = (es or "").strip()
+        if es and not retry_base(es):
+            return es
+    return "FAILED_TECHNICAL"
 
 
 def _transition_batch_consult_failures(
@@ -1644,6 +1665,14 @@ async def _run_batch_consult(
                 "total": len(jobs),
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
+            }
+        if result.get("empty_tokens"):
+            dest = _empty_token_fail_dest(error_state)
+            logger.debug("empty_tokens route task=%s ids=%s dest=%s", task_key, astral_ids, dest)
+            _transition_job_state_for_task(task_key, astral_ids, dest)
+            return {
+                "success": False, "error": result.get("error"),
+                "passed": 0, "failed": 0, "total": len(jobs), "retried": 0,
             }
         logger.debug(
             "do_task failed task=%s error=%r error_state=%r",
@@ -2530,6 +2559,21 @@ async def _run_dispatch_chain_job_batch(
             tracker.release_job_dispatch_claim(aid)
             raise
         if not result.get("success"):
+            if result.get("empty_tokens"):
+                # Failing hop's error_state first (mid-chain included), then the entry task's.
+                dest = _empty_token_fail_dest(
+                    TASK_CONFIG.get(result.get("empty_token_task") or "", {}).get("error_state"),
+                    TASK_CONFIG.get(dispatch_task_key, {}).get("error_state"),
+                )
+                logger.debug("empty_tokens route aid=%s dest=%s", aid, dest)
+                try:
+                    tracker.transition_job_state([aid], dest)
+                except ValueError:
+                    # FAILED_TECHNICAL has no prior_states — the job never stays on its hop label.
+                    tracker.transition_job_state([aid], "FAILED_TECHNICAL")
+                tracker.release_job_dispatch_claim(aid)
+                errors += 1
+                continue
             tracker.release_job_dispatch_claim(aid)
             _warn_job(aid, row.get("state") or "-", result.get("error") or "do_task failed")
             errors += 1
