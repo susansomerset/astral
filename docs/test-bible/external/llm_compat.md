@@ -84,7 +84,7 @@ On a `probe: True` server (OpenRouter only) with `log_batch_id` set, `send_to_ll
 | New — AC 1 four concurrent first callers → 5 requests, one probe, probe first | `send_to_llm_compat` | `…::test_ac1_concurrent_first_callers_wait_on_one_probe` |
 | New — AC 2 probe = real call minus content / system / host lock; no `cache_control`; agent's own `only` rides on the probe, host replaces it on the real call | `send_to_llm_compat` | `…::test_ac2_probe_matches_real_call_and_carries_no_cache` (2) |
 | New — AC 3 later requests `provider == {quantizations: [bf16], allow_fallbacks: True, only: [DeepInfra]}`; agent tier dict not mutated | `send_to_llm_compat` | `…::test_ac3_warm_and_gather_locked_to_probe_host` |
-| New — AC 4 probe 429 → exactly 1 request, all four calls `success: False`, `Host probe failed:`, host = label | `send_to_llm_compat` | `…::test_ac4_failed_probe_fails_the_batch_with_no_fallback` |
+| New — AC 4 probe 429 → no real request, all four calls `success: False`, `Host probe failed:`, host = label (**AST-2010** revised: 6 probe attempts, sleep patched, all four tagged `provider_rate_limit`) | `send_to_llm_compat` | `…::test_ac4_failed_probe_fails_the_batch_with_no_fallback` |
 | New — AC 5 kimi / deepseek in a batch, openrouter with no batch id → no probe, no `only`, host = server label | `send_to_llm_compat` | `…::test_ac5_no_probe_outside_scope` (3) |
 | New — AC 6 `host == "DeepInfra"` on result; one INFO line with `host=DeepInfra` | `send_to_llm_compat` | `…::test_ac6_host_on_result_and_info_line` |
 | New — probe row then real row on the timesheet (same server + batch); probe row success / no note | `_record_probe` | `…::test_probe_cost_lands_on_the_timesheet` |
@@ -141,3 +141,57 @@ git diff origin/dev...HEAD --stat -- src/core/dispatcher.py
 No coverage regression: the AST-1966 hunk (helper try/except pair) is fully covered; the only new uncovered arc is `_record_probe`'s `kw is None` exit (now unreachable).
 
 **Integration:** none.
+
+### AST-2010 · AST-2009 (qa-fix bug-repro — OpenRouter 429 retry; exhausted 429 stops the batch)
+
+**Parent:** [AST-2009](https://linear.app/astralcareermatch/issue/AST-2009) (orphaned-bug mini-parent). Fix child **AST-2010** (`origin/sub/AST-2009/AST-2010-openrouter-429-retry`); plan `docs/features/agent/ast-1877-model-server-catalog-compat-client.md` § Bug: AST-2010. Tests land on the fix child itself (no gap sibling). Contract: OpenRouter `concurrency = {"rate_limit_retries": 5, "backoff_base_seconds": 2.0, "exhausted_stops_batch": True}`. `_create` treats `max_concurrent` / `backoff_max_seconds` as optional (no slot, no ceiling when absent). Delay is `base · 2^attempt · uniform(0.5, 1.0)`. Only servers with `exhausted_stops_batch` tag an exhausted 429 `failure_class = "provider_rate_limit"`, on both the call path and the host-probe path. Balance still wins a tie. DeepSeek (4 retries, no opt-in) and Kimi (no block) stay untagged. The tag is forwarded by consult/roster; the dispatcher then stops the batch and the ledger finishes **FAILED**.
+
+**Repro-first:** red at publish tip `c08219c32` (pre-fix) for the root-cause reasons. `_create` raises `KeyError: 'max_concurrent'` on a retry-only block. OpenRouter makes 1 call with no tag. The classifier and predicate are absent. Consult and roster drop `failure_class`. The dispatcher sends 2 × 3 = 6 and finishes COMPLETED. Green is `test-fix`'s to confirm after `make-fix`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retry-only block: 6 calls, sleeps `[2, 4, 8, 16, 32]` (no ceiling), no `_slots` entry | `_create` | **`tests/component/external/test_llm_compat.py::TestAst2010OpenRouterRateLimit::test_retry_only_block_doubles_with_no_cap_or_ceiling`** (**bug-repro**) |
+| Jitter kept: `uniform(0.5, 1.0)` per retry | `_create` | **`::TestAst2010OpenRouterRateLimit::test_retry_only_block_keeps_jitter`** |
+| OpenRouter exhausted 429 (AST-2009 body): 6 calls, 5 sleeps, `failure_class == "provider_rate_limit"` | `send_to_llm_compat` | **`::TestAst2010OpenRouterRateLimit::test_openrouter_exhausted_429_is_tagged`** (**bug-repro**) |
+| DeepSeek exhausted 429 → 5 calls, untagged; Kimi → 1 call, untagged (guard, green both) | `send_to_llm_compat` | **`::TestAst2010OpenRouterRateLimit::test_exhausted_429_untagged_without_opt_in`** |
+| 429 carrying a balance substring → `provider_balance_refusal` (guard, green both) | `send_to_llm_compat` | **`::TestAst2010OpenRouterRateLimit::test_balance_wins_over_rate_limit`** |
+| Probe 429 → 6 probe attempts, every caller tagged (real SDK str: the probe classifies a string) | probe branch | **`::TestAst1959ProbeHostLock::test_ac4_failed_probe_fails_the_batch_with_no_fallback`** (revised) |
+| Classifier (status / `response.status_code` / substring on exception **or** string) + predicate | `llm_external` | **`tests/component/utils/test_llm_external.py::TestAst2010ProviderRateLimit`** |
+| OpenRouter block, DeepSeek block unchanged + only OpenRouter opted in, `PROVIDER_RATE_LIMIT` registry | `config.py` | **`tests/component/utils/test_config.py::TestAst2010OpenRouterRetryConfig`** |
+| Tag forwarded on every failure return (routing / counts unchanged; untagged stays untagged) | `consult.py` | **`tests/component/core/test_consult.py::TestAst2010RateLimitForwarding`** — see `core/consult.md` § AST-2010 |
+| Tag forwarded on select / JOBS_FOUND / prefilter batch | `roster.py` | **`tests/component/core/test_roster.py::TestAst2010RateLimitForwarding`** — see `core/roster.md` § AST-2010 |
+| Batch stop at all three call sites, loop stop, ledger FAILED | `dispatcher.py` | **`tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage`** — see `core/dispatcher.md` § AST-2010 |
+
+**Kept:** `TestAst1877ServerConcurrency` (full four-key block, unchanged behavior).
+
+**Pre-existing drift (not AST-2010, left as-is):** at `c08219c32` the six touched modules carry the same ~105-node failure set with and without this pass's tests (zero new failures besides the 31 intended reds).
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **AST-2010 nodes** (**[bug-repro]** red pre-fix, green expected after `make-fix`):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_llm_compat.py::TestAst2010OpenRouterRateLimit \
+  tests/component/external/test_llm_compat.py::TestAst1959ProbeHostLock \
+  tests/component/external/test_llm_compat.py::TestAst1877ServerConcurrency \
+  tests/component/utils/test_llm_external.py::TestAst2010ProviderRateLimit \
+  tests/component/utils/test_llm_external.py::TestAst897ProviderBalanceRefusal \
+  tests/component/utils/test_config.py::TestAst2010OpenRouterRetryConfig \
+  tests/component/core/test_consult.py::TestAst2010RateLimitForwarding \
+  tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_roster.py::TestAst2010RateLimitForwarding \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting \
+  tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage \
+  tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage \
+  -q
+```
+
+Expect **all passed** with the AST-2010 fix. The AST-897 / AST-1867 / AST-1877 / AST-1959 classes are the "What must still hold" regressions (balance still INTERRUPTED + held; DeepSeek capped backoff unchanged).
+
+2. **No-regression:** the six touched test modules' failure set must not grow beyond the pre-existing drift above (compare against `c08219c32`).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2009/AST-2010-openrouter-429-retry:docs/test-bible/external/llm_compat.md | shasum`
