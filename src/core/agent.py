@@ -243,7 +243,8 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     raw 2-char code when the map is absent or incomplete. _render_pass_fail ignores vector names;
     _render_score requires rubric criteria with labels — callers guard with `if rubric_list` before scoring (AST-429).
     "_meta" in output_type determines whether metadata fields after grades are accepted;
-    trailing non-grade content raises ValueError for grades-only types.
+    trailing non-grade content on a grades-only line is recorded in "decode_failures"
+    (id, pos, reason) and the line is skipped; other per-line errors still raise (AST-1996).
     "grades_encoded_notes" (do/get/like): non-segment tail rejoins to job["notes"] only (optional).
     """
     with_meta = "_meta" in output_type or output_type == "grades_encoded_prefilter_links"
@@ -305,6 +306,7 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
 
     vector_labels: Dict[str, str] = (ctx or {}).get("vector_labels") or {}
     result_rows: List[Dict[str, Any]] = []
+    decode_failures: List[Dict[str, Any]] = []
     logger.debug("Beginning decode loop on %s items", len(lines))
     for line in lines:
         fields = [f.strip() for f in line.split("|")]
@@ -332,7 +334,14 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
                 meta.append(f)
 
         if meta and not with_meta and not with_notes:
-            raise ValueError(f"[{task_key}] unexpected trailing content in grades-only line: {line!r}")
+            # One malformed line must not sink the batch — caller routes this entity retry/error (AST-1996).
+            # Reason text matches the old ValueError so existing log greps keep working.
+            decode_failures.append({
+                id_key: batch_entities[pos][id_key],
+                "pos": pos,
+                "reason": f"[{task_key}] unexpected trailing content in grades-only line: {line!r}",
+            })
+            continue
 
         codes = [seg[:2] for seg in grade_segs]
         if len(codes) != len(set(codes)):
@@ -386,7 +395,11 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
         result_rows.append(row)
 
     logger.debug("End decode loop after %s items", len(result_rows))
-    return {array_key: result_rows}
+    out: Dict[str, Any] = {array_key: result_rows}
+    # Key only when a line failed — clean payloads keep the exact {array_key: [...]} shape.
+    if decode_failures:
+        out["decode_failures"] = decode_failures
+    return out
 
 
 # ---------------------------------------------------------------------------
