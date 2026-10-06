@@ -152,3 +152,32 @@ Execute steps in order; do not add files, helpers, or config. If any referenced 
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2004
+**Overall:** APPROVED
+**Corpus:** e1f2699fad44e4083e39a9a066cc87cae494ad51
+**Publish ref:** `ecc3bd6c24529fa04e68edc0063a5c047513c15c` (`sub/AST-1998/AST-2004-route-bot-walled-job-pages`)
+
+## Canon scores
+
+stat.logging.debug | A | | Loop begin/end plus Calling/Response around `is_bot_wall` in `_first_bot_walled_page`; no call-site gating.
+stat.logging.info.entity | A | | Explicitly defers `PJL_READY → BOT_BLOCKED` to `transition_company_state` / `_entity_info`; no new `logger.info`.
+
+## Traceability
+
+AC1→Stage1; AC2–AC3, AC5–AC6→Stage2; AC4→unchanged `JOBLIST_TITLES` path; AC7→Stage1 helper+delegate; AC8→Stage2 content-only helper — parent Purpose/Functional 1–6 and child `## Scope` (three files only) fully covered; no orphan stages.
+
+## Findings
+
+(none — no `fix-now`; no `discuss` blocking)
+
+**R6 (spot-check):** Plan matches parent/child definition (rename, shared detector, decomposed-only reroute, `job_site` persist, fail rollup, boundaries). `decomposed=False` legacy fall-through left on `NO_JOBLIST` is an explicit, scoped decision aligned with child scope and parent out-of-scope on legacy locate paths.
+
+**Gates:** AST-2004 `Plan Ready`, assignee Joan; no `[plan-discuss]` rounds (0/2).
+
+context_tokens≈42000
+
+[plan-rubric] PROCEED (Commit: ecc3bd6c2) logging + reroute plan solid
