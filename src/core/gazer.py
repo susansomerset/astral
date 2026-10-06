@@ -134,6 +134,15 @@ def _prune_jd(text: str, job_title: str = "") -> str:
     return text.strip()
 
 
+def is_bot_wall(text: str) -> bool:
+    """True when page text trips the shared bot/challenge detector in TRACKER_CONFIG['jd_classifier'].
+    Single source for JD classification and roster select_job_page (AST-2004) — do not copy the loop."""
+    cfg = TRACKER_CONFIG.get("jd_classifier", {})
+    text_lower = (text or "").lower()
+    hits = sum(1 for s in cfg.get("bot_signals", []) if s.lower() in text_lower)
+    return hits >= cfg.get("bot_threshold", 2)
+
+
 def _classify_jd(text: str) -> str:
     """Classify scraped page content. Returns 'ok', 'cookie', 'bot', 'missing', or 'closed'.
     Check order matters: closed → bot → cookie → missing → ok.
@@ -148,8 +157,7 @@ def _classify_jd(text: str) -> str:
             return "closed"
 
     # --- Bot Blocked --- (checked before cookie; LinkedIn auth pages mention "Cookie Policy")
-    bot_hits = sum(1 for s in cfg.get("bot_signals", []) if s.lower() in text_lower)
-    if bot_hits >= cfg.get("bot_threshold", 2):
+    if is_bot_wall(text):
         return "bot"
 
     # --- Cookie Block ---
@@ -1028,8 +1036,13 @@ async def process_gazer_batch(
                 )
                 _log.debug_detail(f"job_site={js!r}")
     results_by_short_name: Dict[str, Tuple[str, str, str]] = {}
+    # Real scrape failure reason per company, kept regardless of debug (AST-1997).
+    scrape_errors: Dict[str, str] = {}
     for i, r in enumerate(results):
         if isinstance(r, Exception):
+            sn, _ = to_scrape[i]
+            # Bare exceptions (e.g. asyncio.TimeoutError()) have empty str(); drop the trailing ": ".
+            scrape_errors[sn] = f"Scrape failed: {type(r).__name__}: {r}" if str(r) else f"Scrape failed: {type(r).__name__}"
             continue
         short_name, job_site, page_html = r
         results_by_short_name[short_name] = (short_name, job_site, page_html)
@@ -1052,12 +1065,14 @@ async def process_gazer_batch(
                     outcome="failure — scrape failed",
                 )
                 _log.debug_detail(f"job_site={(c.get('job_site') or '').strip()!r}")
+            # Only blank-job_site companies reach here without a scrape error (never added to to_scrape).
+            failure_message = scrape_errors.get(short_name, "No job_site to scrape")
             record_to_company_job_scan(
                 batch_id, short_name, scan_completed_at,
                 total_found=None, new=None, duplicates=None,
-                status="failure", failure_message="Scrape failed",
+                status="failure", failure_message=failure_message,
             )
-            outcomes.append({"short_name": short_name, "status": "failure", "message": "Scrape failed", "new": None, "duplicates": None})
+            outcomes.append({"short_name": short_name, "status": "failure", "message": failure_message, "new": None, "duplicates": None})
             continue
 
         _, job_site, page_html = results_by_short_name[short_name]
