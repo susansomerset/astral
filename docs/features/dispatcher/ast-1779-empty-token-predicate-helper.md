@@ -577,3 +577,13 @@ no plan-stage validate-plan table for AST-2000 (Joan fix-board round 2 on produc
 context_tokens≈32000
 
 **Chuckles note:** the AST-1995 gazer/tests "spill" was a stale-ftr artifact. AST-1995 is already on origin/dev, the sub had synced dev, and the ftr was behind. ftr fast-forwarded to origin/dev; ftr...sub is now exactly the 8 planned files. Only the candidate empty-token transition guard remains fix-now.
+
+### Resolution — AST-2000
+
+**2026-10-06** — `resolve(AST-2000): — findings addressed` after Radia **FIX-NOW**.
+
+- **Fix-now (candidate empty-token transition):** `src/core/candidate.py` `run_requested_artifacts_dispatch` — the `empty_tokens` branch now wraps `transition_candidate_state(candidate_id, err_state)` in `try/except ValueError` (covers `IllegalCandidateTransition`, a `ValueError` subclass). On a raise it logs one WARNING (`skipped error_state …`, same shape as `_apply_dispatch_chain_hop_failure`) and returns `total_errors: 1` — it can no longer fall into the broad `except` whose `_requested_stage_failure_target` may pick a `_RETRY` holding. Mirrors consult `_run_dispatch_chain_job_batch`'s guarded transition.
+- **Fix-now (AST-1995 gazer / tests / bible "spill") — void:** stale-ftr diff artifact (Chuckles note above). AST-1995 is on `origin/dev`; `ftr/AST-1986-runtime-empty-token-error` was fast-forwarded to `origin/dev`, and `ftr...sub` is now exactly the eight planned product files. No gazer or test-tree change made.
+- **Discuss (meteorite staging unchanged):** Default taken — plan boundary stands; no `METEORITE_STATES` terminal invented. Reopen only if Susan wants new meteorite error states (separate ticket).
+- **Advisory:** none actionable.
+- **Tests:** none on this ticket — sibling [AST-2006](https://linear.app/astralcareermatch/issue/AST-2006) (incl. a case for this guarded candidate branch).
