@@ -572,3 +572,7 @@ context_tokens≈9500
 ```
 
 **Test delivery (AST-1997):** docs-acceptance on this child — no test-tree change here; the `[bug-repro]` (`tests/component/core/test_gazer_scrape_failure.py`) is carried by test-gap sibling AST-2002 per fix-board TESTS: REVISE routing.
+
+## Bug: AST-2002 — gaze scrape failure_message coverage (test-gap sibling of AST-1997)
+
+Plan: fix-board on AST-1997 returned `[board-betty] TESTS: REVISE` — no test asserted `failure_message` / outcome `message` text in `process_gazer_batch`. Orphaned-bug routing filed this gap child instead of running qa-fix inline on AST-1997. Deliverable: a `[bug-repro]` asserting `Scrape failed: <ExceptionType>: <msg>` (plus the empty-message form) and `No job_site to scrape` on both `record_to_company_job_scan` and outcomes, debug=False and True; red on pre-fix ftr, green once AST-1997 lands. Bible: `docs/test-bible/core/gazer.md` § AST-2002.
