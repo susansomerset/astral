@@ -670,3 +670,116 @@ context_tokens≈12000
 ### Resolution — AST-1988
 
 docs-acceptance: product-only fix. The repro and set/clear pairing tests (Betty `[board-betty] TESTS: REVISE`) land on gap sibling AST-1991, stacked after this ticket on `ftr/AST-1987-railway-log-batch-candidate-ids`.
+
+## Bug: AST-1991 — Cover Railway log batch_id/candidate_id keys and opener set/clear pairing (test gap for AST-1988)
+
+**Mini-parent:** [AST-1987](https://linear.app/astralcareermatch/issue/AST-1987) · **Publish ref:** `sub/AST-1987/AST-1991-cover-railway-log-id-tests` · **Parent ftr:** `ftr/AST-1987-railway-log-batch-candidate-ids` · **Origin:** Betty `[board-betty] TESTS: REVISE` on AST-1988.
+
+Tests and bible only. The product fix is AST-1988's block above, already on the ftr and on this sub after sync-child. Betty lands the tests (qa-fix lane); this block is her spec. No `src/**` edits.
+
+### As-is
+
+No test exercises AST-1988's repro. Nothing asserts that Railway JSON lines carry `batch_id` / `candidate_id` when the contextvars are set, or that a batch-less line is byte-identical to the pre-fix shape. Nothing asserts that the dispatcher / agent / candidate / meteorite batch openers set and clear `log_candidate_id` together with `log_batch_id`. No test references `_hold_log_batch`.
+
+### To-be
+
+Add-only component tests prove the formatter keys (present when set, omitted when unset or blank) and set + clear pairing at one or more openers per family, including `_hold_log_batch`'s no-op under a parent batch and its two-token reset. The repro tests fail on `origin/dev`'s product files and pass on this tip. Bible rows in `debug_logging.md` and `logging_batch.md` point at them.
+
+### Repro
+
+The coverage gap itself: on this tip,
+
+```bash
+rg -n "_hold_log_batch|log_candidate_id" tests/component/utils/test_debug_logging.py tests/component/core/test_dispatcher.py tests/component/core/test_agent.py tests/component/core/test_candidate.py tests/component/core/test_meteorite.py
+```
+
+returns nothing (exit 1). The Railway tests in `test_debug_logging.py` read only `payload["level"]` / `payload["message"]`. The only `log_candidate_id` test is `TestAst1598LogCandidateId` in `test_logging_batch.py`, which sets the var directly and never goes through an opener or the Railway formatter.
+
+### Root cause
+
+AST-1988 went product-only through fix-board. Betty's board verdict split the repro and pairing tests onto this gap child instead of qa-fix on AST-1988.
+
+### Proposed change
+
+**Shared rules for every test below**
+
+- **New test functions only.** No edit to an existing test body, fixture, or assertion. New methods may be added inside an existing class when that class owns the fixture they reuse (named per test below).
+- **Contextvar hygiene.** Contextvars set in a sync test body persist on the test thread. Each test that sets `log_batch_id` / `log_candidate_id` directly must take tokens and `reset` them in `finally`. Each opener test must start from both vars `None` (set via tokens at the top, reset in `finally`) so a leak from another test can't green it.
+- **Red-on-dev mechanism.** Opener tests capture `(log_batch_id.get(), log_candidate_id.get())` *during* the run, from inside the mocked inner call (`_run_dispatch_loop`, `send_to_anthropic`, `run_adhoc`, `asyncio.run`, `do_task`). The in-run candidate equality is the assertion that fails pre-fix (the var is never set on `origin/dev`). The post-run `None` assertions are the leak guard (AC 4 of AST-1988).
+- **Harnesses chosen are green in the current component env.** The engineer test-fix run on AST-1988 found 77 failures that already exist on the ftr base. None of the classes reused below are among them.
+
+**1. `tests/component/utils/test_debug_logging.py` — new class `TestAst1988RailwayJsonIds`** (place after `TestAst1778RailwayConsoleTransport`; uses `logging_mod._RailwayJsonFormatter()` and `logging.LogRecord("src.core.agent", logging.INFO, __file__, 0, "hello", (), None)` like `test_railway_json_formatter_maps_levels`)
+
+| # | Test | Setup | Assert |
+|---|---|---|---|
+| 1 | `test_formatter_adds_batch_and_candidate_when_set` **(bug-repro)** | `log_batch_id` = `"b-1988"`, `log_candidate_id` = `"cand-1988"` | `json.loads(fmt.format(record)) == {"level": "info", "message": "src.core.agent: hello", "batch_id": "b-1988", "candidate_id": "cand-1988"}` (whole-dict equality) |
+| 2 | `test_formatter_batch_only_omits_candidate` | batch `"b-1988"`, candidate `None` | payload `== {"level": "info", "message": "src.core.agent: hello", "batch_id": "b-1988"}`; `"candidate_id" not in payload` |
+| 3 | `test_formatter_unset_is_byte_identical` | both explicitly `None` | `fmt.format(record) == '{"level": "info", "message": "src.core.agent: hello"}'`: exact **string**, not parsed (AST-1988 AC 2: omit, never null) |
+| 4 | `test_formatter_blank_ids_omitted` | both `""` | same exact string as #3 (truthiness decision in AST-1988 Proposed change §1) |
+| 5 | `test_on_railway_emit_carries_ids` | `RAILWAY_ENVIRONMENT=1` + the `_StdoutCapture` handler pattern from `test_on_railway_emit_is_json_with_level` (same root-handler swap and `finally` restore of `_apply_console_formatter()`); both vars set; `get_logger("test.ast1988.railway").warning("soft fail")` | parsed line `== {"level": "warn", "message": "test.ast1988.railway: soft fail", "batch_id": "b-1988", "candidate_id": "cand-1988"}` |
+
+#1, #2 and #5 are red on `origin/dev` (keys absent). #3 and #4 are green on both trees (shape regression guard).
+
+**2. `tests/component/core/test_dispatcher.py` — new methods in `TestDispatchOne`** (reuse the `test_completes_click_dispatch` monkeypatch set: `get_candidate`, `save_dispatch_ledger`, `update_dispatch_ledger`, `compute_batch_cost`, `flush_log_buffer`, `_db_update_dispatch_task`, `_check_circuit_breaker`, registry entry)
+
+| # | Test | `_run_dispatch_loop` mock | Assert |
+|---|---|---|---|
+| 6 | `test_ast1988_unified_run_stamps_candidate_with_batch_and_clears` | `AsyncMock(side_effect=…)` appending `(dispatcher_mod.log_batch_id.get(), dispatcher_mod.log_candidate_id.get())` | one capture; batch `startswith("evaluate_jd-")`; candidate `== "cand-1"`; after `_dispatch_one`: both `.get() is None` |
+| 7 | `test_ast1988_failed_run_still_clears_candidate` | same capture, then `raise RuntimeError("boom")` | capture candidate `== "cand-1"`; after: both `None` (clear is in `finally`) |
+| 8 | `test_ast1988_run_next_chain_leaves_candidate_unset_like_batch` | reuse `test_run_next_chain_skips_dispatch_level_ledger` setup (`_current_agent_task_run_next` → `"contemplate_job"`, task_key `anticipate_scan`) + capture | capture `== (None, None)`: dispatcher mirrors the batch, hop opener owns the stamp; after: both `None` |
+
+**3. `tests/component/core/test_agent.py` — new methods in the existing classes that own the fixtures**
+
+| # | Class / test | Setup | Assert |
+|---|---|---|---|
+| 9 | `TestAst531RunNextHopLedger::test_ast1988_hop_open_stamps_candidate_and_close_clears` | copy `test_two_hop_chain_creates_distinct_ledger_rows` setup (`hop_ledger_trackers`, `_resolve_task_prompts`, `_patch_strict_batch_anthropic`, `save_agent_data`); `send_to_anthropic` = `AsyncMock(side_effect=async fn)` that appends `(agent_mod.log_batch_id.get(), agent_mod.log_candidate_id.get())` and returns `_strict_batch_llm_ok(...)` | two captures; each candidate `== "c1"`; each batch `==` the matching `hop_ledger_trackers["saves"][i][0][0]`; after `do_task`: both `None` |
+| 10 | `TestAst515AdhocWorkbenchLedger::test_ast1988_workbench_stamps_candidate_and_clears` | `ledger_trackers` fixture; `run_adhoc` = async fn capturing both vars, returns `{"success": True, "parsed_response": {"agent_payload": "ok"}, "timesheet": {}}`; `candidate_id="c1"`, `workbench_task_key="evaluate_jd"` | capture batch `startswith("adhoc-evaluate_jd-")`, candidate `== "c1"`; after: both `None` |
+| 11 | `TestAst515AdhocWorkbenchLedger::test_ast1988_workbench_raise_still_clears_candidate` | `run_adhoc` captures then raises `RuntimeError("boom")`; `pytest.raises(RuntimeError)` around the call | capture candidate `== "c1"`; after: both `None` |
+
+**4. `tests/component/core/test_candidate.py` — new methods in the existing classes**
+
+| # | Class / test | Setup | Assert |
+|---|---|---|---|
+| 12 | `TestRunCandidateArtifactGeneration::test_ast1988_ui_generate_stamps_candidate_and_clears` | copy `test_returns_500_on_failed_task` patches; `candidate_mod.asyncio` = `MagicMock(run=MagicMock(side_effect=fn))`, where `fn(coro)` calls `coro.close()`, appends `(candidate_mod.log_batch_id.get(), candidate_mod.log_candidate_id.get())`, returns `{"success": False, "error": "bad"}` | capture batch `startswith("user-craft_resume_base-")`, candidate `== "somerset"`; after: both `None` |
+| 13 | `TestAst986SessionResumeParse::test_ast1988_session_sentinel_batch_stays_unstamped` | `self._patch_ledger(monkeypatch)`; same `asyncio.run` capture fn (return `{"success": False, "error": "bad"}`); `run_session_resume_parse("paste me", candidate_id="somerset")` | capture batch `startswith("user-session-parse-resume-")`, candidate `is None` (AST-1988 AC 3: sentinel stays NULL even though a real candidate id is passed for the key map); after: both `None` |
+
+#13 is green on both trees by design. It guards against a future over-stamp.
+
+**5. `tests/component/core/test_meteorite.py` — new class `TestAst1988HoldLogBatchPairing`**
+
+| # | Test | Setup | Assert |
+|---|---|---|---|
+| 14 | `test_hold_sets_both_and_returns_token_pair` **(bug-repro)** | both vars `None` | `tok = meteorite_mod._hold_log_batch("b-1988", "cand-1988")`; `isinstance(tok, tuple) and len(tok) == 2`; both `.get()` equal the inputs; then `log_batch_id.reset(tok[0])`, `log_candidate_id.reset(tok[1])` → both `None`. On `origin/dev` this raises `TypeError` (one-arg signature), so it's red |
+| 15 | `test_hold_noop_under_parent_batch` | parent batch `"parent-b"`, parent candidate `"parent-c"` (tokens) | `_hold_log_batch("b-1988", "cand-1988") is None`; both vars still `"parent-b"` / `"parent-c"` |
+| 16 | `test_hold_blank_candidate_stamps_none` | both `None` | `tok = _hold_log_batch("b-1988", "")`; batch `== "b-1988"`, candidate `is None`; reset both |
+| 17 | `test_classify_stage_blob_stamps_and_releases` | `TestAst1879ClassifyKeyMapHandOff._run` pattern: `agent_mod.do_task` patched to an async fn capturing both vars, returning `{"success": False, "error": "stop"}`; `_classify_stage_blob("cand-1988", "blob", source_kind="email", source_id="msg-1988")` | capture batch `startswith(STAGE_METEORITE_CONFIG["task_key"] + "-stage-")`, candidate `== "cand-1988"`; after: both `None` (two-token reset path) |
+
+#14 and #17 are red on `origin/dev`. #15 is green on both trees (existing no-op rule). #16 is red on dev (`TypeError`).
+
+**6. `tests/component/utils/test_logging_batch.py` — no change.** The emit-buffer stamp (contextvar → `app_log.candidate_id`) is already pinned by `TestAst1598LogCandidateId`. Tests #6–#17 prove the contextvar is set during candidate-owned runs. Together they cover AST-1988 AC 3 with no duplicate DB-flush test.
+
+**7. `docs/test-bible/utils/debug_logging.md`**
+
+- Revise the `**Console format:**` paragraph (currently "one JSON object per line with `level` … + `message`") by appending: "plus top-level `batch_id` / `candidate_id` when those contextvars are set (omitted, never null, when unset; AST-1988). **`TestAst1988RailwayJsonIds`**."
+- New section `### AST-1988 · AST-1987 (bug-repro — Railway JSON ids)` after `### AST-1778 · AST-1777`: one-paragraph summary + `| Area | Source | Component tests |` rows for #1–#5 (#1 tagged **bug-repro**). **Broken / obsolete:** none, since `TestAst1778RailwayConsoleTransport` asserts by key with vars unset. **Integration:** none.
+- `## QA test manifest`: append items for `tests/component/utils/test_debug_logging.py::TestAst1988RailwayJsonIds` and add that node to the pytest command block.
+
+**8. `docs/test-bible/utils/logging_batch.md`**
+
+- New section `### AST-1988 · AST-1987 (bug-repro — log_candidate_id set/clear at batch openers)` after `### AST-1598 · AST-1594`. Note that it supersedes that section's "No dispatcher set sites in this child" line for current behavior, and leave the AST-1598 text as history. Table rows #6–#17 with full node ids (they live in core test files; this page is the `log_candidate_id` home). Tag #14 and #6 **bug-repro**. Add one sentence on AST-1988 AC 3 composition (§6 above). **Broken / obsolete:** none. **Integration:** none.
+
+**Not touched:** `src/**`, `docs/features/**` (beyond this block), any other bible page, `tests/integration/**`, `src/core/intake.py` coverage (out of scope, pending Susan's scope call on AST-1988).
+
+### Blast radius
+
+- Add-only test functions in six files plus two bible pages. No fixture or helper changes, so existing tests are untouched. New methods inside `TestDispatchOne`, `TestAst531RunNextHopLedger`, `TestAst515AdhocWorkbenchLedger`, `TestRunCandidateArtifactGeneration` and `TestAst986SessionResumeParse` reuse those classes' fixtures read-only.
+- Contextvar leakage between tests is the main hazard. The shared hygiene rule (tokens + `finally`, start from `None`) prevents both false greens and polluting later tests' `log_batch_id is None` assertions (e.g. `test_completes_click_dispatch`).
+- `coro.close()` in the `asyncio.run` mocks (#12, #13) avoids "coroutine never awaited" warnings that the existing `MagicMock(run=…)` tests tolerate.
+- If AST-1988's opener lines move in a later refactor, these tests pin behavior (in-run values), not line numbers.
+
+### What must still hold
+
+- AST-1988 AC 1–5 as written in its block above. These tests are the proof, not a re-spec.
+- AST-1778: `TestAst1778RailwayConsoleTransport` and `TestConsoleFormat` stay green unchanged. Off-Railway plain format is untouched.
+- AST-1598: `TestAst1598LogCandidateId` stays green unchanged. `app_log.candidate_id` stays NULL when unset.
+- Engineer test-tree ban: Hedy does not commit under `tests/` or `docs/test-bible/`. Betty lands every item in §1–§8.
