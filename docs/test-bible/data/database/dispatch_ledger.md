@@ -15,3 +15,7 @@ _(Coverage map and manifest blocks appended by Betty `qa-child`.)_
 | Kept — insert / duplicate / unknown-column reject / allowed update | same | `TestSaveDispatchLedger` · `TestUpdateDispatchLedger` |
 
 **Integration:** none (`tests/integration/conftest.py` only resets `_dispatch_ledger_schema_ensured`).
+
+### AST-2008 · AST-2007 (llm_call_seconds / llm_failure_class columns)
+
+Fresh CREATE + legacy ALTER (old rows NULL, no backfill) + `_LEDGER_UPDATE_COLS`. **New:** `TestAst2008LedgerCallOutcomeColumns::test_fresh_table_has_both_and_update_round_trips`, `…::test_legacy_table_gains_both_and_old_rows_stay_null`. Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.

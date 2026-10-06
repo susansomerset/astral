@@ -1417,21 +1417,43 @@ def opt_out_surfer_consent(candidate_id: str, *, debug: bool = False) -> dict:
     return surfer_consent_dto(candidate_id)
 
 
-def _assert_unique_rubric_codes(criteria: list, artifact_key: str) -> None:
-    """Reject duplicate two-letter codes within one rubric artifact list (AST-1513)."""
-    seen: Dict[str, str] = {}
-    for idx, item in enumerate(criteria):
-        if not isinstance(item, dict):
+# AST-2008: last-letter sequence for re-lettering a duplicate rubric code (X, Y, Z, then A… wrapping).
+_RUBRIC_CODE_UPTICK_LETTERS = "XYZABCDEFGHIJKLMNOPQRSTUVW"
+
+
+def _uptick_duplicate_rubric_codes(criteria: list, artifact_key: str) -> list:
+    """Re-letter later duplicate codes in one rubric list; first occurrence keeps its code (AST-2008).
+    Pure: returns a new list; a re-lettered item is a shallow copy (inputs may be EMBEDDED_* refs)."""
+    # Every original code is reserved up front so a re-letter never takes a later item's own code.
+    reserved = {
+        str(c.get("code") or "").strip().upper()
+        for c in criteria
+        if isinstance(c, dict) and str(c.get("code") or "").strip()
+    }
+    seen: set = set()
+    out: list = []
+    for item in criteria:
+        code = str(item.get("code") or "").strip() if isinstance(item, dict) else ""
+        # Non-dict / blank code: not a duplicate concern (sync assigns V{idx}).
+        if not code or code.upper() not in seen:
+            seen.add(code.upper())
+            out.append(item)
             continue
-        label = (item.get("label") or item.get("code") or "").strip() or f"#{idx + 1}"
-        code = (item.get("code") or "").strip() or f"V{idx + 1:02d}"
-        code_key = code.upper()
-        if code_key in seen:
-            raise ValueError(
-                f"Rubric {artifact_key!r}: duplicate code {code!r} on vectors "
-                f"{seen[code_key]!r} and {label!r}"
-            )
-        seen[code_key] = label
+        label = (item.get("label") or code).strip()
+        new_code = next(
+            (code[:-1] + ch for ch in _RUBRIC_CODE_UPTICK_LETTERS if (code[:-1] + ch).upper() not in reserved),
+            None,
+        )
+        if new_code is None:
+            # All 26 last letters taken — keep the duplicate rather than fail the save (Decision C).
+            logger.warning("Rubric %r: duplicate code %s on %r — no free last letter, kept", artifact_key, code, label)
+            out.append(item)
+            continue
+        reserved.add(new_code.upper())
+        seen.add(new_code.upper())
+        logger.warning("Rubric %r: duplicate code %s on %r -> %s", artifact_key, code, label, new_code)
+        out.append({**item, "code": new_code})
+    return out
 
 
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
@@ -1460,7 +1482,6 @@ def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
                 item["importance"] = _normalize_importance_value(item.get("importance"), ci)
             except ValueError as e:
                 raise ValueError(f"Rubric {key!r}, vector {label!r}: {e}") from e
-        _assert_unique_rubric_codes(val, key)
 
 
 def _rubric_rows_to_criteria(rows: list) -> list:
@@ -1559,6 +1580,8 @@ def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
         # AST-1881: restore RC on save (prepend; embedded wins on code), like QC/GC.
         elif owner == "prefilter_company":
             val = _merge_embedded_company_prefilter_criteria(val)
+        # AST-2008: after the embedded merge so a merge-introduced collision is repaired too.
+        val = _uptick_duplicate_rubric_codes(val, key)
         database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
         del artifacts[key]
 

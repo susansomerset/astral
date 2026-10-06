@@ -1975,3 +1975,7 @@ Fixtures: module helper `_ast2006_guard_ctx` (candidate row with name columns �
 ```
 
 2. **[bug-repro] flip:** `tests/component/core/test_agent.py::TestAst2006DoTaskEmptyTokenGuard::test_bug_repro_entry_hop_blank_token_is_not_sent` — red on `origin/dev`, green on ftr.
+
+### AST-2008 · AST-2007 (do_task ledger call outcome)
+
+Post-call ledger write runs on every call with a batch id: `llm_call_seconds` (timesheet duration) + `llm_failure_class` (NULL on success, `failure_class` or `provider_failed` on failure); `host` still success-only (AST-1960). **Revised:** `TestAst1960LedgerHost::test_ledger_write_failure_never_fails_the_call` (parametrized ok/failed; message names "call outcome"). **New:** `…::test_ast2008_success_writes_duration_and_null_class`, `…::test_ast2008_timeout_writes_outcome_and_keeps_host`, `…::test_ast2008_failed_call_kwargs_carry_no_host`, `…::test_ast2008_last_call_wins_and_unclassified_is_provider_failed` (Decision A). Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.

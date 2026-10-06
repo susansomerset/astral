@@ -5234,19 +5234,80 @@ class TestAst1960LedgerHost:
         assert out["success"] is True
         update.assert_not_called()
 
+    # AST-2008: the post-call write now runs on success and failure, so a failed call reaches the
+    # non-fatal except too; the message names the call outcome, not just the host.
+    @pytest.mark.parametrize("ok", [True, False])
     @pytest.mark.asyncio
     async def test_ledger_write_failure_never_fails_the_call(
-        self, monkeypatch: pytest.MonkeyPatch, ledger: Any, caplog: pytest.LogCaptureFixture
+        self, monkeypatch: pytest.MonkeyPatch, ledger: Any, caplog: pytest.LogCaptureFixture, ok: bool
     ) -> None:
         def boom(*_a: Any, **_k: Any) -> None:
             raise RuntimeError("database is locked")
 
         monkeypatch.setattr(agent_mod.database, "update_dispatch_ledger", boom)
-        self._route(monkeypatch, "moonshotai/kimi-k2.6", self._ok(host="DeepInfra"))
+        result = self._ok(host="DeepInfra") if ok else {"success": False, "api_response": None, "timesheet": {}, "error": "429"}
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", result)
         with caplog.at_level(logging.ERROR):
             out = await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
-        assert out["success"] is True
-        assert any("Ledger host write failed for batch batch-1960" in r.getMessage() for r in caplog.records)
+        assert out["success"] is ok
+        assert any(
+            "call outcome" in r.getMessage() and "batch batch-1960" in r.getMessage() for r in caplog.records
+        )
+
+    # AST-2008 Step 5: every do_task call writes llm_call_seconds (timesheet duration) + llm_failure_class
+    # (NULL on success; failure_class or provider_failed on failure). Decision A: last call wins on a shared row.
+    _TIMEOUT = {
+        "success": False, "api_response": None, "timesheet": {"duration": 613.9}, "host": "OpenRouter",
+        "error": "Provider call exceeded per-call time budget (600s)", "failure_class": "provider_call_timeout",
+    }
+
+    @pytest.mark.asyncio
+    async def test_ast2008_success_writes_duration_and_null_class(self, monkeypatch: pytest.MonkeyPatch, ledger: Any) -> None:
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", self._ok(host="DeepInfra", timesheet={"duration": 12.5}))
+        await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        row = ledger.get_dispatch_ledger(self.BATCH)
+        assert row.get("llm_call_seconds") == 12.5
+        assert "llm_failure_class" in row and row["llm_failure_class"] is None
+        assert row["host"] == "DeepInfra"
+
+    @pytest.mark.asyncio
+    async def test_ast2008_timeout_writes_outcome_and_keeps_host(self, monkeypatch: pytest.MonkeyPatch, ledger: Any) -> None:
+        # Repro 5 — today a failed call writes nothing; AST-1960 host rule still holds.
+        ledger.update_dispatch_ledger(self.BATCH, host="DeepInfra")
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", dict(self._TIMEOUT))
+        out = await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        assert out["success"] is False
+        row = ledger.get_dispatch_ledger(self.BATCH)
+        assert row.get("llm_call_seconds") == 613.9
+        assert row.get("llm_failure_class") == "provider_call_timeout"
+        assert row["host"] == "DeepInfra"
+
+    @pytest.mark.asyncio
+    async def test_ast2008_failed_call_kwargs_carry_no_host(self, monkeypatch: pytest.MonkeyPatch, ledger: Any) -> None:
+        update = MagicMock()
+        monkeypatch.setattr(agent_mod.database, "update_dispatch_ledger", update)
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", dict(self._TIMEOUT))
+        await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        update.assert_called_once_with(self.BATCH, llm_call_seconds=613.9, llm_failure_class="provider_call_timeout")
+
+    @pytest.mark.asyncio
+    async def test_ast2008_last_call_wins_and_unclassified_is_provider_failed(
+        self, monkeypatch: pytest.MonkeyPatch, ledger: Any
+    ) -> None:
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", dict(self._TIMEOUT))
+        await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        # Success after a timeout clears the class — the pair always describes the same call.
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", self._ok(host="DeepInfra", timesheet={"duration": 3.0}))
+        await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        row = ledger.get_dispatch_ledger(self.BATCH)
+        assert (row.get("llm_call_seconds"), row.get("llm_failure_class", "missing")) == (3.0, None)
+        # Early _send_to_server returns carry timesheet {} → NULL seconds; blank failure_class → provider_failed.
+        unclassified = {"success": False, "api_response": None, "timesheet": {}, "error": "429", "failure_class": " "}
+        self._route(monkeypatch, "moonshotai/kimi-k2.6", unclassified)
+        await agent_mod.do_task(self.TASK, index="somerset", ctx=dict(self.CTX))
+        row = ledger.get_dispatch_ledger(self.BATCH)
+        assert (row.get("llm_call_seconds", "missing"), row.get("llm_failure_class")) == (None, "provider_failed")
+        assert row["host"] == "DeepInfra"
 
 
 # AST-515 — workbench Test writes dispatch_ledger + agent_data (parent AST-514).
