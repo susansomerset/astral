@@ -955,6 +955,7 @@ async def run_company_task(
             if result.get("error"):
                 _warn_company(short_name, "-", result["error"])
                 return {**zero, "total_errors": 1}
+            # BOT_BLOCKED deliberately absent: bot-blocked is fail-only (AST-1751 / AST-2004).
             terminal_ok = frozenset({
                 sel_cfg.get("identified_state"),
                 sel_cfg.get("exhausted_state"),
@@ -2365,6 +2366,7 @@ async def _find_job_page_from_assembled(
         parsed_top, response_type, short_name, company_website, job_site_url,
         page_dom_map=page_dom_map, selected_page=selected_page,
         debug=debug, ctx=ctx, decomposed=decomposed,
+        page_url_map=page_url_map, visible_map=visible_map,
     )
 
 
@@ -2880,6 +2882,24 @@ async def _fetch_select_job_page(
     return parsed
 
 
+def _first_bot_walled_page(page_url_map: Dict[int, str], visible_map: Dict[int, str]) -> str:
+    """URL of the first shown page (page order) whose visible text is a bot wall; '' when none (AST-2004)."""
+    from src.core.gazer import is_bot_wall  # lazy import avoids circular (gazer imports roster)
+    pages = sorted(page_url_map)
+    logger.debug("Beginning bot-wall check loop on %s items", len(pages))
+    checked = 0
+    for n in pages:
+        checked += 1
+        logger.debug("Calling is_bot_wall: page=%s url=%s", n, page_url_map[n])
+        walled = is_bot_wall(visible_map.get(n, ""))
+        logger.debug("Response from is_bot_wall: page=%s walled=%s", n, walled)
+        if walled:
+            logger.debug("End bot-wall check loop after %s items", checked)
+            return page_url_map[n]
+    logger.debug("End bot-wall check loop after %s items", checked)
+    return ""
+
+
 async def _check_parse_results(
     result: Dict[str, Any],
     response_type: str,
@@ -2891,6 +2911,8 @@ async def _check_parse_results(
     debug: bool = False,
     ctx: Optional[Dict[str, Any]] = None,
     decomposed: bool = False,
+    page_url_map: Optional[Dict[int, str]] = None,
+    visible_map: Optional[Dict[int, str]] = None,
 ) -> Dict[str, Any]:
     """Map select_job_page response_type to company state.
 
@@ -2940,6 +2962,14 @@ async def _check_parse_results(
             page_dom_map, selected_page, response_type, debug, ctx, {},
         )
 
+    # AST-2004: a bot-walled shown page is the real reason no job list was found (decomposed select only).
+    walled_url = _first_bot_walled_page(page_url_map or {}, visible_map or {}) if decomposed else ""
+    if walled_url:
+        _save_company(short_name=short_name, company_website=company_website,
+                      state="BOT_BLOCKED", page_option_url=walled_url, raw_response=result)
+        logger.debug("Response from select_job_page: %s -> BOT_BLOCKED job_site=%s", response_type, walled_url)
+        return {"short_name": short_name, "state": "BOT_BLOCKED", "job_site": walled_url, "response_type": response_type}
+
     _save_company(short_name=short_name, company_website=company_website,
                        state="NO_JOBLIST", page_option_url=company_website, raw_response=result)
     return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
@@ -2976,7 +3006,7 @@ def _derive_shortname_from_url(url: str) -> str:
 
 
 _PERSIST_PAGE_OPTION_URL_STATES = frozenset({
-    "WATCH", "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE", "JOBSITE_SCRAPE_ISSUE",
+    "WATCH", "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE", "JOBSITE_SCRAPE_ISSUE", "BOT_BLOCKED",
 })
 
 
