@@ -4762,3 +4762,7 @@ Manifest: **`docs/test-bible/core/roster.md`** § AST-2004.
 **Broken / obsolete:** none — `TestResolveTokens` / `TestAst1779*` use default args. (`TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` / `::test_resolves_cover_letter_signature_from_profile` are pre-existing reds, identical with and without this pass.)
 
 Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
+
+### AST-2008 · AST-2007 (TIMESHEET_RECONCILE_ENABLED)
+
+**New:** `TestAst1964ModelRouting::test_reconcile_ships_disabled` — `TIMESHEET_RECONCILE_ENABLED is False`. Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.

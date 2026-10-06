@@ -1474,3 +1474,7 @@ Test gap for **AST-1996** (`96bc0471d`). `_should_decode_as_encoded_line` scans 
 **Broken / obsolete:** none — existing routing tests stub generic `success: False` (no `empty_tokens`). `render_verdict` case is green on dev too (`grade_do`'s `error_state` is not a retry holding); kept as the AST-2000 contract pin.
 
 Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
+
+### AST-2008 · AST-2007 (render_verdict provider_call_timeout → retry hop)
+
+`render_verdict`: `failure_class == PROVIDER_CALL_BUDGET["failure_class"]` routes via `_consult_batch_fail_dest` (AST-642 one hop) instead of `_fail`. **New:** `TestAst2008RenderVerdictTimeoutRetry` — primary `METEORITE_PASSED_JD` → `METEORITE_PASSED_JD_RETRY` (WARNING), `_RETRY` → `METEORITE_FAILED_TECHNICAL_DO` (ERROR), no dest → no transition; `failure_class` on the return. Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.

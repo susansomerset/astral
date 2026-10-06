@@ -3900,6 +3900,73 @@ class TestAst860RunBatchConsultCandidateCtx:
         assert task_ctx["candidate_data"] == ctx["candidate_data"]
 
 
+# AST-2008 Step 3: provider_call_timeout in render_verdict routes per AST-642 (one hop) instead of _fail.
+# Branches: primary → retry holding (WARNING); *_RETRY → error_state (ERROR); no dest → no transition.
+class TestAst2008RenderVerdictTimeoutRetry:
+    _TIMEOUT = {
+        "success": False,
+        "error": "Provider call exceeded per-call time budget (600s)",
+        "failure_class": "provider_call_timeout",
+        "timesheet": {"duration": 613.9},
+    }
+
+    def _wire(self, monkeypatch: pytest.MonkeyPatch, state: str) -> MagicMock:
+        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}, "state": state}
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod.tracker, "get_company", lambda company: {"company": company})
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value=dict(self._TIMEOUT)))
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        return transition
+
+    @staticmethod
+    def _levels(caplog: pytest.LogCaptureFixture) -> List[str]:
+        return [r.levelname for r in caplog.records if r.getMessage().startswith("job-1 -> ")]
+
+    @pytest.mark.asyncio
+    async def test_primary_timeout_goes_to_retry_holding(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Repro 4 — today lands METEORITE_FAILED_TECHNICAL_DO via _fail.
+        caplog.set_level("WARNING")
+        transition = self._wire(monkeypatch, "METEORITE_PASSED_JD")
+        out = await consult_mod.render_verdict("meteorite_grade_do", "job-1")
+        assert out["success"] is False
+        assert out["to_state"] == "METEORITE_PASSED_JD_RETRY"
+        assert out["failure_class"] == "provider_call_timeout"
+        assert out["error"] == self._TIMEOUT["error"]
+        transition.assert_called_once()
+        assert transition.call_args.args[1:] == (["job-1"], "METEORITE_PASSED_JD_RETRY")
+        assert self._levels(caplog) == ["WARNING"]
+
+    @pytest.mark.asyncio
+    async def test_retry_timeout_goes_terminal(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Second strike from _RETRY → error_state (AST-642: no loop); terminal logs ERROR (_log_fail_dest).
+        caplog.set_level("WARNING")
+        transition = self._wire(monkeypatch, "METEORITE_PASSED_JD_RETRY")
+        out = await consult_mod.render_verdict("meteorite_grade_do", "job-1")
+        err = TASK_CONFIG["meteorite_grade_do"]["error_state"]
+        assert err == "METEORITE_FAILED_TECHNICAL_DO"
+        assert out["to_state"] == err
+        assert out["failure_class"] == "provider_call_timeout"
+        assert transition.call_args.args[1:] == (["job-1"], err)
+        assert self._levels(caplog) == ["ERROR"]
+
+    @pytest.mark.asyncio
+    async def test_timeout_without_dest_does_not_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = self._wire(monkeypatch, "")
+        monkeypatch.setattr(
+            consult_mod, "_consult_orchestration_for_entity", lambda task_key, entity_state=None: {"agent_task": task_key}
+        )
+        out = await consult_mod.render_verdict("meteorite_grade_do", "job-1")
+        assert out["to_state"] is None
+        assert out["failure_class"] == "provider_call_timeout"
+        transition.assert_not_called()
+
+
 class TestAst897HoldStateOnBalanceRefusal:
     """AST-897: provider balance refusal holds job state (no error/retry transition)."""
 
