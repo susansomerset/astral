@@ -413,3 +413,71 @@ _No comments._
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+---
+
+## Bug: AST-1997 — Record real scrape exception in gaze failure_message
+
+Parent: AST-1928 (bug mini-epic, `ftr/AST-1928-gaze-scrape-failure-reason`). Visibility only — no fix for any individual company's site/URL (e.g. `trustmarkbenefits_com`).
+
+### As-is
+
+`src/core/gazer.py` `process_gazer_batch` gathers `scrape_one` with `return_exceptions=True`. The exception is only used inside the `if debug:` loop (`outcome=f"scrape failed: {r!s}"`); the results loop then `continue`s past it. In the per-company loop, any company not in `results_by_short_name` records `failure_message="Scrape failed"` in `company_job_scan` and `message="Scrape failed"` in the outcome dict. `roster.py` (gaze branch, `_warn_company(short_name, error_state, o["message"])`) therefore logs `-> ERROR_GAZE [Scrape failed]` with no cause. A company with empty/blank `job_site` is never added to `to_scrape` and hits the same branch with the same message.
+
+### To-be
+
+- Scrape raised → `failure_message` and outcome `message` = `Scrape failed: <ExceptionType>: <str(e)>` (AST-104 Outcome 5 specified `failure_message=str(e)`; the prefix + type keep it triageable).
+- No `job_site` → `failure_message` and outcome `message` = `No job_site to scrape`.
+- Roster's `-> ERROR_GAZE [...]` WARNING carries the same text with no roster change.
+- Same recorded reason for `debug=False` and `debug=True`.
+
+### Repro
+
+Fixture (no DB needed — patch the module functions, as `tests/component/core/test_gazer.py` already does):
+
+```python
+monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+monkeypatch.setattr(gazer_mod, "scrape_one",
+    AsyncMock(side_effect=RuntimeError("net::ERR_NAME_NOT_RESOLVED")))
+record = MagicMock()
+monkeypatch.setattr(gazer_mod, "record_to_company_job_scan", record)
+
+outcomes = await gazer_mod.process_gazer_batch(
+    "batch-1",
+    [{"short_name": "trustmarkbenefits_com", "job_site": "https://example.com/careers"},
+     {"short_name": "nosite", "job_site": "  "}],
+    debug=False,
+)
+```
+
+As-is: both outcomes and both `record` calls carry `"Scrape failed"`. To-be: `trustmarkbenefits_com` → `"Scrape failed: RuntimeError: net::ERR_NAME_NOT_RESOLVED"`; `nosite` → `"No job_site to scrape"`.
+
+### Root cause
+
+The exception from `asyncio.gather` is consumed only by the debug-only logging loop and discarded by the results loop (`if isinstance(r, Exception): continue`). The failure branch has no access to it and no way to distinguish "scrape raised" from "never scraped", so it writes a hard-coded literal — drift from AST-104's `failure_message=str(e)` spec.
+
+### Proposed change
+
+Single file: `src/core/gazer.py`, function `process_gazer_batch`. No other function, file, schema, or config touched.
+
+1. **Capture the reason in the existing results loop** (the `for i, r in enumerate(results):` loop that builds `results_by_short_name`). Add `scrape_errors: Dict[str, str] = {}` beside `results_by_short_name`. Replace `continue` on the exception branch with:
+   - `sn, _ = to_scrape[i]`
+   - `scrape_errors[sn] = f"Scrape failed: {type(r).__name__}: {r}" if str(r) else f"Scrape failed: {type(r).__name__}"` — the empty-message form covers exceptions such as a bare `asyncio.TimeoutError()` whose `str()` is `""` (avoids a trailing `": "`).
+   - then `continue`.
+   This runs regardless of `debug`, so both modes record the same reason (AC 3).
+2. **Use it in the failure branch** (`if short_name not in results_by_short_name:`): compute `failure_message = scrape_errors.get(short_name, "No job_site to scrape")` once, and pass it to both `record_to_company_job_scan(..., failure_message=failure_message)` and the outcome dict `"message": failure_message`. The only way a non-empty `short_name` reaches this branch without an entry in `scrape_errors` is an empty/blank `job_site` (it was never added to `to_scrape`), so the default is exact, not a guess.
+3. **Leave untouched:** the `if debug:` scrape-failure log loop (`scrape failed: {r!s}`, AST-622), the failure-branch debug log (`outcome="failure — scrape failed"` + `job_site=` detail), `total_found/new/duplicates=None`, `status="failure"`, and every success/parse/ingest path below.
+4. **No truncation or normalization** of the exception text (Playwright messages can be multi-line with a call log). `failure_message` is `TEXT`; capping or flattening would be a heuristic needing Susan's approval — not part of this fix.
+
+### Blast radius
+
+- `src/core/roster.py` gaze branch reads `o["message"]` for the `-> ERROR_GAZE [...]` WARNING and transitions to `ROSTER_CONFIG["gaze"]["error_state"]` — text changes, state transition unchanged. No code change there.
+- `company_job_scan.failure_message` rows for scrape failures change from the constant to the specific text; anything grouping on the literal `"Scrape failed"` would now see prefixed variants. No in-repo code matches on that literal (grep: only `gazer.py` itself).
+- Tests: `tests/component/core/test_gazer.py` `test_records_scrape_parse_and_ingest_outcomes` and `test_failure_paths_without_debug` raise `RuntimeError("scrape failed")` but assert only `status`/call counts — expected to stay green. `tests/component/core/test_roster.py` stubs `process_gazer_batch` entirely — unaffected. New assertions on the message text are Betty's call (AST-1997 Component scope).
+
+### What must still hold
+
+- AST-104 Outcome 5 (network/Playwright exception): `status="failure"`, `total_found/new/duplicates=None`, state handling unchanged, `last_scan_at` not updated.
+- AST-622 debug instrumentation: `debug=True` output byte-identical (`scrape failed: {r!s}` + `job_site=` detail; `failure — scrape failed` for un-logged failures).
+- Success, no-containers, parse, and tracker-exception paths unchanged (AC 4).
+- Companies with empty `short_name` still skipped; no schema change; no ERROR_GAZE transition change (Boundaries).
