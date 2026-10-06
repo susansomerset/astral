@@ -875,3 +875,25 @@ context_tokens≈14000
 ### Resolution — AST-1991
 
 Radia's one discuss item (AST-1990 product/docs on this tip) is not a carry: every AST-1990 commit (`code(AST-1990)` 2b0b74f00 and its docs/bible) is already an ancestor of `origin/dev`. The sub picked it up from the routine dev sync because `origin/ftr/AST-1987-railway-log-batch-candidate-ids` was cut before AST-1990 landed. Against `origin/dev`, this tip differs in `src/core/agent.py` only by AST-1988's `log_candidate_id` lines, and `docs/features/agent/ast-1639-…md` / `docs/test-bible/core/agent.md` differ by zero lines. Resetting those paths to the AST-1988 tip would revert AST-1990 on dev when this ftr lands, so no resolve-child: tests/bible delta is clean (no fix-now).
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/8f8188f2197c2fa7c986ccdac2b7f8cc/850bbf0d-1e97-4a5c-b874-c2f37af785fd/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/0f54975c-7eeb-4296-8b12-e2a1a848348b/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/8f8188f2197c2fa7c986ccdac2b7f8cc/d54437c5-66b2-486a-940d-b948edf0e616/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1987 (parent) | ftr/AST-1987-railway-log-batch-candidate-ids |
+| AST-1988 | sub/AST-1987/AST-1988-stamp-log-batch-candidate-ids |
+| AST-1991 | sub/AST-1987/AST-1991-cover-railway-log-id-tests |
+
+**Epic worktree:** `astral-AST-1987/` — one active sub checked out at a time.
