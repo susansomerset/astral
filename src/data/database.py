@@ -5637,13 +5637,18 @@ def sync_rubric_vectors_from_criteria(
             rows = conn.execute(
                 """SELECT rubric_vector_uuid, code, content_fingerprint
                    FROM rubric_vector
-                   WHERE candidate_id = ? AND task_key = ? AND current = 1""",
+                   WHERE candidate_id = ? AND task_key = ? AND current = 1
+                   ORDER BY rowid""",
                 (candidate_id, owner_task_key),
             ).fetchall()
             current_by_code: Dict[str, Dict[str, Any]] = {}
             for r in rows:
                 code = str(r[1] or "").strip().upper()
-                if code:
+                if code in current_by_code:
+                    # AST-2008: legacy duplicate current row — keep the first by rowid, retire the rest,
+                    # else the dict masks the older one and no save can ever retire it.
+                    _retire_rubric_vector_row_on_connection(conn, r[0], now=now)
+                elif code:
                     current_by_code[code] = {
                         "rubric_vector_uuid": r[0],
                         "content_fingerprint": r[2],
@@ -7700,7 +7705,9 @@ def _ensure_dispatch_ledger_schema(conn: sqlite3.Connection) -> None:
                 total_cost        REAL DEFAULT 0.0,
                 entity_cost       REAL DEFAULT 0.0,
                 prompt_blocks     TEXT,
-                host              TEXT
+                host              TEXT,
+                llm_call_seconds  REAL,
+                llm_failure_class TEXT
             )
         """)
         conn.commit()
@@ -7717,6 +7724,9 @@ def _ensure_dispatch_ledger_schema(conn: sqlite3.Connection) -> None:
             ("prompt_blocks",     "TEXT"),
             # AST-1960: served LLM host for the batch. AST-1497: DDL only — old rows stay NULL, no backfill.
             ("host",              "TEXT"),
+            # AST-2008: last LLM call's duration (s) and failure class (NULL = success). DDL only, old rows NULL.
+            ("llm_call_seconds",  "REAL"),
+            ("llm_failure_class", "TEXT"),
         ]
         for col, col_def in migrations:
             if col not in existing:
@@ -7755,7 +7765,7 @@ _LEDGER_UPDATE_COLS = {
     "completed_at", "status",
     "total_processed", "total_passed", "total_failed", "total_errors",
     "agent_performance", "agent_note", "total_cost", "entity_cost", "prompt_blocks",
-    "batch_size", "host",
+    "batch_size", "host", "llm_call_seconds", "llm_failure_class",
 }
 
 

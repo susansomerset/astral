@@ -5093,6 +5093,8 @@ ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
 # generation record for about 30s after the call, so the first lookup waits INITIAL_WAIT. A not-ready
 # or failed lookup is tried RETRIES times in total; the wait before the 2nd try is the base, doubled
 # before each later try (2, 4, 8, 16 s). No cap — the retry count bounds it.
+# AST-2008: reconcile off pending a new epic (AST-2007 — generation stats 404). Rows keep catalog cost.
+TIMESHEET_RECONCILE_ENABLED = False
 TIMESHEET_RECONCILE_RETRIES = 5
 TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS = 30.0
 TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS = 2.0

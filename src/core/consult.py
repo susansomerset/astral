@@ -32,6 +32,7 @@ from src.utils.config import (
     retry_base,
     retry_of,
     JOB_STATES,
+    PROVIDER_CALL_BUDGET,
     ASTRAL_CONFIG,
     CONFIDENCE_MULTIPLIERS,
     MAX_GRADE_VALUE,
@@ -1475,6 +1476,14 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
             logger.debug("empty_tokens route aid=%s dest=%s", astral_job_id, dest)
             _transition_job_state_for_task(agent_task, [astral_job_id], dest)
             return {"success": False, "to_state": dest, "error": result.get("error")}
+        if result.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]:
+            # AST-2008 / AST-642 routing: primary → retry holding, *_RETRY → error_state (one hop).
+            dest = _consult_batch_fail_dest(job.get("state"), error_state)
+            _log_fail_dest(astral_job_id, dest, result.get("error") or "provider call timeout")
+            if dest:
+                _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+            return {"success": False, "to_state": dest, "error": result.get("error"),
+                    "failure_class": result.get("failure_class")}
         return _fail(result.get("error", "do_task failed"))
 
     parsed = result["parsed_response"]

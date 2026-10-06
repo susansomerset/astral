@@ -7,6 +7,7 @@ External `anthropic.send_to_anthropic` stays utils-only; core passes this as
 Platform cost (AST-1966): after the insert, a row whose model is platform-routed gets its billed cost,
 native token counts and serving host looked up on a background thread (reconcile_timesheet_platform).
 The call never waits on it; a batch whose ledger row already closed is re-totalled when the cost lands.
+Gated by TIMESHEET_RECONCILE_ENABLED (off since AST-2008).
 """
 
 import contextvars
@@ -25,6 +26,7 @@ from src.data.database import (
 from src.external.openrouter import get_generation_stats
 from src.utils.config import (
     TIMESHEET_RECONCILE_BACKOFF_BASE_SECONDS,
+    TIMESHEET_RECONCILE_ENABLED,
     TIMESHEET_RECONCILE_INITIAL_WAIT_SECONDS,
     TIMESHEET_RECONCILE_RETRIES,
     get_model_routing,
@@ -36,6 +38,9 @@ logger = get_logger(__name__)
 
 def record_timesheet_entry(**kwargs: Any) -> None:
     _add_timesheet_entry(**kwargs)
+    # AST-2008: switched off by config — no routing lookup, no thread.
+    if not TIMESHEET_RECONCILE_ENABLED:
+        return
     agent_req_id = kwargs.get("agent_req_id")
     server_id = kwargs.get("provider", "anthropic")
     # The model's routing decides eligibility; "direct" keeps catalog cost only. Every caller builds
