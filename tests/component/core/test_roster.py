@@ -6763,6 +6763,105 @@ class TestAst1846PrefilterRetryWarnThenError:
         assert not [r for r in caplog.records if r.levelno >= 40]
 
 
+# AST-2004 · AST-1998: decomposed select NO_JOBLIST fall-through → BOT_BLOCKED when a shown page is a bot wall.
+# Branches: _first_bot_walled_page hit / miss (full loop); _check_parse_results walled_url true / false;
+# decomposed=False never runs the check (legacy locate path unchanged).
+class TestAst2004BotWalledSelect:
+    _HOME = ("https://acme.com", "Welcome to Acme. We build widgets. About us. Contact.")
+    # Two jd_classifier bot signals ("New to LinkedIn? Join now" + "Sign in with Email") = threshold 2.
+    _WALL_TEXT = "Acme | LinkedIn. New to LinkedIn? Join now. Sign in with Email. Agree & Join LinkedIn."
+    _WALL_1 = "https://www.linkedin.com/company/acme/jobs"
+    _WALL_2 = "https://www.linkedin.com/company/acme/life"
+    _PRE_RUN_JOB_SITE = "https://old.acme.com/jobs"
+
+    def _company(self, pages: List[tuple]) -> Dict[str, Any]:
+        assembled = "\n".join(f"=== PAGE {i}: {u} ===\n{t}" for i, (u, t) in enumerate(pages, 1))
+        return _company(
+            state="PJL_READY",
+            company_website="https://acme.com",
+            job_site=self._PRE_RUN_JOB_SITE,
+            company_data={
+                "pjl_assembled_content": assembled,
+                "pjl_scrape_pages": [{"url": u, "visible_text": t} for u, t in pages],
+                "possible_joblist_links": [u for u, _ in pages],
+                "nav_links": "",
+            },
+        )
+
+    def _wire(self, monkeypatch: pytest.MonkeyPatch, company: Dict[str, Any], parsed: Dict[str, Any]) -> Dict[str, MagicMock]:
+        mocks = {"update": MagicMock(), "transition": MagicMock()}
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(roster_mod, "update_company", mocks["update"])
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", mocks["transition"])
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": parsed}))
+        return mocks
+
+    _NO_JOBLIST = {"response_type": "NO_JOBLIST_FOUND", "selected_page": 0}
+
+    @pytest.mark.asyncio
+    async def test_bot_wall_routes_bot_blocked_with_job_site(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC2: page 2 is a LinkedIn auth wall → BOT_BLOCKED, job_site = walled URL (not website, not pre-run).
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT)])
+        mocks = self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "BOT_BLOCKED"
+        assert out["job_site"] == self._WALL_1
+        mocks["transition"].assert_called_once_with("acme", "BOT_BLOCKED")
+        assert mocks["update"].call_args.kwargs["job_site"] == self._WALL_1
+
+    @pytest.mark.asyncio
+    async def test_no_bot_wall_stays_no_joblist_job_site_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC3: no page reaches the threshold → NO_JOBLIST, job_site keeps its pre-run value.
+        company = self._company([self._HOME, ("https://acme.com/about", "Our team and mission.")])
+        mocks = self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "NO_JOBLIST"
+        mocks["transition"].assert_called_once_with("acme", "NO_JOBLIST")
+        assert mocks["update"].call_args.kwargs["job_site"] == self._PRE_RUN_JOB_SITE
+
+    @pytest.mark.asyncio
+    async def test_found_job_list_wins_over_bot_wall(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC4: same walled pages, Grace found titles on page 1 → JOBLIST_IDENTIFIED.
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT)])
+        parsed = {"response_type": "JOBLIST_TITLES", "selected_page": 1, "job_titles": ["Engineer"]}
+        mocks = self._wire(monkeypatch, company, parsed)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "JOBLIST_IDENTIFIED"
+        mocks["transition"].assert_called_once_with("acme", "JOBLIST_IDENTIFIED")
+
+    @pytest.mark.asyncio
+    async def test_first_walled_page_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC5: pages 2 and 3 both walled → job_site is page 2's URL.
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT), (self._WALL_2, self._WALL_TEXT)])
+        self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_select_job_page_dispatch(company, "batch-2004")
+        assert out["state"] == "BOT_BLOCKED"
+        assert out["job_site"] == self._WALL_1
+
+    @pytest.mark.asyncio
+    async def test_rollup_counts_bot_blocked_as_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC6: run_company_task on the AC2 fixture → 1 fail, 0 pass, 0 error.
+        company = self._company([self._HOME, (self._WALL_1, self._WALL_TEXT)])
+        self._wire(monkeypatch, company, self._NO_JOBLIST)
+        out = await roster_mod.run_company_task(
+            "PJL_READY", company, "batch-2004", dispatch_task_key="select_job_page",
+        )
+        assert (out["total_failed"], out["total_passed"], out["total_errors"]) == (1, 0, 0)
+
+    @pytest.mark.asyncio
+    async def test_legacy_locate_path_not_rerouted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Plan decision: decomposed=False (legacy TO_WATCH/JOBS_FOUND/PREFILTER_PASSED) stays NO_JOBLIST.
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", save)
+        out = await roster_mod._check_parse_results(
+            {"response_type": "NO_JOBLIST_FOUND"}, "NO_JOBLIST_FOUND", "acme", "https://acme.com", "",
+            page_dom_map={}, decomposed=False, page_url_map={1: self._WALL_1}, visible_map={1: self._WALL_TEXT},
+        )
+        assert out["state"] == "NO_JOBLIST"
+        assert save.call_args.kwargs["state"] == "NO_JOBLIST"
+
+
 class TestAst2006EmptyTokenCompanyTerminals:
     """AST-2006 / AST-2000: empty_tokens on a company flow → that flow's terminal error state, no retry, no save."""
 

@@ -134,6 +134,15 @@ def _prune_jd(text: str, job_title: str = "") -> str:
     return text.strip()
 
 
+def is_bot_wall(text: str) -> bool:
+    """True when page text trips the shared bot/challenge detector in TRACKER_CONFIG['jd_classifier'].
+    Single source for JD classification and roster select_job_page (AST-2004) — do not copy the loop."""
+    cfg = TRACKER_CONFIG.get("jd_classifier", {})
+    text_lower = (text or "").lower()
+    hits = sum(1 for s in cfg.get("bot_signals", []) if s.lower() in text_lower)
+    return hits >= cfg.get("bot_threshold", 2)
+
+
 def _classify_jd(text: str) -> str:
     """Classify scraped page content. Returns 'ok', 'cookie', 'bot', 'missing', or 'closed'.
     Check order matters: closed → bot → cookie → missing → ok.
@@ -148,8 +157,7 @@ def _classify_jd(text: str) -> str:
             return "closed"
 
     # --- Bot Blocked --- (checked before cookie; LinkedIn auth pages mention "Cookie Policy")
-    bot_hits = sum(1 for s in cfg.get("bot_signals", []) if s.lower() in text_lower)
-    if bot_hits >= cfg.get("bot_threshold", 2):
+    if is_bot_wall(text):
         return "bot"
 
     # --- Cookie Block ---

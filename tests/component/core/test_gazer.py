@@ -48,6 +48,24 @@ class TestAst1195BotBlockedErrorState:
         assert gazer_mod._JD_ERROR_STATES["closed"] == "JD_SCRAPE_FAIL_CLOSED"
 
 
+class TestAst2004IsBotWall:
+    """AST-2004: shared is_bot_wall — one detector for _classify_jd and roster select."""
+
+    _WALL = "Acme | LinkedIn. New to LinkedIn? Join now. Sign in with Email."
+
+    def test_threshold_hit_and_miss(self) -> None:
+        assert gazer_mod.is_bot_wall(self._WALL) is True
+        # One signal only is below bot_threshold (2).
+        assert gazer_mod.is_bot_wall("Sign in with Email to continue") is False
+        assert gazer_mod.is_bot_wall(None) is False  # type: ignore[arg-type]
+
+    def test_classify_jd_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert gazer_mod._classify_jd(self._WALL) == "bot"
+        # Forcing the helper proves _classify_jd routes through it (no second copy of the loop).
+        monkeypatch.setattr(gazer_mod, "is_bot_wall", lambda _t: False)
+        assert gazer_mod._classify_jd(self._WALL) != "bot"
+
+
 class TestAst1197ChallengeBotSignals:
     """AST-1197: parent-captured Cloudflare interstitial classifies as bot (≥2 signals)."""
 

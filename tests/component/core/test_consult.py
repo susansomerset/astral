@@ -2309,6 +2309,85 @@ class TestAnalysisUpshotPrepAndBatch480:
         )
 
 
+class TestEncodedDecodeIsolation:
+    """AST-1996: one malformed encoded line is a per-entity miss, not a batch failure."""
+
+    _ENTITIES = [
+        {"astral_job_id": "J0", "state": "METEORITE_QUALIFIED"},
+        {"astral_job_id": "J1", "state": "METEORITE_QUALIFIED_RETRY"},
+        {"astral_job_id": "J2", "state": "METEORITE_QUALIFIED"},
+    ]
+
+    def test_routing_scans_past_fully_malformed_first_line(self) -> None:
+        # Repro B: line 0 has no valid segment; line 1 does → still the encoded decoder.
+        payload = "000|DEC35|ECC35\n001|DEC3|ECC3"
+        assert consult_mod._should_decode_as_encoded_line(payload) is True
+        out = consult_mod._normalize_rubric_task_response(
+            "evaluate_meteorite",
+            TASK_CONFIG["evaluate_meteorite"],
+            {"agent_payload": payload},
+            {"batch_entities": [{"astral_job_id": "J0"}, {"astral_job_id": "J1"}]},
+        )
+        assert [j["astral_job_id"] for j in out["jobs"]] == ["J1"]
+        assert [f["astral_job_id"] for f in out["decode_failures"]] == ["J0"]
+
+    async def _run(self, monkeypatch: pytest.MonkeyPatch, parsed: Dict[str, Any]) -> tuple:
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        # Stub hydrate: unstubbed it raises on empty rubric criteria (pre-existing trunk failures).
+        monkeypatch.setattr(consult_mod, "_hydrate_response_jobs_grade_reasons", MagicMock())
+        monkeypatch.setattr(consult_mod, "ensure_batch_response_entity_ids", MagicMock())
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(return_value={"success": True, "parsed_response": parsed, "timesheet": {}}),
+        )
+        out = await consult_mod._run_batch_consult(
+            "evaluate_meteorite",
+            "batch-1",
+            [dict(e) for e in self._ENTITIES],
+            lambda rows: "content",
+            lambda input_job, response_job, cfg: cfg["pass_state"],
+            {},
+            False,
+        )
+        return out, transition
+
+    @pytest.mark.asyncio
+    async def test_decode_failures_route_first_and_second_strike(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out, transition = await self._run(monkeypatch, {
+            "jobs": [{"astral_job_id": "J2", "grades": []}],
+            "decode_failures": [
+                {"astral_job_id": "J0", "pos": 0, "reason": "r0"},
+                {"astral_job_id": "J1", "pos": 1, "reason": "r1"},
+            ],
+        })
+        calls = [(c.args[1], c.args[2]) for c in transition.call_args_list]
+        # First strike → retry holding; already-in-holding → terminal error (patt.task.dispatch-retry).
+        assert calls.count((["J0"], "METEORITE_QUALIFIED_RETRY")) == 1
+        assert calls.count((["J1"], "METEORITE_ERROR_EVALUATE_JD")) == 1
+        assert out["success"] is False
+        assert out["passed"] == 1
+        assert out["retried"] == 1
+        # Decode-failed ids are not double-counted as truncation misses.
+        assert out["missing"] is None
+        assert out["decode_failed"] == ["J0", "J1"]
+        assert out["error"] == "decode failed on 2 IDs: ['J0', 'J1']"
+
+    @pytest.mark.asyncio
+    async def test_clean_row_wins_over_decode_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out, transition = await self._run(monkeypatch, {
+            "jobs": [{"astral_job_id": j, "grades": []} for j in ("J0", "J1", "J2")],
+            "decode_failures": [{"astral_job_id": "J0", "pos": 0, "reason": "r0"}],
+        })
+        fail_dests = {"METEORITE_QUALIFIED_RETRY", "METEORITE_ERROR_EVALUATE_JD"}
+        assert not [c for c in transition.call_args_list if c.args[2] in fail_dests]
+        assert out["success"] is True
+        assert out["passed"] == 3
+        assert out["decode_failed"] is None
+        assert out["error"] is None
+
+
 class TestRunBatchConsultBranches:
     @pytest.mark.asyncio
     async def test_skips_error_transition_without_error_state(self, monkeypatch: pytest.MonkeyPatch) -> None:

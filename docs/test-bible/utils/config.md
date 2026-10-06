@@ -4739,6 +4739,16 @@ Expect 21 failed, 602 passed, 4 skipped — the 21 pre-existing `test_config.py`
 
 Manifest: [`ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-1974 item 2.
 
+### AST-2004 · AST-1998 (company `BOT_BLOCK` → `BOT_BLOCKED`)
+
+`COMPANY_STATES["BOT_BLOCKED"] = {}` (terminal); three `company_state_transitions` tuples renamed; `("PJL_READY", "BOT_BLOCKED")` added. Job/meteorite `BOT_BLOCKED` registries (AST-1195 / AST-1560) are separate and untouched.
+
+**New:** **`TestAst2004CompanyBotBlocked`** (rename complete + terminal; no `BOT_BLOCK` tuples; TO_WATCH / JOBS_FOUND / PREFILTER_PASSED / PJL_READY → `BOT_BLOCKED`).
+
+**Revised:** **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** — pinned AST-1806 fixture predates the rename; test translates `COMPANY_STATES` `BOT_BLOCK*` keys/priors to `BOT_BLOCKED*` in-memory (fixture JSON left as captured).
+
+Manifest: **`docs/test-bible/core/roster.md`** § AST-2004.
+
 ### AST-2006 · AST-2000 (bug — runtime empty-token guard)
 
 **Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `resolve_tokens(..., empty_tokens=[...])` appends each recognized token whose substituted value is blank (`.strip() == ""`), ordered-unique, and forces `warn_on_empty=False`; unrecognized names stay literal and are not collected; the default call is unchanged. Supersedes the AST-530 row's mid-chain empty-caller guard (folded into the `do_task` guard — **`core/agent.md`** § AST-2006).

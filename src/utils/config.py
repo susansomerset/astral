@@ -1299,7 +1299,7 @@ COMPANY_STATES = {
     "NO_JOBLIST": {},
     "CANNOT_PARSE_JOB_SITE": {},
     "CANNOT_READ_WEBSITE": {},
-    "BOT_BLOCK": {},
+    "BOT_BLOCKED": {},
     "ERROR_PREFILTER": {},
     "ERROR_LOCATE_JOB_PAGE": {},
     "JOBSITE_SCRAPE_ISSUE": {},
@@ -4579,7 +4579,7 @@ ASTRAL_CONFIG = {
         ("TO_WATCH", "CANNOT_PARSE_JOB_SITE"),
         ("TO_WATCH", "NO_OPENINGS"),
         ("TO_WATCH", "NO_JOBLIST"),
-        ("TO_WATCH", "BOT_BLOCK"),
+        ("TO_WATCH", "BOT_BLOCKED"),
         # NO_OPENINGS: Playwright-only recheck (recheck_no_openings batch); JOBS_FOUND is landing until AST-461 parse routing.
         ("NO_OPENINGS", "JOBS_FOUND"),
         # JOBS_FOUND: same locate/parse terminal set as TO_WATCH (AST-469).
@@ -4588,14 +4588,14 @@ ASTRAL_CONFIG = {
         ("JOBS_FOUND", "CANNOT_PARSE_JOB_SITE"),
         ("JOBS_FOUND", "NO_OPENINGS"),
         ("JOBS_FOUND", "NO_JOBLIST"),
-        ("JOBS_FOUND", "BOT_BLOCK"),
+        ("JOBS_FOUND", "BOT_BLOCKED"),
         # PREFILTER_PASSED: same locate/parse terminal set as TO_WATCH / JOBS_FOUND (AST-508).
         ("PREFILTER_PASSED", "WATCH"),
         ("PREFILTER_PASSED", "HARD_PARSE"),
         ("PREFILTER_PASSED", "CANNOT_PARSE_JOB_SITE"),
         ("PREFILTER_PASSED", "NO_OPENINGS"),
         ("PREFILTER_PASSED", "NO_JOBLIST"),
-        ("PREFILTER_PASSED", "BOT_BLOCK"),
+        ("PREFILTER_PASSED", "BOT_BLOCKED"),
         ("PREFILTER_PASSED", "PJL_READY"),
         ("TO_WATCH", "JOBSITE_SCRAPE_ISSUE"),
         ("JOBS_FOUND", "JOBSITE_SCRAPE_ISSUE"),
@@ -4606,6 +4606,7 @@ ASTRAL_CONFIG = {
         ("PJL_READY", "NO_OPENINGS"),
         ("PJL_READY", "JOBSITE_SCRAPE_ISSUE"),
         ("PJL_READY", "NO_JOBLIST"),
+        ("PJL_READY", "BOT_BLOCKED"),  # AST-2004: shown page is a bot wall at NO_JOBLIST fall-through
         (retry_of("PREFILTER_PASSED"), "PJL_READY"),
         (retry_of("PREFILTER_PASSED"), "JOBSITE_SCRAPE_ISSUE"),
         ("JOBLIST_IDENTIFIED", "WATCH"),
