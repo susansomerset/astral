@@ -1014,3 +1014,87 @@ No product change — AST-1996 (`96bc0471d`) already on `ftr/AST-1884-decode-lin
 
 - Betty's `[bug-repro]` nodes — `test_agent.py::TestDecodePayload`, `test_consult.py::TestEncodedDecodeIsolation`, `test_agent.py::TestAst699LetterPipePositionPrefix::test_should_decode_as_encoded_line_routing` → **12 passed**.
 - `run_component_tests.sh test_agent.py test_consult.py` → 60 failed / 635 passed; every AST-1996 added line and branch in `src/core/agent.py` / `src/core/consult.py` covered (0 missing). All 60 failures are in the pre-fix baseline set (`57ed90983`) — none new.
+
+
+### Radia review — AST-2001
+
+[code-rubric]
+**Ticket:** AST-2001
+**Publish ref:** `d3473a0405351a16220b6768c89266a40d4b04d9` (`origin/sub/AST-1884/AST-2001-decode-line-retry-tests`)
+**Diff base:** `origin/ftr/AST-1884-decode-line-retry` … publish ref (3-dot; AST-1996 product already on ftr)
+**Corpus:** `e1f2699fad` (same frozen list as AST-1996; no `docs/canon-index.md` on ref)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**[bug-repro]** OK — Betty’s repro nodes pin AST-1996 **to-be** with concrete values (not tautologies); each would fail on pre-fix `57ed90983` / ftr-without-1996 behavior:
+
+| Node | What it pins | Pre-fix failure mode |
+|------|----------------|----------------------|
+| `TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta` | Exact `decode_failures` dict + empty `jobs`; bad-position / X-confidence still raise | Trailing line raised `ValueError` |
+| `…::test_ast1996_malformed_line_isolated_clean_line_decodes` (**repro A**) | `job-1` only in `jobs`; grade tuples `(DE,C,3)…`; `job-0` in `decode_failures` | Whole-payload `ValueError` on line 0 |
+| `…::test_ast1996_clean_payload_has_no_decode_failures_key` | No key on clean decode | N/A (guard; green both sides) |
+| `…::test_ast1996_notes_type_tail_is_not_a_decode_failure` | `notes` preserved; no `decode_failures` | N/A (guard) |
+| `TestEncodedDecodeIsolation::test_routing_scans_past_fully_malformed_first_line` (**repro B**) | `_should_decode_as_encoded_line` → `True`; normalize → `jobs` `["J1"]`, failures `["J0"]` | `False` / letter-pipe shape without ids |
+| `…::test_decode_failures_route_first_and_second_strike` (**6a**) | Transitions `J0`→`METEORITE_QUALIFIED_RETRY`, `J1`→`METEORITE_ERROR_EVALUATE_JD`; `success`/`passed`/`retried`/`missing`/`decode_failed`/`error` literals match plan | Uncovered `_run_batch_consult` branches / no asserts |
+| `…::test_clean_row_wins_over_decode_failure` (**6b**) | No fail-dest transitions; `success` true; `decode_failed`/`error` null | Would route spurious fail if clean-row filter wrong |
+
+Harness stubs `_hydrate_response_jobs_grade_reasons` per plan (avoids empty-rubric trunk trap). `[bug-repro]` labels live in **bible** rows; test bodies lack first-line `# [bug-repro]` comments (style only — assertions are the gate).
+
+**## What must still hold** — OK
+- `TestDecodePayload`: bad-position and X-confidence raises preserved in flipped test.
+- `test_should_decode_as_encoded_line_routing` unchanged on diff.
+- `TestAst1155IncompleteGradeRetry` / consult AST-1155 block: no edits in this diff.
+- `src/**`: empty diff vs ftr (verify-only / test+bible only).
+
+## Canon scores
+
+Test-only sub: grades reflect that added coverage **locks AST-1996’s already-reviewed product contract**, not new product law.
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | patt.task.dispatch-retry | A | | 6a/6b assert per-entity first/second strike + clean-row-wins routing. |
+| 2 | patt.entity.batch-processing | A | | No claim/process/release edits; batch harness unchanged. |
+| 3 | astral.batch.claim-process-release | A | | No `src/core` / `src/data` diff. |
+| 4 | stat.logging.warning | A | | Fail-dest severity still via product `_log_fail_dest`; tests stub transitions only. |
+| 5 | stat.logging.error | A | | Same (terminal path exercised in 6a via dest assertion). |
+| 6 | stat.logging.debug | A | | No logging contract change in diff. |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** `CANON: OK` only; implemented tests match plan §Proposed change items 1–8.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+- **Sibling test carry (`merge-tests`):** `fe098451b` pulls `origin/tests` including **AST-1999** (gazer/roster PJL refresh) and **AST-2002** (gaze scrape failure) plus `docs/test-bible/core/gazer.md` / `roster.md` — outside AST-2001 plan §Blast radius but expected merge-tests shape; UAT/manifest should stay scoped to plan nodes (`TestDecodePayload`, `TestEncodedDecodeIsolation`, agent/consult bible §AST-2001).
+- **Plan footprint vs diff stat:** plan names two test files + two bible pages; publish ref also touches gazer/roster/scrape tests — carry only, not AST-2001 product scope.
+
+## What's solid
+
+- `test(AST-2001): bug-repro` (`8b56faa07`) matches plan literals (flip, repro A/B, guards, 6a/6b).
+- Tip has no product commits after ftr; make-fix doc records targeted `[bug-repro]` green.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | AST-1884 mini-parent, diff vs `ftr/AST-1884-decode-line-retry` | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+**Recommended actions (downstream only):** Append artifact; `docs(AST-2001): Radia review — clean`; push sub; post slim upshot `--as radia`; advance per table.
+
+context_tokens≈10500
+
+---
+
+```
+[code-rubric] PROCEED (Commit: d3473a040) Bug-repro locks AST-1996
+```
