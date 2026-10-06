@@ -515,3 +515,65 @@ context_tokens≈28000
 **Logging:** Single `do_task` ERROR for the guard remains; blast radius already ties secondary `stat.logging.*` wording to AST-2005 — no new canon blocker on this revision.
 
 **AST-2006:** Test/bible work stays out of Joan’s product canon question for this pass.
+
+### Radia review — AST-2000
+
+**Diff base:** `origin/ftr/AST-1986-runtime-empty-token-error...origin/sub/AST-1986/AST-2000-runtime-empty-token-error` (15 files; plan’s eight-file product set **plus** AST-1995 PJL/gazer carry)  
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`  
+**Overall:** FIX-NOW  
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — qa-fix did not run; clean board opt-out. Sibling **AST-2006** owns tests; absence not scored as a defect per spawn brief.
+- **## What must still hold** — **OK** for AST-2000 wiring on the eight-file plan footprint (1779 predicate/default `resolve_tokens`, preview warnings, enrich counts/`task_ready`, non-`empty_tokens` failure routing, no new states/`dispatch_task` rows). **Not OK** for publish-ref hygiene (sibling product/tests on this tip — see findings).
+
+## Canon scores
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | astral.dispatch.entity-state-bound | A | | No `dispatch_task` / claim-helper edits; job/company/candidate transitions use existing registry states only (`_empty_token_fail_dest`, roster terminals, stage `error_state`). |
+| 2 | astral.standards.in-scope-only | D | 2 | `src/core/gazer.py` + tracker plan/bible/tests for **AST-1995** PJL re-scrape on this sub tip; plan says eight files only and no `tests/**`. |
+
+## Column diff vs plan stage
+
+no plan-stage validate-plan table for AST-2000 (Joan fix-board round 2 on product canon only, in issue doc)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket product on AST-2000 publish ref** — `src/core/gazer.py` (AST-1995: re-scrape all PJL URLs, nav carry-forward, `pjl_nav_links` rebuild). Not in `## Bug: AST-2000` eight-file list (“nothing else changes”). **Default:** drop gazer + AST-1995 doc/test hunks from `sub/AST-1986/AST-2000-runtime-empty-token-error` (or move to AST-1995 sub) before Review Posted / UT; land AST-2000 product slice alone.
+
+- **Tests/bible on wrong ticket** — `tests/component/core/test_gazer.py`, `test_gazer_scrape_failure.py`, `test_roster.py` (AST-1995 PJL upsert), `docs/test-bible/core/gazer.md`, `roster.md`, `docs/features/tracker/ast-1595-…md`. Plan assigns all AST-2000 tests to **AST-2006**; this is scope creep beyond “sibling test carry” (product `gazer.py` is not carry). **Default:** same as above — strip from this tip.
+
+- **Susan binding: empty_tokens → terminal, never `_RETRY`** — `src/core/candidate.py` `run_requested_artifacts_dispatch` (~3674–3708): `empty_tokens` branch calls `transition_candidate_state(candidate_id, err_state)` with **no** `try`/`except ValueError`. A `ValueError` falls into the broad `except Exception` and `_requested_stage_failure_target` / `retry_base(target)` — **can route to a retry holding**, contradicting Susan’s rule (Ada’s edge). Consult’s `_run_dispatch_chain_job_batch` already uses `try`/`except ValueError` → `FAILED_TECHNICAL`. **Default:** wrap the empty-token transition like consult (`try` / `except ValueError`: log + return `total_errors=1` with best-effort terminal, or re-raise only after ensuring no retry path).
+
+### discuss
+
+- **@susan — meteorite staging unchanged (plan decision)** — `do_task` empty-token failures from meteorite land/stage/review can still leave rows at `READY` / `CHECK_UNIQUE` with no registered error transition. Documented in plan; not a violation of the **frozen** two-id list; **AST-2005** owns `patt.task.dispatch-retry` carve-out wording.  
+  **Default:** accept plan boundary unless you reopen scope for new `METEORITE_STATES` terminals.
+
+### advisory
+
+- Core AST-2000 implementation on scoped files aligns with plan: `resolve_tokens` collector, `do_task` guard (after API-key check, before provider/ledger), `_empty_token_fail_dest` + consult/roster/intake/`api_admin` `_enrich_tasks` `warn_on_empty=False`, `_locate_empty_token_error` for locate flow.
+- `patt.task.dispatch-retry` corpus gap intentionally deferred to **AST-2005**; not on frozen list — not ESCALATE here.
+
+## What’s solid
+
+- Runtime guard: one `logger.error`, `empty_tokens` / `empty_token_task`, no provider call when `empty_names` non-empty.
+- Job batch empty-token path: `retried: 0`, `_empty_token_fail_dest` skips retry-base `error_state`s; dispatch chain `ValueError` → `FAILED_TECHNICAL`.
+- Intake ledger uses `total_errors` when `empty_tokens` present.
+
+## Notes for Chuckles
+
+- **Gate:** REVIEW (fix-now findings; C7 artifact complete).
+- **Parent:** AST-1986 orphaned mini-parent, live `ftr/AST-1986-runtime-empty-token-error`; merge path per fix-intake, not re-derived here.
+- **Downstream only:** append verdict to issue doc, push `docs(AST-2000): Radia review — findings`, post slim upshot `--as radia`, **Review Posted** → `resolve-child` (scope strip + candidate transition hardening).
+
+context_tokens≈32000
+
+**Chuckles note:** the AST-1995 gazer/tests "spill" was a stale-ftr artifact. AST-1995 is already on origin/dev, the sub had synced dev, and the ftr was behind. ftr fast-forwarded to origin/dev; ftr...sub is now exactly the 8 planned files. Only the candidate empty-token transition guard remains fix-now.
