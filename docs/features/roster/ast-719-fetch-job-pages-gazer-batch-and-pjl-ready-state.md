@@ -802,3 +802,24 @@ no plan-stage scores attached (retroactive gap doc + Betty delivery; no validate
 - `_run_pjl` helper keeps repro fixtures readable and isolates first `save_company_data` payload (fail-path notes save excluded correctly).
 - Bible § AST-1999 tables mirror test names and red→green story; obsolete additive-skip language struck consistently.
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/2affa466983e714518349d35337fb659/57db8c7d-a7e7-4c00-9687-ec700dc4b3b6/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/7be6b20e-07de-4954-9f06-627b2f497f75/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/2affa466983e714518349d35337fb659/3130a2fc-156f-4420-a8f4-d0837aa5607b/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1994 (parent) | ftr/AST-1994-fetch-refresh |
+| AST-1995 | sub/AST-1994/AST-1995-fetch-refresh |
+| AST-1999 | sub/AST-1994/AST-1999-fetch-refresh-tests |
+
+**Epic worktree:** `astral-AST-1994/` — one active sub checked out at a time.
