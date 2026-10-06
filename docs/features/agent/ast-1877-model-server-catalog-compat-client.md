@@ -907,3 +907,25 @@ Import `is_provider_rate_limit`, plus the same private `_rate_limit_tag` one-lin
 - AST-1189 / AST-1842 select_job_page hold-on-timeout is unchanged.
 - Kimi / Anthropic: a 429 behaves exactly as today.
 - No concurrency cap or backoff ceiling is added for OpenRouter.
+
+### Joan fix-board (AST-2010)
+
+```
+[board-joan]  CANON: OK
+```
+
+```text
+AST-2010 board-joan done — CANON: OK.
+```
+
+**Reasoning:** Read the `## Bug: AST-2010` plan-fix block on `origin/sub/AST-2009/AST-2010-openrouter-429-retry`. No frozen Canon Scope on the child. `docs/canon-index.md` is not on this ref; overlap skim used `canon/docs/DIRECTIVES-DIRECTORY.md` and active directives touching `config.py`, `llm_compat` / provider config, dispatcher logging, and batch processing.
+
+The change adds `PROVIDER_RATE_LIMIT` and OpenRouter retry knobs in `config.py`, classifiers beside existing `PROVIDER_BALANCE_REFUSAL`, config-driven `_create` retry (optional cap/ceiling), and dispatcher/consult/roster forwarding modeled on the AST-1867 balance-outage precedent. That fits **config as source of truth** (`astral.config.config-source-of-truth` / registry-not-literals): new behavior literals live in `config.py`, not scattered magic.
+
+Nothing **in force** requires today’s behavior (OpenRouter single attempt, mandatory `max_concurrent` + `backoff_max_seconds` when concurrency is set, or balance-only batch short-circuit). `patt.task.dispatch-retry` is entity `_RETRY` routing, not HTTP 429 backoff. `stat.logging.error` / `stat.logging.info.dispatcher` allow a configured fail path with provider lines at WARNING and terminal batch outcomes (`FAILED` for exhausted 429 vs `INTERRUPTED` for balance) without amending those statutes. AST-1877’s “no vendor/server names in `llm_compat`” is plan acceptance criteria the patch explicitly preserves.
+
+Decision 2 (DeepSeek exhausted 429 also stops the batch) is a bounded product choice in the plan’s review section, not a conflict with an active directive and not an Archie-only canon rewrite — same mechanism as balance outage, documented blast radius.
+
+No F3 `validate-plan` fix mode for canon unless product later chooses to codify provider-outage semantics; this triage pass does not require it.
+
+context_tokens≈42000
