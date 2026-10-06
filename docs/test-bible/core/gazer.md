@@ -438,3 +438,25 @@ Shared `jd_classifier.bot_signals` widened so parent-captured Cloudflare interst
 **Broken / obsolete this pass:** `test_skips_meteorite_company_roster_still_fails` — retargeted to `source` SoT (+ real `company_id` must stay skipped).
 
 **Integration:** none.
+
+### AST-2002 · AST-1928 (bug-repro for AST-1997)
+
+**Parent:** AST-1928 (gaze scrape failure reason). **Publish:** `origin/sub/AST-1928/AST-2002-scrape-failure-message-coverage`. Product fix: **AST-1997** (`process_gazer_batch` only).
+
+`process_gazer_batch` failure branch records the real reason in `record_to_company_job_scan(failure_message=…)` and the outcome `message`: `Scrape failed: <ExceptionType>: <str(e)>`, `Scrape failed: <ExceptionType>` when `str(e)` is empty, `No job_site to scrape` for a blank `job_site`. Same text for `debug=False` and `debug=True`. **Red on pre-fix tree** (hard-coded `"Scrape failed"`); flips green when AST-1997 lands.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scrape-failure reason on scan row + outcome, debug on/off | `src/core/gazer.py` | **`test_gazer_scrape_failure.py::TestProcessGazerBatchFailureMessage`** (new) |
+
+**Broken / obsolete this pass:** none. `TestProcessGazerBatch` / `TestProcessGazerBatchDebugBranchCoverage` assert status/call counts only; `test_roster.py` `"scrape failed"` asserts cover `_fetch_job_links_content`, not gaze.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer_scrape_failure.py::TestProcessGazerBatchFailureMessage \
+  tests/component/core/test_gazer.py::TestProcessGazerBatch \
+  tests/component/core/test_gazer.py::TestProcessGazerBatchDebugBranchCoverage \
+  -q
+```
