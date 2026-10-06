@@ -797,3 +797,19 @@ Return dict: add `"decode_failed": sorted(decode_failed) if decode_failed else N
 - **Clean payload shape:** no `decode_failures` key unless a line failed.
 - **Envelope / provider failures** (`do_task` `success=False`, provider balance hold) keep their existing whole-batch handling.
 - **Claim/release:** no change to claim, batch_id, or `finally` release.
+
+
+### Joan fix-board — AST-1996
+
+```
+[board-joan]  CANON: OK
+
+context_tokens≈12000
+```
+
+```text
+AST-1996 board-joan done — CANON: OK.
+```
+
+**Triage (read-only):** Against the AST-1996 plan-fix patch and the six ids at corpus `e1f2699fad` (`patt.task.dispatch-retry`, `patt.entity.batch-processing`, `astral.batch.claim-process-release`, `stat.logging.warning` / `error` / `debug`), the proposed change **implements** dispatch-retry per entity (malformed line → `_consult_batch_fail_dest`, clean lines still process) without widening `_GRADE_SEG`, without claim/release edits, and reusing `_log_fail_dest` for WARNING/ERROR. No active directive requires payload-level `ValueError` on trailing grades-only content or forbids a `decode_failures` side channel; that behavior lived in product/tests, not canon. **F3 (`validate-plan` fix mode) not indicated** from this board pass.
+```
