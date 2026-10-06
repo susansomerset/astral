@@ -578,3 +578,25 @@ No product `src/` change; the product fix is AST-1990.
 - Full `TestAst1639CandidateIdSystemPrefix` stays green with AST-1990 merged.
 - The 4 repro nodes stay red against a non-idempotent helper.
 - The AST-1990 `## What must still hold` invariants are unaffected.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/8b52b33e650e1c4a4970f98daed323b4/a761bbd4-5065-4f34-bfe4-22c8ec77e7cc/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/99e1f9d5-024e-465e-9277-be23ea01fb02/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/8b52b33e650e1c4a4970f98daed323b4/d94c8ef0-5c16-4689-9069-5cddf7247613/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1985 (parent) | ftr/AST-1985-candidate-prefix-dedupe |
+| AST-1990 | sub/AST-1985/AST-1990-candidate-prefix-dedupe |
+| AST-1992 | sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests |
+
+**Epic worktree:** `astral-AST-1985/` — one active sub checked out at a time.
