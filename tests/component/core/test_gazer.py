@@ -204,6 +204,15 @@ def _mock_batch_browser_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return session
 
 
+# fetch_job_pages_batch still opens create_browser_context (not the AST-853 batch session).
+def _mock_browser_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    @asynccontextmanager
+    async def _browser():
+        yield MagicMock()
+
+    monkeypatch.setattr(gazer_mod, "create_browser_context", _browser)
+
+
 class TestFetchWebsiteBatch:
     @pytest.mark.asyncio
     async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -539,8 +548,9 @@ class TestFetchJobPagesBatch:
             await gazer_mod.fetch_job_pages_batch("batch-1", [])
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [False, True])
     async def test_missing_possible_joblist_links_fails(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self, monkeypatch: pytest.MonkeyPatch, debug: bool,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_browser_context(monkeypatch)
@@ -548,7 +558,7 @@ class TestFetchJobPagesBatch:
         monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
         monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
         companies = [{"short_name": "co-empty", "company_data": {}}]
-        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies)
+        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=debug)
         assert out == {"passed": 0, "failed": 1, "total": 1}
         transition.assert_called_once_with("co-empty", "JOBSITE_SCRAPE_ISSUE")
 
@@ -581,7 +591,7 @@ class TestFetchJobPagesBatch:
             }
         ]
         out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=True)
-        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
+        assert out == {"passed": 1, "failed": 0, "total": 1}
         transition.assert_called_once_with("acme", "PJL_READY")
         saved = save.call_args[0][1]
         assert saved["pjl_scrape_pages"] == [
@@ -595,41 +605,170 @@ class TestFetchJobPagesBatch:
         assert "--- NAV LINKS ---" in saved["pjl_assembled_content"]
         assert "open roles" in saved["pjl_assembled_content"]
 
-    @pytest.mark.asyncio
-    async def test_additive_skips_already_scraped_url(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    # AST-1995 refresh: every candidate URL is re-scraped; rows upsert by normalize_link.
+    @staticmethod
+    async def _run_pjl(
+        monkeypatch: pytest.MonkeyPatch,
+        company_data: Dict[str, Any],
+        records: Dict[str, Dict[str, Any]],
+        debug: bool = False,
+    ):
+        """Run one company through fetch_job_pages_batch; `records` maps candidate URL -> scrape record."""
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_browser_context(monkeypatch)
-        monkeypatch.setattr(gazer_mod, "transition_company_state", MagicMock())
-        monkeypatch.setattr(gazer_mod, "save_company_data", MagicMock())
-        scrape = AsyncMock(
-            return_value={
-                "url": "https://acme.com/jobs",
-                "visible_text": "more roles",
-                "page_links": [],
-            }
-        )
+        transition, save, log = MagicMock(), MagicMock(), MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+        monkeypatch.setattr(gazer_mod, "_log", log)
+        scrape = AsyncMock(side_effect=lambda url, _ctx, debug=False: records[url])
         monkeypatch.setattr(gazer_mod, "_scrape_pjl_page", scrape)
-        companies = [
-            {
-                "short_name": "acme",
-                "company_data": {
-                    "possible_joblist_links": ["acme.com/careers", "acme.com/jobs"],
-                    "pjl_scrape_pages": [
-                        {"url": "https://acme.com/careers", "visible_text": "existing"}
-                    ],
-                },
-            }
-        ]
-        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies)
-        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
-        scrape.assert_awaited_once()
-        assert scrape.await_args.args[0] == "acme.com/jobs"
+        companies = [{"short_name": "acme", "company_data": company_data}]
+        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=debug)
+        # First save is the PJL persist; the fail path appends a notes-only save after it.
+        return out, transition, save.call_args_list[0][0][1], scrape, log
 
     @pytest.mark.asyncio
-    async def test_all_scrapes_empty_fails_with_notes(
+    async def test_refresh_rescrapes_already_scraped_url(
         self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        out, _t, saved, scrape, log = await self._run_pjl(
+            monkeypatch,
+            {
+                "possible_joblist_links": ["acme.com/careers", "acme.com/jobs"],
+                "pjl_scrape_pages": [{"url": "https://acme.com/careers", "visible_text": "existing"}],
+            },
+            {
+                "acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "fresh", "page_links": []},
+                "acme.com/jobs": {"url": "https://acme.com/jobs", "visible_text": "more roles", "page_links": []},
+            },
+            debug=True,
+        )
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        # Both URLs scraped, in candidate order — the stored careers row no longer short-circuits.
+        assert [c.args[0] for c in scrape.await_args_list] == ["acme.com/careers", "acme.com/jobs"]
+        # Replaced row keeps index 0; the new URL appends.
+        assert saved["pjl_scrape_pages"] == [
+            {"url": "https://acme.com/careers", "visible_text": "fresh"},
+            {"url": "https://acme.com/jobs", "visible_text": "more roles"},
+        ]
+        # Style D per-URL line for every scraped URL; no ledger skip line survives.
+        outcomes = [c.kwargs.get("outcome") or "" for c in log.debug_index.call_args_list]
+        assert not any("skipped-already-scraped" in o for o in outcomes)
+        assert any("'acme.com/careers' scraped" in o for o in outcomes)
+        assert any("'acme.com/jobs' scraped" in o for o in outcomes)
+
+    @pytest.mark.asyncio
+    async def test_ast1995_repro_rescrape_replaces_row_and_rebuilds_nav(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Plan fixture verbatim (docs/features/roster/ast-719-… § Bug: AST-1995 → Repro).
+        out, transition, saved, scrape, _log = await self._run_pjl(
+            monkeypatch,
+            {
+                "possible_joblist_links": ["acme.com/careers"],
+                "pjl_scrape_pages": [
+                    {"url": "https://acme.com/careers", "visible_text": "OLD BOARD: Role A",
+                     "enumerated_nav_links": "1: https://acme.com/jobs/a"},
+                ],
+                "pjl_nav_links": "1: https://acme.com/jobs/a",
+            },
+            {
+                "acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "NEW BOARD: Role B",
+                                     "page_links": ["https://acme.com/jobs/b"],
+                                     "enumerated_nav_links": "1: https://acme.com/jobs/b"},
+            },
+        )
+        scrape.assert_awaited_once()
+        assert saved["pjl_scrape_pages"] == [
+            {"url": "https://acme.com/careers", "visible_text": "NEW BOARD: Role B",
+             "enumerated_nav_links": "1: https://acme.com/jobs/b"},
+        ]
+        assert "NEW BOARD" in saved["pjl_assembled_content"]
+        assert "OLD BOARD" not in saved["pjl_assembled_content"]
+        # Rebuilt from this run only — the dead /jobs/a link drops off.
+        assert saved["pjl_nav_links"] == "1: https://acme.com/jobs/b"
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with("acme", "PJL_READY")
+
+    @pytest.mark.asyncio
+    async def test_ast1995_failed_rescrape_keeps_prior_row_and_carries_its_nav(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        prior = {"url": "https://acme.com/careers", "visible_text": "OLD BOARD",
+                 "enumerated_nav_links": "1: https://acme.com/jobs/a"}
+        out, transition, saved, scrape, log = await self._run_pjl(
+            monkeypatch,
+            {
+                "possible_joblist_links": ["acme.com/careers"],
+                "pjl_scrape_pages": [dict(prior)],
+                # /jobs/dead is in the stored global enum but not in the row's own links.
+                "pjl_nav_links": "1: https://acme.com/jobs/a\n2: https://acme.com/jobs/dead",
+            },
+            {"acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "",
+                                  "page_links": [], "error": "Timeout 30000ms exceeded"}},
+            debug=True,
+        )
+        scrape.assert_awaited_once()
+        outcomes = [c.kwargs.get("outcome") or "" for c in log.debug_index.call_args_list]
+        assert any("'acme.com/careers' error=" in o for o in outcomes)
+        # Transient failure never deletes stored content.
+        assert saved["pjl_scrape_pages"] == [prior]
+        assert "OLD BOARD" in saved["pjl_assembled_content"]
+        # Prior row's last-known links carry forward; the stale global entry does not.
+        assert saved["pjl_nav_links"] == "1: https://acme.com/jobs/a"
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with("acme", "PJL_READY")
+
+    @pytest.mark.asyncio
+    async def test_ast1995_failed_scrape_without_prior_row_contributes_no_nav(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _out, _t, saved, _scrape, _log = await self._run_pjl(
+            monkeypatch,
+            {"possible_joblist_links": ["acme.com/careers", "acme.com/jobs"]},
+            {
+                "acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "roles",
+                                     "page_links": ["https://acme.com/jobs/b"]},
+                # Empty capture with links: no stored row to fall back on, so its links are ignored.
+                "acme.com/jobs": {"url": "https://acme.com/jobs", "visible_text": "  ",
+                                  "page_links": ["https://acme.com/jobs/z"]},
+            },
+        )
+        assert saved["pjl_scrape_pages"] == [{"url": "https://acme.com/careers", "visible_text": "roles"}]
+        assert saved["pjl_nav_links"] == "1: https://acme.com/jobs/b"
+
+    @pytest.mark.asyncio
+    async def test_ast1995_nav_written_empty_and_non_candidate_rows_kept(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        orphan = {"url": "https://acme.com/old-careers", "visible_text": "legacy board",
+                  "enumerated_nav_links": "1: https://acme.com/jobs/x"}
+        _out, transition, saved, _scrape, _log = await self._run_pjl(
+            monkeypatch,
+            {
+                "possible_joblist_links": ["acme.com/careers"],
+                "pjl_scrape_pages": [
+                    dict(orphan),
+                    {"url": "https://acme.com/careers", "visible_text": "OLD",
+                     "enumerated_nav_links": "1: https://acme.com/jobs/a"},
+                ],
+                "pjl_nav_links": "1: https://acme.com/jobs/x\n2: https://acme.com/jobs/a",
+            },
+            {"acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "NEW", "page_links": []}},
+        )
+        # Non-candidate row stays at index 0 (no pruning); careers replaced whole-row at index 1.
+        assert saved["pjl_scrape_pages"] == [
+            orphan,
+            {"url": "https://acme.com/careers", "visible_text": "NEW"},
+        ]
+        # Always written, even empty: the orphan's links and the old careers links must not survive.
+        assert saved["pjl_nav_links"] == ""
+        transition.assert_called_once_with("acme", "PJL_READY")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [False, True])
+    async def test_all_scrapes_empty_fails_with_notes(
+        self, monkeypatch: pytest.MonkeyPatch, debug: bool,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         _mock_browser_context(monkeypatch)
@@ -648,7 +787,7 @@ class TestFetchJobPagesBatch:
                 "company_data": {"possible_joblist_links": ["acme.com/careers"]},
             }
         ]
-        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies)
+        out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=debug)
         assert out == {"passed": 0, "failed": 1, "total": 1}
         transition.assert_called_once_with("acme", "JOBSITE_SCRAPE_ISSUE")
         assert save.call_args_list[-1][0][1]["prefilter_company_notes"] == (
