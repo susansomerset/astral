@@ -1166,15 +1166,24 @@ def _build_context(task_key: str, task_config: Dict[str, Any], index: Optional[s
         return fmt.replace("{index}", index)
 
 
+# Leading run of AST-1639 cache-isolation markers, any id, no separators between them.
+_CANDIDATE_PREFIX_RUN_RE = re.compile(r"^(?:\[astral-[^\]]*\])+")
+
+
 def _system_text_with_candidate_prefix(system_content: str, candidate_id: Optional[str]) -> str:
-    """Leading cache-isolation marker: first system bytes are ``[astral-<id>]`` then body."""
+    """Leading cache-isolation marker: first system bytes are ``[astral-<id>]`` then body.
+
+    Idempotent: any leading ``[astral-…]`` run is replaced by exactly one ``[astral-<cid>]``.
+    """
     cid = (candidate_id or "").strip()
     if not cid:
         raise ValueError(
             "candidate id required for agent system prompt "
             "(no omit / no sentinel — every agent call must carry an Astral candidate id)"
         )
-    return f"[astral-{cid}]{system_content}"
+    # Idempotent: drop any existing leading marker run (any id) so re-fed text gets exactly one.
+    body = _CANDIDATE_PREFIX_RUN_RE.sub("", system_content, count=1)
+    return f"[astral-{cid}]{body}"
 
 
 def _assemble_blocks_seven_segment(

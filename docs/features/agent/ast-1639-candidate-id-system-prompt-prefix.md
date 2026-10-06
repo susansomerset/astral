@@ -282,3 +282,174 @@ context_tokens≈32000
 - Betty (optional): add one workbench store assertion for prefixed `system_content` if Susan wants explicit AC3 stored-row coverage beyond code review.
 
 context_tokens≈28000
+
+---
+
+## Bug: AST-1990 — candidate-id system prefix is idempotent (never stack `[astral-<id>]`)
+
+- **Linear:** [AST-1990](https://linear.app/astralcareermatch/issue/AST-1990) · orphaned mini-parent [AST-1985](https://linear.app/astralcareermatch/issue/AST-1985)
+- **Publish ref:** `sub/AST-1985/AST-1990-candidate-prefix-dedupe` (ftr `ftr/AST-1985-candidate-prefix-dedupe`, off `origin/dev`)
+- **Scope (AST-1990 `## Scope`):** `src/core/agent.py` — modify `_system_text_with_candidate_prefix` only; no call-site signature changes, no new tables/fields. Tests are Betty's.
+- **Canon:** `stat.logging.debug`, `stat.logging.error` — fix adds no log lines; the missing-id `ValueError` stays log-free at the raise site.
+
+### As-is
+
+`_system_text_with_candidate_prefix` (`src/core/agent.py` ~L1169, Stage 1 step 1 above) always returns `f"[astral-{cid}]{system_content}"` and never checks for a marker that's already there. Any path that feeds already-prefixed system text back in adds another copy, on the wire and in the stored SYSTEM `agent_data` row. Observed in AST-1985: the system prompt began `[astral-somerset][astral-somerset][astral-somerset][astral-somerset][astral-somerset]NOTE: Please see ...`.
+
+### To-be
+
+Exactly one `[astral-<cid>]` at byte zero, however many times the text passes through preview, store, or assembly. Wire, `preview_prompt` `"system"`, and the stored SYSTEM row stay byte-identical (AST-1639 AC3 parity). Missing/blank candidate id still raises `ValueError` before any send.
+
+### Repro
+
+Pure-function fixture (no DB needed):
+
+```python
+from src.core.agent import _system_text_with_candidate_prefix as f
+
+once = f("NOTE: Please see ...", "somerset")
+assert once == "[astral-somerset]NOTE: Please see ..."      # passes today
+assert f(once, "somerset") == once                           # FAILS today: "[astral-somerset][astral-somerset]NOTE..."
+assert f("[astral-somerset]" * 5 + "NOTE: Please see ...", "somerset") == once   # FAILS today: six markers
+```
+
+How it happens in the app: the workbench Test sends `preview_prompt`'s already-prefixed `system` back into `run_adhoc_workbench_test` / `run_adhoc`. The store call (Stage 1 step 6) and assembly (Stage 1 step 2) each prepend again. Re-running from a stored SYSTEM `agent_data` row does the same. Each round trip adds one more marker.
+
+### Root cause
+
+The helper assumes its input is always the un-prefixed resolved body. Stage 1's "do not double-prefix" contract was enforced only by call-site discipline (store and assembly both start from the same raw `system_content`). Nothing enforced it at the chokepoint, so text that was already prefixed upstream (preview output, stored rows) gets prefixed again on every pass.
+
+### Proposed change
+
+Single file, single function: `src/core/agent.py` / `_system_text_with_candidate_prefix`. `re` is already imported (L26).
+
+1. Directly above the helper, add a module-level compiled pattern:
+
+   ```python
+   # Leading run of AST-1639 cache-isolation markers, any id, no separators between them.
+   _CANDIDATE_PREFIX_RUN_RE = re.compile(r"^(?:\[astral-[^\]]*\])+")
+   ```
+
+2. In the helper, keep the `cid` strip and `ValueError` block **unchanged and first** (fail closed before touching the body). Replace the return with:
+
+   ```python
+   # Idempotent: drop any existing leading marker run (any id) so re-fed text gets exactly one.
+   body = _CANDIDATE_PREFIX_RUN_RE.sub("", system_content, count=1)
+   return f"[astral-{cid}]{body}"
+   ```
+
+   Update the docstring to say it's idempotent: any leading `[astral-…]` run is replaced by exactly one `[astral-<cid>]`.
+
+3. Call sites stay as they are: assembly (L1203), `do_task` store (L2245), `preview_prompt` (L3037), workbench store (L3199). Once the helper is idempotent, applying it twice at the store sites does nothing extra.
+
+⚠️ **Decision (Susan-approved, AST-1985 Proposed step 1):** strip **any** leading run of markers, whatever id they carry (`[astral-<other>]` included). A stale marker for a different candidate gets replaced by the current `cid`, not kept. Step 2's "same id only" option is not used.
+
+⚠️ **Decision — exact match shape:** literal `[astral-`, then zero or more non-`]` characters, then `]`, repeated, anchored at byte zero only. No whitespace is skipped before or between markers, because Stage 1 emits none (no separator between `]` and body). Text with leading whitespace, or a marker somewhere in the middle of the body, is left alone and still gets one marker prepended. The body after the run is not stripped or trimmed (Stage 1 step 1 decision: strip only the id).
+
+⚠️ **Decision — input type:** `system_content` stays `str`, as the signature says. Every caller passes a `str` (`resolved_task_system` / `resolve_tokens` return `str`). No `or ""` coercion is added, so behavior for valid input doesn't change.
+
+### Blast radius
+
+- **Only callers:** the four sites listed in step 3, all in `src/core/agent.py`. No other module builds the marker (AST-1639 AC6 still holds). Contact (`src/core/contact.py` ~L1157) only passes `astral_candidate_id` through to `do_task`; it doesn't touch the prefix.
+- **Behavior change for un-prefixed input:** none. Output is byte-identical to today, so existing `TestAst1639CandidateIdSystemPrefix` assertions on single-pass output keep passing.
+- **Behavior change for prefixed input:** existing markers collapse to one. A body that legitimately starts with literal `[astral-…]` text would lose it. No template does that today. Note: `src/utils/logging.py`'s `[astral-log]` strings are stderr log tags, not system prompts.
+- **Tests (Betty, via fix-board):** the AST-1990 ticket asks for new idempotence cases in `TestAst1639CandidateIdSystemPrefix`: one already-prefixed input and one five-times-prefixed input, each producing a single marker. Use the Repro asserts above. Nothing existing asserts the stacked behavior, as far as code reading shows.
+- **Stored data:** existing SYSTEM `agent_data` rows that already have stacked markers aren't rewritten (no migration, per ticket Boundaries). Re-running from one now produces a single marker.
+
+### What must still hold
+
+- AST-1639 AC1/AC2: first system block sent to DeepSeek and Anthropic begins with exactly `[astral-<cid>]`, before cache A–D, user, nocache, and live segments.
+- AST-1639 AC3: wire system text, `preview_prompt["system"]`, and stored SYSTEM `system_content` are byte-identical for the same body and id, now including when the input was already prefixed.
+- AST-1639 AC4: the id comes only from the Astral candidate id argument or ctx field. The strip regex never reads or emits contact fields.
+- AST-1639 AC7: missing/blank `candidate_id` raises `ValueError` before any provider send, even when `system_content` already carries a marker. Fail closed; never pass an existing marker through when there's no id.
+- No separator between `]` and body; body after the marker run is byte-for-byte untouched.
+- `stat.logging.error`: no new `logger.error` / `logger.exception` at the raise site. `stat.logging.debug`: no new log lines.
+- Existing `TestAst1639CandidateIdSystemPrefix` stays green.
+
+
+## Fix-board Joan findings (AST-1990)
+
+## [board-joan] verdict (for Chuckles → `linear_proxy --as joan save-comment`)
+
+```
+[board-joan]  CANON: OK
+```
+
+## Triage notes
+
+Read `## Bug: AST-1990` on `origin/sub/AST-1985/AST-1990-candidate-prefix-dedupe` (`docs/features/agent/ast-1639-candidate-id-system-prompt-prefix.md`). Scope is one helper in `src/core/agent.py`: strip a leading run of `[astral-…]` markers, then emit exactly one `[astral-<cid>]`; `ValueError` on missing id unchanged and still without a new log at the raise site.
+
+**Corpus:** No `docs/canon-index.md` on this ref (same as other fix-board passes). Skimmed `canon/docs/DIRECTIVES-DIRECTORY.md` overlap for `agent.py` / logging / prefix-shaped strings; resolved the ticket’s frozen citations `stat.logging.debug` and `stat.logging.error` from `canon/directives/active/`.
+
+**Logging statutes:** Proposed change adds no `logger.debug` / `logger.error` / `logger.exception` at the helper. That matches `stat.logging.debug` (no new gated joints) and `stat.logging.error` (detection site raises; handler logs once — unchanged).
+
+**Prefix / AST-1639:** In-force directives do not define the AST-1639 wire marker, idempotence, or “same-id vs any-id” strip policy. That behavior lives in the archived AST-1639 feature ACs and this plan-fix patch (including Susan-approved strip-any-leading-run and fail-closed-before-body). The fix closes a chokepoint gap vs double-prefixing; it does not contradict an active statute or pattern. No new carve-out or statute edit is required for F3.
+
+**ESCALATE not warranted:** Architectural choices (strip any id, regex shape, no migration for stacked rows) are already recorded in the patch; they are product/plan decisions, not unset canon intent.
+
+**Chuckles branch hint:** If Betty is **OK**, lane can go **Plan Approved → make-fix** with no F3. If Betty is **REVISE** (new idempotence tests per patch), still **OK** here → Plan Discuss + **qa-fix** only.
+
+---
+
+```text
+AST-1990 board-joan done — CANON: OK.
+```
+
+
+**Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-1990 proceeds to make-fix on product only.
+
+
+## Radia review (AST-1990)
+
+**Ticket:** AST-1990  
+**Publish ref:** `origin/sub/AST-1985/AST-1990-candidate-prefix-dedupe` @ `2b0b74f0012a39b75f23099bc35b7b16c298e7bb`  
+**Corpus:** `e1f2699fad44e4083e39a9a066cc87cae494ad51`  
+**Overall:** CLEAN  
+
+**Diff base:** `origin/ftr/AST-1985-candidate-prefix-dedupe...origin/sub/AST-1985/AST-1990-candidate-prefix-dedupe` (product: `src/core/agent.py` only; plan-fix + board notes in `docs/features/agent/ast-1639-candidate-id-system-prompt-prefix.md`).
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — clean board opt-out. Betty **TESTS: REVISE** routed idempotence coverage to sibling **AST-1992** (`origin/sub/AST-1985/AST-1992-candidate-prefix-dedupe-tests`, not in this diff). Spawn notes: Ada verified six idempotence tests pass against this tip; no `[bug-repro]` on AST-1990.
+- **## What must still hold — OK** — Traced plan-fix list against shipped helper:
+  - **AC1/AC2:** `_assemble_blocks_seven_segment` still sets first system block via `_system_text_with_candidate_prefix`; cache/user segments unchanged. Unprefixed input is byte-identical to pre-fix; prefixed input collapses to one marker at byte zero.
+  - **AC3:** Same helper at assembly (~L1212), `do_task` store (~L2254), `preview_prompt` (~L3046), workbench store (~L3208); idempotent helper makes double application at store+assembly safe.
+  - **AC4:** Strip uses only `system_content` + `candidate_id` argument; regex does not read ctx/contact fields.
+  - **AC7:** `cid` strip + `ValueError` remain **before** `_CANDIDATE_PREFIX_RUN_RE.sub`; prefixed body with blank id still fails closed (no pass-through of markers).
+  - **No separator / body preservation:** Still `f"[astral-{cid}]{body}"`; `sub` removes only anchored leading marker run; no trim on remainder.
+  - **Logging:** No new `logger.*` in diff; raise site unchanged (no `logger.exception` at detection).
+  - **Existing `TestAst1639CandidateIdSystemPrefix`:** Blast radius claim holds for single-pass paths; idempotence asserts deferred to AST-1992 per lane split (advisory below, not a regression in this product diff).
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | No new debug joints; helper change is pure string/id logic |
+| stat.logging.error | A | | Missing-id path still raises without logging at the raise site |
+
+## Column diff vs plan stage
+
+(aligned) — Joan **[board-joan] CANON: OK** on the AST-1990 patch matches both **A** grades; no separate validate-plan per-id table on this bug patch.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Sibling test carry:** Idempotence cases from plan **Repro** / fix-board are not committed on this publish ref; they live on **AST-1992**. Product fix is still reviewable without them per board opt-out; merge AST-1992 (or equivalent) before treating idempotence as repo-guarded on `dev`.
+- **Docs in diff:** Large `## Bug: AST-1990` append is plan-fix/board artifact, not product scope creep.
+- **Pre-existing failures:** Spawn notes 40× `test_agent.py` failures on pre-fix commit — out of scope for this three-dot diff; do not attribute to AST-1990.
+
+## What's solid
+
+Implementation matches **Proposed change** verbatim: module-level `_CANDIDATE_PREFIX_RUN_RE`, fail-closed block unchanged and first, idempotent strip-then-prepend, docstring updated. Scope stays one helper; call sites untouched. Regex `^(?:\[astral-[^\]]*\])+` with `count=1` removes an entire stacked leading run in one substitution — matches Susan-approved “strip any leading run” decision.
+
+
+**docs-acceptance:** test/bible delivery for this fix lives on sibling gap AST-1992 (Betty qa-fix); no test() on this product sub.
