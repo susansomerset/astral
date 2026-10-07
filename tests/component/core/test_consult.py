@@ -4414,20 +4414,24 @@ class TestAst972CandidateStageConsultRouting:
     async def test_mid_hop_with_run_next_routes_to_daisy_chain_worker(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """[bug-repro] AST-1434 Repro step 3: mid-hop craft_joblist_rubric is not unhandled.
-
-        Pre-fix: consult membership-gates on craft_get_rubric → zeros, worker idle.
-        Post AST-1434: live run_next on that task_key calls the daisy-chain worker.
-        """
+        """[bug-repro] AST-1434: terminal hop reclaims via parent run_next (patt.task.daisy-chain §4)."""
         worker = AsyncMock(
             return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
         )
         monkeypatch.setattr("src.core.candidate.run_requested_artifacts_dispatch", worker)
+
         monkeypatch.setattr(
-            "src.core.agent._current_agent_task_run_next",
-            lambda tk: "craft_jobdesc_rubric" if tk == "craft_joblist_rubric" else "",
+            "src.data.database.get_agent_task",
+            lambda tk: (
+                {"run_next": "craft_joblist_rubric"}
+                if tk == "craft_company_search_terms"
+                else {}
+            ),
         )
-        entity = {"astral_candidate_id": "c-mid", "state": "REQUESTED_ARTIFACTS"}
+        entity = {
+            "astral_candidate_id": "c-mid",
+            "state": "REQUESTED_ARTIFACTS.craft_company_search_terms",
+        }
         out = await consult_mod.run_consult_task(
             "candidate",
             "REQUESTED_ARTIFACTS",
