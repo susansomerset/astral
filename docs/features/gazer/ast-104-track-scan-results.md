@@ -653,3 +653,25 @@ context_tokens≈7200
 [code-rubric] PROCEED (Commit: 44a2bce) bug-repro coverage landed
 ```
 ```
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/1e7a3f1eafdb0b7ecc7478b0bd30c5d1/c923fd97-cda0-45a8-9494-79a26e330115/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/3bd55873-7322-4849-a902-774af7ddab2a/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/1e7a3f1eafdb0b7ecc7478b0bd30c5d1/858b2340-c402-46b3-ab4f-e21495b6633a/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1928 (parent) | ftr/AST-1928-gaze-scrape-failure-reason |
+| AST-1997 | sub/AST-1928/AST-1997-surface-scrape-exception |
+| AST-2002 | sub/AST-1928/AST-2002-scrape-failure-message-coverage |
+
+**Epic worktree:** `astral-AST-1928/` — one active sub checked out at a time.
