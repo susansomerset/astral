@@ -992,3 +992,24 @@ context_tokens≈55000
 ```
 [code-rubric] PROCEED (Commit: d2d8bd3b2) OpenRouter 429 batch stop
 ```
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/5a94aa7a2e8adb362a74dc722922906a/2a285525-22da-4411-898b-3be6363b2983/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/8ef746de-2715-4978-86a8-7c3d8b8302c3/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/5a94aa7a2e8adb362a74dc722922906a/6fcdfd82-1f6d-46ab-a5b0-7b94d18b776e/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2009 (parent) | ftr/AST-2009-openrouter-429-retry |
+| AST-2010 | sub/AST-2009/AST-2010-openrouter-429-retry |
+
+**Epic worktree:** `astral-AST-2009/` — one active sub checked out at a time.
