@@ -1,3 +1,92 @@
+<!-- linear-archive: AST-1829 archived 2026-10-07 -->
+
+## Linear archive (AST-1829)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1829/sweep-interval-data-scheduled-sweep-add-a-sweep-interval-to-dispatch  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1824 — Add a sweep interval to dispatch_task  
+**Blocked by / blocks / related:** parent: AST-1824; blocks: AST-1830
+
+### Description
+
+## What this implements
+
+Adds the per-row sweep interval (schema, insert, update whitelist, template copy) and the scheduler behavior. Both AUTO due paths start a sweep when 0 < Avail < `min_count` and the interval has elapsed since `last_run_at`. A tick-spawned sweep runs one batch with no `min_count` gate, with no UI debug forcing. Does **not** own the admin API or UI (#2). Ships AC 1–10, 12, and 15.
+
+## Citations
+
+`patt.entity.batch-criteria`, `patt.entity.batch-processing`, `astral.batch.claim-process-release`, `astral.dispatch.entity-state-bound`, `stat.logging.info.dispatcher`, `stat.logging.debug`.
+
+## Scope
+
+* `src/data/database.py` — **modified** — the `dispatch_task` schema gains a sweep-interval column; the insert/update/template-copy column sets include it; the AUTO due selection for claim-queue rows adds the sweep-due rule. Technical: new nullable REAL column in `CREATE TABLE` + missing-column migration map, no backfill; insert accepts an optional sweep interval; update whitelist and AST-875 template-copy column set include the column; new sweep-due helper reusing the existing `last_run_at` parser; AUTO due selection OR's in the sweep branch (0 < Avail < `min_count` and sweep due) and marks sweep rows.
+* `src/core/dispatcher.py` — **modified** — the mailbox AUTO due path adds the sweep-due rule; a tick-spawned sweep runs as one batch with the `min_count` gate bypassed. Technical: mailbox due gets the same OR rule and mark, with existing trigger/`freq_allows` gates kept; the tick loop passes the sweep mark into the thread spawn; the thread spawn entry point accepts a scheduled-sweep flag alongside `ui_initiated`; the dispatch batch loop caps at one batch with effective minimum 1 when the flag is set on an AUTO row; no local-env debug forcing for a non-UI sweep.
+
+## Acceptance criteria
+
+ 1. **Column exists on fresh and existing DBs.** After schema ensure runs, `PRAGMA table_info(dispatch_task)` lists the sweep-interval column as REAL, nullable, with existing rows NULL. Fail: the column is missing, or any pre-existing row has a non-NULL value.
+ 2. **Sweep due fires.** Take an AUTO row with `min_count=10` and a sweep interval of 1, Avail 3, and `last_run_at` 2 hours ago. The AUTO due selection returns it, marked as a sweep. Fail: not returned, or returned without the sweep mark.
+ 3. **Sweep not due inside the interval.** Same row with `last_run_at` 10 minutes ago: not returned. Fail: returned.
+ 4. **No interval, no sweep.** Same row with a NULL or 0 sweep interval and Avail 3: not returned. This is today's behavior. Fail: returned.
+ 5. **Zero Avail never sweeps.** Same row, due interval, Avail 0: not returned. Fail: returned.
+ 6. **AUTO off never sweeps.** Same row with `auto_mode=0`: not returned by either due path. Fail: returned.
+ 7. **Full batches are unaffected.** An AUTO row with Avail ≥ `min_count` is returned without the sweep mark and runs its loop per `max_runs` as today. Fail: marked as a sweep, or capped at one batch.
+ 8. **One batch, no min gate.** Spawn a sweep-marked row through the tick path with Avail 3 < `min_count` 10 and `max_runs` 0. The dispatch batch loop runs exactly one batch (one `_run_task` call), does not stop on "below min_count", and stamps `last_run_at`. Fail: zero batches, more than one batch, or no `last_run_at` update.
+ 9. **Mailbox path parity.** A candidate-bound `stage_email_meteorite` AUTO row with bound Avail 2, `min_count` 5, a due sweep interval, and `dispatch_task_freq_allows` true is in the mailbox due list, marked as a sweep. With `freq_allows` false, it is not. Fail: either case inverted.
+10. **Debug forcing stays UI-only.** A tick-spawned sweep on a local deploy with row `debug=0` does not set `log_debug` true. Fail: `log_debug` is true for a non-UI sweep.
+11. **Template copy.** An AST-875 template copy from a row with a sweep interval of 6 yields target rows with 6. Fail: the target is NULL or differs.
+12. **No parallel scheduler.** `grep -n "Thread(" src/core/dispatcher.py` returns exactly two matches (the existing per-task thread and the tick thread). The sweep is decided inside the existing due selection and spawned by the existing tick loop. Fail: a new sweep thread, timer, or separate scheduler loop exists.
+
+## Boundaries
+
+Does not touch `src/ui/api/api_admin.py` or `src/ui/frontend/src/pages/AdminScheduledActions.tsx` (sibling #2 — admin API + UI). Manual Sweep behavior is not changed.
+
+## Notes for planning
+
+Parent AST-1824 Architectural definition carries the canon links. Sweep due is measured from `last_run_at` (any run); the sweep runs as one batch with min 1, same as today's UI Sweep branch in the dispatch batch loop.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`,
+child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-28T06:09:32.441Z
+[code-rubric] PROCEED (Commit: 4e623d46) scheduled sweep clean
+
+#### ada — 2026-09-28T06:07:58.554Z
+`origin/sub/AST-1824/AST-1829-sweep-interval-data-scheduled-sweep` @ `4e623d46` · manifest green, no product changes
+1. `ASTRAL_PYTHON=python3 ./scripts/testing/run_component_tests.sh <item 1 node ids> -q` → 57 passed. (`ensure_component_venv.sh` only probes python3.10–3.12; host has 3.14 only.)
+2. Whole-file regression: failing set identical to `bd5dc48c` baseline (diffed by test id). Host baseline is 57 reds, not 30 — extras are env (`asyncpg` missing on system 3.14) + pre-existing drift; none new.
+3. `grep -n "Thread(" src/core/dispatcher.py` → 2 lines.
+4. `dispatcher.py` AST-1829 hunks: 0 missed lines, 0 missed branches.
+
+#### betty — 2026-09-28T06:05:40.264Z
+`origin/sub/AST-1824/AST-1829-sweep-interval-data-scheduled-sweep` @ `4e623d46` · sweep tests + tick stubs
+
+#### joan — 2026-09-28T05:57:15.037Z
+[plan-rubric] PROCEED (Commit: c8314af0) sweep debug in core only
+
+#### ada — 2026-09-28T05:56:32.106Z
+[plan-discuss] round=1 reply
+`origin/sub/AST-1824/AST-1829-sweep-interval-data-scheduled-sweep` @ `c8314af0`
+- fix-now: removed `_log.debug` from `get_due_tasks` (S1 step 8) and the mailbox `logger.debug` (S2 step 1); one ungated `logger.debug` loop over `due` in `_tick_loop` (S2 step 2a) covers both due paths. No debug in `src/data/`.
+- discuss: Canon batch-criteria bullet now names `sweep_hrs` as eligibility/cadence row data alongside `freq_hrs`.
+- `## Revisions` Revision 1 added.
+
+#### joan — 2026-09-28T05:55:34.449Z
+[plan-rubric] REVIEW (Commit: 3e9a1c56) move sweep debug to core
+
+#### ada — 2026-09-28T05:53:43.620Z
+`origin/sub/AST-1824/AST-1829-sweep-interval-data-scheduled-sweep` @ `3e9a1c56` · plan ready, sweep_hrs frozen
+
+---
+
 # AST-1829 — Sweep interval data + scheduled sweep
 
 - **Linear:** https://linear.app/astralcareermatch/issue/AST-1829
