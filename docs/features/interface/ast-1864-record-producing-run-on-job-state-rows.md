@@ -1,3 +1,68 @@
+<!-- linear-archive: AST-1864 archived 2026-10-07 -->
+
+## Linear archive (AST-1864)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1864/record-the-producing-run-on-each-job-state-row-execution-history-for  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 1  
+**Parent:** AST-1853 — Execution History for job modals  
+**Blocked by / blocks / related:** parent: AST-1853; blocks: AST-1865
+
+### Description
+
+## What this implements
+
+Job state transitions record the id of the run that actually wrote the logs and agent data (per-hop for chains, dispatch batch for single-hop) on each new state-history entry, alongside the existing `batch_id`. Backend only, with no UI. Child 2 reads the key this child names.
+
+## Citations
+
+`astral.entity.required-metadata`.
+
+## Scope
+
+`src/core/tracker.py`: modified function (the job state-transition function that appends `state_history`). Each new history entry also records the current run's audit id (the active log batch context set per hop / per dispatch). The existing `batch_id` key stays as-is so nothing that reads it breaks. When no run context is active (manual/operator transitions), the new key is absent. Key name is `plan-child`'s call.
+
+## Acceptance criteria
+
+1. **Single-hop run stamp.** Component test in `tests/component/core/test_tracker.py`: with the run context set to `X` and the job's `batch_id` also `X`, a transition appends an entry whose run-id key equals `X`. Fail = key missing or different.
+2. **Chained-hop run stamp.** Same test file: with the run context set to hop id `H` and the job's `batch_id` set to a different claim id `C`, the new entry's run-id key equals `H` (not `C`), and `batch_id` still equals `C`. Fail = run id equals `C` or is absent.
+3. **No run context → no stamp.** Transition with no run context (e.g. `POST /api/jobs/<id>/skip`) appends an entry with no run-id key. The row is not clickable in the modal. Fail = key present with a null/empty value, or row clickable.
+4. **No API or schema change.** `git diff origin/dev...<ftr> -- src/ui/api/ src/data/` is empty. Fail = any change there.
+
+## Boundaries
+
+No UI change (sibling #2 owns all frontend files). No new column, no API route, no back-matching of old chained rows.
+
+## Notes for planning
+
+Citations: `astral.entity.required-metadata`.. Estimate: 2. Susan decisions (parent Open questions): forward-only for chained history rows (no timestamp back-matching); admin-only click; project Astral Interface.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1853-execution-history-for-job-modals`, child `sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-29T18:14:23.367Z
+[code-rubric] PROCEED (Commit: 5ccfca28) run_id stamp matches plan
+
+#### betty — 2026-09-29T18:11:33.110Z
+`origin/sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows` @ `5ccfca28` · run_id stamp tests; narrowed manifest
+
+#### katherine — 2026-09-29T18:07:22.843Z
+`origin/sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows` @ `8c0ed6ab`
+
+#### joan — 2026-09-29T18:05:23.858Z
+[plan-rubric] PROCEED (Commit: b45705c1) run_id stamp tracker
+
+#### katherine — 2026-09-29T18:03:40.783Z
+`origin/sub/AST-1853/AST-1864-record-producing-run-on-job-state-rows` @ `b45705c1` · plan: stamp run_id
+
+---
+
 # AST-1864 — Record the producing run on each job state row (Execution History for job modals)
 
 - **Parent:** AST-1853 — Execution History for job modals
