@@ -1623,7 +1623,7 @@ class TestAst1880ResolveAdhocCatalogRoute:
         assert err is None
         assert (payload["model_code"], payload["server_id"], payload["tier"]) == ("deepseek-v4-flash", "deepseek", route["tier"])
         # AST-1957: no stored temperature → None (not sent); empty max_tokens → the model's default.
-        assert (payload["temperature"], payload["max_tokens"]) == (None, route["tier"]["default_max_tokens"])
+        assert (payload["temperature"], payload["max_tokens"]) == (None, route["tier"]["max_tokens"])
         assert payload["candidate_api_keys"] is None
         assert "tier_meta" not in payload
 

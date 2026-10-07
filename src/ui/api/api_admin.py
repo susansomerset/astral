@@ -1561,7 +1561,7 @@ def _resolve_adhoc(body):
         return None, (jsonify({"error": str(e)}), 400)
     tier = route["tier"]
     temperature = tier["temperature"]
-    max_tokens = agent["max_tokens"] if agent.get("max_tokens") is not None else tier["default_max_tokens"]
+    max_tokens = tier["max_tokens"]
 
     candidate_id = (body.get("candidate_id") or "").strip()
     cd = {}
