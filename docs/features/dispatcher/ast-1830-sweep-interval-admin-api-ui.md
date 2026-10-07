@@ -1,3 +1,66 @@
+<!-- linear-archive: AST-1830 archived 2026-10-07 -->
+
+## Linear archive (AST-1830)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1830/sweep-interval-in-admin-api-scheduled-actions-ui-add-a-sweep-interval  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1824 — Add a sweep interval to dispatch_task  
+**Blocked by / blocks / related:** parent: AST-1824
+
+### Description
+
+## What this implements
+
+After #1. Lets Susan set and see the sweep interval: create/update routes accept and validate it, list column metadata exposes it, and the Scheduled Actions modal and list show it. Does **not** own the schema or scheduler (#1), and leaves manual Sweep logic alone. Ships AC 11, 13, and 14.
+
+## Citations
+
+`patt.entity.batch-criteria` — the value is row data edited through the admin UI.
+
+## Scope
+
+* `src/ui/api/api_admin.py` — **modified** — dispatch_task create/update accept and validate the sweep interval, and list column metadata exposes it. Technical: create route takes an optional float, null/empty → NULL, negative → 400; update route adds it to the allowed set with the same parsing, AUTO edit lock unchanged; the dispatch_task list column metadata adds the column.
+* `src/ui/frontend/src/pages/AdminScheduledActions.tsx` — **modified** — sweep-interval field in the create/edit modal, plus a list column. Technical: row/form types, a modal numeric input (create + edit), and a sortable list column showing `—` when empty; Run/Sweep button logic unchanged.
+
+## Acceptance criteria
+
+11. **Admin API round-trip.** `POST /api/admin/dispatch_tasks` with a sweep interval of 2.5 persists 2.5. `PUT` on an AUTO-off row with 4 persists 4, and with null clears it to NULL. A negative value returns 400. The list endpoint's column metadata includes the sweep-interval key. Fail: any value not persisted as stated, a negative accepted, or the key absent from the column metadata.
+12. **UI.** On Scheduled Actions, the modal shows a sweep-interval numeric input in create and edit, and saving sends it. The list shows the value (or `—`), sortable. `npm run build` in `src/ui/frontend` succeeds. Fail: the field is missing, not sent, or the build fails.
+13. **Manual Sweep unchanged.** `grep -n "sweepDisabled" src/ui/frontend/src/pages/AdminScheduledActions.tsx` still shows `!!row.auto_mode && avail >= (row.min_count || 1)`, and a UI-initiated run on an AUTO row still runs one batch with min 1. Fail: the rule changed, or manual Sweep behavior regressed.
+
+## Boundaries
+
+Does not touch `src/data/database.py` or `src/core/dispatcher.py` (sibling #1 — schema + scheduler). Does not change the Run/Sweep button logic.
+
+## Notes for planning
+
+Parent AST-1824 Architectural definition carries the canon links. Sweep due is measured from `last_run_at` (any run); the sweep runs as one batch with min 1, same as today's UI Sweep branch in the dispatch batch loop.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`,
+child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-28T06:25:12.064Z
+[code-rubric] PROCEED (Commit: a41038c0) admin sweep_hrs UI+API context_tokens≈22000
+
+#### betty — 2026-09-28T06:20:48.683Z
+`origin/sub/AST-1824/AST-1830-sweep-interval-admin-api-ui` @ `a41038c0` · sweep API + UI tests
+
+#### joan — 2026-09-28T06:13:57.689Z
+[plan-rubric] PROCEED (Commit: de6c5fde) admin UI sweep_hrs surface context_tokens≈32000
+
+#### hedy — 2026-09-28T06:12:43.059Z
+`origin/sub/AST-1824/AST-1830-sweep-interval-admin-api-ui` @ `de6c5fde` · plan ready, 2 stages
+
+---
+
 # AST-1830 — Sweep interval in admin API + Scheduled Actions UI
 
 - **Linear:** https://linear.app/astralcareermatch/issue/AST-1830

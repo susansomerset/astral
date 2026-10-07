@@ -43,22 +43,27 @@ def _batch_key(batch_id: str, api_kwargs: Dict[str, Any]) -> Tuple[str, str]:
     return batch_id, json.dumps(rest, sort_keys=True, default=str)
 
 
-async def probe_host(
-    api_kwargs: Dict[str, Any],
-    send: Callable[[Dict[str, Any]], Awaitable[Any]],
-    record_probe: Callable[[Any], None],
-) -> str:
-    """Send the real call's request with the probe message as its only content and no system block;
-    return the response's `provider`. Raises when the call fails or names no provider."""
-    # Content swapped wholesale and system dropped → no cache_control can ride along. Everything else
-    # (max_tokens, temperature, effort, agent provider object) is the real call's. zdr is forced on a
-    # new provider dict so the host OpenRouter names is a zero-data-retention endpoint even when the
-    # account already enforces ZDR. The caller's kwargs stay unchanged; the batch pin happens later.
+def _probe_request_kwargs(api_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Build probe wire kwargs from the real call. Only three intentional diffs vs production:
+    (1) throwaway user content → LLM_PROBE_MESSAGE (not cached; the next call on the pinned host carries real content),
+    (2) no system block,
+    (3) extra_body.provider gains zdr=True on a copy (name a ZDR-capable host).
+    max_tokens, temperature, and effort/thinking bodies are unchanged — host pin must match gather."""
     probe_kwargs = {k: v for k, v in api_kwargs.items() if k not in ("messages", "system")}
     probe_kwargs["messages"] = [{"role": "user", "content": [{"type": "text", "text": LLM_PROBE_MESSAGE}]}]
     extra = dict(probe_kwargs.get("extra_body") or {})
     extra["provider"] = {**(extra.get("provider") or {}), "zdr": True}
     probe_kwargs["extra_body"] = extra
+    return probe_kwargs
+
+
+async def probe_host(
+    api_kwargs: Dict[str, Any],
+    send: Callable[[Dict[str, Any]], Awaitable[Any]],
+    record_probe: Callable[[Any], None],
+) -> str:
+    """Send the real call's routing signature with probe content; return response `provider`."""
+    probe_kwargs = _probe_request_kwargs(api_kwargs)
     logger.debug("Calling messages.create (probe): %s", probe_kwargs)
     response = await send(probe_kwargs)
     logger.debug("Response from messages.create (probe): %s", response)

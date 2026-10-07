@@ -451,7 +451,7 @@ class TestAst1879EstelleTurnRoute:
         assert call["model"] == route["sku"]
         # Seed row leaves max_tokens null → tier default. AST-1956: its stored settings reach the outbound body —
         # temperature 0.2 and effort "none" as thinking disabled; kimi direct gets no provider object.
-        assert call["max_tokens"] == route["tier"]["default_max_tokens"]
+        assert call["max_tokens"] == route["tier"]["max_tokens"]
         assert call.get("temperature") == agent_row["temperature"] == 0.2
         assert call["extra_body"] == {"thinking": {"type": "disabled"}}
 

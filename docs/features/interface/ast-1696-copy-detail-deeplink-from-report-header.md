@@ -1,3 +1,66 @@
+<!-- linear-archive: AST-1696 archived 2026-10-07 -->
+
+## Linear archive (AST-1696)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1696/copy-detail-deeplink-from-report-header-copy-single-page-access-link  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1687 — Copy single page access link from recommended job modal  
+**Blocked by / blocks / related:** parent: AST-1687
+
+### Description
+
+## What this implements
+
+Adds the labeled link-copy control on the Recommended Job Report header and wires clipboard write of the absolute `/jobs/detail/<jobId>` URL from the open modal. Does **not** own deeplink routing, auth return-path, diagnostic/email/LinkedIn copy payloads, or any Stytch↔candidate bind.
+
+## Citations
+
+none — no in-force pattern/statute fits; follow existing header `.btn secondary` copy feedback.
+
+## Scope
+
+`src/ui/frontend/src/components/RecommendedJobReportHeader.tsx` — **modified** — add the labeled Copy Link (or equivalent) control and Copied feedback in the existing header links row beside the other copy actions. `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` — **modified** — build the absolute detail URL from the open `jobId` and wire the header copy handler (clipboard write + feedback), without changing report tabs, load, or primary actions. `src/ui/frontend/src/pages/JobsJobDetail.tsx` — **unchanged expected** — deeplink host already opens the modal; this epic only surfaces its URL from the modal chrome. `src/utils/config.py` — **unchanged expected** — `JOBS_DETAIL_ROUTE_PREFIX` already defines `/jobs/detail`; do not invent a second path string. Touch only if plan-child must expose that constant to the frontend instead of staying in SYNC with `routes.tsx`. Path string stays aligned with `JOBS_DETAIL_ROUTE_PREFIX` / `routes.tsx` `jobs/detail/:jobId` — no second deeplink shape. `RecommendedJobReportHeader.tsx` — new optional callback + Copied state props for the link-copy control; render a `.btn secondary` labeled control in the existing `recommended-report-links` row; idle label returns after brief Copied feedback. `JobAnalysisReportModal.tsx` — when `jobId` is set, assemble `window.location.origin` + `/jobs/detail/` + encoded job id (same path `JobsJobDetail` / `JOBS_DETAIL_ROUTE_PREFIX` already use); on click, `navigator.clipboard.writeText` that absolute URL and drive header Copied feedback; no new API call.
+
+## Acceptance criteria
+
+- [X] 1\. With a Recommended Job Report modal open for job id `J`, clicking the new link-copy control puts an absolute URL on the clipboard whose path is exactly `/jobs/detail/J` (same origin as the app). **Fail:** clipboard text missing, relative-only path, wrong job id, or a path other than `/jobs/detail/<id>`.
+- [X] 2\. After a successful copy, the control label reads Copied briefly, then returns to the idle link-copy label. **Fail:** label never changes, or stays on Copied permanently.
+- [X] 3\. Opening that copied URL while authenticated opens the same Recommended Job Report modal for that job (existing AST-1463 behavior). **Fail:** 404 document body, blank page, or a different report UI.
+- [X] 4\. Diagnostic Copy, Copy Application Email, Copy LinkedIn Profile, Print Resume, and Print Cover Letter still appear and behave as before when their data is present. **Fail:** any of those controls removed, relabeled as the link control, or broken by the new wiring.
+- [X] 5\. No new unauthenticated/public job-report route is added in this epic. **Fail:** `grep` / route table shows a new public detail path beyond the existing authenticated `/jobs/detail/:jobId`.
+
+## Boundaries
+
+- [X] Does **not** own deeplink routing, auth return-path, diagnostic/email/LinkedIn copy payloads, or any Stytch↔candidate bind.
+
+## Notes for planning
+
+Citations: none. Estimate 2. Single unmarked child.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-16T23:35:08.284Z
+[code-rubric] PROCEED (Commit: 0934b72c) copy link matches plan
+
+#### betty — 2026-09-16T23:32:43.556Z
+`origin/sub/AST-1687/AST-1696-copy-detail-deeplink-from-report-header` @ `0934b72c` · Copy Link manifest ready
+
+#### joan — 2026-09-16T23:22:43.858Z
+[plan-rubric] PROCEED (Commit: 2c1923c2) copy link plan sound
+
+#### katherine — 2026-09-16T23:20:02.652Z
+`origin/sub/AST-1687/AST-1696-copy-detail-deeplink-from-report-header` @ `2c1923c2aee9bfb779fa4a0584abdc5ed8287fbd` · copy link plan ready
+
+---
+
 # AST-1696 — Copy detail deeplink from report header
 
 - **Linear:** [AST-1696](https://linear.app/astralcareermatch/issue/AST-1696/copy-detail-deeplink-from-report-header-copy-single-page-access-link)

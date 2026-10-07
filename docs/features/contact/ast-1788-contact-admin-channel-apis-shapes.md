@@ -1,3 +1,69 @@
+<!-- linear-archive: AST-1788 archived 2026-10-07 -->
+
+## Linear archive (AST-1788)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1788/contact-admin-channel-apis-shapes-manage-candidates-snapshot-slack  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1786 — Manage Candidates Snapshot Slack Channel + candidate mapping  
+**Blocked by / blocks / related:** parent: AST-1786; blocks: AST-1789
+
+### Description
+
+## What this implements
+
+Owns Contact orchestration + admin GET routes for channel options, membership check, and message snapshot JSON; plus `DATA_SHAPES` list column for Slack username and profile contact fields for channel id/name. Persists through existing candidate write path (no new writer). Does not own external Slack method bodies or Manage Candidates React. After #1.
+
+## Citations
+
+`stat.logging.info.api`, `stat.logging.debug`, `stat.logging.error`.
+
+## Scope
+
+`src/core/contact.py` — channel-list / membership / snapshot orchestration; `src/ui/api/api_contact.py` — `@require_admin` routes; `src/utils/config.py` — Manage list Slack username column + profile `contact.slack_channel_id` / `contact.slack_channel_name`.
+
+## Acceptance criteria
+
+- [X] 1 (shapes list column for Slack username)
+- [X] 2 (persist channel id+name via existing write path / API — shapes + no new writer; React stamps in #3)
+- [X] 7 (admin auth on routes)
+- [X] 8 (API reaches external via core)
+- [X] 10 (profile shapes expose channel fields)
+
+## Boundaries
+
+- [X] Does not own external Slack method bodies (#1) or Manage Candidates React (#3).
+
+## Notes for planning
+
+Consumes sibling #1 external helpers. Persist via existing candidate create / data PUT deep-merge.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-09-24T19:05:34.967Z
+[merge-child] blocked: validate-sub-log — git pull merge on sub (Merge remote-tracking branch reachable via sync(ftr) first-parent). @Hedy Lamarr run sync-child.sh sub/AST-1786/AST-1788-contact-admin-channel-apis-shapes --ftr AST-1786 --worktree /home/susan/astral-AST-1786/ so tip is first-parent stacked on origin/ftr/AST-1786-manage-candidates-snapshot-slack-channel, then republish; Chuckles retries merge-child.
+
+#### radia — 2026-09-24T19:04:23.837Z
+[code-rubric] PROCEED (Commit: c6592ebebe031f4d568249d58538f2aa650a067e) Admin channel APIs clean
+
+#### betty — 2026-09-24T19:01:40.089Z
+`origin/sub/AST-1786/AST-1788-contact-admin-channel-apis-shapes` @ `c6592ebebe031f4d568249d58538f2aa650a067e` · channel APIs tests ready
+
+#### joan — 2026-09-24T18:55:49.106Z
+[plan-rubric] PROCEED (Commit: 2dd09cfe6511f69c2cf364e02049376052c4181f) admin APIs shapes sound
+
+#### hedy — 2026-09-24T18:54:05.656Z
+`origin/sub/AST-1786/AST-1788-contact-admin-channel-apis-shapes` @ `2dd09cfe` · plan ready
+
+---
+
 # AST-1788 — Contact admin channel APIs + shapes
 
 **Linear:** [AST-1788](https://linear.app/astralcareermatch/issue/AST-1788/contact-admin-channel-apis-shapes-manage-candidates-snapshot-slack)  
