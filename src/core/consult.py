@@ -1911,7 +1911,10 @@ async def qualify_job_listings(
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Batch job list screen (Pattern A). Thin wrapper over _run_batch_consult (ast-326).
+    """Batch joblist grade (Pattern A). Thin wrapper over _run_batch_consult (ast-326).
+
+    Roster title regex runs at gaze ingest (``ingest_jobs``); qualify claims NEW / NEW_RETRY only.
+    VALID_TITLE* remains in the AI hop for legacy drain / manual entity_ids.
 
     With ``batch_call_mode=1``, the dispatcher attaches the full backlog (within one ledger batch_id) then may
     split work into chunked parallel ``_run_batch_consult`` calls sized to dispatch_task.batch_size (AST-502);
@@ -1922,15 +1925,18 @@ async def qualify_job_listings(
     task_key = "qualify_job_listings"
     cfg = _consult_orchestration(task_key)
 
-    title_screen_failed = 0
-    if any((j.get("state") or "") == "NEW" for j in jobs):
-        from src.core.gazer import validate_title_batch
+    _qualify_ai_states = frozenset({
+        "NEW",
+        retry_of("NEW"),
+        "VALID_TITLE",
+        retry_of("VALID_TITLE"),
+    })
 
+    if any((j.get("state") or "") == "NEW" for j in jobs):
         new_jobs = [j for j in jobs if (j.get("state") or "") == "NEW"]
         # AST-1704: track from source_entity SoT (column `source`), not employer company_id.
         meteorite_new = [j for j in new_jobs if _job_is_meteorite_track(j)]
-        roster_new = [j for j in new_jobs if not _job_is_meteorite_track(j)]
-        # AST-1152: candidate submission is title qualification — never pattern-screen meteorites.
+        # AST-1152: candidate submission is title qualification — never roster title-pattern screen.
         meteorite_landing = METEORITE_CONFIG["job_create_state"]
         logger.debug("Beginning meteorite NEW re-home loop on %s items", len(meteorite_new))
         for j in meteorite_new:
@@ -1938,22 +1944,16 @@ async def qualify_job_listings(
             tracker.transition_job_state([aid], meteorite_landing)
             _entity_info(aid, "job", "state", f"NEW -> {meteorite_landing}")
         logger.debug("End meteorite NEW re-home loop after %s items", len(meteorite_new))
-        if roster_new:
-            tr = await validate_title_batch(batch_id, roster_new, ctx or {}, debug=debug)
-            title_screen_failed = int(tr.get("failed", 0))
         for j in jobs:
             if (j.get("state") or "") == "NEW" or _job_is_meteorite_track(j):
                 fresh = tracker.get_job(j["astral_job_id"])
                 if fresh:
                     j["state"] = fresh.get("state")
-    ai_jobs = [
-        j for j in jobs
-        if (j.get("state") or "") in ("VALID_TITLE", retry_of("VALID_TITLE"), retry_of("NEW"))
-    ]
+    ai_jobs = [j for j in jobs if (j.get("state") or "") in _qualify_ai_states]
     if not ai_jobs:
         return {
             "passed": 0,
-            "failed": title_screen_failed,
+            "failed": 0,
             "total": claimed_total,
         }
     jobs = ai_jobs
@@ -2050,9 +2050,8 @@ async def qualify_job_listings(
     result = await _run_batch_consult(
         task_key, batch_id, jobs, assemble, process, ctx, debug, batch_chunk_index=batch_chunk_index,
     )
-    if title_screen_failed:
+    if claimed_total != len(jobs):
         result = dict(result)
-        result["failed"] = int(result.get("failed", 0)) + title_screen_failed
         result["total"] = claimed_total
     return result
 
