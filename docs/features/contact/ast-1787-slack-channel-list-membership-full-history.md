@@ -1,3 +1,82 @@
+<!-- linear-archive: AST-1787 archived 2026-10-07 -->
+
+## Linear archive (AST-1787)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1787/slack-channel-list-membership-and-full-history-external-manage  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1786 — Manage Candidates Snapshot Slack Channel + candidate mapping  
+**Blocked by / blocks / related:** parent: AST-1786; blocks: AST-1788
+
+### Description
+
+## What this implements
+
+Owns external helpers: bot-visible channel list for picker, per-user channel membership check, and paginated full-channel history ascending for snapshot. Does not own Contact orchestration, admin routes, shapes, or Manage Candidates UI.
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.error`.
+
+## Scope
+
+`src/external/slack.py` — channel list / membership / full history ascending helpers only (extend or complement limited `fetch_conversation_history` as needed).
+
+## Acceptance criteria
+
+- [X] 6 (partial — history ascending / full pagination in external)
+- [X] 8 (external Slack I/O in `src/external/slack.py`)
+- [X] 9 (`conversations.members` only for membership-check helper, not poster pool)
+
+## Boundaries
+
+- [X] Does not own Contact orchestration, admin routes, shapes, or Manage Candidates UI (siblings #2–#3).
+
+## Notes for planning
+
+After this lands, Hedy (#2) consumes the helpers. Distinct from AST-1667 ban on `conversations.members` as poster pool — membership check for a known user+channel is in scope here.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Existing AC9 regression: `tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool`
+2. Channel list / membership / full history (new): `tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool \
+  tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/external/slack.md` — `261b654f41a6bf330e17b98aae4494cdf7076da8`
+
+### Comments
+
+#### radia — 2026-09-24T18:48:49.407Z
+[code-rubric] PROCEED (Commit: d92ff15f242ad4bd7c247c93f0cc66d8edf288a7) Slack helpers canon-clean
+
+#### betty — 2026-09-24T18:32:14.136Z
+`origin/sub/AST-1786/AST-1787-slack-channel-list-membership-full-history` @ `d92ff15f` · channel helpers tests ready
+
+#### joan — 2026-09-24T18:24:17.784Z
+[plan-rubric] PROCEED (Commit: e8c548243066583fe743d3807e633de2e1f90a40) external helpers plan sound
+
+#### ada — 2026-09-24T18:21:48.009Z
+`origin/sub/AST-1786/AST-1787-slack-channel-list-membership-full-history` @ `e8c548243066583fe743d3807e633de2e1f90a40` · plan ready
+
+---
+
 # AST-1787 — Slack channel list, membership, and full history (external)
 
 **Linear:** [AST-1787](https://linear.app/astralcareermatch/issue/AST-1787/slack-channel-list-membership-and-full-history-external-manage)  
