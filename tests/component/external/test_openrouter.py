@@ -77,8 +77,8 @@ class TestAst1959ProbeHost:
         assert [r.id for r in recorded] == ["probe_resp"]
 
     @pytest.mark.asyncio
-    async def test_probe_drops_thinking_disabled_on_extra_body(self) -> None:
-        """Reasoning-mandatory OpenRouter slugs must not get thinking.type=disabled on the host probe."""
+    async def test_probe_keeps_thinking_body_unchanged(self) -> None:
+        """Probe must not rewrite effort/thinking — same routing signature as the real call."""
         send = _Send()
         kwargs = {
             **REAL,
@@ -88,7 +88,7 @@ class TestAst1959ProbeHost:
             },
         }
         await openrouter.probe_host(kwargs, send, lambda _r: None)
-        assert "thinking" not in send.calls[0]["extra_body"]
+        assert send.calls[0]["extra_body"]["thinking"] == {"type": "disabled"}
         assert kwargs["extra_body"]["thinking"] == {"type": "disabled"}
 
     @pytest.mark.asyncio

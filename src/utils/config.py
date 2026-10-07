@@ -2378,9 +2378,6 @@ CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH: Dict[str, str] = {
     "craft_prefilter_rubric": "/artifacts/company_watch_criteria",
     "craft_company_search_terms": "/artifacts/company_search_terms",
 }
-# Output budget floor for craft_*_rubric UI generate (long per-criterion content).
-# Applied in do_task when the agent/model default is lower (AST-903).
-CRAFT_RUBRIC_MAX_TOKENS = 32000
 _RUBRIC_OWNER_TASK_BY_CONSUMER_TASK_KEY = frozenset(RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.values())
 
 
@@ -5089,8 +5086,9 @@ LLM_SERVER_CONFIG = {
 }
 LLM_SERVER_PROTOCOLS = ("anthropic", "anthropic_compat")
 LLM_SERVER_AUTH_STYLES = ("x-api-key", "bearer")
-# Probe request content (AST-1959): replaces the real call's content; system block dropped, no cache_control.
-LLM_PROBE_MESSAGE = "Hi! This may seem odd, but just respond with '1' to this prompt. No thinking, please. (I'll explain in the next turn.)"
+# Probe user turn only (AST-1959): tiny text so the host pin is cheap on *input*; max_tokens / effort / thinking
+# match the real hop — do not try to disable reasoning here (that breaks host parity and mandatory-thinking slugs).
+LLM_PROBE_MESSAGE = "Respond with 1."
 
 # Timesheet rows (database ledgers): provider string validated on insert = a server id.
 ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)
@@ -5228,8 +5226,9 @@ LLM_MODEL_ROUTING_TYPES = ("direct", "openrouter")
 #   routing             — LLM_MODEL_ROUTING_TYPES value: "openrouter" = billed cost is looked up on the
 #                         platform per call (AST-1963); "direct" = catalog price only
 #   sku                 — vendor model string sent as `model`
-#   max_tokens_floor    — int | None; output-token floor applied over the agent's max_tokens
+#   max_tokens_floor    — int | None; optional catalog minimum merged in resolve_agent_settings
 #   default_max_tokens  — used when the agent row leaves max_tokens empty
+#   tier.max_tokens     — resolved wire budget (agent row or default, then catalog floor if any)
 #   pricing[<sku>]: model_label, cpm_input, cpm_output, cpm_cache_read, cpm_cache_write,
 #     cache_min_tokens (USD per million tokens; cache_write 0 where the vendor does not bill it)
 # ---------------------------------------------------------------------------
@@ -5401,8 +5400,16 @@ def resolve_agent_settings(model_id: str, agent: Dict[str, Any]) -> Dict[str, An
             ("ignore", agent.get("provider_ignore") or None),
             ("sort", agent.get("provider_sort") or None),
         ) if v is not None} or None
+    row_max = agent.get("max_tokens")
+    max_tokens = (
+        int(row_max) if row_max is not None else int(m["default_max_tokens"])
+    )
+    floor = m.get("max_tokens_floor")
+    if floor is not None:
+        max_tokens = max(max_tokens, int(floor))
     tier = {
         "sku": m["sku"],
+        "max_tokens": max_tokens,
         "max_tokens_floor": m["max_tokens_floor"],
         "default_max_tokens": m["default_max_tokens"],
         "temperature": agent.get("temperature"),

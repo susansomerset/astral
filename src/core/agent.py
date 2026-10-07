@@ -66,8 +66,6 @@ from src.utils.config import (
     _TOKEN_RE,
     list_artifact_keys_in_prompt_texts,
     RUBRIC_FEEDBACK_CONFIG,
-    CRAFT_RUBRIC_MAX_TOKENS,
-    CRAFT_RUBRIC_UI_TASK_KEYS,
     is_vector_feedback_task,
     is_conversational_task,
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
@@ -2107,13 +2105,7 @@ async def do_task(
         return _with_harvest(_missing_server_key_result(candidate_id, server_id))
     # AST-1956: temperature is the agent row's own setting, sent as stored (None → not sent).
     agent_temperature = tier["temperature"]
-    agent_max_tokens = agent_row.get("max_tokens") if agent_row.get("max_tokens") is not None else tier["default_max_tokens"]
-    # Craft rubrics emit long per-criterion content — floor so Get cannot truncate mid-JSON (AST-903).
-    if task_key in CRAFT_RUBRIC_UI_TASK_KEYS:
-        agent_max_tokens = max(int(agent_max_tokens), int(CRAFT_RUBRIC_MAX_TOKENS))
-    # AST-1391: catalog per-tier output floor (None = no floor).
-    if tier.get("max_tokens_floor") is not None:
-        agent_max_tokens = max(int(agent_max_tokens), int(tier["max_tokens_floor"]))
+    agent_max_tokens = tier["max_tokens"]
 
     _hop_kw = dict(
         chain_entry=chain_entry,

@@ -2058,7 +2058,7 @@ class TestAst492BrainSettingDoTask:
 
 # AST-1956: the agent row's plain settings ride the route to both clients as stored — no gating, no derivation.
 # Branches: compat (openrouter provider object / direct server → no provider) vs anthropic (effort kwarg);
-# settings set vs empty; craft rubric max_tokens floor (TestAst1380…); debug line temp/effort; rejected setting = plain failure.
+# settings set vs empty; craft uses agent row max_tokens (TestAst903…); debug line temp/effort; rejected setting = plain failure.
 # Wire bodies (temperature / output_config / thinking / provider keys) are test_llm_compat.py / test_anthropic.py's.
 class TestAst1956SettingsOnTheWire:
     @pytest.mark.asyncio
@@ -6805,17 +6805,16 @@ class TestAst1298OrphanedJobClaimRelease:
         release.assert_called_once_with("job-1298")
 
 
-class TestAst903CraftRubricMaxTokensFloor:
-    """AST-903: do_task floors max_tokens for craft_*_rubric UI tasks."""
+class TestAst903CraftRubricMaxTokensFromAgentRow:
+    """Craft rubric hops send the agent row max_tokens (or tier default), not a task-key floor."""
 
     @pytest.mark.asyncio
-    async def test_craft_get_rubric_floors_max_tokens_to_config(
+    async def test_craft_get_rubric_uses_agent_row_max_tokens(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # Agent row max_tokens=100 (from _agent_rows); floor must raise to CRAFT_RUBRIC_MAX_TOKENS.
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         criteria = [
@@ -6824,7 +6823,6 @@ class TestAst903CraftRubricMaxTokensFloor:
         send = AsyncMock(
             return_value={
                 "success": True,
-                # Rubric-backed normalize injects agent_performance — criteria live under agent_payload.
                 "parsed_response": {
                     "agent_performance": {"status": "success"},
                     "agent_payload": {"criteria": criteria},
@@ -6841,7 +6839,40 @@ class TestAst903CraftRubricMaxTokensFloor:
         )
         assert out["success"] is True
         assert send.await_args is not None
-        assert send.await_args.kwargs.get("max_tokens") == cfg.CRAFT_RUBRIC_MAX_TOKENS
+        assert send.await_args.kwargs.get("max_tokens") == 100
+
+    @pytest.mark.asyncio
+    async def test_craft_get_rubric_honors_large_row_max_tokens(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(max_tokens=384000),
+        )
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {"criteria": [{"code": "GT", "label": "G", "content": "x", "importance": 1}]},
+                },
+                "api_response": _api_response('{"criteria":[]}'),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        out = await agent_mod.do_task(
+            "craft_get_rubric",
+            index="karfo",
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "karfo"}},
+        )
+        assert out["success"] is True
+        assert send.await_args.kwargs.get("max_tokens") == 384000
 
     @pytest.mark.asyncio
     async def test_non_craft_task_keeps_agent_max_tokens(
@@ -6918,8 +6949,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         assert send.await_args is not None
         tier = send.await_args.kwargs["tier"]
         assert tier["reasoning_effort"] == "high"
-        # Kimi has no tier floor → craft floor wins over the row's 100.
-        assert send.await_args.kwargs.get("max_tokens") == cfg.CRAFT_RUBRIC_MAX_TOKENS
+        assert send.await_args.kwargs.get("max_tokens") == 100
 
     @pytest.mark.asyncio
     async def test_non_craft_keeps_stored_effort(
@@ -9276,7 +9306,7 @@ class TestAst1391DeepseekBigOutputFloor:
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # Floor mechanism kept by do_task: a stored 16000 under a catalog floor sends the floor.
+        # Catalog floor merged in resolve_agent_settings: row 16000 under floor sends the floor.
         send_ds, send_anth = self._patch_evaluate_jd(
             monkeypatch, model_id="deepseek-v4-pro", max_tokens=16000, floor=_STUB_FLOOR
         )
@@ -9358,8 +9388,7 @@ class TestAst1391DeepseekBigOutputFloor:
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # AC6: catalog max_tokens_floor above craft 32000 wins on the wire; effort is not overridden for craft.
-        assert _STUB_FLOOR > cfg.CRAFT_RUBRIC_MAX_TOKENS
+        # AC6: catalog max_tokens_floor wins when above the agent row; effort is not overridden for craft.
         monkeypatch.setitem(cfg.LLM_MODEL_CONFIG["deepseek-v4-pro"], "max_tokens_floor", _STUB_FLOOR)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
