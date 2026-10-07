@@ -28,6 +28,7 @@ from src.data.database import (
 
 from src.data import database
 from src.core.agent import _current_agent_task_run_next, compute_batch_cost, task_llm_server_id_or_none
+from src.core.timesheets import start_batch_openrouter_platform_reconcile
 from src.utils.deploy_status import is_local_deploy_env
 from src.utils.config import (
     ASTRAL_CONFIG,
@@ -998,6 +999,39 @@ def _log_dispatch_task_completed(
         suffix,
     )
 
+
+def _persist_dispatch_ledger_close(
+    dispatch_ledger_id: str,
+    final_status: str,
+    accumulated: Dict[str, Any],
+    candidate_id: Any,
+    task: Dict[str, Any],
+    task_key: str,
+) -> None:
+    total_cost = compute_batch_cost(dispatch_ledger_id)
+    total_processed = accumulated.get("total_processed", 0)
+    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
+    database.update_dispatch_ledger(
+        dispatch_ledger_id,
+        status=final_status,
+        completed_at=_now_iso(),
+        total_cost=total_cost,
+        entity_cost=round(entity_cost, 7),
+        **accumulated,
+    )
+    if final_status == "COMPLETED":
+        _log_dispatch_task_completed(
+            candidate_id,
+            task.get("entity_type"),
+            task_key,
+            accumulated.get("total_passed", 0),
+            accumulated.get("total_failed", 0),
+            accumulated.get("total_errors", 0),
+            dispatch_ledger_id,
+        )
+        start_batch_openrouter_platform_reconcile(dispatch_ledger_id)
+
+
 # Registry: task_id -> {thread, loop, asyncio_task, task_key, candidate_id, is_auto}
 _task_registry: Dict[int, Dict[str, Any]] = {}
 _registry_lock = threading.Lock()
@@ -1085,27 +1119,9 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         finally:
             if dispatch_ledger_id:
                 try:
-                    total_cost = compute_batch_cost(dispatch_ledger_id)
-                    total_processed = accumulated.get("total_processed", 0)
-                    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
-                    database.update_dispatch_ledger(
-                        dispatch_ledger_id,
-                        status=final_status,
-                        completed_at=_now_iso(),
-                        total_cost=total_cost,
-                        entity_cost=round(entity_cost, 7),
-                        **accumulated,
+                    _persist_dispatch_ledger_close(
+                        dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                     )
-                    if final_status == "COMPLETED":
-                        _log_dispatch_task_completed(
-                            candidate_id,
-                            task.get("entity_type"),
-                            task_key,
-                            accumulated.get("total_passed", 0),
-                            accumulated.get("total_failed", 0),
-                            accumulated.get("total_errors", 0),
-                            dispatch_ledger_id,
-                        )
                 except Exception as e:
                     logger.exception(
                         "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
@@ -1189,27 +1205,9 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         finally:
             if dispatch_ledger_id:
                 try:
-                    total_cost = compute_batch_cost(dispatch_ledger_id)
-                    total_processed = accumulated.get("total_processed", 0)
-                    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
-                    database.update_dispatch_ledger(
-                        dispatch_ledger_id,
-                        status=final_status,
-                        completed_at=_now_iso(),
-                        total_cost=total_cost,
-                        entity_cost=round(entity_cost, 7),
-                        **accumulated,
+                    _persist_dispatch_ledger_close(
+                        dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                     )
-                    if final_status == "COMPLETED":
-                        _log_dispatch_task_completed(
-                            candidate_id,
-                            task.get("entity_type"),
-                            task_key,
-                            accumulated.get("total_passed", 0),
-                            accumulated.get("total_failed", 0),
-                            accumulated.get("total_errors", 0),
-                            dispatch_ledger_id,
-                        )
                 except Exception as e:
                     logger.exception(
                         "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
@@ -1316,27 +1314,9 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         finally:
             if dispatch_ledger_id:
                 try:
-                    total_cost = compute_batch_cost(dispatch_ledger_id)
-                    total_processed = accumulated.get("total_processed", 0)
-                    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
-                    database.update_dispatch_ledger(
-                        dispatch_ledger_id,
-                        status=final_status,
-                        completed_at=_now_iso(),
-                        total_cost=total_cost,
-                        entity_cost=round(entity_cost, 7),
-                        **accumulated,
+                    _persist_dispatch_ledger_close(
+                        dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                     )
-                    if final_status == "COMPLETED":
-                        _log_dispatch_task_completed(
-                            candidate_id,
-                            task.get("entity_type"),
-                            task_key,
-                            accumulated.get("total_passed", 0),
-                            accumulated.get("total_failed", 0),
-                            accumulated.get("total_errors", 0),
-                            dispatch_ledger_id,
-                        )
                 except Exception as e:
                     logger.exception(
                         "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
@@ -1493,27 +1473,9 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
     finally:
         if dispatch_ledger_id:
             try:
-                total_cost = compute_batch_cost(dispatch_ledger_id)
-                total_processed = accumulated.get("total_processed", 0)
-                entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
-                database.update_dispatch_ledger(
-                    dispatch_ledger_id,
-                    status=final_status,
-                    completed_at=_now_iso(),
-                    total_cost=total_cost,
-                    entity_cost=round(entity_cost, 7),
-                    **accumulated,
+                _persist_dispatch_ledger_close(
+                    dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                 )
-                if final_status == "COMPLETED":
-                    _log_dispatch_task_completed(
-                        candidate_id,
-                        task.get("entity_type"),
-                        task_key,
-                        accumulated.get("total_passed", 0),
-                        accumulated.get("total_failed", 0),
-                        accumulated.get("total_errors", 0),
-                        dispatch_ledger_id,
-                    )
             except Exception as e:
                 logger.exception(
                     "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
