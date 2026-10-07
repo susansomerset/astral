@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -314,3 +315,61 @@ class TestAst1966ClosedLedgerRefresh:
         timesheets_mod.reconcile_timesheet_platform("gen-1", "openrouter", "cand-1", "batch-1")
         led = db.get_dispatch_ledger("batch-1")
         assert (led["total_cost"], led["entity_cost"]) == (pytest.approx(0.06), pytest.approx(0.03))
+
+
+_GEN_RECORD = {
+    "id": "gen-1",
+    "total_cost": 0.04,
+    "provider_name": "DeepInfra",
+    "native_tokens_prompt": 100,
+    "native_tokens_completion": 50,
+    "native_tokens_cached": 0,
+    "native_tokens_reasoning": 10,
+    "provider_responses": [{"provider_name": "DeepInfra", "status": 200}],
+}
+
+
+class TestBatchOpenrouterPlatformReconcile:
+    def test_start_skips_without_pending_gen_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        thread = MagicMock()
+        monkeypatch.setattr(timesheets_mod, "count_pending_gen_platform_timesheets", lambda: 0)
+        monkeypatch.setattr(timesheets_mod.threading, "Thread", thread)
+        timesheets_mod.start_batch_openrouter_platform_reconcile("batch-1")
+        thread.assert_not_called()
+
+    def test_batch_pass_fills_cost_host_and_metadata(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        db = sqlite_in_memory
+        db._add_timesheet_entry(**_row_kwargs("gen-1", "batch-x"))
+        monkeypatch.setattr(timesheets_mod, "TIMESHEET_BATCH_RECONCILE_PING_AT_SECONDS", (0,))
+        monkeypatch.setattr(timesheets_mod, "_sleep_until", lambda _d: None)
+        monkeypatch.setattr(timesheets_mod, "get_candidate", lambda cid: {"candidate_api_keys": {"openrouter": _KEY}})
+        monkeypatch.setattr(
+            timesheets_mod,
+            "get_generation_record",
+            lambda gid, key: {"success": True, "data": {**_GEN_RECORD, "id": gid}},
+        )
+        with caplog.at_level(logging.WARNING, logger="src.core.timesheets"):
+            timesheets_mod.reconcile_pending_gen_platform()
+        row = _row(db, "gen-1")
+        assert row["platform_cost"] == 0.04
+        assert row["host"] == "DeepInfra"
+        meta = json.loads(row["platform_metadata"])
+        assert meta["provider_responses"][0]["provider_name"] == "DeepInfra"
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    def test_not_ready_api_leaves_row_unchanged_without_warning(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        db = sqlite_in_memory
+        db._add_timesheet_entry(**_row_kwargs("gen-1", "batch-x"))
+        before = _row(db, "gen-1")
+        monkeypatch.setattr(timesheets_mod, "TIMESHEET_BATCH_RECONCILE_PING_AT_SECONDS", (0,))
+        monkeypatch.setattr(timesheets_mod, "_sleep_until", lambda _d: None)
+        monkeypatch.setattr(timesheets_mod, "get_candidate", lambda cid: {"candidate_api_keys": {"openrouter": _KEY}})
+        monkeypatch.setattr(timesheets_mod, "get_generation_record", lambda gid, key: _NOT_READY)
+        with caplog.at_level(logging.WARNING, logger="src.core.timesheets"):
+            timesheets_mod.reconcile_pending_gen_platform()
+        assert _row(db, "gen-1") == before
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]

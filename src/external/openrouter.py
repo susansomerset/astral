@@ -100,13 +100,10 @@ async def get_batch_host(
     return host, err
 
 
-def get_generation_stats(generation_id: str, api_key: str) -> Dict[str, Any]:
-    """One call's billed stats by generation id and key: {"success": True, "total_cost", "native_tokens_prompt",
-    "native_tokens_completion", "native_tokens_cached", "native_tokens_reasoning", "provider_name"}, or
-    {"success": False, "error"} when the call fails or the record isn't ready (404 / no total_cost). Never raises."""
+def _fetch_generation_data(generation_id: str, api_key: str) -> Dict[str, Any]:
+    """GET /generation → {"success": True, "data": {...}} or {"success": False, "error": str}. Never raises."""
     logger.debug("Calling GET generation: id=%s", generation_id)
     try:
-        # Inside the try: the integration-mode guard's RuntimeError becomes an error result, not a raise.
         require_controlled_external_io("openrouter.get_generation_stats")
         resp = httpx.get(
             GENERATION_URL,
@@ -114,23 +111,49 @@ def get_generation_stats(generation_id: str, api_key: str) -> Dict[str, Any]:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=provider_call_http_timeout_seconds(),
         )
-        # Never log the key — status and body only.
         logger.debug("Response from GET generation: id=%s status=%s body=%s", generation_id, resp.status_code, resp.text)
         if resp.status_code != 200:
-            return {"success": False, "error": f"Generation stats HTTP {resp.status_code}: {normalize_provider_error(resp.text, fallback='empty body')}"}
+            return {
+                "success": False,
+                "error": f"Generation stats HTTP {resp.status_code}: {normalize_provider_error(resp.text, fallback='empty body')}",
+            }
         data = (resp.json() or {}).get("data") or {}
-        if data.get("total_cost") is None:
-            return {"success": False, "error": "Generation stats not ready: no total_cost"}
-        return {
-            "success": True,
-            "total_cost": float(data["total_cost"]),
-            "native_tokens_prompt": data.get("native_tokens_prompt"),
-            "native_tokens_completion": data.get("native_tokens_completion"),
-            "native_tokens_cached": data.get("native_tokens_cached"),
-            "native_tokens_reasoning": data.get("native_tokens_reasoning"),
-            "provider_name": data.get("provider_name"),
-        }
+        if not data:
+            return {"success": False, "error": "Generation stats not ready: empty data"}
+        return {"success": True, "data": data}
     except Exception as e:
         err = f"Generation stats lookup failed: {normalize_provider_error(e)}"
         logger.debug("Response from GET generation: id=%s error=%s", generation_id, err)
         return {"success": False, "error": err}
+
+
+def get_generation_stats(generation_id: str, api_key: str) -> Dict[str, Any]:
+    """One call's billed stats by generation id and key: {"success": True, "total_cost", "native_tokens_prompt",
+    "native_tokens_completion", "native_tokens_cached", "native_tokens_reasoning", "provider_name"}, or
+    {"success": False, "error"} when the call fails or the record isn't ready (404 / no total_cost). Never raises."""
+    out = _fetch_generation_data(generation_id, api_key)
+    if not out["success"]:
+        return out
+    data = out["data"]
+    if data.get("total_cost") is None:
+        return {"success": False, "error": "Generation stats not ready: no total_cost"}
+    return {
+        "success": True,
+        "total_cost": float(data["total_cost"]),
+        "native_tokens_prompt": data.get("native_tokens_prompt"),
+        "native_tokens_completion": data.get("native_tokens_completion"),
+        "native_tokens_cached": data.get("native_tokens_cached"),
+        "native_tokens_reasoning": data.get("native_tokens_reasoning"),
+        "provider_name": data.get("provider_name"),
+    }
+
+
+def get_generation_record(generation_id: str, api_key: str) -> Dict[str, Any]:
+    """Full generation payload when billed stats are ready; same failure shape as get_generation_stats. Never raises."""
+    out = _fetch_generation_data(generation_id, api_key)
+    if not out["success"]:
+        return out
+    data = out["data"]
+    if data.get("total_cost") is None:
+        return {"success": False, "error": "Generation stats not ready: no total_cost"}
+    return {"success": True, "data": data}

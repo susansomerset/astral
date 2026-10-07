@@ -2480,6 +2480,7 @@ _AGENT_TIMESHEET_PLATFORM_COLUMNS = (
     ("native_tokens_reasoning",  "INTEGER"),
     ("host",                     "TEXT"),
     ("platform_reconciled_at",   "TIMESTAMP"),
+    ("platform_metadata",        "TEXT"),
 )
 
 
@@ -2681,6 +2682,7 @@ def update_timesheet_platform(
     native_tokens_cached: Optional[int],
     native_tokens_reasoning: Optional[int],
     host: Optional[str],
+    platform_metadata: Optional[str] = None,
 ) -> int:
     """Set one agent_timesheets row's platform columns by agent_req_id; stamps platform_reconciled_at.
     Never touches calc_cost_* or the original token columns. Returns rowcount (0 when no row matches)."""
@@ -2693,13 +2695,13 @@ def update_timesheet_platform(
                 UPDATE agent_timesheets
                 SET platform_cost = ?, native_tokens_prompt = ?, native_tokens_completion = ?,
                     native_tokens_cached = ?, native_tokens_reasoning = ?, host = ?,
-                    platform_reconciled_at = ?
+                    platform_reconciled_at = ?, platform_metadata = ?
                 WHERE agent_req_id = ?
                 """,
                 (
                     platform_cost, native_tokens_prompt, native_tokens_completion,
                     native_tokens_cached, native_tokens_reasoning, host,
-                    _utc_now(), agent_req_id,
+                    _utc_now(), platform_metadata, agent_req_id,
                 ),
             )
             conn.commit()
@@ -2709,6 +2711,46 @@ def update_timesheet_platform(
             raise
         finally:
             conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def count_pending_gen_platform_timesheets() -> int:
+    """gen-* rows still missing platform_cost — cheap gate before platform reconcile."""
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_timesheets_schema(conn)
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM agent_timesheets
+                WHERE agent_req_id LIKE 'gen-%' AND platform_cost IS NULL
+                """,
+            ).fetchone()
+            return int(row["n"] or 0)
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def list_pending_gen_platform_timesheets() -> List[Dict[str, Any]]:
+    """All gen-* rows with no platform_cost yet — reconcile candidates across batches."""
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_timesheets_schema(conn)
+            rows = conn.execute(
+                """
+                SELECT agent_req_id, candidate_id, batch_id, model_code
+                FROM agent_timesheets
+                WHERE agent_req_id LIKE 'gen-%' AND platform_cost IS NULL
+                ORDER BY created_at ASC
+                """,
+            ).fetchall()
+            return [_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
     return _run_with_retry(_with_conn)
 
 
