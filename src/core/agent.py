@@ -2111,9 +2111,6 @@ async def do_task(
     # Craft rubrics emit long per-criterion content — floor so Get cannot truncate mid-JSON (AST-903).
     if task_key in CRAFT_RUBRIC_UI_TASK_KEYS:
         agent_max_tokens = max(int(agent_max_tokens), int(CRAFT_RUBRIC_MAX_TOKENS))
-        # AST-1380 Decision A: thinking shares max_tokens with the JSON answer —
-        # force thinking off (effort "none") so craft criteria are not starved mid-string.
-        tier = {**tier, "reasoning_effort": "none"}
     # AST-1391: catalog per-tier output floor (None = no floor).
     if tier.get("max_tokens_floor") is not None:
         agent_max_tokens = max(int(agent_max_tokens), int(tier["max_tokens_floor"]))

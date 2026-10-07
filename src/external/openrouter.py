@@ -57,6 +57,11 @@ async def probe_host(
     probe_kwargs = {k: v for k, v in api_kwargs.items() if k not in ("messages", "system")}
     probe_kwargs["messages"] = [{"role": "user", "content": [{"type": "text", "text": LLM_PROBE_MESSAGE}]}]
     extra = dict(probe_kwargs.get("extra_body") or {})
+    # Host pin only: some OpenRouter slugs (e.g. kimi-k2-thinking) reject thinking.type=disabled.
+    # Drop explicit off on the probe; the real call's extra_body is built separately and unchanged.
+    thinking = extra.get("thinking")
+    if isinstance(thinking, dict) and thinking.get("type") == "disabled":
+        extra.pop("thinking", None)
     extra["provider"] = {**(extra.get("provider") or {}), "zdr": True}
     probe_kwargs["extra_body"] = extra
     logger.debug("Calling messages.create (probe): %s", probe_kwargs)

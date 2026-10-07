@@ -5090,7 +5090,7 @@ LLM_SERVER_CONFIG = {
 LLM_SERVER_PROTOCOLS = ("anthropic", "anthropic_compat")
 LLM_SERVER_AUTH_STYLES = ("x-api-key", "bearer")
 # Probe request content (AST-1959): replaces the real call's content; system block dropped, no cache_control.
-LLM_PROBE_MESSAGE = "Respond with 1."
+LLM_PROBE_MESSAGE = "Hi! This may seem odd, but just respond with '1' to this prompt. No thinking, please. (I'll explain in the next turn.)"
 
 # Timesheet rows (database ledgers): provider string validated on insert = a server id.
 ALLOWED_TIMESHEET_PROVIDERS = tuple(LLM_SERVER_CONFIG)

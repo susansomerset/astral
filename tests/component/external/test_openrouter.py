@@ -66,12 +66,30 @@ class TestAst1959ProbeHost:
         probe = send.calls[0]
         assert probe["messages"] == [{"role": "user", "content": [{"type": "text", "text": cfg.LLM_PROBE_MESSAGE}]}]
         assert "system" not in probe and "cache_control" not in repr(probe)
-        # max_tokens, temperature, effort and the agent's provider object are the real call's, untouched.
-        assert {k: v for k, v in probe.items() if k != "messages"} == {
-            k: v for k, v in REAL.items() if k not in ("messages", "system")}
+        # max_tokens, temperature, effort and the agent's provider object are the real call's; probe adds zdr.
+        expected = {k: v for k, v in REAL.items() if k not in ("messages", "system")}
+        expected_extra = dict(expected["extra_body"])
+        expected_extra["provider"] = {**expected_extra["provider"], "zdr": True}
+        expected["extra_body"] = expected_extra
+        assert {k: v for k, v in probe.items() if k != "messages"} == expected
         # The real call's kwargs are not mutated by building the probe.
         assert REAL["system"] and REAL["messages"][0]["content"][0]["text"] == "entity 7"
         assert [r.id for r in recorded] == ["probe_resp"]
+
+    @pytest.mark.asyncio
+    async def test_probe_drops_thinking_disabled_on_extra_body(self) -> None:
+        """Reasoning-mandatory OpenRouter slugs must not get thinking.type=disabled on the host probe."""
+        send = _Send()
+        kwargs = {
+            **REAL,
+            "extra_body": {
+                **REAL["extra_body"],
+                "thinking": {"type": "disabled"},
+            },
+        }
+        await openrouter.probe_host(kwargs, send, lambda _r: None)
+        assert "thinking" not in send.calls[0]["extra_body"]
+        assert kwargs["extra_body"]["thinking"] == {"type": "disabled"}
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("provider", [None, ""])

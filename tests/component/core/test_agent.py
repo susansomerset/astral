@@ -2058,7 +2058,7 @@ class TestAst492BrainSettingDoTask:
 
 # AST-1956: the agent row's plain settings ride the route to both clients as stored — no gating, no derivation.
 # Branches: compat (openrouter provider object / direct server → no provider) vs anthropic (effort kwarg);
-# settings set vs empty; craft guard (TestAst1380…); debug line temp/effort; rejected setting = plain failure.
+# settings set vs empty; craft rubric max_tokens floor (TestAst1380…); debug line temp/effort; rejected setting = plain failure.
 # Wire bodies (temperature / output_config / thinking / provider keys) are test_llm_compat.py / test_anthropic.py's.
 class TestAst1956SettingsOnTheWire:
     @pytest.mark.asyncio
@@ -6871,7 +6871,7 @@ class TestAst903CraftRubricMaxTokensFloor:
 
 
 class TestAst1380CraftRubricThinkingOffAndFailureBanner:
-    """AST-1380 / AST-1383: Decision A thinking-off + Provider-failed RESPONSE banner."""
+    """AST-1383: Provider-failed RESPONSE banner; craft rubrics keep agent reasoning_effort (AST-1380 Decision A reverted)."""
 
     # Mid-criteria cut still carrying agent_performance.status=success (abrams-shaped).
     _ABRAMS_TRUNCATED = (
@@ -6881,13 +6881,13 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
     )
 
     @pytest.mark.asyncio
-    async def test_craft_get_rubric_forces_effort_none(
+    async def test_craft_get_rubric_keeps_stored_effort(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # AST-1956: the row asks for effort "high"; do_task forces "none" (thinking off) for craft rubrics (Decision A).
+        # Craft rubrics use the agent row's reasoning_effort so thinking can consume its budget; output stays concise JSON.
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
@@ -6917,7 +6917,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         assert out["success"] is True
         assert send.await_args is not None
         tier = send.await_args.kwargs["tier"]
-        assert tier["reasoning_effort"] == "none"
+        assert tier["reasoning_effort"] == "high"
         # Kimi has no tier floor → craft floor wins over the row's 100.
         assert send.await_args.kwargs.get("max_tokens") == cfg.CRAFT_RUBRIC_MAX_TOKENS
 
@@ -6928,7 +6928,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # Decision A must not blanket-disable thinking off craft rubric keys: the row's effort goes out as stored.
+        # Non-craft hops: the row's effort goes out as stored (same rule as craft after Decision A revert).
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
@@ -9352,13 +9352,13 @@ class TestAst1391DeepseekBigOutputFloor:
         assert not any("[DEBUG] do_task(" in m for m in logged)
 
     @pytest.mark.asyncio
-    async def test_craft_effort_none_uses_catalog_floor(
+    async def test_craft_uses_catalog_floor(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # AC6: AST-1380 thinking-off (effort "none") stays; a catalog floor above craft 32000 is what gets sent.
+        # AC6: catalog max_tokens_floor above craft 32000 wins on the wire; effort is not overridden for craft.
         assert _STUB_FLOOR > cfg.CRAFT_RUBRIC_MAX_TOKENS
         monkeypatch.setitem(cfg.LLM_MODEL_CONFIG["deepseek-v4-pro"], "max_tokens_floor", _STUB_FLOOR)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
@@ -9389,7 +9389,7 @@ class TestAst1391DeepseekBigOutputFloor:
             ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "abrams"}},
         )
         assert out["success"] is True
-        assert send.await_args.kwargs["tier"]["reasoning_effort"] == "none"
+        assert send.await_args.kwargs["tier"].get("reasoning_effort") is None
         assert send.await_args.kwargs.get("max_tokens") == _STUB_FLOOR
 
 
