@@ -2810,10 +2810,14 @@ async def run_consult_task(
         )
 
     if entity_type == "candidate":
-        from src.utils.config import CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY, INFLOW_CONFIG
-        from src.core.candidate import (
-            run_requested_artifacts_dispatch,
+        from src.utils.config import (
+            CANDIDATE_STAGE_DISPATCH,
+            CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
+            INFLOW_CONFIG,
+            dispatch_chain_row_matches_job,
+            parse_dispatch_hop_label,
         )
+        from src.core.candidate import run_requested_artifacts_dispatch
         tk = (dispatch_task_key or "").strip()
         cid = (entities[0].get("astral_candidate_id") or entities[0].get("candidate_id") or "")
         if tk == INFLOW_CONFIG["discovery"]["task_key"]:
@@ -2822,16 +2826,28 @@ async def run_consult_task(
                 f"batch_id={batch_id}, candidate_id={cid or '-'}",
                 roster.run_inflow_discovery_batch(entities[0], batch_id, ctx, debug),
             )
-        from src.core.agent import _current_agent_task_run_next
         skip_daisy = bool(
             (ctx or {}).get("skip_daisy_chain") or (ctx or {}).get("suppress_run_next")
         )
-        has_run_next = bool(_current_agent_task_run_next(tk))
         persistable = (
             tk in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY
             or tk in ("craft_company_search_terms", "craft_resume_base")
         )
-        if has_run_next or (skip_daisy and persistable):
+        stage_tr = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        row_tr = (input_state or "").strip()
+        parsed_row = parse_dispatch_hop_label(row_tr)
+        registry_tr = parsed_row[0] if parsed_row else row_tr
+        cand_st = (entities[0].get("state") or "").strip()
+        # patt.task.daisy-chain §4: resume when entity hop label + parent run_next → this row's task_key
+        # (same helper as job BUILD_ARTIFACTS reclaim; not a walked hop membership list).
+        if (
+            registry_tr == stage_tr
+            and tk in TASK_CONFIG
+            and (
+                dispatch_chain_row_matches_job(row_tr, tk, cand_st)
+                or (skip_daisy and persistable)
+            )
+        ):
             return await _debug_await(
                 "candidate.run_requested_artifacts_dispatch",
                 f"candidate_id={cid or '-'}, task_key={tk}, trigger_state={input_state}",
