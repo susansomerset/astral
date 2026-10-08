@@ -242,3 +242,58 @@ context_tokens≈42000
 - **Build notes:** every swap was applied by a script that asserts the plan's **Old** string appears exactly once on its stated line and aborts before writing on any mismatch. There were none. `npx tsc -b --noEmit` exits 0 after each stage. The AC 9 hex grep over `src/ui/frontend/src` (`.ts`/`.tsx`, tests excluded) returns nothing. The undefined-`var` check (Stage 2 step 14) prints nothing. `npm run build` exits 0. `npm run lint` reports `✖ 31 problems (26 errors, 5 warnings)`, the same as the baseline, and the 19 Scope files show exactly the 7 pre-existing entries listed under Ground truth.
 - **Deviation:** none. Every step was applied as written. The neutral `rgba(0,0,0,0.6)` overlays are untouched.
 - **For QA:** this is a pure literal → token change with no logic touched, and no existing test asserts the old literals. The visible Dark deltas are listed under the global literal map, mainly StateTimeline's latest dot going from blue to gold and the AdminScheduledQueries boxes now drawing a `--border` border on a `--bg-card` background. A Light check needs a browser: switch a candidate to Light and confirm that loading/empty text, error headers, and the import/view `<pre>` / `<textarea>` follow the palette. No manual smoke run was done in this headless build.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2049
+**Publish ref:** `000d5347e4ee8bd44ea29fbfc3afdc5138d7a52e` (`origin/sub/AST-2042/AST-2049-inline-color-tokens`)
+**Corpus:** `cc0ca67ac7e3ffd6f9067ccd857cb47fdb2c6f50` (canon tree at publish tip; frozen **Citations** / **Canon Scope** both **none**)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score; not §5.3 ESCALATE (explicit empty scope, same as AST-2047/2048 / Joan).
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded empty canon with no rows; incremental product diff matches the 19-file plan gate.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Epic stack vs `origin/dev`:** Three-dot diff vs `origin/dev` still carries #2047/#2048 product (`App.css`, registry, `candidate.py`, `CandidateProfile.tsx`, etc.) because the publish ref is the full epic branch. **AST-2049 code commits** (`0c315ce1f`, `57aad54f4`) change only the 19 Scope `.tsx` files — no `App.css`, no `CandidateProfile.tsx`, no new tokens.
+- **sibling test carry:** `merge-tests` and prior children’s pytest/vitest deltas (`test_agent`, `test_ArtifactEditor` autosave harness, #2047/#2048 manifests) appear in the branch diff; expected, not #2049 product scope.
+- **Intentional Dark visual deltas (plan-documented):** e.g. `StateTimeline` latest dot `var(--accent-gold)` instead of blue fallback; `AdminScheduledQueries` boxes use defined `--border` / `--bg-card` instead of previously undefined `--border-color` / `--bg-secondary`. No logic/layout edits in sampled hunks; **Susan UAT on Light** still warranted for loading/error/pre blocks per build notes.
+- **AC9 automation:** New vitest case `AST-2049: no hex in .ts/.tsx source and every var(--x)…` lives in `test_AdminThemeExamples.test.tsx` (epic-wide guard, not per-file snapshots). Re-verified at review: ticket hex `rg` pattern over non-test `.ts`/`.tsx` at tip is clean (only `&#9660;` entities elsewhere, excluded by the AC pattern).
+- **AST-2041 overlap:** `ArtifactEditor.tsx` changes are inline-color swaps only; neutral `rgba(0,0,0,0.6)` overlay preserved — merge-order risk Joan noted at plan stage remains a parent coordination note, not a #2049 defect.
+
+## What's solid
+
+- **Scope gate:** Exactly 7 components + 12 pages in `7107fa7e8..c7ffe593b` `src/` delta; boundaries respected (#1/#2 files untouched by this child).
+- **AC9:** Epic-wide no-hex + defined-`var(--*)` checks documented in build notes; vitest encodes the same contract against Dark token block names from `App.css`.
+- **AC10:** Build notes report `tsc`, `npm run build`, and lint multiset unchanged vs baseline (31 problems; Scope files still only pre-existing entries).
+- **Mechanical diffs:** Swaps map undefined refs (`--accent`, `--bg-secondary`, `--border-color`, `--color-pass`) and hex/`var(--x, #…)` fallbacks to tokens #2047 defines — consistent with plan tables.
+
+## Recommended actions (downstream — not Radia)
+
+- Chuckles: append artifact, post slim upshot, **Review Posted** → **PROCEED** per datt.
+- **Susan UAT:** Light palette on affected admin/artifact surfaces (especially StateTimeline, Scheduled Queries, import/view `<pre>`/textarea pages listed in plan); confirm no functional regression.
+- **Parent epic:** Finish #2047–#2049 UAT as a set; Theme Examples `/api/system/ui_config` routing remains a separate parent item (from #2047 bible pointer, not introduced here).
+
+context_tokens≈24000
+
+Upshot: `[code-rubric] PROCEED (Commit: 000d5347e) Inline colors on tokens`
