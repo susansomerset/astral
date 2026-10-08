@@ -5678,6 +5678,26 @@ UI_CONFIG = {
     },
     # Theme applied when a candidate has none stored (and before candidates load).
     "default_theme": "dark",
+    # AST-2064: Light grade-color candidates shown as rows on Tools -> Theme Examples (examples-only).
+    # Each set's tokens override the panel's grade tokens for that row; the live Light set is in App.css.
+    # Retire a candidate = delete its entry; no page or CSS change.
+    "theme_example_grade_sets": {
+        "deep": {"label": "Deep", "tokens": {
+            "--grade-a": "#1e7b34", "--grade-b": "#a06500", "--grade-c": "#c05621",
+            "--grade-d": "#c53030", "--grade-f": "#742a2a", "--grade-x": "#6b46c1",
+            "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
+        }},
+        "soft": {"label": "Soft", "tokens": {
+            "--grade-a": "#b7e4c0", "--grade-b": "#fde68a", "--grade-c": "#fed7aa",
+            "--grade-d": "#fecaca", "--grade-f": "#e7b4b4", "--grade-x": "#ddd6fe",
+            "--text-on-grade": "#1f1830", "--text-on-grade-f": "#5c0f0f",
+        }},
+        "classic": {"label": "Classic", "tokens": {
+            "--grade-a": "#2f9e44", "--grade-b": "#e67700", "--grade-c": "#d9480f",
+            "--grade-d": "#e03131", "--grade-f": "#9c1c1c", "--grade-x": "#7048e8",
+            "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
+        }},
+    },
 }
 # Default must be a registered, profile-selectable palette (it is what candidates without a stored theme get).
 assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_selectable"), (

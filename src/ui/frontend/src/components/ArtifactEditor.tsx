@@ -215,7 +215,7 @@ export default function ArtifactEditor({
     "unsupported resume structure, please regenerate",
   )
   useEffect(() => {
-    api("/api/system/ui_config")
+    api("/api/ui_config")
       .then(r => r.json())
       .then(cfg => {
         const fields = cfg.experience_job_ui_fields
