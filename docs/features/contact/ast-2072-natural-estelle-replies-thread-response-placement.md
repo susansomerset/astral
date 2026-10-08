@@ -430,3 +430,12 @@ Build notes:
 - Archie: schedule `patt.contact.command-intercept` Arc/Data coupling refresh when convenient.
 
 context_tokens≈52000
+
+## Resolution
+
+2026-10-08 — resolve pass on Radia review (`d21ab82e7`, Overall CLEAN). No product change.
+
+- **fix-now:** none.
+- **discuss #1 (cross-ticket AST-2061 product on publish ref): false alarm, no action.** `_unwrap_slack_links`, `allowed_channel_types`, `fetch_channel_type`, `_CONTACT_PINHOLE_HANDLERS`, and `nh3` in `requirements.txt` are all already on `origin/dev`. They showed up in the three-dot diff only because the tests resync `9ac088ef7` is not a dev-ancestry merge. Verified on the synced tip: `origin/dev` is an ancestor of HEAD, and `git diff origin/dev HEAD -- src` is three files (+75/−41), line-for-line identical to `git diff 08074ef9d^ 134981e6d -- src` (AST-2072's two code commits). Chuckles confirmed the same independently.
+- **discuss #2 (parent AC 1 substring grep): Radia's default taken.** Tests keep the whole-word `\bknown_recognition_reply_text\b` match. Parent AC 1 wording is Archie's to adjust on the next definition touch.
+- **advisory:** sibling test carry and plan-fidelity notes are informational only. The `patt.contact.command-intercept` Arc 3–4 / Data coupling refresh stays with Archie (plan Canon notes).
