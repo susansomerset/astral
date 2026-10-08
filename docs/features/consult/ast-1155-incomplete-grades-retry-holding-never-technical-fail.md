@@ -1210,6 +1210,81 @@ AST-2053 board-joan done — CANON: REVISE — confidence-bounds decode exceptio
 
 **Chuckles routing:** the statute change Joan names is already inside AST-2053's approved Component scope (`canon/directives/draft/stat.agent.confidence-bounds.md`), so make-fix lands it on this ticket; no separate canon gap child. Betty's TESTS: REVISE routes to a test-gap sibling.
 
+
+## Radia review — AST-2053 (round 1)
+
+[code-rubric]
+
+**Ticket:** AST-2053  
+**Publish ref:** `2456e6194ccbd1da16f619a180f3b2ef2e872a7b` (`origin/sub/AST-2045/AST-2053-letter-conf0-normalize`)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — ids resolved from `canon/directives/**` at tip)  
+**Overall:** FIX-NOW  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+| patt.task.dispatch-retry | A | | |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** only (`CANON: REVISE` pre-make-fix); post-tip draft `stat.agent.confidence-bounds.md` + `_decode_payload` match the plan-fix **Proposed change**. No `validate-plan` fix-mode column.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — Betty **TESTS: REVISE** routed to sibling **AST-2057** (spawn brief); no qa-fix on this ticket.  
+- **## What must still hold — OK** (verified on tip for AST-2053 surface in `src/core/agent.py` + draft statute):  
+  - `X` + nonzero conf → `bad_conf` → `decode_failures` (unchanged).  
+  - Non-matching `_GRADE_SEG` segments → grades-only trailing `decode_failures` (unchanged).  
+  - `grades_encoded_vet_meta` still rejects letter conf `0` via `ValueError` (separate branch, L288–291).  
+  - `_GRADE_SEG` unchanged; only `{letter}0` → `conf_d = 1` in shared non-vet loop.  
+  - Clean payloads omit `decode_failures` key (unchanged).  
+  - No edits to dispatch retry routing, prompts, `config.py`, or `agent_task.json` in `code(AST-2053)`.
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket scope in mandated review diff** (`review-child` §5.4): `git diff origin/ftr/AST-2045-letter-conf0-normalize...origin/sub/AST-2045/AST-2053-letter-conf0-normalize` is **13 files / ~1.4k insertions**, not the two-file AST-2053 fix. `origin/ftr/AST-2045-letter-conf0-normalize` tips at `dff04eb4d` (AST-2032); publish ref stacks **AST-2029–AST-2052** product/docs/tests plus AST-2053 (`git log` shows 40+ commits on top of ftr). Sibling **product** paths in that diff include `src/utils/formatting.py`, entity-scoped `src/core/agent.py` hunks beyond conf-0 normalisation, and UI modals (`BatchAgentDataModal.tsx`, `BatchExecutionModal.tsx`, `JobDetailModal.tsx`). This ticket cannot be certified on the skill-mandated diff until Chuckles refreshes **ftr** to the mini-parent rollup tip and re-syncs publish ref so `ftr...sub` isolates AST-2053 (same class of remediation as AST-2052 Radia note in `ast-2030` issue doc). **Default:** do not advance to User Testing on this publish ref until the review base is corrected; treat `2d1b73da1` (`code(AST-2053)`) as the known-good product slice meanwhile.
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Isolated AST-2053 product slice** (`2d1b73da1`): matches plan-fix — canon draft Statement + Conforming example; decode replaces non-X `conf_d not in 1..5` rejection with `{letter}0` → `conf_d = 1`; docstring updated per plan.  
+- **Sibling test carry** in mandated diff: `tests/component/core/test_agent_ast2030.py`, `test_agent_ast2052.py`, `docs/test-bible/core/agent.md` — expected merge-tests carry; not scored as defects.  
+- **Known-red agent decode tests** (plan **Blast radius**): `TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` still expects `ValueError` on `0|CRA0`; `TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta` still expects `ValueError` on `0|CRX2` (AST-1996 shape is `decode_failures`). Ownership **AST-2057**; not a missing `[bug-repro]` on this ticket.  
+- **Dual statute copy:** `canon/directives/draft/stat.agent.confidence-bounds.md` updated; `canon/statutes/astral/agent/astral.agent.confidence-bounds.md` still pre-exception wording — plan-fix explicitly defers legacy mirror to canon owners.  
+- **sibling test carry:** paths above in mandated diff.
+
+## What's solid
+
+- Conf-0 normalisation is minimal, statute-backed, and preserves vet isolation and AST-1996 X / trailing-meta behaviour.  
+- `patt.task.dispatch-retry` contract untouched; fewer spurious `decode_failures` is aligned with retry intent.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (fix-now: review-base / cross-ticket) | Normal mini-parent (live ftr, not orphaned-to-dev) | **Review Posted** → fix **ftr** / publish ref stacking → re-run Radia or narrow diff → then **resolve-child** if needed → **User Testing**; do **not** use orphaned straight-to-`dev` path. |
+
+**Recommended actions (downstream — not executed here):** Refresh `origin/ftr/AST-2045-letter-conf0-normalize`; re-cut or rebase `origin/sub/AST-2045/AST-2053-letter-conf0-normalize` so mandated diff is AST-2053-only; append this artifact to issue doc; `docs(AST-2053): Radia review — findings`; push sub; post slim upshot `--as radia`.
+
+---
+
+```
+[code-rubric] REVIEW (Commit: 2456e6194) ftr lag; sibling scope
+```
+
+context_tokens≈N
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
