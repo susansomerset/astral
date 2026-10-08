@@ -234,3 +234,11 @@ Child AC9→Stage 1+2 (epic-wide hex + undefined-`var` checks in Stage 2 step 14
 - **Verification:** Stage 2 step 14 epic-wide AC 9/10 checks align with parent wording; lint held to documented 31-problem baseline in Scope files.
 
 context_tokens≈42000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2042/AST-2049-inline-color-tokens`
+- **Build commits:** `0c315ce1f` (Stage 1: 22 swaps across the 7 component files), `57aad54f4` (Stage 2: 27 swaps across the 12 page files)
+- **Build notes:** every swap was applied by a script that asserts the plan's **Old** string appears exactly once on its stated line and aborts before writing on any mismatch. There were none. `npx tsc -b --noEmit` exits 0 after each stage. The AC 9 hex grep over `src/ui/frontend/src` (`.ts`/`.tsx`, tests excluded) returns nothing. The undefined-`var` check (Stage 2 step 14) prints nothing. `npm run build` exits 0. `npm run lint` reports `✖ 31 problems (26 errors, 5 warnings)`, the same as the baseline, and the 19 Scope files show exactly the 7 pre-existing entries listed under Ground truth.
+- **Deviation:** none. Every step was applied as written. The neutral `rgba(0,0,0,0.6)` overlays are untouched.
+- **For QA:** this is a pure literal → token change with no logic touched, and no existing test asserts the old literals. The visible Dark deltas are listed under the global literal map, mainly StateTimeline's latest dot going from blue to gold and the AdminScheduledQueries boxes now drawing a `--border` border on a `--bg-card` background. A Light check needs a browser: switch a candidate to Light and confirm that loading/empty text, error headers, and the import/view `<pre>` / `<textarea>` follow the palette. No manual smoke run was done in this headless build.
