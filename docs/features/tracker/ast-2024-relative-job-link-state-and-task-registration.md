@@ -346,3 +346,60 @@ context_tokens≈52000
   `pytest tests/component -k "config or state_ui or dispatch"`: 129 failures/collection errors also fail on the pre-AST-2024 tree (test tree ahead of / behind product imports). Two new failures, both tests pinning the old registry that this ticket's AC changes by design:
   `test_config.py::TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui` (exact `BOT_BLOCKED` priors list) and
   `test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` (frozen `JOB_STATES` name snapshot). Left for Betty.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2024
+**Publish ref:** `52c2d084c94049b92f1877ef1057543657acffd5` (`origin/sub/AST-2022/AST-2024-relative-job-link-state`)
+**Corpus:** `2344ae3265b15125a8f4a655946fcfe66b3e1def`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.dispatch.entity-state-bound | A | | |
+| patt.entity.batch-criteria | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded A/A; code matches her plan-stage rationale (`fetch_relative_jd` → `job` / `RELATIVE_JOB_LINK`, real `JOB_STATES` keys, `fallback_batch_size` only in `GAZER_CONFIG`, `updated_at` sort and no score floor on `RELATIVE_JOB_LINK`).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Task key `fetch_relative_jd`**
+  - **Location:** `data/admin/agent_task.json`, `GAZER_CONFIG`, `_dispatch_*_for_task_key` branches.
+  - **Question (@susan):** Confirm the task key string is final for AST-2025 runner binding and Scheduled Actions labeling (parent/child Linear scope never literalized the name; plan fixed `fetch_relative_jd`).
+  - **Default:** Keep `fetch_relative_jd` as landed; AST-2025 implements against that key without rename.
+
+### advisory
+
+- **Sibling stack on publish ref:** Three-dot diff vs `origin/dev` also includes AST-2023 product/docs/tests (`service/telescope/*`, `src/external/telescope.py`, `ast-2023` plan doc, telescope tests/bible). AST-2024 **product** commits on this ref are only `bc027c979` + `625c5a9c4` (`config.py`, `agent_task.json`). Expected epic sub stacking before `merge-child`; not AST-2024 scope creep in those commits.
+- **Sibling test carry (non–AST-2024 nodes):** `tests/component/core/test_agent.py`, `test_consult.py`, `test_timesheets.py`, `test_openrouter.py`, `test_config.py` (`TestAst903CraftRubricMaxTokens`, `TestAst1955` resolver trim), plus core/agent OpenRouter paths — same merge-tests pattern as sibling subs.
+- **AC2 visible UI:** Config/manifest wiring is covered by `TestAst2024RelativeJobLinkRegistry`; jobs actually appearing in processing/skipped UI with bulk retry is UAT once AST-2025 produces rows (per plan traceability).
+
+## What’s solid
+
+- **AC1 (verified on worktree):** Registry one-liner and plan registration check both exit 0 — priors, `SKIPPED_STATES`, bulk retry map, six JD-outcome priors, no `VALID_TITLE` on new states.
+- **Registry + UI config:** `RELATIVE_JOB_LINK` / `RELATIVE_LINK_FAIL`; skipped order/label/bulk retry → `RELATIVE_JOB_LINK`; processing section between `PASSED_JOBLIST` and `JD_READY`.
+- **Dispatch + gazer:** `GAZER_CONFIG["fetch_relative_jd"]` with `trigger_state` / pass / fail / `error_states` aligned to `fetch_jd` JD outcomes; `qualify_job_listings.relative_link_state`; `_dispatch_trigger_state_for_task_key` / `_dispatch_entity_type_for_task_key` mirror `fetch_jd` pattern.
+- **Catalog:** `agent_task.json` splice — 19 insertions, 0 deletions; telescope / Job Review / `task_seq` 3.5 / fixed UUID; `TestAst2024FetchRelativeJdCatalogRow` + registry tests document AC intent.
+- **Canon:** `RELATIVE_JOB_LINK` not score-gated (`dispatch_claim_uses_score_floor` false); job claim sort `updated_at` via existing `_dispatch_sort_by_for` branch for non–score-gated job states.
+
+## Recommended actions (Chuckles / downstream — not Radia)
+
+1. Append this artifact to `docs/features/tracker/ast-2024-relative-job-link-state-and-task-registration.md`, commit `docs(AST-2024): Radia review — clean`, push `sub/AST-2022/AST-2024-relative-job-link-state`, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** → **User Testing** (no `resolve-child` canon work expected).
+2. If Susan answers the task-key discuss before UT, note in the issue doc; otherwise `resolve-child` follows **Default** above.
+
+Slim upshot: `[code-rubric] PROCEED (Commit: 52c2d08) registry and dispatch registration`
