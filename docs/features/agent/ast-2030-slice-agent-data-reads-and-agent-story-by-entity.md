@@ -283,3 +283,154 @@ stat.logging.debug | B |
 
 context_tokens≈22000
 ```
+
+## Bug: AST-2052 — Job run modal should read like a single Each-mode call
+
+Modal wiring (job → `entityId` → `?entity_id=`) is unchanged; see
+`docs/features/agent/ast-2031-job-run-modal-requests-entity-scoped-agent-data.md`. All of this fix
+lands in this ticket's read path: `get_agent_data` with `entity_id` in `src/core/agent.py`.
+
+### As-is
+
+A job's run modal on a batched (`batch_call_mode` = 1) run calls
+`GET /api/agent_data/<batch>?entity_id=<job>`. `get_agent_data` then returns the batch's rows with
+`NO_CACHE` / `TASK` / `RESPONSE` passed through `_slice_entity_block`, which returns only the **bare
+segment** that `split_entity_segments` produces:
+- **Success RESPONSE:** stored as `json.dumps(parsed)`, e.g. `{"jobs":[{…A…},{…B…}],"agent_performance":{…}}`.
+  For B it comes back as just `{…B…}` (pretty JSON). The `jobs` wrapper and every other top-level key are lost.
+- **Tagged text (failure RESPONSE, encoded `agent_payload`, live NO_CACHE):** everything before the first
+  `[entity_id=…]` tag is dropped. That includes the `Provider failed: …\n\n--- model response ---\n` banner,
+  the `{"agent_payload":"` opener, and any header above the first row. For B the modal shows only
+  `[entity_id=B]|DTA5…`.
+- **Blank rows:** any row whose content is blank or whitespace-only still gets a tab.
+
+None of this looks like the same job's run in Each mode (`batch_call_mode` = 0, one `do_task` per job).
+There, the same rows hold that job's whole call: the full response envelope with one item, and the
+banner/opener intact.
+
+### To-be
+
+For `get_agent_data(batch_id, entity_id=X)`:
+- **SYSTEM, CACHE_A–D, TASK** and the shared prompt-text `NO_CACHE`: returned whole. This is already true and must stay true.
+- **Live `NO_CACHE` and `RESPONSE`:** returned as an Each-mode call would have stored them for X alone:
+  - JSON with `companies[]` / `jobs[]`: the **same object** with that array filtered to X's item only, serialized
+    with `json.dumps` (compact, same as `do_task` storage).
+  - Tagged text: the **preamble** (text before the first `[entity_id=` tag) followed by X's segment.
+- **Other ids only:** rows carrying only other ids are still dropped (AST-2030 AC5).
+- **No id-keyed segments:** rows with no id-keyed segments are still returned whole (AST-2030 AC7).
+- **Blank rows:** any row whose resulting `block_data` is blank after `.strip()` is omitted, so an empty
+  CACHE_C gets no tab.
+
+The modal needs no frontend change. It already orders tabs SYSTEM → CACHE_A–D → NO_CACHE → TASK → RESPONSE.
+
+### Repro
+
+Fixture rows for `get_agent_data_by_batch` (stub), `entity_id="B"`:
+
+```python
+rows = [
+  {"block_type": "SYSTEM",   "block_data": "sys"},
+  {"block_type": "CACHE_A",  "block_data": "cache a"},
+  {"block_type": "CACHE_C",  "block_data": "   "},
+  {"block_type": "NO_CACHE", "block_data": "Jobs to grade:\n[entity_id=A]: jd a\n[entity_id=B]: jd b"},
+  {"block_type": "TASK",     "block_data": "grade them"},
+  {"block_type": "RESPONSE", "block_data": '{"jobs":[{"astral_job_id":"A","g":1},{"astral_job_id":"B","g":2}],"agent_performance":{"status":"ok"}}'},
+  {"block_type": "RESPONSE", "block_data": 'Provider failed: x\n\n--- model response ---\n{"agent_payload":"[entity_id=A]|DTA5\\n[entity_id=B]|GCA4"}'},
+]
+```
+
+| Row | Today | Expected |
+|-----|-------|----------|
+| CACHE_C | returned (`"   "`) | omitted |
+| NO_CACHE | `[entity_id=B]: jd b` | `Jobs to grade:\n[entity_id=B]: jd b` |
+| JSON RESPONSE | `{\n  "astral_job_id": "B",\n  "g": 2\n}` | `{"jobs": [{"astral_job_id": "B", "g": 2}], "agent_performance": {"status": "ok"}}` |
+| Failure RESPONSE | `[entity_id=B]\|GCA4"}` | `Provider failed: x\n\n--- model response ---\n{"agent_payload":"[entity_id=B]\|GCA4"}` |
+
+### Root cause
+
+AST-2030 D1 made `get_agent_data` and the agent story share `_slice_entity_block`. That helper returns
+`split_entity_segments`'s bare per-entity segment: the JSON item alone, or the text from the entity's tag to
+the next tag. That was right for the story's hop panes. The run modal, though, is meant to show **one
+call**, and a bare segment strips that call's envelope and preamble. Separately, the entity read never
+drops blank rows.
+
+### Proposed change
+
+All in `src/core/agent.py`. No change to `src/utils/formatting.py`, the API, the schema or the frontend.
+
+1. Directly after `_slice_entity_block`, add:
+   ```python
+   def _entity_call_view(content: str, entity_id: str) -> Optional[str]:
+       """Block as a one-entity (Each-mode) call would have stored it (AST-2052).
+
+       JSON companies[] / jobs[] → same object with only this entity's item; tagged text → preamble
+       before the first [entity_id=…] tag + this entity's segment. Whole / None exactly as _slice_entity_block.
+       """
+       seg = _slice_entity_block(content, entity_id)
+       if seg is None or seg == content:
+           return seg  # other chunk's call, or no id-keyed segments (legacy / shared prompt)
+       try:
+           data = json.loads(content)
+       except (json.JSONDecodeError, TypeError):
+           data = None
+       # Same array precedence as split_entity_segments: companies[] first, else jobs[]
+       arr_key, id_key = next(
+           ((k, i) for k, i in (("companies", "company_id"), ("jobs", "astral_job_id"))
+            if isinstance(data, dict) and isinstance(data.get(k), list)),
+           (None, None),
+       )
+       if arr_key:
+           items = [it for it in data[arr_key] if isinstance(it, dict) and str(it.get(id_key)) == entity_id]
+           out = json.dumps({**data, arr_key: items})
+       else:
+           out = content[: max(content.find("[entity_id="), 0)] + seg
+       logger.debug("Response from _entity_call_view: %s", out)
+       return out
+   ```
+   ⚠️ **Decision D1-2052 — preamble = text before the first literal `[entity_id=`.** We don't re-use
+   `formatting._ENTITY_LABEL` (it's private to another module). Stored tags only ever come from
+   `hydrate_entity_labels`, so the first literal occurrence is the first tag.
+   ⚠️ **Decision D2-2052 — no trailing envelope suffix.** For a non-last entity in a JSON-enveloped
+   tagged response, the view keeps the opener (`{"agent_payload":"`) but not the closing `"}`, which belongs
+   to the last segment (AST-2029 D7). We accept this; there is no suffix heuristic.
+2. In `get_agent_data`'s entity branch:
+   - Replace `segment = _slice_entity_block(row.get("block_data") or "", entity_id)` with
+     `segment = _entity_call_view(row.get("block_data") or "", entity_id)`.
+   - Change the pass-through for non-sliced types from `result.append(row)` to:
+     ```python
+     if (row.get("block_data") or "").strip():
+         result.append(row)
+     continue
+     ```
+     That is: keep the `if row.get("block_type") not in (...)` guard and only append when non-blank.
+   - Change the sliced-row branch so that after the `if segment is None: continue` line, it skips blank
+     segments with `if not segment.strip(): continue  # AST-2052: skip empty prompt content`, before the
+     `result.append({**row, "block_data": segment})` line.
+   - Update the docstring's second line to: `With entity_id (AST-2030 / AST-2052), rows read as one Each-mode call for that entity: NO_CACHE / TASK / RESPONSE via _entity_call_view (other chunks' rows dropped, rows without id-keyed segments whole), blank rows omitted.`
+3. Leave `get_entity_agent_story` on `_slice_entity_block` (bare segment). Leave `_slice_entity_block`,
+   `get_entity_response` and `_extract_entity_segment` unchanged.
+4. Compile and lint `src/core/agent.py`. The only new ruff finding allowed is the file's existing typing
+   style (`UP045` on `Optional[str]`). `git diff origin/dev...HEAD -- src/ui/api/ src/data/ src/ui/frontend/ src/utils/` must be empty.
+
+### Blast radius
+
+- **`get_agent_data(entity_id=…)` callers:** only `GET /api/agent_data/<batch>?entity_id=` (`api_system.py`), and
+  only the job run modal sends `entity_id` (AST-2031). Execution History, Vector Feedback and Ad Hoc send none,
+  so their path (`if not entity_id: return rows`) is untouched, blank rows included.
+- **Agent story / `JobDiscussionPane` / `AgentStoryTab`:** unchanged. They still get the bare slice.
+- **Tests pinning the AST-2030 read shape:** `tests/component/core/test_agent_ast2030.py::TestAst2030GetAgentDataSlice`
+  (e.g. the AC4 case asserting the NO_CACHE row equals exactly `[entity_id=B]: …`, and any JSON RESPONSE item-only
+  assertion). These change wherever the fixture has a preamble or a JSON envelope. Betty's call (`fix-board`).
+- **`tests/component/core/test_agent.py`:** `TestAgentDataAccess` / `TestEntitySegmentAccess` entity-read cases with
+  blank `block_data` or JSON envelopes.
+
+### What must still hold
+
+- AST-2030 AC4: the slice holds no other entity's text. The preamble is shared batch text and the JSON keeps
+  only X's item.
+- AST-2030 AC5: a row carrying only other ids is dropped.
+- AST-2030 AC7: legacy `000:` rows are returned whole. Blank-row skipping never applies to a non-blank legacy row.
+- AST-2030 AC6 / parent §4: the story stays sliced per task and is not changed by this fix.
+- Parent §3: SYSTEM and CACHE_A–D show as today, except that blank rows are now omitted in the entity view only.
+- Parent §7 / AC9: batch-wide views (no `entity_id`) are byte-identical to before.
+- AST-2030 AC8 / parent AC10: no change under `src/ui/api/` or `src/data/`.
