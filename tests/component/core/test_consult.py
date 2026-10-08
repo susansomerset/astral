@@ -2059,52 +2059,40 @@ class TestRunConsultTaskRoutes:
 
 class TestAst797QualifyInlineValidateTitle:
     @pytest.mark.asyncio
-    async def test_qualify_new_roster_jobs_grade_without_title_screen(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        vt = AsyncMock()
+    async def test_qualify_runs_inline_validate_for_new_jobs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        vt = AsyncMock(return_value={"failed": 0, "passed": 1, "total": 1})
         monkeypatch.setattr("src.core.gazer.validate_title_batch", vt)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda jid: {"astral_job_id": jid, "state": "VALID_TITLE"},
+        )
         batch = AsyncMock(return_value={"passed": 1, "failed": 0, "total": 1})
         monkeypatch.setattr(consult_mod, "_run_batch_consult", batch)
         jobs = [{"astral_job_id": "job-1", "state": "NEW", "job_data": {"raw_job_listing": "x"}}]
         out = await consult_mod.qualify_job_listings("batch-797", jobs, {}, debug=False)
-        vt.assert_not_awaited()
+        vt.assert_awaited_once()
         batch.assert_awaited_once()
-        assert batch.await_args.args[2][0]["state"] == "NEW"
         assert out["passed"] == 1
 
     @pytest.mark.asyncio
-    async def test_qualify_meteorite_only_batch_skips_ai_hop(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from src.utils.config import METEORITE_CONFIG
-
-        vt = AsyncMock()
+    async def test_qualify_returns_early_when_inline_title_screen_fails_all(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        vt = AsyncMock(return_value={"failed": 2, "passed": 0, "total": 2})
         monkeypatch.setattr("src.core.gazer.validate_title_batch", vt)
-        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", MagicMock())
         monkeypatch.setattr(
             consult_mod.tracker,
             "get_job",
-            lambda jid: {
-                "astral_job_id": jid,
-                "state": METEORITE_CONFIG["job_create_state"],
-                "source": "meteorite",
-            },
+            lambda jid: {"astral_job_id": jid, "state": "INVALID_TITLE"},
         )
         batch = AsyncMock()
         monkeypatch.setattr(consult_mod, "_run_batch_consult", batch)
         jobs = [
-            {
-                "astral_job_id": "job-m",
-                "state": "NEW",
-                "source": "meteorite",
-                "job_data": {},
-            }
+            {"astral_job_id": "job-1", "state": "NEW", "job_data": {}},
+            {"astral_job_id": "job-2", "state": "NEW", "job_data": {}},
         ]
         out = await consult_mod.qualify_job_listings("batch-797b", jobs, {}, debug=False)
-        vt.assert_not_awaited()
         batch.assert_not_awaited()
-        assert out == {"passed": 0, "failed": 0, "total": 1}
+        assert out == {"passed": 0, "failed": 2, "total": 2}
 
 
 class TestAnalysisUpshotPrepAndBatch480:
@@ -4426,24 +4414,20 @@ class TestAst972CandidateStageConsultRouting:
     async def test_mid_hop_with_run_next_routes_to_daisy_chain_worker(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """[bug-repro] AST-1434: terminal hop reclaims via parent run_next (patt.task.daisy-chain §4)."""
+        """[bug-repro] AST-1434 Repro step 3: mid-hop craft_joblist_rubric is not unhandled.
+
+        Pre-fix: consult membership-gates on craft_get_rubric → zeros, worker idle.
+        Post AST-1434: live run_next on that task_key calls the daisy-chain worker.
+        """
         worker = AsyncMock(
             return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
         )
         monkeypatch.setattr("src.core.candidate.run_requested_artifacts_dispatch", worker)
-
         monkeypatch.setattr(
-            "src.data.database.get_agent_task",
-            lambda tk: (
-                {"run_next": "craft_joblist_rubric"}
-                if tk == "craft_company_search_terms"
-                else {}
-            ),
+            "src.core.agent._current_agent_task_run_next",
+            lambda tk: "craft_jobdesc_rubric" if tk == "craft_joblist_rubric" else "",
         )
-        entity = {
-            "astral_candidate_id": "c-mid",
-            "state": "REQUESTED_ARTIFACTS.craft_company_search_terms",
-        }
+        entity = {"astral_candidate_id": "c-mid", "state": "REQUESTED_ARTIFACTS"}
         out = await consult_mod.run_consult_task(
             "candidate",
             "REQUESTED_ARTIFACTS",
@@ -6720,18 +6704,18 @@ class TestAst1153MeteoriteTitleScreenProof:
         assert out == {"passed": 0, "failed": 0, "total": 1}
 
     @pytest.mark.asyncio
-    async def test_mixed_batch_roster_grades_meteorite_rehomes(
+    async def test_mixed_batch_roster_screens_meteorite_rehomes(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # P1 + P5: meteorite NEW re-homes; roster NEW grades (title regex at ingest, not qualify).
+        # P1 + P5: roster NEW still title-screens; meteorite NEW re-homes only.
         from src.utils.config import METEORITE_CONFIG
 
         if not hasattr(consult_mod, "is_meteorite_company"):
             pytest.skip("AST-1152 peel not on tip")
         landing = METEORITE_CONFIG["job_create_state"]
         transition = MagicMock()
-        vt = AsyncMock()
-        batch = AsyncMock(return_value={"passed": 1, "failed": 0, "total": 1})
+        vt = AsyncMock(return_value={"failed": 1, "passed": 0, "total": 1})
+        batch = AsyncMock()
         monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
         monkeypatch.setattr("src.core.gazer.validate_title_batch", vt)
         monkeypatch.setattr(consult_mod, "_run_batch_consult", batch)
@@ -6742,27 +6726,23 @@ class TestAst1153MeteoriteTitleScreenProof:
                     "astral_job_id": jid,
                     "state": landing,
                     "company": "meteorite-cand-proof",
-                    "source": "meteorite",
                 }
             return {
                 "astral_job_id": jid,
-                "state": "NEW",
+                "state": "INVALID_TITLE",
                 "company": "acme",
-                "source": "company",
             }
 
         monkeypatch.setattr(consult_mod.tracker, "get_job", _get_job)
         meteorite = {
             "astral_job_id": "job-m-proof",
             "state": "NEW",
-            "source": "meteorite",
             "company": "meteorite-cand-proof",
             "job_data": {"raw_job_listing": "Janitor Wanted"},
         }
         roster = {
             "astral_job_id": "job-r-proof",
             "state": "NEW",
-            "source": "company",
             "company": "acme",
             "job_data": {"raw_job_listing": "Janitor Wanted"},
         }
@@ -6770,14 +6750,14 @@ class TestAst1153MeteoriteTitleScreenProof:
         ctx = {"candidate_data": {"contact": {"title_patterns": "^Engineer"}}}
         out = await consult_mod.qualify_job_listings("batch-1153-mix", jobs, ctx, debug=False)
         transition.assert_called_once_with(["job-m-proof"], landing)
-        vt.assert_not_awaited()
-        batch.assert_awaited_once()
-        graded = batch.await_args.args[2]
-        assert len(graded) == 1
-        assert graded[0]["astral_job_id"] == "job-r-proof"
+        vt.assert_awaited_once()
+        screened = vt.await_args.args[1]
+        assert len(screened) == 1
+        assert screened[0]["astral_job_id"] == "job-r-proof"
+        batch.assert_not_awaited()
         assert meteorite["state"] == landing
-        assert roster["state"] == "NEW"
-        assert out["passed"] == 1
+        assert roster["state"] == "INVALID_TITLE"
+        assert out["failed"] == 1
         assert out["total"] == 2
 
 
@@ -7469,13 +7449,18 @@ class TestAst1704MeteoriteTrackSoT:
         assert out["total"] == 1
 
     @pytest.mark.asyncio
-    async def test_qualify_company_source_new_grades_without_title_screen(
+    async def test_qualify_company_source_new_still_title_screens(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        vt = AsyncMock()
+        vt = AsyncMock(return_value={"failed": 0, "passed": 1, "total": 1})
         transition = MagicMock()
         monkeypatch.setattr("src.core.gazer.validate_title_batch", vt)
         monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda jid: {"astral_job_id": jid, "state": "VALID_TITLE", "source": "company"},
+        )
         batch = AsyncMock(return_value={"passed": 1, "failed": 0, "total": 1})
         monkeypatch.setattr(consult_mod, "_run_batch_consult", batch)
         jobs = [
@@ -7488,10 +7473,9 @@ class TestAst1704MeteoriteTrackSoT:
             }
         ]
         out = await consult_mod.qualify_job_listings("batch-1704b", jobs, {}, debug=False)
-        vt.assert_not_awaited()
+        vt.assert_awaited_once()
         transition.assert_not_called()
         batch.assert_awaited_once()
-        assert batch.await_args.args[2][0]["state"] == "NEW"
         assert out["passed"] == 1
 
 

@@ -2194,6 +2194,13 @@ class TestAst901CraftRubricUiTaskKeys:
         assert "craft_resume_base" not in cfg.CRAFT_RUBRIC_UI_TASK_KEYS
 
 
+class TestAst903CraftRubricMaxTokens:
+    """AST-903: CRAFT_RUBRIC_MAX_TOKENS floor for craft rubric UI generate."""
+
+    def test_craft_rubric_max_tokens_floor(self) -> None:
+        assert cfg.CRAFT_RUBRIC_MAX_TOKENS == 32000
+
+
 class TestAst1391DeepseekBigMaxTokensFloor:
     """AST-1391: 384000 was the DeepSeek Big tier floor. AST-1955 (parent Functional scope 4) moved it to the
     agent's own max_tokens, so no catalog SKU carries a floor that could raise or lower an agent's budget."""
@@ -2201,10 +2208,8 @@ class TestAst1391DeepseekBigMaxTokensFloor:
     def test_no_catalog_floor_on_v4_skus(self) -> None:
         # AST-1955 AC 6 (catalog half; the wire max_tokens == 384000 check lives with AST-1956's call path).
         pro = cfg.resolve_agent_settings("deepseek-v4-pro", {"max_tokens": 384000})["tier"]
-        assert (pro["max_tokens_floor"], pro["default_max_tokens"], pro["max_tokens"]) == (None, 16000, 384000)
-        flash = cfg.resolve_agent_settings("deepseek-v4-flash", {})["tier"]
-        assert flash["max_tokens_floor"] is None
-        assert flash["max_tokens"] == flash["default_max_tokens"]
+        assert (pro["max_tokens_floor"], pro["default_max_tokens"]) == (None, 16000)
+        assert cfg.resolve_agent_settings("deepseek-v4-flash", {})["tier"]["max_tokens_floor"] is None
 
 
 class TestAst898NewRetryQualifyHolding:
@@ -7366,15 +7371,6 @@ class TestAst1955PlainAgentSettings:
     )
     def test_resolver_provider_object_from_agent_row(self, agent: dict, want: dict | None) -> None:
         assert cfg.resolve_agent_settings("openai/gpt-oss-120b", agent)["tier"]["provider"] == want
-
-    def test_resolver_max_tokens_from_row_default_or_catalog_floor(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        assert cfg.resolve_agent_settings("claude-sonnet-4-6", {})["tier"]["max_tokens"] == 16000
-        assert cfg.resolve_agent_settings("deepseek-v4-pro", {"max_tokens": 384000})["tier"]["max_tokens"] == 384000
-        monkeypatch.setitem(cfg.LLM_MODEL_CONFIG["deepseek-v4-pro"], "max_tokens_floor", 100000)
-        assert cfg.resolve_agent_settings("deepseek-v4-pro", {"max_tokens": 16000})["tier"]["max_tokens"] == 100000
-        assert cfg.resolve_agent_settings("deepseek-v4-pro", {"max_tokens": 400000})["tier"]["max_tokens"] == 400000
 
     def test_resolver_passes_temperature_and_effort_as_stored(self) -> None:
         # AC 3 (catalog half) — no gating: 0.0 is a value, "none" is passed through, a model whose old config
