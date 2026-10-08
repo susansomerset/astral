@@ -1898,11 +1898,18 @@ CONTACT_CONFIG = {
     # Format with environment= (deploy label). AST-1067 applies when listen is on
     # and deploy is not production.
     "non_production_reply_prefix_template": "[{environment}] ",
-    # AST-1101: fallback Slack text when Contact accepts @/DM but Estelle turn posts nothing.
-    "hear_ack_reply_text": "Heard you — Estelle is listening.",
+    # AST-1101 / AST-2072: fallback Slack text when Contact accepts @/DM but Estelle's turn
+    # posts nothing (turn raised, failed, or returned no reply).
+    "hear_ack_reply_text": "That didn't work as planned.  Let's ask @susan.",
     # AST-1668: recognition replies after resolve (known bind vs unbound Slack user).
     "known_recognition_reply_text": "I know who that is",
-    "unknown_recognition_reply_text": "I don't recognize you",
+    "unknown_recognition_reply_text": "Sorry, I don't recognize you, yet.  Let's check with @susan",
+    # AST-2072: where every Estelle reply to an inbound Slack message lands.
+    #   threads_only      — in-thread only when the user posted in a thread; else a new top-level post.
+    #   always_no_share   — always in a thread (the user's thread, or a new one under their message).
+    #   always_with_share — always_no_share + Slack "Also send to channel" (reply_broadcast).
+    # Estelle-initiated posts (meteorite BOT_BLOCKED) are not replies and ignore this.
+    "thread_response": "threads_only",
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
@@ -1977,6 +1984,7 @@ assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONF
 assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["known_recognition_reply_text"], str) and CONTACT_CONFIG["known_recognition_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["unknown_recognition_reply_text"], str) and CONTACT_CONFIG["unknown_recognition_reply_text"].strip()
+assert CONTACT_CONFIG["thread_response"] in ("threads_only", "always_no_share", "always_with_share"), CONTACT_CONFIG["thread_response"]
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
