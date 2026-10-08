@@ -403,3 +403,11 @@ context_tokens≈52000
 2. If Susan answers the task-key discuss before UT, note in the issue doc; otherwise `resolve-child` follows **Default** above.
 
 Slim upshot: `[code-rubric] PROCEED (Commit: 52c2d08) registry and dispatch registration`
+
+## Resolution
+
+Resolved 2026-10-08 against Radia review `dcaf90af7` (CLEAN / PROCEED). No product changes.
+
+- **fix-now:** none.
+- **discuss — task key `fetch_relative_jd`:** Susan had not answered by resolve time, so Radia's **Default** applies: keep `fetch_relative_jd` as landed; AST-2025 binds its runner and dispatch-router branch to that exact string. To reverse: rename the key in `GAZER_CONFIG`, `_dispatch_trigger_state_for_task_key`, `_dispatch_entity_type_for_task_key`, and the `agent_task.json` row (`task_key` + `task_name`), plus Betty's `TestAst2024*` tests — before AST-2025 lands.
+- **advisory:** sibling stacking on the publish ref and sibling test carry are expected before `merge-child`; AC2 visible-UI check is UAT once AST-2025 produces rows. No action.
