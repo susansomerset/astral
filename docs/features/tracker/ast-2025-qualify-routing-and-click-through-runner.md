@@ -512,3 +512,71 @@ context_tokens≈68000
     `test_consult.py::TestAst1895InvalidJobLinkError::test_empty_and_relative_job_link_fail_reason_names_error` and
     `test_consult.py::TestQualifyJobListings::test_fails_short_title_and_relative_link`.
   - Verify commands need `~/astral/.venv/bin/python` (system `python3` lacks `asyncpg`).
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2025
+**Publish ref:** `89b5e0f4429c251b3d1b57a25fd4131718168caa` (`origin/sub/AST-2022/AST-2025-relative-link-runner`)
+**Corpus:** `2344ae3265b15125a8f4a655946fcfe66b3e1def`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| astral.batch.claim-process-release | A | | |
+| stat.logging.debug | B | | `fetch_jd_batch` gate path no longer emits per-job `debug_index` on empty/short/classified outcomes; `_apply_jd_gates` + relative runner add Calling/Response + begin/end loop |
+| stat.logging.info.entity | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan’s `stat.logging.debug` **B** matches; other ids **A** as planned.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+- **Qualify batch `passed` / `failed` tally treats `RELATIVE_JOB_LINK` as failed**
+  - **Location:** `src/core/consult.py` — `_run_batch_consult` loop (~1856–1859): `passed += 1` only when `to_state == cfg["pass_state"]`; any other successful `process_fn` return (including `cfg["relative_link_state"]` / `RELATIVE_JOB_LINK`) increments `failed`.
+  - **Impact:** AC2 routing works (transition + `_job_consult_info`); batch return and downstream dispatch normalization mis-report a successful relative-link park as a failure. Matches Betty’s flag; `TestQualifyJobListings::test_relative_link_routes_to_relative_job_link` does not assert `out["passed"]` / `out["failed"]`.
+  - **Recommendation:** In `resolve-child`, count `to_state == cfg.get("relative_link_state")` as passed (or equivalent product rule Susan confirms) before the generic `else: failed += 1` branch; add/extend a consult test that pins counts for mixed absolute + relative jobs.
+
+### discuss
+
+- **`fetch_jd_batch(debug=True)` gate observability (Joan carry-over)**
+  - **Question (@susan):** Restore Style-D `debug_index` around `_apply_jd_gates` outcomes in `fetch_jd_batch`, or accept statute-aligned `who -> dest [why]` warnings only?
+  - **Default:** Keep current helper + warning shape; no Style-D restoration unless UAT asks for it.
+
+### advisory
+
+- **Lint-driven typing:** New signatures use builtin `dict` / `list` instead of plan literals `Dict` / `List` (documented in issue Review stub); no behavior change.
+- **Sibling stack on publish ref:** Three-dot diff vs `origin/dev` still carries AST-2023/AST-2024 product, docs, and tests; AST-2025 product commits are only `73107d5c8` + `7120ce486` on `gazer.py` / `consult.py`.
+- **Sibling test carry:** Same epic `merge-tests` noise as siblings (`test_agent.py`, `test_consult.py` non–AST-2025 nodes, `test_timesheets.py`, etc.).
+
+## What’s solid
+
+- **AC3:** Single `raise InvalidJobLinkError` under empty `job_link`; relative links do not hit that path.
+- **AC4 / AC5 (tests):** `TestAst2025FetchRelativeJdBatch` covers ok → `JD_READY` + resolved link + JD save; bot / closed / click-miss states; shared `_apply_jd_gates` invoked from both runners (`test_ac5_both_runners_call_shared_gate_helper`).
+- **AC6 (picker + claim):** `test_picker_lists_fetch_relative_jd_job_relative_job_link`; `test_dispatcher` claims `RELATIVE_JOB_LINK` / `RELATIVE_JOB_LINK_RETRY` only and clears batch lock.
+- **Qualify routing:** Non-empty non-http `job_link` → `initialize_job` + `relative_link_state`; empty still raises → existing fail-dest path.
+- **Runner contract:** No claim/select in `fetch_relative_jd_batch`; click-miss → warning + `RELATIVE_LINK_FAIL`; other Telescope errors → one `logger.exception` with “Continuing to the next job”; success → `info` entity line.
+
+## Recommended actions (Chuckles / downstream — not Radia)
+
+1. Append artifact, `docs(AST-2025): Radia review — findings`, push sub ref, post slim upshot `--as radia`, **Review Posted** → datt **REVIEW** → **`resolve-child`** for batch tally (+ test pin).
+2. Betty: optional manifest node for `passed`/`failed` on mixed qualify batch once product fix lands.
+
+```
+[code-rubric] REVIEW (Commit: 89b5e0f) qualify batch tally bug
+```
+
+context_tokens≈24000
