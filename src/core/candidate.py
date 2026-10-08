@@ -3762,8 +3762,10 @@ def run_session_resume_parse(
     logger.set_debug_flag(debug)
     paste = resume_text.strip()
     structure = default_resume_structure()
-    # Synthetic token ctx + the selected candidate's key map only — no astral_candidate_id (no bind/persist).
+    # Synthetic token ctx: selected candidate's keys + astral_candidate_id for agent cache isolation (AST-1639).
+    # Still no bind/persist — ledger stays on the "session" sentinel; save_candidate is never called here.
     ctx = {
+        "astral_candidate_id": cid,
         "candidate_data": {
             "context": {"raw_resume": paste},
             "artifacts": {"resume_structure": structure},
