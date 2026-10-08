@@ -380,3 +380,95 @@ Fake timers must be restored per case (`vi.useRealTimers()` in `afterEach`) so t
 - Every retargeted case keeps its original assertion on the PUT payload, especially the AST-1382/AST-1476 `resume_structure` bundling and the AST-1593 job leaf key. Only the trigger changes (Save click becomes the timer).
 - No product src on this ticket. AST-2051 owns `ArtifactEditor.tsx`.
 - The new cases are red on pre-AST-2051 product and green after it lands.
+
+
+## Radia review (AST-2056)
+
+[code-rubric]
+
+**Ticket:** AST-2056  
+**Publish ref:** `4cf623ac4cd899915ebec5fda18c8566050014af` (`origin/sub/AST-2041/AST-2056-resume-autosave-tests`)  
+**Corpus:** (no `docs/canon-index.md` on publish ref; test-only delivery)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen **Canon Scope** on AST-2056: **none** (test tree + bible only; product on AST-2051). No directive ids to score; roll-up vacuously clean.
+
+**Notes:** `astral.git.engineer-test-tree-ban` / Betty ownership satisfied — this ticket’s entire diff is `tests/**`, `docs/test-bible/**`, and plan patch; **no `src/**`**.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (gap child from Betty `qa-fix`; no `validate-plan` / fix-board Joan artifact on AST-2056 — appropriate for test-only delivery).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+### `[bug-repro]` — OK (with advisory on AST-905 guards)
+
+**Tagged `[bug-repro]` (4) — repro-first and To-be pinned:**
+
+| Test | Asserts (not tautology) | Pre-fix fail? |
+|------|-------------------------|---------------|
+| `AST-2051 [bug-repro]: structure body edit autosaves…` | No Save/Cancel; `"Unsaved changes"`; **0 PUT** before full `AUTOSAVE_MS`; **1 PUT** with `professional_summary === "Struct body edited"`; `"All changes saved"` | Yes (no structure-mode autosave pre-AST-2051) |
+| `AST-2051 [bug-repro]: jobPersistence Job Resume…` | Same pattern on `PUT /api/jobs/j1/artifacts/resume_content` with `hello edited` | Yes |
+| `AST-2051 [bug-repro]: in-flight autosave keeps dirty…` | Deferred first PUT; second edit; **`"Unsaved changes"`** after first resolves; **unmount flush** → 2nd PUT with `"Struct body one two"` | Yes |
+| `AST-2051 [bug-repro]: jobPersistence autosave skips onSaved…` | `onSaved` **not** called after autosave PUT; **called once** after unmount flush + 2nd PUT `hello a b` | Yes |
+
+**Retarget with `[bug-repro]` in title:** `AST-1382 [bug-repro]: content autosave bundles resume_structure…` — autosave trigger + unchanged `resume_structure` / format bundling assertions (plan step 1 / **What must still hold**).
+
+**AST-905 contract (2) — not `[bug-repro]`-tagged; bible documents as guard cases:**
+
+- `AST-2051: Generate review keeps header Save/Cancel and never autosaves` — Save/Cancel present in review; `advanceAutosave()` → **0 PUTs**; explicit Save → 1 PUT.
+- `AST-2051: autosave timer queued before Generate does not fire during review` — edit → Regenerate inside debounce window → timers advanced → **0 PUTs**; Save/Cancel still shown.
+
+These two are **green on pre-fix structure-mode product** because pre-AST-2051 never queued body autosave in structure mode (timer never armed), so they do not flip red→green like the four `[bug-repro]` cases. They still assert post-AST-2051 behavior (especially the pre-Generate timer + `snapshotRef` path) and match the plan/bible “guard — green pre-fix” wording.
+
+**advisory:** Repro-first gate is **4 explicit `[bug-repro]`** tests per bible manifest step 2; the two AST-905 guards are regression locks, not repro-first gates. Optional hardening (not blocking): spy `setTimeout` / assert a timer was scheduled before Generate so pre-fix fails for the wrong reason too — **Default if unpicked:** ship as documented.
+
+**Retargeted header-Save cases (10 + page):** Use `startAutosaveClock` / `advanceAutosave`, `expectNoHeaderSaveCancel()`, and preserve PUT payload checks (e.g. AST-553 job PUT, AST-1351 legacy **no PUT** + unsupported toast + `"Unsaved changes"`, AST-1410 **shapesKey** cover letter Cancel re-GET, page `AST-1577 / AST-2051` autosave to `/api/candidates/c1/data` with `base_resume.professional_summary`). Matches plan § Proposed change 1–3.
+
+**Harness:** `afterEach(vi.useRealTimers)` in both suites; page case uses `useFakeTimers({ shouldAdvanceTime: true })` per plan blast radius.
+
+### `## What must still hold` — OK
+
+| Item | Verdict |
+|------|---------|
+| Retargeted PUT payloads (AST-1382/1476 structure bundling, AST-1593 leaf, etc.) | Payload assertions retained; only trigger is timer vs Save click |
+| No product `src` on this ticket | Diff: 5 files, **no `src/`** |
+| New cases red pre-fix / green with AST-2051 | Betty/Ada report: 4 `[bug-repro]` red on ftr product; 8/8 `AST-2051`-named tests green with AST-2051 product overlaid; retargets red on missing Save / no autosave PUT |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none requiring @susan)
+
+**advisory:**
+
+- **AST-905 guard tests** pass pre-fix without exercising autosave (see above); bible already labels them; not a merge blocker.
+- **Pre-existing 3 reds** (Print Resume ×2, ui-consistency draft path) documented in bible § AST-2056; name-skipped in manifest — unchanged by this tip.
+- **Frozen Canon Scope** missing on gap child — Archie process note only.
+
+## Plan fidelity
+
+Aligns with `## Bug: AST-2056` (retarget list, AST-1410 shapesKey, six new contract cases, bible updates). `docs/test-bible/frontend/components.md` § AST-2056 manifest matches Ada’s 105/108 pass + skip pattern.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | **Orphaned** AST-2041 → **Review Posted** → **User Testing**; land **`merge-tests(AST-2056)`** onto stack with AST-2051 product before **straight-to-`origin/dev`** finish-up (per AST-2051 review note on test carry). |
+
+**Recommended actions for Chuckles:** Append artifact to plan doc, `docs(AST-2056): Radia review — clean`, push `sub/AST-2041/AST-2056-resume-autosave-tests`, slim upshot `--as radia`, advance status per fix-lane §3h.
+
+context_tokens≈N
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 4cf623ac4) Bug-repro locks autosave contract
+```
