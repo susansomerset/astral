@@ -236,3 +236,50 @@ context_tokens≈28000
   - `TestEntityAgentStoryBranches::test_scored_response_without_job_id_keeps_content` expects `""` for old `jobs[]` with no ids. AC7 / D4 now return it whole.
 - **Deviation:** none.
 - **For QA:** see `## For QA (Betty)` above. The two `get_agent_data` "keeps row" tests (AC5) are the case that section didn't list by name.
+
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-2030
+**Publish ref:** 9b73ea9d1f567a13d7625e1cef7dae2de66a1a6e
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Overall:** CLEAN
+
+## Canon scores
+patt.entity.batch-processing | A |
+stat.logging.debug | B |
+
+## Column diff vs plan stage
+(aligned)
+
+## Frame diff
+(none)
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+- **advisory** | sibling product + test carry | Publish ref `origin/sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity` three-dot diff vs `origin/dev` also contains AST-2029 storage (`src/utils/formatting.py` hydrate/split, `do_task` `entity_ids`, `test_agent_ast2029.py`, expanded `ast-2029` plan doc). Expected while #1 is not on `dev` and this branch stacks the dependency (`blockedBy` AST-2029). AST-2030-owned read changes remain confined to `_slice_entity_block`, `get_agent_data`, and `get_entity_agent_story` in `src/core/agent.py`.
+- **advisory** | `src/utils/formatting.py` | On this tip, `hydrate_entity_labels` logs full `out` (`Response from hydrate_entity_labels: %s`), addressing the count-only pattern noted on the AST-2029 line in the prior review thread.
+- **advisory** | `stat.logging.debug` | `_slice_entity_block` has outbound `Response from …` (full `out`, per plan D7) but no `Calling _slice_entity_block: [entity_id=…]` inbound line — Joan flagged this as slight variance at plan; unchanged in code.
+- **advisory** | `tests/component/core/test_consult.py` | Diff removes consult tests unrelated to AST-2030 manifest; treat as merge-tests / bible hygiene carry unless Betty’s manifest calls them out.
+
+## What's solid
+- Stage 1–3 match plan: `_filter_response_block` removed; `_slice_entity_block` implements D1 three-way semantics (`{}` → whole, match → segment, other ids → `None`).
+- `get_agent_data` slices `NO_CACHE` / `TASK` / `RESPONSE`, passes `SYSTEM` / `CACHE_*`, drops `None` rows (AC5), copies rows with `{**row, …}` (no mutation — tested).
+- `get_entity_agent_story` slices `NO_CACHE` / `RESPONSE` for every task when `entity_ref_id` set; `None` → `""` (D2); candidates stay whole (D5).
+- `test_agent_ast2030.py` covers AC4–AC7, D6 shared prompt, chunk isolation, company `short_name`, candidate whole; `test_agent.py` retargets obsolete `_filter_response_block` tests to `_slice_entity_block` and AC5 drop behavior.
+- AC8: `src/ui/api/` and `src/data/` diff empty; `rg _filter_response_block` clean on `src/`.
+
+## Recommended actions (downstream only — not executed in this session)
+- Chuckles: append artifact, `docs(AST-2030): Radia review — clean`, post slim upshot `--as radia`, **Review Posted** → datt may route **PROCEED** toward User Testing once AST-2029 dependency is satisfied in the epic merge order.
+- Optional: add `Calling _slice_entity_block: …` debug if Susan wants strict callee-in symmetry (effort 2); not gated on current **B** grade.
+
+context_tokens≈22000
+```
