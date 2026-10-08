@@ -15,7 +15,14 @@ from capture import (
     capture_text,
     resolve_capture_query,
 )
-from interact import dismiss_cookies, expand_page, navigate, wait_ready_generic
+from interact import (
+    ClickTargetMissing,
+    click_and_follow,
+    dismiss_cookies,
+    expand_page,
+    navigate,
+    wait_ready_generic,
+)
 from logging_util import get_logger
 from meta import build_scrape_meta
 from joblog import capture_summary
@@ -56,6 +63,13 @@ _FIELDS_DESC = (
     "and only the requested capture keys (text, links, html)."
 )
 
+_CLICK_DESC = (
+    "Optional. After load / cookies / expand / wait_ready, click the first <a> whose href "
+    "attribute exactly equals this value, follow it (same tab or new tab), and capture on "
+    "the destination. No such anchor fails the job with error_class click_target_missing "
+    "(never retried)."
+)
+
 
 class TelescopeRequest(BaseModel):
     url: str
@@ -69,6 +83,7 @@ class TelescopeRequest(BaseModel):
     id: Optional[str] = Field(default=None, description=_ID_DESC)
     expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
+    click_href: Optional[str] = Field(default=None, description=_CLICK_DESC)
     debug: bool = Field(
         default=False,
         description=(
@@ -102,8 +117,12 @@ class TelescopeRequest(BaseModel):
         return out
 
 
+# Contract mirror: src/external/telescope.py maps this class — change both sides together.
+CLICK_TARGET_MISSING = "click_target_missing"
+
+
 class ScrapeError(Exception):
-    """A failed attempt. error_class drives retry: bad_request never retries."""
+    """A failed attempt. error_class drives retry: bad_request and click_target_missing never retry."""
 
     def __init__(self, error_class: str, message: str) -> None:
         super().__init__(message)
@@ -139,7 +158,7 @@ def parse_request(raw: Any) -> tuple[TelescopeRequest, Optional[str]]:
 async def run_scrape(
     firefox: Firefox, req: TelescopeRequest, sel: Optional[str]
 ) -> dict:
-    """One attempt. Raises ScrapeError("timeout" | "scrape_failed", …) on failure."""
+    """One attempt. Raises ScrapeError("timeout" | "click_target_missing" | "scrape_failed", …) on failure."""
     want = set(req.fields)
     cookies_dismissed = False
 
@@ -151,6 +170,10 @@ async def run_scrape(
             await expand_page(page)
         if req.wait_ready:
             await wait_ready_generic(page)
+        if req.click_href:
+            page = await click_and_follow(page, req.click_href)
+            # Destination may be another site with its own banner; same dismiss as a direct load.
+            cookies_dismissed = await dismiss_cookies(page) or cookies_dismissed
         out: dict = {"final_url": page.url}
         if "text" in want:
             out["text"] = await capture_text(page, sel)
@@ -171,6 +194,8 @@ async def run_scrape(
         raise ScrapeError(
             "timeout", f"scrape exceeded {settings.request_timeout_seconds}s"
         ) from None
+    except ClickTargetMissing as exc:
+        raise ScrapeError(CLICK_TARGET_MISSING, str(exc)) from None
     except Exception as exc:
         raise ScrapeError("scrape_failed", f"{type(exc).__name__}: {exc}") from exc
 

@@ -573,6 +573,8 @@ TASK_CONFIG = {
         "fallback_batch_size": 30,
         # DB dispatch_task.batch_size overrides; below is config default only.
         "pass_state": "PASSED_JOBLIST",
+        # AST-2022: pass + non-empty, non-http(s) job_link → here instead of InvalidJobLinkError (routing is AST-2025).
+        "relative_link_state": "RELATIVE_JOB_LINK",
         "fail_state": "FAILED_JOBLIST",
         "error_state": "ERROR_QUALIFY_JOB_LISTINGS",
         "min_job_title_length": 5,
@@ -2305,6 +2307,21 @@ GAZER_CONFIG = {
             "JD_SCRAPE_FAIL_CLOSED",
         ],
     },
+    # AST-2022: click-through fetch for relative-link jobs (runner is AST-2025).
+    # Click reached a page → same JD gates/outcomes as fetch_jd; click failed → fail_state.
+    "fetch_relative_jd": {
+        "fallback_batch_size": 10,   # config default only; dispatch_task.batch_size wins
+        "trigger_state": "RELATIVE_JOB_LINK",
+        "pass_state": "JD_READY",
+        "fail_state": "RELATIVE_LINK_FAIL",
+        "error_states": [
+            "JD_SCRAPE_FAIL",
+            "JD_SCRAPE_FAIL_COOKIE",
+            "BOT_BLOCKED",
+            "JD_SCRAPE_FAIL_MISSING",
+            "JD_SCRAPE_FAIL_CLOSED",
+        ],
+    },
     "fetch_culture_pages": {
         "fallback_batch_size": 10,
         "pass_state": "CULTURE_READY",
@@ -2548,15 +2565,18 @@ JOB_STATES = {
     "NEW":                    {"prior_states": None,                   "retry_state": retry_of("NEW")},  # unrestricted — ingested from job board scans; retry_of: qualify_job_listings retry holding (post-AST-898)
     "VALID_TITLE":            {"prior_states": ["NEW"],                "retry_state": retry_of("NEW")},  # post–title-screen; retry → NEW_RETRY (AST-898); retry_of: drain-only; no new writes from NEW qualify path
     "INVALID_TITLE":          {"prior_states": ["NEW"]},
+    # AST-2022: relative-link qualify passes park here for the click-through fetch (fetch_relative_jd).
+    "RELATIVE_JOB_LINK":      {"prior_states": ["NEW", "RELATIVE_LINK_FAIL"]},  # NEW_RETRY resolves through its base; RELATIVE_LINK_FAIL = Skipped bulk retry
+    "RELATIVE_LINK_FAIL":     {"prior_states": ["RELATIVE_JOB_LINK"]},  # click target missing / Telescope error; job_link still relative
     "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "JD_READY", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED"]},
     "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE"]},
     "FAILED_TECHNICAL":       {"prior_states": None},                                            # generic technical failure
-    "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", "ERROR_EVALUATE_JD"],    "retry_state": retry_of("JD_READY")},  # retry_of: evaluate_jd retry holding state
-    "JD_SCRAPE_FAIL":         {"prior_states": ["PASSED_JOBLIST"]},
-    "JD_SCRAPE_FAIL_COOKIE":  {"prior_states": ["PASSED_JOBLIST"]},
-    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW"]},  # AST-1195: universal bot/challenge
-    "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST"]},
-    "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST"]},
+    "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", "ERROR_EVALUATE_JD", "RELATIVE_JOB_LINK"],    "retry_state": retry_of("JD_READY")},  # retry_of: evaluate_jd retry holding state
+    "JD_SCRAPE_FAIL":         {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    "JD_SCRAPE_FAIL_COOKIE":  {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"]},  # AST-1195: universal bot/challenge
+    "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
     "PASSED_JD":              {"prior_states": ["JD_READY", "FAILED_DO", "FAILED_TECHNICAL_DO"], "retry_state": retry_of("PASSED_JD")},  # retry_of: grade_do incomplete-grade holding (AST-1155)
     "FAILED_JD":              {"prior_states": ["JD_READY"]},
     "PASSED_DO":              {"prior_states": ["PASSED_JD", "FAILED_GET", "FAILED_TECHNICAL_GET"], "retry_state": retry_of("PASSED_DO")},  # retry_of: grade_get incomplete-grade holding (AST-1155)
@@ -3677,6 +3697,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "METEORITE_NEW"
     if task_key == "fetch_jd":
         return "PASSED_JOBLIST"
+    if task_key == "fetch_relative_jd":
+        return GAZER_CONFIG["fetch_relative_jd"]["trigger_state"]
     if task_key == "fetch_culture_pages":
         return "PASSED_GET"
     if task_key == "fetch_job_pages":
@@ -3751,7 +3773,7 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if isinstance(et, str) and et.strip():
         return et.strip()
     if task_key in (
-        "fetch_jd", "fetch_culture_pages", "qualify_job_listings", "qualify_meteorite", "evaluate_jd",
+        "fetch_jd", "fetch_relative_jd", "fetch_culture_pages", "qualify_job_listings", "qualify_meteorite", "evaluate_jd",
         "grade_do", "grade_get", "grade_like", "analysis_upshot",
         "contemplate_job", "draft_cover_letter",
     ):
@@ -3944,7 +3966,7 @@ def trigger_state_used_by_scored_dispatch_task(trigger_state: Optional[str]) -> 
 SKIPPED_STATES = [
     "INVALID_TITLE",
     "FAILED_JOBLIST", "JD_SCRAPE_FAIL",
-    "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED",
+    "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED", "RELATIVE_LINK_FAIL",
     "FAILED_JD", "FAILED_TECHNICAL",
     "FAILED_DO", "FAILED_TECHNICAL_DO",
     "FAILED_GET", "FAILED_TECHNICAL_GET",
@@ -3985,6 +4007,7 @@ JOBS_PROCESSING_UI_SECTIONS = [
     {"state": retry_of("VALID_TITLE"), "label": "Valid Title (retry)"},
     {"state": retry_of("NEW"), "label": "New (retry)"},
     {"state": "PASSED_JOBLIST", "label": "Passed Job List"},
+    {"state": "RELATIVE_JOB_LINK", "label": "Relative Job Link"},
     {"state": "JD_READY", "label": "JD Ready"},
     {"state": retry_of("JD_READY"), "label": "JD Ready (retry)"},
     {"state": "PASSED_JD", "label": "Passed Job Description"},
@@ -4058,6 +4081,7 @@ JOBS_SKIPPED_SECTION_ORDER = [
     "BOT_BLOCKED",
     "JD_SCRAPE_FAIL_MISSING",
     "JD_SCRAPE_FAIL_CLOSED",
+    "RELATIVE_LINK_FAIL",
     "ERROR_QUALIFY_JOB_LISTINGS",
     "ERROR_EVALUATE_JD",
     "CANDIDATE_SKIPPED",
@@ -4088,6 +4112,7 @@ JOBS_SKIPPED_SECTION_LABELS = {
     "METEORITE_FAILED_TECHNICAL_GET": "Meteorite Failed Technical GET",
     "METEORITE_FAILED_LIKE": "Meteorite Failed LIKE",
     "METEORITE_FAILED_TECHNICAL_LIKE": "Meteorite Failed Technical LIKE",
+    "RELATIVE_LINK_FAIL": "Relative Link Fail",
 }
 
 # Which `job[...]` grade blob to read for rubric columns (keys ⊆ JOB_STATES).
@@ -4195,6 +4220,7 @@ JOBS_SKIPPED_BULK_RETRY_TO_STATE = {
     "BOT_BLOCKED": "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_MISSING": "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_CLOSED": "PASSED_JOBLIST",
+    "RELATIVE_LINK_FAIL": "RELATIVE_JOB_LINK",  # AST-2022: back to the click-through fetch
     "NEED_CULTURE_CONTENT": "PASSED_GET",
     "NO_CULTURE_LINKS": "PASSED_GET",
     "NEED_WEBSITE_CONTENT": "CULTURE_READY",

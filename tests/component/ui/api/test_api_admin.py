@@ -679,6 +679,18 @@ class TestAst749DispatchTaskKeysRetiredFilter:
         assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
 
 
+# AST-2025 AC6: fetch_relative_jd (agent_task catalog) in the Scheduled Actions picker as job / RELATIVE_JOB_LINK.
+class TestAst2025FetchRelativeJdDispatchTaskKey:
+    def test_picker_lists_fetch_relative_jd_job_relative_job_link(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", list)
+        monkeypatch.setattr(admin_mod.database, "list_candidate_tasks", lambda: [{"task_key": "fetch_relative_jd"}])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert keys["fetch_relative_jd"]["entity_type"] == "job"
+        assert keys["fetch_relative_jd"]["trigger_state"] == "RELATIVE_JOB_LINK"
+
+
 # AST-796 / AST-960 / AST-1214: fetch_jd gazer hop; retired still excluded; live agent_task union in picker.
 _AST1214_AGENT_TASK_ONLY_KEYS = (
     "fetch_culture_pages",
@@ -1623,7 +1635,7 @@ class TestAst1880ResolveAdhocCatalogRoute:
         assert err is None
         assert (payload["model_code"], payload["server_id"], payload["tier"]) == ("deepseek-v4-flash", "deepseek", route["tier"])
         # AST-1957: no stored temperature → None (not sent); empty max_tokens → the model's default.
-        assert (payload["temperature"], payload["max_tokens"]) == (None, route["tier"]["max_tokens"])
+        assert (payload["temperature"], payload["max_tokens"]) == (None, route["tier"]["default_max_tokens"])
         assert payload["candidate_api_keys"] is None
         assert "tier_meta" not in payload
 
