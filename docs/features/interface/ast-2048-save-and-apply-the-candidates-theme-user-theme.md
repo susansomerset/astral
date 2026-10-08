@@ -227,3 +227,57 @@ context_tokens≈38000
 - **Build notes:** `python3 -m py_compile src/core/candidate.py` exits 0, and `ruff check --select F,E9` is clean. `npx tsc -b --noEmit` and `npm run build` exit 0. `rg '#[0-9a-fA-F]{3,8}\b'` on CandidateProfile.tsx returns nothing. `rg '"light"'` over `.ts`/`.tsx` returns nothing. `eslint .` on the branch vs `origin/dev` (JSON output, path and line:col stripped, multiset diff): 31 problems both, no new or removed problems. The only one in a touched file is the pre-existing `CandidateContext.tsx` `exhaustive-deps` warning on `load`.
 - **Deviation:** none. Every step was applied as written.
 - **For QA:** Server cases: `PUT …/data` with `{"theme": "neon"}`, `"light_parchment"`, `""`, or `null` should return 400 with the stored theme unchanged, and `"light"` should return 200. AC 5 and AC 6 need a browser (computed `<html>` `data-theme` and `<body>` background, picker switch without reload, Dark login screen). No manual smoke run was done in this headless build. The `/api/system/ui_config` routing bug (Finding above) is untouched and still affects Theme Examples.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2048
+**Publish ref:** `a2610b523beeaa79a43bd8e96ac7c792f26dfa0b` (`origin/sub/AST-2042/AST-2048-theme-save-apply`)
+**Corpus:** `cc0ca67ac7e3ffd6f9067ccd857cb47fdb2c6f50` (canon tree at publish tip; frozen **Citations** / **Canon Scope** both **none**)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score; not §5.3 ESCALATE (explicit empty scope, same as AST-2047 / Joan).
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded empty canon with no rows; incremental product diff matches the three-file plan gate.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Epic stack vs `origin/dev`:** The three-dot diff vs `origin/dev` still includes AST-2047 product (`config.py`, `App.css`, Theme Examples, etc.) because the publish ref sits on the stacked epic branch, not on `origin/dev`. **AST-2048’s own code commits** (`e6b29627e` … `5e403a8d9`) touch only `src/core/candidate.py`, `CandidateProfile.tsx`, and `CandidateContext.tsx` — no #1/#3 boundary breach in the child’s delta.
+- **sibling test carry:** Same `merge-tests` pattern as #2047 — `test_agent.py`, `test_ArtifactEditor.test.tsx`, `test_ArtifactsBaseResumeContent.test.tsx`, plus full #2047 manifest paths in the branch diff; expected; not scored as #2048 product scope.
+- **AC5 body background / AC6 computed repaint:** Component tests assert `document.documentElement` `data-theme` (set / flip on picker / clear on unmount / empty candidates). Bible § AST-2048 documents jsdom gap for `getComputedStyle(document.body).backgroundColor` — UAT/browser only.
+- **`/api/ui_config` failure:** Profile now blocks candidate load until `default_theme` is present on the existing `/api/ui_config` response (`**UI_CONFIG` spread in `api_system.py:200`**). Plan documents “stay on Loading…” if that fetch fails; no new test pins it — acceptable tradeoff Joan flagged.
+- **Parent finding (AST-2047, unchanged):** `loadUiConfig` → `/api/system/ui_config` mismatch still breaks Theme Examples at runtime; bible flags for parent UAT; out of #2048 scope.
+
+## What's solid
+
+- **Allowlist (AC4):** `save_candidate_data` rejects any `theme` not in profile-selectable registry ids (`ValueError`, pronouns-shaped message); parametrized core tests cover `neon`, alternates, `""`, `None`, and unhashable `["light"]`; API test exercises 400 path with DB save mocked off.
+- **Profile load/save (AC3):** `default_theme` from `/api/ui_config`; load gated on it; `editValuesFromCandidate` uses stored `candidate_data.theme` or fallback; vitest asserts default display, Light save PUT body, and post-save Light selected.
+- **Repaint (AC5/AC6 attribute half):** `CandidateContext` effect sets/removes root `data-theme` from selected candidate; cleanup on switch/unmount; picker flip c1→c2→c1 without reload covered in context tests.
+- **Boundaries:** No edits in #2048 commits to `config.py`, `App.css`, `uiConfig.ts`, routes, or Theme Examples; CandidateProfile inline hex swapped to existing tokens per plan (parent AC9 `.tsx` share).
+
+## Recommended actions (downstream — not Radia)
+
+- Chuckles: append artifact, post slim upshot, **Review Posted** → **PROCEED** to UAT/`resolve-child` per datt.
+- **Susan UAT:** AC5/AC6 body background on Light vs Dark; picker switch visual; login screen Dark after logout; PUT `""`/`null`/`light_parchment` 400 (core-tested; API test samples two bad ids).
+- **Parent epic:** Track Theme Examples `/api/system/ui_config` routing separately from this child.
+
+context_tokens≈28000
