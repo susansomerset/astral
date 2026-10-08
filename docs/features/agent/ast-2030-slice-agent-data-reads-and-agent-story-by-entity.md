@@ -218,3 +218,21 @@ stat.logging.debug | B |
 
 context_tokens≈28000
 ```
+
+## Review
+
+- **Branch:** `origin/sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity`
+- **Build commits:** `7e0ad85f0` (Stage 1: `_slice_entity_block`, which replaces `_filter_response_block`), `868497f7d` (Stage 2: `get_agent_data` slices `NO_CACHE` / `TASK` / `RESPONSE` and drops other chunks' rows), `aa944fcd1` (Stage 3: the story slices `NO_CACHE` / `RESPONSE` for every task, plus loop begin/end debug lines).
+- **Build notes:**
+  - `py_compile` is clean.
+  - `ruff` before/after on `src/core/agent.py`: the only new finding is `UP045` on `Optional[str]`, which matches the file's existing typing style.
+  - Stage 1's interim commit carried one F821, because the story still called the deleted `_filter_response_block`. Stage 3 removed that call as the plan sequenced it.
+  - `rg _filter_response_block src/` returns nothing.
+  - `git diff origin/dev...HEAD -- src/ui/api/ src/data/` is empty (AC8).
+  - Called against stubbed rows: `get_agent_data(entity_id="B")` returns `SYSTEM` whole, chunk 1's live `NO_CACHE` as `[entity_id=B]: b` only, and the `000:` legacy row whole. It drops chunk 2's `[D,E]` `NO_CACHE` and `RESPONSE` rows (AC4, AC5, AC7). `get_entity_agent_story` for job B on an unscored task returns B's `NO_CACHE` slice and the legacy block whole, and returns `""` for the other-chunk `RESPONSE` (AC6, AC7).
+- **Existing tests:** `test_agent.py` + `test_agent_ast2029.py` fail 51 on the pre-build tree and 56 after it. The 5 new failures are all intended behaviour changes, and none of them is a regression:
+  - `TestFilterResponseBlock::test_batch_response_filters_matching_job` and `::test_non_json_and_single_job_responses` call the deleted `_filter_response_block` (D3).
+  - `TestAgentDataAccess::test_get_agent_data_keeps_row_when_segment_missing` and `TestEntitySegmentAccess::test_get_agent_data_keeps_rows_without_matching_segment` expect a row whose `jobs[]` only holds another id to be kept. AC5 / D1 now drop it.
+  - `TestEntityAgentStoryBranches::test_scored_response_without_job_id_keeps_content` expects `""` for old `jobs[]` with no ids. AC7 / D4 now return it whole.
+- **Deviation:** none.
+- **For QA:** see `## For QA (Betty)` above. The two `get_agent_data` "keeps row" tests (AC5) are the case that section didn't list by name.
