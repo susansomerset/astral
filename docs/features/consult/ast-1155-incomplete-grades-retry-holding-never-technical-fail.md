@@ -1509,6 +1509,23 @@ Red on pre-fix `agent.py` (`jobs` is only `job-1`), green on the tip.
 - No production code change; the statute (AST-2053) is not touched.
 - Pass criterion: `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` → **0 failed** (12 passed: the 8 already green + the 2 rewritten + the 2 new). The bug-repro (#3) is red against pre-fix `agent.py` `055c53c2a`.
 
+
+## Joan fix-board — AST-2057
+
+AST-2057 is test-tree and bible only: it rewrites stale decode asserts, adds bug-repro/guard coverage for the behaviour AST-2053 already shipped, and explicitly does not touch `src/` or statute files. Tests and bible prose *reference* `astral.agent.confidence-bounds`; they do not contradict it or ask for a new carve-out.
+
+**For Chuckles to post:**
+
+```
+[board-joan]  CANON: OK
+```
+
+**Stdout:**
+
+```text
+AST-2057 board-joan done — CANON: OK.
+```
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
