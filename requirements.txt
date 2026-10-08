@@ -8,6 +8,7 @@ stytch
 httpx>=0.27.0,<1
 asyncpg>=0.30.0,<1
 beautifulsoup4>=4.12.0
+nh3>=0.3.7,<0.4  # HTML sanitizer (Rust ammonia); Contact meteorite writes (AST-2061)
 requests>=2.31.0
 
 # Encryption
