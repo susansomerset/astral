@@ -762,3 +762,68 @@ One file, `src/ui/frontend/src/App.css`, named in AST-2042's Component scope. Th
 
 - **Betty — TESTS: OK.** App.css-only change; no existing test reads the six repointed heading rules or `--accent-gold` values. AST-2047 App.css contract tests already cover `--heading` declared in all four theme blocks, every `var()` resolving, and no hex outside theme blocks. Light-heading purple is a UAT visual check. Note: `test_AdminThemeExamples.test.tsx` has 5 tests (not 4) since the AST-2049 guard.
 - **Joan — CANON: OK.** Parent Canon Scope is none. No in-force statute governs theme token names, heading vs accent roles, or palette hex sets. `astral.ui.frontend-file-placement` satisfied (styles stay in App.css). Draft UI patterns (`patt.ui.shared-button-roles`, in-flight gold) are not in force and not amended.
+
+### AST-2063 Radia review-fix — round 1
+
+[code-rubric]
+**Ticket:** AST-2063
+**Publish ref:** `85582d39cbc7c61e8fed3cb6165ce25466ba0a93` (`origin/sub/AST-2042/AST-2063-light-header-purple`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; ticket/parent **Canon Scope:** none)
+**Overall:** FIX-NOW
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**; no `validate-plan` canon column for this bug).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out (Betty **TESTS: OK**; `qa-fix` did not run per spawn brief).
+
+**## What must still hold — OK** for the **isolated** fix commit `85582d39c` (`App.css` only): Dark `--heading: var(--accent-gold)` preserves heading color vs pre-fix; `--heading` added in all four blocks (AC 4 name-set parity); `#241b33` only inside Light `[data-theme]` blocks; six heading selectors repointed; no other `var(--accent-gold)` rule bodies changed in that commit.
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket scope on publish ref (fix-lane diff base).** `git diff origin/ftr/AST-2042-user-theme...origin/sub/AST-2042/AST-2063-light-header-purple` is **not** the AST-2063 fix alone. `origin/ftr/AST-2042-user-theme` @ `90151549d` is an ancestor of the sub tip, with **40 commits** in between. Product/test paths in that three-dot diff include:
+  - `src/core/agent.py`
+  - `src/ui/frontend/src/components/AgentAnalysisHeader.tsx`, `ArtifactEditor.tsx`, `RubricModal.tsx`
+  - `tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx`, `test_RubricModal.test.tsx`
+  - plus `App.css` (2063 + any prior delta vs lagging ftr)
+  
+  The **only** AST-2063 product commit is `85582d39c` — **1 file**, `App.css`, matching `## Proposed change` exactly (4× `--heading`, 6 selector repoints). Merging or fast-forwarding this sub onto ftr as-is would land **AST-2059 / AST-2060 / AST-2041 / dev-merge** work unrelated to Susan’s header-color bug. **Chuckles/engineer:** restack the sub on current `origin/ftr/AST-2042-user-theme` (cherry-pick `85582d39c` + plan/docs commits only) before `merge-child` or UT merge.
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Isolated fix vs prescribed diff:** Review scoring of plan fidelity and “must still hold” applies to `85582d39c`; the ftr…sub diff must not be used as the merge artifact until restacked.
+- **UAT:** Light heading purple (`#241b33`) remains visual-only; fix-board already noted no durable color assertion (consistent with opt-out).
+- **Sibling AST-2064:** Plan documents non-overlapping insert above `--grade-*`; merge doc conflict possible on adjacent `## Bug:` append — resolve keeping both blocks.
+
+## What's solid
+
+- **Plan fidelity (isolated commit):** Matches `## Bug: AST-2063` in `ast-2047-theme-registry-palettes-and-theme-examples-page-user-theme.md` on the publish ref — token placement, Dark alias, Light hex, six selectors, accents untouched.
+- **Blast radius:** No `.tsx`/config/API in `85582d39c`.
+- **Board bar:** Betty/Joan OK; absence of `[bug-repro]` is consistent with App.css-only, opt-out path.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (after restack) | **Normal** (AST-2042 UAT-batch, not Done) | Restack sub → re-run review or confirm three-dot diff is **only** 2063 (+ docs) → **Review Posted** → clean shortcut to **User Testing** if then CLEAN. |
+| **REVIEW** (if shipped without restack) | Normal | **Do not** `merge-child` this tip — smuggles sibling fix-lane product. |
+
+context_tokens≈22000
+
+`[code-rubric] REVIEW (Commit: 85582d39c) Sub branch stacks extra fixes`
