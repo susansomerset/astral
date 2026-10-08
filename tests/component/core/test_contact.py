@@ -40,6 +40,13 @@ def _stub_estelle_turn(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
 
 
+@pytest.fixture(autouse=True)
+def _ast2061_private_channel_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # AST-2061: app_mention looks up channel type; default every case to a private channel.
+    # raising=False keeps the pre-fix module importable for [bug-repro] runs.
+    monkeypatch.setattr(contact_mod, "fetch_channel_type", lambda _ch: "group", raising=False)
+
+
 class _ImmediateThread:
     """Run Thread target synchronously so receive_slack_events_http tests stay deterministic."""
 
@@ -91,118 +98,26 @@ class TestAst1066ContactScaffold:
             assert skill_key not in TASK_CONFIG
 
 
-# Branches: ACL inventory; meta; allowlisted write; reject path/skill/missing; Style D on/off.
-class TestAst1071ContactSkillRunners:
-    _PROFILE = "save_candidate_profile"
-    _CONTACT = "save_candidate_contact"
+# Branches: registry empty (AST-2061 retired save_candidate_*); any key → unknown, no candidate write.
+class TestAst2061ContactSkillsRetired:
+    def test_skills_registry_empty(self) -> None:
+        assert contact_mod.contact_skills() == {}
+        assert contact_mod.contact_skill_keys() == ()
 
-    def test_contact_skill_meta_and_unknown(self) -> None:
-        meta = contact_mod.contact_skill_meta(self._PROFILE)
-        assert meta["entity"] == "candidate"
-        assert meta["write"] is True
-        assert meta["allowed_paths"] == (
-            "profile.first",
-            "profile.last",
-            "profile.pronoun_preference",
-            "profile.contact_email",
-        )
-        assert isinstance(meta["allowed_paths"], tuple)
-        with pytest.raises(ValueError, match="unknown contact skill"):
-            contact_mod.contact_skill_meta("not_a_skill")
-
-    def test_run_writes_allowlisted_profile_path(self, sqlite_in_memory) -> None:
-        cid = "c-1071-prof"
+    def test_run_contact_skill_refuses_any_key(self, sqlite_in_memory) -> None:
+        cid = "c-2061-skill"
         from src.utils.config import CANDIDATE_STATES
 
         state = "NEW_CANDIDATE" if "NEW_CANDIDATE" in CANDIDATE_STATES else "NEW"
         sqlite_in_memory.save_candidate(cid, state=state, candidate_data={})
-        out = contact_mod.run_contact_skill(
-            self._PROFILE,
-            astral_candidate_id=cid,
-            fields={"profile.first": "Ada"},
-        )
-        assert out["ok"] is True
-        assert out["paths_written"] == ["profile.first"]
-        row = candidate_mod.get_candidate(cid)
-        assert (row.get("candidate_data") or {}).get("profile", {}).get("first") == "Ada"
-
-    def test_run_writes_allowlisted_contact_path(self, sqlite_in_memory) -> None:
-        cid = "c-1071-contact"
-        from src.utils.config import CANDIDATE_STATES
-
-        state = "NEW_CANDIDATE" if "NEW_CANDIDATE" in CANDIDATE_STATES else "NEW"
-        sqlite_in_memory.save_candidate(cid, state=state, candidate_data={})
-        out = contact_mod.run_contact_skill(
-            self._CONTACT,
-            astral_candidate_id=cid,
-            fields={"contact.contact_email": "ada@example.com"},
-        )
-        assert out["ok"] is True
-        assert "contact.contact_email" in out["paths_written"]
-        row = candidate_mod.get_candidate(cid)
-        assert (row.get("candidate_data") or {})["contact"]["contact_email"] == "ada@example.com"
-
-    def test_run_rejects_non_allowlisted_and_unknown_skill(self, sqlite_in_memory) -> None:
-        cid = "c-1071-reject"
-        from src.utils.config import CANDIDATE_STATES
-
-        state = "NEW_CANDIDATE" if "NEW_CANDIDATE" in CANDIDATE_STATES else "NEW"
-        sqlite_in_memory.save_candidate(cid, state=state, candidate_data={})
-        with pytest.raises(ValueError, match="path not allowlisted"):
-            contact_mod.run_contact_skill(
-                self._PROFILE,
-                astral_candidate_id=cid,
-                fields={"profile.middle": "X"},
-            )
         with pytest.raises(ValueError, match="unknown contact skill"):
             contact_mod.run_contact_skill(
-                "save_everything",
+                "save_profile_field",
                 astral_candidate_id=cid,
-                fields={"profile.first": "Ada"},
+                fields={"contact.contact_email": "x@evil.test"},
             )
-        with pytest.raises(ValueError, match="candidate not found"):
-            contact_mod.run_contact_skill(
-                self._PROFILE,
-                astral_candidate_id="missing",
-                fields={"profile.first": "Ada"},
-            )
-
-    def test_run_debug_true_emits_style_d(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
-        log = MagicMock()
-        monkeypatch.setattr(contact_mod, "logger", log)
-        cid = "c-1071-dbg"
-        from src.utils.config import CANDIDATE_STATES
-
-        state = "NEW_CANDIDATE" if "NEW_CANDIDATE" in CANDIDATE_STATES else "NEW"
-        sqlite_in_memory.save_candidate(cid, state=state, candidate_data={})
-        contact_mod.run_contact_skill(
-            self._PROFILE,
-            astral_candidate_id=cid,
-            fields={"profile.first": "Ada"},
-            debug=True,
-        )
-        log.set_debug_flag.assert_called_with(True)
-        outcomes = [c.kwargs.get("outcome") for c in log.debug_index.call_args_list]
-        assert outcomes == ["found", "recorded"]
-        assert log.debug_detail.call_count >= 2
-
-    def test_run_debug_false_skips_style_d(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
-        log = MagicMock()
-        monkeypatch.setattr(contact_mod, "logger", log)
-        cid = "c-1071-quiet"
-        from src.utils.config import CANDIDATE_STATES
-
-        state = "NEW_CANDIDATE" if "NEW_CANDIDATE" in CANDIDATE_STATES else "NEW"
-        sqlite_in_memory.save_candidate(cid, state=state, candidate_data={})
-        contact_mod.run_contact_skill(
-            self._PROFILE,
-            astral_candidate_id=cid,
-            fields={"profile.first": "Ada"},
-            debug=False,
-        )
-        log.set_debug_flag.assert_not_called()
-        log.debug_index.assert_not_called()
-        log.debug_detail.assert_not_called()
+        row = candidate_mod.get_candidate(cid)
+        assert "contact" not in (row.get("candidate_data") or {})
 
 
 class TestAst1069ContactSlackIngress:
@@ -793,11 +708,11 @@ class TestAst1073ContactEstelleTurnLoop:
         assert len(deps["do_task_calls"]) == 1
         deps["post"].assert_not_called()
 
-    def test_skill_calls_run_for_resolved_candidate(
+    def test_ast2061_skill_calls_never_write_candidate(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-1879: a turn with no candidate never reaches do_task, so skill_calls only run
-        # for a resolved candidate (no-candidate path: TestAst1879EstelleTurnCandidateCtx).
+        # [bug-repro] AST-2061: Estelle output carrying skill_calls must not reach run_contact_skill
+        # or save_candidate_data, and the turn prompt no longer advertises a skills ACL.
         deps = self._patch_turn_deps(
             monkeypatch,
             do_task_result={
@@ -807,16 +722,20 @@ class TestAst1073ContactEstelleTurnLoop:
                 "parsed_response": {
                     "reply": "ok",
                     "skill_calls": [
-                        {"skill_key": "save_profile_field", "fields": {"profile.first": "Ada"}},
+                        {"skill_key": "save_profile_field", "fields": {"contact.contact_email": "x@evil.test"}},
                     ],
                 },
             },
         )
-        out2 = contact_mod.run_contact_estelle_turn(
+        save = MagicMock()
+        monkeypatch.setattr(contact_mod, "save_candidate_data", save)
+        out = contact_mod.run_contact_estelle_turn(
             channel="C1", text="hi", astral_candidate_id="c1", debug=False
         )
-        deps["skill"].assert_called_once()
-        assert out2["skill_results"][0]["ok"] is True
+        deps["skill"].assert_not_called()
+        save.assert_not_called()
+        assert out["skill_results"] == []
+        assert "## Available Contact skills (ACL)" not in deps["do_task_calls"][0][1]["live_content"]
 
     def test_debug_style_d_index_and_detail(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._patch_turn_deps(
@@ -1486,18 +1405,18 @@ class TestAst1515ContactTaskMarkup:
     def test_dispatch_handler_unavailable_for_listed_key(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # All six handlers resolve after AST-1517 — mock missing import path.
+        # All five handlers resolve — mock missing import path.
         monkeypatch.setattr(
             contact_mod, "_resolve_contact_task_handler", lambda _h: None
         )
         results = contact_mod.run_contact_task_dispatch(
             astral_candidate_id="c1",
-            markup_spans=[("create_contact_meteorite", "https://x.example/jd")],
+            markup_spans=[("gazer_scrape", "https://x.example/jd")],
         )
         assert len(results) == 1
         assert results[0]["ok"] is False
         assert results[0]["error"] == "handler_unavailable"
-        assert results[0]["task_key"] == "create_contact_meteorite"
+        assert results[0]["task_key"] == "gazer_scrape"
 
     def test_dispatch_no_candidate_when_required(self) -> None:
         results = contact_mod.run_contact_task_dispatch(
@@ -1528,7 +1447,7 @@ class TestAst1515ContactTaskMarkup:
         )
         contact_mod.run_contact_task_dispatch(
             astral_candidate_id="c1",
-            markup_spans=[("create_contact_meteorite", "u")],
+            markup_spans=[("gazer_scrape", "u")],
             debug=True,
         )
         log.set_debug_flag.assert_called_with(True)
@@ -1591,7 +1510,7 @@ class TestAst1515ContactEstelleTurnMarkup:
                     "conversational_outcome": "success",
                     "agent_performance": {"status": "success"},
                     "parsed_response": {
-                        "reply": "Sure! ~~/create_contact_meteorite https://jobs.example/1~~",
+                        "reply": "Sure! ~~/gazer_scrape https://jobs.example/1~~",
                     },
                 }
             return {
@@ -1644,7 +1563,7 @@ class TestAst1515ContactEstelleTurnMarkup:
                     "conversational_outcome": "success",
                     "agent_performance": {"status": "success"},
                     "parsed_response": {
-                        "reply": "Checking ~~/create_contact_meteorite https://x.example~~",
+                        "reply": "Checking ~~/gazer_scrape https://x.example~~",
                     },
                 }
             captured["live"] = kwargs.get("live_content") or ""
@@ -2591,3 +2510,174 @@ class TestAst2035ContactCommandIntercept:
         ]
         assert len(listen) == 1
         assert sum(m.startswith(f"{mid} | meteorite state: NEW") for m in infos) == 1
+
+
+# Branches: app_mention public/mpim/lookup-error refused before resolve; group passes;
+# event channel_type skips lookup; DM message not gated (AST-2061).
+class TestAst2061PrivateChannelGate:
+    @staticmethod
+    def _event(**overrides: str) -> dict:
+        # Public-channel mention carrying a bound /add-job command (the AST-2061 repro fixture).
+        event = {
+            "type": "app_mention",
+            "user": "U1",
+            "channel": "C1PUBLIC",
+            "ts": "1.0",
+            "text": "<@UBOT> /add-job https://x.io/1",
+        }
+        event.update(overrides)
+        return event
+
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def _patch(self, monkeypatch: pytest.MonkeyPatch, *, ctype=None, side_effect=None) -> dict:
+        import src.data.contact_estelle_activity as activity_mod
+
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        lookup = MagicMock(return_value=ctype, side_effect=side_effect)
+        # raising=False: pre-fix contact has no fetch_channel_type ([bug-repro] runs).
+        monkeypatch.setattr(contact_mod, "fetch_channel_type", lookup, raising=False)
+        mocks = {
+            "lookup": lookup,
+            "resolve": MagicMock(
+                return_value={"astral_candidate_id": "c1", "state": "PROSPECT", "created": False}
+            ),
+            "command": MagicMock(return_value={"ok": True}),
+            "paste": MagicMock(return_value={"applied": False}),
+            "post": MagicMock(return_value={"ok": True}),
+        }
+        monkeypatch.setattr(contact_mod, "resolve_slack_user", mocks["resolve"])
+        monkeypatch.setattr(contact_mod, "_run_contact_command", mocks["command"])
+        monkeypatch.setattr(contact_mod, "try_meteorite_apply_paste_from_slack", mocks["paste"])
+        monkeypatch.setattr(contact_mod, "contact_post_message", mocks["post"])
+        mocks["turn"] = _stub_estelle_turn(monkeypatch)
+        # Keep the tracked data/contact_estelle_activity.json out of the repo tree.
+        monkeypatch.setattr(activity_mod, "record_estelle_activity", MagicMock())
+        return mocks
+
+    @staticmethod
+    def _handle(event: dict, eid: str) -> dict:
+        return contact_mod.handle_slack_event({"event_id": eid, "event": dict(event)}, debug=False)
+
+    @staticmethod
+    def _assert_refused(out: dict, mocks: dict) -> None:
+        assert out == {"accepted": False, "reason": "channel_not_private"}
+        for key in ("resolve", "command", "paste", "turn", "post"):
+            mocks[key].assert_not_called()
+
+    def test_public_mention_refused_no_command_turn_or_save(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2061: a public-channel mention gets no resolve, command, turn, or save.
+        mocks = self._patch(monkeypatch, ctype="channel")
+        out = self._handle(self._event(), "Ev-2061-public")
+        self._assert_refused(out, mocks)
+
+    def test_mpim_mention_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mocks = self._patch(monkeypatch, ctype="mpim")
+        out = self._handle(self._event(), "Ev-2061-mpim")
+        self._assert_refused(out, mocks)
+
+    def test_lookup_error_fails_closed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mocks = self._patch(monkeypatch, side_effect=RuntimeError("missing_scope"))
+        out = self._handle(self._event(), "Ev-2061-lookup-err")
+        self._assert_refused(out, mocks)
+
+    def test_private_group_mention_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mocks = self._patch(monkeypatch, ctype="group")
+        out = self._handle(self._event(text="hi"), "Ev-2061-group")
+        assert out["accepted"] is True
+        mocks["lookup"].assert_called_once_with("C1PUBLIC")
+        mocks["turn"].assert_called_once()
+
+    def test_event_channel_type_skips_lookup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mocks = self._patch(monkeypatch, ctype="channel")
+        out = self._handle(self._event(text="hi", channel_type="im"), "Ev-2061-evtype")
+        assert out["accepted"] is True
+        mocks["lookup"].assert_not_called()
+
+    def test_dm_message_not_gated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mocks = self._patch(monkeypatch, ctype="channel")
+        event = {"type": "message", "user": "U1", "channel": "D1", "channel_type": "im", "ts": "1.0", "text": "hi"}
+        out = self._handle(event, "Ev-2061-dm")
+        assert out["accepted"] is True
+        mocks["lookup"].assert_not_called()
+
+
+# Branches: land blob unwrap+sanitize; markup-only blob → blob is required; Slack paste unwrap (AST-2061).
+class TestAst2061ContactSanitizeEntry:
+    @staticmethod
+    def _capture_stage(monkeypatch: pytest.MonkeyPatch) -> dict:
+        from src.core import meteorite as meteorite_mod
+        from src.utils.config import METEORITE_CONFIG
+
+        created = METEORITE_CONFIG["land_outcome_created"]
+        seen: dict = {"calls": 0}
+
+        async def _stage(cid, blob, *, source_kind, source_id, debug=False):
+            seen["calls"] += 1
+            seen["blob"] = blob
+            return {
+                "skipped": False,
+                "outcome": created,
+                "land": {"outcome": created, "error": None},
+                "error": None,
+                "scraps": [],
+            }
+
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", _stage)
+        return seen
+
+    def test_land_blob_unwrapped_then_sanitized(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2061: Slack link unwrapped, markup stripped, entities decoded before staging.
+        seen = self._capture_stage(monkeypatch)
+        contact_mod.contact_land_meteorite(
+            "c1",
+            source_kind="slack",
+            source_id="C1:1",
+            text="<https://x.io/job?id=1&amp;src=slack|Job> <img src=x onerror=alert(1)>Senior Eng",
+            employer_name="Acme",
+        )
+        assert seen["blob"] == "https://x.io/job?id=1&src=slack Senior Eng\n\nEmployer: Acme"
+
+    def test_land_markup_only_blob_is_required_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen = self._capture_stage(monkeypatch)
+        out = contact_mod.contact_land_meteorite(
+            "c1", source_kind="slack", source_id="C1:2", text="<script>alert(1)</script>"
+        )
+        assert out["error"] == "blob is required"
+        assert seen["calls"] == 0
+
+    def test_slack_paste_unwrapped_before_apply_paste(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # [bug-repro] AST-2061: raw Slack link markup is unwrapped, not mangled by the HTML branch.
+        from src.core import meteorite as meteorite_mod
+
+        db = sqlite_in_memory
+        db.save_candidate("c1", state="NEW_CANDIDATE", candidate_data={"name": "P"})
+        row_id = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": "c1",
+                    "source_kind": "email",
+                    "source_id": "mid-2061-paste",
+                    "classify_outcome": None,
+                    "content": None,
+                    "link": "https://blocked.example/j",
+                    "state": "NEW",
+                }
+            ]
+        )[0]
+        db.update_meteorite(row_id, state="BOT_BLOCKED", link="https://blocked.example/j")
+        monkeypatch.setattr(meteorite_mod, "find_meteorite_for_estelle_thread", lambda **_k: {"id": row_id})
+        out = contact_mod.try_meteorite_apply_paste_from_slack(
+            astral_candidate_id="c1",
+            channel="D1",
+            thread_ts="1.0",
+            message_ts="1.0",
+            text="Full JD <https://x.io/j?a=1&amp;b=2|link>",
+        )
+        assert out["applied"] is True
+        row = db.get_meteorite(row_id)
+        assert row["content"] == "Full JD https://x.io/j?a=1&b=2"
+        assert row["state"] == "READY"

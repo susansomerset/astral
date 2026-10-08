@@ -118,3 +118,9 @@ Capture hook: **`docs/test-bible/core/agent.md`**. Admin API columns: **`docs/te
 ### AST-2008 · AST-2007 (sync retires duplicate current rows)
 
 `sync_rubric_vectors_from_criteria`: current rows read `ORDER BY rowid`; a later row whose code is already tracked is retired. **New:** `TestAst2008SyncRetiresDuplicateCurrentRows::test_later_duplicate_row_retired_on_next_sync` (somerset `TP`/`TP` → r1 kept with new importance, r2 `current = 0`, `TX` inserted). Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.
+
+### AST-2066 · AST-2043 (criterion history + move-current)
+
+`list_rubric_vectors(..., code=)` returns one criterion's rows oldest first (case-insensitive code; `code=None` keeps `ORDER BY code`). `set_current_rubric_vector` moves current for one code only and carries the leaving row's live `importance` onto the target (keeps its own when there is no other current row); a cross-code or unknown uuid raises with no change.
+
+**New:** **`TestAst2066RubricCriterionVersions`** (8 incl. 4 blank-arg params; AC6 via two real `sync_rubric_vectors_from_criteria` blurs). Manifest: [`../../core/candidate.md`](../../core/candidate.md) § AST-2066 item 2.

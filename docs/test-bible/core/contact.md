@@ -41,9 +41,11 @@ ACL-gated `contact_skill_meta` / `run_contact_skill`: allowlisted `candidate_dat
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Meta / allowlisted write / reject path·skill·missing / Style D on+off | `src/core/contact.py` | **`TestAst1071ContactSkillRunners`** |
+| Meta / allowlisted write / reject path·skill·missing / Style D on+off | `src/core/contact.py` | retired → **`TestAst2061ContactSkillsRetired`** |
 
 **Broken / obsolete:** AST-1066 empty-skills asserts — revised in **`TestAst1066ContactScaffold`** / **`TestAst1066ContactConfig`**.
+
+**Retired by AST-2061 / AST-2062:** skills ACL emptied; runner class replaced by TestAst2061ContactSkillsRetired.
 
 **Integration:** no existing scenario asserts Contact skill runners — no revision.
 
@@ -275,7 +277,7 @@ Child #1: `CONTACT_TASK_CONFIG` block (six keys pre-registered), markup parse/st
 | --- | --- | --- |
 | Parse/strip/dispatch + turn strip/follow-up/live_content catalog | `src/core/contact.py` | **`TestAst1515ContactTaskMarkup`**, **`TestAst1515ContactEstelleTurnMarkup`** |
 
-**Broken / obsolete:** none at AST-1515 land. **AST-1516/AST-1518 revise:** `handler_unavailable` / turn fixtures retargeted to `create_contact_meteorite` (gazer + reads now resolve; meteorite create still AST-1517). **AST-1517 revise:** all six handlers resolve — `handler_unavailable` / turn fixtures mock `_resolve_contact_task_handler` → `None`. Gazer: **`docs/test-bible/core/gazer.md`** § AST-1516. Reads: **`docs/test-bible/core/tracker.md`** § AST-1518. Create: **`docs/test-bible/core/meteorite.md`** § AST-1517.
+**Broken / obsolete:** none at AST-1515 land. **AST-1516/AST-1518 revise:** `handler_unavailable` / turn fixtures retargeted to `create_contact_meteorite` (gazer + reads now resolve; meteorite create still AST-1517). **AST-1517 revise:** all six handlers resolve — `handler_unavailable` / turn fixtures mock `_resolve_contact_task_handler` → `None`. Gazer: **`docs/test-bible/core/gazer.md`** § AST-1516. Reads: **`docs/test-bible/core/tracker.md`** § AST-1518. Create: **`docs/test-bible/core/meteorite.md`** § AST-1517. **AST-2062:** handler_unavailable / turn fixtures retargeted from create_contact_meteorite to gazer_scrape.
 
 **Integration:** no existing scenario asserts contact-task markup dispatch — no revision; do not invent new integration coverage.
 
@@ -527,3 +529,61 @@ Known senders always get the AST-1668 recognition post first, so AC3's "one ack"
 **Bible path shasums (record after publish):**
 - `docs/test-bible/core/contact.md`
 - `docs/test-bible/utils/config.md`
+
+### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
+
+**Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
+
+AST-2061 closed Estelle's write pinhole: no `skill_calls` / `save_candidate_*` path, Contact meteorite writes go through `sanitize_contact_text` (`nh3`), Slack `<url|label>` is unwrapped before sanitize (`_unwrap_slack_links`), and `app_mention` is honored only when the channel type (event `channel_type`, else `fetch_channel_type`) is in `CONTACT_CONFIG["allowed_channel_types"]` (`im`, `group`); anything else — including a lookup error — returns `channel_not_private` before resolve. Sanitize helper + no-job-write: [`meteorite.md`](meteorite.md) § AST-2062. Config/pinhole assert: [`../utils/config.md`](../utils/config.md) § AST-2062. Lookup: [`../external/slack.md`](../external/slack.md) § AST-2062.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skills registry empty; any key → unknown, no candidate write | `src/core/contact.py` | **`TestAst2061ContactSkillsRetired`** (2) |
+| **[bug-repro]** candidate write: `skill_calls` never reach `run_contact_skill` / `save_candidate_data`; no ACL header in live content | same | **`TestAst1073ContactEstelleTurnLoop::test_ast2061_skill_calls_never_write_candidate`** |
+| Channel gate: **[bug-repro]** public refused (no resolve/command/paste/turn/post); mpim refused; lookup error fails closed; group passes; event `channel_type` skips lookup; DM `message` not gated | same | **`TestAst2061PrivateChannelGate`** (6) |
+| Sanitize entry: **[bug-repro]** land blob unwrap+sanitize; markup-only blob → `blob is required`; **[bug-repro]** Slack paste unwrapped before `apply_paste` | same | **`TestAst2061ContactSanitizeEntry`** (3) |
+| `app_mention` default channel type | `tests/component/core/test_contact.py` | module autouse **`_ast2061_private_channel_default`** (`fetch_channel_type` → `"group"`, `raising=False` for pre-fix repro runs) |
+
+**Broken / obsolete:** `TestAst1071ContactSkillRunners` (retired); `TestAst1073ContactEstelleTurnLoop::test_skill_calls_run_for_resolved_candidate` (replaced by the repro above); AST-1515 sample key moved to `gazer_scrape` (`test_dispatch_handler_unavailable_for_listed_key`, `test_dispatch_debug_style_d`, `test_strips_markup_before_slack_post`, `test_follow_up_turn_includes_task_results_in_live_content`); 18 `C…` `app_mention` cases fixed by the autouse default. Gate tests stub `record_estelle_activity` — do not commit `data/contact_estelle_activity.json` (older accept-path tests still dirty it).
+
+**Repro gate:** every **[bug-repro]** node fails on its assertion against pre-fix `6b00d8c5f` (`src/` = `origin/dev` `2fd5c63e7`) and passes on the AST-2061 tip `54eb3f275`.
+
+**Integration:** none — no scenario covers Contact Slack events or meteorite sanitize; do not invent.
+
+## QA test manifest
+
+1. Pinhole repros + retirement (contact): `TestAst2061ContactSkillsRetired`, `TestAst2061PrivateChannelGate`, `TestAst2061ContactSanitizeEntry`, `TestAst1073ContactEstelleTurnLoop::test_ast2061_skill_calls_never_write_candidate`
+2. Revised regression (contact): `TestAst1515ContactTaskMarkup`, `TestAst1515ContactEstelleTurnMarkup`, `TestAst2035ContactCommandIntercept`, `TestAst1668UnboundAndRecognition`
+3. Meteorite / config / API / Slack lines: [`meteorite.md`](meteorite.md), [`../utils/config.md`](../utils/config.md), [`../ui/api/api_contact.md`](../ui/api/api_contact.md) (whole `test_api_contact.py`), [`../external/slack.md`](../external/slack.md) — all in the command below.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst2061ContactSkillsRetired \
+  tests/component/core/test_contact.py::TestAst2061PrivateChannelGate \
+  tests/component/core/test_contact.py::TestAst2061ContactSanitizeEntry \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_ast2061_skill_calls_never_write_candidate \
+  tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept \
+  tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition \
+  tests/component/core/test_meteorite.py::TestAst2061NoContactJobWrite \
+  tests/component/core/test_meteorite.py::TestAst2061ContactSanitize \
+  tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1561ApplyPaste \
+  tests/component/utils/test_config.py::TestAst2061ContactSkillsEmpty \
+  tests/component/utils/test_config.py::TestAst2061ContactPinholeConfig \
+  tests/component/utils/test_config.py::TestAst1515ContactTaskConfig \
+  tests/component/utils/test_config.py::TestAst1105ProfileSlackFields \
+  tests/component/ui/api/test_api_contact.py \
+  tests/component/external/test_slack.py::TestAst2061FetchChannelType \
+  --deselect tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup::test_dispatch_debug_style_d \
+  --deselect tests/component/ui/api/test_api_contact.py::TestAst1071ContactSkillsApi::test_run_upstream_502 \
+  --deselect tests/component/ui/api/test_api_contact.py::TestAst1067ContactListenApi::test_put_upstream_502 \
+  --deselect tests/component/ui/api/test_api_contact.py::TestAst1094EstelleActivityApi::test_get_activity_upstream_502 \
+  --deselect tests/component/ui/api/test_api_contact.py::TestAst1206ContactDebugApi::test_put_upstream_502 \
+  -q
+```
+
+The five `--deselect`s fail identically on pre-fix `6b00d8c5f` (pre-existing; not this ticket's to fix).
+
+**Pass criterion:** pytest green on the AST-2061 tip. Across the six touched files, the 33 AST-2061 reds are gone; remaining failures equal the 82 pre-existing on `6b00d8c5f` minus the 7 retired with `TestAst1071ContactSkillRunners` / `TestAst1071ContactSkillsConfig` / `TestAst1517CreateContactMeteorite` (75). Not zero-arg harness / branch-lock gate.

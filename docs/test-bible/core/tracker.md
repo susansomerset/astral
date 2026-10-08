@@ -794,3 +794,9 @@ Public **`job_state_admits_transition(current_state, to_state)`** wraps `_job_st
 New `candidate_skip_job`: not found → ValueError; illegal (e.g. `CANDIDATE_APPLIED`) → ValueError with claim untouched; legal → clear held `batch_id`, transition to `CANDIDATE_SKIPPED` (hop labels resolve via base). `list_jobs` / `count_jobs` facades forward `exclude_states`.
 
 **New:** **`TestAst1974CandidateSkipJob`** (6, real SQLite with `candidate_id` seeds). Manifest: [`ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-1974 item 4.
+
+### AST-2066 · AST-2043
+
+`save_job_artifact` identical-to-current no-op: when the prepared body equals the current row's body, it returns the existing uuid and adds no row (AC7). New `list_job_artifact_versions` / `set_job_artifact_current` (job catalog keys only; candidate keys raise `not job-scoped`).
+
+**New:** **`TestAst2066JobVersions`** (6, real SQLite; new lines fully branch-covered for `LOCKED_AT_100`). Existing cover-letter `save_job_artifact` tests stub only `save_artifact`, so the no-op lookup reads the harness DB; the fake job ids never match, and they stay green. Manifest: [`candidate.md`](candidate.md) § AST-2066 item 4.
