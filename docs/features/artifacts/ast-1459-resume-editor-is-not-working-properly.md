@@ -121,6 +121,192 @@ _Implementation detail may live in git history on `origin/dev`._
 
 ---
 
+## Bug: AST-2051 — resume editors autosave section bodies; drop header Save outside Generate review
+
+Parent: AST-2041 (orphaned Bug mini-parent). This deliberately reverses the AST-1459 **Architectural definition** line under `pattern.ui.dirty-leave-save-then-navigate` ("explicit Save/Cancel on fixed-field and job-persistence modes; do not rely on structure-mode autosave"), at Susan's request. The draft directive `canon/directives/draft/patt.ui.dirty-leave-save-then-navigate.md` § When not to use already exempts ArtifactEditor autosave/`beforeunload`, so no canon conflict. Canon Scope: none listed on AST-2041 / AST-2051. `patt.artifact.ui-consistency` (active, scoped to ArtifactEditor.tsx) is cited by id only.
+
+### As-is
+
+On **Artifacts → Base Resume Content** (`structureMode` via `bodyShape="resume_content"`) and **JAR → Job Resume** (`useCandidateResumeStructure` + `jobPersistence`), `ArtifactEditor` renders Cancel/Save inside `.dep-header`. The header scrolls away with the section panels, so Save is unreachable after scrolling, and nothing persists until Save is clicked. The 2 s debounced autosave (`AUTOSAVE_MS`, `handleChange`) only runs when `tabChromeEditable` (`!shapesKey && !structureMode`), which means the criteria/rubric pages only.
+
+### To-be
+
+On both resume editors, section **body** edits autosave through the existing `handleChange` debounce (same `AUTOSAVE_MS = 2000`). The header shows the existing status text ("Saving..." / "Unsaved changes" / "All changes saved") instead of Save/Cancel. During Generate/Regenerate review (`inReview`, `snapshot !== null`), Save/Cancel stays as the accept/reject step (AST-905 no-silent-persist rule). The unmount flush and `beforeunload` guard are unchanged. Structure-row **Save sections**, the backend save path / `astral_artifacts` version rows (one row per autosave is accepted), and the criteria pages' autosave are unchanged.
+
+### Repro
+
+Fixture: a candidate whose `candidate_data.artifacts.base_resume` is `{"summary": "Old summary", "experience": [{"company": "Acme", "title": "Eng", "dates": "2020-2024", "location": "Remote", "accomplishments": ["Shipped X"]}]}`, with `resume_structure` sections `summary` + `experience` enabled. Plus a recommended job whose `job_data.artifacts.resume_content` is the same dict.
+
+1. Artifacts → Base Resume Content. Expand Summary. Scroll down until `.dep-header` is out of view. Type into the Summary body.
+2. Observe: no Save is reachable without scrolling back up. Wait more than 2 s, then reload the page: the edit is gone (no PUT `/api/candidates/<id>/data` fired).
+3. JAR → Artifacts → Job Resume. Edit a section body and wait more than 2 s: no PUT `/api/jobs/<id>/artifacts/resume_content`. Close and re-open the modal: the edit is gone.
+
+### Root cause
+
+`ArtifactEditor.handleChange` gates the debounce on `tabChromeEditable`, which is false whenever `structureMode` is true. The header render shows Save/Cancel whenever `fixedFields || inReview || jobPersistence` is truthy, and both resume editors always have `fixedFields` (and Job Resume also has `jobPersistence`). So both editors depend on a header Save that scrolls out of reach.
+
+### Proposed change
+
+All edits are in `src/ui/frontend/src/components/ArtifactEditor.tsx`. `JobAnalysisReportModal.tsx` and `ArtifactsBaseResumeContent.tsx` are **unchanged**.
+
+**Decision: narrowed gate (not "all editable bodies").** The JAR modal mounts a *second* `ArtifactEditor` for cover letter / application responses (`shapesKey` + `jobPersistence`, `JobAnalysisReportModal.tsx` ~L559). If the gate keyed only off `bodiesEditable`, as the Technical scope's literal wording suggests, those editors would also start autosaving and lose their Save/Cancel. That is outside the To-be ("both resume editors"). So the gate keys off `tabChromeEditable || structureMode`.
+
+1. **New const** directly after `bodiesEditable` (~L302):
+   ```ts
+   // Criteria (free-form) and resume structure editors autosave bodies; shapesKey job editors keep explicit Save/Cancel.
+   const autosaveBodies = tabChromeEditable || structureMode
+   ```
+2. **`handleChange`** (~L717): replace `if (tabChromeEditable && !inReview)` with `if (autosaveBodies && bodiesEditable)`. `bodiesEditable` already includes `!inReview`, so criteria pages get an identical condition. Change the timer body to
+   `timerRef.current = setTimeout(() => { if (snapshotRef.current === null) void doSave(next, true) }, AUTOSAVE_MS)`.
+   This guards a timer queued *before* Generate from firing *during* review. Without it, `doSave` would `setSnapshot(null)` mid-generation and drop the review gate, which would let the generated content be silently persisted by the next edit or by the unmount flush (AST-905).
+3. **`doSave`** (~L619): change the signature to `async (t: SideTab[], autosave = false)`. In the `jobPersistence` branch, replace `jobPersistence.onSaved?.()` with `if (!autosave) jobPersistence.onSaved?.()`.
+   - Why: JAR's `onSaved` is `load`, which sets `loading=true`. The modal renders `{job && !loading && …}`, so every autosave would **unmount** the Job Resume editor: collapsing the panel, dropping focus, and losing keystrokes typed during the re-GET. The explicit Save (review) and the unmount flush (`doSave(tabsRef.current)`, `autosave` defaults to false) still call `onSaved`, so the modal's `job` refreshes when the operator leaves.
+   - Alternative not taken: soften `load` in the modal into a silent refetch. That adds lines in a second file, and a silent refetch can still unmount the editor when `populatedArtifactSections` changes (all content cleared).
+4. **`doSave` dirty clear, both branches** (~L654 job, ~L695 candidate): replace `setDirty(false)` with `if (tabsRef.current === t) setDirty(false)`.
+   - Why: if the operator types while an autosave PUT is in flight, the response currently clears `dirty` even though a newer edit is pending on the timer. An unmount inside that window then skips the flush (`dirtyRef.current` false) and loses the edit.
+   - This race exists today on criteria pages. It becomes routine on resume editors, where typing is long-form. Explicit Save and the unmount flush pass the current `tabs` / `tabsRef.current`, so their behavior is unchanged.
+5. **Header render** (~L998): replace `{(fixedFields || inReview || jobPersistence) ? (` with `{(inReview || !autosaveBodies) ? (`. The Cancel/Save markup and the status `<span>` stay as they are.
+   - Resume editors show status outside review and Save/Cancel during review.
+   - Criteria pages are unchanged (status outside review).
+   - `shapesKey` job editors are unchanged (`!autosaveBodies` means Save/Cancel always), so `handleCancel`'s non-snapshot re-GET branches stay live for them (AST-1410).
+6. **No other changes.** The "Saved" toast keeps firing per autosave, same as criteria pages today. `Save sections`, `structureAuthoring` persistence of `resume_structure` inside `doSave` (AST-1381), the unmount flush, and `beforeunload` are untouched.
+
+### Blast radius
+
+- **Criteria/rubric pages** (`Artifacts*Criteria.tsx`): the gate expression is equivalent. Steps 2 and 4 guards now also apply here: no autosave fires into review, and `dirty` stays true when a newer edit is pending. Both are strict improvements with no visible change on the happy path.
+- **JAR cover letter / application responses** (`shapesKey` + `jobPersistence`): no change. They keep explicit Save/Cancel and `onSaved: load`.
+- **JAR Job Resume**: `canGenerate` is false under `jobPersistence`, and the recovery effect skips it, so `inReview` never happens there. The header never shows Save/Cancel. `onSaved` fires only on the unmount flush.
+- **Base Resume `structureAuthoring`**: every body autosave also writes `resume_structure` from the current `structureRows` (existing AST-1381 behavior of `doSave`), so unsaved header edits ride along. This is the same as today's explicit body Save, just more frequent. Rows with `_pending_N` ids are re-slugged from the title server-side (`prepare_resume_structure_sections_for_save`), and repeated autosaves overwrite rather than duplicate.
+- **Versioning**: one `astral_artifacts` version row per autosave on base resume (AST-1353). Susan accepted option (a). No backend change.
+- **Print (Base Resume)**: `handlePrint` prints the saved blob. Edits from the last ≤2 s may not be included until the debounce fires (previously the operator had to click Save first).
+- **Unsupported Experience**: `doSave` refuses with an error toast. Under autosave, that toast fires on each typing pause and the status stays "Unsaved changes". This is the same refusal explicit Save gave; Regenerate remains the escape (`baseResumeUnsupportedEscape`).
+- **Tests (Betty, fix-board)**: the ArtifactEditor structure-mode / jobPersistence cases that click the header **Save**, the AST-1410 Cancel-reload case if it targets a structure-mode jobPersistence editor, and any `test_ArtifactsBaseResumeContent.test.tsx` case that clicks the header Save. These now need fake timers plus `AUTOSAVE_MS`, and should assert the absence of Save outside review.
+
+### What must still hold
+
+- AST-1459 AC1/AC2: persisted bodies load, are editable, and round-trip after reload/re-open. Persistence is now triggered by the debounce instead of a Save click.
+- AST-1459 AC3 / AST-1480: the structure header authoring controls and **Save sections** still render and still write `resume_structure` independently.
+- AST-1459 AC4: Experience job-array editing still works, and the unsupported shape still shows the configured message.
+- AST-905: no silent persist of Generate/Regenerate/recovered output. Save/Cancel shows during review, autosave never fires while `snapshot !== null`, and the unmount flush still skips review.
+- AST-1410: in-place Cancel re-GET on the `shapesKey` job-persistence editors is unchanged.
+- Criteria pages: same autosave cadence, same status text, same "+ Add" / rename / reorder chrome.
+- Unmount flush and `beforeunload` guard are unchanged.
+
+
+## Fix-board Joan findings (AST-2051)
+
+### Verdict
+
+```
+[board-joan]  CANON: OK
+```
+
+### Triage notes
+
+Read `## Bug: AST-2051` on `origin/sub/AST-2041/AST-2051-resume-autosave` in `docs/features/artifacts/ast-1459-resume-editor-is-not-working-properly.md` (As-is through What must still hold). AST-2041 / AST-2051 carry **no Canon Scope**; roster skim focused on UI dirty-leave and artifact editor patterns touched by `ArtifactEditor.tsx`.
+
+| Directive | In force? | vs proposed change |
+|-----------|-----------|-------------------|
+| `pattern.ui.dirty-leave-save-then-navigate` | **Draft** (`canon/directives/draft/patt.ui.dirty-leave-save-then-navigate.md`, `status: proposed`) | **No conflict.** Problem text separates route dirty-leave from “ArtifactEditor autosave/`beforeunload`”; **When not to use** explicitly exempts ArtifactEditor/criteria autosave. Enabling structure-mode body debounce is inside that carve-out, not overloading `useDirtyLeaveSaveThenNavigate`. |
+| `patt.artifact.ui-consistency` | Active path, body still marks draft | **No update required.** Still PUT via existing candidate/job artifact leaf keys; no new storage fork. Autosave vs header Save is UX, not a violation of Implementation §4–6. |
+| `patt.artifact.write-operative` | Active (backend) | **No conflict.** More frequent PUTs when body changes matches retire+insert versioning; plan notes Susan accepted per-autosave version rows (AST-1353). Identical-body no-op unchanged. |
+
+The AST-1459 **Architectural definition** bullet (“do not rely on structure-mode autosave”) lives in the **feature plan**, not in the draft dirty-leave directive on `origin/dev` (legacy `canon/patterns/ui/…` is not on dev; only the draft directive exists). Susan’s reversal is product/plan intent, already acknowledged in the bug section; it does **not** contradict an approved statute or pattern.
+
+AST-905 / AST-1410 items in **What must still hold** are ticket behavioral gates; the plan’s `snapshotRef` guard and unchanged `shapesKey` Save/Cancel path address them in product code, not via canon edits.
+
+**ESCALATE** not warranted: bounded blast radius, explicit Susan precedent, no ambiguous active law.
+
+**F3 (`validate-plan` fix mode):** not triggered by this board outcome (Joan **OK**). Chuckles still branches on Betty’s `[board-betty]` line per the fix-board table.
+
+
+## Radia review (AST-2051)
+
+[code-rubric]
+
+**Ticket:** AST-2051  
+**Publish ref:** `9fb7b99b1ab37cab4bf4c9b73f94f152ebc0b018` (`origin/sub/AST-2041/AST-2051-resume-autosave`)  
+**Corpus:** (no `docs/canon-index.md` on publish ref; directive bodies read from `canon/directives/**` at tip)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen **Canon Scope** on Linear AST-2051 / AST-2041: **none** (issue doc agrees). No directive ids to score; roll-up from canon grades is vacuously clean.
+
+**Fix-board Joan overlap (informational — not on frozen list; per fix-lane precedent when scope is empty):**
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| `patt.ui.dirty-leave-save-then-navigate` (draft) | — | — | Not scored (off-list); Joan: carve-out for ArtifactEditor autosave — no conflict with enabling structure-mode debounce |
+| `patt.artifact.ui-consistency` | — | — | Not scored (cited id-only in plan); diff keeps existing PUT/GET leaf paths, no storage fork — consistent with Implementation §4–6 |
+| `patt.artifact.write-operative` | — | — | Not scored (off-list); no backend diff; more frequent client PUTs matches accepted versioning (AST-1353) |
+
+**Notes (Canon Scope):** Missing frozen list on the bug ticket is a **process gap for Archie** (comparability with feature children), not a product defect on this tip. `patt.artifact.ui-consistency` plainly governs `ArtifactEditor.tsx` but was intentionally **not** frozen — Joan F2 already triaged; **ESCALATE** not warranted.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (F3 `validate-plan` fix mode not run; Joan fix-board `[board-joan] CANON: OK` is qualitative only — aligned with product diff).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out: Betty `[board-betty] TESTS: REVISE` routed repro/coverage to sibling **AST-2056**; no `[bug-repro]` on this ticket. Ada `test-fix` notes 11 header-Save failures expected on this tip until AST-2056 lands.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-1459 AC1/AC2 — load, edit, persist (debounce not Save click) | `autosaveBodies = tabChromeEditable \|\| structureMode` + `handleChange` debounce → `doSave(next, true)` on both Base Resume (`bodyShape="resume_content"`) and JAR Job Resume (`useCandidateResumeStructure` → `structureMode`) |
+| AST-1459 AC3 / AST-1480 — structure headers + **Save sections** | No diff outside autosave/header gate; `structureAuthoring` / `onStructureSave` untouched |
+| AST-1459 AC4 — Experience / unsupported message | `doSave` validation loop unchanged |
+| AST-905 — no silent persist in Generate review | `bodiesEditable` excludes `inReview`; timer callback gates on `snapshotRef.current === null`; header `(inReview \|\| !autosaveBodies)` keeps Save/Cancel during review |
+| AST-1410 — Cancel re-GET on `shapesKey` job editors | `autosaveBodies` false when `shapesKey` (no `structureMode`); header still Save/Cancel; `handleCancel` paths unchanged |
+| Criteria pages — autosave cadence / chrome | Rubric path: `autosaveBodies && bodiesEditable` equivalent to prior `tabChromeEditable && !inReview`; gains `snapshotRef` timer guard + in-flight `setDirty` guard (plan blast radius) |
+| Unmount flush + `beforeunload` | Unchanged (`dirtyRef` + `snapshotRef` guard; flush uses `doSave(tabsRef.current)` with `autosave=false` → JAR `onSaved` still on leave) |
+| JAR Job Resume — autosave without modal reload | `if (!autosave) jobPersistence.onSaved?.()` in `doSave` job branch |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none requiring @susan product call on this tip)
+
+**advisory:**
+
+- **Sibling test carry:** Product diff is `ArtifactEditor.tsx` + plan patch only; Betty’s broken header-Save cases and new autosave assertions belong on **AST-2056** — expected red on this sub until merged.
+- **Frozen Canon Scope:** Archie may want explicit frozen ids on fix bugs for Radia comparability; does not block this review.
+- **Per-autosave “Saved” toast** on resume editors matches criteria behavior (plan step 6); no change in this diff.
+
+## What’s solid
+
+- Plan-fix steps 1–5 implemented in one file; narrowed `autosaveBodies` gate correctly excludes JAR cover letter / application `shapesKey` editors.
+- AST-905 race (pre-Generate timer during review) and in-flight PUT vs newer edits addressed as specified.
+- Estimate **2** vs footprint: appropriate.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | **Orphaned** mini-parent AST-2041 → **Review Posted** → fix-lane clean shortcut → **User Testing**; then merge `sub/AST-2041/AST-2051-resume-autosave` **straight to `origin/dev`** (no `merge-child` / `prep-uat`). |
+| If downstream needs Radia re-pass | After **AST-2056** merges tests onto sub, optional re-review only if product tip changes — not required for this product-only tip. |
+
+**Recommended actions for Chuckles (not Radia):** Append this artifact to `docs/features/artifacts/ast-1459-resume-editor-is-not-working-properly.md`, commit `docs(AST-2051): Radia review — clean`, push `sub/AST-2041/AST-2051-resume-autosave`, post slim upshot `--as radia`, move **Tests Passed** → **Review Posted** → **User Testing** per §3h.
+
+context_tokens≈N
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 9fb7b99b1) Resume autosave matches plan
+```
+
+**Test carry (AST-2051):** docs-acceptance on this ref — the test/bible delivery for this fix (retargeted header-Save cases + autosave `[bug-repro]` coverage) lands via sibling test gap AST-2056 `merge-tests`, merged onto `ftr/AST-2041-resume-autosave` after this child.
+
+---
+
 ## Bug: AST-2056 — tests for resume editor autosave
 
 Parent: AST-2041. This is the test-gap sibling of AST-2051, filed from Betty's `[board-betty] TESTS: REVISE` on AST-2051. The product contract is in `## Bug: AST-2051` (merged ahead of this block on `ftr/AST-2041-resume-autosave`). Only the test tree and the bible change, and Betty lands them in qa-fix. The engineer touches no product src or test files on this ticket.

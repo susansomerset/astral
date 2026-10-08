@@ -300,6 +300,8 @@ export default function ArtifactEditor({
   const inReview = snapshot !== null
   // Bodies editable in rubric chrome mode OR structure/shapes/job fixed tabs; never during Generate review.
   const bodiesEditable = !inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)
+  // Criteria (free-form) and resume structure editors autosave bodies; shapesKey job editors keep explicit Save/Cancel.
+  const autosaveBodies = tabChromeEditable || structureMode
   // Stable id-set signature: label-only and reorder-only edits do not re-GET / wipe tabs.
   const fixedFieldKeys = fixedFields
     ? [...fixedFields.map(f => f.key)].sort().join("\0")
@@ -616,7 +618,7 @@ export default function ArtifactEditor({
   }
 
   // Save to backend — AST-1381: when structure authoring is on, persist formats with content Save.
-  const doSave = useCallback(async (t: SideTab[]) => {
+  const doSave = useCallback(async (t: SideTab[], autosave = false) => {
     const fieldKeys = experienceJobFields.map(f => f.key)
     for (const tab of t) {
       const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
@@ -651,11 +653,13 @@ export default function ArtifactEditor({
           const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
           throw new Error(err.error || `Save failed (${resp.status})`)
         }
-        setDirty(false)
+        // A newer edit typed while this PUT was in flight stays dirty so the unmount flush still saves it.
+        if (tabsRef.current === t) setDirty(false)
         setEverSaved(true)
         setSnapshot(null)
         setToast({ text: "Saved", variant: "success" })
-        jobPersistence.onSaved?.()
+        // JAR onSaved reloads the modal (unmounts this editor) — only on explicit Save / unmount flush.
+        if (!autosave) jobPersistence.onSaved?.()
       } catch (e) {
         setToast({ text: (e as Error).message || "Save failed", variant: "error" })
       } finally {
@@ -692,7 +696,7 @@ export default function ArtifactEditor({
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
         throw new Error(err.error || `Save failed (${resp.status})`)
       }
-      setDirty(false)
+      if (tabsRef.current === t) setDirty(false)
       setEverSaved(true)
       setSnapshot(null)
       setToast({ text: "Saved", variant: "success" })
@@ -718,9 +722,12 @@ export default function ArtifactEditor({
     setTabs(next)
     setDirty(true)
     // Skip auto-save while reviewing generated content
-    if (tabChromeEditable && !inReview) {
+    if (autosaveBodies && bodiesEditable) {
       if (timerRef.current) clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => doSave(next), AUTOSAVE_MS)
+      // A timer queued before Generate must not persist (or clear the snapshot) during review — AST-905.
+      timerRef.current = setTimeout(() => {
+        if (snapshotRef.current === null) void doSave(next, true)
+      }, AUTOSAVE_MS)
     }
   }
 
@@ -995,7 +1002,7 @@ export default function ArtifactEditor({
               </button>
             )}
             {headerActions}
-            {(fixedFields || inReview || jobPersistence) ? (
+            {(inReview || !autosaveBodies) ? (
               <>
                 <button className="btn secondary" onClick={handleCancel}>Cancel</button>
                 <button className="btn primary" onClick={() => doSave(tabs)} disabled={saving}>
