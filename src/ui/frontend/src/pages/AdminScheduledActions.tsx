@@ -994,7 +994,7 @@ export default function ScheduledActions() {
                 {activeThreads.map(([id, entry]) => (
                   <li key={id} style={{ padding: "0.25rem 0", fontFamily: "monospace", fontSize: "0.88rem" }}>
                     <span className="dispatch-status-badge dispatch-status-warn">{entry.is_auto ? "AUTO" : "CLICK"}</span>
-                    {" "}{entry.task_key} <span style={{ color: "var(--text-secondary, #8b949e)" }}>({entry.candidate_id})</span>
+                    {" "}{entry.task_key} <span style={{ color: "var(--text-secondary)" }}>({entry.candidate_id})</span>
                   </li>
                 ))}
               </ul>

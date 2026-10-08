@@ -347,7 +347,7 @@ export default function DataManagement() {
                 style={{
                   padding: "4px 10px", fontSize: 12, fontFamily: "monospace",
                   cursor: "pointer", color: "var(--text-primary)",
-                  background: t === selectedTable ? "var(--accent-gold-dim, rgba(212,168,67,0.15))" : "transparent",
+                  background: t === selectedTable ? "var(--accent-gold-dim)" : "transparent",
                 }}
               >{t}</div>
             ))}

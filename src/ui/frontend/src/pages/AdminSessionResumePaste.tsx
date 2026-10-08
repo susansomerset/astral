@@ -228,7 +228,7 @@ export default function SessionResumePaste() {
       </div>
 
       {error && (
-        <p style={{ marginTop: 12, color: "var(--danger, #c44)", fontSize: 13 }}>
+        <p style={{ marginTop: 12, color: "var(--danger)", fontSize: 13 }}>
           {error}
         </p>
       )}
@@ -240,7 +240,7 @@ export default function SessionResumePaste() {
       >
         <pre style={{
           whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 13,
-          color: "#e0e0e0", background: "#1a1a2e", padding: 16, borderRadius: 8,
+          color: "var(--text-primary)", background: "var(--bg-deep)", padding: 16, borderRadius: 8,
           maxHeight: "60vh", overflow: "auto",
         }}>
           {lastParse ? JSON.stringify(lastParse, null, 2) : ""}
