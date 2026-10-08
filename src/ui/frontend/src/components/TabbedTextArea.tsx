@@ -61,7 +61,7 @@ export default function TabbedTextArea({ tabs, values, onChange, customPanels }:
     <div>
       <TabBar tabs={barTabs} active={String(active)} onChange={k => setActive(Number(k))} />
       {help ? (
-        <p style={{ color: "#8b949e", marginBottom: 8, fontSize: 13, lineHeight: 1.5 }}>
+        <p style={{ color: "var(--text-secondary)", marginBottom: 8, fontSize: 13, lineHeight: 1.5 }}>
           {help}
         </p>
       ) : null}

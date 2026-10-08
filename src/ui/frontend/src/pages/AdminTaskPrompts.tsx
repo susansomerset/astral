@@ -143,7 +143,7 @@ function runNextGraphIsAcyclic(edges: Map<string, string>): boolean {
 
 function CacheMinCell({ tokens, satisfied }: { tokens: number; satisfied: boolean }) {
   return (
-    <span style={{ color: satisfied ? "var(--color-pass, #34d399)" : undefined, fontWeight: satisfied ? 600 : undefined }}>
+    <span style={{ color: satisfied ? "var(--success)" : undefined, fontWeight: satisfied ? 600 : undefined }}>
       {tokens.toLocaleString()}
     </span>
   )
@@ -425,7 +425,7 @@ export default function TaskPrompts() {
                     {sec.rows.map(row => (
                       <tr key={row.task_key} className="clickable" onClick={() => openEdit(row)}>
                         <td>
-                          {!row.task_ready && <span style={{ color: "#f87171", marginRight: 5 }}>●</span>}
+                          {!row.task_ready && <span style={{ color: "var(--error)", marginRight: 5 }}>●</span>}
                           {row.task_name || row.task_key}
                         </td>
                         <td style={{ color: "var(--text-secondary)" }}>{row.run_next || "—"}</td>
@@ -496,7 +496,7 @@ export default function TaskPrompts() {
             {runNextSelectKeysForUi.map(k => <option key={k} value={k}>{k}</option>)}
           </select>
           {runNextSelectionInvalid && (
-            <div style={{ marginTop: 6, fontSize: 11, color: "#f87171" }}>
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--error)" }}>
               Current value would repeat a task in this chain. Clear it or pick a different next hop.
             </div>
           )}

@@ -585,7 +585,7 @@ export default function ManageCandidates() {
     }
   }
 
-  if (!shapes) return <p style={{ padding: 20, color: "#fff" }}>Loading...</p>
+  if (!shapes) return <p style={{ padding: 20, color: "var(--text-primary)" }}>Loading...</p>
 
   const rows = allCandidates.map(c => {
     const flat = flattenCandidate(c)
@@ -604,7 +604,7 @@ export default function ManageCandidates() {
         render: (val: unknown) => {
           const isSet = typeof val === "string" && val !== "" && val !== "Not set"
           return (
-            <span style={{ color: isSet ? "var(--success, #4caf50)" : "var(--warning, #ff9800)", fontWeight: 600, fontSize: 12 }}>
+            <span style={{ color: isSet ? "var(--success)" : "var(--warning)", fontWeight: 600, fontSize: 12 }}>
               {isSet ? `🔑 ${val}` : "⚠️ Not set"}
             </span>
           )
@@ -672,7 +672,7 @@ export default function ManageCandidates() {
   const channelWarnBlock = channelMembershipWarn ? (
     <div
       role="alert"
-      style={{ color: "var(--warning, #ff9800)", fontWeight: 600, fontSize: 13, marginTop: 6 }}
+      style={{ color: "var(--warning)", fontWeight: 600, fontSize: 13, marginTop: 6 }}
     >
       {channelMembershipWarn}
     </div>
@@ -711,7 +711,7 @@ export default function ManageCandidates() {
       <Modal open={viewing !== null} onClose={() => setViewing(null)} title={viewing ? `${viewing.astral_candidate_id} (${viewing.state})` : ""}>
         <pre style={{
           whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 13,
-          color: "#e0e0e0", background: "#1a1a2e", padding: 16, borderRadius: 8,
+          color: "var(--text-primary)", background: "var(--bg-deep)", padding: 16, borderRadius: 8,
           maxHeight: "60vh", overflow: "auto",
         }}>
           {viewing ? JSON.stringify(viewing.candidate_data, null, 2) : ""}

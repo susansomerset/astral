@@ -5681,7 +5681,22 @@ UI_CONFIG = {
     # AST-1534: Agent Ad Hoc import picker — API list cap + sibling viewport row count.
     "adhoc_import_runs_limit": 10,
     "adhoc_import_picker_visible_rows": 5,
+    # AST-2042: theme registry — palette id -> label + whether the profile Theme select offers it.
+    # Each id needs a matching [data-theme="<id>"] block in App.css; ids not profile_selectable
+    # only appear on Tools -> Theme Examples. Adding/retiring a palette = one entry here + one CSS block.
+    "themes": {
+        "dark": {"label": "Dark", "profile_selectable": True},
+        "light": {"label": "Light", "profile_selectable": True},
+        "light_parchment": {"label": "Light (Parchment)", "profile_selectable": False},
+        "light_slate": {"label": "Light (Slate)", "profile_selectable": False},
+    },
+    # Theme applied when a candidate has none stored (and before candidates load).
+    "default_theme": "dark",
 }
+# Default must be a registered, profile-selectable palette (it is what candidates without a stored theme get).
+assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_selectable"), (
+    "UI_CONFIG default_theme must be a profile_selectable key of UI_CONFIG themes"
+)
 
 # ---------------------------------------------------------------------------
 # The /api/nav_config endpoint in api_system.py resolves item-level enabled
@@ -5781,6 +5796,7 @@ NAV_CONFIG = [
             {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
             {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},
+            {"label": "Theme Examples", "path": "/admin/theme_examples"},
         ],
     },
 ]
@@ -5865,6 +5881,12 @@ DATA_SHAPES = {
                             {"value": "he/him", "label": "he/him"},
                             {"value": "ze/zir", "label": "ze/zir"},
                             {"value": "e/eir", "label": "e/eir"},
+                        ]},
+                        # AST-2042: options come from the registry so there is no second theme list.
+                        {"key": "theme", "label": "Theme", "type": "select", "options": [
+                            {"value": tid, "label": t["label"]}
+                            for tid, t in UI_CONFIG["themes"].items()
+                            if t["profile_selectable"]
                         ]},
                         {"key": "contact.reason_codes", "label": "Reason Codes", "type": "textarea"},
                     ],

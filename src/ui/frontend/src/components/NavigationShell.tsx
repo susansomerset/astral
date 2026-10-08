@@ -232,7 +232,7 @@ export default function NavigationShell() {
                   </h3>
                   {isExpanded && group.items.map(item => {
                     const badge = item.count != null
-                      ? <span style={{ marginLeft: 6, fontSize: 11, color: "#888", fontWeight: 400 }}>[{item.count}]</span>
+                      ? <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>[{item.count}]</span>
                       : null
                     return item.enabled ? (
                       <NavLink
