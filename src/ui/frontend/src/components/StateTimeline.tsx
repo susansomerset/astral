@@ -21,7 +21,7 @@ interface StateTimelineProps {
 
 export default function StateTimeline({ history, onSelectRun }: StateTimelineProps) {
   if (!history || history.length === 0) {
-    return <p style={{ color: "#888", fontSize: 13 }}>No state history recorded.</p>
+    return <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No state history recorded.</p>
   }
 
   // Show most recent first
@@ -56,16 +56,16 @@ export default function StateTimeline({ history, onSelectRun }: StateTimelinePro
             }}>
               <div style={{
                 width: 10, height: 10, borderRadius: "50%",
-                background: i === 0 ? "var(--accent, #5b8cff)" : "#555",
-                border: i === 0 ? "2px solid var(--accent, #5b8cff)" : "2px solid #666",
+                background: i === 0 ? "var(--accent-gold)" : "var(--text-muted)",
+                border: i === 0 ? "2px solid var(--accent-gold)" : "2px solid var(--text-muted)",
               }} />
               {i < sorted.length - 1 && (
-                <div style={{ width: 2, height: 24, background: "#444" }} />
+                <div style={{ width: 2, height: 24, background: "var(--border)" }} />
               )}
             </div>
             <div style={{ fontSize: 13, lineHeight: 1.4 }}>
-              <span style={{ fontWeight: 600, color: "#e0e0e0" }}>{state}</span>
-              <span style={{ color: "#888", marginLeft: 8 }}><Time value={entry.timestamp} /></span>
+              <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{state}</span>
+              <span style={{ color: "var(--text-muted)", marginLeft: 8 }}><Time value={entry.timestamp} /></span>
             </div>
           </div>
         )

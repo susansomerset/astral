@@ -57,8 +57,8 @@ export default function ProfileTextPage({ title, profileKey }: ProfileTextPagePr
     setDraft(saved)
   }
 
-  if (loading) return <p style={{ padding: 20, color: "#fff" }}>Loading...</p>
-  if (!selectedId) return <p style={{ padding: 20, color: "#fff" }}>No candidate selected.</p>
+  if (loading) return <p style={{ padding: 20, color: "var(--text-primary)" }}>Loading...</p>
+  if (!selectedId) return <p style={{ padding: 20, color: "var(--text-primary)" }}>No candidate selected.</p>
 
   return (
     <>
