@@ -827,3 +827,61 @@ no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK*
 context_tokens≈22000
 
 `[code-rubric] REVIEW (Commit: 85582d39c) Sub branch stacks extra fixes`
+
+### AST-2063 Radia review-fix — round 2 (after refresh-ftr to dev 2fd5c63e7)
+
+[code-rubric]
+**Ticket:** AST-2063
+**Publish ref:** `8bcf57c980d5edc187cc447ee385e824f9272229` (`origin/sub/AST-2042/AST-2063-light-header-purple`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; ticket/parent **Canon Scope:** none)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out (Betty **TESTS: OK**; `qa-fix` skipped).
+
+**## What must still hold — OK** — `git diff origin/ftr/AST-2042-user-theme...origin/sub/AST-2042/AST-2063-light-header-purple` on `App.css` only: Dark gains `--heading: var(--accent-gold)` (heading color unchanged vs direct `--accent-gold`); three Light blocks add `--heading: #241b33` inside token blocks; six heading rules repointed; no other `color: var(--accent-gold)` rule changes in the diff.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Round-1 fix-now cleared:** `origin/ftr/AST-2042-user-theme` @ `2fd5c63e7` (epic #262 on dev). Three-dot diff is **2 files only** — `src/ui/frontend/src/App.css` + plan doc `## Bug: AST-2063` block on `ast-2047-theme-registry-palettes-and-theme-examples-page-user-theme.md`. No `src/**` or `tests/**` beyond `App.css`.
+- **Product tip:** Still `85582d39c` for CSS; tip commit `8bcf57c98` is docs-only (round-1 Radia artifact).
+- **UAT:** Light heading purple remains visual; fix-board aligned with no durable color pin.
+
+## What's solid
+
+- **Plan fidelity:** Matches `## Proposed change` — 4× `--heading` after `--accent-gold-hover`, 6 selectors (`list-page-title`, `job-analysis-upshot-heading`, `modal-title`, `dep-title`, `dep-section-label`, `theme-examples-label`), accents/nav/tabs untouched.
+- **Blast radius:** App.css-only product delta; stack is merge-safe on refreshed ftr.
+- **Commits since ftr:** `0d884602e`–`8bcf57c98` — plan-fix, fix-board, `code(AST-2063)`, review doc only.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Normal** (AST-2042 UAT-batch) | → **Review Posted** → fix-lane clean shortcut → **User Testing** (`resolve-child` skipped). |
+
+context_tokens≈12000
+
+`[code-rubric] PROCEED (Commit: 8bcf57c98) Light headings use --heading`
