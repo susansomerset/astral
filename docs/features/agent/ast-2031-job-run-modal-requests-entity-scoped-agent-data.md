@@ -134,3 +134,47 @@ context_tokens≈32000
 - **Build tip:** `26e02c09e` (Stage 1: `entityId` prop on `BatchAgentDataPanes` → `entity_id` query on the agent-data fetch only; forwarded through `BatchExecutionModal`; `JobDetailModal` passes `job?.astral_job_id`. 3 files, 11 insertions, 6 deletions)
 - **Build notes:** Built as planned, steps 1–9 in order, no code deviations. Built on top of `origin/ftr/AST-2028-technical-fail-modals-filter-by-entity-id` (siblings AST-2029 / AST-2030 merged by sync). `npm ci` run in `src/ui/frontend`. `npx tsc -b --noEmit` passes. Step 8's "`npm run lint` — zero errors" can't be met literally: repo-wide lint reports the same 31 pre-existing problems (26 errors, 5 warnings) with and without this change, none in the three touched files. `git diff origin/dev -- src/ui/frontend/src/pages/ src/ui/api/ src/data/` is empty.
 - **For qa-child:** in `test_JobDetailModal.test.tsx`, two tests in the AST-1865 describe now fail as expected, because they assert the exact unscoped URL and the job modal now sends `?entity_id=j1` (AC 8): `AC4` (`/api/agent_data/hop-R`) and `AC6` (`/api/agent_data/legacy-B`). One more, `AST-1695 … null listing_href → no Link <a>`, already fails on the pre-change tree. `test_BatchAgentDataModal` and `test_AdminPerformanceMonitor` are green with no edits.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2031
+**Publish ref:** caef65df488ee9ea735886bcdd56c223cc27a1c9
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Overall:** CLEAN
+
+## Canon scores
+(none — frozen Canon Scope empty; no directives to score)
+
+## Column diff vs plan stage
+no plan-stage canon scores attached (Joan likewise scored no canon rows)
+
+## Frame diff
+- [ ] **Acceptance criteria (parent AST-2028):** Replace AC9 literal `grep -n "entity_id"` over three admin pages with a check that matches intent (e.g. `git diff origin/dev -- <pages>` empty and no `entityId={` on `BatchAgentDataPanes` in those pages), since `AdminAnthropicAdHoc.tsx` already contains unrelated `entity_id` strings on `origin/dev`.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+- **advisory** | sibling product + test carry | Three-dot diff vs `origin/dev` still includes AST-2029 / AST-2030 backend (`src/core/agent.py`, `src/utils/formatting.py`, `test_agent_ast2029.py`, `test_agent_ast2030.py`, sibling plan docs). Expected on stacked epic publish ref (`blockedBy` AST-2030). AST-2031-owned UI delta is three components plus frontend tests/bible rows.
+- **advisory** | Parent AC9 wording | Plan and bible document the pre-existing `grep entity_id` false positive on `AdminAnthropicAdHoc.tsx`; implementation correctly uses page diff + panes prop wiring instead. UAT should not treat literal grep as the gate.
+- **advisory** | `BatchAgentDataModal.tsx` | Default-export modal still renders `<BatchAgentDataPanes … />` without `entityId` (Execution History / Vector Feedback / standalone modal stay batch-wide). Ad Hoc (`AdminAnthropicAdHoc.tsx` ~653) passes no `entityId`.
+- **advisory** | Build hygiene | Issue doc build tip `26e02c09e` differs from current publish tip `caef65df` (likely doc lag); review used `origin/sub/AST-2028/AST-2031-job-run-modal-entity-scoped`.
+
+## What's solid
+- Plan Stage 1 steps 1–7 implemented exactly: optional `entityId` on `PanesProps` / `BatchExecutionModal` only; agent-data URL appends `?entity_id=${encodeURIComponent(entityId)}` when truthy; timesheets and dispatch ledger URLs unchanged; effect deps include `entityId`.
+- `JobDetailModal` forwards `job?.astral_job_id` into `BatchExecutionModal` (AC8).
+- AC9 intent: `git diff origin/dev...publish-ref -- src/ui/frontend/src/pages/ src/ui/api/ src/data/` is empty; no `entityId={` on panes from admin pages.
+- Tests: `test_JobDetailModal` AC4/AC6 assert scoped URL and reject unscoped; `test_BatchAgentDataModal` covers encode, batch-wide default, refetch on `entityId` change; `test_AdminPerformanceMonitor` untouched per manifest.
+
+## Recommended actions (downstream only — not executed in this session)
+- Chuckles: append artifact, `docs(AST-2031): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.
+- Archie / parent AST-2028: tick or amend Frame diff AC9 row so UAT does not re-litigate grep.
+- Epic merge: land #1–#2 before or with #3 so `entity_id` query returns sliced rows in production.
+
+context_tokens≈18000
