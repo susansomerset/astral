@@ -226,3 +226,35 @@ Execute stages in order and steps in order. Do not add files, helpers, or config
 ## Estimate
 
 Confirm Chuckles estimate: 5 — revise to 3 because it is one file reusing the existing classify, map, and insert helpers, with no schema, config, or API contract change. That is new behavior in one area.
+
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-2034
+**Overall:** APPROVED
+**Corpus:** 8fa9f84d0e775852bc529f67faadf7e6f12cd904
+**Publish ref:** origin/sub/AST-2032/AST-2034-raw-new-meteorite-stage-classify @ d53d0600e0af622ea2494583999c224fc561c600
+
+## Canon scores
+patt.entity.batch-processing | A | | Stage 2 passes claim `batch_id` into classify; fan-out siblings unclaimed; `finally` release unchanged
+astral.batch.claim-process-release | A | | No new select-by-state bypass; still claim → loop → `clear_meteorite_batch`
+astral.entity.required-metadata | X | | No `database.py` or schema change; uses existing meteorite columns only
+stat.logging.info.entity | A | | `_insert_stage_rows` NEW line; `_meteorite_state_info` on transitions in Stage 2
+stat.logging.info.dispatcher | X | | `applies_when` is `dispatcher.py` / `agent.py` only; rollup untouched
+stat.logging.debug | B | | Calling/Response pairs planned; `debug=` on new entry matches existing `@_with_log_debug` module habit
+stat.logging.warning | A | | `_warn_item` on validation/soft-fail; `_row_miss` on row-layer misses
+stat.logging.error | A | | `logger.exception` on insert/classify throws with who/why/next-step body
+
+## Traceability
+AC1 → Stage 1 (`insert_slack_meteorite` raw NEW slack row). AC2 → Stage 1 direct-call row shape (mention/command strip is AST-2035 E2E; this child stores caller-supplied payload). AC3 → Stage 2 (`_classify_new_stage_row` + fall-through routing). AC4 → Stage 2 step 3 (classified branch unchanged). AC5 → Stage 2 step 1 (`batch_id` kwarg on `_classify_stage_blob`).
+
+## Findings
+- **acceptable** — Scope gate / Files Changed: single file `src/core/meteorite.py`; no contact/config creep.
+- **acceptable** — DRY: reuses `_classify_stage_blob`, `_map_classify_jobs_to_meteorite_rows`, `_insert_stage_rows`, existing counter semantics (AST-1751 / AST-1742).
+- **discuss** — Child AC2 text reads like full Slack parse E2E; ticket Notes already bound AC1/AC2 to direct entry — Betty’s manifest should not require #2’s strip logic in #1’s component tests.
+- **acceptable** — Test impact names the invalidated `missing_classify_outcome` → `SCRAPE_ERROR` test and parent AC8 fail condition; qa-child can land coverage without plan edits.
+
+context_tokens≈52000
+```
