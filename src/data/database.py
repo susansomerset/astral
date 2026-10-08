@@ -5209,9 +5209,55 @@ def list_artifacts(
             )
             if current_only:
                 sql += " AND current = 1"
-            sql += " ORDER BY created_at ASC"
+            sql += " ORDER BY created_at ASC, rowid ASC"
             rows = conn.execute(sql, (et, eid, at)).fetchall()
             return [_artifact_row_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def set_current_artifact(
+    entity_type: str, entity_id: str, artifact_type: str, artifact_uuid: str
+) -> str:
+    """Move current=1 to artifact_uuid within its natural key (AST-2066).
+
+    One transaction: mark the target current, retire every other current row for
+    (entity_type, entity_id, artifact_type). Never touches artifact_data or
+    source_artifact_ids (patt.artifact.read-operative / traceability). Raises
+    ValueError when the uuid is not a row of this key; nothing changes then.
+    """
+    et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
+    uid = (artifact_uuid or "").strip()
+    if not uid:
+        raise ValueError("artifact_uuid required")
+    now = _utc_now()
+
+    def _with_conn() -> str:
+        conn = _get_connection()
+        try:
+            _ensure_artifact_table(conn)
+            # Key match lives in the WHERE, so a foreign uuid updates 0 rows (cross-key guard).
+            cur = conn.execute(
+                """UPDATE artifact
+                      SET current = 1, updated_at = ?
+                    WHERE artifact_uuid = ?
+                      AND entity_type = ? AND entity_id = ? AND artifact_type = ?""",
+                (now, uid, et, eid, at),
+            )
+            if cur.rowcount == 0:
+                conn.rollback()
+                raise ValueError(f"artifact_uuid {uid!r} is not a version of {et}/{eid}/{at}")
+            conn.execute(
+                """UPDATE artifact
+                      SET current = 0, updated_at = ?
+                    WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
+                      AND current = 1 AND artifact_uuid != ?""",
+                (now, et, eid, at, uid),
+            )
+            conn.commit()
+            return uid
         finally:
             conn.close()
 
