@@ -190,3 +190,47 @@ The plan is binding. Execute steps in order and stages in order. Do not add file
 ## Estimate
 
 Confirm Chuckles estimate: 3 — revise to 2 because it is a known pattern (single-line literal → existing-token swaps across 19 files), with no new tokens, no logic, and a clear happy path.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2049
+**Overall:** APPROVED
+**Corpus:** cc0ca67ac7e3ffd6f9067ccd857cb47fdb2c6f50 (`canon/` at publish tip; no `docs/canon-index.md` on ref)
+**Publish ref:** `7107fa7e8a6c1e7996d47657028c7f9bb760dd3a` (`origin/sub/AST-2042/AST-2049-inline-color-tokens`)
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score; not §4a ESCALATE.
+
+## Traceability
+
+Child AC9→Stage 1+2 (epic-wide hex + undefined-`var` checks in Stage 2 step 14, contingent on #2 already clean per Boundaries); AC10→Stage 2 step 14. Parent AC1–8,11 → N/A (#1/#2); parent AC9 `.ts`/`.tsx` half → this ticket after #2; parent AC10 → Stage 2.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **acceptable — Ticket Boundaries “18 files” vs Scope list (19)** — Plan names all 19 Scope files and explains `AdminDataManagement.tsx` has `rgba` fallback only (no hex). Matches parent Component scope file count (7 components + 12 pages).
+
+- **acceptable — Ground truth re-verified on worktree** — AC 9 hex grep hits exactly 18 `.ts`/`.tsx` files, all in Scope; `CandidateProfile.tsx` has no hex (#2). Undefined `var(--*)` epic-wide: `--accent`, `--bg-secondary`, `--border-color`, `--color-pass` only, each addressed in the tables.
+
+- **acceptable — Intentional Dark visual deltas** — Global map documents shifts (e.g. StateTimeline latest dot blue→`--accent-gold`, AdminScheduledQueries boxes gaining border/background, `#f44336`→`--danger` on CompaniesWatchHistory). No `App.css` edits; parent AC 7 unaffected.
+
+- **acceptable — AST-2041 / ArtifactEditor** — Overlap analysis and hunk isolation documented; merge-order risk noted, not a plan defect.
+
+- **acceptable — Estimate line** — “Confirm … 3 — revise to 2” matches Linear estimate 2; pattern is mechanical swaps only.
+
+- **acceptable — Stage commits include `git push`** — Engineer publish step; within build-child norms.
+
+### acceptable
+
+- **Gates:** Plan Ready, assignee Joan Clarke; 0/2 `[plan-discuss]` rounds.
+- **Scope fidelity:** 19 files only; no `App.css`, no `CandidateProfile.tsx`, no new tokens; neutral `rgba(0,0,0,…)` overlays preserved.
+- **Verification:** Stage 2 step 14 epic-wide AC 9/10 checks align with parent wording; lint held to documented 31-problem baseline in Scope files.
+
+context_tokens≈42000
