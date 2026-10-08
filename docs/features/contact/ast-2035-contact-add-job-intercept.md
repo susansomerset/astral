@@ -349,3 +349,10 @@ AC1 → Stage 2 (`parse_contact_command` unwrap + `_run_contact_command` → `in
 - **acceptable** — Intercept control flow (`command` vs `paste_out` / turn / shared listen + hear-ack tail) matches current `_handle_slack_event_body` shape; dependency on AST-2034 entry named in Execution contract.
 
 context_tokens≈78000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2032/AST-2035-contact-add-job-intercept`
+- **Stage 1:** `bd1e9472d` — `CONTACT_CONFIG["commands"]` registry + asserts
+- **Stage 2:** `43f4767df` — `/command` parse + intercept with code/agent reply
+- **Build notes:** Two files (`src/utils/config.py`, `src/core/contact.py`), as planned. `py_compile` is clean. Per the plan's lint rule, the UP045/UP006 hits on new annotations were fixed (`str | None`, `tuple[...]`; the module has `from __future__ import annotations`). The one remaining ruff hit on a new line is TRY401 on the intercept's `logger.exception`, which `stat.logging.error`'s Do shape (`type(exc).__name__, exc`) requires; the file already carries 10 of these. A smoke run with Slack, resolve, and insert patched confirmed: link unwrap → `insert_slack_meteorite("cand-1", "http://www.dice.com/jobs/13234abcd", source_id="C1:1.1", thread_ts="1.1")`, one ack containing the id, no paste recovery, no turn, no hear-ack; the bare command posts usage with no insert; mid-sentence takes the normal turn; `agent` mode runs one turn with `"meteorite_id": 42` in `extra_context`. Listen line: `cand-1 | contact listen app_mention add-job: action:add-job:code,meteorite:42 (channel: C1) aside: -`. The AC8 `rg` returns no matches. `tests/component/core/test_contact.py` shows the same 12 failures before and after the build (84 pass), so none are new.
