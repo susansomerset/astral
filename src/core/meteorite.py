@@ -2,7 +2,7 @@
 Meteorite placeholder company ensure, legacy create, and public land_meteorite (AST-1470 / AST-1493 / AST-1495).
 
 Dispatch `stage_meteorite` / `scrape_meteorite` / `check_unique_meteorite` / `land_meteorite`
-rows (AST-1560 / AST-1774 / AST-1775) are table transition runners — not Ruth classify hops; dispatcher
+rows (AST-1560 / AST-1774 / AST-1775) are table transition runners — stage Ruth-classifies only raw unclassified NEW rows (AST-2034); dispatcher
 custom branch only. Stage/scrape landable success → CHECK_UNIQUE; unique hop → READY;
 peer Ruth path → DUPLICATE | READY; land remains READY → LANDED.
 
@@ -16,6 +16,7 @@ aliases → fetch → inline classify → fan-out staging rows → archive; no G
 inbox owns fetch/archive.
 create_meteorite_job accepts optional stem= for legacy callers.
 create_contact_meteorite (AST-1517 contact-task create) wraps scrape-or-text → create.
+insert_slack_meteorite (AST-2034): raw Slack blob → NEW unclassified; run_stage_meteorite Ruth-classifies it.
 """
 from __future__ import annotations
 
@@ -733,6 +734,7 @@ async def _classify_stage_blob(
     source_kind: str,
     source_id: str,
     ctx: Optional[Dict[str, Any]] = None,
+    batch_id: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
     """Ruth classify via stage_meteorite do_task. No insert."""
@@ -755,7 +757,8 @@ async def _classify_stage_blob(
     # Source handle for core source-refs; Ruth classifies CONTENT.
     live_content = f"SOURCE_KIND: {kind}\nSOURCE_ID: {sid}\nCONTENT:\n{body}"
     task_key = STAGE_METEORITE_CONFIG["task_key"]
-    batch_id = f"{task_key}-stage-{uuid.uuid4()}"
+    # Dispatch hop passes its claim id so agent_data joins the claim (AST-2034); ingress callers mint.
+    batch_id = (batch_id or "").strip() or f"{task_key}-stage-{uuid.uuid4()}"
     do_index = f"{task_key}_batch_{batch_id}"
     task_ctx: Dict[str, Any] = {**(ctx or {}), "astral_candidate_id": cid}
     if ctx and ctx.get("candidate_data") is not None:
@@ -875,6 +878,73 @@ def _insert_stage_rows(row_dicts: List[Dict[str, Any]]) -> Tuple[List[int], Opti
         _meteorite_state_info(row_id, row["state"])
     logger.debug("End stage row info loop after %s items", len(ids))
     return ids, None
+
+
+@_with_log_debug
+def insert_slack_meteorite(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Save one raw Slack blob at NEW, unclassified; Ruth classifies at the stage hop (AST-2034).
+
+    Soft-fails: never raises into Contact. Returns {ok, meteorite_id, error}.
+    """
+    cid = (candidate_id or "").strip()
+    body = payload.strip() if isinstance(payload, str) else ""
+    sid = (source_id or "").strip()
+    anchor = (thread_ts or "").strip()
+
+    def _miss(why: str) -> Dict[str, Any]:
+        _warn_item(cid or "insert_slack_meteorite", why, "This Slack blob is not being saved")
+        return {"ok": False, "meteorite_id": None, "error": why}
+
+    # First validation miss wins.
+    if not cid:
+        return _miss("candidate_id is required")
+    if not body:
+        return _miss("payload is required")
+    if not sid:
+        return _miss("source_id is required")
+
+    # Link vs text is Ruth's call at the stage hop — store the payload raw.
+    row = {
+        "candidate_id": cid,
+        "source_kind": "slack",
+        "source_id": sid,
+        "state": "NEW",
+        "content": body,
+        "link": None,
+        "classify_outcome": None,
+    }
+    try:
+        ids, mismatch = _insert_stage_rows([row])
+    except Exception as exc:
+        logger.exception(
+            "%s | insert_slack_meteorite %s\n  %s: %s\n  This Slack blob is not being saved",
+            cid, sid, type(exc).__name__, exc,
+        )
+        return {"ok": False, "meteorite_id": None, "error": str(exc)}
+    if mismatch or not ids:
+        return _miss(mismatch or "insert returned no id")
+    mid = int(ids[0])
+
+    # insert_meteorite_rows does not persist estelle_thread_ts; stamp it after insert.
+    if anchor:
+        try:
+            logger.debug("Calling update_meteorite: [id=%s, estelle_thread_ts=%s]", mid, anchor)
+            update_meteorite(mid, estelle_thread_ts=anchor)
+            logger.debug("Response from update_meteorite: ok")
+        except Exception as exc:
+            # Row is saved at NEW and will stage; only BOT_BLOCKED thread lookups lose the anchor.
+            logger.exception(
+                "%s | meteorite %s estelle_thread_ts\n  %s: %s\n  The row is saved at NEW without its Slack thread anchor",
+                cid, mid, type(exc).__name__, exc,
+            )
+    return {"ok": True, "meteorite_id": mid, "error": None}
 
 
 @_with_log_debug
@@ -1674,9 +1744,107 @@ def _row_miss(row_id: Any, cid: str, why: str, next_step: str) -> None:
     _warn_item(f"meteorite {row_id} for {cid}", why, next_step)
 
 
+async def _classify_new_stage_row(
+    row: Dict[str, Any], *, batch_id: str, debug: bool = False
+) -> Tuple[Optional[Dict[str, Any]], str]:
+    """Ruth-classify one raw NEW row in place (AST-2034).
+
+    Returns (routable_row, "") when job 1 was written onto the row, or
+    (None, summary_key) when the row reached a terminal state here.
+    """
+    row_id = int(row["id"])
+    cid = str(row.get("candidate_id") or "").strip()
+    kind = (row.get("source_kind") or "").strip()
+    sid = (row.get("source_id") or "").strip()
+    blob = row.get("content") if isinstance(row.get("content"), str) else ""
+
+    def _fail(error: str, outcome: Optional[str] = None) -> Tuple[None, str]:
+        # NEW_EMAIL_ERROR is the human-reset stage-failure hold (reset to NEW to retry).
+        update_meteorite(row_id, state="NEW_EMAIL_ERROR", error=error, classify_outcome=outcome)
+        _meteorite_state_info(row_id, "NEW_EMAIL_ERROR", from_state="NEW")
+        _row_miss(row_id, cid, error, "This row is NEW_EMAIL_ERROR; reset to NEW to retry")
+        return None, "total_errors"
+
+    # Candidate context mirrors stage_meteorite (Ruth task requires the candidate key).
+    cand = get_candidate(cid)
+    if not cand:
+        return _fail(f"candidate not found: {cid}")
+    ctx = dict(cand) if isinstance(cand, dict) else {}
+    ctx["astral_candidate_id"] = cid
+
+    try:
+        logger.debug(
+            "Calling _classify_stage_blob: [meteorite_id=%s, source_kind=%s, batch_id=%s]",
+            row_id, kind, batch_id,
+        )
+        classify = await _classify_stage_blob(
+            cid, blob, source_kind=kind, source_id=sid, ctx=ctx,
+            batch_id=batch_id, debug=debug,
+        )
+        logger.debug("Response from _classify_stage_blob: %s", classify)
+    except Exception as exc:
+        # logger.exception carries who/why/next — no _fail, which would double-warn.
+        logger.exception(
+            "%s | meteorite %s classify\n  %s: %s\n  This row is NEW_EMAIL_ERROR",
+            cid, row_id, type(exc).__name__, exc,
+        )
+        update_meteorite(row_id, state="NEW_EMAIL_ERROR", error=str(exc))
+        _meteorite_state_info(row_id, "NEW_EMAIL_ERROR", from_state="NEW")
+        return None, "total_errors"
+
+    # Empty blob, bad source_kind, do_task failure, invalid outcome all land here.
+    outcome = classify.get("outcome")
+    if not classify.get("success"):
+        return _fail(classify.get("error") or "stage failed", outcome)
+
+    # Skip → NOT_A_JOB counts as failed, not error (AST-1742 / AST-1751).
+    if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
+        update_meteorite(row_id, state="NOT_A_JOB", classify_outcome=outcome)
+        _meteorite_state_info(row_id, "NOT_A_JOB", from_state="NEW")
+        return None, "total_failed"
+
+    jobs = [j for j in (classify.get("jobs") or []) if isinstance(j, dict)]
+    mapped, map_err = _map_classify_jobs_to_meteorite_rows(
+        outcome, jobs, candidate_id=cid, source_kind=kind, source_id=sid,
+        timezone_key=_candidate_contact_timezone(cid), ingress_blob=blob,
+    )
+    if map_err or not mapped:
+        return _fail(str(map_err or "classify produced no rows"), outcome)
+    # Ruth's title/employer ride on each mapped row, same as stage_meteorite.
+    for m, job in zip(mapped, jobs):
+        m["job_title"] = _stage_field(job, "job_title")
+        m["employer_name"] = _stage_field(job, "employer_name")
+
+    # Job 1 overwrites the raw row so it matches a classified ingress row's shape.
+    col = METEORITE_CONFIG["electronic_contact_column"]
+    first = {k: mapped[0].get(k) for k in (
+        "classify_outcome", "content", "link", "job_title", "employer_name", col,
+    )}
+    # Row keeps NEW; the caller's classified branch picks the next state this pass.
+    update_meteorite(row_id, **first)
+
+    # Jobs 2..N: unclaimed classified NEW siblings; the next stage tick routes them.
+    siblings = [{**m, "state": "NEW"} for m in mapped[1:]]
+    if siblings:
+        try:
+            _ids, mismatch = _insert_stage_rows(siblings)
+        except Exception as exc:
+            logger.exception(
+                "%s | meteorite %s fan-out\n  %s: %s\n  The first posting still routes; %s sibling postings were not staged",
+                cid, row_id, type(exc).__name__, exc, len(siblings),
+            )
+        else:
+            if mismatch:
+                _row_miss(
+                    row_id, cid, mismatch,
+                    "The first posting still routes; some sibling postings may be missing",
+                )
+    return {**row, **first}, ""
+
+
 @_with_log_debug
 async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: NEW → SCRAPE_LINK | CHECK_UNIQUE (AST-1560 / AST-1774)."""
+    """Dispatch runner: NEW → SCRAPE_LINK | CHECK_UNIQUE; unclassified NEW → Ruth classify first (AST-1560 / AST-1774 / AST-2034)."""
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
     batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
     batch_id = str((task or {}).get("entity_batch_id") or "").strip()
@@ -1706,13 +1874,15 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
             try:
                 outcome = (row.get("classify_outcome") or "").strip()
                 if not outcome:
-                    update_meteorite(row_id, state="SCRAPE_ERROR", error="missing classify_outcome")
-                    _row_miss(
-                        row_id, cid, "missing classify_outcome", "This row is SCRAPE_ERROR",
+                    # AST-2034: raw NEW (e.g. Slack /add-job) — Ruth classifies, then fall through.
+                    classified, miss_key = await _classify_new_stage_row(
+                        row, batch_id=batch_id, debug=debug,
                     )
-                    # AST-1751: ERROR arms bump total_errors only — not total_failed.
-                    summary["total_errors"] += 1
-                    continue
+                    if classified is None:
+                        summary[miss_key] += 1
+                        continue
+                    row = classified
+                    outcome = (row.get("classify_outcome") or "").strip()
                 if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
                     update_meteorite(row_id, state="SCRAPE_ERROR", error="skip outcome on row")
                     _row_miss(

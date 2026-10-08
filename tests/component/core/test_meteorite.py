@@ -1219,14 +1219,23 @@ class TestAst1560RunStageMeteorite:
 
     @pytest.mark.asyncio
     async def test_missing_classify_outcome_errors_with_monitoring(
-        self, sqlite_in_memory, caplog
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog
     ) -> None:
+        # AST-2034 (parent AC8): unclassified NEW now goes to Ruth; a Ruth failure parks the
+        # row at NEW_EMAIL_ERROR — the old SCRAPE_ERROR "missing classify_outcome" arm is a Fail.
         import logging
+
+        import src.core.agent as agent_mod
 
         db = sqlite_in_memory
         cid = "cand-stg-miss"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "M"})
-        row_id = _insert_meteorite_row(db, cid)
+        row_id = _insert_meteorite_row(db, cid, content="raw blob " + ("m" * 40))
+
+        async def _do_task(**_kwargs):
+            return {"success": False, "error": "llm down"}
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
         with caplog.at_level(logging.WARNING):
             out = await meteorite_mod.run_stage_meteorite(
                 _ingress_task(batch_id="stage-batch-miss", candidate_id=cid)
@@ -1234,8 +1243,12 @@ class TestAst1560RunStageMeteorite:
         # AST-1751: ERROR arms bump total_errors only — not total_failed.
         assert out["total_failed"] == 0
         assert out["total_errors"] == 1
-        assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
-        assert any("missing classify_outcome" in r.message for r in caplog.records)
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "NEW_EMAIL_ERROR"
+        assert row["error"] == "llm down"
+        assert not any("missing classify_outcome" in r.getMessage() for r in caplog.records)
+        # _row_miss warning names the row and the human-reset next step.
+        assert any("NEW_EMAIL_ERROR" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.skipif(
@@ -3529,3 +3542,256 @@ class TestAst1988HoldLogBatchPairing:
             assert self._ids() == (None, None)
         finally:
             self._restore(start)
+
+
+# AST-2034: insert_slack_meteorite — raw Slack blob at NEW, unclassified (parent AC1/AC2 row shape
+# via direct call; mention/command strip + link unwrap are sibling AST-2035's job, not tested here).
+# Branches: ok + anchor stamped / ok no anchor; misses (cid, payload, source_id) insert nothing;
+# insert raises → soft-fail; anchor stamp raises → still ok.
+class TestAst2034InsertSlackMeteorite:
+    URL = "http://www.dice.com/jobs/13234abcd"
+
+    @staticmethod
+    def _last_row(db) -> dict:
+        rows = db.list_meteorites_by_source("slack", "C1:1700000000.000100")
+        assert len(rows) == 1
+        return rows[0]
+
+    def test_link_payload_lands_raw_at_new(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        out = meteorite_mod.insert_slack_meteorite(
+            "cand-2034", self.URL, source_id="C1:1700000000.000100", thread_ts="1700000000.000100",
+        )
+        assert out["ok"] is True and out["error"] is None
+        row = self._last_row(db)
+        assert row["id"] == out["meteorite_id"]
+        assert (row["candidate_id"], row["state"], row["source_kind"]) == ("cand-2034", "NEW", "slack")
+        assert row["classify_outcome"] is None
+        assert row["content"] == self.URL
+        assert row["link"] is None
+        assert row["estelle_thread_ts"] == "1700000000.000100"
+
+    def test_text_payload_lands_one_row_trimmed_interior_kept(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        jd = "Senior Engineer\nAcme Corp\n\nResponsibilities:\n- build things"
+        out = meteorite_mod.insert_slack_meteorite(
+            "cand-2034", f"  \n{jd}\n  ", source_id="C1:1700000000.000100",
+        )
+        assert out["ok"] is True
+        row = self._last_row(db)
+        assert row["state"] == "NEW" and row["classify_outcome"] is None
+        assert row["content"] == jd
+        # No anchor passed → nothing stamped.
+        assert not row.get("estelle_thread_ts")
+
+    @pytest.mark.parametrize(
+        ("cid", "payload", "sid", "why"),
+        [
+            ("", "blob", "C1:1", "candidate_id is required"),
+            ("cand-2034", "   ", "C1:1", "payload is required"),
+            ("cand-2034", None, "C1:1", "payload is required"),
+            ("cand-2034", "blob", " ", "source_id is required"),
+        ],
+    )
+    def test_validation_miss_inserts_nothing(self, sqlite_in_memory, cid, payload, sid, why) -> None:
+        db = sqlite_in_memory
+        out = meteorite_mod.insert_slack_meteorite(cid, payload, source_id=sid)
+        assert out == {"ok": False, "meteorite_id": None, "error": why}
+        assert db.list_meteorites_by_source("slack", sid.strip() or "C1:1") == []
+
+    def test_insert_raises_soft_fails(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _boom(_rows):
+            raise RuntimeError("db locked")
+
+        monkeypatch.setattr(meteorite_mod, "_insert_stage_rows", _boom)
+        out = meteorite_mod.insert_slack_meteorite("cand-2034", "blob", source_id="C1:1")
+        assert out == {"ok": False, "meteorite_id": None, "error": "db locked"}
+
+    def test_anchor_stamp_failure_still_ok(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+
+        def _boom(*_a, **_k):
+            raise RuntimeError("update failed")
+
+        monkeypatch.setattr(meteorite_mod, "update_meteorite", _boom)
+        out = meteorite_mod.insert_slack_meteorite(
+            "cand-2034", "blob", source_id="C1:1700000000.000100", thread_ts="1700000000.000100",
+        )
+        # Row is saved; Contact must not tell the candidate nothing was saved.
+        assert out["ok"] is True
+        assert self._last_row(db)["state"] == "NEW"
+
+
+# AST-2034: run_stage_meteorite Ruth-classifies unclassified NEW rows (parent AC8/AC9/AC10).
+# Branches: link_list → SCRAPE_LINK; single_jd_no_link → CHECK_UNIQUE; skip → NOT_A_JOB (failed);
+# do_task fail → NEW_EMAIL_ERROR (TestAst1560RunStageMeteorite::test_missing_classify_outcome_…);
+# map fail → NEW_EMAIL_ERROR with outcome kept; candidate missing → NEW_EMAIL_ERROR;
+# multi_jd_inline 3 jobs → original routed + 2 unclaimed classified NEW siblings;
+# classified row → zero do_task calls; classify agent_data batch = claim id; claim released.
+class TestAst2034StageHopClassify:
+    URL = "http://www.dice.com/jobs/13234abcd"
+    SID = "C1:1700000000.000100"
+
+    @staticmethod
+    def _patch_ruth(monkeypatch: pytest.MonkeyPatch, outcome: str, jobs: list) -> list:
+        """Patch do_task with a Ruth reply; returns call log of (kwargs, log_batch_id at call)."""
+        import src.core.agent as agent_mod
+        from src.utils.logging import log_batch_id
+
+        calls: list = []
+
+        async def _do_task(**kwargs):
+            calls.append((kwargs, log_batch_id.get()))
+            return {"success": True, "parsed_response": {"outcome": outcome, "jobs": jobs}}
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        return calls
+
+    def _seed(self, db, cid: str, payload: str, *, save_candidate: bool = True) -> int:
+        if save_candidate:
+            db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        out = meteorite_mod.insert_slack_meteorite(cid, payload, source_id=self.SID)
+        assert out["ok"] is True
+        return out["meteorite_id"]
+
+    @staticmethod
+    async def _run(cid: str, batch_id: str) -> dict:
+        return await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id, candidate_id=cid))
+
+    @pytest.mark.asyncio
+    async def test_link_list_routes_to_scrape_link(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        row_id = self._seed(db, "cand-2034-link", self.URL)
+        calls = self._patch_ruth(monkeypatch, "link_list", [{"job_link": self.URL, "job_title": "SWE"}])
+        out = await self._run("cand-2034-link", "b-2034-link")
+        assert len(calls) == 1
+        assert out["total_passed"] == 1 and out["total_errors"] == 0
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "SCRAPE_LINK"
+        assert row["link"] == self.URL
+        assert row["classify_outcome"] == "link_list"
+        assert row["job_title"] == "SWE"
+
+    @pytest.mark.asyncio
+    async def test_single_jd_no_link_routes_to_check_unique(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        jd = "Senior Engineer at Acme\n" + ("x" * 60)
+        row_id = self._seed(db, "cand-2034-text", jd)
+        self._patch_ruth(monkeypatch, "single_jd_no_link", [{"jd_text": jd, "employer_name": "Acme"}])
+        out = await self._run("cand-2034-text", "b-2034-text")
+        assert out["total_passed"] == 1
+        row = db.get_meteorite(row_id)
+        # Slack text rows carry no breadcrumb requirement (that gate is email-only).
+        assert row["state"] == "CHECK_UNIQUE"
+        assert row["content"] == jd
+        assert row["employer_name"] == "Acme"
+
+    @pytest.mark.asyncio
+    async def test_not_job_content_to_not_a_job(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        row_id = self._seed(db, "cand-2034-skip", "lol hi estelle")
+        self._patch_ruth(monkeypatch, "not_job_content", [])
+        out = await self._run("cand-2034-skip", "b-2034-skip")
+        # AST-1742 / AST-1751: skip counts as failed, not error.
+        assert (out["total_failed"], out["total_errors"], out["total_passed"]) == (1, 0, 0)
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "NOT_A_JOB"
+        assert row["classify_outcome"] == "not_job_content"
+
+    @pytest.mark.asyncio
+    async def test_map_failure_to_new_email_error_keeps_outcome(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        row_id = self._seed(db, "cand-2034-map", "www.dice.com/jobs/x")
+        # link_list with a non-http job_link → _map_classify_jobs_to_meteorite_rows error.
+        self._patch_ruth(monkeypatch, "link_list", [{"job_link": "www.dice.com/jobs/x"}])
+        out = await self._run("cand-2034-map", "b-2034-map")
+        assert (out["total_errors"], out["total_failed"]) == (1, 0)
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "NEW_EMAIL_ERROR"
+        assert row["error"] == "url scrap missing http(s) job_link"
+        assert row["classify_outcome"] == "link_list"
+
+    @pytest.mark.asyncio
+    async def test_candidate_missing_to_new_email_error_no_ruth(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        row_id = self._seed(db, "cand-2034-ghost", "blob", save_candidate=False)
+        calls = self._patch_ruth(monkeypatch, "single_jd_no_link", [])
+        out = await self._run("cand-2034-ghost", "b-2034-ghost")
+        assert calls == []
+        assert out["total_errors"] == 1
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "NEW_EMAIL_ERROR"
+        assert "candidate not found" in row["error"]
+
+    @pytest.mark.asyncio
+    async def test_multi_jd_inline_three_jobs_fans_out_two_siblings(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        batch_id = "b-2034-multi"
+        row_id = self._seed(db, "cand-2034-multi", "three postings pasted")
+        jobs = [{"jd_text": f"Role {n} " + ("y" * 40), "job_title": f"Role {n}"} for n in (1, 2, 3)]
+        self._patch_ruth(monkeypatch, "multi_jd_inline", jobs)
+        out = await self._run("cand-2034-multi", batch_id)
+        # Counters are per claimed row: one row claimed, one routed.
+        assert (out["total_processed"], out["total_passed"]) == (1, 1)
+        rows = {r["id"]: r for r in db.list_meteorites_by_source("slack", self.SID)}
+        assert len(rows) == 3
+        assert rows.pop(row_id)["state"] == "CHECK_UNIQUE"
+        siblings = sorted(rows.values(), key=lambda r: r["id"])
+        assert [s["job_title"] for s in siblings] == ["Role 2", "Role 3"]
+        for s in siblings:
+            assert s["state"] == "NEW"
+            assert s["classify_outcome"] == "multi_jd_inline"
+            assert s["source_kind"] == "slack"
+            # Not claimed by this hop; next stage tick routes them via the classified branch.
+            assert s.get("batch_id") is None
+
+    @pytest.mark.asyncio
+    async def test_classified_row_never_calls_ruth(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Parent AC9: same fixture shape as TestAst1560RunStageMeteorite::test_url_outcome_to_scrape_link.
+        db = sqlite_in_memory
+        cid = "cand-2034-classified"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "C"})
+        row_id = _insert_meteorite_row(
+            db, cid, classify_outcome="single_jd_with_more", link="https://jobs.example.com/role",
+        )
+        calls = self._patch_ruth(monkeypatch, "not_job_content", [])
+        out = await self._run(cid, "b-2034-classified")
+        assert calls == []
+        assert out["total_passed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "SCRAPE_LINK"
+
+    @pytest.mark.asyncio
+    async def test_classify_batch_joins_claim_and_claim_released(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Parent AC10: do_task stamps agent_data.batch_id from log_batch_id; with no parent
+        # batch set, it must be the claim id — not a self-minted stage_meteorite-stage-… id.
+        from src.utils.logging import log_batch_id
+
+        db = sqlite_in_memory
+        batch_id = "b-2034-join"
+        cid = "cand-2034-join"
+        a = self._seed(db, cid, self.URL)
+        b = self._seed(db, cid, "lol", save_candidate=False)
+        calls = self._patch_ruth(monkeypatch, "link_list", [{"job_link": self.URL}])
+        tok = log_batch_id.set(None)
+        try:
+            await self._run(cid, batch_id)
+        finally:
+            log_batch_id.reset(tok)
+        assert len(calls) == 2
+        task_key = meteorite_mod.STAGE_METEORITE_CONFIG["task_key"]
+        for kwargs, stamped in calls:
+            assert stamped == batch_id
+            assert kwargs["index"] == f"{task_key}_batch_{batch_id}"
+        assert db.get_meteorite_batch(batch_id) == []
+        for mid in (a, b):
+            assert db.get_meteorite(mid).get("batch_id") is None
