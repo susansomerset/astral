@@ -3,8 +3,9 @@
 Production: signature verify, URL challenge parse, chat.postMessage, users.info,
 workspace poster pool (``list_workspace_posters``), workspace members
 (``list_workspace_members`` for Manage Candidates bind), bot-visible channel
-list (``list_bot_channels``), membership check (``is_channel_member``), and
-full ascending channel history (``fetch_full_conversation_history``).
+list (``list_bot_channels``), membership check (``is_channel_member``), channel
+type lookup (``fetch_channel_type``), and full ascending channel history
+(``fetch_full_conversation_history``).
 Local/dev only: Socket Mode websocket helper (scripts/slack_socket_mode_dev.py).
 
 Secrets from ``os.environ[CONTACT_CONFIG[…_env]]`` at **call time** (strict) —
@@ -51,6 +52,7 @@ __all__ = [
     "post_message",
     "fetch_conversation_history",
     "fetch_user_profile",
+    "fetch_channel_type",
     "list_workspace_posters",
     "list_workspace_members",
     "list_bot_channels",
@@ -194,6 +196,29 @@ def fetch_user_profile(user_id: str) -> dict:
         "display_name": display,
         "username": username,
     }
+
+
+def fetch_channel_type(channel: str) -> str:
+    """GET conversations.info; return Slack channel_type: im | mpim | group | channel.
+
+    Read-only. Raises on blank id, HTTP failure, or ok:false — callers fail closed.
+    """
+    require_controlled_external_io("slack.fetch_channel_type")
+    ch = (channel or "").strip()
+    if not ch:
+        raise ValueError("channel is required")
+    payload = _slack_bot_get("conversations.info", {"channel": ch})
+    if not payload.get("ok"):
+        raise RuntimeError(_slack_error("conversations.info", payload))
+    info = payload.get("channel") if isinstance(payload.get("channel"), dict) else {}
+    # mpim is also is_private, so check it before the private-channel branch.
+    if info.get("is_im"):
+        return "im"
+    if info.get("is_mpim"):
+        return "mpim"
+    if info.get("is_private") or info.get("is_group"):
+        return "group"
+    return "channel"
 
 
 def _slack_error(method: str, payload: dict) -> str:

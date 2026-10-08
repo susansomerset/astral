@@ -238,3 +238,9 @@ Data-layer `artifact.artifact_data` zlib contract (re-land after premature `08a2
 
 **Bible path shasum (record after publish):** `docs/test-bible/data/database/artifacts.md`
 
+
+### AST-2066 · AST-2043
+
+`set_current_artifact(et, eid, at, uuid)` moves `current=1` within one key in one transaction, never touching bodies; a uuid from another key, or an unknown uuid, raises `ValueError` and changes nothing. `list_artifacts` now orders `created_at ASC, rowid ASC` (same-second versions keep insertion order — the test goes red without the tie-break).
+
+**New:** **`TestAst2066SetCurrentArtifact`** (6: AC4 back arrow, AC5 edit-after-back appends v4, re-set current, foreign/unknown uuid, blank uuid, same-second order). Manifest: [`../../core/candidate.md`](../../core/candidate.md) § AST-2066 item 1.

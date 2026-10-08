@@ -15,12 +15,13 @@ per-row Ruth company_stem ensure → tracker.save_meteorite_job. check_inbox (AS
 aliases → fetch → inline classify → fan-out staging rows → archive; no Gmail I/O here —
 inbox owns fetch/archive.
 create_meteorite_job accepts optional stem= for legacy callers.
-create_contact_meteorite (AST-1517 contact-task create) wraps scrape-or-text → create.
+sanitize_contact_text (AST-2061): nh3 plain-text sanitize for every Contact-originated meteorite write.
 insert_slack_meteorite (AST-2034): raw Slack blob → NEW unclassified; run_stage_meteorite Ruth-classifies it.
 """
 from __future__ import annotations
 
 import functools
+import html as html_module
 import inspect
 import os
 import re
@@ -28,6 +29,8 @@ import uuid
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional, Tuple
+
+import nh3
 
 from src.core.candidate import email_aliases_for_candidate, get_candidate
 from src.core.inbox import (
@@ -413,144 +416,6 @@ def create_meteorite_job(
     }
 
 
-def _contact_param_looks_like_url(param: str) -> bool:
-    """True when param is a single-line URL / bare host-path (link mode)."""
-    s = (param or "").strip()
-    if not s:
-        return False
-    if "\n" in s or "\r" in s:
-        return False
-    if " " in s or "\t" in s:
-        return False
-    if "://" in s:
-        return True
-    return "." in s and not s.startswith(".")
-
-
-# ---- Contact-task create (AST-1517) ----
-
-@_with_log_debug
-async def create_contact_meteorite(
-    astral_candidate_id: str,
-    param: str,
-    *,
-    debug: bool = False,
-) -> Dict[str, Any]:
-    """Contact-task: land meteorite from URL (scrape-first) or pasted page text."""
-    cid = (astral_candidate_id or "").strip()
-    if not cid:
-        _warn_item(
-            "create_contact_meteorite",
-            "no candidate id",
-            "This contact create is not landing a job",
-        )
-        return {
-            "ok": False,
-            "error": "no_candidate",
-            "task_key": "create_contact_meteorite",
-        }
-
-    raw = (param or "").strip()
-    if not raw:
-        _warn_item(
-            cid,
-            "param required",
-            "This contact create is not landing a job",
-        )
-        return {
-            "ok": False,
-            "error": "param_required",
-            "task_key": "create_contact_meteorite",
-        }
-
-    scrape: Optional[Dict[str, Any]] = None
-    if _contact_param_looks_like_url(raw):
-        mode = "link"
-        # Late-import: gazer imports create_meteorite_job at module top.
-        from src.core.gazer import contact_task_gazer_scrape
-
-        logger.debug("Calling contact_task_gazer_scrape: [candidate_id=%s, url=%s]", cid, raw)
-        scrape = await contact_task_gazer_scrape(cid, raw, debug=debug)
-        logger.debug("Response from contact_task_gazer_scrape: %s", scrape)
-        if not isinstance(scrape, dict) or not scrape.get("ok"):
-            err = (
-                (scrape.get("error") if isinstance(scrape, dict) else "scrape_failed")
-                or "scrape_failed"
-            )
-            _warn_item(
-                cid,
-                f"scrape failed ({err})",
-                "This contact create is not landing a job",
-            )
-            return {
-                "ok": False,
-                "error": err,
-                "task_key": "create_contact_meteorite",
-                "mode": mode,
-                "scrape": scrape if isinstance(scrape, dict) else None,
-            }
-        visible = (scrape.get("visible_text") or "").strip()
-        if not visible:
-            _warn_item(
-                cid,
-                "scrape returned empty visible text",
-                "This contact create is not landing a job",
-            )
-            return {
-                "ok": False,
-                "error": "empty_visible_text",
-                "task_key": "create_contact_meteorite",
-                "mode": mode,
-                "scrape": scrape,
-            }
-        html_body = visible
-        job_link = (scrape.get("final_url") or scrape.get("url") or raw).strip()
-    else:
-        mode = "text"
-        html_body = raw
-        job_link = None
-
-    logger.debug(
-        "Calling create_meteorite_job: [candidate_id=%s, mode=%s, job_link=%s]",
-        cid, mode, job_link,
-    )
-    try:
-        created = create_meteorite_job(
-            cid,
-            html_body,
-            job_link=job_link,
-            debug=debug,
-        )
-    except Exception as exc:
-        logger.exception(
-            "%s | create_contact_meteorite %s\n  %s: %s\n  This contact create is not landing a job",
-            cid,
-            mode,
-            type(exc).__name__,
-            exc,
-        )
-        return {
-            "ok": False,
-            "error": str(exc),
-            "task_key": "create_contact_meteorite",
-            "mode": mode,
-        }
-    logger.debug("Response from create_meteorite_job: %s", created)
-
-    out = {
-        "ok": True,
-        "task_key": "create_contact_meteorite",
-        "mode": mode,
-        "astral_candidate_id": cid,
-        "result": created,
-    }
-    if mode == "link" and isinstance(scrape, dict):
-        out["url"] = scrape.get("url")
-        out["final_url"] = scrape.get("final_url")
-        out["page_status"] = scrape.get("page_status")
-    return out
-
-
 async def _land_fetch_link_text(url: str, *, debug: bool = False) -> tuple[str, str]:
     """Return (visible_text, final_url) via Playwright; empty text on failure."""
     _ = debug
@@ -880,6 +745,19 @@ def _insert_stage_rows(row_dicts: List[Dict[str, Any]]) -> Tuple[List[int], Opti
     return ids, None
 
 
+def sanitize_contact_text(text: str) -> str:
+    """Plain text for Contact-originated meteorite writes (AST-2061) — nh3, no allowed tags.
+
+    Callers unwrap Slack <url|label> link markup first (nh3 would read it as a tag).
+    unescape → nh3.clean(tags=set()) → unescape: Slack's entity encoding is undone so
+    encoded markup (&lt;script&gt;) is stripped, not stored; URLs keep a literal &.
+    """
+    raw = text if isinstance(text, str) else ""
+    # nh3 drops every tag (keeps inner text), drops <script>/<style> content and comments.
+    cleaned = nh3.clean(html_module.unescape(raw), tags=set())
+    return html_module.unescape(cleaned).strip()
+
+
 @_with_log_debug
 def insert_slack_meteorite(
     candidate_id: str,
@@ -894,7 +772,7 @@ def insert_slack_meteorite(
     Soft-fails: never raises into Contact. Returns {ok, meteorite_id, error}.
     """
     cid = (candidate_id or "").strip()
-    body = payload.strip() if isinstance(payload, str) else ""
+    body = sanitize_contact_text(payload)
     sid = (source_id or "").strip()
     anchor = (thread_ts or "").strip()
 
@@ -910,7 +788,7 @@ def insert_slack_meteorite(
     if not sid:
         return _miss("source_id is required")
 
-    # Link vs text is Ruth's call at the stage hop — store the payload raw.
+    # Link vs text is Ruth's call at the stage hop — store the sanitized payload (AST-2061).
     row = {
         "candidate_id": cid,
         "source_kind": "slack",
@@ -2528,10 +2406,11 @@ def _normalize_apply_paste_content(raw: str) -> str:
     if not text:
         return ""
     if "<" in text and ">" in text:
+        # Gmail/board paste HTML → nested auto-links unwrapped before nh3 strips markup.
         text = normalize_pasted_list_email_html(text)
-        text = re.sub(r"<[^>]+>", " ", text)
-        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"[ \t]+", " ", sanitize_contact_text(text))
         return text.strip()
+    text = sanitize_contact_text(text)
     return "\n\n".join(line.strip() for line in text.splitlines() if line.strip())
 
 
