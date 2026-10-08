@@ -2335,3 +2335,259 @@ class TestAst1788AdminSlackChannelOrchestration:
             "messages": msgs,
         }
         hist.assert_called_once_with(channel="C_SNAP")
+
+
+# AST-2035: leading @Estelle /<command> intercept via CONTACT_CONFIG["commands"] (ticket AC1–AC9).
+# Branches: parse hit (bare / label link / bare <url> / |label mention / no mention / multi-line) vs
+# miss (mid-sentence, unregistered, non-str); code ok → one ack, no turn, no hear-ack; code handler
+# soft-fail → no ack, hear-ack; empty payload → usage; agent → one turn with result in live content;
+# unbound → unknown reply, no insert; BOT_BLOCKED row untouched, paste recovery skipped.
+class TestAst2035ContactCommandIntercept:
+    URL = "http://www.dice.com/jobs/13234abcd"
+    TS = "1700000000.000100"
+
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def _bound(self, monkeypatch: pytest.MonkeyPatch, cid: str | None = "cand-2035") -> MagicMock:
+        """Listen on, sender resolves to cid (None = unbound), posts captured; returns post mock."""
+        import src.data.contact_estelle_activity as activity_mod
+
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(return_value={"astral_candidate_id": cid, "state": "PROSPECT", "created": False}),
+        )
+        # Keep the durable activity file out of the repo tree.
+        monkeypatch.setattr(activity_mod, "record_estelle_activity", MagicMock())
+        post = MagicMock(return_value={"ok": True, "ts": "9.9"})
+        monkeypatch.setattr(contact_mod, "contact_post_message", post)
+        return post
+
+    def _handle(self, text: str, eid: str, *, channel: str = "C1", etype: str = "app_mention") -> dict:
+        return contact_mod.handle_slack_event(
+            {
+                "event_id": eid,
+                "event": {"type": etype, "user": "U1", "channel": channel, "ts": self.TS, "text": text},
+            },
+            debug=False,
+        )
+
+    @staticmethod
+    def _posts_with(post: MagicMock, needle: str) -> list:
+        return [c for c in post.call_args_list if needle in str(c.kwargs.get("text") or "")]
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("<@UBOT> /add-job", ("add-job", "")),
+            (f"<@UBOT> /add-job <{URL}|www.dice.com/jobs/13234abcd>", ("add-job", URL)),
+            (f"<@UBOT> /add-job <{URL}>", ("add-job", URL)),
+            (f"<@UBOT|estelle> /add-job {URL}", ("add-job", URL)),
+            (f"/add-job {URL}", ("add-job", URL)),
+            ("<@UBOT> <@UOTHER> /add-job line one\nline two", ("add-job", "line one\nline two")),
+            ("<@UBOT> can you /add-job this later", None),
+            ("<@UBOT> /not-a-command payload", None),
+            (None, None),
+        ],
+    )
+    def test_parse_contact_command(self, text, expected) -> None:
+        assert contact_mod.parse_contact_command(text) == expected
+
+    def test_registry_ships_add_job_code_mode(self) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        meta = CONTACT_CONFIG["commands"]["add-job"]
+        assert meta["mode"] == "code"
+        assert contact_mod._resolve_contact_task_handler(meta["handler"]) is meteorite_mod.insert_slack_meteorite
+        assert "{meteorite_id}" in meta["ack_reply_template"]
+
+    def test_ac1_link_markup_lands_raw_at_new(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        self._bound(monkeypatch)
+        out = self._handle(f"<@UBOT> /add-job <{self.URL}|www.dice.com/jobs/13234abcd>", "Ev-2035-ac1")
+        rows = db.list_meteorites_by_source("slack", f"C1:{self.TS}")
+        assert len(rows) == 1
+        row = rows[0]
+        assert (row["candidate_id"], row["state"], row["source_kind"]) == ("cand-2035", "NEW", "slack")
+        assert row["classify_outcome"] is None
+        assert row["content"] == self.URL
+        assert not any(ch in row["content"] for ch in "<>|")
+        assert row["estelle_thread_ts"] == self.TS
+        assert out["estelle_turn"]["command"]["meteorite_id"] == row["id"]
+
+    def test_ac2_multiline_text_in_dm_lands_one_row(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        self._bound(monkeypatch)
+        jd = "Senior Engineer\nAcme Corp\n\nResponsibilities:\n- build things"
+        self._handle(f"<@UBOT> /add-job {jd}", "Ev-2035-ac2", channel="D1", etype="message")
+        rows = db.list_meteorites_by_source("slack", f"D1:{self.TS}")
+        assert len(rows) == 1
+        assert rows[0]["state"] == "NEW" and rows[0]["classify_outcome"] is None
+        assert rows[0]["content"] == jd
+        assert "/add-job" not in rows[0]["content"] and "<@" not in rows[0]["content"]
+
+    def test_ac3_code_mode_no_llm_one_ack_no_hear_ack(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import src.core.agent as agent_mod
+
+        post = self._bound(monkeypatch)
+        do_task = AsyncMock()
+        monkeypatch.setattr(agent_mod, "do_task", do_task)
+        out = self._handle(f"<@UBOT> /add-job {self.URL}", "Ev-2035-ac3")
+        do_task.assert_not_called()
+        turn = out["estelle_turn"]
+        assert turn["outcome"] == "add-job"
+        mid = turn["command"]["meteorite_id"]
+        assert isinstance(mid, int)
+        # Recognition reply also posts (AST-1668); exactly one post names the new id.
+        assert len(self._posts_with(post, str(mid))) == 1
+        assert "hear_ack_post" not in out
+        assert self._posts_with(post, CONTACT_CONFIG["hear_ack_reply_text"]) == []
+
+    def test_ac4_agent_mode_one_turn_with_id(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        monkeypatch.setitem(CONTACT_CONFIG["commands"]["add-job"], "mode", "agent")
+        self._bound(monkeypatch)
+        turn = _stub_estelle_turn(monkeypatch)
+        out = self._handle(f"<@UBOT> /add-job {self.URL}", "Ev-2035-ac4")
+        rows = db.list_meteorites_by_source("slack", f"C1:{self.TS}")
+        assert len(rows) == 1
+        turn.assert_called_once()
+        extra = turn.call_args.kwargs["extra_context"]
+        assert json.loads(extra)["meteorite_id"] == rows[0]["id"]
+        # Slack reply is the turn's reply.
+        assert out["estelle_turn"]["reply"] == "stub-reply"
+        assert out["estelle_turn"]["command"]["mode"] == "agent"
+
+    def test_ac4_extra_context_reaches_turn_live_content(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import src.core.agent as agent_mod
+
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "load_slack_conversation_context",
+            MagicMock(return_value={"channel": "C1", "thread_ts": "", "messages": [], "source": "cache"}),
+        )
+        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(side_effect=_turn_candidate_row))
+        monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
+        monkeypatch.setattr(contact_mod, "contact_post_message", MagicMock(return_value={"ok": True}))
+        seen: list = []
+
+        async def _do_task(*_args, **kwargs):
+            seen.append(kwargs.get("live_content") or "")
+            return {
+                "success": True,
+                "conversational_outcome": "success",
+                "agent_performance": {"status": "success"},
+                "parsed_response": {"reply": "saved it"},
+            }
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        contact_mod.run_contact_estelle_turn(
+            channel="C1", text="/add-job x", astral_candidate_id="cand-2035",
+            extra_context='{"id": "add-job", "meteorite_id": 4242}', debug=False,
+        )
+        assert len(seen) == 1
+        assert "## Command result (this inbound event)" in seen[0]
+        assert "4242" in seen[0]
+
+    def test_ac5_bot_blocked_row_untouched_paste_skipped(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-2035"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "B"})
+        blocked = db.insert_meteorite_rows(
+            [{"candidate_id": cid, "source_kind": "paste", "source_id": "blob-2035", "state": "NEW"}]
+        )[0]
+        db.update_meteorite(blocked, state="BOT_BLOCKED", estelle_thread_ts=self.TS)
+        before = db.get_meteorite(blocked)
+        self._bound(monkeypatch, cid)
+        paste = MagicMock(return_value={"applied": False})
+        monkeypatch.setattr(contact_mod, "try_meteorite_apply_paste_from_slack", paste)
+        jd = "Pasted JD " + ("p" * 60)
+        self._handle(f"<@UBOT> /add-job {jd}", "Ev-2035-ac5")
+        paste.assert_not_called()
+        after = db.get_meteorite(blocked)
+        assert after["state"] == "BOT_BLOCKED"
+        assert after["content"] == before["content"]
+        rows = db.list_meteorites_by_source("slack", f"C1:{self.TS}")
+        assert len(rows) == 1 and rows[0]["state"] == "NEW" and rows[0]["content"] == jd
+
+    def test_ac6_unbound_sender_no_insert(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        post = self._bound(monkeypatch, None)
+        out = self._handle(f"<@UBOT> /add-job {self.URL}", "Ev-2035-ac6-unk")
+        assert db.list_meteorites_by_source("slack", f"C1:{self.TS}") == []
+        assert out["estelle_turn"]["outcome"] == "unrecognized"
+        assert len(self._posts_with(post, CONTACT_CONFIG["unknown_recognition_reply_text"])) == 1
+
+    def test_ac6_bare_command_posts_usage_no_insert(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        post = self._bound(monkeypatch)
+        out = self._handle("<@UBOT> /add-job", "Ev-2035-ac6-bare")
+        assert db.list_meteorites_by_source("slack", f"C1:{self.TS}") == []
+        assert out["estelle_turn"]["command"]["error"] == "empty_payload"
+        usage = CONTACT_CONFIG["commands"]["add-job"]["usage_reply_text"]
+        assert len(self._posts_with(post, usage)) == 1
+        assert "hear_ack_post" not in out
+
+    def test_ac7_mid_sentence_takes_normal_turn(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        self._bound(monkeypatch)
+        monkeypatch.setattr(
+            contact_mod, "try_meteorite_apply_paste_from_slack", MagicMock(return_value={"applied": False})
+        )
+        turn = _stub_estelle_turn(monkeypatch)
+        out = self._handle("<@UBOT> can you /add-job this later", "Ev-2035-ac7")
+        turn.assert_called_once()
+        assert turn.call_args.kwargs.get("extra_context") is None
+        assert out["estelle_turn"]["outcome"] == "success"
+        assert db.list_meteorites_by_source("slack", f"C1:{self.TS}") == []
+
+    def test_code_mode_handler_miss_no_ack_hear_ack_fires(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Plan Decision: a soft-fail posts no ack, so the AST-1101 hear-ack fallback fires.
+        self._bound(monkeypatch)
+        handler = MagicMock(return_value={"ok": False, "meteorite_id": None, "error": "db locked"})
+        monkeypatch.setattr(contact_mod, "_resolve_contact_task_handler", MagicMock(return_value=handler))
+        out = self._handle(f"<@UBOT> /add-job {self.URL}", "Ev-2035-miss")
+        handler.assert_called_once()
+        assert handler.call_args.kwargs["source_id"] == f"C1:{self.TS}"
+        assert out["estelle_turn"]["slack_post"] is None
+        assert out["estelle_turn"]["command"]["error"] == "db locked"
+        assert out["hear_ack_post"]["ok"] is True
+
+    def test_ac8_no_command_literals_in_core(self) -> None:
+        import re
+
+        pat = re.compile(r"['\"]/?add-job['\"]")
+        hits = [
+            f"{p}:{n}"
+            for p in Path("src/core").rglob("*.py")
+            for n, line in enumerate(p.read_text().splitlines(), 1)
+            if pat.search(line)
+        ]
+        assert hits == []
+
+    def test_ac9_info_lines_with_debug_off(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        self._bound(monkeypatch)
+        with caplog.at_level(logging.INFO):
+            out = self._handle(f"<@UBOT> /add-job {self.URL}", "Ev-2035-ac9")
+        mid = out["estelle_turn"]["command"]["meteorite_id"]
+        infos = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+        listen = [
+            m for m in infos
+            if m.startswith("cand-2035 | contact listen app_mention add-job:")
+            and "add-job:code" in m and f"meteorite:{mid}" in m
+        ]
+        assert len(listen) == 1
+        assert sum(m.startswith(f"{mid} | meteorite state: NEW") for m in infos) == 1

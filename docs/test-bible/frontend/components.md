@@ -1661,7 +1661,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| AC4 admin click `run_id` row → `/api/admin/dispatch_ledger/R/logs` + `/api/agent_data/R`, log + block rendered; claim `batch_id` never opened | `JobDetailModal.tsx`, `BatchExecutionModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`AST-1865 … AC4`** |
+| AC4 admin click `run_id` row → `/api/admin/dispatch_ledger/R/logs` + `/api/agent_data/R?entity_id=<job>` (scoped since **AST-2031**), log + block rendered; claim `batch_id` never opened | `JobDetailModal.tsx`, `BatchExecutionModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`AST-1865 … AC4`** |
 | AC5 non-admin → no clickable rows, zero `/api/admin/` calls (asserted after `/api/me` settles) | `JobDetailModal.tsx` | **`… AC5`** |
 | AC6 `batch_id`-only row opens `B`; neither → inert | `StateTimeline.tsx`, `JobDetailModal.tsx` | **`… AC6`**; **`test_StateTimeline.test.tsx`** — **`StateTimeline — AST-1865 run selection`** (no-callback inert, run_id > batch_id, keyboard) |
 | AC8 Execution History unchanged | `AdminPerformanceMonitor.tsx`, `BatchLogViewer.tsx` | **`test_AdminPerformanceMonitor.test.tsx`** (unedited) |
@@ -1935,3 +1935,42 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/components.md`: filled after publish
+
+### AST-2031 · AST-2028 (job run modal requests entity-scoped agent data)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2031-job-run-modal-entity-scoped`. `BatchAgentDataPanes` takes optional `entityId` → `?entity_id=<encoded>` on `/api/agent_data/…` only (timesheets + dispatch ledger stay batch-wide; refetch on change). `BatchExecutionModal` forwards `entityId`; `JobDetailModal` passes `job?.astral_job_id`. `BatchAgentDataModal` (Execution History / Vector Feedback) has no `entityId` prop; Ad Hoc renders the panes without it. Backend slicing: **`core/agent.md`** § AST-2030.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC8 job modal run → `/api/agent_data/R?entity_id=j1`, never the unscoped URL | `JobDetailModal.tsx`, `BatchExecutionModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`AST-1865 … AC4`**, **`… AC6`** (revised) |
+| `entityId` scopes agent data only, URL-encoded; timesheets + ledger unscoped | `BatchAgentDataModal.tsx` (`BatchAgentDataPanes`) | **`test_BatchAgentDataModal.test.tsx`** — **`BatchAgentDataPanes — AST-2031 … entityId → encoded entity_id on agent data only`** |
+| No `entityId` → whole-batch URL | same | **`… no entityId → whole-batch agent data URL`** |
+| `entityId` change refetches | same | **`… changing entityId refetches the scoped agent data`** |
+| AC9 batch-wide callers unchanged | `AdminPerformanceMonitor.tsx` | **`test_AdminPerformanceMonitor.test.tsx`** (unedited) |
+
+**Broken / obsolete (revised in place):** `test_JobDetailModal.test.tsx` **`AST-1865 … AC4`** / **`… AC6`** asserted the unscoped `/api/agent_data/<run>` — now assert `?entity_id=j1` and the absence of the unscoped URL; the AST-1865 `mockRunApis` agent-data route regex now ignores the query string (it captured `hop-R?entity_id=j1` as the run id). AST-1865 AC4 table row above updated to match.
+
+**AC9 grep note:** the ticket's literal check (`grep -n "entity_id"` over the three admin pages) can never pass — `AdminAnthropicAdHoc.tsx` already carries 8 `entity_id` hits on `origin/dev` (ad hoc run entity fields, unrelated to the agent-data fetch). Manifest item 2 checks the intent instead: no page passes `entityId={…}` to the panes, and those pages are unchanged vs `origin/dev`.
+
+**Red / green:** AC4, AC6 and the two scoped pane tests are red on `origin/ftr/AST-2028-…` (pre-AST-2031); the no-`entityId` guard is green there.
+
+**Pre-existing red, not this ticket:** `JobDetailModal — AST-1695 listing_href > read-only: null listing_href → no Link <a> even when job_link is http(s)` — also red on the ftr tip; name-skipped below (same exclusion as § AST-1865).
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2031
+
+1. **AC8, AC9 + regressions (Vitest):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  --testNamePattern='^(?!.*null listing_href)'
+```
+
+2. **AC9 batch-wide callers:** `rg -n "entityId=\{" src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx src/ui/frontend/src/pages/AdminVectorFeedback.tsx src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` → nothing; `git diff origin/dev...HEAD -- src/ui/frontend/src/pages/ tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` empty.
+3. **No backend change:** `git diff origin/dev...origin/sub/AST-2028/AST-2031-job-run-modal-entity-scoped -- src/ui/api/ src/data/` empty.
+
+**Pass criterion:** item 1 all green (54 pass, 1 name-skipped) + items 2–3 hold. `npx tsc -b --noEmit` clean. Not the zero-arg harness.
