@@ -278,6 +278,21 @@ class TestCandidateRoutes:
         resp = candidate_client.put("/api/candidates/cand-1/data", json={}, headers=auth_headers)
         assert resp.status_code == 400
 
+    def test_update_rejects_unselectable_theme(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-2048 AC4: real core allowlist → ValueError → 400; nothing reaches the database.
+        from src.core import candidate as core_candidate
+
+        save = MagicMock()
+        monkeypatch.setattr(core_candidate.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        for bad in ("neon", "light_parchment"):
+            resp = candidate_client.put("/api/candidates/cand-1/data", json={"theme": bad}, headers=auth_headers)
+            assert resp.status_code == 400, bad
+            assert "Invalid theme value" in resp.get_json()["error"]
+        save.assert_not_called()
+
     def test_update_rejects_legacy_profile_body(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:

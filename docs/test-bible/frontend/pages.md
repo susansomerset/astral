@@ -2601,7 +2601,7 @@ Base Resume Content passes `bodyShape="resume_content"` (drops `useCandidateResu
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Routed page (**§6c**) bodyShape + leaf Save | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577:`** |
+| Routed page (**§6c**) bodyShape + leaf Save (autosave since AST-2056) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577:`** |
 | Draft pattern (no write-operative link) | `canon/directives/draft/patt.artifact.ui-consistency.md` | same **`AST-1577: page and draft follow ui-consistency`** |
 
 **Broken / obsolete:** none — existing structure/print/accent cases still render via `bodyShape`.
@@ -3560,3 +3560,163 @@ Expect 54 passed and 1 failed (the baseline red above), with all six **`AST-1979
 **Bible shasums (after publish):** `git show origin/sub/AST-1971/AST-1979-created-col:docs/test-bible/frontend/pages.md | shasum`
 
 **AST-1982 (pointer):** Job Title cell on `JobsRecommended` (Ready + Review), `JobsProcessing`, `JobsSkipped` (both table variants), `JobsApplied`, and the Meteorites `job_title` column now renders `JobTitleText` (cut at 50 + `…`, portaled full-title tooltip). Page tests are named **`AST-1982 …`** and use the shared helper `tests/component/frontend/pages/job-title-cell.ts`. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1982.
+
+---
+
+### AST-2056 · AST-2041 (gap — Base Resume Content autosave; product AST-2051)
+
+**Publish:** `origin/sub/AST-2041/AST-2056-resume-autosave-tests`. Base Resume Content (`bodyShape="resume_content"`) section bodies **autosave after 2000ms**; no header Save/Cancel outside Generate review (AST-2051). Editor contract, new cases, red/green and manifest: **`docs/test-bible/frontend/components.md`** § AST-2056.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) bodyShape + leaf autosave PUT | `ArtifactsBaseResumeContent.tsx` → `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577 / AST-2051: wires bodyShape resume_content; autosave PUTs base_resume leaf (§6c)`** (retargeted from header Save; red pre-fix — Save still rendered) |
+
+**Pre-existing red, not this ticket:** **`AST-1577: page and draft follow ui-consistency`** — draft path moved to `canon/directives/active/`; name-skipped in the § AST-2056 manifest.
+
+---
+
+### AST-2047 · AST-2042 (theme registry, palettes, Theme Examples page)
+
+**Publish:** `origin/sub/AST-2042/AST-2047-theme-registry-palettes`. `UI_CONFIG["themes"]` (four palette ids: `dark`, `light`, examples-only `light_parchment` / `light_slate`) + `default_theme` drive the profile **Theme** select (selectable entries only), a Tools nav item `/admin/theme_examples`, and one `[data-theme="<id>"]` block per id in `App.css` (Dark = `:root, [data-theme="dark"]`). New admin page `AdminThemeExamples.tsx` renders the same shared-class sample once per registry id.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) — one labeled panel per registry id, button / table row / select / grade dots A–X / toast in each; GET-only | `pages/AdminThemeExamples.tsx` | **`test_AdminThemeExamples.test.tsx`** — **`renders one labeled panel per registry id with the shared sample; read-only (§6c, AC6)`** |
+| `App.css` token blocks — one per registry id; Light name sets equal Dark's; Lights pairwise differ on `--bg-deep` / `--bg-card` / `--accent-gold` (AC4) | `App.css` § 1 | same file — **`App.css theme token blocks — AST-2047`** (3 cases) |
+| `App.css` rule bodies — no hex / non-black `rgba()` outside token blocks; every `var(--x)` in `App.css` defined in a token block (AC5, `App.css` half only — `.tsx` half is AST-2049) | `App.css` | same file — **`no hex or non-black rgba outside token blocks; …`** |
+| Registry ids / selectable / default; profile Theme options generated from the registry; Tools item admin-only; every id has an `App.css` block (AC1, AC2) | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst2047ThemeRegistry`** (4) — see [`../utils/config.md`](../utils/config.md) § AST-2047 pointer |
+| `ui_config` serves `themes` + `default_theme` (AC1) | `src/ui/api/api_system.py` (unchanged; `{**UI_CONFIG}` spread) | **`tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry`** |
+
+**Broken / obsolete:** none. Full Vitest (1021 cases) and `test_config.py` / `test_api_system.py` / `test_candidate.py` show the **same** failure set with and without the AST-2047 product merged onto `origin/tests` @ `032ecabed` (pre-existing reds only). No `tests/integration/` scenario reads `ui_config`, Tools items, profile fields, or `App.css`.
+
+**Not covered by component tests (jsdom has no cascade):** AC6 computed panel backgrounds pairwise different, non-admin redirect from `/admin/theme_examples` (generic `AdminRoute` behavior — `test_AdminRoute.test.tsx`), Tools item hidden for non-admins (generic `admin_only` — `test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin`). AC3 (Dark token values unchanged) is a one-shot diff against `origin/dev`, not a durable pin — later palette tweaks are allowed.
+
+**Note — served key order:** Flask 3's JSON provider sorts keys, so `/api/system/ui_config` serves `themes` alphabetically, not in registry order (plan assumed order survives `jsonify`). Panels render alphabetically; today that equals registry order. Tests compare served keys as a set.
+
+#### QA test manifest (AST-2047)
+
+1. **New tests (required, all green):**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+cd ../../.. && ./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2047ThemeRegistry \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry
+```
+
+Expect 4 Vitest + 5 pytest passed.
+
+2. **Regression (required):** failure set unchanged vs `origin/dev` (pre-existing reds: 24 in `test_config.py`, 1 in `test_api_system.py` — e.g. `TestAst1386ThreeSegmentAdminNav`, `TestAst1375InflightHideStatesManifest`; none name themes):
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/ui/api/test_api_system.py
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/test_routes.test.tsx \
+  ../../../tests/component/frontend/components/test_AdminRoute.test.tsx \
+  ../../../tests/component/frontend/components/test_JobTitleText.test.tsx \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
+Vitest files above: all green.
+
+3. **AC2 / AC5 (`.ts`/`.tsx` hex half is AST-2049's):** `rg -n '"light"' src/ui/frontend/src --glob '*.{ts,tsx}'` returns nothing.
+
+4. **AC3 Dark unchanged (one-shot):** every declaration in the `origin/dev` `:root { … }` block appears with the same value in the publish tip's `:root, [data-theme="dark"] { … }` block (plan Stage 2 step 6 check 1, `App.before.css` = `git show origin/dev:src/ui/frontend/src/App.css`).
+
+5. **AC7:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+6. **AC6 manual (browser, optional for test-child — UAT):** as admin, Tools → Theme Examples shows four panels with visibly different backgrounds; as non-admin, no Tools group and the URL redirects.
+
+**Pass criterion:** items 1–5 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2047-theme-registry-palettes:docs/test-bible/frontend/pages.md | shasum` (also `utils/config.md`, `ui/api/api_system.md`)
+
+---
+
+### AST-2048 · AST-2042 (save and apply the candidate's theme)
+
+**Publish:** `origin/sub/AST-2042/AST-2048-theme-save-apply`. `save_candidate_data` rejects any `theme` that is not a profile-selectable `UI_CONFIG["themes"]` id (`ValueError` → existing 400). `CandidateProfile.tsx` reads `default_theme` from its existing `/api/ui_config` fetch, **waits for it** before loading the candidate, and loads `theme` from `candidate_data.theme` (else the default). `CandidateContext.tsx` sets `<html data-theme>` from the selected candidate, removes it when none / no stored theme / unmount.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) — Theme select shows served default when none stored; choose Light → PUT body `theme: "light"`; reload from save response keeps Light (AC3) | `pages/CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`AST-2048: no stored theme loads the served default; …`**, **`AST-2048: stored theme loads selected`** |
+| Root `data-theme` from selected candidate; picker switch flips without reload; no theme / no candidates / unmount → no attribute (AC5/AC6 attribute half) | `contexts/CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-2048 data-theme follows the selected candidate`** (2) |
+| Allowlist: `dark` / `light` saved; `neon`, `light_parchment`, `light_slate`, `""`, `null`, list → `ValueError`, nothing saved (AC3/AC4) | `src/core/candidate.py` (`LOCKED_AT_100` — new lines fully branch-covered) | **`tests/component/core/test_candidate.py::TestAst2048ThemeAllowlist`** (8) — pointer [`../core/candidate.md`](../core/candidate.md) |
+| `PUT /api/candidates/<id>/data` with `neon` / `light_parchment` → 400, no DB write (AC4) | `src/ui/api/api_candidate.py` (unchanged) | **`tests/component/ui/api/test_api_candidate.py::…::test_update_rejects_unselectable_theme`** — pointer [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) |
+
+**Broken / obsolete (revised this pass):** `test_CandidateProfile.test.tsx` — the shared `installProfileMocks` `/api/ui_config` response now carries `default_theme: "dark"` (the real served contract after AST-2047); without it the page waits forever and **17** cases stuck on "Loading...". Mocked profile shape gains the `theme` select (mirrors `DATA_SHAPES`). No other Vitest or pytest failure changed vs the same tree without AST-2048 (base = `origin/tests` + `origin/ftr/AST-2042-user-theme`). Pre-existing red unchanged: `CandidateProvider — AST-1311 … restores the persisted selection's Full Name after load`.
+
+**Not covered by component tests (jsdom has no cascade):** AC5/AC6 computed `body` background (`rgb(15, 11, 24)` on Dark, different on Light) — browser/UAT only. **Plan-documented tradeoff:** if `/api/ui_config` fails, Candidate Profile stays on "Loading..." (previously only the signature limits were lost) — no test pins this either way.
+
+**Finding (AST-2047, not this ticket):** `lib/uiConfig.ts` `loadUiConfig` fetches **`/api/system/ui_config`**; Flask only serves **`/api/ui_config`** (`system_bp` `url_prefix="/api"`), so at runtime `getUiConfig()?.themes` is undefined and **Theme Examples stays on "Loading..."**. § AST-2047's page test mocks `/api/system/ui_config` and cannot catch the mismatch. Flagged on the parent for Susan.
+
+#### QA test manifest (AST-2048)
+
+1. **New + revised tests (required, all green):**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx
+cd ../../.. && ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2048ThemeAllowlist \
+  "tests/component/ui/api/test_api_candidate.py" -k "Ast2048 or unselectable_theme"
+```
+
+Expect `test_CandidateProfile` 19 passed / 1 skipped; `test_CandidateContext` all green except the pre-existing AST-1311 restore case; 9 pytest passed.
+
+2. **Regression (required):** `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py tests/component/ui/api/test_api_candidate.py` — failure set unchanged vs `origin/ftr/AST-2042-user-theme` (pre-existing reds only; none name theme).
+
+3. **AC5 `.tsx` hex half for this file:** `rg -n "#[0-9a-fA-F]{3,8}\b" src/ui/frontend/src/pages/CandidateProfile.tsx` returns nothing.
+
+4. **AC7:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+5. **AC5/AC6 browser (UAT):** Light candidate → `<html data-theme="light">` and body background ≠ `rgb(15, 11, 24)`; switch to a no-theme candidate → no attribute, `rgb(15, 11, 24)`, no reload.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2048-theme-save-apply:docs/test-bible/frontend/pages.md | shasum` (also `frontend/contexts.md`, `core/candidate.md`, `ui/api/api_candidate.md`)
+
+---
+
+### AST-2049 · AST-2042 (component/page inline colors onto tokens)
+
+**Publish:** `origin/sub/AST-2042/AST-2049-inline-color-tokens`. 49 inline literal colors / `var(--x, #…)` fallbacks / undefined custom-property refs in 7 components + 12 pages moved onto `App.css` token-block names. No layout or logic change; does not touch `App.css` (AST-2047) or `CandidateProfile.tsx` (AST-2048).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC9 epic-wide guard — no hex (`["' ,(]#…`) in non-test `.ts`/`.tsx` under `src/ui/frontend/src`; every `var(--x)` in `.ts`/`.tsx`/`.css` names a property declared in an `App.css` theme block | whole SPA source tree | **`test_AdminThemeExamples.test.tsx`** — **`AST-2049: no hex in .ts/.tsx source and every var(--x) in source is defined in a token block (AC9, epic-wide)`** (in the § AST-2047 `App.css` describe; red on `ftr` before this child, green after) |
+| Touched components/pages render unchanged | 19 files in the ticket Scope | existing per-file Vitests (manifest item 2) — no color values asserted |
+
+**Broken / obsolete:** none. Full Vitest (1029 cases) shows the same failure set with and without AST-2049 on `origin/tests` + `origin/ftr/AST-2042-user-theme`; the only swaps were `AdminScheduledActions … save disabled on add when no candidate selected` and `AdminAnthropicAdHoc AST-1452 …`, both green twice in isolation on the ticket tree (load flakes). Engineer's "no test asserts old color values" confirmed.
+
+**Not covered by component tests (jsdom has no cascade):** whether each swapped token reads well on the Light palettes — UAT / Theme Examples.
+
+#### QA test manifest (AST-2049)
+
+1. **New guard (required, green):**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+```
+
+Expect 5 passed.
+
+2. **Regression (required):** same Vitest command over the touched files' tests — failure set unchanged vs `origin/ftr/AST-2042-user-theme`. Pre-existing reds (not this ticket): `test_ArtifactEditor` 13 (AST-2056 bug-repros), `test_ProfileTextPage` 6, `test_CompaniesWatchHistory` 6, `test_ArtifactsBaseResumeContent` 2.
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/components/test_{ArtifactEditor,ContextTextPage,NavigationShell,ProfileTextPage,RepoJsonDivergenceBanner,StateTimeline,TabbedTextArea}.test.tsx \
+  ../../../tests/component/frontend/pages/test_{AdminCostReconciliation,AdminDataManagement,AdminManageCandidates,AdminScheduledActions,AdminScheduledActions_AST1104,AdminScheduledActions_AST1917,AdminScheduledQueries,AdminSessionCoverLetter,AdminSessionResumePaste,AdminTaskPrompts,ArtifactsBaseResumeContent,ArtifactsCompanySearchTerms,CompaniesNewList,CompaniesWatchHistory}.test.tsx
+```
+
+3. **AC9 grep (ticket form):** `rg -n "[\"' ,(]#[0-9a-fA-F]{3,8}\b" src/ui/frontend/src --glob '*.{ts,tsx}' --glob '!*.test.*'` returns nothing.
+
+4. **AC10:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2049-inline-color-tokens:docs/test-bible/frontend/pages.md | shasum` (also `frontend/components.md`)

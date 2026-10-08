@@ -335,6 +335,28 @@ class TestSaveCandidateData:
         assert save.call_args_list[1].kwargs["merge"] is False
 
 
+class TestAst2048ThemeAllowlist:
+    """AST-2048: save_candidate_data stores only profile-selectable UI_CONFIG theme ids (AC3/AC4).
+    Branches: theme absent (no check — covered by every other save test); selectable → saved; anything else → ValueError."""
+
+    @pytest.mark.parametrize("theme", ["dark", "light"])
+    def test_selectable_theme_saved(self, monkeypatch: pytest.MonkeyPatch, theme: str) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.save_candidate_data("somerset", {"theme": theme})
+        save.assert_called_once()
+        assert theme in repr(save.call_args)
+
+    # Unknown id, examples-only alternates, blank, null, unhashable.
+    @pytest.mark.parametrize("theme", ["neon", "light_parchment", "light_slate", "", None, ["light"]])
+    def test_unselectable_theme_rejected_and_not_saved(self, monkeypatch: pytest.MonkeyPatch, theme: Any) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        with pytest.raises(ValueError, match="Invalid theme value"):
+            candidate_mod.save_candidate_data("somerset", {"theme": theme})
+        save.assert_not_called()
+
+
 class TestGetCandidate:
     def test_delegates_to_database(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})

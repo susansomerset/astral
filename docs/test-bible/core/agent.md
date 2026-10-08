@@ -1922,16 +1922,41 @@ Expect 40 reds in `test_agent.py` and 12 in `test_dispatcher.py`. Each one fails
 
 ### AST-2001 · AST-1884 (bug-repro — AST-1996 decode-line isolation, agent side)
 
-Test gap for **AST-1996** (`96bc0471d`): `_decode_payload` records grades-only trailing content (a token failing `_GRADE_SEG`, e.g. `DEC35`) in `decode_failures` (`astral_job_id`, `pos`, `reason` — reason text identical to the old `ValueError`) and skips that line; clean lines in the same payload still decode. Key present **only** when a line failed. `_meta` / `_notes` output types keep the tail as meta/notes (never a decode failure). Bad position, X-confidence, non-X confidence bounds, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload. Routing / batch side: **`core/consult.md`** (**AST-2001**).
+Test gap for **AST-1996** (`96bc0471d`): `_decode_payload` records grades-only trailing content (a token failing `_GRADE_SEG`, e.g. `DEC35`) in `decode_failures` (`astral_job_id`, `pos`, `reason` — reason text identical to the old `ValueError`) and skips that line; clean lines in the same payload still decode. Key present **only** when a line failed. `_meta` / `_notes` output types keep the tail as meta/notes (never a decode failure). Bad position, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload; an X segment with nonzero confidence is a per-line `decode_failures` entry (since `f8d3f9a12`); a letter with confidence 0 is normalised to 1 (**AST-2053**, see AST-2057). Routing / batch side: **`core/consult.md`** (**AST-2001**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Trailing content → `decode_failures` entry, `jobs == []` (flipped from raise; bad-position + X-confidence raises kept) | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta`** (**bug-repro**) |
+| Trailing content → `decode_failures` entry, `jobs == []` (flipped from raise; bad-position raise kept; `0|CRX2` → X-branch `decode_failures` entry) | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta`** (**bug-repro**) |
 | Repro A — malformed line 0 isolated, line 1 decodes (`DE/C/3`, `EC/C/3`, `OR/X/0`) | same | **`…::test_ast1996_malformed_line_isolated_clean_line_decodes`** (**bug-repro**) |
 | Clean payload has no `decode_failures` key | same | **`…::test_ast1996_clean_payload_has_no_decode_failures_key`** (guard) |
 | `grades_encoded_notes` tail stays `notes`, no `decode_failures` | same | **`…::test_ast1996_notes_type_tail_is_not_a_decode_failure`** (guard) |
 
 **Integration:** none.
+
+### AST-2057 · AST-2045 (bug-repro — AST-2053 letter-confidence-0 normalisation)
+
+Test gap for **AST-2053** (`2d1b73da1`): in `_decode_payload`'s non-vet encoded loop, a letter segment with confidence `0` (`{A-F}0`) decodes as the same letter with confidence `1` (no signal) — no `decode_failures` entry. Unchanged: X with nonzero confidence → `decode_failures`; letter confidence 6–9 fails `_GRADE_SEG` → trailing-content `decode_failures`; vet branch (`grades_encoded_vet_meta`) still raises on `LT{letter}0`. Statute: `astral.agent.confidence-bounds`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `CFC0`/`SSC0`/`TCC0` line decodes as conf 1, both entities in `jobs`, no `decode_failures` key | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1`** (**bug-repro**) |
+| `0\|CRA7` trailing failure; `_notes` `CRF0` → `F/1` with notes kept; vet `LTA0` raises | same | **`…::test_ast2053_normalisation_boundaries`** (guard) |
+| `0\|CRA0` → `A/1` grade row (flipped from raise) | same | **`TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence`** |
+| `0\|CRX2` → X-branch `decode_failures` entry (flipped from raise) | same | **`TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta`** |
+
+**Integration:** none.
+
+**QA test manifest (test-fix):**
+
+1. **[bug-repro]** `tests/component/core/test_agent.py::TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1`.
+2. Decode classes: `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` → **12 passed, 0 failed**.
+3. `git diff origin/ftr/AST-2045-letter-conf0-normalize -- src/` empty (test-tree only).
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):**
+
+- **Red** — pre-fix `src/core/agent.py` from `06df211db` (byte-identical to `055c53c2a`), swapped in temporarily: repro fails `['job-1'] == ['job-0', 'job-1']` (`CFC0` line went to `decode_failures`); `test_ast2053_normalisation_boundaries` fails at `_notes` `CRF0` (`IndexError`, no job row); `0|CRA0` rewrite fails (got `decode_failures` "non-X grade requires confidence 1-5, got 0"). 3 failed / 9 passed across the two decode classes.
+- **Green** — ftr tip `3d51b06c7` (AST-2053 `2d1b73da1` merged): 12 passed.
+- **Out of scope:** `TestDoTask::test_returns_decode_and_post_decode_validation_errors` is red on **both** trees at its first assert (`'empty agent_payload' in 'Agent failure: nope'` — failure-envelope drift, one of the pre-existing `test_agent.py` reds per AST-2057 Boundaries); its `0|CRX2` assert is never reached.
 
 ### AST-2006 · AST-2000 (bug — runtime empty-token guard)
 
