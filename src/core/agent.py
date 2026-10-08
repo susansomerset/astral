@@ -3598,6 +3598,34 @@ def _slice_entity_block(content: str, entity_id: str) -> Optional[str]:
     return out
 
 
+def _entity_call_view(content: str, entity_id: str) -> Optional[str]:
+    """Block as a one-entity (Each-mode) call would have stored it (AST-2052).
+
+    JSON companies[] / jobs[] → same object with only this entity's item; tagged text → preamble
+    before the first [entity_id=…] tag + this entity's segment. Whole / None exactly as _slice_entity_block.
+    """
+    seg = _slice_entity_block(content, entity_id)
+    if seg is None or seg == content:
+        return seg  # other chunk's call, or no id-keyed segments (legacy / shared prompt)
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        data = None
+    # Same array precedence as split_entity_segments: companies[] first, else jobs[]
+    arr_key, id_key = next(
+        ((k, i) for k, i in (("companies", "company_id"), ("jobs", "astral_job_id"))
+         if isinstance(data, dict) and isinstance(data.get(k), list)),
+        (None, None),
+    )
+    if arr_key:
+        items = [it for it in data[arr_key] if isinstance(it, dict) and str(it.get(id_key)) == entity_id]
+        out = json.dumps({**data, arr_key: items})
+    else:
+        out = content[: max(content.find("[entity_id="), 0)] + seg
+    logger.debug("Response from _entity_call_view: %s", out)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # get_agent_data — retrieve stored blocks for a batch
 # ---------------------------------------------------------------------------
@@ -3608,8 +3636,7 @@ def get_agent_data(
     entity_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Retrieve agent_data blocks for a batch.
-    With entity_id, NO_CACHE / TASK / RESPONSE rows are cut to that entity via _slice_entity_block
-    (AST-2030): other chunks' rows are dropped, rows without id-keyed segments return whole.
+    With entity_id (AST-2030 / AST-2052), rows read as one Each-mode call for that entity: NO_CACHE / TASK / RESPONSE via _entity_call_view (other chunks' rows dropped, rows without id-keyed segments whole), blank rows omitted.
     SYSTEM / CACHE_A–D are shared prompt and pass through."""
     rows = get_agent_data_by_batch(batch_id, block_type)
     if not entity_id:
@@ -3619,11 +3646,14 @@ def get_agent_data(
     logger.debug("Beginning get_agent_data slice loop on %s items", len(rows))
     for row in rows:
         if row.get("block_type") not in ("NO_CACHE", "TASK", "RESPONSE"):
-            result.append(row)
+            if (row.get("block_data") or "").strip():
+                result.append(row)
             continue
-        segment = _slice_entity_block(row.get("block_data") or "", entity_id)
+        segment = _entity_call_view(row.get("block_data") or "", entity_id)
         if segment is None:
             continue  # another chunk's call — carries only other entities
+        if not segment.strip():
+            continue  # AST-2052: skip empty prompt content
         result.append({**row, "block_data": segment})
     logger.debug("End get_agent_data slice loop after %s items", len(result))
     return result
