@@ -1352,6 +1352,11 @@ context_tokens≈N
 
 context_tokens≈N
 
+
+### Test delivery — AST-2053
+
+No test-tree delivery on this sub (docs-acceptance). Betty's `[board-betty] TESTS: REVISE` coverage — the `{letter}0 → {letter}1` repro, the `0|CRA0` / `0|CRX2` stale-assert rewrites, and the AST-2001 bible block — lands on test-gap sibling AST-2057, which is blocked by this ticket.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
