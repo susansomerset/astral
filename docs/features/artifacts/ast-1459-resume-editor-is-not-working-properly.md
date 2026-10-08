@@ -191,3 +191,30 @@ All edits are in `src/ui/frontend/src/components/ArtifactEditor.tsx`. `JobAnalys
 - AST-1410: in-place Cancel re-GET on the `shapesKey` job-persistence editors is unchanged.
 - Criteria pages: same autosave cadence, same status text, same "+ Add" / rename / reorder chrome.
 - Unmount flush and `beforeunload` guard are unchanged.
+
+
+## Fix-board Joan findings (AST-2051)
+
+### Verdict
+
+```
+[board-joan]  CANON: OK
+```
+
+### Triage notes
+
+Read `## Bug: AST-2051` on `origin/sub/AST-2041/AST-2051-resume-autosave` in `docs/features/artifacts/ast-1459-resume-editor-is-not-working-properly.md` (As-is through What must still hold). AST-2041 / AST-2051 carry **no Canon Scope**; roster skim focused on UI dirty-leave and artifact editor patterns touched by `ArtifactEditor.tsx`.
+
+| Directive | In force? | vs proposed change |
+|-----------|-----------|-------------------|
+| `pattern.ui.dirty-leave-save-then-navigate` | **Draft** (`canon/directives/draft/patt.ui.dirty-leave-save-then-navigate.md`, `status: proposed`) | **No conflict.** Problem text separates route dirty-leave from “ArtifactEditor autosave/`beforeunload`”; **When not to use** explicitly exempts ArtifactEditor/criteria autosave. Enabling structure-mode body debounce is inside that carve-out, not overloading `useDirtyLeaveSaveThenNavigate`. |
+| `patt.artifact.ui-consistency` | Active path, body still marks draft | **No update required.** Still PUT via existing candidate/job artifact leaf keys; no new storage fork. Autosave vs header Save is UX, not a violation of Implementation §4–6. |
+| `patt.artifact.write-operative` | Active (backend) | **No conflict.** More frequent PUTs when body changes matches retire+insert versioning; plan notes Susan accepted per-autosave version rows (AST-1353). Identical-body no-op unchanged. |
+
+The AST-1459 **Architectural definition** bullet (“do not rely on structure-mode autosave”) lives in the **feature plan**, not in the draft dirty-leave directive on `origin/dev` (legacy `canon/patterns/ui/…` is not on dev; only the draft directive exists). Susan’s reversal is product/plan intent, already acknowledged in the bug section; it does **not** contradict an approved statute or pattern.
+
+AST-905 / AST-1410 items in **What must still hold** are ticket behavioral gates; the plan’s `snapshotRef` guard and unchanged `shapesKey` Save/Cancel path address them in product code, not via canon edits.
+
+**ESCALATE** not warranted: bounded blast radius, explicit Susan precedent, no ambiguous active law.
+
+**F3 (`validate-plan` fix mode):** not triggered by this board outcome (Joan **OK**). Chuckles still branches on Betty’s `[board-betty]` line per the fix-board table.
