@@ -372,3 +372,61 @@ Build notes:
 - AC 9 grep hits are exactly the three named in Stage 2 step 7's decision: the helper's return line, `anchor_ts` in `_run_contact_command`, and the paste-recovery lookup anchor.
 - Ruff: no new findings beyond the `Optional`/`Tuple` annotation style on the helper's signature, which matches every other signature in `contact.py`.
 - `origin/ftr/AST-2050` is not published yet; `validate-sub-log.sh --stage=build` was scoped against `dev` instead (status=ok).
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2072
+**Publish ref:** `e9e30e065de6a828d7ef92143f71cf308b3e2ff8` (`origin/sub/AST-2050/AST-2072-estelle-thread-response`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.contact.command-intercept | B | | Arc 3–4 / Data coupling text still describe known+unknown recognition and “in-thread” replies; code matches ticket (unknown-only recognition, `_contact_reply_placement`, `anchor_ts` for handler). |
+| stat.logging.info.contact | A | | |
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `patt.contact.command-intercept` B, `stat.logging.info.contact` A, `stat.logging.debug` A.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Cross-ticket product on publish ref** · `git log` / three-dot diff vs `origin/dev` · Commit `9ac088ef7` (`resync(tests): merge origin/dev (non-test paths only)`) carries **AST-2061-class** product outside AST-2072’s three-file plan: `src/core/meteorite.py` (sanitize, pinhole removals), `src/utils/config.py` (`allowed_channel_types`, empty `skills`, `_CONTACT_PINHOLE_HANDLERS`), `src/core/contact.py` (public-channel gate, `_unwrap_slack_links`, skill_calls removal), `src/external/slack.py` (`fetch_channel_type`), `requirements.txt` (nh3). AST-2072’s own code commits (`08074ef9d`, `134981e6d`) stay within the planned footprint. **@susan:** For single-child epic UAT, is this composite sub tip intentional, or should 2061 product ride only on its own sub before `ftr/AST-2050`? **Default:** Treat as intentional combined Contact slice for parent UAT; parent UAT notes should list which sibling behaviors ship on this ref.
+
+- **Parent AC 1 grep vs tests** · Linear AC 1 vs `tests/component/core/test_contact.py` · Parent AC uses substring `known_recognition_reply_text`, which still matches `unknown_recognition_reply_text`. Tests correctly use `\bknown_recognition_reply_text\b`. **Default:** Keep tests as-is; adjust parent AC wording on next definition touch to whole-word grep (build notes already flag this).
+
+### advisory
+
+- **sibling test carry:** `docs/features/contact/ast-1517-create-contact-meteorite.md`, `tests/component/core/test_candidate.py`, `test_tracker.py`, `tests/component/data/database/test_artifacts.py`, `test_rubric_vectors.py`, `tests/component/ui/api/test_api_companies.py`, `tests/component/frontend/components/test_CompanyDetailModal.test.tsx`, `test_JobAnalysisReportModal.test.tsx`, `docs/test-bible/core/candidate.md`, `tracker.md`, `data/database/*`, `frontend/components.md`, `ui/api/api_companies.md` — from `merge-tests` / `origin/tests`, not AST-2072 product scope.
+- **Plan fidelity (2072 hunks):** Stage 1–2 behavior matches the issue doc: `_contact_reply_placement`, helper-only + `anchor_ts` + paste-recovery lookup for AC 9 grep, `reply_broadcast` nested under `thread_ts`, known-recognition post removed, reply strings verbatim, `contact_post_message` cache comment and pass-through.
+- **AC 11:** `post_message` ignores `reply_broadcast` without `thread_ts`; covered in `tests/component/external/test_slack.py` (`TestAst2072PostMessageReplyBroadcast`).
+- **Canon doc lag:** `patt.contact.command-intercept` Arc steps 3–4 and Data coupling `thread_ts` wording remain stale until Archie’s requested edit (plan Canon notes; not in-flight on this ticket).
+
+## What's solid
+
+- Single placement helper wired through turn, command usage/ack, unknown reply, paste ack, and hear-ack; bound path no longer double-posts recognition.
+- Listen info: `_emit_listen_info` on unrecognized and on completed turn/command paths unchanged in structure.
+- Debug: `contact_post_message` logs resolved `reply_broadcast` without `if debug` gating at the call site.
+
+## Recommended actions (downstream — not executed in this session)
+
+- Chuckles: append this artifact to `docs/features/contact/ast-2072-natural-estelle-replies-thread-response-placement.md`, commit `docs(AST-2072): Radia review — clean`, push sub ref, post slim upshot `--as radia`, move to **Review Posted**.
+- If Susan rejects the 2061 composite on this sub: revert or re-base the `9ac088ef7` non-test paths before **User Testing** / `ftr` rollup (product decision above).
+- Archie: schedule `patt.contact.command-intercept` Arc/Data coupling refresh when convenient.
+
+context_tokens≈52000
