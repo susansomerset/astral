@@ -1191,6 +1191,25 @@ Replace the non-X rejection (the `if letter != "X" and conf_d not in (1, 2, 3, 4
 - AST-1155 / `patt.task.dispatch-retry`: one retry, routing by current state, untouched.
 - No prompt, `src/utils/config.py`, or `data/admin/agent_task.json` change.
 
+## Joan fix-board — AST-2053
+
+**Joan fix-board (AST-2053)** — the plan’s `Proposed change` deliberately amends `astral.agent.confidence-bounds` (draft `stat.agent.confidence-bounds.md`) so decode can normalize `{A–F}0` → `{letter}1`. That statute still says letter grades are only `1`–`5` with no decode carve-out, so canon must move before the product change is “in force.” `patt.task.dispatch-retry` stays routing-only (fewer bogus `decode_failures` is aligned). No Archie-only architectural fork left open in the patch (choices are already recorded on the ticket). `docs/canon-index.md` is not on `origin/sub/AST-2045/AST-2053-letter-conf0-normalize`; roster overlap was checked via the cited ids and `canon/directives/draft/stat.agent.confidence-bounds.md` on that ref.
+
+**For Chuckles to post:**
+
+```
+[board-joan]  CANON: REVISE
+What: astral.agent.confidence-bounds — Statement + Conforming must record sanctioned non-vet `{letter}0`→`{letter}1` decode normalisation — per plan-fix wording in draft statute
+```
+
+**Stdout:**
+
+```text
+AST-2053 board-joan done — CANON: REVISE — confidence-bounds decode exception.
+```
+
+**Chuckles routing:** the statute change Joan names is already inside AST-2053's approved Component scope (`canon/directives/draft/stat.agent.confidence-bounds.md`), so make-fix lands it on this ticket; no separate canon gap child. Betty's TESTS: REVISE routes to a test-gap sibling.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
@@ -1212,22 +1231,3 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-2001 | sub/AST-1884/AST-2001-decode-line-retry-tests |
 
 **Epic worktree:** `astral-AST-1884/` — one active sub checked out at a time.
-
-## Joan fix-board — AST-2053
-
-**Joan fix-board (AST-2053)** — the plan’s `Proposed change` deliberately amends `astral.agent.confidence-bounds` (draft `stat.agent.confidence-bounds.md`) so decode can normalize `{A–F}0` → `{letter}1`. That statute still says letter grades are only `1`–`5` with no decode carve-out, so canon must move before the product change is “in force.” `patt.task.dispatch-retry` stays routing-only (fewer bogus `decode_failures` is aligned). No Archie-only architectural fork left open in the patch (choices are already recorded on the ticket). `docs/canon-index.md` is not on `origin/sub/AST-2045/AST-2053-letter-conf0-normalize`; roster overlap was checked via the cited ids and `canon/directives/draft/stat.agent.confidence-bounds.md` on that ref.
-
-**For Chuckles to post:**
-
-```
-[board-joan]  CANON: REVISE
-What: astral.agent.confidence-bounds — Statement + Conforming must record sanctioned non-vet `{letter}0`→`{letter}1` decode normalisation — per plan-fix wording in draft statute
-```
-
-**Stdout:**
-
-```text
-AST-2053 board-joan done — CANON: REVISE — confidence-bounds decode exception.
-```
-
-**Chuckles routing:** the statute change Joan names is already inside AST-2053's approved Component scope (`canon/directives/draft/stat.agent.confidence-bounds.md`), so make-fix lands it on this ticket; no separate canon gap child. Betty's TESTS: REVISE routes to a test-gap sibling.
