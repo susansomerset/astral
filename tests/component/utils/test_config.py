@@ -3515,33 +3515,49 @@ class TestAst1066ContactConfig:
         assert "first" in luc["name_paths"]
 
 
-class TestAst1071ContactSkillsConfig:
-    """AST-1071: CONTACT_CONFIG skills ACL — two candidate entity-save skills."""
+# Branches: skills map kept but empty — candidate is read-only to Contact (AST-2061).
+class TestAst2061ContactSkillsEmpty:
+    def test_skills_registry_empty(self) -> None:
+        assert cfg.CONTACT_CONFIG["skills"] == {}
 
-    def test_two_skills_not_in_task_config(self) -> None:
-        skills = cfg.CONTACT_CONFIG["skills"]
-        assert set(skills.keys()) == {"save_candidate_profile", "save_candidate_contact"}
-        for key, meta in skills.items():
-            assert key not in cfg.TASK_CONFIG
-            assert meta["entity"] == "candidate"
-            assert meta["write"] is True
-            assert isinstance(meta["description"], str) and meta["description"].strip()
-            assert isinstance(meta["allowed_paths"], tuple) and meta["allowed_paths"]
 
-    def test_allowlisted_paths_no_slack_user_id(self) -> None:
-        skills = cfg.CONTACT_CONFIG["skills"]
-        assert skills["save_candidate_profile"]["allowed_paths"] == (
-            "profile.first",
-            "profile.last",
-            "profile.pronoun_preference",
-            "profile.contact_email",
+# Branches: allowed channel types; retired task key; handler allowlist; real import-time assert fires (AST-2061).
+class TestAst2061ContactPinholeConfig:
+    def test_allowed_channel_types(self) -> None:
+        assert cfg.CONTACT_CONFIG["allowed_channel_types"] == ("im", "group")
+
+    def test_create_contact_meteorite_retired(self) -> None:
+        # [bug-repro] AST-2061: the job-writing Contact task is gone from the registry.
+        assert "create_contact_meteorite" not in cfg.CONTACT_TASK_CONFIG
+
+    def test_every_contact_handler_in_pinhole(self) -> None:
+        pinhole = cfg._CONTACT_PINHOLE_HANDLERS
+        handlers = [m["handler"] for m in cfg.CONTACT_TASK_CONFIG.values()] + [
+            m["handler"] for m in cfg.CONTACT_CONFIG["commands"].values()
+        ]
+        for handler in handlers:
+            assert handler in pinhole, handler
+        for handler, kind in pinhole.items():
+            if kind.startswith("write"):
+                assert handler.startswith("src.core.meteorite."), handler
+        assert "src.core.meteorite.create_meteorite_job" not in pinhole
+        assert "src.core.meteorite.land_meteorite" not in pinhole
+
+    def test_pinhole_assert_rejects_job_writer(self) -> None:
+        # Splice a leaking handler into the real config source so the shipped assert (not a copy) fires.
+        from pathlib import Path
+
+        text = Path(cfg.__file__).read_text(encoding="utf-8")
+        anchor = "# AST-2061 pinhole:"
+        # A moved/renamed anchor must fail loudly, not let the splice pass vacuously.
+        assert text.count(anchor) == 1
+        leak = (
+            'CONTACT_TASK_CONFIG["leak"] = {"handler": "src.core.meteorite.create_meteorite_job", '
+            '"description": "x", "param_hint": "x", "requires_candidate": True}\n'
         )
-        assert skills["save_candidate_contact"]["allowed_paths"] == (
-            "contact.contact_email",
-            "contact.reply_email",
-        )
-        for meta in skills.values():
-            assert "contact.slack_user_id" not in meta["allowed_paths"]
+        spliced = text.replace(anchor, leak + anchor, 1)
+        with pytest.raises(AssertionError, match="Contact handler outside pinhole"):
+            exec(compile(spliced, "config_spliced", "exec"), {"__name__": "config_spliced", "__file__": cfg.__file__})  # noqa: S102
 
 
 # Branches: Events/Socket Mode contracts on CONTACT_CONFIG (AST-1069).
@@ -3713,14 +3729,13 @@ class TestAst1072ConversationalEnvelopeConfig:
         assert other["agent_performance"]["status"] == "success | failure"
 
 
-# Branches: CONTACT_TASK_CONFIG six keys + collision guards (AST-1515).
+# Branches: CONTACT_TASK_CONFIG five keys + collision guards (AST-1515; create_contact_meteorite retired AST-2061).
 class TestAst1515ContactTaskConfig:
     """AST-1515: allowlisted contact-task keys distinct from TASK_CONFIG and skills ACL."""
 
     _EXPECTED_KEYS = frozenset(
         {
             "gazer_scrape",
-            "create_contact_meteorite",
             "get_job_by_pattern",
             "get_job_data",
             "get_company_data",
@@ -3728,7 +3743,7 @@ class TestAst1515ContactTaskConfig:
         }
     )
 
-    def test_six_keys_handler_metadata_and_collision_guards(self) -> None:
+    def test_five_keys_handler_metadata_and_collision_guards(self) -> None:
         block = cfg.CONTACT_TASK_CONFIG
         assert set(block.keys()) == self._EXPECTED_KEYS
         for key, meta in block.items():
@@ -4386,10 +4401,6 @@ class TestAst1105ProfileSlackFields:
         keys = [f["key"] for f in self._contact_fields()]
         assert keys.index("contact.slack_user_id") < keys.index("contact.contact_email")
         assert keys.index("contact.slack_username") == keys.index("contact.slack_user_id") + 1
-        # Resolve owns writes — not Contact skill ACL
-        paths = cfg.CONTACT_CONFIG["skills"]["save_candidate_contact"]["allowed_paths"]
-        assert "contact.slack_user_id" not in paths
-        assert "contact.slack_username" not in paths
 
 class TestAst1101HearAckConfig:
     """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
