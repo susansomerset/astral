@@ -258,3 +258,10 @@ AC1 → Stage 1 (`insert_slack_meteorite` raw NEW slack row). AC2 → Stage 1 di
 
 context_tokens≈52000
 ```
+
+## Review
+
+- **Branch:** `origin/sub/AST-2032/AST-2034-raw-new-meteorite-stage-classify`
+- **Stage 1:** `bd71d2eb4` — `insert_slack_meteorite` raw NEW entry
+- **Stage 2:** `6bbe083d3` — stage hop Ruth-classifies unclassified NEW rows
+- **Build notes:** One file (`src/core/meteorite.py`), as planned. `py_compile` is clean and `ruff --select F,E9` is clean. The new style-only ruff hits (UP006/UP045/TRY401) follow the module's existing idiom. In `tests/component/core/test_meteorite.py` + `test_dispatcher.py`, the only new failure compared with the pre-build tree is `TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring`, which was intentionally invalidated by parent AC8 (see Test impact). The other 16 failures in those files already fail on the pre-build tree.
