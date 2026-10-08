@@ -265,3 +265,53 @@ context_tokens≈52000
 - **Stage 1:** `bd71d2eb4` — `insert_slack_meteorite` raw NEW entry
 - **Stage 2:** `6bbe083d3` — stage hop Ruth-classifies unclassified NEW rows
 - **Build notes:** One file (`src/core/meteorite.py`), as planned. `py_compile` is clean and `ruff --select F,E9` is clean. The new style-only ruff hits (UP006/UP045/TRY401) follow the module's existing idiom. In `tests/component/core/test_meteorite.py` + `test_dispatcher.py`, the only new failure compared with the pre-build tree is `TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring`, which was intentionally invalidated by parent AC8 (see Test impact). The other 16 failures in those files already fail on the pre-build tree.
+
+
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-2034
+**Publish ref:** b845ed47260bccbcc232f2da7d3df49b4b5c7da0
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Overall:** CLEAN
+
+## Canon scores
+patt.entity.batch-processing | A | | Claim `batch_id` passed into `_classify_stage_blob`; fan-out siblings inserted unclaimed; `run_stage_meteorite` `finally` + `clear_meteorite_batch` unchanged
+astral.batch.claim-process-release | A | | Still claim → process claimed rows → release; no new state-only select/process bypass
+astral.entity.required-metadata | X | | No `src/data/database.py` or schema change on this ref
+stat.logging.info.entity | A | | `_insert_stage_rows` NEW line on insert; `_meteorite_state_info` on `NOT_A_JOB` / `NEW_EMAIL_ERROR` in classify path
+stat.logging.info.dispatcher | X | | `applies_when` is `dispatcher.py` / `agent.py` only; this diff is `meteorite.py`
+stat.logging.debug | B | | Calling/Response `logger.debug` pairs on classify/anchor update; `debug=` on entry matches existing `@_with_log_debug` module habit (statute prefers ContextVar-only, unchanged idiom)
+stat.logging.warning | A | | `_warn_item` on insert validation/soft-fail; `_row_miss` on row-layer misses (map mismatch, validation)
+stat.logging.error | A | | `logger.exception` on insert/classify/fan-out throws with who/why/next-step body; classify `except` avoids duplicate `_fail` warning per plan
+
+## Column diff vs plan stage
+(aligned)
+
+## Frame diff
+(none)
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+- **AC2 vs direct-entry boundary** — Linear AC2 text still reads like full Slack strip E2E; ticket/plan bound AC1/AC2 row shape to direct `insert_slack_meteorite` and sibling AST-2035 owns mention/link unwrap. Tests follow the plan (`TestAst2034InsertSlackMeteorite` trims exterior whitespace only). **Default:** keep component coverage on caller-supplied payload; do not require AST-2035 parse logic in AST-2034 tests or resolve-child.
+
+### advisory
+- **sibling test carry:** `tests/component/core/test_agent.py`, `test_agent_ast2029.py`, `test_agent_ast2030.py`, `test_candidate.py`, `tests/component/frontend/components/test_BatchAgentDataModal.test.tsx`, `test_JobDetailModal.test.tsx`, `tests/component/utils/test_formatting.py`, and `docs/test-bible/{core/agent,core/meteorite,frontend/components,utils/formatting}.md` — expected `merge-tests` carry; product diff is only `src/core/meteorite.py`.
+- **Plan fidelity:** Implementation matches the two-stage plan (insert entry, `_classify_new_stage_row`, `batch_id` kwarg, SCRAPE_ERROR arm replaced with classify + fall-through). Validation uses a local `_miss` helper instead of inline `_warn_item` calls — behavior-equivalent.
+- **Estimate footprint:** Confirmed estimate **3** still fits (single product file, no schema/config/API).
+
+## What's solid
+- `insert_slack_meteorite` soft-fail contract, anchor stamp failure still `ok: True`, and stage-hop routing/fan-out/counter semantics match parent AC8–AC10 and the invalidated `missing classify_outcome` → `SCRAPE_ERROR` test was repurposed correctly.
+- `test_classify_batch_joins_claim_and_claim_released` exercises AC10 (`log_batch_id` / claim id on `do_task`, batch cleared after run).
+
+## Recommended actions (downstream only — not in Radia lane)
+- Chuckles: append this artifact to `docs/features/contact/ast-2034-raw-new-meteorite-stage-classify.md`, `docs()` commit on publish ref, post slim upshot `--as radia`, move to **Review Posted**; datt **PROCEED** → **User Testing** path unless Susan wants the AC2 wording discuss closed first.
+- No `resolve-child` canon work indicated from this review.
+
+context_tokens≈28000
+```
