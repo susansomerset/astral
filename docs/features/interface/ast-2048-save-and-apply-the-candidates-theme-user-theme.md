@@ -219,3 +219,11 @@ Child AC3→Stage 1+2; AC4→Stage 1; AC5→Stage 3; AC6→Stage 3; AC7→Stage 
 - **Dependency:** Explicit AST-2047 merge on `ftr`; registry/tokens assumed present.
 
 context_tokens≈38000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2042/AST-2048-theme-save-apply`
+- **Build commits:** `e6b29627e` (Stage 1: `UI_CONFIG` import, theme allowlist `ValueError` in `save_candidate_data`), `9dbf1bcd1` (Stage 2: CandidateProfile `defaultTheme` from `/api/ui_config`, `theme` in `editValuesFromCandidate`, fetch waits for the default, five inline hex values onto `--text-secondary` / `--text-primary` / `--error`), `5e403a8d9` (Stage 3: `CandidateContext` `data-theme` effect with unmount cleanup)
+- **Build notes:** `python3 -m py_compile src/core/candidate.py` exits 0, and `ruff check --select F,E9` is clean. `npx tsc -b --noEmit` and `npm run build` exit 0. `rg '#[0-9a-fA-F]{3,8}\b'` on CandidateProfile.tsx returns nothing. `rg '"light"'` over `.ts`/`.tsx` returns nothing. `eslint .` on the branch vs `origin/dev` (JSON output, path and line:col stripped, multiset diff): 31 problems both, no new or removed problems. The only one in a touched file is the pre-existing `CandidateContext.tsx` `exhaustive-deps` warning on `load`.
+- **Deviation:** none. Every step was applied as written.
+- **For QA:** Server cases: `PUT …/data` with `{"theme": "neon"}`, `"light_parchment"`, `""`, or `null` should return 400 with the stored theme unchanged, and `"light"` should return 200. AC 5 and AC 6 need a browser (computed `<html>` `data-theme` and `<body>` background, picker switch without reload, Dark login screen). No manual smoke run was done in this headless build. The `/api/system/ui_config` routing bug (Finding above) is untouched and still affects Theme Examples.
