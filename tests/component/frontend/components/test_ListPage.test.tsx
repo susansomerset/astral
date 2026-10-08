@@ -25,7 +25,7 @@ describe("ListPage", () => {
     localStorage.clear()
     mockedApi.mockReset()
     mockedApi.mockImplementation(async (url: string) => {
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return {
           json: async () => ({
             column_types: {
