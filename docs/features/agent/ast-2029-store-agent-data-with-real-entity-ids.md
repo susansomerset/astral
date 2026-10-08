@@ -293,3 +293,12 @@ stat.logging.debug — Joan **B**, code review **C** (plan Stage 1 specifies cou
 - Optional (no canon gate): add `do_task` JSON-envelope failure storage test if sibling UAT wants end-to-end proof beyond helper tests.
 
 context_tokens≈28000
+
+## Resolution
+
+2026-10-08 — resolve-child against Radia review (`1e85f5e1e`).
+
+- **discuss — `stat.logging.debug` on `hydrate_entity_labels`:** Susan had not answered, so I took Radia's **Default**. The callee-out line is now `logger.debug("Response from hydrate_entity_labels: %s", out)` (full hydrated string, no truncation), and `subn` became `sub` since the count is no longer logged. Reversible: if count-only debug is preferred for very large blocks, restore the prior line.
+- **advisory — sibling test carry:** expected `merge-tests` carry; no action.
+- **advisory — D2 JSON-envelope through `do_task`:** test-tree work, so it's Betty's call; not filed as `[qa-handoff]` because Radia marked it optional and the storage path calls the same helper the formatting tests cover.
+- **advisory — Ad Hoc stores omit `entity_ids`:** confirmed per plan boundaries; no action.

@@ -129,8 +129,8 @@ def hydrate_entity_labels(text: str, entity_ids: Optional[List[str]]) -> str:
         pos = int(m.group(1) or m.group(2))
         return f"[entity_id={entity_ids[pos]}]" if pos < len(entity_ids) else m.group(0)
 
-    out, n = _POSITIONAL_LABEL.subn(_sub, text)
-    logger.debug("Response from hydrate_entity_labels: %s labels on %s ids", n, len(entity_ids))
+    out = _POSITIONAL_LABEL.sub(_sub, text)
+    logger.debug("Response from hydrate_entity_labels: %s", out)
     return out
 
 
