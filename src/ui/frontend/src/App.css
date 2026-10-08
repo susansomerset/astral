@@ -48,6 +48,7 @@
   --text-muted: #6b6280;
   --accent-gold: #d4a843;
   --accent-gold-hover: #e0b854;
+  --heading: var(--accent-gold);
   --cta-green: #28a745;
   --cta-green-hover: #2ebd4e;
   --danger: #dc3545;
@@ -94,22 +95,23 @@
   --text-muted: #857b99;
   --accent-gold: #9a7314;
   --accent-gold-hover: #b0851c;
+  --heading: #241b33;
   --cta-green: #1e7e34;
   --cta-green-hover: #23913c;
   --danger: #c82333;
   --danger-hover: #a71d2a;
-  --grade-a: #28a745;
-  --grade-b: #e0a800;
-  --grade-c: #e8690b;
-  --grade-d: #c82333;
-  --grade-f: #8b0000;
-  --grade-x: #8b6fe0;
+  --grade-a: #1e7b34;
+  --grade-b: #a06500;
+  --grade-c: #c05621;
+  --grade-d: #c53030;
+  --grade-f: #742a2a;
+  --grade-x: #6b46c1;
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
   --nav-group-label: #7a5a10;
   --accent-gold-dim: rgba(154, 115, 20, 0.15);
   --paper-bg: #ffffff;
-  --text-on-grade: #1f1830;
+  --text-on-grade: #ffffff;
   --text-on-grade-f: #ffffff;
   --text-on-color: #ffffff;
   --status-interrupted-bg: #f3e3b5;
@@ -135,23 +137,24 @@
   --text-muted: #94826a;
   --accent-gold: #8a5a00;
   --accent-gold-hover: #a06c08;
+  --heading: #241b33;
   --cta-green: #2f7d32;
   --cta-green-hover: #388e3c;
   --danger: #b3261e;
   --danger-hover: #921f18;
-  --grade-a: #2f8f3a;
-  --grade-b: #d49b00;
-  --grade-c: #d9650f;
-  --grade-d: #b3261e;
-  --grade-f: #7a0b0b;
-  --grade-x: #7e63c9;
+  --grade-a: #1e7b34;
+  --grade-b: #a06500;
+  --grade-c: #c05621;
+  --grade-d: #c53030;
+  --grade-f: #742a2a;
+  --grade-x: #6b46c1;
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
   --nav-group-label: #7a4f00;
   --accent-gold-dim: rgba(138, 90, 0, 0.15);
   --paper-bg: #ffffff;
-  --text-on-grade: #2b2116;
-  --text-on-grade-f: #fffbf2;
+  --text-on-grade: #ffffff;
+  --text-on-grade-f: #ffffff;
   --text-on-color: #ffffff;
   --status-interrupted-bg: #ecd9a8;
   --status-interrupted-text: #5c3f06;
@@ -176,22 +179,23 @@
   --text-muted: #7a8699;
   --accent-gold: #2b6cb0;
   --accent-gold-hover: #3182ce;
+  --heading: #241b33;
   --cta-green: #2f855a;
   --cta-green-hover: #38a169;
   --danger: #c53030;
   --danger-hover: #9b2c2c;
-  --grade-a: #38a169;
-  --grade-b: #d69e2e;
-  --grade-c: #dd6b20;
+  --grade-a: #1e7b34;
+  --grade-b: #a06500;
+  --grade-c: #c05621;
   --grade-d: #c53030;
-  --grade-f: #822727;
-  --grade-x: #805ad5;
+  --grade-f: #742a2a;
+  --grade-x: #6b46c1;
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
   --nav-group-label: #2c5282;
   --accent-gold-dim: rgba(43, 108, 176, 0.15);
   --paper-bg: #ffffff;
-  --text-on-grade: #18202e;
+  --text-on-grade: #ffffff;
   --text-on-grade-f: #ffffff;
   --text-on-color: #ffffff;
   --status-interrupted-bg: #fbe7b5;
@@ -659,7 +663,7 @@ body {
 .list-page-title {
   font-size: 20px;
   font-weight: 700;
-  color: var(--accent-gold);
+  color: var(--heading);
   margin: 0;
 }
 
@@ -890,7 +894,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--accent-gold);
+  color: var(--heading);
   margin: 0 0 6px;
 }
 
@@ -1223,7 +1227,7 @@ body {
 .modal-title {
   font-size: 18px;
   font-weight: 700;
-  color: var(--accent-gold);
+  color: var(--heading);
   margin: 0;
 }
 
@@ -1534,7 +1538,7 @@ body {
 .dep-title {
   font-size: 20px;
   font-weight: 700;
-  color: var(--accent-gold);
+  color: var(--heading);
   margin: 0;
 }
 
@@ -1595,7 +1599,7 @@ body {
 .dep-section-label {
   font-size: 15px;
   font-weight: 700;
-  color: var(--accent-gold);
+  color: var(--heading);
   margin: 0 0 14px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
@@ -2862,7 +2866,7 @@ input.side-tab-heading-editable:focus {
 .theme-examples-label {
   margin: 0;
   font-size: 16px;
-  color: var(--accent-gold);
+  color: var(--heading);
 }
 
 .theme-examples-row {
@@ -2888,4 +2892,21 @@ input.side-tab-heading-editable:focus {
   width: auto;
   max-width: none;
   max-height: none;
+}
+
+/* AST-2064: grade-color candidate rows (tokens come inline from UI_CONFIG theme_example_grade_sets). */
+.theme-examples-grade-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.theme-examples-grade-options-label,
+.theme-examples-grade-option-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.theme-examples-grade-option-name {
+  width: 56px;
 }

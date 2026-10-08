@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type CSSProperties } from "react"
 import { ConfidenceBullets } from "../components/ConfidenceBullets"
 import { getUiConfig, loadUiConfig } from "../lib/uiConfig"
 
@@ -14,6 +14,7 @@ export default function AdminThemeExamples() {
   const [, forceUpdate] = useState(0)
   useEffect(() => { loadUiConfig(() => forceUpdate(n => n + 1)) }, [])
   const themes = getUiConfig()?.themes
+  const gradeSets = getUiConfig()?.theme_example_grade_sets
 
   if (!themes) return <p className="theme-examples-status">Loading...</p>
 
@@ -82,6 +83,21 @@ export default function AdminThemeExamples() {
                 </span>
               ))}
             </div>
+
+            {gradeSets && (
+              <div className="theme-examples-grade-options">
+                <span className="theme-examples-grade-options-label">Grade color options</span>
+                {Object.entries(gradeSets).map(([gid, set]) => (
+                  // Inline custom properties override this panel's grade tokens for this row only.
+                  <div key={gid} className="theme-examples-row" style={set.tokens as CSSProperties}>
+                    <span className="theme-examples-grade-option-name">{set.label}</span>
+                    {GRADES.map(g => (
+                      <span key={g} className={`grade-dot dot-${g.toLowerCase()}`}>{g}</span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="toast toast-success toast-visible">Profile saved</div>
             <div className="toast toast-error toast-visible">Save failed</div>

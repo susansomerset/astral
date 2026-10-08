@@ -633,3 +633,59 @@ class TestAst1815SlackScopeErrorDetail:
             slack_mod._iter_conversations()
         assert str(exc.value) == "conversations.list failed: missing_scope"
 
+
+# Branches: gate; conversations.info flag map (im/mpim/group/channel, mpim before private);
+# ok:false raises with scope detail; blank id (AST-2061).
+class TestAst2061FetchChannelType:
+    @staticmethod
+    def _stub(monkeypatch: pytest.MonkeyPatch, payload: dict) -> MagicMock:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value=payload)
+        get = MagicMock(return_value=resp)
+        monkeypatch.setattr(slack_mod.requests, "get", get)
+        return get
+
+    def test_requires_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The gate only blocks under the integration harness; no live opt-in → no HTTP call.
+        get = self._stub(monkeypatch, {"ok": True, "channel": {}})
+        monkeypatch.setenv("ASTRAL_INTEGRATION_MODE", "1")
+        monkeypatch.delenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", raising=False)
+        with pytest.raises(RuntimeError, match="live external I/O blocked"):
+            slack_mod.fetch_channel_type("C1")
+        get.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("channel", "expected"),
+        [
+            ({"is_im": True}, "im"),
+            ({"is_mpim": True, "is_private": True}, "mpim"),
+            ({"is_private": True}, "group"),
+            ({"is_group": True}, "group"),
+            ({"is_private": False}, "channel"),
+            ({}, "channel"),
+        ],
+    )
+    def test_maps_conversations_info_flags(self, monkeypatch: pytest.MonkeyPatch, channel, expected) -> None:
+        get = self._stub(monkeypatch, {"ok": True, "channel": channel})
+        assert slack_mod.fetch_channel_type("C1") == expected
+        assert get.call_args.args[0].endswith("/conversations.info")
+        assert get.call_args.kwargs["params"] == {"channel": "C1"}
+
+    def test_ok_false_raises_with_scope_detail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._stub(
+            monkeypatch,
+            {"ok": False, "error": "missing_scope", "needed": "im:read", "provided": "groups:read"},
+        )
+        with pytest.raises(RuntimeError) as exc:
+            slack_mod.fetch_channel_type("C1")
+        assert "conversations.info failed: missing_scope" in str(exc.value)
+        assert "im:read" in str(exc.value)
+
+    def test_blank_channel_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Gate on so the blank-id check (not the I/O gate) is what raises.
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        with pytest.raises(ValueError, match="channel"):
+            slack_mod.fetch_channel_type("  ")

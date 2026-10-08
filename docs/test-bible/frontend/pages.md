@@ -3720,3 +3720,66 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts \
 **Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
 
 **Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2049-inline-color-tokens:docs/test-bible/frontend/pages.md | shasum` (also `frontend/components.md`)
+
+### AST-2065 · AST-2042 (UI config URL; UAT-batch bug)
+
+**Publish:** `origin/sub/AST-2042/AST-2065-ui-config-url`. **Scope from** `[board-betty] TESTS: REVISE`. Plan: `docs/features/interface/ast-2047-theme-registry-palettes-and-theme-examples-page-user-theme.md` § Bug: AST-2065.
+
+Contract: Flask serves `UI_CONFIG` only at **`GET /api/ui_config`** (`system_bp` url_prefix `/api`). `/api/system/ui_config` falls through to the SPA catch-all, so `loadUiConfig` (`lib/uiConfig.ts`), `ArtifactEditor.tsx` and `ArtifactsBaseResumeContent.tsx` silently ran on fallbacks. Fix = those three literals → `/api/ui_config`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Loader requests the served route **[bug-repro]** | `lib/uiConfig.ts` | `tests/component/frontend/lib/test_uiConfig.test.ts` — **`uiConfig URL — AST-2065`** › **`[bug-repro] loadUiConfig fetches /api/ui_config`** (`vi.resetModules` + mocked `api`; module-level cache) |
+| No stale URL anywhere in the SPA **[bug-repro]** | all non-test `.ts`/`.tsx` under `src/ui/frontend/src` | same describe › **`[bug-repro] no frontend source references /api/system/ui_config`** |
+| Server route | `api_system.py` | existing **`test_api_system.py::TestSystemAuthRoutes::test_ui_config_*`** (already hit `/api/ui_config`) — unchanged |
+
+**Broken / obsolete (retargeted in place, `/api/system/ui_config` → `/api/ui_config`, 52 lines):** these mocks encoded the bug, so they would lose their config post-fix. Components: `test_ArtifactEditor`, `test_ContextTextPage`, `test_JobTitleText`, `test_ListPage`, `test_ListPage_listTableLayout`, `test_ListPage_ui_config_fail`. Pages: `page-mocks.ts` (shared — 21 page files consume it), `test_AdminThemeExamples`, `test_ArtifactsBaseResumeContent`, `test_CompaniesWatchHistory`, `test_CompaniesWatchList`, `test_JobsJobDetail`. **Left alone** (already match both URLs): `test-utils.tsx`, `test_CandidateProfile`, `test_AdminSessionCoverLetter`, `test_AdminAnthropicAdHoc`, `test_CandidateIntake`.
+
+**Red / green:** pre-fix sub tip `27ebac8c1` — both `[bug-repro]` cases red (loader called `/api/system/ui_config`; scan lists `components/ArtifactEditor.tsx`, `lib/uiConfig.ts`, `pages/ArtifactsBaseResumeContent.tsx`); the retargeted mocks are expected red until the fix lands. Same tree + the three-literal fix applied locally — guard green, manifest item 2 failure set equals the pre-existing set below (except `test_CandidateIntake`, a timing flake: 4–10 of 24 red on the pre-fix tree alone, file mocks both URLs).
+
+**Integration:** none — frontend-only; do not invent.
+
+#### QA test manifest (AST-2065)
+
+1. **[bug-repro] flip (test-fix):** red pre-fix, green post-fix — 3 passed.
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/lib/test_uiConfig.test.ts
+```
+
+2. **Regression (required):** retargeted files + `page-mocks.ts` consumers — failure set must equal the pre-existing reds (not this ticket): `test_ArtifactEditor` 13 (AST-2056 bug-repros), `test_CompaniesWatchHistory` 6, `test_ArtifactsBaseResumeContent` 2; `test_CandidateIntake` timing flakes.
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/components/test_{ArtifactEditor,ContextTextPage,JobTitleText,ListPage,ListPage_listTableLayout,ListPage_ui_config_fail}.test.tsx \
+  $(cd ../../.. && rg -l "page-mocks" tests/component/frontend/pages --glob '*.test.tsx' | sed 's#^#../../../#') \
+  ../../../tests/component/frontend/pages/test_{AdminThemeExamples,ArtifactsBaseResumeContent,CompaniesWatchHistory,CompaniesWatchList,JobsJobDetail}.test.tsx
+```
+
+3. **Grep:** `rg -n "/api/system/ui_config" src/ui/frontend/src` returns nothing.
+
+4. In `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+---
+
+### AST-2064 · AST-2042 (bug — Light grade-color set + Theme Examples grade options)
+
+**Publish:** `origin/sub/AST-2042/AST-2064-light-grade-colors`. Fix (plan doc § Bug: AST-2064): shared "Deep" grade values in the three Light blocks; `UI_CONFIG["theme_example_grade_sets"]` (deep / soft / classic, examples-only) rendered as a **Grade color options** block in every Theme Examples panel, each row overriding the panel's `--grade-*` / `--text-on-grade*` via inline custom properties.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** options block per panel; one labeled row per set; row inline style carries the set's tokens; each row A–X; panel's own `.theme-examples-grade` row still exactly one A–X | `pages/AdminThemeExamples.tsx` | **`test_AdminThemeExamples.test.tsx`** — **`AdminThemeExamples — AST-2064 grade color options > [bug-repro] each panel shows one labeled row per grade set …`** (fresh module graph — `uiConfig` caches) |
+| **[bug-repro]** sets are `deep` / `soft` / `classic` with labels; each set's `tokens` keys are exactly the 8 grade tokens declared in `App.css`'s Dark block, values `#rrggbb` | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst2064ThemeExampleGradeSets`** (2) |
+
+**Red on pre-fix tree** (`origin/sub/…/AST-2064` @ `4b8964c3e`): page case — no `.theme-examples-grade-options`; config cases — `UI_CONFIG has no theme_example_grade_sets`. **Green** against the plan's Proposed change steps 2–4 applied locally (not committed). Light "Deep" values themselves are not pinned (palette choice → UAT). The repro mocks **both** `/api/ui_config` and `/api/system/ui_config`, so it is unaffected by the sibling **AST-2065** URL fix. **Known red on this sub, not AST-2064 scope:** `AdminThemeExamples — AST-2047 > renders one labeled panel per registry id …` — AST-2065 retargeted its mock to `/api/ui_config`, and this sub's `uiConfig.ts` still fetches `/api/system/ui_config`. It turns green when AST-2065's fix merges; do not change the loader URL here.
+
+#### QA test manifest (AST-2064)
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+cd ../../.. && ./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -k "Ast2064 or Ast2047"
+```
+
+**Pass criterion (test-fix):** the three `[bug-repro]` nodes flip red → green; the 4 App.css Vitest cases + 4 `TestAst2047ThemeRegistry` cases stay green. The AST-2047 page case stays red until AST-2065 merges (see above).
