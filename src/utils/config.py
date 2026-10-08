@@ -496,6 +496,26 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-2054: Estelle company upshot — one call per batch; saved to company_data.company_upshot.
+    # Routing lives in ROSTER_CONFIG["company_upshot"] (defined below TASK_CONFIG, so literals here).
+    "company_upshot": {
+        "response_format": "json",
+        "response_schema": {
+            "companies": {
+                "type": "list", "required": True,
+                "items_schema": {
+                    "company_id": {"type": "str", "required": True},
+                    "upshot": {"type": "str", "required": True},
+                },
+            },
+        },
+        "context_format": "company_upshot_{index}",
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "UPSHOT_READY",
+        "pass_state": "WATCH",
+        "error_state": "ERROR_UPSHOT",
+    },
     "select_job_page": {
         "response_schema": {
             "selected_page": {"type": "int", "required": True},
@@ -3704,13 +3724,13 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
-    "meteorite_like", "vet_inflow_discovery", "parse_job_list",
+    "meteorite_like", "vet_inflow_discovery", "parse_job_list", "company_upshot",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
-    "resolve_website",
+    "resolve_website", "fetch_company_culture_pages", "company_upshot",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -3725,6 +3745,10 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"]
     if task_key == "select_job_page":
         return ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]
+    if task_key == "company_upshot":
+        return ROSTER_CONFIG["company_upshot"]["dispatch_trigger_state"]
+    if task_key == "fetch_company_culture_pages":
+        return GAZER_CONFIG["fetch_company_culture_pages"]["trigger_state"]
     if task_key == "recheck_no_openings":
         return "NO_OPENINGS"
     if task_key == "gaze":
