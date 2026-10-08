@@ -391,3 +391,41 @@ No other files are touched.
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2066
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** 54510c2abeb5e928e4a2b405af294f03f06a0765
+
+## Canon scores
+
+patt.artifact.write-operative | A | | 
+patt.artifact.read-current | A | | 
+patt.artifact.read-operative | A | | 
+patt.artifact.traceability | A | | 
+stat.logging.info.entity | A | | 
+
+## Traceability
+
+AC4→St1+St3+St4; AC5→no new stages (intro + existing save_artifact / sync_rubric_vectors_from_criteria); AC6→St2+St3; AC7→St4
+
+## Findings
+
+### acceptable
+- **Location:** Plan (whole doc)
+- **Finding:** No Conf/Risk self-assessment block (Estimate confirm only).
+- **Recommendation:** Optional parity with larger plans; not blocking for this bounded data/core slice.
+
+### discuss
+- **Location:** Stage 2 Decision (importance carry)
+- **Finding:** Plan flags an Archie preference fork (carry live importance vs travel with version); parent already resolved “importance is not versioned.”
+- **Recommendation:** Default carry matches parent intent; Susan/Archie can close the fork at build without plan rewrite.
+
+- **Location:** Verification
+- **Finding:** AC5 is satisfied by existing write paths but has no explicit REPL bullet (unlike AC4 chain in sibling QA notes).
+- **Recommendation:** Optional one-line manual verify after St3 set-current + save; Betty can cover in qa-child.
+
+context_tokens≈42000
