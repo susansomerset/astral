@@ -1285,6 +1285,73 @@ AST-2053 board-joan done — CANON: REVISE — confidence-bounds decode exceptio
 
 context_tokens≈N
 
+
+## Radia review — AST-2053 (round 2)
+
+[code-rubric]
+
+**Ticket:** AST-2053  
+**Publish ref:** `d1aa65ba4f9fe35c9bc40e36b4eb9fe3c2dab428` (`origin/sub/AST-2045/AST-2053-letter-conf0-normalize`)  
+**Review base:** `origin/ftr/AST-2045-letter-conf0-normalize` @ `06df211dbd782ff068fd5893fdf117dfd0059feb` (refreshed from `origin/dev`)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — ids resolved from `canon/directives/**` at tip)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+| patt.task.dispatch-retry | A | | |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** (`CANON: REVISE` pre-make-fix); implemented draft + decode match plan-fix **Proposed change**. Aligned with board intent post-tip.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — **TESTS: REVISE** routed to sibling **AST-2057**; no qa-fix on this ticket.  
+- **## What must still hold — OK** — on the product diff vs refreshed ftr: X/nonzero → `decode_failures`; vet `grades_encoded_vet_meta` still rejects conf `0` with `ValueError`; `_GRADE_SEG` and non-{letter}0 coercion unchanged; clean payloads omit `decode_failures`; dispatch-retry routing untouched; no config/prompt/`agent_task` edits in product files.
+
+## Findings
+
+### fix-now
+
+(none) — round-1 review-base / cross-ticket scope **addressed** (mandated diff is exactly 3 paths: draft statute, plan doc, `src/core/agent.py`).
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Round 2:** Re-reviewed after ftr refresh; product slice matches `code(AST-2053)` intent (conf-0 → conf-1 in shared non-vet loop + statute carve-out).  
+- **Legacy statute mirror** `canon/statutes/astral/agent/astral.agent.confidence-bounds.md` still pre-exception text — plan-fix explicitly out of scope for this ticket; canon owners.  
+- **Test debt** (`CRA0` / `CRX2` asserts) documented in plan **Blast radius**; **AST-2057** owns rewrites — not a gap on this ticket given board opt-out.
+
+## What's solid
+
+- Minimal decode change with draft canon moved in lockstep; fewer false `decode_failures` without weakening AST-1996 per-line isolation or vet strictness.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal mini-parent (live ftr) | Ticket already **Review Posted** — **do-all-the-things** §3h clean-review shortcut → **User Testing** directly; `resolve-child` **skipped**. |
+
+**Recommended actions (downstream — not executed here):** Append this round-2 artifact; `docs(AST-2053): Radia review — clean`; push sub; post slim upshot `--as radia`; advance to **User Testing** if not already there.
+
+---
+
+```
+[code-rubric] PROCEED (Commit: d1aa65ba4) Conf-0 decode; canon aligned
+```
+
+context_tokens≈N
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
