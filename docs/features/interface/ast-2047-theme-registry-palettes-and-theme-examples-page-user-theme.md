@@ -1190,3 +1190,75 @@ Four files, all named in AST-2042's Component scope. Line anchors are at `ftr/AS
 [board-joan]  CANON: OK
 
 Parent **Canon Scope:** none. Overlap skim (`astral.config.config-source-of-truth`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.no-hardcoded-sets`, `astral.ui.frontend-file-placement`, `astral.layers.import-direction`): Light grade values stay in `App.css` token blocks; example-only sets live in `UI_CONFIG` and render as runtime inline custom properties (no `#…` literals in `.ts`/`.tsx` source), matching existing config-served UI precedent. No active statute requires theme colors to exist only in CSS blocks or forbids additive `UI_CONFIG` keys. **What must still hold** preserves AST-2047/2049 AC boundaries without a carve-out. F3 not indicated.
+
+### Review-fix — Radia (AST-2064)
+
+[code-rubric]
+**Ticket:** AST-2064
+**Publish ref:** `9e116369a50bdbe87d20a1c6c97d8d698a7cbb5f` (`origin/sub/AST-2042/AST-2064-light-grade-colors`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; parent **Canon Scope:** none)
+**Overall:** FIX-NOW
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — Betty landed repro coverage at tip:
+- `test_AdminThemeExamples.test.tsx` — `[bug-repro] each panel shows one labeled row per grade set with inline grade tokens; main grade row unchanged`: asserts `.theme-examples-grade-options`, labeled rows, inline `style.getPropertyValue` for mocked token hex values, and exactly one `.theme-examples-grade` A–X row per panel (would fail pre-fix with no options block).
+- `test_config.py` — `TestAst2064ThemeExampleGradeSets`: asserts `theme_example_grade_sets` labels `deep`/`soft`/`classic`, each set’s token keys match the eight App.css grade tokens, values are `#RRGGBB` (would fail if key missing or keys don’t match declared CSS tokens).
+
+Vitest mock uses two sets for row UI; config test pins all three in `UI_CONFIG` — complementary, not tautological.
+
+**## What must still hold — OK** (for isolated product commit `9e116369a`): Dark `:root` / `[data-theme="dark"]` grade block not edited; only Light palette `--grade-*` and `--text-on-grade*` values change to the shared Deep set; token **names** unchanged (AC 4); new `theme_example_grade_sets` is additive in `UI_CONFIG`; page stays GET-only; no theme id literals in `.tsx`; option rows avoid `.theme-examples-grade` per AC 6 shape.
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket scope on publish ref (fix-lane diff base).** `git diff origin/ftr/AST-2042-user-theme...9e116369a` includes **AST-2055 / dev-sync product** unrelated to AST-2064:
+  - `src/core/contact.py`, `src/core/meteorite.py`, `src/external/slack.py`, `requirements.txt`
+  - plus `docs/features/consult/ast-1517-create-contact-meteorite.md`
+  
+  From merge history (`fb2f490ab` AST-2055, `880756d96 sync(dev)`). **AST-2064 product** in `9e116369a` is only `App.css`, `config.py`, `uiConfig.ts`, `AdminThemeExamples.tsx` (matches `## Proposed change`). **Chuckles/engineer:** restack or cherry-pick so `merge-child` does not land Estelle/meteorite pinhole work on this bug sub.
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Isolated fix matches plan:** Deep grade hex set in all three Light blocks; `theme_example_grade_sets` deep/soft/classic; Theme Examples grade-options UI + section-16 CSS; types on `UiConfig`.
+- **sibling test carry:** `merge-tests(AST-2064)` only adds 2064-targeted test/bible deltas in the diff stat (plus unrelated product above).
+- **Runtime dependency:** Grade-option rows need `loadUiConfig` to receive `theme_example_grade_sets` — **AST-2065** URL fix on ftr/UAT path; vitest mocks both `/api/ui_config` and `/api/system/ui_config` until 2065 is everywhere.
+- **UAT:** Susan picks among Deep/Soft/Classic visually; Soft letterless-dot contrast called out in plan.
+
+## What's solid
+
+- **Plan fidelity (commit `9e116369a`):** Four-file change set as specified; config-served inline tokens avoid breaking AST-2047/2049 App.css contract tests.
+- **Regression guards:** Config + page tests pin structure and token keys; existing AST-2047 panel/grade-row assertions preserved.
+- **ftr merge-base:** `ac9d8f9e0` = current ftr tip (includes post-2065 review doc); issue is **extra** commits on sub, not ftr lag.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (after restack strips AST-2055 product) | **Normal** (AST-2042 UAT-batch) | Confirm ftr…sub = **4 src files** + plan + tests/docs → **Review Posted** → **User Testing** shortcut. |
+| **REVIEW** (merge as-is) | Normal | **Do not** `merge-child` — smuggles contact/meteorite/slack changes. |
+
+context_tokens≈20000
+[code-rubric] REVIEW (Commit: 9e116369a) Drop AST-2055 product from sub
+```
+
+**Stdout recommendation:** **REVIEW** — restack before merge; isolated **9e116369a** + Betty `[bug-repro]` tests are otherwise **PROCEED**-ready.
+
+**Chuckles disposition:** fix-now "cross-ticket scope" (`src/core/contact.py`, `src/core/meteorite.py`, `src/external/slack.py`, `requirements.txt`, AST-1517 doc) is a false positive — all of it is AST-2055 (#266), already on `origin/dev`, carried in by the mandatory `sync-child.sh` `sync(dev)` merge (`880756d96`); ftr is behind dev. Against ftr merged with `origin/dev`, this sub's delta is exactly the four planned product files (`App.css`, `config.py`, `uiConfig.ts`, `AdminThemeExamples.tsx`) plus Betty's tests/bible and this doc. Restacking would violate sync law and re-enter on the next sync. Treated as clean → Review Posted → User Testing.
