@@ -320,6 +320,59 @@ def put_candidate_artifact_current_api(candidate_id, artifact_key):
     return jsonify({"current": current, "versions": versions})
 
 
+@candidate_bp.route("/<candidate_id>/rubric/<artifact_key>/<code>/versions", methods=["GET"])
+@require_auth
+def get_rubric_criterion_versions_api(candidate_id, artifact_key, code):
+    """AST-2067: chronological version map for one rubric criterion (shared code, oldest first)."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    try:
+        versions = list_rubric_criterion_versions(candidate_id, artifact_key, code)
+    except ValueError as exc:
+        # Not a rubric criteria key — routed reject, no log.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the criterion shows no version arrows",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/rubric/{artifact_key}/{code}/versions",
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    return jsonify({"versions": versions})
+
+
+@candidate_bp.route("/<candidate_id>/rubric/<artifact_key>/<code>/current", methods=["PUT"])
+@require_auth
+def put_rubric_criterion_current_api(candidate_id, artifact_key, code):
+    """AST-2067: move current to a named version of one rubric criterion; other codes untouched."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    body = request.get_json(silent=True)
+    uid = body.get("rubric_vector_uuid") if isinstance(body, dict) else None
+    if not isinstance(uid, str) or not uid.strip():
+        return jsonify({"error": "rubric_vector_uuid required"}), 400
+    route = f"/api/candidates/{candidate_id}/rubric/{artifact_key}/{code}/current"
+    try:
+        current = set_rubric_criterion_current(candidate_id, artifact_key, code, uid)
+        versions = list_rubric_criterion_versions(candidate_id, artifact_key, code)
+    except ValueError as exc:
+        # Bad key, or uuid outside this candidate/task/code (cross-key guard) — data layer rolled back.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the criterion keeps its loaded version",
+            candidate_id,
+            route,
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    logger.info("%s | api %s completed: PUT %s", candidate_id, route, 200)
+    return jsonify({"current": current, "versions": versions})
+
+
 @candidate_bp.route("", methods=["POST"])
 @require_admin
 def create_candidate():
