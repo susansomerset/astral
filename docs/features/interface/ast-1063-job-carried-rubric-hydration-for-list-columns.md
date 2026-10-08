@@ -909,6 +909,106 @@ context_tokens≈28000
 
 No test-tree delivery on this sub (docs-acceptance). Betty's `[board-betty] TESTS: REVISE` coverage (URL-routed api mock, bug-repro, loading/failed-fetch cases, RubricModal bible entry) lands on test-gap sibling AST-2060, which is blocked by this ticket.
 
+---
+
+## Bug: AST-2060 — show rubric hydrated-content tests + bible (test gap for AST-2059)
+
+**Mini-parent:** [AST-2058](https://linear.app/astralcareermatch/issue/AST-2058) · **Publish ref:** `sub/AST-2058/AST-2060-show-rubric-tests` · **Product fix:** AST-2059 (`61f1f40ea`, on `ftr/AST-2058-show-rubric-content`) · **Owner of edits:** Betty (test tree + bible). No `src/` change.
+
+### As-is
+
+`test_AgentAnalysisHeader.test.tsx` uses one `mockedApi.mockResolvedValue` for **every** call. It returns the `/api/candidates` list array, with no `ok` field, and the list rows carry `joblist_rubric` **with `content`**. On the AST-2059 tip, all 8 tests in `test_AgentAnalysisHeader` + `test_RubricModal` pass, but for the wrong reason:
+
+- The detail fetch to `/api/candidates/c1` gets the list array. `r.ok` is undefined, so AST-2059 treats it as a failed fetch and `contentLiveList` is `[]`.
+- Modal content then falls through to `labelRow`, which comes from the **list fixture** (`listLiveList`). That row carries `content`, so "Rubric body" / "Body" render anyway.
+- The real `GET /api/candidates` never carries rubric rows (root cause, AST-2059 block). So these tests cover a payload production never sends, and they never exercise the hydrated detail fetch, the loading state, or the failed-fetch fallback.
+- `test_RubricModal.test.tsx` has no `loading` case. `docs/test-bible/frontend/components.md` has no `RubricModal` entry, and the Analysis / job surfaces row doesn't mention the detail-fetch content source.
+
+Betty's `[board-betty] TESTS: REVISE` on AST-2059 predicted that two tests would go **red**. They did not (AST-2059 test-fix run, 8/8 green), for the reason above. The fix those two tests need is to make the fixture realistic, not just to await the content.
+
+### To-be
+
+The header suite builds its fixtures the way production does. The list payload carries **no** rubric content, and the detail payload (`/api/candidates/c1`) carries hydrated `content`. Modal-content assertions pass only through the AST-2059 detail fetch. A bug-repro test fails on the pre-fix tree. The header's loading state (no not-found flash) and the failed-fetch fallback are asserted. `RubricModal` covers `loading`. The bible lists all of it.
+
+### Repro
+
+The test delta is itself the repro. Against the **pre-fix** tree (`06df211db`, before AST-2059), the new bug-repro case renders `No rubric found for this vector.` and fails its content assertion. Against `4ee1d7029` (AST-2059 merged), it passes.
+
+```ts
+// list (CandidateContext) — production shape: no rubric content
+[{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { artifacts: {} } }]
+
+// detail GET /api/candidates/c1 — hydrated
+{ astral_candidate_id: "c1", candidate_data: { artifacts: {
+  joblist_rubric: [{ label: "Fit", code: "FIT", content: "Hydrated body", importance: 8 }],
+} } }
+```
+
+### Root cause
+
+The AST-2059 product fix moved the content source to the detail fetch. The existing test fixtures predate it. They stuff `content` into the list payload, a shape that predates AST-723 and that the real list route doesn't return. They answer every URL with the same response, so the legacy `labelRow` fallback keeps content assertions green no matter where content actually comes from.
+
+### Proposed change
+
+Betty lands all of this via qa-fix, in `tests/` and `docs/test-bible/` only. Every item maps to AST-2060 `## Scope`.
+
+1. **`tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx`**
+   - **URL-routed mock helper.** At the top of the `describe` block, add a helper `mockApiRoutes({ list, detail })`, where `detail` is `Promise<Response>`, `Response`, or a function returning one. `beforeEach` installs it via `mockedApi.mockImplementation((path: string) => …)`:
+     - `path === "/api/candidates"` → `{ ok: true, json: async () => list } as Response`
+     - `path === "/api/candidates/c1"` → `detail`
+     - any other path → the same list response as today, so `renderWithProviders` providers behave unchanged.
+   - Default `list` = `[{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { artifacts: {} } }]`, with **no** `joblist_rubric` and no `content`. Default `detail` = `{ ok: true, json: async () => ({ astral_candidate_id: "c1", candidate_data: { artifacts: { joblist_rubric: [{ label: "Fit", code: "FIT", content: "Rubric body", importance: 8 }] } } }) }`.
+   - **"renders grades with rubric links and opens the modal"** — use the defaults. After clicking **show rubric**, `expect(await screen.findByText("Rubric body")).toBeInTheDocument()` replaces the synchronous `getByText`.
+   - **"matches rubric rows by code and handles missing modal content"** — keep the list empty. Set the detail to `joblist_rubric: [{ code: "FIT", content: "Body", importance: 8 }]` (code only, no label). Assert `await screen.findByText("Body")`.
+   - **"opens the rubric modal with no matching row (null content)"** — use the defaults (the detail has only `Fit`, and the vector is `orphan`). Change to `expect(await screen.findByText("No rubric found for this vector.")).toBeInTheDocument()`.
+   - **New bug-repro: `AST-2059: show rubric reads content from hydrated candidate detail, not the list payload`**
+     - The list is the default (empty artifacts). Create a deferred detail promise: `let resolveDetail!: (r: Response) => void; const detail = new Promise<Response>(r => { resolveDetail = r })`.
+     - Render `<AgentAnalysisHeader grades={[{ vector: "fit", grade: "A" }]} rubricArtifact="joblist_rubric" />` and click **show rubric**.
+     - Before resolving: `expect(screen.getByText("Loading rubric…")).toBeInTheDocument()` **and** `expect(screen.queryByText("No rubric found for this vector.")).not.toBeInTheDocument()`. This is the AST-2059 no-flash AC.
+     - `resolveDetail({ ok: true, json: async () => ({ candidate_data: { artifacts: { joblist_rubric: [{ label: "Fit", code: "FIT", content: "Hydrated body", importance: 8 }] } } }) } as Response)`.
+     - `expect(await screen.findByText("Hydrated body")).toBeInTheDocument()`, then `expect(mockedApi).toHaveBeenCalledWith("/api/candidates/c1")`.
+     - Pre-fix, this fails at the loading assertion and the content assertion (the modal shows the fallback immediately).
+   - **New: `AST-2059: failed detail fetch ends on the fallback, not stuck loading`.** Two cases inside one `it` (or an `it.each`), each rendering `vector: "fit"` with `rubricArtifact="joblist_rubric"` and clicking **show rubric**:
+     - detail = `{ ok: false, json: async () => ({}) } as Response`
+     - detail = `Promise.reject(new Error("network"))`
+     - For each: `expect(await screen.findByText("No rubric found for this vector.")).toBeInTheDocument()` and `expect(screen.queryByText("Loading rubric…")).not.toBeInTheDocument()`. Close the modal between cases, or `unmount`.
+   - **Unchanged:** "falls back to raw vector labels without rubric data" (no `rubricArtifact`, so no fetch); "normalizes an empty vector key…" (button presence only); **AST-1771** order test (`rubricItems`, no modal). Keep the `vi.mock(... importOriginal ...)` keeper.
+   - Optional, Betty's call: a stale-response test (switch candidate mid-fetch). Not required by AST-2060 AC.
+
+2. **`tests/component/frontend/components/test_RubricModal.test.tsx`**
+   - **New: `shows loading text instead of the fallback while loading`**: render `<RubricModal open onClose={vi.fn()} vector="Culture" content={null} loading />` and assert `getByText("Loading rubric…")`, `queryByText("No rubric found for this vector.")` absent, heading `Rubric — Culture` present.
+   - Keep "shows rubric content and falls back when content is missing" as is. It proves `loading` defaults to false.
+
+3. **`docs/test-bible/frontend/components.md`**
+   - **Row at line 50 (Analysis / job surfaces):** Source becomes `AgentAnalysisHeader.tsx`, `RubricModal.tsx`, job pages. Add `tests/component/frontend/components/test_RubricModal.test.tsx` to Component tests.
+   - **New section** after the last `### AST-…` block, before any trailing manifest, using the AST-1771 section shape: `### AST-2060 · AST-2058 (show rubric reads hydrated detail content)`, with Parent/Publish lines, a one-line summary (rubric content comes from `GET /api/candidates/<id>`, list payload carries none), an Area / Source / Component tests table (header content source → the three revised plus two new `test_AgentAnalysisHeader` cases; modal loading → the new `test_RubricModal` case), and **Broken / obsolete:** "header fixtures carried list-payload `content` (pre-AST-723 shape) — revised". **Integration:** none.
+   - **QA test manifest — AST-2060** with the narrowed command:
+
+     ```bash
+     cd src/ui/frontend && npm run test:component -- \
+       ../../../tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx \
+       ../../../tests/component/frontend/components/test_RubricModal.test.tsx
+     ```
+
+4. **Out of scope:** any `src/` change (AST-2059); the meteorite `rubricArtifact` key mismatch; `test_JobAnalysisReportModal.test.tsx` (it never clicks show rubric); `CandidateContext` tests.
+
+⚠️ **Decision:** the header-level no-flash check goes inside the bug-repro test, using a deferred promise, rather than a separate test function. That keeps the new header functions to the two AST-2060 Technical scope names (repro + failed fetch), while still covering the loading-state gap from the AST-2059 test-fix note.
+
+⚠️ **Decision:** unknown URLs fall back to the list response, as the mock does today, rather than a 404. That way the URL routing doesn't change behaviour in the providers `renderWithProviders` mounts.
+
+### Blast radius
+
+- Only the two test files and the bible page above. No product code, no other suites.
+- `renderWithProviders` providers still get a list-shaped response for unrecognised URLs, so there's no provider-side behaviour change.
+- AST-1771 bible rows and manifest stay valid. The AST-1771 test is untouched, and `--testNamePattern="AST-1771"` still selects it.
+
+### What must still hold
+
+- AST-2059 product behaviour as shipped: content comes from the detail fetch; labels and order come from `rubricItems`, then the list fallback; "Loading rubric…" shows until the fetch settles; failure goes to the fallback text; `RubricModal` `loading` defaults to false.
+- AST-1771: detail row order test unchanged and green.
+- AST-1063 / AST-1327: no test asserts or introduces `content` on the job-carried `*_rubric` snapshot.
+- Engineer test-tree ban: Ada does not edit `tests/` or `docs/test-bible/`. Betty lands this.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
