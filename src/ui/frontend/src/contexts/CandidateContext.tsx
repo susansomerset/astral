@@ -125,6 +125,17 @@ export function CandidateProvider({ children }: { children: ReactNode }) {
     setFmtTimezone(contact?.timezone || "UTC")
   }, [selectedId, candidates])
 
+  // AST-2042: paint the page in the selected candidate's theme ([data-theme] blocks in App.css).
+  // No stored theme, nothing selected, or provider unmounted (logout) → no attribute → :root Dark.
+  useEffect(() => {
+    const c = candidates.find(x => x.astral_candidate_id === selectedId)
+    const theme = c?.candidate_data?.theme
+    const root = document.documentElement
+    if (typeof theme === "string" && theme) root.setAttribute("data-theme", theme)
+    else root.removeAttribute("data-theme")
+    return () => root.removeAttribute("data-theme")
+  }, [selectedId, candidates])
+
   useEffect(() => {
     const selected = candidates.find(c => c.astral_candidate_id === selectedId)
     document.title = browserTabTitle(selected?.full)
