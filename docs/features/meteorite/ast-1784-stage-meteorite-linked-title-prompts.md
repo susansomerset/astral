@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1784 archived 2026-10-07 -->
+
+## Linear archive (AST-1784)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1784/stage-meteorite-linked-title-prompts-parsing-emails-with-linked-job  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1783 — Parsing emails with linked job titles  
+**Blocked by / blocks / related:** parent: AST-1783; blocks: AST-1785
+
+### Description
+
+## What this implements
+
+Teach `stage_meteorite` prompts to classify title-as-href emails as URL landables (`link_list` / `single_jd_with_more`), set `job_link` from href and optional `job_title` from role-naming anchor text (omit for generic CTAs; never invent). Lockstep the AST-756 expected agent_task fixture. Does not own map breadcrumb-vs-http preference (sibling #2). Does not add a seventh outcome.
+
+## Citations
+
+`patt.task.daisy-chain` (URL + title must be askable at stage so the row can carry them); `stat.logging.debug` / `stat.logging.info.entity` id-only (catalog-only child).
+
+## Scope
+
+`data/admin/agent_task.json` — **modified** — `stage_meteorite` cache/user prompts teach title-as-href → `job_link` from href + `job_title` from role-naming anchor text; keep the six closed outcomes; no `$RESPONSE_SCHEMA` in prompts. `docs/uat-fixtures/AST-756/expected-agent_task.json` — **modified** — lockstep expected catalog text with the `stage_meteorite` prompt edits. Technical: update `stage_meteorite` prompt instructions so title-as-href blobs are classified as URL landables (`link_list` / `single_jd_with_more` as appropriate), each jobs item sets `job_link` from the anchor href and optional `job_title` from role-naming anchor text (omit title for generic CTAs; never invent); keep electronic-contact, breadcrumb header fields, and JOB TITLE subject-prefer rules for other shapes; leave `$RESPONSE_SCHEMA` absent. Mirror the same wording in the UAT catalog fixture.
+
+## Acceptance criteria
+
+1. `rg -n 'href|title-as-href|anchor|job_link' data/admin/agent_task.json` (or equivalent wording in the `stage_meteorite` prompt fields) shows instruction that title hyperlinks must put the href in `job_link` and role-naming anchor text in `job_title`. Fail if `stage_meteorite` prompts never mention this shape, or only mention unrelated tasks.
+2. `rg -n '\$RESPONSE_SCHEMA' data/admin/agent_task.json` shows no match inside `stage_meteorite` prompt fields. Fail if `$RESPONSE_SCHEMA` was added there.
+3. `python3 -c 'from src.utils.config import STAGE_METEORITE_CONFIG; assert len(STAGE_METEORITE_CONFIG["outcomes"])==6'` exits 0. Fail if a seventh outcome was added.
+4. `diff -q` (or fixture test) between `data/admin/agent_task.json` `stage_meteorite` prompts and `docs/uat-fixtures/AST-756/expected-agent_task.json` shows the expected catalog updated in lockstep. Fail if only one side changed.
+
+## Boundaries
+
+Does not own map breadcrumb-vs-http preference (sibling #2). Does not add a seventh outcome. Does not touch land/listing_href stack.
+
+## Notes for planning
+
+Citations: `patt.task.daisy-chain`; `stat.logging.debug` / `stat.logging.info.entity` id-only. Estimate: 2.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1783-parsing-emails-with-linked-job-titles`, child `sub/AST-1783/AST-1784-stage-meteorite-linked-title-prompts`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-24T18:05:29.581Z
+[code-rubric] PROCEED (Commit: bb0e9e73) title-as-href prompts clean
+
+#### betty — 2026-09-24T18:02:10.115Z
+`origin/sub/AST-1783/AST-1784-stage-meteorite-linked-title-prompts` @ `bb0e9e73` · title-as-href manifest ready
+
+#### joan — 2026-09-24T17:55:00.401Z
+[plan-rubric] PROCEED (Commit: 32a02ade7210947e22a91ee24aacae98d2355472) catalog prompts lockstep
+
+#### ada — 2026-09-24T17:53:08.004Z
+`origin/sub/AST-1783/AST-1784-stage-meteorite-linked-title-prompts` @ `32a02ade7210947e22a91ee24aacae98d2355472` · plan ready
+
+---
+
 # AST-1784 — stage_meteorite linked-title prompts
 
 **Linear:** [AST-1784](https://linear.app/astralcareermatch/issue/AST-1784/stage-meteorite-linked-title-prompts-parsing-emails-with-linked-job)  

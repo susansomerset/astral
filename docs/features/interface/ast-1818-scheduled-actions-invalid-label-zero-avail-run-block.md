@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-1818 archived 2026-10-07 -->
+
+## Linear archive (AST-1818)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1818/scheduled-actions-invalid-label-zero-avail-run-block-avail-all-default  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1817 — Invalid vs 0 Avail scheduled actions.  
+**Blocked by / blocks / related:** parent: AST-1817
+
+### Description
+
+## What this implements
+
+Ships all four Functional scope capabilities on the Scheduled Actions page: Invalid-labelled secondary-styled disabled button for `empty_render` rows, disabled/faded Run for valid zero-avail rows, Avail filter defaulting to All, and only the Task column frozen. Does not touch the API, config, shared list-table layout helpers, or `App.css`.
+
+## Citations
+
+none — no active pattern or statute governs a frontend-only presentation change over already-resolved API fields (see Architectural definition).
+
+## Scope
+
+`src/ui/frontend/src/pages/AdminScheduledActions.tsx` — **modified**; `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **modified**; `tests/component/frontend/pages/test_AdminScheduledActions_AST1104.test.tsx` — **modified**; `docs/test-bible/frontend/pages.md` — **modified**. Technical scope, verbatim: the page-level frozen-data-column constant passed to `resolveFrozenDataColumns` changes from 3 to 1 so only the Task column receives `list-table-cell-frozen` and a sticky `left`; no change to `listTableLayout.ts` or the shared `list_table_frozen_data_columns` UI config (other list pages keep their own setting). The initial value of the Avail filter state changes from `"gt0"` to `""` (All); the filter predicate, the `> 0` option, and the `always_visible_under_avail_gt0` escape hatch stay as they are. Row Run button in `ScheduledPhaseTable`: modified blocked/label logic — (a) when `empty_render` is true the button renders with the existing shared `btn secondary in-row` classes instead of `btn primary in-row`, label **Invalid**, `disabled`, `pointer-events: none`, full opacity; Invalid wins over Run/Sweep labelling. (b) When `empty_render` is false and `available_count` is 0, the row is added to the existing run-blocked condition, so it gets the same `disabled` + 0.25 opacity + `pointer-events: none` treatment invalid rows get today. The running-row Stop/Draining overlay is unchanged. No new CSS class, no inline color literals, no `App.css` edit. Tests / bible (Betty, `qa-child`): update the assertions listed in Component scope; add a case proving a valid row with `available_count: 0` has a disabled Run button that fires no `/run` POST, and a case proving an `empty_render` row's button has accessible name Invalid and classes `btn secondary in-row`.
+
+## Acceptance criteria
+
+ 1. With a row whose `empty_render` is true, the Run cell's button has accessible name **Invalid**, has classes `btn secondary in-row` (not `primary`), is `disabled`, and clicking it (including `fireEvent.click` bypassing pointer-events) sends no `POST …/run` — failing result: button text is Run/Sweep, carries `primary`, is enabled, or a `/run` POST is observed.
+ 2. That Invalid button's inline style does not set `opacity: 0.25` — failing result: `toHaveStyle({ opacity: "0.25" })` passes on the Invalid button.
+ 3. With a row whose `empty_render` is false and `available_count` is 0 (not running), the button is named **Run**, is `disabled`, has `opacity: 0.25` and `pointer-events: none`, and a click sends no `POST …/run` — failing result: button enabled, full opacity, or a `/run` POST fires.
+ 4. With a row whose `empty_render` is false and `available_count` > 0 and AUTO off, Run is enabled and a click POSTs `/run` (existing behaviour preserved) — failing result: button disabled or no POST.
+ 5. A running row with `available_count` 0 still renders the Stop button and a click POSTs `…/stop` — failing result: Stop missing or disabled while `draining` is false.
+ 6. On first render the Avail filter `<select>` has value `""` (All) and rows with `available_count` 0 are visible without touching any filter — failing result: value is `gt0` or a zero-avail row is absent until the filter is changed.
+ 7. Selecting Avail `> 0` still hides zero-avail rows (AST-887 predicate unchanged) — failing result: zero-avail rows remain visible under `> 0`.
+ 8. In an expanded section table, `columnheader[0]` (Task) and its body cell have class `list-table-cell-frozen`; `columnheader[1]` (Entity) and `columnheader[2]` (State) and their cells do **not**, and have no inline `left` — failing result: Entity or State carries the frozen class or a sticky `left`.
+ 9. `git diff origin/dev -- src/ui/frontend/src/App.css src/ui/frontend/src/lib/listTableLayout.ts src/ui/api src/utils/config.py` is empty — failing result: any diff in those paths (the change must reuse existing classes and must not alter shared list-table config or the API).
+10. `grep -nE "#[0-9a-fA-F]{3,6}|rgb\(" src/ui/frontend/src/pages/AdminScheduledActions.tsx` reports no new matches versus `origin/dev` — failing result: an inline color literal added for the Invalid button instead of the shared `btn secondary` class.
+11. `npm run build` and `npm run lint` in `src/ui/frontend` pass, and the full `test_AdminScheduledActions*.test.tsx` suite is green — failing result: any build/lint error or red test.
+
+## Boundaries
+
+Sole child of AST-1817 — no siblings. Does not touch `src/ui/api/`, `src/utils/config.py`, `src/ui/frontend/src/lib/listTableLayout.ts`, or `src/ui/frontend/src/App.css`; the server-side `/run` empty_render 400 gate stays as-is.
+
+## Notes for planning
+
+No active pattern or statute applies (parent Architectural definition). Reuse existing `btn secondary in-row` classes for Invalid — the shared button role directive is draft-only, reference not law. `empty_render` and `available_count` are already on every `GET /api/admin/dispatch_tasks` row.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1817-invalid-vs-0-avail-scheduled-actions`, child `sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block`. Created at dispatch-parent.
+
+## QA test manifest
+
+Publish tip: `origin/sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block` @ `81ac239f` (`merge-tests(AST-1818): origin/tests 42030efb`). Bible block: `docs/test-bible/frontend/pages.md` § **AST-1818 · AST-1817**.
+
+1. **Full Scheduled Actions routed-page suite (§6c; AC 1–8, 11)** — both `tests/component/frontend/pages/test_AdminScheduledActions*.test.tsx` files, 71 cases, all green on Betty's sync of this tip.
+   * Revised: AST-647 (renamed `…freezes only the Task column`), AST-746, AST-760 (AC 8); AST-887 ×4, AST-894 ×2 (describe renamed `AST-894 expand-all on landing (Avail default All per AST-1818)`), AST-1104 landing (AC 6–7); AST-1782 `blocks AUTO toggle and shows disabled Invalid button when empty_render is true` (AC 1–2).
+   * New: `AST-1818 zero-avail Run block` — zero-avail Run muted/disabled/no POST (AC 3); running zero-avail row Stop POSTs (AC 5). AC 4 = existing AST-1782 `allows…`.
+   * Pre-existing drift fixed: AST-751 + AST-768 default-sort cases read Candidate at `cells[11]` (Mode column shifted it) → `cells[length - 3]`.
+2. **AC 9 / AC 10 gates** — both commands print nothing.
+3. **Build + lint (AC 11)** — `npm run build` green; `npm run lint` no new problems vs `origin/dev` (engineer baseline 33).
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts test_AdminScheduledActions
+git diff origin/dev -- src/ui/frontend/src/App.css src/ui/frontend/src/lib/listTableLayout.ts src/ui/api src/utils/config.py
+git diff origin/dev -- src/ui/frontend/src/pages/AdminScheduledActions.tsx | rg -n '^\+.*(#[0-9a-fA-F]{3,6}|rgb\()'
+cd src/ui/frontend && npm run build && npm run lint
+```
+
+**Integration:** none — no existing scenario exercises Scheduled Actions frontend.
+
+**Bible shasums (publish tip):**
+
+* `docs/test-bible/frontend/pages.md` — `ceb6dc761378cd5617305da4d4349d0fd26fabb3`
+* `docs/test-bible/frontend/components.md` — `bf377b57a468daf7f67a8240cc90f30961fcadd2`
+
+### Comments
+
+#### betty — 2026-09-27T04:28:06.091Z
+[check-linear] Leaked AST-1768 bug-repro (7954d0fa) reverted on `origin/sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block` @ `4a9d769f` — 8 paths restored to origin/dev; 6 frontend files green (110 tests).
+
+#### radia — 2026-09-27T04:22:45.432Z
+[code-rubric] PROCEED (Commit: cedb7ac7) Plan-faithful, empty canon OK
+
+#### betty — 2026-09-27T04:19:53.192Z
+`origin/sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block` @ `81ac239f` · suite revised, 71 green
+
+#### hedy — 2026-09-27T04:09:20.041Z
+`origin/sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block` @ `05e084dd`
+
+#### joan — 2026-09-27T04:01:00.973Z
+[plan-rubric] PROCEED (Commit: efe85d0a) Plan faithful, empty canon OK
+
+#### hedy — 2026-09-27T03:59:13.516Z
+`origin/sub/AST-1817/AST-1818-scheduled-actions-invalid-label-zero-avail-run-block` @ `efe85d0a` · plan ready, two stages
+
+---
+
 # AST-1818 — Scheduled Actions Invalid label, zero-avail Run block, Avail All default, Task-only freeze
 
 - **Parent:** [AST-1817 — Invalid vs 0 Avail scheduled actions](https://linear.app/astral/issue/AST-1817)

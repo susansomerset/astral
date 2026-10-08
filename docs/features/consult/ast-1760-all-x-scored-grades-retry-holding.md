@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-1760 archived 2026-10-07 -->
+
+## Linear archive (AST-1760)
+
+**Archived:** 2026-10-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1760/all-x-scored-grades-retry-holding-when-job-analysis-comes-back-as-all  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1759 — When job analysis comes back as all X, retry  
+**Blocked by / blocks / related:** parent: AST-1759
+
+### Description
+
+## What this implements
+
+Owns the scored consult apply gate for all-literal-`X` complete sets and the raise-into-existing-fail-dest wiring so first strike retries and second strike technical-fails. Does **not** change binary all-`X` → fail, prompt copy, or invent new holdings.
+
+## Citations
+
+`patt.task.dispatch-retry`, `patt.entity.batch-processing`, `patt.entity.batch-criteria`, `astral.batch.claim-process-release`, `stat.logging.debug`
+
+## Scope
+
+`src/core/consult.py` — **modified** — gate all-literal-`X` on the scored apply / `_render_score` path into the existing batch fail-dest / retry routing (same family as incomplete grade sets); leave binary `_render_pass_fail` all-`X` → fail alone. | `src/core/consult.py` — new scored-path check after the complete-set gate (or equivalent raise site): when every grade row’s letter is literal `X`, raise into the caller’s existing bad-grades / process-failure path so `_consult_batch_fail_dest` picks primary → `retry_state` holding, holding → `error_state`. Must not return `pass_state` and must not land `fail_state` on first strike for this case. | `src/core/consult.py` — no change to `_render_pass_fail` all-literal-`X` → `fail_state`; no change to partial-`X` / counted-set scoring math; no new JOB_STATES / TASK_CONFIG holdings (reuse existing `*_RETRY` companions).
+
+## Acceptance criteria
+
+- [X] Replay a `meteorite_like` batch where one job’s decoded grades are a complete set of literal `X` and siblings have normal letters: the all-`X` job’s state is `METEORITE_PASSED_GET_RETRY` (not `METEORITE_PASSED_LIKE`, not `METEORITE_FAILED_LIKE` on first strike); siblings still reach pass or fail from ordinary scoring. **Fail if** the all-`X` job is `METEORITE_PASSED_LIKE` or `METEORITE_FAILED_LIKE` after that first apply.
+- [X] From `METEORITE_PASSED_GET_RETRY`, a second all-literal-`X` apply lands `METEORITE_FAILED_TECHNICAL_LIKE` (existing second-strike fail-dest). **Fail if** the job remains on the retry holding or returns to `METEORITE_PASSED_GET` without technical fail.
+- [X] Unit / component: scored apply with score floor `0.0` and every grade letter `X` never returns / transitions to that task’s `pass_state`. **Fail if** `_render_score` or apply returns `pass_state` for an all-literal-`X` set at floor `0.0`.
+- [X] A complete set with at least one non-`X` letter still scores and may pass or fail under existing floor rules (partial-`X` unchanged). **Fail if** any single `X` among otherwise real grades forces the retry holding.
+- [X] `_render_pass_fail` with all literal `X` still returns that task’s `fail_state` (binary path unchanged). **Fail if** binary all-`X` routes to a `*_RETRY` holding.
+
+## Boundaries
+
+- [X] Does **not** change binary `_render_pass_fail` all-literal-`X` → `fail_state`.
+- [X] Does **not** invent new JOB_STATES / TASK_CONFIG holdings.
+- [X] Does **not** change prompt / output-contract copy.
+- [X] Does **not** change partial-`X` or mixed no-signal scoring math.
+
+## Notes for planning
+
+Citations as above. Reuse incomplete-grade fail-dest family (AST-1155). score_floor `0.0` on `meteorite_like` is the repro path that currently passes all-X into upshot.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1759-when-job-analysis-comes-back-as-all-x-retry`, child `sub/AST-1759/<this-id>-all-x-scored-grades-retry-holding`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Helper + subclass + empty/partial: `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_require_not_all_literal_x_gate`
+2. Fail-dest meteorite_like matrix: `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_fail_dest_meteorite_like_matrix`
+3. Floor 0.0 all-X never pass (AC3): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_apply_scored_all_x_never_pass_at_floor_zero`
+4. Partial-X still scores (AC4): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_apply_scored_partial_x_still_scores`
+5. Binary all-X fail (AC5): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_pass_fail_all_x_still_fail_state`
+6. First strike holding (AC1): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_first_strike`
+7. Second strike technical (AC2): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike`
+8. Mixed batch sibling pass (AC1): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_batch_mixed_all_x_sibling_still_passes`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry \
+  -q
+```
+
+**Bible path shasum:** `docs/test-bible/core/consult.md` @ `63da37797fba536fceb8ab9fe38c32d14361d56c  -` (`git show origin/sub/AST-1759/AST-1760-all-x-scored-grades-retry-holding:docs/test-bible/core/consult.md | shasum`)
+
+### Comments
+
+#### radia — 2026-09-21T20:52:57.105Z
+[code-rubric] PROCEED (Commit: bb69043b) All-X retry holding clean
+
+#### betty — 2026-09-21T20:49:19.691Z
+`origin/sub/AST-1759/AST-1760-all-x-scored-grades-retry-holding` @ `85aaf439` · all-X retry coverage
+
+#### joan — 2026-09-21T20:38:32.619Z
+[plan-rubric] PROCEED (Commit: 6a4a891) raise before score, reuse fail-dest
+
+#### hedy — 2026-09-21T20:36:31.969Z
+`origin/sub/AST-1759/AST-1760-all-x-scored-grades-retry-holding` @ `6a4a8918102f17b97c711940fff1f65010686664` · plan ready
+
+---
+
 # AST-1760 — All-X scored grades → retry holding
 
 **Linear:** [AST-1760](https://linear.app/astralcareermatch/issue/AST-1760/all-x-scored-grades-retry-holding-when-job-analysis-comes-back-as-all-x)  
