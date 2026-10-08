@@ -1680,6 +1680,110 @@ def get_candidate_current_artifact_uuid(
     return uuid
 
 
+def artifact_versions_by_uuid(rows: list, uuid_field: str) -> Dict[str, Dict[str, Any]]:
+    """Chronological rows → {uuid: {created_at, current, position}} (AST-2066; position 1-based)."""
+    return {
+        row[uuid_field]: {
+            "created_at": row.get("created_at"),
+            "current": row.get("current"),
+            "position": i,
+        }
+        for i, row in enumerate(rows, start=1)
+    }
+
+
+def _candidate_catalog_entry(candidate_id: str, artifact_key: str) -> Tuple[str, str, str]:
+    """Resolve (entity_type, candidate_id, artifact_type) for a candidate catalog key (AST-2066)."""
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped") or entry.get("entity_type") != "candidate":
+        raise ValueError(f"catalog key not candidate-owned: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    return entry["entity_type"], cid, key.rsplit(".", 1)[-1]
+
+
+def list_candidate_artifact_versions(
+    candidate_id: str, artifact_key: str
+) -> Dict[str, Dict[str, Any]]:
+    """Version map for a candidate catalog key, oldest first (AST-2066 / patt.artifact.read-current)."""
+    et, cid, at = _candidate_catalog_entry(candidate_id, artifact_key)
+    return artifact_versions_by_uuid(database.list_artifacts(et, cid, at), "artifact_uuid")
+
+
+def set_candidate_artifact_current(
+    candidate_id: str, artifact_key: str, artifact_uuid: str
+) -> str:
+    """Move current to artifact_uuid for a candidate catalog key; body untouched (AST-2066)."""
+    et, cid, at = _candidate_catalog_entry(candidate_id, artifact_key)
+    uid = database.set_current_artifact(et, cid, at, artifact_uuid)
+    # Same post-rotate AUTO revalidation as the save_candidate_data str-path (AST-1781).
+    try:
+        database.revalidate_dispatch_tasks_for_artifact(cid, artifact_key.strip())
+    except Exception as exc:
+        logger.warning(
+            "%s | artifact_key=%r %s: %s — AUTO revalidation skipped after set-current",
+            cid,
+            artifact_key,
+            type(exc).__name__,
+            exc,
+        )
+    logger.info(
+        "%s | candidate %s: %s -> %s (batch: %s)",
+        cid,
+        "artifact current set",
+        artifact_key.strip(),
+        uid,
+        "-",
+    )
+    return uid
+
+
+def _rubric_owner_task(artifact_key: str) -> str:
+    """Owner task_key for a rubric criteria artifact key (AST-2066 / AST-723)."""
+    owner = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get((artifact_key or "").strip())
+    if not owner:
+        raise ValueError(f"not a rubric criteria key: {artifact_key!r}")
+    return owner
+
+
+def list_rubric_criterion_versions(
+    candidate_id: str, artifact_key: str, code: str
+) -> Dict[str, Dict[str, Any]]:
+    """Version map for one rubric criterion (shared code), oldest first (AST-2066)."""
+    owner = _rubric_owner_task(artifact_key)
+    cid = (candidate_id or "").strip()
+    ck = (code or "").strip()
+    if not cid or not ck:
+        raise ValueError("candidate_id and code required")
+    rows = database.list_rubric_vectors(cid, owner, current_only=False, code=ck)
+    return artifact_versions_by_uuid(rows, "rubric_vector_uuid")
+
+
+def set_rubric_criterion_current(
+    candidate_id: str, artifact_key: str, code: str, rubric_vector_uuid: str
+) -> str:
+    """Move current to rubric_vector_uuid for one criterion; other codes untouched (AST-2066)."""
+    owner = _rubric_owner_task(artifact_key)
+    cid = (candidate_id or "").strip()
+    uid = database.set_current_rubric_vector(cid, owner, code, rubric_vector_uuid)
+    logger.info(
+        "%s | candidate %s: %s %s -> %s (batch: %s)",
+        cid,
+        "rubric criterion current set",
+        artifact_key.strip(),
+        (code or "").strip().upper(),
+        uid,
+        "-",
+    )
+    return uid
+
+
 def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
     """Overlay operative current base_resume into candidate_data (display only)."""
     if not isinstance(cd, dict):
