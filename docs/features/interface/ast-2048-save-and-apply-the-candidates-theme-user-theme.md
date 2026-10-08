@@ -175,3 +175,47 @@ All edits are in `src/ui/frontend/src/pages/CandidateProfile.tsx`.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2048
+**Overall:** APPROVED
+**Corpus:** cc0ca67ac7e3ffd6f9067ccd857cb47fdb2c6f50 (`canon/` at publish tip; no `docs/canon-index.md` on ref)
+**Publish ref:** `16e114d0122083097a322676d1b2c2bd93a30b66` (`origin/sub/AST-2042/AST-2048-theme-save-apply`)
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score; not §4a ESCALATE (explicit empty scope, same as AST-2047).
+
+## Traceability
+
+Child AC3→Stage 1+2; AC4→Stage 1; AC5→Stage 3; AC6→Stage 3; AC7→Stage 2–3. Parent AC1–2,7–11 → N/A (#1/#3); parent AC9 `.tsx` hex share → Stage 2 step 6 (per Boundaries).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **acceptable — `/api/system/ui_config` vs `/api/ui_config` (AST-647)** — Plan documents `loadUiConfig` breakage and correctly avoids `getUiConfig()` here; `default_theme` comes from CandidateProfile’s existing `/api/ui_config` fetch. Fixing `uiConfig.ts` is out of scope (AST-2047 file); epic UAT should still track Theme Examples “Loading…” until that path is fixed elsewhere.
+
+- **acceptable — Profile gated on `defaultTheme`** — Waiting on served `default_theme` avoids a hard-coded `"dark"` second list (parent AC 2). Documented tradeoff if `/api/ui_config` fails (stay on Loading…); consistent with treating that endpoint as required infrastructure.
+
+- **acceptable — `UI_CONFIG` import in `candidate.py`** — Matches existing config-driven allowlist pattern (`PRONOUN_PREFERENCE_OPTIONS`); theme lands in `blob_merge`, validation placement before contact merge/save is correct; `ValueError` → existing 400 handler satisfies AC 4 without `api_candidate.py` edits.
+
+- **acceptable — Dark-only visual nudge on CandidateProfile inline token swap** — Plan calls out `#fff`→`--text-primary` etc.; parent AC 7 is `App.css`-only; in scope per ticket Boundaries.
+
+- **acceptable — No `## Self-assessment`** — Estimate confirm `2 — agree`; three-file footprint with anchored stages; no `!!-NONE` conf gap.
+
+### acceptable
+
+- **Gates:** Plan Ready, assignee Joan Clarke; 0/2 `[plan-discuss]` rounds.
+- **Scope fidelity:** Three files only; no config/`App.css`/`uiConfig.ts`/routes/#3 components; `theme` as top-level `candidate_data` meta key aligned with DATA_SHAPES field key and `save_candidate_data` blob merge.
+- **Data path:** `editValuesFromCandidate` uses `d.theme` from `candidate_data` (not column `pronouns` pattern); Save PUT + `refreshCandidate()` repaints via Stage 3 deps; cleanup on unmount → login Dark per parent Functional scope 3.
+- **Dependency:** Explicit AST-2047 merge on `ftr`; registry/tokens assumed present.
+
+context_tokens≈38000
