@@ -718,7 +718,7 @@ One file, `src/ui/frontend/src/App.css`, named in AST-2042's Component scope. Th
 
    ⚠️ **Decision — Dark is an alias, not a hex copy:** `var(--accent-gold)` resolves to `#d4a843`, so Dark headings are pixel-identical, and they keep tracking gold if Dark's accent is ever retuned. The pattern matches `--confidence-bullet-*`, and like those, every block redeclares the name (AST-2047 AC 4 name-set equality).
 
-   ⚠️ **Decision — one purple, `#241b33`, for all three Lights:** It is the more visibly purple of the two confirmed values (`#1a1424` reads as near-black on white). Using it in every Light block makes headings look the same across palettes, matching Susan's single-color ask. Its contrast is above 15:1 on every Light `--bg-deep` / `--bg-card`.
+   ⚠️ **Decision — one purple, `#241b33`, for all three Lights:** It is the more visibly purple of the two confirmed values (`#1a1424` reads as near-black on white). Using it in every Light block makes headings look the same across palettes, matching Susan's single-color ask. Its contrast is at least 13:1 on every Light `--bg-deep` / `--bg-card` / `--bg-elevated` (lowest: 13.2:1 on Parchment `--bg-elevated` `#efe6d4`).
 
    ⚠️ **Decision — insert position:** Insert after `--accent-gold-hover`, its semantic neighbor. That keeps four unchanged lines between this insert and the `--grade-*` lines that sibling bug AST-2064 edits in the same Light blocks, so the two merges do not touch adjacent lines.
 
