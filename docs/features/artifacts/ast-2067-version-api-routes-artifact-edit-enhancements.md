@@ -354,3 +354,10 @@ AC7→St1+St2+St3 PUT routes (core `ValueError`→400 before commit; entity 404 
 - **Recommendation:** Accept dual pipe (different statutes/events); job PUT remains API-only per tracker Notes.
 
 context_tokens≈58000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2043/AST-2067-version-api`
+- **Build commits:** `03eebc50b` (Stage 1), `0bbf606ed` (Stage 2), `8abb0969e` (Stage 3)
+- **Verified by hand (Flask test client + scratch DB, not committed):** each stage's Done when, including AC 7 on all three PUT surfaces. Cross-key, cross-entity, and cross-code uuids each return 400 and current is unchanged; wrong-surface, unknown, and non-catalog keys return 400; the uuid body check returns 400; a missing entity returns 404; empty history returns 200 `{}`; one `api … completed: PUT 200` line per successful PUT and none on GETs. Job routes stubbed only the `get_job` row lookup; artifact rows were real.
+- **Lint deviation (resolved in favor of the code):** ruff TRY401 fires on the six planned `logger.exception(…, type(exc).__name__, exc)` calls, which match the `stat.logging.error` Do example. Blocker posted on AST-2043; Susan said continue, and the recommended option was taken: the code is unchanged, and the gate allows TRY401 on those six lines only. Ruff went from 14 to 20 across both files. The 6 new findings are exactly those TRY401s, with no other new findings.
