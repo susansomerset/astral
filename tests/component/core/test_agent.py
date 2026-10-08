@@ -2638,12 +2638,12 @@ class TestAgentDataAccess:
         blob = json.dumps({"other": 1})
         assert agent_mod._extract_entity_segment(blob, "nope") == blob
 
-    def test_get_agent_data_keeps_row_when_segment_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_get_agent_data_drops_row_when_segment_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2030 AC5: jobs[] keyed only by another id = another chunk's call → row dropped (was kept).
         raw = json.dumps({"jobs": [{"astral_job_id": "other"}]})
         rows = [{"block_type": "TASK", "block_data": raw}]
         monkeypatch.setattr(agent_mod, "get_agent_data_by_batch", lambda batch_id, block_type: rows)
-        out = agent_mod.get_agent_data("batch-1", entity_id="job-1")
-        assert out[0]["block_data"] == raw
+        assert agent_mod.get_agent_data("batch-1", entity_id="job-1") == []
 
 
 class TestDoTaskStorageFailures:
@@ -3007,11 +3007,14 @@ class TestAgentPayloadListUnwrap:
 
 
 class TestEntitySegmentAccess:
-    def test_get_agent_data_keeps_rows_without_matching_segment(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        rows = [{"block_type": "TASK", "block_data": json.dumps({"jobs": [{"astral_job_id": "other"}]})}]
+    def test_get_agent_data_drops_rows_without_matching_segment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2030 AC5: tagged row for other ids only → dropped; shared SYSTEM row still passes through.
+        rows = [
+            {"block_type": "SYSTEM", "block_data": "sys"},
+            {"block_type": "TASK", "block_data": "[entity_id=other]: x"},
+        ]
         monkeypatch.setattr(agent_mod, "get_agent_data_by_batch", lambda batch_id, block_type: rows)
-        out = agent_mod.get_agent_data("batch-1", entity_id="job-1")
-        assert out[0]["block_data"] == rows[0]["block_data"]
+        assert agent_mod.get_agent_data("batch-1", entity_id="job-1") == [rows[0]]
 
     def test_extract_entity_segment_results_and_empty_inputs(self) -> None:
         payload = json.dumps({"results": [{"astral_job_id": "job-1", "x": 1}]})
@@ -9040,17 +9043,19 @@ class TestEntityAgentStory:
         assert story[0]["vector_grades"] == [{"grade": "A", "vector": "fit"}]
 
 
-class TestFilterResponseBlock:
+# AST-2030 D1: {} → whole block; this id → its segment; other ids only → None.
+class TestSliceEntityBlock:
     def test_non_json_and_single_job_responses(self) -> None:
-        assert agent_mod._filter_response_block("plain text", "job-1") == "plain text"
-        assert agent_mod._filter_response_block(json.dumps({"title": "Role"}), "job-1") == json.dumps({"title": "Role"})
+        assert agent_mod._slice_entity_block("plain text", "job-1") == "plain text"
+        assert agent_mod._slice_entity_block(json.dumps({"title": "Role"}), "job-1") == json.dumps({"title": "Role"})
 
     def test_batch_response_filters_matching_job(self) -> None:
-        payload = {"jobs": [{"astral_job_id": "job-1", "title": "Role"}]}
-        out = agent_mod._filter_response_block(json.dumps(payload), "job-1")
-        assert '"job-1"' in out
-        assert agent_mod._filter_response_block(json.dumps({"jobs": [{"title": "old"}]}), "job-1") == ""
-        assert agent_mod._filter_response_block(json.dumps({"jobs": [{"astral_job_id": "other"}]}), "job-1") == ""
+        item = {"astral_job_id": "job-1", "title": "Role"}
+        assert agent_mod._slice_entity_block(json.dumps({"jobs": [item]}), "job-1") == json.dumps(item, indent=2)
+        # AC7: id-less legacy jobs[] now returns whole (was ""); another chunk's jobs[] → None (was "").
+        legacy = json.dumps({"jobs": [{"title": "old"}]})
+        assert agent_mod._slice_entity_block(legacy, "job-1") == legacy
+        assert agent_mod._slice_entity_block(json.dumps({"jobs": [{"astral_job_id": "other"}]}), "job-1") is None
 
 
 class TestEntityAgentStoryBranches:
@@ -9091,7 +9096,8 @@ class TestEntityAgentStoryBranches:
         )
         entity = {"astral_job_id": "job-1"}
         story = agent_mod.get_entity_agent_story(entity)
-        assert story[0]["blocks"][0]["content"] == ""
+        # AST-2030 AC7 / D4: id-less legacy jobs[] shows whole — never an empty pane (was "").
+        assert story[0]["blocks"][0]["content"] == json.dumps({"jobs": [{"title": "Role"}]})
 
 
 class TestAst1274AgentStorySoftFail:
