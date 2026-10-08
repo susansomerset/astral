@@ -623,3 +623,11 @@ Child AC1→Stage 1; AC2→Stage 1+3; AC3→Stage 2; AC4→Stage 2; AC5→Stage 
 context_tokens≈32000
 
 **Upshot:** `[plan-rubric] PROCEED (Commit: fe9850b97) Registry, palettes, examples`
+
+## Review
+
+- **Branch:** `origin/sub/AST-2042/AST-2047-theme-registry-palettes`
+- **Build commits:** `18f58fc6b` (Stage 1: `UI_CONFIG` themes + default + assert, profile Theme select, Tools nav item, `UiConfig` types), `d3ebaa141` (Stage 2: Dark selector + 16 semantic tokens, three Light blocks, 29-row `App.css` sweep), `147e17c43` (Stage 3: `AdminThemeExamples.tsx`, `admin/theme_examples` route, `.theme-examples-*` styles)
+- **Build notes:** `python3 -c "import src.utils.config"` exits 0. The registry prints `['dark', 'light', 'light_parchment', 'light_slate']` with default `dark`, and the profile Theme options are exactly Dark and Light. `npx tsc -b --noEmit` and `npm run build` exit 0. Both Stage 2 step 6 checks print `OK` after Stage 3: the Dark values match `App.before.css`, the Light name sets equal Dark's 38, the Lights differ pairwise, there is no hex or non-black `rgba` outside token blocks, and there are no undefined `var()` in `App.css`. `rg '"light"'` over `.ts`/`.tsx` returns nothing. `npm run lint` before/after: 31 problems both, the line:col-stripped diff is empty, and none are in touched files.
+- **Deviation:** none in product code. The plan's CSS/TSX blocks and the 29-row table were applied by script straight from this doc. Environment only: the epic worktree had no `node_modules`, so `npm ci` ran from the lockfile before the Stage 0 baseline (no tracked changes). `python` is not on PATH, so `python3` was used for the Done-when commands.
+- **For QA:** AC 6 needs a browser: four panels with pairwise-different computed backgrounds, non-admin redirect, Tools item hidden for non-admins, and no `candidate_data.theme` change. No manual smoke run was done in this headless build. `.tsx` files still reference `--accent`, `--bg-secondary`, `--border-color`, and `--color-pass` (child #3's half of the stray-color AC, per Boundaries).
