@@ -191,9 +191,10 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Integration:** none — do not invent new integration coverage.
 
+**Retired by AST-2061 / AST-2062:** create_contact_meteorite deleted; class TestAst1517CreateContactMeteorite removed.
+
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite.py::TestAst1517CreateContactMeteorite \
   tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
   tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
   -q
@@ -389,6 +390,8 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + always
 | Dispatcher notify branch | `src/core/dispatcher.py` | **`TestAst1561BotBlockedNotifyDispatchOne`** |
 
 **Broken / obsolete:** none — additive on AST-1560 `BOT_BLOCKED` scrape path.
+
+AST-2061: content now passes through sanitize_contact_text — see § AST-2062.
 
 **Integration:** none revised.
 
@@ -880,6 +883,8 @@ New public `insert_slack_meteorite` saves one raw Slack blob at `NEW` (`source_k
 
 **Integration:** none — `tests/integration/scenarios/` has no meteorite scenario; do not invent.
 
+AST-2061: content now passes through sanitize_contact_text — see § AST-2062.
+
 **Known pre-existing reds (not this ticket):** on the synced tip, `test_meteorite.py` (`TestAst1517CreateContactMeteorite::test_debug_true_emits_style_d`, `TestAst1559CheckInbox::{test_skip_outcome_zero_rows_monitor_archive,test_sanitize_monitor_subject}`, `TestAst1693RunLandBotBlocked::test_contentful_bot_blocked_lands_with_http_link`) and 12 in `test_dispatcher.py` fail before and after this build — manifest is narrowed by class so they do not gate this ticket.
 
 ## QA test manifest
@@ -906,3 +911,26 @@ New public `insert_slack_meteorite` saves one raw Slack blob at `NEW` (`source_k
 
 **Bible path shasums (record after publish):**
 - `docs/test-bible/core/meteorite.md`
+
+### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
+
+**Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
+
+`create_contact_meteorite` / `_contact_param_looks_like_url` are deleted, so Contact markup can no longer reach `create_meteorite_job` (gazer email ingress keeps it). `sanitize_contact_text` (unescape → `nh3.clean(tags=set())` → unescape, strip) is the one sanitize point for Contact meteorite writes: `insert_slack_meteorite` payload and `_normalize_apply_paste_content` (old regex tag strip gone). Contact-side entry points (land blob, Slack paste unwrap) and the channel gate: [`contact.md`](contact.md) § AST-2062.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retired create path; **[bug-repro]** job leak — retired key through `run_contact_task_dispatch` never calls `create_meteorite_job` | `src/core/meteorite.py` + `src/core/contact.py` | **`TestAst2061NoContactJobWrite`** (2) |
+| **[bug-repro]** insert stores sanitized content; URL query kept; markup-only → `payload is required`; **[bug-repro]** apply_paste drops script text; entity-encoded markup stripped; plain line shaping pinned; helper table (6 params) | `src/core/meteorite.py` | **`TestAst2061ContactSanitize`** (7) |
+
+**Broken / obsolete:** `TestAst1517CreateContactMeteorite` (deleted). `TestAst1561ApplyPaste` / `TestAst2034InsertSlackMeteorite` unchanged — plain-text / URL fixtures pass through the sanitizer unchanged. The double-encoded plain-text residual is accepted by AST-2061 and deliberately not pinned.
+
+**Integration:** none — no scenario covers meteorite sanitize; do not invent.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst2061NoContactJobWrite`
+2. `tests/component/core/test_meteorite.py::TestAst2061ContactSanitize`
+3. Regression: `tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite`, `TestAst1561ApplyPaste`
+
+Full AST-2062 command (all four pages): [`contact.md`](contact.md) § AST-2062.
