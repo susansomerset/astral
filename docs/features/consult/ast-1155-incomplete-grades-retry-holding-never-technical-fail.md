@@ -1099,6 +1099,502 @@ context_tokens≈10500
 [code-rubric] PROCEED (Commit: d3473a040) Bug-repro locks AST-1996
 ```
 
+## Bug: AST-2053 — Normalise letter-grade confidence 0 to 1 in encoded grade decode
+
+**Linear:** [AST-2053](https://linear.app/astralcareermatch/issue/AST-2053) · **Mini-parent:** [AST-2045](https://linear.app/astralcareermatch/issue/AST-2045) · **Publish ref:** `sub/AST-2045/AST-2053-letter-conf0-normalize` · **Project:** Astral Dispatcher · **Ancestor:** AST-1996 block above (per-line `decode_failures` isolation)
+
+**Canon (no frozen list on ticket or mini-parent):** `astral.agent.confidence-bounds` (read — the statute this ticket amends), `patt.task.dispatch-retry` (id-only — routing contract, unchanged).
+
+### As-is
+
+In `src/core/agent.py::_decode_payload`'s non-vet encoded loop, a letter segment with confidence `0` (e.g. `CFC0`) trips the `letter != "X" and conf_d not in (1..5)` branch. The whole line is recorded in `decode_failures` and skipped, so `_run_batch_consult` routes that entity through `_consult_batch_fail_dest`. A model that writes `{letter}0` for "no signal" on both attempts sends an otherwise usable job to terminal error (`a9112ac6-…` → `METEORITE_ERROR_EVALUATE_JD`).
+
+### To-be
+
+A letter segment with confidence `0` decodes as the same letter with confidence `1`. That scores as no signal, so the line produces a normal grade row, there is no `decode_failures` entry, and no retry strike is spent. The statute records this as the one sanctioned exception to the confidence bounds.
+
+### Repro
+
+Fixture (no DB; `batch_entities` as `_run_batch_consult` passes them). Run on tip `06df211db`:
+
+```python
+from src.core.agent import _decode_payload
+ctx = {"batch_entities": [{"astral_job_id": "J0"}, {"astral_job_id": "J1"}]}
+out = _decode_payload("evaluate_meteorite", "grades_encoded",
+    "000|CFC0|ECD5|EHA5|MLB4|MUA3|RWD5|SSC0|TCC0|TPB3|QCA5|GCB4\n001|CFC3|ECD5|ORX0", ctx)
+# today: out["jobs"] -> only J1
+#        out["decode_failures"] -> [{astral_job_id: "J0", pos: 0,
+#          reason: "[evaluate_meteorite] non-X grade requires confidence 1-5, got 0 in segment 'CFC0' (line '000|CFC0|…')"}]
+# to-be: out["jobs"] -> J0 and J1; J0 grades include ("CF","C",1), ("SS","C",1), ("TC","C",1); no "decode_failures" key
+```
+
+### Root cause
+
+The per-segment check in `_decode_payload` (agent.py ~L370) treats every non-X confidence outside 1–5 as a bad line. `_GRADE_SEG` is `^[A-Z]{2}[ABCDFX][0-5]$`, so the only non-X value that can reach that branch is `0`. Letters with 6–9 never match the regex; they fall into `meta` and fail earlier as trailing content on grades-only types. The branch therefore exists only to reject `{letter}0`, which is exactly the slip this ticket sanctions.
+
+### Proposed change
+
+Two files. One `code(AST-2053)` commit.
+
+**1. `src/core/agent.py::_decode_payload` — non-vet encoded segment loop.**
+
+Replace the non-X rejection (the `if letter != "X" and conf_d not in (1, 2, 3, 4, 5): bad_conf = …; break` block) with:
+
+```python
+            # Sanctioned slip (astral.agent.confidence-bounds): models write {letter}0 for "no signal".
+            # {letter}1 scores identically and keeps the letter, so store that instead of failing the line.
+            if letter != "X" and conf_d == 0:
+                conf_d = 1
+```
+
+- The `X` with non-zero confidence branch above it stays unchanged: same `bad_conf`, same `decode_failures` entry, same reason text.
+- The `if bad_conf:` block below stays. It is now reached only by the X branch.
+- Docstring: replace "and a segment whose confidence digit disagrees with its letter (X must be 0, every other letter 1-5), are recorded" with "and an `X` segment with nonzero confidence, are recorded"; then add the line "A letter segment with confidence 0 is normalised to confidence 1 (AST-2053)."
+- **Unchanged:** `_GRADE_SEG`, the vet branch (`grades_encoded_vet_meta` still raises on `LT{letter}0`), the trailing-content branch, the duplicate-code raise, and `_validate_grade_confidence_list` (normalised rows carry 1, so they pass it).
+
+**2. `canon/directives/draft/stat.agent.confidence-bounds.md` — statement + conforming example.**
+
+- `# Statement`: replace the paragraph with
+
+  > Every graded row carries integer `confidence`: `1`–`5` for letter grades `A`–`F`, and `0` with `X`. One sanctioned exception at decode: the encoded grade decoder (`_decode_payload`, non-vet paths) normalises a letter segment written with confidence `0` (`{A-F}0`) to the same letter with confidence `1`, rather than failing the line. No other out-of-bounds confidence is coerced. At scoring, confidence `1` (including `F1`) is treated as no signal; multipliers live in `CONFIDENCE_MULTIPLIERS`.
+
+- `### Conforming`: append `` - `_decode_payload` turns encoded `CFC0` into `{"grade": "C", "confidence": 1}`; the row scores as no signal and the line is not a decode failure. ``
+- Frontmatter: **do not touch** (`approved_by` / `approved_at` are Archie's stamp; see the canon-ownership decision below).
+
+⚠️ **Decision: normal form `{letter}1`, not `X0`.** This is Susan's choice, recorded in the AST-2053 Description. Both forms score as no signal (`_effective_no_signal_for_score`: `conf == 1` → True; `CONFIDENCE_MULTIPLIERS[1] = 0.0`). `{letter}1` keeps the letter, never produces a forbidden QC `X` (AST-1910), and does not count toward `AllLiteralXGradeSetError`. `F0` becomes `F1`, which is no signal, not a dealbreaker.
+
+⚠️ **Decision: applies to every non-vet encoded output type, not only `grades_encoded`.** The confidence check is one shared loop for `grades_encoded`, `_notes` (grade_do/get/like/meteorite_like), `_meta` (qualify), and `_prefilter_links`. Normalising in that one branch fixes the same strike-burn everywhere. Limiting it to grades-only would take an extra conditional and keep the bug on the other tasks. The ticket's Technical scope names this branch with no output-type carve-out.
+
+⚠️ **Decision: no new log line.** The normalisation is silent, matching the decoder's existing segment cleanup (AST-483 strips ` -:` silently). Because the row is stored as `{letter}1`, the original `0` is not recoverable from stored grades. If Susan wants a trace, it would be one `logger.debug` (`stat.logging.debug`); not planned.
+
+⚠️ **Decision: canon ownership.** `canon/docs/README.md` §2 says drafts come from Chuckles or Joan and Archie approves. The statute wording is written out in full above, so fix-board (Joan) reviews it, and Archie's approval is recorded by Archie/Chuckles. make-fix applies the wording verbatim and does not edit frontmatter. Out of scope and left to the canon owners: the byte-identical legacy copy `canon/statutes/astral/agent/astral.agent.confidence-bounds.md`, the `canon/docs/DIRECTIVES-DIRECTORY.md` L224 row, and `canon/docs/CHANGELOG.md`.
+
+### Blast radius
+
+- **`_decode_payload` callers:** `consult._normalize_rubric_task_response` (every rubric-encoded consult task), `agent.do_task`'s non-rubric `_encoded` branch, and the `api_admin` ad-hoc hydrate. All of them now get a grade row instead of a decode failure for `{letter}0`. Downstream `_validate_grade_confidence_in_payload` sees confidence 1 and passes.
+- **`_run_batch_consult`:** fewer `decode_failed` entities. No code change, and routing (`_consult_batch_fail_dest`) is untouched.
+- **Scoring/verdict:** a normalised row contributes no signal, the same as an `X0` or `{letter}1` row today. `IncompleteGradeSetError` completeness is unaffected (the vector is present either way).
+- **Vet path, roster prefilter decode via `_GRADE_SEG`:** the vet path is unchanged. Prefilter shares the non-vet loop and gets the normalisation (see decision above).
+- **Tests (Betty's tree; make-fix does not edit):**
+  - `tests/component/core/test_agent.py::TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` asserts `_decode_payload("task","grades","0|CRA0",…)` raises `confidence 1-5`. It is **already red on tip `06df211db`**: it went stale at `f8d3f9a12`, which moved bad confidence into `decode_failures`. After this fix, `0|CRA0` decodes to `{"jobs":[{…"grades":[{"vector":"CR","grade":"A","confidence":1}]}]}`, so the assert needs a rewrite.
+  - `…::TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta` (L250, `0|CRX2` expected to raise) is **also already red on tip** for the same `f8d3f9a12` reason. It is an X-branch assert that this fix does not change: it should expect a `decode_failures` entry.
+  - `tests/component/core/test_consult.py` ~L6240 (`MAX3` decode failure) is X-branch and stays green.
+  - fix-board / qa-fix own these.
+
+### What must still hold
+
+- `X` with non-zero confidence → `decode_failures` entry with today's exact reason text, and per-entity retry/error (AST-1996).
+- Letter confidence 6–9 (which fails `_GRADE_SEG`) → trailing-content `decode_failures` on grades-only types, exactly as today.
+- Vet path (`grades_encoded_vet_meta`) still raises on confidence 0.
+- `_GRADE_SEG` unchanged; no other coercion (`DEC35` is never shortened, `X3` is never rewritten).
+- Clean payloads keep the exact `{array_key: [...]}` shape with no `decode_failures` key.
+- AST-1155 / `patt.task.dispatch-retry`: one retry, routing by current state, untouched.
+- No prompt, `src/utils/config.py`, or `data/admin/agent_task.json` change.
+
+## Joan fix-board — AST-2053
+
+**Joan fix-board (AST-2053)** — the plan’s `Proposed change` deliberately amends `astral.agent.confidence-bounds` (draft `stat.agent.confidence-bounds.md`) so decode can normalize `{A–F}0` → `{letter}1`. That statute still says letter grades are only `1`–`5` with no decode carve-out, so canon must move before the product change is “in force.” `patt.task.dispatch-retry` stays routing-only (fewer bogus `decode_failures` is aligned). No Archie-only architectural fork left open in the patch (choices are already recorded on the ticket). `docs/canon-index.md` is not on `origin/sub/AST-2045/AST-2053-letter-conf0-normalize`; roster overlap was checked via the cited ids and `canon/directives/draft/stat.agent.confidence-bounds.md` on that ref.
+
+**For Chuckles to post:**
+
+```
+[board-joan]  CANON: REVISE
+What: astral.agent.confidence-bounds — Statement + Conforming must record sanctioned non-vet `{letter}0`→`{letter}1` decode normalisation — per plan-fix wording in draft statute
+```
+
+**Stdout:**
+
+```text
+AST-2053 board-joan done — CANON: REVISE — confidence-bounds decode exception.
+```
+
+**Chuckles routing:** the statute change Joan names is already inside AST-2053's approved Component scope (`canon/directives/draft/stat.agent.confidence-bounds.md`), so make-fix lands it on this ticket; no separate canon gap child. Betty's TESTS: REVISE routes to a test-gap sibling.
+
+
+## Radia review — AST-2053 (round 1)
+
+[code-rubric]
+
+**Ticket:** AST-2053  
+**Publish ref:** `2456e6194ccbd1da16f619a180f3b2ef2e872a7b` (`origin/sub/AST-2045/AST-2053-letter-conf0-normalize`)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — ids resolved from `canon/directives/**` at tip)  
+**Overall:** FIX-NOW  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+| patt.task.dispatch-retry | A | | |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** only (`CANON: REVISE` pre-make-fix); post-tip draft `stat.agent.confidence-bounds.md` + `_decode_payload` match the plan-fix **Proposed change**. No `validate-plan` fix-mode column.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — Betty **TESTS: REVISE** routed to sibling **AST-2057** (spawn brief); no qa-fix on this ticket.  
+- **## What must still hold — OK** (verified on tip for AST-2053 surface in `src/core/agent.py` + draft statute):  
+  - `X` + nonzero conf → `bad_conf` → `decode_failures` (unchanged).  
+  - Non-matching `_GRADE_SEG` segments → grades-only trailing `decode_failures` (unchanged).  
+  - `grades_encoded_vet_meta` still rejects letter conf `0` via `ValueError` (separate branch, L288–291).  
+  - `_GRADE_SEG` unchanged; only `{letter}0` → `conf_d = 1` in shared non-vet loop.  
+  - Clean payloads omit `decode_failures` key (unchanged).  
+  - No edits to dispatch retry routing, prompts, `config.py`, or `agent_task.json` in `code(AST-2053)`.
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket scope in mandated review diff** (`review-child` §5.4): `git diff origin/ftr/AST-2045-letter-conf0-normalize...origin/sub/AST-2045/AST-2053-letter-conf0-normalize` is **13 files / ~1.4k insertions**, not the two-file AST-2053 fix. `origin/ftr/AST-2045-letter-conf0-normalize` tips at `dff04eb4d` (AST-2032); publish ref stacks **AST-2029–AST-2052** product/docs/tests plus AST-2053 (`git log` shows 40+ commits on top of ftr). Sibling **product** paths in that diff include `src/utils/formatting.py`, entity-scoped `src/core/agent.py` hunks beyond conf-0 normalisation, and UI modals (`BatchAgentDataModal.tsx`, `BatchExecutionModal.tsx`, `JobDetailModal.tsx`). This ticket cannot be certified on the skill-mandated diff until Chuckles refreshes **ftr** to the mini-parent rollup tip and re-syncs publish ref so `ftr...sub` isolates AST-2053 (same class of remediation as AST-2052 Radia note in `ast-2030` issue doc). **Default:** do not advance to User Testing on this publish ref until the review base is corrected; treat `2d1b73da1` (`code(AST-2053)`) as the known-good product slice meanwhile.
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Isolated AST-2053 product slice** (`2d1b73da1`): matches plan-fix — canon draft Statement + Conforming example; decode replaces non-X `conf_d not in 1..5` rejection with `{letter}0` → `conf_d = 1`; docstring updated per plan.  
+- **Sibling test carry** in mandated diff: `tests/component/core/test_agent_ast2030.py`, `test_agent_ast2052.py`, `docs/test-bible/core/agent.md` — expected merge-tests carry; not scored as defects.  
+- **Known-red agent decode tests** (plan **Blast radius**): `TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` still expects `ValueError` on `0|CRA0`; `TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta` still expects `ValueError` on `0|CRX2` (AST-1996 shape is `decode_failures`). Ownership **AST-2057**; not a missing `[bug-repro]` on this ticket.  
+- **Dual statute copy:** `canon/directives/draft/stat.agent.confidence-bounds.md` updated; `canon/statutes/astral/agent/astral.agent.confidence-bounds.md` still pre-exception wording — plan-fix explicitly defers legacy mirror to canon owners.  
+- **sibling test carry:** paths above in mandated diff.
+
+## What's solid
+
+- Conf-0 normalisation is minimal, statute-backed, and preserves vet isolation and AST-1996 X / trailing-meta behaviour.  
+- `patt.task.dispatch-retry` contract untouched; fewer spurious `decode_failures` is aligned with retry intent.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (fix-now: review-base / cross-ticket) | Normal mini-parent (live ftr, not orphaned-to-dev) | **Review Posted** → fix **ftr** / publish ref stacking → re-run Radia or narrow diff → then **resolve-child** if needed → **User Testing**; do **not** use orphaned straight-to-`dev` path. |
+
+**Recommended actions (downstream — not executed here):** Refresh `origin/ftr/AST-2045-letter-conf0-normalize`; re-cut or rebase `origin/sub/AST-2045/AST-2053-letter-conf0-normalize` so mandated diff is AST-2053-only; append this artifact to issue doc; `docs(AST-2053): Radia review — findings`; push sub; post slim upshot `--as radia`.
+
+---
+
+```
+[code-rubric] REVIEW (Commit: 2456e6194) ftr lag; sibling scope
+```
+
+context_tokens≈N
+
+
+## Radia review — AST-2053 (round 2)
+
+[code-rubric]
+
+**Ticket:** AST-2053  
+**Publish ref:** `d1aa65ba4f9fe35c9bc40e36b4eb9fe3c2dab428` (`origin/sub/AST-2045/AST-2053-letter-conf0-normalize`)  
+**Review base:** `origin/ftr/AST-2045-letter-conf0-normalize` @ `06df211dbd782ff068fd5893fdf117dfd0059feb` (refreshed from `origin/dev`)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — ids resolved from `canon/directives/**` at tip)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+| patt.task.dispatch-retry | A | | |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** (`CANON: REVISE` pre-make-fix); implemented draft + decode match plan-fix **Proposed change**. Aligned with board intent post-tip.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — **TESTS: REVISE** routed to sibling **AST-2057**; no qa-fix on this ticket.  
+- **## What must still hold — OK** — on the product diff vs refreshed ftr: X/nonzero → `decode_failures`; vet `grades_encoded_vet_meta` still rejects conf `0` with `ValueError`; `_GRADE_SEG` and non-{letter}0 coercion unchanged; clean payloads omit `decode_failures`; dispatch-retry routing untouched; no config/prompt/`agent_task` edits in product files.
+
+## Findings
+
+### fix-now
+
+(none) — round-1 review-base / cross-ticket scope **addressed** (mandated diff is exactly 3 paths: draft statute, plan doc, `src/core/agent.py`).
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Round 2:** Re-reviewed after ftr refresh; product slice matches `code(AST-2053)` intent (conf-0 → conf-1 in shared non-vet loop + statute carve-out).  
+- **Legacy statute mirror** `canon/statutes/astral/agent/astral.agent.confidence-bounds.md` still pre-exception text — plan-fix explicitly out of scope for this ticket; canon owners.  
+- **Test debt** (`CRA0` / `CRX2` asserts) documented in plan **Blast radius**; **AST-2057** owns rewrites — not a gap on this ticket given board opt-out.
+
+## What's solid
+
+- Minimal decode change with draft canon moved in lockstep; fewer false `decode_failures` without weakening AST-1996 per-line isolation or vet strictness.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal mini-parent (live ftr) | Ticket already **Review Posted** — **do-all-the-things** §3h clean-review shortcut → **User Testing** directly; `resolve-child` **skipped**. |
+
+**Recommended actions (downstream — not executed here):** Append this round-2 artifact; `docs(AST-2053): Radia review — clean`; push sub; post slim upshot `--as radia`; advance to **User Testing** if not already there.
+
+---
+
+```
+[code-rubric] PROCEED (Commit: d1aa65ba4) Conf-0 decode; canon aligned
+```
+
+context_tokens≈N
+
+
+### Test delivery — AST-2053
+
+No test-tree delivery on this sub (docs-acceptance). Betty's `[board-betty] TESTS: REVISE` coverage — the `{letter}0 → {letter}1` repro, the `0|CRA0` / `0|CRX2` stale-assert rewrites, and the AST-2001 bible block — lands on test-gap sibling AST-2057, which is blocked by this ticket.
+
+## Bug: AST-2057 — Letter-confidence-0 normalisation tests + bible (test gap for AST-2053)
+
+**Linear:** [AST-2057](https://linear.app/astralcareermatch/issue/AST-2057) · **Mini-parent:** [AST-2045](https://linear.app/astralcareermatch/issue/AST-2045) · **Publish ref:** `sub/AST-2045/AST-2057-letter-conf0-tests` · **Project:** Astral Dispatcher · **Fixes gap from:** `[board-betty] TESTS: REVISE` on AST-2053
+
+**Canon:** none beyond AST-2053's (`astral.agent.confidence-bounds` — the tests assert its new decode exception). Test-tree only; no `src/`.
+
+**Lane note:** every edit below is under `tests/` or `docs/test-bible/`, so it is Betty's to land (qa-fix). This block specifies the delta; the engineer does not edit the test tree.
+
+### As-is
+
+On the AST-2053 tip (`2d1b73da1`, merged into ftr), `tests/component/core/test_agent.py` still asserts pre-AST-1996 raise behavior in two places, and nothing covers the `{letter}0 → {letter}1` normalisation:
+
+- `TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` expects `_decode_payload("task","grades","0|CRA0",…)` to raise `confidence 1-5`. It now decodes to a grade row with confidence 1.
+- `TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta` (its last assert) expects `0|CRX2` to raise. It has been stale since `f8d3f9a12`, which made a bad X confidence a per-line `decode_failures` entry.
+- The `docs/test-bible/core/agent.md` AST-2001 block says "X-confidence, non-X confidence bounds … still raise for the whole payload". Both claims are false today.
+
+Baseline: `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` gives **2 failed, 8 passed**, and the two failures are exactly the tests above.
+
+### To-be
+
+The decode tests assert the shipped contract:
+
+- A letter with confidence 0 decodes as that letter with confidence 1, with no `decode_failures`. This gets a bug-repro test that is red before AST-2053 and green after.
+- A bad X confidence is a per-line `decode_failures` entry.
+- A letter with confidence 6–9 is a trailing-content `decode_failures` entry.
+- The vet path still raises.
+
+The bible matches. The same `-k` run is **all green**.
+
+### Repro
+
+Literal outputs captured with `_decode_payload` at the AST-2053 tip and with the pre-fix `agent.py` (`055c53c2a`). `ctx = {"batch_entities": [{"astral_job_id": …}, …]}` throughout, matching the file's `_batch_entities` helper.
+
+| Input (`task`, output type) | Pre-fix | Tip |
+| --- | --- | --- |
+| `"grades"`, `0\|CRA0`, ents `job-1` | `decode_failures` "non-X grade requires confidence 1-5, got 0 …" | `{"jobs":[{"astral_job_id":"job-1","grades":[{"vector":"CR","grade":"A","confidence":1}]}]}` |
+| `"grades"`, `000\|CFC0\|ECD5\|SSC0\|TCC0\|QCA5` + `001\|CFC3\|ECD5\|ORX0`, ents `job-0`,`job-1` | `jobs` = `[job-1]`; `decode_failures` = job-0 (`CFC0`) | `jobs` = `[job-0, job-1]`; job-0 grades `CF/C/1, EC/D/5, SS/C/1, TC/C/1, QC/A/5`; **no** `decode_failures` key |
+| `"grades"`, `0\|CRX2`, ents `job-1` | `decode_failures` (same on both) | `{"jobs":[],"decode_failures":[{"astral_job_id":"job-1","pos":0,"reason":"[task] grade X requires confidence digit 0, got 2 in segment 'CRX2' (line '0\|CRX2')"}]}` |
+| `"grades"`, `0\|CRA7`, ents `job-1` | same on both | `{"jobs":[],"decode_failures":[{"astral_job_id":"job-1","pos":0,"reason":"[task] unexpected trailing content in grades-only line: '0\|CRA7'"}]}` |
+| `"grades_encoded_notes"`, `0\|CRF0\|note text`, ents `job-1` | `decode_failures` (CRF0) | `{"jobs":[{"astral_job_id":"job-1","grades":[{"vector":"CR","grade":"F","confidence":1}],"notes":"note text"}]}` |
+| `"grades_encoded_vet_meta"`, `0\|LTA0\|https://x.com`, ents `job-1` | raises | raises `ValueError` "[task] non-X grade requires confidence 1-5, got 0 in segment 'LTA0' …" |
+
+### Root cause
+
+Two product changes landed without matching test-tree updates. `f8d3f9a12` moved a bad confidence digit from a raise to `decode_failures`, and AST-2053 (`2d1b73da1`) normalised `{letter}0`. The asserts and bible prose were never moved with them. The product is correct; the tests are stale.
+
+### Proposed change
+
+One `test(AST-2057)` commit by Betty: `tests/component/core/test_agent.py` + `docs/test-bible/core/agent.md`.
+
+**1. `TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta` — replace the last assert (the `pytest.raises(… "grade X requires confidence digit 0")` on `0|CRX2`) with:**
+
+```python
+        # Bad X confidence is a per-line decode failure since f8d3f9a12, not a payload raise.
+        out = agent_mod._decode_payload("task", "grades", "0|CRX2", ctx)
+        assert out["jobs"] == []
+        assert out["decode_failures"] == [{
+            "astral_job_id": "job-1",
+            "pos": 0,
+            "reason": "[task] grade X requires confidence digit 0, got 2 in segment 'CRX2' (line '0|CRX2')",
+        }]
+```
+
+The bad-position raise and the trailing-content assert above it stay as they are.
+
+**2. `TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` — replace the `pytest.raises(ValueError, match="confidence 1-5")` block with:**
+
+```python
+        # AST-2053: letter confidence 0 is normalised to 1, not rejected.
+        assert agent_mod._decode_payload("task", "grades", "0|CRA0", ctx) == {
+            "jobs": [{"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "A", "confidence": 1}]}],
+        }
+```
+
+The two `_validate_grade_confidence_in_payload` asserts above it are unchanged.
+
+**3. New in `TestDecodePayload`, after `test_ast1996_notes_type_tail_is_not_a_decode_failure` — bug-repro:**
+
+```python
+    def test_ast2053_letter_conf0_normalised_to_conf1(self) -> None:
+        # AST-2053 repro (AST-2045 production shape): {letter}0 decodes as {letter}1; no decode failure.
+        ctx = {"batch_entities": _batch_entities("job-0", "job-1")}
+        out = agent_mod._decode_payload(
+            "task", "grades", "000|CFC0|ECD5|SSC0|TCC0|QCA5\n001|CFC3|ECD5|ORX0", ctx,
+        )
+        assert [j["astral_job_id"] for j in out["jobs"]] == ["job-0", "job-1"]
+        assert [(g["vector"], g["grade"], g["confidence"]) for g in out["jobs"][0]["grades"]] == [
+            ("CF", "C", 1), ("EC", "D", 5), ("SS", "C", 1), ("TC", "C", 1), ("QC", "A", 5),
+        ]
+        assert "decode_failures" not in out
+```
+
+Red on pre-fix `agent.py` (`jobs` is only `job-1`), green on the tip.
+
+**4. New in `TestDecodePayload`, directly after #3 — guards for what AST-2053 must not change:**
+
+```python
+    def test_ast2053_normalisation_boundaries(self) -> None:
+        ctx = {"batch_entities": _batch_entities("job-1")}
+        # Letter confidence 6-9 fails _GRADE_SEG: still a trailing-content decode failure, never coerced.
+        out = agent_mod._decode_payload("task", "grades", "0|CRA7", ctx)
+        assert out["jobs"] == []
+        assert out["decode_failures"][0]["reason"] == "[task] unexpected trailing content in grades-only line: '0|CRA7'"
+        # Normalisation applies on every non-vet encoded type (shared loop); notes tail still kept.
+        notes = agent_mod._decode_payload("task", "grades_encoded_notes", "0|CRF0|note text", ctx)
+        assert notes["jobs"][0]["grades"] == [{"vector": "CR", "grade": "F", "confidence": 1}]
+        assert notes["jobs"][0]["notes"] == "note text"
+        # Vet path is out of AST-2053 scope: LT{letter}0 still raises for the whole payload.
+        with pytest.raises(ValueError, match="non-X grade requires confidence 1-5, got 0"):
+            agent_mod._decode_payload("task", "grades_encoded_vet_meta", "0|LTA0|https://x.com", ctx)
+```
+
+**5. `docs/test-bible/core/agent.md`.**
+
+- **AST-2001 block, prose:** replace "Bad position, X-confidence, non-X confidence bounds, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload." with "Bad position, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload; an X segment with nonzero confidence is a per-line `decode_failures` entry (since `f8d3f9a12`); a letter with confidence 0 is normalised to 1 (**AST-2053**, see AST-2057)."
+- **AST-2001 block, first table row:** change "(flipped from raise; bad-position + X-confidence raises kept)" to "(flipped from raise; bad-position raise kept; `0|CRX2` → X-branch `decode_failures` entry)".
+- **New block directly after the AST-2001 block** (before `### AST-2006`):
+
+  ```markdown
+  ### AST-2057 · AST-2045 (bug-repro — AST-2053 letter-confidence-0 normalisation)
+
+  Test gap for **AST-2053** (`2d1b73da1`): in `_decode_payload`'s non-vet encoded loop, a letter segment with confidence `0` (`{A-F}0`) decodes as the same letter with confidence `1` (no signal) — no `decode_failures` entry. Unchanged: X with nonzero confidence → `decode_failures`; letter confidence 6–9 fails `_GRADE_SEG` → trailing-content `decode_failures`; vet branch (`grades_encoded_vet_meta`) still raises on `LT{letter}0`. Statute: `astral.agent.confidence-bounds`.
+
+  | Area | Source | Component tests |
+  | --- | --- | --- |
+  | `CFC0`/`SSC0`/`TCC0` line decodes as conf 1, both entities in `jobs`, no `decode_failures` key | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1`** (**bug-repro**) |
+  | `0\|CRA7` trailing failure; `_notes` `CRF0` → `F/1` with notes kept; vet `LTA0` raises | same | **`…::test_ast2053_normalisation_boundaries`** (guard) |
+  | `0\|CRA0` → `A/1` grade row (flipped from raise) | same | **`TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence`** |
+  | `0\|CRX2` → X-branch `decode_failures` entry (flipped from raise) | same | **`TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta`** |
+
+  **Integration:** none.
+  ```
+
+⚠️ **Decision: keep the existing test names.** `…_invalid_confidence` no longer reads accurately, but renaming changes the node id that the bible and the AST-2001 history cite. These are assert-only edits; a rename is Betty's call.
+
+⚠️ **Decision: one guard function (#4) rather than three.** The boundaries are the three "What must still hold" items from AST-2053. They share one fixture, so one function means fewer lines and the bible gets one row. The vet assert is included because no existing test covers vet confidence 0 (searched `tests/`: no `LT{letter}0` case).
+
+⚠️ **Decision: no `test_consult.py` change.** Batch routing of `decode_failures` is unchanged by AST-2053, and the existing `MAX3` X-branch case (~L6240) still holds. That file also cannot be collected in this environment (`asyncpg` missing).
+
+### Blast radius
+
+- Test-tree and bible only, with no `src/` touch. Product behavior was verified by AST-2053 test-fix and Radia.
+- Touches only the two decode test classes. The other 45 pre-existing `test_agent.py` reds (config/tracker drift unrelated to decode) stay out of scope, per the AST-2057 Boundaries.
+- The bible edits change only the AST-2001 block's prose and its first row, plus the new AST-2057 block. The other AST-2001 rows are untouched.
+
+### What must still hold
+
+- AST-2001 bug-repro tests (`test_ast1996_*`) stay green and unchanged.
+- The bad-position raise and trailing-content `decode_failures` assert in `test_rejects_bad_positions_and_records_trailing_meta` are kept.
+- No production code change; the statute (AST-2053) is not touched.
+- Pass criterion: `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` → **0 failed** (12 passed: the 8 already green + the 2 rewritten + the 2 new). The bug-repro (#3) is red against pre-fix `agent.py` `055c53c2a`.
+
+
+## Joan fix-board — AST-2057
+
+AST-2057 is test-tree and bible only: it rewrites stale decode asserts, adds bug-repro/guard coverage for the behaviour AST-2053 already shipped, and explicitly does not touch `src/` or statute files. Tests and bible prose *reference* `astral.agent.confidence-bounds`; they do not contradict it or ask for a new carve-out.
+
+**For Chuckles to post:**
+
+```
+[board-joan]  CANON: OK
+```
+
+**Stdout:**
+
+```text
+AST-2057 board-joan done — CANON: OK.
+```
+
+
+## Radia review — AST-2057
+
+[code-rubric]
+
+**Ticket:** AST-2057  
+**Publish ref:** `08ee796487136c558a18a5bd9485ff0d6007ac6a` (`origin/sub/AST-2045/AST-2057-letter-conf0-tests`)  
+**Review base:** `origin/ftr/AST-2045-letter-conf0-normalize` @ `3d51b06c7271937474299f4599dca0761408317a` (AST-2053 on ftr)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — id resolved from `canon/directives/**` at ftr tip)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+
+*(Issue doc: canon limited to AST-2053’s statute; test-tree only — tests document and assert the sanctioned `{letter}0`→`{letter}1` decode exception, no contradictory carve-out.)*
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** `CANON: OK`; test/bible delta matches plan-fix **Proposed change** items 1–5.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — `TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1` pins AST-2053 **To-be**: production-shaped two-line payload with `CFC0`/`SSC0`/`TCC0` on line `000`; asserts both `job-0` and `job-1` in `jobs`; asserts `job-0` grade tuples `("CF","C",1)`, `("SS","C",1)`, `("TC","C",1)` (same letter, confidence **1**); asserts `"decode_failures" not in out`. Would fail pre-fix AST-2053 (`jobs` only `job-1`, `CFC0` in `decode_failures`) per bible red/green record — not tautological. *(First-line `[bug-repro]` comment absent in source; bible/manifest name the node — see advisory.)*
+- **## What must still hold — OK** — `test_ast1996_*` untouched; `test_rejects_bad_positions_and_records_trailing_meta` keeps bad-position raise + trailing `decode_failures`; rewrites only `0|CRX2` and `0|CRA0` per plan; `git diff` `src/` + `canon/` vs ftr is **empty** (empty `code(AST-2057)` publish commit confirms test-gap only).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry (merge-tests):** mandated diff also includes `tests/component/frontend/components/test_ArtifactEditor.test.tsx`, `test_ArtifactsBaseResumeContent.test.tsx`, and matching `docs/test-bible/frontend/*` rows from **AST-2056** / `origin/tests` — score as carry, not AST-2057 defect (per spawn brief).
+- **Bug-repro tagging:** `test_ast2053_letter_conf0_normalised_to_conf1` uses an AST-2053 repro comment, not a first-line `[bug-repro]` marker; bible § AST-2057 manifest lists it as **[bug-repro]** — cosmetic vs qa-fix machinery only.
+- **Boundaries:** bible documents pre-existing `test_agent.py` reds outside the `-k "TestDecodePayload or TestDecodeAndAuditBranches"` gate; plan scope respected.
+
+## What's solid
+
+- Plan-faithful rewrites of stale `CRA0` / `CRX2` asserts plus guard `test_ast2053_normalisation_boundaries` (6–9 trailing, `_notes` `CRF0`, vet `LTA0` raise).
+- Bible AST-2001 prose/row + new AST-2057 block align with tests and AST-2053 statute.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | AST-2045 mini-parent (live ftr) | **Review Posted** → clean-review shortcut → **User Testing**; `resolve-child` **skipped**. |
+
+**Recommended actions (downstream — not executed here):** Append artifact; `docs(AST-2057): Radia review — clean`; push sub; post slim upshot `--as radia`.
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 08ee79648) Bug-repro locks AST-2053
+```
+
+context_tokens≈N
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
