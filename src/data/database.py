@@ -5619,6 +5619,7 @@ def list_rubric_vectors(
     task_key: str,
     *,
     current_only: bool = True,
+    code: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     if not candidate_id or not str(candidate_id).strip() or not task_key:
         return []
@@ -5635,7 +5636,12 @@ def list_rubric_vectors(
             params: List[Any] = [candidate_id, task_key]
             if current_only:
                 sql += " AND current = 1"
-            sql += " ORDER BY code ASC"
+            if code is not None:
+                # One criterion's history, chronological (AST-2066); code match is case-insensitive like sync.
+                sql += " AND UPPER(code) = ? ORDER BY created_at ASC, rowid ASC"
+                params.append(str(code).strip().upper())
+            else:
+                sql += " ORDER BY code ASC"
             rows = conn.execute(sql, tuple(params)).fetchall()
             return [
                 {
@@ -5654,6 +5660,58 @@ def list_rubric_vectors(
                 }
                 for r in rows
             ]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def set_current_rubric_vector(
+    candidate_id: str, task_key: str, code: str, rubric_vector_uuid: str
+) -> str:
+    """Move current=1 to rubric_vector_uuid within (candidate_id, task_key, code) (AST-2066).
+
+    One transaction. Never touches content/label/fingerprint. Importance is not
+    versioned: the leaving current row's importance carries onto the target.
+    Raises ValueError when the uuid is not a row of this criterion.
+    """
+    cid = (candidate_id or "").strip()
+    tk = (task_key or "").strip()
+    ck = (code or "").strip().upper()
+    uid = (rubric_vector_uuid or "").strip()
+    if not cid or not tk or not ck or not uid:
+        raise ValueError("candidate_id, task_key, code and rubric_vector_uuid required")
+    now = _utc_now()
+
+    def _with_conn() -> str:
+        conn = _get_connection()
+        try:
+            _ensure_rubric_vector_table(conn)
+            # Carry live importance from the leaving current row; target keeps its own when none.
+            cur = conn.execute(
+                """UPDATE rubric_vector
+                      SET current = 1, updated_at = ?,
+                          importance = COALESCE((
+                              SELECT importance FROM rubric_vector
+                               WHERE candidate_id = ? AND task_key = ? AND UPPER(code) = ?
+                                 AND current = 1 AND rubric_vector_uuid != ?
+                               LIMIT 1), importance)
+                    WHERE rubric_vector_uuid = ?
+                      AND candidate_id = ? AND task_key = ? AND UPPER(code) = ?""",
+                (now, cid, tk, ck, uid, uid, cid, tk, ck),
+            )
+            if cur.rowcount == 0:
+                conn.rollback()
+                raise ValueError(f"rubric_vector_uuid {uid!r} is not a version of {cid}/{tk}/{ck}")
+            conn.execute(
+                """UPDATE rubric_vector
+                      SET current = 0, updated_at = ?
+                    WHERE candidate_id = ? AND task_key = ? AND UPPER(code) = ?
+                      AND current = 1 AND rubric_vector_uuid != ?""",
+                (now, cid, tk, ck, uid),
+            )
+            conn.commit()
+            return uid
         finally:
             conn.close()
 
