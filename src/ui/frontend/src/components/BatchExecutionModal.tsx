@@ -6,11 +6,13 @@ import api from "../lib/api"
 
 interface Props {
   runId: string | null
+  /** Entity whose slice of the run's agent data to show (job modal passes the open job). Omitted → whole batch. */
+  entityId?: string
   onClose: () => void
 }
 
 /** One run's agent prompt panes + log table, as Execution History shows them (AST-1865). Stacks over the job modal. */
-export default function BatchExecutionModal({ runId, onClose }: Props) {
+export default function BatchExecutionModal({ runId, entityId, onClose }: Props) {
   // Logs keyed by the run they were fetched for: loading is derived (no sync setState in the effect),
   // and a late response for a previous run never shows under the current one.
   const [fetched, setFetched] = useState<{ runId: string; logs: LogEntry[] } | null>(null)
@@ -30,7 +32,7 @@ export default function BatchExecutionModal({ runId, onClose }: Props) {
     <Modal open={!!runId} onClose={onClose} title={runId ?? ""} size="wide" stacked showFooter={false}>
       {runId ? (
         <>
-          <BatchAgentDataPanes batchId={runId} />
+          <BatchAgentDataPanes batchId={runId} entityId={entityId} />
           <BatchLogViewer logs={logs} loading={loading} />
         </>
       ) : null}
