@@ -434,3 +434,9 @@ All in `src/core/agent.py`. No change to `src/utils/formatting.py`, the API, the
 - Parent §3: SYSTEM and CACHE_A–D show as today, except that blank rows are now omitted in the entity view only.
 - Parent §7 / AC9: batch-wide views (no `entity_id`) are byte-identical to before.
 - AST-2030 AC8 / parent AC10: no change under `src/ui/api/` or `src/data/`.
+
+## Joan fix-board (AST-2052)
+
+[board-joan]  CANON: OK
+
+The fix stays on the existing `batch_id` + optional `entity_id` read path in `src/core/agent.py`: it reshapes what `get_agent_data` returns for the run modal (envelope + preamble via `_entity_call_view`, blank-row drop) and explicitly leaves `get_entity_agent_story` on `_slice_entity_block`. That matches **patt.entity.batch-processing** — `batch_id` remains the join key; ids only refine which slice of stored blocks you see, with no new claim key or storage shape. **stat.logging.debug** adds an ungated `Response from _entity_call_view` with the full string; no new `debug=` plumbing and no statute carve-out. D1/D2-2052 (literal `[entity_id=` preamble, accepted partial JSON envelope suffix) are product read-path choices, not conflicts with in-force directive text; nothing in canon needs amending for this patch.
