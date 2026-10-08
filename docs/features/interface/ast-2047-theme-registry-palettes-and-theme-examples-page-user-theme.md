@@ -820,3 +820,19 @@ The URL fix makes every consumer receive the **real** `UI_CONFIG` for the first 
 - `loadUiConfig` keeps its single-flight caching and its `.catch` fallback to `{ column_types: {} }`.
 - AST-2047 AC 2: no theme id literals in `.ts`/`.tsx`. AC 6: one panel per registry id with the shared sample, GET-only.
 - `CandidateProfile`, `AdminSessionCoverLetter`, `AdminAnthropicAdHoc`, `IntakePreamblePanel`, `IntakeTopicMenuPanel`, and `NavigationShell` already use `/api/ui_config` and are not touched.
+
+### fix-board — Joan (CANON: OK)
+
+
+**Plan-fix read:** `origin/sub/AST-2042/AST-2065-ui-config-url` — `## Bug: AST-2065` in the AST-2047 sibling plan doc.
+
+**Proposed change:** Three one-line literal swaps: `"/api/system/ui_config"` → `"/api/ui_config"` in `uiConfig.ts`, `ArtifactEditor.tsx`, and `ArtifactsBaseResumeContent.tsx`. No server edits; real route is `system_bp` at `/api` + `@system_bp.route("/ui_config")` → `/api/ui_config`.
+
+**Roster skim (no R1–R7):** Overlap with `astral.layers.ui-config-driven-business-logic` (config resolved in `src/ui/api/` before React), `astral.ui.frontend-file-placement` (edits stay in `lib/` / `components/` / `pages/`), and `patt.ui.endpoint` (protected JSON routes). Parent/AST-2047 **Canon Scope:** none (locked at Discussion). No in-force directive names `/api/system/ui_config` or forbids correcting the client to the live route.
+
+**Canon question:** Does this fix conflict with or require updating any active statute/pattern?
+
+- **No conflict:** Pointing fetches at `/api/ui_config` matches how the API already serves `UI_CONFIG` (+ merged `BUILD_CONFIG` fields). That supports config-driven UI, not duplicate business rules in React.
+- **No canon edit:** Blast radius (list frozen columns, column types, accent palette, etc.) is documented product behavior once the config actually loads — not an ambiguous statute or a new precedent that belongs in `canon/`.
+- **ESCALATE:** Not warranted; architectural choice is already recorded on the ticket (include edits 2–3 vs narrow fix is product scope for Chuckles/make-fix, not Archie canon).
+
