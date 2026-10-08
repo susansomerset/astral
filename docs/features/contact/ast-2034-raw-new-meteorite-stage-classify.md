@@ -315,3 +315,11 @@ stat.logging.error | A | | `logger.exception` on insert/classify/fan-out throws 
 
 context_tokens≈28000
 ```
+
+## Resolution
+
+**2026-10-08 — resolve-child (Ada), against Radia review `8cfe7c40f` (CLEAN)**
+
+- **Fix-now:** none. No product change.
+- **Discuss — AC2 vs direct-entry boundary:** No direction from Susan, so I took Radia's **Default**. AST-2034 coverage stays on the caller-supplied payload (`insert_slack_meteorite` trims outer whitespace only). Stripping the mention and command token and unwrapping Slack links are AST-2035's job and are not tested or implemented here. Susan can reverse this; doing so would mean widening this ticket's scope into `src/core/contact.py`, which belongs to AST-2035.
+- **Advisory:** sibling test carry is the expected `merge-tests` delivery. Plan fidelity and the estimate of 3 were confirmed. No action needed.
