@@ -8,8 +8,19 @@ from bisect import bisect_left
 from typing import Any, Dict, List, Optional
 from urllib.parse import unquote, urlparse
 
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 # Compact grades_encoded row: 000|DTA5|GCA4|…
 _ENCODED_GRADE_LINE = re.compile(r"^\d{3}\|")
+# Positional batch label at a line start, after a quote, or after a literal "\n" escape
+# (JSON-enveloped agent_payload). Group 1 = [index=NNN] form, group 2 = bare NNN before ':' or '|'.
+_POSITIONAL_LABEL = re.compile(
+    r'(?:^|(?<=")|(?<=\\n))(?:\[index=(\d{3})\](?=:)|(\d{3})(?=[:|]))', re.MULTILINE
+)
+# Hydrated label written by hydrate_entity_labels; same boundaries as _POSITIONAL_LABEL.
+_ENTITY_LABEL = re.compile(r'(?:^|(?<=")|(?<=\\n))\[entity_id=([^\]\s]+)\](?=[:|])', re.MULTILINE)
 
 
 def enumerate_array(
@@ -105,6 +116,22 @@ def parse_enumerate_array(text: str) -> Dict[int, str]:
         except ValueError:
             continue
     return result
+
+
+def hydrate_entity_labels(text: str, entity_ids: Optional[List[str]]) -> str:
+    """Replace positional batch labels (NNN:, [index=NNN]:, NNN|) with [entity_id=<id>] (AST-2029).
+    Position N maps to entity_ids[N]; out-of-range positions and unlabeled text stay unchanged.
+    Storage-only — wire text must never be passed through this."""
+    if not text or not entity_ids:
+        return text
+
+    def _sub(m: "re.Match[str]") -> str:
+        pos = int(m.group(1) or m.group(2))
+        return f"[entity_id={entity_ids[pos]}]" if pos < len(entity_ids) else m.group(0)
+
+    out, n = _POSITIONAL_LABEL.subn(_sub, text)
+    logger.debug("Response from hydrate_entity_labels: %s labels on %s ids", n, len(entity_ids))
+    return out
 
 
 def normalize_link(url: str) -> str:
