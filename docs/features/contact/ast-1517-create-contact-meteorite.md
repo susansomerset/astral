@@ -909,3 +909,15 @@ Each page gets a new `### AST-2062 · AST-2055 (Estelle pinhole — tests for AS
 - Engineer test-tree ban: Katherine does not edit `tests/` or `docs/test-bible/`. Betty lands this.
 
 ⚠️ **Decision: name references.** AC2 reads "no test still references `create_contact_meteorite` or the `save_candidate_*` skills". Read literally, that conflicts with AC1's job-leak repro, which must name the retired task key to prove it's dead. I read AC2 as "no test exercises them as live". Retirement and repro tests may name `create_contact_meteorite` only to assert absence. `save_candidate_*` is avoided entirely (fake `save_profile_field` / `sample_skill` keys are used instead).
+
+## Joan fix-board — AST-2062
+
+[board-joan]  CANON: OK
+
+AST-2062 board-joan done — CANON: OK.
+
+**Triage (stdout only; Chuckles posts the block above):** Read `## Bug: AST-2062` on `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests` (full As-is → What must still hold). Scope is `tests/**` and `docs/test-bible/**` only — no `src/`, no `canon/`, no `data/`. Skimmed in-force corpus via `canon/docs/DIRECTIVES-DIRECTORY.md` and contact/logging/layers/registry orchestration roles (`patt.contact.command-intercept`, `stat.logging.info.contact`, layer/import/external rules, `orch.roles.betty-owns-test-tree` / `astral.git.engineer-test-tree-ban`).
+
+**One question:** Does this plan-fix require changing or conflict with any in-force directive?
+
+**Answer:** No. Tests and bible rows encode AST-2061 product behavior already judged canon-neutral on AST-2061; they do not introduce new product rules or contradict active patterns (commands/skills registry shape, listen logging, external I/O placement). Betty-owned test-tree work matches role statutes; Katherine is not asked to land test paths. The spliced `config.py` exec test validates the shipped import-time assert without redefining canon. No F3 canon landing indicated.
