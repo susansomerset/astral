@@ -1979,3 +1979,37 @@ Fixtures: module helper `_ast2006_guard_ctx` (candidate row with name columns �
 ### AST-2008 · AST-2007 (do_task ledger call outcome)
 
 Post-call ledger write runs on every call with a batch id: `llm_call_seconds` (timesheet duration) + `llm_failure_class` (NULL on success, `failure_class` or `provider_failed` on failure); `host` still success-only (AST-1960). **Revised:** `TestAst1960LedgerHost::test_ledger_write_failure_never_fails_the_call` (parametrized ok/failed; message names "call outcome"). **New:** `…::test_ast2008_success_writes_duration_and_null_class`, `…::test_ast2008_timeout_writes_outcome_and_keeps_host`, `…::test_ast2008_failed_call_kwargs_carry_no_host`, `…::test_ast2008_last_call_wins_and_unclassified_is_provider_failed` (Decision A). Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.
+
+### AST-2029 · AST-2028 (store agent data with real entity ids)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids`. `do_task` builds `_store_ids` once from `ctx["batch_entities"]` (`company_id` for company tasks, else `astral_job_id`; all-or-nothing, D3) and passes `entity_ids=` to `_store_prompt_blocks` (hydrates the **live** `NO_CACHE` row only, D4) and every `_store_response_block` call (hydrated text is also the hash input). Wire blocks are built from unhydrated text. Helpers: **`utils/formatting.md`** § AST-2029.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Live NO_CACHE hydrated, prompt-text NO_CACHE not (seven-segment + legacy); no ids → positional | `src/core/agent.py` (`_store_prompt_blocks`) | **`tests/component/core/test_agent_ast2029.py::TestAst2029StorePromptBlocks`** |
+| RESPONSE hydrated + id hash over hydrated text; no ids → unchanged | same (`_store_response_block`) | **`…::TestAst2029StoreResponseBlock`** |
+| AC1 stored ids / wire positional · AC2 `[index=NNN]` · AC3 failed RESPONSE · company ids · D3 partial/non-dict/empty · success split by id | same (`do_task`) | **`…::TestAst2029DoTaskStoresIds`** |
+
+**Broken / obsolete:** none — existing store fakes take `**kwargs`; no exact-kwarg assertion on the store mocks.
+
+**Red / green:** 26 of 31 new nodes red on `origin/dev` `0e81d63a8`; the 5 dev-green are the no-ids / D3 guards.
+
+**Pre-existing failures (not AST-2029):** `tests/component/core/test_agent.py` + `test_formatting.py` have 45 failing nodes on both `origin/tests` (dev product) and the AST-2029 tip — identical list (resume-section validation text, `KeyError: 'company_id'` / `'jobs'` decode shapes, missing `config.CRAFT_RUBRIC_MAX_TOKENS` / `tracker.persist_advise_job_resume_coded_advice`, token-resolve drift). `test_agent_ast1448.py` has 3 pre-existing reds. Out of scope; manifest is narrowed to the new classes.
+
+**Integration:** none — no `tests/integration/` scenario reads stored `agent_data` block text.
+
+## QA test manifest — AST-2029
+
+1. **New pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast2029.py \
+  tests/component/utils/test_formatting.py::TestAst2029HydrateEntityLabels \
+  tests/component/utils/test_formatting.py::TestAst2029SplitEntitySegments \
+  -q
+```
+
+2. **AC4 scope gate:** `git diff origin/dev...origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids -- src/ui/api/ src/data/` is empty.
+
+**Pass criterion:** item 1 green, item 2 empty. Not the zero-arg harness (pre-existing reds above).
