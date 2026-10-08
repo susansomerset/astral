@@ -47,7 +47,7 @@ Per-vector **`importance`** (1–10), **`ASTRAL_CONFIG["consult_importance"]`** 
 | Artifact normalization | `src/core/candidate.py` | `tests/component/core/test_candidate.py` (`TestNormalizeRubricArtifactsOnSaveExtended`, `TestNormalizeImportanceValue`) |
 | Display helpers | `src/ui/frontend/src/lib/rubricDisplay.ts` | `tests/component/frontend/lib/test_rubricDisplay.test.ts` |
 | Editor / rail | `ArtifactEditor.tsx`, `SideTabPanel.tsx` | `tests/component/frontend/components/test_ArtifactEditor.test.tsx`, `tests/component/frontend/components/test_SideTabPanel.test.tsx`, `tests/component/frontend/components/test_LabeledTextArea.test.tsx` |
-| Analysis / job surfaces | `AgentAnalysisHeader.tsx`, job pages | `tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx`, `tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx`, `test_ArtifactsJobListCriteria.test.tsx`, `test_ArtifactsJobDescCriteria.test.tsx`, `test_ArtifactsGetJobCriteria.test.tsx`, `test_ArtifactsDoJobCriteria.test.tsx`, `test_ArtifactsLikeJobCriteria.test.tsx` |
+| Analysis / job surfaces | `AgentAnalysisHeader.tsx`, `RubricModal.tsx`, job pages | `tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx`, `tests/component/frontend/components/test_RubricModal.test.tsx`, `tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx`, `test_ArtifactsJobListCriteria.test.tsx`, `test_ArtifactsJobDescCriteria.test.tsx`, `test_ArtifactsGetJobCriteria.test.tsx`, `test_ArtifactsDoJobCriteria.test.tsx`, `test_ArtifactsLikeJobCriteria.test.tsx` |
 
 ---
 
@@ -2023,3 +2023,38 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** item 1 all green (105 pass, 3 name-skipped). `npx tsc -b --noEmit` clean. Not the zero-arg harness.
 
 **AST-2049 (pointer):** inline colors in `ArtifactEditor`, `ContextTextPage`, `NavigationShell`, `ProfileTextPage`, `RepoJsonDivergenceBanner`, `StateTimeline`, `TabbedTextArea` moved onto `App.css` tokens — no color asserted by their tests; AC9 source-wide guard lives in `test_AdminThemeExamples.test.tsx`. Manifest: [`pages.md`](pages.md) § AST-2049.
+
+---
+
+### AST-2060 · AST-2058 (show rubric reads hydrated detail content; gap — product AST-2059)
+
+**Parent:** [AST-2058](https://linear.app/astralcareermatch/issue/AST-2058) (orphaned mini-parent). **Publish:** `origin/sub/AST-2058/AST-2060-show-rubric-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-2059** (`61f1f40ea`, on `ftr/AST-2058-show-rubric-content`) — test tree + bible only. Plan: `docs/features/interface/ast-1063-job-carried-rubric-hydration-for-list-columns.md` § Bug: AST-2059 / § Bug: AST-2060.
+
+Contract (AST-2059): **show rubric** content comes from `GET /api/candidates/<id>` (hydrated `rubric_vector` overlay); the `GET /api/candidates` list payload carries **no** rubric rows. `RubricModal` shows `Loading rubric…` until the fetch settles (no not-found flash); `!r.ok` / rejected fetch → `No rubric found for this vector.`. Labels/order unchanged (`rubricItems`, then list fallback).
+
+**Harness:** `mockApiRoutes({ list, detail })` routes the `api` mock by URL — `/api/candidates/c1` → `detail` (function form invoked per call, so rejections stay lazy); every other path → the list response (providers unchanged). Default list = production shape (`artifacts: {}`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Content from hydrated detail, loading no-flash **[bug-repro]** | `AgentAnalysisHeader.tsx` | `test_AgentAnalysisHeader.test.tsx` — new **`AST-2059: show rubric reads content from hydrated candidate detail, not the list payload`** |
+| Failed detail fetch → fallback, not stuck loading | same | new **`AST-2059: failed detail fetch ends on the fallback, not stuck loading`** (`!r.ok` + rejection; guard — green pre-fix) |
+| Retargeted to detail-sourced content | same | **`renders grades with rubric links and opens the modal`**, **`matches rubric rows by code and handles missing modal content`**, **`opens the rubric modal with no matching row (null content)`** (`findByText`) |
+| Modal loading state | `RubricModal.tsx` | `test_RubricModal.test.tsx` — new **`shows loading text instead of the fallback while loading`** |
+
+**Broken / obsolete (revised in place):** header fixtures carried list-payload `content` (pre-AST-723 shape) — stayed green post-fix only via the `labelRow` fallback. Unaffected: AST-1771 order test, `falls back to raw vector labels…`, `normalizes an empty vector key…`, RubricModal null-content fallback, `test_JobAnalysisReportModal.test.tsx` (never clicks show rubric).
+
+**Red / green:** pre-fix `06df211db` — 4 red (bug-repro at `Loading rubric…`; two retargeted header cases find no content; RubricModal loading), 7 green. Post-fix `origin/ftr/AST-2058-show-rubric-content` @ `4ee1d7029` + this publish — 11/11 green.
+
+**Integration:** none — frontend-only; do not invent.
+
+## QA test manifest — AST-2060
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_RubricModal.test.tsx
+```
+
+**[bug-repro] flip (test-fix):** `--testNamePattern="AST-2059: show rubric reads content"` — red on `06df211db`, green on ftr tip.
+
+**Pass criterion:** 11/11 green. `npx tsc -b --noEmit` clean. Not the zero-arg harness.
