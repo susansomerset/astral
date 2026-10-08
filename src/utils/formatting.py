@@ -134,6 +134,37 @@ def hydrate_entity_labels(text: str, entity_ids: Optional[List[str]]) -> str:
     return out
 
 
+def split_entity_segments(text: str) -> Dict[str, str]:
+    """Per-entity segments of a stored block keyed by entity id; {} = no id-keyed segments
+    (legacy or single-entity — caller shows the whole block) (AST-2029)."""
+    if not text:
+        return {}
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        data = None
+    if isinstance(data, dict):
+        # Success RESPONSE rows are decoded JSON keyed by real ids already
+        for arr_key, id_key in (("companies", "company_id"), ("jobs", "astral_job_id")):
+            rows = data.get(arr_key)
+            if isinstance(rows, list):
+                return {
+                    str(it[id_key]): json.dumps(it, indent=2)
+                    for it in rows if isinstance(it, dict) and it.get(id_key)
+                }
+    matches = list(_ENTITY_LABEL.finditer(text))
+    logger.debug("Beginning split_entity_segments loop on %s items", len(matches))
+    out: Dict[str, str] = {}
+    for i, m in enumerate(matches):
+        # Segment runs from its own tag to the next tag; preamble before the first tag is unowned.
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        seg = re.sub(r"(?:\\n)+$", "", text[m.start():end].rstrip())
+        eid = m.group(1)
+        out[eid] = f"{out[eid]}\n{seg}" if eid in out else seg
+    logger.debug("End split_entity_segments loop after %s items", len(out))
+    return out
+
+
 def normalize_link(url: str) -> str:
     """Pure PJL URL key: strip scheme, drop fragment, trim trailing slashes and index filenames."""
     url = (url or "").strip()
