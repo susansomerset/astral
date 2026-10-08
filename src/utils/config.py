@@ -1901,8 +1901,7 @@ CONTACT_CONFIG = {
     # AST-1101 / AST-2072: fallback Slack text when Contact accepts @/DM but Estelle's turn
     # posts nothing (turn raised, failed, or returned no reply).
     "hear_ack_reply_text": "That didn't work as planned.  Let's ask @susan.",
-    # AST-1668: recognition replies after resolve (known bind vs unbound Slack user).
-    "known_recognition_reply_text": "I know who that is",
+    # AST-1668 / AST-2072: reply to an unbound Slack sender (bound senders get no recognition post).
     "unknown_recognition_reply_text": "Sorry, I don't recognize you, yet.  Let's check with @susan",
     # AST-2072: where every Estelle reply to an inbound Slack message lands.
     #   threads_only      — in-thread only when the user posted in a thread; else a new top-level post.
@@ -1982,7 +1981,6 @@ assert isinstance(CONTACT_CONFIG["debug_state_filename"], str) and CONTACT_CONFI
 assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
-assert isinstance(CONTACT_CONFIG["known_recognition_reply_text"], str) and CONTACT_CONFIG["known_recognition_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["unknown_recognition_reply_text"], str) and CONTACT_CONFIG["unknown_recognition_reply_text"].strip()
 assert CONTACT_CONFIG["thread_response"] in ("threads_only", "always_no_share", "always_with_share"), CONTACT_CONFIG["thread_response"]
 assert isinstance(CONTACT_CONFIG["skills"], dict)
