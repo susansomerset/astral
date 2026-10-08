@@ -107,3 +107,23 @@ Execute steps in order. No files beyond the three above. If a referenced line, p
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2031
+**Overall:** APPROVED
+**Corpus:** 8fa9f84d0e775852bc529f67faadf7e6f12cd904 (canon/ tree at publish tip)
+**Publish ref:** ff397285d
+
+## Canon scores
+(none — ticket and plan declare Canon Scope empty; frontend prop plumbing only)
+
+## Traceability
+8→Stage 1 steps 3, 6, 7 (`entityId` on `/api/agent_data/…` only; Betty owns `test_JobDetailModal` assertion); 9→Stage 1 step 8 (`git diff origin/dev -- src/ui/frontend/src/pages/ …` empty) + no edits to the three admin pages; batch-wide callers use `BatchAgentDataModal` / `BatchAgentDataPanes` without `entityId`.
+
+## Findings
+- **discuss** | Parent AC 9 / Katherine comment | Literal `grep -n "entity_id" …AdminAnthropicAdHoc.tsx` already matches 8 lines on `origin/dev` (workbench payload/table fields, not agent-data URL). Plan correctly does not touch that page and uses **page diff** in Stage 1 §8 instead of grep. Intent holds; parent AC 9 wording should be narrowed at definition level (e.g. diff-empty on those pages, or grep scoped to `BatchAgentDataPanes` / agent_data fetch) so UAT/review does not re-litigate a pre-existing false negative.
+- **acceptable** | AC mapping § | Plan documents the grep defect and mirrors Katherine’s Linear finding — aligned with implementation path.
+
+context_tokens≈32000
