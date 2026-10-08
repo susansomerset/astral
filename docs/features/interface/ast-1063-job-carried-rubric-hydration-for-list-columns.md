@@ -814,6 +814,25 @@ Frontend only. Two files, both in AST-2059 `## Scope`. No backend, API, or calle
 - `RubricModal` keeps the `Rubric — <vector>` title and the exact fallback string `No rubric found for this vector.`
 - No backend or API change. The `GET /api/candidates` list payload stays unhydrated.
 
+
+## Joan fix-board — AST-2059
+
+**Verdict (for Chuckles to post)**
+
+```
+[board-joan]  CANON: OK
+```
+
+**Stdout**
+
+```text
+AST-2059 board-joan done — CANON: OK.
+```
+
+**Triage note (not for Linear):** Read `## Bug: AST-2059` on `origin/sub/AST-2058/AST-2059-show-rubric-content` and skimmed overlap via `canon/docs/DIRECTIVES-DIRECTORY.md` / in-force UI+layer statutes (`docs/canon-index.md` absent on this ref, same as other fix-board passes). Frontend-only: on **show rubric**, `AgentAnalysisHeader` calls existing `GET /api/candidates/<id>` so rubric **content** comes from server-side `hydrate_rubric_artifacts_for_response`, while labels/order still use list context + job-carried `rubricItems` per plan boundaries. That matches `astral.layers.import-direction` (UI → API, hydration stays off the list route), `astral.layers.ui-config-driven-business-logic` (no new conditional rules in React; no API shape change), and `astral.ui.frontend-file-placement` (edits under `components/`). AST-1063’s no-`content` snapshot and “list stays unhydrated” are preserved in **What must still hold** — no carve-out or statute edit. Meteorite `rubricArtifact` key mismatch is documented blast radius and explicitly out of scope; not an Archie gate for this fix. F3 not indicated.
+
+**Chuckles routing:** Betty's `TESTS: REVISE` routes to a test-gap sibling (test tree + bible), so qa-fix is skipped on AST-2059. Joan `CANON: OK`.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
