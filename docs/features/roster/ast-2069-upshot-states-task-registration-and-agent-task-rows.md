@@ -421,3 +421,6 @@ AC 1–2 → Stage 1; AC 4 → Stage 2; AC 3 → Stage 3. Parent AC 5–8 / 11�
 
 **acceptable** — Stage 1 transition check matches current `origin/dev` surface: exactly five `(X,"WATCH")` tuples to reroute; appended upshot path + `ERROR_UPSHOT` terminal state follow `ERROR_GAZE` / `retry_of` precedents.
 
+**Definition fidelity (R6):** Two files only; no runtime/core/UI creep. TASK_CONFIG `company_upshot` omits `scored` (per plan) so score-floor claim paths stay untouched. GAZER hop has no `fail_state` (parent Functional #2). Self-assessment / estimate note is reasonable; Linear already shows estimate 2.
+
+context_tokens≈38000
