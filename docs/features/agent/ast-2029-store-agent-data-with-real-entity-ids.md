@@ -249,3 +249,47 @@ context_tokens≈22000
 - **Existing tests:** `tests/component/utils/test_formatting.py` + `tests/component/core/test_agent.py` → 40 failed / 444 passed, and the identical 40 fail on pure `origin/dev` code (failure-list diff empty). Pre-existing, not introduced here.
 - **Deviation:** none (call-site count is 13 per Joan; `re.MULTILINE` vs `re.M` is lint-only).
 - **For QA:** AC2 (`[index=000]:` → `[entity_id=A]:`) is covered by the hydrate regex but was only exercised in the helper, not through `do_task`. A JSON-enveloped failure (`{"agent_payload":"000|…\n001|…"}`) hydrates in place; its last split segment keeps the envelope's closing `"}` (D7).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2029
+**Publish ref:** b69f8dbe6ffcb0e9d87842936dcbfb6117e04ce5
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Overall:** DISCUSS
+
+## Canon scores
+patt.entity.batch-processing | A |
+stat.logging.debug | C | 2 | `hydrate_entity_labels` logs label count, not full `out`
+
+## Column diff vs plan stage
+stat.logging.debug — Joan **B**, code review **C** (plan Stage 1 specifies count-only `Response from hydrate_entity_labels`; statute wants the full return string)
+
+## Frame diff
+(none)
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+- **discuss** | `src/utils/formatting.py` — `hydrate_entity_labels` | `stat.logging.debug` callee-out contract is `Response from <fn>: <full return>` with no truncation; the helper logs `n` labels and `len(entity_ids)` instead of hydrated `out`. @susan: Is count-only debug acceptable for multi-megabyte stored blocks, or should resolve-child log the full string per statute? **Default:** resolve-child changes the line to `logger.debug("Response from hydrate_entity_labels: %s", out)`.
+
+### advisory
+- **advisory** | sibling test carry | Three-dot diff includes many `tests/**` and `docs/test-bible/**` paths outside AST-2029 product scope (e.g. `test_telescope.py`, `test_gazer.py`, `test_consult.py`, `test_dispatcher.py`, `test_config.py`, `test_timesheets.py`, `test_openrouter.py`, `test_api_admin.py`, `test_repo_admin_json.py`, related bible rows). Expected `merge-tests` carry; product diff is only `src/utils/formatting.py` and `src/core/agent.py`.
+- **advisory** | `tests/component/core/test_agent_ast2029.py` | D2 JSON-enveloped failure (`{"agent_payload":"000|…\\n001|…"}`) is covered in `TestAst2029HydrateEntityLabels` but not through `do_task`; storage path still calls the same helper on failure bodies.
+- **advisory** | `src/core/agent.py` ~3251–3363 | Ad Hoc workbench `_store_prompt_blocks` / `_store_response_block` correctly omit `entity_ids` (positional storage per plan boundaries).
+
+## What's solid
+- Plan Stages 1–3 land as specified: `hydrate_entity_labels` / `split_entity_segments` in `formatting.py`; `_store_ids` from `batch_entities` with D3 all-or-nothing; live `NO_CACHE` only hydrated (D4); all 13 `do_task` `_store_response_block` paths pass `entity_ids=_store_ids`; hash uses hydrated RESPONSE text.
+- AC4: `git diff origin/dev...origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids -- src/ui/api/ src/data/` is empty.
+- `test_agent_ast2029.py` pins AC1–AC3, company `company_id`, D3 guards, wire-vs-stored separation, and hash-over-hydrated-text; formatting tests cover D2 boundaries and split (D7).
+- `run_adhoc_workbench_test` store paths unchanged.
+
+## Recommended actions (downstream only — not executed in this session)
+- Chuckles: append this artifact to `docs/features/agent/ast-2029-store-agent-data-with-real-entity-ids.md`, commit `docs(AST-2029): Radia review — findings`, post slim upshot `--as radia`, move to **Review Posted**.
+- If Susan accepts **Default** on logging: Ada via **resolve-child** — one-line debug fix in `hydrate_entity_labels`.
+- Optional (no canon gate): add `do_task` JSON-envelope failure storage test if sibling UAT wants end-to-end proof beyond helper tests.
+
+context_tokens≈28000
