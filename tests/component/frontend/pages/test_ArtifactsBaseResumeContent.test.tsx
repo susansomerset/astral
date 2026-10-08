@@ -70,7 +70,7 @@ function installMocks(candidates: string[] = ["c1"]) {
           candidates.map(id => ({ astral_candidate_id: id, state: "ACTIVE_SEARCH", candidate_data: {} })),
       } as Response
     }
-    if (url === "/api/system/ui_config") {
+    if (url === "/api/ui_config") {
       return {
         json: async () => ({
           column_types: {},
@@ -202,7 +202,7 @@ describe("ArtifactsBaseResumeContent", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
       }
       if (url === "/api/candidates/c1/resume_structure" && !init) {
@@ -289,7 +289,7 @@ describe("ArtifactsBaseResumeContent", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
       }
       if (url === "/api/candidates/c1/resume_structure" && !init) {
@@ -371,7 +371,7 @@ describe("ArtifactsBaseResumeContent", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
       }
       if (url === "/api/candidates/c1/resume_structure" && !init) {
@@ -479,7 +479,7 @@ describe("ArtifactsBaseResumeContent", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
       }
       if (url === "/api/candidates/c1/resume_structure") {
@@ -584,7 +584,7 @@ describe("ArtifactsBaseResumeContent", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
       }
       if (url === "/api/candidates/c1/resume_structure" && !init) {
@@ -659,7 +659,7 @@ describe("ArtifactsBaseResumeContent", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
       }
       if (url === "/api/candidates/c1/resume_structure" && !init) {
@@ -722,7 +722,7 @@ describe("ArtifactsBaseResumeContent", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
       }
       if (url === "/api/candidates/c1/resume_structure" && !init) {
@@ -772,7 +772,7 @@ describe("ArtifactsBaseResumeContent", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
       }
       if (url === "/api/candidates/c1/resume_structure" && !init) {
@@ -818,7 +818,7 @@ describe("ArtifactsBaseResumeContent", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
       }
       if (url === "/api/candidates/c1/resume_structure" && !init) {
@@ -861,7 +861,7 @@ describe("ArtifactsBaseResumeContent", () => {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
       }
       if (url === "/api/candidates/c1/resume_structure" && !init) {

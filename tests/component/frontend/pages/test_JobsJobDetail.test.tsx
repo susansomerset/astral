@@ -166,7 +166,7 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
       if (url === "/api/state_ui_manifest") {
         return jsonResponse(STATE_UI_MANIFEST_FIXTURE)
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return jsonResponse({ column_types: {} })
       }
       if (url === "/api/jobs/j-align" && !init) {
@@ -240,7 +240,7 @@ describe("JobsJobDetail — AST-1704 company_id align prefetch", () => {
       if (url === "/api/state_ui_manifest") {
         return jsonResponse(STATE_UI_MANIFEST_FIXTURE)
       }
-      if (url === "/api/system/ui_config") {
+      if (url === "/api/ui_config") {
         return jsonResponse({ column_types: {} })
       }
       if (url === "/api/jobs/j-coid" && !init) {
@@ -325,7 +325,7 @@ describe("JobsJobDetail — AST-1768 non-admin waits for candidate hydration", (
         return jsonResponse([{ astral_candidate_id: candidateId, state: "ACTIVE", candidate_data: {} }])
       }
       if (url === "/api/state_ui_manifest") return jsonResponse(STATE_UI_MANIFEST_FIXTURE)
-      if (url === "/api/system/ui_config") return jsonResponse({ column_types: {} })
+      if (url === "/api/ui_config") return jsonResponse({ column_types: {} })
       const res = handler(url, init)
       if (res) return res
       throw new Error(`unexpected api call: ${url}`)

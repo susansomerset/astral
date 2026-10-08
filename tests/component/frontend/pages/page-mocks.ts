@@ -44,7 +44,7 @@ export function installBaseApiMocks(mockedApi: Mock, handler: ApiHandler) {
     if (url === "/api/state_ui_manifest") {
       return jsonResponse(STATE_UI_MANIFEST_FIXTURE)
     }
-    if (url === "/api/system/ui_config") {
+    if (url === "/api/ui_config") {
       return jsonResponse({ column_types: {} })
     }
     return handler(url, init)
