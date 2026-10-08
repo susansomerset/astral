@@ -190,3 +190,31 @@ Tests are Betty's (`qa-child`); this plan touches no `tests/` or bible paths.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+**Ticket:** AST-2071
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** `origin/sub/AST-2054/AST-2071-upshot-display` @ `8ef3f6b2abf0060bda8c236abcef534636e91a07`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+AC 12 → Stage 1; AC 13 → Stage 2; AC 14 → Stage 3. Parent AC 1–11 N/A (generation, config, pipeline — AST-2069/2070).
+
+## Findings
+
+**acceptable** — Plan §Canon correctly reasons that Stage 1 adds no loop/callee/branch joints and Stages 2–3 are React (`stat.logging.debug` Notes: backend only). No new `try`/handlers, so `stat.logging.error` is not engaged.
+
+**acceptable** — Lifting `company_upshot` in `_flatten_for_view` also exposes the field on list endpoints (same as `prefilter_company_notes` today). Not required by child AC 12 (detail `GET`) but consistent and low blast radius.
+
+**discuss** — Parent display work often implicates `astral.layers.import-direction` and `astral.ui.frontend-file-placement`; they are not on this child’s frozen Citations list. The plan touches only in-scope existing UI paths and creates no new files — no scoring gap, but Archie may still want those on display children by convention.
+
+**Definition fidelity (R6):** Plan matches child Scope and parent Functional scope §6 (prose in report + detail; grades separate). Files/stages stay inside ticket `## Scope`. Stages are executable (field rename, grep gates, trim parity). Estimate confirm present. No Plan Discuss rounds on thread.
