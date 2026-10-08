@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
-import BatchAgentDataModal from "../../../../src/ui/frontend/src/components/BatchAgentDataModal"
+import BatchAgentDataModal, { BatchAgentDataPanes } from "../../../../src/ui/frontend/src/components/BatchAgentDataModal"
 import { renderWithProviders } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
@@ -236,5 +236,47 @@ describe("BatchAgentDataModal", () => {
     const body = JSON.parse(String((hydrateCall![1] as RequestInit).body))
     expect(body.candidate_id).toBe("c-from-ledger")
     expect(body.task_key).toBe("evaluate_jd")
+  })
+})
+
+// AST-2031: entityId scopes only the agent-data fetch; timesheets + ledger stay batch-wide.
+describe("BatchAgentDataPanes — AST-2031 entity-scoped agent data", () => {
+  const calledUrls = () => mockedApi.mock.calls.map(call => String(call[0]))
+
+  beforeEach(() => {
+    mockedApi.mockReset()
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/agent_data/")) {
+        return {
+          json: async () => [
+            { agent_data_id: "1", block_type: "NO_CACHE", block_data: `rows for ${url}`, token_size: 1, task_key: "t", created_at: "now" },
+          ],
+        } as Response
+      }
+      if (url.startsWith("/api/admin/timesheets")) return { json: async () => [] } as Response
+      if (url.startsWith("/api/admin/dispatch_ledger/")) return { ok: false } as Response
+      throw new Error(url)
+    })
+  })
+
+  it("entityId → encoded entity_id on agent data only", async () => {
+    renderWithProviders(<BatchAgentDataPanes batchId="run 1" entityId="job/1 x" />)
+    expect(await screen.findByDisplayValue("rows for /api/agent_data/run%201?entity_id=job%2F1%20x")).toBeInTheDocument()
+    expect(calledUrls()).toContain("/api/admin/timesheets?batch_id=run%201")
+    expect(calledUrls()).toContain("/api/admin/dispatch_ledger/run%201")
+    expect(calledUrls().filter(url => url.includes("entity_id"))).toHaveLength(1)
+  })
+
+  it("no entityId → whole-batch agent data URL (batch-wide callers unchanged)", async () => {
+    renderWithProviders(<BatchAgentDataPanes batchId="run-2" />)
+    expect(await screen.findByDisplayValue("rows for /api/agent_data/run-2")).toBeInTheDocument()
+    expect(calledUrls().some(url => url.includes("entity_id"))).toBe(false)
+  })
+
+  it("changing entityId refetches the scoped agent data", async () => {
+    const view = renderWithProviders(<BatchAgentDataPanes batchId="run-3" entityId="job-a" />)
+    await screen.findByDisplayValue("rows for /api/agent_data/run-3?entity_id=job-a")
+    view.rerender(<BatchAgentDataPanes batchId="run-3" entityId="job-b" />)
+    expect(await screen.findByDisplayValue("rows for /api/agent_data/run-3?entity_id=job-b")).toBeInTheDocument()
   })
 })

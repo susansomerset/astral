@@ -452,7 +452,7 @@ describe("JobDetailModal — AST-1865 admin state-history row opens the run", ()
           }],
         } as Response
       }
-      const blocks = url.match(/^\/api\/agent_data\/([^/]+)$/)
+      const blocks = url.match(/^\/api\/agent_data\/([^/?]+)(?:\?|$)/)
       if (blocks) {
         return {
           json: async () => [{
@@ -487,7 +487,9 @@ describe("JobDetailModal — AST-1865 admin state-history row opens the run", ()
     expect(await screen.findByText("log line for hop-R")).toBeInTheDocument()
     expect(await screen.findByDisplayValue("system prompt for hop-R")).toBeInTheDocument()
     expect(calledUrls()).toContain("/api/admin/dispatch_ledger/hop-R/logs")
-    expect(calledUrls()).toContain("/api/agent_data/hop-R")
+    // AST-2031 AC8: the job modal scopes the run's agent data to the open job
+    expect(calledUrls()).toContain("/api/agent_data/hop-R?entity_id=j1")
+    expect(calledUrls()).not.toContain("/api/agent_data/hop-R")
     // run_id wins: the claim batch id on the same row is never opened
     expect(calledUrls().some(url => url.includes("claim-C"))).toBe(false)
   })
@@ -501,7 +503,9 @@ describe("JobDetailModal — AST-1865 admin state-history row opens the run", ()
     await userEvent.click(legacy)
     expect(await screen.findByText("log line for legacy-B")).toBeInTheDocument()
     expect(calledUrls()).toContain("/api/admin/dispatch_ledger/legacy-B/logs")
-    expect(calledUrls()).toContain("/api/agent_data/legacy-B")
+    // AST-2031 AC8: the job modal scopes the run's agent data to the open job
+    expect(calledUrls()).toContain("/api/agent_data/legacy-B?entity_id=j1")
+    expect(calledUrls()).not.toContain("/api/agent_data/legacy-B")
   })
 
   it("AC5: non-admin → no clickable rows and no /api/admin/ request", async () => {
