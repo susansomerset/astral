@@ -3606,26 +3606,24 @@ def get_agent_data(
     entity_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Retrieve agent_data blocks for a batch.
-    When entity_id is provided and block_type is TASK or RESPONSE (or unset),
-    parses the block_data content to extract the element for that entity.
-    Assumes batch responses embed per-entity sections identifiable by entity_id."""
+    With entity_id, NO_CACHE / TASK / RESPONSE rows are cut to that entity via _slice_entity_block
+    (AST-2030): other chunks' rows are dropped, rows without id-keyed segments return whole.
+    SYSTEM / CACHE_A–D are shared prompt and pass through."""
     rows = get_agent_data_by_batch(batch_id, block_type)
     if not entity_id:
         return rows
 
     result = []
+    logger.debug("Beginning get_agent_data slice loop on %s items", len(rows))
     for row in rows:
-        bt = row.get("block_type")
-        if bt not in ("TASK", "RESPONSE"):
+        if row.get("block_type") not in ("NO_CACHE", "TASK", "RESPONSE"):
             result.append(row)
             continue
-        # Extract entity-specific segment from the block content
-        content = row.get("block_data") or ""
-        segment = _extract_entity_segment(content, entity_id)
-        if segment is not None:
-            row = dict(row)
-            row["block_data"] = segment
-        result.append(row)
+        segment = _slice_entity_block(row.get("block_data") or "", entity_id)
+        if segment is None:
+            continue  # another chunk's call — carries only other entities
+        result.append({**row, "block_data": segment})
+    logger.debug("End get_agent_data slice loop after %s items", len(result))
     return result
 
 
