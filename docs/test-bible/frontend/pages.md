@@ -3679,3 +3679,44 @@ Expect `test_CandidateProfile` 19 passed / 1 skipped; `test_CandidateContext` al
 **Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
 
 **Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2048-theme-save-apply:docs/test-bible/frontend/pages.md | shasum` (also `frontend/contexts.md`, `core/candidate.md`, `ui/api/api_candidate.md`)
+
+---
+
+### AST-2049 · AST-2042 (component/page inline colors onto tokens)
+
+**Publish:** `origin/sub/AST-2042/AST-2049-inline-color-tokens`. 49 inline literal colors / `var(--x, #…)` fallbacks / undefined custom-property refs in 7 components + 12 pages moved onto `App.css` token-block names. No layout or logic change; does not touch `App.css` (AST-2047) or `CandidateProfile.tsx` (AST-2048).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC9 epic-wide guard — no hex (`["' ,(]#…`) in non-test `.ts`/`.tsx` under `src/ui/frontend/src`; every `var(--x)` in `.ts`/`.tsx`/`.css` names a property declared in an `App.css` theme block | whole SPA source tree | **`test_AdminThemeExamples.test.tsx`** — **`AST-2049: no hex in .ts/.tsx source and every var(--x) in source is defined in a token block (AC9, epic-wide)`** (in the § AST-2047 `App.css` describe; red on `ftr` before this child, green after) |
+| Touched components/pages render unchanged | 19 files in the ticket Scope | existing per-file Vitests (manifest item 2) — no color values asserted |
+
+**Broken / obsolete:** none. Full Vitest (1029 cases) shows the same failure set with and without AST-2049 on `origin/tests` + `origin/ftr/AST-2042-user-theme`; the only swaps were `AdminScheduledActions … save disabled on add when no candidate selected` and `AdminAnthropicAdHoc AST-1452 …`, both green twice in isolation on the ticket tree (load flakes). Engineer's "no test asserts old color values" confirmed.
+
+**Not covered by component tests (jsdom has no cascade):** whether each swapped token reads well on the Light palettes — UAT / Theme Examples.
+
+#### QA test manifest (AST-2049)
+
+1. **New guard (required, green):**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+```
+
+Expect 5 passed.
+
+2. **Regression (required):** same Vitest command over the touched files' tests — failure set unchanged vs `origin/ftr/AST-2042-user-theme`. Pre-existing reds (not this ticket): `test_ArtifactEditor` 13 (AST-2056 bug-repros), `test_ProfileTextPage` 6, `test_CompaniesWatchHistory` 6, `test_ArtifactsBaseResumeContent` 2.
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/components/test_{ArtifactEditor,ContextTextPage,NavigationShell,ProfileTextPage,RepoJsonDivergenceBanner,StateTimeline,TabbedTextArea}.test.tsx \
+  ../../../tests/component/frontend/pages/test_{AdminCostReconciliation,AdminDataManagement,AdminManageCandidates,AdminScheduledActions,AdminScheduledActions_AST1104,AdminScheduledActions_AST1917,AdminScheduledQueries,AdminSessionCoverLetter,AdminSessionResumePaste,AdminTaskPrompts,ArtifactsBaseResumeContent,ArtifactsCompanySearchTerms,CompaniesNewList,CompaniesWatchHistory}.test.tsx
+```
+
+3. **AC9 grep (ticket form):** `rg -n "[\"' ,(]#[0-9a-fA-F]{3,8}\b" src/ui/frontend/src --glob '*.{ts,tsx}' --glob '!*.test.*'` returns nothing.
+
+4. **AC10:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2049-inline-color-tokens:docs/test-bible/frontend/pages.md | shasum` (also `frontend/components.md`)

@@ -2021,3 +2021,5 @@ cd src/ui/frontend && npm run test:component -- \
 2. **[bug-repro] flip (test-fix):** `--testNamePattern="AST-2051 \[bug-repro\]"` on `test_ArtifactEditor.test.tsx` — 4 red on pre-fix, 4 green after AST-2051.
 
 **Pass criterion:** item 1 all green (105 pass, 3 name-skipped). `npx tsc -b --noEmit` clean. Not the zero-arg harness.
+
+**AST-2049 (pointer):** inline colors in `ArtifactEditor`, `ContextTextPage`, `NavigationShell`, `ProfileTextPage`, `RepoJsonDivergenceBanner`, `StateTimeline`, `TabbedTextArea` moved onto `App.css` tokens — no color asserted by their tests; AC9 source-wide guard lives in `test_AdminThemeExamples.test.tsx`. Manifest: [`pages.md`](pages.md) § AST-2049.

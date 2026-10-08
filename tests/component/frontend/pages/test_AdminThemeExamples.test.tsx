@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { screen, within } from "@testing-library/react"
@@ -90,6 +90,24 @@ describe("App.css theme token blocks — AST-2047", () => {
     expect(body.match(/rgba?\((?!\s*0\s*,\s*0\s*,\s*0\s*,)[^)]*\)/g)).toBeNull()
     const defined = new Set([...blocks.values()].flatMap(b => Object.keys(b)))
     const undefinedRefs = [...new Set(Array.from(css.matchAll(/var\((--[\w-]+)/g), m => m[1]))].filter(n => !defined.has(n))
+    expect(undefinedRefs).toEqual([])
+  })
+
+  it("AST-2049: no hex in .ts/.tsx source and every var(--x) in source is defined in a token block (AC9, epic-wide)", () => {
+    const srcDir = resolve(root, "src/ui/frontend/src")
+    const files = (readdirSync(srcDir, { recursive: true }) as string[])
+      .filter(f => /\.(tsx?|css)$/.test(f) && !/\.test\./.test(f))
+    const defined = new Set([...blocks.values()].flatMap(b => Object.keys(b)))
+    const hexHits: string[] = []
+    const undefinedRefs: string[] = []
+    for (const f of files) {
+      const text = readFileSync(resolve(srcDir, f), "utf8")
+      // Leading char class skips HTML entities like &#9660; (same pattern as the ticket's rg).
+      if (!f.endsWith(".css")) for (const m of text.matchAll(/["' ,(]#[0-9a-fA-F]{3,8}\b/g)) hexHits.push(`${f}: ${m[0]}`)
+      for (const m of text.matchAll(/var\((--[\w-]+)/g)) if (!defined.has(m[1])) undefinedRefs.push(`${f}: ${m[1]}`)
+    }
+    expect(files.length).toBeGreaterThan(50)
+    expect(hexHits).toEqual([])
     expect(undefinedRefs).toEqual([])
   })
 })
