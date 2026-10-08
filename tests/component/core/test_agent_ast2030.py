@@ -20,7 +20,7 @@ _LEGACY = "000: old one\n001: old two"
 
 
 # Branches: SYSTEM/CACHE pass through; tagged row sliced; other chunk dropped; untagged (legacy / shared
-# prompt) whole; empty block_data whole; no entity_id → rows untouched.
+# prompt) whole; no entity_id → rows untouched. Blank-row omission + Each-mode envelope: test_agent_ast2052.py.
 class TestAst2030GetAgentDataSlice:
     _ROWS: List[Dict[str, Any]] = [
         {"block_type": "SYSTEM", "block_data": "sys"},
@@ -31,7 +31,6 @@ class TestAst2030GetAgentDataSlice:
         {"block_type": "NO_CACHE", "block_data": _LIVE_2},
         {"block_type": "RESPONSE", "block_data": _RESP_2},
         {"block_type": "TASK", "block_data": _LEGACY},
-        {"block_type": "TASK", "block_data": None},
     ]
 
     @pytest.fixture(autouse=True)
@@ -47,7 +46,6 @@ class TestAst2030GetAgentDataSlice:
             ("NO_CACHE", "[entity_id=job-b]: beta"),  # AC4
             ("RESPONSE", "[entity_id=job-b]|GCA4"),
             ("TASK", _LEGACY),  # AC7: legacy positional whole
-            ("TASK", ""),
         ]
         # AC5: nothing from chunk 2, nothing of A / C.
         text = json.dumps(out)
