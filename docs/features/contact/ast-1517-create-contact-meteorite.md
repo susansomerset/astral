@@ -566,3 +566,89 @@ Read the `## Bug: AST-2061` plan-fix block on `origin/sub/AST-2055/AST-2061-este
 **Answer:** No. Retiring `create_contact_meteorite` and Estelle `skill_calls` narrows Contact to meteorite writes and read tasks; it does not contradict `patt.contact.command-intercept` (commands unchanged; skills remain an optional registry shape, now empty). `stat.logging.info.contact` still allows `action:-` when no skills run. `fetch_channel_type` in `src/external/slack.py` fits the external I/O bright line; config-only allowlists (`allowed_channel_types`, `_CONTACT_PINHOLE_HANDLERS`) fit registry-not-literals. No active statute mandates Contact ACL save skills (AST-1071 was feature scope, not a standing “skills must be populated” rule). `nh3` sanitization in core is not an I/O-layer violation. Parent AST-2055 To-be mention of artifact/`rubric_vector` writes is deferred in this child’s Boundaries — product scope on the ticket, not a canon amendment this fix must land.
 
 No F3 (`validate-plan` fix mode) canon work indicated from this triage pass.
+
+## Radia review — AST-2061
+
+[code-rubric]
+**Ticket:** AST-2061
+**Publish ref:** `origin/sub/AST-2055/AST-2061-estelle-pinhole` @ `31ccbee3be2997d5fc0a56febbb352e7055e84c3`
+**Diff base:** `origin/ftr/AST-2055-estelle-pinhole...origin/sub/AST-2055/AST-2061-estelle-pinhole` (product: `requirements.txt`, `src/utils/config.py`, `src/core/meteorite.py`, `src/external/slack.py`, `src/core/contact.py`; plus plan-fix doc commits on sub)
+**Corpus:** `4d5db7332d81afd9a496ed8ad234971d458c1700` (`canon/` tree at local worktree tip; no `docs/canon-index.md` on this ref — id resolution via `canon/statutes/**`, `canon/directives/active/**`, and `canon/instruction_preamble.md` grade scale)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — clean board opt-out; fix-board **TESTS: REVISE** routed to sibling **AST-2062** (blocked by this ticket). No `[bug-repro]` expected on this diff by design.
+- **## What must still hold — OK** (each item traced against `origin/ftr...sub` product diff):
+  - `create_meteorite_job` retained in `meteorite.py`; not reachable from Contact command/task registry (`create_contact_meteorite` removed from config and module).
+  - Read tasks + `gazer_scrape` remain in `CONTACT_TASK_CONFIG` with same handler paths; pinhole `_CONTACT_PINHOLE_HANDLERS` assert covers every command/task handler.
+  - `/add-job` → `insert_slack_meteorite` unchanged in registry; payload sanitized via `sanitize_contact_text` (Slack link unwrap still via `parse_contact_command` / `_unwrap_slack_links` on paste paths).
+  - `land_calls` → `contact_land_meteorite` → `stage_meteorite` and `apply_paste` / `_normalize_apply_paste_content` keep soft-fail shapes; nh3 is the sole markup stripper on Contact writes.
+  - Private-channel gate on `app_mention` before resolve/command/turn; DM `message` path unchanged (`_is_dm_message`).
+  - `resolve_slack_user` / agent_data paths untouched in code; public mentions fail closed before those run (plan decision, consistent with AC).
+  - `skill_results` always `[]`; no new artifact / `rubric_vector` path; no length cap.
+
+## Canon scores
+
+**Frozen list:** Linear AST-2061 Description has **no `## Citations` / frozen canon ids** (same fix-lane pattern as AST-1796 / AST-1784). Fix-board Joan **CANON: OK** at F2; engineering contract is the plan-fix block in `docs/features/contact/ast-1517-create-contact-meteorite.md` § Bug: AST-2061.
+
+*(No directive ids on the frozen list — zero graded rows per `review-child` §5.1.)*
+
+**Notes — Canon Scope / informal overlap (not scored as list rows):** Board triage named `patt.contact.command-intercept`, `stat.logging.info.contact`, `stat.logging.info.api`, `astral.layers.import-direction`, `astral.layers.core-vs-external-bright-line`, `astral.config.config-source-of-truth`, `patt.config.block`, `stat.core.decides-transitions`. Diff read against those: command intercept registry and ordering preserved; `fetch_channel_type` in `src/external/slack.py` with `require_controlled_external_io`; allowlists in `CONTACT_CONFIG`; core sanitize + late import pattern for meteorite↔contact cycle; no new Contact path to `job`/`candidate`. **No Canon Scope ESCALATE** — nothing in the diff plainly requires an off-list directive amendment.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (no F3 `validate-plan` fix-mode column; Joan fix-board only)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Linear AST-2061 Description  
+  **Finding:** No frozen canon list on the bug ticket; Radia cannot emit per-id canon rows.  
+  **Default:** Treat plan-fix § Bug: AST-2061 + fix-board **CANON: OK** as the lane bar for this review; optional Archie habit to add Citations on fix children (process only, not blocking this diff).
+
+- **Location:** `CONTACT_CONFIG["allowed_channel_types"]` = `("im", "group")` vs `fetch_channel_type` → `"mpim"`  
+  **Finding:** Multi-person DMs (`mpim`) are not in the allowlist; `app_mention` there fails closed. Plan/To-be explicitly chose DM + private channel only; `_is_dm_message` already accepts only `im` for `message` events.  
+  **Default:** Ship as planned; if Susan wants Estelle in mpim, widen allowlist in a follow-up (not this pinhole ticket unless she says otherwise).  
+  **@susan:** Should Estelle respond in Slack mpim (group DM) mentions, or is im + private `group` enough?
+
+### advisory
+
+- **Location:** `origin/ftr...sub` diff — `tests/**` absent  
+  **Finding:** Sibling **AST-2062** owns test-bible updates per blast radius; `ftr` tip still references `create_contact_meteorite` in component tests until 2062 lands. Expected split; not cross-ticket product scope smuggling.  
+  **Recommendation:** Chuckles: after **User Testing** on 2061, unblocks 2062; do not treat missing tests on this sub as a 2061 resolve-child item.
+
+- **Location:** Plan blast radius — stale `agent_task.json` / `skill_calls` schema  
+  **Finding:** Documented out-of-scope; model may still emit ignored `skill_calls`.  
+  **Recommendation:** Optional follow-up doc/prompt hygiene (plan already flags for Chuckles).
+
+## What's solid
+
+- Pinhole matches plan: job/candidate write paths removed; single `sanitize_contact_text` + nh3; import-time handler allowlist; public `app_mention` gate with fail-closed `conversations.info`.
+- Layering: Slack I/O in `external`, policy allowlist in config, sanitize in core meteorite.
+- Scope contained to the six files named on the ticket (plus issue doc on sub).
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal (AST-2055 ftr) | → **Review Posted** → `do-all-the-things` §3h clean shortcut → **User Testing**; **skip `resolve-child`** |
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+1. Append this artifact to the issue doc; `docs(AST-2061): Radia review — clean`; push on `sub/AST-2055/AST-2061-estelle-pinhole`.
+2. Post slim upshot `--as radia` below.
+3. Advance to **Review Posted** → **User Testing** (no resolve-child).
+
+context_tokens≈22000
+
+[code-rubric] PROCEED (Commit: 31ccbee3) Estelle pinhole clean
