@@ -301,6 +301,26 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 
+# AST-2024 · AST-2022: fetch_relative_jd catalog row (Scheduled Actions picker).
+# Branches: row present + current; mirrors fetch_jd agent / group; sequenced right after fetch_jd;
+# task_key_uuid unique across the catalog.
+class TestAst2024FetchRelativeJdCatalogRow:
+    def test_row_shape_and_sequence(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows}
+        row, fj = by["fetch_relative_jd"], by["fetch_jd"]
+        assert row["current"] == 1
+        assert row["task_name"] == "fetch_relative_jd"
+        assert row["agent_id"] == fj["agent_id"] == "telescope"
+        assert (row["task_group_name"], row["task_group_order"]) == (fj["task_group_name"], fj["task_group_order"])
+        assert row["task_seq"] == 3.5
+        # Next after fetch_jd within Job Review — no sibling sits between them.
+        group_seqs = sorted(r["task_seq"] for r in rows if r["task_group_name"] == "Job Review")
+        assert group_seqs[group_seqs.index(fj["task_seq"]) + 1] == row["task_seq"]
+        uuids = [r["task_key_uuid"] for r in rows]
+        assert uuids.count(row["task_key_uuid"]) == 1
+
+
 class TestAst1252RetiredWrapperTaskKeysAbsent:
     """AST-1252: candidate_requested_* wrappers gone from agent_task seed (narrow lock)."""
 
