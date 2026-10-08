@@ -48,6 +48,10 @@ PLAYWRIGHT_INFRA_FAILURE_CLASSES = frozenset({
     "telescope_job_failed",
 })
 
+# Telescope found no <a> with the requested click_href. A site outcome, not infra —
+# deliberately absent from PLAYWRIGHT_INFRA_FAILURE_CLASSES.
+TELESCOPE_CLICK_TARGET_MISSING = "telescope_click_target_missing"
+
 
 def classify_playwright_failure(exc: BaseException) -> str:
     """Map Playwright/Firefox/Telescope-client exceptions to a stable failure class."""
@@ -426,6 +430,9 @@ class _TelescopeQueue:
             raise PlaywrightInfraError("telescope_timeout", detail)
         if error_class == "bad_request":
             raise PlaywrightInfraError("telescope_bad_request", detail)
+        # Contract mirror: service/telescope/scrape.py CLICK_TARGET_MISSING.
+        if error_class == "click_target_missing":
+            raise PlaywrightInfraError(TELESCOPE_CLICK_TARGET_MISSING, detail)
         raise PlaywrightInfraError("telescope_job_failed", detail)
 
     async def _cancel(self, db: Any, job_id: str) -> None:
@@ -573,6 +580,7 @@ async def _post_telescope(
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
     debug: Optional[bool] = None,
+    click_href: Optional[str] = None,
     priority: Optional[int] = None,
 ) -> dict:
     """One Telescope job — one page load, only requested capture keys in the result."""
@@ -599,6 +607,8 @@ async def _post_telescope(
         body["class_name"] = class_name
     if id is not None:
         body["id"] = id
+    if click_href is not None:
+        body["click_href"] = click_href
     _log.debug("Calling _post_telescope: [body=%s]", body)
     data = await _pool.submit(body, priority=priority)
     _log.debug("Response from _post_telescope: %s", data)
@@ -1022,6 +1032,25 @@ async def get_visible_text(
     if last_err is not None:
         raise last_err
     return ("", "") if return_final_url else ""
+
+
+async def click_through_visible_text(list_url: str, href: str) -> Tuple[str, str]:
+    """Load list_url, click the <a> whose href attribute equals href, return (final_url, text).
+
+    One Telescope job, no client-side retry. Raises PlaywrightInfraError —
+    failure_class TELESCOPE_CLICK_TARGET_MISSING when the anchor is absent, any other
+    telescope_* class on service failure. Callers log; this function does not.
+    """
+    _log.debug("Calling click_through_visible_text: [list_url=%s href=%s]", list_url, href)
+    data = await _post_telescope(list_url, fields=["text"], click_href=href)
+    text = data.get("text")
+    if isinstance(text, list):
+        text = "\n\n".join(t for t in text if t)
+    final_url = data.get("final_url") or ""
+    _log.debug(
+        "Response from click_through_visible_text: final_url=%s text=%s", final_url, text
+    )
+    return final_url, text or ""
 
 
 async def get_page_dom(
