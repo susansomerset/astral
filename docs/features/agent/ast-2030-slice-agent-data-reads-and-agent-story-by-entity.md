@@ -194,3 +194,27 @@ Make one commit per stage (`code(AST-2030): …`) and publish it to the publish 
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-2030
+**Overall:** APPROVED
+**Corpus:** 8fa9f84d0e775852bc529f67faadf7e6f12cd904 (canon/ tree at publish tip)
+**Publish ref:** b75afb62c0b378cd33855a1b4113fb1c4daceaa6
+
+## Canon scores
+patt.entity.batch-processing | A |
+stat.logging.debug | B |
+
+## Traceability
+4→Stages 1–2 (`_slice_entity_block` + `get_agent_data` on tagged live `NO_CACHE`); 5→Stages 1–2 (`None` drops other-chunk rows); 6→Stage 3 (every-task `NO_CACHE`/`RESPONSE` slice); 7→Stage 1 `{}` → whole + Stage 3 legacy `000:`; 8→Stage 3 §5 (`src/ui/api/`, `src/data/` diff empty).
+
+## Findings
+- **discuss** | Procedure | Ticket is **Plan Ready** but assignee is Hedy, not Joan. Validation proceeded per spawn; Chuckles should assign Joan before inbox `validate-plan` gates if watchers enforce assignee.
+- **acceptable** | Decisions D4 | Documented read-path behavior change for old `jobs[]` without ids (`""` → whole) and for `results[]`/`entities[]` rows; matches parent AC7 “never an empty pane” and no current writer for those JSON shapes.
+- **acceptable** | Stage 1 helper | `_slice_entity_block` omits a `Calling _slice_entity_block: …` inbound debug line; outbound `Response from …` plus loop begin/end elsewhere is slight variance under `stat.logging.debug`, not a plan blocker.
+
+context_tokens≈28000
+```
