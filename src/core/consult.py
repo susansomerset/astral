@@ -1853,7 +1853,9 @@ async def _run_batch_consult(
             "%s -> %s pass_state=%r fail_state=%r grades=%r",
             aid, to_state, cfg["pass_state"], cfg["fail_state"], response_job.get("grades"),
         )
-        if to_state == cfg["pass_state"]:
+        # Qualify's relative-link park (AST-2025) is a pass routed to fetch_relative_jd, not a fail.
+        # Truthiness guard: tasks without relative_link_state must not count a None return as passed.
+        if to_state == cfg["pass_state"] or (to_state and to_state == cfg.get("relative_link_state")):
             passed += 1
         else:
             failed += 1

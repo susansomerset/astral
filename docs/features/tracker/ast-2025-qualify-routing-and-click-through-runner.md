@@ -580,3 +580,13 @@ context_tokens≈68000
 ```
 
 context_tokens≈24000
+
+## Resolution
+
+Resolved 2026-10-08 against Radia review `b68e7f9f0`.
+
+- **fix-now — qualify batch tally:** `_run_batch_consult` now counts `to_state == cfg.get("relative_link_state")` as `passed` alongside `pass_state`, with a truthiness guard so consult tasks without `relative_link_state` never count a `None` return as passed. Mixed batch (one absolute + one `/jobs/123` link) now returns `passed=2, failed=0` (was `1 / 1`); verified with Betty's routing-test mocks inline, no test-file edits.
+- **Test pin for the counts (for Betty, optional per Radia):** `TestQualifyJobListings::test_relative_link_routes_to_relative_job_link` does not assert `out["passed"]` / `out["failed"]`. Suggested assertion: `out["passed"] == 2 and out["failed"] == 0`. Not landed here (engineer test-tree ban).
+- **discuss — `fetch_jd_batch(debug=True)` Style-D:** Susan had not answered; Radia's **Default** applies — keep the current `_apply_jd_gates` + `who -> dest [why]` warning shape, no Style-D restoration. To reverse: wrap the `_apply_jd_gates` call in `fetch_jd_batch` with `debug_index` outcome lines.
+- **advisory:** lint-driven `dict` / `list` typing, sibling stack, and sibling test carry — no action.
+- **Checks:** compile OK; ruff `consult.py` 218 (baseline unchanged); Betty's manifest 19 passed / 2 deselected; `test_gazer.py` + `test_consult.py` 29 failed / 395 passed — the same 29 pre-existing failures, no new ones.
