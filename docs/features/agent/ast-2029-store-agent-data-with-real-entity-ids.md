@@ -240,3 +240,12 @@ stat.logging.debug | B |
 - **acceptable** | Decisions D6 | Documented false-positive risk on `NNN:`/`NNN|` inside row text; aligned with parent “no heuristics without Susan” and explicit non-mitigation.
 
 context_tokens≈22000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids`
+- **Build commits:** `ae2579970` (Stage 1: `hydrate_entity_labels`), `37fa489cf` (Stage 2: `split_entity_segments`), `8f30a32d6` (Stage 3: `entity_ids` on `_store_prompt_blocks` / `_store_response_block`, ids computed once in `do_task`, passed to the prompt store + all 13 `to_thread(_store_response_block` sites; Ad Hoc stores untouched).
+- **Build notes:** `py_compile` clean on both files. `ruff` before/after: the only new findings are `UP006`/`UP045` on the new `Optional[List[str]]` / `Dict[str, str]` annotations, matching each file's existing typing style. `re.M` spelled `re.MULTILINE` (FURB167) — same flag as the plan's code. `git diff origin/dev -- src/ui/api/ src/data/` is empty (AC4). Through the real helpers with `save_agent_data` stubbed: live `000:/001:/002:` with ids `[A,B,C]` stores `[entity_id=A|B|C]:` with no `000:`, while `_assemble_blocks_seven_segment` user blocks still carry `000:` and no `entity_id` (AC1); a failure body with `000|DTA5\n001|GCA4` stores `[entity_id=A]|DTA5` / `[entity_id=B]|GCA4` (AC3).
+- **Existing tests:** `tests/component/utils/test_formatting.py` + `tests/component/core/test_agent.py` → 40 failed / 444 passed, and the identical 40 fail on pure `origin/dev` code (failure-list diff empty). Pre-existing, not introduced here.
+- **Deviation:** none (call-site count is 13 per Joan; `re.MULTILINE` vs `re.M` is lint-only).
+- **For QA:** AC2 (`[index=000]:` → `[entity_id=A]:`) is covered by the hydrate regex but was only exercised in the helper, not through `do_task`. A JSON-enveloped failure (`{"agent_payload":"000|…\n001|…"}`) hydrates in place; its last split segment keeps the envelope's closing `"}` (D7).
