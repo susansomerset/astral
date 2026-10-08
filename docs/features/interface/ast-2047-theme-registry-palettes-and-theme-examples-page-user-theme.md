@@ -885,3 +885,5 @@ no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK*
 context_tokens≈12000
 
 `[code-rubric] PROCEED (Commit: 8bcf57c98) Light headings use --heading`
+
+**AST-2063 docs-acceptance:** fix-board [board-betty] TESTS: OK — no test-tree delivery; qa-fix skipped (clean-board opt-out). Existing AST-2047 App.css contract tests cover the change; Light heading color is a UAT visual check.
