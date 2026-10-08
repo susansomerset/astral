@@ -1817,6 +1817,19 @@ class TestRunConsultTaskRoutes:
         assert out["total_passed"] == 1
 
     @pytest.mark.asyncio
+    async def test_ast2025_routes_fetch_relative_jd_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        runner = AsyncMock(return_value={"total": 2, "passed": 1, "failed": 1})
+        monkeypatch.setattr("src.core.gazer.fetch_relative_jd_batch", runner)
+        ents = [{"astral_job_id": "job-r1"}, {"astral_job_id": "job-r2"}]
+        out = await consult_mod.run_consult_task(
+            "job", "RELATIVE_JOB_LINK", ents, "batch-r", {},
+            dispatch_task_key="fetch_relative_jd",
+        )
+        # Runner gets exactly the claimed entities and batch id.
+        runner.assert_awaited_once_with("batch-r", ents)
+        assert out["total_processed"] == 2
+
+    @pytest.mark.asyncio
     async def test_routes_fetch_culture_pages_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "src.core.gazer.fetch_culture_pages_batch",
@@ -2855,11 +2868,14 @@ class TestQualifyJobListings:
         save.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_fails_short_title_and_relative_link(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_relative_link_routes_to_relative_job_link(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2025 AC2 (was test_fails_short_title_and_relative_link): a passing relative link is
+        # initialized as-is and parked in RELATIVE_JOB_LINK — no longer a bad grade.
         transition = MagicMock()
         save = MagicMock()
+        initialize = MagicMock(return_value=True)
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
-        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
         # Table-backed hydration needs criteria; artifacts-only ctx is not enough (AST-723).
         monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: [_rubric_item()])
@@ -2881,7 +2897,7 @@ class TestQualifyJobListings:
                                 "astral_job_id": "job-2",
                                 "grades": [_pass_grade()],
                                 "job_title": "Engineer",
-                                "job_link": "/relative",
+                                "job_link": "/jobs/123",
                             },
                         ]
                     },
@@ -2899,8 +2915,12 @@ class TestQualifyJobListings:
             {},
             debug=False,
         )
-        assert out["passed"] == 1
-        assert out["bad_grades"] == ["job-2"]
+        assert not out.get("bad_grades")
+        dest = {c.args[1][0]: c.args[2] for c in transition.call_args_list}
+        assert dest == {"job-1": "PASSED_JOBLIST", "job-2": "RELATIVE_JOB_LINK"}
+        # Relative link stored verbatim; the click-through runner resolves it later.
+        links = {c.args[0]: c.args[2]["job_link"] for c in initialize.call_args_list}
+        assert links["job-2"] == "/jobs/123"
 
     @pytest.mark.asyncio
     async def test_saves_fail_state_without_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2986,13 +3006,15 @@ class TestAst1895InvalidJobLinkError:
     _run_batch_consult. Routing survived; the fail reason and debug= scoping did not."""
 
     @pytest.mark.asyncio
-    async def test_empty_and_relative_job_link_fail_reason_names_error(
+    async def test_empty_job_link_fail_reason_names_error_relative_routes(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Pre-fix: raise hits the decorator wrapper → "ValueError: no signature found ...".
+        # AST-2025: only the empty half still raises; relative now routes to RELATIVE_JOB_LINK.
         fail_log = MagicMock()
+        transition = MagicMock()
         monkeypatch.setattr(consult_mod, "_log_fail_dest", fail_log)
-        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
         monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock())
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
         # Without criteria, hydration raises before process_fn ever runs (AST-723).
@@ -3018,17 +3040,18 @@ class TestAst1895InvalidJobLinkError:
             {"astral_job_id": "job-r", "state": "VALID_TITLE", "company": "co", "job_data": {"raw_job_listing": "b"}},
         ]
         out = await consult_mod.qualify_job_listings("batch-x", jobs, {}, debug=False)
-        assert out["bad_grades"] == ["job-e", "job-r"]
-        # Keyed by entity id; both land on the same fail/retry destination.
+        assert out["bad_grades"] == ["job-e"]
         calls = {c.args[0]: c.args for c in fail_log.call_args_list}
         dest = consult_mod._consult_batch_fail_dest(
             "VALID_TITLE", consult_mod.TASK_CONFIG["qualify_job_listings"].get("error_state")
         )
         assert calls["job-e"][1] == dest
-        assert calls["job-r"][1] == dest
         # Exact match (trailing space on empty) also rules out "no signature found".
         assert calls["job-e"][2] == "process_fn InvalidJobLinkError: empty job_link: "
-        assert calls["job-r"][2] == "process_fn InvalidJobLinkError: relative job_link: /relative"
+        # Relative: no InvalidJobLinkError fail log; parked in RELATIVE_JOB_LINK.
+        assert "job-r" not in calls
+        assert [c.args[2] for c in transition.call_args_list if c.args[1] == ["job-r"]] == ["RELATIVE_JOB_LINK"]
+        assert not [c for c in transition.call_args_list if "job-e" in c.args[1] and c.args[2] == "RELATIVE_JOB_LINK"]
 
     def test_invalid_job_link_error_is_value_error_class(self) -> None:
         # Pre-fix the module name is the decorator's plain-function wrapper.
