@@ -440,3 +440,58 @@ All in `src/core/agent.py`. No change to `src/utils/formatting.py`, the API, the
 [board-joan]  CANON: OK
 
 The fix stays on the existing `batch_id` + optional `entity_id` read path in `src/core/agent.py`: it reshapes what `get_agent_data` returns for the run modal (envelope + preamble via `_entity_call_view`, blank-row drop) and explicitly leaves `get_entity_agent_story` on `_slice_entity_block`. That matches **patt.entity.batch-processing** — `batch_id` remains the join key; ids only refine which slice of stored blocks you see, with no new claim key or storage shape. **stat.logging.debug** adds an ungated `Response from _entity_call_view` with the full string; no new `debug=` plumbing and no statute carve-out. D1/D2-2052 (literal `[entity_id=` preamble, accepted partial JSON envelope suffix) are product read-path choices, not conflicts with in-force directive text; nothing in canon needs amending for this patch.
+
+## Radia review-fix (AST-2052) — round 1
+
+[code-rubric]
+**Ticket:** AST-2052
+**Publish ref:** 2c7b93bf44abae6fd49ae43b486149e37eb91c79
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Overall:** FIX-NOW
+**Parent shape:** Normal (bug on AST-2028; not orphaned)
+
+## Canon scores
+patt.entity.batch-processing | A |
+stat.logging.debug | B |
+
+## Column diff vs plan stage
+no plan-stage canon scores attached (Joan fix-board **CANON: OK** on patch intent)
+
+## Frame diff
+(none)
+
+## [bug-repro]
+**OK** — `tests/component/core/test_agent_ast2052.py::TestAst2052EntityCallView::test_bug_repro_entity_read_is_one_each_mode_call` is tagged `[bug-repro]` and asserts the plan § Repro table verbatim: CACHE_C omitted; NO_CACHE keeps `Jobs to grade:\n` preamble + B segment; JSON RESPONSE keeps `jobs[]` wrapper + `agent_performance`; failure RESPONSE keeps provider banner + `{"agent_payload":"` opener + B segment. Would fail on pre-fix `_slice_entity_block`-only read (bare item, bare tag, blank CACHE_C tab).
+
+## ## What must still hold
+**FAIL** — Traced against `origin/ftr/AST-2028-technical-fail-modals-filter-by-entity-id...origin/sub/AST-2028/AST-2052-run-modal-each-mode-layout`:
+- **AST-2030 AC8 / parent AC10 (no `src/ui/api/` or `src/data/` change):** **broken on publish ref** — `src/ui/api/api_system.py` adds `logo_background` / AST-2040 `ui_config` field (unrelated to AST-2052).
+- **In-agent behavior** (AC4–AC7, story AC6, batch-wide AC9): **OK** in code — `get_entity_agent_story` still uses `_slice_entity_block`; `get_agent_data` without `entity_id` returns rows unchanged (`TestAst2052StillHolds::test_no_entity_id_batch_view_byte_identical`); guards cover AC5/AC7 and bare story slice.
+
+## Findings
+
+### fix-now
+- **fix-now** | Cross-ticket scope on publish ref | Three-dot diff vs `origin/ftr/AST-2028-…` includes product/docs outside AST-2052: `src/core/contact.py`, `src/core/meteorite.py`, `src/utils/config.py`, `src/utils/deploy_status.py`, `src/ui/frontend/.../NavigationShell.tsx`, `src/ui/api/api_system.py`, canon `patt.contact.command-intercept.md`, feature docs AST-2034/2035, and large `test_contact` / `test_meteorite` additions. Plan § Proposed change limits the fix to `src/core/agent.py` (+ Betty tests). **resolve-child / Chuckles:** rebase or reset `sub/AST-2028/AST-2052-run-modal-each-mode-layout` so only AST-2052 commits (agent read path + `test_agent_ast2052.py` + `test_agent_ast2030.py` / bible rows for 2052) remain on top of ftr.
+- **fix-now** | `## What must still hold` | Item “no change under `src/ui/api/`” is violated while `api_system.py` rides this branch (see above).
+
+### discuss
+(none)
+
+### advisory
+- **advisory** | `stat.logging.debug` | `_entity_call_view` logs full `out` per plan; no `Calling _entity_call_view: …` inbound line (same slight variance Joan accepted at fix-board for similar helpers).
+- **advisory** | `test_agent_ast2052.py` | `TestAst2052StillHolds` documents regression guards for AC5/AC7/AC6/AC9 beyond the single `[bug-repro]` node — aligned with manifest “22 passed”.
+
+## What's solid
+- `_entity_call_view` matches plan: JSON array filter with `companies` before `jobs`, `str()` id match; tagged text uses literal `[entity_id=` preamble + segment; `None` / whole-block paths delegate to `_slice_entity_block`.
+- `get_agent_data` entity branch: pass-through types skip blank `block_data`; sliced path uses `_entity_call_view`, drops `None` and whitespace-only segments.
+- D2-2052 non-last entity failure envelope covered by `test_non_last_entity_keeps_opener_not_closing`.
+
+## Recommended actions (downstream — not executed here)
+- Chuckles: post **REVIEW** upshot; **Review Posted** → **resolve-child** (branch hygiene, not logic rewrite) → re-run **test-fix** → re-spawn **review-fix** once diff vs ftr is agent.py + AST-2052 tests/docs only.
+- Hedy: drop unrelated commits from publish ref (or cherry-pick `7e0ad85`-style fix onto clean ftr tip); confirm `git diff origin/ftr/AST-2028-…...HEAD -- src/ui/api/ src/data/ src/ui/frontend/ src/utils/formatting.py` empty per plan §4.
+
+context_tokens≈24000
+
+[code-rubric] REVIEW (Commit: 2c7b93bf4) branch carries foreign diffs
+
+> Chuckles: both fix-now items are an artifact of the review base — `origin/ftr` lagged `origin/dev`, so `ftr...sub` included dev commits `sync-child` merged in. `merge-tree(ftr, dev)` vs sub = only the 5 AST-2052 files. ftr refreshed from dev; review re-run.
