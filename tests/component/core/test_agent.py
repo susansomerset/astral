@@ -247,8 +247,23 @@ class TestDecodePayload:
             "pos": 0,
             "reason": "[task] unexpected trailing content in grades-only line: '0|CRA2|extra'",
         }]
-        with pytest.raises(ValueError, match="grade X requires confidence digit 0"):
-            agent_mod._decode_payload("task", "grades", "0|CRX2", ctx)
+        # Illegal confidence is a per-line miss (caller retries that entity), not a payload raise.
+        x_bad = agent_mod._decode_payload("task", "grades", "0|CRX2", ctx)
+        assert x_bad["jobs"] == []
+        assert x_bad["decode_failures"] == [{
+            "astral_job_id": "job-1",
+            "pos": 0,
+            "reason": "[task] grade X requires confidence digit 0, got 2 in segment 'CRX2' (line '0|CRX2')",
+        }]
+        letter_bad = agent_mod._decode_payload("task", "grades", "0|CRC0", ctx)
+        assert letter_bad["jobs"] == []
+        assert "non-X grade requires confidence 1-5, got 0" in letter_bad["decode_failures"][0]["reason"]
+        # A bad confidence on one line leaves the sibling line graded.
+        both = agent_mod._decode_payload(
+            "task", "grades", "0|CRX2\n1|CRA3", {"batch_entities": _batch_entities("job-1", "job-2")},
+        )
+        assert [j["astral_job_id"] for j in both["jobs"]] == ["job-2"]
+        assert [f["astral_job_id"] for f in both["decode_failures"]] == ["job-1"]
 
     def test_ast1996_malformed_line_isolated_clean_line_decodes(self) -> None:
         # AST-1996 repro A (AST-1884 production shape): DEC35 fails _GRADE_SEG on line 0 only.
@@ -1745,7 +1760,7 @@ class TestDoTask:
             ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
-        assert "empty agent_payload" in out["error"]
+        assert "Agent failure: nope" in out["error"]
 
         send.return_value = {
             "success": True,
@@ -1758,8 +1773,10 @@ class TestDoTask:
             index="job-1",
             ctx=_rubric_evaluate_jd_ctx(),
         )
-        assert out["success"] is False
-        assert "confidence digit 0" in out["error"]
+        # Hop stays successful; consult routes the decode_failure to the retry holding.
+        assert out["success"] is True
+        fails = (out.get("parsed_response") or {}).get("decode_failures") or []
+        assert fails and "confidence digit 0" in fails[0]["reason"]
 
     async def test_chains_run_next_when_configured(self, monkeypatch: pytest.MonkeyPatch, batch_token: Any) -> None:
         def resolve(task_key: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:

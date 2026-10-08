@@ -6199,6 +6199,39 @@ class TestAst1155IncompleteGradeRetry:
         transition.assert_called_once_with("grade_do", ["job-1"], "PASSED_JD_RETRY")
 
     @pytest.mark.asyncio
+    async def test_render_verdict_bad_confidence_first_strike_to_retry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = {"astral_job_id": "job-1", "company": "co", "state": "PASSED_JD", "job_data": {}}
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [],
+                        "decode_failures": [{
+                            "astral_job_id": "job-1",
+                            "pos": 0,
+                            "reason": "[grade_do] grade X requires confidence digit 0, got 3 in segment 'MAX3'",
+                        }],
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        out = await consult_mod.render_verdict("grade_do", "job-1", ctx={"candidate_data": {}})
+        assert out["success"] is False
+        assert out["to_state"] == "PASSED_JD_RETRY"
+        assert "confidence digit 0" in out["error"]
+        transition.assert_called_once_with("grade_do", ["job-1"], "PASSED_JD_RETRY")
+
+    @pytest.mark.asyncio
     async def test_render_verdict_incomplete_second_strike_to_technical(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
