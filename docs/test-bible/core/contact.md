@@ -474,3 +474,56 @@ Contact orchestration for admin channel picker / membership warn / snapshot: `li
 The turn's model/key route (contact agent row, kimi key) is covered in [`agent.md`](agent.md) `TestAst1879EstelleTurnRoute`.
 
 **Integration:** none.
+
+### AST-2035 · AST-2032
+
+**Parent:** [AST-2032 — Let Estelle post a meteorite from Slack](https://linear.app/astralcareermatch/issue/AST-2032). **Publish:** `origin/sub/AST-2032/AST-2035-contact-add-job-intercept`.
+
+`parse_contact_command` matches a registered `/<id>` only as the first token after leading `<@U…>` mentions and unwraps Slack `<url|label>` / `<url>`. In `_handle_slack_event_body`, a bound sender's command skips paste recovery and the normal turn and runs `_run_contact_command`: empty payload → usage post; `code` → handler (`insert_slack_meteorite`, sibling **AST-2034** — `core/meteorite.md`) then a fixed ack naming the id only on success (a soft-fail posts nothing, so the AST-1101 hear-ack fires); `agent` → one `run_contact_estelle_turn` with the result JSON as `extra_context` (rendered under `## Command result (this inbound event)` in live content). `_emit_listen_info` prefixes `action:` with `<id>:<mode>,meteorite:<id>`. Registry + import-time asserts: [`../utils/config.md`](../utils/config.md) § AST-2035.
+
+Known senders always get the AST-1668 recognition post first, so AC3's "one ack" is asserted as exactly one post containing the meteorite id plus no hear-ack.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse hits / misses (bare, label link, bare `<url>`, `\|label` mention, no mention, multi-line, mid-sentence, unregistered, non-str) | `src/core/contact.py` | **`TestAst2035ContactCommandIntercept::test_parse_contact_command`** (9 params) |
+| Shipped registry: `add-job` is `code`, handler resolves to `insert_slack_meteorite` | `src/utils/config.py` | **`…::test_registry_ships_add_job_code_mode`** |
+| AC1 link markup / AC2 multi-line DM — real insert against sqlite | `src/core/contact.py` + `src/core/meteorite.py` | **`…::test_ac1_link_markup_lands_raw_at_new`**, **`…::test_ac2_multiline_text_in_dm_lands_one_row`** |
+| AC3 code mode: zero `do_task`, one id post, no hear-ack | same | **`…::test_ac3_code_mode_no_llm_one_ack_no_hear_ack`** |
+| AC4 agent mode: one turn, id in `extra_context`; reply is the turn's; `extra_context` reaches live content | same | **`…::test_ac4_agent_mode_one_turn_with_id`**, **`…::test_ac4_extra_context_reaches_turn_live_content`** |
+| AC5 BOT_BLOCKED row untouched, paste recovery not called | same | **`…::test_ac5_bot_blocked_row_untouched_paste_skipped`** |
+| AC6 unbound sender / bare command → no row | same | **`…::test_ac6_unbound_sender_no_insert`**, **`…::test_ac6_bare_command_posts_usage_no_insert`** |
+| AC7 mid-sentence → normal turn, no insert | same | **`…::test_ac7_mid_sentence_takes_normal_turn`** |
+| Code-mode handler soft-fail → no ack, hear-ack fires | same | **`…::test_code_mode_handler_miss_no_ack_hear_ack_fires`** |
+| AC8 no quoted command literal in `src/core/` | `src/core/**` | **`…::test_ac8_no_command_literals_in_core`** |
+| AC9 INFO (debug off): listen line with id:mode + meteorite id; meteorite `NEW` entity line | same | **`…::test_ac9_info_lines_with_debug_off`** |
+
+**Broken / obsolete this pass:** none. `test_contact.py` + `test_config.py` show the identical 37 failures (12 in `test_contact.py`) with the pre-build (`ftr`) `contact.py`/`config.py` and with this build — all pre-existing. Three of them sit in manifest regression classes and are `--deselect`ed below (not this ticket's to fix).
+
+**Integration:** none — no existing scenario covers Contact Slack events; do not invent.
+
+## QA test manifest
+
+1. Command intercept (AC1–AC9 + parse + soft-fail): `tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept`
+2. Intercept-adjacent regression (paste recovery, recognition, hear-ack, turn): `tests/component/core/test_contact.py::TestAst1561ContactPasteRouting`, `TestAst1668UnboundAndRecognition`, `TestAst1101ChannelHearEvidence`, `TestAst1073ContactEstelleTurnLoop`, `TestAst1879EstelleTurnCandidateCtx`
+3. Sibling insert entry (handler target): `tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept \
+  tests/component/core/test_contact.py::TestAst1561ContactPasteRouting \
+  tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition \
+  tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop \
+  tests/component/core/test_contact.py::TestAst1879EstelleTurnCandidateCtx \
+  tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite \
+  --deselect tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence::test_background_wrapper_logs_exception \
+  --deselect tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_concern_posts_and_logs_aside \
+  --deselect tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_debug_style_d_index_and_detail \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/contact.md`
+- `docs/test-bible/utils/config.md`

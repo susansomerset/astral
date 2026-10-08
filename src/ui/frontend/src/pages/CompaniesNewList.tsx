@@ -94,7 +94,7 @@ export default function NewList() {
 
       {/* Import modal */}
       <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import Companies from CSV" onSave={handleImport}>
-        <p style={{ fontSize: 13, color: "#aaa", marginBottom: 12 }}>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
           Paste CSV with columns: <code>short_name, company_name, company_website</code>
         </p>
         <textarea
@@ -103,7 +103,7 @@ export default function NewList() {
           placeholder={"short_name,company_name,company_website\nacme,Acme Corp,https://acme.com"}
           style={{
             width: "100%", minHeight: 200, fontFamily: "monospace", fontSize: 13,
-            background: "#1a1a2e", color: "#e0e0e0", border: "1px solid #333",
+            background: "var(--bg-deep)", color: "var(--text-primary)", border: "1px solid var(--border)",
             borderRadius: 6, padding: 12, resize: "vertical",
           }}
         />

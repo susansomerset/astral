@@ -7663,3 +7663,38 @@ class TestAst2024RelativeJobLinkRegistry:
         # Plan decision: relative_link_state is not a transition key → claim sorts by updated_at.
         assert cfg.dispatch_claim_uses_score_floor("RELATIVE_JOB_LINK") is False
         assert cfg._dispatch_sort_by_for("job", "RELATIVE_JOB_LINK") == "updated_at"
+
+
+class TestAst2047ThemeRegistry:
+    """AST-2047: UI_CONFIG theme registry drives the profile Theme select, Tools nav item, and App.css blocks."""
+
+    def test_registry_ids_selectable_and_default(self) -> None:
+        themes = cfg.UI_CONFIG["themes"]
+        assert list(themes) == ["dark", "light", "light_parchment", "light_slate"]
+        assert [tid for tid, t in themes.items() if t["profile_selectable"]] == ["dark", "light"]
+        assert cfg.UI_CONFIG["default_theme"] == "dark"
+
+    def test_profile_theme_select_options_are_the_selectable_entries(self) -> None:
+        # AC2: one list of themes — options generated from the registry, not a second hard-coded list.
+        contact = next(
+            s for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"] if s["label"] == "Contact Information"
+        )
+        theme = next(f for f in contact["fields"] if f["key"] == "theme")
+        assert theme["type"] == "select"
+        assert theme["options"] == [
+            {"value": tid, "label": t["label"]} for tid, t in cfg.UI_CONFIG["themes"].items() if t["profile_selectable"]
+        ]
+        assert [o["label"] for o in theme["options"]] == ["Dark", "Light"]
+
+    def test_tools_nav_theme_examples_admin_only(self) -> None:
+        tools = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Tools")
+        assert tools.get("admin_only") is True
+        assert {"label": "Theme Examples", "path": "/admin/theme_examples"} in tools["items"]
+
+    def test_every_registry_id_has_an_app_css_block(self) -> None:
+        # Adding a palette = one registry entry + one [data-theme] block; a missing block would render unthemed.
+        from pathlib import Path
+
+        css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()
+        for tid in cfg.UI_CONFIG["themes"]:
+            assert f'[data-theme="{tid}"]' in css, tid

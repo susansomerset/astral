@@ -4805,3 +4805,15 @@ All 8 new/revised nodes red on pre-AST-2024 `config.py` / `agent_task.json`, gre
 2. **AC1 one-liner (required):** the `python -c "…"` registry command from the ticket's AC1 exits 0 (set `ASTRAL_DB_DIR`).
 
 **Pass criterion:** both green — not zero-arg harness / branch-lock gate (pre-existing reds across these files are unchanged by AST-2024).
+
+### AST-2035 · AST-2032
+
+`CONTACT_CONFIG["commands"]` registry (command id → `handler` dotted `src.core.*` path, `mode` ∈ {`code`, `agent`}, `description`, `usage_reply_text`, `ack_reply_template` with `{meteorite_id}`); `add-job` ships `code` → `src.core.meteorite.insert_slack_meteorite`. Import-time asserts cover shape, mode vocabulary, handler prefix, placeholder, and no collision with `CONTACT_CONFIG["skills"]` / `CONTACT_TASK_CONFIG` — a bad registry fails at import, so every test module importing config is the gate.
+
+| Area | Component tests |
+| --- | --- |
+| Shipped `add-job` entry (code mode, handler resolves) | `tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept::test_registry_ships_add_job_code_mode` |
+
+**Broken / obsolete:** none — no `test_config.py` test pins the `CONTACT_CONFIG` key set. **Manifest:** [`../core/contact.md`](../core/contact.md) § AST-2035.
+
+**AST-2047 (pointer):** `UI_CONFIG["themes"]` / `default_theme` (+ import-time assert that the default is a selectable id), profile `theme` select generated from selectable entries, Tools `/admin/theme_examples`, and every registry id having an `App.css` `[data-theme]` block — **`TestAst2047ThemeRegistry`** (4). Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2047.

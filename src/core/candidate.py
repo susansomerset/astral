@@ -88,6 +88,7 @@ from src.utils.config import (
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
     RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
     TASK_CONFIG,
+    UI_CONFIG,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     dispatch_claim_states,
@@ -951,6 +952,13 @@ def save_candidate_data(
         pref = (col_kwargs["pronouns"] or "").strip()
         if pref and pref not in PRONOUN_PREFERENCE_OPTIONS:
             raise ValueError(f"Invalid pronouns value: {pref!r}")
+
+    # AST-2042: theme is a candidate_data meta key; only profile-selectable registry ids may be stored
+    # (examples-only palettes are rejected too). List, not set, so an unhashable value fails cleanly.
+    if "theme" in blob_merge:
+        selectable = [tid for tid, t in UI_CONFIG["themes"].items() if t["profile_selectable"]]
+        if blob_merge["theme"] not in selectable:
+            raise ValueError(f"Invalid theme value: {blob_merge['theme']!r}")
 
     contact = blob_merge.get("contact")
     if isinstance(contact, dict):

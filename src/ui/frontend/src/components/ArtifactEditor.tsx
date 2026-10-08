@@ -300,6 +300,8 @@ export default function ArtifactEditor({
   const inReview = snapshot !== null
   // Bodies editable in rubric chrome mode OR structure/shapes/job fixed tabs; never during Generate review.
   const bodiesEditable = !inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)
+  // Criteria (free-form) and resume structure editors autosave bodies; shapesKey job editors keep explicit Save/Cancel.
+  const autosaveBodies = tabChromeEditable || structureMode
   // Stable id-set signature: label-only and reorder-only edits do not re-GET / wipe tabs.
   const fixedFieldKeys = fixedFields
     ? [...fixedFields.map(f => f.key)].sort().join("\0")
@@ -616,7 +618,7 @@ export default function ArtifactEditor({
   }
 
   // Save to backend — AST-1381: when structure authoring is on, persist formats with content Save.
-  const doSave = useCallback(async (t: SideTab[]) => {
+  const doSave = useCallback(async (t: SideTab[], autosave = false) => {
     const fieldKeys = experienceJobFields.map(f => f.key)
     for (const tab of t) {
       const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
@@ -651,11 +653,13 @@ export default function ArtifactEditor({
           const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
           throw new Error(err.error || `Save failed (${resp.status})`)
         }
-        setDirty(false)
+        // A newer edit typed while this PUT was in flight stays dirty so the unmount flush still saves it.
+        if (tabsRef.current === t) setDirty(false)
         setEverSaved(true)
         setSnapshot(null)
         setToast({ text: "Saved", variant: "success" })
-        jobPersistence.onSaved?.()
+        // JAR onSaved reloads the modal (unmounts this editor) — only on explicit Save / unmount flush.
+        if (!autosave) jobPersistence.onSaved?.()
       } catch (e) {
         setToast({ text: (e as Error).message || "Save failed", variant: "error" })
       } finally {
@@ -692,7 +696,7 @@ export default function ArtifactEditor({
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
         throw new Error(err.error || `Save failed (${resp.status})`)
       }
-      setDirty(false)
+      if (tabsRef.current === t) setDirty(false)
       setEverSaved(true)
       setSnapshot(null)
       setToast({ text: "Saved", variant: "success" })
@@ -718,9 +722,12 @@ export default function ArtifactEditor({
     setTabs(next)
     setDirty(true)
     // Skip auto-save while reviewing generated content
-    if (tabChromeEditable && !inReview) {
+    if (autosaveBodies && bodiesEditable) {
       if (timerRef.current) clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => doSave(next), AUTOSAVE_MS)
+      // A timer queued before Generate must not persist (or clear the snapshot) during review — AST-905.
+      timerRef.current = setTimeout(() => {
+        if (snapshotRef.current === null) void doSave(next, true)
+      }, AUTOSAVE_MS)
     }
   }
 
@@ -962,19 +969,19 @@ export default function ArtifactEditor({
     })
   }
 
-  if (!jobPersistence && !selectedId) return <p style={{ padding: 20, color: "#fff" }}>No candidate selected.</p>
+  if (!jobPersistence && !selectedId) return <p style={{ padding: 20, color: "var(--text-primary)" }}>No candidate selected.</p>
   if (!jobPersistence) {
     if (loadState === "loading") return <p className="list-page-status">Loading...</p>
     if (loadState === "error" || !manifest) return <p className="list-page-status">State UI manifest unavailable.</p>
   }
   if (shapeError) {
     const shapeLabel = shapesKey ?? (structureMode ? "resume structure" : "fields")
-    return <p style={{ padding: 20, color: "#ff6b6b" }}>Failed to load field definitions for "{shapeLabel}".</p>
+    return <p style={{ padding: 20, color: "var(--error)" }}>Failed to load field definitions for "{shapeLabel}".</p>
   }
   if (jobLoadError) {
     return <p className="entity-error">Failed to load job artifact.</p>
   }
-  if (!loaded) return <p style={{ padding: 20, color: "#fff" }}>Loading...</p>
+  if (!loaded) return <p style={{ padding: 20, color: "var(--text-primary)" }}>Loading...</p>
 
   return (
     <>
@@ -995,7 +1002,7 @@ export default function ArtifactEditor({
               </button>
             )}
             {headerActions}
-            {(fixedFields || inReview || jobPersistence) ? (
+            {(inReview || !autosaveBodies) ? (
               <>
                 <button className="btn secondary" onClick={handleCancel}>Cancel</button>
                 <button className="btn primary" onClick={() => doSave(tabs)} disabled={saving}>
@@ -1269,12 +1276,12 @@ export default function ArtifactEditor({
           background: "rgba(0,0,0,0.6)",
         }}>
           <div style={{
-            background: "var(--bg-elevated)", border: "2px solid #ff6b6b",
+            background: "var(--bg-elevated)", border: "2px solid var(--error)",
             borderRadius: 8, padding: 24, maxWidth: 460, width: "90%",
           }}>
             {isChainHandoff ? (
               <>
-                <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>
+                <h3 style={{ margin: "0 0 12px", color: "var(--error)", fontSize: 16 }}>
                   Reset all artifact rubrics?
                 </h3>
                 <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
@@ -1300,7 +1307,7 @@ export default function ArtifactEditor({
               </>
             ) : (
               <>
-                <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>Regenerate {title}?</h3>
+                <h3 style={{ margin: "0 0 12px", color: "var(--error)", fontSize: 16 }}>Regenerate {title}?</h3>
                 <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
                   This will replace the current content with a new AI-generated version.
                   You can review the result and <strong>Cancel</strong> to restore your previous version,

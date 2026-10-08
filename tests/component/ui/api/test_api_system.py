@@ -68,6 +68,14 @@ class TestSystemAuthRoutes:
         payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
         assert payload.get("job_title_truncate_chars") == 50
 
+    def test_ui_config_serves_theme_registry(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-2047 AC1: registry + default ride the UI_CONFIG spread. Flask's JSON provider sorts keys,
+        # so served order is alphabetical, not registry order — compare as a set.
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        assert set(payload["themes"]) == {"dark", "light", "light_parchment", "light_slate"}
+        assert payload["themes"]["light_slate"] == {"label": "Light (Slate)", "profile_selectable": False}
+        assert payload["default_theme"] == "dark"
+
     def test_ui_config_includes_preamble_config(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         # AST-1016: Intro + steps for AST-1017; route alias matches existing ui_config tests.
         from src.utils.config import PREAMBLE_CONFIG

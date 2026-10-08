@@ -53,6 +53,16 @@ const profileSections = {
               { value: "he/him", label: "he/him" },
             ],
           },
+          // AST-2048: mirrors DATA_SHAPES — options generated from UI_CONFIG themes (selectable only).
+          {
+            key: "theme",
+            label: "Theme",
+            type: "select",
+            options: [
+              { value: "dark", label: "Dark" },
+              { value: "light", label: "Light" },
+            ],
+          },
           { key: "contact.github", label: "GitHub (username or URL)", type: "text" },
           { key: "contact.linkedin_url", label: "LinkedIn (username or URL)", type: "text" },
           { key: "contact.phone", label: "Phone", type: "text" },
@@ -135,7 +145,8 @@ function installProfileMocks(overrides: {
           })
     }
     if (url === "/api/ui_config" || url === "/api/system/ui_config") {
-      return jsonResponse({ cover_letter_signature_image: { max_width_px: 200, max_height_px: 80 } })
+      // AST-2048: profile waits for the served default_theme before loading the candidate.
+      return jsonResponse({ cover_letter_signature_image: { max_width_px: 200, max_height_px: 80 }, default_theme: "dark" })
     }
     if (url === "/api/state_ui_manifest") {
       return Promise.reject(new Error("use default manifest"))
@@ -170,6 +181,35 @@ describe("CandidateProfile", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
     expect(savedBody?.pronouns).toBe("she/her")
+  })
+
+  it("AST-2048: no stored theme loads the served default; choosing Light saves theme in the PUT body", async () => {
+    let savedBody: Record<string, unknown> | null = null
+    installProfileMocks({
+      save: async (init) => {
+        savedBody = JSON.parse(String(init?.body))
+        return jsonResponse({ candidate_data: { ...candidateData, theme: "light" } })
+      },
+    })
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
+    const themeField = screen.getByText("Theme", { selector: "label.dep-field-label" }).closest(".dep-field")!
+    const theme = within(themeField as HTMLElement).getByRole("combobox")
+    expect(theme).toHaveDisplayValue("Dark")
+    await userEvent.selectOptions(theme, "light")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
+    expect(savedBody?.theme).toBe("light")
+    // Reloaded from the save response: Light stays selected (AC3).
+    expect(theme).toHaveDisplayValue("Light")
+  })
+
+  it("AST-2048: stored theme loads selected", async () => {
+    installProfileMocks({ candidate: { ...candidateData, theme: "light" } })
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument())
+    const themeField = screen.getByText("Theme", { selector: "label.dep-field-label" }).closest(".dep-field")!
+    expect(within(themeField as HTMLElement).getByRole("combobox")).toHaveDisplayValue("Light")
   })
 
   // AST-1014: middle name removed from profile shapes — AST-510 canceled.

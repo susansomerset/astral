@@ -47,7 +47,7 @@ Per-vector **`importance`** (1–10), **`ASTRAL_CONFIG["consult_importance"]`** 
 | Artifact normalization | `src/core/candidate.py` | `tests/component/core/test_candidate.py` (`TestNormalizeRubricArtifactsOnSaveExtended`, `TestNormalizeImportanceValue`) |
 | Display helpers | `src/ui/frontend/src/lib/rubricDisplay.ts` | `tests/component/frontend/lib/test_rubricDisplay.test.ts` |
 | Editor / rail | `ArtifactEditor.tsx`, `SideTabPanel.tsx` | `tests/component/frontend/components/test_ArtifactEditor.test.tsx`, `tests/component/frontend/components/test_SideTabPanel.test.tsx`, `tests/component/frontend/components/test_LabeledTextArea.test.tsx` |
-| Analysis / job surfaces | `AgentAnalysisHeader.tsx`, job pages | `tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx`, `tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx`, `test_ArtifactsJobListCriteria.test.tsx`, `test_ArtifactsJobDescCriteria.test.tsx`, `test_ArtifactsGetJobCriteria.test.tsx`, `test_ArtifactsDoJobCriteria.test.tsx`, `test_ArtifactsLikeJobCriteria.test.tsx` |
+| Analysis / job surfaces | `AgentAnalysisHeader.tsx`, `RubricModal.tsx`, job pages | `tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx`, `tests/component/frontend/components/test_RubricModal.test.tsx`, `tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx`, `test_ArtifactsJobListCriteria.test.tsx`, `test_ArtifactsJobDescCriteria.test.tsx`, `test_ArtifactsGetJobCriteria.test.tsx`, `test_ArtifactsDoJobCriteria.test.tsx`, `test_ArtifactsLikeJobCriteria.test.tsx` |
 
 ---
 
@@ -1005,7 +1005,7 @@ Retarget AST-1351/996 fixtures: job `accomplishments` is **`string[]`**; collaps
 | Area | Source | Component tests |
 | --- | --- | --- |
 | string[] + collapsible header | `ExperienceJobsEditor.tsx` | **`test_ExperienceJobsEditor.test.tsx`** — AST-1351/1382 |
-| Array Save + header + structure Save [bug-repro] | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — AST-996/1351/1375 revised; **`AST-1382 [bug-repro]: content Save bundles resume_structure…`** |
+| Array Save + header + structure Save [bug-repro] | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — AST-996/1351/1375 revised; **`AST-1382 [bug-repro]: content autosave bundles resume_structure…`** (AST-2056 retarget) |
 
 **Broken / obsolete this pass:** Role N / `accomplishments: str` asserts under AST-1351/996/1375 — retargeted.
 
@@ -1278,7 +1278,7 @@ Restores structure-mode section **body** load → edit → Save on shared `Artif
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Label-churn keeps body + Save | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1480: structure title rename keeps hydrated body and Save still works`** |
+| Label-churn keeps body + Save | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1480: structure title rename keeps hydrated body and autosave still works`** (AST-2056 retarget) |
 | JAR `job_resume` overlay | same | **`AST-1480: job_resume pin overlays resume_content sibling bodies`** |
 | bodiesEditable / chrome off | same | **`AST-1480: structure mode bodies stay editable; tab chrome stays off`** |
 | Rubric free-form body edit PUT | same | **`AST-1480: rubric free-form body edit PUTs edited content`** (Radia fix-now / resolve) |
@@ -1661,7 +1661,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| AC4 admin click `run_id` row → `/api/admin/dispatch_ledger/R/logs` + `/api/agent_data/R`, log + block rendered; claim `batch_id` never opened | `JobDetailModal.tsx`, `BatchExecutionModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`AST-1865 … AC4`** |
+| AC4 admin click `run_id` row → `/api/admin/dispatch_ledger/R/logs` + `/api/agent_data/R?entity_id=<job>` (scoped since **AST-2031**), log + block rendered; claim `batch_id` never opened | `JobDetailModal.tsx`, `BatchExecutionModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`AST-1865 … AC4`** |
 | AC5 non-admin → no clickable rows, zero `/api/admin/` calls (asserted after `/api/me` settles) | `JobDetailModal.tsx` | **`… AC5`** |
 | AC6 `batch_id`-only row opens `B`; neither → inert | `StateTimeline.tsx`, `JobDetailModal.tsx` | **`… AC6`**; **`test_StateTimeline.test.tsx`** — **`StateTimeline — AST-1865 run selection`** (no-callback inert, run_id > batch_id, keyboard) |
 | AC8 Execution History unchanged | `AdminPerformanceMonitor.tsx`, `BatchLogViewer.tsx` | **`test_AdminPerformanceMonitor.test.tsx`** (unedited) |
@@ -1935,3 +1935,126 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/components.md`: filled after publish
+
+### AST-2031 · AST-2028 (job run modal requests entity-scoped agent data)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2031-job-run-modal-entity-scoped`. `BatchAgentDataPanes` takes optional `entityId` → `?entity_id=<encoded>` on `/api/agent_data/…` only (timesheets + dispatch ledger stay batch-wide; refetch on change). `BatchExecutionModal` forwards `entityId`; `JobDetailModal` passes `job?.astral_job_id`. `BatchAgentDataModal` (Execution History / Vector Feedback) has no `entityId` prop; Ad Hoc renders the panes without it. Backend slicing: **`core/agent.md`** § AST-2030.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC8 job modal run → `/api/agent_data/R?entity_id=j1`, never the unscoped URL | `JobDetailModal.tsx`, `BatchExecutionModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`AST-1865 … AC4`**, **`… AC6`** (revised) |
+| `entityId` scopes agent data only, URL-encoded; timesheets + ledger unscoped | `BatchAgentDataModal.tsx` (`BatchAgentDataPanes`) | **`test_BatchAgentDataModal.test.tsx`** — **`BatchAgentDataPanes — AST-2031 … entityId → encoded entity_id on agent data only`** |
+| No `entityId` → whole-batch URL | same | **`… no entityId → whole-batch agent data URL`** |
+| `entityId` change refetches | same | **`… changing entityId refetches the scoped agent data`** |
+| AC9 batch-wide callers unchanged | `AdminPerformanceMonitor.tsx` | **`test_AdminPerformanceMonitor.test.tsx`** (unedited) |
+
+**Broken / obsolete (revised in place):** `test_JobDetailModal.test.tsx` **`AST-1865 … AC4`** / **`… AC6`** asserted the unscoped `/api/agent_data/<run>` — now assert `?entity_id=j1` and the absence of the unscoped URL; the AST-1865 `mockRunApis` agent-data route regex now ignores the query string (it captured `hop-R?entity_id=j1` as the run id). AST-1865 AC4 table row above updated to match.
+
+**AC9 grep note:** the ticket's literal check (`grep -n "entity_id"` over the three admin pages) can never pass — `AdminAnthropicAdHoc.tsx` already carries 8 `entity_id` hits on `origin/dev` (ad hoc run entity fields, unrelated to the agent-data fetch). Manifest item 2 checks the intent instead: no page passes `entityId={…}` to the panes, and those pages are unchanged vs `origin/dev`.
+
+**Red / green:** AC4, AC6 and the two scoped pane tests are red on `origin/ftr/AST-2028-…` (pre-AST-2031); the no-`entityId` guard is green there.
+
+**Pre-existing red, not this ticket:** `JobDetailModal — AST-1695 listing_href > read-only: null listing_href → no Link <a> even when job_link is http(s)` — also red on the ftr tip; name-skipped below (same exclusion as § AST-1865).
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2031
+
+1. **AC8, AC9 + regressions (Vitest):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  --testNamePattern='^(?!.*null listing_href)'
+```
+
+2. **AC9 batch-wide callers:** `rg -n "entityId=\{" src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx src/ui/frontend/src/pages/AdminVectorFeedback.tsx src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` → nothing; `git diff origin/dev...HEAD -- src/ui/frontend/src/pages/ tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` empty.
+3. **No backend change:** `git diff origin/dev...origin/sub/AST-2028/AST-2031-job-run-modal-entity-scoped -- src/ui/api/ src/data/` empty.
+
+**Pass criterion:** item 1 all green (54 pass, 1 name-skipped) + items 2–3 hold. `npx tsc -b --noEmit` clean. Not the zero-arg harness.
+
+---
+
+### AST-2056 · AST-2041 (gap — resume editor autosave; product AST-2051)
+
+**Parent:** [AST-2041](https://linear.app/astralcareermatch/issue/AST-2041) (orphaned mini-parent). **Publish:** `origin/sub/AST-2041/AST-2056-resume-autosave-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-2051** (`origin/sub/AST-2041/AST-2051-resume-autosave`) — test tree + bible only. Plan: `docs/features/artifacts/ast-1459-resume-editor-is-not-working-properly.md` § Bug: AST-2051 / § Bug: AST-2056.
+
+Contract (AST-2051, reverses the AST-1459 explicit-Save line): resume editors (structure mode via `useCandidateResumeStructure` or `bodyShape="resume_content"`, incl. JAR Job Resume under `jobPersistence`) **autosave section bodies after `AUTOSAVE_MS` (2000)**; header shows status text ("Unsaved changes" / "All changes saved"); **Save/Cancel only during Generate review**. `shapesKey` job editors (cover letter / application responses) keep explicit Save/Cancel. Guards: queued timer no-ops while `snapshot !== null` (AST-905); `dirty` clears only when the saved tabs are still current; autosave ticks skip `jobPersistence.onSaved` (unmount flush still calls it).
+
+**Harness:** `startAutosaveClock()` = `vi.useFakeTimers({ shouldAdvanceTime: true })` (keeps RTL polling + userEvent delays live); `advanceAutosave()` = `act(vi.advanceTimersByTimeAsync(AUTOSAVE_MS))`; `afterEach(vi.useRealTimers)`. Retargeted cases assert `expectNoHeaderSaveCancel()` then advance the clock in place of the old Save click; PUT payload assertions unchanged except where the case had no edit (an edit is now required to trigger autosave — payload asserts the edited body).
+
+| Area | Source | Component tests (`test_ArtifactEditor.test.tsx`) |
+| --- | --- | --- |
+| Structure body autosave, debounce, status text **[bug-repro]** | `ArtifactEditor.tsx` | new **`AST-2051 [bug-repro]: structure body edit autosaves after AUTOSAVE_MS…`** |
+| Job Resume (`jobPersistence`) autosave **[bug-repro]** | same | new **`AST-2051 [bug-repro]: jobPersistence Job Resume body edit autosaves PUT…`** |
+| Review keeps Save/Cancel, no autosave in review | same | new **`AST-2051: Generate review keeps header Save/Cancel and never autosaves (AST-905)`** (guard — green pre-fix) |
+| Pre-Generate timer no-op during review | same | new **`AST-2051: autosave timer queued before Generate does not fire during review (AST-905)`** (guard — green pre-fix; red if the `snapshotRef` check is dropped) |
+| In-flight autosave keeps dirty; unmount flushes newer edit **[bug-repro]** | same | new **`AST-2051 [bug-repro]: in-flight autosave keeps dirty…`** |
+| Autosave skips `onSaved`; unmount flush calls it **[bug-repro]** | same | new **`AST-2051 [bug-repro]: jobPersistence autosave skips onSaved…`** |
+| Retargeted Save-click → autosave | same | **`job persistence mode … autosaves PUT (AST-553 / AST-2051)`**, **`AST-996/AST-1351 … autosaves as array`**, **`AST-1351: legacy … autosave aborts`** (no PUT + error toast + "Unsaved changes"), **`AST-1382 [bug-repro]: content autosave bundles…`**, **`AST-1476: … content autosave and Save sections…`**, **`AST-1480: … autosave still works`**, **`AST-1593: job_resume load uses hydrated current leaf body`**, **`AST-1480: structure mode bodies stay editable…`**, **`AST-1577: bodyShape resume_content…`** |
+| AST-1410 non-review Cancel re-GET | same | **`AST-1410: no-snapshot Cancel re-GETs…`** — retargeted to a `shapesKey="cover_letter"` + `jobPersistence` editor (only non-review Cancel path left) |
+
+Page case: **`docs/test-bible/frontend/pages.md`** § AST-2056.
+
+**Broken / obsolete (revised in place):** the ten header-Save/Cancel cases above (they encoded the pre-AST-2051 explicit-Save contract). Unaffected: L228 `shapesKey` fixed-shape Cancel, rubric/criteria review-mode Save cases, `test_JobAnalysisReportModal.test.tsx`.
+
+**Red / green:** on the pre-fix tree (`origin/ftr/AST-2041-resume-autosave` product) 13 `test_ArtifactEditor` cases are red — header Save still renders (`expectNoHeaderSaveCancel`) or no autosave PUT fires; the two AST-905 guard cases and AST-1410 are green. With AST-2051 `ArtifactEditor.tsx` (`9fb7b99b1`) overlaid in scratch (not committed), all green.
+
+**Pre-existing red, not this ticket (name-skipped below):** `test_ArtifactsBaseResumeContent` **`AST-1577: page and draft follow ui-consistency`** reads `canon/directives/draft/patt.artifact.ui-consistency.md`, which now lives under `canon/directives/active/`; `test_JobAnalysisReportModal` **`AST-1546: Print Resume success…`** and **`AST-1350: Print Resume unsupported toast…`** (no "Print Resume" button). All three red on the pre-fix tree too.
+
+**Integration:** none — frontend-only; do not invent.
+
+## QA test manifest — AST-2056
+
+1. **Repro + retargets + JAR regression (Vitest):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern='^(?!.*(page and draft follow ui-consistency|Print Resume success|Print Resume unsupported toast))'
+```
+
+2. **[bug-repro] flip (test-fix):** `--testNamePattern="AST-2051 \[bug-repro\]"` on `test_ArtifactEditor.test.tsx` — 4 red on pre-fix, 4 green after AST-2051.
+
+**Pass criterion:** item 1 all green (105 pass, 3 name-skipped). `npx tsc -b --noEmit` clean. Not the zero-arg harness.
+
+**AST-2049 (pointer):** inline colors in `ArtifactEditor`, `ContextTextPage`, `NavigationShell`, `ProfileTextPage`, `RepoJsonDivergenceBanner`, `StateTimeline`, `TabbedTextArea` moved onto `App.css` tokens — no color asserted by their tests; AC9 source-wide guard lives in `test_AdminThemeExamples.test.tsx`. Manifest: [`pages.md`](pages.md) § AST-2049.
+
+---
+
+### AST-2060 · AST-2058 (show rubric reads hydrated detail content; gap — product AST-2059)
+
+**Parent:** [AST-2058](https://linear.app/astralcareermatch/issue/AST-2058) (orphaned mini-parent). **Publish:** `origin/sub/AST-2058/AST-2060-show-rubric-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-2059** (`61f1f40ea`, on `ftr/AST-2058-show-rubric-content`) — test tree + bible only. Plan: `docs/features/interface/ast-1063-job-carried-rubric-hydration-for-list-columns.md` § Bug: AST-2059 / § Bug: AST-2060.
+
+Contract (AST-2059): **show rubric** content comes from `GET /api/candidates/<id>` (hydrated `rubric_vector` overlay); the `GET /api/candidates` list payload carries **no** rubric rows. `RubricModal` shows `Loading rubric…` until the fetch settles (no not-found flash); `!r.ok` / rejected fetch → `No rubric found for this vector.`. Labels/order unchanged (`rubricItems`, then list fallback).
+
+**Harness:** `mockApiRoutes({ list, detail })` routes the `api` mock by URL — `/api/candidates/c1` → `detail` (function form invoked per call, so rejections stay lazy); every other path → the list response (providers unchanged). Default list = production shape (`artifacts: {}`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Content from hydrated detail, loading no-flash **[bug-repro]** | `AgentAnalysisHeader.tsx` | `test_AgentAnalysisHeader.test.tsx` — new **`AST-2059: show rubric reads content from hydrated candidate detail, not the list payload`** |
+| Failed detail fetch → fallback, not stuck loading | same | new **`AST-2059: failed detail fetch ends on the fallback, not stuck loading`** (`!r.ok` + rejection; guard — green pre-fix) |
+| Retargeted to detail-sourced content | same | **`renders grades with rubric links and opens the modal`**, **`matches rubric rows by code and handles missing modal content`**, **`opens the rubric modal with no matching row (null content)`** (`findByText`) |
+| Modal loading state | `RubricModal.tsx` | `test_RubricModal.test.tsx` — new **`shows loading text instead of the fallback while loading`** |
+
+**Broken / obsolete (revised in place):** header fixtures carried list-payload `content` (pre-AST-723 shape) — stayed green post-fix only via the `labelRow` fallback. Unaffected: AST-1771 order test, `falls back to raw vector labels…`, `normalizes an empty vector key…`, RubricModal null-content fallback, `test_JobAnalysisReportModal.test.tsx` (never clicks show rubric).
+
+**Red / green:** pre-fix `06df211db` — 4 red (bug-repro at `Loading rubric…`; two retargeted header cases find no content; RubricModal loading), 7 green. Post-fix `origin/ftr/AST-2058-show-rubric-content` @ `4ee1d7029` + this publish — 11/11 green.
+
+**Integration:** none — frontend-only; do not invent.
+
+## QA test manifest — AST-2060
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_RubricModal.test.tsx
+```
+
+**[bug-repro] flip (test-fix):** `--testNamePattern="AST-2059: show rubric reads content"` — red on `06df211db`, green on ftr tip.
+
+**Pass criterion:** 11/11 green. `npx tsc -b --noEmit` clean. Not the zero-arg harness.

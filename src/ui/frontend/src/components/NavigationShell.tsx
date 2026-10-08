@@ -38,6 +38,8 @@ export default function NavigationShell() {
   const [expanded, setExpanded] = useState<Set<string>>(loadExpanded)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // AST-2040: per-deploy-env logo background from /api/ui_config; null keeps the stylesheet color.
+  const [logoBackground, setLogoBackground] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [candidateMenuOpen, setCandidateMenuOpen] = useState(false)
   const [isWide, setIsWide] = useState(() =>
@@ -71,6 +73,18 @@ export default function NavigationShell() {
     const interval = setInterval(() => fetchNav(true), 30_000)
     return () => clearInterval(interval)
   }, [selectedId, authLoading])
+
+  useEffect(() => {
+    if (authLoading) return
+    // Chrome only — any failure silently keeps today's look (no error banner).
+    api("/api/ui_config", { silent: true })
+      .then(r => (r.ok ? r.json() : null))
+      .then(cfg => {
+        const bg = cfg?.logo_background
+        setLogoBackground(typeof bg === "string" && bg ? bg : null)
+      })
+      .catch(() => {})
+  }, [authLoading])
 
   useEffect(() => {
     const mq = window.matchMedia(`(min-width: ${NAV_WIDE_MIN_PX}px)`)
@@ -139,7 +153,10 @@ export default function NavigationShell() {
         className={"sidebar" + (drawerOpen ? " sidebar--open" : "")}
       >
         <div className="sidebar-chrome">
-          <div className="sidebar-logo">
+          <div
+            className="sidebar-logo"
+            style={logoBackground ? { backgroundColor: logoBackground } : undefined}
+          >
             <img src={astralLogo} alt="Astral" />
           </div>
           {candidates.length > 0 && (
@@ -215,7 +232,7 @@ export default function NavigationShell() {
                   </h3>
                   {isExpanded && group.items.map(item => {
                     const badge = item.count != null
-                      ? <span style={{ marginLeft: 6, fontSize: 11, color: "#888", fontWeight: 400 }}>[{item.count}]</span>
+                      ? <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>[{item.count}]</span>
                       : null
                     return item.enabled ? (
                       <NavLink

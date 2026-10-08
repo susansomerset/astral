@@ -79,7 +79,12 @@ from src.utils.rubric_feedback import (
     normalize_vector_reviews_raw,
     parse_vector_reviews_diagnostic,
 )
-from src.utils.formatting import clean_encoded_agent_payload, coerce_grades_encoded_json_parse
+from src.utils.formatting import (
+    clean_encoded_agent_payload,
+    coerce_grades_encoded_json_parse,
+    hydrate_entity_labels,
+    split_entity_segments,
+)
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_candidate_id, log_debug
 
 logger = get_logger(__name__)
@@ -241,10 +246,10 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     raw 2-char code when the map is absent or incomplete. _render_pass_fail ignores vector names;
     _render_score requires rubric criteria with labels — callers guard with `if rubric_list` before scoring (AST-429).
     "_meta" in output_type determines whether metadata fields after grades are accepted;
-    trailing non-grade content on a grades-only line, and a segment whose confidence
-    digit disagrees with its letter (X must be 0, every other letter 1-5), are recorded
-    in "decode_failures" (id, pos, reason) and the line is skipped so the caller can
+    trailing non-grade content on a grades-only line, and an X segment with nonzero
+    confidence, are recorded in "decode_failures" (id, pos, reason) and the line is skipped so the caller can
     retry that entity; other per-line errors still raise (AST-1996).
+    A letter segment with confidence 0 is normalised to confidence 1 (AST-2053).
     "grades_encoded_notes" (do/get/like): non-segment tail rejoins to job["notes"] only (optional).
     """
     with_meta = "_meta" in output_type or output_type == "grades_encoded_prefilter_links"
@@ -362,11 +367,10 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
                     f"[{task_key}] grade X requires confidence digit 0, got {conf_d} in segment {seg!r} (line {line!r})"
                 )
                 break
-            if letter != "X" and conf_d not in (1, 2, 3, 4, 5):
-                bad_conf = (
-                    f"[{task_key}] non-X grade requires confidence 1-5, got {conf_d} in segment {seg!r} (line {line!r})"
-                )
-                break
+            # Sanctioned slip (astral.agent.confidence-bounds): models write {letter}0 for "no signal".
+            # {letter}1 scores identically and keeps the letter, so store that instead of failing the line.
+            if letter != "X" and conf_d == 0:
+                conf_d = 1
             grade_rows.append(
                 {"vector": vector_labels.get(code, code), "grade": letter, "confidence": conf_d}
             )
@@ -1307,6 +1311,7 @@ def _store_prompt_blocks(
     cache_content: Any = _PB_SLOT_OMIT,
     debug: bool = False,
     entity_id: Optional[str] = None,  # AST-1431 prompt-row stamp tests (do_task / helper / Ad Hoc)
+    entity_ids: Optional[List[str]] = None,
 ) -> List[Dict[str, str]]:
     """Store prompt blocks in agent_data. Returns prompt_blocks refs for ledger.
     Production: ``caches_resolved_four``. Legacy tests/callers: ``cache_content`` (slot A only).
@@ -1338,7 +1343,8 @@ def _store_prompt_blocks(
         if nocache_content:
             segments.append(("NO_CACHE", nocache_content))
         if live_content:
-            segments.append(("NO_CACHE", live_content))
+            # AST-2029: stored copy only — wire blocks were already built from unhydrated live_content
+            segments.append(("NO_CACHE", hydrate_entity_labels(live_content, entity_ids)))
         if user_content:
             segments.append(("TASK", user_content))
     else:
@@ -1351,14 +1357,15 @@ def _store_prompt_blocks(
         if nocache_content:
             segments.append(("NO_CACHE", nocache_content))
         if live_content:
-            segments.append(("NO_CACHE", live_content))
+            # AST-2029: stored copy only — wire blocks were already built from unhydrated live_content
+            segments.append(("NO_CACHE", hydrate_entity_labels(live_content, entity_ids)))
         if user_content:
             segments.append(("TASK", user_content))
 
     prompt_blocks: List[Dict[str, str]] = []
     logger.debug(
-        "Calling _store_prompt_blocks: [entity_type=%s, task_key=%s, batch_id=%s, entity_id=%s, n=%s]",
-        entity_type, task_key, batch_id, entity_id, len(segments),
+        "Calling _store_prompt_blocks: [entity_type=%s, task_key=%s, batch_id=%s, entity_id=%s, n=%s, n_ids=%s]",
+        entity_type, task_key, batch_id, entity_id, len(segments), len(entity_ids or []),
     )
     for block_type, content in segments:
         prompt_blocks.append({"type": block_type, "id": _save(block_type, content)})
@@ -1545,6 +1552,7 @@ def _store_response_block(
     index: Optional[str] = None,
     *,
     debug: bool = False,
+    entity_ids: Optional[List[str]] = None,
 ) -> str:
     """Store a RESPONSE block in agent_data. On success, response_text is the decoded/validated
     payload; on failure it is the raw API text (or error / parsed fallback). Returns the agent_data_id.
@@ -1554,6 +1562,8 @@ def _store_response_block(
         "Calling _store_response_block: [entity_type=%s, task_key=%s, batch_id=%s, index=%s]",
         entity_type, task_key, batch_id, index,
     )
+    # AST-2029: hash + stored row both use the hydrated text
+    response_text = hydrate_entity_labels(response_text, entity_ids)
     content_hash = hashlib.sha256(
         f"{batch_id}:RESPONSE:{index or ''}:{response_text}".encode()
     ).hexdigest()[:16]
@@ -2263,6 +2273,11 @@ async def do_task(
 
     prompt_blocks: List[Dict[str, str]] = []
     _should_store = store_agent_data and batch_id and entity_type
+    # AST-2029: real ids for stored labels — every batch entity must carry one, else store positional text
+    _ents = (ctx or {}).get("batch_entities") or []
+    _id_key = "company_id" if entity_type == "company" else "astral_job_id"
+    _store_ids = [str(e.get(_id_key) or "") if isinstance(e, dict) else "" for e in _ents]
+    _store_ids = _store_ids if _store_ids and all(_store_ids) else None
     if _should_store:
         try:
             # Off the loop: a locked DB must not stall other companies' provider timers (AST-1842)
@@ -2279,6 +2294,7 @@ async def do_task(
                 live_content=live_content,
                 debug=debug,
                 entity_id=index if index else None,
+                entity_ids=_store_ids,
             )
         except Exception as exc:
             _log_swallowed_agent_data(index, task_key, exc)
@@ -2365,7 +2381,7 @@ async def do_task(
             try:
                 await asyncio.to_thread(_store_response_block,
                     entity_type, task_key, batch_id, _failure_response_block_data(index, audit_body), index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
             except Exception as exc:
                 _log_swallowed_agent_data(index, task_key, exc)
         hop_fail_outcome = _close_hop_ledger(
@@ -2424,7 +2440,7 @@ async def do_task(
                     batch_id,
                     _failure_response_block_data(index, _audit_response_body(raw_text, parsed, envelope_err)),
                     index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
             except Exception as exc:
                 _log_swallowed_agent_data(index, task_key, exc)
         _close_hop_ledger(success=False, clear_log=True, failure_error=str(envelope_err))
@@ -2456,7 +2472,7 @@ async def do_task(
                         batch_id,
                         _failure_response_block_data(index, _validation_failure_audit_body(err, raw_text, parsed)),
                         index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
@@ -2481,7 +2497,7 @@ async def do_task(
                                 index, _validation_failure_audit_body(cat_err, raw_text, parsed)
                             ),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
@@ -2501,7 +2517,7 @@ async def do_task(
                             batch_id,
                             _failure_response_block_data(index, _audit_response_body(raw_text, parsed, conf_err)),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
@@ -2524,7 +2540,7 @@ async def do_task(
                                 batch_id,
                                 _failure_response_block_data(index, _audit_response_body(raw_text, parsed, grade_err)),
                                 index=index,
-                            debug=debug)
+                            debug=debug, entity_ids=_store_ids)
                         except Exception:
                             _log_swallowed_agent_data(index, task_key)
                     _close_hop_ledger(success=False, clear_log=True, failure_error=str(grade_err))
@@ -2547,7 +2563,7 @@ async def do_task(
                         batch_id,
                         _failure_response_block_data(index, _audit_response_body(raw_text, parsed, agent_err)),
                         index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                 except Exception as exc:
                     _log_swallowed_agent_data(index, task_key, exc)
             _close_hop_ledger(success=False, clear_log=True, failure_error=agent_err)
@@ -2596,7 +2612,7 @@ async def do_task(
                         body = f"{body}\n--- agent_payload ---\n{parsed}"
                     await asyncio.to_thread(_store_response_block,
                         entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
@@ -2628,7 +2644,7 @@ async def do_task(
                         body = f"{body}\n--- agent_payload ---\n{parsed}"
                     await asyncio.to_thread(_store_response_block,
                         entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
@@ -2658,7 +2674,7 @@ async def do_task(
                         batch_id,
                         _failure_response_block_data(index, _validation_failure_audit_body(err, raw_text, parsed)),
                         index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
@@ -2682,7 +2698,7 @@ async def do_task(
                                 index, _validation_failure_audit_body(cat_err, raw_text, parsed)
                             ),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
@@ -2700,7 +2716,7 @@ async def do_task(
                             batch_id,
                             _failure_response_block_data(index, _audit_response_body(raw_text, parsed, conf_err)),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
@@ -2738,7 +2754,7 @@ async def do_task(
     if _should_store and raw_text:
         try:
             store_content = json.dumps(parsed) if isinstance(parsed, (dict, list)) else (parsed or raw_text)
-            resp_id = await asyncio.to_thread(_store_response_block, entity_type, task_key, batch_id, store_content, index=index, debug=debug)
+            resp_id = await asyncio.to_thread(_store_response_block, entity_type, task_key, batch_id, store_content, index=index, debug=debug, entity_ids=_store_ids)
             prompt_blocks.append({"type": "RESPONSE", "id": resp_id})
         except Exception:
             _log_swallowed_agent_data(index, task_key)
@@ -3467,11 +3483,10 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Expand latest-per-task agent refs (agent_data.entity_id) with block content.
 
     Entity type from astral_job_id / short_name / astral_candidate_id presence.
-    For scored tasks (TASK_CONFIG[task_key].scored == True):
-    - Attaches vector_grades and rubric_artifact to the enriched entry for display.
-    - RESPONSE blocks for batch tasks (those with a "jobs" array) are filtered to
-      just the matching astral_job_id entry. Old encoded data (no astral_job_id in
-      the jobs array) yields an empty content string so the frontend skips rendering.
+    For job / company entities, NO_CACHE and RESPONSE blocks of every task are cut to this
+    entity via _slice_entity_block (AST-2030): a block carrying only other entities becomes ""
+    (frontend skips it); a block with no id-keyed segments (legacy) shows whole.
+    Scored tasks also attach vector_grades and rubric_artifact for display.
 
     Duplicate block types get a counter suffix: NO_CACHE, NO_CACHE (2).
     """
@@ -3527,6 +3542,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     entity_ref_id = entity.get("astral_job_id") or entity.get("short_name")
 
     enriched = []
+    logger.debug("Beginning get_entity_agent_story loop on %s items", len(entries))
     for e in entries:
         task_key = e.get("task_key", "")
         task_cfg = TASK_CONFIG.get(task_key, {})
@@ -3543,8 +3559,9 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
             label = btype if type_counts[btype] == 1 else f"{btype} ({type_counts[btype]})"
             content = data_map.get(bid, {}).get("block_data", "") or ""
 
-            if is_scored and btype == "RESPONSE" and entity_ref_id:
-                content = _filter_response_block(content, entity_ref_id)
+            if btype in ("NO_CACHE", "RESPONSE") and entity_ref_id:
+                # AST-2030: every task, not only scored; another chunk's block → "" (D2)
+                content = _slice_entity_block(content, entity_ref_id) or ""
 
             blocks.append({"type": label, "id": bid, "content": content})
 
@@ -3564,37 +3581,48 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         enriched.append(entry)
 
+    logger.debug("End get_entity_agent_story loop after %s items", len(enriched))
     return enriched
 
 
-def _filter_response_block(content: str, entity_id: str) -> str:
-    """For batch task RESPONSE blocks: filter jobs/companies array to the matching entity.
+def _slice_entity_block(content: str, entity_id: str) -> Optional[str]:
+    """One entity's slice of a stored NO_CACHE / TASK / RESPONSE block (AST-2030).
 
-    Returns the matching entry as pretty JSON, empty string for old encoded
-    data (no id present), or the original content for non-batch responses.
+    Whole block when it has no id-keyed segments (legacy positional, single-entity, shared prompt);
+    None when it has segments but none for entity_id (another chunk's call in the same batch).
     """
+    segments = split_entity_segments(content)
+    out = segments.get(entity_id) if segments else content
+    logger.debug("Response from _slice_entity_block: %s", out)
+    return out
+
+
+def _entity_call_view(content: str, entity_id: str) -> Optional[str]:
+    """Block as a one-entity (Each-mode) call would have stored it (AST-2052).
+
+    JSON companies[] / jobs[] → same object with only this entity's item; tagged text → preamble
+    before the first [entity_id=…] tag + this entity's segment. Whole / None exactly as _slice_entity_block.
+    """
+    seg = _slice_entity_block(content, entity_id)
+    if seg is None or seg == content:
+        return seg  # other chunk's call, or no id-keyed segments (legacy / shared prompt)
     try:
-        parsed = json.loads(content)
+        data = json.loads(content)
     except (json.JSONDecodeError, TypeError):
-        return content  # not JSON — leave as-is
-
-    if not isinstance(parsed, dict):
-        return content
-
-    # Prefer companies when present (AST-1723); else jobs.
-    rows = parsed.get("companies")
-    id_key = "company_id"
-    if not isinstance(rows, list):
-        rows = parsed.get("jobs")
-        id_key = "astral_job_id"
-    if rows is None:
-        return content  # single-entity response — show as-is
-
-    if not any(isinstance(j, dict) and j.get(id_key) for j in rows):
-        return ""  # old encoded payload — skip
-
-    match = next((j for j in rows if isinstance(j, dict) and j.get(id_key) == entity_id), None)
-    return json.dumps(match, indent=2) if match else ""
+        data = None
+    # Same array precedence as split_entity_segments: companies[] first, else jobs[]
+    arr_key, id_key = next(
+        ((k, i) for k, i in (("companies", "company_id"), ("jobs", "astral_job_id"))
+         if isinstance(data, dict) and isinstance(data.get(k), list)),
+        (None, None),
+    )
+    if arr_key:
+        items = [it for it in data[arr_key] if isinstance(it, dict) and str(it.get(id_key)) == entity_id]
+        out = json.dumps({**data, arr_key: items})
+    else:
+        out = content[: max(content.find("[entity_id="), 0)] + seg
+    logger.debug("Response from _entity_call_view: %s", out)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -3607,26 +3635,26 @@ def get_agent_data(
     entity_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Retrieve agent_data blocks for a batch.
-    When entity_id is provided and block_type is TASK or RESPONSE (or unset),
-    parses the block_data content to extract the element for that entity.
-    Assumes batch responses embed per-entity sections identifiable by entity_id."""
+    With entity_id (AST-2030 / AST-2052), rows read as one Each-mode call for that entity: NO_CACHE / TASK / RESPONSE via _entity_call_view (other chunks' rows dropped, rows without id-keyed segments whole), blank rows omitted.
+    SYSTEM / CACHE_A–D are shared prompt and pass through."""
     rows = get_agent_data_by_batch(batch_id, block_type)
     if not entity_id:
         return rows
 
     result = []
+    logger.debug("Beginning get_agent_data slice loop on %s items", len(rows))
     for row in rows:
-        bt = row.get("block_type")
-        if bt not in ("TASK", "RESPONSE"):
-            result.append(row)
+        if row.get("block_type") not in ("NO_CACHE", "TASK", "RESPONSE"):
+            if (row.get("block_data") or "").strip():
+                result.append(row)
             continue
-        # Extract entity-specific segment from the block content
-        content = row.get("block_data") or ""
-        segment = _extract_entity_segment(content, entity_id)
-        if segment is not None:
-            row = dict(row)
-            row["block_data"] = segment
-        result.append(row)
+        segment = _entity_call_view(row.get("block_data") or "", entity_id)
+        if segment is None:
+            continue  # another chunk's call — carries only other entities
+        if not segment.strip():
+            continue  # AST-2052: skip empty prompt content
+        result.append({**row, "block_data": segment})
+    logger.debug("End get_agent_data slice loop after %s items", len(result))
     return result
 
 

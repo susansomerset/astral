@@ -36,4 +36,16 @@ describe('RubricModal', () => {
     await user.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalled()
   })
+
+  // AST-2060: loading replaces the not-found fallback while hydrated content is in flight.
+  it('shows loading text instead of the fallback while loading', () => {
+    render(
+      <UserPromptProvider>
+        <RubricModal open onClose={vi.fn()} vector="Culture" content={null} loading />
+      </UserPromptProvider>,
+    )
+    expect(screen.getByRole('heading', { name: 'Rubric — Culture' })).toBeInTheDocument()
+    expect(screen.getByText('Loading rubric…')).toBeInTheDocument()
+    expect(screen.queryByText('No rubric found for this vector.')).not.toBeInTheDocument()
+  })
 })

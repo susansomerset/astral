@@ -59,7 +59,7 @@ Config sections:
   METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
   REVIEW_DUPLICATE_METEORITE_CONFIG — Ruth duplicate-review closed outcomes + peer id key (AST-1773)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
-  CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
+  CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL, Slack commands registry (AST-1066 / AST-1206 / AST-2035; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
 
@@ -1936,6 +1936,20 @@ CONTACT_CONFIG = {
             ),
         },
     },
+    # AST-2035: Slack commands — `@Estelle /<command id> <payload>`, recognized only as the
+    # first token after leading @mentions. handler: sync src.core.* callable
+    # (candidate_id, payload, *, source_id, thread_ts, debug) -> {ok, meteorite_id, error}.
+    # mode "code": fixed ack/usage post, no LLM turn. mode "agent": one Estelle turn sees the result.
+    "commands": {
+        "add-job": {
+            "handler": "src.core.meteorite.insert_slack_meteorite",
+            "mode": "code",
+            "description": "Save a job link or pasted job description as a NEW meteorite for staging.",
+            "usage_reply_text": "Usage: @Estelle /add-job <job link or pasted job description>",
+            # Format with meteorite_id=.
+            "ack_reply_template": "Got it. Saved as meteorite {meteorite_id}; I'll stage it from here.",
+        },
+    },
     # AST-1069: Events API Request URL path (Flask route under /api).
     "events_http_path": "/slack/events",
     # Bot events Contact accepts when listen is on (Slack Event Subscriptions must match).
@@ -1999,6 +2013,17 @@ for _skill_key, _skill_meta in CONTACT_CONFIG["skills"].items():
 assert set(CONTACT_CONFIG["skills"]["save_candidate_profile"]["allowed_paths"]).issubset(
     CANDIDATE_LIBRARY_CONFIG["name_columns"]
 )
+# AST-2035: command registry shape; ids are the bare token after "/" (no whitespace).
+assert isinstance(CONTACT_CONFIG["commands"], dict)
+for _cmd_id, _cmd_meta in CONTACT_CONFIG["commands"].items():
+    assert isinstance(_cmd_id, str) and _cmd_id.split() == [_cmd_id] and not _cmd_id.startswith("/"), _cmd_id
+    assert isinstance(_cmd_meta, dict), _cmd_id
+    assert _cmd_meta.get("mode") in ("code", "agent"), _cmd_id
+    for _field in ("handler", "description", "usage_reply_text", "ack_reply_template"):
+        assert isinstance(_cmd_meta.get(_field), str) and _cmd_meta[_field].strip(), (_cmd_id, _field)
+    assert _cmd_meta["handler"].startswith("src.core.") and _cmd_meta["handler"].count(".") >= 3, _cmd_id
+    assert "{meteorite_id}" in _cmd_meta["ack_reply_template"], _cmd_id
+    assert _cmd_id not in CONTACT_CONFIG["skills"], _cmd_id
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
 INBOX_CREATE_JOB_CONFIG = {
@@ -4802,7 +4827,18 @@ ASTRAL_CONFIG = {
             10: 2.00,
         },
     },
+    # --- UI chrome: sidebar logo background by ASTRAL_DEPLOY_ENV (AST-2040) ---
+    # Keys are lowercase ASTRAL_DEPLOY_ENV values. Production is intentionally absent:
+    # any env not listed here (production / unset / unknown) keeps the stylesheet color.
+    "logo_background_by_deploy_env": {
+        "staging": "#a651f1",
+        "local": "#ed22bb",
+    },
 }
+assert all(
+    k == k.strip().lower() and re.fullmatch(r"#[0-9a-fA-F]{6}", v)
+    for k, v in ASTRAL_CONFIG["logo_background_by_deploy_env"].items()
+)
 
 # Rubric vector feedback type/value codes (AST-722 / AST-378). AST-724 validates envelope against this.
 RUBRIC_FEEDBACK_CONFIG = {
@@ -5042,6 +5078,9 @@ for _ct_key, _ct_meta in CONTACT_TASK_CONFIG.items():
     _module_path, _, _attr_name = _handler.rpartition(".")
     assert _module_path and _attr_name, _ct_key
     assert _module_path.startswith("src.core."), _ct_key
+# AST-2035: Contact command ids must not collide with contact-task keys.
+for _cmd_id in CONTACT_CONFIG["commands"]:
+    assert _cmd_id not in CONTACT_TASK_CONFIG, _cmd_id
 
 
 # ---------------------------------------------------------------------------
@@ -5642,7 +5681,22 @@ UI_CONFIG = {
     # AST-1534: Agent Ad Hoc import picker — API list cap + sibling viewport row count.
     "adhoc_import_runs_limit": 10,
     "adhoc_import_picker_visible_rows": 5,
+    # AST-2042: theme registry — palette id -> label + whether the profile Theme select offers it.
+    # Each id needs a matching [data-theme="<id>"] block in App.css; ids not profile_selectable
+    # only appear on Tools -> Theme Examples. Adding/retiring a palette = one entry here + one CSS block.
+    "themes": {
+        "dark": {"label": "Dark", "profile_selectable": True},
+        "light": {"label": "Light", "profile_selectable": True},
+        "light_parchment": {"label": "Light (Parchment)", "profile_selectable": False},
+        "light_slate": {"label": "Light (Slate)", "profile_selectable": False},
+    },
+    # Theme applied when a candidate has none stored (and before candidates load).
+    "default_theme": "dark",
 }
+# Default must be a registered, profile-selectable palette (it is what candidates without a stored theme get).
+assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_selectable"), (
+    "UI_CONFIG default_theme must be a profile_selectable key of UI_CONFIG themes"
+)
 
 # ---------------------------------------------------------------------------
 # The /api/nav_config endpoint in api_system.py resolves item-level enabled
@@ -5742,6 +5796,7 @@ NAV_CONFIG = [
             {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
             {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},
+            {"label": "Theme Examples", "path": "/admin/theme_examples"},
         ],
     },
 ]
@@ -5826,6 +5881,12 @@ DATA_SHAPES = {
                             {"value": "he/him", "label": "he/him"},
                             {"value": "ze/zir", "label": "ze/zir"},
                             {"value": "e/eir", "label": "e/eir"},
+                        ]},
+                        # AST-2042: options come from the registry so there is no second theme list.
+                        {"key": "theme", "label": "Theme", "type": "select", "options": [
+                            {"value": tid, "label": t["label"]}
+                            for tid, t in UI_CONFIG["themes"].items()
+                            if t["profile_selectable"]
                         ]},
                         {"key": "contact.reason_codes", "label": "Reason Codes", "type": "textarea"},
                     ],
