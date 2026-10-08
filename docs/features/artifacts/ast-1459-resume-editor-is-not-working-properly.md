@@ -302,3 +302,5 @@ context_tokens≈N
 ```
 [code-rubric] PROCEED (Commit: 9fb7b99b1) Resume autosave matches plan
 ```
+
+**Test carry (AST-2051):** docs-acceptance on this ref — the test/bible delivery for this fix (retargeted header-Save cases + autosave `[bug-repro]` coverage) lands via sibling test gap AST-2056 `merge-tests`, merged onto `ftr/AST-2041-resume-autosave` after this child.
