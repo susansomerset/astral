@@ -2424,3 +2424,34 @@ Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (l
 Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 
 **AST-2048 (pointer):** `save_candidate_data` theme allowlist (profile-selectable `UI_CONFIG["themes"]` ids only) — **`TestAst2048ThemeAllowlist`** (8; new lines fully branch-covered for `LOCKED_AT_100`). Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2048.
+
+### AST-2066 · AST-2043 (versioning data/core — move-current + history)
+
+**Publish:** `origin/sub/AST-2043/AST-2066-versioning-core`. Core list-versions / set-current for candidate catalog keys and one rubric criterion. Version map = `{uuid: {created_at, current, position}}` oldest first. `set_candidate_artifact_current` runs the same AUTO revalidation as the save path; a revalidation failure logs one WARNING and still returns. Rubric set-current maps the rubric artifact key to its owner task (`do_rubric` → `grade_do`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Version map / catalog-entry rejects / list+set round trip / revalidate warn / rubric owner + blank args / key → owner task | `src/core/candidate.py` | **`TestAst2066CandidateVersions`** (9; new lines fully branch-covered for `LOCKED_AT_100`) |
+| Job list/set + identical-to-current no-op (AC7) | `src/core/tracker.py` | [`tracker.md`](tracker.md) § AST-2066 |
+| `set_current_artifact` (AC4, AC5) + same-second `rowid` order | `src/data/database.py` | [`../data/database/artifacts.md`](../data/database/artifacts.md) § AST-2066 |
+| `set_current_rubric_vector` (AC6) + `list_rubric_vectors(code=)` | `src/data/database.py` | [`../data/database/rubric_vectors.md`](../data/database/rubric_vectors.md) § AST-2066 |
+
+**Broken / obsolete:** none — `test_candidate.py` + `test_tracker.py` fail the same 40 tests on the `tests` tip before and after the AST-2066 product merge (unrelated tickets, plus `nh3` missing in some venvs). No integration scenario touches these paths.
+
+**Manifest (test-child) — narrowed; AST-2066 classes only:**
+
+1. Data artifact move-current (AC4, AC5) + tie-break: `tests/component/data/database/test_artifacts.py::TestAst2066SetCurrentArtifact`
+2. Data rubric criterion (AC6): `tests/component/data/database/test_rubric_vectors.py::TestAst2066RubricCriterionVersions`
+3. Candidate core: `tests/component/core/test_candidate.py::TestAst2066CandidateVersions`
+4. Tracker core + job identical no-op (AC7): `tests/component/core/test_tracker.py::TestAst2066JobVersions`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_artifacts.py::TestAst2066SetCurrentArtifact \
+  tests/component/data/database/test_rubric_vectors.py::TestAst2066RubricCriterionVersions \
+  tests/component/core/test_candidate.py::TestAst2066CandidateVersions \
+  tests/component/core/test_tracker.py::TestAst2066JobVersions \
+  -q
+```
+
+**Pass criterion:** 29 passed on lines 1–4. Narrowed run, not the zero-arg harness / branch-lock gate. AC5 `created_at` is whole-second, so order is asserted via `rowid` (list order), not a strict `>`.

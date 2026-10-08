@@ -388,23 +388,26 @@ describe("JobAnalysisReportModal — AST-1334 footer opt-out", () => {
 describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
   beforeEach(() => mockedApi.mockReset())
 
-  function companyWithNotes(url: string, init?: RequestInit) {
+  // AST-2071: Company Upshot reads company_upshot; prefilter grade notes are a decoy that must not render
+  function companyWithUpshot(url: string, init?: RequestInit) {
     if (url === "/api/companies/Globex") {
       return jsonResponse({
         company_website: "https://globex.example",
-        prefilter_company_notes: "Steady growth, remote-friendly.",
+        company_upshot: "Steady growth, remote-friendly.",
+        prefilter_company_notes: "GRADE_NOTES_DECOY",
       })
     }
     return jobHandler("j949")(url, init)
   }
 
-  it("fills Summary section bodies from upshot, company notes, and JD", async () => {
-    installBaseApiMocks(mockedApi, companyWithNotes)
+  it("fills Summary section bodies from upshot, company upshot, and JD", async () => {
+    installBaseApiMocks(mockedApi, companyWithUpshot)
     renderWithProviders(<JobAnalysisReportModal jobId="j949" onClose={() => {}} />)
     await waitForShell()
     await openSummaryTab()
     expect(await screen.findByText("Strong thematic fit.")).toBeInTheDocument()
     expect(await screen.findByText("Steady growth, remote-friendly.")).toBeInTheDocument()
+    expect(screen.queryByText("GRADE_NOTES_DECOY")).not.toBeInTheDocument()
     expect(screen.getByText("Remote only")).toBeInTheDocument()
     expect(screen.getByText("What is the team size?")).toBeInTheDocument()
     // Raw JD starts collapsed — expand to read body
@@ -414,7 +417,7 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
   })
 
   it("content-aware expand: Raw JD collapsed; populated sections open", async () => {
-    installBaseApiMocks(mockedApi, companyWithNotes)
+    installBaseApiMocks(mockedApi, companyWithUpshot)
     renderWithProviders(<JobAnalysisReportModal jobId="j949" onClose={() => {}} />)
     await waitForShell()
     await openSummaryTab()
@@ -424,7 +427,7 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
     expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBe(1)
   })
 
-  it("shows empty-state copy when upshot and company notes are missing", async () => {
+  it("shows empty-state copy when upshot and company upshot are missing", async () => {
     installBaseApiMocks(mockedApi, (url, init) => {
       if (url === "/api/jobs/j949-empty" && !init) {
         return jsonResponse({
@@ -437,7 +440,8 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
         })
       }
       if (url === "/api/companies/Co") {
-        return jsonResponse({ company_website: null, prefilter_company_notes: "   " })
+        // whitespace upshot = empty; grade notes present but must not fill the section (AST-2071)
+        return jsonResponse({ company_website: null, company_upshot: "   ", prefilter_company_notes: "GRADE_NOTES_DECOY" })
       }
       return undefined
     })
@@ -450,6 +454,7 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
     expect(expands.length).toBe(4)
     await userEvent.click(expands[0])
     expect(screen.getByText("No company upshot on file.")).toBeVisible()
+    expect(screen.queryByText("GRADE_NOTES_DECOY")).not.toBeInTheDocument()
     await userEvent.click(expands[1])
     expect(screen.getByText("No noteworthy caveats on file.")).toBeVisible()
     await userEvent.click(expands[2])
@@ -458,7 +463,7 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
     expect(screen.getByText("No job description on file.")).toBeVisible()
   })
 
-  it("company notes come from company API, not job_data", async () => {
+  it("company upshot comes from company API, not job_data", async () => {
     installBaseApiMocks(mockedApi, (url, init) => {
       if (url === "/api/jobs/j949-notes" && !init) {
         return jsonResponse({
@@ -472,14 +477,14 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
             job_description: "JD",
             analysis_upshot: fullUpshot(),
             // decoy — must not be used
-            prefilter_company_notes: "FROM_JOB_DATA",
+            company_upshot: "FROM_JOB_DATA",
           },
         })
       }
       if (url === "/api/companies/Globex") {
         return jsonResponse({
           company_website: "https://globex.example",
-          prefilter_company_notes: "FROM_COMPANY_API",
+          company_upshot: "FROM_COMPANY_API",
         })
       }
       return undefined
