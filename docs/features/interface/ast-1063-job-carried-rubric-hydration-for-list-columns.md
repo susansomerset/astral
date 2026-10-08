@@ -1026,6 +1026,78 @@ AST-2060 board-joan done — CANON: OK.
 
 **Triage note (not for Linear):** Read `## Bug: AST-2060` on `origin/sub/AST-2058/AST-2060-show-rubric-tests`. Scope is **tests + `docs/test-bible/` only** (no `src/`). The plan realigns fixtures with post–AST-723 / AST-2059 production shapes (list unhydrated, detail hydrated), adds bug-repro + loading/failed-fetch coverage, and bible rows — without asserting `content` on job-carried `*_rubric` (AST-1063). That pins existing in-force behaviour (`astral.layers.import-direction`, detail hydration, Betty-owned test tree / engineer ban) rather than contradicting or extending any statute or pattern. Same shape as other gap siblings (e.g. AST-1328, AST-1911): no F3 canon landing.
 
+
+## Radia review — AST-2060
+
+```
+[code-rubric]
+**Ticket:** AST-2060
+**Publish ref:** `1537b4b8bb491d65029163055680a01d259713c7` (`origin/sub/AST-2058/AST-2060-show-rubric-tests`)
+**Diff base:** `origin/ftr/AST-2058-show-rubric-content...origin/sub/AST-2058/AST-2060-show-rubric-tests` (no `src/`; AST-2060-owned deltas in `test_AgentAnalysisHeader.test.tsx`, `test_RubricModal.test.tsx`, `docs/test-bible/frontend/components.md` + plan patch; `merge-tests` carries additional `origin/tests` commits)
+**Corpus:** `6f3edaa90d`
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — `test_AgentAnalysisHeader.test.tsx` (`// AST-2060 [bug-repro]:` + `it("AST-2059: show rubric reads content from hydrated candidate detail, not the list payload")`): `LIST` has empty `artifacts` (no list rubric); detail is a deferred promise; before resolve asserts `Loading rubric…` and absence of `No rubric found for this vector.`; after `resolveDetail(detailWith([… content: "Hydrated body" …]))` asserts `Hydrated body` and `mockedApi` called with `/api/candidates/c1`. That pins AST-2059 To-be (content only from hydrated detail), not a tautology. On pre-fix `06df211db` there is no detail fetch and no loading UI — modal would show the fallback immediately, so the loading gate and `Hydrated body` assertion would fail (matches plan § Repro / bible red-green note).
+- **## What must still hold — OK** — AST-1771 order test untouched; fixtures do not put `content` on job-carried `rubricItems`; failed-fetch cases assert fallback not stuck on loading; `RubricModal` default-false `loading` case retained; delivery is tests+bible only (`code(AST-2060)` empty product commit on tip).
+
+## Canon scores
+
+*(Linear Description has no **Canon Scope (frozen at plan)** block. Scored Joan fix-board F2 overlap from issue doc § Joan fix-board — AST-2060.)*
+
+| id | grade | effort | one-line |
+| -- | -- | -- | -- |
+| astral.layers.import-direction | A | | Tests document list-unhydrated vs detail-hydrated rubric content (UI → existing API) |
+| astral.git.engineer-test-tree-ban | A | | No `src/`; AST-2060 test/bible commits + `merge-tests(AST-2060)` only |
+| orch.roles.betty-owns-test-tree | A | | Gap delivery in `tests/` + `docs/test-bible/` per plan |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan fix-board `CANON: OK`, not per-id validate-plan rubric)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+1. **Canon Scope process gap (Archie)** — Same as AST-2059: no frozen canon id list on the bug ticket; overlap skim only.  
+   **Default:** Ship; note for Archie without blocking.
+
+### advisory
+
+1. **sibling test carry (merge-tests):** `merge-tests(AST-2060)` includes non–AST-2060 suites (e.g. AST-2047/2048/2049 theme/color-guard, AST-2056/2057 bug-repros, `test_ArtifactEditor`, `test_AdminThemeExamples`, assorted bible rows) — expected `origin/tests` rollup; not AST-2060 product scope.
+2. **Mock routing shape** — `mockApiRoutes` serves the list-shaped `{ ok: true, json }` response for every path except `/api/candidates/c1` (not only `path === "/api/candidates"`). Matches plan ⚠️ Decision (unknown URLs → list); slightly broader than the plan’s two-path table but intentional for `renderWithProviders`.
+3. **`[bug-repro]` tag placement** — Tag is on the line comment above `it(...)`, not the first line inside the test body; sufficient for fix-lane machinery.
+
+## What’s solid
+
+- URL-routed `api` mock separates list vs detail; legacy header tests retargeted with `findByText`.
+- Bug-repro embeds no-flash loading check via deferred detail (plan decision).
+- Bible § AST-2060 + narrowed QA manifest align with the two component files.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | **Normal** mini-parent (`ftr/AST-2058-show-rubric-content`; AST-2059 on ftr) → **Review Posted** → §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+Append artifact; commit `docs(AST-2060): Radia review — clean` on `origin/sub/AST-2058/AST-2060-show-rubric-tests`; post slim upshot `--as radia`.
+
+context_tokens≈22000
+```
+
+```
+[code-rubric] PROCEED (Commit: 1537b4b8b) Hydrated-detail rubric tests
+```
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
