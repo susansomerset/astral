@@ -267,6 +267,33 @@ class TestRunUnified:
         assert run.await_args.kwargs["dispatch_task_key"] == "evaluate_jd"
 
     @pytest.mark.asyncio
+    async def test_ast2025_fetch_relative_jd_claims_trigger_state_and_releases_on_error(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str,
+    ) -> None:
+        # AC6: claim by RELATIVE_JOB_LINK only; lock released even when the runner raises.
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claim = MagicMock(return_value=(batch_id, [{"astral_job_id": "job-r", "state": "RELATIVE_JOB_LINK"}]))
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.tracker.get_new_job_batch", claim)
+        monkeypatch.setattr("src.core.tracker.clear_job_batch", clear)
+        run = AsyncMock(side_effect=RuntimeError("runner boom"))
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        task = {
+            "entity_type": "job",
+            "trigger_state": cfg._dispatch_trigger_state_for_task_key("fetch_relative_jd"),
+            "task_key": "fetch_relative_jd",
+            "batch_call_mode": 1,
+        }
+        with pytest.raises(RuntimeError, match="runner boom"):
+            await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
+        assert claim.call_args.args[0] == "RELATIVE_JOB_LINK"
+        assert claim.call_args.kwargs["candidate_id"] == "cand-1"
+        # Base + its derived retry holding only — no other job state is claimable.
+        assert claim.call_args.kwargs["states"] == ["RELATIVE_JOB_LINK", "RELATIVE_JOB_LINK_RETRY"]
+        clear.assert_called_once_with(batch_id)
+        assert run.await_args.kwargs["dispatch_task_key"] == "fetch_relative_jd"
+
+    @pytest.mark.asyncio
     async def test_ast534_forwards_dispatch_task_key_to_consult(
         self, monkeypatch: pytest.MonkeyPatch, batch_id: str,
     ) -> None:

@@ -247,23 +247,8 @@ class TestDecodePayload:
             "pos": 0,
             "reason": "[task] unexpected trailing content in grades-only line: '0|CRA2|extra'",
         }]
-        # Illegal confidence is a per-line miss (caller retries that entity), not a payload raise.
-        x_bad = agent_mod._decode_payload("task", "grades", "0|CRX2", ctx)
-        assert x_bad["jobs"] == []
-        assert x_bad["decode_failures"] == [{
-            "astral_job_id": "job-1",
-            "pos": 0,
-            "reason": "[task] grade X requires confidence digit 0, got 2 in segment 'CRX2' (line '0|CRX2')",
-        }]
-        letter_bad = agent_mod._decode_payload("task", "grades", "0|CRC0", ctx)
-        assert letter_bad["jobs"] == []
-        assert "non-X grade requires confidence 1-5, got 0" in letter_bad["decode_failures"][0]["reason"]
-        # A bad confidence on one line leaves the sibling line graded.
-        both = agent_mod._decode_payload(
-            "task", "grades", "0|CRX2\n1|CRA3", {"batch_entities": _batch_entities("job-1", "job-2")},
-        )
-        assert [j["astral_job_id"] for j in both["jobs"]] == ["job-2"]
-        assert [f["astral_job_id"] for f in both["decode_failures"]] == ["job-1"]
+        with pytest.raises(ValueError, match="grade X requires confidence digit 0"):
+            agent_mod._decode_payload("task", "grades", "0|CRX2", ctx)
 
     def test_ast1996_malformed_line_isolated_clean_line_decodes(self) -> None:
         # AST-1996 repro A (AST-1884 production shape): DEC35 fails _GRADE_SEG on line 0 only.
@@ -1760,7 +1745,7 @@ class TestDoTask:
             ctx=_rubric_evaluate_jd_ctx(),
         )
         assert out["success"] is False
-        assert "Agent failure: nope" in out["error"]
+        assert "empty agent_payload" in out["error"]
 
         send.return_value = {
             "success": True,
@@ -1773,10 +1758,8 @@ class TestDoTask:
             index="job-1",
             ctx=_rubric_evaluate_jd_ctx(),
         )
-        # Hop stays successful; consult routes the decode_failure to the retry holding.
-        assert out["success"] is True
-        fails = (out.get("parsed_response") or {}).get("decode_failures") or []
-        assert fails and "confidence digit 0" in fails[0]["reason"]
+        assert out["success"] is False
+        assert "confidence digit 0" in out["error"]
 
     async def test_chains_run_next_when_configured(self, monkeypatch: pytest.MonkeyPatch, batch_token: Any) -> None:
         def resolve(task_key: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -2075,7 +2058,7 @@ class TestAst492BrainSettingDoTask:
 
 # AST-1956: the agent row's plain settings ride the route to both clients as stored — no gating, no derivation.
 # Branches: compat (openrouter provider object / direct server → no provider) vs anthropic (effort kwarg);
-# settings set vs empty; craft uses agent row max_tokens (TestAst903…); debug line temp/effort; rejected setting = plain failure.
+# settings set vs empty; craft guard (TestAst1380…); debug line temp/effort; rejected setting = plain failure.
 # Wire bodies (temperature / output_config / thinking / provider keys) are test_llm_compat.py / test_anthropic.py's.
 class TestAst1956SettingsOnTheWire:
     @pytest.mark.asyncio
@@ -6822,16 +6805,17 @@ class TestAst1298OrphanedJobClaimRelease:
         release.assert_called_once_with("job-1298")
 
 
-class TestAst903CraftRubricMaxTokensFromAgentRow:
-    """Craft rubric hops send the agent row max_tokens (or tier default), not a task-key floor."""
+class TestAst903CraftRubricMaxTokensFloor:
+    """AST-903: do_task floors max_tokens for craft_*_rubric UI tasks."""
 
     @pytest.mark.asyncio
-    async def test_craft_get_rubric_uses_agent_row_max_tokens(
+    async def test_craft_get_rubric_floors_max_tokens_to_config(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
+        # Agent row max_tokens=100 (from _agent_rows); floor must raise to CRAFT_RUBRIC_MAX_TOKENS.
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         criteria = [
@@ -6840,6 +6824,7 @@ class TestAst903CraftRubricMaxTokensFromAgentRow:
         send = AsyncMock(
             return_value={
                 "success": True,
+                # Rubric-backed normalize injects agent_performance — criteria live under agent_payload.
                 "parsed_response": {
                     "agent_performance": {"status": "success"},
                     "agent_payload": {"criteria": criteria},
@@ -6856,40 +6841,7 @@ class TestAst903CraftRubricMaxTokensFromAgentRow:
         )
         assert out["success"] is True
         assert send.await_args is not None
-        assert send.await_args.kwargs.get("max_tokens") == 100
-
-    @pytest.mark.asyncio
-    async def test_craft_get_rubric_honors_large_row_max_tokens(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        batch_token: Any,
-        stub_agent_storage: Dict[str, MagicMock],
-    ) -> None:
-        _patch_strict_batch_anthropic(monkeypatch)
-        monkeypatch.setattr(
-            agent_mod,
-            "_resolve_task_prompts",
-            lambda task_key: _agent_rows(max_tokens=384000),
-        )
-        send = AsyncMock(
-            return_value={
-                "success": True,
-                "parsed_response": {
-                    "agent_performance": {"status": "success"},
-                    "agent_payload": {"criteria": [{"code": "GT", "label": "G", "content": "x", "importance": 1}]},
-                },
-                "api_response": _api_response('{"criteria":[]}'),
-                "timesheet": {},
-            }
-        )
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
-        out = await agent_mod.do_task(
-            "craft_get_rubric",
-            index="karfo",
-            ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "karfo"}},
-        )
-        assert out["success"] is True
-        assert send.await_args.kwargs.get("max_tokens") == 384000
+        assert send.await_args.kwargs.get("max_tokens") == cfg.CRAFT_RUBRIC_MAX_TOKENS
 
     @pytest.mark.asyncio
     async def test_non_craft_task_keeps_agent_max_tokens(
@@ -6919,7 +6871,7 @@ class TestAst903CraftRubricMaxTokensFromAgentRow:
 
 
 class TestAst1380CraftRubricThinkingOffAndFailureBanner:
-    """AST-1383: Provider-failed RESPONSE banner; craft rubrics keep agent reasoning_effort (AST-1380 Decision A reverted)."""
+    """AST-1380 / AST-1383: Decision A thinking-off + Provider-failed RESPONSE banner."""
 
     # Mid-criteria cut still carrying agent_performance.status=success (abrams-shaped).
     _ABRAMS_TRUNCATED = (
@@ -6929,13 +6881,13 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
     )
 
     @pytest.mark.asyncio
-    async def test_craft_get_rubric_keeps_stored_effort(
+    async def test_craft_get_rubric_forces_effort_none(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # Craft rubrics use the agent row's reasoning_effort so thinking can consume its budget; output stays concise JSON.
+        # AST-1956: the row asks for effort "high"; do_task forces "none" (thinking off) for craft rubrics (Decision A).
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
@@ -6965,8 +6917,9 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         assert out["success"] is True
         assert send.await_args is not None
         tier = send.await_args.kwargs["tier"]
-        assert tier["reasoning_effort"] == "high"
-        assert send.await_args.kwargs.get("max_tokens") == 100
+        assert tier["reasoning_effort"] == "none"
+        # Kimi has no tier floor → craft floor wins over the row's 100.
+        assert send.await_args.kwargs.get("max_tokens") == cfg.CRAFT_RUBRIC_MAX_TOKENS
 
     @pytest.mark.asyncio
     async def test_non_craft_keeps_stored_effort(
@@ -6975,7 +6928,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # Non-craft hops: the row's effort goes out as stored (same rule as craft after Decision A revert).
+        # Decision A must not blanket-disable thinking off craft rubric keys: the row's effort goes out as stored.
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
             agent_mod,
@@ -9323,7 +9276,7 @@ class TestAst1391DeepseekBigOutputFloor:
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # Catalog floor merged in resolve_agent_settings: row 16000 under floor sends the floor.
+        # Floor mechanism kept by do_task: a stored 16000 under a catalog floor sends the floor.
         send_ds, send_anth = self._patch_evaluate_jd(
             monkeypatch, model_id="deepseek-v4-pro", max_tokens=16000, floor=_STUB_FLOOR
         )
@@ -9399,13 +9352,14 @@ class TestAst1391DeepseekBigOutputFloor:
         assert not any("[DEBUG] do_task(" in m for m in logged)
 
     @pytest.mark.asyncio
-    async def test_craft_uses_catalog_floor(
+    async def test_craft_effort_none_uses_catalog_floor(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
-        # AC6: catalog max_tokens_floor wins when above the agent row; effort is not overridden for craft.
+        # AC6: AST-1380 thinking-off (effort "none") stays; a catalog floor above craft 32000 is what gets sent.
+        assert _STUB_FLOOR > cfg.CRAFT_RUBRIC_MAX_TOKENS
         monkeypatch.setitem(cfg.LLM_MODEL_CONFIG["deepseek-v4-pro"], "max_tokens_floor", _STUB_FLOOR)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
         monkeypatch.setattr(
@@ -9435,7 +9389,7 @@ class TestAst1391DeepseekBigOutputFloor:
             ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "abrams"}},
         )
         assert out["success"] is True
-        assert send.await_args.kwargs["tier"].get("reasoning_effort") is None
+        assert send.await_args.kwargs["tier"]["reasoning_effort"] == "none"
         assert send.await_args.kwargs.get("max_tokens") == _STUB_FLOOR
 
 

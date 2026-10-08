@@ -764,3 +764,7 @@ grep -n '^_auto_thread_cap_override: Optional\[int\] = None' src/core/dispatcher
 - `docs/test-bible/core/dispatcher.md`
 - `docs/test-bible/ui/api/api_admin.md`
 - `docs/test-bible/utils/config.md`
+
+### AST-2025 · AST-2022 (`fetch_relative_jd` claim / release — AC6)
+
+**New:** `TestRunUnified::test_ast2025_fetch_relative_jd_claims_trigger_state_and_releases_on_error` — claim by `RELATIVE_JOB_LINK` for the candidate with `states == ["RELATIVE_JOB_LINK", "RELATIVE_JOB_LINK_RETRY"]` only; `clear_job_batch(batch_id)` still runs when the runner raises; `dispatch_task_key` forwarded. Green on the pre-AST-2025 tree too (generic job path + AST-2024 config) — a regression guard, not a red-first node. Primary manifest: **`docs/test-bible/core/gazer.md`** § AST-2025.

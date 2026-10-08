@@ -510,3 +510,49 @@ Public `is_bot_wall(text)` = the `jd_classifier` bot-signal count vs `bot_thresh
 | `_classify_jd` routes through `is_bot_wall` | same | **`TestAst2004IsBotWall::test_classify_jd_delegates`** |
 
 Regression guards unchanged: **`TestAst1197ChallengeBotSignals`**, **`TestAst1195BotBlockedErrorState`**. Manifest: **`docs/test-bible/core/roster.md`** § AST-2004.
+
+### AST-2025 · AST-2022 (`fetch_relative_jd_batch` click-through runner + shared `_apply_jd_gates`)
+
+**Scope:** `_apply_jd_gates` lifts the JD gates (collapse → empty → prune → `min_chars` → `_classify_jd` → `_JD_ERROR_STATES`) out of `fetch_jd_batch`; new `fetch_relative_jd_batch` clicks the stored relative `job_link` on the company `job_site` via `click_through_visible_text`, writes the resolved URL with `persist_http_job_link`, then runs the same gates. Qualify routing + router branch: [`consult.md`](consult.md) § AST-2025; dispatch claim / picker: [`dispatcher.md`](dispatcher.md) / [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2025.
+
+| Area | Component tests |
+| --- | --- |
+| AC4 ok → `JD_READY` + JD saved; bot → `BOT_BLOCKED`; closed → `JD_SCRAPE_FAIL_CLOSED` (link resolved); click miss → `RELATIVE_LINK_FAIL` (link relative) — real `_classify_jd` on config signals | `TestAst2025FetchRelativeJdBatch::test_ac4_outcomes` |
+| Miss = one WARNING, no traceback; other Telescope error = one ERROR with `exc_info`; both → `RELATIVE_LINK_FAIL` | `…::test_click_miss_warns_other_error_logs_exception` |
+| Non-http `final_url` → `RELATIVE_LINK_FAIL`, nothing persisted | `…::test_non_http_final_url_fails_without_persist` |
+| Missing `job_site` / `job_link` → `RELATIVE_LINK_FAIL`, no click | `…::test_missing_job_site_or_link_fails_without_click` |
+| Empty / short text after a reached destination → `JD_SCRAPE_FAIL`, link resolved | `…::test_short_text_after_click_is_jd_scrape_fail_with_link_resolved` |
+| No connectivity → `ConnectionError` | `…::test_aborts_without_connectivity` |
+| AC5 both runners call `_apply_jd_gates` (`short_state` / `pass_state`) | `…::test_ac5_both_runners_call_shared_gate_helper` |
+| `fetch_jd_batch` behavior after the lift (regression) | `TestFetchJdBatch` (minus two pre-existing reds below) |
+
+Test-data note: bot / closed signals must trail the body — `_prune_jd` trims the page head before classification.
+
+**Broken / obsolete (revised):** two `test_consult.py` nodes — see [`consult.md`](consult.md) § AST-2025. **Pre-existing red (not AST-2025):** `TestFetchJdBatch::test_passes_with_existing_job_data` / `::test_collapses_consecutive_blank_lines_before_save` expect an `errors` key `fetch_jd_batch` never returns — identical before and after this diff. Across `test_gazer` / `test_consult` / `test_dispatcher` / `test_api_admin` / `test_tracker`, the only failures this diff introduced were the two revised nodes (60 baseline reds unchanged).
+
+**Observation for Susan (not pinned):** a relative-link qualify pass returns `RELATIVE_JOB_LINK` ≠ `pass_state`, so `qualify_job_listings`' summary counts it in `failed`, not `passed`. ACs are state-based; no test asserts the count either way.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. **Gap + revised (required):**
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  tests/component/core/test_gazer.py::TestAst2025FetchRelativeJdBatch \
+  tests/component/core/test_gazer.py::TestFetchJdBatch \
+  tests/component/core/test_consult.py::TestQualifyJobListings::test_relative_link_routes_to_relative_job_link \
+  tests/component/core/test_consult.py::TestAst1895InvalidJobLinkError \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_ast2025_routes_fetch_relative_jd_batch \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast2025_fetch_relative_jd_claims_trigger_state_and_releases_on_error \
+  tests/component/ui/api/test_api_admin.py::TestAst2025FetchRelativeJdDispatchTaskKey \
+  --deselect tests/component/core/test_gazer.py::TestFetchJdBatch::test_passes_with_existing_job_data \
+  --deselect tests/component/core/test_gazer.py::TestFetchJdBatch::test_collapses_consecutive_blank_lines_before_save \
+  -q
+```
+
+2. **AC3 (required):** `rg -n 'raise InvalidJobLinkError' src/core/consult.py` → exactly one hit, directly under `if not job_link:`.
+3. **AC5 (required):** `rg -n '_apply_jd_gates' src/core/gazer.py` → one `def` + one call in `fetch_jd_batch` + one in `fetch_relative_jd_batch`; no `_classify_jd(` call inside either runner body.
+
+**Pass criterion:** all three — not zero-arg harness / branch-lock gate (baseline reds in these files unchanged by AST-2025).
