@@ -235,3 +235,5 @@ Open `GET /api/auth_session_policy` returns non-secret session duration + extend
 **Integration (revised existing):** `tests/integration/scenarios/test_candidate_nav_api.py` — `/jobs/ready` enabled + every Jobs item carries `count`. Map: [`integration/README.md`](../../integration/README.md).
 
 Manifest: [`api_jobs.md`](api_jobs.md) § AST-1974 items 3 + 5.
+
+**AST-2047 (pointer):** `TestSystemAuthRoutes::test_ui_config_serves_theme_registry` — `ui_config` serves `themes` + `default_theme` via the `UI_CONFIG` spread (keys compared as a set: Flask sorts JSON keys). Manifest: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2047.

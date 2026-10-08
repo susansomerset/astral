@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import React from "react"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import ArtifactEditor from "../../../../src/ui/frontend/src/components/ArtifactEditor"
@@ -121,10 +121,108 @@ function mockBaseResumeUnsupported(state: string) {
   })
 }
 
+// AST-2051: resume editors (structure mode / jobPersistence) autosave bodies after ArtifactEditor's
+// AUTOSAVE_MS debounce; header Save/Cancel renders only during Generate review.
+const AUTOSAVE_MS = 2000
+
+/** Fake clock that still ticks in real time, so RTL waitFor/findBy polling and userEvent delays keep working. */
+function startAutosaveClock() {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+}
+
+/** Fire pending autosave timers and settle the PUT promise chain. */
+async function advanceAutosave(ms = AUTOSAVE_MS) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms)
+  })
+}
+
+function expectNoHeaderSaveCancel() {
+  expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument()
+}
+
+function deferred<T>() {
+  let resolve!: (v: T) => void
+  const promise = new Promise<T>(r => { resolve = r })
+  return { promise, resolve }
+}
+
+const okResponse = () => ({ ok: true, json: async () => ({}) }) as Response
+
+/** Base Resume structure editor: candidate c1 with one professional_summary body; PUTs go through `onPut`. */
+function mockBaseResumeStructure(onPut: (body: unknown) => Promise<Response> | Response, extra?: (url: string, init?: RequestInit) => Response | undefined) {
+  mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+    if (url === "/api/system/ui_config") return uiConfigResponse()
+    if (url === "/api/candidates") {
+      return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+    }
+    if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+    if (url === "/api/candidates/c1" && !init) {
+      return {
+        json: async () => ({ candidate_data: { artifacts: { base_resume: { professional_summary: "Struct body" } } } }),
+      } as Response
+    }
+    if (url === "/api/candidates/c1/data" && init?.method === "PUT") return onPut(JSON.parse(String(init.body)))
+    const hit = extra?.(url, init)
+    if (hit) return hit
+    throw new Error(url)
+  })
+}
+
+function renderBaseResumeStructure() {
+  return renderWithProviders(
+    <ArtifactEditor
+      title="Base Resume Content"
+      artifactKey="base_resume"
+      taskKey="craft_resume_base"
+      useCandidateResumeStructure
+      structureSections={[{ id: "professional_summary", label: "Summary" }]}
+    />,
+  )
+}
+
+/** JAR Job Resume editor: job j1 resume_content with one professional_summary body. */
+function mockJobResume(putBodies: { resume_content?: Record<string, string> }[]) {
+  installBaseApiMocks(mockedApi, async (url, init) => {
+    if (url === "/api/jobs/j1" && !init?.method) {
+      return {
+        json: async () => ({
+          astral_job_id: "j1",
+          job_data: { artifacts: { resume_content: { professional_summary: "hello" } } },
+        }),
+      } as Response
+    }
+    if (url === "/api/jobs/j1/artifacts/resume_content" && init?.method === "PUT") {
+      putBodies.push(JSON.parse(String(init.body)))
+      return okResponse()
+    }
+    throw new Error(`${url} ${init?.method ?? "GET"}`)
+  })
+}
+
+function renderJobResume(onSaved?: () => void) {
+  return renderWithProviders(
+    <ArtifactEditor
+      title="Resume draft"
+      artifactKey="resume_content"
+      taskKey="craft_resume_base"
+      useCandidateResumeStructure
+      structureSections={[{ id: "professional_summary", label: "Summary" }]}
+      jobPersistence={{ jobId: "j1", artifactKey: "resume_content", onSaved }}
+    />,
+  )
+}
+
 describe("ArtifactEditor", () => {
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it("shows no-candidate and shape error states", async () => {
@@ -275,40 +373,19 @@ describe("ArtifactEditor", () => {
     expect(mockedApi.mock.calls.some(([u]) => u === "/api/shapes/candidates")).toBe(false)
   })
 
-  it("job persistence mode loads job resume_content and PUTs on save (AST-553)", async () => {
+  it("job persistence mode loads job resume_content and autosaves PUT (AST-553 / AST-2051)", async () => {
+    startAutosaveClock()
     const putBodies: { resume_content?: Record<string, string> }[] = []
-    installBaseApiMocks(mockedApi, async (url, init) => {
-      if (url === "/api/jobs/j1" && !init?.method) {
-        return {
-          json: async () => ({
-            astral_job_id: "j1",
-            job_data: { artifacts: { resume_content: { professional_summary: "hello" } } },
-          }),
-        } as Response
-      }
-      if (url === "/api/jobs/j1/artifacts/resume_content" && init?.method === "PUT") {
-        putBodies.push(JSON.parse(String(init.body)))
-        return { ok: true, json: async () => ({ ok: true }) } as Response
-      }
-      throw new Error(`${url} ${init?.method ?? "GET"}`)
-    })
-    renderWithProviders(
-      <ArtifactEditor
-        title="Resume draft"
-        artifactKey="resume_content"
-        taskKey="craft_resume_base"
-        useCandidateResumeStructure
-        structureSections={[{ id: "professional_summary", label: "Summary" }]}
-        jobPersistence={{ jobId: "j1", artifactKey: "resume_content" }}
-      />,
-    )
+    mockJobResume(putBodies)
+    renderJobResume()
     await waitFor(() => expect(screen.getByText("Resume draft")).toBeInTheDocument())
     expect(screen.queryByRole("button", { name: "Generate" })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
     const field = await screen.findByDisplayValue("hello")
     await userEvent.clear(field)
     await userEvent.type(field, "updated")
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    expectNoHeaderSaveCancel()
+    await advanceAutosave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(
       mockedApi.mock.calls.some(
@@ -552,7 +629,8 @@ describe("ArtifactEditor", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
   })
 
-  it("AST-996/AST-1351: experience job array loads in ExperienceJobsEditor and Saves as array", async () => {
+  it("AST-996/AST-1351: experience job array loads in ExperienceJobsEditor and autosaves as array", async () => {
+    startAutosaveClock()
     const jobs = [
       {
         company: "Acme Corp",
@@ -609,13 +687,17 @@ describe("ArtifactEditor", () => {
     expect(screen.getByDisplayValue("Acme Corp")).toBeInTheDocument()
     expect(screen.getByDisplayValue("Engineer")).toBeInTheDocument()
     expect(screen.queryByDisplayValue(/"company": "Acme Corp"/)).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    // Autosave needs a body edit; the untouched experience array must still ride along as an array.
+    await userEvent.type(screen.getByDisplayValue("Summary body"), " edited")
+    expectNoHeaderSaveCancel()
+    await advanceAutosave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(putBodies.at(-1)?.artifacts?.base_resume?.experience).toEqual(jobs)
-    expect(typeof putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toBe("string")
+    expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toBe("Summary body edited")
   })
 
-  it("AST-1351: legacy string experience shows unsupported notice and Save aborts", async () => {
+  it("AST-1351: legacy string experience shows unsupported notice and autosave aborts", async () => {
+    startAutosaveClock()
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
@@ -629,6 +711,7 @@ describe("ArtifactEditor", () => {
             candidate_data: {
               artifacts: {
                 base_resume: {
+                  professional_summary: "Summary body",
                   experience: "legacy prose blob",
                 },
               },
@@ -647,7 +730,10 @@ describe("ArtifactEditor", () => {
         artifactKey="base_resume"
         taskKey="craft_resume_base"
         useCandidateResumeStructure
-        structureSections={[{ id: "experience", label: "Custom Jobs" }]}
+        structureSections={[
+          { id: "professional_summary", label: "Summary" },
+          { id: "experience", label: "Custom Jobs" },
+        ]}
       />,
     )
     await waitFor(() =>
@@ -655,10 +741,16 @@ describe("ArtifactEditor", () => {
     )
     expect(screen.getByDisplayValue("legacy prose blob")).toBeDisabled()
     expect(screen.queryByText("Role 1")).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    // Editing another body queues autosave; doSave must refuse the unsupported experience shape.
+    await userEvent.type(screen.getByDisplayValue("Summary body"), " edited")
+    expectNoHeaderSaveCancel()
+    const noticesBefore = screen.getAllByText("unsupported resume structure, please regenerate").length
+    await advanceAutosave()
+    // Refusal surfaces as an error toast on top of the inline notice.
     await waitFor(() =>
-      expect(screen.getAllByText("unsupported resume structure, please regenerate").length).toBeGreaterThan(0),
+      expect(screen.getAllByText("unsupported resume structure, please regenerate").length).toBeGreaterThan(noticesBefore),
     )
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument()
     expect(mockedApi.mock.calls.some(([u, init]) => u === "/api/candidates/c1/data" && init?.method === "PUT")).toBe(
       false,
     )
@@ -1097,7 +1189,8 @@ describe("ArtifactEditor", () => {
     await waitFor(() => expect(posts).toEqual(["/api/candidates/c1/generate_artifacts"]))
   })
 
-  it("AST-1382 [bug-repro]: content Save bundles resume_structure format (prior free_prose)", async () => {
+  it("AST-1382 [bug-repro]: content autosave bundles resume_structure format (prior free_prose)", async () => {
+    startAutosaveClock()
     const putBodies: { artifacts?: { base_resume?: unknown; resume_structure?: { sections?: Record<string, { format?: string; page_break_policy?: string }> } } }[] = []
     const catalog = {
       body_formats: ["free_prose", "word_cloud", "bullet_list"],
@@ -1165,15 +1258,18 @@ describe("ArtifactEditor", () => {
       />,
     )
     await waitFor(() => expect(screen.getByDisplayValue("Earlier ops and delivery.")).toBeInTheDocument())
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await userEvent.type(screen.getByDisplayValue("Earlier ops and delivery."), " More.")
+    expectNoHeaderSaveCancel()
+    await advanceAutosave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     const arts = putBodies.at(-1)?.artifacts
     expect(arts?.resume_structure?.sections?.prior_experience?.format).toBe("free_prose")
     expect(arts?.resume_structure?.sections?.prior_experience?.page_break_policy).toBe("avoid_split")
-    expect(arts?.base_resume).toEqual({ prior_experience: "Earlier ops and delivery." })
+    expect(arts?.base_resume).toEqual({ prior_experience: "Earlier ops and delivery. More." })
   })
 
-  it("AST-1476: page-break dropdown + content Save and Save sections persist policy", async () => {
+  it("AST-1476: page-break dropdown + content autosave and Save sections persist policy", async () => {
+    startAutosaveClock()
     const putBodies: { artifacts?: { resume_structure?: { sections?: Record<string, { page_break_policy?: string }> } } }[] = []
     const structureSaves: { id: string; page_break_policy: string }[][] = []
     const catalog = {
@@ -1255,7 +1351,10 @@ describe("ArtifactEditor", () => {
     await userEvent.selectOptions(pageBreak, "page_break_before")
     await userEvent.click(screen.getByRole("button", { name: "Save sections" }))
     expect(structureSaves.at(-1)?.[0]?.page_break_policy).toBe("page_break_before")
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    // Page-break is structure chrome (no body autosave); a body edit triggers the content PUT that bundles it.
+    await userEvent.type(screen.getByDisplayValue("Summary body"), " edited")
+    expectNoHeaderSaveCancel()
+    await advanceAutosave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(
       putBodies.at(-1)?.artifacts?.resume_structure?.sections?.professional_summary?.page_break_policy,
@@ -1266,14 +1365,18 @@ describe("ArtifactEditor", () => {
     const reload = vi.fn()
     vi.stubGlobal("location", { ...window.location, reload })
     let jobGets = 0
+    // AST-2051: shapesKey job editors (cover letter / application responses) are the only non-review Cancel path left.
     installBaseApiMocks(mockedApi, async (url, init) => {
+      if (url === "/api/shapes/candidates") {
+        return { json: async () => ({ detail: { cover_letter: [{ key: "body", label: "Body" }] } }) } as Response
+      }
       if (url === "/api/jobs/j1" && !init?.method) {
         jobGets += 1
-        const summary = jobGets === 1 ? "hello" : "from-server"
+        const body = jobGets === 1 ? "hello" : "from-server"
         return {
           json: async () => ({
             astral_job_id: "j1",
-            job_data: { artifacts: { resume_content: { professional_summary: summary } } },
+            job_data: { artifacts: { cover_letter: { body } } },
           }),
         } as Response
       }
@@ -1281,22 +1384,21 @@ describe("ArtifactEditor", () => {
     })
     renderWithProviders(
       <ArtifactEditor
-        title="Resume draft"
-        artifactKey="resume_content"
-        taskKey="craft_resume_base"
-        useCandidateResumeStructure
-        structureSections={[{ id: "professional_summary", label: "Summary" }]}
-        jobPersistence={{ jobId: "j1", artifactKey: "resume_content" }}
+        title="Cover letter"
+        artifactKey="cover_letter"
+        taskKey="draft_cover_letter"
+        shapesKey="cover_letter"
+        jobPersistence={{ jobId: "j1", artifactKey: "cover_letter" }}
       />,
     )
-    await waitFor(() => expect(screen.getByText("Resume draft")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Cover letter")).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
     const field = await screen.findByDisplayValue("hello")
     await userEvent.clear(field)
     await userEvent.type(field, "dirty local")
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
     await waitFor(() => expect(screen.getByDisplayValue("from-server")).toBeInTheDocument())
-    expect(screen.getByText("Resume draft")).toBeInTheDocument()
+    expect(screen.getByText("Cover letter")).toBeInTheDocument()
     expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
     expect(reload).not.toHaveBeenCalled()
     expect(jobGets).toBe(2)
@@ -1304,7 +1406,8 @@ describe("ArtifactEditor", () => {
   })
 
   // AST-1480: structure-mode body hydrate + edit loop (chrome vs body split; label-churn; JAR overlay)
-  it("AST-1480: structure title rename keeps hydrated body and Save still works", async () => {
+  it("AST-1480: structure title rename keeps hydrated body and autosave still works", async () => {
+    startAutosaveClock()
     let candidateGets = 0
     const putBodies: { artifacts?: { base_resume?: Record<string, string> } }[] = []
     const catalog = {
@@ -1390,7 +1493,8 @@ describe("ArtifactEditor", () => {
     expect(body).not.toBeDisabled()
     await userEvent.clear(body)
     await userEvent.type(body, "Edited after rename")
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    expectNoHeaderSaveCancel()
+    await advanceAutosave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toMatch(/Edited after rename/)
   })
@@ -1527,6 +1631,7 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-1593: job_resume load uses hydrated current leaf body", async () => {
+    startAutosaveClock()
     const putBodies: { job_resume?: Record<string, string> }[] = []
     installBaseApiMocks(mockedApi, async (url, init) => {
       if (url === "/api/jobs/j1" && !init?.method) {
@@ -1564,12 +1669,14 @@ describe("ArtifactEditor", () => {
     expect(field).not.toBeDisabled()
     await userEvent.clear(field)
     await userEvent.type(field, "Edited JAR")
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    expectNoHeaderSaveCancel()
+    await advanceAutosave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(putBodies.at(-1)?.job_resume?.professional_summary).toMatch(/Edited JAR/)
   })
 
   it("AST-1480: structure mode bodies stay editable; tab chrome stays off", async () => {
+    startAutosaveClock()
     const putBodies: { artifacts?: { base_resume?: Record<string, string> } }[] = []
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -1609,7 +1716,8 @@ describe("ArtifactEditor", () => {
     expect(body).not.toBeDisabled()
     await userEvent.clear(body)
     await userEvent.type(body, "Bodies editable")
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    expectNoHeaderSaveCancel()
+    await advanceAutosave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toMatch(/Bodies editable/)
   })
@@ -1662,6 +1770,7 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-1577: bodyShape resume_content structures without useCandidateResumeStructure", async () => {
+    startAutosaveClock()
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
@@ -1700,12 +1809,152 @@ describe("ArtifactEditor", () => {
     await waitFor(() => expect(screen.getByDisplayValue("Struct body")).toBeInTheDocument())
     expect(screen.queryByDisplayValue("skip")).not.toBeInTheDocument()
     expect(mockedApi.mock.calls.some(([u]) => u === "/api/shapes/candidates")).toBe(false)
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    // bodyShape alone must enable structure-mode autosave (no useCandidateResumeStructure).
+    await userEvent.type(screen.getByDisplayValue("Struct body"), " edited")
+    expectNoHeaderSaveCancel()
+    await advanceAutosave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     const putCall = mockedApi.mock.calls.find(
       ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
     )
     const body = JSON.parse(String(putCall?.[1]?.body))
-    expect(body.artifacts.base_resume.professional_summary).toBe("Struct body")
+    expect(body.artifacts.base_resume.professional_summary).toBe("Struct body edited")
+  })
+
+  // --- AST-2051 resume editor autosave contract (AST-2056 bug-repro) ---
+
+  it("AST-2051 [bug-repro]: structure body edit autosaves after AUTOSAVE_MS with status text, no header Save/Cancel", async () => {
+    startAutosaveClock()
+    const puts: { artifacts?: { base_resume?: Record<string, string> } }[] = []
+    mockBaseResumeStructure(body => { puts.push(body as (typeof puts)[number]); return okResponse() })
+    renderBaseResumeStructure()
+    await userEvent.type(await screen.findByDisplayValue("Struct body"), " edited")
+    expectNoHeaderSaveCancel()
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument()
+    // Debounce: nothing before AUTOSAVE_MS (500ms margin absorbs the real-time drift of shouldAdvanceTime).
+    await advanceAutosave(AUTOSAVE_MS - 500)
+    expect(puts).toHaveLength(0)
+    await advanceAutosave(500)
+    await waitFor(() => expect(puts).toHaveLength(1))
+    expect(puts[0].artifacts?.base_resume?.professional_summary).toBe("Struct body edited")
+    await waitFor(() => expect(screen.getByText("All changes saved")).toBeInTheDocument())
+  })
+
+  it("AST-2051 [bug-repro]: jobPersistence Job Resume body edit autosaves PUT after AUTOSAVE_MS, no header Save/Cancel", async () => {
+    startAutosaveClock()
+    const puts: { resume_content?: Record<string, string> }[] = []
+    mockJobResume(puts)
+    renderJobResume()
+    await userEvent.click(await screen.findByRole("button", { name: "Expand section" }))
+    await userEvent.type(await screen.findByDisplayValue("hello"), " edited")
+    expectNoHeaderSaveCancel()
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument()
+    await advanceAutosave(AUTOSAVE_MS - 500)
+    expect(puts).toHaveLength(0)
+    await advanceAutosave(500)
+    await waitFor(() => expect(puts).toHaveLength(1))
+    expect(puts[0].resume_content?.professional_summary).toBe("hello edited")
+    await waitFor(() => expect(screen.getByText("All changes saved")).toBeInTheDocument())
+  })
+
+  /** craft_resume_base POST for the Base Resume structure editor; `gate` lets a case hold the response. */
+  function generateHandler(gate?: Promise<void>) {
+    return (url: string, init?: RequestInit) => {
+      if (url !== "/api/candidates/c1/generate/craft_resume_base" || init?.method !== "POST") return undefined
+      return {
+        ok: true,
+        status: 200,
+        json: async () => {
+          await gate
+          return { success: true, parsed_response: { professional_summary: "Generated summary" } }
+        },
+      } as Response
+    }
+  }
+
+  async function clickRegenerateAndConfirm() {
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    await userEvent.click(screen.getAllByRole("button", { name: "Regenerate" })[1])
+  }
+
+  it("AST-2051: Generate review keeps header Save/Cancel and never autosaves (AST-905)", async () => {
+    startAutosaveClock()
+    const puts: unknown[] = []
+    mockBaseResumeStructure(body => { puts.push(body); return okResponse() }, generateHandler())
+    renderBaseResumeStructure()
+    await screen.findByDisplayValue("Struct body")
+    await clickRegenerateAndConfirm()
+    await waitFor(() => expect(screen.getByText("Generated — review and Save or Cancel")).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
+    await advanceAutosave()
+    expect(puts).toHaveLength(0)
+    // Explicit Save is still the accept step.
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(puts).toHaveLength(1))
+  })
+
+  it("AST-2051: autosave timer queued before Generate does not fire during review (AST-905)", async () => {
+    startAutosaveClock()
+    const puts: unknown[] = []
+    const gen = deferred<void>()
+    mockBaseResumeStructure(body => { puts.push(body); return okResponse() }, generateHandler(gen.promise))
+    renderBaseResumeStructure()
+    await userEvent.type(await screen.findByDisplayValue("Struct body"), " edited")
+    // Start Generate inside the debounce window; the queued timer must no-op once review (snapshot) is open.
+    await clickRegenerateAndConfirm()
+    await advanceAutosave()
+    expect(puts).toHaveLength(0)
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
+    await act(async () => { gen.resolve() })
+    await waitFor(() => expect(screen.getByText("Generated — review and Save or Cancel")).toBeInTheDocument())
+    await advanceAutosave()
+    expect(puts).toHaveLength(0)
+  })
+
+  it("AST-2051 [bug-repro]: in-flight autosave keeps dirty when a newer edit is pending; unmount flushes it", async () => {
+    startAutosaveClock()
+    const puts: { artifacts?: { base_resume?: Record<string, string> } }[] = []
+    const firstPut = deferred<Response>()
+    mockBaseResumeStructure(body => {
+      puts.push(body as (typeof puts)[number])
+      return puts.length === 1 ? firstPut.promise : okResponse()
+    })
+    const { unmount } = renderBaseResumeStructure()
+    const field = await screen.findByDisplayValue("Struct body")
+    await userEvent.type(field, " one")
+    await advanceAutosave()
+    await waitFor(() => expect(puts).toHaveLength(1))
+    // Newer edit lands while PUT #1 is still in flight.
+    await userEvent.type(field, " two")
+    await act(async () => { firstPut.resolve(okResponse()) })
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument()
+    // Unmount before the second debounce fires: the flush must still persist " two".
+    unmount()
+    await waitFor(() => expect(puts).toHaveLength(2))
+    expect(puts[1].artifacts?.base_resume?.professional_summary).toBe("Struct body one two")
+  })
+
+  it("AST-2051 [bug-repro]: jobPersistence autosave skips onSaved; unmount flush calls it", async () => {
+    startAutosaveClock()
+    const puts: { resume_content?: Record<string, string> }[] = []
+    const onSaved = vi.fn()
+    mockJobResume(puts)
+    const { unmount } = renderJobResume(onSaved)
+    await userEvent.click(await screen.findByRole("button", { name: "Expand section" }))
+    const field = await screen.findByDisplayValue("hello")
+    await userEvent.type(field, " a")
+    await advanceAutosave()
+    await waitFor(() => expect(puts).toHaveLength(1))
+    await waitFor(() => expect(screen.getByText("All changes saved")).toBeInTheDocument())
+    // JAR's onSaved re-GETs and remounts the editor — autosave ticks must not trigger it.
+    expect(onSaved).not.toHaveBeenCalled()
+    await userEvent.type(field, " b")
+    unmount()
+    await waitFor(() => expect(puts).toHaveLength(2))
+    expect(puts[1].resume_content?.professional_summary).toBe("hello a b")
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
   })
 })
