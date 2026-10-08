@@ -861,3 +861,48 @@ Text-outcome map prefers http(s) `job_link` over `_email_breadcrumb_link`; `stag
 | `_classify_stage_blob` copies `ctx["candidate_api_keys"]` into the `do_task` ctx; with no map in ctx it leaves the key off (do_task loads by id) | `src/core/meteorite.py` | `TestAst1879ClassifyKeyMapHandOff` |
 
 **Integration:** none.
+
+### AST-2034 · AST-2032
+
+**Parent:** [AST-2032 — Let Estelle post a meteorite from Slack](https://linear.app/astralcareermatch/issue/AST-2032). **Publish:** `origin/sub/AST-2032/AST-2034-raw-new-meteorite-stage-classify`.
+
+New public `insert_slack_meteorite` saves one raw Slack blob at `NEW` (`source_kind = slack`, `classify_outcome` NULL, `content` = trimmed payload, `estelle_thread_ts` stamped after insert); soft-fails, never raises. `run_stage_meteorite` Ruth-classifies unclassified `NEW` rows via `_classify_stage_blob(batch_id=<claim id>)`: job 1 written onto the row then falls through the unchanged classified routing; jobs 2..N inserted as unclaimed classified `NEW` siblings; skip → `NOT_A_JOB` (`total_failed`); classify / map / candidate-missing → `NEW_EMAIL_ERROR` (`total_errors`). Parent AC1/AC2 are tested by **direct call only** — mention/command strip and Slack link unwrap belong to sibling **AST-2035** (`docs/test-bible/core/contact.md`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1/AC2 row shape, anchor stamp, validation misses, insert/anchor soft-fail | `src/core/meteorite.py` | **`TestAst2034InsertSlackMeteorite`** |
+| AC8 link_list / single_jd_no_link / not_job_content / multi_jd_inline fan-out; map + candidate-missing → NEW_EMAIL_ERROR | same | **`TestAst2034StageHopClassify`** |
+| AC8 Ruth failure → NEW_EMAIL_ERROR (`total_failed == 0`) | same | revised **`TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring`** |
+| AC9 classified row: zero `do_task` calls, routes as before | same | **`TestAst2034StageHopClassify::test_classified_row_never_calls_ruth`** + unchanged **`TestAst1560RunStageMeteorite`** |
+| AC10 classify `log_batch_id` (→ `agent_data.batch_id`) = claim id; claim released | same | **`TestAst2034StageHopClassify::test_classify_batch_joins_claim_and_claim_released`** |
+
+**Broken / obsolete this pass:** `TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring` asserted unclassified `NEW` → `SCRAPE_ERROR "missing classify_outcome"` (parent AC8 Fail condition) — rewritten in place to the Ruth-failure → `NEW_EMAIL_ERROR` path; AST-1751 `total_failed == 0` hold kept.
+
+**Integration:** none — `tests/integration/scenarios/` has no meteorite scenario; do not invent.
+
+**Known pre-existing reds (not this ticket):** on the synced tip, `test_meteorite.py` (`TestAst1517CreateContactMeteorite::test_debug_true_emits_style_d`, `TestAst1559CheckInbox::{test_skip_outcome_zero_rows_monitor_archive,test_sanitize_monitor_subject}`, `TestAst1693RunLandBotBlocked::test_contentful_bot_blocked_lands_with_http_link`) and 12 in `test_dispatcher.py` fail before and after this build — manifest is narrowed by class so they do not gate this ticket.
+
+## QA test manifest
+
+1. Insert entry (AC1/AC2 direct call): `tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite`
+2. Stage-hop classify (AC8/AC9/AC10): `tests/component/core/test_meteorite.py::TestAst2034StageHopClassify`
+3. Revised + classified-path regression (AC8 failure bullet, AC9): `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite`
+4. Ingress classify regression (`_classify_stage_blob` default mint unchanged): `tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow`, `TestAst1879ClassifyKeyMapHandOff`, `TestAst1988HoldLogBatchPairing`
+5. Text-outcome http routing unchanged: `tests/component/core/test_meteorite.py::TestAst1785PreferHttpJobLinkOverBreadcrumb`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite \
+  tests/component/core/test_meteorite.py::TestAst2034StageHopClassify \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow \
+  tests/component/core/test_meteorite.py::TestAst1879ClassifyKeyMapHandOff \
+  tests/component/core/test_meteorite.py::TestAst1988HoldLogBatchPairing \
+  tests/component/core/test_meteorite.py::TestAst1785PreferHttpJobLinkOverBreadcrumb \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
