@@ -1,0 +1,109 @@
+# AST-2031 — Job run modal requests entity-scoped agent data
+
+- **Parent:** [AST-2028 — Technical fail modals must filter by entity_id](https://linear.app/astralcareermatch/issue/AST-2028)
+- **Ticket:** [AST-2031](https://linear.app/astralcareermatch/issue/AST-2031)
+- **Publish ref:** `sub/AST-2028/AST-2031-job-run-modal-entity-scoped` (origin only)
+- **Depends on:** AST-2030 (#2 — `GET /api/agent_data/<batch_id>?entity_id=` slices NO_CACHE / TASK / RESPONSE). This ticket only makes the job modal *ask* for the slice; it works against today's backend too (the endpoint already accepts `entity_id`).
+
+When an admin opens a run from a job's State History (Job Detail modal, on Processing / Skipped pages), the run's agent-data panes currently fetch the whole batch. This ticket threads the open job's `astral_job_id` from `JobDetailModal` → `BatchExecutionModal` → `BatchAgentDataPanes`, which appends `?entity_id=<id>` to the `/api/agent_data/…` fetch only. Every other caller of `BatchAgentDataPanes` (Execution History, Vector Feedback, Ad Hoc, the standalone `BatchAgentDataModal`) passes no id and keeps fetching the full batch. Canon Scope: none (frontend prop plumbing only).
+
+## Scope check
+
+Ticket `## Scope` names exactly three files; every row below is one of them, and each change is the kind it describes. No backend, no test, no bible edits (tests/bible are Betty's).
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/ui/frontend/src/components/BatchAgentDataModal.tsx` | `BatchAgentDataPanes` gains optional `entityId` prop → `entity_id` query on the `/api/agent_data/…` fetch only | ui (frontend) |
+| `src/ui/frontend/src/components/BatchExecutionModal.tsx` | Optional `entityId` prop, forwarded to `BatchAgentDataPanes` | ui (frontend) |
+| `src/ui/frontend/src/components/JobDetailModal.tsx` | Passes `job?.astral_job_id` as `entityId` into `BatchExecutionModal` | ui (frontend) |
+
+Not touched (must stay byte-identical): `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx`, `AdminVectorFeedback.tsx`, `AdminAnthropicAdHoc.tsx`, `JobAnalysisReportModal.tsx`, `JobDiscussionPane.tsx`, `AgentStoryTab.tsx`, everything under `src/ui/api/` and `src/data/`.
+
+## Stage 1: Entity-scoped agent-data fetch from the job run modal
+
+**Done when:** opening a run from a job's State History fetches `/api/agent_data/<runId>?entity_id=<astral_job_id>`; every other `BatchAgentDataPanes` caller still fetches `/api/agent_data/<batchId>` with no query string; `npm run lint` and `npx tsc -b` pass.
+
+1. In `src/ui/frontend/src/components/BatchAgentDataModal.tsx`, add to `interface PanesProps` (after `candidateId?: string`):
+
+   ```ts
+   /** When set, agent data is requested sliced to this entity (`entity_id` query); timesheets / ledger stay batch-wide. */
+   entityId?: string
+   ```
+
+   Do **not** add `entityId` to the modal-level `interface Props` or to the default-export `BatchAgentDataModal` — its callers are batch-wide.
+
+2. Same file, change the `BatchAgentDataPanes` signature to destructure the new prop:
+
+   ```ts
+   export function BatchAgentDataPanes({ batchId, candidateId, entityId, className }: PanesProps) {
+   ```
+
+3. Same file, in the first `useEffect`, replace only the agent-data fetch line
+
+   ```ts
+   api(`/api/agent_data/${encodeURIComponent(batchId)}`).then(r => r.json()),
+   ```
+
+   with
+
+   ```ts
+   // Entity-scoped only when a caller names the entity; batch-wide views pass none
+   api(`/api/agent_data/${encodeURIComponent(batchId)}${entityId ? `?entity_id=${encodeURIComponent(entityId)}` : ""}`).then(r => r.json()),
+   ```
+
+   Leave the `/api/admin/timesheets?batch_id=…` and `/api/admin/dispatch_ledger/…` fetches unchanged (Tokens & Cost stays batch-wide — parent Functional scope 7).
+
+4. Same file, change that effect's dependency array from `[batchId, candidateId]` to `[batchId, candidateId, entityId]`.
+
+   ⚠️ **Decision:** Empty-string `entityId` is treated as "no id" (truthiness check) so a blank id never produces `?entity_id=` — the backend would read that as a real (empty) filter.
+
+5. In `src/ui/frontend/src/components/BatchExecutionModal.tsx`, add to `interface Props` (after `runId: string | null`):
+
+   ```ts
+   /** Entity whose slice of the run's agent data to show (job modal passes the open job). Omitted → whole batch. */
+   entityId?: string
+   ```
+
+6. Same file, change the signature to `export default function BatchExecutionModal({ runId, entityId, onClose }: Props) {` and the panes line to:
+
+   ```tsx
+   <BatchAgentDataPanes batchId={runId} entityId={entityId} />
+   ```
+
+   The `/api/admin/dispatch_ledger/…/logs` fetch is unchanged.
+
+7. In `src/ui/frontend/src/components/JobDetailModal.tsx`, change the sibling modal line (currently line 260) to:
+
+   ```tsx
+   <BatchExecutionModal runId={selectedRunId} entityId={job?.astral_job_id} onClose={() => setSelectedRunId(null)} />
+   ```
+
+   Keep the existing `{/* Sibling, not child: … */}` comment above it.
+
+   ⚠️ **Decision:** `job?.astral_job_id` rather than the `jobId` prop. The ticket names `job.astral_job_id`, and a run can only be selected from `InfoTab`, which renders only once `job` is loaded — so the value is always present when the modal opens. `job` is `null` only while no run is selectable, in which case `undefined` is harmless.
+
+8. Verify (from `src/ui/frontend/`):
+   - `npm ci` (no `node_modules` in the epic worktree today).
+   - `npm run lint` — zero errors.
+   - `npx tsc -b` — zero errors.
+   - `npm run test:component -- test_JobDetailModal test_BatchAgentDataModal test_AdminPerformanceMonitor` — existing tests stay green (Betty adds the AC 8 assertion at qa-child; do not edit `tests/`).
+   - From repo root: `git diff origin/dev -- src/ui/frontend/src/pages/ src/ui/api/ src/data/` is empty.
+
+9. Commit only the three files: `code(AST-2031): job run modal requests entity-scoped agent data`, then `git push origin HEAD:sub/AST-2028/AST-2031-job-run-modal-entity-scoped`.
+
+## AC mapping
+
+- **AC 8** (job modal sends the id): steps 3, 6, 7 — clicking State History row for job `J`, run `R` fetches `/api/agent_data/R?entity_id=J`. Test is Betty's (`test_JobDetailModal.test.tsx`).
+- **AC 9** (batch-wide callers unchanged): no page file is touched; `AdminPerformanceMonitor` passes no `entityId`, so its fetch URL and `test_AdminPerformanceMonitor.test.tsx` are unchanged.
+
+⚠️ **AC 9 grep defect (pre-existing, not introduced here):** `grep -n "entity_id" src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` already returns 8 lines on `origin/dev` (the Ad Hoc workbench's own run payload / table fields, unrelated to agent-data fetches). `AdminPerformanceMonitor.tsx` and `AdminVectorFeedback.tsx` return nothing. This plan does not touch `AdminAnthropicAdHoc.tsx`; the AC's intent (Ad Hoc's `BatchAgentDataPanes` call at line ~653 passes no entity id) holds. Flagged on Linear so the grep check can be narrowed (e.g. `git diff origin/dev -- <three pages>` empty) before review.
+
+## Execution contract
+
+Execute steps in order. No files beyond the three above. If a referenced line, prop, or fetch differs from what's quoted here, stop and comment on AST-2028 using the `🛑 Stage 1 blocked:` format.
+
+## Estimate
+
+Confirm Chuckles estimate: 2 — agree
