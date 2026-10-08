@@ -133,3 +133,14 @@ Roster handoff + parse dispatch: **`docs/test-bible/core/roster.md`** (**AST-827
   tests/component/utils/test_formatting.py::TestFindJobContainers \
   -q
 ```
+
+### AST-2029 · AST-2028 (entity-id labels — hydrate + split)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids`. `hydrate_entity_labels(text, entity_ids)` rewrites positional batch labels (`NNN:`, `[index=NNN]:`, `NNN|`) to `[entity_id=<id>]` at a line start, after `"`, or after a literal `\n` escape (plan D1/D2); out-of-range positions stay (D5). `split_entity_segments(text)` returns `{id: segment}` from decoded JSON (`companies` before `jobs`) or from `[entity_id=…]` tags; `{}` = legacy / show whole (D7). Storage wiring: **`core/agent.md`** § AST-2029.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hydrate forms, boundaries, D5, untouched digits | `src/utils/formatting.py` | **`TestAst2029HydrateEntityLabels`** |
+| Split JSON / tags / preamble / repeats / escapes / legacy | same | **`TestAst2029SplitEntitySegments`** |
+
+**Broken / obsolete:** none — additive helpers. **Integration:** none.

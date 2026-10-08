@@ -996,7 +996,7 @@ Retarget entity-story coverage from roster → agent; add dangling `propose_appl
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Story ownership + enrich / AST-520 label | `src/core/agent.py` (`get_entity_agent_story`) | **`TestEntityAgentStory`** |
-| Duplicate block labels / scored filter | same + `_filter_response_block` | **`TestEntityAgentStoryBranches`**, **`TestFilterResponseBlock`** |
+| Duplicate block labels / entity slice | same + `_slice_entity_block` (was `_filter_response_block`, AST-2030) | **`TestEntityAgentStoryBranches`**, **`TestSliceEntityBlock`** |
 | Soft-fail list / per-id resolve (AST-1274/1354) | same | **`TestAst1274AgentStorySoftFail`** |
 | Dangling TASK sibling → partial story, exception log then continue | same | **`TestAst1354AgentStoryDanglingTaskSibling::test_partial_story_does_not_raise`** (**[bug-repro]**) |
 | Company `vector_grades` (AST-726) | same | **`TestEntityAgentStory::test_company_prefilter_vector_grades_from_company_data`** |
@@ -1008,7 +1008,7 @@ Retarget entity-story coverage from roster → agent; add dangling `propose_appl
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent.py::TestEntityAgentStory \
-  tests/component/core/test_agent.py::TestFilterResponseBlock \
+  tests/component/core/test_agent.py::TestSliceEntityBlock \
   tests/component/core/test_agent.py::TestEntityAgentStoryBranches \
   tests/component/core/test_agent.py::TestAst1274AgentStorySoftFail \
   tests/component/core/test_agent.py::TestAst1354AgentStoryDanglingTaskSibling \
@@ -1979,3 +1979,80 @@ Fixtures: module helper `_ast2006_guard_ctx` (candidate row with name columns �
 ### AST-2008 · AST-2007 (do_task ledger call outcome)
 
 Post-call ledger write runs on every call with a batch id: `llm_call_seconds` (timesheet duration) + `llm_failure_class` (NULL on success, `failure_class` or `provider_failed` on failure); `host` still success-only (AST-1960). **Revised:** `TestAst1960LedgerHost::test_ledger_write_failure_never_fails_the_call` (parametrized ok/failed; message names "call outcome"). **New:** `…::test_ast2008_success_writes_duration_and_null_class`, `…::test_ast2008_timeout_writes_outcome_and_keeps_host`, `…::test_ast2008_failed_call_kwargs_carry_no_host`, `…::test_ast2008_last_call_wins_and_unclassified_is_provider_failed` (Decision A). Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-2008.
+
+### AST-2029 · AST-2028 (store agent data with real entity ids)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids`. `do_task` builds `_store_ids` once from `ctx["batch_entities"]` (`company_id` for company tasks, else `astral_job_id`; all-or-nothing, D3) and passes `entity_ids=` to `_store_prompt_blocks` (hydrates the **live** `NO_CACHE` row only, D4) and every `_store_response_block` call (hydrated text is also the hash input). Wire blocks are built from unhydrated text. Helpers: **`utils/formatting.md`** § AST-2029.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Live NO_CACHE hydrated, prompt-text NO_CACHE not (seven-segment + legacy); no ids → positional | `src/core/agent.py` (`_store_prompt_blocks`) | **`tests/component/core/test_agent_ast2029.py::TestAst2029StorePromptBlocks`** |
+| RESPONSE hydrated + id hash over hydrated text; no ids → unchanged | same (`_store_response_block`) | **`…::TestAst2029StoreResponseBlock`** |
+| AC1 stored ids / wire positional · AC2 `[index=NNN]` · AC3 failed RESPONSE · company ids · D3 partial/non-dict/empty · success split by id | same (`do_task`) | **`…::TestAst2029DoTaskStoresIds`** |
+
+**Broken / obsolete:** none — existing store fakes take `**kwargs`; no exact-kwarg assertion on the store mocks.
+
+**Red / green:** 26 of 31 new nodes red on `origin/dev` `0e81d63a8`; the 5 dev-green are the no-ids / D3 guards.
+
+**Pre-existing failures (not AST-2029):** `tests/component/core/test_agent.py` + `test_formatting.py` have 45 failing nodes on both `origin/tests` (dev product) and the AST-2029 tip — identical list (resume-section validation text, `KeyError: 'company_id'` / `'jobs'` decode shapes, missing `config.CRAFT_RUBRIC_MAX_TOKENS` / `tracker.persist_advise_job_resume_coded_advice`, token-resolve drift). `test_agent_ast1448.py` has 3 pre-existing reds. Out of scope; manifest is narrowed to the new classes.
+
+**Integration:** none — no `tests/integration/` scenario reads stored `agent_data` block text.
+
+## QA test manifest — AST-2029
+
+1. **New pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast2029.py \
+  tests/component/utils/test_formatting.py::TestAst2029HydrateEntityLabels \
+  tests/component/utils/test_formatting.py::TestAst2029SplitEntitySegments \
+  -q
+```
+
+2. **AC4 scope gate:** `git diff origin/dev...origin/sub/AST-2028/AST-2029-store-agent-data-with-entity-ids -- src/ui/api/ src/data/` is empty.
+
+**Pass criterion:** item 1 green, item 2 empty. Not the zero-arg harness (pre-existing reds above).
+
+### AST-2030 · AST-2028 (slice agent-data reads and agent story by entity)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity`. New `_slice_entity_block(content, entity_id)` over `split_entity_segments` (AST-2029): `{}` → whole block, this id → its segment, other ids only → `None` (D1). `get_agent_data(entity_id=…)` slices `NO_CACHE` / `TASK` / `RESPONSE` and **drops** `None` rows; `SYSTEM` / `CACHE_*` pass through. `get_entity_agent_story` slices `NO_CACHE` / `RESPONSE` for **every** task when the entity has `astral_job_id` / `short_name` (candidates stay whole, D5); `None` → `""` (D2). `_filter_response_block` deleted (D3); `_extract_entity_segment` stays for `get_entity_response`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC4 tagged slice · AC5 chunk-2 rows dropped · AC7 legacy whole · D6 shared prompt whole · CACHE/SYSTEM pass-through · no mutation | `src/core/agent.py` (`get_agent_data`) | **`tests/component/core/test_agent_ast2030.py::TestAst2030GetAgentDataSlice`** |
+| AC6 unscored story slice · other chunk `""` · legacy whole · TASK unsliced · company by `short_name` · candidate whole | same (`get_entity_agent_story`) | **`…::TestAst2030AgentStorySlice`** |
+| Helper three outcomes (retargeted) | same (`_slice_entity_block`) | **`tests/component/core/test_agent.py::TestSliceEntityBlock`** |
+
+**Broken / obsolete (revised in place):**
+- `TestFilterResponseBlock` (both methods) → renamed **`TestSliceEntityBlock`**, retargeted onto `_slice_entity_block`; id-less `jobs[]` now whole, other-id `jobs[]` now `None`.
+- `TestAgentDataAccess::test_get_agent_data_keeps_row_when_segment_missing` → **`…_drops_row_when_segment_missing`** (AC5, JSON `jobs[]` shape).
+- `TestEntitySegmentAccess::test_get_agent_data_keeps_rows_without_matching_segment` → **`…_drops_rows_without_matching_segment`** (AC5, tagged shape; SYSTEM kept).
+- `TestEntityAgentStoryBranches::test_scored_response_without_job_id_keeps_content` → asserts the whole block (AC7 / D4; was `""`).
+- AST-1355 table row + run line retargeted to `TestSliceEntityBlock`.
+
+**Red / green:** all 8 revised/new behaviour nodes red on `origin/ftr/AST-2028-…` (pre-AST-2030); 9 guards green there.
+
+**Pre-existing failures:** same 45 as § AST-2029 — unchanged by this ticket (failure list identical after revision).
+
+**Integration:** none — no `tests/integration/` scenario calls `/api/agent_data` or the agent story.
+
+## QA test manifest — AST-2030
+
+1. **New + revised pytest (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast2030.py \
+  tests/component/core/test_agent.py::TestSliceEntityBlock \
+  tests/component/core/test_agent.py::TestAgentDataAccess \
+  tests/component/core/test_agent.py::TestEntitySegmentAccess \
+  tests/component/core/test_agent.py::TestEntityAgentStoryBranches \
+  tests/component/core/test_agent_ast2029.py \
+  -q
+```
+
+2. **AC8 scope gate:** `git diff origin/dev...origin/sub/AST-2028/AST-2030-slice-agent-data-reads-by-entity -- src/ui/api/ src/data/` is empty.
+3. **Deleted helper gone:** `rg -n "_filter_response_block" src/ tests/` → no matches.
+
+**Pass criterion:** item 1 green, items 2–3 empty. Not the zero-arg harness (pre-existing reds).
