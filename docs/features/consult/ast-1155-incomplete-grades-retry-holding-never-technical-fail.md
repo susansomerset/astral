@@ -1099,6 +1099,98 @@ context_tokens≈10500
 [code-rubric] PROCEED (Commit: d3473a040) Bug-repro locks AST-1996
 ```
 
+## Bug: AST-2053 — Normalise letter-grade confidence 0 to 1 in encoded grade decode
+
+**Linear:** [AST-2053](https://linear.app/astralcareermatch/issue/AST-2053) · **Mini-parent:** [AST-2045](https://linear.app/astralcareermatch/issue/AST-2045) · **Publish ref:** `sub/AST-2045/AST-2053-letter-conf0-normalize` · **Project:** Astral Dispatcher · **Ancestor:** AST-1996 block above (per-line `decode_failures` isolation)
+
+**Canon (no frozen list on ticket or mini-parent):** `astral.agent.confidence-bounds` (read — the statute this ticket amends), `patt.task.dispatch-retry` (id-only — routing contract, unchanged).
+
+### As-is
+
+In `src/core/agent.py::_decode_payload`'s non-vet encoded loop, a letter segment with confidence `0` (e.g. `CFC0`) trips the `letter != "X" and conf_d not in (1..5)` branch. The whole line is recorded in `decode_failures` and skipped, so `_run_batch_consult` routes that entity through `_consult_batch_fail_dest`. A model that writes `{letter}0` for "no signal" on both attempts sends an otherwise usable job to terminal error (`a9112ac6-…` → `METEORITE_ERROR_EVALUATE_JD`).
+
+### To-be
+
+A letter segment with confidence `0` decodes as the same letter with confidence `1`. That scores as no signal, so the line produces a normal grade row, there is no `decode_failures` entry, and no retry strike is spent. The statute records this as the one sanctioned exception to the confidence bounds.
+
+### Repro
+
+Fixture (no DB; `batch_entities` as `_run_batch_consult` passes them). Run on tip `06df211db`:
+
+```python
+from src.core.agent import _decode_payload
+ctx = {"batch_entities": [{"astral_job_id": "J0"}, {"astral_job_id": "J1"}]}
+out = _decode_payload("evaluate_meteorite", "grades_encoded",
+    "000|CFC0|ECD5|EHA5|MLB4|MUA3|RWD5|SSC0|TCC0|TPB3|QCA5|GCB4\n001|CFC3|ECD5|ORX0", ctx)
+# today: out["jobs"] -> only J1
+#        out["decode_failures"] -> [{astral_job_id: "J0", pos: 0,
+#          reason: "[evaluate_meteorite] non-X grade requires confidence 1-5, got 0 in segment 'CFC0' (line '000|CFC0|…')"}]
+# to-be: out["jobs"] -> J0 and J1; J0 grades include ("CF","C",1), ("SS","C",1), ("TC","C",1); no "decode_failures" key
+```
+
+### Root cause
+
+The per-segment check in `_decode_payload` (agent.py ~L370) treats every non-X confidence outside 1–5 as a bad line. `_GRADE_SEG` is `^[A-Z]{2}[ABCDFX][0-5]$`, so the only non-X value that can reach that branch is `0`. Letters with 6–9 never match the regex; they fall into `meta` and fail earlier as trailing content on grades-only types. The branch therefore exists only to reject `{letter}0`, which is exactly the slip this ticket sanctions.
+
+### Proposed change
+
+Two files. One `code(AST-2053)` commit.
+
+**1. `src/core/agent.py::_decode_payload` — non-vet encoded segment loop.**
+
+Replace the non-X rejection (the `if letter != "X" and conf_d not in (1, 2, 3, 4, 5): bad_conf = …; break` block) with:
+
+```python
+            # Sanctioned slip (astral.agent.confidence-bounds): models write {letter}0 for "no signal".
+            # {letter}1 scores identically and keeps the letter, so store that instead of failing the line.
+            if letter != "X" and conf_d == 0:
+                conf_d = 1
+```
+
+- The `X` with non-zero confidence branch above it stays unchanged: same `bad_conf`, same `decode_failures` entry, same reason text.
+- The `if bad_conf:` block below stays. It is now reached only by the X branch.
+- Docstring: replace "and a segment whose confidence digit disagrees with its letter (X must be 0, every other letter 1-5), are recorded" with "and an `X` segment with nonzero confidence, are recorded"; then add the line "A letter segment with confidence 0 is normalised to confidence 1 (AST-2053)."
+- **Unchanged:** `_GRADE_SEG`, the vet branch (`grades_encoded_vet_meta` still raises on `LT{letter}0`), the trailing-content branch, the duplicate-code raise, and `_validate_grade_confidence_list` (normalised rows carry 1, so they pass it).
+
+**2. `canon/directives/draft/stat.agent.confidence-bounds.md` — statement + conforming example.**
+
+- `# Statement`: replace the paragraph with
+
+  > Every graded row carries integer `confidence`: `1`–`5` for letter grades `A`–`F`, and `0` with `X`. One sanctioned exception at decode: the encoded grade decoder (`_decode_payload`, non-vet paths) normalises a letter segment written with confidence `0` (`{A-F}0`) to the same letter with confidence `1`, rather than failing the line. No other out-of-bounds confidence is coerced. At scoring, confidence `1` (including `F1`) is treated as no signal; multipliers live in `CONFIDENCE_MULTIPLIERS`.
+
+- `### Conforming`: append `` - `_decode_payload` turns encoded `CFC0` into `{"grade": "C", "confidence": 1}`; the row scores as no signal and the line is not a decode failure. ``
+- Frontmatter: **do not touch** (`approved_by` / `approved_at` are Archie's stamp; see the canon-ownership decision below).
+
+⚠️ **Decision: normal form `{letter}1`, not `X0`.** This is Susan's choice, recorded in the AST-2053 Description. Both forms score as no signal (`_effective_no_signal_for_score`: `conf == 1` → True; `CONFIDENCE_MULTIPLIERS[1] = 0.0`). `{letter}1` keeps the letter, never produces a forbidden QC `X` (AST-1910), and does not count toward `AllLiteralXGradeSetError`. `F0` becomes `F1`, which is no signal, not a dealbreaker.
+
+⚠️ **Decision: applies to every non-vet encoded output type, not only `grades_encoded`.** The confidence check is one shared loop for `grades_encoded`, `_notes` (grade_do/get/like/meteorite_like), `_meta` (qualify), and `_prefilter_links`. Normalising in that one branch fixes the same strike-burn everywhere. Limiting it to grades-only would take an extra conditional and keep the bug on the other tasks. The ticket's Technical scope names this branch with no output-type carve-out.
+
+⚠️ **Decision: no new log line.** The normalisation is silent, matching the decoder's existing segment cleanup (AST-483 strips ` -:` silently). Because the row is stored as `{letter}1`, the original `0` is not recoverable from stored grades. If Susan wants a trace, it would be one `logger.debug` (`stat.logging.debug`); not planned.
+
+⚠️ **Decision: canon ownership.** `canon/docs/README.md` §2 says drafts come from Chuckles or Joan and Archie approves. The statute wording is written out in full above, so fix-board (Joan) reviews it, and Archie's approval is recorded by Archie/Chuckles. make-fix applies the wording verbatim and does not edit frontmatter. Out of scope and left to the canon owners: the byte-identical legacy copy `canon/statutes/astral/agent/astral.agent.confidence-bounds.md`, the `canon/docs/DIRECTIVES-DIRECTORY.md` L224 row, and `canon/docs/CHANGELOG.md`.
+
+### Blast radius
+
+- **`_decode_payload` callers:** `consult._normalize_rubric_task_response` (every rubric-encoded consult task), `agent.do_task`'s non-rubric `_encoded` branch, and the `api_admin` ad-hoc hydrate. All of them now get a grade row instead of a decode failure for `{letter}0`. Downstream `_validate_grade_confidence_in_payload` sees confidence 1 and passes.
+- **`_run_batch_consult`:** fewer `decode_failed` entities. No code change, and routing (`_consult_batch_fail_dest`) is untouched.
+- **Scoring/verdict:** a normalised row contributes no signal, the same as an `X0` or `{letter}1` row today. `IncompleteGradeSetError` completeness is unaffected (the vector is present either way).
+- **Vet path, roster prefilter decode via `_GRADE_SEG`:** the vet path is unchanged. Prefilter shares the non-vet loop and gets the normalisation (see decision above).
+- **Tests (Betty's tree; make-fix does not edit):**
+  - `tests/component/core/test_agent.py::TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` asserts `_decode_payload("task","grades","0|CRA0",…)` raises `confidence 1-5`. It is **already red on tip `06df211db`**: it went stale at `f8d3f9a12`, which moved bad confidence into `decode_failures`. After this fix, `0|CRA0` decodes to `{"jobs":[{…"grades":[{"vector":"CR","grade":"A","confidence":1}]}]}`, so the assert needs a rewrite.
+  - `…::TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta` (L250, `0|CRX2` expected to raise) is **also already red on tip** for the same `f8d3f9a12` reason. It is an X-branch assert that this fix does not change: it should expect a `decode_failures` entry.
+  - `tests/component/core/test_consult.py` ~L6240 (`MAX3` decode failure) is X-branch and stays green.
+  - fix-board / qa-fix own these.
+
+### What must still hold
+
+- `X` with non-zero confidence → `decode_failures` entry with today's exact reason text, and per-entity retry/error (AST-1996).
+- Letter confidence 6–9 (which fails `_GRADE_SEG`) → trailing-content `decode_failures` on grades-only types, exactly as today.
+- Vet path (`grades_encoded_vet_meta`) still raises on confidence 0.
+- `_GRADE_SEG` unchanged; no other coercion (`DEC35` is never shortened, `X3` is never rewritten).
+- Clean payloads keep the exact `{array_key: [...]}` shape with no `decode_failures` key.
+- AST-1155 / `patt.task.dispatch-retry`: one retry, routing by current state, untouched.
+- No prompt, `src/utils/config.py`, or `data/admin/agent_task.json` change.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
