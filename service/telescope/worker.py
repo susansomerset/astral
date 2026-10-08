@@ -19,7 +19,7 @@ import asyncpg
 import jobqueue
 from browser import Firefox
 from logging_util import get_logger, set_worker_label
-from scrape import ScrapeError, parse_request, run_scrape
+from scrape import CLICK_TARGET_MISSING, ScrapeError, parse_request, run_scrape
 from joblog import begin_job, end_job, short_id
 from settings import settings
 
@@ -301,7 +301,7 @@ class QueueWorker:
     # -- one job -------------------------------------------------------------
 
     def _retry_delay(self, job: jobqueue.ClaimedJob, error_class: str) -> Optional[float]:
-        if error_class == "bad_request":
+        if error_class in ("bad_request", CLICK_TARGET_MISSING):
             return None
         if job.attempts >= job.max_attempts:
             return None
