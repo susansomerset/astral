@@ -257,7 +257,7 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
         {!loading && !job && jobId && <p className="entity-error">Job not found.</p>}
       </Modal>
       {/* Sibling, not child: portal events bubble along the React tree into the job Modal's dirty detector */}
-      <BatchExecutionModal runId={selectedRunId} onClose={() => setSelectedRunId(null)} />
+      <BatchExecutionModal runId={selectedRunId} entityId={job?.astral_job_id} onClose={() => setSelectedRunId(null)} />
     </>
   )
 }
