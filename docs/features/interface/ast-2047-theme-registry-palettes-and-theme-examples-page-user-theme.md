@@ -582,3 +582,44 @@ Execute steps in order. Do not add files, tokens, or rules not listed here. If a
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2047
+**Overall:** APPROVED
+**Corpus:** cc0ca67ac7e3ffd6f9067ccd857cb47fdb2c6f50 (`canon/` at publish tip; no `docs/canon-index.md` on ref)
+**Publish ref:** `fe9850b9784a5700e7e29cdd586579941be3309e` (`origin/sub/AST-2042/AST-2047-theme-registry-palettes`)
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score; not §4a ESCALATE (parent and child both explicitly declare empty scope with the same rationale as AST-1983).
+
+## Traceability
+
+Child AC1→Stage 1; AC2→Stage 1+3; AC3→Stage 2; AC4→Stage 2; AC5→Stage 2 (App.css half per Boundaries); AC6→Stage 1+3; AC7→Stages 0–3. Parent AC3–AC6 → N/A (child #2); parent AC1–2,7–11 → covered by the same child AC mapping.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **acceptable — Intentional Dark tweaks on formerly undefined `var()`** (Stage 2 step 4 ⚠️ decisions: `.dispatch-status-muted`, batch-feedback table borders, `.intake-hold`). Plan documents them; aligns with parent Functional scope 5 and child Boundaries (App.css half only). Not a definition slip.
+
+- **acceptable — No `## Self-assessment` block** — Estimate confirm present (`5 — agree`); footprint is heavily anchored; no `!!-NONE` conf gap.
+
+- **acceptable — AC3 verification path** — Ticket AC3 cites `getComputedStyle` vs `origin/dev`; plan uses `App.before.css` + token-block equality script (Stage 0–2). Equivalent for declared token values at plan stage; manual UAT can still use parent wording.
+
+### acceptable
+
+- **Identity gates:** AST-2047 `Plan Ready`, assignee Joan Clarke; parent AST-2042 definition read; 0/2 `[plan-discuss]` rounds.
+- **Scope fidelity:** Files Changed matches ticket `## Scope` and parent partition for child #1; explicit exclusions for #2/#3 (`candidate.py`, `CandidateProfile`, `CandidateContext`, component inline styles).
+- **DRY / registry:** Single `UI_CONFIG["themes"]` drives profile select and Theme Examples panels; assert on `default_theme`; no second theme list in TS.
+- **Sibling contract:** Root `data-theme`, served keys, and interim unvalidated merge behavior documented without implementing #2.
+
+context_tokens≈32000
+
+**Upshot:** `[plan-rubric] PROCEED (Commit: fe9850b97) Registry, palettes, examples`
