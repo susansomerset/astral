@@ -3720,3 +3720,44 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts \
 **Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
 
 **Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2049-inline-color-tokens:docs/test-bible/frontend/pages.md | shasum` (also `frontend/components.md`)
+
+### AST-2065 · AST-2042 (UI config URL; UAT-batch bug)
+
+**Publish:** `origin/sub/AST-2042/AST-2065-ui-config-url`. **Scope from** `[board-betty] TESTS: REVISE`. Plan: `docs/features/interface/ast-2047-theme-registry-palettes-and-theme-examples-page-user-theme.md` § Bug: AST-2065.
+
+Contract: Flask serves `UI_CONFIG` only at **`GET /api/ui_config`** (`system_bp` url_prefix `/api`). `/api/system/ui_config` falls through to the SPA catch-all, so `loadUiConfig` (`lib/uiConfig.ts`), `ArtifactEditor.tsx` and `ArtifactsBaseResumeContent.tsx` silently ran on fallbacks. Fix = those three literals → `/api/ui_config`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Loader requests the served route **[bug-repro]** | `lib/uiConfig.ts` | `tests/component/frontend/lib/test_uiConfig.test.ts` — **`uiConfig URL — AST-2065`** › **`[bug-repro] loadUiConfig fetches /api/ui_config`** (`vi.resetModules` + mocked `api`; module-level cache) |
+| No stale URL anywhere in the SPA **[bug-repro]** | all non-test `.ts`/`.tsx` under `src/ui/frontend/src` | same describe › **`[bug-repro] no frontend source references /api/system/ui_config`** |
+| Server route | `api_system.py` | existing **`test_api_system.py::TestSystemAuthRoutes::test_ui_config_*`** (already hit `/api/ui_config`) — unchanged |
+
+**Broken / obsolete (retargeted in place, `/api/system/ui_config` → `/api/ui_config`, 52 lines):** these mocks encoded the bug, so they would lose their config post-fix. Components: `test_ArtifactEditor`, `test_ContextTextPage`, `test_JobTitleText`, `test_ListPage`, `test_ListPage_listTableLayout`, `test_ListPage_ui_config_fail`. Pages: `page-mocks.ts` (shared — 21 page files consume it), `test_AdminThemeExamples`, `test_ArtifactsBaseResumeContent`, `test_CompaniesWatchHistory`, `test_CompaniesWatchList`, `test_JobsJobDetail`. **Left alone** (already match both URLs): `test-utils.tsx`, `test_CandidateProfile`, `test_AdminSessionCoverLetter`, `test_AdminAnthropicAdHoc`, `test_CandidateIntake`.
+
+**Red / green:** pre-fix sub tip `27ebac8c1` — both `[bug-repro]` cases red (loader called `/api/system/ui_config`; scan lists `components/ArtifactEditor.tsx`, `lib/uiConfig.ts`, `pages/ArtifactsBaseResumeContent.tsx`); the retargeted mocks are expected red until the fix lands. Same tree + the three-literal fix applied locally — guard green, manifest item 2 failure set equals the pre-existing set below (except `test_CandidateIntake`, a timing flake: 4–10 of 24 red on the pre-fix tree alone, file mocks both URLs).
+
+**Integration:** none — frontend-only; do not invent.
+
+#### QA test manifest (AST-2065)
+
+1. **[bug-repro] flip (test-fix):** red pre-fix, green post-fix — 3 passed.
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/lib/test_uiConfig.test.ts
+```
+
+2. **Regression (required):** retargeted files + `page-mocks.ts` consumers — failure set must equal the pre-existing reds (not this ticket): `test_ArtifactEditor` 13 (AST-2056 bug-repros), `test_CompaniesWatchHistory` 6, `test_ArtifactsBaseResumeContent` 2; `test_CandidateIntake` timing flakes.
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/components/test_{ArtifactEditor,ContextTextPage,JobTitleText,ListPage,ListPage_listTableLayout,ListPage_ui_config_fail}.test.tsx \
+  $(cd ../../.. && rg -l "page-mocks" tests/component/frontend/pages --glob '*.test.tsx' | sed 's#^#../../../#') \
+  ../../../tests/component/frontend/pages/test_{AdminThemeExamples,ArtifactsBaseResumeContent,CompaniesWatchHistory,CompaniesWatchList,JobsJobDetail}.test.tsx
+```
+
+3. **Grep:** `rg -n "/api/system/ui_config" src/ui/frontend/src` returns nothing.
+
+4. In `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.

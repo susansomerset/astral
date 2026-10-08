@@ -26,7 +26,7 @@ const THEMES = {
 describe("AdminThemeExamples — AST-2047", () => {
   it("renders one labeled panel per registry id with the shared sample; read-only (§6c, AC6)", async () => {
     installBaseApiMocks(mockedApi, url =>
-      url === "/api/system/ui_config" ? jsonResponse({ column_types: {}, themes: THEMES, default_theme: "dark" }) : undefined,
+      url === "/api/ui_config" ? jsonResponse({ column_types: {}, themes: THEMES, default_theme: "dark" }) : undefined,
     )
     renderWithProviders(<AdminThemeExamples />)
 

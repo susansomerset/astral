@@ -2026,6 +2026,10 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-2065 · AST-2042 (UI config URL) — pointer
+
+`lib/uiConfig.ts` `[bug-repro]` URL guard (`test_uiConfig.test.ts` › **`uiConfig URL — AST-2065`**) and the `/api/system/ui_config` → `/api/ui_config` mock retarget in `test_ArtifactEditor`, `test_ContextTextPage`, `test_JobTitleText`, `test_ListPage`, `test_ListPage_listTableLayout`, `test_ListPage_ui_config_fail`. Map + manifest: **`docs/test-bible/frontend/pages.md`** § AST-2065.
+
 ### AST-2060 · AST-2058 (show rubric reads hydrated detail content; gap — product AST-2059)
 
 **Parent:** [AST-2058](https://linear.app/astralcareermatch/issue/AST-2058) (orphaned mini-parent). **Publish:** `origin/sub/AST-2058/AST-2060-show-rubric-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-2059** (`61f1f40ea`, on `ftr/AST-2058-show-rubric-content`) — test tree + bible only. Plan: `docs/features/interface/ast-1063-job-carried-rubric-hydration-for-list-columns.md` § Bug: AST-2059 / § Bug: AST-2060.
