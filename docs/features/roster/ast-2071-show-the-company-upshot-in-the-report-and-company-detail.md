@@ -230,3 +230,58 @@ AC 12 → Stage 1; AC 13 → Stage 2; AC 14 → Stage 3. Parent AC 1–11 N/A (g
   - `npm run build` clean. `eslint` on both components: 0 errors; one pre-existing warning on an untouched line,
     `JobAnalysisReportModal.tsx:286` `react-hooks/exhaustive-deps` (`persistStructureRows`) — not fixed, per plan.
   - No tests touched; coverage is Betty's `qa-child`.
+
+## Radia review
+
+**Ticket:** AST-2071  
+**Publish ref:** `491c7610adce32a416e1a0381307b9931a783144` (`origin/sub/AST-2054/AST-2071-upshot-display`)  
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `stat.logging.debug` A, `stat.logging.error` A; same here.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now** — (none)
+
+**discuss** — (none)
+
+**advisory**
+
+- **sibling test carry:** `merge-tests(AST-2071)` brings non–AST-2071 paths into the three-dot diff (`tests/component/core/test_contact.py`, `test_meteorite.py`, `tests/component/external/test_slack.py`, assorted `tests/component/frontend/pages/*`, `test_ArtifactEditor.test.tsx`, `test_config.py`, and matching `docs/test-bible/**` deltas). Expected per §5.4; **no sibling `src/**` product scope** beyond `api_companies.py`, `JobAnalysisReportModal.tsx`, `CompanyDetailModal.tsx`.
+- **Canon Scope (carry-forward from Joan):** `astral.layers.import-direction` / `astral.ui.frontend-file-placement` are not on the frozen list; this diff only extends existing modules and adds no new files — not scored, not ESCALATE.
+
+### Plan fidelity (§5.4)
+
+- **Stage 1:** `_flatten_for_view` lifts `company_upshot` with `cd.get("company_upshot", "")`; docstring updated; `prefilter_company_notes` unchanged.
+- **Stage 2:** Report modal uses `companyUpshot` / `company_upshot`; `prefilter_company_notes` and `companyNotes` absent from `JobAnalysisReportModal.tsx`; empty copy and `default_expanded` follow trimmed presence.
+- **Stage 3:** `CompanyDetail` type + trimmed **Upshot** row before **Notes**; Notes block untouched.
+- **Tests/bible:** Betty manifest paths match plan AC 12–14 (`test_api_companies.py` lift + detail `""`, AST-949 Summary cases retargeted with decoy grade notes, new AST-2071 detail case).
+
+### Estimate footprint (§5.4)
+
+Confirm **2** — three small product files plus targeted component tests; fits.
+
+## What's solid
+
+- Clear separation of prose upshot vs grade notes (decoy assertions in report tests).
+- API lift mirrors existing `prefilter_company_notes` pattern (list + detail).
+- Plan-stage logging reasoning holds on the actual diff (no new joints, no handlers).
+
+## Recommended actions (downstream — not Radia)
+
+- Chuckles: append this block to `docs/features/roster/ast-2071-show-the-company-upshot-in-the-report-and-company-detail.md`, commit `docs(AST-2071): Radia review — clean`, post slim upshot, move to **Review Posted**; datt **PROCEED** → **User Testing** per gate.
+- No `resolve-child` canon work required.
