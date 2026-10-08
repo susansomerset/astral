@@ -2422,3 +2422,5 @@ Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (l
 **Broken / obsolete:** none. (`retry_holding` param is green on dev too — `_RETRY` → `error_state` was already the second-strike route.)
 
 Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
+
+**AST-2048 (pointer):** `save_candidate_data` theme allowlist (profile-selectable `UI_CONFIG["themes"]` ids only) — **`TestAst2048ThemeAllowlist`** (8; new lines fully branch-covered for `LOCKED_AT_100`). Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2048.

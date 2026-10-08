@@ -76,3 +76,5 @@ npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**AST-2048 (pointer):** `CandidateContext` sets / removes `<html data-theme>` from the selected candidate's `candidate_data.theme` — **`CandidateProvider — AST-2048 data-theme follows the selected candidate`** (2). Manifest: [`pages.md`](pages.md) § AST-2048.

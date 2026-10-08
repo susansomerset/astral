@@ -464,3 +464,5 @@ See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
 - the non-admin 403, now with an array body
 
 Full manifest: [`../../data/database/candidates.md`](../../data/database/candidates.md) § QA test manifest (AST-1901).
+
+**AST-2048 (pointer):** `test_update_rejects_unselectable_theme` — `PUT /api/candidates/<id>/data` with an unknown or examples-only theme → 400 via the real core allowlist, no DB write. Manifest: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2048.
