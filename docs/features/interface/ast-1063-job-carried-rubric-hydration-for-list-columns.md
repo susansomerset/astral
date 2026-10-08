@@ -730,6 +730,90 @@ Betty `[board-betty] TESTS: REVISE` on AST-1327: bible AST-950 rows still descri
 
 **What’s solid:** bug-repro fixtures match plan; AST-950 suite migrated to job-carried; bible honest; merge-tests discipline held.
 
+---
+
+## Bug: AST-2059 — show rubric modal reads rubric content from hydrated candidate detail
+
+**Mini-parent:** [AST-2058](https://linear.app/astralcareermatch/issue/AST-2058) · **Publish ref:** `sub/AST-2058/AST-2059-show-rubric-content` · **ftr:** `ftr/AST-2058-show-rubric-content`
+
+### As-is
+
+On the Recommended Job Report → **Analysis** tab (`JobAnalysisReportModal`) and on the agent story tab (`AgentStoryTab`), clicking **show rubric** next to a graded vector opens `RubricModal` with the correct title (`Rubric — <vector>`), but the body always reads `No rubric found for this vector.`
+
+### To-be
+
+**show rubric** shows that vector's criterion `content` for the selected candidate, matched by label or code the same way as today. While the content is loading, the modal shows a loading line instead of the not-found text. `No rubric found for this vector.` appears only when the candidate's hydrated rubric really has no matching row.
+
+### Repro
+
+Persistence is file/JSON plus the `rubric_vector` table, so the repro is a payload shape, not a seeded DB row.
+
+1. Select a candidate whose `evaluate_jd` rubric lives in `rubric_vector` (any post-AST-723 candidate).
+2. Open a Recommended job → **Analysis** → expand **JD Analysis** → click **show rubric** on any graded vector.
+3. Modal body: `No rubric found for this vector.`
+
+Data each source returns for that candidate:
+
+```json
+// GET /api/candidates  (CandidateContext list — raw candidate_data, never hydrated)
+{ "astral_candidate_id": "c1", "candidate_data": { "artifacts": {} } }
+
+// GET /api/candidates/c1  (detail — hydrate_rubric_artifacts_for_response ran)
+{ "astral_candidate_id": "c1", "candidate_data": { "artifacts": {
+  "jobdesc_rubric": [
+    { "code": "QC", "label": "Quality Check", "importance": 5, "content": "Grade A when …" }
+  ]
+} } }
+
+// job (flattened) — AST-1063 snapshot, no content by design
+{ "jd_grades": [{ "vector": "Quality Check", "grade": "B", "confidence": 4 }],
+  "jd_rubric": [{ "code": "QC", "label": "Quality Check", "importance": 5, "grade_descriptions": [] }] }
+```
+
+Before the fix, `AgentAnalysisHeader` reads the first payload, so `liveList` is `[]`, falls back to the `jd_rubric` row (no `content`), passes `content=null`, and the modal shows the fallback. After the fix it reads the second payload and the modal shows `Grade A when …`.
+
+### Root cause
+
+`AgentAnalysisHeader` gets rubric **content** from `useCandidate().candidates[].candidate_data.artifacts[rubricArtifact]`. `CandidateContext` loads that list from `GET /api/candidates`, which returns the raw `candidate_data` blob. Since AST-723, rubric criteria live in `rubric_vector`, not in the artifacts blob. They are only overlaid into `artifacts` by `hydrate_rubric_artifacts_for_response` (`src/core/candidate.py`), and that runs only on the single-candidate route `get_candidate_detail` (`GET /api/candidates/<id>`, `src/ui/api/api_candidate.py`). So `liveList` is always empty. The only other source is the job-carried `{prefix}_rubric` snapshot (this ticket, AST-1063), which leaves out `content` on purpose (Stage 1). With both sources lacking content, `RubricModal` gets `null` and renders the fallback.
+
+### Proposed change
+
+Frontend only. Two files, both in AST-2059 `## Scope`. No backend, API, or caller changes.
+
+1. **`src/ui/frontend/src/components/AgentAnalysisHeader.tsx`** (modified component function)
+   - Add `import { useEffect, useState } from "react"` (replacing the bare `useState` import) and `import api from "../lib/api"`.
+   - New state: `const [detailArtifacts, setDetailArtifacts] = useState<Record<string, unknown> | null>(null)` and `const [contentLoading, setContentLoading] = useState(false)`.
+   - New `useEffect`, deps `[rubricVector, selectedId, rubricArtifact]`:
+     - When `!rubricVector || !selectedId || !rubricArtifact`, return without fetching.
+     - Otherwise run `setContentLoading(true)`, `setDetailArtifacts(null)`, then `api(\`/api/candidates/${selectedId}\`)`. On `r.ok`, parse JSON and set `detailArtifacts` to `body?.candidate_data?.artifacts` when it is an object, otherwise `{}`. On `!r.ok` or a thrown error, set `{}` (this is "loaded, nothing found", not "still loading"). Always end with `setContentLoading(false)`.
+     - Stale-response guard: use a local `let cancelled = false`, return a cleanup that sets `cancelled = true`, and skip both setters when `cancelled`. Closing the modal or switching candidates mid-fetch must not paint the wrong candidate's content.
+     - Fetch on every modal open. No per-candidate cache, because a rubric edit elsewhere should show on the next open.
+   - Split the live list in two:
+     - `listLiveList`: the current derivation from `candidate?.candidate_data.artifacts[rubricArtifact]`, kept **only** for the existing `labelList` legacy fallback (`rubricItems` empty, as in `AgentStoryTab`). Grade-row labels and order stay exactly as they are today (AST-2059 Boundaries).
+     - `contentLiveList`: `Array.isArray(detailArtifacts?.[rubricArtifact])`, otherwise `[]`. Every `findRubricRow(liveList, …)` inside the `contentRow` derivation switches to `contentLiveList`. The match order stays the same: live row by vector, then live row by `labelRow.code`, then `labelRow`.
+   - Pass `loading={contentLoading}` to `RubricModal`.
+   - ⚠️ **Decision:** the hydrated fetch feeds **content only**. AST-2059 Technical scope says to point the `liveList` derivation at the fetch, but letting it feed `labelList` too would retitle `AgentStoryTab` rows after the first modal open, which breaks the Boundary "no change to grade-row labels/order". Labels keep their pre-fix source.
+2. **`src/ui/frontend/src/components/RubricModal.tsx`** (props interface plus render)
+   - Add the optional prop `loading?: boolean`, defaulting to `false`.
+   - Body: `loading ? "Loading rubric…" : (content ?? "No rubric found for this vector.")`. Title, `stacked`, and the `entity-jd-content` wrapper are unchanged.
+3. **Out of scope:** `CandidateContext` (do not hydrate the list), `GET /api/candidates` and `hydrate_rubric_artifacts_for_response` (unchanged), the `{prefix}_rubric` snapshot shape (still no `content`), `JobAnalysisReportModal` / `AgentStoryTab` props, the meteorite `rubricArtifact` key choice (see Blast radius), and `tests/` / bible (Betty, via fix-board).
+
+### Blast radius
+
+- **Callers:** `JobAnalysisReportModal.renderAnalysisSection` (passes `rubricItems` plus `rubricArtifact = grade_rubric_by_field[phase.grades_field]`) and `AgentStoryTab` (passes `rubricArtifact = entry.rubric_artifact`, no `rubricItems`). Both keep their props and both get content through the new fetch.
+- **Network:** one extra `GET /api/candidates/<id>` per **show rubric** click. That route also runs the operative hydrators (base resume, strengths, and others), so it is heavier than a rubric-only read. That is acceptable for a click-triggered fetch, and no new endpoint is allowed by scope.
+- **Meteorite jobs:** the Analysis tab still passes `jobdesc_rubric` (the gazer key) for `jd_grades`, even though meteorites are scored against `meteorite_jobdesc_rubric`. This was flagged by Radia on AST-1327 (discuss item 2). After this fix, meteorite vectors that exist only in the meteorite rubric can still show not-found. Changing the key is a `JobAnalysisReportModal` change outside AST-2059 scope, so it is left alone here.
+- **Tests:** any component test that renders `AgentAnalysisHeader` with a `CandidateContext` mock carrying `candidate_data.artifacts[rubricArtifact].content` and expects that text in the modal now needs a mocked `api` / `fetch` for `/api/candidates/<id>`. `RubricModal` tests that expect the fallback while content is `null` still pass (`loading` defaults to false). Betty owns these via fix-board.
+
+### What must still hold
+
+- AST-1063: the job-carried `*_rubric` snapshot omits `content`, and list/detail flatten is unchanged.
+- AST-1327: header and body labels/order come from job-carried `rubricItems` when present (`sortGradesByRubricDisplayOrder`, `formatRubricVectorHeader`), and live-artifact label fallback applies only when `rubricItems` is empty.
+- The **show rubric** button renders under the same condition as today: `rubricArtifact` set, or non-empty `rubricItems`.
+- The content match order is unchanged: vector, then job-carried `code`, then the job-carried row.
+- `RubricModal` keeps the `Rubric — <vector>` title and the exact fallback string `No rubric found for this vector.`
+- No backend or API change. The `GET /api/candidates` list payload stays unhydrated.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
