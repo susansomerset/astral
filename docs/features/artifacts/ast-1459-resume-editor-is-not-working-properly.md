@@ -218,3 +218,87 @@ AST-905 / AST-1410 items in **What must still hold** are ticket behavioral gates
 **ESCALATE** not warranted: bounded blast radius, explicit Susan precedent, no ambiguous active law.
 
 **F3 (`validate-plan` fix mode):** not triggered by this board outcome (Joan **OK**). Chuckles still branches on Betty’s `[board-betty]` line per the fix-board table.
+
+
+## Radia review (AST-2051)
+
+[code-rubric]
+
+**Ticket:** AST-2051  
+**Publish ref:** `9fb7b99b1ab37cab4bf4c9b73f94f152ebc0b018` (`origin/sub/AST-2041/AST-2051-resume-autosave`)  
+**Corpus:** (no `docs/canon-index.md` on publish ref; directive bodies read from `canon/directives/**` at tip)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen **Canon Scope** on Linear AST-2051 / AST-2041: **none** (issue doc agrees). No directive ids to score; roll-up from canon grades is vacuously clean.
+
+**Fix-board Joan overlap (informational — not on frozen list; per fix-lane precedent when scope is empty):**
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| `patt.ui.dirty-leave-save-then-navigate` (draft) | — | — | Not scored (off-list); Joan: carve-out for ArtifactEditor autosave — no conflict with enabling structure-mode debounce |
+| `patt.artifact.ui-consistency` | — | — | Not scored (cited id-only in plan); diff keeps existing PUT/GET leaf paths, no storage fork — consistent with Implementation §4–6 |
+| `patt.artifact.write-operative` | — | — | Not scored (off-list); no backend diff; more frequent client PUTs matches accepted versioning (AST-1353) |
+
+**Notes (Canon Scope):** Missing frozen list on the bug ticket is a **process gap for Archie** (comparability with feature children), not a product defect on this tip. `patt.artifact.ui-consistency` plainly governs `ArtifactEditor.tsx` but was intentionally **not** frozen — Joan F2 already triaged; **ESCALATE** not warranted.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (F3 `validate-plan` fix mode not run; Joan fix-board `[board-joan] CANON: OK` is qualitative only — aligned with product diff).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out: Betty `[board-betty] TESTS: REVISE` routed repro/coverage to sibling **AST-2056**; no `[bug-repro]` on this ticket. Ada `test-fix` notes 11 header-Save failures expected on this tip until AST-2056 lands.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-1459 AC1/AC2 — load, edit, persist (debounce not Save click) | `autosaveBodies = tabChromeEditable \|\| structureMode` + `handleChange` debounce → `doSave(next, true)` on both Base Resume (`bodyShape="resume_content"`) and JAR Job Resume (`useCandidateResumeStructure` → `structureMode`) |
+| AST-1459 AC3 / AST-1480 — structure headers + **Save sections** | No diff outside autosave/header gate; `structureAuthoring` / `onStructureSave` untouched |
+| AST-1459 AC4 — Experience / unsupported message | `doSave` validation loop unchanged |
+| AST-905 — no silent persist in Generate review | `bodiesEditable` excludes `inReview`; timer callback gates on `snapshotRef.current === null`; header `(inReview \|\| !autosaveBodies)` keeps Save/Cancel during review |
+| AST-1410 — Cancel re-GET on `shapesKey` job editors | `autosaveBodies` false when `shapesKey` (no `structureMode`); header still Save/Cancel; `handleCancel` paths unchanged |
+| Criteria pages — autosave cadence / chrome | Rubric path: `autosaveBodies && bodiesEditable` equivalent to prior `tabChromeEditable && !inReview`; gains `snapshotRef` timer guard + in-flight `setDirty` guard (plan blast radius) |
+| Unmount flush + `beforeunload` | Unchanged (`dirtyRef` + `snapshotRef` guard; flush uses `doSave(tabsRef.current)` with `autosave=false` → JAR `onSaved` still on leave) |
+| JAR Job Resume — autosave without modal reload | `if (!autosave) jobPersistence.onSaved?.()` in `doSave` job branch |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none requiring @susan product call on this tip)
+
+**advisory:**
+
+- **Sibling test carry:** Product diff is `ArtifactEditor.tsx` + plan patch only; Betty’s broken header-Save cases and new autosave assertions belong on **AST-2056** — expected red on this sub until merged.
+- **Frozen Canon Scope:** Archie may want explicit frozen ids on fix bugs for Radia comparability; does not block this review.
+- **Per-autosave “Saved” toast** on resume editors matches criteria behavior (plan step 6); no change in this diff.
+
+## What’s solid
+
+- Plan-fix steps 1–5 implemented in one file; narrowed `autosaveBodies` gate correctly excludes JAR cover letter / application `shapesKey` editors.
+- AST-905 race (pre-Generate timer during review) and in-flight PUT vs newer edits addressed as specified.
+- Estimate **2** vs footprint: appropriate.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | **Orphaned** mini-parent AST-2041 → **Review Posted** → fix-lane clean shortcut → **User Testing**; then merge `sub/AST-2041/AST-2051-resume-autosave` **straight to `origin/dev`** (no `merge-child` / `prep-uat`). |
+| If downstream needs Radia re-pass | After **AST-2056** merges tests onto sub, optional re-review only if product tip changes — not required for this product-only tip. |
+
+**Recommended actions for Chuckles (not Radia):** Append this artifact to `docs/features/artifacts/ast-1459-resume-editor-is-not-working-properly.md`, commit `docs(AST-2051): Radia review — clean`, push `sub/AST-2041/AST-2051-resume-autosave`, post slim upshot `--as radia`, move **Tests Passed** → **Review Posted** → **User Testing** per §3h.
+
+context_tokens≈N
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 9fb7b99b1) Resume autosave matches plan
+```
