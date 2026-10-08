@@ -1009,6 +1009,23 @@ Betty lands all of this via qa-fix, in `tests/` and `docs/test-bible/` only. Eve
 - AST-1063 / AST-1327: no test asserts or introduces `content` on the job-carried `*_rubric` snapshot.
 - Engineer test-tree ban: Ada does not edit `tests/` or `docs/test-bible/`. Betty lands this.
 
+
+## Joan fix-board — AST-2060
+
+**Verdict (for Chuckles to post)**
+
+```
+[board-joan]  CANON: OK
+```
+
+**Stdout**
+
+```text
+AST-2060 board-joan done — CANON: OK.
+```
+
+**Triage note (not for Linear):** Read `## Bug: AST-2060` on `origin/sub/AST-2058/AST-2060-show-rubric-tests`. Scope is **tests + `docs/test-bible/` only** (no `src/`). The plan realigns fixtures with post–AST-723 / AST-2059 production shapes (list unhydrated, detail hydrated), adds bug-repro + loading/failed-fetch coverage, and bible rows — without asserting `content` on job-carried `*_rubric` (AST-1063). That pins existing in-force behaviour (`astral.layers.import-direction`, detail hydration, Betty-owned test tree / engineer ban) rather than contradicting or extending any statute or pattern. Same shape as other gap siblings (e.g. AST-1328, AST-1911): no F3 canon landing.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
