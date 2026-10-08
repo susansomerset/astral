@@ -79,7 +79,11 @@ from src.utils.rubric_feedback import (
     normalize_vector_reviews_raw,
     parse_vector_reviews_diagnostic,
 )
-from src.utils.formatting import clean_encoded_agent_payload, coerce_grades_encoded_json_parse
+from src.utils.formatting import (
+    clean_encoded_agent_payload,
+    coerce_grades_encoded_json_parse,
+    hydrate_entity_labels,
+)
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_candidate_id, log_debug
 
 logger = get_logger(__name__)
@@ -1307,6 +1311,7 @@ def _store_prompt_blocks(
     cache_content: Any = _PB_SLOT_OMIT,
     debug: bool = False,
     entity_id: Optional[str] = None,  # AST-1431 prompt-row stamp tests (do_task / helper / Ad Hoc)
+    entity_ids: Optional[List[str]] = None,
 ) -> List[Dict[str, str]]:
     """Store prompt blocks in agent_data. Returns prompt_blocks refs for ledger.
     Production: ``caches_resolved_four``. Legacy tests/callers: ``cache_content`` (slot A only).
@@ -1338,7 +1343,8 @@ def _store_prompt_blocks(
         if nocache_content:
             segments.append(("NO_CACHE", nocache_content))
         if live_content:
-            segments.append(("NO_CACHE", live_content))
+            # AST-2029: stored copy only — wire blocks were already built from unhydrated live_content
+            segments.append(("NO_CACHE", hydrate_entity_labels(live_content, entity_ids)))
         if user_content:
             segments.append(("TASK", user_content))
     else:
@@ -1351,14 +1357,15 @@ def _store_prompt_blocks(
         if nocache_content:
             segments.append(("NO_CACHE", nocache_content))
         if live_content:
-            segments.append(("NO_CACHE", live_content))
+            # AST-2029: stored copy only — wire blocks were already built from unhydrated live_content
+            segments.append(("NO_CACHE", hydrate_entity_labels(live_content, entity_ids)))
         if user_content:
             segments.append(("TASK", user_content))
 
     prompt_blocks: List[Dict[str, str]] = []
     logger.debug(
-        "Calling _store_prompt_blocks: [entity_type=%s, task_key=%s, batch_id=%s, entity_id=%s, n=%s]",
-        entity_type, task_key, batch_id, entity_id, len(segments),
+        "Calling _store_prompt_blocks: [entity_type=%s, task_key=%s, batch_id=%s, entity_id=%s, n=%s, n_ids=%s]",
+        entity_type, task_key, batch_id, entity_id, len(segments), len(entity_ids or []),
     )
     for block_type, content in segments:
         prompt_blocks.append({"type": block_type, "id": _save(block_type, content)})
@@ -1545,6 +1552,7 @@ def _store_response_block(
     index: Optional[str] = None,
     *,
     debug: bool = False,
+    entity_ids: Optional[List[str]] = None,
 ) -> str:
     """Store a RESPONSE block in agent_data. On success, response_text is the decoded/validated
     payload; on failure it is the raw API text (or error / parsed fallback). Returns the agent_data_id.
@@ -1554,6 +1562,8 @@ def _store_response_block(
         "Calling _store_response_block: [entity_type=%s, task_key=%s, batch_id=%s, index=%s]",
         entity_type, task_key, batch_id, index,
     )
+    # AST-2029: hash + stored row both use the hydrated text
+    response_text = hydrate_entity_labels(response_text, entity_ids)
     content_hash = hashlib.sha256(
         f"{batch_id}:RESPONSE:{index or ''}:{response_text}".encode()
     ).hexdigest()[:16]
@@ -2263,6 +2273,11 @@ async def do_task(
 
     prompt_blocks: List[Dict[str, str]] = []
     _should_store = store_agent_data and batch_id and entity_type
+    # AST-2029: real ids for stored labels — every batch entity must carry one, else store positional text
+    _ents = (ctx or {}).get("batch_entities") or []
+    _id_key = "company_id" if entity_type == "company" else "astral_job_id"
+    _store_ids = [str(e.get(_id_key) or "") if isinstance(e, dict) else "" for e in _ents]
+    _store_ids = _store_ids if _store_ids and all(_store_ids) else None
     if _should_store:
         try:
             # Off the loop: a locked DB must not stall other companies' provider timers (AST-1842)
@@ -2279,6 +2294,7 @@ async def do_task(
                 live_content=live_content,
                 debug=debug,
                 entity_id=index if index else None,
+                entity_ids=_store_ids,
             )
         except Exception as exc:
             _log_swallowed_agent_data(index, task_key, exc)
@@ -2365,7 +2381,7 @@ async def do_task(
             try:
                 await asyncio.to_thread(_store_response_block,
                     entity_type, task_key, batch_id, _failure_response_block_data(index, audit_body), index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
             except Exception as exc:
                 _log_swallowed_agent_data(index, task_key, exc)
         hop_fail_outcome = _close_hop_ledger(
@@ -2424,7 +2440,7 @@ async def do_task(
                     batch_id,
                     _failure_response_block_data(index, _audit_response_body(raw_text, parsed, envelope_err)),
                     index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
             except Exception as exc:
                 _log_swallowed_agent_data(index, task_key, exc)
         _close_hop_ledger(success=False, clear_log=True, failure_error=str(envelope_err))
@@ -2456,7 +2472,7 @@ async def do_task(
                         batch_id,
                         _failure_response_block_data(index, _validation_failure_audit_body(err, raw_text, parsed)),
                         index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
@@ -2481,7 +2497,7 @@ async def do_task(
                                 index, _validation_failure_audit_body(cat_err, raw_text, parsed)
                             ),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
@@ -2501,7 +2517,7 @@ async def do_task(
                             batch_id,
                             _failure_response_block_data(index, _audit_response_body(raw_text, parsed, conf_err)),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
@@ -2524,7 +2540,7 @@ async def do_task(
                                 batch_id,
                                 _failure_response_block_data(index, _audit_response_body(raw_text, parsed, grade_err)),
                                 index=index,
-                            debug=debug)
+                            debug=debug, entity_ids=_store_ids)
                         except Exception:
                             _log_swallowed_agent_data(index, task_key)
                     _close_hop_ledger(success=False, clear_log=True, failure_error=str(grade_err))
@@ -2547,7 +2563,7 @@ async def do_task(
                         batch_id,
                         _failure_response_block_data(index, _audit_response_body(raw_text, parsed, agent_err)),
                         index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                 except Exception as exc:
                     _log_swallowed_agent_data(index, task_key, exc)
             _close_hop_ledger(success=False, clear_log=True, failure_error=agent_err)
@@ -2596,7 +2612,7 @@ async def do_task(
                         body = f"{body}\n--- agent_payload ---\n{parsed}"
                     await asyncio.to_thread(_store_response_block,
                         entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
@@ -2628,7 +2644,7 @@ async def do_task(
                         body = f"{body}\n--- agent_payload ---\n{parsed}"
                     await asyncio.to_thread(_store_response_block,
                         entity_type, task_key, batch_id, _failure_response_block_data(index, body), index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
@@ -2658,7 +2674,7 @@ async def do_task(
                         batch_id,
                         _failure_response_block_data(index, _validation_failure_audit_body(err, raw_text, parsed)),
                         index=index,
-                    debug=debug)
+                    debug=debug, entity_ids=_store_ids)
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
@@ -2682,7 +2698,7 @@ async def do_task(
                                 index, _validation_failure_audit_body(cat_err, raw_text, parsed)
                             ),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
@@ -2700,7 +2716,7 @@ async def do_task(
                             batch_id,
                             _failure_response_block_data(index, _audit_response_body(raw_text, parsed, conf_err)),
                             index=index,
-                        debug=debug)
+                        debug=debug, entity_ids=_store_ids)
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
@@ -2738,7 +2754,7 @@ async def do_task(
     if _should_store and raw_text:
         try:
             store_content = json.dumps(parsed) if isinstance(parsed, (dict, list)) else (parsed or raw_text)
-            resp_id = await asyncio.to_thread(_store_response_block, entity_type, task_key, batch_id, store_content, index=index, debug=debug)
+            resp_id = await asyncio.to_thread(_store_response_block, entity_type, task_key, batch_id, store_content, index=index, debug=debug, entity_ids=_store_ids)
             prompt_blocks.append({"type": "RESPONSE", "id": resp_id})
         except Exception:
             _log_swallowed_agent_data(index, task_key)
