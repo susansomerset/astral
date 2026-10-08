@@ -631,3 +631,58 @@ context_tokens≈32000
 - **Build notes:** `python3 -c "import src.utils.config"` exits 0. The registry prints `['dark', 'light', 'light_parchment', 'light_slate']` with default `dark`, and the profile Theme options are exactly Dark and Light. `npx tsc -b --noEmit` and `npm run build` exit 0. Both Stage 2 step 6 checks print `OK` after Stage 3: the Dark values match `App.before.css`, the Light name sets equal Dark's 38, the Lights differ pairwise, there is no hex or non-black `rgba` outside token blocks, and there are no undefined `var()` in `App.css`. `rg '"light"'` over `.ts`/`.tsx` returns nothing. `npm run lint` before/after: 31 problems both, the line:col-stripped diff is empty, and none are in touched files.
 - **Deviation:** none in product code. The plan's CSS/TSX blocks and the 29-row table were applied by script straight from this doc. Environment only: the epic worktree had no `node_modules`, so `npm ci` ran from the lockfile before the Stage 0 baseline (no tracked changes). `python` is not on PATH, so `python3` was used for the Done-when commands.
 - **For QA:** AC 6 needs a browser: four panels with pairwise-different computed backgrounds, non-admin redirect, Tools item hidden for non-admins, and no `candidate_data.theme` change. No manual smoke run was done in this headless build. `.tsx` files still reference `--accent`, `--bg-secondary`, `--border-color`, and `--color-pass` (child #3's half of the stray-color AC, per Boundaries).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2047
+**Publish ref:** `55a3fcd697b19b85ec7b2a0d0db0c1f1f472e309` (`origin/sub/AST-2042/AST-2047-theme-registry-palettes`)
+**Corpus:** `cc0ca67ac7e3ffd6f9067ccd857cb47fdb2c6f50` (canon tree at publish tip; frozen **Citations** / **Canon Scope** both **none** — same as Joan)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score; not §5.3 ESCALATE (explicit empty scope, same pattern as AST-1983 / Joan §4a).
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded empty list with no rows; code review confirms no applicable directives on the diff.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `merge-tests(AST-2047)` includes non–AST-2047 manifest deltas: `tests/component/core/test_agent.py` (AST-2053 letter-conf-0 normalisation + CRX2 decode expectation), `tests/component/frontend/components/test_ArtifactEditor.test.tsx` (AST-2051/2056 autosave clock harness), `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — expected `origin/tests` merge; not product scope for #2047.
+- **AC6 / AC3 verification gap (documented, not a defect):** Component tests cover registry panels, sample markup, GET-only behavior, and `App.css` token-block contract (`test_AdminThemeExamples.test.tsx`, `TestAst2047ThemeRegistry`, `test_ui_config_serves_theme_registry`). Bible § AST-2047 already lists jsdom gaps: pairwise **computed** panel backgrounds, non-admin route redirect (generic `AdminRoute`), Tools hidden for non-admins (generic `admin_only` / `test_nav_config_omits_admin_group_for_non_admin`). AC3 “unchanged Dark” was validated at build via `App.before.css` / token equality scripts (build notes), not a durable runtime pin — aligns with Joan’s plan-stage **acceptable** on AC3 wording.
+- **Interim #2 behavior (plan contract):** Profile `theme` select can merge an unvalidated id if the user changes it before child #2; plan documents this; no `candidate.py` / `CandidateProfile` / `CandidateContext` in the `src/**` diff — boundaries hold.
+- **Residual #3 tokens:** `.tsx` still references `--accent`, `--bg-secondary`, `--border-color`, `--color-pass` per plan **Contract for siblings**; out of this ticket’s Boundaries.
+
+## What's solid
+
+- **Product footprint matches plan gate:** Only `src/utils/config.py`, `uiConfig.ts`, `App.css`, `AdminThemeExamples.tsx`, `routes.tsx` changed under `src/**` — no smuggled sibling product files.
+- **Single source of truth:** `UI_CONFIG["themes"]` + `default_theme` with import-time assert; profile Theme options generated from `profile_selectable` entries; Tools item appended under existing admin-only Tools group; `ui_config` spread serves registry keys (component test asserts set + shape).
+- **Palette work:** Dark block is `:root, [data-theme="dark"]`; three Light blocks with full token name parity and pairwise distinction on `--bg-deep` / `--bg-card` / `--accent-gold` enforced in tests; literal sweep and `var(--*)` definition checks in vitest + build notes.
+- **Theme Examples page:** Registry-driven panels with `data-theme` scoping, shared-class sample, read-only API pattern in test.
+
+## Recommended actions (for Chuckles / resolve-child / UAT — not Radia)
+
+- Post this artifact + slim upshot; move to **Review Posted**; route **PROCEED** → **User Testing** per datt §3h after resolve-child ticks any frame rows (none proposed).
+- **Susan UAT:** AC6 panel background pairwise difference in a real browser; quick admin vs non-admin Tools + `/admin/theme_examples` smoke (tests delegate to generic admin/nav coverage).
+
+context_tokens≈42000
+
+---
+
+`[code-rubric] PROCEED (Commit: 55a3fcd69) Theme registry, palettes, examples`
