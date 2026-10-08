@@ -499,3 +499,16 @@ AC2 → Stage 2 step 2; AC3 → Stage 2 steps 2 + 4; AC4 → Stage 1 steps 3–5
 **R6 (summary):** Definition fidelity for parent child #3 (qualify route, runner, shared JD gates, dispatch branch). Scope limited to `gazer.py` and `consult.py`. `to_state` overwrite for relative links only on pass path after `initialize_job`. Task key `fetch_relative_jd` matches AST-2024. No scope creep into config/tests. No `fix-now` findings.
 
 context_tokens≈68000
+
+## Review
+
+- **Branch:** `sub/AST-2022/AST-2025-relative-link-runner`
+- **Stage 1:** `73107d5c8` — `_apply_jd_gates` shared helper, `fetch_jd_batch` delegates to it, new `fetch_relative_jd_batch`
+- **Stage 2:** `7120ce486` — qualify routes non-empty non-http `job_link` to `RELATIVE_JOB_LINK` (only empty raises `InvalidJobLinkError`), router `fetch_relative_jd` branch
+- **Build notes:**
+  - Deviation (plan self-contradiction): the plan's literal signatures used `Dict` / `List`, which added 5 new ruff `UP006` findings against the plan's "no new findings" rule. The three new signatures (`_apply_jd_gates`, `fetch_relative_jd_batch`, `_fetch_one`) use builtin `dict` / `list` instead. No behavior change. Ruff totals unchanged vs baseline (gazer 62, consult 218); the one `# noqa: BLE001` is the pre-approved suppression.
+  - Stage 1 step 7 stubbed verify prints `ok` (ok → `JD_READY`, bot → `BOT_BLOCKED`, closed → `JD_SCRAPE_FAIL_CLOSED`, click miss → `RELATIVE_LINK_FAIL`; `persist_http_job_link` only on reached destinations).
+  - `pytest tests/component/core/test_gazer.py tests/component/core/test_consult.py`: baseline 29 failed / 387 passed; after 31 failed / 385 passed. The same 29 pre-existing failures plus two by-design breaks for Betty (both assert a passing `/relative` link fails, which AC 2 reverses; their empty-link halves still hold):
+    `test_consult.py::TestAst1895InvalidJobLinkError::test_empty_and_relative_job_link_fail_reason_names_error` and
+    `test_consult.py::TestQualifyJobListings::test_fails_short_title_and_relative_link`.
+  - Verify commands need `~/astral/.venv/bin/python` (system `python3` lacks `asyncpg`).
