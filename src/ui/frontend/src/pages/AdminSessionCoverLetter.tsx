@@ -209,7 +209,7 @@ export default function SessionCoverLetter() {
                 display: "block",
                 marginTop: 4,
                 fontSize: 13,
-                color: "#8b949e",
+                color: "var(--text-secondary)",
                 lineHeight: 1.5,
               }}
             >
@@ -231,7 +231,7 @@ export default function SessionCoverLetter() {
       </div>
 
       {error && (
-        <p style={{ marginTop: 12, color: "var(--danger, #c44)", fontSize: 13 }}>
+        <p style={{ marginTop: 12, color: "var(--danger)", fontSize: 13 }}>
           {error}
         </p>
       )}

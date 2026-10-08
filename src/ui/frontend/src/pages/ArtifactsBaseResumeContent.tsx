@@ -223,7 +223,7 @@ export default function BaseResumeContent() {
         </div>
       )}
       {printError && (
-        <p style={{ margin: "8px 20px 0", color: "var(--danger, #c44)", fontSize: 13 }}>
+        <p style={{ margin: "8px 20px 0", color: "var(--danger)", fontSize: 13 }}>
           {printError}
         </p>
       )}

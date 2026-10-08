@@ -184,8 +184,8 @@ export default function RepoJsonDivergenceBanner({
 
   if (error && !status?.diverged) {
     return (
-      <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--error, #f87171)" }}>
-        <span style={{ color: "var(--error, #f87171)", fontSize: 13 }}>{error}</span>
+      <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--error)" }}>
+        <span style={{ color: "var(--error)", fontSize: 13 }}>{error}</span>
       </div>
     )
   }
@@ -230,7 +230,7 @@ export default function RepoJsonDivergenceBanner({
             {reverting ? "Reverting…" : "Revert to file"}
           </button>
           {error ? (
-            <span style={{ color: "var(--error, #f87171)", fontSize: 12 }}>{error}</span>
+            <span style={{ color: "var(--error)", fontSize: 12 }}>{error}</span>
           ) : null}
         </div>
       </div>
@@ -254,7 +254,7 @@ export default function RepoJsonDivergenceBanner({
           {diffLoading ? (
             <p style={{ fontSize: 13 }}>Loading comparison…</p>
           ) : diffError ? (
-            <p style={{ color: "var(--error, #f87171)", fontSize: 13 }}>{diffError}</p>
+            <p style={{ color: "var(--error)", fontSize: 13 }}>{diffError}</p>
           ) : diffData ? (
             <div style={{ fontSize: 13 }}>
               <h3 style={{ fontSize: 14, marginTop: 0 }}>Rows only in database</h3>

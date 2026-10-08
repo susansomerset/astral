@@ -61,6 +61,8 @@ export default function Profile() {
   const [fetched, setFetched] = useState<{ id: string; data: Record<string, unknown> } | null>(null)
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [sigLimits, setSigLimits] = useState<SigImageLimits | null>(null)
+  // AST-2042: served UI_CONFIG.default_theme — what a candidate with no stored theme shows/saves.
+  const [defaultTheme, setDefaultTheme] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
@@ -72,10 +74,11 @@ export default function Profile() {
     })
     api("/api/ui_config").then(r => r.json()).then(cfg => {
       setSigLimits(cfg.cover_letter_signature_image ?? null)
+      setDefaultTheme(typeof cfg.default_theme === "string" ? cfg.default_theme : null)
     }).catch(() => setSigLimits(null))
   }, [])
 
-  function editValuesFromCandidate(c: Record<string, unknown>): Record<string, unknown> {
+  function editValuesFromCandidate(c: Record<string, unknown>, fallbackTheme: string | null): Record<string, unknown> {
     const d = (c.candidate_data ?? {}) as Record<string, unknown>
     // Always include full so PUT cannot omit it while sending first/last (would wipe overrides).
     const raw = (d.contact as Record<string, unknown>) ?? {}
@@ -90,6 +93,8 @@ export default function Profile() {
       last: c.last ?? "",
       full: c.full ?? "",
       pronouns: c.pronouns ?? "",
+      // Stored theme, else the served default, so the select never sits on a value Save would reject.
+      theme: (typeof d.theme === "string" && d.theme) || fallbackTheme,
       contact: { ...raw, websites, extra_emails },
       context: (d.context as Record<string, unknown>) ?? {},
       artifacts: (d.artifacts as Record<string, unknown>) ?? {},
@@ -97,13 +102,14 @@ export default function Profile() {
   }
 
   useEffect(() => {
-    if (!selectedId) return
+    // Wait for the served default so a candidate with no stored theme loads as that default.
+    if (!selectedId || !defaultTheme) return
     api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
-      const vals = editValuesFromCandidate(c)
+      const vals = editValuesFromCandidate(c, defaultTheme)
       setFetched({ id: selectedId, data: vals })
       setValues({ ...vals })
     })
-  }, [selectedId])
+  }, [selectedId, defaultTheme])
 
   const data = fetched?.id === selectedId ? fetched.data : null
   const isDirty =
@@ -131,7 +137,7 @@ export default function Profile() {
         return r.json()
       })
       .then(candidate => {
-        const vals = editValuesFromCandidate(candidate)
+        const vals = editValuesFromCandidate(candidate, defaultTheme)
         setFetched({ id: selectedId, data: vals })
         setValues({ ...vals })
         refreshCandidate()
@@ -146,7 +152,7 @@ export default function Profile() {
         )
         throw e
       })
-  }, [selectedId, values, refreshCandidate])
+  }, [selectedId, values, refreshCandidate, defaultTheme])
 
   function handleSave() {
     void persistProfile()
@@ -186,11 +192,11 @@ export default function Profile() {
 
   const signatureImagePanel = useMemo(() => {
     if (maxSigW == null || maxSigH == null) {
-      return <p style={{ color: "#8b949e" }}>Loading signature image limits…</p>
+      return <p style={{ color: "var(--text-secondary)" }}>Loading signature image limits…</p>
     }
     return (
       <>
-        <p style={{ color: "#8b949e", marginBottom: 8 }}>
+        <p style={{ color: "var(--text-secondary)", marginBottom: 8 }}>
           JPEG only, max {maxSigW}×{maxSigH} pixels.
         </p>
         <div className="dep-field">
@@ -213,8 +219,8 @@ export default function Profile() {
     )
   }, [maxSigW, maxSigH, sigImg, handleSignatureImagePick, handleClearSignatureImage])
 
-  if (!sections || data === null) return <p style={{ padding: 20, color: "#fff" }}>Loading...</p>
-  if (!selectedId) return <p style={{ padding: 20, color: "#fff" }}>No candidate selected.</p>
+  if (!sections || data === null) return <p style={{ padding: 20, color: "var(--text-primary)" }}>Loading...</p>
+  if (!selectedId) return <p style={{ padding: 20, color: "var(--text-primary)" }}>No candidate selected.</p>
 
   const contactSection = sections[0]
   const tabSections = sections.slice(1)
@@ -234,7 +240,7 @@ export default function Profile() {
 
   return (
     <>
-      {error && <p style={{ padding: "8px 20px", color: "#ff6b6b" }}>{error}</p>}
+      {error && <p style={{ padding: "8px 20px", color: "var(--error)" }}>{error}</p>}
       <div className="dep-page">
         <div className="dep-header">
           <h1 className="dep-title">Candidate Profile</h1>

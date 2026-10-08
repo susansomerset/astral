@@ -969,19 +969,19 @@ export default function ArtifactEditor({
     })
   }
 
-  if (!jobPersistence && !selectedId) return <p style={{ padding: 20, color: "#fff" }}>No candidate selected.</p>
+  if (!jobPersistence && !selectedId) return <p style={{ padding: 20, color: "var(--text-primary)" }}>No candidate selected.</p>
   if (!jobPersistence) {
     if (loadState === "loading") return <p className="list-page-status">Loading...</p>
     if (loadState === "error" || !manifest) return <p className="list-page-status">State UI manifest unavailable.</p>
   }
   if (shapeError) {
     const shapeLabel = shapesKey ?? (structureMode ? "resume structure" : "fields")
-    return <p style={{ padding: 20, color: "#ff6b6b" }}>Failed to load field definitions for "{shapeLabel}".</p>
+    return <p style={{ padding: 20, color: "var(--error)" }}>Failed to load field definitions for "{shapeLabel}".</p>
   }
   if (jobLoadError) {
     return <p className="entity-error">Failed to load job artifact.</p>
   }
-  if (!loaded) return <p style={{ padding: 20, color: "#fff" }}>Loading...</p>
+  if (!loaded) return <p style={{ padding: 20, color: "var(--text-primary)" }}>Loading...</p>
 
   return (
     <>
@@ -1276,12 +1276,12 @@ export default function ArtifactEditor({
           background: "rgba(0,0,0,0.6)",
         }}>
           <div style={{
-            background: "var(--bg-elevated)", border: "2px solid #ff6b6b",
+            background: "var(--bg-elevated)", border: "2px solid var(--error)",
             borderRadius: 8, padding: 24, maxWidth: 460, width: "90%",
           }}>
             {isChainHandoff ? (
               <>
-                <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>
+                <h3 style={{ margin: "0 0 12px", color: "var(--error)", fontSize: 16 }}>
                   Reset all artifact rubrics?
                 </h3>
                 <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
@@ -1307,7 +1307,7 @@ export default function ArtifactEditor({
               </>
             ) : (
               <>
-                <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>Regenerate {title}?</h3>
+                <h3 style={{ margin: "0 0 12px", color: "var(--error)", fontSize: 16 }}>Regenerate {title}?</h3>
                 <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
                   This will replace the current content with a new AI-generated version.
                   You can review the result and <strong>Cancel</strong> to restore your previous version,
