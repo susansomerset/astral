@@ -716,7 +716,7 @@ Four files, all named in AST-2042's Component scope. Line anchors are at `ftr/AS
    | Token | New value (all three Light blocks) |
    |-------|------------------------------------|
    | `--grade-a` | `#1e7b34` |
-   | `--grade-b` | `#a86a00` |
+   | `--grade-b` | `#a06500` |
    | `--grade-c` | `#c05621` |
    | `--grade-d` | `#c53030` |
    | `--grade-f` | `#742a2a` |
@@ -726,7 +726,7 @@ Four files, all named in AST-2042's Component scope. Line anchors are at `ftr/AS
 
    The `:root, [data-theme="dark"]` block is not touched.
 
-   ⚠️ **Decision:** One shared Light grade set rather than one per Light palette. Grades mean the same thing on every light background, and Susan's report asks for "a parallel set". Deep is the live default because its saturated fills keep white letters readable (each fill is ≥ 4.5:1 against `#ffffff`) and stand out from near-white panels. When Susan picks a different option, a follow-up swaps these eight values.
+   ⚠️ **Decision:** One shared Light grade set rather than one per Light palette. Grades mean the same thing on every light background, and Susan's report asks for "a parallel set". Deep is the live default because its saturated fills keep white letters readable (each fill is ≥ 4.5:1 against `#ffffff`: lowest is B `#a06500` at 4.8:1) and stand out from near-white panels. When Susan picks a different option, a follow-up swaps these eight values.
 
 2. **`src/utils/config.py` — candidate sets, examples-only.** In `UI_CONFIG`, directly after the line `    "default_theme": "dark",`, insert:
 
@@ -736,7 +736,7 @@ Four files, all named in AST-2042's Component scope. Line anchors are at `ftr/AS
        # Retire a candidate = delete its entry; no page or CSS change.
        "theme_example_grade_sets": {
            "deep": {"label": "Deep", "tokens": {
-               "--grade-a": "#1e7b34", "--grade-b": "#a86a00", "--grade-c": "#c05621",
+               "--grade-a": "#1e7b34", "--grade-b": "#a06500", "--grade-c": "#c05621",
                "--grade-d": "#c53030", "--grade-f": "#742a2a", "--grade-x": "#6b46c1",
                "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
            }},
@@ -827,7 +827,7 @@ Four files, all named in AST-2042's Component scope. Line anchors are at `ftr/AS
 ### Blast radius
 
 - `--grade-*` / `--text-on-grade*` are read only by `.grade-dot` and `.dot-a … .dot-x` (`App.css` ~1295–1304). So every grade dot in the app changes when a Light theme is applied: job list grade columns, `AgentAnalysisHeader`, the recommended report, and `.grade-dot-letterless`. Dark rendering is unchanged.
-- Sibling AST-2048-line work (the candidate's applied theme, `CandidateContext` root attribute) is untouched. A candidate on Light sees the Deep set once this lands.
+- Sibling child #2's work (the candidate's applied theme, `CandidateContext` root attribute) is untouched. A candidate on Light sees the Deep set once this lands.
 - Tests: `test_AdminThemeExamples.test.tsx` keeps passing as written. Its mocked `ui_config` has no `theme_example_grade_sets`, so the options block does not render there, and the option rows avoid `.theme-examples-grade`. The App.css block tests are unaffected because names are unchanged and no hex is added outside `[data-theme]` blocks. `TestAst2047ThemeRegistry` only inspects `themes`, `default_theme`, the profile select, and nav. No existing test asserts the old Light grade values. Betty may want a case for the options rows (fix-board's call).
 
 ### What must still hold
