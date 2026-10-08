@@ -656,3 +656,256 @@ context_tokens≈22000
 ## Test routing — AST-2061
 
 Test-tree and bible coverage for this fix is owned by gap sibling [AST-2062](https://linear.app/astralcareermatch/issue/AST-2062) (fix-board `[board-betty] TESTS: REVISE`), which is blocked by AST-2061 and lands on `ftr/AST-2055-estelle-pinhole` after it. AST-2061 itself carries no `test()` / `merge-tests` commits: docs-acceptance.
+
+## Bug: AST-2062 — Estelle pinhole tests + bible (test gap for AST-2061)
+
+**Mini-parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) · **Publish ref:** `sub/AST-2055/AST-2062-estelle-pinhole-tests` · **Product fix:** AST-2061 (`31ccbee3`, on `ftr/AST-2055-estelle-pinhole` @ `54eb3f275`) · **Owner of edits:** Betty (test tree + bible). No `src/` change.
+
+### As-is
+
+On the AST-2061 tip, the touched suites (`test_contact`, `test_meteorite`, `test_config`, `test_slack`, `test_api_contact`, `test_repo_admin_json`) show 115 failures. The pre-fix commit `6b00d8c5f` shows 82, so **33 are new**, and all of them assert access the pinhole removed (AST-2061 test-fix, comment `c33245a5` + correction):
+
+- **`test_meteorite.py` (7):** `TestAst1517CreateContactMeteorite`, every case (`create_contact_meteorite` / `_contact_param_looks_like_url` are deleted).
+- **`test_contact.py` (23):**
+  - 18 `app_mention` cases on `C…` channels with no `channel_type`. On the tip, `fetch_channel_type` isn't patched, so the gate fails closed (`accepted=False reason=channel_not_private`). With the lookup patched to `"group"` all 18 go green.
+  - 3 AST-1515 markup tests that use `create_contact_meteorite` as the sample listed key.
+  - `TestAst1071ContactSkillRunners::test_run_writes_allowlisted_contact_path` (`save_candidate_contact` is gone).
+  - `TestAst1073ContactEstelleTurnLoop::test_skill_calls_run_for_resolved_candidate` (the `skill_calls` loop is gone).
+- **`test_config.py` (3):** `TestAst1071ContactSkillsConfig::test_two_skills_not_in_task_config`, `TestAst1105ProfileSlackFields::test_slack_id_and_username_fields` (reads `skills["save_candidate_contact"]`), and `TestAst1515ContactTaskConfig::test_six_keys_handler_metadata_and_collision_guards`.
+
+Other tests still **reference** the retired surfaces but stay green, because they mock them or were already red pre-fix:
+- the rest of `TestAst1071ContactSkillRunners` / `TestAst1071ContactSkillsConfig` (stale `profile.*` paths, red on `6b00d8c5f`);
+- `TestAst1515ContactTaskMarkup::test_dispatch_debug_style_d`;
+- `TestAst1071ContactSkillsApi`, which uses the `save_candidate_profile` name in mocks and URLs.
+
+**No test covers the new behavior:** no job-leak, candidate-write, sanitize, or public-channel repro, and nothing on `fetch_channel_type`, `sanitize_contact_text`, `allowed_channel_types`, or `_CONTACT_PINHOLE_HANDLERS`. The bible still lists the AST-1517 / AST-1071 surfaces as live.
+
+### To-be
+
+- The suites assert the pinhole, not the old access. The 33 new reds go green against the AST-2061 tip without touching `src/`.
+- Four repro groups (job leak, candidate write, unsanitized write, public-channel `app_mention`) are each **red on `6b00d8c5f`** and **green on `54eb3f275`**.
+- `fetch_channel_type`, `sanitize_contact_text`, `allowed_channel_types`, and the pinhole assert have direct cases.
+- No test depends on `create_contact_meteorite` or the `save_candidate_*` skills.
+- The four bible pages match.
+
+### Repro
+
+The test delta is itself the repro. Repro tests are marked **[bug-repro]** below. Run them against the pre-fix tree (`git checkout 6b00d8c5f` + the AST-2062 test files) and they fail **on their assertions**: the autouse fixture uses `raising=False` precisely so the pre-fix module still loads. Against `54eb3f275` they pass. Literal fixtures:
+
+```python
+# job leak — markup a pre-fix turn would dispatch to create_contact_meteorite (text mode, no fetch)
+markup_spans = [("create_contact_meteorite", "Senior Engineer at Acme")]
+# candidate write — Estelle output carrying skill_calls (fake skill key, no save_candidate_* name)
+parsed_response = {"reply": "ok", "skill_calls": [{"skill_key": "save_profile_field", "fields": {"contact.contact_email": "x@evil.test"}}]}
+# unsanitized write
+payload = "<img src=x onerror=alert(1)>Senior Eng &lt;script&gt;alert(1)&lt;/script&gt;"   # stored: "Senior Eng"
+# public channel — conversations.info says public
+event = {"type": "app_mention", "user": "U1", "channel": "C1PUBLIC", "ts": "1.0", "text": "<@UBOT> /add-job https://x.io/1"}
+fetch_channel_type = lambda _ch: "channel"
+```
+
+### Root cause
+
+AST-2061 deliberately removed `create_contact_meteorite`, the `save_candidate_*` skills, and the `skill_calls` loop, and added a fail-closed channel lookup on `app_mention`. The existing tests were written for the old access and pass `app_mention` fixtures without a channel type. The fix-board routed the test work here (`[board-betty] TESTS: REVISE`) rather than to qa-fix on AST-2061, so nothing was revised or added alongside the product change.
+
+### Proposed change
+
+Betty lands all of this via qa-fix, in `tests/` and `docs/test-bible/` only. Every file is in AST-2062 `## Scope`. `test(AST-2062): …` commits on `astral-tests`, published to `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
+
+#### 1. `tests/component/core/test_contact.py`
+
+a. **Module autouse fixture**, directly after `_stub_estelle_turn`:
+
+```python
+@pytest.fixture(autouse=True)
+def _ast2061_private_channel_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # AST-2061: app_mention looks up channel type; default every case to a private channel.
+    monkeypatch.setattr(contact_mod, "fetch_channel_type", lambda _ch: "group", raising=False)
+```
+
+   This makes all 18 `C…` `app_mention` cases green with no per-case edits. Tests that need a different channel type set it again inside the test (the later `setattr` wins).
+
+b. **Retire `TestAst1071ContactSkillRunners`** (the whole class and its `# Branches:` comment) and replace it in place with:
+
+   **`TestAst2061ContactSkillsRetired`**
+   - `test_skills_registry_empty`: `contact_mod.contact_skills() == {}` and `contact_mod.contact_skill_keys() == ()`.
+   - `test_run_contact_skill_refuses_any_key` (`sqlite_in_memory`): save candidate `c-2061-skill` with `candidate_data={}`. `pytest.raises(ValueError, match="unknown contact skill")` on `run_contact_skill("save_profile_field", astral_candidate_id="c-2061-skill", fields={"contact.contact_email": "x@evil.test"})`. Then `candidate_mod.get_candidate("c-2061-skill")["candidate_data"]` has no `contact` key.
+
+c. **`TestAst1073ContactEstelleTurnLoop`:** replace `test_skill_calls_run_for_resolved_candidate` with **[bug-repro] `test_ast2061_skill_calls_never_write_candidate`**:
+   - `deps = self._patch_turn_deps(...)` with `parsed_response` = the candidate-write fixture above. Also `save = MagicMock(); monkeypatch.setattr(contact_mod, "save_candidate_data", save)`.
+   - Call `run_contact_estelle_turn(channel="C1", text="hi", astral_candidate_id="c1", debug=False)`.
+   - Assert `deps["skill"].assert_not_called()`, `save.assert_not_called()`, `out["skill_results"] == []`.
+   - Assert `"## Available Contact skills (ACL)" not in deps["do_task_calls"][0][1]["live_content"]`.
+   - Pre-fix, `run_contact_skill` is called and the ACL header is present.
+
+d. **AST-1515 sample key → `gazer_scrape`** (listed, `requires_candidate=True`; the handler is still stubbed `None`, so the expectations don't change):
+   - `TestAst1515ContactTaskMarkup::test_dispatch_handler_unavailable_for_listed_key`: `markup_spans=[("gazer_scrape", "https://x.example/jd")]` and `results[0]["task_key"] == "gazer_scrape"`. Comment becomes `# All five handlers resolve — mock missing import path.`
+   - `TestAst1515ContactTaskMarkup::test_dispatch_debug_style_d`: `markup_spans=[("gazer_scrape", "u")]`.
+   - `TestAst1515ContactEstelleTurnMarkup::test_strips_markup_before_slack_post`: reply `"Sure! ~~/gazer_scrape https://jobs.example/1~~"`.
+   - `TestAst1515ContactEstelleTurnMarkup::test_follow_up_turn_includes_task_results_in_live_content`: reply `"Checking ~~/gazer_scrape https://x.example~~"`.
+
+e. **New `TestAst2061PrivateChannelGate`.** `setup_method` clears `contact_mod._seen_event_ids`. A shared `_patch(monkeypatch, ctype=..., side_effect=None)` helper:
+   - sets `CONTACT_CONFIG["listen_enabled"]` to True;
+   - sets `contact_mod.fetch_channel_type` to `MagicMock(return_value=ctype, side_effect=side_effect)`;
+   - stubs `resolve_slack_user` → `{"astral_candidate_id": "c1", "state": "PROSPECT", "created": False}`;
+   - stubs `_run_contact_command` → `{"ok": True}`, `try_meteorite_apply_paste_from_slack` → `{"applied": False}`, `contact_post_message` → `{"ok": True}`;
+   - stubs `run_contact_estelle_turn` via `_stub_estelle_turn`;
+   - stubs `record_estelle_activity` on `src.data.contact_estelle_activity`, so the tracked `data/contact_estelle_activity.json` is never written;
+   - returns the mocks.
+
+   Cases:
+   - **[bug-repro] `test_public_mention_refused_no_command_turn_or_save`:** `ctype="channel"`, the public-channel event above. Assert `out == {"accepted": False, "reason": "channel_not_private"}` and that resolve, command, paste, turn, and post were all **not called**. Pre-fix, it's accepted and the command runs.
+   - `test_mpim_mention_refused`: `ctype="mpim"`, same assertions.
+   - `test_lookup_error_fails_closed`: `side_effect=RuntimeError("missing_scope")`. Refused as above, resolve not called.
+   - `test_private_group_mention_passes`: `ctype="group"`, text `"hi"`. `out["accepted"] is True`, lookup called once with `"C1PUBLIC"`, turn called once.
+   - `test_event_channel_type_skips_lookup`: event has `"channel_type": "im"`, mock `ctype="channel"`. Accepted, lookup **not called**.
+   - `test_dm_message_not_gated`: `{"type": "message", "user": "U1", "channel": "D1", "channel_type": "im", "ts": "1.0", "text": "hi"}`. Accepted, lookup not called.
+
+f. **New `TestAst2061ContactSanitizeEntry`:**
+   - **[bug-repro] `test_land_blob_unwrapped_then_sanitized`:** stub `meteorite_mod.stage_meteorite` with an async capture, the same shape as `TestAst1531ContactLandStageCutover::test_stages_text_blob_with_source_handle`. Call `contact_land_meteorite("c1", source_kind="slack", source_id="C1:1", text="<https://x.io/job?id=1&amp;src=slack|Job> <img src=x onerror=alert(1)>Senior Eng", employer_name="Acme")`. Assert the captured blob `== "https://x.io/job?id=1&src=slack Senior Eng\n\nEmployer: Acme"`. Pre-fix, the blob is raw.
+   - `test_land_markup_only_blob_is_required_error`: `text="<script>alert(1)</script>"`, no link or employer. Assert `out["error"] == "blob is required"` and the stage stub was not called.
+   - **[bug-repro] `test_slack_paste_unwrapped_before_apply_paste`** (`sqlite_in_memory`): insert a `BOT_BLOCKED` row (the `_insert_meteorite_row` shape from `test_meteorite.py`, or a direct `db.insert_meteorite_rows`). Patch `meteorite_mod.find_meteorite_for_estelle_thread` → `{"id": row_id}`. Call `try_meteorite_apply_paste_from_slack(astral_candidate_id="c1", channel="D1", thread_ts="1.0", message_ts="1.0", text="Full JD <https://x.io/j?a=1&amp;b=2|link>")`. Assert the row's `content == "Full JD https://x.io/j?a=1&b=2"` and its state is `READY`. Pre-fix, the raw Slack markup goes through the old HTML branch and is stored mangled: `"Full JD \n https://x.io/j?a=1&amp;b=2|link"` (verified against `6b00d8c5f`'s `_normalize_apply_paste_content`).
+
+g. **Leave unchanged:**
+   - the `contact_skills` monkeypatches in the turn helpers (`_patch_turn_deps`, `TestAst1879…`, `TestAst1515ContactEstelleTurnMarkup._patch_turn`, `TestAst1561…`, `TestAst1585…`, `TestAst2035…`). The attribute still exists, so they're harmless;
+   - `_stub_estelle_turn`'s `"skill_results": []`, which is still the turn's return shape;
+   - `TestAst1066ContactScaffold`, which passes with an empty map.
+
+#### 2. `tests/component/core/test_meteorite.py`
+
+a. **Delete `TestAst1517CreateContactMeteorite`** with its `# Branches:` comment (currently lines 664–817).
+
+b. **New `TestAst2061NoContactJobWrite`** (placed where the deleted class was):
+   - `test_create_contact_meteorite_removed`: `not hasattr(meteorite_mod, "create_contact_meteorite")` and `not hasattr(meteorite_mod, "_contact_param_looks_like_url")`.
+   - **[bug-repro] `test_contact_markup_never_reaches_create_meteorite_job`:** `create = MagicMock(); monkeypatch.setattr(meteorite_mod, "create_meteorite_job", create)`. Then `from src.core import contact as contact_mod` and `results = contact_mod.run_contact_task_dispatch(astral_candidate_id="c1", markup_spans=[("create_contact_meteorite", "Senior Engineer at Acme")])`. Assert `create.assert_not_called()` and `results == []` (unknown key ignored). Pre-fix, text mode calls `create_meteorite_job("c1", …)`.
+
+c. **New `TestAst2061ContactSanitize`** (placed after `TestAst2034InsertSlackMeteorite`; `SID = "C1:1700000000.000200"`):
+   - **[bug-repro] `test_insert_slack_meteorite_stores_sanitized_content`:** the unsanitized-write fixture → `out["ok"] is True`, and the row's `content == "Senior Eng"`, state `NEW`, `classify_outcome` None.
+   - `test_insert_slack_meteorite_keeps_url_query`: payload `"https://x.io/job?id=1&amp;src=slack"` → `content == "https://x.io/job?id=1&src=slack"`.
+   - `test_insert_markup_only_payload_is_required_miss`: payload `"<script>alert(1)</script>"` → `{"ok": False, "meteorite_id": None, "error": "payload is required"}`, and no row for `SID`.
+   - **[bug-repro] `test_apply_paste_drops_script_content`:** a `BOT_BLOCKED` row; `apply_paste(row_id, "<p>Senior Eng</p><script>alert(1)</script>")` → ok, `content == "Senior Eng"`. Pre-fix, the regex leaves `"Senior Eng alert(1)"`.
+   - `test_apply_paste_entity_encoded_plain_text`: `apply_paste(row_id, "&lt;script&gt;alert(1)&lt;/script&gt;Senior Eng")` → `content == "Senior Eng"`.
+   - `test_apply_paste_plain_lines_unchanged`: `"line1\n\n  line2  "` → `content == "line1\n\nline2"`, which pins the existing line shaping.
+   - `test_sanitize_contact_text_table`: parametrize `sanitize_contact_text` over the AST-2061 decision table: the `&amp;` URL, `&lt;script&gt;…`, `<b>…<img …> AT&amp;T` → `"Senior Eng  AT&T"`, `"<@U123> salary 1 < 2"` unchanged, `"line1\n\nline2  <!-- c -->"` → `"line1\n\nline2"`, and `None` → `""`. The double-encoded residual is **not** pinned (accepted plain-text residual; pinning it would freeze a known gap).
+
+d. **Leave unchanged:** `TestAst1561ApplyPaste` and `TestAst2034InsertSlackMeteorite`. Their plain-text and URL fixtures already pass through the sanitizer unchanged (all green on the tip).
+
+#### 3. `tests/component/utils/test_config.py`
+
+a. **Replace `TestAst1071ContactSkillsConfig`** (both tests) with **`TestAst2061ContactSkillsEmpty::test_skills_registry_empty`**: `cfg.CONTACT_CONFIG["skills"] == {}`.
+
+b. **`TestAst1105ProfileSlackFields::test_slack_id_and_username_fields`:** delete the trailing comment and 3 lines that read `skills["save_candidate_contact"]["allowed_paths"]`. The profile-field assertions stay.
+
+c. **`TestAst1515ContactTaskConfig`:** remove `"create_contact_meteorite"` from `_EXPECTED_KEYS`. Rename the test to `test_five_keys_handler_metadata_and_collision_guards`, and change the `# Branches:` comment to `five keys`.
+
+d. **New `TestAst2061ContactPinholeConfig`:**
+   - `test_allowed_channel_types`: `cfg.CONTACT_CONFIG["allowed_channel_types"] == ("im", "group")`.
+   - **[bug-repro] `test_create_contact_meteorite_retired`:** `"create_contact_meteorite" not in cfg.CONTACT_TASK_CONFIG`.
+   - `test_every_contact_handler_in_pinhole`: every `CONTACT_TASK_CONFIG` and `CONTACT_CONFIG["commands"]` handler is a key of `cfg._CONTACT_PINHOLE_HANDLERS`. Every value starting `write` has a key starting `src.core.meteorite.`. `"src.core.meteorite.create_meteorite_job"` and `"src.core.meteorite.land_meteorite"` are not keys.
+   - `test_pinhole_assert_rejects_job_writer`: read `src/utils/config.py` text and insert, immediately before the line starting `# AST-2061 pinhole:`:
+
+     ```python
+     CONTACT_TASK_CONFIG["leak"] = {"handler": "src.core.meteorite.create_meteorite_job", "description": "x", "param_hint": "x", "requires_candidate": True}
+     ```
+
+     `exec(compile(text, "config_spliced", "exec"), {"__name__": "config_spliced"})` inside `pytest.raises(AssertionError, match="Contact handler outside pinhole")`. Assert the anchor line exists first (`assert text.count("# AST-2061 pinhole:") == 1`), so a moved comment fails loudly instead of silently passing.
+
+   ⚠️ **Decision: test the real import-time assert by splicing and re-executing the config source,** not by re-implementing its predicate in the test. A copied predicate would pass even if the assert were deleted. The anchor-count check keeps the splice from passing vacuously. If executing the full config module in-process proves heavy or has side effects, the fallback is a subprocess (`python -c` with the same splice); still no `src/` change.
+
+e. **Leave unchanged:** `TestAst1073ContactEstelleTurnConfig::test_skill_calls_optional_on_chat_schema`. AST-2061 deliberately kept the optional `skill_calls` schema entry (the prompt follow-up is out of scope), so this assertion is still true.
+
+#### 4. `tests/component/ui/api/test_api_contact.py`
+
+a. In `TestAst1071ContactSkillsApi`, rename the sample key `save_candidate_profile` → `sample_skill` in every mock return, URL, and `assert_called_once_with` (9 refs). The routes are generic, so behavior and assertions are otherwise unchanged.
+
+b. **New `TestAst2061ContactSkillsApiEmptyRegistry`** (real `contact_skills` / `run_contact_skill`, no mocks of either; `contact_client` + `auth_headers` fixtures, as in the class above):
+   - `test_list_skills_empty`: `GET /api/admin/contact/skills` → 200, `{"skills": {}}`.
+   - `test_run_any_skill_400`: patch `ui_llm_debug` → False; `POST /api/admin/contact/skills/sample_skill` with `{"astral_candidate_id": "c1", "fields": {"contact.contact_email": "x@evil.test"}}` → 400, `{"error": "unknown contact skill: 'sample_skill'"}`. This raises before any candidate lookup, so no DB fixture is needed.
+
+#### 5. `tests/component/core/test_repo_admin_json.py`
+
+**No change.** Its `skill_calls` assertions (`TestAst1072…::test_contact_estelle_turn_envelope_prompts`, `TestAst1515ContactEstelleTurnMarkupPrompt`) read `data/admin/agent_task.json`'s system prompt. That prompt still mentions `skill_calls` by design (out of scope per AST-2062 Boundaries), and the tests are green on the tip.
+
+⚠️ **Decision:** the file is in scope as "modified per Betty's blast-radius list", but none of its assertions are false after AST-2061. Editing them now would make them disagree with the shipped prompt. They change when the prompt follow-up lands.
+
+#### 6. `tests/component/external/test_slack.py`
+
+**New `TestAst2061FetchChannelType`**, using the same env and mock pattern as `TestAst1068FetchUserProfile`: `ASTRAL_ALLOW_LIVE_EXTERNAL_IO=1`, `CONTACT_CONFIG["bot_token_env"]="xoxb-test"`, `slack_mod.requests.get` → a `MagicMock` response.
+- `test_requires_gate`: `delenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO")` → `pytest.raises(Exception)` on `fetch_channel_type("C1")`.
+- `test_maps_conversations_info_flags`: parametrize `channel` payloads:
+
+  | Payload | Expected |
+  |---------|----------|
+  | `{"is_im": True}` | `"im"` |
+  | `{"is_mpim": True, "is_private": True}` | `"mpim"` |
+  | `{"is_private": True}` | `"group"` |
+  | `{"is_group": True}` | `"group"` |
+  | `{"is_private": False}` | `"channel"` |
+  | `{}` | `"channel"` |
+
+  Assert `get.call_args.args[0].endswith("/conversations.info")` and `get.call_args.kwargs["params"] == {"channel": "C1"}`.
+- `test_ok_false_raises_with_scope_detail`: `{"ok": False, "error": "missing_scope", "needed": "im:read", "provided": "groups:read"}` → `RuntimeError`, message containing `conversations.info failed: missing_scope` and `im:read`.
+- `test_blank_channel_raises`: `pytest.raises(ValueError, match="channel")` on `fetch_channel_type("  ")`.
+
+#### 7. Bible
+
+Each page gets a new `### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)` section after its last existing section, with Parent/Publish lines, a one-line summary, an Area / Source / Component tests table, **Broken / obsolete**, **Integration:** none (no scenario covers Contact Slack events or meteorite sanitize; do not invent), and a `## QA test manifest`. Retired sections are annotated, not deleted, so history stays readable.
+
+- **`docs/test-bible/core/contact.md`**
+  - New section table: skills retired → `TestAst2061ContactSkillsRetired`; candidate-write repro → `TestAst1073ContactEstelleTurnLoop::test_ast2061_skill_calls_never_write_candidate`; channel gate → `TestAst2061PrivateChannelGate` (6); land / paste sanitize entry → `TestAst2061ContactSanitizeEntry` (3); the `app_mention` default → module autouse `_ast2061_private_channel_default`.
+  - **Broken / obsolete:** `TestAst1071ContactSkillRunners` (retired); `test_skill_calls_run_for_resolved_candidate` (replaced); the AST-1515 sample key moved to `gazer_scrape`; 18 `app_mention` cases fixed by the autouse default.
+  - In the **AST-1071 · AST-1043** section, append `**Retired by AST-2061 / AST-2062:** skills ACL emptied; runner class replaced by TestAst2061ContactSkillsRetired.` and change its table row's test cell to `retired → TestAst2061ContactSkillsRetired`.
+  - In the **AST-1515** section's Broken/obsolete line, append `**AST-2062:** handler_unavailable / turn fixtures retargeted from create_contact_meteorite to gazer_scrape.`
+- **`docs/test-bible/core/meteorite.md`**
+  - New section table: job-leak repro → `TestAst2061NoContactJobWrite` (2); sanitize → `TestAst2061ContactSanitize` (7).
+  - In the **AST-1517 · AST-1414** section, append `**Retired by AST-2061 / AST-2062:** create_contact_meteorite deleted; class TestAst1517CreateContactMeteorite removed.` and remove its manifest line (`…::TestAst1517CreateContactMeteorite \`).
+  - In the **AST-1561** and **AST-2034** sections, add one line each: `AST-2061: content now passes through sanitize_contact_text — see § AST-2062.`
+- **`docs/test-bible/utils/config.md`**
+  - New section table: skills empty → `TestAst2061ContactSkillsEmpty`; `allowed_channel_types` / retired task / handler pinhole / spliced import-assert → `TestAst2061ContactPinholeConfig` (4); revised `TestAst1515ContactTaskConfig::test_five_keys_…` and `TestAst1105ProfileSlackFields::test_slack_id_and_username_fields`.
+  - In the **AST-1071 · AST-1043** section, append the same retired line (class replaced by `TestAst2061ContactSkillsEmpty`). In the `CONTACT_CONFIG` row near line 1464, append `skills emptied by **AST-2061**`.
+- **`docs/test-bible/external/slack.md`**
+  - New section table: `fetch_channel_type` gate / mapping / ok:false / blank → `TestAst2061FetchChannelType` (4).
+  - Add `channel type lookup (fetch_channel_type)` to the page's surface line.
+
+**QA test manifest — AST-2062** (on `core/contact.md`; the other three pages list their own lines):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst2061ContactSkillsRetired \
+  tests/component/core/test_contact.py::TestAst2061PrivateChannelGate \
+  tests/component/core/test_contact.py::TestAst2061ContactSanitizeEntry \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_ast2061_skill_calls_never_write_candidate \
+  tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept \
+  tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition \
+  tests/component/core/test_meteorite.py::TestAst2061NoContactJobWrite \
+  tests/component/core/test_meteorite.py::TestAst2061ContactSanitize \
+  tests/component/core/test_meteorite.py::TestAst2034InsertSlackMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1561ApplyPaste \
+  tests/component/utils/test_config.py::TestAst2061ContactSkillsEmpty \
+  tests/component/utils/test_config.py::TestAst2061ContactPinholeConfig \
+  tests/component/utils/test_config.py::TestAst1515ContactTaskConfig \
+  tests/component/utils/test_config.py::TestAst1105ProfileSlackFields \
+  tests/component/ui/api/test_api_contact.py \
+  tests/component/external/test_slack.py::TestAst2061FetchChannelType \
+  -q
+```
+
+**Pass criterion:** green on the AST-2061 tip. The 33 AST-2061 reds are gone, and the remaining failures in the six files equal the 82 pre-existing on `6b00d8c5f` minus those retired with `TestAst1071ContactSkillRunners` / `TestAst1071ContactSkillsConfig`. Betty may `--deselect` pre-existing reds in listed classes (as the AST-2035 manifest does), naming each.
+
+### Blast radius
+
+- Test tree and bible only: the six test files and four bible pages above. No `src/`, no `data/`.
+- The autouse fixture applies to every test in `test_contact.py`. It only replaces `contact_mod.fetch_channel_type`, which no other code path in that module uses, and `raising=False` keeps the pre-fix module importable for repro runs.
+- `TestAst2061PrivateChannelGate` stubs `record_estelle_activity`. Existing accept-path tests already write the tracked `data/contact_estelle_activity.json` (seen dirtied on this worktree after local runs). That is pre-existing and not fixed here, but Betty should not commit that file.
+- The spliced-exec config test re-executes `src/utils/config.py` source in a throwaway namespace. It doesn't touch the imported `src.utils.config` module object.
+
+### What must still hold
+
+- AST-2061 product behavior as shipped (its `## What must still hold`): read tasks and `gazer_scrape` unchanged; `/add-job` lands NEW with the thread stamp and ack; `land_calls` / `apply_paste` return shapes; DM and private flows unchanged; `skill_results` always `[]`.
+- AST-2035 intercept tests (`TestAst2035ContactCommandIntercept`) and AST-2034 insert tests stay green. Their channels are covered by the autouse default and their fixtures pass through the sanitizer unchanged.
+- No test pins the double-encoded sanitize residual, adds a length cap, or depends on `create_contact_meteorite` / `save_candidate_*` as live surfaces. Those names appear only as **absent / unknown** in the AST-2061 repro and retirement assertions.
+- Engineer test-tree ban: Katherine does not edit `tests/` or `docs/test-bible/`. Betty lands this.
+
+⚠️ **Decision: name references.** AC2 reads "no test still references `create_contact_meteorite` or the `save_candidate_*` skills". Read literally, that conflicts with AC1's job-leak repro, which must name the retired task key to prove it's dead. I read AC2 as "no test exercises them as live". Retirement and repro tests may name `create_contact_meteorite` only to assert absence. `save_candidate_*` is avoided entirely (fake `save_profile_field` / `sample_skill` keys are used instead).
