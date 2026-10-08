@@ -8,8 +8,19 @@ from bisect import bisect_left
 from typing import Any, Dict, List, Optional
 from urllib.parse import unquote, urlparse
 
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 # Compact grades_encoded row: 000|DTA5|GCA4|…
 _ENCODED_GRADE_LINE = re.compile(r"^\d{3}\|")
+# Positional batch label at a line start, after a quote, or after a literal "\n" escape
+# (JSON-enveloped agent_payload). Group 1 = [index=NNN] form, group 2 = bare NNN before ':' or '|'.
+_POSITIONAL_LABEL = re.compile(
+    r'(?:^|(?<=")|(?<=\\n))(?:\[index=(\d{3})\](?=:)|(\d{3})(?=[:|]))', re.MULTILINE
+)
+# Hydrated label written by hydrate_entity_labels; same boundaries as _POSITIONAL_LABEL.
+_ENTITY_LABEL = re.compile(r'(?:^|(?<=")|(?<=\\n))\[entity_id=([^\]\s]+)\](?=[:|])', re.MULTILINE)
 
 
 def enumerate_array(
@@ -105,6 +116,53 @@ def parse_enumerate_array(text: str) -> Dict[int, str]:
         except ValueError:
             continue
     return result
+
+
+def hydrate_entity_labels(text: str, entity_ids: Optional[List[str]]) -> str:
+    """Replace positional batch labels (NNN:, [index=NNN]:, NNN|) with [entity_id=<id>] (AST-2029).
+    Position N maps to entity_ids[N]; out-of-range positions and unlabeled text stay unchanged.
+    Storage-only — wire text must never be passed through this."""
+    if not text or not entity_ids:
+        return text
+
+    def _sub(m: "re.Match[str]") -> str:
+        pos = int(m.group(1) or m.group(2))
+        return f"[entity_id={entity_ids[pos]}]" if pos < len(entity_ids) else m.group(0)
+
+    out = _POSITIONAL_LABEL.sub(_sub, text)
+    logger.debug("Response from hydrate_entity_labels: %s", out)
+    return out
+
+
+def split_entity_segments(text: str) -> Dict[str, str]:
+    """Per-entity segments of a stored block keyed by entity id; {} = no id-keyed segments
+    (legacy or single-entity — caller shows the whole block) (AST-2029)."""
+    if not text:
+        return {}
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        data = None
+    if isinstance(data, dict):
+        # Success RESPONSE rows are decoded JSON keyed by real ids already
+        for arr_key, id_key in (("companies", "company_id"), ("jobs", "astral_job_id")):
+            rows = data.get(arr_key)
+            if isinstance(rows, list):
+                return {
+                    str(it[id_key]): json.dumps(it, indent=2)
+                    for it in rows if isinstance(it, dict) and it.get(id_key)
+                }
+    matches = list(_ENTITY_LABEL.finditer(text))
+    logger.debug("Beginning split_entity_segments loop on %s items", len(matches))
+    out: Dict[str, str] = {}
+    for i, m in enumerate(matches):
+        # Segment runs from its own tag to the next tag; preamble before the first tag is unowned.
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        seg = re.sub(r"(?:\\n)+$", "", text[m.start():end].rstrip())
+        eid = m.group(1)
+        out[eid] = f"{out[eid]}\n{seg}" if eid in out else seg
+    logger.debug("End split_entity_segments loop after %s items", len(out))
+    return out
 
 
 def normalize_link(url: str) -> str:

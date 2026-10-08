@@ -107,10 +107,12 @@ interface Props {
 interface PanesProps {
   batchId: string
   candidateId?: string
+  /** When set, agent data is requested sliced to this entity (`entity_id` query); timesheets / ledger stay batch-wide. */
+  entityId?: string
   className?: string
 }
 
-export function BatchAgentDataPanes({ batchId, candidateId, className }: PanesProps) {
+export function BatchAgentDataPanes({ batchId, candidateId, entityId, className }: PanesProps) {
   const [blocks, setBlocks] = useState<AgentDataBlock[]>([])
   const [totals, setTotals] = useState<Totals | null>(null)
   const [timesheetRows, setTimesheetRows] = useState<TimesheetRow[]>([])
@@ -130,7 +132,8 @@ export function BatchAgentDataPanes({ batchId, candidateId, className }: PanesPr
     setHydratedRows(null)
     setResolvedCandidateId(candidateId?.trim() || "")
     Promise.all([
-      api(`/api/agent_data/${encodeURIComponent(batchId)}`).then(r => r.json()),
+      // Entity-scoped only when a caller names the entity; batch-wide views pass none
+      api(`/api/agent_data/${encodeURIComponent(batchId)}${entityId ? `?entity_id=${encodeURIComponent(entityId)}` : ""}`).then(r => r.json()),
       api(`/api/admin/timesheets?batch_id=${encodeURIComponent(batchId)}`).then(r => r.json()),
       api(`/api/admin/dispatch_ledger/${encodeURIComponent(batchId)}`).then(r => r.ok ? r.json() : null).catch(() => null),
     ]).then(([blockData, tsData, ledgerData]) => {
@@ -143,7 +146,7 @@ export function BatchAgentDataPanes({ batchId, candidateId, className }: PanesPr
       const present = BLOCK_TYPE_ORDER.filter(t => b.some(x => x.block_type === t))
       setActiveType(present[0] ?? b[0]?.block_type ?? "")
     }).catch(() => {}).finally(() => setLoading(false))
-  }, [batchId, candidateId])
+  }, [batchId, candidateId, entityId])
 
   useEffect(() => {
     const fromLedger = (ledger?.candidate_id || "").trim()
