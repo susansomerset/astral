@@ -966,3 +966,67 @@ The URL fix makes every consumer receive the **real** `UI_CONFIG` for the first 
 - **No canon edit:** Blast radius (list frozen columns, column types, accent palette, etc.) is documented product behavior once the config actually loads — not an ambiguous statute or a new precedent that belongs in `canon/`.
 - **ESCALATE:** Not warranted; architectural choice is already recorded on the ticket (include edits 2–3 vs narrow fix is product scope for Chuckles/make-fix, not Archie canon).
 
+
+### review-fix — Radia
+
+[code-rubric]
+**Ticket:** AST-2065
+**Publish ref:** `081e70f34bebbd97488630d196afad826d3c791f` (`origin/sub/AST-2042/AST-2065-ui-config-url`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; ticket/parent **Canon Scope:** none)
+**Overall:** FIX-NOW
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `tests/component/frontend/lib/test_uiConfig.test.ts` (publish tip): `[bug-repro] loadUiConfig fetches /api/ui_config` asserts `api` was called with `"/api/ui_config"` only (would fail on the old path); companion test fails if any `.ts`/`.tsx` under `src/ui/frontend/src` still contains `"/api/system/ui_config"`. Pins **To-be** URL, not a tautology.
+
+**## What must still hold — OK** (for isolated product commit `081e70f34`): no server edits; `loadUiConfig` still single-flight + `.catch` → `{ column_types: {} }`; three literal swaps only; no new theme id strings; `CandidateProfile` et al. untouched per plan.
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket scope on publish ref (`data/admin`).** `git diff origin/ftr/AST-2042-user-theme...origin/sub/AST-2042/AST-2065-ui-config-url` includes `data/admin/agent.json` and `data/admin/agent_task.json` (Grace prompt, model_id, quantization, bulk task content) from commits `33f5c0b1c` / `048d297b5` via `sync(dev): origin/dev` — **not** in `## Proposed change` or blast radius. **AST-2065 product** in `src/**` is only `uiConfig.ts`, `ArtifactEditor.tsx`, `ArtifactsBaseResumeContent.tsx` (`081e70f34`). **Chuckles/engineer:** restack or cherry-pick so `merge-child` lands **2065 fix + plan/docs + Betty tests**, not unrelated admin seed churn.
+
+### discuss
+
+(none)
+
+### advisory
+
+- **`src/**` product delta is clean** vs ftr — matches plan (3 URL swaps).
+- **sibling test carry:** `merge-tests(AST-2065)` also brings large `test_contact.py`, `test_meteorite.py`, `test_slack.py`, bible deltas, and AST-2062 repro work — expected `origin/tests` merge pattern; not #2065 product, but will ride the sub tip until restacked.
+- **Blast radius (intentional):** Once config loads, list frozen columns, column types, accent palette, `ArtifactEditor` experience fields, etc. behave per served `UI_CONFIG` — documented in plan; UAT Theme Examples + spot-check list pages.
+- **Branch hygiene:** Sub history includes `sync(ftr)`, `sync(dev)`, `sync(publish-ref)` after fix-board; ftr merge-base is current (`c1ac10587` = ftr tip); issue is **extra** commits atop ftr, not lagging ftr like round-1 AST-2063.
+
+## What's solid
+
+- **Root cause / fix:** Wrong client path vs `system_bp` `/api` + `/ui_config`; all three call sites corrected; `rg` guard in `[bug-repro]` prevents regression.
+- **Tests:** Betty retargeted mocks (`test_AdminThemeExamples`, `page-mocks`, `ListPage_*`, etc.) per plan blast-radius list; `qa-fix` path ran (`a3c1144eb`), not board-only opt-out.
+- **Plan fidelity:** Matches `## Bug: AST-2065` three edits + verify steps.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (after `data/admin` stripped / restack) | **Normal** (AST-2042 UAT-batch) | Re-review or confirm ftr…sub is **src** (3 files) + plan + tests/docs only → **Review Posted** → **User Testing** shortcut. |
+| **REVIEW** (if merged as-is) | Normal | **Do not** `merge-child` — smuggles admin agent config unrelated to Theme Examples URL fix. |
+
+context_tokens≈18000
+[code-rubric] REVIEW (Commit: 081e70f34) Drop data/admin from sub tip
+```
+
+**Stdout recommendation:** **REVIEW** → `resolve-child` / restack to remove `data/admin` from the sub branch before merge-child; isolated **081e70f34** + Betty tests are otherwise **PROCEED**-ready.
+
+**Chuckles disposition:** fix-now `data/admin` item is a false positive — both files at the sub tip are byte-identical to `origin/dev`; they arrived via the mandatory `sync-child.sh` `sync(dev)` merge (ftr is 2 commits behind dev). merge-child only catches ftr up to dev; the ftr→dev PR shows no delta for them. Restacking would violate sync law and re-enter on next sync. Treated as clean → Review Posted → User Testing.
