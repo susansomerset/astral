@@ -69,6 +69,28 @@ class TestAst1069ExternalSlack:
 
 
 # Branches: users.info profile parse; gate; ok:false (AST-1068).
+# Branches: reply_broadcast with thread_ts -> body flag; without thread_ts -> dropped; default -> absent (AST-2072).
+class TestAst2072PostMessageReplyBroadcast:
+    @pytest.mark.parametrize(
+        ("kwargs", "expected_extra"),
+        [
+            ({"thread_ts": "1.0", "reply_broadcast": True}, {"thread_ts": "1.0", "reply_broadcast": True}),
+            ({"thread_ts": None, "reply_broadcast": True}, {}),
+            ({"thread_ts": "1.0"}, {"thread_ts": "1.0"}),
+        ],
+    )
+    def test_body(self, monkeypatch: pytest.MonkeyPatch, kwargs: dict, expected_extra: dict) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        resp = MagicMock()
+        resp.json = MagicMock(return_value={"ok": True, "ts": "1.2"})
+        post = MagicMock(return_value=resp)
+        monkeypatch.setattr(slack_mod.requests, "post", post)
+        slack_mod.post_message(channel="C1", text="hi", **kwargs)
+        # Exact body: a top-level post never carries reply_broadcast (AC 11).
+        assert post.call_args.kwargs["json"] == {"channel": "C1", "text": "hi", **expected_extra}
+
+
 class TestAst1068FetchUserProfile:
     def test_fetch_profile_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
