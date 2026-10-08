@@ -3761,3 +3761,25 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts \
 4. In `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
 
 **Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+---
+
+### AST-2064 · AST-2042 (bug — Light grade-color set + Theme Examples grade options)
+
+**Publish:** `origin/sub/AST-2042/AST-2064-light-grade-colors`. Fix (plan doc § Bug: AST-2064): shared "Deep" grade values in the three Light blocks; `UI_CONFIG["theme_example_grade_sets"]` (deep / soft / classic, examples-only) rendered as a **Grade color options** block in every Theme Examples panel, each row overriding the panel's `--grade-*` / `--text-on-grade*` via inline custom properties.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** options block per panel; one labeled row per set; row inline style carries the set's tokens; each row A–X; panel's own `.theme-examples-grade` row still exactly one A–X | `pages/AdminThemeExamples.tsx` | **`test_AdminThemeExamples.test.tsx`** — **`AdminThemeExamples — AST-2064 grade color options > [bug-repro] each panel shows one labeled row per grade set …`** (fresh module graph — `uiConfig` caches) |
+| **[bug-repro]** sets are `deep` / `soft` / `classic` with labels; each set's `tokens` keys are exactly the 8 grade tokens declared in `App.css`'s Dark block, values `#rrggbb` | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst2064ThemeExampleGradeSets`** (2) |
+
+**Red on pre-fix tree** (`origin/sub/…/AST-2064` @ `4b8964c3e`): page case — no `.theme-examples-grade-options`; config cases — `UI_CONFIG has no theme_example_grade_sets`. **Green** against the plan's Proposed change steps 2–4 applied locally (not committed). Light "Deep" values themselves are not pinned (palette choice → UAT). The repro mocks **both** `/api/ui_config` and `/api/system/ui_config`, so it is unaffected by the sibling **AST-2065** URL fix. **Known red on this sub, not AST-2064 scope:** `AdminThemeExamples — AST-2047 > renders one labeled panel per registry id …` — AST-2065 retargeted its mock to `/api/ui_config`, and this sub's `uiConfig.ts` still fetches `/api/system/ui_config`. It turns green when AST-2065's fix merges; do not change the loader URL here.
+
+#### QA test manifest (AST-2064)
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+cd ../../.. && ./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -k "Ast2064 or Ast2047"
+```
+
+**Pass criterion (test-fix):** the three `[bug-repro]` nodes flip red → green; the 4 App.css Vitest cases + 4 `TestAst2047ThemeRegistry` cases stay green. The AST-2047 page case stays red until AST-2065 merges (see above).

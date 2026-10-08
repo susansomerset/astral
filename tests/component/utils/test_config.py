@@ -7709,3 +7709,32 @@ class TestAst2047ThemeRegistry:
         css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()
         for tid in cfg.UI_CONFIG["themes"]:
             assert f'[data-theme="{tid}"]' in css, tid
+
+
+class TestAst2064ThemeExampleGradeSets:
+    """AST-2064: examples-only grade-color candidates; each set overrides exactly the grade tokens App.css declares."""
+
+    GRADE_TOKENS = frozenset({
+        "--grade-a", "--grade-b", "--grade-c", "--grade-d", "--grade-f", "--grade-x",
+        "--text-on-grade", "--text-on-grade-f",
+    })
+
+    def test_grade_sets_deep_soft_classic_labeled(self) -> None:
+        sets = cfg.UI_CONFIG.get("theme_example_grade_sets")
+        assert sets is not None, "UI_CONFIG has no theme_example_grade_sets"
+        assert {gid: s["label"] for gid, s in sets.items()} == {"deep": "Deep", "soft": "Soft", "classic": "Classic"}
+
+    def test_grade_set_tokens_are_real_app_css_grade_tokens(self) -> None:
+        # A misspelled key would set an unused custom property and silently show the panel's own colors.
+        import re
+        from pathlib import Path
+
+        css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()
+        dark = css.split(':root, [data-theme="dark"] {', 1)[1].split("}", 1)[0]
+        declared = set(re.findall(r"(--[\w-]+)\s*:", dark))
+        assert self.GRADE_TOKENS <= declared
+        sets = cfg.UI_CONFIG.get("theme_example_grade_sets")
+        assert sets is not None, "UI_CONFIG has no theme_example_grade_sets"
+        for gid, s in sets.items():
+            assert set(s["tokens"]) == self.GRADE_TOKENS, gid
+            assert all(re.fullmatch(r"#[0-9a-fA-F]{6}", v) for v in s["tokens"].values()), gid

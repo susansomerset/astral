@@ -53,6 +53,49 @@ describe("AdminThemeExamples — AST-2047", () => {
   })
 })
 
+// AST-2064: examples-only grade-color candidates; tokens override the panel's grade tokens per row.
+const GRADE_SETS = {
+  deep: { label: "Deep", tokens: { "--grade-a": "#1e7b34", "--grade-x": "#6b46c1", "--text-on-grade": "#ffffff" } },
+  soft: { label: "Soft", tokens: { "--grade-a": "#b7e4c0", "--grade-x": "#ddd6fe", "--text-on-grade": "#1f1830" } },
+}
+
+describe("AdminThemeExamples — AST-2064 grade color options", () => {
+  it("[bug-repro] each panel shows one labeled row per grade set with inline grade tokens; main grade row unchanged", async () => {
+    // uiConfig caches at module level (the AST-2047 case above already loaded one) — fresh graph for this config.
+    vi.resetModules()
+    const freshApi = vi.mocked((await import("../../../../src/ui/frontend/src/lib/api")).default)
+    // Both URLs: this sub's loader still calls /api/system/ui_config until sibling AST-2065's fix merges.
+    const handler = (url: string) =>
+      url === "/api/ui_config" || url === "/api/system/ui_config"
+        ? jsonResponse({ column_types: {}, themes: THEMES, default_theme: "dark", theme_example_grade_sets: GRADE_SETS })
+        : undefined
+    installBaseApiMocks(mockedApi, handler)
+    installBaseApiMocks(freshApi, handler)
+    const Page = (await import("../../../../src/ui/frontend/src/pages/AdminThemeExamples")).default
+    renderWithProviders(<Page />)
+
+    expect(await screen.findByRole("heading", { name: "Theme Examples" })).toBeInTheDocument()
+    const panels = Array.from(document.querySelectorAll<HTMLElement>("section.theme-examples-panel"))
+    expect(panels).toHaveLength(Object.keys(THEMES).length)
+    for (const panel of panels) {
+      const options = panel.querySelector<HTMLElement>(".theme-examples-grade-options")
+      expect(options, panel.dataset.theme).not.toBeNull()
+      expect(within(options!).getByText("Grade color options")).toBeInTheDocument()
+      const rows = Array.from(options!.querySelectorAll<HTMLElement>(".theme-examples-row"))
+      expect(rows.map(r => r.querySelector(".theme-examples-grade-option-name")?.textContent)).toEqual(["Deep", "Soft"])
+      rows.forEach((row, i) => {
+        const set = Object.values(GRADE_SETS)[i]
+        for (const [token, value] of Object.entries(set.tokens)) expect(row.style.getPropertyValue(token)).toBe(value)
+        expect(Array.from(row.querySelectorAll(".grade-dot"), d => d.textContent)).toEqual(["A", "B", "C", "D", "F", "X"])
+      })
+      // The panel's own grade row stays exactly one A–X set (option rows must not reuse .theme-examples-grade).
+      expect(Array.from(panel.querySelectorAll(".theme-examples-grade .grade-dot"), d => d.textContent)).toEqual(
+        ["A", "B", "C", "D", "F", "X"],
+      )
+    }
+  })
+})
+
 // jsdom does not load App.css, so the palette contract is read from the stylesheet itself.
 describe("App.css theme token blocks — AST-2047", () => {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..")
