@@ -3411,7 +3411,8 @@ class TestAst1195SchemaNullsAndBotBlocked:
 
         assert "BOT_BLOCKED" in cfg.JOB_STATES
         assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES
-        assert cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"] == ["PASSED_JOBLIST", "METEORITE_NEW"]
+        # AST-2024: RELATIVE_JOB_LINK click-through fetch can also land a job in BOT_BLOCKED.
+        assert cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"] == ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"]
         # AST-1808: METEORITE_NEW_RETRY prior is derived (AST-1339), not declared.
         assert "METEORITE_NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "BOT_BLOCKED")
         assert "BOT_BLOCKED" in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
@@ -7041,6 +7042,17 @@ class TestAst1808RetryRegistryPurge:
         pinned["COMPANY_STATES"] = {
             ren(k): (None if v is None else [ren(p) for p in v]) for k, v in pinned["COMPANY_STATES"].items()
         }
+        # AST-2024 added RELATIVE_JOB_LINK / RELATIVE_LINK_FAIL after the snapshot: six JD-outcome
+        # states gain RELATIVE_JOB_LINK (+ derived _RETRY) as a prior; four new targets pinned exactly.
+        js = pinned["JOB_STATES"]
+        rel = ["RELATIVE_JOB_LINK", "RELATIVE_JOB_LINK_RETRY"]
+        for s in ("JD_READY", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED",
+                  "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED"):
+            js[s] = js[s] + rel
+        js["RELATIVE_JOB_LINK"] = ["NEW", "NEW_RETRY", "RELATIVE_JOB_LINK_RETRY", "RELATIVE_LINK_FAIL", "RELATIVE_LINK_FAIL_RETRY"]
+        js["RELATIVE_JOB_LINK_RETRY"] = rel
+        js["RELATIVE_LINK_FAIL"] = rel + ["RELATIVE_LINK_FAIL_RETRY"]
+        js["RELATIVE_LINK_FAIL_RETRY"] = ["RELATIVE_LINK_FAIL", "RELATIVE_LINK_FAIL_RETRY"]
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7592,3 +7604,62 @@ class TestAst2004CompanyBotBlocked:
         assert not [t for t in transitions if "BOT_BLOCK" in t]
         for src in ("TO_WATCH", "JOBS_FOUND", "PREFILTER_PASSED", "PJL_READY"):
             assert (src, "BOT_BLOCKED") in transitions, src
+
+
+# AST-2024 · AST-2022: RELATIVE_JOB_LINK / RELATIVE_LINK_FAIL registry + fetch_relative_jd wiring.
+# Branches: AC1 registry (exact priors, no VALID_TITLE); skipped list / order / label / bulk retry +
+# manifest; processing section + manifest order; GAZER_CONFIG block; dispatch trigger / entity rules;
+# qualify relative_link_state; no score floor on RELATIVE_JOB_LINK (plan decision).
+class TestAst2024RelativeJobLinkRegistry:
+    _JD_OUTCOMES = ("JD_READY", "BOT_BLOCKED", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE",
+                    "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED")
+
+    def test_ac1_registry(self) -> None:
+        j = cfg.JOB_STATES
+        assert set(j["RELATIVE_JOB_LINK"]["prior_states"]) == {"NEW", "RELATIVE_LINK_FAIL"}
+        assert j["RELATIVE_LINK_FAIL"]["prior_states"] == ["RELATIVE_JOB_LINK"]
+        for s in ("RELATIVE_JOB_LINK", "RELATIVE_LINK_FAIL"):
+            assert "VALID_TITLE" not in j[s]["prior_states"], s
+        for s in self._JD_OUTCOMES:
+            assert "RELATIVE_JOB_LINK" in j[s]["prior_states"], s
+        # NEW_RETRY reaches RELATIVE_JOB_LINK through its base (not declared).
+        assert "NEW_RETRY" in cfg.state_prior_states(j, "RELATIVE_JOB_LINK")
+
+    def test_relative_link_fail_skipped_with_bulk_retry(self) -> None:
+        assert "RELATIVE_LINK_FAIL" in cfg.SKIPPED_STATES
+        assert "RELATIVE_LINK_FAIL" in cfg.JOBS_SKIPPED_SECTION_ORDER
+        assert "RELATIVE_JOB_LINK" not in cfg.SKIPPED_STATES
+        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["RELATIVE_LINK_FAIL"] == "RELATIVE_JOB_LINK"
+        sk = cfg.build_state_ui_manifest()["jobs"]["skipped"]
+        assert "RELATIVE_LINK_FAIL" in sk["section_order"]
+        assert sk["section_labels"]["RELATIVE_LINK_FAIL"] == "Relative Link Fail"
+        assert sk["bulk_retry_to_state_by_from_state"]["RELATIVE_LINK_FAIL"] == "RELATIVE_JOB_LINK"
+
+    def test_relative_job_link_processing_section_after_passed_joblist(self) -> None:
+        ps = cfg.build_state_ui_manifest()["jobs"]["processing_sections"]
+        states = [p["state"] for p in ps]
+        i = states.index("RELATIVE_JOB_LINK")
+        assert ps[i] == {"state": "RELATIVE_JOB_LINK", "label": "Relative Job Link"}
+        assert states[i - 1] == "PASSED_JOBLIST" and states[i + 1] == "JD_READY"
+
+    def test_gazer_config_fetch_relative_jd(self) -> None:
+        g = cfg.GAZER_CONFIG["fetch_relative_jd"]
+        assert g["trigger_state"] == "RELATIVE_JOB_LINK"
+        assert g["pass_state"] == "JD_READY"
+        assert g["fail_state"] == "RELATIVE_LINK_FAIL"
+        # Click reached a page → every fetch_jd JD outcome (its fail_state included) is an error_state;
+        # fail_state is reserved for the click itself failing.
+        fj = cfg.GAZER_CONFIG["fetch_jd"]
+        assert set(g["error_states"]) == {fj["fail_state"], *fj["error_states"]}
+        assert isinstance(g["fallback_batch_size"], int) and g["fallback_batch_size"] > 0
+        # Every outcome state is legal from the trigger state.
+        for s in [g["pass_state"], g["fail_state"], *g["error_states"]]:
+            assert "RELATIVE_JOB_LINK" in cfg.JOB_STATES[s]["prior_states"], s
+
+    def test_dispatch_rules_and_qualify_key(self) -> None:
+        assert cfg._dispatch_trigger_state_for_task_key("fetch_relative_jd") == "RELATIVE_JOB_LINK"
+        assert cfg._dispatch_entity_type_for_task_key("fetch_relative_jd") == "job"
+        assert cfg.TASK_CONFIG["qualify_job_listings"]["relative_link_state"] == "RELATIVE_JOB_LINK"
+        # Plan decision: relative_link_state is not a transition key → claim sorts by updated_at.
+        assert cfg.dispatch_claim_uses_score_floor("RELATIVE_JOB_LINK") is False
+        assert cfg._dispatch_sort_by_for("job", "RELATIVE_JOB_LINK") == "updated_at"
