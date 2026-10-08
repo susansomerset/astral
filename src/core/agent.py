@@ -83,6 +83,7 @@ from src.utils.formatting import (
     clean_encoded_agent_payload,
     coerce_grades_encoded_json_parse,
     hydrate_entity_labels,
+    split_entity_segments,
 )
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_candidate_id, log_debug
 
@@ -3583,34 +3584,16 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     return enriched
 
 
-def _filter_response_block(content: str, entity_id: str) -> str:
-    """For batch task RESPONSE blocks: filter jobs/companies array to the matching entity.
+def _slice_entity_block(content: str, entity_id: str) -> Optional[str]:
+    """One entity's slice of a stored NO_CACHE / TASK / RESPONSE block (AST-2030).
 
-    Returns the matching entry as pretty JSON, empty string for old encoded
-    data (no id present), or the original content for non-batch responses.
+    Whole block when it has no id-keyed segments (legacy positional, single-entity, shared prompt);
+    None when it has segments but none for entity_id (another chunk's call in the same batch).
     """
-    try:
-        parsed = json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        return content  # not JSON — leave as-is
-
-    if not isinstance(parsed, dict):
-        return content
-
-    # Prefer companies when present (AST-1723); else jobs.
-    rows = parsed.get("companies")
-    id_key = "company_id"
-    if not isinstance(rows, list):
-        rows = parsed.get("jobs")
-        id_key = "astral_job_id"
-    if rows is None:
-        return content  # single-entity response — show as-is
-
-    if not any(isinstance(j, dict) and j.get(id_key) for j in rows):
-        return ""  # old encoded payload — skip
-
-    match = next((j for j in rows if isinstance(j, dict) and j.get(id_key) == entity_id), None)
-    return json.dumps(match, indent=2) if match else ""
+    segments = split_entity_segments(content)
+    out = segments.get(entity_id) if segments else content
+    logger.debug("Response from _slice_entity_block: %s", out)
+    return out
 
 
 # ---------------------------------------------------------------------------
