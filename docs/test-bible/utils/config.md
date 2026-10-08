@@ -1461,7 +1461,7 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
 
-`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
+`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**; skills emptied by **AST-2061**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1486,9 +1486,11 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Two skill ACL entries + path inventory | `src/utils/config.py` | **`TestAst1071ContactSkillsConfig`** |
+| Two skill ACL entries + path inventory | `src/utils/config.py` | retired → **`TestAst2061ContactSkillsEmpty`** |
 
 **Broken / obsolete:** AST-1066 empty-skills asserts — revised above.
+
+**Retired by AST-2061 / AST-2062:** skills ACL emptied; class TestAst1071ContactSkillsConfig replaced by TestAst2061ContactSkillsEmpty.
 
 **Integration:** none.
 
@@ -4817,3 +4819,28 @@ All 8 new/revised nodes red on pre-AST-2024 `config.py` / `agent_task.json`, gre
 **Broken / obsolete:** none — no `test_config.py` test pins the `CONTACT_CONFIG` key set. **Manifest:** [`../core/contact.md`](../core/contact.md) § AST-2035.
 
 **AST-2047 (pointer):** `UI_CONFIG["themes"]` / `default_theme` (+ import-time assert that the default is a selectable id), profile `theme` select generated from selectable entries, Tools `/admin/theme_examples`, and every registry id having an `App.css` `[data-theme]` block — **`TestAst2047ThemeRegistry`** (4). Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2047.
+
+### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
+
+**Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
+
+AST-2061 config: `CONTACT_CONFIG["skills"] = {}` (map kept for `contact_skills()` / admin routes), `CONTACT_CONFIG["allowed_channel_types"] = ("im", "group")` with import-time asserts (tuple, Slack vocabulary, never `"channel"`), `create_contact_meteorite` removed from `CONTACT_TASK_CONFIG`, and the `_CONTACT_PINHOLE_HANDLERS` allowlist + import-time assert (every task/command handler listed; `write` kinds only under `src.core.meteorite.`). Contact behavior: [`../core/contact.md`](../core/contact.md) § AST-2062.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skills registry empty | `src/utils/config.py` | **`TestAst2061ContactSkillsEmpty`** (1) |
+| `allowed_channel_types`; **[bug-repro]** retired task key; every handler in pinhole (no `create_meteorite_job` / `land_meteorite`); real import-time assert fires on a spliced `create_meteorite_job` handler (anchor `# AST-2061 pinhole:` must appear exactly once) | `src/utils/config.py` | **`TestAst2061ContactPinholeConfig`** (4) |
+| Revised: five task keys | same | **`TestAst1515ContactTaskConfig::test_five_keys_handler_metadata_and_collision_guards`** (was `test_six_keys_…`) |
+| Revised: Slack profile fields (skills ACL path read dropped) | same | **`TestAst1105ProfileSlackFields::test_slack_id_and_username_fields`** |
+
+**Broken / obsolete:** `TestAst1071ContactSkillsConfig` (replaced); `TestAst1515ContactTaskConfig::test_six_keys_…` (renamed/revised); `TestAst1105ProfileSlackFields` skills read (removed). `TestAst1073ContactEstelleTurnConfig::test_skill_calls_optional_on_chat_schema` unchanged — AST-2061 deliberately kept the optional schema entry.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/utils/test_config.py::TestAst2061ContactSkillsEmpty`
+2. `tests/component/utils/test_config.py::TestAst2061ContactPinholeConfig`
+3. Revised: `tests/component/utils/test_config.py::TestAst1515ContactTaskConfig`, `TestAst1105ProfileSlackFields`
+
+Full AST-2062 command (all four pages): [`../core/contact.md`](../core/contact.md) § AST-2062.
