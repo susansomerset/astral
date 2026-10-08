@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import { useCandidate } from "../../../../src/ui/frontend/src/contexts/CandidateContext"
 import ArtifactsBaseResumeContent from "../../../../src/ui/frontend/src/pages/ArtifactsBaseResumeContent"
@@ -116,6 +116,10 @@ describe("ArtifactsBaseResumeContent", () => {
       createObjectURL: vi.fn(() => "blob:base-resume-html"),
       revokeObjectURL: vi.fn(),
     })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it("renders structure-driven tabs and hides orphan base_resume keys", async () => {
@@ -887,12 +891,19 @@ describe("ArtifactsBaseResumeContent", () => {
     expect(printIdx).toBe(regenIdx + 1)
   })
 
-  it("AST-1577: wires bodyShape resume_content; Save PUTs base_resume leaf (§6c)", async () => {
+  it("AST-1577 / AST-2051: wires bodyShape resume_content; autosave PUTs base_resume leaf (§6c)", async () => {
+    // Fake clock that still ticks in real time so findBy/waitFor polling keeps working.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     renderWithProviders(<ArtifactsBaseResumeContent />)
     const field = await screen.findByDisplayValue("Saved summary")
     await userEvent.clear(field)
     await userEvent.type(field, "Operative body")
-    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    // AST-2051: no header Save/Cancel outside Generate review; body persists via the 2000ms autosave debounce.
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     const putCall = mockedApi.mock.calls.find(
       ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
