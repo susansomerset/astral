@@ -3075,3 +3075,164 @@ class TestAst1768CandidateByEmailApi:
         resp = candidate_client.get("/api/candidates/by_email?email=soosomerset@gmail.com", headers=non_admin_headers)
         assert resp.status_code == 200
         assert resp.get_json() == {"candidate_id": "c-jolane"}
+
+
+# AST-2067 Branches (each of the 4 routes): missing candidate 404; PUT body not a dict / uuid
+# missing-blank 400; core ValueError 400 (bad key, cross-key/cross-code uuid = AC7, current
+# unchanged); unexpected Exception → logged once + 500 payload; 200 (PUT logs one completion line).
+class TestAst2067CandidateVersionRoutes:
+    _ART = "/api/candidates/cand-1/artifacts/candidate.artifacts.base_resume"
+    _RUB = "/api/candidates/cand-1/rubric/do_rubric/V01"
+
+    def _seed_artifacts(self, db) -> list:
+        return [db.save_artifact("candidate", "cand-1", "base_resume", {"v": i}) for i in (1, 2, 3)]
+
+    def _seed_rubric(self, db) -> dict:
+        # V01: A then B (fingerprint retire+insert); V02 separate code.
+        db.save_agent_task("grade_do", agent_id="a1", user_prompt="p")
+        v02 = {"code": "V02", "label": "O", "content": "keep", "importance": 3}
+        for content in ("A", "B"):
+            db.sync_rubric_vectors_from_criteria(
+                "cand-1", "grade_do", [{"code": "V01", "label": "L", "content": content, "importance": 5}, v02]
+            )
+        hist = db.list_rubric_vectors("cand-1", "grade_do", current_only=False, code="V01")
+        cur = {r["code"]: r["rubric_vector_uuid"] for r in db.list_rubric_vectors("cand-1", "grade_do")}
+        return {"a": hist[0]["rubric_vector_uuid"], "b": hist[1]["rubric_vector_uuid"], "v02": cur["V02"]}
+
+    def test_artifact_list_and_set_current_200(
+        self, candidate_client: FlaskClient, auth_headers, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        v1, v2, v3 = self._seed_artifacts(seeded_db)
+        got = candidate_client.get(f"{self._ART}/versions", headers=auth_headers)
+        assert got.status_code == 200
+        versions = got.get_json()["versions"]
+        # JSON keys sort alphabetically; position is the order contract.
+        assert sorted(versions, key=lambda u: versions[u]["position"]) == [v1, v2, v3]
+        caplog.set_level("INFO")
+        put = candidate_client.put(f"{self._ART}/current", json={"artifact_uuid": v1}, headers=auth_headers)
+        assert put.status_code == 200
+        out = put.get_json()
+        assert out["current"] == v1
+        assert out["versions"][v1]["current"] == 1 and out["versions"][v3]["current"] == 0
+        assert seeded_db.get_current_artifact("candidate", "cand-1", "base_resume")["artifact_uuid"] == v1
+        assert any("completed: PUT 200" in r.getMessage() for r in caplog.records)
+
+    def test_artifact_cross_key_uuid_400_current_unchanged(
+        self, candidate_client: FlaskClient, auth_headers, seeded_db
+    ) -> None:
+        # AC7: uuid from another key and from another candidate → 400; v3 stays current.
+        _, _, v3 = self._seed_artifacts(seeded_db)
+        other_key = seeded_db.save_artifact("candidate", "cand-1", "bio_summary", "bio")
+        other_cand = seeded_db.save_artifact("candidate", "cand-2", "base_resume", {"v": "x"})
+        for uid in (other_key, other_cand):
+            res = candidate_client.put(f"{self._ART}/current", json={"artifact_uuid": uid}, headers=auth_headers)
+            assert res.status_code == 400
+            assert "is not a version of" in res.get_json()["error"]
+        assert seeded_db.get_current_artifact("candidate", "cand-1", "base_resume")["artifact_uuid"] == v3
+
+    def test_rubric_list_and_set_current_200(
+        self, candidate_client: FlaskClient, auth_headers, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        ids = self._seed_rubric(seeded_db)
+        got = candidate_client.get(f"{self._RUB}/versions", headers=auth_headers)
+        assert got.status_code == 200
+        versions = got.get_json()["versions"]
+        assert sorted(versions, key=lambda u: versions[u]["position"]) == [ids["a"], ids["b"]]
+        caplog.set_level("INFO")
+        put = candidate_client.put(
+            f"{self._RUB}/current", json={"rubric_vector_uuid": ids["a"]}, headers=auth_headers
+        )
+        assert put.status_code == 200
+        assert put.get_json()["current"] == ids["a"]
+        cur = {r["code"]: r["rubric_vector_uuid"] for r in seeded_db.list_rubric_vectors("cand-1", "grade_do")}
+        assert cur == {"V01": ids["a"], "V02": ids["v02"]}
+        assert any("completed: PUT 200" in r.getMessage() for r in caplog.records)
+
+    def test_rubric_cross_code_uuid_400_current_unchanged(
+        self, candidate_client: FlaskClient, auth_headers, seeded_db
+    ) -> None:
+        # AC7: V02's uuid on the V01 route → 400; V01 stays on B.
+        ids = self._seed_rubric(seeded_db)
+        res = candidate_client.put(
+            f"{self._RUB}/current", json={"rubric_vector_uuid": ids["v02"]}, headers=auth_headers
+        )
+        assert res.status_code == 400
+        cur = {r["code"]: r["rubric_vector_uuid"] for r in seeded_db.list_rubric_vectors("cand-1", "grade_do")}
+        assert cur == {"V01": ids["b"], "V02": ids["v02"]}
+
+    @pytest.mark.parametrize(
+        "method,path,body",
+        [
+            ("get", "/api/candidates/nope/artifacts/candidate.artifacts.base_resume/versions", None),
+            ("put", "/api/candidates/nope/artifacts/candidate.artifacts.base_resume/current", {"artifact_uuid": "u"}),
+            ("get", "/api/candidates/nope/rubric/do_rubric/V01/versions", None),
+            ("put", "/api/candidates/nope/rubric/do_rubric/V01/current", {"rubric_vector_uuid": "u"}),
+        ],
+    )
+    def test_missing_candidate_404(
+        self, candidate_client: FlaskClient, auth_headers, seeded_db, method, path, body
+    ) -> None:
+        res = getattr(candidate_client, method)(path, json=body, headers=auth_headers)
+        assert res.status_code == 404
+        assert res.get_json() == {"error": "Candidate not found: nope"}
+
+    @pytest.mark.parametrize(
+        "path,field",
+        [(f"{_ART}/current", "artifact_uuid"), (f"{_RUB}/current", "rubric_vector_uuid")],
+    )
+    @pytest.mark.parametrize("body", [["not", "a", "dict"], {}, {"x": 1}, "BLANK", "NONSTR"])
+    def test_put_bad_body_400(
+        self, candidate_client: FlaskClient, auth_headers, seeded_db, path, field, body
+    ) -> None:
+        payload = {field: "  "} if body == "BLANK" else {field: 7} if body == "NONSTR" else body
+        res = candidate_client.put(path, json=payload, headers=auth_headers)
+        assert res.status_code == 400
+        assert res.get_json() == {"error": f"{field} required"}
+
+    @pytest.mark.parametrize(
+        "method,path,body",
+        [
+            ("get", "/api/candidates/cand-1/artifacts/job.artifacts.cover_letter/versions", None),
+            ("put", "/api/candidates/cand-1/artifacts/not.a.key/current", {"artifact_uuid": "u"}),
+            ("get", "/api/candidates/cand-1/rubric/base_resume/V01/versions", None),
+            ("put", "/api/candidates/cand-1/rubric/nope/V01/current", {"rubric_vector_uuid": "u"}),
+        ],
+    )
+    def test_bad_key_400(
+        self, candidate_client: FlaskClient, auth_headers, seeded_db, method, path, body
+    ) -> None:
+        res = getattr(candidate_client, method)(path, json=body, headers=auth_headers)
+        assert res.status_code == 400
+        assert res.get_json()["error"]
+
+    @pytest.mark.parametrize(
+        "patch,method,path,body",
+        [
+            ("list_candidate_artifact_versions", "get", f"{_ART}/versions", None),
+            ("set_candidate_artifact_current", "put", f"{_ART}/current", {"artifact_uuid": "u"}),
+            ("list_rubric_criterion_versions", "get", f"{_RUB}/versions", None),
+            ("set_rubric_criterion_current", "put", f"{_RUB}/current", {"rubric_vector_uuid": "u"}),
+        ],
+    )
+    def test_unexpected_error_logged_once_500(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers,
+        seeded_db,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        patch,
+        method,
+        path,
+        body,
+    ) -> None:
+        def _boom(*a, **k):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(candidate_mod, patch, _boom)
+        caplog.set_level("ERROR")
+        res = getattr(candidate_client, method)(path, json=body, headers=auth_headers)
+        assert res.status_code == 500
+        assert res.get_json()["exception_type"] == "RuntimeError"
+        errors = [r for r in caplog.records if r.levelname == "ERROR" and "failed" in r.getMessage()]
+        assert len(errors) == 1 and "Returning 500" in errors[0].getMessage()

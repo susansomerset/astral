@@ -466,3 +466,36 @@ See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
 Full manifest: [`../../data/database/candidates.md`](../../data/database/candidates.md) § QA test manifest (AST-1901).
 
 **AST-2048 (pointer):** `test_update_rejects_unselectable_theme` — `PUT /api/candidates/<id>/data` with an unknown or examples-only theme → 400 via the real core allowlist, no DB write. Manifest: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2048.
+
+### AST-2067 · AST-2043 (version list / set-current routes)
+
+**Publish:** `origin/sub/AST-2043/AST-2067-version-api`. Four authenticated routes: `GET|PUT /api/candidates/<cid>/artifacts/<catalog_key>/{versions,current}` and `GET|PUT /api/candidates/<cid>/rubric/<rubric_key>/<code>/{versions,current}`. Version map = AST-2066's uuid-keyed map. The JSON keys come back **alphabetical** (Flask `sort_keys`), so tests order versions by `position`, never by key order.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| 200 list + PUT (completion info line), real SQLite | `src/ui/api/api_candidate.py` | **`TestAst2067CandidateVersionRoutes::test_artifact_list_and_set_current_200`**, **`…::test_rubric_list_and_set_current_200`** |
+| AC7 cross-key guard (other key / other candidate / other code → 400, current unchanged) | same | **`…::test_artifact_cross_key_uuid_400_current_unchanged`**, **`…::test_rubric_cross_code_uuid_400_current_unchanged`** |
+| 404 missing candidate; PUT body 400; bad key 400; unexpected error → one ERROR log + 500 payload | same | **`…::test_missing_candidate_404`** (4), **`…::test_put_bad_body_400`** (10), **`…::test_bad_key_400`** (4), **`…::test_unexpected_error_logged_once_500`** (4) |
+
+New route lines are fully branch-covered for `LOCKED_AT_100`. **Fixture fix:** `tests/component/ui/conftest.py` `_DB_SCHEMA_FLAGS` gains `_rubric_vector_schema_ensured`; without it, the second real-SQLite rubric test in a run hits `no such table: rubric_vector`.
+
+**Broken / obsolete:** none. `tests/component/ui` shows the same 22 failures with and without AST-2067's two route files (they predate this ticket). No integration scenario hits these paths.
+
+**Manifest (test-child) — narrowed:**
+
+1. Candidate + rubric routes: `tests/component/ui/api/test_api_candidate.py::TestAst2067CandidateVersionRoutes`
+2. Job routes: `tests/component/ui/api/test_api_jobs.py::TestAst2067JobVersionRoutes` ([`api_jobs.md`](api_jobs.md) § AST-2067)
+3. Regression (AST-2066 core the routes call): [`../../core/candidate.md`](../../core/candidate.md) § AST-2066 manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst2067CandidateVersionRoutes \
+  tests/component/ui/api/test_api_jobs.py::TestAst2067JobVersionRoutes \
+  tests/component/data/database/test_artifacts.py::TestAst2066SetCurrentArtifact \
+  tests/component/data/database/test_rubric_vectors.py::TestAst2066RubricCriterionVersions \
+  tests/component/core/test_candidate.py::TestAst2066CandidateVersions \
+  tests/component/core/test_tracker.py::TestAst2066JobVersions \
+  -q
+```
+
+**Pass criterion:** 69 passed (40 AST-2067 + 29 AST-2066). Narrowed run, not the zero-arg harness / branch-lock gate.
