@@ -757,3 +757,66 @@ One file, `src/ui/frontend/src/App.css`, named in AST-2042's Component scope. Th
 - AST-2047 AC 4: each Light block declares exactly Dark's token names (now 39), and the Lights still differ pairwise on `--bg-deep`.
 - AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` in `App.css` outside `[data-theme]` blocks, and every `var(--x)` is defined in a token block.
 - Every non-heading `--accent-gold` use renders exactly as before in every palette.
+
+## Bug: AST-2065 — Theme Examples page never loads (UI config fetched from non-existent /api/system/ui_config)
+
+### As-is
+
+Tools → Theme Examples stays on "Loading..." forever, with no console error. `loadUiConfig` (`src/ui/frontend/src/lib/uiConfig.ts:29`) fetches `/api/system/ui_config`. The server answers with the SPA's `index.html` (status 200), `r.json()` throws, and the `.catch` silently sets `_uiConfig = { column_types: {} }`. That object has no `themes`, so `AdminThemeExamples` never leaves its loading branch.
+
+### To-be
+
+`loadUiConfig` fetches `/api/ui_config`, and Theme Examples renders its four palette panels. No frontend source fetches `/api/system/ui_config` any more.
+
+### Repro
+
+1. As admin, open `/admin/theme_examples`. It shows "Loading..." indefinitely.
+2. Flask test client (verified at `ftr/AST-2042-user-theme` tip `2fd5c63e7`):
+   - `GET /api/system/ui_config` → `200 text/html` (`<!doctype html>…`, from the `serve_react` catch-all in `src/ui/server.py:114`)
+   - `GET /api/ui_config` → `200 application/json` (`{"adhoc_import_picker_visible_rows":5,…}`)
+
+### Root cause
+
+`system_bp = Blueprint("system", __name__, url_prefix="/api")` (`src/ui/api/api_system.py:44`) with `@system_bp.route("/ui_config")` (`:197`), so the only real path is `/api/ui_config`. `uiConfig.ts` has used `/api/system/ui_config` since AST-647 (`4d332477c`), and the server's catch-all turns that miss into a 200 HTML page instead of a 404. Every `loadUiConfig` consumer has silently run on its fallbacks since then. AST-2047's "Codebase facts" repeated the wrong path, and its tests mock that same wrong URL (`test_AdminThemeExamples.test.tsx:29`), so they passed.
+
+### Proposed change
+
+Three one-line edits. Each replaces the string literal `"/api/system/ui_config"` with `"/api/ui_config"` and changes nothing else on the line:
+
+1. `src/ui/frontend/src/lib/uiConfig.ts:29`: `_uiConfigPending = api("/api/system/ui_config")` becomes `_uiConfigPending = api("/api/ui_config")`.
+2. `src/ui/frontend/src/components/ArtifactEditor.tsx:218`: `api("/api/system/ui_config")` becomes `api("/api/ui_config")`.
+3. `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx:57`: `api("/api/system/ui_config")` becomes `api("/api/ui_config")`.
+
+⚠️ **Decision — edits 2 and 3 included:** the ticket allows them if they are "the same one-line fix", and they are: same root cause, same literal, same silent fallback. Both files are in AST-2042's Component scope. Leaving them would keep two known-broken fetches of the same endpoint, side by side with the fixed one. If fix-board prefers the narrower fix, drop steps 2–3; step 1 alone fixes Theme Examples.
+
+⚠️ **Decision — no error state on the page:** `loadUiConfig`'s silent `.catch` fallback and Theme Examples' loading branch stay as they are. The ticket asks for the URL fix only. A missing `themes` key after a successful load is not a case this bug covers.
+
+4. **Verify:**
+   - `rg -n "/api/system/ui_config" src/ui/frontend/src` returns nothing.
+   - In `src/ui/frontend`: `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` shows no problem absent before the change.
+   - Manual (admin): `/admin/theme_examples` shows Dark, Light, Light (Parchment), and Light (Slate) panels.
+
+### Blast radius
+
+The URL fix makes every consumer receive the **real** `UI_CONFIG` for the first time since AST-647. These are visible behavior changes beyond Theme Examples:
+
+- **`ListPage` (every list page) and `AdminScheduledActions`:**
+  - `resolveFrozenDataColumns` falls back to `0`. The served `list_table_frozen_data_columns` is `2`, so list tables start freezing their first two data columns (unless a page passes an override; Scheduled Actions passes `FROZEN_DATA_COLUMNS`).
+  - `colTypeConfig` returns `null` today, so typed columns (`int`/`float`/`currency`/`date`/`datetime`, 18 typed column defs in `config.py`) start getting `UI_CONFIG.column_types` alignment and `formatCell` number/date formatting.
+  - `list_table_cell_truncate_chars` (30) equals its fallback, so there is no change there.
+- **`JobTitleText`:** `job_title_truncate_chars` (50) equals its fallback, so there is no change.
+- **`ArtifactEditor` (edit 2):** `experience_job_ui_fields` and `unsupported_resume_structure_message` come from `BUILD_CONFIG` instead of the component's hard-coded defaults.
+- **`ArtifactsBaseResumeContent` (edit 3):** `base_resume_accent_palette` is served (today it is always `[]`), so the accent palette choices appear.
+- **Tests that mock the old URL** and will stop matching:
+  - pages: `test_AdminThemeExamples`, `test_ArtifactsBaseResumeContent`, `test_JobsJobDetail`, `test_CompaniesWatchHistory`, `test_CompaniesWatchList`, `page-mocks.ts`
+  - components: `test_ArtifactEditor`, `test_ListPage`, `test_ListPage_ui_config_fail`, `test_ListPage_listTableLayout`, `test_JobTitleText`, `test_ContextTextPage`
+
+  Files that already match both URLs keep passing: `test-utils.tsx`, `test_CandidateProfile`, `test_AdminSessionCoverLetter`, `test_AdminAnthropicAdHoc`, `test_CandidateIntake`. Betty retargets the mocks (fix-board TESTS call). Engineers do not edit `tests/`.
+- **Sibling bug [AST-2064](https://linear.app/astralcareermatch/issue/AST-2064):** its grade-option rows read `theme_example_grade_sets` through this same `loadUiConfig`, so they render only once this fix is in.
+
+### What must still hold
+
+- `GET /api/ui_config` response shape is unchanged. No server edit.
+- `loadUiConfig` keeps its single-flight caching and its `.catch` fallback to `{ column_types: {} }`.
+- AST-2047 AC 2: no theme id literals in `.ts`/`.tsx`. AC 6: one panel per registry id with the shared sample, GET-only.
+- `CandidateProfile`, `AdminSessionCoverLetter`, `AdminAnthropicAdHoc`, `IntakePreamblePanel`, `IntakeTopicMenuPanel`, and `NavigationShell` already use `/api/ui_config` and are not touched.
