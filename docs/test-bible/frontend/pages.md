@@ -3633,3 +3633,49 @@ Vitest files above: all green.
 **Pass criterion:** items 1–5 hold. Narrowed runs, not the zero-arg harness.
 
 **Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2047-theme-registry-palettes:docs/test-bible/frontend/pages.md | shasum` (also `utils/config.md`, `ui/api/api_system.md`)
+
+---
+
+### AST-2048 · AST-2042 (save and apply the candidate's theme)
+
+**Publish:** `origin/sub/AST-2042/AST-2048-theme-save-apply`. `save_candidate_data` rejects any `theme` that is not a profile-selectable `UI_CONFIG["themes"]` id (`ValueError` → existing 400). `CandidateProfile.tsx` reads `default_theme` from its existing `/api/ui_config` fetch, **waits for it** before loading the candidate, and loads `theme` from `candidate_data.theme` (else the default). `CandidateContext.tsx` sets `<html data-theme>` from the selected candidate, removes it when none / no stored theme / unmount.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) — Theme select shows served default when none stored; choose Light → PUT body `theme: "light"`; reload from save response keeps Light (AC3) | `pages/CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`AST-2048: no stored theme loads the served default; …`**, **`AST-2048: stored theme loads selected`** |
+| Root `data-theme` from selected candidate; picker switch flips without reload; no theme / no candidates / unmount → no attribute (AC5/AC6 attribute half) | `contexts/CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-2048 data-theme follows the selected candidate`** (2) |
+| Allowlist: `dark` / `light` saved; `neon`, `light_parchment`, `light_slate`, `""`, `null`, list → `ValueError`, nothing saved (AC3/AC4) | `src/core/candidate.py` (`LOCKED_AT_100` — new lines fully branch-covered) | **`tests/component/core/test_candidate.py::TestAst2048ThemeAllowlist`** (8) — pointer [`../core/candidate.md`](../core/candidate.md) |
+| `PUT /api/candidates/<id>/data` with `neon` / `light_parchment` → 400, no DB write (AC4) | `src/ui/api/api_candidate.py` (unchanged) | **`tests/component/ui/api/test_api_candidate.py::…::test_update_rejects_unselectable_theme`** — pointer [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md) |
+
+**Broken / obsolete (revised this pass):** `test_CandidateProfile.test.tsx` — the shared `installProfileMocks` `/api/ui_config` response now carries `default_theme: "dark"` (the real served contract after AST-2047); without it the page waits forever and **17** cases stuck on "Loading...". Mocked profile shape gains the `theme` select (mirrors `DATA_SHAPES`). No other Vitest or pytest failure changed vs the same tree without AST-2048 (base = `origin/tests` + `origin/ftr/AST-2042-user-theme`). Pre-existing red unchanged: `CandidateProvider — AST-1311 … restores the persisted selection's Full Name after load`.
+
+**Not covered by component tests (jsdom has no cascade):** AC5/AC6 computed `body` background (`rgb(15, 11, 24)` on Dark, different on Light) — browser/UAT only. **Plan-documented tradeoff:** if `/api/ui_config` fails, Candidate Profile stays on "Loading..." (previously only the signature limits were lost) — no test pins this either way.
+
+**Finding (AST-2047, not this ticket):** `lib/uiConfig.ts` `loadUiConfig` fetches **`/api/system/ui_config`**; Flask only serves **`/api/ui_config`** (`system_bp` `url_prefix="/api"`), so at runtime `getUiConfig()?.themes` is undefined and **Theme Examples stays on "Loading..."**. § AST-2047's page test mocks `/api/system/ui_config` and cannot catch the mismatch. Flagged on the parent for Susan.
+
+#### QA test manifest (AST-2048)
+
+1. **New + revised tests (required, all green):**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx
+cd ../../.. && ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst2048ThemeAllowlist \
+  "tests/component/ui/api/test_api_candidate.py" -k "Ast2048 or unselectable_theme"
+```
+
+Expect `test_CandidateProfile` 19 passed / 1 skipped; `test_CandidateContext` all green except the pre-existing AST-1311 restore case; 9 pytest passed.
+
+2. **Regression (required):** `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py tests/component/ui/api/test_api_candidate.py` — failure set unchanged vs `origin/ftr/AST-2042-user-theme` (pre-existing reds only; none name theme).
+
+3. **AC5 `.tsx` hex half for this file:** `rg -n "#[0-9a-fA-F]{3,8}\b" src/ui/frontend/src/pages/CandidateProfile.tsx` returns nothing.
+
+4. **AC7:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+5. **AC5/AC6 browser (UAT):** Light candidate → `<html data-theme="light">` and body background ≠ `rgb(15, 11, 24)`; switch to a no-theme candidate → no attribute, `rgb(15, 11, 24)`, no reload.
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2048-theme-save-apply:docs/test-bible/frontend/pages.md | shasum` (also `frontend/contexts.md`, `core/candidate.md`, `ui/api/api_candidate.md`)

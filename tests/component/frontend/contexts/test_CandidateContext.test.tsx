@@ -505,3 +505,40 @@ describe("CandidateProvider — AST-1768 login-email candidate bind", () => {
     expect(byEmailCalls()).toHaveLength(0)
   })
 })
+
+describe("CandidateProvider — AST-2048 data-theme follows the selected candidate", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    document.documentElement.removeAttribute("data-theme")
+    resetStytchTestState()
+    mockedApi.mockReset()
+  })
+
+  // c1 stored Light, c2 has no theme → c2 falls back to :root Dark (no attribute).
+  const rows = [
+    { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { theme: "light" } },
+    { astral_candidate_id: "c2", state: "ACTIVE", candidate_data: {} },
+  ]
+  const root = () => document.documentElement.getAttribute("data-theme")
+
+  it("sets the stored theme, flips on picker switch without reload, and clears on unmount (AC5/AC6)", async () => {
+    const { result, unmount } = renderHook(() => useCandidateState(), { wrapper: titleProviders(rows) })
+    await waitFor(() => expect(result.current.selectedId).toBe("c1"))
+    await waitFor(() => expect(root()).toBe("light"))
+
+    act(() => result.current.setSelectedId("c2"))
+    expect(root()).toBeNull()
+
+    act(() => result.current.setSelectedId("c1"))
+    expect(root()).toBe("light")
+
+    unmount()
+    expect(root()).toBeNull()
+  })
+
+  it("no candidates loaded → no theme attribute", async () => {
+    const { result } = renderHook(() => useCandidateState(), { wrapper: titleProviders([]) })
+    await waitFor(() => expect(result.current.candidatesHydrated).toBe(true))
+    expect(root()).toBeNull()
+  })
+})
