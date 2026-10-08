@@ -444,3 +444,9 @@ python -c "import src.utils.config"                                             
 **Known pre-existing (not this ticket):** `tests/component/data/database/test_meteorites.py` fails collection on `origin/dev` (imports `METEORITE_STATES_RETENTION`, removed 2026-09-20) — hence the meteorite join test lives in `test_jobs.py`.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1970/AST-1974-jobs-nav:docs/test-bible/ui/api/api_jobs.md | shasum` (same command for `utils/config.md`, `ui/api/api_system.md`, `ui/api/api_meteorite.md`, `core/tracker.md`, `data/database/jobs.md`, `integration/README.md`).
+
+### AST-2067 · AST-2043
+
+`GET|PUT /api/jobs/<jid>/artifacts/<job_catalog_key>/{versions,current}`: 404 `{"error": "Not found"}` for a missing job; PUT body 400; a candidate key on the job route → 400 `not job-scoped`; AC7 (a `job_resume` uuid or another job's uuid on the `cover_letter` route → 400, current unchanged); an unexpected error logs one ERROR line (prefixed by the job's `candidate_id`, or `-`) and returns the 500 payload; a 200 PUT logs one completion line.
+
+**New:** **`TestAst2067JobVersionRoutes`** (14; real tracker/data on `sqlite_in_memory`, only `get_job` stubbed; new route lines fully branch-covered). Manifest: [`api_candidate.md`](api_candidate.md) § AST-2067 item 2.
