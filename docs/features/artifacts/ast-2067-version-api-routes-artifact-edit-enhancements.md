@@ -425,3 +425,11 @@ context_tokens≈58000
 - Chuckles: append artifact, `docs(AST-2067): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.
 - datt: **PROCEED** → UT after writeback.
 - Optional follow-up (out of Radia lane): align CI ruff gate with Susan’s TRY401 allowance or add targeted `per-file-ignores` / noqa policy so `test-child` and plan Verification language stay honest.
+
+## Resolution
+
+- **Date:** 2026-10-08 · **Reviewed tip:** `41d58f9a3` (Radia: CLEAN, no fix-now)
+- **Discuss 1, TRY401 allowance:** Susan had not answered, so I took Radia's Default. The six `logger.exception(…, type(exc).__name__, exc)` lines stay as they are, because they match the `stat.logging.error` Do example. The allowance is recorded in the Review section above, and TRY401 alone does not block User Testing. A repo-wide ruff ignore or noqa policy is out of scope for this ticket. To reverse: drop `type(exc).__name__, exc` (and the `%s: %s`) from the six messages.
+- **Discuss 2, `resume_structure` API parity:** Susan had not answered, so I took the Default. The API stays open (200), per the plan Decision, and AST-2068 does not call these routes for `resume_structure`. To reverse: add a one-line 400 for `candidate.artifacts.resume_structure` in both Stage 1 routes.
+- **Advisory:** nothing to act on. The sibling carry and the dual info logs are expected, as the plan notes.
+- **Product change:** none.
