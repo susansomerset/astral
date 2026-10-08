@@ -246,10 +246,10 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     raw 2-char code when the map is absent or incomplete. _render_pass_fail ignores vector names;
     _render_score requires rubric criteria with labels — callers guard with `if rubric_list` before scoring (AST-429).
     "_meta" in output_type determines whether metadata fields after grades are accepted;
-    trailing non-grade content on a grades-only line, and a segment whose confidence
-    digit disagrees with its letter (X must be 0, every other letter 1-5), are recorded
-    in "decode_failures" (id, pos, reason) and the line is skipped so the caller can
+    trailing non-grade content on a grades-only line, and an X segment with nonzero
+    confidence, are recorded in "decode_failures" (id, pos, reason) and the line is skipped so the caller can
     retry that entity; other per-line errors still raise (AST-1996).
+    A letter segment with confidence 0 is normalised to confidence 1 (AST-2053).
     "grades_encoded_notes" (do/get/like): non-segment tail rejoins to job["notes"] only (optional).
     """
     with_meta = "_meta" in output_type or output_type == "grades_encoded_prefilter_links"
@@ -367,11 +367,10 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
                     f"[{task_key}] grade X requires confidence digit 0, got {conf_d} in segment {seg!r} (line {line!r})"
                 )
                 break
-            if letter != "X" and conf_d not in (1, 2, 3, 4, 5):
-                bad_conf = (
-                    f"[{task_key}] non-X grade requires confidence 1-5, got {conf_d} in segment {seg!r} (line {line!r})"
-                )
-                break
+            # Sanctioned slip (astral.agent.confidence-bounds): models write {letter}0 for "no signal".
+            # {letter}1 scores identically and keeps the letter, so store that instead of failing the line.
+            if letter != "X" and conf_d == 0:
+                conf_d = 1
             grade_rows.append(
                 {"vector": vector_labels.get(code, code), "grade": letter, "confidence": conf_d}
             )
