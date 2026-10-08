@@ -1526,6 +1526,75 @@ AST-2057 is test-tree and bible only: it rewrites stale decode asserts, adds bug
 AST-2057 board-joan done — CANON: OK.
 ```
 
+
+## Radia review — AST-2057
+
+[code-rubric]
+
+**Ticket:** AST-2057  
+**Publish ref:** `08ee796487136c558a18a5bd9485ff0d6007ac6a` (`origin/sub/AST-2045/AST-2057-letter-conf0-tests`)  
+**Review base:** `origin/ftr/AST-2045-letter-conf0-normalize` @ `3d51b06c7271937474299f4599dca0761408317a` (AST-2053 on ftr)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — id resolved from `canon/directives/**` at ftr tip)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+
+*(Issue doc: canon limited to AST-2053’s statute; test-tree only — tests document and assert the sanctioned `{letter}0`→`{letter}1` decode exception, no contradictory carve-out.)*
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** `CANON: OK`; test/bible delta matches plan-fix **Proposed change** items 1–5.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — `TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1` pins AST-2053 **To-be**: production-shaped two-line payload with `CFC0`/`SSC0`/`TCC0` on line `000`; asserts both `job-0` and `job-1` in `jobs`; asserts `job-0` grade tuples `("CF","C",1)`, `("SS","C",1)`, `("TC","C",1)` (same letter, confidence **1**); asserts `"decode_failures" not in out`. Would fail pre-fix AST-2053 (`jobs` only `job-1`, `CFC0` in `decode_failures`) per bible red/green record — not tautological. *(First-line `[bug-repro]` comment absent in source; bible/manifest name the node — see advisory.)*
+- **## What must still hold — OK** — `test_ast1996_*` untouched; `test_rejects_bad_positions_and_records_trailing_meta` keeps bad-position raise + trailing `decode_failures`; rewrites only `0|CRX2` and `0|CRA0` per plan; `git diff` `src/` + `canon/` vs ftr is **empty** (empty `code(AST-2057)` publish commit confirms test-gap only).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry (merge-tests):** mandated diff also includes `tests/component/frontend/components/test_ArtifactEditor.test.tsx`, `test_ArtifactsBaseResumeContent.test.tsx`, and matching `docs/test-bible/frontend/*` rows from **AST-2056** / `origin/tests` — score as carry, not AST-2057 defect (per spawn brief).
+- **Bug-repro tagging:** `test_ast2053_letter_conf0_normalised_to_conf1` uses an AST-2053 repro comment, not a first-line `[bug-repro]` marker; bible § AST-2057 manifest lists it as **[bug-repro]** — cosmetic vs qa-fix machinery only.
+- **Boundaries:** bible documents pre-existing `test_agent.py` reds outside the `-k "TestDecodePayload or TestDecodeAndAuditBranches"` gate; plan scope respected.
+
+## What's solid
+
+- Plan-faithful rewrites of stale `CRA0` / `CRX2` asserts plus guard `test_ast2053_normalisation_boundaries` (6–9 trailing, `_notes` `CRF0`, vet `LTA0` raise).
+- Bible AST-2001 prose/row + new AST-2057 block align with tests and AST-2053 statute.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | AST-2045 mini-parent (live ftr) | **Review Posted** → clean-review shortcut → **User Testing**; `resolve-child` **skipped**. |
+
+**Recommended actions (downstream — not executed here):** Append artifact; `docs(AST-2057): Radia review — clean`; push sub; post slim upshot `--as radia`.
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 08ee79648) Bug-repro locks AST-2053
+```
+
+context_tokens≈N
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
