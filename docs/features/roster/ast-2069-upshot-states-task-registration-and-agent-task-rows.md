@@ -424,3 +424,16 @@ AC 1–2 → Stage 1; AC 4 → Stage 2; AC 3 → Stage 3. Parent AC 5–8 / 11�
 **Definition fidelity (R6):** Two files only; no runtime/core/UI creep. TASK_CONFIG `company_upshot` omits `scored` (per plan) so score-floor claim paths stay untouched. GAZER hop has no `fail_state` (parent Functional #2). Self-assessment / estimate note is reasonable; Linear already shows estimate 2.
 
 context_tokens≈38000
+
+## Review
+
+- **Branch:** `sub/AST-2054/AST-2069-upshot-states-registration`
+- **Stage 1:** `8a8ec1ccc` — `GET_UPSHOT` / `UPSHOT_READY` / `ERROR_UPSHOT` states; five `(X, "WATCH")` transitions rerouted to `GET_UPSHOT` plus the upshot pairs; locate/parse pass states → `GET_UPSHOT`; `ROSTER_CONFIG["company_upshot"]`, `company_data_keys["company_upshot"]`, `GAZER_CONFIG["fetch_company_culture_pages"]`
+- **Stage 2:** `fc5fa9549` — `TASK_CONFIG["company_upshot"]`; both keys in `_DISPATCH_COMPANY_ENTITY_TASK_KEYS`, `company_upshot` in `_DISPATCH_BATCH_CALL_MODE_ONE`, trigger branches in `_dispatch_trigger_state_for_task_key`
+- **Stage 3:** `4f9942662` — `agent_task.json` rows `fetch_company_culture_pages` (telescope, seq 10) and `company_upshot` (Estelle, seq 11); additions only
+- **Build notes:**
+  - All plan verify commands pass (ticket AC 1–4).
+  - `ruff check src/utils/config.py`: 94 findings, identical by code+message to `origin/dev` — none new.
+  - `origin/dev` picked up Susan's `agent_task.json` content update (`048d297b5`) before build; round-trip, key set and Company Roster `task_seq` re-verified unchanged.
+  - Live `dispatch_task` schedule rows for the two keys still need creating (Joan's discuss note) — out of scope here.
+  - No tests touched; coverage is Betty's `qa-child`.
