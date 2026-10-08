@@ -28,6 +28,7 @@
  * 13. Execution History
  * 14. Shared button roles
  * 15. Icon control
+ * 16. Theme Examples (AST-2042)
  */
 
 
@@ -2827,4 +2828,64 @@ input.side-tab-heading-editable:focus {
 .icon-control:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* === 16. Theme Examples (AST-2042) === */
+
+.theme-examples {
+  padding: 20px;
+}
+
+.theme-examples-status {
+  padding: 20px;
+  color: var(--text-primary);
+}
+
+.theme-examples-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+/* Each panel carries data-theme, so its own background/text come from that palette's tokens. */
+.theme-examples-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.theme-examples-label {
+  margin: 0;
+  font-size: 16px;
+  color: var(--accent-gold);
+}
+
+.theme-examples-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-examples-grade {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Toast and modal card are fixed/overlay chrome in the app; pin them into the panel flow here. */
+.theme-examples-panel .toast {
+  position: static;
+}
+
+.theme-examples-panel .modal-card {
+  width: auto;
+  max-width: none;
+  max-height: none;
 }
