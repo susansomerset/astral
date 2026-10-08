@@ -429,3 +429,10 @@ AC4→St1+St3+St4; AC5→no new stages (intro + existing save_artifact / sync_ru
 - **Recommendation:** Optional one-line manual verify after St3 set-current + save; Betty can cover in qa-child.
 
 context_tokens≈42000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2043/AST-2066-versioning-core`
+- **Build commits:** `321430c6b` (Stage 1), `4b2531211` (Stage 2), `2b19732fe` (Stage 3), `cb147dada` (Stage 4)
+- **Verified by hand (scratch DB, not committed):** each stage's Done when, plus AC 4 (one current row, no row or body change), AC 5 (an edit after a back move appends at the end, same-second rows ordered by `rowid`), AC 6 (V01 moves alone, importance carried), AC 7 (identical cover letter save adds one row, not two), and the cross-key / cross-code guards (`ValueError`, current unchanged).
+- **Build note:** `sync-child.sh --ftr AST-2043` skips the parent merge because the parent branch is `ftr/AST-2043-artifact-versions`. It is already an ancestor of this branch, so nothing was missed.
