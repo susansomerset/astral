@@ -548,3 +548,21 @@ e. **`_handle_slack_event_body`: private-channel gate.** Replace the comment lin
 - `resolve_slack_user`'s `contact.slack_username` stamp (AST-1105) and agent_data audit rows are untouched.
 - `run_contact_estelle_turn` return dict keeps its keys (`skill_results` is always `[]`).
 - No new artifact / `rubric_vector` write path, and no payload length cap.
+
+## Joan fix-board — AST-2061
+
+[board-joan]  CANON: OK
+
+AST-2061 board-joan done — CANON: OK.
+
+---
+
+**Triage notes (for Chuckles, not Linear):**
+
+Read the `## Bug: AST-2061` plan-fix block on `origin/sub/AST-2055/AST-2061-estelle-pinhole` (As-is / To-be / Repro / Root cause / Proposed change / Blast radius / What must still hold). Skimmed in-force corpus via `canon/docs/DIRECTIVES-DIRECTORY.md` and overlapping **active** directives/patterns (`patt.contact.command-intercept`, `stat.logging.info.contact`, `stat.logging.info.api`, `astral.layers.import-direction`, `astral.layers.core-vs-external-bright-line`, `astral.config.config-source-of-truth` / registry-not-literals, `patt.config.block`, `stat.core.decides-transitions` / dispatch meteorite eligibility). No `docs/canon-index.md` on this ref.
+
+**One question:** Does the proposed change conflict with or require updating any in-force directive?
+
+**Answer:** No. Retiring `create_contact_meteorite` and Estelle `skill_calls` narrows Contact to meteorite writes and read tasks; it does not contradict `patt.contact.command-intercept` (commands unchanged; skills remain an optional registry shape, now empty). `stat.logging.info.contact` still allows `action:-` when no skills run. `fetch_channel_type` in `src/external/slack.py` fits the external I/O bright line; config-only allowlists (`allowed_channel_types`, `_CONTACT_PINHOLE_HANDLERS`) fit registry-not-literals. No active statute mandates Contact ACL save skills (AST-1071 was feature scope, not a standing “skills must be populated” rule). `nh3` sanitization in core is not an I/O-layer violation. Parent AST-2055 To-be mention of artifact/`rubric_vector` writes is deferred in this child’s Boundaries — product scope on the ticket, not a canon amendment this fix must land.
+
+No F3 (`validate-plan` fix mode) canon work indicated from this triage pass.
