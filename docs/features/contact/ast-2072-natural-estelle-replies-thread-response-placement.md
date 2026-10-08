@@ -358,3 +358,17 @@ context_tokens≈28000
 ---
 
 [plan-rubric] PROCEED (Commit: c968b6df) placement helper, three files
+
+## Review
+
+Built on `origin/sub/AST-2050/AST-2072-estelle-thread-response`:
+
+- `08074ef9d` code(AST-2072): Stage 1 — `thread_response` config + assert, new reply strings, `post_message` `reply_broadcast`
+- `134981e6d` code(AST-2072): Stage 2 — `_contact_reply_placement`, known-recognition post removed, every reply site per `thread_response`
+
+Build notes:
+
+- **AC 1 grep is substring-unsafe.** `known_recognition_reply_text` is a substring of `unknown_recognition_reply_text` (which AC 13 keeps), so the literal `git grep -n "known_recognition_reply_text\|I know who that is" -- src` still prints the three `unknown_…` lines. Whole-word `git grep -nw "known_recognition_reply_text" -- src` returns nothing, and `I know who that is` / `Heard you` return nothing. Tests should match on the whole word.
+- AC 9 grep hits are exactly the three named in Stage 2 step 7's decision: the helper's return line, `anchor_ts` in `_run_contact_command`, and the paste-recovery lookup anchor.
+- Ruff: no new findings beyond the `Optional`/`Tuple` annotation style on the helper's signature, which matches every other signature in `contact.py`.
+- `origin/ftr/AST-2050` is not published yet; `validate-sub-log.sh --stage=build` was scoped against `dev` instead (status=ok).
