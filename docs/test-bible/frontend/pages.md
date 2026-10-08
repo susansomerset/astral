@@ -2601,7 +2601,7 @@ Base Resume Content passes `bodyShape="resume_content"` (drops `useCandidateResu
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Routed page (**§6c**) bodyShape + leaf Save | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577:`** |
+| Routed page (**§6c**) bodyShape + leaf Save (autosave since AST-2056) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577:`** |
 | Draft pattern (no write-operative link) | `canon/directives/draft/patt.artifact.ui-consistency.md` | same **`AST-1577: page and draft follow ui-consistency`** |
 
 **Broken / obsolete:** none — existing structure/print/accent cases still render via `bodyShape`.
@@ -3560,3 +3560,15 @@ Expect 54 passed and 1 failed (the baseline red above), with all six **`AST-1979
 **Bible shasums (after publish):** `git show origin/sub/AST-1971/AST-1979-created-col:docs/test-bible/frontend/pages.md | shasum`
 
 **AST-1982 (pointer):** Job Title cell on `JobsRecommended` (Ready + Review), `JobsProcessing`, `JobsSkipped` (both table variants), `JobsApplied`, and the Meteorites `job_title` column now renders `JobTitleText` (cut at 50 + `…`, portaled full-title tooltip). Page tests are named **`AST-1982 …`** and use the shared helper `tests/component/frontend/pages/job-title-cell.ts`. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1982.
+
+---
+
+### AST-2056 · AST-2041 (gap — Base Resume Content autosave; product AST-2051)
+
+**Publish:** `origin/sub/AST-2041/AST-2056-resume-autosave-tests`. Base Resume Content (`bodyShape="resume_content"`) section bodies **autosave after 2000ms**; no header Save/Cancel outside Generate review (AST-2051). Editor contract, new cases, red/green and manifest: **`docs/test-bible/frontend/components.md`** § AST-2056.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) bodyShape + leaf autosave PUT | `ArtifactsBaseResumeContent.tsx` → `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577 / AST-2051: wires bodyShape resume_content; autosave PUTs base_resume leaf (§6c)`** (retargeted from header Save; red pre-fix — Save still rendered) |
+
+**Pre-existing red, not this ticket:** **`AST-1577: page and draft follow ui-consistency`** — draft path moved to `canon/directives/active/`; name-skipped in the § AST-2056 manifest.
