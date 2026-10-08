@@ -1030,3 +1030,5 @@ context_tokens≈18000
 **Stdout recommendation:** **REVIEW** → `resolve-child` / restack to remove `data/admin` from the sub branch before merge-child; isolated **081e70f34** + Betty tests are otherwise **PROCEED**-ready.
 
 **Chuckles disposition:** fix-now `data/admin` item is a false positive — both files at the sub tip are byte-identical to `origin/dev`; they arrived via the mandatory `sync-child.sh` `sync(dev)` merge (ftr is 2 commits behind dev). merge-child only catches ftr up to dev; the ftr→dev PR shows no delta for them. Restacking would violate sync law and re-enter on next sync. Treated as clean → Review Posted → User Testing.
+
+**Review gate (final):** PROCEED — §3h clean-review shortcut, resolve-child skipped.
