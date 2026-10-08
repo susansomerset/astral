@@ -1,7 +1,8 @@
-"""Browser interaction — navigate, cookies, expand, generic wait_ready."""
+"""Browser interaction — navigate, cookies, expand, click-and-follow, generic wait_ready."""
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any, Dict
 
@@ -26,6 +27,60 @@ async def navigate(page, url: str) -> None:
         page.url,
         time.monotonic() - started,
     )
+
+
+class ClickTargetMissing(Exception):
+    """No <a> on the loaded page has this exact href attribute."""
+
+
+async def click_and_follow(page, href: str):
+    """Click the first <a> whose href attribute equals `href`; return the destination page.
+
+    Follows a same-tab navigation or a new-tab popup, whichever happens first.
+    Reuses page_goto_timeout_ms for the click and the navigation — no new caps.
+    """
+    _log.debug("Calling click_and_follow: [href=%s url=%s]", href, page.url)
+    nav_ms = settings.page_goto_timeout_ms
+    # Inside a CSS "…" string only backslash and double quote need escaping.
+    quoted = href.replace("\\", "\\\\").replace('"', '\\"')
+    anchor = page.locator(f'a[href="{quoted}"]')
+    # count() does not wait: a missing target fails now, not after a timeout.
+    if await anchor.count() == 0:
+        raise ClickTargetMissing(f"no <a href={href!r}> on {page.url}")
+    start_url = page.url
+    # Arm both waiters before the click so neither event can be missed.
+    popup = asyncio.ensure_future(page.wait_for_event("popup", timeout=nav_ms))
+    same_tab = asyncio.ensure_future(
+        page.wait_for_url(
+            lambda u: u != start_url, wait_until="domcontentloaded", timeout=nav_ms
+        )
+    )
+    try:
+        await anchor.first.click(timeout=nav_ms)
+        done, _ = await asyncio.wait(
+            {popup, same_tab}, return_when=asyncio.FIRST_COMPLETED
+        )
+    finally:
+        for t in (popup, same_tab):
+            if not t.done():
+                t.cancel()
+        # Retrieve every outcome so no "exception never retrieved" noise is left behind.
+        await asyncio.gather(popup, same_tab, return_exceptions=True)
+    if popup in done and popup.exception() is None:
+        dest = popup.result()
+    elif same_tab in done and same_tab.exception() is None:
+        dest = page
+    else:
+        # Plain Exception (never CancelledError) so run_scrape maps it to scrape_failed.
+        raise RuntimeError(f"click on {href!r} did not navigate within {nav_ms}ms")
+    await dest.wait_for_load_state("domcontentloaded", timeout=nav_ms)
+    await dest.wait_for_timeout(500)
+    _log.debug(
+        "Response from click_and_follow: popup=%s final_url=%s",
+        dest is not page,
+        dest.url,
+    )
+    return dest
 
 
 async def _try_dismiss_cookie_banner(page) -> bool:

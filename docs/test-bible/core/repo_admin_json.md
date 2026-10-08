@@ -785,3 +785,9 @@ Repro node ids: `test_config.py::TestAst1084EvaluateJdCriteria::test_qc_content_
 `TestAst787AgentRepoJsonSeed::test_repo_rows_match_fixture_repo_column_mapping` stays a pre-existing red (6-row fixture vs 7-row seed). **On `ftr` after AST-1956:** run the whole file — reds must match the `origin/dev` baseline (18 today), none new.
 
 **Integration:** none.
+
+### AST-2024 · AST-2022 (`fetch_relative_jd` catalog row)
+
+**New:** `TestAst2024FetchRelativeJdCatalogRow::test_row_shape_and_sequence` — row current; `agent_id` / Job Review group mirror `fetch_jd`; `task_seq` 3.5 sits directly after `fetch_jd`; unique `task_key_uuid`. Red pre-AST-2024 (no row).
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (`== 57` rows + `AST786_EXPECTED_TASK_KEYS`) was already red before this ticket (catalog grew past 57 on `origin/dev`). Whoever re-pins it must add `fetch_relative_jd`. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2024.

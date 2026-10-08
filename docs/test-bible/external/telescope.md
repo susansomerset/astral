@@ -129,3 +129,25 @@ Gazer batch + roster scrape manifests: **`docs/test-bible/core/gazer.md`** · **
 ./scripts/testing/run_component_tests.sh \
   tests/component/external/test_telescope.py::TestAst1849OneShotLoopTeardown -q
 ```
+
+---
+
+### AST-2023 · AST-2022 (Telescope click-then-capture — platform client)
+
+**Scope:** `_post_telescope(click_href=…)` adds `body["click_href"]` only when set; `_TelescopeQueue.submit` maps queue `error_class="click_target_missing"` → `PlaywrightInfraError(TELESCOPE_CLICK_TARGET_MISSING)` (deliberately outside `PLAYWRIGHT_INFRA_FAILURE_CLASSES`); new public `click_through_visible_text(list_url, href) -> (final_url, text)` — one job, no client retry. Service half + full manifest: [`service/telescope.md`](../service/telescope.md) § AST-2023.
+
+| Area | Component tests |
+| --- | --- |
+| Omitted option → pre-AST-2023 body key set exactly | `test_telescope.py::TestAst2023ClickThrough::test_post_telescope_without_click_href_body_unchanged` |
+| `click_href` forwarded | `…::test_post_telescope_forwards_click_href` |
+| Real `submit` maps `click_target_missing`; not an infra class | `…::test_submit_maps_click_target_missing` |
+| Control: `scrape_failed` still `telescope_job_failed` | `…::test_submit_scrape_failed_still_job_failed_control` |
+| `(final_url, text)` + body (`url`, `fields=["text"]`, `click_href`) | `…::test_click_through_returns_final_url_and_text` |
+| List text joined `\n\n`; missing keys → `("", "")` | `…::test_click_through_joins_list_text_and_defaults_empty` |
+| Missing target raises; exactly one `submit` (no retry) | `…::test_click_through_raises_on_missing_target_without_retry` |
+
+`submit` tests drive the real method with a fake asyncpg pool (`_get_db` / `_state` / `_maybe_wake` patched; waiter future resolved with a canned failed row).
+
+**Broken / obsolete:** none caused by this diff. **Pre-existing red on `origin/dev` (not AST-2023):** `TestTelescopePoolHttp` (×3) and `TestAst1750PostTelescopeDebugDump` patch the retired HTTP pool (`_pool.request` / `_TelescopePool`); the module is now a Postgres queue client. Not revised here — retire/retarget needs Susan's scope call.
+
+**`LOCKED_AT_100`:** `test_telescope.py` alone reaches 39% branch on `src/external/telescope.py` before AST-2023 and 45% with the AST-2023 nodes (the queue / fetch paths have no live tests since the HTTP→queue move); the full-tree lock gate could not be measured here because five unrelated modules fail collection on `origin/dev`. AST-2023's new branches are covered by these nodes.

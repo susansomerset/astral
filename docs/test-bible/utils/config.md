@@ -4770,3 +4770,38 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ### AST-2010 · AST-2009 (OpenRouter retry block + `PROVIDER_RATE_LIMIT`)
 
 **New:** `TestAst2010OpenRouterRetryConfig`. OpenRouter `concurrency == {"rate_limit_retries": 5, "backoff_base_seconds": 2.0, "exhausted_stops_batch": True}`. The DeepSeek block is unchanged, and only OpenRouter sets `exhausted_stops_batch`. The `PROVIDER_RATE_LIMIT` registry is pinned. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+
+### AST-2024 · AST-2022 (`RELATIVE_JOB_LINK` / `RELATIVE_LINK_FAIL` + `fetch_relative_jd` registration)
+
+**Scope:** two new `JOB_STATES`; `RELATIVE_JOB_LINK` added to the priors of `JD_READY`, `BOT_BLOCKED`, `JD_SCRAPE_FAIL{,_COOKIE,_MISSING,_CLOSED}`; `RELATIVE_LINK_FAIL` skipped (order / label / bulk retry → `RELATIVE_JOB_LINK`); processing section; `GAZER_CONFIG["fetch_relative_jd"]`; dispatch trigger / entity rules; `qualify_job_listings.relative_link_state`; `agent_task.json` row ([`core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2024). No routing / runner (AST-2025).
+
+| Area | Component tests |
+| --- | --- |
+| AC1 registry (exact priors, no `VALID_TITLE`, six JD outcomes, `NEW_RETRY` derived) | `TestAst2024RelativeJobLinkRegistry::test_ac1_registry` |
+| AC2 skipped section + bulk retry → `RELATIVE_JOB_LINK` (config + manifest) | `…::test_relative_link_fail_skipped_with_bulk_retry` |
+| AC2 processing section `Relative Job Link` between `PASSED_JOBLIST` / `JD_READY` | `…::test_relative_job_link_processing_section_after_passed_joblist` |
+| `GAZER_CONFIG` block; `error_states` = `fetch_jd` fail + error states; outcomes legal from trigger | `…::test_gazer_config_fetch_relative_jd` |
+| Dispatch `RELATIVE_JOB_LINK` / `job`; qualify key; no score floor, `updated_at` sort | `…::test_dispatch_rules_and_qualify_key` |
+
+**Broken / obsolete (revised this pass):**
+- `TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui` — exact `BOT_BLOCKED` priors now end with `RELATIVE_JOB_LINK`.
+- `TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` — fixture stays frozen; in-test AST-2024 delta (same pattern as the AST-2004 rename translation): six JD outcomes gain `RELATIVE_JOB_LINK{,_RETRY}`, four new targets pinned to exact derived priors.
+
+All 8 new/revised nodes red on pre-AST-2024 `config.py` / `agent_task.json`, green on the sub tip. Across `test_config.py` / `test_repo_admin_json.py` / `test_dispatcher.py` / `test_gazer.py` / `test_tracker.py` / `test_api_*` etc., the only failures this diff introduced were these two; the other ~149 reds are identical before and after. Frontend: Jobs pages read `build_state_ui_manifest()` (static `stateUiManifestFixture.ts` unaffected); no page file changed, §6c n/a. **Integration:** none.
+
+## QA test manifest
+
+1. **Gap + revised (required):**
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  tests/component/utils/test_config.py::TestAst2024RelativeJobLinkRegistry \
+  tests/component/utils/test_config.py::TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge \
+  tests/component/core/test_repo_admin_json.py::TestAst2024FetchRelativeJdCatalogRow \
+  -q
+```
+
+2. **AC1 one-liner (required):** the `python -c "…"` registry command from the ticket's AC1 exits 0 (set `ASTRAL_DB_DIR`).
+
+**Pass criterion:** both green — not zero-arg harness / branch-lock gate (pre-existing reds across these files are unchanged by AST-2024).
