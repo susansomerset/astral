@@ -495,3 +495,56 @@ context_tokens≈24000
 [code-rubric] REVIEW (Commit: 2c7b93bf4) branch carries foreign diffs
 
 > Chuckles: both fix-now items are an artifact of the review base — `origin/ftr` lagged `origin/dev`, so `ftr...sub` included dev commits `sync-child` merged in. `merge-tree(ftr, dev)` vs sub = only the 5 AST-2052 files. ftr refreshed from dev; review re-run.
+
+## Radia review-fix (AST-2052) — round 2
+
+[code-rubric]
+**Ticket:** AST-2052 (review-fix round 2)
+**Publish ref:** 3bf8bd5130aa39d9e252789702741a31127c7fd9
+**Ftr base:** 2c01045acfa459bdb941625ab3c5ace59a6a4d3b (ancestor of publish ref — confirmed)
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Overall:** CLEAN
+**Parent shape:** Normal (not orphaned)
+
+## Canon scores
+patt.entity.batch-processing | A |
+stat.logging.debug | B |
+
+## Column diff vs plan stage
+no plan-stage canon scores attached (Joan fix-board **CANON: OK** on patch intent)
+
+## Frame diff
+(none)
+
+## [bug-repro]
+**OK** — `test_agent_ast2052.py::TestAst2052EntityCallView::test_bug_repro_entity_read_is_one_each_mode_call` (`[bug-repro]`) asserts plan § Repro outcomes: CACHE_C omitted; NO_CACHE with preamble + B segment; compact JSON envelope with filtered `jobs[]` and retained `agent_performance`; failure RESPONSE with banner + JSON opener + B segment. Fails pre-fix `_slice_entity_block`-only entity read.
+
+## ## What must still hold
+**OK** — Traced on isolated diff `origin/ftr/AST-2028-technical-fail-modals-filter-by-entity-id...origin/sub/AST-2028/AST-2052-run-modal-each-mode-layout` (5 paths: `agent.py`, `test_agent_ast2052.py`, `test_agent_ast2030.py`, plan patch + bible):
+- **AST-2030 AC4/AC5/AC7:** repro + `TestAst2052StillHolds::test_other_chunk_dropped_and_legacy_whole`
+- **AST-2030 AC6 / story:** `test_story_keeps_bare_slice` — `get_entity_agent_story` still on `_slice_entity_block`
+- **Parent §7 / batch-wide (AC9):** `test_no_entity_id_batch_view_byte_identical` — `get_agent_data` without `entity_id` unchanged
+- **AST-2030 AC8 / no api/data/frontend/utils product change on this diff:** empty vs ftr for `src/ui/api/`, `src/data/`, `src/ui/frontend/`, `src/utils/`, other core modules
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+- **advisory** | Round 1 retracted | Foreign diffs (`contact`, `meteorite`, `api_system`, etc.) were base-artifact from stale `origin/ftr`; refreshed ftr + sync-child yields the intended 5-file fix surface only. Product logic unchanged from `2c7b93bf4` per spawn brief.
+- **advisory** | `stat.logging.debug` | `_entity_call_view` logs full `out`; no `Calling _entity_call_view: …` — slight variance, aligned with Joan fix-board.
+
+## What's solid
+- `_entity_call_view` + `get_agent_data` entity branch match plan § Proposed change (blank skip on pass-through and sliced rows; story path untouched).
+- `test_agent_ast2030.py` trimmed blank-row expectations (moved to AST-2052); remaining AC4/AC5/AC7 cases still valid for Each-mode NO_CACHE where preamble is empty at first tag.
+
+## Chuckles branching (read-only)
+**PROCEED** + normal parent → **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped).
+
+context_tokens≈12000
+
+[code-rubric] PROCEED (Commit: 3bf8bd513) Each-mode entity read OK
