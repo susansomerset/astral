@@ -757,3 +757,8 @@ One file, `src/ui/frontend/src/App.css`, named in AST-2042's Component scope. Th
 - AST-2047 AC 4: each Light block declares exactly Dark's token names (now 39), and the Lights still differ pairwise on `--bg-deep`.
 - AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` in `App.css` outside `[data-theme]` blocks, and every `var(--x)` is defined in a token block.
 - Every non-heading `--accent-gold` use renders exactly as before in every palette.
+
+### AST-2063 fix-board (F2)
+
+- **Betty — TESTS: OK.** App.css-only change; no existing test reads the six repointed heading rules or `--accent-gold` values. AST-2047 App.css contract tests already cover `--heading` declared in all four theme blocks, every `var()` resolving, and no hex outside theme blocks. Light-heading purple is a UAT visual check. Note: `test_AdminThemeExamples.test.tsx` has 5 tests (not 4) since the AST-2049 guard.
+- **Joan — CANON: OK.** Parent Canon Scope is none. No in-force statute governs theme token names, heading vs accent roles, or palette hex sets. `astral.ui.frontend-file-placement` satisfied (styles stay in App.css). Draft UI patterns (`patt.ui.shared-button-roles`, in-flight gold) are not in force and not amended.
