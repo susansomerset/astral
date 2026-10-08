@@ -838,3 +838,9 @@ Four files, all named in AST-2042's Component scope. Line anchors are at `ftr/AS
 - AST-2047 AC 2: no theme id string literal in `.ts`/`.tsx`. Each `[data-theme]` block id equals a `UI_CONFIG["themes"]` key, and vice versa.
 - AST-2047 AC 6: one panel per registry id, each with exactly one `.theme-examples-grade` row A–X. The page makes GET requests only.
 - `GET /api/system/ui_config` still serves `themes` and `default_theme` unchanged. The new key is additive.
+
+### Fix-board — Joan (AST-2064)
+
+[board-joan]  CANON: OK
+
+Parent **Canon Scope:** none. Overlap skim (`astral.config.config-source-of-truth`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.no-hardcoded-sets`, `astral.ui.frontend-file-placement`, `astral.layers.import-direction`): Light grade values stay in `App.css` token blocks; example-only sets live in `UI_CONFIG` and render as runtime inline custom properties (no `#…` literals in `.ts`/`.tsx` source), matching existing config-served UI precedent. No active statute requires theme colors to exist only in CSS blocks or forbids additive `UI_CONFIG` keys. **What must still hold** preserves AST-2047/2049 AC boundaries without a carve-out. F3 not indicated.
