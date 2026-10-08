@@ -16,6 +16,7 @@ aliases → fetch → inline classify → fan-out staging rows → archive; no G
 inbox owns fetch/archive.
 create_meteorite_job accepts optional stem= for legacy callers.
 create_contact_meteorite (AST-1517 contact-task create) wraps scrape-or-text → create.
+insert_slack_meteorite (AST-2034): raw Slack blob → NEW unclassified; run_stage_meteorite Ruth-classifies it.
 """
 from __future__ import annotations
 
@@ -875,6 +876,73 @@ def _insert_stage_rows(row_dicts: List[Dict[str, Any]]) -> Tuple[List[int], Opti
         _meteorite_state_info(row_id, row["state"])
     logger.debug("End stage row info loop after %s items", len(ids))
     return ids, None
+
+
+@_with_log_debug
+def insert_slack_meteorite(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Save one raw Slack blob at NEW, unclassified; Ruth classifies at the stage hop (AST-2034).
+
+    Soft-fails: never raises into Contact. Returns {ok, meteorite_id, error}.
+    """
+    cid = (candidate_id or "").strip()
+    body = payload.strip() if isinstance(payload, str) else ""
+    sid = (source_id or "").strip()
+    anchor = (thread_ts or "").strip()
+
+    def _miss(why: str) -> Dict[str, Any]:
+        _warn_item(cid or "insert_slack_meteorite", why, "This Slack blob is not being saved")
+        return {"ok": False, "meteorite_id": None, "error": why}
+
+    # First validation miss wins.
+    if not cid:
+        return _miss("candidate_id is required")
+    if not body:
+        return _miss("payload is required")
+    if not sid:
+        return _miss("source_id is required")
+
+    # Link vs text is Ruth's call at the stage hop — store the payload raw.
+    row = {
+        "candidate_id": cid,
+        "source_kind": "slack",
+        "source_id": sid,
+        "state": "NEW",
+        "content": body,
+        "link": None,
+        "classify_outcome": None,
+    }
+    try:
+        ids, mismatch = _insert_stage_rows([row])
+    except Exception as exc:
+        logger.exception(
+            "%s | insert_slack_meteorite %s\n  %s: %s\n  This Slack blob is not being saved",
+            cid, sid, type(exc).__name__, exc,
+        )
+        return {"ok": False, "meteorite_id": None, "error": str(exc)}
+    if mismatch or not ids:
+        return _miss(mismatch or "insert returned no id")
+    mid = int(ids[0])
+
+    # insert_meteorite_rows does not persist estelle_thread_ts; stamp it after insert.
+    if anchor:
+        try:
+            logger.debug("Calling update_meteorite: [id=%s, estelle_thread_ts=%s]", mid, anchor)
+            update_meteorite(mid, estelle_thread_ts=anchor)
+            logger.debug("Response from update_meteorite: ok")
+        except Exception as exc:
+            # Row is saved at NEW and will stage; only BOT_BLOCKED thread lookups lose the anchor.
+            logger.exception(
+                "%s | meteorite %s estelle_thread_ts\n  %s: %s\n  The row is saved at NEW without its Slack thread anchor",
+                cid, mid, type(exc).__name__, exc,
+            )
+    return {"ok": True, "meteorite_id": mid, "error": None}
 
 
 @_with_log_debug
