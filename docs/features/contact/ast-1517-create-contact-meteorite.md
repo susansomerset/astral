@@ -921,3 +921,114 @@ AST-2062 board-joan done — CANON: OK.
 **One question:** Does this plan-fix require changing or conflict with any in-force directive?
 
 **Answer:** No. Tests and bible rows encode AST-2061 product behavior already judged canon-neutral on AST-2061; they do not introduce new product rules or contradict active patterns (commands/skills registry shape, listen logging, external I/O placement). Betty-owned test-tree work matches role statutes; Katherine is not asked to land test paths. The spliced `config.py` exec test validates the shipped import-time assert without redefining canon. No F3 canon landing indicated.
+
+## Radia review — AST-2062
+
+[code-rubric]
+**Ticket:** AST-2062
+**Publish ref:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests` @ `20fc3341b` (tip under review; qa-fix / `[bug-repro]` land @ `c904c7725`, merge-tests @ `91220f994`)
+**Diff base:** `origin/ftr/AST-2055-estelle-pinhole...origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`
+**Product:** no `src/` delta (0 bytes). Intended delta: `tests/**`, `docs/test-bible/**`, issue-doc patch on `docs/features/contact/ast-1517-create-contact-meteorite.md`.
+**Corpus:** `4d5db7332d81afd9a496ed8ad234971d458c1700` (`canon/` at worktree tip; no `docs/canon-index.md` on ref)
+**Overall:** FIX-NOW
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — eight AST-2061 repros on the publish ref pin concrete To-be behavior (not tautologies); each should fail on pre-fix product (`6b00d8c5f` / pre-AST-2061) and pass against ftr with AST-2061 shipped:
+
+  | Area | Test | What it pins |
+  |------|------|----------------|
+  | Job leak | `TestAst2061NoContactJobWrite::test_contact_markup_never_reaches_create_meteorite_job` | `create_meteorite_job` not called; dispatch returns `[]` for retired `create_contact_meteorite` markup |
+  | Candidate write | `TestAst1073ContactEstelleTurnLoop::test_ast2061_skill_calls_never_write_candidate` | `run_contact_skill` / `save_candidate_data` not called; `skill_results == []`; ACL header absent from live prompt |
+  | Sanitize (insert) | `TestAst2061ContactSanitize::test_insert_slack_meteorite_stores_sanitized_content` | stored `content == "Senior Eng"` from markup/entity payload |
+  | Sanitize (paste) | `TestAst2061ContactSanitize::test_apply_paste_drops_script_content` | `content == "Senior Eng"` (not regex leftover `alert(1)`) |
+  | Sanitize (land) | `TestAst2061ContactSanitizeEntry::test_land_blob_unwrapped_then_sanitized` | exact staged blob after unwrap + nh3 |
+  | Sanitize (paste path) | `TestAst2061ContactSanitizeEntry::test_slack_paste_unwrapped_before_apply_paste` | `content == "Full JD https://x.io/j?a=1&b=2"`, state `READY` |
+  | Public channel | `TestAst2061PrivateChannelGate::test_public_mention_refused_no_command_turn_or_save` | `accepted=False`, `channel_not_private`; resolve/command/paste/turn/post not called |
+  | Registry | `TestAst2061ContactPinholeConfig::test_create_contact_meteorite_retired` | task key absent from `CONTACT_TASK_CONFIG` |
+
+  Supporting (not all tagged `[bug-repro]`): autouse `_ast2061_private_channel_default`; `TestAst2061FetchChannelType`; pinhole spliced-exec assert; `test_mpim_mention_refused` encodes product decision that `mpim` ∉ allowlist.
+
+- **## What must still hold — OK** (plan § AST-2062, conditional on AST-2061 on ftr):
+  - Manifest retains `TestAst2035ContactCommandIntercept`, `TestAst2034InsertSlackMeteorite`, `TestAst1561ApplyPaste` — regression guard for intercept + NEW insert + paste shapes under sanitize.
+  - No test pins double-encoded sanitize residual or payload length cap.
+  - Retired names only appear as **absent/unknown** (`create_contact_meteorite` in dispatch repro; no live `save_candidate_*` exercise — fake `save_profile_field` / `sample_skill`).
+  - `test_repo_admin_json.py` **unchanged** on diff (matches plan §5; Linear `## Component scope` still lists it — stale ticket text only).
+
+## Canon scores
+
+**Frozen list:** Linear AST-2062 Description has **no `## Citations` / frozen canon ids** (same fix-lane pattern as AST-2061).
+
+*(No directive ids on the frozen list — zero graded rows.)*
+
+**Notes:** Fix-board Joan **CANON: OK**; tests encode already-reviewed AST-2061 product. No Canon Scope ESCALATE from diff content.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan fix-board only)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+- **Location:** `data/admin/agent.json`, `data/admin/agent_task.json` on `origin/sub/.../AST-2062-estelle-pinhole-tests` (commits `33f5c0b1c`, `048d297b5`; not in `c904c7725` qa-fix)  
+  **Finding:** Plan blast radius and ticket Boundaries require **tests + bible only; no `data/`**. Diff rewrites agent catalog (e.g. Grace `model_id` / `quantization`, prompt blocks) — unrelated to Estelle pinhole coverage and rides in via post–`merge-tests` sync/agent commits.  
+  **Recommendation:** Before merge to `ftr`, **revert `data/admin/*` to `origin/ftr/AST-2055-estelle-pinhole`** (or drop those two commits from the publish ref). Do not land agent-catalog churn on this test-gap child.
+
+### discuss
+
+- **Location:** Linear AST-2062 `## Component scope` vs diff  
+  **Finding:** Ticket lists `test_repo_admin_json.py` as modified; plan §5 says no change; diff agrees with plan.  
+  **Default:** Leave file untouched; optional Linear scope tidy for Chuckles (process only).
+
+- **Location:** Linear AST-2062 Description  
+  **Finding:** No frozen canon list (same as AST-2061).  
+  **Default:** Proceed on plan-fix + board bar once fix-now item cleared.
+
+### advisory
+
+- **Location:** Sub-branch history (`8aadab7a6 sync(dev)`, agent commits)  
+  **Finding:** Extra non-test commits widen review surface; Betty’s `test(AST-2062)` + `merge-tests` commit is the intended product of qa-fix.  
+  **Recommendation:** Chuckles: when appending Radia artifact, prefer citing `c904c7725` for test intent; tip `20fc3341` includes out-of-scope `data/` until reverted.
+
+- **Location:** `docs/features/contact/ast-1517-create-contact-meteorite.md` on sub  
+  **Finding:** Large doc append (plan + board + prior AST-2061 Radia) is normal fix-lane doc carry; not a test-tree violation.
+
+## What's solid
+
+- Repro-first design matches plan fixtures (public `app_mention`, sanitize payloads, skill_calls, retired task key).
+- Channel gate tests fail-closed on lookup error; `event.channel_type` skips lookup; DM `message` not re-gated.
+- Config pinhole test splices **real** `config.py` source — does not duplicate assert predicate.
+- `TestAst2061FetchChannelType` maps `is_im` / `is_mpim` / `is_private` / `is_group` per plan table.
+- No `src/` on three-dot diff; AST-2061 product assumed on ftr for green manifest.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (fix-now: `data/`) | Normal (AST-2055 ftr) | → **Review Posted** → **`resolve-child`** (revert or excise `data/admin/*` on sub) → re-run manifest → **User Testing** after clean Radia pass |
+
+**Do not** merge this sub to `ftr` with `data/admin` deltas from `33f5c0b1c` / `048d297b5`.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+1. Append artifact; `docs(AST-2062): Radia review — findings`; push on sub after engineer strips `data/`.
+2. Post slim upshot `--as radia` (REVIEW until `data/` reverted).
+3. Spawn **`resolve-child`** for Katherine/Betty: revert `data/admin/agent.json` and `data/admin/agent_task.json` to ftr tip; keep `c904c7725` test/bible commits.
+4. Optional: trim misleading `test_repo_admin_json.py` line from Linear scope on next doc pass.
+
+context_tokens≈24000
+
+[code-rerubic] REVIEW (Commit: 20fc3341) drop data/admin churn
+
+Fix typo in upshot - should be [code-rubric] not [code-rubtic]
+
+[code-rubric] REVIEW (Commit: 20fc3341) drop data/admin churn
+
+### Chuckles adjudication — fix-now `data/admin/*`
+
+Not a defect. `33f5c0b1c` / `048d297b5` are Susan's own commits already on `origin/dev` (and `origin/main`), merged into this sub by `sync-child.sh`'s routine `sync(dev)` (`8aadab7a6`). The three-dot diff vs `ftr` shows them only because `ftr` has not absorbed `dev` since dispatch. `git diff origin/dev <sub> -- data/admin/` is empty, so landing `ftr` changes nothing there. Reverting them as recommended would undo Susan's `dev` work. No resolve-child; the remaining items are discuss/advisory only. Clean-review shortcut (do-all-the-things §3h) → User Testing after merge-tree dry-run.
