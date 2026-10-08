@@ -118,3 +118,79 @@ Dispatch blocked — what's missing:
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+---
+
+## Bug: AST-2056 — tests for resume editor autosave
+
+Parent: AST-2041. This is the test-gap sibling of AST-2051, filed from Betty's `[board-betty] TESTS: REVISE` on AST-2051. The product contract is in `## Bug: AST-2051` (merged ahead of this block on `ftr/AST-2041-resume-autosave`). Only the test tree and the bible change, and Betty lands them in qa-fix. The engineer touches no product src or test files on this ticket.
+
+### As-is
+
+The component tests for the structure-mode and jobPersistence resume editors persist edits by clicking the header **Save** outside Generate review. No test covers resume-body autosave. No test covers the AST-2051 guards: no autosave during review, keeping dirty while an autosave is in flight, and skipping `onSaved` on autosave ticks.
+
+### To-be
+
+The resume-editor cases persist via autosave (fake timers, advance `AUTOSAVE_MS`, assert the PUT), and assert that Save/Cancel is absent outside review. New cases lock the AST-2051 contract. They are red against pre-fix product and green once AST-2051 lands (`[bug-repro]`). The bible entries describe autosave instead of header Save for the resume editors.
+
+### Repro
+
+Against the AST-2051 product change, these header-Save clicks find no button:
+
+- `tests/component/frontend/components/test_ArtifactEditor.test.tsx` cases:
+  - AST-553 job persistence PUT (~L278)
+  - AST-996/AST-1351 experience array Save (~L555)
+  - AST-1351 legacy experience Save aborts (~L618)
+  - AST-1382 content Save bundles `resume_structure` (~L1100)
+  - AST-1476 page-break + content Save (~L1176)
+  - AST-1410 no-snapshot Cancel re-GET (~L1265)
+  - AST-1480 rename + Save (~L1307)
+  - AST-1593 job_resume Save (~L1529)
+  - AST-1480 structure bodies editable + Save (~L1572)
+  - AST-1577 bodyShape resume_content Save (~L1664)
+- `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx`: AST-1577 "Save PUTs base_resume leaf" (~L890).
+
+### Root cause
+
+These tests encode the pre-AST-2051 contract (explicit header Save/Cancel on `fixedFields || jobPersistence`), which AST-2051 deliberately reverses for resume editors.
+
+### Proposed change
+
+Betty, in qa-fix. Test tree and bible only.
+
+1. **Retarget to autosave** (`test_ArtifactEditor.test.tsx`): the cases listed in Repro, except AST-1410. Each one:
+   - uses `vi.useFakeTimers()`
+   - makes its edit
+   - asserts no `Save` button in the header
+   - calls `vi.advanceTimersByTime(AUTOSAVE_MS)` (2000) and flushes promises
+   - asserts the same PUT URL/body the case asserts today. For the AST-1351 legacy case, assert no PUT plus the unsupported-message error toast.
+2. **AST-1410 Cancel re-GET**: retarget from the `resume_content` structure-mode jobPersistence editor to a `shapesKey` + `jobPersistence` editor (cover-letter shape). That is now the only non-review Cancel path.
+3. **AST-1577 page case** (`test_ArtifactsBaseResumeContent.test.tsx` ~L890): same autosave retarget, asserting the PUT to `/api/candidates/<id>/data` with the `base_resume` leaf.
+4. **New cases** (`test_ArtifactEditor.test.tsx`):
+   1. **Structure-mode body edit autosaves.** Edit a body, then:
+      - no Save/Cancel; status text shows "Unsaved changes"
+      - no PUT before `AUTOSAVE_MS`
+      - exactly one PUT after it
+      - "All changes saved" afterward
+   2. **JobPersistence body edit autosaves.** Same assertions against `PUT /api/jobs/<id>/artifacts/<key>`.
+   3. **Generate review keeps Save/Cancel.** After Generate resolves on base resume, Save and Cancel render. Advancing timers fires no PUT.
+   4. **No autosave during review (AST-905).** Edit a body, then start Generate before `AUTOSAVE_MS` elapses. Advance timers while review is open: no PUT fires, and Save/Cancel still render.
+   5. **In-flight autosave keeps dirty.** Make the first autosave PUT a deferred promise. Make a second edit, then resolve the first PUT. The status stays "Unsaved changes". Unmounting before the second timer fires still PUTs the second edit.
+   6. **`onSaved` only on unmount flush.** An autosave PUT on jobPersistence does **not** call `onSaved`. Edit again and unmount before the timer fires: the flush PUT **does** call `onSaved`.
+5. **Bible**: update the ArtifactEditor and ArtifactsBaseResumeContent rows in `docs/test-bible/frontend/components.md` and `docs/test-bible/frontend/pages.md`. They should say "autosave after AUTOSAVE_MS, Save/Cancel only in Generate review" for resume editors, and list the new cases.
+
+### Blast radius
+
+These suites stay untouched:
+
+- the `shapesKey` fixed-shape Cancel case (~L228)
+- the rubric/criteria review-mode Save cases
+- the `JobAnalysisReportModal` suite (it never clicks header Save on Job Resume)
+
+Fake timers must be restored per case (`vi.useRealTimers()` in `afterEach`) so the `findBy*` polling in neighboring cases isn't stalled.
+
+### What must still hold
+
+- Every retargeted case keeps its original assertion on the PUT payload, especially the AST-1382/AST-1476 `resume_structure` bundling and the AST-1593 job leaf key. Only the trigger changes (Save click becomes the timer).
+- No product src on this ticket. AST-2051 owns `ArtifactEditor.tsx`.
+- The new cases are red on pre-AST-2051 product and green after it lands.
