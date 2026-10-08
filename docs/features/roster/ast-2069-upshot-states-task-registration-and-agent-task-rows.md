@@ -390,3 +390,34 @@ All edits are in `src/utils/config.py`.
 ## Estimate
 
 Confirm Chuckles estimate: 3 — revise to 2 because it's config-only registration across known registries plus one authored prompt, with no runtime code or schema change.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2069
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** `origin/sub/AST-2054/AST-2069-upshot-states-registration` @ `812c7e6cd3d632d1b3c66a7e9d44ad02249630e8`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+| patt.task.dispatch-retry | A | | |
+| stat.dispatch.entity-state-bound | A | | |
+
+## Traceability
+
+AC 1–2 → Stage 1; AC 4 → Stage 2; AC 3 → Stage 3. Parent AC 5–8 / 11–14 N/A (runtime hops, grades, API/UI — AST-2070/2071). Parent AC 9–10 align with child AC 3–4.
+
+## Findings
+
+**acceptable** — `fetch_company_culture_pages` is a documented plan decision (parent never named the GET_UPSHOT fetch key); mirrors `fetch_job_pages` / `fetch_relative_jd` registration and is called out for AST-2070 consumption.
+
+**acceptable** — Interim mismatch: `ROSTER_CONFIG` pass states → `GET_UPSHOT` while `roster.py` still hardcodes `"WATCH"` until AST-2070. Plan bounds this to epic `ftr` rollup before `dev`; consistent with registration-only scope.
+
+**discuss** — Live `dispatch_task` rows are explicitly out of scope (Susan/admin). Config + `agent_task.json` seed satisfy AC 4 at import time; ops must still create schedule rows before ticks claim the new hops — same class of gap as other roster registrations, worth a single prep-uat reminder, not a plan defect.
+
+**acceptable** — Stage 1 transition check matches current `origin/dev` surface: exactly five `(X,"WATCH")` tuples to reroute; appended upshot path + `ERROR_UPSHOT` terminal state follow `ERROR_GAZE` / `retry_of` precedents.
+
