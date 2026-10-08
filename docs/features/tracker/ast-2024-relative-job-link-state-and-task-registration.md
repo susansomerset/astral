@@ -288,3 +288,50 @@ and `RELATIVE_LINK_FAIL` in `skipped.section_order` / `section_labels` /
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2024
+**Overall:** APPROVED
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Publish ref:** `sub/AST-2022/AST-2024-relative-job-link-state` @ `201426ea0`
+
+## Canon scores
+
+astral.dispatch.entity-state-bound | A | | `fetch_relative_jd` → `job` / `RELATIVE_JOB_LINK` via `_dispatch_*` + real `JOB_STATES` keys; mirrors `fetch_jd`; no TASK_CONFIG override path
+patt.entity.batch-criteria | A | | `fallback_batch_size` only in `GAZER_CONFIG`, labeled fallback; Stage 2 asserts `updated_at` sort and no score floor on `RELATIVE_JOB_LINK`
+
+## Traceability
+
+AC1 → Stage 1 (registry + skipped map + prior edits, AC1 command); AC2 → Stage 1 steps 4–7 + manifest check; “Scheduled Actions `job` / `RELATIVE_JOB_LINK`” → Stage 2 (`_dispatch_*`, `agent_task.json` row); parent AC3–8 N/A (AST-2024 Boundaries).
+
+### discuss — Linear assignee at fetch time
+
+- **Location:** `linear_proxy get-issue` (Plan Ready, assignee Ada Lovelace).
+- **Finding:** validate-plan §1 expects Joan assigned for the gate; spawn still requested review.
+- **Recommendation:** Chuckles assign Joan for the pass, then restore Ada after upshot (workflow only; plan substance unaffected).
+
+### discuss — Task key `fetch_relative_jd`
+
+- **Location:** Plan ⚠️ Decision — task key name.
+- **Finding:** Parent/child Scope never literalizes the key; plan fixes `fetch_relative_jd` and binds AST-2025 to the same string.
+- **Recommendation:** Susan/Archie confirm the name once; if changed, one-string sweep per plan note. Not a plan defect if name is accepted.
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan structure (Estimate confirm only).
+- **Finding:** R6 self-assessment checklist has nothing to grade; two-stage registry work is explicit in stages and verify commands.
+- **Recommendation:** Optional self-assessment for build/review parity; not blocking.
+
+### acceptable — Parent AC7 “manual run claims…” deferred
+
+- **Location:** Boundaries vs parent epic AC7.
+- **Finding:** Claim/process/release behavior is AST-2025 runner scope; this child only registers states, UI manifest inputs, dispatch defaults, and catalog row — consistent with child partition.
+- **Recommendation:** None for AST-2024.
+
+**R6 (summary):** Definition fidelity for parent child #2 (registry + task registration + UI labels + picker meta). Files/stages match Scope (`config.py`, `agent_task.json` only). `fail_state` / `error_states` split for click-through documented and aligned with pipeline. `agent_task.json` splice discipline matches seed-edit hazards. No `fix-now` findings.
+
+context_tokens≈52000
+
+`[plan-rubric] PROCEED (Commit: 201426ea0) registry and dispatch registration`
