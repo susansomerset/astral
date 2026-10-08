@@ -20,9 +20,10 @@ companies_bp = Blueprint("companies", __name__, url_prefix="/api/companies")
 
 
 def _flatten_for_view(company: dict) -> dict:
-    """Lift prefilter_company_notes from company_data to top-level for column display."""
+    """Lift prefilter_company_notes and company_upshot from company_data to top-level for display."""
     cd = company.get("company_data") or {}
     company["prefilter_company_notes"] = cd.get("prefilter_company_notes", "")
+    company["company_upshot"] = cd.get("company_upshot", "")
     return company
 
 
