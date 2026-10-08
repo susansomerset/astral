@@ -557,6 +557,112 @@ class TestAst1849OneShotLoopTeardown:
         assert fake_db.close.await_count == 0
 
 
+class _ResolvingWaiters(dict):
+    """submit() registers its future here; resolve it at once with a canned job row."""
+
+    def __init__(self, row: dict[str, Any]) -> None:
+        super().__init__()
+        self._row = row
+
+    def __setitem__(self, key: str, fut: asyncio.Future) -> None:
+        super().__setitem__(key, fut)
+        fut.set_result(self._row)
+
+
+# Branches: _post_telescope body without / with click_href; submit maps
+# click_target_missing → TELESCOPE_CLICK_TARGET_MISSING (not infra), other classes unchanged;
+# click_through_visible_text str / list / missing text, single job, error propagates.
+class TestAst2023ClickThrough:
+    LIST = "https://co.example/jobs"
+    DEST = "https://ats.example/job/1"
+
+    @staticmethod
+    def _stub_pool(monkeypatch: pytest.MonkeyPatch, **submit_kw: Any) -> AsyncMock:
+        submit = AsyncMock(**submit_kw)
+        monkeypatch.setattr(pw_mod, "_pool", SimpleNamespace(submit=submit))
+        return submit
+
+    @pytest.mark.asyncio
+    async def test_post_telescope_without_click_href_body_unchanged(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        submit = self._stub_pool(monkeypatch, return_value={"final_url": self.LIST})
+        await pw_mod._post_telescope(self.LIST, fields=["text"])
+        body = submit.await_args.args[0]
+        # Pre-AST-2023 key set exactly — no click_href key when the option is omitted.
+        assert set(body) == {"url", "fields", "expand", "wait_ready", "debug"}
+
+    @pytest.mark.asyncio
+    async def test_post_telescope_forwards_click_href(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        submit = self._stub_pool(monkeypatch, return_value={"final_url": self.DEST})
+        await pw_mod._post_telescope(self.LIST, fields=["text"], click_href="/jobs/1")
+        assert submit.await_args.args[0]["click_href"] == "/jobs/1"
+
+    @staticmethod
+    async def _submit_failing(monkeypatch: pytest.MonkeyPatch, error_class: str) -> pw_mod.PlaywrightInfraError:
+        """Drive the real _TelescopeQueue.submit to a failed row with this error_class."""
+        monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
+        conn = MagicMock()
+        conn.execute = AsyncMock()
+        conn.transaction = MagicMock(return_value=AsyncMock())
+        db = MagicMock()
+        db.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=conn)))
+        q = pw_mod._TelescopeQueue()
+        row = {"status": "failed", "error_class": error_class, "error": "detail"}
+        monkeypatch.setattr(q, "_get_db", AsyncMock(return_value=db))
+        monkeypatch.setattr(q, "_state", lambda: SimpleNamespace(waiters=_ResolvingWaiters(row)))
+        monkeypatch.setattr(q, "_maybe_wake", AsyncMock())
+        with pytest.raises(pw_mod.PlaywrightInfraError) as ei:
+            await q.submit({"url": "https://co.example/jobs", "click_href": "/x"})
+        return ei.value
+
+    @pytest.mark.asyncio
+    async def test_submit_maps_click_target_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        err = await self._submit_failing(monkeypatch, "click_target_missing")
+        assert err.failure_class == pw_mod.TELESCOPE_CLICK_TARGET_MISSING == "telescope_click_target_missing"
+        # Site outcome, not infra: must stay out of the infra class set.
+        assert pw_mod.TELESCOPE_CLICK_TARGET_MISSING not in pw_mod.PLAYWRIGHT_INFRA_FAILURE_CLASSES
+
+    @pytest.mark.asyncio
+    async def test_submit_scrape_failed_still_job_failed_control(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        err = await self._submit_failing(monkeypatch, "scrape_failed")
+        assert err.failure_class == "telescope_job_failed"
+
+    @pytest.mark.asyncio
+    async def test_click_through_returns_final_url_and_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        submit = self._stub_pool(monkeypatch, return_value={"final_url": self.DEST, "text": "JD body"})
+        assert await pw_mod.click_through_visible_text(self.LIST, "/jobs/1") == (self.DEST, "JD body")
+        body = submit.await_args.args[0]
+        assert body["url"] == self.LIST
+        assert body["fields"] == ["text"]
+        assert body["click_href"] == "/jobs/1"
+
+    @pytest.mark.asyncio
+    async def test_click_through_joins_list_text_and_defaults_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub_pool(monkeypatch, return_value={"final_url": self.DEST, "text": ["a", "", "b"]})
+        assert await pw_mod.click_through_visible_text(self.LIST, "/j") == (self.DEST, "a\n\nb")
+        self._stub_pool(monkeypatch, return_value={})
+        assert await pw_mod.click_through_visible_text(self.LIST, "/j") == ("", "")
+
+    @pytest.mark.asyncio
+    async def test_click_through_raises_on_missing_target_without_retry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        submit = self._stub_pool(
+            monkeypatch,
+            side_effect=pw_mod.PlaywrightInfraError(pw_mod.TELESCOPE_CLICK_TARGET_MISSING, "no anchor"),
+        )
+        with pytest.raises(pw_mod.PlaywrightInfraError) as ei:
+            await pw_mod.click_through_visible_text(self.LIST, "/gone")
+        assert ei.value.failure_class == pw_mod.TELESCOPE_CLICK_TARGET_MISSING
+        # One Telescope job — no client-side retry loop.
+        assert submit.await_count == 1
+
+
 # Branches: no platform playwright module (AST-1726 AC6).
 class TestPlaywrightModuleGone:
     def test_src_external_playwright_import_fails(self) -> None:
