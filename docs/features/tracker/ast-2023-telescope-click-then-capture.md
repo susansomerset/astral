@@ -330,3 +330,12 @@ AC4 → Stage 1 (`click_href`, `click_target_missing`, `worker._retry_delay`) + 
 context_tokens≈42000
 
 Slim upshot: `[plan-rubric] PROCEED (Commit: 3cf6c69) click-then-capture plan ready`
+
+## Review
+
+- **Branch:** `sub/AST-2022/AST-2023-telescope-click-capture`
+- **Stage 1:** `7ebf754` — service `click_href`, `click_and_follow`, `click_target_missing` non-retried
+- **Stage 2:** `990790e` — client forwards `click_href`, `TELESCOPE_CLICK_TARGET_MISSING`, `click_through_visible_text`
+- **Build notes:** worker class is `QueueWorker` (plan/ticket said `Worker`); edited its `_retry_delay` as planned.
+  `tests/component/external/test_telescope.py`: 44 passed, 4 failed — same 4 fail on the pre-change tree
+  (`TestTelescopePoolHttp` ×3, `TestAst1750PostTelescopeDebugDump` ×1; they target the retired HTTP pool transport).
