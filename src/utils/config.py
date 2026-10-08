@@ -573,6 +573,8 @@ TASK_CONFIG = {
         "fallback_batch_size": 30,
         # DB dispatch_task.batch_size overrides; below is config default only.
         "pass_state": "PASSED_JOBLIST",
+        # AST-2022: pass + non-empty, non-http(s) job_link → here instead of InvalidJobLinkError (routing is AST-2025).
+        "relative_link_state": "RELATIVE_JOB_LINK",
         "fail_state": "FAILED_JOBLIST",
         "error_state": "ERROR_QUALIFY_JOB_LISTINGS",
         "min_job_title_length": 5,
@@ -2305,6 +2307,21 @@ GAZER_CONFIG = {
             "JD_SCRAPE_FAIL_CLOSED",
         ],
     },
+    # AST-2022: click-through fetch for relative-link jobs (runner is AST-2025).
+    # Click reached a page → same JD gates/outcomes as fetch_jd; click failed → fail_state.
+    "fetch_relative_jd": {
+        "fallback_batch_size": 10,   # config default only; dispatch_task.batch_size wins
+        "trigger_state": "RELATIVE_JOB_LINK",
+        "pass_state": "JD_READY",
+        "fail_state": "RELATIVE_LINK_FAIL",
+        "error_states": [
+            "JD_SCRAPE_FAIL",
+            "JD_SCRAPE_FAIL_COOKIE",
+            "BOT_BLOCKED",
+            "JD_SCRAPE_FAIL_MISSING",
+            "JD_SCRAPE_FAIL_CLOSED",
+        ],
+    },
     "fetch_culture_pages": {
         "fallback_batch_size": 10,
         "pass_state": "CULTURE_READY",
@@ -3680,6 +3697,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "METEORITE_NEW"
     if task_key == "fetch_jd":
         return "PASSED_JOBLIST"
+    if task_key == "fetch_relative_jd":
+        return GAZER_CONFIG["fetch_relative_jd"]["trigger_state"]
     if task_key == "fetch_culture_pages":
         return "PASSED_GET"
     if task_key == "fetch_job_pages":
@@ -3754,7 +3773,7 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if isinstance(et, str) and et.strip():
         return et.strip()
     if task_key in (
-        "fetch_jd", "fetch_culture_pages", "qualify_job_listings", "qualify_meteorite", "evaluate_jd",
+        "fetch_jd", "fetch_relative_jd", "fetch_culture_pages", "qualify_job_listings", "qualify_meteorite", "evaluate_jd",
         "grade_do", "grade_get", "grade_like", "analysis_upshot",
         "contemplate_job", "draft_cover_letter",
     ):
