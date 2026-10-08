@@ -1176,3 +1176,7 @@ cd src/ui/frontend && npm run test:component -- ../../../tests/component/fronten
 **Broken / obsolete:** none — existing `TestEnrichTasks` stubs the resolvers.
 
 Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
+
+### AST-2025 · AST-2022 (`fetch_relative_jd` in the Scheduled Actions picker — AC6)
+
+**New:** `TestAst2025FetchRelativeJdDispatchTaskKey::test_picker_lists_fetch_relative_jd_job_relative_job_link` — `GET /api/admin/dispatch_tasks/task_keys` lists `fetch_relative_jd` (agent_task catalog only, no dispatch row) as `entity_type: "job"`, `trigger_state: "RELATIVE_JOB_LINK"`. Green pre-AST-2025 too (binding landed in AST-2024) — regression guard. Primary manifest: **`docs/test-bible/core/gazer.md`** § AST-2025.

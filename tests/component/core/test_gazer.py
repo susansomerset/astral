@@ -6,6 +6,7 @@ import asyncio
 import logging
 import re
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
 
@@ -895,6 +896,148 @@ class TestFetchJdBatch:
         saved = job["job_data"]["job_description"]
         assert "\n\n\n" not in saved
         assert saved.startswith("role summary\n\n")
+
+
+def _rel_job(aid: str, href: str, site: str = "https://co.example/careers") -> dict[str, Any]:
+    return {"astral_job_id": aid, "job_site": site, "job_link": href, "job_title": "Role"}
+
+
+@pytest.fixture
+def rel_env(monkeypatch: pytest.MonkeyPatch):
+    """Stub connectivity / DB writes; `click` maps href → (final_url, text) or an exception."""
+    monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+    env = SimpleNamespace(
+        transition=MagicMock(), save=MagicMock(), persist=MagicMock(), routes={},
+    )
+
+    async def _click(list_url: str, href: str):
+        out = env.routes[href]
+        if isinstance(out, BaseException):
+            raise out
+        return out
+
+    env.click = AsyncMock(side_effect=_click)
+    monkeypatch.setattr(gazer_mod, "transition_job_state", env.transition)
+    monkeypatch.setattr(gazer_mod, "save_job_data", env.save)
+    monkeypatch.setattr(gazer_mod, "persist_http_job_link", env.persist)
+    monkeypatch.setattr(gazer_mod, "click_through_visible_text", env.click)
+    # Final state per job id, read from transition_job_state([aid], state) calls.
+    env.states = lambda: {c.args[0][0]: c.args[1] for c in env.transition.call_args_list}
+    return env
+
+
+def _miss() -> Exception:
+    return gazer_mod.PlaywrightInfraError(gazer_mod.TELESCOPE_CLICK_TARGET_MISSING, "no anchor")
+
+
+# AST-2025 · AST-2022: fetch_relative_jd_batch click-through runner.
+# Branches: AC4 ok / bot / closed / click miss (real _classify_jd on config signals); other
+# Telescope error; non-http final_url; missing job_site / job_link; short text after click;
+# no connectivity; miss = warning only vs other error = logger.exception; AC5 shared gate helper.
+class TestAst2025FetchRelativeJdBatch:
+    _CFG = gazer_mod.TRACKER_CONFIG["jd_classifier"]
+    # Signals trail the body: _prune_jd trims the page head before classification.
+    _BOT = _OK_JD + " " + " ".join(_CFG["bot_signals"][: _CFG.get("bot_threshold", 2)])
+    _CLOSED = _OK_JD + " " + _CFG["closed_signals"][0]
+
+    @pytest.mark.asyncio
+    async def test_ac4_outcomes(self, rel_env) -> None:
+        rel_env.routes.update({
+            "/ok": ("https://ats.example/ok", _OK_JD),
+            "/bot": ("https://ats.example/bot", self._BOT),
+            "/closed": ("https://ats.example/closed", self._CLOSED),
+            "/gone": _miss(),
+        })
+        jobs = [_rel_job("j-ok", "/ok"), _rel_job("j-bot", "/bot"), _rel_job("j-closed", "/closed"),
+                _rel_job("j-gone", "/gone")]
+        out = await gazer_mod.fetch_relative_jd_batch("b-1", jobs)
+        assert out == {"passed": 1, "failed": 3, "total": 4}
+        assert rel_env.states() == {
+            "j-ok": "JD_READY", "j-bot": "BOT_BLOCKED",
+            "j-closed": "JD_SCRAPE_FAIL_CLOSED", "j-gone": "RELATIVE_LINK_FAIL",
+        }
+        # Telescope opens the company job_site and clicks the stored relative href.
+        assert {c.args for c in rel_env.click.await_args_list} == {
+            ("https://co.example/careers", h) for h in ("/ok", "/bot", "/closed", "/gone")
+        }
+        # job_link resolved for every reached destination; click miss leaves it relative.
+        assert {c.args for c in rel_env.persist.call_args_list} == {
+            ("j-ok", "https://ats.example/ok"), ("j-bot", "https://ats.example/bot"),
+            ("j-closed", "https://ats.example/closed"),
+        }
+        assert jobs[0]["job_data"]["job_description"].startswith("role summary")
+        assert any(c.args[0] == "j-ok" and "job_description" in c.args[1] for c in rel_env.save.call_args_list)
+
+    @pytest.mark.asyncio
+    async def test_click_miss_warns_other_error_logs_exception(self, rel_env, caplog) -> None:
+        rel_env.routes.update({"/gone": _miss(), "/boom": RuntimeError("telescope down")})
+        with caplog.at_level(logging.WARNING, logger="src.core.gazer"):
+            out = await gazer_mod.fetch_relative_jd_batch(
+                "b-2", [_rel_job("j-gone", "/gone"), _rel_job("j-boom", "/boom")]
+            )
+        assert out == {"passed": 0, "failed": 2, "total": 2}
+        assert rel_env.states() == {"j-gone": "RELATIVE_LINK_FAIL", "j-boom": "RELATIVE_LINK_FAIL"}
+        rel_env.persist.assert_not_called()
+        gone = [r for r in caplog.records if "j-gone" in r.getMessage()]
+        boom = [r for r in caplog.records if "j-boom" in r.getMessage()]
+        # Configured miss: one warning, no traceback. Other failure: logged once with exc_info.
+        assert [r.levelname for r in gone] == ["WARNING"] and gone[0].exc_info is None
+        assert [r.levelname for r in boom] == ["ERROR"] and boom[0].exc_info is not None
+
+    @pytest.mark.asyncio
+    async def test_non_http_final_url_fails_without_persist(self, rel_env) -> None:
+        rel_env.routes["/odd"] = ("/still/relative", _OK_JD)
+        out = await gazer_mod.fetch_relative_jd_batch("b-3", [_rel_job("j-odd", "/odd")])
+        assert out["failed"] == 1
+        assert rel_env.states() == {"j-odd": "RELATIVE_LINK_FAIL"}
+        rel_env.persist.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_missing_job_site_or_link_fails_without_click(self, rel_env) -> None:
+        jobs = [_rel_job("j-nosite", "/a", site=""), _rel_job("j-nolink", "")]
+        out = await gazer_mod.fetch_relative_jd_batch("b-4", jobs)
+        assert out == {"passed": 0, "failed": 2, "total": 2}
+        assert rel_env.states() == {"j-nosite": "RELATIVE_LINK_FAIL", "j-nolink": "RELATIVE_LINK_FAIL"}
+        rel_env.click.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_short_text_after_click_is_jd_scrape_fail_with_link_resolved(self, rel_env) -> None:
+        rel_env.routes.update({"/short": ("https://ats.example/s", "too short"),
+                               "/blank": ("https://ats.example/b", "   ")})
+        out = await gazer_mod.fetch_relative_jd_batch(
+            "b-5", [_rel_job("j-short", "/short"), _rel_job("j-blank", "/blank")]
+        )
+        assert out["failed"] == 2
+        # Destination reached → fetch_jd's JD_SCRAPE_FAIL (not RELATIVE_LINK_FAIL), link resolved.
+        assert rel_env.states() == {"j-short": "JD_SCRAPE_FAIL", "j-blank": "JD_SCRAPE_FAIL"}
+        assert rel_env.persist.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_aborts_without_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=False))
+        with pytest.raises(ConnectionError, match="no internet connectivity"):
+            await gazer_mod.fetch_relative_jd_batch("b-6", [])
+
+    @pytest.mark.asyncio
+    async def test_ac5_both_runners_call_shared_gate_helper(
+        self, rel_env, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[dict[str, Any]] = []
+        real = gazer_mod._apply_jd_gates
+
+        def spy(job, text, **kw):
+            seen.append({"aid": job["astral_job_id"], **kw})
+            return real(job, text, **kw)
+
+        monkeypatch.setattr(gazer_mod, "_apply_jd_gates", spy)
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_OK_JD))
+        rel_env.routes["/ok"] = ("https://ats.example/ok", _OK_JD)
+        await gazer_mod.fetch_jd_batch("b-7", [{"astral_job_id": "j-abs", "job_link": "https://x.example/j"}])
+        await gazer_mod.fetch_relative_jd_batch("b-8", [_rel_job("j-rel", "/ok")])
+        assert seen == [
+            {"aid": "j-abs", "short_state": "JD_SCRAPE_FAIL", "pass_state": "JD_READY"},
+            {"aid": "j-rel", "short_state": "JD_SCRAPE_FAIL", "pass_state": "JD_READY"},
+        ]
 
 
 

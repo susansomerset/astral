@@ -1422,11 +1422,11 @@ Scored Analysis apply: complete grade set of all literal `X` raises `AllLiteralX
 
 ### AST-1895 · AST-1888 (bug-repro — InvalidJobLinkError reason + _run_batch_consult debug scope)
 
-Regression lock for `c86d8b5ce` (fixed by **AST-1893**): `InvalidJobLinkError` is a real `ValueError` subclass (no decorator on the class); an empty/relative `job_link` on a passing `qualify_job_listings` job → same `_consult_batch_fail_dest` as today, `_log_fail_dest` reason `process_fn InvalidJobLinkError: {empty|relative} job_link: …` (never `no signature found`); `_run_batch_consult` is `@_with_log_debug` again — `debug=True` sets `log_debug` in-frame, `debug=False` inherits ambient, token reset on exit. Routing-only check stays in `TestQualifyJobListings::test_fails_short_title_and_relative_link` (unchanged).
+Regression lock for `c86d8b5ce` (fixed by **AST-1893**): `InvalidJobLinkError` is a real `ValueError` subclass (no decorator on the class); an empty/relative `job_link` on a passing `qualify_job_listings` job → same `_consult_batch_fail_dest` as today, `_log_fail_dest` reason `process_fn InvalidJobLinkError: {empty|relative} job_link: …` (never `no signature found`); `_run_batch_consult` is `@_with_log_debug` again — `debug=True` sets `log_debug` in-frame, `debug=False` inherits ambient, token reset on exit. ~~Routing-only check stays in `TestQualifyJobListings::test_fails_short_title_and_relative_link`~~ — **AST-2025** retired the relative half (relative links now route to `RELATIVE_JOB_LINK`); node renamed, see § AST-2025.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Empty + relative `job_link` → same fail dest, exact reason names `InvalidJobLinkError` | `src/core/consult.py` | **`TestAst1895InvalidJobLinkError::test_empty_and_relative_job_link_fail_reason_names_error`** (**bug-repro**) |
+| Empty `job_link` → fail dest, exact reason names `InvalidJobLinkError` (relative half retargeted by AST-2025) | `src/core/consult.py` | **`TestAst1895InvalidJobLinkError::test_empty_job_link_fail_reason_names_error_relative_routes`** (**bug-repro**; was `test_empty_and_relative_job_link_fail_reason_names_error`) |
 | `InvalidJobLinkError` is a class, subclasses `ValueError` | same | **`…::test_invalid_job_link_error_is_value_error_class`** (**bug-repro**) |
 | `_run_batch_consult` `debug=` scope (`True` sets; `False` inherits ambient; reset on exit) | same | **`…::test_run_batch_consult_debug_scope[True]`** (**bug-repro**) · **`…[False]`** (guard) |
 
@@ -1482,3 +1482,15 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ### AST-2010 · AST-2009 (exhausted-429 `failure_class` forwarded)
 
 **New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` reaches the caller on `render_verdict`'s generic failure, the `run_consult_task` single-entity grade/LIKE path (the AST-2009 `meteorite_like` repro), the `_run_batch_consult` envelope failure, the batch normalizer (`meteorite_like_batch`), the `prefilter_company` normalizer, and the `_run_analysis_upshot_batch` summary. Routing and counts are unchanged (no hold). An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+
+### AST-2025 · AST-2022 (qualify keeps relative links + `fetch_relative_jd` router branch)
+
+**Scope:** `qualify_job_listings.process()` — non-empty non-`http` `job_link` → `initialize_job` as-is, transition to `TASK_CONFIG["qualify_job_listings"]["relative_link_state"]` (`RELATIVE_JOB_LINK`); only an empty link raises `InvalidJobLinkError`. `run_consult_task` routes `fetch_relative_jd` → `gazer.fetch_relative_jd_batch(batch_id, entities)`.
+
+| Area | Component tests |
+| --- | --- |
+| AC2 `/jobs/123` → `RELATIVE_JOB_LINK`, stored verbatim; absolute sibling → `PASSED_JOBLIST`; no bad grade | **`TestQualifyJobListings::test_relative_link_routes_to_relative_job_link`** (revised; was `test_fails_short_title_and_relative_link`) |
+| AC2 empty link still `InvalidJobLinkError` → fail dest, never `RELATIVE_JOB_LINK`; relative: no fail log | **`TestAst1895InvalidJobLinkError::test_empty_job_link_fail_reason_names_error_relative_routes`** (revised; was `test_empty_and_relative_job_link_fail_reason_names_error`) |
+| Router branch passes exactly the claimed entities + batch id | **`TestRunConsultTaskRoutes::test_ast2025_routes_fetch_relative_jd_batch`** |
+
+AC3 is an `rg` check in the manifest. Primary manifest: **`docs/test-bible/core/gazer.md`** § AST-2025.
