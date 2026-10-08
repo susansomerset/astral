@@ -335,3 +335,14 @@ AC1 → Stage 1 (registry + skipped map + prior edits, AC1 command); AC2 → Sta
 context_tokens≈52000
 
 `[plan-rubric] PROCEED (Commit: 201426ea0) registry and dispatch registration`
+
+## Review
+
+- **Branch:** `sub/AST-2022/AST-2024-relative-job-link-state`
+- **Stage 1:** `bc027c9` — `RELATIVE_JOB_LINK` / `RELATIVE_LINK_FAIL` job states, six prior edits, skipped list / order / label / bulk retry, processing UI row
+- **Stage 2:** `625c5a9` — `GAZER_CONFIG["fetch_relative_jd"]`, dispatch `job` / `RELATIVE_JOB_LINK` branches, `qualify_job_listings.relative_link_state`, `agent_task.json` row
+- **Build notes:** lint unblocked by [AST-2027](https://linear.app/astralcareermatch/issue/AST-2027) (ruff approved); ruff reports no new findings vs. the pre-change file.
+  `agent_task.json` diff is 19 insertions / 0 deletions (plan said 18 — miscount; the row is 17 keys + 2 braces).
+  `pytest tests/component -k "config or state_ui or dispatch"`: 129 failures/collection errors also fail on the pre-AST-2024 tree (test tree ahead of / behind product imports). Two new failures, both tests pinning the old registry that this ticket's AC changes by design:
+  `test_config.py::TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui` (exact `BOT_BLOCKED` priors list) and
+  `test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` (frozen `JOB_STATES` name snapshot). Left for Betty.
