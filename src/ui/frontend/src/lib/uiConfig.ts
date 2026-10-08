@@ -26,7 +26,7 @@ export function getUiConfig(): UiConfig | null {
 export function loadUiConfig(onReady: () => void) {
   if (_uiConfig) { onReady(); return }
   if (!_uiConfigPending) {
-    _uiConfigPending = api("/api/system/ui_config")
+    _uiConfigPending = api("/api/ui_config")
       .then(r => r.json())
       .then(d => { _uiConfig = d })
       .catch(() => { _uiConfig = { column_types: {} } })

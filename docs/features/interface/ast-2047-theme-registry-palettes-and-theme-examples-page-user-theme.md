@@ -687,6 +687,352 @@ context_tokens≈42000
 
 `[code-rubric] PROCEED (Commit: 55a3fcd69) Theme registry, palettes, examples`
 
+## Bug: AST-2063 — Light themes: header text is dark yellow — use the Dark theme's background purple
+
+### As-is
+
+In the Light palettes (`light`, `light_parchment`, `light_slate`), heading text colored by `var(--accent-gold)` renders in that palette's dark gold or amber (`#9a7314` / `#8a5a00`), or blue on Slate (`#2b6cb0`). That covers page titles, modal titles, profile section labels, and the Theme Examples panel labels.
+
+### To-be
+
+In all three Light palettes, that heading text renders in the Dark theme's background purple, `#241b33` (Dark `--bg-elevated`; Susan confirmed the `--bg-card` / `--bg-elevated` family). Dark headings stay gold (`#d4a843`). Every other `--accent-gold` use (active nav link, active tabs, links, hovers, focus rings, statuses, cost totals, in-flight buttons) is unchanged in every palette.
+
+### Repro
+
+1. Apply a Light theme. Either select a candidate whose stored `theme` is `light`, or open Tools → Theme Examples (`/admin/theme_examples`) and look at the Light, Light (Parchment), and Light (Slate) panels.
+2. The page title (`h1.list-page-title` / `h1.dep-title`), `h2.modal-title` in the sample modal card, and the panel label `h2.theme-examples-label` are gold or amber (blue on Slate), not purple.
+
+### Root cause
+
+AST-2047 never gave headings their own color role. They read `--accent-gold` directly, the same token that drives links, active tabs, and focus rings. A Light palette therefore cannot recolor headings without recoloring every accent.
+
+### Proposed change
+
+One file, `src/ui/frontend/src/App.css`, named in AST-2042's Component scope. The change adds one semantic token where a heading needs its own role (Technical scope: "new semantic tokens are added only where … needs one"). Line numbers are at `ftr/AST-2042-user-theme` tip `2fd5c63e7`. Find each line by selector.
+
+1. **New token `--heading` in all four token blocks**, inserted directly after the block's `--accent-gold-hover: …;` line:
+   - `:root, [data-theme="dark"]`: `  --heading: var(--accent-gold);`
+   - `[data-theme="light"]`: `  --heading: #241b33;`
+   - `[data-theme="light_parchment"]`: `  --heading: #241b33;`
+   - `[data-theme="light_slate"]`: `  --heading: #241b33;`
+
+   ⚠️ **Decision — Dark is an alias, not a hex copy:** `var(--accent-gold)` resolves to `#d4a843`, so Dark headings are pixel-identical, and they keep tracking gold if Dark's accent is ever retuned. The pattern matches `--confidence-bullet-*`, and like those, every block redeclares the name (AST-2047 AC 4 name-set equality).
+
+   ⚠️ **Decision — one purple, `#241b33`, for all three Lights:** It is the more visibly purple of the two confirmed values (`#1a1424` reads as near-black on white). Using it in every Light block makes headings look the same across palettes, matching Susan's single-color ask. Its contrast is at least 13:1 on every Light `--bg-deep` / `--bg-card` / `--bg-elevated` (lowest: 13.2:1 on Parchment `--bg-elevated` `#efe6d4`).
+
+   ⚠️ **Decision — insert position:** Insert after `--accent-gold-hover`, its semantic neighbor. That keeps four unchanged lines between this insert and the `--grade-*` lines that sibling bug AST-2064 edits in the same Light blocks, so the two merges do not touch adjacent lines.
+
+2. **Repoint the six heading rules** from `color: var(--accent-gold);` to `color: var(--heading);`. Change only that one declaration in each rule:
+
+   | Line | Selector | Rendered as |
+   |------|----------|-------------|
+   | 659 | `.list-page-title` | `h1` page titles on list pages (12 uses) |
+   | 888 | `.job-analysis-upshot-heading` | heading class (no current markup; repointed so it stays a heading if reused) |
+   | 1223 | `.modal-title` | `h2` in `Modal`, `UserPrompt`, `CandidateIntake`; `span` titles in `AdminScheduledActions` |
+   | 1534 | `.dep-title` | `h1` page titles on detail/edit pages (7 uses) |
+   | 1595 | `.dep-section-label` | `h2` section headers (DetailsEditPage) |
+   | 2862 | `.theme-examples-label` | `h2` panel labels on Theme Examples |
+
+   Do **not** change any other `var(--accent-gold)` / `var(--accent-gold-hover)` use. This includes `.nav-link.active`, `.tabbed-ta-tab.active`, `.side-tab-item.active .side-tab-label`, `.expand-toggle`, link hovers, `.analysis-rubric-link`, focus borders, `.dispatch-*`, `.perf-total-cost`, `.batch-cost-total`, and `.btn.primary.in-flight`. These are accents or interactive states, not headings.
+
+   ⚠️ **Decision — `.nav-group-label` is untouched:** sidebar group labels already have their own token (`--nav-group-label`), and Susan's report is about header text in page content.
+
+3. **Verify:**
+   - In `src/ui/frontend`: `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` shows no problem absent before the change.
+   - Re-run AST-2047 Stage 2 step 6 checks 1 and 2 after `git show origin/dev:src/ui/frontend/src/App.css > debug/spikes/ast-2047/App.before.css`. Both must print `OK`.
+   - Run `npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx` (4 passed).
+   - `rg -n "color: var\(--heading\)" src/ui/frontend/src/App.css` returns exactly the six selectors above.
+   - `rg -c -- "--heading:" src/ui/frontend/src/App.css` returns `4`.
+
+### Blast radius
+
+- Only `App.css` changes. No `.tsx`, config, or API change.
+- Under Light, every page title, modal title (including the span-based Scheduled Actions modal titles), DetailsEditPage section label, and Theme Examples panel label turns purple. Under Dark nothing changes visually.
+- Sibling AST-2064 (Light grade colors) edits the `--grade-*` / `--text-on-grade*` values in the same three Light blocks. This change only inserts a line four lines above those, so the two do not overlap. Both bugs append a `## Bug:` block to the end of this plan doc, so `merge-child` may see an adjacent-append conflict here. Resolve it by keeping both blocks.
+- Tests: `test_AdminThemeExamples.test.tsx` passes unchanged. `--heading` is declared in all four blocks (name-set equality holds), its only reference is defined (no undefined `var`), and no hex is added outside `[data-theme]` blocks. No test asserts a heading's color.
+
+### What must still hold
+
+- AST-2047 AC 3: none of Dark's existing 38 values changes. The added `--heading` resolves to the same `#d4a843` headings used before.
+- AST-2047 AC 4: each Light block declares exactly Dark's token names (now 39), and the Lights still differ pairwise on `--bg-deep`.
+- AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` in `App.css` outside `[data-theme]` blocks, and every `var(--x)` is defined in a token block.
+- Every non-heading `--accent-gold` use renders exactly as before in every palette.
+
+### AST-2063 fix-board (F2)
+
+- **Betty — TESTS: OK.** App.css-only change; no existing test reads the six repointed heading rules or `--accent-gold` values. AST-2047 App.css contract tests already cover `--heading` declared in all four theme blocks, every `var()` resolving, and no hex outside theme blocks. Light-heading purple is a UAT visual check. Note: `test_AdminThemeExamples.test.tsx` has 5 tests (not 4) since the AST-2049 guard.
+- **Joan — CANON: OK.** Parent Canon Scope is none. No in-force statute governs theme token names, heading vs accent roles, or palette hex sets. `astral.ui.frontend-file-placement` satisfied (styles stay in App.css). Draft UI patterns (`patt.ui.shared-button-roles`, in-flight gold) are not in force and not amended.
+
+### AST-2063 Radia review-fix — round 1
+
+[code-rubric]
+**Ticket:** AST-2063
+**Publish ref:** `85582d39cbc7c61e8fed3cb6165ce25466ba0a93` (`origin/sub/AST-2042/AST-2063-light-header-purple`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; ticket/parent **Canon Scope:** none)
+**Overall:** FIX-NOW
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**; no `validate-plan` canon column for this bug).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out (Betty **TESTS: OK**; `qa-fix` did not run per spawn brief).
+
+**## What must still hold — OK** for the **isolated** fix commit `85582d39c` (`App.css` only): Dark `--heading: var(--accent-gold)` preserves heading color vs pre-fix; `--heading` added in all four blocks (AC 4 name-set parity); `#241b33` only inside Light `[data-theme]` blocks; six heading selectors repointed; no other `var(--accent-gold)` rule bodies changed in that commit.
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket scope on publish ref (fix-lane diff base).** `git diff origin/ftr/AST-2042-user-theme...origin/sub/AST-2042/AST-2063-light-header-purple` is **not** the AST-2063 fix alone. `origin/ftr/AST-2042-user-theme` @ `90151549d` is an ancestor of the sub tip, with **40 commits** in between. Product/test paths in that three-dot diff include:
+  - `src/core/agent.py`
+  - `src/ui/frontend/src/components/AgentAnalysisHeader.tsx`, `ArtifactEditor.tsx`, `RubricModal.tsx`
+  - `tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx`, `test_RubricModal.test.tsx`
+  - plus `App.css` (2063 + any prior delta vs lagging ftr)
+  
+  The **only** AST-2063 product commit is `85582d39c` — **1 file**, `App.css`, matching `## Proposed change` exactly (4× `--heading`, 6 selector repoints). Merging or fast-forwarding this sub onto ftr as-is would land **AST-2059 / AST-2060 / AST-2041 / dev-merge** work unrelated to Susan’s header-color bug. **Chuckles/engineer:** restack the sub on current `origin/ftr/AST-2042-user-theme` (cherry-pick `85582d39c` + plan/docs commits only) before `merge-child` or UT merge.
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Isolated fix vs prescribed diff:** Review scoring of plan fidelity and “must still hold” applies to `85582d39c`; the ftr…sub diff must not be used as the merge artifact until restacked.
+- **UAT:** Light heading purple (`#241b33`) remains visual-only; fix-board already noted no durable color assertion (consistent with opt-out).
+- **Sibling AST-2064:** Plan documents non-overlapping insert above `--grade-*`; merge doc conflict possible on adjacent `## Bug:` append — resolve keeping both blocks.
+
+## What's solid
+
+- **Plan fidelity (isolated commit):** Matches `## Bug: AST-2063` in `ast-2047-theme-registry-palettes-and-theme-examples-page-user-theme.md` on the publish ref — token placement, Dark alias, Light hex, six selectors, accents untouched.
+- **Blast radius:** No `.tsx`/config/API in `85582d39c`.
+- **Board bar:** Betty/Joan OK; absence of `[bug-repro]` is consistent with App.css-only, opt-out path.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (after restack) | **Normal** (AST-2042 UAT-batch, not Done) | Restack sub → re-run review or confirm three-dot diff is **only** 2063 (+ docs) → **Review Posted** → clean shortcut to **User Testing** if then CLEAN. |
+| **REVIEW** (if shipped without restack) | Normal | **Do not** `merge-child` this tip — smuggles sibling fix-lane product. |
+
+context_tokens≈22000
+
+`[code-rubric] REVIEW (Commit: 85582d39c) Sub branch stacks extra fixes`
+
+### AST-2063 Radia review-fix — round 2 (after refresh-ftr to dev 2fd5c63e7)
+
+[code-rubric]
+**Ticket:** AST-2063
+**Publish ref:** `8bcf57c980d5edc187cc447ee385e824f9272229` (`origin/sub/AST-2042/AST-2063-light-header-purple`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; ticket/parent **Canon Scope:** none)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out (Betty **TESTS: OK**; `qa-fix` skipped).
+
+**## What must still hold — OK** — `git diff origin/ftr/AST-2042-user-theme...origin/sub/AST-2042/AST-2063-light-header-purple` on `App.css` only: Dark gains `--heading: var(--accent-gold)` (heading color unchanged vs direct `--accent-gold`); three Light blocks add `--heading: #241b33` inside token blocks; six heading rules repointed; no other `color: var(--accent-gold)` rule changes in the diff.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Round-1 fix-now cleared:** `origin/ftr/AST-2042-user-theme` @ `2fd5c63e7` (epic #262 on dev). Three-dot diff is **2 files only** — `src/ui/frontend/src/App.css` + plan doc `## Bug: AST-2063` block on `ast-2047-theme-registry-palettes-and-theme-examples-page-user-theme.md`. No `src/**` or `tests/**` beyond `App.css`.
+- **Product tip:** Still `85582d39c` for CSS; tip commit `8bcf57c98` is docs-only (round-1 Radia artifact).
+- **UAT:** Light heading purple remains visual; fix-board aligned with no durable color pin.
+
+## What's solid
+
+- **Plan fidelity:** Matches `## Proposed change` — 4× `--heading` after `--accent-gold-hover`, 6 selectors (`list-page-title`, `job-analysis-upshot-heading`, `modal-title`, `dep-title`, `dep-section-label`, `theme-examples-label`), accents/nav/tabs untouched.
+- **Blast radius:** App.css-only product delta; stack is merge-safe on refreshed ftr.
+- **Commits since ftr:** `0d884602e`–`8bcf57c98` — plan-fix, fix-board, `code(AST-2063)`, review doc only.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Normal** (AST-2042 UAT-batch) | → **Review Posted** → fix-lane clean shortcut → **User Testing** (`resolve-child` skipped). |
+
+context_tokens≈12000
+
+`[code-rubric] PROCEED (Commit: 8bcf57c98) Light headings use --heading`
+
+**AST-2063 docs-acceptance:** fix-board [board-betty] TESTS: OK — no test-tree delivery; qa-fix skipped (clean-board opt-out). Existing AST-2047 App.css contract tests cover the change; Light heading color is a UAT visual check.
+
+## Bug: AST-2065 — Theme Examples page never loads (UI config fetched from non-existent /api/system/ui_config)
+
+### As-is
+
+Tools → Theme Examples stays on "Loading..." forever, with no console error. `loadUiConfig` (`src/ui/frontend/src/lib/uiConfig.ts:29`) fetches `/api/system/ui_config`. The server answers with the SPA's `index.html` (status 200), `r.json()` throws, and the `.catch` silently sets `_uiConfig = { column_types: {} }`. That object has no `themes`, so `AdminThemeExamples` never leaves its loading branch.
+
+### To-be
+
+`loadUiConfig` fetches `/api/ui_config`, and Theme Examples renders its four palette panels. No frontend source fetches `/api/system/ui_config` any more.
+
+### Repro
+
+1. As admin, open `/admin/theme_examples`. It shows "Loading..." indefinitely.
+2. Flask test client (verified at `ftr/AST-2042-user-theme` tip `2fd5c63e7`):
+   - `GET /api/system/ui_config` → `200 text/html` (`<!doctype html>…`, from the `serve_react` catch-all in `src/ui/server.py:114`)
+   - `GET /api/ui_config` → `200 application/json` (`{"adhoc_import_picker_visible_rows":5,…}`)
+
+### Root cause
+
+`system_bp = Blueprint("system", __name__, url_prefix="/api")` (`src/ui/api/api_system.py:44`) with `@system_bp.route("/ui_config")` (`:197`), so the only real path is `/api/ui_config`. `uiConfig.ts` has used `/api/system/ui_config` since AST-647 (`4d332477c`), and the server's catch-all turns that miss into a 200 HTML page instead of a 404. Every `loadUiConfig` consumer has silently run on its fallbacks since then. AST-2047's "Codebase facts" repeated the wrong path, and its tests mock that same wrong URL (`test_AdminThemeExamples.test.tsx:29`), so they passed.
+
+### Proposed change
+
+Three one-line edits. Each replaces the string literal `"/api/system/ui_config"` with `"/api/ui_config"` and changes nothing else on the line:
+
+1. `src/ui/frontend/src/lib/uiConfig.ts:29`: `_uiConfigPending = api("/api/system/ui_config")` becomes `_uiConfigPending = api("/api/ui_config")`.
+2. `src/ui/frontend/src/components/ArtifactEditor.tsx:218`: `api("/api/system/ui_config")` becomes `api("/api/ui_config")`.
+3. `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx:57`: `api("/api/system/ui_config")` becomes `api("/api/ui_config")`.
+
+⚠️ **Decision — edits 2 and 3 included:** the ticket allows them if they are "the same one-line fix", and they are: same root cause, same literal, same silent fallback. Both files are in AST-2042's Component scope. Leaving them would keep two known-broken fetches of the same endpoint, side by side with the fixed one. If fix-board prefers the narrower fix, drop steps 2–3; step 1 alone fixes Theme Examples.
+
+⚠️ **Decision — no error state on the page:** `loadUiConfig`'s silent `.catch` fallback and Theme Examples' loading branch stay as they are. The ticket asks for the URL fix only. A missing `themes` key after a successful load is not a case this bug covers.
+
+4. **Verify:**
+   - `rg -n "/api/system/ui_config" src/ui/frontend/src` returns nothing.
+   - In `src/ui/frontend`: `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` shows no problem absent before the change.
+   - Manual (admin): `/admin/theme_examples` shows Dark, Light, Light (Parchment), and Light (Slate) panels.
+
+### Blast radius
+
+The URL fix makes every consumer receive the **real** `UI_CONFIG` for the first time since AST-647. These are visible behavior changes beyond Theme Examples:
+
+- **`ListPage` (every list page) and `AdminScheduledActions`:**
+  - `resolveFrozenDataColumns` falls back to `0`. The served `list_table_frozen_data_columns` is `2`, so list tables start freezing their first two data columns (unless a page passes an override; Scheduled Actions passes `FROZEN_DATA_COLUMNS`).
+  - `colTypeConfig` returns `null` today, so typed columns (`int`/`float`/`currency`/`date`/`datetime`, 18 typed column defs in `config.py`) start getting `UI_CONFIG.column_types` alignment and `formatCell` number/date formatting.
+  - `list_table_cell_truncate_chars` (30) equals its fallback, so there is no change there.
+- **`JobTitleText`:** `job_title_truncate_chars` (50) equals its fallback, so there is no change.
+- **`ArtifactEditor` (edit 2):** `experience_job_ui_fields` and `unsupported_resume_structure_message` come from `BUILD_CONFIG` instead of the component's hard-coded defaults.
+- **`ArtifactsBaseResumeContent` (edit 3):** `base_resume_accent_palette` is served (today it is always `[]`), so the accent palette choices appear.
+- **Tests that mock the old URL** and will stop matching:
+  - pages: `test_AdminThemeExamples`, `test_ArtifactsBaseResumeContent`, `test_JobsJobDetail`, `test_CompaniesWatchHistory`, `test_CompaniesWatchList`, `page-mocks.ts`
+  - components: `test_ArtifactEditor`, `test_ListPage`, `test_ListPage_ui_config_fail`, `test_ListPage_listTableLayout`, `test_JobTitleText`, `test_ContextTextPage`
+
+  Files that already match both URLs keep passing: `test-utils.tsx`, `test_CandidateProfile`, `test_AdminSessionCoverLetter`, `test_AdminAnthropicAdHoc`, `test_CandidateIntake`. Betty retargets the mocks (fix-board TESTS call). Engineers do not edit `tests/`.
+- **Sibling bug [AST-2064](https://linear.app/astralcareermatch/issue/AST-2064):** its grade-option rows read `theme_example_grade_sets` through this same `loadUiConfig`, so they render only once this fix is in.
+
+### What must still hold
+
+- `GET /api/ui_config` response shape is unchanged. No server edit.
+- `loadUiConfig` keeps its single-flight caching and its `.catch` fallback to `{ column_types: {} }`.
+- AST-2047 AC 2: no theme id literals in `.ts`/`.tsx`. AC 6: one panel per registry id with the shared sample, GET-only.
+- `CandidateProfile`, `AdminSessionCoverLetter`, `AdminAnthropicAdHoc`, `IntakePreamblePanel`, `IntakeTopicMenuPanel`, and `NavigationShell` already use `/api/ui_config` and are not touched.
+
+### fix-board — Joan (CANON: OK)
+
+
+**Plan-fix read:** `origin/sub/AST-2042/AST-2065-ui-config-url` — `## Bug: AST-2065` in the AST-2047 sibling plan doc.
+
+**Proposed change:** Three one-line literal swaps: `"/api/system/ui_config"` → `"/api/ui_config"` in `uiConfig.ts`, `ArtifactEditor.tsx`, and `ArtifactsBaseResumeContent.tsx`. No server edits; real route is `system_bp` at `/api` + `@system_bp.route("/ui_config")` → `/api/ui_config`.
+
+**Roster skim (no R1–R7):** Overlap with `astral.layers.ui-config-driven-business-logic` (config resolved in `src/ui/api/` before React), `astral.ui.frontend-file-placement` (edits stay in `lib/` / `components/` / `pages/`), and `patt.ui.endpoint` (protected JSON routes). Parent/AST-2047 **Canon Scope:** none (locked at Discussion). No in-force directive names `/api/system/ui_config` or forbids correcting the client to the live route.
+
+**Canon question:** Does this fix conflict with or require updating any active statute/pattern?
+
+- **No conflict:** Pointing fetches at `/api/ui_config` matches how the API already serves `UI_CONFIG` (+ merged `BUILD_CONFIG` fields). That supports config-driven UI, not duplicate business rules in React.
+- **No canon edit:** Blast radius (list frozen columns, column types, accent palette, etc.) is documented product behavior once the config actually loads — not an ambiguous statute or a new precedent that belongs in `canon/`.
+- **ESCALATE:** Not warranted; architectural choice is already recorded on the ticket (include edits 2–3 vs narrow fix is product scope for Chuckles/make-fix, not Archie canon).
+
+
+### review-fix — Radia
+
+[code-rubric]
+**Ticket:** AST-2065
+**Publish ref:** `081e70f34bebbd97488630d196afad826d3c791f` (`origin/sub/AST-2042/AST-2065-ui-config-url`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; ticket/parent **Canon Scope:** none)
+**Overall:** FIX-NOW
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `tests/component/frontend/lib/test_uiConfig.test.ts` (publish tip): `[bug-repro] loadUiConfig fetches /api/ui_config` asserts `api` was called with `"/api/ui_config"` only (would fail on the old path); companion test fails if any `.ts`/`.tsx` under `src/ui/frontend/src` still contains `"/api/system/ui_config"`. Pins **To-be** URL, not a tautology.
+
+**## What must still hold — OK** (for isolated product commit `081e70f34`): no server edits; `loadUiConfig` still single-flight + `.catch` → `{ column_types: {} }`; three literal swaps only; no new theme id strings; `CandidateProfile` et al. untouched per plan.
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket scope on publish ref (`data/admin`).** `git diff origin/ftr/AST-2042-user-theme...origin/sub/AST-2042/AST-2065-ui-config-url` includes `data/admin/agent.json` and `data/admin/agent_task.json` (Grace prompt, model_id, quantization, bulk task content) from commits `33f5c0b1c` / `048d297b5` via `sync(dev): origin/dev` — **not** in `## Proposed change` or blast radius. **AST-2065 product** in `src/**` is only `uiConfig.ts`, `ArtifactEditor.tsx`, `ArtifactsBaseResumeContent.tsx` (`081e70f34`). **Chuckles/engineer:** restack or cherry-pick so `merge-child` lands **2065 fix + plan/docs + Betty tests**, not unrelated admin seed churn.
+
+### discuss
+
+(none)
+
+### advisory
+
+- **`src/**` product delta is clean** vs ftr — matches plan (3 URL swaps).
+- **sibling test carry:** `merge-tests(AST-2065)` also brings large `test_contact.py`, `test_meteorite.py`, `test_slack.py`, bible deltas, and AST-2062 repro work — expected `origin/tests` merge pattern; not #2065 product, but will ride the sub tip until restacked.
+- **Blast radius (intentional):** Once config loads, list frozen columns, column types, accent palette, `ArtifactEditor` experience fields, etc. behave per served `UI_CONFIG` — documented in plan; UAT Theme Examples + spot-check list pages.
+- **Branch hygiene:** Sub history includes `sync(ftr)`, `sync(dev)`, `sync(publish-ref)` after fix-board; ftr merge-base is current (`c1ac10587` = ftr tip); issue is **extra** commits atop ftr, not lagging ftr like round-1 AST-2063.
+
+## What's solid
+
+- **Root cause / fix:** Wrong client path vs `system_bp` `/api` + `/ui_config`; all three call sites corrected; `rg` guard in `[bug-repro]` prevents regression.
+- **Tests:** Betty retargeted mocks (`test_AdminThemeExamples`, `page-mocks`, `ListPage_*`, etc.) per plan blast-radius list; `qa-fix` path ran (`a3c1144eb`), not board-only opt-out.
+- **Plan fidelity:** Matches `## Bug: AST-2065` three edits + verify steps.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (after `data/admin` stripped / restack) | **Normal** (AST-2042 UAT-batch) | Re-review or confirm ftr…sub is **src** (3 files) + plan + tests/docs only → **Review Posted** → **User Testing** shortcut. |
+| **REVIEW** (if merged as-is) | Normal | **Do not** `merge-child` — smuggles admin agent config unrelated to Theme Examples URL fix. |
+
+context_tokens≈18000
+[code-rubric] REVIEW (Commit: 081e70f34) Drop data/admin from sub tip
+```
+
+**Stdout recommendation:** **REVIEW** → `resolve-child` / restack to remove `data/admin` from the sub branch before merge-child; isolated **081e70f34** + Betty tests are otherwise **PROCEED**-ready.
+
+**Chuckles disposition:** fix-now `data/admin` item is a false positive — both files at the sub tip are byte-identical to `origin/dev`; they arrived via the mandatory `sync-child.sh` `sync(dev)` merge (ftr is 2 commits behind dev). merge-child only catches ftr up to dev; the ftr→dev PR shows no delta for them. Restacking would violate sync law and re-enter on next sync. Treated as clean → Review Posted → User Testing.
+
+**Review gate (final):** PROCEED — §3h clean-review shortcut, resolve-child skipped.
+
 ## Bug: AST-2064 — Light themes need their own grade-color set, with options on Theme Examples
 
 ### As-is
