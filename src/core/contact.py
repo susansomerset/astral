@@ -15,6 +15,7 @@ Conversational envelope contract: AST-1072.
 AST-1471 / AST-1531: Contact scrap path → `contact_land_meteorite` → `stage_meteorite`.
 AST-1561: BOT_BLOCKED paste recovery via `apply_paste` (no re-classify).
 AST-1515: Contact-task markup parse/dispatch + same-event follow-up turn.
+AST-2035: leading /<command> intercept via CONTACT_CONFIG["commands"] (code ack or one agent turn).
 AST-1585 / patt.artifact.read-operative — Estelle pin→body for pilot
 base_resume via get_operative_base_resume.
 AST-1788: admin channel-list / membership / snapshot orchestration for
@@ -868,6 +869,28 @@ def strip_contact_task_markup(text: str) -> str:
     return stripped.strip()
 
 
+# Leading <@U…> mentions (optional |label), then /<token>, then the rest (may span lines).
+_CONTACT_COMMAND_RE = re.compile(
+    r"^(?:\s*<@[A-Z0-9]+(?:\|[^>]*)?>)*\s*/(\S+)(?:\s+(.*))?$",
+    re.DOTALL,
+)
+# Slack auto-link markup: <http(s)://…|label> or <http(s)://…> → bare URL.
+_SLACK_LINK_RE = re.compile(r"<(https?://[^|>\s]+)(?:\|[^>]*)?>")
+
+
+def parse_contact_command(text: str) -> tuple[str, str] | None:
+    """(command_id, payload) when the first token after mentions is a registered /command; else None."""
+    raw = text if isinstance(text, str) else ""
+    m = _CONTACT_COMMAND_RE.match(raw)
+    logger.debug("Calling parse_contact_command: [text=%r]", raw)
+    if not m or m.group(1) not in CONTACT_CONFIG["commands"]:
+        logger.debug("Response from parse_contact_command: None")
+        return None
+    payload = _SLACK_LINK_RE.sub(r"\1", m.group(2) or "").strip()
+    logger.debug("Response from parse_contact_command: (%r, %r)", m.group(1), payload)
+    return m.group(1), payload
+
+
 def _resolve_contact_task_handler(handler: str):
     """Import a contact-task handler by dotted path; None when unavailable."""
     h = (handler or "").strip()
@@ -1023,6 +1046,7 @@ def run_contact_estelle_turn(
     astral_candidate_id: Optional[str] = None,
     candidate_state: Optional[str] = None,
     base_resume_artifact_id: Optional[str] = None,
+    extra_context: str | None = None,
     debug: bool = False,
 ) -> dict:
     """One Contact Estelle conversational turn (AST-1073).
@@ -1060,8 +1084,8 @@ def run_contact_estelle_turn(
 
     logger.debug(
         "Calling run_contact_estelle_turn: [channel=%r, thread_ts=%r, "
-        "astral_candidate_id=%r, candidate_state=%r, text=%r]",
-        channel, thread_ts, astral_candidate_id, candidate_state, text,
+        "astral_candidate_id=%r, candidate_state=%r, text=%r, extra_context=%r]",
+        channel, thread_ts, astral_candidate_id, candidate_state, text, extra_context,
     )
 
     # Late import avoids core→agent cycles at module load.
@@ -1122,6 +1146,11 @@ def run_contact_estelle_turn(
     )
     lines.append("Omit land_calls when none. Do not invent job content.")
     lines.append("")
+    # AST-2035: agent-mode command result rides this turn's live content.
+    if isinstance(extra_context, str) and extra_context.strip():
+        lines.append("## Command result (this inbound event)")
+        lines.append(extra_context.strip())
+        lines.append("")
     lines.append("## Conversation")
     messages = list(ctx.get("messages") or [])
     if msg_limit > 0 and len(messages) > msg_limit:
@@ -1369,6 +1398,84 @@ def run_contact_estelle_turn(
     return out
 
 
+def _run_contact_command(
+    *,
+    command_id: str,
+    payload: str,
+    text: str,
+    channel: str,
+    thread_ts: str | None,
+    message_ts: str | None,
+    astral_candidate_id: str,
+    candidate_state: str | None,
+    debug: bool = False,
+) -> dict:
+    """Run one registry command and reply per its mode; returns the estelle_turn dict."""
+    meta = CONTACT_CONFIG["commands"][command_id]
+    reply_thread_ts = thread_ts or message_ts
+    summary = {"id": command_id, "mode": meta["mode"], "ok": False, "meteorite_id": None, "error": None}
+
+    # Empty payload: usage reply only, either mode — no handler, no turn.
+    if not payload:
+        summary["error"] = "empty_payload"
+        post = contact_post_message(
+            channel=channel,
+            text=format_contact_reply_text(meta["usage_reply_text"]),
+            thread_ts=reply_thread_ts,
+            debug=debug,
+        )
+        return {"ok": True, "outcome": command_id, "command": summary, "slack_post": post}
+
+    handler = _resolve_contact_task_handler(meta["handler"])
+    if handler is None:
+        summary["error"] = "handler_unavailable"
+        logger.warning(
+            "%s | contact command %s handler %s is unavailable\n  This command is not running",
+            astral_candidate_id, command_id, meta["handler"],
+        )
+    else:
+        source_id = f"{channel}:{message_ts or ''}"
+        logger.debug(
+            "Calling %s: [candidate_id=%r, source_id=%r, thread_ts=%r, payload=%r]",
+            meta["handler"], astral_candidate_id, source_id, reply_thread_ts, payload,
+        )
+        out = handler(
+            astral_candidate_id, payload,
+            source_id=source_id, thread_ts=reply_thread_ts, debug=debug,
+        )
+        logger.debug("Response from %s: %s", meta["handler"], out)
+        if isinstance(out, dict):
+            summary.update(ok=bool(out.get("ok")), meteorite_id=out.get("meteorite_id"), error=out.get("error"))
+
+    # agent: one Estelle turn sees the result and replies conversationally.
+    if meta["mode"] == "agent":
+        turn_out = run_contact_estelle_turn(
+            channel=channel,
+            text=text,
+            thread_ts=thread_ts,
+            message_ts=message_ts,
+            astral_candidate_id=astral_candidate_id,
+            candidate_state=candidate_state,
+            extra_context=json.dumps(summary, default=str),
+            debug=debug,
+        )
+        turn_out["command"] = summary
+        return turn_out
+
+    # code: fixed ack only on success; a miss posts nothing so the hear-ack fallback fires.
+    post = None
+    if summary["ok"]:
+        post = contact_post_message(
+            channel=channel,
+            text=format_contact_reply_text(
+                meta["ack_reply_template"].format(meteorite_id=summary["meteorite_id"])
+            ),
+            thread_ts=reply_thread_ts,
+            debug=debug,
+        )
+    return {"ok": summary["ok"], "outcome": command_id, "command": summary, "slack_post": post}
+
+
 def _emit_listen_info(result: dict, event_type: Any, channel: Any, turn_out: Any) -> None:
     keys: List[str] = []
     aside = None
@@ -1379,6 +1486,10 @@ def _emit_listen_info(result: dict, event_type: Any, channel: Any, turn_out: Any
         for row in turn_out.get("skill_results") or []:
             if isinstance(row, dict) and row.get("skill_key"):
                 keys.append(str(row["skill_key"]))
+        # AST-2035: command id:mode + meteorite id lead the action list.
+        cmd = turn_out.get("command")
+        if isinstance(cmd, dict):
+            keys[:0] = [f"{cmd.get('id')}:{cmd.get('mode')}", f"meteorite:{cmd.get('meteorite_id') or '-'}"]
     _contact_listen_info(
         result.get("astral_candidate_id") if isinstance(result, dict) else None,
         event_type,
@@ -1583,17 +1694,39 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
             }
             _emit_listen_info(result, etype, channel, result["estelle_turn"])
         else:
-            # AST-1561: paste recovery before Estelle turn (no re-classify).
-            paste_out = try_meteorite_apply_paste_from_slack(
-                astral_candidate_id=result.get("astral_candidate_id"),
-                channel=channel,
-                thread_ts=event.get("thread_ts"),
-                message_ts=msg_ts if isinstance(msg_ts, str) else None,
-                text=text,
-                debug=debug,
-            )
-            result["meteorite_apply_paste"] = paste_out
-            if paste_out.get("applied") and paste_out.get("result", {}).get("ok"):
+            # AST-2035: a bound sender's leading /<command> runs the registry handler — never paste recovery.
+            command = parse_contact_command(text) if known else None
+            if command is None:
+                # AST-1561: paste recovery before Estelle turn (no re-classify).
+                paste_out = try_meteorite_apply_paste_from_slack(
+                    astral_candidate_id=result.get("astral_candidate_id"),
+                    channel=channel,
+                    thread_ts=event.get("thread_ts"),
+                    message_ts=msg_ts if isinstance(msg_ts, str) else None,
+                    text=text,
+                    debug=debug,
+                )
+                result["meteorite_apply_paste"] = paste_out
+            if command is not None:
+                try:
+                    result["estelle_turn"] = _run_contact_command(
+                        command_id=command[0],
+                        payload=command[1],
+                        text=text,
+                        channel=channel,
+                        thread_ts=event.get("thread_ts"),
+                        message_ts=msg_ts if isinstance(msg_ts, str) else None,
+                        astral_candidate_id=result["astral_candidate_id"],
+                        candidate_state=result.get("candidate_state"),
+                        debug=debug,
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "%s | contact command %s\n  %s: %s\n  The inbound event is accepted; the command did not complete",
+                        result.get("astral_candidate_id") or "-", command[0], type(exc).__name__, exc,
+                    )
+                    result["estelle_turn"] = {"ok": False, "error": str(exc)}
+            elif paste_out.get("applied") and paste_out.get("result", {}).get("ok"):
                 try:
                     ack = format_contact_reply_text(
                         "Got it — pasted job description saved for review."

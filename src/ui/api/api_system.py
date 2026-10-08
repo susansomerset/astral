@@ -39,6 +39,7 @@ from src.utils.config import (
 from src.data.database import get_agent_task
 from src.utils.logging import get_logger
 from src.core.deploy_status import get_deploy_status_payload
+from src.utils.deploy_status import logo_background
 
 system_bp = Blueprint("system", __name__, url_prefix="/api")
 
@@ -217,6 +218,8 @@ def ui_config():
             "authoring_help": COVER_FROM_BLOCK_CONFIG["authoring_help"],
             "session_authoring_help": COVER_FROM_BLOCK_CONFIG["session_authoring_help"],
         },
+        # AST-2040: sidebar logo background for ASTRAL_DEPLOY_ENV; null keeps the stylesheet color.
+        "logo_background": logo_background(),
     })
 
 
