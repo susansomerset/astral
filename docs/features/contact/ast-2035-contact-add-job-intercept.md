@@ -356,3 +356,54 @@ context_tokens≈78000
 - **Stage 1:** `bd1e9472d` — `CONTACT_CONFIG["commands"]` registry + asserts
 - **Stage 2:** `43f4767df` — `/command` parse + intercept with code/agent reply
 - **Build notes:** Two files (`src/utils/config.py`, `src/core/contact.py`), as planned. `py_compile` is clean. Per the plan's lint rule, the UP045/UP006 hits on new annotations were fixed (`str | None`, `tuple[...]`; the module has `from __future__ import annotations`). The one remaining ruff hit on a new line is TRY401 on the intercept's `logger.exception`, which `stat.logging.error`'s Do shape (`type(exc).__name__, exc`) requires; the file already carries 10 of these. A smoke run with Slack, resolve, and insert patched confirmed: link unwrap → `insert_slack_meteorite("cand-1", "http://www.dice.com/jobs/13234abcd", source_id="C1:1.1", thread_ts="1.1")`, one ack containing the id, no paste recovery, no turn, no hear-ack; the bare command posts usage with no insert; mid-sentence takes the normal turn; `agent` mode runs one turn with `"meteorite_id": 42` in `extra_context`. Listen line: `cand-1 | contact listen app_mention add-job: action:add-job:code,meteorite:42 (channel: C1) aside: -`. The AC8 `rg` returns no matches. `tests/component/core/test_contact.py` shows the same 12 failures before and after the build (84 pass), so none are new.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2035
+**Publish ref:** 0ea00db4817d6e7b7977224bb96b64fbd77d95f3
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Review scope:** `origin/dev...origin/sub/AST-2032/AST-2035-contact-add-job-intercept` limited to AST-2035 product commits on `src/utils/config.py` and `src/core/contact.py` (`bd1e9472d`, `43f4767df`). Sibling AST-2034 carry on the same sub (`src/core/meteorite.py`, etc.) excluded from canon scoring.
+**Overall:** CLEAN
+
+## Canon scores
+patt.contact.command-intercept | — | | `canon_clerk expand`: unknown id (proposed, not in corpus); plan/parent intercept shape is implemented in the scoped diff — §5.3 ESCALATE gate for Archie to approve and land the directive
+stat.logging.info.contact | B | | `outcome` is command id (`add-job`) not envelope `success`/`concern`; `action:` carries `id:mode` + `meteorite:` — matches ticket AC9 and plan; slight variance from typical Estelle outcomes
+stat.logging.debug | A | | Parse/handler Calling/Response pairs; no `if debug` gating on those lines
+stat.logging.warning | A | | Handler-unavailable warning; insert validation misses stay in `insert_slack_meteorite`
+stat.logging.error | A | | Intercept `logger.exception` with who/why/next-step (`type(exc).__name__, exc`)
+
+## Column diff vs plan stage
+patt.contact.command-intercept — Joan **A** (parent shape); Radia cannot corpus-score (unknown id) — implementation note only, not a code downgrade
+(remaining ids aligned with Joan)
+
+## Frame diff
+(none)
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+- **Frozen proposed pattern** — `patt.contact.command-intercept` is on the frozen list but absent from the corpus (`canon_clerk expand` fails). Diff implements the planned registry + first-token parse + pre-paste/pre-turn intercept + `code`/`agent` reply. **Default:** no `resolve-child` canon work; Chuckles/Archie add or approve the directive and reconcile Canon Scope before treating this id as mechanically scoreable on future tickets.
+- **`code` mode handler soft-fail** — `ok: False` or unresolved handler posts no ack; AST-1101 hear-ack may still fire (covered in `test_ac3_…` miss path). **Default:** ship as planned unless Susan amends Scope with a dedicated failure reply.
+- **`agent` mode vs AC5** — paste skip is on the intercept path; `agent` turn may still hit `land_calls` / paste elsewhere (plan Notes). **Default:** AC5 coverage stays on shipped `code` mode only.
+
+### advisory
+- **Sibling carry on publish ref:** full three-dot diff also includes AST-2034 `src/core/meteorite.py`, AST-2034 plan doc, meteorite/agent/frontend tests, and bible updates — expected ftr merge; not AST-2035 product scope.
+- **Plan fidelity:** Scoped diff matches Stage 1 registry/asserts and Stage 2 parse, `_run_contact_command`, `extra_context`, intercept control flow, and `_emit_listen_info` extensions. AC8 `rg` pattern has no hits under `src/core/` on tip.
+- **Tests:** `tests/component/core/test_contact.py` adds `TestAst2035ContactCommandIntercept` for AC1–AC9 (parse matrix, E2E insert, code/agent modes, paste skip, unknown/bare, mid-sentence, rg, caplog AC9).
+- **Status mismatch:** spawn prompt **Tests Passed**; `linear_proxy get-issue` brief shows **Tests Ready** — Chuckles should reconcile Linear before **Review Posted** (Radia did not re-fetch for gate per spawn trust).
+
+## What's solid
+- Registry-only command identity (AC8): core reads `CONTACT_CONFIG["commands"]` keys only; `add-job` lives in config.
+- Intercept ordering: bound + leading command skips paste recovery, runs handler with `source_id=f"{channel}:{message_ts}"`, `code` mode avoids `do_task`, single ack with meteorite id on success.
+
+## Recommended actions (downstream — not Radia lane)
+- Chuckles: append artifact, `docs()` on publish ref, post slim upshot `--as radia`, reconcile **Tests Passed** vs **Tests Ready**, move to **Review Posted**.
+- Archie: resolve **ESCALATE** by approving `patt.contact.command-intercept` in corpus or adjusting parent Canon Scope.
+- datt: if ESCALATE cleared or accepted as procedural-only, **PROCEED** → **User Testing**; no product fixes indicated on scoped diff.
+
+Gate: ESCALATE (Commit: 0ea00db48) — proposed `patt.contact.command-intercept` not in corpus; no fix-now. Linear state verified Tests Passed at review time (proxy brief was stale).
