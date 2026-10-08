@@ -318,3 +318,43 @@ Proposed resolutions: <2-3 options, or "need guidance">
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2072
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** `origin/sub/AST-2050/AST-2072-estelle-thread-response` @ `c968b6dfab648de9161be48d3f0b6e5d2fbb379a`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.contact.command-intercept | B | | Intercept ordering, modes, and `anchor_ts` preserved; Arc 3–4 wording lags until Archie (plan Canon notes). |
+| stat.logging.info.contact | A | | |
+| stat.logging.debug | A | | |
+
+## Traceability
+
+AC1→S2.5,7 · AC2→S1.3–4 · AC3→S2.5 · AC4–7→S2.1,S1.5,S2.3 · AC8→S2.3–4,6 · AC9→S2.1,4,6,7 · AC10→S2.4 · AC11→S1.5 · AC12→S2.5 · AC13→S1.2,S2.5 · AC14→S1.1,S2.6 · Parent Purpose/Functional scope 1–6→Stages 1–2 + AC map; no orphan stages.
+
+## Findings
+
+- **acceptable** · Plan `## Scope gate` / Files Changed · Three-file footprint matches ticket `## Scope` and parent Component/Technical scope; meteorite top-level post explicitly out of scope.
+- **acceptable** · Stage 1 / Stage 2 ordering · Staged removal of `known_recognition_reply_text` avoids half-migrated config reads; Done-when checks are executable.
+- **discuss** · AC 9 vs plan step 7 · Parent AC 9 text names two allowed grep sites; plan expects a third hit (`try_meteorite_apply_paste_from_slack` lookup anchor, not placement). Intent matches AC 9; if Betty keys tests to the two-site literal, align AC wording or test expectation with the carve-out in plan step 7.
+- **acceptable** · `## Canon notes` · `patt.contact.command-intercept` drift flagged for Archie, not edited in-flight — matches parent Architectural definition.
+
+## R6 (summary)
+
+Definition fidelity, DRY, and scope: no creep into AST-2055/AST-2061 hunks (plan Notes). Self-assessment: Estimate confirm 3 is proportionate; Decision callouts are specific. No `!!-NONE` gaps.
+
+**Gate:** Plan Ready · assignee Joan · 0 completed Plan Discuss rounds.
+
+context_tokens≈28000
+
+---
+
+[plan-rubric] PROCEED (Commit: c968b6df) placement helper, three files
