@@ -316,3 +316,41 @@ No other files are touched. The only new dependencies are imports of functions t
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2067
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** 0cc6188afc2f2746087585ac5a6b7cf8aa52e6d8
+
+## Canon scores
+
+patt.artifact.read-current | A | | 
+patt.artifact.write-operative | A | | 
+stat.logging.error | A | | 
+stat.logging.info.api | A | | 
+
+## Traceability
+
+AC7→St1+St2+St3 PUT routes (core `ValueError`→400 before commit; entity 404 first)
+
+## Findings
+
+### acceptable
+- **Location:** Plan (whole doc)
+- **Finding:** No Conf/Risk self-assessment block (Estimate confirm only).
+- **Recommendation:** Same as AST-2066 — optional; not blocking for thin route ticket.
+
+### discuss
+- **Location:** Shared conventions — `resume_structure`
+- **Finding:** Plan serves `candidate.artifacts.resume_structure` on the API while parent functional scope says Base Resume arrows step `base_resume` only (`resume_structure` has no arrows in UI).
+- **Recommendation:** Sibling #3 can omit nav; optional one-line `if` 400 if Archie wants API parity with UI — not a canon defect.
+
+- **Location:** Shared conventions — info logging
+- **Finding:** Candidate/rubric PUTs will emit both `stat.logging.info.entity` (AST-2066 core) and `stat.logging.info.api` (this ticket); plan cites parent Architectural definition for both.
+- **Recommendation:** Accept dual pipe (different statutes/events); job PUT remains API-only per tracker Notes.
+
+context_tokens≈58000
