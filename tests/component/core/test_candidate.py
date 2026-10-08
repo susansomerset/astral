@@ -2447,7 +2447,7 @@ class TestAst986SessionResumeParse:
         assert calls[0]["task_key"] == "simple_resume_parse"
         assert calls[0]["live_content"] == "full resume text"
         assert calls[0]["index"] == body["batch_id"]
-        assert "astral_candidate_id" not in calls[0]["ctx"]
+        assert calls[0]["ctx"]["astral_candidate_id"] == "somerset"
         assert calls[0]["ctx"]["candidate_data"]["context"]["raw_resume"] == "full resume text"
         assert saves[0][0][2] == "session"
         assert updates[-1][1]["status"] == "COMPLETED"

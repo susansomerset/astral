@@ -1618,7 +1618,7 @@ def _transition_batch_consult_failures(
 
 
 class InvalidJobLinkError(ValueError):
-    """Model returned an empty or non-absolute job_link for a listing."""
+    """Model returned an empty job_link for a passing listing (relative links route to RELATIVE_JOB_LINK, AST-2025)."""
 
 
 @_with_log_debug
@@ -1853,7 +1853,9 @@ async def _run_batch_consult(
             "%s -> %s pass_state=%r fail_state=%r grades=%r",
             aid, to_state, cfg["pass_state"], cfg["fail_state"], response_job.get("grades"),
         )
-        if to_state == cfg["pass_state"]:
+        # Qualify's relative-link park (AST-2025) is a pass routed to fetch_relative_jd, not a fail.
+        # Truthiness guard: tasks without relative_link_state must not count a None return as passed.
+        if to_state == cfg["pass_state"] or (to_state and to_state == cfg.get("relative_link_state")):
             passed += 1
         else:
             failed += 1
@@ -2049,14 +2051,16 @@ async def qualify_job_listings(
                 _transition_job_state_for_task(task_key, [aid], dest, score)
             return dest or cfg["error_state"]
         job_link = (response_job.get("job_link") or "").strip()
-        if not job_link.startswith("http"):
-            kind = "empty" if not job_link else "relative"
-            logger.debug("%s job_link: %r", kind, job_link)
-            raise InvalidJobLinkError(f"{kind} job_link: {job_link}")
+        if not job_link:
+            logger.debug("empty job_link: %r", job_link)
+            raise InvalidJobLinkError(f"empty job_link: {job_link}")
         if not tracker.initialize_job(aid, input_job["company"], response_job):
             _warn_job(aid, cfg["fail_state"], "identity collision")
             return cfg["fail_state"]
         _save_joblist_result()
+        if not job_link.startswith("http"):
+            # Relative link kept as-is; fetch_relative_jd clicks it on the company job_site.
+            to_state = cfg["relative_link_state"]
         _transition_job_state_for_task(task_key, [aid], to_state, score)
         _job_consult_info(aid, to_state)
         return to_state
@@ -2894,6 +2898,13 @@ async def run_consult_task(
             "gazer.fetch_jd_batch",
             f"batch_id={batch_id}, n={len(entities)}",
             fetch_jd_batch(batch_id, entities, debug=debug),
+        )
+    elif task_key == "fetch_relative_jd":
+        from src.core.gazer import fetch_relative_jd_batch
+        r = await _debug_await(
+            "gazer.fetch_relative_jd_batch",
+            f"batch_id={batch_id}, n={len(entities)}",
+            fetch_relative_jd_batch(batch_id, entities),
         )
     elif task_key == "fetch_culture_pages":
         from src.core.gazer import fetch_culture_pages_batch
