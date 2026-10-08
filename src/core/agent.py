@@ -241,8 +241,10 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     raw 2-char code when the map is absent or incomplete. _render_pass_fail ignores vector names;
     _render_score requires rubric criteria with labels — callers guard with `if rubric_list` before scoring (AST-429).
     "_meta" in output_type determines whether metadata fields after grades are accepted;
-    trailing non-grade content on a grades-only line is recorded in "decode_failures"
-    (id, pos, reason) and the line is skipped; other per-line errors still raise (AST-1996).
+    trailing non-grade content on a grades-only line, and a segment whose confidence
+    digit disagrees with its letter (X must be 0, every other letter 1-5), are recorded
+    in "decode_failures" (id, pos, reason) and the line is skipped so the caller can
+    retry that entity; other per-line errors still raise (AST-1996).
     "grades_encoded_notes" (do/get/like): non-segment tail rejoins to job["notes"] only (optional).
     """
     with_meta = "_meta" in output_type or output_type == "grades_encoded_prefilter_links"
@@ -349,21 +351,32 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
             )
 
         grade_rows: List[Dict[str, Any]] = []
+        bad_conf: Optional[str] = None
         for seg in grade_segs:
             code, letter, conf_ch = seg[:2], seg[2], seg[3]
             conf_d = int(conf_ch)
-            if letter == "X":
-                if conf_d != 0:
-                    raise ValueError(
-                        f"[{task_key}] grade X requires confidence digit 0, got {conf_d} in segment {seg!r} (line {line!r})"
-                    )
-            elif conf_d not in (1, 2, 3, 4, 5):
-                raise ValueError(
+            # Illegal confidence is a bad line, not a hop failure. Caller retries that entity.
+            # Reason text matches the old ValueError so existing log greps keep working.
+            if letter == "X" and conf_d != 0:
+                bad_conf = (
+                    f"[{task_key}] grade X requires confidence digit 0, got {conf_d} in segment {seg!r} (line {line!r})"
+                )
+                break
+            if letter != "X" and conf_d not in (1, 2, 3, 4, 5):
+                bad_conf = (
                     f"[{task_key}] non-X grade requires confidence 1-5, got {conf_d} in segment {seg!r} (line {line!r})"
                 )
+                break
             grade_rows.append(
                 {"vector": vector_labels.get(code, code), "grade": letter, "confidence": conf_d}
             )
+        if bad_conf:
+            decode_failures.append({
+                id_key: batch_entities[pos][id_key],
+                "pos": pos,
+                "reason": bad_conf,
+            })
+            continue
 
         row: Dict[str, Any] = {
             id_key: batch_entities[pos][id_key],
