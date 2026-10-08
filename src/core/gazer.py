@@ -1,7 +1,7 @@
 """
 Core gazer business logic.
 
-In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_culture_pages_batch,
+In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_relative_jd_batch, fetch_culture_pages_batch,
 fetch_website_batch, fetch_job_pages_batch, validate_title_batch,
 contact_task_gazer_scrape (AST-1516 contact-task scrape),
 ingest_meteorite_jobs_from_email_html (AST-1061 gazer-reads-email).
@@ -36,7 +36,7 @@ from src.utils.config import (
     SOURCE_ENTITY_TYPE_METEORITE,
     TRACKER_CONFIG,
 )
-from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
+from src.core.tracker import ingest_jobs, persist_http_job_link, save_job_data, transition_job_state
 from src.core.meteorite import create_meteorite_job
 from src.data.database import (
     get_company,
@@ -58,6 +58,9 @@ from src.external.telescope import (
     check_connectivity,
     extract_raw_job_listings,
     run_one_shot,
+    click_through_visible_text,
+    PlaywrightInfraError,
+    TELESCOPE_CLICK_TARGET_MISSING,
 )
 from src.utils.formatting import (
     collapse_consecutive_blank_lines,
@@ -181,6 +184,43 @@ def _classify_jd(text: str) -> str:
     return "ok"
 
 
+def _apply_jd_gates(job: dict[str, Any], text: str, *, short_state: str, pass_state: str) -> bool:
+    """Shared JD gates for fetch_jd_batch and fetch_relative_jd_batch (AST-2025).
+
+    collapse blank lines -> empty check -> prune -> min_chars -> classify. Saves the JD and
+    transitions the job. Empty / too-short -> short_state; classified -> _JD_ERROR_STATES;
+    ok -> pass_state. Returns True only when the job reached pass_state.
+    """
+    jd_key = TRACKER_CONFIG.get("job_data_keys", {}).get("job_description", "job_description")
+    min_chars = TRACKER_CONFIG.get("jd_min_chars", 200)
+    aid = job.get("astral_job_id", "")
+    text = collapse_consecutive_blank_lines(text)
+    if not text or not text.strip():
+        _log.warning("%s -> %s [empty visible text]", aid, short_state)
+        transition_job_state([aid], short_state)
+        return False
+    text = _prune_jd(text, job.get("job_title", ""))
+    if len(text) < min_chars:
+        _log.warning("%s -> %s [JD too short: %d < %d chars]", aid, short_state, len(text), min_chars)
+        transition_job_state([aid], short_state)
+        return False
+    classification = _classify_jd(text)
+    if classification != "ok":
+        error_state = _JD_ERROR_STATES[classification]
+        # Save the text so the bad capture is inspectable in the DB
+        save_job_data(aid, {jd_key: text})
+        _log.warning("%s -> %s [JD classified %r]", aid, error_state, classification)
+        transition_job_state([aid], error_state)
+        return False
+    save_job_data(aid, {jd_key: text})
+    # Write back into in-memory dict so coat-check is a true no-op if called after this
+    if not isinstance(job.get("job_data"), dict):
+        job["job_data"] = {}
+    job["job_data"][jd_key] = text
+    transition_job_state([aid], pass_state)
+    return True
+
+
 async def fetch_jd_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
@@ -193,9 +233,6 @@ async def fetch_jd_batch(
         raise ConnectionError(f"fetch_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)")
     if debug:
         _log.set_debug_flag(True)
-    cfg = TRACKER_CONFIG
-    jd_key = cfg.get("job_data_keys", {}).get("job_description", "job_description")
-    min_chars = cfg.get("jd_min_chars", 200)
     # Success / generic scrape-fail transitions (classified JD errors route via _JD_ERROR_STATES)
     pass_state = GAZER_CONFIG["fetch_jd"]["pass_state"]
     fail_state = GAZER_CONFIG["fetch_jd"]["fail_state"]
@@ -215,7 +252,6 @@ async def fetch_jd_batch(
         nonlocal passed, failed
         aid = job.get("astral_job_id", "")
         job_link = (job.get("job_link") or "").strip()
-        title = job.get("job_title", aid)
         if not job_link:
             if debug:
                 _log.debug_index(
@@ -245,72 +281,16 @@ async def fetch_jd_batch(
             transition_job_state([aid], fail_state)
             failed += 1
             return
-        text = collapse_consecutive_blank_lines(text)
-        if not text or not text.strip():
-            if debug:
-                _log.debug_index(
-                    func="gazer.fetch_jd_batch",
-                    index=job_index,
-                    total=job_total,
-                    identifier=_gazer_job_identifier(job),
-                    outcome=f"failed — empty visible text -> {fail_state}",
-                )
-                _log.debug_detail(f"job_link={job_link!r}")
-            _log.warning("[%s] empty visible text from %s", aid, job_link)
-            transition_job_state([aid], fail_state)
+        _log.debug(
+            "Calling JD gates: [astral_job_id=%s short_state=%s pass_state=%s text=%s]",
+            aid, fail_state, pass_state, text,
+        )
+        gated = _apply_jd_gates(job, text, short_state=fail_state, pass_state=pass_state)
+        _log.debug("Response from JD gates: %s", gated)
+        if gated:
+            passed += 1
+        else:
             failed += 1
-            return
-        text = _prune_jd(text, job.get("job_title", ""))
-        if len(text) < min_chars:
-            if debug:
-                _log.debug_index(
-                    func="gazer.fetch_jd_batch",
-                    index=job_index,
-                    total=job_total,
-                    identifier=_gazer_job_identifier(job),
-                    outcome=f"failed — JD too short ({len(text)} < {min_chars}) -> {fail_state}",
-                )
-                _log.debug_detail(f"pruned_chars={len(text)} job_link={job_link!r}")
-            _log.warning("[%s] JD too short (%d chars < %d), -> %s", aid, len(text), min_chars, fail_state)
-            transition_job_state([aid], fail_state)
-            failed += 1
-            return
-        classification = _classify_jd(text)
-        if classification != "ok":
-            error_state = _JD_ERROR_STATES[classification]
-            if debug:
-                _log.debug_index(
-                    func="gazer.fetch_jd_batch",
-                    index=job_index,
-                    total=job_total,
-                    identifier=_gazer_job_identifier(job),
-                    outcome=f"failed — classified {classification!r} -> {error_state}",
-                )
-                _log.debug_detail(f"job_link={job_link!r} pruned_chars={len(text)}")
-            # Save the text so the bad capture is inspectable in the DB
-            save_job_data(aid, {jd_key: text})
-            _log.warning("[%s] JD classified as %r -> %s", aid, classification, error_state)
-            transition_job_state([aid], error_state)
-            failed += 1
-            return
-        save_job_data(aid, {jd_key: text})
-        # Write back into in-memory dict so coat-check is a true no-op if called after this
-        if not isinstance(job.get("job_data"), dict):
-            job["job_data"] = {}
-        job["job_data"][jd_key] = text
-        transition_job_state([aid], pass_state)
-        if debug:
-            _log.debug_index(
-                func="gazer.fetch_jd_batch",
-                index=job_index,
-                total=job_total,
-                identifier=_gazer_job_identifier(job),
-                outcome=f"passed -> {pass_state} ({len(text)} chars)",
-            )
-            _log.debug_detail(
-                f"job_link={job_link!r} title={title!r} pruned_chars={len(text)}"
-            )
-        passed += 1
 
     await asyncio.gather(
         *[_scrape_one(j, ji) for ji, j in enumerate(jobs, start=1)],
@@ -321,6 +301,74 @@ async def fetch_jd_batch(
             f"summary passed={passed} failed={failed} total={job_total} "
             f"pass_state={pass_state!r} fail_state={fail_state!r}"
         )
+    return {"passed": passed, "failed": failed, "total": len(jobs)}
+
+
+async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> dict[str, int]:
+    """Click-through JD fetch for RELATIVE_JOB_LINK jobs (AST-2025).
+
+    Per claimed job: Telescope opens company job_site, clicks the <a> whose href equals the
+    stored relative job_link, returns (final_url, text). The resolved absolute URL replaces
+    job_link, then the same JD gates as fetch_jd_batch decide the state. Click / Telescope
+    failure -> fail_state with job_link left relative. Processes only `jobs` (dispatcher
+    claimed and releases them). Returns {"passed": N, "failed": N, "total": N}.
+    """
+    if not await check_connectivity():
+        raise ConnectionError(
+            f"fetch_relative_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)"
+        )
+    cfg = GAZER_CONFIG["fetch_relative_jd"]
+    pass_state = cfg["pass_state"]
+    fail_state = cfg["fail_state"]
+    # Empty / too-short text after a successful click: same JD_SCRAPE_FAIL as fetch_jd.
+    short_state = GAZER_CONFIG["fetch_jd"]["fail_state"]
+    passed = failed = 0
+
+    async def _fetch_one(job: dict[str, Any]) -> None:
+        nonlocal passed, failed
+        aid = job.get("astral_job_id", "")
+        job_site = (job.get("job_site") or "").strip()
+        href = (job.get("job_link") or "").strip()
+        if not job_site or not href:
+            _log.warning("%s -> %s [missing job_site %r or job_link %r]", aid, fail_state, job_site, href)
+            transition_job_state([aid], fail_state)
+            failed += 1
+            return
+        try:
+            final_url, text = await click_through_visible_text(job_site, href)
+        except Exception as e:  # noqa: BLE001 — every Telescope/client failure routes to fail_state (AST-2022 §5)
+            if isinstance(e, PlaywrightInfraError) and e.failure_class == TELESCOPE_CLICK_TARGET_MISSING:
+                _log.warning("%s -> %s [click target missing: href=%r list_url=%s]", aid, fail_state, href, job_site)
+            else:
+                _log.exception(
+                    "%s -> %s [click-through failed: href=%r list_url=%s]\n  %s: %s\n  Continuing to the next job",
+                    aid, fail_state, href, job_site, type(e).__name__, e,
+                )
+            transition_job_state([aid], fail_state)
+            failed += 1
+            return
+        if not final_url.startswith(("http://", "https://")):
+            _log.warning("%s -> %s [click-through returned non-http final_url %r]", aid, fail_state, final_url)
+            transition_job_state([aid], fail_state)
+            failed += 1
+            return
+        _log.debug("Calling persist_http_job_link: [astral_job_id=%s job_link=%s]", aid, final_url)
+        persist_http_job_link(aid, final_url)
+        _log.debug(
+            "Calling JD gates: [astral_job_id=%s short_state=%s pass_state=%s text=%s]",
+            aid, short_state, pass_state, text,
+        )
+        gated = _apply_jd_gates(job, text, short_state=short_state, pass_state=pass_state)
+        _log.debug("Response from JD gates: %s", gated)
+        if gated:
+            _log.info("%s | job %s: %s (batch: %s)", aid, "relative link fetched", pass_state, batch_id)
+            passed += 1
+        else:
+            failed += 1
+
+    _log.debug("Beginning fetch_relative_jd loop on %s items", len(jobs))
+    await asyncio.gather(*[_fetch_one(j) for j in jobs], return_exceptions=False)
+    _log.debug("End fetch_relative_jd loop after %s items", passed + failed)
     return {"passed": passed, "failed": failed, "total": len(jobs)}
 
 
