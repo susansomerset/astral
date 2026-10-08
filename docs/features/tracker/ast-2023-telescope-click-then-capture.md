@@ -289,3 +289,44 @@ Telescope service must be redeployed for `click_href` to take effect (ticket Bou
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2023
+**Overall:** APPROVED
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Publish ref:** `sub/AST-2022/AST-2023-telescope-click-capture` @ `3cf6c69`
+
+## Canon scores
+
+stat.logging.debug | A | | `src/external/telescope.py` Calling/Response joints per Notes; service `_log.debug` is outside `src/**` (not scored against this statute)
+stat.logging.warning | A | | Click-miss raises in client; per-item warning deferred to AST-2022 #3 runner per plan Notes and parent Architectural definition
+stat.logging.error | A | | No new `logger.exception` on configured click-miss path in `src/external`; runner owns outcome logging (#3)
+
+## Traceability
+
+AC4 → Stage 1 (`click_href`, `click_target_missing`, `worker._retry_delay`) + Stage 2 (`_post_telescope`, `click_through_visible_text`, failure_class mapping); parent AC1–3, AC5–8 N/A (out of AST-2023 Scope/Boundaries).
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan structure (Estimate confirm only).
+- **Finding:** R6 self-assessment checklist has nothing to grade; complexity is implicit in staged literals and scope-gate resolution.
+- **Recommendation:** Optional `## Self-assessment` for build/review parity; not blocking.
+
+### discuss — Canon Scope vs `service/telescope/**` logging
+
+- **Location:** Ticket Citations vs Files Changed (`service/telescope/*` is most of the diff).
+- **Finding:** Frozen list is three `stat.logging.*` directives with `applies_when.paths: ["src/**"]`. Service uses `logging_util.get_logger`; plan correctly documents canon binding for `src/external` only. No placement/layer statute on the child list.
+- **Recommendation:** Archie may amend parent Canon Scope later if service logging should be explicitly governed; do not widen this child's frozen list in flight.
+
+### acceptable — AC4 “POST” wording vs queue transport
+
+- **Location:** Notes for every stage (“POST to the Telescope service”).
+- **Finding:** Plan explicitly maps AC4 to Postgres queue submit, not HTTP scrape — consistent with live `app.py` surface and child AC intent (distinct class, no retry, unchanged shape when option omitted).
+
+**R6 (summary):** Definition fidelity holds for parent functional item 6 and child Scope (including `worker.py` after scope-gate). Files/stages stay inside amended Scope; no sibling creep. `wait_ready` before click preserves default-off behavior and matches existing Telescope list-page sequencing. DRY: reuses navigate timeouts, `PlaywrightInfraError` pattern, existing dismiss/expand pipeline. No `fix-now` gaps.
+
+context_tokens≈42000
+
+Slim upshot: `[plan-rubric] PROCEED (Commit: 3cf6c69) click-then-capture plan ready`
