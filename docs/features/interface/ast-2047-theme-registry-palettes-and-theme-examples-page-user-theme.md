@@ -758,6 +758,136 @@ One file, `src/ui/frontend/src/App.css`, named in AST-2042's Component scope. Th
 - AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` in `App.css` outside `[data-theme]` blocks, and every `var(--x)` is defined in a token block.
 - Every non-heading `--accent-gold` use renders exactly as before in every palette.
 
+### AST-2063 fix-board (F2)
+
+- **Betty — TESTS: OK.** App.css-only change; no existing test reads the six repointed heading rules or `--accent-gold` values. AST-2047 App.css contract tests already cover `--heading` declared in all four theme blocks, every `var()` resolving, and no hex outside theme blocks. Light-heading purple is a UAT visual check. Note: `test_AdminThemeExamples.test.tsx` has 5 tests (not 4) since the AST-2049 guard.
+- **Joan — CANON: OK.** Parent Canon Scope is none. No in-force statute governs theme token names, heading vs accent roles, or palette hex sets. `astral.ui.frontend-file-placement` satisfied (styles stay in App.css). Draft UI patterns (`patt.ui.shared-button-roles`, in-flight gold) are not in force and not amended.
+
+### AST-2063 Radia review-fix — round 1
+
+[code-rubric]
+**Ticket:** AST-2063
+**Publish ref:** `85582d39cbc7c61e8fed3cb6165ce25466ba0a93` (`origin/sub/AST-2042/AST-2063-light-header-purple`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; ticket/parent **Canon Scope:** none)
+**Overall:** FIX-NOW
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**; no `validate-plan` canon column for this bug).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out (Betty **TESTS: OK**; `qa-fix` did not run per spawn brief).
+
+**## What must still hold — OK** for the **isolated** fix commit `85582d39c` (`App.css` only): Dark `--heading: var(--accent-gold)` preserves heading color vs pre-fix; `--heading` added in all four blocks (AC 4 name-set parity); `#241b33` only inside Light `[data-theme]` blocks; six heading selectors repointed; no other `var(--accent-gold)` rule bodies changed in that commit.
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket scope on publish ref (fix-lane diff base).** `git diff origin/ftr/AST-2042-user-theme...origin/sub/AST-2042/AST-2063-light-header-purple` is **not** the AST-2063 fix alone. `origin/ftr/AST-2042-user-theme` @ `90151549d` is an ancestor of the sub tip, with **40 commits** in between. Product/test paths in that three-dot diff include:
+  - `src/core/agent.py`
+  - `src/ui/frontend/src/components/AgentAnalysisHeader.tsx`, `ArtifactEditor.tsx`, `RubricModal.tsx`
+  - `tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx`, `test_RubricModal.test.tsx`
+  - plus `App.css` (2063 + any prior delta vs lagging ftr)
+  
+  The **only** AST-2063 product commit is `85582d39c` — **1 file**, `App.css`, matching `## Proposed change` exactly (4× `--heading`, 6 selector repoints). Merging or fast-forwarding this sub onto ftr as-is would land **AST-2059 / AST-2060 / AST-2041 / dev-merge** work unrelated to Susan’s header-color bug. **Chuckles/engineer:** restack the sub on current `origin/ftr/AST-2042-user-theme` (cherry-pick `85582d39c` + plan/docs commits only) before `merge-child` or UT merge.
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Isolated fix vs prescribed diff:** Review scoring of plan fidelity and “must still hold” applies to `85582d39c`; the ftr…sub diff must not be used as the merge artifact until restacked.
+- **UAT:** Light heading purple (`#241b33`) remains visual-only; fix-board already noted no durable color assertion (consistent with opt-out).
+- **Sibling AST-2064:** Plan documents non-overlapping insert above `--grade-*`; merge doc conflict possible on adjacent `## Bug:` append — resolve keeping both blocks.
+
+## What's solid
+
+- **Plan fidelity (isolated commit):** Matches `## Bug: AST-2063` in `ast-2047-theme-registry-palettes-and-theme-examples-page-user-theme.md` on the publish ref — token placement, Dark alias, Light hex, six selectors, accents untouched.
+- **Blast radius:** No `.tsx`/config/API in `85582d39c`.
+- **Board bar:** Betty/Joan OK; absence of `[bug-repro]` is consistent with App.css-only, opt-out path.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (after restack) | **Normal** (AST-2042 UAT-batch, not Done) | Restack sub → re-run review or confirm three-dot diff is **only** 2063 (+ docs) → **Review Posted** → clean shortcut to **User Testing** if then CLEAN. |
+| **REVIEW** (if shipped without restack) | Normal | **Do not** `merge-child` this tip — smuggles sibling fix-lane product. |
+
+context_tokens≈22000
+
+`[code-rubric] REVIEW (Commit: 85582d39c) Sub branch stacks extra fixes`
+
+### AST-2063 Radia review-fix — round 2 (after refresh-ftr to dev 2fd5c63e7)
+
+[code-rubric]
+**Ticket:** AST-2063
+**Publish ref:** `8bcf57c980d5edc187cc447ee385e824f9272229` (`origin/sub/AST-2042/AST-2063-light-header-purple`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; ticket/parent **Canon Scope:** none)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out (Betty **TESTS: OK**; `qa-fix` skipped).
+
+**## What must still hold — OK** — `git diff origin/ftr/AST-2042-user-theme...origin/sub/AST-2042/AST-2063-light-header-purple` on `App.css` only: Dark gains `--heading: var(--accent-gold)` (heading color unchanged vs direct `--accent-gold`); three Light blocks add `--heading: #241b33` inside token blocks; six heading rules repointed; no other `color: var(--accent-gold)` rule changes in the diff.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Round-1 fix-now cleared:** `origin/ftr/AST-2042-user-theme` @ `2fd5c63e7` (epic #262 on dev). Three-dot diff is **2 files only** — `src/ui/frontend/src/App.css` + plan doc `## Bug: AST-2063` block on `ast-2047-theme-registry-palettes-and-theme-examples-page-user-theme.md`. No `src/**` or `tests/**` beyond `App.css`.
+- **Product tip:** Still `85582d39c` for CSS; tip commit `8bcf57c98` is docs-only (round-1 Radia artifact).
+- **UAT:** Light heading purple remains visual; fix-board aligned with no durable color pin.
+
+## What's solid
+
+- **Plan fidelity:** Matches `## Proposed change` — 4× `--heading` after `--accent-gold-hover`, 6 selectors (`list-page-title`, `job-analysis-upshot-heading`, `modal-title`, `dep-title`, `dep-section-label`, `theme-examples-label`), accents/nav/tabs untouched.
+- **Blast radius:** App.css-only product delta; stack is merge-safe on refreshed ftr.
+- **Commits since ftr:** `0d884602e`–`8bcf57c98` — plan-fix, fix-board, `code(AST-2063)`, review doc only.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Normal** (AST-2042 UAT-batch) | → **Review Posted** → fix-lane clean shortcut → **User Testing** (`resolve-child` skipped). |
+
+context_tokens≈12000
+
+`[code-rubric] PROCEED (Commit: 8bcf57c98) Light headings use --heading`
+
+**AST-2063 docs-acceptance:** fix-board [board-betty] TESTS: OK — no test-tree delivery; qa-fix skipped (clean-board opt-out). Existing AST-2047 App.css contract tests cover the change; Light heading color is a UAT visual check.
+
 ## Bug: AST-2065 — Theme Examples page never loads (UI config fetched from non-existent /api/system/ui_config)
 
 ### As-is
