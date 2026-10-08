@@ -339,3 +339,60 @@ Slim upshot: `[plan-rubric] PROCEED (Commit: 3cf6c69) click-then-capture plan re
 - **Build notes:** worker class is `QueueWorker` (plan/ticket said `Worker`); edited its `_retry_delay` as planned.
   `tests/component/external/test_telescope.py`: 44 passed, 4 failed — same 4 fail on the pre-change tree
   (`TestTelescopePoolHttp` ×3, `TestAst1750PostTelescopeDebugDump` ×1; they target the retired HTTP pool transport).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2023
+**Publish ref:** `529d04027455dc888afff8f4e8abeece570309d7` (`origin/sub/AST-2022/AST-2023-telescope-click-capture`)
+**Corpus:** `2344ae3265b15125a8f4a655946fcfe66b3e1def`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan’s plan-stage grades were A/A/A on the same three ids; code review matches.
+
+## Frame diff
+
+(none) — Acceptance criteria and boundaries in the Linear description already match what landed; no new checklist rows required for `resolve-child` §10.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `tests/component/core/test_agent.py`, `test_agent_ast1879.py`, `test_consult.py`, `test_timesheets.py` (deletions), `tests/component/external/test_openrouter.py`, `tests/component/ui/api/test_api_admin.py`, `tests/component/utils/test_config.py` — expected `merge-tests` carry from siblings on the parent epic; no AST-2023 product files outside the ticket scope table.
+- **Pre-existing pytest reds (documented, deselected in manifest):** `TestTelescopePoolHttp` (×3), `TestAst1750PostTelescopeDebugDump`, `test_telescope_deploy_ci.py::TestRailwayPhase1Toml::test_no_healthcheck_path_and_no_phase2_hooks` — bible § AST-2023 records these; not introduced by this sub tip.
+- **Canon territory:** Frozen `stat.logging.*` applies to `src/**` only. Service `service/telescope/*` uses `logging_util.get_logger` with the same Calling/Response joint style as existing `navigate`; not scored against the child frozen list (same as Joan’s plan note).
+
+## What’s solid
+
+- **Plan fidelity:** `click_href` optional on `TelescopeRequest`; `click_and_follow` (exact `a[href="…"]`, CSS escape, same-tab vs popup, missing anchor → `ClickTargetMissing` without click/waiters); `run_scrape` order load → cookies → expand → wait_ready → click → destination cookie dismiss → capture; `CLICK_TARGET_MISSING` / `click_target_missing` mirrored in `src/external/telescope.py` with `QueueWorker._retry_delay` non-retry; `click_through_visible_text` and `_post_telescope` forwarding match Stages 1–2.
+- **`src/external/telescope.py` logging:** New `click_through_visible_text` uses `get_logger` with ungated `Calling` / `Response from` `debug` joints; missing anchor raises `PlaywrightInfraError(TELESCOPE_CLICK_TARGET_MISSING)` with no `logger.warning` / `logger.exception` on that path (runner #3 owns outcome logging per plan).
+- **Tests:** `test_telescope_click.py` (12 nodes) and `TestAst2023ClickThrough` (7 nodes) cover AC4 intent (unchanged body when option omitted, distinct non-retried class, destination `final_url`/`text`, client single-submit on missing target).
+
+## Recommended actions (Chuckles / downstream — not Radia)
+
+1. Append this artifact to `docs/features/tracker/ast-2023-telescope-click-then-capture.md`, commit `docs(AST-2023): Radia review — clean`, push `sub/AST-2022/AST-2023-telescope-click-capture`, post slim upshot `--as radia`, move **Review Posted** → datt **PROCEED** → **User Testing** (no `resolve-child` canon work expected).
+2. Optional later (Susan scope, not blocking AST-2023): retire or retarget retired-HTTP-pool tests and stale Railway Phase-1 assert per bible notes.
+
+```
+[code-rubric] PROCEED (Commit: 529d040) click-then-capture canon clean
+```
+
+context_tokens≈28000
