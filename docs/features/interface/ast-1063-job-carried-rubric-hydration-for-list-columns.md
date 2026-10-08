@@ -833,6 +833,82 @@ AST-2059 board-joan done — CANON: OK.
 
 **Chuckles routing:** Betty's `TESTS: REVISE` routes to a test-gap sibling (test tree + bible), so qa-fix is skipped on AST-2059. Joan `CANON: OK`.
 
+
+## Radia review — AST-2059
+
+```
+[code-rubric]
+**Ticket:** AST-2059
+**Publish ref:** `61f1f40ea6c050b2d72c42a21019407d05c49b9d` (`origin/sub/AST-2058/AST-2059-show-rubric-content`)
+**Diff base:** `origin/ftr/AST-2058-show-rubric-content...origin/sub/AST-2058/AST-2059-show-rubric-content` (3 commits; product: `AgentAnalysisHeader.tsx`, `RubricModal.tsx` + plan-fix doc patch)
+**Corpus:** `6f3edaa90d`
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — clean board opt-out (`[board-betty] TESTS: REVISE` routed to test-gap sibling AST-2060; qa-fix did not run on this ticket).
+- **## What must still hold — OK** — Traced all six bullets against the diff: no `src/core` / `src/ui/api` / snapshot changes; `labelList` still `rubricItems` → `listLiveList`; show-rubric gate unchanged; `contentRow` match order uses `contentLiveList` then `labelRow`; `RubricModal` title/fallback/loading strings match plan; hydration only via existing `GET /api/candidates/<id>` from the UI layer.
+
+## Canon scores
+
+*(Linear Description has no **Canon Scope (frozen at plan)** block. Scored Joan fix-board F2 overlap from issue doc § Joan fix-board — AST-2059, same fix-lane precedent as AST-1821 / AST-1892.)*
+
+| id | grade | effort | one-line |
+| -- | -- | -- | -- |
+| astral.layers.import-direction | A | | UI uses `../lib/api` → existing detail route; no core/data import inversion |
+| astral.layers.ui-config-driven-business-logic | A | | Display fetch only; no new conditional business rules in React |
+| astral.ui.frontend-file-placement | A | | Edits confined to `src/ui/frontend/src/components/` |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan pass was fix-board `CANON: OK`, not per-id `validate-plan` fix-mode rubric)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+1. **Canon Scope process gap (Archie)** — AST-2059 Description never froze a canon id list; comparability with feature children relies on fix-board overlap skim only.  
+   **Default:** Ship this tip; do not block on list backfill. Chuckles may note for Archie whether fix bugs should always get an explicit frozen block at intake.
+
+### advisory
+
+1. **Test bar deferred to AST-2060** — Betty `TESTS: REVISE` documents broken/missing component tests and the intended `[bug-repro]`; Ada’s Tests Passed note explains 8/8 green because mocks still satisfy modal text via `labelRow` / list fixture `content`, not the detail-fetch path. Product diff is still reviewable; regression lock lands on the sibling.
+2. **Meteorite `rubricArtifact` key** — Plan blast radius: meteorite JD vectors may still show not-found; explicitly out of scope (same as AST-1327 discuss lineage).
+3. **Plan vs implementation (loading)** — Plan-fix described effect-driven `contentLoading`; tip uses derived loading from keyed `detail` + `closeRubric` reset. Behavior matches To-be (no not-found flash, refetch each open); no product concern.
+
+## What’s solid
+
+- `listLiveList` / `contentLiveList` split preserves AST-1327 label/order boundaries while sourcing **content** from hydrated detail artifacts.
+- Stale-response guard (`cancelled` + `detail.key` match on `selectedId:rubricArtifact`).
+- Frontend-only footprint matches Estimate **2** and plan **Proposed change**.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | **Normal** mini-parent (live `ftr/AST-2058-show-rubric-content`, not orphaned-to-dev) → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+Append this artifact to the issue doc; commit `docs(AST-2059): Radia review — clean` on `origin/sub/AST-2058/AST-2059-show-rubric-content`; post slim upshot `--as radia`.
+
+context_tokens≈28000
+```
+
+```
+[code-rubric] PROCEED (Commit: 61f1f40ea) Hydrated detail rubric content
+```
+
+### Test delivery — AST-2059
+
+No test-tree delivery on this sub (docs-acceptance). Betty's `[board-betty] TESTS: REVISE` coverage (URL-routed api mock, bug-repro, loading/failed-fetch cases, RubricModal bible entry) lands on test-gap sibling AST-2060, which is blocked by this ticket.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
