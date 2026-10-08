@@ -321,3 +321,31 @@ Execute the stages in order, and the steps within each stage in order. Do not ad
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2035
+**Overall:** APPROVED
+**Corpus:** 8fa9f84d0e775852bc529f67faadf7e6f12cd904
+**Publish ref:** origin/sub/AST-2032/AST-2035-contact-add-job-intercept @ a61df0f23c20194b73bf6a662462d0d428d96eab
+
+## Canon scores
+patt.contact.command-intercept | A | | Registry + first-token parse + pre-paste/pre-turn intercept + mode reply matches parent architectural definition (proposed; Notes for Archie)
+stat.logging.info.contact | B | | Command id as `outcome` + id:mode in `action:` keys; aligns with AC3/AC9 and existing `paste_applied`/`unrecognized` extensions
+stat.logging.debug | A | | Parse/handler Calling/Response pairs; no `if debug` gating on debug lines
+stat.logging.warning | A | | Handler-unavailable warning; insert misses delegated to AST-2034 handler
+stat.logging.error | A | | Intercept `logger.exception` on command throw with who/why/next step
+
+## Traceability
+AC1 → Stage 2 (`parse_contact_command` unwrap + `_run_contact_command` → `insert_slack_meteorite`). AC2 → Stage 2 (DOTALL payload strip; no `/add-job` in captured tail). AC3 → Stage 2 `_run_contact_command` `code` branch + intercept ordering. AC4 → Stage 2 `agent` branch + `extra_context` on `run_contact_estelle_turn`. AC5 → Stage 2 intercept (no `try_meteorite_apply_paste_from_slack` when `command` set). AC6 → Outer unknown-sender arm + empty-payload usage in runner. AC7 → Stage 2 parse returns `None` for mid-sentence. AC8 → Stage 1 registry only; core uses `CONTACT_CONFIG["commands"]` keys. AC9 → Stage 2 `_emit_listen_info` prefix keys + handler entity line via `_insert_stage_rows`.
+
+## Findings
+- **discuss** — `patt.contact.command-intercept` is not yet in `canon/directives/`; plan implements parent shape and flags Archie approval (frozen list item, not a plan gap).
+- **discuss** — `code` mode handler soft-fail / unresolved handler: no ack, AST-1101 hear-ack may post without meteorite id — documented Decision; success-path AC3/AC9 still clear for Betty.
+- **discuss** — `agent` mode + AC5: plan scopes paste skip to shipped `code` mode; Notes for Archie documents land_calls risk in agent mode.
+- **acceptable** — Scope gate: only `config.py` + `contact.py`; no `meteorite.py` edits; handler via config dotted path (AC8).
+- **acceptable** — Intercept control flow (`command` vs `paste_out` / turn / shared listen + hear-ack tail) matches current `_handle_slack_event_body` shape; dependency on AST-2034 entry named in Execution contract.
+
+context_tokens≈78000
