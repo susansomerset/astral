@@ -247,8 +247,14 @@ class TestDecodePayload:
             "pos": 0,
             "reason": "[task] unexpected trailing content in grades-only line: '0|CRA2|extra'",
         }]
-        with pytest.raises(ValueError, match="grade X requires confidence digit 0"):
-            agent_mod._decode_payload("task", "grades", "0|CRX2", ctx)
+        # Bad X confidence is a per-line decode failure since f8d3f9a12, not a payload raise.
+        out = agent_mod._decode_payload("task", "grades", "0|CRX2", ctx)
+        assert out["jobs"] == []
+        assert out["decode_failures"] == [{
+            "astral_job_id": "job-1",
+            "pos": 0,
+            "reason": "[task] grade X requires confidence digit 0, got 2 in segment 'CRX2' (line '0|CRX2')",
+        }]
 
     def test_ast1996_malformed_line_isolated_clean_line_decodes(self) -> None:
         # AST-1996 repro A (AST-1884 production shape): DEC35 fails _GRADE_SEG on line 0 only.
@@ -271,6 +277,32 @@ class TestDecodePayload:
         )
         assert out["jobs"][0]["notes"] == "note text"
         assert "decode_failures" not in out
+
+    def test_ast2053_letter_conf0_normalised_to_conf1(self) -> None:
+        # AST-2053 repro (AST-2045 production shape): {letter}0 decodes as {letter}1; no decode failure.
+        ctx = {"batch_entities": _batch_entities("job-0", "job-1")}
+        out = agent_mod._decode_payload(
+            "task", "grades", "000|CFC0|ECD5|SSC0|TCC0|QCA5\n001|CFC3|ECD5|ORX0", ctx,
+        )
+        assert [j["astral_job_id"] for j in out["jobs"]] == ["job-0", "job-1"]
+        assert [(g["vector"], g["grade"], g["confidence"]) for g in out["jobs"][0]["grades"]] == [
+            ("CF", "C", 1), ("EC", "D", 5), ("SS", "C", 1), ("TC", "C", 1), ("QC", "A", 5),
+        ]
+        assert "decode_failures" not in out
+
+    def test_ast2053_normalisation_boundaries(self) -> None:
+        ctx = {"batch_entities": _batch_entities("job-1")}
+        # Letter confidence 6-9 fails _GRADE_SEG: still a trailing-content decode failure, never coerced.
+        out = agent_mod._decode_payload("task", "grades", "0|CRA7", ctx)
+        assert out["jobs"] == []
+        assert out["decode_failures"][0]["reason"] == "[task] unexpected trailing content in grades-only line: '0|CRA7'"
+        # Normalisation applies on every non-vet encoded type (shared loop); notes tail still kept.
+        notes = agent_mod._decode_payload("task", "grades_encoded_notes", "0|CRF0|note text", ctx)
+        assert notes["jobs"][0]["grades"] == [{"vector": "CR", "grade": "F", "confidence": 1}]
+        assert notes["jobs"][0]["notes"] == "note text"
+        # Vet path is out of AST-2053 scope: LT{letter}0 still raises for the whole payload.
+        with pytest.raises(ValueError, match="non-X grade requires confidence 1-5, got 0"):
+            agent_mod._decode_payload("task", "grades_encoded_vet_meta", "0|LTA0|https://x.com", ctx)
 
     def test_decodes_x_zero_notes_and_bare_notes_line(self) -> None:
         ctx = {"batch_entities": _batch_entities("job-1")}
@@ -2554,8 +2586,10 @@ class TestDecodeAndAuditBranches:
         payload = {"jobs": ["bad", {"grades": [{"grade": "A", "confidence": 2, "vector": "fit"}]}]}
         assert agent_mod._validate_grade_confidence_in_payload(payload, "task") is None
         ctx = {"batch_entities": _batch_entities("job-1")}
-        with pytest.raises(ValueError, match="confidence 1-5"):
-            agent_mod._decode_payload("task", "grades", "0|CRA0", ctx)
+        # AST-2053: letter confidence 0 is normalised to 1, not rejected.
+        assert agent_mod._decode_payload("task", "grades", "0|CRA0", ctx) == {
+            "jobs": [{"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "A", "confidence": 1}]}],
+        }
 
     def test_audit_and_failure_block_helpers(self) -> None:
         assert agent_mod._audit_response_body("raw") == "raw"
