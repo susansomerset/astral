@@ -1262,3 +1262,5 @@ context_tokens≈20000
 **Stdout recommendation:** **REVIEW** — restack before merge; isolated **9e116369a** + Betty `[bug-repro]` tests are otherwise **PROCEED**-ready.
 
 **Chuckles disposition:** fix-now "cross-ticket scope" (`src/core/contact.py`, `src/core/meteorite.py`, `src/external/slack.py`, `requirements.txt`, AST-1517 doc) is a false positive — all of it is AST-2055 (#266), already on `origin/dev`, carried in by the mandatory `sync-child.sh` `sync(dev)` merge (`880756d96`); ftr is behind dev. Against ftr merged with `origin/dev`, this sub's delta is exactly the four planned product files (`App.css`, `config.py`, `uiConfig.ts`, `AdminThemeExamples.tsx`) plus Betty's tests/bible and this doc. Restacking would violate sync law and re-enter on the next sync. Treated as clean → Review Posted → User Testing.
+
+**Review gate (final):** PROCEED — §3h clean-review shortcut, resolve-child skipped.
