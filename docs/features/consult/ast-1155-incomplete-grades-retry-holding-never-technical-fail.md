@@ -1357,6 +1357,158 @@ context_tokens≈N
 
 No test-tree delivery on this sub (docs-acceptance). Betty's `[board-betty] TESTS: REVISE` coverage — the `{letter}0 → {letter}1` repro, the `0|CRA0` / `0|CRX2` stale-assert rewrites, and the AST-2001 bible block — lands on test-gap sibling AST-2057, which is blocked by this ticket.
 
+## Bug: AST-2057 — Letter-confidence-0 normalisation tests + bible (test gap for AST-2053)
+
+**Linear:** [AST-2057](https://linear.app/astralcareermatch/issue/AST-2057) · **Mini-parent:** [AST-2045](https://linear.app/astralcareermatch/issue/AST-2045) · **Publish ref:** `sub/AST-2045/AST-2057-letter-conf0-tests` · **Project:** Astral Dispatcher · **Fixes gap from:** `[board-betty] TESTS: REVISE` on AST-2053
+
+**Canon:** none beyond AST-2053's (`astral.agent.confidence-bounds` — the tests assert its new decode exception). Test-tree only; no `src/`.
+
+**Lane note:** every edit below is under `tests/` or `docs/test-bible/`, so it is Betty's to land (qa-fix). This block specifies the delta; the engineer does not edit the test tree.
+
+### As-is
+
+On the AST-2053 tip (`2d1b73da1`, merged into ftr), `tests/component/core/test_agent.py` still asserts pre-AST-1996 raise behavior in two places, and nothing covers the `{letter}0 → {letter}1` normalisation:
+
+- `TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` expects `_decode_payload("task","grades","0|CRA0",…)` to raise `confidence 1-5`. It now decodes to a grade row with confidence 1.
+- `TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta` (its last assert) expects `0|CRX2` to raise. It has been stale since `f8d3f9a12`, which made a bad X confidence a per-line `decode_failures` entry.
+- The `docs/test-bible/core/agent.md` AST-2001 block says "X-confidence, non-X confidence bounds … still raise for the whole payload". Both claims are false today.
+
+Baseline: `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` gives **2 failed, 8 passed**, and the two failures are exactly the tests above.
+
+### To-be
+
+The decode tests assert the shipped contract:
+
+- A letter with confidence 0 decodes as that letter with confidence 1, with no `decode_failures`. This gets a bug-repro test that is red before AST-2053 and green after.
+- A bad X confidence is a per-line `decode_failures` entry.
+- A letter with confidence 6–9 is a trailing-content `decode_failures` entry.
+- The vet path still raises.
+
+The bible matches. The same `-k` run is **all green**.
+
+### Repro
+
+Literal outputs captured with `_decode_payload` at the AST-2053 tip and with the pre-fix `agent.py` (`055c53c2a`). `ctx = {"batch_entities": [{"astral_job_id": …}, …]}` throughout, matching the file's `_batch_entities` helper.
+
+| Input (`task`, output type) | Pre-fix | Tip |
+| --- | --- | --- |
+| `"grades"`, `0\|CRA0`, ents `job-1` | `decode_failures` "non-X grade requires confidence 1-5, got 0 …" | `{"jobs":[{"astral_job_id":"job-1","grades":[{"vector":"CR","grade":"A","confidence":1}]}]}` |
+| `"grades"`, `000\|CFC0\|ECD5\|SSC0\|TCC0\|QCA5` + `001\|CFC3\|ECD5\|ORX0`, ents `job-0`,`job-1` | `jobs` = `[job-1]`; `decode_failures` = job-0 (`CFC0`) | `jobs` = `[job-0, job-1]`; job-0 grades `CF/C/1, EC/D/5, SS/C/1, TC/C/1, QC/A/5`; **no** `decode_failures` key |
+| `"grades"`, `0\|CRX2`, ents `job-1` | `decode_failures` (same on both) | `{"jobs":[],"decode_failures":[{"astral_job_id":"job-1","pos":0,"reason":"[task] grade X requires confidence digit 0, got 2 in segment 'CRX2' (line '0\|CRX2')"}]}` |
+| `"grades"`, `0\|CRA7`, ents `job-1` | same on both | `{"jobs":[],"decode_failures":[{"astral_job_id":"job-1","pos":0,"reason":"[task] unexpected trailing content in grades-only line: '0\|CRA7'"}]}` |
+| `"grades_encoded_notes"`, `0\|CRF0\|note text`, ents `job-1` | `decode_failures` (CRF0) | `{"jobs":[{"astral_job_id":"job-1","grades":[{"vector":"CR","grade":"F","confidence":1}],"notes":"note text"}]}` |
+| `"grades_encoded_vet_meta"`, `0\|LTA0\|https://x.com`, ents `job-1` | raises | raises `ValueError` "[task] non-X grade requires confidence 1-5, got 0 in segment 'LTA0' …" |
+
+### Root cause
+
+Two product changes landed without matching test-tree updates. `f8d3f9a12` moved a bad confidence digit from a raise to `decode_failures`, and AST-2053 (`2d1b73da1`) normalised `{letter}0`. The asserts and bible prose were never moved with them. The product is correct; the tests are stale.
+
+### Proposed change
+
+One `test(AST-2057)` commit by Betty: `tests/component/core/test_agent.py` + `docs/test-bible/core/agent.md`.
+
+**1. `TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta` — replace the last assert (the `pytest.raises(… "grade X requires confidence digit 0")` on `0|CRX2`) with:**
+
+```python
+        # Bad X confidence is a per-line decode failure since f8d3f9a12, not a payload raise.
+        out = agent_mod._decode_payload("task", "grades", "0|CRX2", ctx)
+        assert out["jobs"] == []
+        assert out["decode_failures"] == [{
+            "astral_job_id": "job-1",
+            "pos": 0,
+            "reason": "[task] grade X requires confidence digit 0, got 2 in segment 'CRX2' (line '0|CRX2')",
+        }]
+```
+
+The bad-position raise and the trailing-content assert above it stay as they are.
+
+**2. `TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` — replace the `pytest.raises(ValueError, match="confidence 1-5")` block with:**
+
+```python
+        # AST-2053: letter confidence 0 is normalised to 1, not rejected.
+        assert agent_mod._decode_payload("task", "grades", "0|CRA0", ctx) == {
+            "jobs": [{"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "A", "confidence": 1}]}],
+        }
+```
+
+The two `_validate_grade_confidence_in_payload` asserts above it are unchanged.
+
+**3. New in `TestDecodePayload`, after `test_ast1996_notes_type_tail_is_not_a_decode_failure` — bug-repro:**
+
+```python
+    def test_ast2053_letter_conf0_normalised_to_conf1(self) -> None:
+        # AST-2053 repro (AST-2045 production shape): {letter}0 decodes as {letter}1; no decode failure.
+        ctx = {"batch_entities": _batch_entities("job-0", "job-1")}
+        out = agent_mod._decode_payload(
+            "task", "grades", "000|CFC0|ECD5|SSC0|TCC0|QCA5\n001|CFC3|ECD5|ORX0", ctx,
+        )
+        assert [j["astral_job_id"] for j in out["jobs"]] == ["job-0", "job-1"]
+        assert [(g["vector"], g["grade"], g["confidence"]) for g in out["jobs"][0]["grades"]] == [
+            ("CF", "C", 1), ("EC", "D", 5), ("SS", "C", 1), ("TC", "C", 1), ("QC", "A", 5),
+        ]
+        assert "decode_failures" not in out
+```
+
+Red on pre-fix `agent.py` (`jobs` is only `job-1`), green on the tip.
+
+**4. New in `TestDecodePayload`, directly after #3 — guards for what AST-2053 must not change:**
+
+```python
+    def test_ast2053_normalisation_boundaries(self) -> None:
+        ctx = {"batch_entities": _batch_entities("job-1")}
+        # Letter confidence 6-9 fails _GRADE_SEG: still a trailing-content decode failure, never coerced.
+        out = agent_mod._decode_payload("task", "grades", "0|CRA7", ctx)
+        assert out["jobs"] == []
+        assert out["decode_failures"][0]["reason"] == "[task] unexpected trailing content in grades-only line: '0|CRA7'"
+        # Normalisation applies on every non-vet encoded type (shared loop); notes tail still kept.
+        notes = agent_mod._decode_payload("task", "grades_encoded_notes", "0|CRF0|note text", ctx)
+        assert notes["jobs"][0]["grades"] == [{"vector": "CR", "grade": "F", "confidence": 1}]
+        assert notes["jobs"][0]["notes"] == "note text"
+        # Vet path is out of AST-2053 scope: LT{letter}0 still raises for the whole payload.
+        with pytest.raises(ValueError, match="non-X grade requires confidence 1-5, got 0"):
+            agent_mod._decode_payload("task", "grades_encoded_vet_meta", "0|LTA0|https://x.com", ctx)
+```
+
+**5. `docs/test-bible/core/agent.md`.**
+
+- **AST-2001 block, prose:** replace "Bad position, X-confidence, non-X confidence bounds, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload." with "Bad position, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload; an X segment with nonzero confidence is a per-line `decode_failures` entry (since `f8d3f9a12`); a letter with confidence 0 is normalised to 1 (**AST-2053**, see AST-2057)."
+- **AST-2001 block, first table row:** change "(flipped from raise; bad-position + X-confidence raises kept)" to "(flipped from raise; bad-position raise kept; `0|CRX2` → X-branch `decode_failures` entry)".
+- **New block directly after the AST-2001 block** (before `### AST-2006`):
+
+  ```markdown
+  ### AST-2057 · AST-2045 (bug-repro — AST-2053 letter-confidence-0 normalisation)
+
+  Test gap for **AST-2053** (`2d1b73da1`): in `_decode_payload`'s non-vet encoded loop, a letter segment with confidence `0` (`{A-F}0`) decodes as the same letter with confidence `1` (no signal) — no `decode_failures` entry. Unchanged: X with nonzero confidence → `decode_failures`; letter confidence 6–9 fails `_GRADE_SEG` → trailing-content `decode_failures`; vet branch (`grades_encoded_vet_meta`) still raises on `LT{letter}0`. Statute: `astral.agent.confidence-bounds`.
+
+  | Area | Source | Component tests |
+  | --- | --- | --- |
+  | `CFC0`/`SSC0`/`TCC0` line decodes as conf 1, both entities in `jobs`, no `decode_failures` key | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1`** (**bug-repro**) |
+  | `0\|CRA7` trailing failure; `_notes` `CRF0` → `F/1` with notes kept; vet `LTA0` raises | same | **`…::test_ast2053_normalisation_boundaries`** (guard) |
+  | `0\|CRA0` → `A/1` grade row (flipped from raise) | same | **`TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence`** |
+  | `0\|CRX2` → X-branch `decode_failures` entry (flipped from raise) | same | **`TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta`** |
+
+  **Integration:** none.
+  ```
+
+⚠️ **Decision: keep the existing test names.** `…_invalid_confidence` no longer reads accurately, but renaming changes the node id that the bible and the AST-2001 history cite. These are assert-only edits; a rename is Betty's call.
+
+⚠️ **Decision: one guard function (#4) rather than three.** The boundaries are the three "What must still hold" items from AST-2053. They share one fixture, so one function means fewer lines and the bible gets one row. The vet assert is included because no existing test covers vet confidence 0 (searched `tests/`: no `LT{letter}0` case).
+
+⚠️ **Decision: no `test_consult.py` change.** Batch routing of `decode_failures` is unchanged by AST-2053, and the existing `MAX3` X-branch case (~L6240) still holds. That file also cannot be collected in this environment (`asyncpg` missing).
+
+### Blast radius
+
+- Test-tree and bible only, with no `src/` touch. Product behavior was verified by AST-2053 test-fix and Radia.
+- Touches only the two decode test classes. The other 45 pre-existing `test_agent.py` reds (config/tracker drift unrelated to decode) stay out of scope, per the AST-2057 Boundaries.
+- The bible edits change only the AST-2001 block's prose and its first row, plus the new AST-2057 block. The other AST-2001 rows are untouched.
+
+### What must still hold
+
+- AST-2001 bug-repro tests (`test_ast1996_*`) stay green and unchanged.
+- The bad-position raise and trailing-content `decode_failures` assert in `test_rejects_bad_positions_and_records_trailing_meta` are kept.
+- No production code change; the statute (AST-2053) is not touched.
+- Pass criterion: `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` → **0 failed** (12 passed: the 8 already green + the 2 rewritten + the 2 new). The bug-repro (#3) is red against pre-fix `agent.py` `055c53c2a`.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
