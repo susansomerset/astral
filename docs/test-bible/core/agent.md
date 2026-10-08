@@ -2056,3 +2056,34 @@ Post-call ledger write runs on every call with a batch id: `llm_call_seconds` (t
 3. **Deleted helper gone:** `rg -n "_filter_response_block" src/ tests/` → no matches.
 
 **Pass criterion:** item 1 green, items 2–3 empty. Not the zero-arg harness (pre-existing reds).
+
+### AST-2052 · AST-2028 (bug — job run modal reads like one Each-mode call)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2052-run-modal-each-mode-layout`. Plan: `docs/features/agent/ast-2030-slice-agent-data-reads-and-agent-story-by-entity.md` § Bug: AST-2052. `get_agent_data(entity_id=X)` returns live `NO_CACHE` / `RESPONSE` as an Each-mode call for X would have stored them (JSON `companies[]` / `jobs[]` filtered to X's item, compact `json.dumps`; tagged text = preamble before the first `[entity_id=` + X's segment) and omits blank rows. Story keeps the bare slice.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** plan Repro fixture → envelope + preamble kept, blank `CACHE_C` omitted | `src/core/agent.py` (`get_agent_data`, `_entity_call_view`) | **`tests/component/core/test_agent_ast2052.py::TestAst2052EntityCallView::test_bug_repro_entity_read_is_one_each_mode_call`** |
+| D2-2052 non-last entity keeps opener, not closing `"}` · `companies[]` with numeric id · blank rows (`None` / whitespace) omitted | same | **`…::TestAst2052EntityCallView`** (other three nodes) |
+| Still holds: AC5 other chunk dropped + AC7 legacy whole · batch view byte-identical · story bare slice | same | **`…::TestAst2052StillHolds`** (green pre- and post-fix) |
+
+**Broken / obsolete (rewritten):** `test_agent_ast2030.py::TestAst2030GetAgentDataSlice::test_ac4_ac5_ac7_entity_read` pinned a blank `TASK` row as `("TASK", "")`; the blank fixture row and its expectation are removed, so the test stays a pure AC4/AC5/AC7 check (blank-row omission lives in the AST-2052 class).
+
+**Red / green:** 4 `TestAst2052EntityCallView` nodes red on the pre-fix tree (`135df3dee`) for the plan's root cause (bare segment / blank rows kept); `TestAst2052StillHolds` + rewritten AST-2030 test green there. All 22 nodes in item 1 green against the plan's Proposed change applied in a throwaway tree (not committed — `test-fix` confirms on the real fix).
+
+## QA test manifest — AST-2052
+
+1. **Repro + guards (required):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast2052.py \
+  tests/component/core/test_agent_ast2030.py \
+  tests/component/core/test_agent.py::TestAgentDataAccess \
+  tests/component/core/test_agent.py::TestEntitySegmentAccess \
+  tests/component/core/test_agent.py::TestSliceEntityBlock \
+  -q
+```
+
+2. **[bug-repro] flip:** `tests/component/core/test_agent_ast2052.py::TestAst2052EntityCallView::test_bug_repro_entity_read_is_one_each_mode_call` — red pre-fix, green after `make-fix`.
+3. **Scope gate:** `git diff origin/dev...origin/sub/AST-2028/AST-2052-run-modal-each-mode-layout -- src/ui/api/ src/data/ src/ui/frontend/ src/utils/` shows no AST-2052 product change.
