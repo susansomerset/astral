@@ -219,3 +219,24 @@ One commit per stage (`code(AST-2029): …`), published to the publish ref.
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2029
+**Overall:** APPROVED
+**Corpus:** 7dcc6f40d09a317028a72f0c5b31e80bcf9cdc1e (canon/ tree at publish tip)
+**Publish ref:** a010cb8fe3907488843462a04244aa1ed4b966ec
+
+## Canon scores
+patt.entity.batch-processing | A |
+stat.logging.debug | B |
+
+## Traceability
+1→Stage 3 (wire unhydrated, live NO_CACHE + RESPONSE stored with ids); 2→Stages 1+3 (`[index=NNN]` → `[entity_id=…]`); 3→Stages 1+3 (`NNN|` on failure RESPONSE); 4→Explicit scope gate + Stage 3 §7 (`src/ui/api/`, `src/data/` untouched).
+
+## Findings
+- **acceptable** | Stage 3 §5 call-site inventory | Plan cites “14” `to_thread(_store_response_block` sites inside `do_task`; current tree has **13** (lines ~2366–2741). Stage already requires `rg` verification before land — count typo only.
+- **acceptable** | Decisions D6 | Documented false-positive risk on `NNN:`/`NNN|` inside row text; aligned with parent “no heuristics without Susan” and explicit non-mitigation.
+
+context_tokens≈22000
