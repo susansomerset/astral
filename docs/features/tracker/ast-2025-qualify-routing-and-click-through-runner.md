@@ -449,3 +449,53 @@ click-through throws.
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2025
+**Overall:** APPROVED
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Publish ref:** `sub/AST-2022/AST-2025-relative-link-runner` @ `ef11e798c`
+
+## Canon scores
+
+patt.entity.batch-processing | A | | Runner processes only dispatcher-handed `jobs`; no claim/release or select-by-state in `gazer.py`
+astral.batch.claim-process-release | A | | Claim/release stays dispatcher + tracker; `fetch_relative_jd_batch` documents that contract
+stat.logging.debug | B | | `_apply_jd_gates` adds Calling/Response joints; new runner has begin/end loop; `fetch_jd_batch` gate path drops per-job `debug_index` on outcomes (Style D retained on scrape errors and batch start)
+stat.logging.info.entity | A | | Qualify `_job_consult_info` on `RELATIVE_JOB_LINK`; runner success line matches `id | job event: detail (batch: …)`
+stat.logging.warning | A | | `_apply_jd_gates` and click-miss use `who -> dest [why]`; configured misses avoid `logger.exception`
+stat.logging.error | A | | Non–click-miss Telescope failures get one `logger.exception` with facts and “Continuing to the next job”
+
+## Traceability
+
+AC2 → Stage 2 step 2; AC3 → Stage 2 steps 2 + 4; AC4 → Stage 1 steps 3–5 + step 7 stub; AC5 → Stage 1 steps 3–4 + step 6 grep; AC6 → Stage 2 step 3 + AST-2024 registration (plan Acceptance trace); parent AC1, AC4 (Telescope), AC7 partial meta, AC8 → N/A or sibling/UAT per Boundaries.
+
+### discuss — Build depends on merged #1/#2 surfaces
+
+- **Location:** Plan header Depends on AST-2023/AST-2024 via `origin/ftr/AST-2022-relative-job-link`.
+- **Finding:** `relative_link_state`, `fetch_relative_jd`, `click_through_visible_text`, and `TELESCOPE_CLICK_TARGET_MISSING` must exist on the integration ref before this child builds cleanly.
+- **Recommendation:** Chuckles keeps ftr/sub merge order per epic; not a plan rewrite.
+
+### discuss — `fetch_jd_batch(debug=True)` gate observability
+
+- **Location:** Stage 1 step 4 (`_apply_jd_gates` replaces inline gate block including former `debug_index` outcomes).
+- **Finding:** Debug-mode operators lose per-job Style-D outcome lines for empty/short/classified gates; scrape failures still use `debug_index`.
+- **Recommendation:** Accept as statute-aligned warning shape unless Susan wants Style-D restored around the helper calls.
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan structure (Estimate confirm only).
+- **Finding:** R6 self-assessment checklist has nothing formal to grade; complexity is in staged literals and verify scripts.
+- **Recommendation:** Optional self-assessment; not blocking.
+
+### acceptable — AC6 end-to-end manual claim test deferred
+
+- **Location:** Acceptance trace row for AC6.
+- **Finding:** Picker pair and `clear_job_batch` behavior are split across AST-2024 and generic dispatcher; plan correctly scopes UAT after Telescope redeploy.
+- **Recommendation:** None for AST-2025 plan approval.
+
+**R6 (summary):** Definition fidelity for parent child #3 (qualify route, runner, shared JD gates, dispatch branch). Scope limited to `gazer.py` and `consult.py`. `to_state` overwrite for relative links only on pass path after `initialize_job`. Task key `fetch_relative_jd` matches AST-2024. No scope creep into config/tests. No `fix-now` findings.
+
+context_tokens≈68000
