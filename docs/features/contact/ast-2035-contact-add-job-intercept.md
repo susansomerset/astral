@@ -407,3 +407,14 @@ patt.contact.command-intercept — Joan **A** (parent shape); Radia cannot corpu
 - datt: if ESCALATE cleared or accepted as procedural-only, **PROCEED** → **User Testing**; no product fixes indicated on scoped diff.
 
 Gate: ESCALATE (Commit: 0ea00db48) — proposed `patt.contact.command-intercept` not in corpus; no fix-now. Linear state verified Tests Passed at review time (proxy brief was stale).
+
+## Resolution
+
+2026-10-08 — resolve-child (Hedy), against Radia review `0a9348e72`.
+
+- **fix-now:** none.
+- **ESCALATE / discuss — `patt.contact.command-intercept` not in corpus:** Resolved by gate [AST-2036](https://linear.app/astralcareermatch/issue/AST-2036) (Done; Susan: "Approved as is"). The directive now lives at `canon/directives/active/patt.contact.command-intercept.md`, written from the shipped code (`CONTACT_CONFIG["commands"]`, `parse_contact_command`, `_run_contact_command`, the `_handle_slack_event_body` intercept, and `_emit_listen_info`), and it has a row in the `canon/docs/CHANGELOG.md` `## Executed` table (`6f3edaa90`). `canon_clerk.py index --kind pattern` lists it, and `canon_clerk.py expand patt.contact.command-intercept` exits 0.
+- **discuss — `code`-mode handler soft-fail → hear-ack:** took Radia's Default (ship as planned). The directive's `# Notes` record it.
+- **discuss — `agent` mode vs AC5:** took Radia's Default (AC5 covers the shipped `code` mode only). The directive's `# Notes` record it.
+- **advisory:** no action. The sibling carry is the expected ftr merge.
+- **Product code:** no change in this pass.
