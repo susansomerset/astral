@@ -4802,7 +4802,18 @@ ASTRAL_CONFIG = {
             10: 2.00,
         },
     },
+    # --- UI chrome: sidebar logo background by ASTRAL_DEPLOY_ENV (AST-2040) ---
+    # Keys are lowercase ASTRAL_DEPLOY_ENV values. Production is intentionally absent:
+    # any env not listed here (production / unset / unknown) keeps the stylesheet color.
+    "logo_background_by_deploy_env": {
+        "staging": "#a651f1",
+        "local": "#ed22bb",
+    },
 }
+assert all(
+    k == k.strip().lower() and re.fullmatch(r"#[0-9a-fA-F]{6}", v)
+    for k, v in ASTRAL_CONFIG["logo_background_by_deploy_env"].items()
+)
 
 # Rubric vector feedback type/value codes (AST-722 / AST-378). AST-724 validates envelope against this.
 RUBRIC_FEEDBACK_CONFIG = {
