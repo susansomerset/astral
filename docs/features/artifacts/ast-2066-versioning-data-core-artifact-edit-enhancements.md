@@ -436,3 +436,59 @@ context_tokens≈42000
 - **Build commits:** `321430c6b` (Stage 1), `4b2531211` (Stage 2), `2b19732fe` (Stage 3), `cb147dada` (Stage 4)
 - **Verified by hand (scratch DB, not committed):** each stage's Done when, plus AC 4 (one current row, no row or body change), AC 5 (an edit after a back move appends at the end, same-second rows ordered by `rowid`), AC 6 (V01 moves alone, importance carried), AC 7 (identical cover letter save adds one row, not two), and the cross-key / cross-code guards (`ValueError`, current unchanged).
 - **Build note:** `sync-child.sh --ftr AST-2043` skips the parent merge because the parent branch is `ftr/AST-2043-artifact-versions`. It is already an ancestor of this branch, so nothing was missed.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2066
+**Publish ref:** c1f9de609eb9b13d507d1baecdbeb9af1889a287 (`origin/sub/AST-2043/AST-2066-versioning-core`)
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.read-operative | A | | |
+| patt.artifact.traceability | A | | |
+| stat.logging.info.entity | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded all five **A** at plan; code review matches.
+
+## Frame diff
+
+(none) — Linear acceptance criteria 4–7 and plan stages are implemented on the tip; engineer can tick description checkboxes at `resolve-child` / pre–User Testing per existing workflow.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `merge-tests` / `origin/tests` brings non–AST-2066 paths into the three-dot diff (e.g. `tests/component/frontend/**`, `docs/test-bible/frontend/**`, `tests/component/utils/test_config.py`, `tests/component/ui/api/test_api_companies.py`, commits for AST-2064 / AST-2065 / AST-2071). Expected carry; product delta is only `src/data/database.py`, `src/core/candidate.py`, `src/core/tracker.py`.
+- **Plan fork (importance carry):** Stage 2 landed the documented default (`set_current_rubric_vector` copies leaving-row `importance`). Matches Joan’s plan discuss default; no code deviation to resolve unless Archie revisits at parent level.
+
+## What's solid
+
+- **Move-current primitives:** `set_current_artifact` / `set_current_rubric_vector` update only `current`, `updated_at`, and (rubric) `importance` per plan — no `artifact_data`, `source_artifact_ids`, or rubric body/fingerprint writes; cross-key guards use `rowcount` + rollback.
+- **History ordering:** `list_artifacts` and per-code `list_rubric_vectors` use `ORDER BY created_at ASC, rowid ASC`; core version maps match the planned shape and delegate to `list_artifacts` / filtered rubric list.
+- **write-operative #4:** `save_job_artifact` identical-to-current gate compares `prepared` to current `artifact_data` before retire+insert; component tests assert AC7 (one row, same uuid) and changed-body append.
+- **Logging:** `set_candidate_artifact_current` and `set_rubric_criterion_current` emit `stat.logging.info.entity`-shaped `logger.info` lines; `tracker` set-current intentionally silent per plan and statute Notes.
+- **SQL binds:** Reviewed UPDATE parameter counts for both set-current functions — placeholders match bind tuples.
+- **Plan fidelity:** Diff tracks the four plan stages; build notes in the issue doc claim manual AC4–AC7 verification on a scratch DB.
+
+## Recommended actions (downstream — not executed in this session)
+
+- Chuckles: append this artifact to `docs/features/artifacts/ast-2066-versioning-data-core-artifact-edit-enhancements.md`, `docs()` commit, post slim upshot `--as radia`, move **Review Posted**.
+- datt: **PROCEED** → User Testing path after Chuckles writeback (no fix-now / discuss blockers).
+- Optional: Susan/Archie may close the plan-stage importance-carry fork as “shipped as planned” during parent UAT; no `resolve-child` code change required.
