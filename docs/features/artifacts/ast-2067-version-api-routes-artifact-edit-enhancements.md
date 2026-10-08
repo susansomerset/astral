@@ -361,3 +361,67 @@ context_tokens≈58000
 - **Build commits:** `03eebc50b` (Stage 1), `0bbf606ed` (Stage 2), `8abb0969e` (Stage 3)
 - **Verified by hand (Flask test client + scratch DB, not committed):** each stage's Done when, including AC 7 on all three PUT surfaces. Cross-key, cross-entity, and cross-code uuids each return 400 and current is unchanged; wrong-surface, unknown, and non-catalog keys return 400; the uuid body check returns 400; a missing entity returns 404; empty history returns 200 `{}`; one `api … completed: PUT 200` line per successful PUT and none on GETs. Job routes stubbed only the `get_job` row lookup; artifact rows were real.
 - **Lint deviation (resolved in favor of the code):** ruff TRY401 fires on the six planned `logger.exception(…, type(exc).__name__, exc)` calls, which match the `stat.logging.error` Do example. Blocker posted on AST-2043; Susan said continue, and the recommended option was taken: the code is unchanged, and the gate allows TRY401 on those six lines only. Ruff went from 14 to 20 across both files. The 6 new findings are exactly those TRY401s, with no other new findings.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2067
+**Publish ref:** 41d58f9a3f6019292055c4a794da31123a83e277 (`origin/sub/AST-2043/AST-2067-version-api`)
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+| stat.logging.error | A | | |
+| stat.logging.info.api | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded all four **A** at plan; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Plan § Verification vs build Review (ruff gate)
+- **Finding:** Plan said `ruff check` on the two API files must stay at **14** findings with none on AST-2067 lines; build landed **six** new TRY401 hits on the planned `logger.exception(..., type(exc).__name__, exc)` blocks, documented as Susan-approved on parent AST-2043 with code unchanged.
+- **Question @susan:** Should CI / `test-child` treat those six TRY401s as an allowed exception for this ticket only, or should someone land a repo-wide ruff ignore / statute-aligned noqa pattern before merge to `dev`?
+- **Default:** Keep the six lines as-is (they match `stat.logging.error` Do); document the allowance in the issue doc Review section Chuckles already has; do not block UT on TRY401 alone.
+
+- **Location:** Shared conventions — `resume_structure` (Joan plan discuss, unchanged on tip)
+- **Finding:** API serves `candidate.artifacts.resume_structure` version routes while parent UI scope says no arrows for that key.
+- **Question @susan:** Optional API 400 parity with UI, or leave 200 and let AST-2068 omit nav?
+- **Default:** Leave API open (plan Decision); sibling #3 does not call the route for `resume_structure`.
+
+### advisory
+
+- **TRY401 vs canon (scored above as A):** Ruff TRY401 flags redundant `exc` in `logger.exception` when `type(exc).__name__, exc` are message args. Frozen canon `stat.logging.error` Do example uses exactly that shape for live facts. Canon compliance on the tip; linter debt is procedural, not a statute miss.
+- **sibling product/test carry:** Three-dot diff vs `origin/dev` still includes AST-2066 `src/{data,core}/**` and other siblings’ tests (`test_contact.py`, `test_slack.py`, frontend company modal, etc.) because #1 is not on `dev` yet and `merge-tests` pulled `origin/tests`. AST-2067 product delta is only `src/ui/api/api_candidate.py` and `src/ui/api/api_jobs.py`.
+- **Dual info pipes on candidate/rubric PUT:** Core `set_*_current` emits `stat.logging.info.entity`; routes emit `stat.logging.info.api` on success — per plan and parent architectural definition; job PUT is API-only (tracker does not entity-log).
+
+## What's solid
+
+- **Six routes match plan:** Paths, auth, 404-before-validation, `ValueError`→400 without log, `server_error_from_exception` on unrouted faults with single `logger.exception` (live facts + next-step copy), PUT success `logger.info` only, GETs silent.
+- **AC7:** Component tests assert cross-key, cross-entity, and cross-code uuids return 400 with current unchanged on all three PUT surfaces (`test_artifact_cross_key_uuid_400_current_unchanged`, `test_rubric_cross_code_uuid_400_current_unchanged`, job analog in `test_api_jobs.py`).
+- **write-operative boundary:** Routes delegate set-current to AST-2066 core; no `save_artifact` or body in responses.
+- **read-current boundary:** Version maps pass through; re-hydrate still via existing detail/current-read paths (no new blob readers).
+- **Boundaries:** `proposed_answers` / `application_responses` blocks untouched; new job routes sit after `put_job_proposed_answers` as planned.
+
+## Recommended actions (downstream — not executed in this session)
+
+- Chuckles: append artifact, `docs(AST-2067): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.
+- datt: **PROCEED** → UT after writeback.
+- Optional follow-up (out of Radia lane): align CI ruff gate with Susan’s TRY401 allowance or add targeted `per-file-ignores` / noqa policy so `test-child` and plan Verification language stay honest.
