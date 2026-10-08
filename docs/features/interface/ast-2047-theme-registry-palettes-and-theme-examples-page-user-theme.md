@@ -686,3 +686,155 @@ context_tokens≈42000
 ---
 
 `[code-rubric] PROCEED (Commit: 55a3fcd69) Theme registry, palettes, examples`
+
+## Bug: AST-2064 — Light themes need their own grade-color set, with options on Theme Examples
+
+### As-is
+
+The three Light palettes (`light`, `light_parchment`, `light_slate`) set `--grade-a … --grade-x` to near-copies of Dark's bright grade fills (for example `--grade-b: #e0a800`, `--grade-x: #8b6fe0`) with dark letters (`--text-on-grade` = the palette's `--text-primary`). The A–F/X grade dots read poorly on light backgrounds. Theme Examples shows only that one grade set per panel, so Susan has nothing to choose between.
+
+### To-be
+
+All three Light palettes share one grade-color set designed for light backgrounds ("Deep" below). Each Theme Examples panel also shows a **Grade color options** block: one labeled row of grade dots A, B, C, D, F, X per candidate set (Deep, Soft, Classic), so Susan can pick one. Dark's grade colors are unchanged.
+
+### Repro
+
+1. As admin, open Tools → Theme Examples (`/admin/theme_examples`).
+2. In the Light, Light (Parchment), and Light (Slate) panels, look at the grade row and the table's grade dots. B (`#e0a800` / `#d49b00` / `#d69e2e`) and X (`#8b6fe0` / `#7e63c9` / `#805ad5`) are washed out against the near-white panel. Their dark letters sit on mid-tone fills, and C/D/F look much like Dark's.
+3. No panel offers an alternative grade set.
+
+### Root cause
+
+AST-2047 Stage 2 step 3 chose the Light grade values as small tweaks of Dark's palette. These are fills designed for a dark backdrop, and the Light blocks never got a set designed for light backgrounds. AST-2047 Stage 3's page renders only the panel's own `--grade-*`, so there is no way to compare sets.
+
+### Proposed change
+
+Four files, all named in AST-2042's Component scope. Line anchors are at `ftr/AST-2042-user-theme` tip `2fd5c63e7`.
+
+1. **`src/ui/frontend/src/App.css` — live Light grade set ("Deep").** In **each** of the three blocks `[data-theme="light"]`, `[data-theme="light_parchment"]`, and `[data-theme="light_slate"]`, replace the values of these eight existing declarations (names unchanged; nothing added or removed):
+
+   | Token | New value (all three Light blocks) |
+   |-------|------------------------------------|
+   | `--grade-a` | `#1e7b34` |
+   | `--grade-b` | `#a86a00` |
+   | `--grade-c` | `#c05621` |
+   | `--grade-d` | `#c53030` |
+   | `--grade-f` | `#742a2a` |
+   | `--grade-x` | `#6b46c1` |
+   | `--text-on-grade` | `#ffffff` |
+   | `--text-on-grade-f` | `#ffffff` |
+
+   The `:root, [data-theme="dark"]` block is not touched.
+
+   ⚠️ **Decision:** One shared Light grade set rather than one per Light palette. Grades mean the same thing on every light background, and Susan's report asks for "a parallel set". Deep is the live default because its saturated fills keep white letters readable (each fill is ≥ 4.5:1 against `#ffffff`) and stand out from near-white panels. When Susan picks a different option, a follow-up swaps these eight values.
+
+2. **`src/utils/config.py` — candidate sets, examples-only.** In `UI_CONFIG`, directly after the line `    "default_theme": "dark",`, insert:
+
+   ```python
+       # AST-2064: Light grade-color candidates shown as rows on Tools -> Theme Examples (examples-only).
+       # Each set's tokens override the panel's grade tokens for that row; the live Light set is in App.css.
+       # Retire a candidate = delete its entry; no page or CSS change.
+       "theme_example_grade_sets": {
+           "deep": {"label": "Deep", "tokens": {
+               "--grade-a": "#1e7b34", "--grade-b": "#a86a00", "--grade-c": "#c05621",
+               "--grade-d": "#c53030", "--grade-f": "#742a2a", "--grade-x": "#6b46c1",
+               "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
+           }},
+           "soft": {"label": "Soft", "tokens": {
+               "--grade-a": "#b7e4c0", "--grade-b": "#fde68a", "--grade-c": "#fed7aa",
+               "--grade-d": "#fecaca", "--grade-f": "#e7b4b4", "--grade-x": "#ddd6fe",
+               "--text-on-grade": "#1f1830", "--text-on-grade-f": "#5c0f0f",
+           }},
+           "classic": {"label": "Classic", "tokens": {
+               "--grade-a": "#2f9e44", "--grade-b": "#e67700", "--grade-c": "#d9480f",
+               "--grade-d": "#e03131", "--grade-f": "#9c1c1c", "--grade-x": "#7048e8",
+               "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
+           }},
+       },
+   ```
+
+   ⚠️ **Decision — why config and inline custom properties, not CSS blocks:** AST-2047's tests (`test_AdminThemeExamples.test.tsx`, "App.css theme token blocks") treat only `[data-theme="<registry id>"]` blocks as token blocks. They require the block ids to equal the registry exactly, and they fail on any hex elsewhere in `App.css` or in `.ts`/`.tsx` source. `[data-grade-set="…"]` CSS blocks would break that contract. Adding 24 option tokens to every theme block (Dark included) would bloat all four blocks with values Dark never uses. Serving the hex values from config and applying them as inline custom properties keeps both test files unchanged and follows the existing hex-in-config precedent (`ASTRAL_CONFIG["logo_background_by_deploy_env"]`). Because Flask sorts JSON keys, rows render alphabetically (Classic, Deep, Soft). Each row is labeled, so order does not matter.
+
+   ⚠️ **Decision — Soft:** pastel fills with dark letters (`--text-on-grade-f` dark red so F stays distinct). Letterless dots (`.grade-dot-letterless`) are low-contrast in this set. That is the trade-off Susan is judging.
+
+3. **`src/ui/frontend/src/lib/uiConfig.ts`.** After the `ThemeEntry` interface line, add:
+
+   ```ts
+   /** AST-2064: examples-only grade-color candidate; tokens are CSS custom properties (e.g. "--grade-a") -> color. */
+   export interface GradeSetEntry { label: string; tokens: Record<string, string> }
+   ```
+
+   Inside `UiConfig`, after `default_theme?: string`, add:
+
+   ```ts
+     /** AST-2064: grade-color candidates rendered as rows on Theme Examples. */
+     theme_example_grade_sets?: Record<string, GradeSetEntry>
+   ```
+
+4. **`src/ui/frontend/src/pages/AdminThemeExamples.tsx`.**
+   - Line 1 becomes `import { useEffect, useState, type CSSProperties } from "react"`.
+   - After `const themes = getUiConfig()?.themes`, add `const gradeSets = getUiConfig()?.theme_example_grade_sets`.
+   - Directly after the existing grade row's closing `</div>` (the `theme-examples-row` that maps `GRADES` into `.theme-examples-grade`, ending just before the success toast), insert:
+
+     ```tsx
+                 {gradeSets && (
+                   <div className="theme-examples-grade-options">
+                     <span className="theme-examples-grade-options-label">Grade color options</span>
+                     {Object.entries(gradeSets).map(([gid, set]) => (
+                       // Inline custom properties override this panel's grade tokens for this row only.
+                       <div key={gid} className="theme-examples-row" style={set.tokens as CSSProperties}>
+                         <span className="theme-examples-grade-option-name">{set.label}</span>
+                         {GRADES.map(g => (
+                           <span key={g} className={`grade-dot dot-${g.toLowerCase()}`}>{g}</span>
+                         ))}
+                       </div>
+                     ))}
+                   </div>
+                 )}
+     ```
+
+     The option rows must **not** use the class `theme-examples-grade`. AST-2047's page test asserts that `.theme-examples-grade .grade-dot` is exactly A–X once per panel.
+
+   ⚠️ **Decision:** The options block renders in **every** panel, Dark included. Picking out only the Light panels would mean hard-coding theme ids in `.tsx` (AST-2047 AC 2 forbids it) or adding a registry flag for a temporary comparison. Seeing the candidates on Dark is harmless.
+
+5. **`src/ui/frontend/src/App.css` — option-row styles.** At the end of section 16 (after `.theme-examples-panel .modal-card { … }`), append:
+
+   ```css
+   /* AST-2064: grade-color candidate rows (tokens come inline from UI_CONFIG theme_example_grade_sets). */
+   .theme-examples-grade-options {
+     display: flex;
+     flex-direction: column;
+     gap: 6px;
+   }
+
+   .theme-examples-grade-options-label,
+   .theme-examples-grade-option-name {
+     font-size: 12px;
+     color: var(--text-secondary);
+   }
+
+   .theme-examples-grade-option-name {
+     width: 56px;
+   }
+   ```
+
+6. **Verify:**
+   - `python3 -c "import src.utils.config"` exits 0.
+   - In `src/ui/frontend`: `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` shows no problem absent before the change.
+   - Re-run AST-2047 Stage 2 step 6 checks 1 and 2. Check 1 needs `App.before.css` regenerated from `git show origin/dev:src/ui/frontend/src/App.css`. Both must print `OK`.
+   - Run `npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx` (4 passed) and `ASTRAL_PYTHON=/home/susan/astral-tests/.venv/bin/python ./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst2047ThemeRegistry tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry` (5 passed).
+
+### Blast radius
+
+- `--grade-*` / `--text-on-grade*` are read only by `.grade-dot` and `.dot-a … .dot-x` (`App.css` ~1295–1304). So every grade dot in the app changes when a Light theme is applied: job list grade columns, `AgentAnalysisHeader`, the recommended report, and `.grade-dot-letterless`. Dark rendering is unchanged.
+- Sibling AST-2048-line work (the candidate's applied theme, `CandidateContext` root attribute) is untouched. A candidate on Light sees the Deep set once this lands.
+- Tests: `test_AdminThemeExamples.test.tsx` keeps passing as written. Its mocked `ui_config` has no `theme_example_grade_sets`, so the options block does not render there, and the option rows avoid `.theme-examples-grade`. The App.css block tests are unaffected because names are unchanged and no hex is added outside `[data-theme]` blocks. `TestAst2047ThemeRegistry` only inspects `themes`, `default_theme`, the profile select, and nav. No existing test asserts the old Light grade values. Betty may want a case for the options rows (fix-board's call).
+
+### What must still hold
+
+- AST-2047 AC 3: the Dark block's values equal `origin/dev`'s `:root` values. No Dark declaration is touched.
+- AST-2047 AC 4: each Light block declares exactly Dark's token names (only values change), and the Lights still differ pairwise on `--bg-deep`.
+- AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` in `App.css` outside `[data-theme]` blocks, no `["' ,(]#hex` literal in `.ts`/`.tsx`, and every `var(--x)` defined in a token block.
+- AST-2047 AC 2: no theme id string literal in `.ts`/`.tsx`. Each `[data-theme]` block id equals a `UI_CONFIG["themes"]` key, and vice versa.
+- AST-2047 AC 6: one panel per registry id, each with exactly one `.theme-examples-grade` row A–X. The page makes GET requests only.
+- `GET /api/system/ui_config` still serves `themes` and `default_theme` unchanged. The new key is additive.
