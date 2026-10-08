@@ -661,158 +661,24 @@ class TestAst1702SourceEntityLand:
 
 
 
-# Branches: URL detector; no_candidate/param_required; text vs link mode; scrape soft-fail; Style D (AST-1517).
-class TestAst1517CreateContactMeteorite:
-    """AST-1517: contact-task create — scrape-or-text → create_meteorite_job."""
+# Branches: create_contact_meteorite retired; Contact markup never reaches create_meteorite_job (AST-2061).
+class TestAst2061NoContactJobWrite:
+    def test_create_contact_meteorite_removed(self) -> None:
+        assert not hasattr(meteorite_mod, "create_contact_meteorite")
+        assert not hasattr(meteorite_mod, "_contact_param_looks_like_url")
 
-    def test_contact_param_looks_like_url(self) -> None:
-        looks = meteorite_mod._contact_param_looks_like_url
-        assert looks("") is False
-        assert looks("   ") is False
-        assert looks("line one\nline two") is False
-        assert looks("has space.com") is False
-        assert looks(".hidden") is False
-        assert looks("https://jobs.example/jd") is True
-        assert looks("jobs.example.com/path") is True
+    def test_contact_markup_never_reaches_create_meteorite_job(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2061: the retired task key is ignored, so no job row is written.
+        create = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "create_meteorite_job", create)
+        from src.core import contact as contact_mod
 
-    @pytest.mark.asyncio
-    async def test_no_candidate(self) -> None:
-        out = await meteorite_mod.create_contact_meteorite("", "https://x.example/j")
-        assert out == {
-            "ok": False,
-            "error": "no_candidate",
-            "task_key": "create_contact_meteorite",
-        }
-
-    @pytest.mark.asyncio
-    async def test_param_required(self) -> None:
-        out = await meteorite_mod.create_contact_meteorite("c1", "  ")
-        assert out == {
-            "ok": False,
-            "error": "param_required",
-            "task_key": "create_contact_meteorite",
-        }
-
-    @pytest.mark.asyncio
-    async def test_text_mode_creates_without_scrape(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db = sqlite_in_memory
-        cid = "cand-1517-text"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "T"})
-        body = "Senior Engineer\n" + ("detail " * 20)
-
-        async def _fail_scrape(*_a, **_k):
-            raise AssertionError("text mode must not scrape")
-
-        monkeypatch.setattr(
-            "src.core.gazer.contact_task_gazer_scrape", _fail_scrape
+        results = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="c1",
+            markup_spans=[("create_contact_meteorite", "Senior Engineer at Acme")],
         )
-        out = await meteorite_mod.create_contact_meteorite(cid, body, debug=False)
-        assert out["ok"] is True
-        assert out["mode"] == "text"
-        assert out["task_key"] == "create_contact_meteorite"
-        assert out["result"]["astral_job_id"]
-        from src.utils.config import TRACKER_CONFIG
-
-        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
-        row = db.get_job(out["result"]["astral_job_id"])
-        assert row["job_data"][jd_key] == body.rstrip()
-
-    @pytest.mark.asyncio
-    async def test_link_mode_scrape_then_create(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db = sqlite_in_memory
-        cid = "cand-1517-link"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
-        url = "https://jobs.example/jd"
-        visible = "Role title\n" + ("jd " * 20)
-
-        async def _scrape(_cid, _url, debug=False):
-            assert _url == url
-            return {
-                "ok": True,
-                "visible_text": visible,
-                "url": url,
-                "final_url": "https://jobs.example/jd/final",
-                "page_status": "ok",
-                "task_key": "gazer_scrape",
-            }
-
-        monkeypatch.setattr(
-            "src.core.gazer.contact_task_gazer_scrape", _scrape
-        )
-        out = await meteorite_mod.create_contact_meteorite(cid, url, debug=False)
-        assert out["ok"] is True
-        assert out["mode"] == "link"
-        assert out["page_status"] == "ok"
-        assert out["final_url"] == "https://jobs.example/jd/final"
-        row = db.get_job(out["result"]["astral_job_id"])
-        assert row["job_link"] == "https://jobs.example/jd/final"
-
-    @pytest.mark.asyncio
-    async def test_link_mode_scrape_failure_soft_return(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        async def _scrape(_cid, _url, debug=False):
-            return {"ok": False, "error": "no_connectivity", "task_key": "gazer_scrape"}
-
-        monkeypatch.setattr(
-            "src.core.gazer.contact_task_gazer_scrape", _scrape
-        )
-        out = await meteorite_mod.create_contact_meteorite(
-            "c1", "https://jobs.example/jd", debug=False
-        )
-        assert out["ok"] is False
-        assert out["error"] == "no_connectivity"
-        assert out["mode"] == "link"
-
-    @pytest.mark.asyncio
-    async def test_link_mode_empty_visible_text(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        async def _scrape(_cid, _url, debug=False):
-            return {
-                "ok": True,
-                "visible_text": "   ",
-                "page_status": "blocked",
-                "task_key": "gazer_scrape",
-            }
-
-        monkeypatch.setattr(
-            "src.core.gazer.contact_task_gazer_scrape", _scrape
-        )
-        out = await meteorite_mod.create_contact_meteorite(
-            "c1", "https://jobs.example/jd", debug=False
-        )
-        assert out["ok"] is False
-        assert out["error"] == "empty_visible_text"
-        assert out["scrape"]["page_status"] == "blocked"
-
-    @pytest.mark.asyncio
-    async def test_debug_true_emits_style_d(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db = sqlite_in_memory
-        cid = "cand-1517-dbg"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
-        log = MagicMock()
-        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
-        out = await meteorite_mod.create_contact_meteorite(
-            cid, "plain pasted jd\n" + ("x" * 40), debug=True
-        )
-        assert out["ok"] is True
-        contact_calls = [
-            c
-            for c in log.debug_index.call_args_list
-            if c.kwargs.get("func") == "meteorite.create_contact_meteorite"
-        ]
-        assert len(contact_calls) == 2
-        assert contact_calls[0].kwargs.get("outcome") == "found"
-        assert str(contact_calls[1].kwargs.get("outcome", "")).startswith(
-            "recorded astral_job_id="
-        )
+        create.assert_not_called()
+        assert results == []
 
 
 # Branches: stage gates; skip; classify-only return; Style D (AST-1530 / AST-1560).
@@ -3623,6 +3489,80 @@ class TestAst2034InsertSlackMeteorite:
 
 
 # AST-2034: run_stage_meteorite Ruth-classifies unclassified NEW rows (parent AC8/AC9/AC10).
+# Branches: insert sanitized / URL query kept / markup-only → payload miss; apply_paste drops script,
+# decodes entity-encoded markup, keeps plain line shaping; helper table (AST-2061). The double-encoded
+# plain-text residual is accepted and deliberately not pinned.
+class TestAst2061ContactSanitize:
+    SID = "C1:1700000000.000200"
+
+    @staticmethod
+    def _bot_blocked_row(db, cid: str) -> int:
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        return _insert_meteorite_row(db, cid, state="BOT_BLOCKED", link="https://blocked.example/j")
+
+    def test_insert_slack_meteorite_stores_sanitized_content(self, sqlite_in_memory) -> None:
+        # [bug-repro] AST-2061: Contact markup / entity-encoded script never reaches stored content.
+        db = sqlite_in_memory
+        payload = "<img src=x onerror=alert(1)>Senior Eng &lt;script&gt;alert(1)&lt;/script&gt;"
+        out = meteorite_mod.insert_slack_meteorite("cand-2061", payload, source_id=self.SID)
+        assert out["ok"] is True
+        rows = db.list_meteorites_by_source("slack", self.SID)
+        assert len(rows) == 1
+        assert rows[0]["content"] == "Senior Eng"
+        assert rows[0]["state"] == "NEW"
+        assert rows[0]["classify_outcome"] is None
+
+    def test_insert_slack_meteorite_keeps_url_query(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        out = meteorite_mod.insert_slack_meteorite(
+            "cand-2061", "https://x.io/job?id=1&amp;src=slack", source_id=self.SID
+        )
+        assert out["ok"] is True
+        assert db.list_meteorites_by_source("slack", self.SID)[0]["content"] == "https://x.io/job?id=1&src=slack"
+
+    def test_insert_markup_only_payload_is_required_miss(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        out = meteorite_mod.insert_slack_meteorite("cand-2061", "<script>alert(1)</script>", source_id=self.SID)
+        assert out == {"ok": False, "meteorite_id": None, "error": "payload is required"}
+        assert db.list_meteorites_by_source("slack", self.SID) == []
+
+    def test_apply_paste_drops_script_content(self, sqlite_in_memory) -> None:
+        # [bug-repro] AST-2061: the old regex tag strip kept script text ("Senior Eng alert(1)").
+        db = sqlite_in_memory
+        row_id = self._bot_blocked_row(db, "cand-2061-script")
+        out = meteorite_mod.apply_paste(row_id, "<p>Senior Eng</p><script>alert(1)</script>")
+        assert out["ok"] is True
+        assert db.get_meteorite(row_id)["content"] == "Senior Eng"
+
+    def test_apply_paste_entity_encoded_plain_text(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        row_id = self._bot_blocked_row(db, "cand-2061-entity")
+        out = meteorite_mod.apply_paste(row_id, "&lt;script&gt;alert(1)&lt;/script&gt;Senior Eng")
+        assert out["ok"] is True
+        assert db.get_meteorite(row_id)["content"] == "Senior Eng"
+
+    def test_apply_paste_plain_lines_unchanged(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        row_id = self._bot_blocked_row(db, "cand-2061-lines")
+        out = meteorite_mod.apply_paste(row_id, "line1\n\n  line2  ")
+        assert out["ok"] is True
+        assert db.get_meteorite(row_id)["content"] == "line1\n\nline2"
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("https://x.io/job?id=1&amp;src=slack", "https://x.io/job?id=1&src=slack"),
+            ("&lt;script&gt;alert(1)&lt;/script&gt;Senior Eng", "Senior Eng"),
+            ("<b>Senior</b> Eng <img src=x onerror=alert(1)> AT&amp;T", "Senior Eng  AT&T"),
+            ("<@U123> salary 1 < 2", "<@U123> salary 1 < 2"),
+            ("line1\n\nline2  <!-- c -->", "line1\n\nline2"),
+            (None, ""),
+        ],
+    )
+    def test_sanitize_contact_text_table(self, raw, expected) -> None:
+        assert meteorite_mod.sanitize_contact_text(raw) == expected
+
+
 # Branches: link_list → SCRAPE_LINK; single_jd_no_link → CHECK_UNIQUE; skip → NOT_A_JOB (failed);
 # do_task fail → NEW_EMAIL_ERROR (TestAst1560RunStageMeteorite::test_missing_classify_outcome_…);
 # map fail → NEW_EMAIL_ERROR with outcome kept; candidate missing → NEW_EMAIL_ERROR;
