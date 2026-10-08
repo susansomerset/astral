@@ -652,3 +652,7 @@ No F3 (`validate-plan` fix mode) canon work indicated from this triage pass.
 context_tokens≈22000
 
 [code-rubric] PROCEED (Commit: 31ccbee3) Estelle pinhole clean
+
+## Test routing — AST-2061
+
+Test-tree and bible coverage for this fix is owned by gap sibling [AST-2062](https://linear.app/astralcareermatch/issue/AST-2062) (fix-board `[board-betty] TESTS: REVISE`), which is blocked by AST-2061 and lands on `ftr/AST-2055-estelle-pinhole` after it. AST-2061 itself carries no `test()` / `merge-tests` commits: docs-acceptance.
