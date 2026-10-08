@@ -218,3 +218,15 @@ AC 12 → Stage 1; AC 13 → Stage 2; AC 14 → Stage 3. Parent AC 1–11 N/A (g
 **discuss** — Parent display work often implicates `astral.layers.import-direction` and `astral.ui.frontend-file-placement`; they are not on this child’s frozen Citations list. The plan touches only in-scope existing UI paths and creates no new files — no scoring gap, but Archie may still want those on display children by convention.
 
 **Definition fidelity (R6):** Plan matches child Scope and parent Functional scope §6 (prose in report + detail; grades separate). Files/stages stay inside ticket `## Scope`. Stages are executable (field rename, grep gates, trim parity). Estimate confirm present. No Plan Discuss rounds on thread.
+
+## Review
+
+- **Branch:** `sub/AST-2054/AST-2071-upshot-display`
+- **Stage 1:** `bfcda3f58` — `_flatten_for_view` lifts `company_upshot` (default `""`)
+- **Stage 2:** `f5dd62458` — report Company Upshot section reads `company_upshot`; `prefilter_company_notes` / `companyNotes` gone from the modal
+- **Stage 3:** `3ad69d8b7` — `CompanyDetailModal` `company_upshot` type field + trimmed **Upshot** row before Notes
+- **Build notes:**
+  - `ruff check src/ui/api/api_companies.py`: only the pre-existing `I001` (unchanged, per plan).
+  - `npm run build` clean. `eslint` on both components: 0 errors; one pre-existing warning on an untouched line,
+    `JobAnalysisReportModal.tsx:286` `react-hooks/exhaustive-deps` (`persistStructureRows`) — not fixed, per plan.
+  - No tests touched; coverage is Betty's `qa-child`.
