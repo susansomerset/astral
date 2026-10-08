@@ -686,3 +686,74 @@ context_tokens≈42000
 ---
 
 `[code-rubric] PROCEED (Commit: 55a3fcd69) Theme registry, palettes, examples`
+
+## Bug: AST-2063 — Light themes: header text is dark yellow — use the Dark theme's background purple
+
+### As-is
+
+In the Light palettes (`light`, `light_parchment`, `light_slate`), heading text colored by `var(--accent-gold)` renders in that palette's dark gold or amber (`#9a7314` / `#8a5a00`), or blue on Slate (`#2b6cb0`). That covers page titles, modal titles, profile section labels, and the Theme Examples panel labels.
+
+### To-be
+
+In all three Light palettes, that heading text renders in the Dark theme's background purple, `#241b33` (Dark `--bg-elevated`; Susan confirmed the `--bg-card` / `--bg-elevated` family). Dark headings stay gold (`#d4a843`). Every other `--accent-gold` use (active nav link, active tabs, links, hovers, focus rings, statuses, cost totals, in-flight buttons) is unchanged in every palette.
+
+### Repro
+
+1. Apply a Light theme. Either select a candidate whose stored `theme` is `light`, or open Tools → Theme Examples (`/admin/theme_examples`) and look at the Light, Light (Parchment), and Light (Slate) panels.
+2. The page title (`h1.list-page-title` / `h1.dep-title`), `h2.modal-title` in the sample modal card, and the panel label `h2.theme-examples-label` are gold or amber (blue on Slate), not purple.
+
+### Root cause
+
+AST-2047 never gave headings their own color role. They read `--accent-gold` directly, the same token that drives links, active tabs, and focus rings. A Light palette therefore cannot recolor headings without recoloring every accent.
+
+### Proposed change
+
+One file, `src/ui/frontend/src/App.css`, named in AST-2042's Component scope. The change adds one semantic token where a heading needs its own role (Technical scope: "new semantic tokens are added only where … needs one"). Line numbers are at `ftr/AST-2042-user-theme` tip `2fd5c63e7`. Find each line by selector.
+
+1. **New token `--heading` in all four token blocks**, inserted directly after the block's `--accent-gold-hover: …;` line:
+   - `:root, [data-theme="dark"]`: `  --heading: var(--accent-gold);`
+   - `[data-theme="light"]`: `  --heading: #241b33;`
+   - `[data-theme="light_parchment"]`: `  --heading: #241b33;`
+   - `[data-theme="light_slate"]`: `  --heading: #241b33;`
+
+   ⚠️ **Decision — Dark is an alias, not a hex copy:** `var(--accent-gold)` resolves to `#d4a843`, so Dark headings are pixel-identical, and they keep tracking gold if Dark's accent is ever retuned. The pattern matches `--confidence-bullet-*`, and like those, every block redeclares the name (AST-2047 AC 4 name-set equality).
+
+   ⚠️ **Decision — one purple, `#241b33`, for all three Lights:** It is the more visibly purple of the two confirmed values (`#1a1424` reads as near-black on white). Using it in every Light block makes headings look the same across palettes, matching Susan's single-color ask. Its contrast is above 15:1 on every Light `--bg-deep` / `--bg-card`.
+
+   ⚠️ **Decision — insert position:** Insert after `--accent-gold-hover`, its semantic neighbor. That keeps four unchanged lines between this insert and the `--grade-*` lines that sibling bug AST-2064 edits in the same Light blocks, so the two merges do not touch adjacent lines.
+
+2. **Repoint the six heading rules** from `color: var(--accent-gold);` to `color: var(--heading);`. Change only that one declaration in each rule:
+
+   | Line | Selector | Rendered as |
+   |------|----------|-------------|
+   | 659 | `.list-page-title` | `h1` page titles on list pages (12 uses) |
+   | 888 | `.job-analysis-upshot-heading` | heading class (no current markup; repointed so it stays a heading if reused) |
+   | 1223 | `.modal-title` | `h2` in `Modal`, `UserPrompt`, `CandidateIntake`; `span` titles in `AdminScheduledActions` |
+   | 1534 | `.dep-title` | `h1` page titles on detail/edit pages (7 uses) |
+   | 1595 | `.dep-section-label` | `h2` section headers (DetailsEditPage) |
+   | 2862 | `.theme-examples-label` | `h2` panel labels on Theme Examples |
+
+   Do **not** change any other `var(--accent-gold)` / `var(--accent-gold-hover)` use. This includes `.nav-link.active`, `.tabbed-ta-tab.active`, `.side-tab-item.active .side-tab-label`, `.expand-toggle`, link hovers, `.analysis-rubric-link`, focus borders, `.dispatch-*`, `.perf-total-cost`, `.batch-cost-total`, and `.btn.primary.in-flight`. These are accents or interactive states, not headings.
+
+   ⚠️ **Decision — `.nav-group-label` is untouched:** sidebar group labels already have their own token (`--nav-group-label`), and Susan's report is about header text in page content.
+
+3. **Verify:**
+   - In `src/ui/frontend`: `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` shows no problem absent before the change.
+   - Re-run AST-2047 Stage 2 step 6 checks 1 and 2 after `git show origin/dev:src/ui/frontend/src/App.css > debug/spikes/ast-2047/App.before.css`. Both must print `OK`.
+   - Run `npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx` (4 passed).
+   - `rg -n "color: var\(--heading\)" src/ui/frontend/src/App.css` returns exactly the six selectors above.
+   - `rg -c -- "--heading:" src/ui/frontend/src/App.css` returns `4`.
+
+### Blast radius
+
+- Only `App.css` changes. No `.tsx`, config, or API change.
+- Under Light, every page title, modal title (including the span-based Scheduled Actions modal titles), DetailsEditPage section label, and Theme Examples panel label turns purple. Under Dark nothing changes visually.
+- Sibling AST-2064 (Light grade colors) edits the `--grade-*` / `--text-on-grade*` values in the same three Light blocks. This change only inserts a line four lines above those, so the two do not overlap. Both bugs append a `## Bug:` block to the end of this plan doc, so `merge-child` may see an adjacent-append conflict here. Resolve it by keeping both blocks.
+- Tests: `test_AdminThemeExamples.test.tsx` passes unchanged. `--heading` is declared in all four blocks (name-set equality holds), its only reference is defined (no undefined `var`), and no hex is added outside `[data-theme]` blocks. No test asserts a heading's color.
+
+### What must still hold
+
+- AST-2047 AC 3: none of Dark's existing 38 values changes. The added `--heading` resolves to the same `#d4a843` headings used before.
+- AST-2047 AC 4: each Light block declares exactly Dark's token names (now 39), and the Lights still differ pairwise on `--bg-deep`.
+- AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` in `App.css` outside `[data-theme]` blocks, and every `var(--x)` is defined in a token block.
+- Every non-heading `--accent-gold` use renders exactly as before in every palette.
