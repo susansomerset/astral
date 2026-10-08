@@ -3572,3 +3572,64 @@ Expect 54 passed and 1 failed (the baseline red above), with all six **`AST-1979
 | Routed page (**§6c**) bodyShape + leaf autosave PUT | `ArtifactsBaseResumeContent.tsx` → `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577 / AST-2051: wires bodyShape resume_content; autosave PUTs base_resume leaf (§6c)`** (retargeted from header Save; red pre-fix — Save still rendered) |
 
 **Pre-existing red, not this ticket:** **`AST-1577: page and draft follow ui-consistency`** — draft path moved to `canon/directives/active/`; name-skipped in the § AST-2056 manifest.
+
+---
+
+### AST-2047 · AST-2042 (theme registry, palettes, Theme Examples page)
+
+**Publish:** `origin/sub/AST-2042/AST-2047-theme-registry-palettes`. `UI_CONFIG["themes"]` (four palette ids: `dark`, `light`, examples-only `light_parchment` / `light_slate`) + `default_theme` drive the profile **Theme** select (selectable entries only), a Tools nav item `/admin/theme_examples`, and one `[data-theme="<id>"]` block per id in `App.css` (Dark = `:root, [data-theme="dark"]`). New admin page `AdminThemeExamples.tsx` renders the same shared-class sample once per registry id.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) — one labeled panel per registry id, button / table row / select / grade dots A–X / toast in each; GET-only | `pages/AdminThemeExamples.tsx` | **`test_AdminThemeExamples.test.tsx`** — **`renders one labeled panel per registry id with the shared sample; read-only (§6c, AC6)`** |
+| `App.css` token blocks — one per registry id; Light name sets equal Dark's; Lights pairwise differ on `--bg-deep` / `--bg-card` / `--accent-gold` (AC4) | `App.css` § 1 | same file — **`App.css theme token blocks — AST-2047`** (3 cases) |
+| `App.css` rule bodies — no hex / non-black `rgba()` outside token blocks; every `var(--x)` in `App.css` defined in a token block (AC5, `App.css` half only — `.tsx` half is AST-2049) | `App.css` | same file — **`no hex or non-black rgba outside token blocks; …`** |
+| Registry ids / selectable / default; profile Theme options generated from the registry; Tools item admin-only; every id has an `App.css` block (AC1, AC2) | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst2047ThemeRegistry`** (4) — see [`../utils/config.md`](../utils/config.md) § AST-2047 pointer |
+| `ui_config` serves `themes` + `default_theme` (AC1) | `src/ui/api/api_system.py` (unchanged; `{**UI_CONFIG}` spread) | **`tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry`** |
+
+**Broken / obsolete:** none. Full Vitest (1021 cases) and `test_config.py` / `test_api_system.py` / `test_candidate.py` show the **same** failure set with and without the AST-2047 product merged onto `origin/tests` @ `032ecabed` (pre-existing reds only). No `tests/integration/` scenario reads `ui_config`, Tools items, profile fields, or `App.css`.
+
+**Not covered by component tests (jsdom has no cascade):** AC6 computed panel backgrounds pairwise different, non-admin redirect from `/admin/theme_examples` (generic `AdminRoute` behavior — `test_AdminRoute.test.tsx`), Tools item hidden for non-admins (generic `admin_only` — `test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin`). AC3 (Dark token values unchanged) is a one-shot diff against `origin/dev`, not a durable pin — later palette tweaks are allowed.
+
+**Note — served key order:** Flask 3's JSON provider sorts keys, so `/api/system/ui_config` serves `themes` alphabetically, not in registry order (plan assumed order survives `jsonify`). Panels render alphabetically; today that equals registry order. Tests compare served keys as a set.
+
+#### QA test manifest (AST-2047)
+
+1. **New tests (required, all green):**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+cd ../../.. && ./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2047ThemeRegistry \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry
+```
+
+Expect 4 Vitest + 5 pytest passed.
+
+2. **Regression (required):** failure set unchanged vs `origin/dev` (pre-existing reds: 24 in `test_config.py`, 1 in `test_api_system.py` — e.g. `TestAst1386ThreeSegmentAdminNav`, `TestAst1375InflightHideStatesManifest`; none name themes):
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/ui/api/test_api_system.py
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/test_routes.test.tsx \
+  ../../../tests/component/frontend/components/test_AdminRoute.test.tsx \
+  ../../../tests/component/frontend/components/test_JobTitleText.test.tsx \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
+Vitest files above: all green.
+
+3. **AC2 / AC5 (`.ts`/`.tsx` hex half is AST-2049's):** `rg -n '"light"' src/ui/frontend/src --glob '*.{ts,tsx}'` returns nothing.
+
+4. **AC3 Dark unchanged (one-shot):** every declaration in the `origin/dev` `:root { … }` block appears with the same value in the publish tip's `:root, [data-theme="dark"] { … }` block (plan Stage 2 step 6 check 1, `App.before.css` = `git show origin/dev:src/ui/frontend/src/App.css`).
+
+5. **AC7:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev`.
+
+6. **AC6 manual (browser, optional for test-child — UAT):** as admin, Tools → Theme Examples shows four panels with visibly different backgrounds; as non-admin, no Tools group and the URL redirects.
+
+**Pass criterion:** items 1–5 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2047-theme-registry-palettes:docs/test-bible/frontend/pages.md | shasum` (also `utils/config.md`, `ui/api/api_system.md`)
