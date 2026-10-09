@@ -940,3 +940,146 @@ context_tokens≈42000
 ```
 
 **Docs-acceptance (AST-2098):** no test-tree change on this ticket. Betty's `[board-betty] TESTS: REVISE` coverage, including the `[bug-repro]` and the AST-1959 openrouter exact-string update, lands on gap child AST-2099.
+
+## Bug: AST-2099 — tests + dispatch-retry carve-out for failed host probe (AST-2098 board)
+
+- **Gap child of:** [AST-2016](https://linear.app/astralcareermatch/issue/AST-2016). Fix-board on [AST-2098](https://linear.app/astralcareermatch/issue/AST-2098) returned `[board-betty] TESTS: REVISE` and `[board-joan] CANON: REVISE`, and both were routed here. The precedent is AST-1870 for AST-1867.
+- **Publish ref:** `sub/AST-2016/AST-2099-probe-fail-hold-gaps`
+- **Product under test:** AST-2098 `19036ccf0` (on `origin/ftr/AST-2016-probe-fail-hold`).
+- **Pre-fix product (the red tree):** `25c7ab095`, the first parent of `19036ccf0`. That is `origin/dev` as synced at the fork, with no AST-2098 product.
+- **Who lands what:** Betty lands every `tests/` and `docs/test-bible/` change (engineers are banned from the test tree). `make-fix` lands the one canon edit. No product code changes on this ticket.
+
+### As-is
+
+- AST-2098's behaviour has no tests: missing `usage`, the probe-failure tag, consult/roster holds, and the dispatcher's probe outage.
+- `tests/component/external/test_openrouter.py::TestAst1959BatchHostMap::test_failed_probe_is_remembered_for_the_key[send1-Host probe failed: Probe response named no provider]` still pins the old error string, so it is red on ftr. It is the only new failure vs `25c7ab095` across the touched suites (`test-fix` on AST-2098).
+- `patt.task.dispatch-retry` Arc 5 says no failure may stay in state, and its only carve-out is empty runtime tokens. That contradicts AST-2098's hold.
+
+### To-be
+
+- Each AST-2098 behaviour has a named component test, and the bible pages name them.
+- One dispatcher `[bug-repro]` is red on `25c7ab095` and green on `19036ccf0`.
+- The openrouter test asserts the new message contract.
+- `patt.task.dispatch-retry` § When this doesn't apply carries a failed-host-probe carve-out, parallel to empty runtime tokens.
+
+### Repro
+
+The incident shape is AST-2016's `meteorite_grade_get`: 2 jobs claimed, `batch_call_mode 0` (warm one entity, then gather), `max_runs 3`, and every consult result is a probe-failure hold. On `25c7ab095` the dispatcher ignores the tag. All 2 × 3 = 6 entity calls run and the ledger ends `COMPLETED` (the circuit breaker is eligible). On `19036ccf0` there is 1 call, the claim is released, and the ledger ends `INTERRUPTED`. The fixture is the consult summary in test F1 below; no DB row is involved.
+
+### Root cause
+
+AST-2098 was planned and built under the fix-lane test ban, and the board split its tests and canon into this gap child. Nothing is missing in the product.
+
+### Proposed change
+
+All test code below is **Betty's** to land (`qa-fix`). Names are the plan's; Betty may adjust helper names but not the asserted contract.
+
+**Repro-safety rule (all new tests):** assert on literals `"provider_probe_failure"` and `"provider_probe_outage"` and do **not** import AST-2098 symbols (`PROVIDER_PROBE_FAILURE`, `is_provider_probe_failure`, `is_provider_state_hold`, `_note_provider_probe_outage`, `_outage_tag`). On `25c7ab095` they must fail on asserts, not at import or setup. This is the same posture as `TestAst1867ProviderBalanceOutage._edges`' `raising=False`.
+
+**A. `tests/component/external/test_openrouter.py`**
+- **A1. Modified:** in `TestAst1959BatchHostMap::test_failed_probe_is_remembered_for_the_key`, change the second parametrize case's expected error from `"Host probe failed: Probe response named no provider"` to `"Host probe failed: Probe response named no provider: namespace(provider=None, id='probe_resp')"`. That is `_Send`'s reply rendered by `normalize_provider_error`. The 429 case and the remembered-failure assertions are unchanged.
+- **A2. New class `TestAst2098ProbeErrorText`:**
+  - `test_hollow_probe_names_provider_error_body`: `send` returns `SimpleNamespace(id="gen-hollow", provider=None, usage=None, error={"message": "No endpoints found matching your data policy", "code": 404})`. `probe_host(REAL, send, record)` raises `ValueError` whose message starts `"Probe response named no provider: "` and contains `"No endpoints found matching your data policy"`. `record` is called once with the response.
+  - `test_hollow_probe_with_no_body_says_empty_body`: `send` returns `None`. Message == `"Probe response named no provider: empty body"`. `record` is called once with `None`.
+- Update the file's branch-comment header with the error-text branches (`error` attr present / absent / `None` response).
+
+**B. `tests/component/utils/test_cost_calculator.py`**
+- **B1. New** `TestAst2098UsageNone::test_usage_none_reads_zero_tokens`: `usage_to_token_counts(None) == {"cache_read": 0, "cache_miss": 0, "output": 0, "cache_write": 0}`, with no exception.
+
+**C. `tests/component/external/test_llm_compat.py`**: new class `TestAst2098ProbeFailureTagged`, reusing `TestAst1959ProbeHostLock`'s `_fresh_host_map` / `batch` fixture shape.
+- Test-local client `_HollowProbeClient(_RecordingClient)`: on a probe call (`_is_probe`) it records the kwargs and returns `SimpleNamespace(id="gen-hollow", provider=None, usage=None, content=[], stop_reason=None, error={"message": "No endpoints found matching your data policy", "code": 404})`. Non-probe calls behave like `_RecordingClient`.
+- **C1** `test_hollow_probe_tagged_held_no_traceback`: `_send(tier=_tier(quantization="bf16", provider_allow_fallbacks=True), record_timesheet=rows.append-style)` under `caplog` at ERROR for `src.external.llm_compat`. Asserts:
+  - exactly one request (the probe), and no real call;
+  - `out["success"] is False` and `out["failure_class"] == "provider_probe_failure"`;
+  - `out["error"]` starts `"Host probe failed: Probe response named no provider: "` and contains the provider message;
+  - `out["host"] == "OpenRouter"`;
+  - one timesheet row, with token columns `(0, 0, 0, 0)`;
+  - **no** ERROR records (AST-2016's `AttributeError` traceback is gone).
+- **C2** `test_non_429_probe_exception_tags_every_caller`: `_HostClient(raise_on_probe=RuntimeError("upstream 503"))` through `_one_then_three`. Asserts 1 request, 4 results, all `success False`, and all `failure_class == "provider_probe_failure"` (waiters share the cached error).
+- **C3** `test_hollow_real_call_is_empty_response_without_traceback`: on a non-probe server (`server_id="kimi"`, `sku="kimi-k2.6"`, no batch id), the real call returns a message with `usage=None`, no content, and `stop_reason=None`. Asserts `failure_class == "provider_empty_response"` (AST-1190 path unchanged) and no ERROR records from `usage_to_token_counts`.
+- **Exhausted 429 stays rate limit (AC 4):** already covered by `TestAst1959ProbeHostLock::test_ac4_failed_probe_fails_the_batch_with_no_fallback` (all four `provider_rate_limit`). Keep it unchanged; the bible names it as the AST-2098 guard.
+
+**D. `tests/component/core/test_consult.py`**: new class `TestAst2098ProbeFailureHold` (`_FC = "provider_probe_failure"`, `_ERR = "Host probe failed: Probe response named no provider: {'message': 'No endpoints found'}"`). Mocks mirror `TestAst897HoldStateOnBalanceRefusal` / `TestAst2010RateLimitForwarding`.
+- **D1** `test_render_verdict_holds_state`: `do_task` returns `{"success": False, "error": _ERR, "failure_class": _FC}`. Asserts `state_held is True`, `to_state == "VALID_TITLE"`, `failure_class == _FC`, and `_transition_job_state_for_task` not called.
+- **D2** `test_run_consult_task_single_entity_counts_held`: the incident path. `run_consult_task("job", <state>, [job], "b2098", dispatch_task_key="meteorite_grade_get")` with `render_verdict` returning D1's held dict returns exactly `{"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0, "total_held": 1, "failure_class": _FC}`.
+- **D3** `test_batch_consult_envelope_holds_and_counts`: `_run_batch_consult` envelope failure tagged `_FC` on 3 jobs. Asserts no transitions, `state_held True`, and `total_held == 3`. Then through the batch normalizer (same entry `TestAst2010RateLimitForwarding::test_run_consult_task_batch_normalizer_forwards_tag` uses): `total_errors == 0`, `total_held == 3`, `failure_class == _FC`.
+- **D4** `test_analysis_upshot_batch_counts_held`: 2 jobs, both `do_task` results tagged `_FC`. Asserts `total_errors == 0`, `total_held == 2`, `failure_class == _FC`, no transitions, and `_warn_job` text `"host probe failed — state held"`.
+- **D5 (guard, green both)** `test_balance_hold_on_job_path_still_counts_error`: D2 with `failure_class="provider_balance_refusal"` returns `total_errors == 1`, with **no** `total_held` / `failure_class` keys (AST-2098 Decision D3: balance on job paths is unchanged).
+
+**E. `tests/component/core/test_roster.py`**: new class `TestAst2098ProbeFailureHold` (same `_FC` / `_ERR`). Mocks mirror `TestAst1867BalanceHeldCounting` / `TestAst897HoldStateOnBalanceRefusal`.
+- **E1** `test_select_job_page_probe_hold_counts_held`: the `TestAst1867BalanceHeldCounting::test_select_job_page_balance_hold_counts_held_not_error` shape with `_FC`. Returns `(1, 0, 0, 0)` totals, `total_held == 1`, `failure_class == _FC`, and `_warn_company` not called.
+- **E2** `test_jobs_found_probe_hold_skips_error_state`: JOBS_FOUND with a `_FC` result. Asserts `total_held == 1`, `total_errors == 0`, and `transition_company_state` not called.
+- **E3** `test_prefilter_batch_probe_hold_counts_held`: `prefilter_company_batch` with 2 ready companies and `do_task` tagged `_FC`. Asserts no `transition_company_state`, `total_held == 2`, `state_held True`. Through `consult.run_consult_task("company", …, dispatch_task_key="prefilter_company")`: `total_errors == 0`, `total_held == 2`, `failure_class == _FC`.
+- **E4** `test_company_upshot_probe_hold_counts_held`: the same shape for `company_upshot_batch` / `dispatch_task_key="company_upshot"`.
+- **E5** `test_find_job_page_probe_hold_keeps_state`: `_find_job_page_from_assembled` with `do_task` tagged `_FC` returns `state_held True` with the company's current state, and `_save_company` is not called.
+
+**F. `tests/component/core/test_dispatcher.py`**: new class `TestAst2098ProviderProbeOutage`. It reuses `TestAst1867ProviderBalanceOutage._edges` / `._claim_companies` and `TestAst2010ProviderRateLimitOutage._claim_jobs` as staticmethods, the way the AST-2010 class does. `_FC = "provider_probe_failure"`; `_held(**extra)` returns `{"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0, "total_held": 1, **extra}`.
+- **F1 `[bug-repro]`** `test_bug_repro_probe_failure_holds_batch_interrupted`:
+  - **Setup:** `count_eligible_for_dispatch_task → 24`; `_claim_jobs(monkeypatch, 2, "METEORITE_PASSED_DO")`; `consult.run_consult_task = AsyncMock(return_value=_held(failure_class=_FC, error=_ERR))`; task `{"id": 2098, "task_key": "meteorite_grade_get", "candidate_id": "cand-1", "entity_type": "job", "trigger_state": "METEORITE_PASSED_DO", "batch_call_mode": 0, "batch_size": 2, "auto_mode": 1, "max_runs": 3}`; then `await dispatcher_mod._dispatch_one(task)`.
+  - **Asserts:** `consult.await_count == 1`; the claim is cleared once; ledger `status == "INTERRUPTED"`; `(total_processed, total_errors) == (1, 0)`; `breaker`, `auto_run_error` and `provider_balance_outage` not called.
+  - **Red on `25c7ab095`:** `assert 6 == 1` (2 entities × 3 runs), and status `COMPLETED`.
+- **F2** `test_run_unified_per_entity_skips_after_probe_failure`: 3 companies, `select_job_page`, `batch_call_mode 0`. Asserts 1 consult call; the summary is exactly `{"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}` (no `total_held` / `failure_class`, which keeps the ledger safe); `ctx["provider_probe_outage"] == {"error": _ERR, "held": 1}`; no balance or rate-limit key; the claim is cleared once.
+- **F3** `test_run_unified_chunk_split_skips_tail_after_head_probe_failure`: the AST-2010 chunk shape. 1 consult call, and the ctx marker is set.
+- **F4** `test_run_unified_full_batch_marks_probe_outage`: the AST-2010 full-batch shape, with consult returning `_held(total_held=2, failure_class=_FC, error=_ERR)`. Marker `held == 2`.
+- **F5** `test_run_dispatch_loop_stops_after_probe_outage_run`: the AST-2010 loop shape (`[24, 24, 24, 0]`, `max_runs=0`), with `_run_task` setting `ctx["provider_probe_outage"]`. `run_task.await_count == 1`.
+- **F6** `test_dispatch_one_probe_outage_status`, parametrized: `ctx["provider_probe_outage"]` alone → `INTERRUPTED`, no balance alert, no `auto_run_error`, breaker not called. With `provider_rate_limit_outage` also set → `FAILED` (rate limit wins).
+
+**G. Bible, `docs/test-bible/**` (Betty).** Add a `### AST-2098 · AST-2099 (failed host probe holds the batch)` section to each page below, in the same table shape as the AST-1867 / AST-2010 sections. **Primary manifest:** `core/dispatcher.md`.
+- `core/dispatcher.md`: the contract paragraph covers the `provider_probe_outage` `{"error", "held"}` marker; skips at all three `_run_unified` sites; the loop break; `INTERRUPTED`; no alert; no breaker; rate limit's `FAILED` wins. The red line reads `25c7ab095: assert 6 == 1, status COMPLETED`. Rows F1 (**bug-repro**) through F6. **Kept:** AST-1867 and AST-2010 classes.
+- `external/llm_compat.md`: rows C1–C3, plus `test_ac4_…` named as the exhausted-429 guard (AC 4).
+- `external/openrouter.md`: row A1 marked **Revised (AST-2098 message contract)**, plus rows A2.
+- `utils/cost_calculator.md`: row B1.
+- `core/consult.md`: rows D1–D5, with D5 marked guard / green both.
+- `core/roster.md`: rows E1–E5.
+- Each page records its bible shasum after publish, as the AST-1870 sections do.
+
+**Manifest for `test-fix` (Betty posts it with `[bug-repro]` naming F1):**
+```bash
+python3 -m pytest \
+  tests/component/core/test_dispatcher.py::TestAst2098ProviderProbeOutage \
+  tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage \
+  tests/component/external/test_llm_compat.py::TestAst2098ProbeFailureTagged \
+  tests/component/external/test_llm_compat.py::TestAst1959ProbeHostLock \
+  tests/component/external/test_openrouter.py \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/core/test_consult.py::TestAst2098ProbeFailureHold \
+  tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_consult.py::TestAst2010RateLimitForwarding \
+  tests/component/core/test_roster.py::TestAst2098ProbeFailureHold \
+  tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal -q
+```
+**Red check:** run F1 with the product reverted to the pre-fix tree, `git restore --source 25c7ab095 --worktree -- src/`. It must fail with `assert 6 == 1`. Then put the product back with `git restore -- src/`, and F1 must pass.
+
+**H. Canon: `canon/directives/active/patt.task.dispatch-retry.md` (`make-fix` lands).** Insert this bullet under `# When this doesn't apply`, directly after the empty-runtime-tokens bullet and before `- Every other failed attempt: …`. Change nothing else in the file.
+```markdown
+- **Pre-attempt provider gate — failed per-batch host probe.** On a server that
+  probes for a host before a batch's first call, a failed probe (no host named,
+  an error body, an exception, a cancelled probe — anything but an exhausted
+  rate limit) means no entity prompt is sent. Nothing was attempted for the
+  entity, so there is no failure to retry or to error: every entity in the batch
+  keeps its current loop-eligible state, takes no `_RETRY` hop and no
+  `error_state`, and is counted held, not errored. Dispatch stops the run and
+  releases the claim; the next round claims the same entities under a new batch
+  and probes again. Arc 5 is not broken — no failed attempt stays in state,
+  because none was made. An exhausted rate limit on the probe is not this
+  exemption; it stops the batch as a rate-limit outage.
+```
+⚠️ **Decision:** the bullet names no ticket id, matching the empty-tokens bullet's style. Joan's F3 hint allowed a ref "only if canon style allows", and the existing bullet carries none.
+
+⚠️ **Decision:** balance refusal (AST-897) is **not** folded into this carve-out. Joan marked that optional, and AST-2099's Boundaries exclude balance changes.
+
+### Blast radius
+
+- **Test files:** only the six in Scope. The one existing test modified is A1; every other change is a new class.
+- **Bible:** six pages, new sections only. Existing AST-1867 / AST-2010 / AST-1959 rows are untouched, except openrouter A1's row text.
+- **Canon:** one new bullet in `patt.task.dispatch-retry.md`. Joan's `validate-plan` and Radia's `review-*` read it from then on for any task that holds state on a provider gate.
+- **No product code**, so AST-2098's `19036ccf0` is not touched.
+
+### What must still hold
+
+- F1 is red on `25c7ab095` by assertion (not by ImportError or setup) and green on `19036ccf0`.
+- All AST-1867, AST-2010, AST-897 and AST-1959 classes stay green on ftr. That includes `test_ac4_…` (exhausted 429 → `provider_rate_limit`), which is AC 4.
+- Summaries with no probe hold keep their exact shape: F2's exact-dict assert and D5 guard this.
+- The canon's empty-runtime-tokens bullet and Arc 1–5 text are unchanged.
