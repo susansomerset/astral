@@ -1632,3 +1632,20 @@ Plan is written for (a) per the spawn instruction ("plan the call-site change �
 - AST-1854: hydrated `get_candidate` load stays outside the `try`.
 - AST-1880 / AST-2091: 400 precedence key → rubric → tokens; `invalid_reason` key-first then rubric; `empty_tokens` sourced only from `_evaluate_dispatch_empty_render`.
 - Filled rubric → `empty_render: False` (no false positive).
+
+
+### AST-2103 — Joan fix-board
+
+[board-joan]  CANON: OK
+
+**Read:** `## Bug: AST-2103` in `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md` (plan-fix six sections; publish ref `sub/AST-2020/AST-2103-rubric-gate-call-site`, plan context commit `fd31c854b`). Roster overlap: `astral.dispatch.entity-state-bound` (`canon/directives/active/stat.dispatch.entity-state-bound.md`); ticket Canon Scope **none** (board cites that id informally only). No pattern ids on parent scope.
+
+**The one question:** Does the proposed change conflict with or require updating any directive **in force**?
+
+**No.** Canon does not prescribe `entity_contexts=None` vs `{"rubric": {}}` on `_evaluate_dispatch_empty_render`. That contract is AST-1779 / AST-1780 feature plan and bible, same class as AST-2092’s helper default change (prior fix-board **CANON: OK** on `ast-1779` doc). This ticket only makes the call site explicit in `api_admin.py`; it does **not** edit `empty_render_for_prompts` signature or default (`## What must still hold`).
+
+- **`astral.dispatch.entity-state-bound`:** Still satisfied. Per-row `candidate_id` / task_key evaluation; no `dispatch_task`, `entity_type`, `trigger_state`, or claim-path edits. Rubric scoring remains candidate-keyed via existing resolver/`cd`; omitting `"job"` from `entity_contexts` matches plan AC5 intent and does not relax entity-binding law.
+
+- **No statute/pattern amend:** On current tip the edit is a documented no-op (AST-2092 default + AST-2091 gate already fix the symptom). Belt-and-suspenders at the call site does not introduce a new corpus carve-out or contradict in-force text.
+
+**Not ESCALATE:** The (a) ship vs (b) cancel choice in **Proposed change** is lane routing for Chuckles/Susan, not ambiguous statute intent or unbounded architectural precedent.
