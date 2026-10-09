@@ -87,12 +87,6 @@ class TestAst1066ContactScaffold:
         assert names["bot_token"] == CONTACT_CONFIG["bot_token_env"]
         assert names["signing_secret"] == CONTACT_CONFIG["signing_secret_env"]
 
-    def test_non_production_reply_prefix(self) -> None:
-        assert contact_mod.non_production_reply_prefix("staging") == "[staging] "
-        assert contact_mod.non_production_reply_prefix("  prod-like  ") == "[prod-like] "
-        assert contact_mod.non_production_reply_prefix("") == "[] "
-        assert contact_mod.non_production_reply_prefix("   ") == "[] "
-
     def test_skill_keys_do_not_collide_with_task_config(self) -> None:
         for skill_key in contact_mod.contact_skill_keys():
             assert skill_key not in TASK_CONFIG
@@ -1063,8 +1057,8 @@ class TestAst1101ChannelHearEvidence:
         hear = post.call_args.kwargs
         assert hear["channel"] == "C-hear"
         assert hear["thread_ts"] is None
-        assert hear["text"].startswith("[staging] ")
-        assert CONTACT_CONFIG["hear_ack_reply_text"] in hear["text"]
+        # AST-2085: no env prefix, even off production.
+        assert hear["text"] == CONTACT_CONFIG["hear_ack_reply_text"]
         rows = contact_mod.list_estelle_activity()
         assert len(rows) == 1
         assert rows[0]["slack_user_id"] == "U-hear"
