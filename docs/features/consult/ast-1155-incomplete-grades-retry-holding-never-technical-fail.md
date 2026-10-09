@@ -2110,3 +2110,75 @@ Test gap for **AST-2089** (`f3897829d`). `_run_batch_consult`: when `do_task` fa
 AST-2090 board-joan done — CANON: OK.
 
 **Rationale:** AST-2090’s plan-fix patch is **tests + `docs/test-bible` only** — no `src/` or `data/`. It adds component tests and bible rows that **lock AST-2089’s already-reviewed product contract** (`salvaged_response` on rubric envelope failure when `batch_entities` is present; `_run_batch_consult` processes salvaged lines and fail-dests only gaps, with first/second-strike routing on the gap entity). That behavior was already aligned with `patt.task.dispatch-retry` on AST-2089’s fix-board pass; claim/process/release and logging statutes are untouched because there is no product diff. Bible blocks describe **coverage**, not new in-force directives or statute amendments. No canon update, carve-out, or Archie gate indicated. **F3 (`validate-plan` fix mode) not indicated** from this board pass.
+
+
+## Radia review — AST-2090
+
+**Ticket:** AST-2090  
+**Publish ref:** `8e751e38ea8b069f613e51e0aad4842878a3ab1d` (`origin/sub/AST-2015/AST-2090-qualify-listing-isolation-tests`)  
+**Diff base:** `origin/ftr/AST-2015-qualify-listing-isolation` … publish ref (3-dot)  
+**Corpus:** `823d37605` (issue doc: **canon limited to `patt.task.dispatch-retry`** for consult first/second-strike asserts; test-tree only — no `src/` / `canon/` delta)  
+**Overall:** CLEAN  
+
+## Fix-specific checks
+
+**[bug-repro] OK** — Three repro nodes (not tautological; would fail pre-fix `22ff5e47a` product per plan §Repro / bible red–green record):
+
+| Node | What it pins (AST-2089 **To-be**) | Pre-fix failure mode |
+|------|-----------------------------------|----------------------|
+| `TestAst2089DoTaskSalvagedResponse::test_envelope_failure_salvages_clean_lines` | Real `do_task` on production Somerset-shaped envelope + payload; `salvaged_response` equals concrete two-job dict (`company_job_id None`, title/link on job-0); AST-1846 tuple `(success False, agent_failure True, parsed_response None)` + full `Agent failure: <note>` | No `salvaged_response` / `None == {jobs:…}` |
+| `TestAst2089SalvagedBatchSplit::test_salvaged_lines_process_and_only_the_gap_fails` (×2) | Mocked `do_task` failure + truthy salvage; `processed == ["job-0","job-1"]`; single `_transition_job_state_for_task` to gap only (`NEW_RETRY` vs `ERROR_QUALIFY_JOB_LISTINGS`); `_log_fail_dest` reason `ERR`; return `passed/failed/retried/missing/success/agent_failure/error` | Pre-fix ignores salvage → `processed == []`, all three to fail dest |
+| *(guards, not repro)* | `test_no_salvage_*` / `test_no_salvage_fails_whole_batch` lock `salvaged_response is None` whole-batch path and `agent_failure` absent on that path | Pass on both trees (by design) |
+
+Agent repro exercises the **real** decode/validate bar (not a mock of salvage logic). Consult repro intentionally stubs `do_task` to isolate `_run_batch_consult` split routing — matches plan §Proposed change and AST-2001/2057 test-gap precedent; together with the agent class it covers the full AST-2089 contract.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| No production change | `git diff` vs ftr: **zero** bytes under `src/`, `data/`, `canon/` |
+| AST-1846 / envelope-failure consult guards unedited | Diff touches only additive classes after `TestAst1846DoTaskAgentFailureFlag` / `TestEncodedDecodeIsolation`; spawn + plan: 10 existing guards green at tip |
+| `TestEncodedDecodeIsolation` / AST-1996 rows | Unchanged; new class is sibling, not edit |
+| Pass criterion 9 new + guards | Not re-run in this review (ASK); **trust spawn** (Hedy: 3 repro red pre-fix, 9 green + 10 guards at tip) |
+
+## Canon scores
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | patt.task.dispatch-retry | A | | Bug-repro parametrize locks gap entity `NEW`→`NEW_RETRY` and `NEW_RETRY`→`ERROR_QUALIFY_JOB_LISTINGS`; clean salvaged lines processed, not left in trigger state. |
+
+*(Issue doc: “Canon: none beyond AST-2089's (`patt.task.dispatch-retry` …)”. No other frozen ids scored.)*
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** `CANON: OK`; test/bible delta matches plan-fix **Proposed change** items 1–4 (classes, bible blocks, decisions).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **`[bug-repro]` first-line comment:** Repro nodes are named in class docstrings + bible tables (same gap as AST-2057 Radia note); optional hygiene for `[qa-handoff]` machinery — not a gate on this ticket.
+- **Consult repro is unit-scoped:** No single test runs agent salvage → consult split end-to-end; plan §Integration: none. Regression of the handoff would require both classes to miss — acceptable for test-gap sibling.
+- **Pre-existing ftr reds:** Plan Boundaries: ~68 unrelated `test_agent`/`test_consult` reds on ftr remain out of scope; merge/UAT should not treat full-file green as AST-2090 pass criterion (manifest: the two new classes only).
+- **Doc diff bulk:** Feature doc adds full `## Bug: AST-2090` block (+ prior AST-2089 Radia artifact already on ftr); product scope of *this* sub remains tests + bible only.
+
+## What's solid
+
+- Tip commit `8e751e38e` is test-gap only (`code(AST-2090): no product src`).
+- Implementations match plan verbatim; `out.get("salvaged_response")` guard pattern preserves pre-fix guard greens.
+- Bible `agent.md` / `consult.md` blocks cross-link producer/consumer and document red/green record + run command.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned** AST-2015 | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). After Susan UAT, merge sub straight to **`origin/dev`** (with AST-2089 product already on ftr). Stack **AST-2089** + **AST-2090** for any merge that needs salvage coverage before relying on component consult/agent suites. |
+
