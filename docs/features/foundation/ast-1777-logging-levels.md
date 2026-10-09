@@ -140,8 +140,7 @@ There is no data fixture; this is process configuration. Steps:
 
 ### Proposed change
 
-**EXPLICIT DECISION — Susan has not chosen. make-fix must not start until she picks (a) or (b).**
-**Recommendation: (b).**
+**DECISION: (b) chosen — gate AST-2080.** Susan closed the gate without replying, so Chuckles proceeded with the recommendation. Launcher and Railway env are untouched. Option (a) is kept below for the record only.
 
 **Common to both — ops step (Railway prod service variables; Susan/ops, not a repo change):** read the platform service's variables for `GUNICORN_CMD_ARGS` (and any `--config` it names). Record the exact value as a Linear comment on AST-2078 before deploy. **Do not remove the logconfig part.** Per Root cause, it is what keeps prod INFO app logs alive today. This narrows the bug Scope's "remove or correct the env override" to "read and record" until the root-level latent bug is fixed separately.
 
