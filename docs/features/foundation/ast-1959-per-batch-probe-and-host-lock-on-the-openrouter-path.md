@@ -834,3 +834,5 @@ context_tokens≈42000
 ```
 [code-rubric] PROCEED (Commit: 19036ccf0) probe hold matches plan
 ```
+
+**Docs-acceptance (AST-2098):** no test-tree change on this ticket. Betty's `[board-betty] TESTS: REVISE` coverage, including the `[bug-repro]` and the AST-1959 openrouter exact-string update, lands on gap child AST-2099.
