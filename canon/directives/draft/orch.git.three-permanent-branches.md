@@ -12,16 +12,16 @@ source_docs:
 supersedes: null
 superseded_by: null
 approved_by: Archie
-approved_at: "2026-07-23"
+approved_at: "2026-10-08"
 ---
 
 # Statement
 
-Only three permanent branches exist on origin: `main` (Susan/production), `dev` (Chuckles/integration), and `tests` (Betty/test corpus).
+Only two permanent branches exist on origin: `main` (Susan/production) and `dev` (Chuckles/integration, including the cumulative test corpus). `tests` is retired: it stays on origin as frozen history and is never written to or merged.
 
 ## Rationale
 
-Extra permanent branches fragment integration and ownership.
+Extra permanent branches fragment integration and ownership. A separate `tests` line gave every test two routes onto a sub (via `merge-tests` and via `dev`), and the copies drifted into conflicts and silent test deletions (AST-2083, AST-2033).
 
 ## Examples
 

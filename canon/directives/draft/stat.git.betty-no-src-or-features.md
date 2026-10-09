@@ -13,12 +13,12 @@ source_docs:
 supersedes: null
 superseded_by: null
 approved_by: Archie
-approved_at: "2026-07-23"
+approved_at: "2026-10-08"
 ---
 
 # Statement
 
-Betty must not commit to `src/` or `docs/features/` (except the `merge-tests` merge commit on a sub).
+Betty must not commit changes to `src/` or `docs/features/`. In a merge commit (a `sync-child` merge on the sub) those paths may only be staged byte-identical to a merge parent or to git's own clean auto-merge — Betty never resolves a product conflict.
 
 ## Rationale
 
@@ -28,7 +28,7 @@ Betty owns the test corpus; product and plan docs stay with engineers/Chuckles.
 
 ### Conforming
 
-- Betty commits under `tests/` and `docs/test-bible/` on `astral-tests`.
+- Betty commits under `tests/` and `docs/test-bible/` on the child's `sub` in the epic worktree.
 
 ### Violating
 

@@ -4139,3 +4139,62 @@ class TestAst1916AutoThreadCap:
         assert spawned == []
         assert sorted(dispatcher_mod._task_registry) == [1, 2, 3]
         cancel.assert_not_called()
+
+
+class TestAst2091RunTaskRubricGate:
+    """AST-2091 [bug-repro]: run_task refuses a bad-rubric row and forces AUTO off — no list load needed."""
+
+    @pytest.fixture(autouse=True)
+    def _wire(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Real candidate.rubric_dispatch_error behind a stubbed table read (plan Repro fixture).
+        tp = {"code": "TP", "label": "Hands-On Technical Partnership With Engineers", "content": "…", "importance": 8}
+        rubrics = {("somerset", "grade_do"): [tp, dict(tp), {"code": "SA", "label": "SA", "content": "…", "importance": 7}]}
+        monkeypatch.setattr(
+            "src.data.database.list_rubric_vectors",
+            lambda cid, owner, current_only=False: rubrics.get((cid, owner), []),
+        )
+        self.started: list = []
+        self.updates: list = []
+        test = self
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                self.daemon, self.name = daemon, name
+
+            def start(self) -> None:
+                test.started.append(self)
+
+            def is_alive(self) -> bool:
+                return False
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", lambda tid, **kw: self.updates.append((tid, kw)))
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 1)
+
+    def _row(self, monkeypatch: pytest.MonkeyPatch, cid: str, auto_mode: int, task_key: str = "meteorite_grade_do") -> None:
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_dispatch_task",
+            lambda tid: {"id": tid, "task_key": task_key, "entity_type": "meteorite",
+                         "trigger_state": "METEORITE_PASSED_JD", "candidate_id": cid, "auto_mode": auto_mode},
+        )
+
+    @pytest.mark.parametrize("cid", ["somerset", "empty_cand"])
+    def test_auto_row_not_started_and_auto_forced_off(self, monkeypatch: pytest.MonkeyPatch, cid: str) -> None:
+        # Repro 3 / 4: was True + thread spawned, AUTO left on.
+        self._row(monkeypatch, cid, auto_mode=1)
+        assert dispatcher_mod.run_task(2091) is False
+        assert self.started == []
+        assert self.updates == [(2091, {"auto_mode": 0})]
+        assert 2091 not in dispatcher_mod._task_registry
+
+    def test_manual_row_not_started_no_auto_write(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._row(monkeypatch, "somerset", auto_mode=0)
+        assert dispatcher_mod.run_task(2092, ui_initiated=True) is False
+        assert (self.started, self.updates) == ([], [])
+
+    @pytest.mark.parametrize("task_key", ["craft_do_rubric", "select_job_page"])
+    def test_craft_and_non_rubric_rows_still_start(self, monkeypatch: pytest.MonkeyPatch, task_key: str) -> None:
+        self._row(monkeypatch, "empty_cand", auto_mode=1, task_key=task_key)
+        assert dispatcher_mod.run_task(2093) is True
+        assert len(self.started) == 1 and self.updates == []
