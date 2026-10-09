@@ -535,6 +535,10 @@ def save_job_artifact(
     cid = _candidate_id_for_job(jid)
     if not cid:
         raise ValueError("candidate_id required")
+    # AST-2066 / patt.artifact.write-operative #4: identical-to-current → existing pin, no retire+insert.
+    current_row = database.get_current_artifact(entry["entity_type"], jid, artifact_type)
+    if current_row is not None and current_row.get("artifact_data") == prepared:
+        return current_row.get("artifact_uuid")
     if key == "job.artifacts.job_resume":
         sources: Optional[Sequence[str]] = []
         base_row = database.get_current_artifact("candidate", cid, "base_resume")
@@ -552,6 +556,40 @@ def save_job_artifact(
         source_artifact_ids=sources,
         candidate_id=cid,
     )
+
+
+def _job_catalog_entry(astral_job_id: str, artifact_key: str) -> Tuple[str, str, str]:
+    """Resolve (entity_type, astral_job_id, artifact_type) for a job catalog key (AST-2066)."""
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if entry.get("entity_type") != JOB_ARTIFACT_ENTITY_TYPE:
+        raise ValueError(f"catalog key not job-scoped: {key!r}")
+    jid = (astral_job_id or "").strip()
+    if not jid:
+        raise ValueError("astral_job_id required")
+    return entry["entity_type"], jid, key.rsplit(".", 1)[-1]
+
+
+def list_job_artifact_versions(
+    astral_job_id: str, artifact_key: str
+) -> Dict[str, Dict[str, Any]]:
+    """Version map for a job catalog key, oldest first (AST-2066; mirrors get_job_current)."""
+    et, jid, at = _job_catalog_entry(astral_job_id, artifact_key)
+    return candidate_mod.artifact_versions_by_uuid(
+        database.list_artifacts(et, jid, at), "artifact_uuid"
+    )
+
+
+def set_job_artifact_current(
+    astral_job_id: str, artifact_key: str, artifact_uuid: str
+) -> str:
+    """Move current to artifact_uuid for a job catalog key; body untouched (AST-2066)."""
+    et, jid, at = _job_catalog_entry(astral_job_id, artifact_key)
+    return database.set_current_artifact(et, jid, at, artifact_uuid)
 
 
 def save_job_artifact_resume_content(astral_job_id: str, resume_content: Dict[str, Any]) -> None:

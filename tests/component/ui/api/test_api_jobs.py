@@ -1233,3 +1233,112 @@ class TestAst1974JobsPartitionRealDb:
         body = resp.get_json()
         assert body["fields_editable"] is True
         assert "RECOMMENDED" in body["legal_next_states"]
+
+
+# AST-2067 Branches (both job routes): missing job 404; PUT body not a dict / uuid missing-blank 400;
+# core ValueError 400 (candidate key on job route, cross-key/cross-job uuid = AC7, current
+# unchanged); unexpected Exception → logged once + 500 payload; 200 (PUT logs one completion line,
+# candidate_id from the job row or "-").
+class TestAst2067JobVersionRoutes:
+    _BASE = "/api/jobs/job-1/artifacts/job.artifacts.cover_letter"
+
+    @pytest.fixture
+    def db(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            jobs_mod, "get_job", lambda jid: {"astral_job_id": jid, "candidate_id": "cand-1"} if jid == "job-1" else None
+        )
+        return sqlite_in_memory
+
+    def _seed(self, db, eid: str = "job-1", at: str = "cover_letter", n: int = 3) -> list:
+        return [
+            db.save_artifact("job", eid, at, {"Subject": "S", "Letter": f"v{i}", "signature": ""}, candidate_id="cand-1")
+            for i in range(1, n + 1)
+        ]
+
+    def test_list_and_set_current_200(
+        self, jobs_client: FlaskClient, auth_headers, db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        v1, v2, v3 = self._seed(db)
+        got = jobs_client.get(f"{self._BASE}/versions", headers=auth_headers)
+        assert got.status_code == 200
+        versions = got.get_json()["versions"]
+        assert sorted(versions, key=lambda u: versions[u]["position"]) == [v1, v2, v3]
+        caplog.set_level("INFO")
+        put = jobs_client.put(f"{self._BASE}/current", json={"artifact_uuid": v2}, headers=auth_headers)
+        assert put.status_code == 200
+        assert put.get_json()["current"] == v2
+        assert db.get_current_artifact("job", "job-1", "cover_letter")["artifact_data"]["Letter"] == "v2"
+        assert any(
+            m.startswith("cand-1 | api") and "completed: PUT 200" in m for m in (r.getMessage() for r in caplog.records)
+        )
+
+    def test_cross_key_uuid_400_current_unchanged(self, jobs_client: FlaskClient, auth_headers, db) -> None:
+        # AC7: job_resume uuid and other-job uuid on the cover_letter route → 400; v3 stays current.
+        _, _, v3 = self._seed(db)
+        other_key = self._seed(db, at="job_resume", n=1)[0]
+        other_job = self._seed(db, eid="job-2", n=1)[0]
+        for uid in (other_key, other_job):
+            res = jobs_client.put(f"{self._BASE}/current", json={"artifact_uuid": uid}, headers=auth_headers)
+            assert res.status_code == 400
+            assert "is not a version of" in res.get_json()["error"]
+        assert db.get_current_artifact("job", "job-1", "cover_letter")["artifact_uuid"] == v3
+
+    @pytest.mark.parametrize(
+        "method,suffix,body", [("get", "versions", None), ("put", "current", {"artifact_uuid": "u"})]
+    )
+    def test_missing_job_404(self, jobs_client: FlaskClient, auth_headers, db, method, suffix, body) -> None:
+        res = getattr(jobs_client, method)(
+            f"/api/jobs/nope/artifacts/job.artifacts.cover_letter/{suffix}", json=body, headers=auth_headers
+        )
+        assert res.status_code == 404
+        assert res.get_json() == {"error": "Not found"}
+
+    @pytest.mark.parametrize("body", [["not", "a", "dict"], {}, {"artifact_uuid": "  "}, {"artifact_uuid": 7}])
+    def test_put_bad_body_400(self, jobs_client: FlaskClient, auth_headers, db, body) -> None:
+        res = jobs_client.put(f"{self._BASE}/current", json=body, headers=auth_headers)
+        assert res.status_code == 400
+        assert res.get_json() == {"error": "artifact_uuid required"}
+
+    @pytest.mark.parametrize(
+        "method,suffix,body", [("get", "versions", None), ("put", "current", {"artifact_uuid": "u"})]
+    )
+    def test_candidate_key_on_job_route_400(
+        self, jobs_client: FlaskClient, auth_headers, db, method, suffix, body
+    ) -> None:
+        res = getattr(jobs_client, method)(
+            f"/api/jobs/job-1/artifacts/candidate.artifacts.base_resume/{suffix}", json=body, headers=auth_headers
+        )
+        assert res.status_code == 400
+        assert "not job-scoped" in res.get_json()["error"]
+
+    @pytest.mark.parametrize(
+        "patch,method,suffix,body",
+        [
+            ("list_job_artifact_versions", "get", "versions", None),
+            ("set_job_artifact_current", "put", "current", {"artifact_uuid": "u"}),
+        ],
+    )
+    @pytest.mark.parametrize("job_cid", ["cand-1", None])
+    def test_unexpected_error_logged_once_500(
+        self,
+        jobs_client: FlaskClient,
+        auth_headers,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        patch,
+        method,
+        suffix,
+        body,
+        job_cid,
+    ) -> None:
+        def _boom(*a, **k):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(jobs_mod, "get_job", lambda jid: {"astral_job_id": jid, "candidate_id": job_cid})
+        monkeypatch.setattr(jobs_mod, patch, _boom)
+        caplog.set_level("ERROR")
+        res = getattr(jobs_client, method)(f"{self._BASE}/{suffix}", json=body, headers=auth_headers)
+        assert res.status_code == 500
+        assert res.get_json()["exception_type"] == "RuntimeError"
+        errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR" and "failed" in r.getMessage()]
+        assert len(errors) == 1 and errors[0].startswith(f"{job_cid or '-'} | api")

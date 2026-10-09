@@ -3783,3 +3783,31 @@ cd ../../.. && ./scripts/testing/run_component_tests.sh tests/component/utils/te
 ```
 
 **Pass criterion (test-fix):** the three `[bug-repro]` nodes flip red → green; the 4 App.css Vitest cases + 4 `TestAst2047ThemeRegistry` cases stay green. The AST-2047 page case stays red until AST-2065 merges (see above).
+
+---
+
+### AST-2077 · AST-2042 (bug — compact letterless grade-dot sample beside each grade-color option)
+
+**Publish:** `origin/sub/AST-2042/AST-2077-compact-grade-dots`. **Scope from** `[board-betty] TESTS: REVISE`. Fix (plan doc § Bug: AST-2077): each Theme Examples grade-color option gets a sibling `.recommended-list-phase-grade-row` of letterless A–X dots in the Recommended Job List's markup (`buildPhaseListGradeRow`), carrying the same inline set tokens as its lettered row.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** per panel: one compact row per grade set, in order; shares a parent with its lettered option row (beside, not nested); inline style carries the set's tokens; children are `span > span.grade-dot.dot-<g>.grade-dot-letterless` for A, B, C, D, F, X with no text | `pages/AdminThemeExamples.tsx` | **`test_AdminThemeExamples.test.tsx`** — **`AdminThemeExamples — AST-2077 compact grade-dot samples > [bug-repro] each grade-color option has a letterless Recommended-list grade row beside it …`** (fresh module graph — `uiConfig` caches) |
+| Lettered option rows + panel grade row unchanged | same | existing **AST-2064** `[bug-repro]` (unchanged — compact row is not a `.theme-examples-row`, wrapper is not `.theme-examples-grade`) |
+
+**Red on pre-fix tree** (`origin/sub/…/AST-2077` @ `e23ee4c5c`): `dark: expected [] to have a length of 2`. **Green** (7/7) with the plan's Proposed change step 1 applied locally (not committed); `tsc -b --noEmit` clean. The wrapper class name and the Recommended Job List's own rendering are not pinned here (the latter stays with `test_recommendedJobReport` AST-1968). Not tested: letterless dot size/colour (jsdom has no cascade → UAT).
+
+**Integration:** none — frontend-only; do not invent.
+
+#### QA test manifest (AST-2077)
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+```
+
+**Pass criterion (test-fix):** the AST-2077 `[bug-repro]` flips red → green; the other 6 cases (AST-2047 page, AST-2064 options, 4 App.css) stay green.
+
+### AST-2068 · AST-2043 (routed pages — blur-save + version arrows)
+
+§6c routed-page coverage for the AST-2068 component change: **`ArtifactsBaseResumeContent`** (AC1/AC2 blur + AC4 arrows), **`ArtifactsDoJobCriteria`** (AC4 per criterion + AC2; stale `api` mock / manifest fixture repaired), **`CandidateBioSummary`** (AC4 + save-before-move). Full-paint mocks include the `/versions` and `/current` routes. Manifest: [`components.md`](components.md) § AST-2068.
+
