@@ -7125,3 +7125,31 @@ class TestAst2070CompanyUpshotBatch:
         assert self._dests(m["transition_company_state"]) == {"a": "UPSHOT_READY_RETRY", "b": "ERROR_UPSHOT"}
         assert out["retried"] == 1 and out["passed"] == 0
         assert out.get("failure_class") == result.get("failure_class")
+
+
+# AST-2088 (bug, parent AST-2054): the upshot response's optional company_name rewrites the root
+# company_name column (stripped); blank/missing leaves it alone and is not a failure. short_name never written.
+class TestAst2088UpshotReadableCompanyName:
+    @pytest.mark.asyncio
+    async def test_readable_name_saved_and_blank_or_missing_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        result = {"success": True, "parsed_response": {"companies": [
+            {"company_id": "a", "upshot": "Acme builds robots.", "company_name": " Acme Robotics "},
+            {"company_id": "b", "upshot": "Beta does things."},
+            {"company_id": "c", "upshot": "Gamma ships.", "company_name": "   "},
+        ]}}
+        m = TestAst2070CompanyUpshotBatch._patch(monkeypatch, result)
+        upd = MagicMock()
+        monkeypatch.setattr(roster_mod, "update_company", upd)
+        companies = [
+            {"short_name": "a", "company_name": "Acmerobotics", "state": "UPSHOT_READY", "company_data": {"homepage_text": "hi"}},
+            {"short_name": "b", "state": "UPSHOT_READY", "company_data": {}},
+            {"short_name": "c", "company_name": "gamma_io", "state": "UPSHOT_READY_RETRY", "company_data": {}},
+        ]
+        out = await roster_mod.company_upshot_batch("b2088", companies)
+        # Only the non-blank name is written, stripped, to company_name; never short_name
+        upd.assert_called_once_with("a", company_name="Acme Robotics")
+        # Name on file is handed to Estelle so she can keep a name that is already right
+        assert "## Name On File\nAcmerobotics" in m["do_task"].await_args.kwargs["live_content"]
+        # Missing/blank name is not a failure: all three still pass to WATCH
+        assert TestAst2070CompanyUpshotBatch._dests(m["transition_company_state"]) == {"a": "WATCH", "b": "WATCH", "c": "WATCH"}
+        assert out == {"passed": 3, "failed": 0, "total": 3, "retried": 0}
