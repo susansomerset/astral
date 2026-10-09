@@ -1413,7 +1413,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
 
-Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin/contact/listen`; toggle `PUT` enables/disables listen for this environment; non-prod copy notes `[<environment>]` reply prefix. API: **`docs/test-bible/ui/api/api_contact.md`**. Nav: **`docs/test-bible/utils/config.md`**.
+Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin/contact/listen`; toggle `PUT` enables/disables listen for this environment; no reply-prefix copy (AST-2085 retired the `[<environment>]` prefix). API: **`docs/test-bible/ui/api/api_contact.md`**. Nav: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
