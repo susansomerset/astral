@@ -1706,6 +1706,24 @@ def run_task(task_id: int, *, ui_initiated: bool = False, scheduled_sweep: bool 
     if not task:
         return False
 
+    # AST-2091: AUTO rows spawn here without the admin list, so the rubric gate must hold here too.
+    # late: avoid cycle with candidate → dispatcher (module-top import)
+    from src.core.candidate import rubric_dispatch_error
+    rubric_err = rubric_dispatch_error(task.get("candidate_id"), task.get("task_key") or "")
+    if rubric_err:
+        forced = bool(task.get("auto_mode"))
+        if forced:
+            _db_update_dispatch_task(task_id, auto_mode=0)
+        logger.warning(
+            "%s | dispatch_task id=%s task_key=%r %s — not started%s",
+            task.get("candidate_id") or "-",
+            task_id,
+            task.get("task_key"),
+            rubric_err,
+            ", AUTO forced off" if forced else "",
+        )
+        return False
+
     # Enrich with available_count for logging
     task_key = task.get("task_key", "")
     et = task.get("entity_type")

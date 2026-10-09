@@ -2272,6 +2272,7 @@ async def company_upshot_batch(
             "company_id": c["short_name"],
             "short_name": c["short_name"],
             "state": c.get("state"),
+            "company_name": c.get("company_name") or "",
             "company_data": c.get("company_data") or {},
         }
         for c in companies
@@ -2282,7 +2283,11 @@ async def company_upshot_batch(
     blocks: List[str] = []
     for r in rows:
         cd = r["company_data"]
-        parts = [f"[company_id={r['company_id']}]", f"\n## Homepage Content\n{(cd.get('homepage_text') or '').strip()}"]
+        parts = [
+            f"[company_id={r['company_id']}]",
+            f"\n## Name On File\n{r['company_name']}",
+            f"\n## Homepage Content\n{(cd.get('homepage_text') or '').strip()}",
+        ]
         culture = _upshot_culture_text(cd.get("website_content"))
         if culture:
             parts.append(f"\n## Culture Pages\n{culture}")
@@ -2351,6 +2356,10 @@ async def company_upshot_batch(
             continue
         try:
             save_company_data(cid, {upshot_key: upshot})
+            # Root column, not company_data; short_name (company_id) is never rewritten.
+            readable_name = str(rc.get("company_name") or "").strip()
+            if readable_name:
+                update_company(cid, company_name=readable_name)
             transition_company_state(cid, cfg["pass_state"])
         except ValueError as e:
             logger.debug(
@@ -2362,7 +2371,7 @@ async def company_upshot_batch(
             )
             retried += _transition_upshot_failures([input_by_id[cid]], cfg, f"save: {type(e).__name__}: {e}")
             continue
-        _entity_info(cid, "company", "upshot saved", f"{len(upshot.split())} words")
+        _entity_info(cid, "company", "upshot saved", f"{len(upshot.split())} words name={readable_name or '-'!r}")
         saved.add(cid)
         passed += 1
 

@@ -207,6 +207,14 @@ def retry_of(base: str) -> str:
     return f"{base}{RETRY_SUFFIX}"
 
 
+ALL_X_SUFFIX = "_ALL_X"
+
+
+def all_x_of(base: str) -> str:
+    """Second-strike all-literal-X terminal for a scored task's fail_state (AST-2096)."""
+    return f"{base}{ALL_X_SUFFIX}"
+
+
 def retry_base(state: Optional[str]) -> Optional[str]:
     """Base of an implicit retry substate, or None when state has no _RETRY suffix."""
     s = (state or "").strip()
@@ -506,6 +514,7 @@ TASK_CONFIG = {
                 "items_schema": {
                     "company_id": {"type": "str", "required": True},
                     "upshot": {"type": "str", "required": True},
+                    "company_name": {"type": "str", "required": False},
                 },
             },
         },
@@ -2680,6 +2689,14 @@ JOB_STATES = {
     "CANDIDATE_SKIPPED":      {"prior_states": []},  # AST-1974: derived after SKIPPED_STATES (Applied/Skipped complement)
 }
 
+# AST-2096: second-strike all-literal-X terminal per scored grading task — explicit rows (no validator
+# changes); priors copied from the base fail_state so {trigger}_RETRY is admitted via state_prior_states.
+_ALL_X_BASES = list(dict.fromkeys(
+    tc["fail_state"] for tc in TASK_CONFIG.values() if tc.get("grading_mode") == "scored"
+))
+JOB_STATES.update({all_x_of(b): {"prior_states": list(JOB_STATES[b]["prior_states"])} for b in _ALL_X_BASES})
+ALL_X_FAIL_STATES = [all_x_of(b) for b in _ALL_X_BASES]
+
 # ---------------------------------------------------------------------------
 # AST-1701: job ingest parent + analysis track SoT (repurposed job.source column).
 # company = gazer/employer parent; meteorite = meteorite staging-row parent.
@@ -4029,6 +4046,7 @@ SKIPPED_STATES = [
     "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO",
     "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET",
     "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE",
+    *ALL_X_FAIL_STATES,  # AST-2096: terminal all-X fails list Skipped, not Processing
     "ERROR_QUALIFY_JOB_LISTINGS", "ERROR_EVALUATE_JD",
     "ERROR_BUILD_ARTIFACTS", "BUILD_FAILED",
     "CANDIDATE_SKIPPED",
@@ -7658,7 +7676,8 @@ def empty_render_for_prompts(
     ``{"empty_render": bool, "empty_tokens": list[str]}`` — siblings map ``empty_render``
     onto each ``dispatch_task`` list row / AUTO-Run gate (AST-1779 / AST-1766).
 
-    Scores ``source: candidate`` always; scores other ``TOKEN_SOURCES`` ``source`` values
+    Scores ``source: candidate`` and ``source: rubric`` always (rubric rows are
+    candidate-keyed — AST-2092); scores other ``TOKEN_SOURCES`` ``source`` values
     only when that key is present in ``entity_contexts`` (extension seam). Never scores
     ``source: chain``. Non-job entity sources in ``entity_contexts`` resolve without a
     matching ``resolve_tokens`` kwarg today (only ``job_context`` exists) — blank until a
@@ -7682,8 +7701,10 @@ def empty_render_for_prompts(
             source = spec.get("source")
             if source == "chain":
                 continue
-            # Score candidate always; other sources only via entity_contexts seam.
-            if source != "candidate" and source not in contexts:
+            # Score candidate + rubric always (rubric_vector rows are keyed per candidate +
+            # owner task; resolve_tokens reads them off the candidate view's
+            # _astral_candidate_id — AST-2092); other sources only via entity_contexts seam.
+            if source not in ("candidate", "rubric") and source not in contexts:
                 continue
             seen.add(name)
             job_context = contexts.get("job") if source == "job" else None
