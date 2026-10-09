@@ -574,7 +574,7 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": "UPSHOT_READY",
         "pass_state": "WATCH",
-        "error_state": "ERROR_UPSHOT",
+        "error_state": error_state_for("company_upshot"),
     },
     "select_job_page": {
         "response_schema": {
@@ -2232,13 +2232,13 @@ ROSTER_CONFIG = {
         "error_state": error_state_for("parse_job_list"),
         "selected_pjl_url_key": "selected_pjl_url",
     },
-    # AST-2054: Estelle company upshot hop. Retry once via UPSHOT_READY_RETRY, then ERROR_UPSHOT.
+    # AST-2054: Estelle company upshot hop. Retry once via UPSHOT_READY_RETRY, then ERROR_COMPANY_UPSHOT.
     "company_upshot": {
         "task_key": "company_upshot",
         "dispatch_trigger_state": "UPSHOT_READY",
         "pass_state": "WATCH",
         "retry_state": retry_of("UPSHOT_READY"),
-        "error_state": "ERROR_UPSHOT",
+        "error_state": error_state_for("company_upshot"),
     },
     "scrape_readiness": {
         "max_wait_ms": 20000,
@@ -4467,6 +4467,7 @@ RETIRED_TERMINAL_STATE_MAP: Dict[str, Dict[str, Dict[str, str]]] = {
         "NO_PJL_SELECTED": {"select_job_page": error_state_for("select_job_page", "NO_SELECTION")},
         "BOT_BLOCKED": {"select_job_page": bot_blocked_state_for("select_job_page")},
         "COULD_NOT_PARSE_JOBLIST": {"parse_job_list": error_state_for("parse_job_list", "UNPARSEABLE")},
+        "ERROR_UPSHOT": {"company_upshot": error_state_for("company_upshot")},
     },
     "candidate": {
         old: dict(zip(CANDIDATE_CRAFT_CHAIN_TASK_KEYS, CANDIDATE_CRAFT_CHAIN_ERROR_STATES))
