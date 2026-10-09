@@ -141,6 +141,9 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.queryByText("Job Resume")).not.toBeInTheDocument()
     expect(screen.queryByText("Cover Letter")).not.toBeInTheDocument()
     expect(screen.queryByText("Application Questions")).not.toBeInTheDocument()
+    // AST-2084 AC4: nothing generated → no thumbnails and no print fetches.
+    expect(document.querySelector(".print-preview-thumb")).toBeNull()
+    expect(mockedApi.mock.calls.some(([u]) => String(u).startsWith("/candidate/"))).toBe(false)
     const btn = await screen.findByRole("button", { name: "Generate Artifacts" })
     await userEvent.click(btn)
     await waitFor(() =>
@@ -210,7 +213,8 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
             job_description: "JD",
             analysis_upshot: fullUpshot(),
             artifacts: {
-              resume_content: { professional_summary: "Draft" },
+              // AST-1593: Print Resume shows for the hydrated job_resume leaf only.
+              job_resume: { professional_summary: "Draft" },
               cover_letter: { Letter: "Hello" },
             },
           },
@@ -262,7 +266,7 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
             job_description: "JD",
             analysis_upshot: fullUpshot(),
             artifacts: {
-              resume_content: { professional_summary: "Draft", experience: "legacy" },
+              job_resume: { professional_summary: "Draft", experience: "legacy" },
               cover_letter: { Letter: "Hello" },
             },
           },
@@ -742,370 +746,136 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
     expect(screen.queryByRole("button", { name: "Generating…" })).not.toBeInTheDocument()
   })
 
-  it("populated Artifacts shows editable Job Resume section (no Generate strip)", async () => {
-    installBaseApiMocks(mockedApi, (url, init) => {
-      if (url === "/api/jobs/j-pop" && !init) {
-        return jsonResponse({
-          astral_job_id: "j-pop",
-          job_title: "Role",
-          company: "Co",
-          state: "CANDIDATE_REVIEW",
-          state_changed_at: null,
-          job_link: "https://jobs.example/apply",
-          job_data: {
-            job_description: "JD",
-            analysis_upshot: fullUpshot(),
-            artifacts: {
-              job_resume: { professional_summary: "Draft text" },
-              cover_letter: { Letter: "Cover body" },
-            },
-          },
-        })
-      }
-      if (url === `/api/candidates/${baseCandidate.astral_candidate_id}/resume_structure`) {
-        return jsonResponse({
-          sections: [{ id: "professional_summary", label: "Summary" }],
-          accent_color: null,
-        })
-      }
-      return undefined
-    })
-    renderWithProviders(<JobAnalysisReportModal jobId="j-pop" onClose={() => {}} />)
-    await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
-    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
-    const headerLabels = [...sectionList.querySelectorAll(".collapsible-panel-label-wrap")].map(
-      el => el.textContent?.trim(),
-    )
-    expect(headerLabels).toContain("Job Resume")
-    expect(headerLabels).toContain("Cover Letter")
-    expect(headerLabels).not.toContain("Application Questions")
-    await userEvent.click(within(sectionList).getAllByRole("button", { name: "Expand section" })[0])
-    await waitFor(() => expect(screen.queryByText("Loading resume structure…")).not.toBeInTheDocument())
-    expect(await screen.findByDisplayValue("Draft text")).toBeInTheDocument()
-  })
-
-  it("AST-1476: Job Resume structure authoring page-break Save sections → candidate", async () => {
-    const cid = baseCandidate.astral_candidate_id
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [] as string[],
-      extra_id_pattern: "^extra_",
-      reserved_extra_ids: [] as string[],
-      new_extra_default_format: "bullet_list",
-      page_break_policies: ["normal", "page_break_before", "avoid_split"],
-      page_break_policy_labels: {
-        normal: "Flow uninterrupted",
-        page_break_before: "New page before",
-        avoid_split: "Keep block together",
-      },
-      page_break_policy_default: "avoid_split",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-    ]
-    const putBodies: unknown[] = []
-    installBaseApiMocks(mockedApi, (url, init) => {
-      if (url === "/api/jobs/j-1476" && !init) {
-        return jsonResponse({
-          astral_job_id: "j-1476",
-          job_title: "Role",
-          company: "Co",
-          state: "CANDIDATE_REVIEW",
-          state_changed_at: null,
-          job_link: "https://jobs.example/apply",
-          job_data: {
-            job_description: "JD",
-            analysis_upshot: fullUpshot(),
-            artifacts: {
-              job_resume: { professional_summary: "Draft text" },
-            },
-          },
-        })
-      }
-      if (url === `/api/candidates/${cid}/resume_structure` && !init) {
-        return jsonResponse({
-          sections: [{ id: "professional_summary", label: "Summary" }],
-          all_sections: allSections,
-          catalog,
-          accent_color: null,
-        })
-      }
-      if (url === `/api/candidates/${cid}/data` && init?.method === "PUT") {
-        putBodies.push(JSON.parse(String(init.body)))
-        return jsonResponse({})
-      }
-      return undefined
-    })
-    renderWithProviders(<JobAnalysisReportModal jobId="j-1476" onClose={() => {}} />)
-    await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
-    await userEvent.click(within(sectionList).getAllByRole("button", { name: "Expand section" })[0])
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Page break" })).toBeInTheDocument())
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Page break" }), "page_break_before")
-    await userEvent.click(screen.getByRole("button", { name: "Save sections" }))
-    await waitFor(() => expect(putBodies.length).toBeGreaterThan(0))
-    const body = putBodies.at(-1) as {
-      artifacts?: { resume_structure?: { sections?: Record<string, { page_break_policy?: string }> } }
-    }
-    expect(body.artifacts?.resume_structure?.sections?.professional_summary?.page_break_policy).toBe(
-      "page_break_before",
-    )
-  })
-
-  it("AST-1489: Print Resume auto-persists page-break without Save sections", async () => {
-    const cid = baseCandidate.astral_candidate_id
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [] as string[],
-      extra_id_pattern: "^extra_",
-      reserved_extra_ids: [] as string[],
-      new_extra_default_format: "bullet_list",
-      page_break_policies: ["normal", "page_break_before", "avoid_split"],
-      page_break_policy_labels: {
-        normal: "Flow uninterrupted",
-        page_break_before: "New page before",
-        avoid_split: "Keep block together",
-      },
-      page_break_policy_default: "avoid_split",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-    ]
-    const apiCallLog: { url: string; method: string }[] = []
-    const fakeWin1489 = { opener: {} as Window | null }
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => fakeWin1489 as unknown as Window)
-    const createSpy = vi.fn(() => "blob:jar-resume-html")
-    vi.stubGlobal("URL", { createObjectURL: createSpy, revokeObjectURL: vi.fn() })
-    installBaseApiMocks(mockedApi, (url, init) => {
-      apiCallLog.push({ url, method: init?.method ?? "GET" })
-      if (url === "/api/jobs/j-1489" && !init) {
-        return jsonResponse({
-          astral_job_id: "j-1489",
-          job_title: "Role",
-          company: "Co",
-          state: "CANDIDATE_REVIEW",
-          state_changed_at: null,
-          job_link: "https://jobs.example/apply",
-          job_data: {
-            job_description: "JD",
-            analysis_upshot: fullUpshot(),
-            artifacts: {
-              job_resume: { professional_summary: "Draft text" },
-            },
-          },
-        })
-      }
-      if (url === `/api/candidates/${cid}/resume_structure` && !init) {
-        return jsonResponse({
-          sections: [{ id: "professional_summary", label: "Summary" }],
-          all_sections: allSections,
-          catalog,
-          accent_color: null,
-        })
-      }
-      if (url === `/api/candidates/${cid}/data` && init?.method === "PUT") {
-        return jsonResponse({})
-      }
-      if (url === "/candidate/resume/j-1489" && !init) {
-        return {
-          ok: true,
-          text: async () =>
-            "<html><style>@media print { #summary { page-break-before: always; } }</style></html>",
-        } as Response
-      }
-      return undefined
-    })
-    renderWithProviders(<JobAnalysisReportModal jobId="j-1489" onClose={() => {}} />)
-    await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    await waitFor(() =>
-      expect(document.querySelector(".recommended-report-section-list")).toBeTruthy(),
-    )
-    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
-    await userEvent.click(within(sectionList).getAllByRole("button", { name: "Expand section" })[0])
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Page break" })).toBeInTheDocument())
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Page break" }), "page_break_before")
-    await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
-    await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank"),
-    )
-    const putIdx = apiCallLog.findIndex(c => c.url === `/api/candidates/${cid}/data` && c.method === "PUT")
-    const printIdx = apiCallLog.findIndex(c => c.url === "/candidate/resume/j-1489")
-    expect(putIdx).toBeGreaterThanOrEqual(0)
-    expect(printIdx).toBeGreaterThan(putIdx)
-    const putCall = mockedApi.mock.calls.find(
-      ([url, init]) => url === `/api/candidates/${cid}/data` && init?.method === "PUT",
-    )
-    const body = JSON.parse(String(putCall?.[1]?.body))
-    expect(body.artifacts.resume_structure.sections.professional_summary.page_break_policy).toBe(
-      "page_break_before",
-    )
-    openSpy.mockRestore()
-    vi.unstubAllGlobals()
-  })
-
-  it("AST-1490: reorder then Print Resume keeps full body sections", async () => {
-    const cid = baseCandidate.astral_candidate_id
+  /** AST-2084: job with generated artifacts; print routes answer with distinct HTML so each preview is identifiable. */
+  function artifactJobMocks(jobId: string, artifacts: Record<string, unknown>, log?: { url: string; method: string }[]) {
     let jobGets = 0
-    let candidateGets = 0
-    let lastPrintHtml = ""
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [] as string[],
-      extra_id_pattern: "^extra_",
-      reserved_extra_ids: [] as string[],
-      new_extra_default_format: "bullet_list",
-      page_break_policies: ["normal", "page_break_before", "avoid_split"],
-      page_break_policy_labels: {
-        normal: "Flow uninterrupted",
-        page_break_before: "New page before",
-        avoid_split: "Keep block together",
-      },
-      page_break_policy_default: "avoid_split",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-      {
-        id: "prior_experience",
-        title: "Prior Experience",
-        enabled: true,
-        order: 1,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: false,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-    ]
-    const apiCallLog: { url: string; method: string }[] = []
-    const fakeWin1490 = { opener: {} as Window | null }
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => fakeWin1490 as unknown as Window)
-    const createSpy = vi.fn(() => "blob:jar-resume-html")
-    vi.stubGlobal("URL", { createObjectURL: createSpy, revokeObjectURL: vi.fn() })
     installBaseApiMocks(mockedApi, (url, init) => {
-      apiCallLog.push({ url, method: init?.method ?? "GET" })
-      if (url === "/api/jobs/j-1490" && !init) {
+      log?.push({ url, method: init?.method ?? "GET" })
+      if (url === `/api/jobs/${jobId}` && !init?.method) {
         jobGets += 1
         return jsonResponse({
-          astral_job_id: "j-1490",
+          astral_job_id: jobId,
+          candidate_id: baseCandidate.astral_candidate_id,
           job_title: "Role",
           company: "Co",
           state: "CANDIDATE_REVIEW",
           state_changed_at: null,
           job_link: "https://jobs.example/apply",
-          job_data: {
-            job_description: "JD",
-            analysis_upshot: fullUpshot(),
-            artifacts: {
-              job_resume: {
-                professional_summary: "Draft summary",
-                prior_experience: "Draft prior",
-              },
-            },
-          },
+          job_data: { job_description: "JD", analysis_upshot: fullUpshot(), artifacts },
         })
       }
-      if (url === `/api/candidates/${cid}/resume_structure`) {
+      if (url === `/candidate/resume/${jobId}`) return { ok: true, status: 200, text: async () => "<html>resume print</html>" } as Response
+      if (url === `/candidate/cover/${jobId}`) return { ok: true, status: 200, text: async () => "<html>cover print</html>" } as Response
+      // Edit modal's ResumeContentEditor reads the job structure.
+      if (url === `/api/jobs/${jobId}/resume_structure`) {
         return jsonResponse({
-          sections: [
-            { id: "professional_summary", label: "Summary" },
-            { id: "prior_experience", label: "Prior Experience" },
-          ],
-          all_sections: allSections,
-          catalog,
+          all_sections: [{
+            id: "professional_summary", title: "Summary", enabled: true, order: 0, format: "free_prose",
+            job_agent_editable: true, required: true, format_locked: false, page_break_policy: "normal",
+          }],
           accent_color: null,
-        })
-      }
-      if (url === `/api/candidates/${cid}` && !init) {
-        candidateGets += 1
-        return jsonResponse({
-          candidate_data: {
-            artifacts: {
-              base_resume: {
-                professional_summary: "Base summary",
-                prior_experience: "Base prior",
-              },
-            },
+          catalog: {
+            body_formats: ["free_prose"], required_ids: ["professional_summary"], contact_ids: [],
+            extra_id_pattern: "^[a-z_]+$", reserved_extra_ids: [], new_extra_default_format: "free_prose",
+            page_break_policies: ["normal"], page_break_policy_labels: { normal: "Flow" }, page_break_policy_default: "normal",
+            body_format_details: { free_prose: { label: "Prose", description: "Prose", font_family: "serif" } },
+            hidden_flow_label: "Hidden",
           },
         })
       }
-      if (url === `/api/candidates/${cid}/data` && init?.method === "PUT") {
-        return jsonResponse({})
-      }
-      if (url === "/candidate/resume/j-1490" && !init) {
-        lastPrintHtml =
-          '<html><body><section id="summary"><p>Draft summary</p></section><section id="prior-experience"><p>Draft prior</p></section></body></html>'
-        return {
-          ok: true,
-          text: async () => lastPrintHtml,
-        } as Response
+      if (url === "/api/shapes/candidates") {
+        return jsonResponse({ detail: { cover_letter: [{ key: "Letter", label: "Letter" }] } })
       }
       return undefined
     })
-    renderWithProviders(<JobAnalysisReportModal jobId="j-1490" onClose={() => {}} />)
+    return { jobGets: () => jobGets }
+  }
+
+  async function openArtifactsExpanded(jobId: string) {
+    renderWithProviders(<JobAnalysisReportModal jobId={jobId} onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    await waitFor(() =>
-      expect(document.querySelector(".recommended-report-section-list")).toBeTruthy(),
-    )
-    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
-    await userEvent.click(within(sectionList).getAllByRole("button", { name: "Expand section" })[0])
-    await waitFor(() => expect(screen.getByDisplayValue("Draft summary")).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByDisplayValue("Draft prior")).toBeInTheDocument())
-    const jobGetsAfterHydrate = jobGets
-    const candidateGetsAfterHydrate = candidateGets
-    await userEvent.click(screen.getAllByRole("button", { name: "Down" })[0]!)
-    await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument())
-    expect(jobGets).toBe(jobGetsAfterHydrate)
-    expect(candidateGets).toBe(candidateGetsAfterHydrate)
-    expect(screen.getByDisplayValue("Draft summary")).toBeInTheDocument()
-    expect(screen.getByDisplayValue("Draft prior")).toBeInTheDocument()
+    const sectionList = await waitFor(() => document.querySelector(".recommended-report-section-list") as HTMLElement)
+    for (const b of within(sectionList).getAllByRole("button", { name: "Expand section" })) await userEvent.click(b)
+    return sectionList
+  }
+
+  const thumbs = () => [...document.querySelectorAll(".print-preview-thumb")] as HTMLElement[]
+  const thumbHtml = (t: HTMLElement) => t.querySelector("iframe")?.getAttribute("srcdoc")
+  const editModal = () => document.querySelector(".modal-overlay--stacked") as HTMLElement | null
+
+  it("AST-2084: populated Artifacts shows Job Resume + Cover Letter thumbnails, Edit on the resume only, no inline editors", async () => {
+    artifactJobMocks("j-pop", { job_resume: { professional_summary: "Draft text" }, cover_letter: { Letter: "Cover body" } })
+    const sectionList = await openArtifactsExpanded("j-pop")
+    expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
+    const headerLabels = [...sectionList.querySelectorAll(".collapsible-panel-label-wrap")].map(el => el.textContent?.trim())
+    expect(headerLabels).toEqual(["Job Resume", "Cover Letter"])
+    await waitFor(() => expect(thumbs().map(thumbHtml)).toEqual(["<html>resume print</html>", "<html>cover print</html>"]))
+    expect(within(sectionList).getAllByRole("button", { name: "Edit" })).toHaveLength(1)
+    // No inline editor bodies on the report.
+    expect(screen.queryByDisplayValue("Draft text")).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue("Cover body")).not.toBeInTheDocument()
+    expect(sectionList.querySelector("textarea")).toBeNull()
+  })
+
+  it("AST-2084: only a generated artifact gets a thumbnail", async () => {
+    artifactJobMocks("j-one", { job_resume: { professional_summary: "Draft text" } })
+    const sectionList = await openArtifactsExpanded("j-one")
+    const headerLabels = [...sectionList.querySelectorAll(".collapsible-panel-label-wrap")].map(el => el.textContent?.trim())
+    expect(headerLabels).toEqual(["Job Resume"])
+    await waitFor(() => expect(thumbs()).toHaveLength(1))
+    expect(mockedApi.mock.calls.some(([u]) => u === "/candidate/cover/j-one")).toBe(false)
+  })
+
+  it("AST-2084: resume thumbnail opens a stacked full-screen editor + live preview over the report; close reloads the report", async () => {
+    const m = artifactJobMocks("j-edit", { job_resume: { professional_summary: "Draft text" }, cover_letter: { Letter: "Cover body" } })
+    await openArtifactsExpanded("j-edit")
+    await waitFor(() => expect(thumbs()).toHaveLength(2))
+    await userEvent.click(thumbs()[0])
+    const modal = await waitFor(() => { const el = editModal(); expect(el).toBeTruthy(); return el! })
+    expect(within(modal).getByRole("heading", { name: "Job Resume" })).toBeInTheDocument()
+    // Report stays mounted underneath (stacked, not replaced).
+    expect(document.querySelector(".recommended-report-tabs")).toBeTruthy()
+    expect(await within(modal).findByLabelText("Search sections")).toBeInTheDocument()
+    await waitFor(() => expect(modal.querySelector('iframe[title="Print preview"]')?.getAttribute("srcdoc")).toBe("<html>resume print</html>"))
+    const before = m.jobGets()
+    await userEvent.click(within(modal).getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(editModal()).toBeNull())
+    await waitFor(() => expect(m.jobGets()).toBeGreaterThan(before))
+  })
+
+  it("AST-2084: Edit opens the resume modal; cover thumbnail opens the cover editor + cover preview", async () => {
+    artifactJobMocks("j-both", { job_resume: { professional_summary: "Draft text" }, cover_letter: { Letter: "Cover body" } })
+    const sectionList = await openArtifactsExpanded("j-both")
+    await waitFor(() => expect(thumbs()).toHaveLength(2))
+    await userEvent.click(within(sectionList).getByRole("button", { name: "Edit" }))
+    let modal = await waitFor(() => { const el = editModal(); expect(el).toBeTruthy(); return el! })
+    expect(within(modal).getByRole("heading", { name: "Job Resume" })).toBeInTheDocument()
+    expect(await within(modal).findByLabelText("Search sections")).toBeInTheDocument()
+    await userEvent.click(within(modal).getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(editModal()).toBeNull())
+    await waitFor(() => expect(thumbs()).toHaveLength(2))
+    await userEvent.click(thumbs()[1])
+    modal = await waitFor(() => { const el = editModal(); expect(el).toBeTruthy(); return el! })
+    // Modal title (the cover editor carries its own "Cover Letter" heading too).
+    expect(modal.querySelector(".modal-title")?.textContent).toBe("Cover Letter")
+    expect(within(modal).queryByLabelText("Search sections")).toBeNull()
+    await waitFor(() => expect(modal.querySelector('iframe[title="Print preview"]')?.getAttribute("srcdoc")).toBe("<html>cover print</html>"))
+  })
+
+  it("AST-2084: Print Resume opens the shared print HTML with no candidate structure fetch or PUT", async () => {
+    const fakeWin = { opener: {} as Window | null }
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => fakeWin as unknown as Window)
+    vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:jar-2084"), revokeObjectURL: vi.fn() })
+    const log: { url: string; method: string }[] = []
+    artifactJobMocks("j-print2084", { job_resume: { professional_summary: "Draft text" } }, log)
+    renderWithProviders(<JobAnalysisReportModal jobId="j-print2084" onClose={() => {}} />)
+    await waitForShell()
     await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
-    await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank"),
-    )
-    const putIdx = apiCallLog.findIndex(c => c.url === `/api/candidates/${cid}/data` && c.method === "PUT")
-    const printIdx = apiCallLog.findIndex(c => c.url === "/candidate/resume/j-1490")
-    expect(putIdx).toBeGreaterThanOrEqual(0)
-    expect(printIdx).toBeGreaterThan(putIdx)
-    expect(lastPrintHtml).toContain('id="summary"')
-    expect(lastPrintHtml).toContain('id="prior-experience"')
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("blob:jar-2084", "_blank"))
+    expect(log.some(c => c.url === "/candidate/resume/j-print2084")).toBe(true)
+    expect(log.filter(c => c.method === "PUT")).toEqual([])
+    expect(log.some(c => c.url.endsWith("/resume_structure"))).toBe(false)
     openSpy.mockRestore()
     vi.unstubAllGlobals()
   })
