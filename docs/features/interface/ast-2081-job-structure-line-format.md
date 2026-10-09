@@ -291,7 +291,7 @@ These existing tests pin today's values and **will fail by design** after this t
 
 ## Stage 4: Jobs API — job structure GET and PUT
 
-**Done when:** `GET /api/jobs/<id>/resume_structure` returns 200 with `sections`/`all_sections`/`accent_color`/`catalog`. For an unedited job, its `all_sections` equals the candidate GET's, and no artifact row is written. `PUT /api/jobs/<id>/artifacts/job_resume_structure` with `{"job_resume_structure": <structure>}` returns `{"ok": true}`. After it, the job GET shows the edit while the candidate GET and another job's GET are unchanged. Both routes return 404 for an unknown job id. The PUT returns 400 for a non-dict body or a structure `normalize_resume_structure` rejects (e.g. a required section missing). Each successful call logs one `… | api <route> completed: <METHOD> 200` INFO line.
+**Done when:** `GET /api/jobs/<id>/resume_structure` returns 200 with `sections`/`all_sections`/`accent_color`/`catalog`. For an unedited job, its `all_sections` equals the candidate GET's, and no artifact row is written. `PUT /api/jobs/<id>/artifacts/job_resume_structure` with `{"job_resume_structure": <structure>}` returns `{"ok": true}`. After it, the job GET shows the edit while the candidate GET and another job's GET are unchanged. Both routes return 404 for an unknown job id. The PUT returns 400 for a non-dict body or a structure `normalize_resume_structure` rejects (e.g. a required section missing). A successful PUT logs one `… | api <route> completed: PUT 200` INFO line; the GET logs no INFO (idempotent current-state read, `stat.logging.info.api`).
 
 1. In `src/ui/api/api_jobs.py`'s `from src.core.tracker import (...)` block, add `    get_job_effective_resume_structure,` directly after `    get_job_artifacts,`. Directly after the `from src.core.roster import …` line (L12), add `from src.core.candidate import resume_structure_editor_payload`.
 2. Directly after `put_job_cover_letter` (ends L383 `return jsonify({"ok": True})`), insert:
@@ -319,7 +319,6 @@ These existing tests pin today's values and **will fail by design** after this t
                exc,
            )
            return server_error_from_exception(exc)
-       logger.info("%s | api %s completed: GET %s", cid, route, 200)
        return jsonify(payload)
 
 
@@ -353,6 +352,8 @@ These existing tests pin today's values and **will fail by design** after this t
        logger.info("%s | api %s completed: PUT %s", cid, route, 200)
        return jsonify({"ok": True})
    ```
+
+   ⚠️ **Decision:** Only the PUT emits the INFO completion line. `stat.logging.info.api` says "Idempotent GETs that only return current state are not progress — no info", and the candidate twin GET is silent. The parent's "each log one completion line" yields to canon here (Joan validate, discuss item). Both routes still log a caught exception once (`stat.logging.error`).
 
    ⚠️ **Decision:** The request body key is `job_resume_structure`, mirroring the sibling `PUT …/artifacts/job_resume` (`{"job_resume": …}`). The PUT returns `{"ok": True}` like its siblings; #3 refetches the GET when it needs the stored shape. The existing generic `…/artifacts/<artifact_key>/versions` and `…/current` routes accept the new full key with no change.
 
@@ -407,6 +408,12 @@ These existing tests pin today's values and **will fail by design** after this t
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Revisions
+
+Revision 1 — 2026-10-09
+Driven by: Joan validate (2026-10-09) discuss item — "`stat.logging.info.api` vs job structure GET … omit GET info (canon + parity with candidate GET) and keep INFO on PUT only".
+Changes: Stage 4 — removed the `logger.info(... completed: GET ...)` line from `get_job_resume_structure`; Done-when now requires INFO on the PUT only; added a Decision citing the statute. Exception logging on both routes unchanged.
 
 ## Joan validate
 
