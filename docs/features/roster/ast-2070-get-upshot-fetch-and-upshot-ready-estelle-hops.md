@@ -904,3 +904,57 @@ Implement as **one** commit: `code(AST-2088): company_upshot returns and saves a
 ```
 
 AST-2088 board-joan done — CANON: OK.
+
+### Radia review-fix (AST-2088)
+
+[code-rubric]
+
+**Ticket:** AST-2088  
+**Publish ref:** `c5de90bba272b0a81de9a3ac67cc8694c1c9671d` (`origin/sub/AST-2054/AST-2088-upshot-readable-company-name`)  
+**Diff base:** `origin/ftr/AST-2054-company-upshot`  
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+(no frozen Citations on AST-2088 Linear description; Joan fix-board **CANON: OK** — no directive ids to score)
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (bug ticket; fix-board only)
+
+## Frame diff
+
+(none)
+
+### Fix-specific checks
+
+**[bug-repro]** OK — `TestAst2088UpshotReadableCompanyName::test_readable_name_saved_and_blank_or_missing_skipped` pins To-be: stripped `update_company(..., company_name="Acme Robotics")` once; `## Name On File\nAcmerobotics` in `live_content`; missing/whitespace `company_name` still → `WATCH` (3 passed); `short_name` not passed to `update_company`. Would fail pre-fix (no `update_company`, no Name On File block). `TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name` guards optional schema + prompt shape. **Advisory:** first-line `[bug-repro]` tag not on the test comment (qa-fix commit message carries it).
+
+**## What must still hold** OK — for product commit `c5de90bba` only: one `do_task` path unchanged; upshot/retry/error behavior preserved; blank `company_name` non-fatal; no prefilter-function hunks vs `ftr`; Estelle row keeps `200 words` / tokens; `short_name` not rewritten.
+
+## Findings
+
+**fix-now** — (none) on the AST-2088 product commit
+
+**discuss**
+
+- **Sub tip vs fix commit (@susan):** `ftr...sub` three-dot diff includes **AST-2078** product (`src/utils/logging.py`, `RAILWAY_CONFIG["access_log_quiet_paths"]` in `config.py`) not present on `origin/ftr/AST-2054-company-upshot`, plus large `merge-tests` / `origin/tests` carry (AST-1777 bible doc, AST-2081 config tests, etc.). Plan-fix **What must still hold** last bullet limits changes to upshot schema/prompt/batch; **`c5de90bba` respects that** (3 files, 1 schema line). **Default:** PROCEED on the fix; Chuckles/merge-child treats `c5de90bba` as the bug product surface and does not attribute AST-2078 logging to AST-2088 — reconcile whether logging hunks should ride this sub into `ftr` or stay on AST-2078’s branch.
+
+**advisory**
+
+- **sibling test/doc carry:** `merge-tests(AST-2088)` expands `ftr...sub` beyond roster/config tests (expected §5.4 pattern; not scored as 2088 product scope).
+- **Integrated epic context:** Parent AST-2054 `ftr` live; normal-parent shape → Chuckles **PROCEED** → **Review Posted** → clean-review shortcut → **User Testing** (skip `resolve-child`).
+
+### Plan fidelity (§5.4)
+
+Product commit matches plan-fix **Proposed change** steps 1–3d: optional `company_name` in `items_schema`; `agent_task` `cache_prompt` + `updated_at` only; `company_upshot_batch` Name On File block, conditional `update_company`, log detail. Scope bound = parent company-upshot registration + Estelle batch (three files).
+
+## Recommended actions (downstream — not Radia)
+
+- Chuckles: append artifact to plan-fix doc section, `docs(AST-2088): Radia review — clean`, post slim upshot `--as radia`, **Review Posted** → **User Testing** (no `resolve-child`).
+- Optional: Betty add `[bug-repro]` first-line tag on repro test for machinery parity.
+
+**Parent shape:** Normal (AST-2054, `ftr` base)
+
+context_tokens≈52000
