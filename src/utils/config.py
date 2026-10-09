@@ -1920,11 +1920,8 @@ CONTACT_CONFIG = {
     "debug_state_filename": "contact_slack_debug.json",
     # Durable @Estelle per–Slack-user activity summary under ASTRAL_CONFIG["db_dir"] (AST-1094).
     "activity_state_filename": "contact_estelle_activity.json",
-    # ASTRAL_DEPLOY_ENV value (case-insensitive) that skips non-prod reply prefix.
+    # ASTRAL_DEPLOY_ENV value (case-insensitive) Manage Slack reports as production.
     "production_deploy_env": "production",
-    # Format with environment= (deploy label). AST-1067 applies when listen is on
-    # and deploy is not production.
-    "non_production_reply_prefix_template": "[{environment}] ",
     # AST-1101 / AST-2072: fallback Slack text when Contact accepts @/DM but Estelle's turn
     # posts nothing (turn raised, failed, or returned no reply).
     "hear_ack_reply_text": "That didn't work as planned.  Let's ask @susan.",
