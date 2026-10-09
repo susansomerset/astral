@@ -1,3 +1,78 @@
+<!-- linear-archive: AST-1968 archived 2026-10-08 -->
+
+## Linear archive (AST-1968)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1968/recommended-list-triage-upgrades-updates-to-the-recommended-jobs-list  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1967 — Updates to the recommended jobs list page  
+**Blocked by / blocks / related:** parent: AST-1967
+
+### Description
+
+## What this implements
+
+Delivers all four capabilities: row Generate Artifacts, multi-select bulk Skip / Applied / Generate Artifacts, the default-on Analysis toggle with letterless four-phase grade lines, and the sortable Total column. Does not touch the Job Analysis Report modal's behaviour or any backend route.
+
+## Citations
+
+none — no in-force directive governs frontend list pages; see Architectural definition.
+
+## Scope
+
+`src/ui/frontend/src/pages/JobsRecommended.tsx` (selection + bulk bar, row Generate wiring, Analysis toggle + expanded lines from `report_phase_tabs`, Total column via `sortRecommendedJobs`); `src/ui/frontend/src/components/CandidateJobRowActions.tsx` (optional Generate `icon-control`); `src/ui/frontend/src/lib/candidateJobActions.ts` (generate-artifacts POST helper); `src/ui/frontend/src/hooks/useCandidateJobActions.ts` (generate + multi-job skip/applied, one notes confirm over many ids); `src/ui/frontend/src/lib/recommendedJobReport.tsx` (letterless, confidence-free phase row sharing the modal's column/order/lookup helper); `src/ui/frontend/src/App.css` (letterless dot modifier + expanded-line layout).
+
+## Acceptance criteria
+
+ 1. **Row Generate shows only where legal.** On Recommended, every row in the Recommended section has a button with `title="Generate Artifacts"`; no row in In Progress or Ready does. **Fail:** button missing on a `RECOMMENDED` row, or present on a `BUILD_ARTIFACTS` / `CANDIDATE_REVIEW` row.
+ 2. **Row Generate starts the build.** Clicking it on a `RECOMMENDED` row sends `POST /api/jobs/<id>/generate_artifacts` (200), and after refresh that job is listed under In Progress. **Fail:** no request, non-200, or job still under Recommended.
+ 3. **One client call site for generate.** `rg -n "generate_artifacts" src/ui/frontend/src/lib/candidateJobActions.ts` returns a hit; `rg -n "/generate_artifacts" src/ui/frontend/src/pages/JobsRecommended.tsx src/ui/frontend/src/components/CandidateJobRowActions.tsx` returns nothing. **Fail:** an inline fetch in the page or component (a parallel path instead of the shared helper).
+ 4. **Bulk bar appears with selection.** With zero rows checked, no bulk buttons render. Checking 3 rows shows `Skip (3)`, `Applied (3)`, and `Generate Artifacts (n)` in the header, where n = number of checked `RECOMMENDED` jobs. **Fail:** bar visible with nothing selected, wrong counts, or a section without checkboxes.
+ 5. **Bulk Skip.** Select 2 Recommended + 1 Ready job, then click Skip. All 3 disappear from Recommended and appear on the Skipped page as `CANDIDATE_SKIPPED`. The toast reads 3 succeeded. **Fail:** any of the 3 still on Recommended.
+ 6. **Bulk Applied, one prompt.** Select 2 jobs, click Applied, enter note `bulk-test`, confirm. Exactly one notes modal opened, and both jobs appear on the Applied page with their applied note = `bulk-test`. **Fail:** a modal per job, a job not moved, or a note missing on either.
+ 7. **Bulk Generate skips ineligible jobs.** Select 1 Recommended + 1 Ready job, click Generate Artifacts. The network log shows exactly one `POST …/generate_artifacts`, for the Recommended job only. The Ready job's state is unchanged. **Fail:** a POST for the Ready job, or a 409 error toast caused by sending it.
+ 8. **Selection clears.** After any bulk action completes, every checkbox is unchecked and the bulk bar is gone. **Fail:** any box still checked.
+ 9. **Toggle defaults on.** On first load, the Analysis toggle is on and each job row is followed by an expanded area with exactly four labelled lines in order JD, DO, GET, LIKE. Toggling off removes every expanded area (`tbody tr` count = job count). **Fail:** toggle off at load, wrong line count/order, or expanded rows remaining when off.
+10. **Circles: no letters, no confidence.** With the toggle on, every grade circle inside the list has empty text content, and the list contains zero `ConfidenceBullets` elements. **Fail:** any visible letter or confidence bullet in a list row.
+11. **Circles match the modal.** For any job, each phase line's circle count, colours, and left-to-right order equal the grade circles in that phase's section of the modal's Analysis tab for the same job. **Fail:** any count, colour, or order mismatch.
+12. **No copied grade logic.** The new builder and `buildPhaseSectionGradeConfidenceRow` share one internal column/order/lookup helper in `recommendedJobReport.tsx`. Neither `JobsRecommended.tsx` nor the builder calls `sortRubricColumnsByImportanceAndGrade` on its own. `rg -n "sortRubricColumnsByImportanceAndGrade" src/ui/frontend/src/lib/recommendedJobReport.tsx` returns exactly one call site. **Fail:** two independent copies of the ordering.
+13. **Total value.** A job with JD 7.0, DO 6.5, GET 8.0, LIKE 5.5 shows Total `27.0`. A job missing any one phase score shows `—`. **Fail:** any other value.
+14. **Total sorts like the phase columns.** Clicking Total toggles ascending/descending with the same placement of `—` rows that the JD column uses. `rg -n "function sortRecommendedJobs" src/ui/frontend/src/pages/JobsRecommended.tsx` returns exactly one hit (Total sorts through it). **Fail:** wrong order, or a second sort function.
+15. **Other pages unaffected.** Skipped, Applied, and In Review row actions render the same as before (no Generate button) because they don't pass the new callback. **Fail:** Generate shows on any other page.
+16. **Builds clean; no new lint.** In `src/ui/frontend`, `npm run build` exits 0. `npm run lint` reports no problem that is absent on `origin/dev` (diff the problem lists), and the baseline `react-hooks/set-state-in-effect` error at `JobsRecommended.tsx` (the `actions.error` → toast effect) is gone (per AST-1969). **Fail:** build non-zero, any new lint problem, or that baseline error still reported.
+
+## Boundaries
+
+Single child — owns the whole epic. Does not change Job Analysis Report modal behaviour or any backend / API route / `src/utils/config.py`.
+
+## Notes for planning
+
+Canon Scope empty (no in-force directive governs frontend list pages). Bulk actions fan out over existing per-job endpoints. Parent Technical scope has the function-level detail.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`,
+child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T14:46:26.449Z
+[code-rubric] PROCEED (Commit: 0970ea6973c7945a9853c73fcfd97cf89d5e1dc7) Empty canon; plan delivered
+
+#### betty — 2026-10-04T14:43:39.946Z
+`origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades` @ `0970ea697` · manifest in pages.md
+
+#### joan — 2026-10-04T12:28:48.978Z
+[plan-rubric] PROCEED (Commit: 5c00918) six-stage triage plan
+
+#### ada — 2026-10-04T12:27:09.090Z
+`origin/sub/AST-1967/AST-1968-recommended-list-triage-upgrades` @ `5c00918ee` · six-stage plan ready
+
+---
+
 # AST-1968 — Recommended list triage upgrades
 
 - **Parent:** [AST-1967 — Updates to the recommended jobs list page](https://linear.app/astralcareermatch/issue/AST-1967)
