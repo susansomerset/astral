@@ -1537,6 +1537,20 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 
 **New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` reaches the caller on `render_verdict`'s generic failure, the `run_consult_task` single-entity grade/LIKE path (the AST-2009 `meteorite_like` repro), the `_run_batch_consult` envelope failure, the batch normalizer (`meteorite_like_batch`), the `prefilter_company` normalizer, and the `_run_analysis_upshot_batch` summary. Routing and counts are unchanged (no hold). An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
 
+### AST-2098 · AST-2099 (failed host probe holds job state, counted held)
+
+**Primary manifest:** [`dispatcher.md`](dispatcher.md) § AST-2098. Contract: a `provider_probe_failure` result goes through the shared `is_provider_state_hold` branches (no `error_state` / `_RETRY` transition) and is counted `total_held`, not `total_errors`; `_outage_tag` carries `failure_class` + `total_held` up. Balance refusal on job paths is unchanged (AST-2098 Decision D3: still `total_errors`, no new keys).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — `render_verdict` probe failure → `state_held`, `to_state` = current state, class kept, no transition | `render_verdict` | `TestAst2098ProbeFailureHold::test_render_verdict_holds_state` |
+| New — AST-2016 incident path: one-job `meteorite_grade_get` → exactly `{processed 1, passed 0, failed 0, errors 0, held 1, failure_class}` | `run_consult_task` single-entity | `…::test_run_consult_task_single_entity_counts_held` |
+| New — `_run_batch_consult` envelope probe failure on 3 jobs → held, `total_held 3`, no transition; batch normalizer → `errors 0`, `held 3`, class | `_run_batch_consult` + normalizer | `…::test_batch_consult_envelope_holds_and_counts` |
+| New — `_run_analysis_upshot_batch` 2 jobs → `errors 0`, `held 2`, class, no transition, `_warn_job` "host probe failed — state held" | `_run_analysis_upshot_batch` | `…::test_analysis_upshot_batch_counts_held` |
+| Guard (green both) — balance hold on the single-entity job path still `total_errors 1`, no `total_held` / `failure_class` | `run_consult_task` | `…::test_balance_hold_on_job_path_still_counts_error` |
+
+**Kept:** `TestAst897HoldStateOnBalanceRefusal`, `TestAst2010RateLimitForwarding` (unchanged, green).
+
 ### AST-2025 · AST-2022 (qualify keeps relative links + `fetch_relative_jd` router branch)
 
 **Scope:** `qualify_job_listings.process()` — non-empty non-`http` `job_link` → `initialize_job` as-is, transition to `TASK_CONFIG["qualify_job_listings"]["relative_link_state"]` (`RELATIVE_JOB_LINK`); only an empty link raises `InvalidJobLinkError`. `run_consult_task` routes `fetch_relative_jd` → `gazer.fetch_relative_jd_batch(batch_id, entities)`.

@@ -1152,6 +1152,21 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 
 **New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` rides `_find_job_page_from_assembled`'s generic select failure (still NO_JOBLIST + saved), `run_company_task` select_job_page (still counted passed via NO_JOBLIST) and JOBS_FOUND (still `error_state` + `total_errors`), and the `prefilter_company_batch` generic failure (still retried). There is no `total_held` and no `state_held`. An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
 
+### AST-2098 · AST-2099 (failed host probe holds company state, counted held)
+
+**Primary manifest:** [`dispatcher.md`](dispatcher.md) § AST-2098. Contract: every roster hold branch widened from `is_provider_balance_refusal` to `is_provider_state_hold`, so a `provider_probe_failure` result keeps the company's current state (no transition, no save) and is counted `total_held`; the batch functions add `total_held` (probe only) and `run_consult_task` subtracts it from errors.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — select_job_page probe hold → `(1, 0, 0, 0)`, `held 1`, class, no `_warn_company` | `run_company_task` | `TestAst2098ProbeFailureHold::test_select_job_page_probe_hold_counts_held` |
+| New — JOBS_FOUND probe failure → `held 1`, `errors 0`, no `error_state` transition | `run_company_task` | `…::test_jobs_found_probe_hold_skips_error_state` |
+| New — `prefilter_company_batch` 2 ready companies → held, `total_held 2`, no transition; via `run_consult_task` `prefilter_company` → `errors 0`, `held 2`, class | `_run_batch_company_prefilter` + consult normalizer | `…::test_prefilter_batch_probe_hold_counts_held` |
+| New — `company_upshot_batch` 2 rows → held, `total_held 2`, no transition; via `run_consult_task` `company_upshot` → `errors 0`, `held 2`, class | `company_upshot_batch` + consult normalizer | `…::test_company_upshot_probe_hold_counts_held` |
+| New — `_find_job_page_from_assembled` probe failure → `state_held`, current state, class, no `_save_company` | `_find_job_page_from_assembled` | `…::test_find_job_page_probe_hold_keeps_state` |
+| New (board E6) — single-company `prefilter_company` → `_prefilter_fail` HOLD, current state, `state_held`, class, no transition | `prefilter_company` / `_prefilter_fail` | `…::test_prefilter_company_probe_hold_keeps_state` |
+
+**Kept:** `TestAst1867BalanceHeldCounting`, `TestAst897HoldStateOnBalanceRefusal`, `TestAst2010RateLimitForwarding` (unchanged, green).
+
 ### AST-2069 · AST-2054 (locate/parse pass state → GET_UPSHOT)
 
 **Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2069-upshot-states-registration`. Config-only child; primary block + manifest: [`../utils/config.md`](../utils/config.md) § AST-2069.
