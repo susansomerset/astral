@@ -1083,3 +1083,66 @@ python3 -m pytest \
 - All AST-1867, AST-2010, AST-897 and AST-1959 classes stay green on ftr. That includes `test_ac4_…` (exhausted 429 → `provider_rate_limit`), which is AC 4.
 - Summaries with no probe hold keep their exact shape: F2's exact-dict assert and D5 guard this.
 - The canon's empty-runtime-tokens bullet and Arc 1–5 text are unchanged.
+
+
+## Joan fix-board — AST-2099
+
+**Ticket:** AST-2099 — tests + `patt.task.dispatch-retry` carve-out (gap child for AST-2098 board REVISE)  
+**Read:** `## Bug: AST-2099` on `origin/sub/AST-2016/AST-2099-probe-fail-hold-gaps`; current `canon/directives/active/patt.task.dispatch-retry.md`; prior thread verdict on AST-2098 (`CANON: REVISE` — probe carve-out parallel to empty tokens).
+
+### Question
+
+Does the **exact** § H canon bullet in AST-2099’s plan close that REVISE, and does it conflict with any other directive in force?
+
+### AST-2098 REVISE — satisfied?
+
+| Prior ask | Plan § H |
+|-----------|----------|
+| Add § When this doesn’t apply carve-out for failed host probe | Yes — “Pre-attempt provider gate — failed per-batch host probe” |
+| No entity attempt / not ordinary retry→error | “no entity prompt is sent … no failure to retry or to error” |
+| Hold loop-eligible state, no `_RETRY` / `error_state` | Explicit |
+| Parallel to empty runtime tokens | Same section, same bullet shape, inserted before “Every other failed attempt” |
+| Infrastructure retry (next dispatch round / new batch probe) | “Dispatch stops the run … next round claims … under a new batch and probes again” |
+| Exhausted 429 not this exemption | Explicit; consistent with AST-2010 / AC 4 |
+
+The bullet is **narrower** than a generic “provider outage” carve-out: it requires a server that **probes for a host before the batch’s first call**, so it does not subsume balance refusal (AST-897) or ordinary post-probe failures. That matches AST-2099’s boundary (“balance refusal not folded in”) and does not widen canon beyond AST-2098 product behavior.
+
+**Arc 5:** The proposed text reframes hold as “no failed attempt was made,” which is the same legal move as the empty-tokens bullet (different outcome: error vs hold). It does not weaken Arc 1–4 for real agent failures; the closing “Every other failed attempt” line still applies to those.
+
+### Conflicts with other in-force directives?
+
+| Directive | Check |
+|-----------|--------|
+| `patt.task.dispatch-retry` (Arcs 1–5, empty-tokens bullet) | Only addition is the new bullet; Arcs and empty-tokens text unchanged per plan. Outcomes differ by design (empty → `error_state`; probe → hold). No internal contradiction. |
+| `patt.task.daisy-chain` | Exemption is listed under “When this doesn’t apply”; daisy-chain failures that are real attempts still fall under “Every other failed attempt.” |
+| `patt.entity.batch-processing` / `stat.batch.claim-process-release` | Canon text matches AST-2098: stop run, release claim, new batch id next round. Aligned, not amended here. |
+| `stat.logging.*` | No canon edits; tests only in Betty scope. |
+| Balance refusal without carve-out | **Pre-existing** Arc 5 tension; AST-2099 explicitly does not document balance in this bullet. Not introduced by this wording. |
+
+No second statute or pattern needs editing for AST-2099. Feature-doc Canon row updates for AST-1959/2098 are outside this ticket’s `make-fix` scope; Radia/validate-plan can read the landed directive afterward.
+
+### Minor notes (not REVISE)
+
+- Ticket-id-free bullet matches empty-tokens style; good.
+- “Arc 5 is not broken …” is interpretive, but consistent with how the empty-tokens bullet explains Arc 5.
+- Pre-existing duplicate Arc **4.** in the file is untouched per plan — fine.
+
+### Verdict
+
+AST-2098’s `CANON: REVISE` is **addressed by this plan’s § H text as written**. `make-fix` can land that bullet without further canon work on this ticket. **No ESCALATE.**
+
+---
+
+### Machine-readable verdict (stdout)
+
+```
+[board-joan]  CANON: OK
+```
+
+(No second line — OK requires only the first line per fix-board § Joan.)
+
+### Stdout (skill one-liner)
+
+```text
+
+**Chuckles routing:** Joan CANON: OK; Betty TESTS: REVISE = land this plan via qa-fix, plus E6 (`prefilter_company` → `_prefilter_fail` single-company probe hold). AST-2099 is the gap child, so qa-fix (F4) runs on it directly; no further gap child.
