@@ -1236,3 +1236,13 @@ Definition fidelity: Four scoped files only; no #4 wiring. One `ResumeContentEdi
 context_tokens≈65000
 
 [plan-rubric] PROCEED (Commit: e94f8a6) Editor plan; canon clean.
+
+## Review (build)
+
+**Built:** `origin/sub/AST-2046/AST-2083-resume-editor` @ `2cf521b68`
+
+Stages 1–3: `354a93fa4` App.css §10e2 + retired structure-authoring rules removed + experience role label `resume-section-title` · `3c8641e39` `ResumeSectionRow.tsx` · `2cf521b68` `ResumeContentEditor.tsx`. Component code is byte-identical to the plan's embedded Stage 2/3 blocks; Stage 1 is the plan's diff applied as-is. `tsc -b --noEmit`, `npm run build`, and eslint on both new files clean; `ExperienceJobsEditor.tsx` shows only the L65 baseline error. AC13 grep empty; no Save/Cancel/"Save sections" in the new files (AC5's remaining hit is `ArtifactEditor.tsx`, #4). Existing `test_ExperienceJobsEditor`, `test_ArtifactEditor`, `test_ArtifactsBaseResumeContent`: 58 passed (unchanged). Tests deferred to Betty — no known drift.
+
+**Deviations:** none. Commit prefix is `code()` per build-child (plan stage text said `feat()`).
+
+**Sequence pre-check:** `validate-sub-log.sh --stage=build` reports `git pull merge on sub` for `52d9749a3` and `7caff6333`. Both are `origin/dev` history pulled in by the §4d dev refresh (`430519442`), not commits made on this sub; they drop out of the `sub --not ftr` range once ftr absorbs `origin/dev`.
