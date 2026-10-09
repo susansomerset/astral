@@ -333,9 +333,10 @@ For a row on retired `old` with map entry `by_key = MAP[entity][old]`:
        raise SystemExit(main())
    ```
 
-2. Compile and lint: `python3 -m py_compile scripts/migrations/migrate_terminal_state_names.py` and `ruff check scripts/migrations/migrate_terminal_state_names.py --extend-ignore UP,I`. Both must be clean.
+2. `chmod +x scripts/migrations/migrate_terminal_state_names.py`. The template script is mode `100755`, and ruff `EXE001` flags a shebang on a non-executable file.
+3. Compile and lint: `python3 -m py_compile scripts/migrations/migrate_terminal_state_names.py` and `ruff check scripts/migrations/migrate_terminal_state_names.py --extend-ignore UP,I`. Both must be clean.
 
-3. Verify against a **copy** only. In the epic worktree, `data/astral.db` is a symlink to `~/astral/data/astral.db`, Susan's main DB. **Never** run `--execute` against it.
+4. Verify against a **copy** only. In the epic worktree, `data/astral.db` is a symlink to `~/astral/data/astral.db`, Susan's main DB. **Never** run `--execute` against it.
    ```bash
    mkdir -p /tmp/ast2087 && cp ~/astral/data/astral.db /tmp/ast2087/astral.db
    ASTRAL_DB_DIR=/tmp/ast2087 python scripts/migrations/migrate_terminal_state_names.py
@@ -344,7 +345,7 @@ For a row on retired `old` with map entry `by_key = MAP[entity][old]`:
    ```
    The first run must print `"dry_run": true`, and the second `"dry_run": false`. AC 8's live half and AC 9 on real data are run by Betty or the operator on a copy or staging.
 
-4. Commit `code(AST-2087): migrate_terminal_state_names operator CLI` and publish to `origin/sub/AST-2073/AST-2087-terminal-state-remap`.
+5. Commit `code(AST-2087): migrate_terminal_state_names operator CLI` and publish to `origin/sub/AST-2073/AST-2087-terminal-state-remap`.
 
 ---
 
