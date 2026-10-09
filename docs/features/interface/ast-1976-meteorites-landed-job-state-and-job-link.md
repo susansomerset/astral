@@ -1,3 +1,67 @@
+<!-- linear-archive: AST-1976 archived 2026-10-08 -->
+
+## Linear archive (AST-1976)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1976/meteorites-landed-job-state-and-job-link-jobs-navigation-changes  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1970 — Jobs Navigation changes  
+**Blocked by / blocks / related:** parent: AST-1970
+
+### Description
+
+## What this implements
+
+After #1. Adds the landed-job state column and the in-page Job Analysis Report link to Jobs → Meteorites. Does **not** change the list API (#1) or any other Jobs page (#2).
+
+## Citations
+
+none — frontend-only, outside both statutes' territory.
+
+## Scope
+
+**Component scope:** `src/ui/frontend/src/pages/JobsMeteorites.tsx`.
+
+**Technical scope:**
+
+* `JobsMeteorites.tsx` — the page component is modified: a landed-job state column, and the job cell opens `JobAnalysisReportModal` in place, with the row click still opening `MeteoriteDetailModal`.
+
+## Acceptance criteria
+
+14. **Meteorites show landed-job state.** For every Meteorites row with an `astral_job_id`, the landed-job state cell equals `GET /api/jobs/<id>` `.state`. Rows without a job show `—`. Clicking the job link opens the Job Analysis Report modal for that id while the URL stays `/jobs/meteorites`, and clicking elsewhere on the row still opens the Meteorite modal. **Fail:** stale or missing state, navigation away, or the wrong modal.
+15. **Builds clean.** `python -c "import src.utils.config"` exits 0. In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem absent on `origin/dev`. **Fail:** non-zero exit, or a new lint problem.
+
+## Boundaries
+
+Does not change the meteorite list API (landed-job state is served by [AST-1974](https://linear.app/astralcareermatch/issue/AST-1974)) or any other Jobs page ([AST-1975](https://linear.app/astralcareermatch/issue/AST-1975)).
+
+## Notes for planning
+
+Parent [AST-1970](https://linear.app/astralcareermatch/issue/AST-1970) definition is authoritative (Functional scope, Architectural definition, Canon Scope: `stat.logging.info.api`, `stat.logging.error`).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1970-jobs-nav`, child `sub/AST-1970/AST-1976-jobs-nav`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T19:17:37.964Z
+[code-rubric] PROCEED (Commit: 3f70dc43e) Meteorites page matches plan
+
+#### betty — 2026-10-04T19:16:00.001Z
+`origin/sub/AST-1970/AST-1976-jobs-nav` @ `3f70dc43e` · Meteorites state + link tests
+
+#### joan — 2026-10-04T19:12:51.930Z
+[plan-rubric] PROCEED (Commit: bf9af69ee) Meteorites state and job link
+
+#### katherine — 2026-10-04T19:11:37.414Z
+`origin/sub/AST-1970/AST-1976-jobs-nav` @ `bf9af69ee` · one-file render overrides
+
+---
+
 # AST-1976 — Meteorites landed-job state and job link
 
 - **Ticket:** [AST-1976](https://linear.app/astralcareermatch/issue/AST-1976)

@@ -1,3 +1,118 @@
+<!-- linear-archive: AST-1955 archived 2026-10-08 -->
+
+## Linear archive (AST-1955)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1955/plain-agent-settings-and-per-sku-direct-models-refactor-agent-settings  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1953 — Refactor agent settings and ingest per-endpoint model options  
+**Blocked by / blocks / related:** parent: AST-1953; blocks: AST-1958; blocks: AST-1957; blocks: AST-1956
+
+### Description
+
+## What this implements
+
+Adds the settings columns to the agent row and stops requiring `brain_setting` and `mode`. Splits direct models into one id per SKU. Removes the mode table, the host pin and the per-size layer from config, and adds the settings resolver. Does **not** touch the call path (#2), the admin routes and UI (#3), or live rows (#4).
+
+## Citations
+
+`stat.logging.debug`.
+
+## Scope
+
+* `src/utils/config.py` (**modified**):
+  * **Modified direct models:** `claude` and `deepseek-v4` become one model entry per SKU, each with its SKU, pricing row (unchanged), default output budget and floor. `kimi-k2.6` stays one entry with its Little default. The `brain_sizes` layer, `can_think` and `thinking_params` leave every model.
+  * **Modified OpenRouter table and builder:** each of the 95 slugs keeps its price and max output. The host-slug, quantization and reasoning columns go, because nothing reads them once the pin and mode are gone. The listing default is min(16,000, max output).
+  * **New settings resolver:** model id + agent settings → server, SKU, pricing, default output budget, the provider object (OpenRouter only, empty keys omitted), and the temperature/effort to send. It replaces `resolve_model_brain`.
+  * **Modified repo-JSON column list for** `agent`**:** the settings in, `brain_setting` and `mode` out.
+  * **Removed:** `AGENT_MODE_CONFIG`, the mode constants, `AGENT_MODES`, `validate_agent_mode`, `OPENROUTER_QUANT_BRAIN_SIZE`, `OPENROUTER_THINKING_PARAMS`, `_openrouter_pin`, `resolve_model_brain`, `model_brain_sizes`, `validate_brain_setting_for_model`, and the `brain_settings` / tier-map helpers left with no caller.
+* `src/data/database.py` (**modified**):
+  * **Modified agent schema-ensure:** adds the setting columns. It does **not** drop `brain_setting` / `mode`, because the migration needs to read them first (DDL only, per AST-1497).
+  * **Modified agent writes:** save, update allow-list, repo-JSON apply and repo-JSON validation write the settings (type checks only) and no longer read, require or validate `brain_setting` / `mode`.
+  * **Modified public view:** returns the settings and not `brain_setting` / `mode`.
+* `data/admin/agent.json`, `docs/uat-fixtures/AST-756/expected-agent.json` (**modified**):
+  * every row gains the settings, using the Functional scope 8 starting values (computed by hand for the 7 seed rows);
+  * direct rows get per-SKU model ids;
+  * every row loses `brain_setting` and `mode`.
+* Tests and bibles (Betty in `qa-child`):
+  * `tests/component/utils/test_config.py`
+  * `tests/component/data/database/test_agents.py`
+  * `tests/component/core/test_repo_admin_json.py`
+  * `docs/test-bible/utils/config.md`
+  * `docs/test-bible/data/database/agents.md`
+
+## Acceptance criteria
+
+"Stubbed client" means the component-test stubs of the Anthropic SDK client used by `test_llm_compat.py`, `test_anthropic.py` and `test_agent.py`.
+
+5. **Proxies gone from code.**
+   * **Check:** `rg -n "_openrouter_pin|AGENT_MODE|OPENROUTER_QUANT_BRAIN_SIZE|resolve_model_brain|validate_agent_mode|brain_setting|brain_sizes|can_think" src/` returns nothing.
+   * **Fails if:** any hit.
+6. **Direct models per SKU.**
+   * **Check:** `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`, `deepseek-v4-flash`, `deepseek-v4-pro` and `kimi-k2.6` are model ids, and `claude` / `deepseek-v4` are not.
+   * **Check (stubbed client):** an agent on `deepseek-v4-pro` with `max_tokens: 384000` sends `max_tokens == 384000`.
+   * **Fails if:** an old id remains, a SKU is missing, or the budget differs.
+7. **Default output budget.**
+   * **Check:** with `max_tokens` empty:
+     * `gryphe/mythomax-l2-13b` resolves to 3686 (its max output);
+     * `qwen/qwen3.5-27b` resolves to 16000;
+     * `claude-sonnet-4-6` resolves to its existing SKU default.
+   * **Fails if:** any differs.
+8. **Seed carries the settings.**
+   * **Check:** every row in `data/admin/agent.json` has the seven settings keys and no `brain_setting` or `mode`, and direct rows use per-SKU ids. The AST-756 fixture matches field-for-field, and reverting the agent table from the seed succeeds.
+   * **Fails if:** a key is missing or retired, the fixture drifts, or revert fails.
+
+## Boundaries
+
+Does not touch [agent.py](<http://agent.py>) / llm_compat.py / [anthropic.py](<http://anthropic.py>) (#2), api_admin.py / AdminAgentPrompts.tsx (#3), or the live-row migration (#4). AC 5's `rg` over `src/` closes only once #2 and #3 land on ftr.
+
+## Notes for planning
+
+Parent AST-1953 Description is the authority (Functional scope, Technical scope, Susan's 2026-10-03 answers). Code it loosely — no vocabulary lists, no pre-send gating (Susan).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1953-agent-settings`, child `sub/AST-1953/AST-1955-plain-agent-settings`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-03T23:04:10.141Z
+[code-rubric] PROCEED (Commit: c2410f0c) Catalog settings land clean
+
+#### betty — 2026-10-03T23:00:19.808Z
+`origin/sub/AST-1953/AST-1955-plain-agent-settings` @ `c2410f0cb` · manifest in config.md bible
+
+#### katherine — 2026-10-03T22:47:11.874Z
+`origin/sub/AST-1953/AST-1955-plain-agent-settings` @ `7b1ba21b2`
+
+#### joan — 2026-10-03T22:44:20.095Z
+[plan-rubric] PROCEED (Commit: e4253c590) Plan traceability complete
+
+#### katherine — 2026-10-03T22:43:31.644Z
+[plan-discuss] round=1 reply
+
+`origin/sub/AST-1953/AST-1955-plain-agent-settings` @ `e4253c590`
+
+- **fix-now (AC 6 stubbed client):** new **AC boundaries** table after Scope gate. The `deepseek-v4-pro` / `max_tokens: 384000` wire check is N/A on this sub and closes with AST-1956's call path (`test_llm_compat.py` / `test_agent.py`). This sub's part: the catalog gives `deepseek-v4-pro` no floor and a 16000 default, so nothing changes the agent's own `max_tokens` (assertable in `test_config.py` here). The table also maps AC 5, 7 and 8.
+- **discuss (AC 8 field-for-field):** Stage 3 step 2 now spells it out: same seven settings fields and same Functional scope 8 value rule, no `brain_setting` / `mode`; not row parity with the seed (fixture stays 6 rows, `model_code`, stale content, per the AST-1947 precedent). The exact step change is noted if Susan wants a seed copy instead.
+
+No stage steps, files or estimate changed. Revision 1 is logged under `## Revisions`.
+
+#### joan — 2026-10-03T22:42:49.443Z
+[plan-discuss] round=1 concern
+[plan-rubric] REVIEW (Commit: 3593697ee) AC6 stub untraced
+
+#### joan — 2026-10-03T22:42:31.833Z
+[plan-rubric] REVIEW (Commit: 3593697ee) AC6 stub untraced
+
+#### katherine — 2026-10-03T22:40:58.983Z
+`origin/sub/AST-1953/AST-1955-plain-agent-settings` @ `3593697ee` · plan ready, sequencing risk noted
+
+---
+
 # AST-1955 — Plain agent settings and per-SKU direct models
 
 - **Ticket:** [AST-1955](https://linear.app/astralcareermatch/issue/AST-1955) · **Parent:** [AST-1953](https://linear.app/astralcareermatch/issue/AST-1953) Refactor agent settings and ingest per-endpoint model options

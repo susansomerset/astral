@@ -1,3 +1,79 @@
+<!-- linear-archive: AST-1960 archived 2026-10-08 -->
+
+## Linear archive (AST-1960)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1960/record-the-serving-host-on-the-dispatch-ledger-add-host-discovery  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1954 — Add host-discovery probe ahead of warm/gather; pin the batch to one provider  
+**Blocked by / blocks / related:** parent: AST-1954
+
+### Description
+
+## What this implements
+
+`do_task` records the host returned with each response on the active batch's `dispatch_ledger` row, using the server label for Anthropic-direct calls. The ledger table gains the host column. This child comes after #1, whose `llm_compat` result supplies `host`. It does **not** touch the external layer (#1) or `dispatcher.py`.
+
+## Citations
+
+`patt.entity.batch-processing` (host recorded on the claim's ledger row); `stat.logging.debug`.
+
+## Scope
+
+* `src/core/agent.py` (**modified**): **modified call path** (`do_task` via `_send_to_server`). After each call it writes the result's host, or the server label for the Anthropic-direct client, to the `dispatch_ledger` row for `log_batch_id` when one is set.
+* `src/data/database.py` (**modified**):
+  * **Modified** `dispatch_ledger` schema-ensure: adds the host column (DDL only, per AST-1497).
+  * **Modified** `_LEDGER_UPDATE_COLS`: includes it.
+  * **Modified readers:** return it.
+* Tests and bibles (Betty in `qa-child`):
+  * `tests/component/core/test_agent.py`
+  * `tests/component/data/database/test_dispatch_ledger.py`
+  * `docs/test-bible/core/agent.md`
+  * `docs/test-bible/data/database/dispatch_ledger.md`
+
+## Acceptance criteria
+
+1. **The host is recorded (this child's part).**
+   * **Check (component test, temp DB):** after `do_task` runs under a `log_batch_id` with a saved ledger row, `get_dispatch_ledger(<id>)` returns that host.
+   * **Check:** for an Anthropic-direct agent, the ledger row's host is the `anthropic` server label.
+   * **Fails if:** the host is missing from the ledger row, or it is wrong for direct.
+2. **Live lock works (UAT).**
+   * **Check:** run one live `anticipate_scan` batch of at least 3 entities on an OpenRouter agent. The batch log shows one probe. Every call's INFO line names the same host, and the batch's `dispatch_ledger` row shows it. Timesheet `inputcached` is greater than 0 on every call after the warm call.
+   * **Fails if:** the warm call returns 404 (meaning `only` didn't accept the response's provider name), the hosts differ, the ledger host is empty, or `inputcached` is 0 after the warm call.
+
+## Boundaries
+
+* Does **not** touch `config.py`, `openrouter.py`, `llm_compat.py` or `logging.py`: that is #1 (Per-batch probe and host lock on the OpenRouter path - Hedy).
+* Does **not** change `dispatcher.py`. The host reaches the ledger through `agent.py`, because `ctx` copies and summed dispatch results don't carry it back to the dispatcher (parent As-built facts).
+
+## Notes for planning
+
+* Cite `patt.entity.batch-processing` and `stat.logging.debug`.
+* `agent.py` already writes ledger rows for chained hops (`_open_run_next_hop_ledger` / `_finalize_run_next_hop_ledger`). Writing to the `log_batch_id` row covers dispatcher batches and hop rows alike.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T00:52:13.139Z
+[code-rubric] PROCEED (Commit: c432cea62) ledger host on batch row
+
+#### betty — 2026-10-04T00:49:46.971Z
+`origin/sub/AST-1954/AST-1960-ledger-host` @ `c432cea62` · ledger host tests, 67 manifest
+
+#### joan — 2026-10-04T00:40:44.351Z
+[plan-rubric] PROCEED (Commit: a0b5d2fdf) ledger host plan solid
+
+#### katherine — 2026-10-04T00:39:39.554Z
+`origin/sub/AST-1954/AST-1960-ledger-host` @ `a0b5d2fdf` · ledger host plan ready
+
+---
+
 # AST-1960 — Record the serving host on the dispatch ledger
 
 - **Parent:** [AST-1954 — Add host-discovery probe ahead of warm/gather; pin the batch to one provider](https://linear.app/astralcareermatch/issue/AST-1954)
