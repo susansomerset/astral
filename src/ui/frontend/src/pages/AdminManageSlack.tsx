@@ -221,15 +221,6 @@ export default function AdminManageSlack() {
                 {debugEnabled === null ? "—" : debugEnabled ? "On" : "Off"}
               </strong>
             </p>
-            {state.is_production ? (
-              <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
-                Production — replies are not prefixed.
-              </p>
-            ) : (
-              <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
-                Non-production — replies are prefixed with [{state.environment}]{" "}
-              </p>
-            )}
             <button
               type="button"
               className="btn secondary"

@@ -14,11 +14,11 @@
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
 
-Contact scaffold: `slack_listen_enabled`, `contact_skills` / `contact_skill_keys`, `slack_env_names`, `non_production_reply_prefix` — reads `CONTACT_CONFIG` only; no Slack HTTP / DB / skill runners. Config block: **`docs/test-bible/utils/config.md`**.
+Contact scaffold: `slack_listen_enabled`, `contact_skills` / `contact_skill_keys`, `slack_env_names` (`non_production_reply_prefix` removed **AST-2085** — `format_contact_reply_text` is a passthrough; `handle_slack_event` hear-ack test asserts no `[staging] ` prefix) — reads `CONTACT_CONFIG` only; no Slack HTTP / DB / skill runners. Config block: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Listen default / skills shallow copy / env names / prefix / no TASK_CONFIG collision | `src/core/contact.py` | **`TestAst1066ContactScaffold`** |
+| Listen default / skills shallow copy / env names / no TASK_CONFIG collision | `src/core/contact.py` | **`TestAst1066ContactScaffold`** |
 
 **Broken / obsolete:** empty-`skills` asserts superseded by **AST-1071** (scaffold still requires shallow-copy + collision checks).
 
@@ -135,7 +135,7 @@ Process-local conversation cache: `load_slack_conversation_context` returns Stag
 
 **Parent:** [AST-1046 — Contact Estelle conversational envelope](https://linear.app/astralcareermatch/issue/AST-1046/contact-estelle-conversational-envelope). **Publish:** `origin/sub/AST-1046/AST-1073-contact-estelle-turn-loop`.
 
-`run_contact_estelle_turn`: listen re-check → Slack context live_content → `do_task(contact_estelle_turn)` → `conversational_turn_from_do_task_result` → optional ACL `skill_calls` → Slack reply (non-prod prefix) on success/concern only; concern `admin_aside` → warning log (never Slack); Style D when `debug=True`. Hooked from `handle_slack_event` after accept + resolve + inbound append. Config: **`docs/test-bible/utils/config.md`**. Envelope: **`docs/test-bible/core/agent.md`** (AST-1072). Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
+`run_contact_estelle_turn`: listen re-check → Slack context live_content → `do_task(contact_estelle_turn)` → `conversational_turn_from_do_task_result` → optional ACL `skill_calls` → Slack reply (no env prefix since AST-2085) on success/concern only; concern `admin_aside` → warning log (never Slack); Style D when `debug=True`. Hooked from `handle_slack_event` after accept + resolve + inbound append. Config: **`docs/test-bible/utils/config.md`**. Envelope: **`docs/test-bible/core/agent.md`** (AST-1072). Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -483,7 +483,7 @@ The turn's model/key route (contact agent row, kimi key) is covered in [`agent.m
 
 `parse_contact_command` matches a registered `/<id>` only as the first token after leading `<@U…>` mentions and unwraps Slack `<url|label>` / `<url>`. In `_handle_slack_event_body`, a bound sender's command skips paste recovery and the normal turn and runs `_run_contact_command`: empty payload → usage post; `code` → handler (`insert_slack_meteorite`, sibling **AST-2034** — `core/meteorite.md`) then a fixed ack naming the id only on success (a soft-fail posts nothing, so the AST-1101 hear-ack fires); `agent` → one `run_contact_estelle_turn` with the result JSON as `extra_context` (rendered under `## Command result (this inbound event)` in live content). `_emit_listen_info` prefixes `action:` with `<id>:<mode>,meteorite:<id>`. Registry + import-time asserts: [`../utils/config.md`](../utils/config.md) § AST-2035.
 
-Known senders always get the AST-1668 recognition post first, so AC3's "one ack" is asserted as exactly one post containing the meteorite id plus no hear-ack.
+Known senders always get the AST-1668 recognition post first, so AC3's "one ack" is asserted as exactly one post containing the meteorite id plus no hear-ack. *(AST-2072 removed that recognition post; AC3 now also asserts exactly one post — see § AST-2072.)*
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -587,3 +587,59 @@ AST-2061 closed Estelle's write pinhole: no `skill_calls` / `save_candidate_*` p
 The five `--deselect`s fail identically on pre-fix `6b00d8c5f` (pre-existing; not this ticket's to fix).
 
 **Pass criterion:** pytest green on the AST-2061 tip. Across the six touched files, the 33 AST-2061 reds are gone; remaining failures equal the 82 pre-existing on `6b00d8c5f` minus the 7 retired with `TestAst1071ContactSkillRunners` / `TestAst1071ContactSkillsConfig` / `TestAst1517CreateContactMeteorite` (75). Not zero-arg harness / branch-lock gate.
+
+### AST-2072 · AST-2050 (natural Estelle replies + thread_response placement)
+
+**Parent:** [AST-2050](https://linear.app/astralcareermatch/issue/AST-2050) — Contact Estelle behavior. **Publish:** `origin/sub/AST-2050/AST-2072-estelle-thread-response`.
+
+A bound sender no longer gets the canned AST-1668 "I know who that is" post — Estelle's own reply (turn, `/add-job` usage/ack, paste ack, hear-ack) is the only post. `_contact_reply_placement(thread_ts, message_ts)` resolves every reply's `(thread_ts, reply_broadcast)` from `CONTACT_CONFIG["thread_response"]`: `threads_only` (default) threads only an in-thread inbound, `always_no_share` threads under the user's thread or message, `always_with_share` adds `reply_broadcast`. `contact_post_message` passes `reply_broadcast` through and caches on the thread actually posted to (top-level → `(channel, "")`). The `/add-job` handler anchor stays `thread_ts or message_ts` regardless of placement. Config: [`../utils/config.md`](../utils/config.md) § AST-2072. Slack body: [`../external/slack.md`](../external/slack.md) § AST-2072.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper: 3 modes × top-level / in-thread (AC 4–7) | `src/core/contact.py` | **`TestAst2072ThreadResponsePlacement::test_placement_helper`** (6) |
+| `contact_post_message` broadcast pass-through + top-level cache key | same | **`…::test_contact_post_message_broadcast_and_top_level_cache_key`** |
+| AC 3 bound turn = one post, no recognition | same | **`…::test_ac3_bound_turn_is_the_only_post`** |
+| AC 4–7 end to end: real turn reply placement through `handle_slack_event` | same | **`…::test_ac4_to_7_turn_reply_placement`** (6) |
+| AC 8 every reply site (turn, usage, code ack, paste ack, hear-ack, unknown) × `threads_only` / `always_with_share`, with an outcome guard so each case really hits its site | same | **`…::test_ac8_every_reply_site_obeys_setting`** (12) |
+| AC 10 handler anchor = message ts while the ack posts top-level | same | **`…::test_ac10_handler_anchor_is_message_ts_under_threads_only`** |
+| AC 12 one `contact listen` INFO line, debug off | same | **`…::test_ac12_one_listen_info_line_debug_off`** |
+| AC 13 / AC 14 exact unknown and fallback text | same | **`…::test_ac13_unbound_sender_exact_text_no_turn`**, **`…::test_ac14_failed_turn_posts_exact_fallback`** |
+| AC 1 / AC 14 retired strings absent from `src/` (whole-word `known_recognition_reply_text`, so `unknown_…` does not match) | `src/**` | **`…::test_ac1_ac14_retired_strings_absent_from_src`** |
+| AC 9 placement-logic grep: hits only in the helper, the `_run_contact_command` anchor, and the paste-recovery lookup anchor (plan Stage 2 step 7) | `src/core/contact.py` | **`…::test_ac9_placement_logic_only_in_helper_and_anchors`** |
+
+**Broken / obsolete this pass (revised):**
+- `TestAst1073ContactEstelleTurnLoop::test_success_posts_prefixed_reply` — top-level reply now `thread_ts=None`, `reply_broadcast=False`.
+- `TestAst1101ChannelHearEvidence::test_hear_ack_when_turn_does_not_post` — one post (hear-ack), top-level; no `recognition_post`.
+- `TestAst1101ChannelHearEvidence::test_no_hear_ack_when_turn_posted` — no post at all (turn stubbed); no `recognition_post`.
+- `TestAst1668UnboundAndRecognition::test_known_recognition_then_estelle` → renamed **`test_bound_sender_no_recognition_then_estelle`**.
+- `TestAst2035ContactCommandIntercept::test_ac3_code_mode_no_llm_one_ack_no_hear_ack` — tightened to exactly one post (the § AST-2035 "recognition post first" note no longer holds).
+
+**Integration:** none — no scenario covers Contact Slack events; do not invent.
+
+## QA test manifest
+
+1. New: `tests/component/core/test_contact.py::TestAst2072ThreadResponsePlacement`, `tests/component/utils/test_config.py::TestAst2072ThreadResponseConfig`, `tests/component/external/test_slack.py::TestAst2072PostMessageReplyBroadcast`
+2. Revised regression (contact): `TestAst1073ContactEstelleTurnLoop`, `TestAst1101ChannelHearEvidence`, `TestAst1668UnboundAndRecognition`, `TestAst2035ContactCommandIntercept`
+3. Revised regression (config / slack): `TestAst1668RecognitionReplyConfig`, `TestAst1101HearAckConfig`, `TestAst1069ExternalSlack`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst2072ThreadResponsePlacement \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop \
+  tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence \
+  tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition \
+  tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept \
+  tests/component/utils/test_config.py::TestAst2072ThreadResponseConfig \
+  tests/component/utils/test_config.py::TestAst1668RecognitionReplyConfig \
+  tests/component/utils/test_config.py::TestAst1101HearAckConfig \
+  tests/component/external/test_slack.py::TestAst2072PostMessageReplyBroadcast \
+  tests/component/external/test_slack.py::TestAst1069ExternalSlack \
+  --deselect tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_concern_posts_and_logs_aside \
+  --deselect tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_debug_style_d_index_and_detail \
+  --deselect tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence::test_background_wrapper_logs_exception \
+  -q
+```
+
+The three `--deselect`s fail identically on `origin/tests` with pre-AST-2072 product (same as the § AST-2035 deselects). Not this ticket's to fix. Needs `nh3` in the venv (AST-2061 product on dev) — `pip install -r requirements.txt`.
+
+**Pass criterion:** pytest green on the manifest (78 passed) — not zero-arg harness / branch-lock gate. Across `test_contact.py` + `test_config.py` + `test_slack.py`, the remaining 33 failures equal the pre-existing set on `origin/tests` @ `39a11978c` (dev incl. AST-2055); AST-2072 adds none.

@@ -29,3 +29,17 @@
   tests/component/ui/api/test_api_companies.py::TestCompaniesRoutes \
   -q
 ```
+
+### AST-2071 · AST-2054
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2071-upshot-display`. UI side + manifest: [`../../frontend/components.md`](../../frontend/components.md) § AST-2071.
+
+`_flatten_for_view` lifts `company_data.company_upshot` to top-level `company_upshot` (`""` when absent) on list and detail payloads (AC12).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| upshot lift + `""` default | `src/ui/api/api_companies.py` | new **`TestFlattenForView::test_lifts_company_upshot_default_empty`**; revised **`TestCompaniesRoutes::test_detail_returns_story_and_counts`** (asserts `company_upshot == ""`) |
+
+**Broken / obsolete:** none — additive key. No new branch (branch lock unaffected).
+
+**Integration:** none.

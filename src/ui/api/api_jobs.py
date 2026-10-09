@@ -6,6 +6,7 @@ from typing import Optional
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_auth
+from ui.api_errors import server_error_from_exception
 from src.core.consult import _phase_score_breakdown
 from src.core.agent import get_entity_agent_story
 from src.core.roster import get_company, update_company
@@ -22,11 +23,13 @@ from src.core.tracker import (
     legal_job_successor_states,
     list_jobs,
     list_jobs_below_dispatch_score_floor,
+    list_job_artifact_versions,
     persist_skipped_job_edits,
     save_job_artifact,
     save_job_data,
     score_floor_by_trigger_for_candidate,
     set_candidate_result,
+    set_job_artifact_current,
     start_artifact_build,
     transition_job_state,
 )
@@ -411,6 +414,62 @@ def put_job_proposed_answers(astral_job_id):
         return jsonify({"error": "proposed_answers must be a dict"}), 400
     save_job_data(astral_job_id, {"artifacts": {"proposed_answers": body}})
     return jsonify({"ok": True})
+
+
+@jobs_bp.route("/<astral_job_id>/artifacts/<artifact_key>/versions", methods=["GET"])
+@require_auth
+def get_job_artifact_versions_api(astral_job_id, artifact_key):
+    """AST-2067: chronological version map for a job catalog key (oldest first)."""
+    job = get_job(astral_job_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    try:
+        versions = list_job_artifact_versions(astral_job_id, artifact_key)
+    except ValueError as exc:
+        # Unknown / non-job catalog key — routed reject, no log.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the editor shows no version arrows",
+            job.get("candidate_id") or "-",
+            f"/api/jobs/{astral_job_id}/artifacts/{artifact_key}/versions",
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    return jsonify({"versions": versions})
+
+
+@jobs_bp.route("/<astral_job_id>/artifacts/<artifact_key>/current", methods=["PUT"])
+@require_auth
+def put_job_artifact_current_api(astral_job_id, artifact_key):
+    """AST-2067: move current to a named version of a job catalog key; body untouched."""
+    job = get_job(astral_job_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    body = request.get_json(silent=True)
+    uid = body.get("artifact_uuid") if isinstance(body, dict) else None
+    if not isinstance(uid, str) or not uid.strip():
+        return jsonify({"error": "artifact_uuid required"}), 400
+    cid = job.get("candidate_id") or "-"
+    route = f"/api/jobs/{astral_job_id}/artifacts/{artifact_key}/current"
+    try:
+        current = set_job_artifact_current(astral_job_id, artifact_key, uid)
+        versions = list_job_artifact_versions(astral_job_id, artifact_key)
+    except ValueError as exc:
+        # Bad key, or uuid outside this job/key (cross-key guard) — data layer rolled back.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the editor keeps its loaded version",
+            cid,
+            route,
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    logger.info("%s | api %s completed: PUT %s", cid, route, 200)
+    return jsonify({"current": current, "versions": versions})
 
 
 @jobs_bp.route("/<astral_job_id>/skip", methods=["POST"])

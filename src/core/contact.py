@@ -6,7 +6,7 @@ AST-1069: Events HTTP ingress (`receive_slack_events_http`) + inbound routing
 AST-1068 / AST-1668: `resolve_slack_user` lookup-only (no create-on-miss);
 unbound Slack poster pool + known/unknown recognition replies on accept.
 AST-1070: Slack-sourced conversation context load / process-local cache / append.
-AST-1067: Manage Slack listen hydrate/set + non-prod reply prefix / post helper.
+AST-1067: Manage Slack listen hydrate/set + reply post helper (AST-2085 retired the non-prod prefix).
 AST-1206: Manage Slack debug get/set.
 AST-1207: Events/Socket ingress hydrates debug from Manage Slack durable SoT
 (`slack_debug_enabled`); logger.debug on the Contact Slack path (log_debug ContextVar).
@@ -242,20 +242,40 @@ def append_slack_conversation_message(
     )
 
 
+def _contact_reply_placement(
+    thread_ts: Optional[str], message_ts: Optional[str]
+) -> Tuple[Optional[str], bool]:
+    """Resolve ``(reply thread_ts, reply_broadcast)`` for a reply to one inbound Slack message.
+
+    Driven by ``CONTACT_CONFIG["thread_response"]`` (AST-2072); ``None`` thread_ts = top-level post.
+    The single placement rule for every Contact reply site — no per-site ``thread_ts or …`` copies.
+    """
+    # Read per call (not at import) so a config change applies without a restart path.
+    mode = CONTACT_CONFIG["thread_response"]
+    if mode == "threads_only":
+        # Thread only when the user was already in one; a top-level message gets a top-level reply.
+        return (thread_ts or None, False)
+    # always_no_share / always_with_share: the user's thread, or a new thread under their message.
+    return (thread_ts or message_ts or None, mode == "always_with_share")
+
+
 @_with_log_debug
 def contact_post_message(
     *,
     channel: str,
     text: str,
     thread_ts: Optional[str] = None,
+    reply_broadcast: bool = False,
     debug: bool = False,
 ) -> dict:
     """Post via external slack.post_message, then append outbound text into cache."""
     logger.debug(
-        "Calling post_message: [channel=%r, thread_ts=%r, text=%r]",
-        channel, thread_ts, text,
+        "Calling post_message: [channel=%r, thread_ts=%r, reply_broadcast=%s, text=%r]",
+        channel, thread_ts, reply_broadcast, text,
     )
-    resp = post_message(channel=channel, text=text, thread_ts=thread_ts)
+    resp = post_message(
+        channel=channel, text=text, thread_ts=thread_ts, reply_broadcast=reply_broadcast
+    )
     logger.debug("Response from post_message: %s", resp)
     if resp.get("ok"):
         # Prefer Slack response ts; fall back so cache still warms if shape odd.
@@ -263,6 +283,7 @@ def contact_post_message(
         if not isinstance(out_ts, str):
             out_ts = str(out_ts) if out_ts else ""
         if out_ts:
+            # Key on the thread actually posted to — a top-level reply lands on (channel, "").
             append_slack_conversation_message(
                 channel=channel,
                 thread_ts=thread_ts,
@@ -318,14 +339,6 @@ def slack_env_names() -> Dict[str, str]:
         "bot_token": str(CONTACT_CONFIG["bot_token_env"]),
         "signing_secret": str(CONTACT_CONFIG["signing_secret_env"]),
     }
-
-
-def non_production_reply_prefix(environment: str) -> str:
-    """Format CONTACT_CONFIG non-production reply prefix (AST-1067 applies when listen on)."""
-    env = (environment or "").strip()
-    return str(CONTACT_CONFIG["non_production_reply_prefix_template"]).format(
-        environment=env
-    )
 
 
 def contact_is_production_deploy() -> bool:
@@ -387,11 +400,8 @@ def list_estelle_activity(*, debug: bool = False) -> list[dict]:
 
 
 def format_contact_reply_text(text: str) -> str:
-    """Prefix non-production Contact replies with ``[<environment>] ``; production unchanged."""
-    body = text if isinstance(text, str) else ""
-    if contact_is_production_deploy():
-        return body
-    return non_production_reply_prefix(get_deploy_label()) + body
+    """Outbound Contact reply text — sent as-is in every environment (AST-2085 retired the env prefix)."""
+    return text if isinstance(text, str) else ""
 
 
 @_with_log_debug
@@ -402,7 +412,7 @@ def post_contact_reply(
     thread_ts: Optional[str] = None,
     debug: bool = False,
 ) -> dict:
-    """Format outbound text (non-prod prefix) then ``external.slack.post_message``."""
+    """Format outbound text then ``external.slack.post_message``."""
     outbound = format_contact_reply_text(text)
     logger.debug(
         "Calling post_message: [channel=%r, thread_ts=%r, text=%r, outbound=%r]",
@@ -1337,12 +1347,13 @@ def run_contact_estelle_turn(
         and outcome in ("success", "concern")
     )
     if reply_ok:
-        reply_thread_ts = thread_ts or message_ts
+        reply_ts, reply_broadcast = _contact_reply_placement(thread_ts, message_ts)
         outbound = format_contact_reply_text(reply_for_slack)
         slack_post = contact_post_message(
             channel=channel,
             text=outbound,
-            thread_ts=reply_thread_ts,
+            thread_ts=reply_ts,
+            reply_broadcast=reply_broadcast,
             debug=debug,
         )
 
@@ -1382,7 +1393,10 @@ def _run_contact_command(
 ) -> dict:
     """Run one registry command and reply per its mode; returns the estelle_turn dict."""
     meta = CONTACT_CONFIG["commands"][command_id]
-    reply_thread_ts = thread_ts or message_ts
+    # Handler anchor stays the inbound thread (or message) so later nags find this thread,
+    # independent of where thread_response puts our replies (AST-2072 AC 10).
+    anchor_ts = thread_ts or message_ts
+    reply_ts, reply_broadcast = _contact_reply_placement(thread_ts, message_ts)
     summary = {"id": command_id, "mode": meta["mode"], "ok": False, "meteorite_id": None, "error": None}
 
     # Empty payload: usage reply only, either mode — no handler, no turn.
@@ -1391,7 +1405,8 @@ def _run_contact_command(
         post = contact_post_message(
             channel=channel,
             text=format_contact_reply_text(meta["usage_reply_text"]),
-            thread_ts=reply_thread_ts,
+            thread_ts=reply_ts,
+            reply_broadcast=reply_broadcast,
             debug=debug,
         )
         return {"ok": True, "outcome": command_id, "command": summary, "slack_post": post}
@@ -1407,11 +1422,11 @@ def _run_contact_command(
         source_id = f"{channel}:{message_ts or ''}"
         logger.debug(
             "Calling %s: [candidate_id=%r, source_id=%r, thread_ts=%r, payload=%r]",
-            meta["handler"], astral_candidate_id, source_id, reply_thread_ts, payload,
+            meta["handler"], astral_candidate_id, source_id, anchor_ts, payload,
         )
         out = handler(
             astral_candidate_id, payload,
-            source_id=source_id, thread_ts=reply_thread_ts, debug=debug,
+            source_id=source_id, thread_ts=anchor_ts, debug=debug,
         )
         logger.debug("Response from %s: %s", meta["handler"], out)
         if isinstance(out, dict):
@@ -1440,7 +1455,8 @@ def _run_contact_command(
             text=format_contact_reply_text(
                 meta["ack_reply_template"].format(meteorite_id=summary["meteorite_id"])
             ),
-            thread_ts=reply_thread_ts,
+            thread_ts=reply_ts,
+            reply_broadcast=reply_broadcast,
             debug=debug,
         )
     return {"ok": summary["ok"], "outcome": command_id, "command": summary, "slack_post": post}
@@ -1643,28 +1659,29 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
             },
             debug=debug,
         )
-    # AST-1668: known/unknown recognition, then Estelle only when bound.
+    # AST-1668 / AST-2072: unbound sender gets the unknown reply only; a bound sender gets no
+    # recognition post — Estelle's own reply (turn / command / paste ack / hear-ack) is the answer.
     if result.get("accepted") and isinstance(channel, str) and channel:
         user_ok = isinstance(user, str) and bool(user.strip())
         resolve_ok = user_ok and not result.get("resolve_error")
         known = isinstance(result.get("astral_candidate_id"), str) and bool(
             result.get("astral_candidate_id")
         )
-        if resolve_ok:
-            text_key = (
-                "known_recognition_reply_text"
-                if known
-                else "unknown_recognition_reply_text"
-            )
+        # One placement decision for every reply this event can produce (thread_response).
+        reply_ts, reply_broadcast = _contact_reply_placement(
+            event.get("thread_ts"), msg_ts if isinstance(msg_ts, str) else None
+        )
+
+        # Unknown bound miss: unknown reply only — do not run Estelle as if bound.
+        if resolve_ok and not known:
             try:
-                outbound = format_contact_reply_text(str(CONTACT_CONFIG[text_key]))
-                reply_thread_ts = event.get("thread_ts")
-                if not reply_thread_ts and isinstance(msg_ts, str):
-                    reply_thread_ts = msg_ts
                 result["recognition_post"] = contact_post_message(
                     channel=channel,
-                    text=outbound,
-                    thread_ts=reply_thread_ts,
+                    text=format_contact_reply_text(
+                        str(CONTACT_CONFIG["unknown_recognition_reply_text"])
+                    ),
+                    thread_ts=reply_ts,
+                    reply_broadcast=reply_broadcast,
                     debug=debug,
                 )
             except Exception as exc:
@@ -1673,9 +1690,6 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                     result.get("astral_candidate_id") or "-", type(exc).__name__, exc,
                 )
                 result["recognition_post"] = {"ok": False, "error": str(exc)}
-
-        # Unknown bound miss: recognition only — do not run Estelle as if bound.
-        if resolve_ok and not known:
             result["estelle_turn"] = {
                 "ok": True,
                 "outcome": "unrecognized",
@@ -1720,9 +1734,6 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                     ack = format_contact_reply_text(
                         "Got it — pasted job description saved for review."
                     )
-                    reply_thread_ts = event.get("thread_ts")
-                    if not reply_thread_ts and isinstance(msg_ts, str):
-                        reply_thread_ts = msg_ts
                     result["estelle_turn"] = {
                         "ok": True,
                         "outcome": "paste_applied",
@@ -1730,7 +1741,8 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                         "slack_post": contact_post_message(
                             channel=channel,
                             text=ack,
-                            thread_ts=reply_thread_ts,
+                            thread_ts=reply_ts,
+                            reply_broadcast=reply_broadcast,
                             debug=debug,
                         ),
                     }
@@ -1774,13 +1786,11 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                     outbound = format_contact_reply_text(
                         str(CONTACT_CONFIG["hear_ack_reply_text"])
                     )
-                    reply_thread_ts = event.get("thread_ts")
-                    if not reply_thread_ts and isinstance(msg_ts, str):
-                        reply_thread_ts = msg_ts
                     result["hear_ack_post"] = contact_post_message(
                         channel=channel,
                         text=outbound,
-                        thread_ts=reply_thread_ts,
+                        thread_ts=reply_ts,
+                        reply_broadcast=reply_broadcast,
                         debug=debug,
                     )
                     logger.debug(

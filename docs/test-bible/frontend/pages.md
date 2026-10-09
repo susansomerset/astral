@@ -1413,7 +1413,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
 
-Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin/contact/listen`; toggle `PUT` enables/disables listen for this environment; non-prod copy notes `[<environment>]` reply prefix. API: **`docs/test-bible/ui/api/api_contact.md`**. Nav: **`docs/test-bible/utils/config.md`**.
+Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin/contact/listen`; toggle `PUT` enables/disables listen for this environment; no reply-prefix copy (AST-2085 retired the `[<environment>]` prefix). API: **`docs/test-bible/ui/api/api_contact.md`**. Nav: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -3806,3 +3806,8 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/comp
 ```
 
 **Pass criterion (test-fix):** the AST-2077 `[bug-repro]` flips red → green; the other 6 cases (AST-2047 page, AST-2064 options, 4 App.css) stay green.
+
+### AST-2068 · AST-2043 (routed pages — blur-save + version arrows)
+
+§6c routed-page coverage for the AST-2068 component change: **`ArtifactsBaseResumeContent`** (AC1/AC2 blur + AC4 arrows), **`ArtifactsDoJobCriteria`** (AC4 per criterion + AC2; stale `api` mock / manifest fixture repaired), **`CandidateBioSummary`** (AC4 + save-before-move). Full-paint mocks include the `/versions` and `/current` routes. Manifest: [`components.md`](components.md) § AST-2068.
+

@@ -8,6 +8,7 @@ import struct
 from flask import Blueprint, g, jsonify, request
 
 from ui.auth import require_auth, require_admin
+from ui.api_errors import server_error_from_exception
 from src.core.candidate import (
     _clear_pending_craft_generation,
     _stash_pending_craft_generation,
@@ -36,12 +37,16 @@ from src.core.candidate import (
     IllegalCandidateTransition,
     initiate_candidate,
     list_candidates as core_list_candidates,
+    list_candidate_artifact_versions,
+    list_rubric_criterion_versions,
     normalize_resume_structure,
     normalize_rubric_artifacts_on_save,
     prepare_resume_structure_sections_for_save,
     resolve_resume_structure,
     run_candidate_artifact_generation,
     save_candidate_data,
+    set_candidate_artifact_current,
+    set_rubric_criterion_current,
     start_requested_artifacts,
     transition_candidate_state,
     update_candidate_api_keys,
@@ -260,6 +265,112 @@ def get_operative_base_resume_api(candidate_id):
     if body is None:
         return jsonify({"error": "base_resume not found for pin"}), 404
     return jsonify({"base_resume": body})
+
+
+@candidate_bp.route("/<candidate_id>/artifacts/<artifact_key>/versions", methods=["GET"])
+@require_auth
+def get_candidate_artifact_versions_api(candidate_id, artifact_key):
+    """AST-2067: chronological version map for a candidate catalog key (oldest first)."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    try:
+        versions = list_candidate_artifact_versions(candidate_id, artifact_key)
+    except ValueError as exc:
+        # Unknown / non-candidate catalog key — routed reject, no log.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the editor shows no version arrows",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/artifacts/{artifact_key}/versions",
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    return jsonify({"versions": versions})
+
+
+@candidate_bp.route("/<candidate_id>/artifacts/<artifact_key>/current", methods=["PUT"])
+@require_auth
+def put_candidate_artifact_current_api(candidate_id, artifact_key):
+    """AST-2067: move current to a named version of a candidate catalog key; body untouched."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    body = request.get_json(silent=True)
+    uid = body.get("artifact_uuid") if isinstance(body, dict) else None
+    if not isinstance(uid, str) or not uid.strip():
+        return jsonify({"error": "artifact_uuid required"}), 400
+    route = f"/api/candidates/{candidate_id}/artifacts/{artifact_key}/current"
+    try:
+        current = set_candidate_artifact_current(candidate_id, artifact_key, uid)
+        versions = list_candidate_artifact_versions(candidate_id, artifact_key)
+    except ValueError as exc:
+        # Bad key, or uuid outside this key/candidate (cross-key guard) — data layer rolled back.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the editor keeps its loaded version",
+            candidate_id,
+            route,
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    logger.info("%s | api %s completed: PUT %s", candidate_id, route, 200)
+    return jsonify({"current": current, "versions": versions})
+
+
+@candidate_bp.route("/<candidate_id>/rubric/<artifact_key>/<code>/versions", methods=["GET"])
+@require_auth
+def get_rubric_criterion_versions_api(candidate_id, artifact_key, code):
+    """AST-2067: chronological version map for one rubric criterion (shared code, oldest first)."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    try:
+        versions = list_rubric_criterion_versions(candidate_id, artifact_key, code)
+    except ValueError as exc:
+        # Not a rubric criteria key — routed reject, no log.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the criterion shows no version arrows",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/rubric/{artifact_key}/{code}/versions",
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    return jsonify({"versions": versions})
+
+
+@candidate_bp.route("/<candidate_id>/rubric/<artifact_key>/<code>/current", methods=["PUT"])
+@require_auth
+def put_rubric_criterion_current_api(candidate_id, artifact_key, code):
+    """AST-2067: move current to a named version of one rubric criterion; other codes untouched."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    body = request.get_json(silent=True)
+    uid = body.get("rubric_vector_uuid") if isinstance(body, dict) else None
+    if not isinstance(uid, str) or not uid.strip():
+        return jsonify({"error": "rubric_vector_uuid required"}), 400
+    route = f"/api/candidates/{candidate_id}/rubric/{artifact_key}/{code}/current"
+    try:
+        current = set_rubric_criterion_current(candidate_id, artifact_key, code, uid)
+        versions = list_rubric_criterion_versions(candidate_id, artifact_key, code)
+    except ValueError as exc:
+        # Bad key, or uuid outside this candidate/task/code (cross-key guard) — data layer rolled back.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the criterion keeps its loaded version",
+            candidate_id,
+            route,
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    logger.info("%s | api %s completed: PUT %s", candidate_id, route, 200)
+    return jsonify({"current": current, "versions": versions})
 
 
 @candidate_bp.route("", methods=["POST"])

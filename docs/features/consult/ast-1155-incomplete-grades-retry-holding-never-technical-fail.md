@@ -1603,16 +1603,16 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Hedy | engineer | `/home/susan/.cursor/chats/3f7277443298b0f569385f6b85b8a64c/dbfcdf91-44a4-4730-8d05-3da2f3df866c/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/2eba1372-063e-42fc-9e39-cb4da5c03584/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/3f7277443298b0f569385f6b85b8a64c/8134356f-659e-484e-9946-fdb0dd9808e3/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/764489cc5790684bd14a57ff2d29f405/5754654a-d352-4d7c-9e94-3baf74b61295/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/a778d6a0-76e9-477f-b0b6-e91b715f8cfe/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/764489cc5790684bd14a57ff2d29f405/79ed6eff-f2bc-4920-912f-4fe82547cd04/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1884 (parent) | ftr/AST-1884-decode-line-retry |
-| AST-1996 | sub/AST-1884/AST-1996-decode-line-retry |
-| AST-2001 | sub/AST-1884/AST-2001-decode-line-retry-tests |
+| AST-2045 (parent) | ftr/AST-2045-letter-conf0-normalize |
+| AST-2053 | sub/AST-2045/AST-2053-letter-conf0-normalize |
+| AST-2057 | sub/AST-2045/AST-2057-letter-conf0-tests |
 
-**Epic worktree:** `astral-AST-1884/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2045/` — one active sub checked out at a time.

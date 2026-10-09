@@ -3503,7 +3503,7 @@ class TestAst1066ContactConfig:
         assert cc["listen_enabled"] is False
         assert cc["bot_token_env"] == "SLACK_BOT_TOKEN"
         assert cc["signing_secret_env"] == "SLACK_SIGNING_SECRET"
-        assert cc["non_production_reply_prefix_template"] == "[{environment}] "
+        assert "non_production_reply_prefix_template" not in cc
         assert isinstance(cc["skills"], dict)
         for skill_key in cc["skills"]:
             assert skill_key not in cfg.TASK_CONFIG
@@ -4407,7 +4407,8 @@ class TestAst1101HearAckConfig:
 
     def test_hear_ack_reply_text(self) -> None:
         text = cfg.CONTACT_CONFIG["hear_ack_reply_text"]
-        assert isinstance(text, str) and text.strip()
+        # AST-2072: Susan's verbatim fallback wording (double space after "planned.").
+        assert text == "That didn't work as planned.  Let's ask @susan."
 
 
 class TestAst1094ActivityConfig:
@@ -6558,13 +6559,41 @@ class TestAst1678CatalogResumeStructureBodyShape:
 
 
 class TestAst1668RecognitionReplyConfig:
-    """AST-1668: CONTACT_CONFIG known/unknown recognition reply text."""
+    """AST-1668 / AST-2072: unknown recognition reply text; known recognition key retired."""
 
     def test_recognition_reply_defaults(self) -> None:
-        known = cfg.CONTACT_CONFIG["known_recognition_reply_text"]
+        assert "known_recognition_reply_text" not in cfg.CONTACT_CONFIG
         unknown = cfg.CONTACT_CONFIG["unknown_recognition_reply_text"]
-        assert isinstance(known, str) and known.strip() == "I know who that is"
-        assert isinstance(unknown, str) and unknown.strip() == "I don't recognize you"
+        # Susan's verbatim wording: double space after "yet.", no trailing period.
+        assert unknown == "Sorry, I don't recognize you, yet.  Let's check with @susan"
+
+
+# Branches: thread_response default; import-time vocabulary assert rejects / accepts (AST-2072).
+class TestAst2072ThreadResponseConfig:
+    """AST-2072: CONTACT_CONFIG["thread_response"] placement setting."""
+
+    _LINE = '"thread_response": "threads_only",'
+
+    def _exec_with(self, value: str) -> None:
+        # Splice the value into the real config source so the shipped assert (not a copy) runs.
+        from pathlib import Path
+
+        text = Path(cfg.__file__).read_text(encoding="utf-8")
+        # A moved/renamed line must fail loudly, not let the splice pass vacuously.
+        assert text.count(self._LINE) == 1
+        spliced = text.replace(self._LINE, f'"thread_response": "{value}",', 1)
+        exec(compile(spliced, "config_spliced", "exec"), {"__name__": "config_spliced", "__file__": cfg.__file__})  # noqa: S102
+
+    def test_default_threads_only(self) -> None:
+        assert cfg.CONTACT_CONFIG["thread_response"] == "threads_only"
+
+    def test_assert_rejects_unknown_value(self) -> None:
+        with pytest.raises(AssertionError, match="sometimes"):
+            self._exec_with("sometimes")
+
+    @pytest.mark.parametrize("value", ["always_no_share", "always_with_share"])
+    def test_assert_accepts_other_vocabulary(self, value: str) -> None:
+        self._exec_with(value)
 
 
 # Branches: DISCOVERED land/vet; CSE-only resolve; resolve_website SA + WEBSITE_REVIEW edges (AST-1672).
