@@ -988,25 +988,6 @@
     "user_prompt": "Hey, Grace!  Let's help {$FIRST_NAME} figure out if these jobs would be in {$THEIR} sweet spot.\n\nHere is the exact schema response we need:\n{$RESPONSE_SCHEMA}\n\nThanks!"
   },
   {
-    "agent_id": "job_filter_lucy",
-    "cache_prompt": "## INSTRUCTIONS\n\nSTEP 1 - DETERMINE JOB ID: Deduce the company job ID from the html content.\n\nSTEP 2 — EXTRACT METADATA: Follow your instructions to parse metadata from content_text\n\nSTEP 3 - DETERMINE COMPLETE JOB LINK: If job_link is NOT fully qualified (e.g. \"https://www.workheredummy.com/jobs/823749283\") then use the provided company job_site to assemble a complete job link to the best of your ability.  Relative links will not work.  If you cannot determine the full url, indicate as much in the next step.\n\nSTEP 4 - QUALIFY JOB LISTINGS WITH CONFIDENCE RATING: Use the provided rubric in your instructions to grade each job, prefixed with each criteria code, and suffixed with the corresponding confidence rating (1-5), e.g. \"ERA4|MEA4|PGF4|WAA3|MWA3|KOA4|QCA5\"\nEvery rubric vector code must appear exactly once per job line; use X0 when silent — never omit a code.\n\nSTEP 5 - AUGMENT DATA: If \"F\" is found anywhere in the string from STEP 4, then ONLY include the job ID determined in STEP 1.  If \"F\" is NOT in the STEP 4 string, then go on to add job_title and job_link, then key/value pairs found in the html content.  \n\nSTEP 6 - CONSTRUCT PAYLOAD: Construct a token-conservative payload to be interpreted by downstream software.  (see PAYLOAD INSTRUCTIONS below for clarifications)\n\nSTEP 7 - PACKAGE RESPONSE: your response must include the payload content along side your agent_performance and failure_note where needed.\n\n\n## INPUT FORMAT ##\njob listings as text blocks:\narray_index: '###' job_site: <job_board_url>\nraw_job_listing: <raw HTML from job board>\n\n* YOU MUST USE THE ZERO-BASED ARRAY INDEX IN YOUR RESPONSE\n\n## COMPANY JOB IDENTIFIER\nThis may be a UUID or a long integer or a hyphenated string that differentiates the job, so that future scans can identify it has already seen.\n\n## EXTRACT METADATA\nFor each job, extract the metadata for the job, including title, link and other details.  See PAYLOAD INSTRUCTIONS to know whether and how to deliver that content in the payload.\n\nExamples:\n- salary_range: e.g. \"$150k-$200k\"\n- location: e.g. \"Remote, USA\" or \"San Francisco, CA\"\n\nOmit any data whose value is not stated — do NOT guess or infer.\n\n\n## QUALIFY JOB LISTINGS\nReview this list as if {$FIRST_NAME} were scanning the page, identifying which job links {$FIRST_NAME} would likely click on to learn more.  Use the following rubric to build your set of grades for this summary list of jobs.\n\n{$RUBRIC_VECTORS}\n\n## GRADE SET COMPLETENESS\nEvery rubric vector code in or the rubric listed above MUST appear as exactly one encoded grade segment on that job's line. Omitting a code is invalid. When the source is silent, emit {code}X0 — never skip the segment. Do not add codes that are not in the rubric.\n\n## PAYLOAD INSTRUCTIONS\n{$OUTPUT_INSTRUCTIONS}\n\n\n",
-    "cache_prompt_b": "",
-    "cache_prompt_c": "",
-    "cache_prompt_d": "",
-    "current": 1,
-    "nocache_prompt": "",
-    "run_next": "",
-    "system_prompt": "",
-    "task_group_name": "Job Review",
-    "task_group_order": "4000",
-    "task_key": "qualify_job_listings",
-    "task_key_uuid": "c6ec006f-bc99-460d-8f69-7267bd5173a0",
-    "task_name": "qualify_job_listings",
-    "task_seq": 2,
-    "updated_at": "2026-10-08 00:25:35",
-    "user_prompt": "Please follow all seven steps to qualify these job listings. These instructions are intended to minimize output size at this first stage of evaluation. Your response is handled by downstream software, so you need to comply with your instructions.\n\nYour response must be in this format:\n{$RESPONSE_SCHEMA}\n\n**** CRITICAL: Do your best to provide a fully qualified URL in the job link, so that {$FIRST_NAME} could click on it to access the job description {$THEMSELF}."
-  },
-  {
     "agent_id": "ats_expert_atlas",
     "cache_prompt": "CANDIDATE BASE_RESUME:\n{$BASE_RESUME}\n\n\nCANDIDATE LINKEDIN PROFILE TEXT:\n{$LINKEDIN_PROFILE_TEXT}\n",
     "cache_prompt_b": "",
@@ -1119,6 +1100,25 @@
     "task_seq": 0.1,
     "updated_at": "2026-10-08 04:36:10",
     "user_prompt": "Hey Ruth — new task. Map the pasted resume text into our JSON schema only. This is mechanical field placement, not rewrite, enrichment, LinkedIn synthesis, or \"improve the resume.\" Put each fact where it belongs; leave optional fields empty or omit them when the paste has no material.\n\nReview the task instructions above (TASK INSTRUCTIONS) and respond with valid JSON only — no markdown fences, no preamble."
+  },
+  {
+    "agent_id": "job_filter_lucy",
+    "cache_prompt": "## INSTRUCTIONS\n\nSTEP 1 - DETERMINE JOB ID: Deduce the company job ID from the html content.\n\nSTEP 2 — EXTRACT METADATA: Follow your instructions to parse metadata from content_text\n\nSTEP 3 - PROVIDE THE JOB LINK AS FOUND: relative links will be scraped in a separate, two-hop browser pass, so do not change the structure of the links you find if they are not fully qualified already.\n\nSTEP 4 - QUALIFY JOB LISTINGS WITH CONFIDENCE RATING: Use the provided rubric in your instructions to grade each job, prefixed with each criteria code, and suffixed with the corresponding confidence rating (1-5), e.g. \"ERA4|MEA4|PGF4|WAA3|MWA3|KOA4|QCA5\"\nEvery rubric vector code must appear exactly once per job line; use X0 when silent — never omit a code.\n\nSTEP 5 - AUGMENT DATA: If \"F\" is found anywhere in the string from STEP 4, then ONLY include the job ID determined in STEP 1.  If \"F\" is NOT in the STEP 4 string, then go on to add job_title and job_link, then key/value pairs found in the html content.  \n\nSTEP 6 - CONSTRUCT PAYLOAD: Construct a token-conservative payload to be interpreted by downstream software.  (see PAYLOAD INSTRUCTIONS below for clarifications)\n\nSTEP 7 - PACKAGE RESPONSE: your response must include the payload content along side your agent_performance and failure_note where needed.\n\n\n## INPUT FORMAT ##\njob listings as text blocks:\narray_index: '###' job_site: <job_board_url>\nraw_job_listing: <raw HTML from job board>\n\n* YOU MUST USE THE ZERO-BASED ARRAY INDEX IN YOUR RESPONSE\n\n## COMPANY JOB IDENTIFIER\nThis may be a UUID or a long integer or a hyphenated string that differentiates the job, so that future scans can identify it has already seen.\n\n## EXTRACT METADATA\nFor each job, extract the metadata for the job, including title, link and other details.  See PAYLOAD INSTRUCTIONS to know whether and how to deliver that content in the payload.\n\nExamples:\n- salary_range: e.g. \"$150k-$200k\"\n- location: e.g. \"Remote, USA\" or \"San Francisco, CA\"\n\nOmit any data whose value is not stated — do NOT guess or infer.\n\n\n## QUALIFY JOB LISTINGS\nReview this list as if {$FIRST_NAME} were scanning the page, identifying which job links {$FIRST_NAME} would likely click on to learn more.  Use the following rubric to build your set of grades for this summary list of jobs.\n\n{$RUBRIC_VECTORS}\n\n## GRADE SET COMPLETENESS\nEvery rubric vector code in the rubric listed above MUST appear as exactly one encoded grade segment on that job's line. Omitting a code is invalid. When the source is silent, emit {code}X0 — never skip the segment. Do not add codes that are not in the rubric.\n\n## PAYLOAD INSTRUCTIONS\n{$OUTPUT_INSTRUCTIONS}\n\n\n",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "current": 1,
+    "nocache_prompt": "",
+    "run_next": "",
+    "system_prompt": "",
+    "task_group_name": "Job Review",
+    "task_group_order": "4000",
+    "task_key": "qualify_job_listings",
+    "task_key_uuid": "e1f69679-6718-4a05-bded-274cde55ab75",
+    "task_name": "qualify_job_listings",
+    "task_seq": 2,
+    "updated_at": "2026-10-08 23:44:52",
+    "user_prompt": "Please follow all seven steps to qualify these job listings. These instructions are intended to minimize output size at this first stage of evaluation. Your response is handled by downstream software, so you need to comply with your instructions.\n\nYour response must be in this format:\n{$RESPONSE_SCHEMA}\n\n**** CRITICAL: Do your best to provide a fully qualified URL in the job link, so that {$FIRST_NAME} could click on it to access the job description {$THEMSELF}."
   },
   {
     "agent_id": "telescope",

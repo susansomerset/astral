@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import ArtifactVersionNav, { versionNavState, type VersionMap } from "./ArtifactVersionNav"
 import CollapsiblePanel from "./CollapsiblePanel"
 import type { Catalog, SectionRow } from "./ResumeStructureEditor"
 import ExperienceJobsEditor, {
@@ -114,7 +115,6 @@ interface ArtifactEditorProps {
   headerActions?: ReactNode
 }
 
-const AUTOSAVE_MS = 2000
 const MIN_ARTIFACT_TABS = 1
 const MAX_ARTIFACT_TABS = 15
 
@@ -134,6 +134,11 @@ function criteriaToTabs(
     content: v.content ?? "",
     importance: rubricItemImportance(v),
   }))
+}
+
+/** AST-2067 per-criterion version route base (rubric criteria key + shared code). */
+function rubricCriterionVersionsBase(candidateId: string, artifactKey: string, code: string) {
+  return `/api/candidates/${candidateId}/rubric/${encodeURIComponent(artifactKey)}/${encodeURIComponent(code)}`
 }
 
 export default function ArtifactEditor({
@@ -165,7 +170,8 @@ export default function ArtifactEditor({
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // In-flight blur-save; an arrow move awaits it before deciding whether to flush (AST-2068).
+  const pendingSaveRef = useRef<Promise<boolean> | null>(null)
   const tabsRef = useRef(tabs)
   const dirtyRef = useRef(dirty)
   const snapshotRef = useRef<SideTab[] | null>(null)
@@ -182,6 +188,10 @@ export default function ArtifactEditor({
   const [hasChainData, setHasChainData] = useState(false)
   const [expandedTabId, setExpandedTabId] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
+  // AST-2068 version arrows: maps keyed by row uuid; per-criterion maps keyed by rubric code.
+  const [artifactVersions, setArtifactVersions] = useState<VersionMap | null>(null)
+  const [criterionVersions, setCriterionVersions] = useState<Record<string, VersionMap>>({})
+  const [moving, setMoving] = useState(false)
 
   // Unmount: abort in-flight Generate; gate late setState
   useEffect(() => {
@@ -215,7 +225,7 @@ export default function ArtifactEditor({
     "unsupported resume structure, please regenerate",
   )
   useEffect(() => {
-    api("/api/system/ui_config")
+    api("/api/ui_config")
       .then(r => r.json())
       .then(cfg => {
         const fields = cfg.experience_job_ui_fields
@@ -300,12 +310,24 @@ export default function ArtifactEditor({
   const inReview = snapshot !== null
   // Bodies editable in rubric chrome mode OR structure/shapes/job fixed tabs; never during Generate review.
   const bodiesEditable = !inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)
-  // Criteria (free-form) and resume structure editors autosave bodies; shapesKey job editors keep explicit Save/Cancel.
+  // Criteria (free-form) and resume structure editors blur-save bodies; shapesKey job editors keep explicit Save/Cancel.
   const autosaveBodies = tabChromeEditable || structureMode
   // Stable id-set signature: label-only and reorder-only edits do not re-GET / wipe tabs.
   const fixedFieldKeys = fixedFields
     ? [...fixedFields.map(f => f.key)].sort().join("\0")
     : ""
+  // Artifact-level arrows on fixed-field bodies only (resume_content structure, cover_letter shape) —
+  // chosen by editor shape, not a key list. Candidate criteria step per criterion instead; job dict
+  // editors (Application Questions) are not catalog artifacts and get none.
+  const artifactVersionsBase = !fixedFields
+    ? null
+    : jobPersistence
+      ? `/api/jobs/${encodeURIComponent(jobPersistence.jobId)}/artifacts/${encodeURIComponent(`job.artifacts.${jobPersistence.artifactKey}`)}`
+      : selectedId
+        ? `/api/candidates/${selectedId}/artifacts/${encodeURIComponent(`candidate.artifacts.${artifactKey}`)}`
+        : null
+  // Free-form criteria chrome on a candidate page = rubric_vector criteria.
+  const criterionVersionsOn = tabChromeEditable && !jobPersistence && !!selectedId
 
   /** Display order: importance descending (plan); storage order unchanged in `tabs` / payload. */
   const tabsSortedForRail = useMemo(() => {
@@ -599,6 +621,43 @@ export default function ArtifactEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobPersistence, selectedId, artifactKey, fixedFieldKeys, shapesKey, structureMode, chainArtifactKeys])
 
+  /** Fetch version maps (on load + after each save). Non-OK / network error → that nav hides; never blocks editing. */
+  const refreshVersions = useCallback(async () => {
+    const getVersions = async (base: string): Promise<VersionMap | null> => {
+      try {
+        const r = await api(`${base}/versions`)
+        return r.ok ? ((await r.json()).versions as VersionMap) : null
+      } catch {
+        return null
+      }
+    }
+    if (artifactVersionsBase) {
+      const v = await getVersions(artifactVersionsBase)
+      if (mountedRef.current) setArtifactVersions(v)
+    }
+    if (criterionVersionsOn && selectedId) {
+      // Every coded criterion: the client cannot tell which codes the server just appended/upticked.
+      const codes = [...new Set(tabsRef.current.map(t => t.code).filter((c): c is string => !!c))]
+      const pairs = await Promise.all(
+        codes.map(async c => [c, await getVersions(rubricCriterionVersionsBase(selectedId, artifactKey, c))] as const),
+      )
+      if (!mountedRef.current) return
+      const next: Record<string, VersionMap> = {}
+      for (const [c, v] of pairs) if (v) next[c] = v
+      setCriterionVersions(next)
+    }
+  }, [artifactVersionsBase, criterionVersionsOn, selectedId, artifactKey])
+
+  // Version maps follow every (re)load; clear on unload so a previous candidate's map never drives a move.
+  useEffect(() => {
+    if (!loaded) {
+      setArtifactVersions(null)
+      setCriterionVersions({})
+      return
+    }
+    void refreshVersions()
+  }, [loaded, refreshVersions])
+
   // Build the payload from current tabs
   function buildPayload(t: SideTab[]) {
     if (fixedFields || (jobPersistence && !shapesKey && !structureMode)) {
@@ -618,7 +677,7 @@ export default function ArtifactEditor({
   }
 
   // Save to backend — AST-1381: when structure authoring is on, persist formats with content Save.
-  const doSave = useCallback(async (t: SideTab[], autosave = false) => {
+  const doSave = useCallback(async (t: SideTab[], autosave = false): Promise<boolean> => {
     const fieldKeys = experienceJobFields.map(f => f.key)
     for (const tab of t) {
       const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
@@ -626,7 +685,7 @@ export default function ArtifactEditor({
         const parsed = parseExperienceJobs(tab.content, fieldKeys)
         if (!parsed.ok) {
           setToast({ text: unsupportedExperienceMessage, variant: "error" })
-          return
+          return false
         }
       }
     }
@@ -635,7 +694,7 @@ export default function ArtifactEditor({
       payload = buildPayload(t)
     } catch {
       setToast({ text: unsupportedExperienceMessage, variant: "error" })
-      return
+      return false
     }
     if (jobPersistence) {
       setSaving(true)
@@ -654,20 +713,26 @@ export default function ArtifactEditor({
           throw new Error(err.error || `Save failed (${resp.status})`)
         }
         // A newer edit typed while this PUT was in flight stays dirty so the unmount flush still saves it.
-        if (tabsRef.current === t) setDirty(false)
+        if (tabsRef.current === t) {
+          setDirty(false)
+          // Ref too: a move awaiting this save must not re-flush the same body before the next render.
+          dirtyRef.current = false
+        }
         setEverSaved(true)
         setSnapshot(null)
         setToast({ text: "Saved", variant: "success" })
+        await refreshVersions()
         // JAR onSaved reloads the modal (unmounts this editor) — only on explicit Save / unmount flush.
         if (!autosave) jobPersistence.onSaved?.()
+        return true
       } catch (e) {
         setToast({ text: (e as Error).message || "Save failed", variant: "error" })
+        return false
       } finally {
         setSaving(false)
       }
-      return
     }
-    if (!selectedId) return
+    if (!selectedId) return false
     setSaving(true)
     try {
       const arts: Record<string, unknown> = { [artifactKey]: payload }
@@ -696,13 +761,20 @@ export default function ArtifactEditor({
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
         throw new Error(err.error || `Save failed (${resp.status})`)
       }
-      if (tabsRef.current === t) setDirty(false)
+      if (tabsRef.current === t) {
+        setDirty(false)
+        // Ref too: a move awaiting this save must not re-flush the same body before the next render.
+        dirtyRef.current = false
+      }
       setEverSaved(true)
       setSnapshot(null)
       setToast({ text: "Saved", variant: "success" })
+      await refreshVersions()
+      return true
     } catch (e) {
       // Keep review mode (snapshot) — do not clear on failure
       setToast({ text: (e as Error).message || "Save failed", variant: "error" })
+      return false
     } finally {
       setSaving(false)
     }
@@ -716,19 +788,19 @@ export default function ArtifactEditor({
     fixedFields,
     structureAuthoring,
     structureRows,
+    refreshVersions,
   ])
 
   function handleChange(next: SideTab[]) {
     setTabs(next)
     setDirty(true)
-    // Skip auto-save while reviewing generated content
-    if (autosaveBodies && bodiesEditable) {
-      if (timerRef.current) clearTimeout(timerRef.current)
-      // A timer queued before Generate must not persist (or clear the snapshot) during review — AST-905.
-      timerRef.current = setTimeout(() => {
-        if (snapshotRef.current === null) void doSave(next, true)
-      }, AUTOSAVE_MS)
-    }
+  }
+
+  // Blur-save (AST-2068): a field losing focus after an edit saves one version; an unchanged blur saves
+  // nothing. bodiesEditable is false while reviewing Generate, so review content never persists silently (AST-905).
+  function handleBodyBlur() {
+    if (!autosaveBodies || !bodiesEditable || !dirtyRef.current) return
+    pendingSaveRef.current = doSave(tabsRef.current, true)
   }
 
   const resolvedExpandedTabId = useMemo(() => {
@@ -775,7 +847,6 @@ export default function ArtifactEditor({
   // Auto-save on unmount when dirty — skip while in review (no silent persist of unreviewed Generate/recovery)
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
       if (dirtyRef.current && snapshotRef.current === null) doSave(tabsRef.current)
     }
   }, [doSave])
@@ -947,13 +1018,8 @@ export default function ArtifactEditor({
     }
   }
 
-  function handleCancel() {
-    if (snapshot) {
-      setTabs(snapshot)
-      setSnapshot(null)
-      setDirty(false)
-      return
-    }
+  /** Re-run the existing current-read GET hydrate (patt.artifact.read-current) — Cancel and after a version move. */
+  function reloadFromServer() {
     if (jobPersistence) {
       if ((shapesKey || structureMode) && !fixedFieldKeys) return
       api(`/api/jobs/${encodeURIComponent(jobPersistence.jobId)}`).then(r => r.json()).then(job => {
@@ -967,6 +1033,74 @@ export default function ArtifactEditor({
       applyCandidateArtifactResponse(c)
       setDirty(false)
     })
+  }
+
+  /** Arrow move (AST-2068): flush unsaved edits as one version, move current, re-hydrate via current-read GET. */
+  async function moveVersion(base: string, uuidField: string, dir: -1 | 1, apply: (v: VersionMap) => void) {
+    setMoving(true)
+    try {
+      if (pendingSaveRef.current) await pendingSaveRef.current
+      // autosave=true: job editors must not fire onSaved (modal reload would unmount mid-move).
+      if (dirtyRef.current && !(await doSave(tabsRef.current, true))) return
+      // Step from current *after* any flush: back after an edit lands on the version that was on screen.
+      const vr = await api(`${base}/versions`)
+      if (!vr.ok) throw new Error(`Versions failed (${vr.status})`)
+      const nav = versionNavState((await vr.json()).versions as VersionMap)
+      const uuid = dir < 0 ? nav.backUuid : nav.forwardUuid
+      if (!uuid) return
+      const resp = await api(`${base}/current`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [uuidField]: uuid }),
+      })
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
+        throw new Error(err.error || `Move failed (${resp.status})`)
+      }
+      const data = await resp.json()
+      if (!mountedRef.current) return
+      apply(data.versions as VersionMap)
+      reloadFromServer()
+    } catch (e) {
+      if (mountedRef.current) setToast({ text: (e as Error).message || "Move failed", variant: "error" })
+    } finally {
+      if (mountedRef.current) setMoving(false)
+    }
+  }
+
+  function renderVersionNav(versions: VersionMap, base: string, uuidField: string, apply: (v: VersionMap) => void) {
+    const nav = versionNavState(versions)
+    return (
+      <ArtifactVersionNav
+        position={nav.position}
+        total={nav.total}
+        // Not `saving`: an arrow click blurs the field first; moveVersion awaits that save instead.
+        disabled={inReview || generating || moving}
+        onBack={() => void moveVersion(base, uuidField, -1, apply)}
+        onForward={() => void moveVersion(base, uuidField, 1, apply)}
+      />
+    )
+  }
+
+  function renderCriterionNav(code: string) {
+    const versions = criterionVersions[code]
+    if (!criterionVersionsOn || !selectedId || !versions) return null
+    return renderVersionNav(
+      versions,
+      rubricCriterionVersionsBase(selectedId, artifactKey, code),
+      "rubric_vector_uuid",
+      v => setCriterionVersions(prev => ({ ...prev, [code]: v })),
+    )
+  }
+
+  function handleCancel() {
+    if (snapshot) {
+      setTabs(snapshot)
+      setSnapshot(null)
+      setDirty(false)
+      return
+    }
+    reloadFromServer()
   }
 
   if (!jobPersistence && !selectedId) return <p style={{ padding: 20, color: "var(--text-primary)" }}>No candidate selected.</p>
@@ -989,6 +1123,8 @@ export default function ArtifactEditor({
         <div className="dep-header">
           <h1 className="dep-title">{title}</h1>
           <div className="dep-actions">
+            {artifactVersionsBase && artifactVersions
+              && renderVersionNav(artifactVersions, artifactVersionsBase, "artifact_uuid", setArtifactVersions)}
             {canGenerate && (
               <button
                 className={`btn primary${generating ? " in-flight" : ""}`}
@@ -1016,7 +1152,7 @@ export default function ArtifactEditor({
             )}
           </div>
         </div>
-        <div className="dep-body">
+        <div className="dep-body" onBlur={handleBodyBlur}>
           <div className="artifact-editor-collapsible-stack">
             {tabsForRail.map((tab, i) => {
               const structureRow = structureAuthoring
@@ -1142,8 +1278,9 @@ export default function ArtifactEditor({
                 }
                 actions={
                   structureRow ? undefined : tabChromeEditable ? (
-                    <span className="side-tab-controls">
-                      {!rubricMode && (
+                  <span className="side-tab-controls">
+                    {tab.code ? renderCriterionNav(tab.code) : null}
+                    {!rubricMode && (
                         <>
                           <button type="button" disabled={i === 0} onClick={() => moveTab(i, -1)} title="Move up">
                             ▲
