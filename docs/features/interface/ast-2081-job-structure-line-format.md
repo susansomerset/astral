@@ -407,3 +407,54 @@ These existing tests pin today's values and **will fail by design** after this t
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2081
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** `origin/sub/AST-2046/AST-2081-job-structure-line-format` @ `28a73a6fd`
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+| stat.logging.info.api | C | 2 | Stage 4 INFO on job structure GET; statute exempts idempotent current-state GETs (candidate twin is silent) |
+| stat.logging.error | A | | |
+| stat.logging.debug | A | | |
+
+### Traceability
+
+AC13→S1,S5 · AC14→S1,S2 (catalog payload; frontend grep is #3/#4) · AC15→S3–S5 · AC16→S3,S4 · AC17→S3 · AC18→S3,S5
+
+### Findings
+
+#### discuss — `stat.logging.info.api` vs job structure GET
+- **Severity:** discuss
+- **Location:** Stage 4 `get_job_resume_structure` — `logger.info(... completed: GET 200)`
+- **Finding:** Plan logs a completion INFO on the job structure GET. `stat.logging.info.api` says idempotent GETs that only return current state are not progress and should not emit info. Today's `get_candidate_resume_structure` has no completion line; only the PUT is clearly “work completed.” Parent AST-2046 Architectural definition still asks for one completion line on **both** new job structure routes.
+- **Recommendation:** Before build, pick one line: omit GET info (canon + parity with candidate GET) and keep INFO on PUT only, or escalate a one-line parent/arch amend if Susan wants GET logged anyway.
+
+#### acceptable — No `## Self-assessment` block
+- **Severity:** acceptable
+- **Location:** Plan doc structure
+- **Finding:** Estimate confirm only; no conf/self-assessment section.
+- **Recommendation:** Optional for review parity; not blocking (same pattern as other backend-heavy plans).
+
+#### acceptable — AC14 end-to-end proof split across children
+- **Severity:** acceptable
+- **Location:** Child AC14 vs plan Stages 1–2
+- **Finding:** AC14’s `git grep` on `src/ui/frontend` is owned by UI siblings; this ticket correctly limits itself to catalog fields in the API payload.
+- **Recommendation:** Betty/Radia UAT on #3/#4 for the grep half; backend stages here satisfy the data half.
+
+### R6 (summary)
+
+Definition fidelity: Plan matches AST-2081 `## Scope` and parent backend slice (six files, no UI). Files Changed rows align with dispatched scope. Stages 1–5 cover job catalog key, effective read (no GET write), merge/normalize PUT, shared editor payload, `line` emitter, and job-scoped builder structure/accent with explicit decisions (hydrate only on editor GET, optional third arg on prep, byte-identical unedited jobs). DRY: lifts candidate route payload into `resume_structure_editor_payload`. No sibling scope creep. Known config test drift is called out for Betty.
+
+context_tokens≈42000
+
+[plan-rubric] PROCEED (Commit: 28a73a6fd) Backend plan canon-clean; discuss GET info.
