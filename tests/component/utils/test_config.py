@@ -6915,18 +6915,40 @@ class TestAst1779EmptyRenderForPrompts:
             "empty_tokens": ["FIRST_NAME", "FULL_NAME"],
         }
 
-    def test_rubric_scored_only_via_entity_contexts(self) -> None:
-        # Non-job seam: rubric ignored by default; scored blank when key is in entity_contexts.
+    def test_rubric_scored_by_default_and_via_entity_contexts(self) -> None:
+        # AST-2092: rubric is candidate-keyed, so it is scored by default; the seam still scores it.
         texts = ["{$GET_RUBRIC}"]
         cd = {"first": "Ada"}  # no _astral_candidate_id → resolve ""
         assert cfg.empty_render_for_prompts(texts, cd, self._TASK) == {
-            "empty_render": False,
-            "empty_tokens": [],
+            "empty_render": True,
+            "empty_tokens": ["GET_RUBRIC"],
         }
         out = cfg.empty_render_for_prompts(
             texts, cd, self._TASK, entity_contexts={"rubric": {}}
         )
         assert out == {"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}
+
+    # build_candidate_token_view shape; qualify_job_listings owns its rubric (no embedded-criteria merge).
+    _RUBRIC_VIEW = {
+        "first": "Abrams", "last": "", "full": "Abrams", "pronouns": "", "contact": {},
+        "context": {}, "artifacts": {}, "_astral_candidate_id": "cand-abrams",
+    }
+    _RUBRIC_TEXTS = ["Rubric:\n{$RUBRIC_VECTORS}"]
+
+    def test_empty_rubric_vectors_sets_empty_render(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2092 AC1: candidate has no current rubric rows for the owner → flagged.
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_token", lambda cid, owner: [])
+        out = cfg.empty_render_for_prompts(self._RUBRIC_TEXTS, dict(self._RUBRIC_VIEW), "qualify_job_listings")
+        assert out == {"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}
+
+    def test_filled_rubric_vectors_validates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2092 AC3 control: one current criterion renders non-empty → not flagged.
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_token",
+            lambda cid, owner: [{"code": "T1", "label": "Title fit", "importance": 5}],
+        )
+        out = cfg.empty_render_for_prompts(self._RUBRIC_TEXTS, dict(self._RUBRIC_VIEW), "qualify_job_listings")
+        assert out == {"empty_render": False, "empty_tokens": []}
 
 
 class TestAst2006ResolveTokensEmptyCollector:
