@@ -1202,3 +1202,71 @@ AST-2094 board-joan done — CANON: OK.
 - **Not ESCALATE:** Test-gap sibling with bounded blast radius; product precedent was AST-2092 + Susan’s lane split to AST-2094.
 
 context_tokens≈22000
+
+## Radia review — AST-2094
+
+[code-rubric]
+**Ticket:** AST-2094
+**Publish ref:** `b3d69a189f0d0ffc1a3a29a33c271902e7223ba0` (`origin/sub/AST-2019/AST-2094-rubric-empty-render-gate-tests`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+**Diff base (scored):** `origin/ftr/AST-2019-rubric-empty-render-gate...origin/sub/AST-2019/AST-2094-rubric-empty-render-gate-tests`, **scoped to ticket footprint** — `tests/component/utils/test_config.py`, `docs/test-bible/utils/config.md`, plus plan-fix doc block in `docs/features/dispatcher/ast-1779-empty-token-predicate-helper.md`.
+
+**Drift note (not a finding):** The unscoped three-dot diff shows ~77 files (many `docs/features/**` archive lines from `sync(dev)` on the publish ref). `git diff origin/dev...origin/sub/AST-2019/AST-2094-rubric-empty-render-gate-tests` collapses to **4 files** (2092 product on ftr + 2094 tests/bible/plan). **`src/**` delta vs ftr is empty (0 bytes)** — matches `code(AST-2094): no product src` and **## What must still hold**.
+
+## Canon scores
+
+Frozen list: **(none cited)** — AST-2094 Description / plan-fix: test tree + bible only; no directive ids to score. Joan **fix-board CANON: OK** (no statute/pattern amend required for test-gap work).
+
+## Column diff vs plan stage
+
+no plan-stage validate-plan scores attached (Joan **fix-board CANON: OK** only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — `test_empty_rubric_vectors_sets_empty_render` (first-line comment `[bug-repro] AST-2092 AC1`):
+  - Pins **concrete** `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}` on `qualify_job_listings` with `_astral_candidate_id`, `Rubric:\n{$RUBRIC_VECTORS}`, and `monkeypatch` stub `rubric_criteria_for_token` → `[]`.
+  - Matches AST-2092 **## To-be** / **### Repro** (not tautological; not duplicating product filter logic alone).
+  - Would be **red** on pre-fix `823d37605` (`False`, `[]`) and **green** with AST-2092 on ftr — repro-first contract satisfied.
+- **## What must still hold — OK**
+  - Single hunk in `TestAst1779EmptyRenderForPrompts` only; six control tests (candidate blank, job/chain, seam, warn quiet, order) **unchanged** in diff.
+  - Flipped + renamed `test_rubric_scored_by_default_and_via_entity_contexts` aligns default and seam assertions with AST-2092.
+  - AC3 control `test_filled_rubric_vectors_validates` asserts non-flag path with one criterion.
+  - No `src/**` on sub vs ftr; bible § AST-1779 prose/table/manifest/broken line match **### Proposed change** item 4.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Publish-ref hygiene:** `sync(dev)` / archive doc commits sit on the sub tip ahead of Betty’s `test()` + `merge-tests`; score and footprint use **ftr…sub** scoped to tests/bible/plan only — do **not** treat bulk `docs/features/**` archive deltas as AST-2094 scope or cross-ticket product smuggle.
+- **Lane split closed:** AST-2092 product on ftr + AST-2094 tests/bible completes Betty’s **TESTS: REVISE** routing from AST-2092 board.
+
+## What's solid
+
+- Plan fidelity: rename, flip, two new nodes, monkeypatch target, bible manifest lines 7–9, and obsolete note all match plan-fix bar.
+- `[bug-repro]` is the Abrams / `RUBRIC_VECTORS` path from the product ticket, not the GET_RUBRIC seam-only flip alone.
+
+## Note for Chuckles (post-review branching)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal mini-parent (**AST-2019**, live ftr) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing**; **resolve-child** skipped |
+
+context_tokens≈15000
+
+### Chuckles adjudication
+
+Clean (PROCEED, no fix-now / discuss). sync(dev) drift on the publish ref is not ticket scope (origin/dev...sub collapses to the 2092 product + 2094 tests/bible/plan). Clean-review shortcut (do-all-the-things §3h) → User Testing.
