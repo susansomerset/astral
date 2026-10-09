@@ -1,3 +1,64 @@
+<!-- linear-archive: AST-1878 archived 2026-10-08 -->
+
+## Linear archive (AST-1878)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1878/agent-model-field-per-platform-candidate-keys-support-openrouter-api  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1851 — Support OpenRouter API models for agent work  
+**Blocked by / blocks / related:** parent: AST-1851; blocks: AST-1879
+
+### Description
+
+## What this implements
+
+After #1. The `agent` table and seed carry a model; brain size is validated against it; candidates store one encrypted key per server and hydrate as a server → key map; the legacy single key goes dark. Does **not** change call routing (#3) or admin routes/UI (#4).
+
+## Citations
+
+new pattern *Model → server catalog routing*.
+
+## Scope
+
+`src/data/database.py` — agent model field (save/update allowlist, repo JSON), per-model brain-size validation on save, candidate key table + set/clear/list helpers, `get_candidate` key map without the legacy key, timesheet insert validation, header inventory; backfill switches to `calculate_cost_components_from_counts`. `src/utils/config.py` — **only** add the agent model field to `REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]` (AST-1883 approved exception). `src/core/candidate.py` — per-server save/clear wrappers; `run_session_resume_parse` requires a candidate id and adds its key map to the synthetic ctx (no bind/persist). `data/admin/agent.json` — model on every row; new contact-Estelle row (content copied from `principal_recruiter_estelle`, Kimi K2.6 direct, Little). `data/admin/agent_task.json` — `contact_estelle_turn` points at the contact-Estelle agent.
+
+## Acceptance criteria
+
+3. **Agent rows name catalog models with valid sizes.** Every row in `data/admin/agent.json` has a model id that is a config model-catalog key and a brain size in that model's list (a Python one-liner loading both prints nothing). Any missing/unknown model or size = fail.
+4. **Seed values.** `principal_recruiter_estelle` and `content_writer_judith` carry the Kimi K2.6 (Kimi direct) model id with brain size Big; the new contact-Estelle row carries Kimi K2.6 (Kimi direct) with Little; the other four agents carry the DeepSeek V4 model id with their pre-epic brain sizes. Any other value = fail.
+5. **Legacy key retired.** `get_candidate` no longer returns a single `candidate_api_key` string (component test), and no save path writes the legacy column. Either still present = fail.
+
+## Boundaries
+
+Stays inside the Scope above. Sibling slices: #1 catalog/client, #3 runtime routing, #4 admin UI.
+
+## Notes for planning
+
+New pattern *Model → server catalog routing* is defined on parent AST-1851 (Architectural definition). Each child must stay green on its own `sub/*`. Additive only: legacy provider symbols stay importable until #4.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-29T21:05:43.890Z
+[code-rubric] PROCEED (Commit: f74ca3030) data layer keys clean — context_tokens≈38000
+
+#### betty — 2026-09-29T21:02:49.820Z
+`origin/sub/AST-1851/AST-1878-agent-model-per-platform-keys` @ `f74ca3030` · key/model tests landed
+
+#### joan — 2026-09-29T20:50:27.285Z
+[plan-rubric] PROCEED (Commit: 0f6eee2f7) Data layer keys plan clean — context_tokens≈115000
+
+#### hedy — 2026-09-29T20:48:39.040Z
+`origin/sub/AST-1851/AST-1878-agent-model-per-platform-keys` @ `0f6eee2f7` · plan ready, three stages
+
+---
+
 # AST-1878 — Agent model field + per-platform candidate keys
 
 - **Parent:** [AST-1851 — Support OpenRouter API models for agent work](https://linear.app/astralcareermatch/issue/AST-1851)
