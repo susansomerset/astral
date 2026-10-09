@@ -1443,3 +1443,29 @@ The dispatch validity gate (AST-1766 / AST-1780 / AST-1880) only checks prompt r
 - **AST-1880:** a missing key still wins `invalid_reason` and is the first 400 on create, update, and Run.
 - **AST-1819:** `empty_tokens` is unchanged, so the token tooltip still shows when no key or rubric reason applies.
 - **No new response fields, tables, job states, or `TASK_CONFIG` keys** (Technical scope).
+
+### Joan fix-board (AST-2091)
+
+```
+[board-joan]  CANON: OK
+```
+
+**Reasoning:** Read the `## Bug: AST-2091` plan-fix block (gates via `rubric_dispatch_error`, same shape as AST-1780 / AST-1880: `empty_render` + `invalid_reason`, key-first 400s, list force-off, plus `run_task` refuse + AUTO off). No Canon Scope on the ticket; roster skim used `canon/statutes/README.md` and paths touched (`api_admin.py`, `candidate.py`, `dispatcher.py`).
+
+Overlapping in-force scoped statutes do not need edits:
+
+- **`astral.dispatch.entity-state-bound`** — Still per-row `candidate_id` / task_key evaluation; no fake entity pairs or catalog override.
+- **`astral.agent.grade-vector-validation`** — `do_task` response vectors; not rubric row integrity before dispatch.
+- **`astral.dispatch.seed-auto-false`** — Forcing AUTO off on bad rubrics is operator/runtime behavior, not seed inserting AUTO true.
+- **`astral.layers.import-direction`** — Late `candidate` import inside `run_task` breaks an existing `candidate`→`dispatcher` cycle (same class as prior dispatch patterns); not the utils→data late-import carve-out.
+- **Logging** — `logger.warning` on scheduler skip matches dispatcher skip semantics; no new route `info` spam.
+
+AST-1513 first-wins decode and AST-2008 save uptick stay untouched; no active statute says duplicate/empty rubrics must remain AUTO-runnable. Plan ⚠️ decisions (empty = `rubric_criteria_for_task`, code-only dupes) are product choices in the doc, not ambiguous canon intent — **ESCALATE** not warranted.
+
+Optional F3 note only: if Susan later wants this gate written into corpus law, that would be new scoped statute authoring (Archie), not required because this plan contradicts existing statutes.
+
+```text
+AST-2091 board-joan done — CANON: OK.
+```
+
+context_tokens≈18500
