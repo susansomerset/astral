@@ -512,3 +512,25 @@ context_tokens≈42000
 ### Chuckles adjudication
 
 Clean (PROCEED, no fix-now / discuss). AST-2085 rollup advisory: those commits are already on origin/dev (diff vs dev empty), so landing ftr adds nothing from them. Clean-review shortcut (do-all-the-things §3h) → User Testing.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/1ef3ec512ecbaa911ec14e2b725fddc6/ac334f46-d2ac-42a5-acae-2ac767e2c10a/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/44acd650-fb24-4d52-997e-13d3503d3e31/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/1ef3ec512ecbaa911ec14e2b725fddc6/4f3b11ff-27f8-4f55-8ac0-e1589c976f3a/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2074 (parent) | ftr/AST-2074-gunicorn-polling-logs |
+| AST-2078 | sub/AST-2074/AST-2078-gunicorn-polling-logs |
+| AST-2079 | sub/AST-2074/AST-2079-gunicorn-polling-logs-tests |
+
+**Epic worktree:** `astral-AST-2074/` — one active sub checked out at a time.
