@@ -100,13 +100,20 @@ def post_message(
     channel: str,
     text: str,
     thread_ts: Optional[str] = None,
+    reply_broadcast: bool = False,
 ) -> dict:
-    """POST chat.postMessage; raise on HTTP/transport failure. Does not log."""
+    """POST chat.postMessage; raise on HTTP/transport failure. Does not log.
+
+    ``reply_broadcast`` ("Also send to channel") only applies to a threaded post;
+    without ``thread_ts`` it is ignored so a top-level post never carries it.
+    """
     require_controlled_external_io("slack.post_message")
     token = os.environ[CONTACT_CONFIG["bot_token_env"]]
     body: Dict[str, Any] = {"channel": channel, "text": text}
     if thread_ts:
         body["thread_ts"] = thread_ts
+        if reply_broadcast:
+            body["reply_broadcast"] = True
     resp = requests.post(
         f"{_SLACK_API}/chat.postMessage",
         headers={
