@@ -1431,6 +1431,7 @@ class TestDispatchTasks:
         monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda task_id: {"candidate_id": "c1", "task_key": "qualify_job_listings"})
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda candidate_id, task_key: None)
+        monkeypatch.setattr(admin_mod, "rubric_dispatch_error", lambda candidate_id, task_key: None, raising=False)  # AST-2091
         monkeypatch.setattr(admin_mod, "run_task", lambda task_id, ui_initiated=False: True)
         assert admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers).get_json()["started"] is True
         monkeypatch.setattr(admin_mod, "drain_task", lambda task_id: {"drained": True})
@@ -1985,6 +1986,7 @@ class TestApiAdminBranchGaps:
     def test_create_dispatch_task_auto_mode_success(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda candidate_id, task_key: None)
+        monkeypatch.setattr(admin_mod, "rubric_dispatch_error", lambda candidate_id, task_key: None, raising=False)  # AST-2091
         monkeypatch.setattr(admin_mod, "save_dispatch_task", MagicMock(return_value=9))
         resp = admin_client.post(
             "/api/admin/dispatch_tasks",
@@ -2216,6 +2218,7 @@ class TestApiAdminBranchGaps:
         monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda candidate_id, task_key: None)
+        monkeypatch.setattr(admin_mod, "rubric_dispatch_error", lambda candidate_id, task_key: None, raising=False)  # AST-2091
         scored = admin_client.put("/api/admin/dispatch_tasks/1", json={"score_floor": 2.5, "auto_mode": True}, headers=auth_headers)
         assert scored.status_code == 200
         assert update.call_args.kwargs["score_floor"] == 2.5
@@ -3855,6 +3858,11 @@ class TestAst1623AdminMeteoriteStateOptionsAvail:
 class TestAst1780EmptyRenderListGatesForceOff:
     """AST-1780: list enrich empty_render, AUTO/Run 400 gates, force AUTO off."""
 
+    @pytest.fixture(autouse=True)
+    def _rubric_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2091: rubric gate is a separate reason source; keep these on the token/key paths.
+        monkeypatch.setattr(admin_mod, "rubric_dispatch_error", lambda cid, tk: None, raising=False)
+
     def test_list_sets_empty_render_and_forces_auto_off(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -4053,6 +4061,128 @@ class TestAst1780EmptyRenderListGatesForceOff:
             lambda cid, tk: {"empty_render": False, "empty_tokens": []},
         )
         assert admin_mod._candidate_dispatch_empty_render_error("c1", "qualify_job_listings") is None
+
+
+class TestAst2091RubricDispatchGate:
+    """AST-2091 [bug-repro]: duplicate-code / empty rubric makes a rubric-backed row Invalid (list, AUTO-on, Run)."""
+
+    DUP = "Rubric 'do_rubric' has duplicate vector codes: TP"
+    EMPTY = "Rubric 'do_rubric' is empty for this candidate."
+
+    @pytest.fixture(autouse=True)
+    def _rubrics(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Plan Repro fixture; real rubric_dispatch_error runs behind the stubbed table read.
+        tp = {"code": "TP", "label": "Hands-On Technical Partnership With Engineers", "content": "…", "importance": 8}
+        sa = {"code": "SA", "label": "Systems Architecture", "content": "…", "importance": 7}
+        rubrics = {("somerset", "grade_do"): [tp, dict(tp), sa]}
+        monkeypatch.setattr(
+            "src.data.database.list_rubric_vectors",
+            lambda cid, owner, current_only=False: rubrics.get((cid, owner), []),
+        )
+        # Key / token gates pass unless a test says otherwise.
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda cid, tk: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda cid, tk: None)
+        monkeypatch.setattr(admin_mod, "_evaluate_dispatch_empty_render", lambda cid, tk: {"empty_render": False, "empty_tokens": []})
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+
+    def _list(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, rows: list) -> tuple:
+        updates: list = []
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", lambda tid, **kw: updates.append((tid, kw)))
+        return admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json(), updates
+
+    @staticmethod
+    def _row(cid: str, task_key: str = "meteorite_grade_do", rid: int = 21) -> dict:
+        return {"id": rid, "task_key": task_key, "trigger_state": "METEORITE_PASSED_JD", "entity_type": "meteorite",
+                "candidate_id": cid, "score_floor": None, "auto_mode": 1}
+
+    @pytest.mark.parametrize("cid,reason", [("somerset", DUP), ("empty_cand", EMPTY)])
+    def test_list_bad_rubric_invalid_and_forces_auto_off(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture, cid: str, reason: str,
+    ) -> None:
+        # Repro 1 / 4: was empty_render False, invalid_reason "", AUTO left on.
+        with caplog.at_level("WARNING"):
+            out, updates = self._list(admin_client, auth_headers, monkeypatch, [self._row(cid)])
+        assert (out[0]["empty_render"], out[0]["invalid_reason"], out[0]["auto_mode"]) == (True, reason, 0)
+        assert out[0]["empty_tokens"] == []
+        assert updates == [(21, {"auto_mode": 0})]
+        assert f"{reason} — AUTO forced off" in caplog.text
+
+    @pytest.mark.parametrize("task_key", ["craft_do_rubric", "select_job_page"])
+    def test_list_craft_and_non_rubric_rows_unaffected_by_empty_rubric(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, task_key: str
+    ) -> None:
+        out, updates = self._list(admin_client, auth_headers, monkeypatch, [self._row("empty_cand", task_key)])
+        assert (out[0]["empty_render"], out[0]["invalid_reason"], out[0]["auto_mode"]) == (False, "", 1)
+        assert updates == []
+
+    def test_list_precedence_key_then_rubric_then_tokens(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Tokens empty on both rows; row 31 also lacks its key.
+        monkeypatch.setattr(admin_mod, "_evaluate_dispatch_empty_render", lambda cid, tk: {"empty_render": True, "empty_tokens": ["FIRST_NAME"]})
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda cid, tk: "need key" if cid == "nokey" else None)
+        rubric_reads: list = []
+        monkeypatch.setattr(
+            "src.data.database.list_rubric_vectors",
+            lambda cid, owner, current_only=False: rubric_reads.append(cid) or [],
+        )
+        out, _ = self._list(admin_client, auth_headers, monkeypatch, [self._row("nokey", rid=31), self._row("empty_cand", rid=32)])
+        by_id = {r["id"]: r for r in out}
+        assert by_id[31]["invalid_reason"] == "need key"
+        assert by_id[32]["invalid_reason"] == self.EMPTY
+        # AST-1819 tooltip list still rides along under the higher-precedence reasons.
+        assert by_id[31]["empty_tokens"] == by_id[32]["empty_tokens"] == ["FIRST_NAME"]
+        assert "empty_cand" in rubric_reads
+
+    @pytest.mark.parametrize("cid,reason", [("somerset", DUP), ("empty_cand", EMPTY)])
+    def test_create_auto_on_bad_rubric_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, cid: str, reason: str
+    ) -> None:
+        save = MagicMock(return_value=9)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={"candidate_id": cid, "task_key": "meteorite_grade_do", "trigger_state": "METEORITE_PASSED_JD",
+                  "min_count": 1, "auto_mode": True},
+            headers=auth_headers,
+        )
+        assert (resp.status_code, resp.get_json()) == (400, {"error": reason})
+        save.assert_not_called()
+
+    def test_put_auto_on_bad_rubric_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        row = self._row("somerset")
+        row["auto_mode"] = 0
+        monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda tid: dict(row))
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put("/api/admin/dispatch_tasks/21", json={"auto_mode": True}, headers=auth_headers)
+        assert (resp.status_code, resp.get_json()) == (400, {"error": self.DUP})
+        update.assert_not_called()
+
+    @pytest.mark.parametrize("cid,reason", [("somerset", DUP), ("empty_cand", EMPTY)])
+    def test_run_bad_rubric_400_never_starts(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, cid: str, reason: str
+    ) -> None:
+        # Repro 2: was 200 {"started": true}. Rubric reason outranks the token reason.
+        monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda tid: self._row(cid))
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda c, tk: "Prompt tokens resolve empty")
+        run = MagicMock(return_value=True)
+        monkeypatch.setattr(admin_mod, "run_task", run)
+        resp = admin_client.post("/api/admin/dispatch_tasks/21/run", headers=auth_headers)
+        assert (resp.status_code, resp.get_json()) == (400, {"error": reason, "started": False})
+        run.assert_not_called()
+
+    def test_run_key_error_outranks_rubric(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda tid: self._row("somerset"))
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda cid, tk: "need key")
+        resp = admin_client.post("/api/admin/dispatch_tasks/21/run", headers=auth_headers)
+        assert (resp.status_code, resp.get_json()) == (400, {"error": "need key", "started": False})
 
 
 class TestAst1791NoPromptValueErrorEmptyRender:
