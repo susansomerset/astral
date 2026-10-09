@@ -96,6 +96,44 @@ describe("AdminThemeExamples — AST-2064 grade color options", () => {
   })
 })
 
+describe("AdminThemeExamples — AST-2077 compact grade-dot samples", () => {
+  it("[bug-repro] each grade-color option has a letterless Recommended-list grade row beside it, in that option's tokens", async () => {
+    // Same fresh-graph setup as AST-2064 (uiConfig caches at module level).
+    vi.resetModules()
+    const freshApi = vi.mocked((await import("../../../../src/ui/frontend/src/lib/api")).default)
+    const handler = (url: string) =>
+      url === "/api/ui_config" || url === "/api/system/ui_config"
+        ? jsonResponse({ column_types: {}, themes: THEMES, default_theme: "dark", theme_example_grade_sets: GRADE_SETS })
+        : undefined
+    installBaseApiMocks(mockedApi, handler)
+    installBaseApiMocks(freshApi, handler)
+    const Page = (await import("../../../../src/ui/frontend/src/pages/AdminThemeExamples")).default
+    renderWithProviders(<Page />)
+
+    expect(await screen.findByRole("heading", { name: "Theme Examples" })).toBeInTheDocument()
+    const panels = Array.from(document.querySelectorAll<HTMLElement>("section.theme-examples-panel"))
+    expect(panels).toHaveLength(Object.keys(THEMES).length)
+    for (const panel of panels) {
+      const options = panel.querySelector<HTMLElement>(".theme-examples-grade-options")!
+      const lettered = Array.from(options.querySelectorAll<HTMLElement>(".theme-examples-row"))
+      const compact = Array.from(options.querySelectorAll<HTMLElement>(".recommended-list-phase-grade-row"))
+      expect(compact, panel.dataset.theme).toHaveLength(Object.keys(GRADE_SETS).length)
+      compact.forEach((row, i) => {
+        const set = Object.values(GRADE_SETS)[i]
+        // Beside its own option: shares a parent with lettered row i, and is not nested inside it.
+        expect(row.parentElement).toBe(lettered[i].parentElement)
+        for (const [token, value] of Object.entries(set.tokens)) expect(row.style.getPropertyValue(token)).toBe(value)
+        // Recommended Job List markup (buildPhaseListGradeRow): <span><span class="grade-dot dot-<g> grade-dot-letterless"/></span>.
+        const dots = Array.from(row.querySelectorAll<HTMLElement>(":scope > span > .grade-dot"))
+        expect(dots.map(d => [...d.classList].sort())).toEqual(
+          ["a", "b", "c", "d", "f", "x"].map(g => [`dot-${g}`, "grade-dot", "grade-dot-letterless"]),
+        )
+        expect(dots.every(d => d.textContent === "")).toBe(true)
+      })
+    }
+  })
+})
+
 // jsdom does not load App.css, so the palette contract is read from the stylesheet itself.
 describe("App.css theme token blocks — AST-2047", () => {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..")
