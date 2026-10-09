@@ -315,3 +315,7 @@ context_tokens≈38000
 ### Chuckles adjudication
 
 Clean (PROCEED, no fix-now). Discuss item (Linear description stale vs option (b)) handled by Chuckles: AST-2078 description synced. Clean-review shortcut (do-all-the-things §3h) → User Testing.
+
+### Test routing — AST-2078
+
+docs-acceptance: no test-tree delivery on this ticket. fix-board `[board-betty] TESTS: REVISE` was routed to the gap sibling AST-2079 (gunicorn.access quiet-filter tests + bible), which lands its own `test()` / `merge-tests` on ftr.
