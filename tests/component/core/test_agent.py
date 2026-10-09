@@ -346,6 +346,89 @@ class TestDecodePayload:
         assert job["job_title"] == "Sr Job Role"
 
 
+class TestAst2093BatchIndexMapDecode:
+    """AST-2093: ctx["batch_index_map"] binds each reply line by its batch-unique index, never list position.
+
+    Branches (agent._decode_payload, job/company loop): map pre-pass (count / bad field raise); map hit;
+    map miss (warn + skip); duplicate index first sight (one decode_failure) vs already reported (drop);
+    per-line failures (trailing junk, bad X conf) carry the *mapped* entity id; no / empty map → positional.
+    """
+
+    # Chunk 1 of a 40-job claim at batch_size=20 → global indexes 20..39 (AST-2093 Repro fixture).
+    _JOBS = [{"astral_job_id": f"J{i:02d}"} for i in range(20, 40)]
+
+    def _ctx(self, index_map: Any = None) -> Dict[str, Any]:
+        ctx: Dict[str, Any] = {"batch_entities": self._JOBS, "vector_labels": {}}
+        if index_map is not None:
+            ctx["batch_index_map"] = index_map
+        return ctx
+
+    def _chunk1_map(self) -> Dict[int, Dict[str, Any]]:
+        return {20 + k: self._JOBS[k] for k in range(20)}
+
+    def test_bug_repro_chunk1_all_000_echo_grades_nothing(self) -> None:
+        # [bug-repro] pre-fix: map ignored, every 000 line collapses onto J20 (20 rows, J21..J39 omitted).
+        payload = "\n".join("000|THA4|QQB3" for _ in self._JOBS)
+        out = agent_mod._decode_payload("grade_get", "grades_encoded_notes", payload, self._ctx(self._chunk1_map()))
+        assert out == {"jobs": []}
+
+    def test_bug_repro_global_indexes_map_to_their_own_jobs(self) -> None:
+        # [bug-repro] pre-fix: 020..039 are out of range for a 20-row batch_entities → 0 rows.
+        payload = "\n".join(f"{20 + k:03d}|THA4|QQB3" for k in range(20))
+        out = agent_mod._decode_payload("grade_get", "grades_encoded_notes", payload, self._ctx(self._chunk1_map()))
+        rows = out["jobs"]
+        assert len(rows) == 20
+        assert [r["astral_job_id"] for r in rows] == [f"J{20 + k:02d}" for k in range(20)]
+        assert "decode_failures" not in out
+
+    def test_bug_repro_duplicate_index_is_one_failure_and_drops_its_lines(self) -> None:
+        # [bug-repro] pre-fix: 3 rows on J20 (last-wins) + J21. Post-fix: 000 → one failure, 001 still grades.
+        chunk0 = {k: self._JOBS[k] for k in range(20)}
+        payload = "000|THA4|QQB3\n000|THA4|QQB3\n000|THA4|QQB3\n001|THA4|QQB3"
+        out = agent_mod._decode_payload("grade_get", "grades_encoded_notes", payload, self._ctx(chunk0))
+        assert [r["astral_job_id"] for r in out["jobs"]] == [self._JOBS[1]["astral_job_id"]]
+        assert out["decode_failures"] == [{
+            "astral_job_id": self._JOBS[0]["astral_job_id"],
+            "pos": 0,
+            "reason": "[grade_get] duplicate row index 000 on 3 lines",
+        }]
+
+    def test_unknown_index_skipped_with_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.WARNING)
+        out = agent_mod._decode_payload(
+            "grade_get", "grades_encoded_notes", "020|THA4|QQB3\n555|THA4|QQB3", self._ctx({20: self._JOBS[0]}),
+        )
+        assert [r["astral_job_id"] for r in out["jobs"]] == ["J20"]
+        assert "decode_failures" not in out
+        assert any(
+            r.levelno == logging.WARNING and "index 555 not in this batch" in r.getMessage() for r in caplog.records
+        )
+
+    def test_map_prepass_bad_position_raises(self) -> None:
+        with pytest.raises(ValueError, match="bad position field"):
+            agent_mod._decode_payload("grade_get", "grades_encoded_notes", "abc|THA4", self._ctx({20: self._JOBS[0]}))
+
+    def test_map_path_per_line_failures_carry_mapped_entity(self) -> None:
+        # pos 20 is out of range for batch_entities[20] — the id can only come from the map.
+        ctx = self._ctx({20: self._JOBS[0]})
+        junk = agent_mod._decode_payload("grade_get", "grades_encoded", "020|THA4|junk", ctx)
+        assert junk["jobs"] == []
+        assert [(f["astral_job_id"], f["pos"]) for f in junk["decode_failures"]] == [("J20", 20)]
+        assert "unexpected trailing content" in junk["decode_failures"][0]["reason"]
+        bad_x = agent_mod._decode_payload("grade_get", "grades_encoded_notes", "020|THX3", ctx)
+        assert bad_x["jobs"] == []
+        assert [(f["astral_job_id"], f["pos"]) for f in bad_x["decode_failures"]] == [("J20", 20)]
+        assert "X requires confidence digit 0" in bad_x["decode_failures"][0]["reason"]
+
+    @pytest.mark.parametrize("index_map", [None, {}], ids=["no_map", "empty_map"])
+    def test_without_map_decode_stays_positional(self, index_map: Any) -> None:
+        ctx = {"batch_entities": self._JOBS[:2], "vector_labels": {}}
+        if index_map is not None:
+            ctx["batch_index_map"] = index_map
+        out = agent_mod._decode_payload("grade_get", "grades_encoded_notes", "000|THA4|QQB3\n001|THA4|QQB3", ctx)
+        assert [r["astral_job_id"] for r in out["jobs"]] == ["J20", "J21"]
+
+
 class TestAst1513DuplicateRubricCodes:
     """AST-1513: fail fast when model emits duplicate vector codes on one encoded line."""
 

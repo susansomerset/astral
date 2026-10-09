@@ -2137,6 +2137,128 @@ class TestRunDispatchLoop:
         assert accumulated["total_processed"] == 1
 
 
+class TestAst2093BatchIndexDispatch:
+    """AST-2093: claimed position reaches consult as batch_index_offset; retry re-claims count once per dispatch.
+
+    Branches (dispatcher): _run_unified chunk path offset = ci * chunk_sz; per-entity path offset = claimed
+    index; dispatch_seen_ids repeat vs new vs falsy id; repeat_processed = min(repeats, total_processed);
+    _run_dispatch_loop subtracts repeat_processed but stops on the raw per-run total_processed.
+    Every test builds its own ctx — dispatch_seen_ids must never leak between tests.
+    """
+
+    _OK = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+
+    def _patch_claims(self, monkeypatch: pytest.MonkeyPatch, batch_id: str, *claims: List[Dict[str, Any]]) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", MagicMock(return_value=5))
+        monkeypatch.setattr(
+            "src.core.tracker.get_new_job_batch", MagicMock(side_effect=[(batch_id, list(c)) for c in claims]),
+        )
+        monkeypatch.setattr("src.core.tracker.clear_job_batch", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.asyncio, "sleep", AsyncMock())
+
+    @staticmethod
+    def _task(batch_size: int, batch_call_mode: int, task_key: str = "grade_get") -> Dict[str, Any]:
+        return {
+            "entity_type": "job", "trigger_state": "PASSED_JD", "task_key": task_key,
+            "batch_size": batch_size, "batch_call_mode": batch_call_mode, "id": 2093,
+        }
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_chunks_send_global_offsets(self, monkeypatch: pytest.MonkeyPatch, batch_id: str) -> None:
+        # [bug-repro] pre-fix: no batch_index_offset → every chunk restarts its row labels at 000.
+        self._patch_claims(monkeypatch, batch_id, [{"astral_job_id": f"j{i}"} for i in range(5)])
+        run = AsyncMock(return_value=dict(self._OK))
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        await dispatcher_mod._run_unified(self._task(2, 1), {"astral_candidate_id": "c1"}, False)
+        sent = {c.kwargs["batch_chunk_index"]: c.kwargs.get("batch_index_offset") for c in run.call_args_list}
+        assert sent == {0: 0, 1: 2, 2: 4}
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_per_entity_sends_claimed_position(self, monkeypatch: pytest.MonkeyPatch, batch_id: str) -> None:
+        # [bug-repro] pre-fix: lone calls all render [index=000].
+        self._patch_claims(monkeypatch, batch_id, [{"astral_job_id": f"j{i}"} for i in range(3)])
+        run = AsyncMock(return_value=dict(self._OK))
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        await dispatcher_mod._run_unified(self._task(1, 0), {"astral_candidate_id": "c1"}, False)
+        sent = {c.args[2][0]["astral_job_id"]: c.kwargs.get("batch_index_offset") for c in run.call_args_list}
+        assert sent == {"j0": 0, "j1": 1, "j2": 2}
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_reclaimed_ids_are_repeat_processed(self, monkeypatch: pytest.MonkeyPatch, batch_id: str) -> None:
+        # [bug-repro] pre-fix: no seen-id ledger, so a retry run's re-claim reads as fresh work.
+        self._patch_claims(
+            monkeypatch, batch_id,
+            [{"astral_job_id": "A"}, {"astral_job_id": "B"}],
+            [{"astral_job_id": "B"}, {"astral_job_id": "C"}],
+        )
+        monkeypatch.setattr(
+            "src.core.consult.run_consult_task", AsyncMock(return_value={**self._OK, "total_processed": 2}),
+        )
+        ctx: Dict[str, Any] = {"astral_candidate_id": "c1"}
+        first = await dispatcher_mod._run_unified(self._task(5, 1), ctx, False)
+        second = await dispatcher_mod._run_unified(self._task(5, 1), ctx, False)
+        assert first["repeat_processed"] == 0
+        assert second["repeat_processed"] == 1
+        assert ctx["dispatch_seen_ids"] == {"A", "B", "C"}
+
+    @pytest.mark.asyncio
+    async def test_falsy_ids_never_tracked_and_outage_run_clamps_to_zero(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        both = [{"astral_job_id": "A"}, {"astral_job_id": "B"}]
+        self._patch_claims(monkeypatch, batch_id, [{"state": "PASSED_JD"}], [{"state": "PASSED_JD"}], both, both)
+        run = AsyncMock(side_effect=[
+            {**self._OK, "total_processed": 1},
+            {**self._OK, "total_processed": 1},
+            {**self._OK, "total_processed": 2},
+            dict(self._OK),  # outage-zeroed re-claim: nothing processed, so nothing can be a repeat
+        ])
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        ctx: Dict[str, Any] = {"astral_candidate_id": "c1"}
+        task = self._task(5, 1)
+        assert (await dispatcher_mod._run_unified(task, ctx, False))["repeat_processed"] == 0
+        assert (await dispatcher_mod._run_unified(task, ctx, False))["repeat_processed"] == 0
+        assert ctx["dispatch_seen_ids"] == set()
+        assert (await dispatcher_mod._run_unified(task, ctx, False))["repeat_processed"] == 0
+        assert (await dispatcher_mod._run_unified(task, ctx, False))["repeat_processed"] == 0
+        assert ctx["dispatch_seen_ids"] == {"A", "B"}
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_loop_counts_each_entity_once(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] Somerset shape: 27 claimed, 23 omitted → retry run re-claims the same 23. Pre-fix: 50.
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 27)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        run = AsyncMock(side_effect=[
+            {"total_processed": 27, "total_passed": 4, "total_failed": 0, "total_errors": 0, "repeat_processed": 0},
+            {"total_processed": 23, "total_passed": 0, "total_failed": 0, "total_errors": 23, "repeat_processed": 23},
+            dict(dispatcher_mod._SUMMARY_ZERO),
+        ])
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {"id": 2093, "task_key": "grade_get", "entity_type": "job", "trigger_state": "PASSED_JD", "auto_mode": 1, "min_count": 1, "max_runs": 0}
+        await dispatcher_mod._run_dispatch_loop({}, task, "grade_get", "batch-1", accumulated, None)
+        assert run.await_count == 3
+        assert (accumulated["total_processed"], accumulated["total_passed"], accumulated["total_errors"]) == (27, 4, 23)
+        assert "repeat_processed" not in accumulated
+
+    @pytest.mark.asyncio
+    async def test_all_repeat_run_does_not_trip_zero_processed_stop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Stop check reads the raw per-run total_processed (3), not the deduped contribution (0).
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 3)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        run = AsyncMock(side_effect=[
+            {"total_processed": 3, "total_passed": 0, "total_failed": 0, "total_errors": 0, "repeat_processed": 3},
+            dict(dispatcher_mod._SUMMARY_ZERO),
+        ])
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {"id": 2094, "task_key": "grade_get", "entity_type": "job", "trigger_state": "PASSED_JD", "auto_mode": 1, "min_count": 1, "max_runs": 0}
+        await dispatcher_mod._run_dispatch_loop({}, task, "grade_get", "batch-1", accumulated, None)
+        assert run.await_count == 2
+        assert accumulated["total_processed"] == 0
+
+
 class TestAst802InflowDiscoveryDebug:
     @pytest.mark.asyncio
     async def test_skip_emits_eligibility_reason_when_debug_true(
