@@ -535,3 +535,70 @@ context_tokens≈78000
 - Stage 2 done-when "AC 3-style grep on config.py empty": the only hits are retired `ERROR_*` names typed as `RETIRED_TERMINAL_STATE_MAP` keys / AC 7 snapshot (step 13 requires them typed). No new-grammar literal in config; ticket AC 3 (`src/core`) empty.
 - The `sync(dev)` merge commit was made with `--no-verify`: the engineer pre-commit hook blocked 10 inherited `tests/` / `docs/test-bible/` paths, all byte-identical to `origin/dev` (no engineer edits).
 - AST-2054's `fetch_company_culture_pages` only ever writes its pass_state — no `BOT_BLOCKED_*` added (Stage 9 step 5).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2086
+**Publish ref:** 88e1626f8597b1a7d6ee50f710cd402a9d4ff1d7 (`origin/sub/AST-2073/AST-2086-terminal-state-rename`)
+**Corpus:** 9b0e02ac2734eae5680844566d3061f47b9acfbb
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.dispatch-retry | A | | |
+| patt.task.daisy-chain | A | | |
+| patt.contact.command-intercept | A | | |
+| stat.dispatch.entity-state-bound | A | | |
+| patt.state.terminal-naming | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan’s plan-stage column matches on all five ids.
+
+## Frame diff
+
+(none) — Stages 1–9 are landed on the publish tip (including `sync(dev)` upshot rename); parent AC 1–8 and 10 are exercised in product + Betty’s manifest. No new Description checklist rows required beyond what the engineer should tick at `resolve-child` §10.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Plan / process — Stage 9 merge `--no-verify`:** Build stub documents pre-commit blocking only inherited `tests/` / `docs/test-bible/` paths byte-identical to `origin/dev`; no engineer edits there. Worth a one-line note in the issue doc if Susan cares about hook policy on merge commits only.
+- **Clerk id alias (carry from Joan):** Frozen list cites `stat.dispatch.entity-state-bound`; active statute id in corpus is `astral.dispatch.entity-state-bound` (`canon/directives/active/stat.dispatch.entity-state-bound.md`). Substance matches; Archie/clerk alias hygiene only — not a product fix.
+- **`patt.state.terminal-naming`:** Still no approved corpus file; this ticket correctly implements parent AST-2073 grammar via helpers, `TERMINAL_CONDITIONS`, registry asserts, and config-driven writers. Canon text landing remains out of scope (plan Test impact).
+- **`data/admin/dispatch_task.json`:** `meteorite_bot_blocked_notify` row still shows `entity_type: null` (unchanged except `trigger_state` → `BOT_BLOCKED_SCRAPE_METEORITE`). Authoritative seed SQL in `src/utils/config.py` inserts `'meteorite'` + config-driven trigger; admin export lag is pre-existing, not introduced by this diff.
+
+## Non-canon (§5.4)
+
+- **Plan fidelity:** `origin/dev...88e1626f8` matches the binding plan: helpers + four registries, core writers (roster, gazer bot split, consult fallbacks, meteorite scrape retry companion, candidate hop errors), comment-only touch files, notify seed trigger, Stage 9 `ERROR_UPSHOT` → `error_state_for("company_upshot")` after dev carried AST-2054. No scope smuggle in `src/**` beyond the ticket Scope.
+- **Estimate footprint:** Confirm estimate **5** still fits — large but atomic rename surface; aligned with plan stages and test churn.
+- **Cross-ticket scope:** Relations none; Stage 9 merge intentionally integrated AST-2054 upshot naming per plan Sequencing — not sibling product smuggle.
+- **Sibling test carry:** (not applicable) — `tests/**` and `docs/test-bible/**` changes are this ticket’s qa-child manifest, not ftr carry from another child.
+
+## What’s solid
+
+- **Dispatch-retry:** Meteorite scrape claims `SCRAPE_LINK` + `retry_of("SCRAPE_LINK")`, routes first failure to the retry companion and second to `scrape_error_state` (`src/core/meteorite.py`). Consult/candidate empty-token paths use `_empty_token_fail_dest` → bare `ERROR_<TASK_KEY>` instead of generic technical holds (`src/core/consult.py`, `src/core/candidate.py`).
+- **Terminal grammar:** `error_state_for` / `bot_blocked_state_for` / `parse_terminal_state` + chain tuples; `src/core/**` grep shows no retired terminal literals (`FAILED_TECHNICAL`, legacy `BOT_BLOCKED`, etc.) in product paths.
+- **Bot-wall split:** Gazer fetch_website / fetch_job_pages / fetch_culture_pages branch `is_bot_wall` to per-task `bot_blocked_state` (`src/core/gazer.py`).
+- **Entity-state-bound:** Ingress + notify seeds keep real `entity_type` / `trigger_state` pairs; notify trigger updated to `BOT_BLOCKED_SCRAPE_METEORITE` in config seed and admin JSON.
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append this artifact to `docs/features/foundation/ast-2086-terminal-state-rename-and-bot-wall-split.md`, commit `docs(AST-2086): Radia review — clean`, push publish ref, post slim upshot `--as radia`, move **Review Posted** → datt **§3h** **PROCEED** toward User Testing (no `resolve-child` canon work unless Susan answers a future discuss).
+
+```
+[code-rubric] PROCEED (Commit: 88e1626f8) Terminal grammar shipped
+```
+
+context_tokens≈52000
