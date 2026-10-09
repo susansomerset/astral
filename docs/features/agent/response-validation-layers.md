@@ -559,3 +559,16 @@ Each node is new. Place it in the named existing class (or a new `TestAst2093…
 - `TestPrepLiveContentBranches` `[index=000]: jd text` default-position node stays green unchanged.
 - Existing positional-decode nodes (`TestDecodePayload`, `TestAst697…`, `TestAst880…` vet branch) stay green unchanged. The vet branch takes no map.
 - No `src/` or `data/` edits. If a node can't go green without a product change, that is a `[qa-handoff]` back to the engineer, not a test tweak.
+
+
+## Joan fix-board — AST-2095
+
+[board-joan]  CANON: OK
+
+AST-2095 board-joan done — CANON: OK.
+
+**Rationale:** The `## Bug: AST-2095` plan-fix block is **test tree + `docs/test-bible/**` only** — no `src/` or `data/` edits. That is Betty/`qa-fix` delivery for AST-2093’s `[board-betty] TESTS: REVISE` gap, not a product or statute change.
+
+Joan’s F2 question is whether the **proposed change** conflicts with or **requires updating** any in-force directive. New pytest nodes and bible rows only **lock** behavior AST-2093 already defined (`batch_index_map`, assembly, `repeat_processed`, loop dedupe). They do not introduce new policy, carve-outs, or prompt/seed content. Parent AST-2012 has no frozen **Canon Scope**; overlap skim matches prior fix-lane test-gap siblings (e.g. roster AST-1894): **`patt.entity.batch-processing`**, decode/logging statutes, and seed rules are **exercised by tests**, not amended. Nothing needs F3 canon landing; **ESCALATE** is not warranted (no Archie precedent call—only coverage).
+
+**Chuckles routing:** Betty TESTS: REVISE (this ticket is the test work) + Joan CANON: OK → Plan Discuss → qa-fix (F4).
