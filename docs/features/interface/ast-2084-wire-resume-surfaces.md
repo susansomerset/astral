@@ -332,3 +332,11 @@ AC1→S1,S2 · AC2→S1–S3 · AC3→S1 · AC4→S2 · AC5→S1–S3
 Definition fidelity: Exactly four scoped files; siblings untouched. Stage 1 rewires base page to `SplitPanePage` + `ResumeContentEditor` + `PrintPreview` with `refreshKey` on save. Stage 2 adds stacked fullscreen `JobArtifactEditModal` (resume vs cover via `use_resume_structure`), thumbnails + Edit for `preview_thumbnail` tabs gated by existing populated-artifact filter, drops JAR structure authoring and print blob copy for `printHtml`, reload on modal close. Stage 3 bottom-up excision of `ArtifactEditor` resume structure mode with explicit preservation list for shapes/rubric/experience paths. Dry-run + grep Done-when gates match child AC 2/3/5. Wiring completes amended Decision 7: one `ResumeContentEditor` for both resume surfaces, cover on shapes `ArtifactEditor`, parallel resume path removed.
 
 context_tokens≈75000
+
+## Review (build)
+
+- **Branch:** `origin/sub/AST-2046/AST-2084-wire-resume-surfaces`
+- **Commits:** `3ba28d33a` (Stage 1, base page split pane), `85982422f` (Stage 2, `JobArtifactEditModal` + report thumbnails/Edit + print via `printHtml`), `1475d32b6` (Stage 3, `ArtifactEditor` resume structure mode retired)
+- **Gates:** `npx tsc -b --noEmit` exit 0 and eslint 0 problems after every stage; all Done-when greps empty; `validate-sub-log.sh --stage=build` ok.
+- **Deviations:** none — files match the plan's stage code.
+- **Known test drift for Betty:** `test_ArtifactsBaseResumeContent`, resume-mode cases in `test_ArtifactEditor`, `test_JobAnalysisReportModal` (structure authoring / blob print paths removed by plan).
