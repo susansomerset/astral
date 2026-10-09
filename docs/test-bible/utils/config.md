@@ -1461,7 +1461,7 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
 
-`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**; skills emptied by **AST-2061**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
+`CONTACT_CONFIG`: listen flag (default off), no reply prefix template (removed **AST-2085**), Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**; skills emptied by **AST-2061**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |

@@ -6,7 +6,7 @@ AST-1069: Events HTTP ingress (`receive_slack_events_http`) + inbound routing
 AST-1068 / AST-1668: `resolve_slack_user` lookup-only (no create-on-miss);
 unbound Slack poster pool + known/unknown recognition replies on accept.
 AST-1070: Slack-sourced conversation context load / process-local cache / append.
-AST-1067: Manage Slack listen hydrate/set + non-prod reply prefix / post helper.
+AST-1067: Manage Slack listen hydrate/set + reply post helper (AST-2085 retired the non-prod prefix).
 AST-1206: Manage Slack debug get/set.
 AST-1207: Events/Socket ingress hydrates debug from Manage Slack durable SoT
 (`slack_debug_enabled`); logger.debug on the Contact Slack path (log_debug ContextVar).
@@ -341,14 +341,6 @@ def slack_env_names() -> Dict[str, str]:
     }
 
 
-def non_production_reply_prefix(environment: str) -> str:
-    """Format CONTACT_CONFIG non-production reply prefix (AST-1067 applies when listen on)."""
-    env = (environment or "").strip()
-    return str(CONTACT_CONFIG["non_production_reply_prefix_template"]).format(
-        environment=env
-    )
-
-
 def contact_is_production_deploy() -> bool:
     """True when ASTRAL_DEPLOY_ENV matches CONTACT_CONFIG production_deploy_env (case-insensitive)."""
     raw = os.environ.get("ASTRAL_DEPLOY_ENV", "").strip()
@@ -408,11 +400,8 @@ def list_estelle_activity(*, debug: bool = False) -> list[dict]:
 
 
 def format_contact_reply_text(text: str) -> str:
-    """Prefix non-production Contact replies with ``[<environment>] ``; production unchanged."""
-    body = text if isinstance(text, str) else ""
-    if contact_is_production_deploy():
-        return body
-    return non_production_reply_prefix(get_deploy_label()) + body
+    """Outbound Contact reply text — sent as-is in every environment (AST-2085 retired the env prefix)."""
+    return text if isinstance(text, str) else ""
 
 
 @_with_log_debug
@@ -423,7 +412,7 @@ def post_contact_reply(
     thread_ts: Optional[str] = None,
     debug: bool = False,
 ) -> dict:
-    """Format outbound text (non-prod prefix) then ``external.slack.post_message``."""
+    """Format outbound text then ``external.slack.post_message``."""
     outbound = format_contact_reply_text(text)
     logger.debug(
         "Calling post_message: [channel=%r, thread_ts=%r, text=%r, outbound=%r]",
