@@ -3503,7 +3503,7 @@ class TestAst1066ContactConfig:
         assert cc["listen_enabled"] is False
         assert cc["bot_token_env"] == "SLACK_BOT_TOKEN"
         assert cc["signing_secret_env"] == "SLACK_SIGNING_SECRET"
-        assert cc["non_production_reply_prefix_template"] == "[{environment}] "
+        assert "non_production_reply_prefix_template" not in cc
         assert isinstance(cc["skills"], dict)
         for skill_key in cc["skills"]:
             assert skill_key not in cfg.TASK_CONFIG
