@@ -373,3 +373,11 @@ AC1→S3 (fill-parent + fullscreen modal body; end-to-end proof in #4) · AC2→
 Definition fidelity: Four files match AST-2082 `## Scope`; no #3/#4 files touched. `printHtml.ts` centralizes the two documented print copies (callers migrate in #4). `PrintPreview` refetches on `refreshKey` + primitive target keys; no `*_data` client hydrate. `SplitPanePage` and fullscreen `Modal` inline styles respect “no App.css in this ticket.” Ground truth cites NavigationShell, Modal CSS, and existing print handlers. Stages are ordered (helper → preview → layout/modal) with explicit decisions (toast at caller, no `mode` prop, pointer-events during drag, fullscreen borderless for true `100vw`).
 
 context_tokens≈52000
+
+## Review (build)
+
+**Built:** `origin/sub/AST-2046/AST-2082-split-pane-preview` @ `78edbc31c` (last code commit; branch since synced with refreshed ftr `dbd1611bc`)
+
+Stages 1–3: `b701b6f36` `printHtml.ts` (`fetchPrintHtml`, `openHtmlInNewTab`, `POPUP_BLOCKED_MESSAGE`) · `821e81632` `PrintPreview.tsx` (full-panel `srcDoc` iframe, 204 × 264 thumbnail, refetch on `refreshKey`) · `78edbc31c` `SplitPanePage.tsx` + `Modal` `size="fullscreen"`. `npm run build`, `tsc -b --noEmit`, and eslint on all four files clean; `test_Modal.test.tsx` 8 passed (unchanged). Tests deferred to Betty — no known drift.
+
+**Deviations:** none. No minimum panel width (per Joan discuss note + Susan).
