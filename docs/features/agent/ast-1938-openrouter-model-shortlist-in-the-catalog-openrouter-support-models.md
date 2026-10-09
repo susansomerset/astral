@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-1938 archived 2026-10-08 -->
+
+## Linear archive (AST-1938)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1938/openrouter-model-shortlist-in-the-catalog-openrouter-support-models  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1937 — OpenRouter Support Models  
+**Blocked by / blocks / related:** parent: AST-1937
+
+### Description
+
+## What this implements
+
+Adds every brief slug as a selectable OpenRouter catalog model, with the brief's pricing, Little / Medium brain sizes, temperature-1 and capped output defaults, and the per-model upstream provider pin carried through the compat client. Also moves `kimi-k2.6-openrouter` onto its SiliconFlow pin and price. Nothing in routing, DB, or the admin UI changes, because they already read the catalog. Does **not** touch the Manage Task modal (#2).
+
+## Citations
+
+`stat.logging.debug` (the compat client's call/response debug lines keep logging the full body, pin included).
+
+## Scope
+
+* `src/utils/config.py` (**modified**):
+  * **New table:** a new compact OpenRouter model table, keyed by slug, carrying each row's pricing, upstream provider, reasoning flag, and the pinned provider's max output tokens. These are literal snapshot values, with a one-line source/date comment like the existing pricing blocks.
+  * **New builder:** a new builder function merges the table into `LLM_MODEL_CONFIG` after the hand-written entries. For each row it creates a model entry: server `openrouter`, label from the slug, Little (thinking off) and, when reasoning-capable, Medium (thinking on), temperature 1.0, capped output defaults, and one pricing row keyed by the slug. It skips any slug already priced on `openrouter` (today only `moonshotai/kimi-k2.6`), so `get_sku_pricing` never sees a duplicate.
+  * **Modified tier schema:** each brain-size row gains an optional `request_extras` field (default empty) holding the provider pin.
+  * **Modified** `kimi-k2.6-openrouter` **entry:** both of its brain sizes carry the SiliconFlow pin, and its pricing row changes to 0.77 / 3.4 / 0.14 / cache-write 0. Other hand-written entries are unchanged in behaviour.
+  * **Modified validation:** `validate_llm_provider_environment` additionally checks that `request_extras` is a dict on every brain size and that every catalog SKU resolves through `get_sku_pricing` without ambiguity.
+  * **Table shape is the builder's call:** row layout, field names, provider-slug spelling (OpenRouter's routing ids), and exact function names are `plan-child`'s.
+* `src/external/llm_compat.py` (**modified**): the modified send function builds its `extra_body` from thinking payload + server `request_extras` + tier `request_extras`. The tier's extras win on key collision. The existing ungated call/response debug lines keep logging the full body, so the pin shows up in them.
+
+## Acceptance criteria
+
+All `python -c` checks run from the repo root on the shipped tree.
+
+1. **Every brief slug is catalogued on OpenRouter.**
+   * **Check:** a script reading the 76 slugs from this ticket's Original brief table prints `[]` for `[s for s in slugs if not any(t["sku"] == s for m in LLM_MODEL_CONFIG.values() if m["server"] == "openrouter" for t in m["brain_sizes"].values())]`.
+   * **Fails if:** any slug is printed.
+2. **Pricing matches the brief.**
+   * **Check:** for every one of the 76 slugs (including `moonshotai/kimi-k2.6`), `get_sku_pricing(slug, "openrouter")` has `cpm_input` / `cpm_output` / `cpm_cache_read` equal to the brief's IN / OUT / CACHE, and `cpm_cache_write == 0`. The script prints mismatches.
+   * **Fails if:** any mismatch is printed, or any lookup raises (unknown or ambiguous SKU).
+3. **Brain sizes per model.**
+   * **Check:** `model_brain_sizes(<id>)` is `('Little', 'Medium')` for every new model the table flags reasoning-capable and `('Little',)` for every other new model. `model_brain_sizes('kimi-k2.6-openrouter')` stays `('Little', 'Big')`.
+   * **Spot checks:** `gryphe/mythomax-l2-13b` → `('Little',)`; `qwen/qwen3-32b` → `('Little', 'Medium')`.
+   * **Fails if:** any other tuple appears, or any new model offers `Big`.
+4. **Saving an agent respects model-scoped sizes.**
+   * **Check (component test):**
+     * `PUT /api/admin/agents/<id>` with a new OpenRouter model + `Little` → re-GET returns both.
+     * The same request with `gryphe/mythomax-l2-13b` + `Medium` → 400.
+     * The same request with `qwen/qwen3-32b` + `Big` → 400.
+   * **Fails if:** either 400 case saves, or the valid case doesn't persist.
+5. **Provider pin on the wire.**
+   * **Check (component test, stubbed** `_get_client`**):**
+     * A Little call on `qwen/qwen3-32b` sends `extra_body["provider"]` naming only the brief's provider (DeepInfra) with fallbacks off.
+     * A `kimi-k2.6-openrouter` call names only SiliconFlow.
+     * A Kimi-direct call and a Claude-catalog call carry no `provider` key.
+   * **Fails if:** a pin is missing or wrong on an OpenRouter call, or leaks onto another server.
+6. **No slug outside config.**
+   * **Check:** `rg -n "qwen/|z-ai/|meta-llama/|mistralai/|bytedance-seed/|nousresearch/|thedrummer/|undi95/|gryphe/|anthracite-org/|sao10k/|tencent/|xiaomi/|stepfun/|morph/|nvidia/|google/gemma|openai/gpt-oss|deepseek/deepseek" src/ --glob '!src/utils/config.py'` returns nothing.
+   * **Fails if:** any hit (a per-model literal leaked into code).
+7. **Defaults fit.**
+   * **Check:** for every new model and brain size, `default_temperature == 1.0` and `default_max_tokens == min(16000 Little | 32000 Medium, <table max output for that slug>)`. The script prints violators.
+   * **Fails if:** any violator is printed.
+8. **Catalog boots and lists.**
+   * **Check:**
+     * `python -c "from src.utils.config import validate_llm_provider_environment as v; v()"` returns without raising.
+     * `GET /api/admin/agents/models` returns 4 + 75 = 79 model ids.
+   * **Fails if:** `v()` raises, or the count isn't 79 (a skipped or duplicated slug).
+
+## Boundaries
+
+Does **not** touch the Manage Task modal, its tests, or bible rows (sibling #2 — Remove the Manage Task model picker). No routing, DB, admin route, or UI change.
+
+## Notes for planning
+
+Citations: `stat.logging.debug`. Pinned provider max-output and reasoning flags are build-time snapshots from OpenRouter (model listing / per-model endpoints) written as literals with a source/date comment. Susan decisions (parent Description): 76 models; Little + Medium (no Big on new models); pin provider, fallbacks off; kimi-k2.6-openrouter → SiliconFlow pin + 0.77/3.4/0.14, keeps Little/Big; temperature 1.0; 16k/32k capped.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1937-openrouter-support-models`, child `sub/AST-1937/AST-1938-openrouter-model-shortlist`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-02T18:20:57.725Z
+[code-rubric] PROCEED (Commit: efab2e87c) OpenRouter catalog; rollup note
+
+#### betty — 2026-10-02T18:17:07.097Z
+`origin/sub/AST-1937/AST-1938-openrouter-model-shortlist` @ `099978e56` · manifest in config.md bible
+
+#### joan — 2026-10-02T18:04:31.076Z
+[plan-rubric] PROCEED (Commit: 57d2ef49c) OpenRouter catalog plan clean — context_tokens≈52000
+
+#### katherine — 2026-10-02T18:02:19.411Z
+`origin/sub/AST-1937/AST-1938-openrouter-model-shortlist` @ `57d2ef49c` · plan ready, 79 models
+
+---
+
 # AST-1938 — OpenRouter model shortlist in the catalog
 
 - **Parent:** [AST-1937 — OpenRouter Support Models](https://linear.app/astralcareermatch/issue/AST-1937)

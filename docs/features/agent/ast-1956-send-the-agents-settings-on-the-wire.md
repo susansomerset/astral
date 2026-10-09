@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-1956 archived 2026-10-08 -->
+
+## Linear archive (AST-1956)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1956/send-the-agents-settings-on-the-wire-refactor-agent-settings-and  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1953 — Refactor agent settings and ingest per-endpoint model options  
+**Blocked by / blocks / related:** parent: AST-1953
+
+### Description
+
+## What this implements
+
+Agent calls send temperature, effort and the provider object straight from the agent's settings, on both clients, with no gating. A rejected setting is an ordinary failure. The debug line shows what was sent. After #1. Does **not** touch admin routes or UI (#3).
+
+## Citations
+
+`patt.task.dispatch-retry` (rejections take the normal retry path); `stat.logging.debug`.
+
+## Scope
+
+* `src/core/agent.py` (**modified**):
+  * **Modified route helper:** calls the new resolver with the agent row.
+  * **Modified call path (**`do_task`**,** `run_adhoc`**):** passes the resolved temperature/effort/provider object through. The craft-rubric guard still forces thinking off, and the floors still apply.
+  * **Modified debug line:** logs the temperature and effort sent.
+* `src/external/llm_compat.py` (**modified**): **modified request assembly**.
+  * Sends `temperature` when given.
+  * Sends the effort in `output_config.effort`, or `thinking: {type: "disabled"}` for `none`.
+  * Merges the provider object into the body.
+  * The thinking-on/off-from-tier branch goes. The failure path is unchanged.
+* `src/external/anthropic.py` (**modified**): **modified** `send_to_anthropic`. Takes an optional effort and sends it the same way when given. The failure path is unchanged.
+* Tests and bibles (Betty in `qa-child`):
+  * `tests/component/core/test_agent.py`
+  * `tests/component/external/test_llm_compat.py`
+  * `tests/component/external/test_anthropic.py`
+  * `docs/test-bible/core/agent.md`
+  * `docs/test-bible/external/llm_compat.md`
+  * `docs/test-bible/external/anthropic.md`
+
+## Acceptance criteria
+
+"Stubbed client" means the component-test stubs of the Anthropic SDK client used by `test_llm_compat.py`, `test_anthropic.py` and `test_agent.py`.
+
+1. **Provider object from the agent row.**
+   * **Check (stubbed client):** an agent on `openai/gpt-oss-120b` with `quantization: "bf16"`, fallbacks true and nothing else sends `provider == {"quantizations": ["bf16"], "allow_fallbacks": true}` exactly. With `provider_only: ["crusoe"]`, `provider_sort: "price"` added, it also carries `only` and `sort`.
+   * **Fails if:** any other key appears, or there is an `order` pin, or the body differs.
+2. **Empty settings send nothing.**
+   * **Check (stubbed client):** an OpenRouter agent with every setting empty except fallbacks sends no `temperature`, no `output_config`, no `thinking`, and `provider == {"allow_fallbacks": true}`.
+   * **Fails if:** any of those keys appears with a value the agent didn't set.
+3. **Temperature and effort exactly as set, no gating.**
+   * **Check (stubbed client):**
+     * `temperature: 0.3` → `temperature == 0.3`;
+     * `reasoning_effort: "high"` → `output_config.effort == "high"`;
+     * `reasoning_effort: "none"` → `thinking == {"type": "disabled"}`.
+   * **Check:** a model whose old config said it couldn't think still sends `"high"` when set.
+   * **Check:** the same on `claude-sonnet-4-6` via the Anthropic client.
+   * **Fails if:** any value is dropped, changed or blocked in code.
+4. **A rejected setting is an ordinary failure.**
+   * **Check (stubbed 400 "Reasoning is mandatory for this endpoint and cannot be disabled"):** `do_task` returns the normal failure result. No new failure class is introduced: `rg -n "config_error|configuration_error" src/` returns nothing.
+   * **Fails if:** a special class or hold path appears.
+5. **Truthful debug line.**
+   * **Check (component test):** for an agent with empty temperature, the `Calling _send_to_server` debug line shows `temp=None`.
+   * **Fails if:** a number is logged.
+
+## Boundaries
+
+Does not touch [config.py](<http://config.py>) / [database.py](<http://database.py>) / seed (#1) or admin routes/UI (#3). Uses #1's settings resolver.
+
+## Notes for planning
+
+Parent AST-1953 Description is the authority (Functional scope, Technical scope, Susan's 2026-10-03 answers). Code it loosely — no vocabulary lists, no pre-send gating (Susan).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1953-agent-settings`, child `sub/AST-1953/AST-1956-send-settings-on-wire`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-03T23:42:22.075Z
+[code-rubric] PROCEED (Commit: 7aa622ec7) Settings on wire clean
+
+#### betty — 2026-10-03T23:36:55.469Z
+`origin/sub/AST-1953/AST-1956-send-settings-on-wire` @ `7aa622ec7` · manifest in agent bible
+
+#### joan — 2026-10-03T23:10:35.338Z
+[plan-rubric] PROCEED (Commit: 5851456ca) Wire path traceable
+
+#### hedy — 2026-10-03T23:08:54.222Z
+`origin/sub/AST-1953/AST-1956-send-settings-on-wire` @ `5851456ca` · settings sent as stored
+
+---
+
 # AST-1956 — Send the agent's settings on the wire
 
 - **Ticket:** [AST-1956](https://linear.app/astralcareermatch/issue/AST-1956) · **Parent:** [AST-1953](https://linear.app/astralcareermatch/issue/AST-1953) Refactor agent settings and ingest per-endpoint model options

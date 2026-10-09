@@ -1,3 +1,87 @@
+<!-- linear-archive: AST-1950 archived 2026-10-08 -->
+
+## Linear archive (AST-1950)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1950/run-once-agent-remap-starting-modes-new-sizes-kimi-fold-support-big  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1946 — Support "Big" brain OpenRouter models  
+**Blocked by / blocks / related:** parent: AST-1946
+
+### Description
+
+## What this implements
+
+Ships the operator migration that gives every existing agent its starting mode and moves OpenRouter agent rows to their new sizes, including `kimi-k2.6-openrouter` → `moonshotai/kimi-k2.6`. Rows on removed models are only listed. After #1 and #2: the `mode` column must exist, and remapped rows must pass mode validation. Does **not** touch product code.
+
+## Citations
+
+none. The script lives under `scripts/`, outside every active statute's `src/**` paths, and no active pattern covers operator migrations.
+
+## Scope
+
+* `scripts/migrations/remap_openrouter_agents.py` (**new**): a new CLI. By default it is a dry run that prints each planned change and each agent row on a removed model. With `--apply` it does two things:
+  * Sets `mode` on every agent row that has none (Big → Creative, else Deterministic, judged on the row's brain size before remap).
+  * Rewrites OpenRouter rows' `brain_setting` to the slug's new size, and moves `kimi-k2.6-openrouter` rows to `moonshotai/kimi-k2.6` / `Little`.
+
+  Removed-model and direct-model rows keep their model and size. The old→new slug map is a literal snapshot table inside the script. It runs **once per environment, right after deploy**, and the docstring says so (same convention as `retarget_artifact_chain_trigger_state.py`).
+
+## Acceptance criteria
+
+All `python -c` checks run from the repo root on the shipped tree. "The brief" means the 95 rows in this ticket's Original brief. `SIZE = {"int4": "Little", "fp4": "Little", "int8": "Medium", "fp8": "Medium", "fp16": "Big", "bf16": "Big"}`.
+
+13. **Migration remaps once.**
+    * **Check (component test on a temp DB, rows without** `mode`**):** seed `(qwen/qwen3-32b, Little)`, `(qwen/qwen3-32b, Medium)`, `(gryphe/mythomax-l2-13b, Little)`, `(kimi-k2.6-openrouter, Little)`, `(kimi-k2.6-openrouter, Big)`, `(morph/morph-v3-large, Little)`, `(claude, Big)` and `(deepseek-v4, Medium)`.
+      * A dry run writes nothing and lists `morph/morph-v3-large` as removed.
+      * `--apply` yields:
+        * `(qwen/qwen3-32b, Medium, Deterministic)` for both qwen rows
+        * `(gryphe/mythomax-l2-13b, Big, Deterministic)`
+        * `(moonshotai/kimi-k2.6, Little, Deterministic)` and `(moonshotai/kimi-k2.6, Little, Creative)`
+        * `(morph/morph-v3-large, Little, Deterministic)`
+        * `(claude, Big, Creative)` and `(deepseek-v4, Medium, Deterministic)`
+      * Every non-removed row then passes model + size + mode validation.
+    * **Fails if:** the dry run writes, any row maps differently, or a non-removed row fails validation.
+
+## Boundaries
+
+Does **not** touch product code. Sibling slices: #1 catalog/resolver/config, #2 database/agent/api_admin, #3 Manage Agents UI, #4 remap migration. Blocked by: #1 (AST-1947), #2 (AST-1948).
+
+## Notes for planning
+
+Same `scripts/migrations/` convention as `retarget_artifact_chain_trigger_state.py`. Parent AST-1946 Description (Functional scope, Technical scope, Original brief with all 95 rows) is authoritative.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1946-big-brain-openrouter`, child `sub/AST-1946/AST-1950-remap-migration`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-10-03T03:23:47.727Z
+[merge-child] blocked: `validate-sub-log.sh` reports `missing test(AST-1950)` — false positive.
+
+- `test(AST-1950)` `fe41777d9` is already on `origin/ftr/AST-1946-big-brain-openrouter`: on the shared `origin/tests` line, AST-1949's `0f3e3dc9a` sits on top of it, and AST-1949's `merge-tests` `e55b2cf87` carried both into ftr. `tests/component/scripts/test_remap_openrouter_agents.py` + `docs/test-bible/dev/remap_openrouter_agents.md` are present on ftr.
+- The sub is stacked on ftr (`cc8253f08`) and still has `merge-tests(AST-1950)` `41d48e82f`. The validator only scans sub-not-on-ftr commits, so it can't see the test commit.
+- Dry-run merge into ftr is clean. Not fabricating a noop `test()` commit (forbidden).
+
+@Betty White — tests-line hygiene: needs either a validator rule that accepts a `test(<child>)` already reachable from ftr, or an explicit override for this merge.
+
+#### radia — 2026-10-03T03:21:20.585Z
+[code-rubric] PROCEED (Commit: 41d48e82f) Migration CLI + AC13 tests clean
+
+#### betty — 2026-10-03T03:19:26.174Z
+`origin/sub/AST-1946/AST-1950-remap-migration` @ `41d48e82f` · remap migration tests ready
+
+#### joan — 2026-10-03T03:15:44.740Z
+[plan-rubric] PROCEED (Commit: 2da2a906) Run-once remap CLI
+
+#### katherine — 2026-10-03T03:14:31.228Z
+`origin/sub/AST-1946/AST-1950-remap-migration` @ `2da2a906a` · remap CLI plan ready
+
+---
+
 # AST-1950 — Run-once agent remap: starting modes, new sizes, Kimi fold
 
 - **Parent:** [AST-1946 — Support "Big" brain OpenRouter models](https://linear.app/astralcareermatch/issue/AST-1946)

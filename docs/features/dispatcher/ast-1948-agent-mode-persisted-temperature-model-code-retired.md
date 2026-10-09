@@ -1,3 +1,114 @@
+<!-- linear-archive: AST-1948 archived 2026-10-08 -->
+
+## Linear archive (AST-1948)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1948/agent-mode-persisted-and-applied-temperature-and-model-code-retired  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1946 — Support "Big" brain OpenRouter models  
+**Blocked by / blocks / related:** parent: AST-1946; blocks: AST-1950; blocks: AST-1949
+
+### Description
+
+## What this implements
+
+Adds `mode` to the agent table and drops `temperature` and the duplicate `model_code`. Every agent write and repo-JSON apply requires a valid mode. Agent calls and the admin workbench take thinking and temperature only from #1's mode-aware route. After #1. Does **not** touch the UI (#3) or migrate rows (#4).
+
+## Citations
+
+`stat.logging.debug` (no `debug=` parameter on the touched call paths); `stat.logging.info.api` (agent create/update routes keep the statute's info shape with `mode` in place of `temperature`).
+
+## Scope
+
+* `src/data/database.py` (**modified**):
+  * **Schema:** the modified agent schema-ensure adds a nullable `mode` TEXT column and drops the `temperature` and `model_code` columns when present (DDL only, per AST-1497).
+  * **Writes:** the modified agent save, update allow-list, repo-JSON apply and repo-JSON validation write `mode`, reject a missing or unknown mode, and no longer accept `temperature`.
+  * **Reads:** the modified brain-size coercion stops falling back to legacy `model_code` inference. The modified agent public view returns `mode` and no longer emits `model_code` (`resolved_model_key` stays). The table docstring is updated.
+* `src/core/agent.py` (**modified**): the modified LLM route helper passes the agent's mode to the resolver. The modified call path takes temperature and thinking from the resolved tier only; there is no agent-row temperature. The craft-rubric thinking-off guard and the max-tokens floors still apply on top, unchanged.
+* `src/ui/api/api_admin.py` (**modified**):
+  * The modified agent create/update routes take a required `mode`, return 400 on a missing or unknown one, and no longer accept `temperature`.
+  * The modified adhoc/workbench resolver passes mode through and takes temperature from the resolved tier.
+  * The modified `GET /agents/models` response drops per-size `default_temperature`.
+* `tests/component/core/test_agent.py`, `tests/component/ui/api/test_api_admin.py`, `tests/component/core/test_repo_admin_json.py`, `docs/test-bible/core/agent.md`, `docs/test-bible/ui/api/api_admin.md` (**modified**, Betty in `qa-child`).
+
+## Acceptance criteria
+
+All `python -c` checks run from the repo root on the shipped tree. "The brief" means the 95 rows in this ticket's Original brief. `SIZE = {"int4": "Little", "fp4": "Little", "int8": "Medium", "fp8": "Medium", "fp16": "Big", "bf16": "Big"}`.
+
+5. **Mode drives every call on the wire.**
+   * **Check (component tests, stubbed clients):**
+     * OpenRouter:
+       * Creative on `z-ai/glm-4.6` sends the adaptive thinking payload and no `temperature`.
+       * Creative on `microsoft/phi-4` sends thinking-off params and `temperature == 0.6`.
+       * Deterministic on `z-ai/glm-4.6` sends thinking-off params and `temperature == 0.2`.
+       * All three carry the AC 4 pin.
+     * Direct:
+       * Creative on `kimi-k2.6` Little sends `{"thinking": {"type": "enabled"}}` and no `temperature`.
+       * Deterministic on `kimi-k2.6` Big sends thinking-off params and `temperature == 0.2`.
+       * Creative on `deepseek-v4` Big sends thinking-off params and `temperature == 0.6` with `max_tokens >= 384000`.
+       * Deterministic on `claude` Medium sends `temperature == 0.2` to the Anthropic client with SKU `claude-sonnet-4-6`.
+   * **Fails if:** any call's thinking, temperature, SKU or floor differs.
+6. **Direct models persist; no stray thinking/temperature settings.**
+   * **Check:**
+     * For `claude`, `kimi-k2.6` and `deepseek-v4`, model ids, brain-size tuples, tier SKUs, `default_max_tokens`, `max_tokens_floor` and pricing rows equal pre-epic `origin/dev` values.
+     * No stored tier in `LLM_MODEL_CONFIG` has a `thinking`, `thinking_params` or `default_temperature` key. These appear only on the tier the resolver returns for a call.
+     * `rg -n "default_temperature|brain_setting_for_anthropic_agent_key|admin_brain_setting_catalog|infer_brain_setting_from_legacy_model_code" src/` returns nothing.
+     * `rg -n "temperature" src/ui/frontend/src/pages/AdminAgentPrompts.tsx` returns nothing.
+   * **Fails if:** any direct value differs, a stored tier keeps one of those keys, or any hit.
+7. **Agent row: mode in; temperature and model_code out.**
+   * **Check (component tests):**
+     * After schema-ensure on a DB that had both columns, `PRAGMA table_info(agent)` lists `mode` and neither `temperature` nor `model_code`.
+     * `PUT /api/admin/agents/<id>` with `mode: "Creative"` → re-GET returns `"Creative"` and has no `temperature` or `model_code` key.
+     * Omitting `mode`, or sending `"Wild"`, → 400.
+     * Reverting the agent table from `data/admin/agent.json` succeeds.
+   * **Fails if:** a column or key survives, an invalid mode saves, a valid one doesn't persist, or revert fails.
+8. **No slug or mode literal outside config.**
+   * **Check:**
+     * `rg -n "apodex/|bytedance/ui-tars|ibm-granite/|inclusionai/|meta/muse|microsoft/|minimax/|sao10k/l3|thedrummer/|z-ai/glm-4|moonshotai/kimi-k2\.[57]" src/ --glob '!src/utils/config.py'` returns nothing.
+     * `rg -n "0\.6\b|0\.2\b" src/core/agent.py src/ui/api/api_admin.py src/data/database.py` returns no mode temperature literal.
+   * **Fails if:** any hit.
+
+## Boundaries
+
+Does **not** touch the UI (#3) or migrate rows (#4). Sibling slices: #1 catalog/resolver/config, #2 database/agent/api_admin, #3 Manage Agents UI, #4 remap migration. Blocked by: #1 (AST-1947).
+
+## Notes for planning
+
+AC 7 / AC 12 shared with #1: this child owns the `src/data`, `src/core`, `src/ui/api` halves. AC 5 exercises #1's resolver through this child's call paths. Parent AST-1946 Description (Functional scope, Technical scope, Original brief with all 95 rows) is authoritative.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1946-big-brain-openrouter`, child `sub/AST-1946/AST-1948-agent-mode-row`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-03T03:09:49.430Z
+[code-rubric] PROCEED (Commit: 51caab812) Mode row + call paths clean
+
+#### hedy — 2026-10-03T03:08:52.578Z
+`origin/sub/AST-1946/AST-1948-agent-mode-row` @ `51caab812` · manifest green, no product changes
+
+Item 1: 206 passed. Item 2: 66 reds, the same per-file counts as the stated baseline (43 core-agent / 18 repo-JSON / 5 api_admin). Item 3: all greps empty.
+
+FYI @Betty White (not blocking): one baseline red, `TestAst787AgentRepoJsonSeed::test_repo_rows_match_fixture_repo_column_mapping`, now fails with `KeyError: 'temperature'`. The test-side `AST787_AGENT_REPO_COLUMNS` tuple still lists `temperature`.
+
+#### betty — 2026-10-03T03:06:42.928Z
+`origin/sub/AST-1946/AST-1948-agent-mode-row` @ `51caab812` · mode tests and bible ready
+
+#### joan — 2026-10-03T02:53:45.322Z
+[plan-rubric] PROCEED (Commit: 049f60cc) Mode row, callers repaired
+
+#### hedy — 2026-10-03T02:52:39.902Z
+`origin/sub/AST-1946/AST-1948-agent-mode-row` @ `049f60cc9` · mode row, callers repaired
+
+#### chuckles — 2026-10-03T02:30:40.205Z
+Heads-up from [AST-1951](https://linear.app/astralcareermatch/issue/AST-1951) (Susan picked A): AST-1947 lands paired with this ticket. After AST-1947 merges, `ftr/AST-1946-big-brain-openrouter` won't import or boot until this ticket repairs the callers in `database.py`, `agent.py` and `api_admin.py`. That means dropping the `infer_brain_setting_from_legacy_model_code` import, passing the new `mode` argument to `resolve_model_brain`, and removing the `tier["default_temperature"]` reads, including in `GET /agents/models`. AST-1947's AC 8 (98 ids from that endpoint) is verified on ftr after this merges.
+
+---
+
 # AST-1948 — Agent mode persisted and applied; temperature and model_code retired from the agent row
 
 - **Parent:** [AST-1946 — Support "Big" brain OpenRouter models](https://linear.app/astralcareermatch/issue/AST-1946)
