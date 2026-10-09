@@ -267,6 +267,8 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
           artifact_key: "job_resume",
           shapes_key: null,
           use_resume_structure: true,
+          // AST-2081: mirrors JOBS_RECOMMENDED_ARTIFACT_TABS preview_thumbnail.
+          preview_thumbnail: true,
         },
         {
           tab_id: "artifact_cover",
@@ -274,6 +276,8 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
           artifact_key: "cover_letter",
           shapes_key: "cover_letter",
           use_resume_structure: false,
+          // AST-2081: mirrors JOBS_RECOMMENDED_ARTIFACT_TABS preview_thumbnail.
+          preview_thumbnail: true,
         },
         {
           tab_id: "artifact_application",
@@ -281,6 +285,8 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
           artifact_key: "proposed_answers",
           shapes_key: null,
           use_resume_structure: false,
+          // AST-2081: mirrors JOBS_RECOMMENDED_ARTIFACT_TABS preview_thumbnail.
+          preview_thumbnail: false,
         },
       ],
     },

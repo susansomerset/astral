@@ -1460,72 +1460,6 @@ body {
   outline-offset: 2px;
 }
 
-.base-resume-structure-editor {
-  padding: 10px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
-}
-
-.base-resume-structure-editor-title {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-}
-
-.base-resume-structure-row,
-.base-resume-structure-add {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.base-resume-structure-row-id {
-  font-size: 12px;
-  color: var(--text-muted);
-  min-width: 8em;
-}
-
-.base-resume-structure-save {
-  margin-top: 4px;
-}
-
-.structure-authoring-header {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.structure-authoring-name {
-  flex: 1 1 auto;
-  min-width: 8rem;
-}
-
-.structure-authoring-style {
-  flex: 0 0 auto;
-  width: 9rem;
-  max-width: 12rem;
-}
-
-.structure-authoring-flag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-  white-space: nowrap;
-  font-weight: 400;
-  color: var(--text-muted);
-}
-
 .dep-header {
   display: flex;
   align-items: center;
@@ -2008,7 +1942,6 @@ input.side-tab-heading-editable:focus {
 
 .experience-jobs-editor-role-label {
   font-size: 12px;
-  color: var(--text-muted);
 }
 
 .experience-jobs-editor-add {
@@ -2019,6 +1952,190 @@ input.side-tab-heading-editable:focus {
   margin: 0 0 8px;
   color: var(--danger);
   font-size: 13px;
+}
+
+/* === 10e2. Resume content editor (AST-2083) === */
+
+.resume-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.resume-editor-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.resume-editor-header .resume-editor-search {
+  flex: 1 1 10rem;
+  width: auto;
+  min-width: 8rem;
+}
+
+.resume-editor-rows {
+  padding: 8px 12px;
+}
+
+.resume-section-row {
+  margin-bottom: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.resume-section-row.is-expanded {
+  border-color: var(--border);
+}
+
+.resume-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 8px 4px 4px;
+  background: var(--bg-elevated);
+}
+
+.resume-section-header > button,
+.resume-section-header > span {
+  flex: 0 0 auto;
+}
+
+/* Section header text; experience job headers share it (AC: same computed color). */
+.resume-section-title {
+  color: var(--heading);
+}
+
+.resume-section-header > .resume-section-summary {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.resume-section-summary .resume-section-title {
+  font-weight: 600;
+}
+
+.resume-section-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.resume-section-drag {
+  color: var(--text-muted);
+  cursor: grab;
+  user-select: none;
+}
+
+.resume-section-icon,
+.resume-section-format {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.resume-section-format {
+  padding: 0 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+
+.resume-section-header .resume-section-label-input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 8rem;
+  font-weight: 600;
+}
+
+.resume-section-header .resume-section-select {
+  flex: 0 0 auto;
+  width: 10rem;
+}
+
+.resume-section-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.resume-section-body {
+  padding: 8px;
+  background: var(--bg-deep);
+}
+
+.resume-section-textarea {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.resume-section-compare {
+  margin: 8px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--border);
+  background: var(--bg-deep);
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
+.resume-section-new {
+  border-left-color: var(--accent-contrast);
+}
+
+.resume-section-removed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.resume-section-removed-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* PrintPreview thumbnail hook (AST-2082). */
+.print-preview-thumb {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--paper-bg);
+}
+
+.print-preview-thumb:hover {
+  border-color: var(--accent-contrast);
 }
 
 /* === 10f. Section expand chrome (AST-893) === */

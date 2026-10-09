@@ -6485,6 +6485,122 @@ class TestAst1867BalanceHeldCounting:
         transition.assert_not_called()
 
 
+# AST-2098 — a failed host probe holds company state on every roster hold branch (select_job_page,
+# JOBS_FOUND, batch prefilter, company upshot, find-job-page select, single-company prefilter) and is
+# counted held, not errored. Literals only (no AST-2098 imports) so these fail by assertion pre-fix.
+class TestAst2098ProbeFailureHold:
+    _FC = "provider_probe_failure"
+    _ERR = "Host probe failed: Probe response named no provider: {'message': 'No endpoints found'}"
+
+    def _tagged(self) -> Dict[str, Any]:
+        return {"success": False, "error": self._ERR, "failure_class": self._FC}
+
+    @pytest.mark.asyncio
+    async def test_select_job_page_probe_hold_counts_held(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        inner = {"short_name": "acme", "state": "PJL_READY", "response_type": "SELECT_FAILED",
+                 "error": self._ERR, "failure_class": self._FC, "state_held": True}
+        monkeypatch.setattr(roster_mod, "run_select_job_page_dispatch", AsyncMock(return_value=inner))
+        warn = MagicMock()
+        monkeypatch.setattr(roster_mod, "_warn_company", warn)
+        out = await roster_mod.run_company_task(
+            "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b2098", dispatch_task_key="select_job_page",
+        )
+        assert (out["total_processed"], out["total_passed"], out["total_failed"], out["total_errors"]) == (1, 0, 0, 0)
+        assert out["total_held"] == 1
+        assert out["failure_class"] == self._FC
+        warn.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_jobs_found_probe_hold_skips_error_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ent = _company(state="JOBS_FOUND", job_site="https://jobs")
+        inner = {"error": self._ERR, "state": "JOBS_FOUND", "failure_class": self._FC}
+        monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", AsyncMock(return_value=inner))
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b2098")
+        assert out["total_held"] == 1
+        assert out["total_errors"] == 0
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_probe_hold_counts_held(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        companies = [
+            {"short_name": n, "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}} for n in ("acme", "beta")
+        ]
+        out = await roster_mod.prefilter_company_batch("batch-2098", companies, debug=False)
+        assert out["state_held"] is True
+        assert out["total_held"] == 2
+        transition.assert_not_called()
+        # Through run_consult_task: held companies are not run errors; the class reaches the dispatcher.
+        from src.core import consult as consult_mod
+
+        monkeypatch.setattr(roster_mod, "prefilter_company_batch", AsyncMock(return_value=out))
+        summary = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", companies, "b2098", dispatch_task_key="prefilter_company",
+        )
+        assert summary["total_errors"] == 0
+        assert summary["total_held"] == 2
+        assert summary["failure_class"] == self._FC
+
+    @pytest.mark.asyncio
+    async def test_company_upshot_probe_hold_counts_held(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        companies = [{"short_name": n, "state": "UPSHOT_READY"} for n in ("acme", "beta")]
+        out = await roster_mod.company_upshot_batch("b2098", companies)
+        assert out["state_held"] is True
+        assert out["total_held"] == 2
+        transition.assert_not_called()
+        from src.core import consult as consult_mod
+
+        monkeypatch.setattr(roster_mod, "company_upshot_batch", AsyncMock(return_value=out))
+        summary = await consult_mod.run_consult_task(
+            "company", "UPSHOT_READY", companies, "b2098", dispatch_task_key="company_upshot",
+        )
+        assert summary["total_errors"] == 0
+        assert summary["total_held"] == 2
+        assert summary["failure_class"] == self._FC
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_probe_hold_keeps_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        saver = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_company", saver)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state="PJL_READY")))
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme", company_website="https://cw", assembled_content="asm",
+            page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
+            nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
+        )
+        assert out["state_held"] is True
+        assert out["state"] == "PJL_READY"
+        assert out["failure_class"] == self._FC
+        saver.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_prefilter_company_probe_hold_keeps_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Single-company prefilter → _prefilter_fail hold branch (AST-2098 step 7d).
+        monkeypatch.setattr(
+            roster_mod, "scrape_company_homepage_content",
+            AsyncMock(return_value={"company_website": "https://www.acme.com", "visible_text": "hello",
+                                    "enumerated_nav_links": ""}),
+        )
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state="HOMEPAGE_READY")))
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        out = await roster_mod.prefilter_company("acme", "https://www.acme.com")
+        assert out["decision"] == "HOLD"
+        assert out["state"] == "HOMEPAGE_READY"
+        assert out["state_held"] is True
+        assert out["failure_class"] == self._FC
+        transition.assert_not_called()
+
+
 class TestAst1842SelectJobPageTimeoutHold:
     """AST-1842: provider_call_timeout on select_job_page holds loop-eligible state (no ERROR_SELECT_JOB_PAGE_NO_JOBLIST)."""
 

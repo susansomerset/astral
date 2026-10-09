@@ -674,6 +674,59 @@ Expect **23 passed** with AST-1867 product.
 
 **Integration:** none — do not invent.
 
+### AST-2098 · AST-2099 (failed host probe holds the batch)
+
+**Parent:** [AST-2016](https://linear.app/astralcareermatch/issue/AST-2016) (orphaned-bug mini-parent). Product: **AST-2098** (`19036ccf0` on `origin/ftr/AST-2016-probe-fail-hold`); test/bible delivery on gap sibling **AST-2099** (`origin/sub/AST-2016/AST-2099-probe-fail-hold-gaps`); plan `docs/features/foundation/ast-1959-per-batch-probe-and-host-lock-on-the-openrouter-path.md` § Bug: AST-2099. **Primary manifest (this file).** Contract: the first result satisfying `is_provider_probe_failure` (`failure_class == "provider_probe_failure"`) sets `ctx["provider_probe_outage"] = {"error", "held"}` (one WARNING; later results only add `total_held`). This happens at all three `_run_unified` call sites (per-entity `_one`, chunk `_consult_chunk`, full-batch call). Remaining entities and chunks are then skipped, and the claim is still released in `finally`. `_run_dispatch_loop` breaks after the run. `_dispatch_one_body` finishes **INTERRUPTED** with no alert (AST-2098 Boundary) and no `auto_run_error`, and never reaches the breaker. A rate-limit outage's **FAILED** wins over it. `total_held` / `failure_class` never enter the summary (ledger-safe).
+
+**Sequencing deviation (gap child, AST-1870 precedent):** product landed first. **[bug-repro]** red at pre-fix `25c7ab095` (`git restore --source 25c7ab095 -- src/` over this ticket's tests): `assert 6 == 1` (2 jobs × 3 runs), status `COMPLETED`. Green on `19036ccf0`. All 23 AST-2098 nodes across the six modules fail by assertion pre-fix (no import / setup errors — literals only, no AST-2098 symbol imports).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AST-2016 shape: 2-job `meteorite_grade_get`, `batch_call_mode=0`, `max_runs=3`, warm job probe-held → 1 consult call, claim released, ledger INTERRUPTED `1/…/0`, no breaker / `auto_run_error` / balance alert | `_dispatch_one_body` / `_run_dispatch_loop` / `_run_unified` | **`tests/component/core/test_dispatcher.py::TestAst2098ProviderProbeOutage::test_bug_repro_probe_failure_holds_batch_interrupted`** (**bug-repro**) |
+| Per-entity skip; summary exactly the four `_SUMMARY_ZERO` keys; ctx marker `{"error", "held": 1}`; no balance / rate-limit key; claim released | `_one` + `_note_provider_probe_outage` | **`::TestAst2098ProviderProbeOutage::test_run_unified_per_entity_skips_after_probe_failure`** |
+| Chunk split: head held → tail chunks skipped | `_consult_chunk` | **`::…::test_run_unified_chunk_split_skips_tail_after_head_probe_failure`** |
+| Full-batch call marks ctx, `held == 2` from the summary's `total_held` | full-batch branch | **`::…::test_run_unified_full_batch_marks_probe_outage`** |
+| Loop stops after the outage run (`max_runs=0`; finite eligibility `[24,24,24,0]`) | `_run_dispatch_loop` | **`::…::test_run_dispatch_loop_stops_after_probe_outage_run`** |
+| Probe outage alone → INTERRUPTED; with a rate-limit outage → FAILED; no alert, no `auto_run_error`, no breaker either way | `_dispatch_one_body` | **`::…::test_dispatch_one_probe_outage_status[False-INTERRUPTED/True-FAILED]`** (`True` is a guard, green both) |
+
+Tag and hold nodes upstream: [`../external/llm_compat.md`](../external/llm_compat.md) § AST-2098, [`../external/openrouter.md`](../external/openrouter.md) § AST-2098, [`../utils/cost_calculator.md`](../utils/cost_calculator.md) § AST-2098, [`consult.md`](consult.md) § AST-2098, [`roster.md`](roster.md) § AST-2098.
+
+**Kept:** `TestAst1867ProviderBalanceOutage`, `TestAst2010ProviderRateLimitOutage` (unchanged, green).
+
+**Pre-existing drift (not AST-2098, left as-is):** the six touched modules carry the same failure set at the sub tip with and without this pass's tests (`TestCircuitBreaker::*` arity, roster `_is_verified_job_site_distinct` removed, etc.) — zero new failures; this pass fixes two (openrouter, below).
+
+**Integration:** none — do not invent.
+
+## QA test manifest (AST-2099)
+
+1. **AST-2098 nodes + regressions** (**[bug-repro]** = `TestAst2098ProviderProbeOutage::test_bug_repro_probe_failure_holds_batch_interrupted`, red at `25c7ab095`, green with AST-2098):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst2098ProviderProbeOutage \
+  tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage \
+  tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage \
+  tests/component/external/test_llm_compat.py::TestAst2098ProbeFailureTagged \
+  tests/component/external/test_llm_compat.py::TestAst1959ProbeHostLock \
+  tests/component/external/test_openrouter.py \
+  tests/component/utils/test_cost_calculator.py \
+  tests/component/core/test_consult.py::TestAst2098ProbeFailureHold \
+  tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal \
+  tests/component/core/test_consult.py::TestAst2010RateLimitForwarding \
+  tests/component/core/test_roster.py::TestAst2098ProbeFailureHold \
+  tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting \
+  tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
+  -q
+```
+
+Expect **all passed** with AST-2098 product.
+
+2. **Red check (test-fix):** `git restore --source 25c7ab095 --worktree -- src/`, run the **[bug-repro]** node → fails `assert 6 == 1`; then `git restore --worktree -- src/` → passes.
+
+3. **No-regression:** the six touched test modules' failure set must not grow beyond the pre-existing drift above.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2016/AST-2099-probe-fail-hold-gaps:docs/test-bible/core/dispatcher.md | shasum`
+
 ### AST-1879 · AST-1851 (skip gate on the task agent's server key)
 
 **Primary manifest:** [`agent.md`](agent.md) § QA test manifest (AST-1879). `_dispatch_one_body` checks `candidate_api_keys[task_llm_server_id_or_none(task_key)]` **only when a server id comes back** (AST-1944). A non-LLM key (`agent_id` `"telescope"` / empty / no `agent_task` row — the AST-537 invariant) has no server and skips the key check; a missing candidate is still skipped. For an LLM key with no candidate, no map, an empty key, or only another platform's key, it skips: no ledger, plus a warning naming the server ("This task is not starting").
@@ -772,3 +825,18 @@ grep -n '^_auto_thread_cap_override: Optional\[int\] = None' src/core/dispatcher
 ### AST-2091 · AST-2013 (`run_task` rubric gate)
 
 **New:** `TestAst2091RunTaskRubricGate` — duplicate / empty rubric → `run_task` returns `False`, no thread, AUTO row gets `auto_mode=0` (Repro 3 / 4); manual row → `False`, no write; craft / non-rubric rows still start. Existing `run_task` cases (`evaluate_jd`) need no stub — embedded QC/GC merge is never empty. Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-2091.
+
+### AST-2093 · AST-2012 (claimed position → `batch_index_offset`; retry re-claims counted once; test gap AST-2095)
+
+`_run_unified` passes `batch_index_offset=ci * chunk_sz` on the chunk path and the entity's claimed index on the per-entity path (the full-batch call relies on the default 0). Each run records claimed ids in `ctx["dispatch_seen_ids"]` (falsy ids skipped). A normal return adds `repeat_processed = min(repeats, total_processed)`, which is not a `_SUMMARY_ZERO` key. `_run_dispatch_loop` subtracts it from `accumulated["total_processed"]`, but the `0 processed` stop still reads the raw per-run value. Primary block + manifest: [`agent.md`](agent.md) § AST-2093.
+
+| Area | Component tests (`tests/component/core/test_dispatcher.py::TestAst2093BatchIndexDispatch`) |
+| --- | --- |
+| **[bug-repro]** 5 jobs, `batch_size=2`, `grade_get` → chunk offsets `{0: 0, 1: 2, 2: 4}` | **`test_bug_repro_chunks_send_global_offsets`** |
+| **[bug-repro]** `batch_call_mode=0`, 3 jobs → offset = claimed index per entity | **`test_bug_repro_per_entity_sends_claimed_position`** |
+| **[bug-repro]** same ctx, claims `[A,B]` then `[B,C]` → `repeat_processed` 0 then 1; seen `{A,B,C}` | **`test_bug_repro_reclaimed_ids_are_repeat_processed`** |
+| Id-less entity never tracked (falsy-id arcs); outage-zeroed re-claim clamps to 0 (`min()`) | **`test_falsy_ids_never_tracked_and_outage_run_clamps_to_zero`** |
+| **[bug-repro]** Somerset shape 27 + retry 23 (`repeat_processed` 23) → accumulated 27 / passed 4 / errors 23 | **`test_bug_repro_loop_counts_each_entity_once`** |
+| All-repeat run (`3` processed, `3` repeat) does not trip the `0 processed` stop (guard) | **`test_all_repeat_run_does_not_trip_zero_processed_stop`** |
+
+**Kept:** the five AST-2093 qa-handoff nodes (`test_ast505…`, `test_ast502_chunked…`, the two per-entity outage nodes, `test_run_unified_candidate_claim_gate`) — not touched. Every test builds its own `ctx`; no module-level `dispatch_seen_ids`.
