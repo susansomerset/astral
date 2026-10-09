@@ -1727,3 +1727,8 @@ context_tokens≈12000
 ```
 [code-rubric] PROCEED (Commit: ad073ede) Call-site rubric seam explicit
 ```
+
+
+### AST-2103 — test routing
+
+docs-acceptance: fix-board `[board-betty] TESTS: OK` — no qa-fix, no new tests. Existing AST-2092 / AST-2094 `TestAst1779EmptyRenderForPrompts` coverage (including the `entity_contexts={"rubric": {}}` case) already pins this behavior; the call-site change is a verified no-op on the current tip.
