@@ -380,3 +380,41 @@ Proposed resolutions: <2-3 options, or "need guidance">
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2087
+**Overall:** APPROVED
+**Corpus:** c04b07deda8f5a750afd473ec847d06ed2207065
+**Publish ref:** `origin/sub/AST-2073/AST-2087-terminal-state-remap` @ `5c018fe77`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.dispatch.entity-state-bound | A | | |
+
+## Traceability
+
+AC8 (live `dispatch_task` after `--execute`)→S1 `dispatch_task` remap (catalog trigger ∈ map targets; `meteorite_bot_blocked_notify`) + S2 copy-only verify · AC9 (dry-run no writes, post-execute retired/skipped parity, dead states untouched, `state_history` byte-stable)→S1 resolution/skipped/unregistered + `_terminal_state_remap_conn` write surface + S2 CLI default/`--execute`
+
+## Findings
+
+### discuss
+
+- **Canon id** — Ticket cites `stat.dispatch.entity-state-bound`; clerk statute id is `astral.dispatch.entity-state-bound` (same file as AST-2086). Plan text matches the statute; keep the Discussion id for Radia parity.
+- **Build ordering** — Plan depends on AST-2086 `RETIRED_TERMINAL_STATE_MAP` on ftr (`b41a8f17f` cited). This worktree already carries the map; merge-child must keep #1 before #2. Not a plan defect.
+- **Residual skips** — Meteorite `SCRAPE_ERROR` rows from land claimed off old `BOT_BLOCKED` (not land’s catalog trigger) stay unresolved and count in `skipped`, per Out of scope. AC9 allows that; operators should expect non-zero skips on messy data.
+
+### acceptable
+
+- **Hop-label / `BUILD_ARTIFACTS` legacy ambiguity** — Documented ⚠️ decision; Skipped retry behavior preserved when wrong hop is inferred.
+- **`unregistered` full-table scan** — Counts dead and unknown states without typing dead names; satisfies AC9 “unchanged” without widening writes.
+- **`.cursorignore` / `src/data/`** — Build-agent note only; no scope creep.
+
+No `fix-now` findings. Scope gate matches ticket Scope (database remap + CLI + comment reword only). Resolution rules align with parent FS #9 and AST-2086 map semantics (history, page-status error, bare-family widening, dispatch tie-break). `dispatch_task` path uses catalog trigger only when it is a legitimate map target — conforms to entity-state-bound. Plan Discuss not engaged (Plan Ready; no `[plan-discuss]` rounds).
+
+context_tokens≈95000
+
+[plan-rubric] PROCEED (Commit: 5c018fe77) migration plan ready
