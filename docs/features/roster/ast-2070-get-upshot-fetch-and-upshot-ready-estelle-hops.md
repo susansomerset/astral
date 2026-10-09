@@ -766,7 +766,7 @@ AST-2069's `company_upshot` contract (`TASK_CONFIG` schema plus the `agent_task`
 
 Implement as **one** commit: `code(AST-2088): company_upshot returns and saves a readable company_name`.
 
-1. **`src/utils/config.py`, `TASK_CONFIG["company_upshot"]["response_schema"]["companies"]["items_schema"]`:** after the `"upshot": {"type": "str", "required": True},` line, add:
+1. **`src/utils/config.py`, `TASK_CONFIG["company_upshot"]["response_schema"]["companies"]["items_schema"]`:** the `"upshot": {"type": "str", "required": True},` line appears **three** times in `config.py`. The other two are `segment_key` schemas. Anchor on the unique two-line pair `"company_id": {"type": "str", "required": True},` immediately followed by `"upshot": {"type": "str", "required": True},` (currently lines 507–508). Immediately after that `upshot` line, add:
 
    ```python
                        "company_name": {"type": "str", "required": False},
