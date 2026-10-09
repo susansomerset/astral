@@ -12,12 +12,12 @@ source_docs:
 supersedes: null
 superseded_by: null
 approved_by: Archie
-approved_at: "2026-07-23"
+approved_at: "2026-10-08"
 ---
 
 # Statement
 
-Use only the ten named commit types (`plan`, `code`, `park-wip`, `merge-resume`, `merge-tests`, `test`, `docs`, `resolve`, `merge-child`, `finish-up`) with their listed owners. Do not use deprecated `feat()`, `fix()`, or `push-tests()` on new work.
+Use only the named commit types (`plan`, `code`, `park-wip`, `merge-resume`, `test`, `docs`, `resolve`, `merge-child`, `finish-up`) with their listed owners, plus the `sync(dev|ftr|publish-ref): …` merge subjects that `sync-child.sh`, `merge-child.sh` and `refresh-ftr.sh` write. `test()` is the engineer's src fix in test-child or Betty's test-tree commit; one commit never carries both. Do not use deprecated `feat()`, `fix()`, `push-tests()`, or (on new work) `merge-tests()`, and never git's default "Merge remote-tracking branch …" subject.
 
 ## Rationale
 
