@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs"
+import { readdirSync, readFileSync, statSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { act, fireEvent, screen, waitFor } from "@testing-library/react"
+import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import { useCandidate } from "../../../../src/ui/frontend/src/contexts/CandidateContext"
 import ArtifactsBaseResumeContent from "../../../../src/ui/frontend/src/pages/ArtifactsBaseResumeContent"
@@ -17,962 +17,167 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 })
 
 const mockedApi = vi.mocked(api)
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..")
 
-const structureByCandidate: Record<
-  string,
-  { sections: { id: string; label: string }[]; accent_color: string | null }
-> = {
-  c1: {
-    sections: [
-      { id: "professional_summary", label: "Summary" },
-      { id: "technical_skills", label: "Skills" },
-    ],
-    accent_color: "#445566",
-  },
-  c2: {
-    sections: [{ id: "experience", label: "Work History" }],
-    accent_color: null,
-  },
+const CATALOG = {
+  body_formats: ["free_prose"],
+  required_ids: ["professional_summary"],
+  contact_ids: [],
+  extra_id_pattern: "^[a-z_]+$",
+  reserved_extra_ids: [],
+  new_extra_default_format: "free_prose",
+  page_break_policies: ["normal"],
+  page_break_policy_labels: { normal: "Flow" },
+  page_break_policy_default: "normal",
+  body_format_details: { free_prose: { label: "Prose", description: "Prose", font_family: "serif" } },
+  hidden_flow_label: "Hidden",
 }
 
-const baseResumeByCandidate: Record<string, Record<string, string>> = {
-  c1: {
-    professional_summary: "Saved summary",
-    technical_skills: "Saved skills",
-    orphan_section: "Hidden orphan",
-  },
-  c2: { experience: "Candidate two body" },
+const row = (id: string, title: string, order: number) => ({
+  id, title, order, format: "free_prose", enabled: true, job_agent_editable: true,
+  required: id === "professional_summary", format_locked: false, page_break_policy: "normal",
+})
+
+const SECTIONS: Record<string, ReturnType<typeof row>[]> = {
+  c1: [row("professional_summary", "Summary", 0), row("technical_skills", "Skills", 1)],
+  c2: [row("professional_summary", "Work History", 0)],
 }
+const BODIES: Record<string, Record<string, string>> = {
+  c1: { professional_summary: "Saved summary", technical_skills: "Saved skills" },
+  c2: { professional_summary: "Candidate two body" },
+}
+
+const printGets = (cid: string) =>
+  mockedApi.mock.calls.filter(([u]) => u === `/candidate/resume/base?candidate_id=${cid}`).length
 
 function CandidateSelectC2() {
   const { setSelectedId } = useCandidate()
-  return (
-    <button type="button" onClick={() => setSelectedId("c2")}>
-      Select c2
-    </button>
-  )
+  return <button type="button" onClick={() => setSelectedId("c2")}>Select c2</button>
 }
 
+/** Full first paint: auth, manifest, candidates, ui_config, structure + entity GETs, base print HTML, candidate PUT. */
 function installMocks(candidates: string[] = ["c1"]) {
   mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-    if (url === "/api/me") {
-      return {
-        ok: true,
-        json: async () => ({ user_id: "u1", name: "Test", is_admin: true }),
-      } as Response
-    }
-    if (url === "/api/state_ui_manifest") {
-      return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-    }
+    const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response
+    if (url === "/api/me") return json({ user_id: "u1", name: "Test", is_admin: true })
+    if (url === "/api/state_ui_manifest") return json(STATE_UI_MANIFEST_FIXTURE)
     if (url === "/api/candidates") {
-      return {
-        json: async () =>
-          candidates.map(id => ({ astral_candidate_id: id, state: "ACTIVE_SEARCH", candidate_data: {} })),
-      } as Response
+      return json(candidates.map(id => ({ astral_candidate_id: id, state: "ACTIVE_SEARCH", candidate_data: {} })))
     }
-    if (url === "/api/ui_config") {
-      return {
-        json: async () => ({
-          column_types: {},
-          base_resume_accent_palette: ["#112233", "#445566"],
-        }),
-      } as Response
-    }
-    const structureMatch = url.match(/^\/api\/candidates\/(c\d)\/resume_structure$/)
-    if (structureMatch && !init) {
-      const cid = structureMatch[1]
-      return {
-        json: async () => structureByCandidate[cid] ?? { sections: [], accent_color: null },
-      } as Response
-    }
-    const candidateMatch = url.match(/^\/api\/candidates\/(c\d)$/)
-    if (candidateMatch && !init) {
-      const cid = candidateMatch[1]
-      return {
-        json: async () => ({
-          candidate_data: { artifacts: { base_resume: baseResumeByCandidate[cid] ?? {} } },
-        }),
-      } as Response
-    }
-    const putMatch = url.match(/^\/api\/candidates\/(c\d)\/data$/)
-    if (putMatch && init?.method === "PUT") {
-      return { ok: true, json: async () => ({}) } as Response
-    }
+    if (url === "/api/ui_config") return json({ column_types: {}, base_resume_accent_palette: ["#112233", "#445566"] })
+    const structure = url.match(/^\/api\/candidates\/(c\d)\/resume_structure$/)
+    if (structure && !init) return json({ all_sections: SECTIONS[structure[1]], accent_color: "#445566", catalog: CATALOG })
+    const entity = url.match(/^\/api\/candidates\/(c\d)$/)
+    if (entity && !init) return json({ candidate_data: { artifacts: { base_resume: BODIES[entity[1]] } } })
+    if (/^\/api\/candidates\/c\d\/data$/.test(url) && init?.method === "PUT") return json({})
+    const print = url.match(/^\/candidate\/resume\/base\?candidate_id=(c\d)$/)
+    if (print) return { ok: true, status: 200, text: async () => `<html>base print ${print[1]}</html>` } as Response
     throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
   })
 }
 
-describe("ArtifactsBaseResumeContent", () => {
+/** Left / right panel of the split pane (children either side of the separator). */
+function panels() {
+  const sep = screen.getByRole("separator")
+  return { left: sep.previousElementSibling as HTMLElement, right: sep.nextElementSibling as HTMLElement }
+}
+const previewHtml = (el: HTMLElement) => el.querySelector('iframe[title="Print preview"]')?.getAttribute("srcdoc")
+
+describe("ArtifactsBaseResumeContent — AST-2084 split pane", () => {
   beforeEach(() => {
     localStorage.clear()
     resetStytchTestState()
     mockedApi.mockReset()
     installMocks()
-    vi.stubGlobal(
-      "open",
-      vi.fn(() => ({ closed: false, opener: {} as Window | null })),
-    )
-    vi.stubGlobal("URL", {
-      createObjectURL: vi.fn(() => "blob:base-resume-html"),
-      revokeObjectURL: vi.fn(),
-    })
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it("renders structure-driven tabs and hides orphan base_resume keys", async () => {
+  it("renders the base resume editor left and the live base print preview right (§6c)", async () => {
     renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Base Resume Content" })).toBeInTheDocument())
-    expect(screen.getByDisplayValue("Saved summary")).toBeInTheDocument()
-    expect(screen.queryByDisplayValue("Hidden orphan")).not.toBeInTheDocument()
-    expect(mockedApi.mock.calls.some(([u]) => u === "/api/shapes/candidates")).toBe(false)
+    await waitFor(() => expect(screen.getByRole("separator")).toBeInTheDocument())
+    const { left, right } = panels()
+    expect(await within(left).findByLabelText("Search sections")).toBeInTheDocument()
+    expect(within(left).getByText("Summary")).toBeInTheDocument()
+    expect(within(left).getByText("Skills")).toBeInTheDocument()
+    await waitFor(() => expect(previewHtml(right)).toBe("<html>base print c1</html>"))
+    // Editor owns the accent swatches now.
+    expect(within(left).getByRole("group", { name: "Resume accent color" })).toBeInTheDocument()
   })
 
-  it("renders accent swatches and saves to resume_structure", async () => {
+  it("preview refetches once per editor save, never while typing", async () => {
     renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByRole("group", { name: "Resume accent color" })).toBeInTheDocument())
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "#445566" })).toHaveAttribute("aria-pressed", "true"),
-    )
-    fireEvent.click(screen.getByRole("button", { name: "#112233" }))
-    await waitFor(() => expect(screen.getByText("Accent color saved")).toBeInTheDocument())
-    const putCall = mockedApi.mock.calls.find(
-      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
-    )
-    expect(putCall).toBeTruthy()
-    const body = JSON.parse(String(putCall?.[1]?.body))
-    expect(body.artifacts.resume_structure.accent_color).toBe("#112233")
-    expect(body.artifacts.base_resume).toBeUndefined()
+    const { left } = await waitFor(() => panels())
+    await waitFor(() => expect(printGets("c1")).toBe(1))
+    fireEvent.click(await within(left).findByText("Summary"))
+    const box = await within(left).findByLabelText("Summary content")
+    await userEvent.type(box, " more")
+    expect(printGets("c1")).toBe(1)
+    fireEvent.focusOut(box)
+    await waitFor(() => expect(printGets("c1")).toBe(2))
+    const puts = mockedApi.mock.calls.filter(([u, init]) => u === "/api/candidates/c1/data" && init?.method === "PUT")
+    expect(puts).toHaveLength(1)
+    expect(JSON.parse(String(puts[0][1]?.body)).artifacts.base_resume.professional_summary).toBe("Saved summary more")
   })
 
-  it("loads different structure tabs when switching candidates", async () => {
+  it("shows no Generate / Regenerate / Save / Cancel / Save sections (AC2/AC3)", async () => {
+    renderWithProviders(<ArtifactsBaseResumeContent />)
+    const { left } = await waitFor(() => panels())
+    await within(left).findByLabelText("Search sections")
+    for (const name of [/generate/i, /^save/i, /^cancel$/i]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument()
+    }
+  })
+
+  it("switching candidates retargets both the editor and the preview", async () => {
     installMocks(["c1", "c2"])
-    renderWithProviders(
-      <>
-        <CandidateSelectC2 />
-        <ArtifactsBaseResumeContent />
-      </>,
-    )
-    await waitFor(() => expect(screen.getByDisplayValue("Saved summary")).toBeInTheDocument())
+    renderWithProviders(<><CandidateSelectC2 /><ArtifactsBaseResumeContent /></>)
+    await waitFor(() => expect(previewHtml(panels().right)).toBe("<html>base print c1</html>"))
     await userEvent.click(screen.getByRole("button", { name: "Select c2" }))
-    await waitFor(() => expect(screen.getByDisplayValue("Candidate two body")).toBeInTheDocument())
-    expect(screen.queryByDisplayValue("Saved summary")).not.toBeInTheDocument()
+    await waitFor(() => expect(previewHtml(panels().right)).toBe("<html>base print c2</html>"))
+    expect(await within(panels().left).findByText("Work History")).toBeInTheDocument()
+    expect(within(panels().left).queryByText("Skills")).toBeNull()
   })
 
-  it("AST-1306: renders editor from GET catalog and PUTs sections without accent", async () => {
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [],
-      extra_id_pattern: "^[a-z][a-z0-9_]*$",
-      reserved_extra_ids: ["content"],
-      new_extra_default_format: "bullet_list",
-      page_break_policies: ["normal", "page_break_before", "avoid_split"],
-      page_break_policy_labels: {
-        normal: "Flow uninterrupted",
-        page_break_before: "New page before",
-        avoid_split: "Keep block together",
-      },
-      page_break_policy_default: "avoid_split",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-    ]
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/me") {
-        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
-      }
-      if (url === "/api/state_ui_manifest") {
-        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-      }
-      if (url === "/api/candidates") {
-        return {
-          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
-        } as Response
-      }
-      if (url === "/api/ui_config") {
-        return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
-      }
-      if (url === "/api/candidates/c1/resume_structure" && !init) {
-        return {
-          json: async () => ({
-            sections: [{ id: "professional_summary", label: "Summary" }],
-            all_sections: allSections,
-            accent_color: "#112233",
-            catalog,
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        return {
-          json: async () => ({ candidate_data: { artifacts: { base_resume: { professional_summary: "Saved summary" } } } }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
-        return { ok: true, json: async () => ({}) } as Response
-      }
-      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
-    })
-    renderWithProviders(<ArtifactsBaseResumeContent />)
-    // Flat ResumeStructureEditor removed — catalog authoring lives on collapsible headers (AST-1323).
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Base Resume Content" })).toBeInTheDocument())
-    await waitFor(() => expect(document.querySelector(".structure-authoring-header")).toBeTruthy())
-    expect(screen.queryByText("Resume sections")).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument()
-    const formatOptions = Array.from(screen.getAllByRole("combobox")[0].querySelectorAll("option")).map(
-      o => o.textContent,
-    )
-    expect(formatOptions).toEqual(catalog.body_formats)
-    fireEvent.click(screen.getByRole("button", { name: "Save sections" }))
-    await waitFor(() => expect(screen.getByText("Resume sections saved")).toBeInTheDocument())
-    const putCall = mockedApi.mock.calls.find(
-      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
-    )
-    const body = JSON.parse(String(putCall?.[1]?.body))
-    expect(body.artifacts.resume_structure.sections.professional_summary.title).toBe("Summary")
-    expect(body.artifacts.resume_structure.sections.professional_summary.page_break_policy).toBe(
-      "avoid_split",
-    )
-    expect(body.artifacts.resume_structure.accent_color).toBeUndefined()
-  })
-
-  it("AST-1476: page-break dropdown Save sections persists policy", async () => {
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [],
-      extra_id_pattern: "^[a-z][a-z0-9_]*$",
-      reserved_extra_ids: ["content"],
-      new_extra_default_format: "bullet_list",
-      page_break_policies: ["normal", "page_break_before", "avoid_split"],
-      page_break_policy_labels: {
-        normal: "Flow uninterrupted",
-        page_break_before: "New page before",
-        avoid_split: "Keep block together",
-      },
-      page_break_policy_default: "avoid_split",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-    ]
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/me") {
-        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
-      }
-      if (url === "/api/state_ui_manifest") {
-        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-      }
-      if (url === "/api/candidates") {
-        return {
-          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
-        } as Response
-      }
-      if (url === "/api/ui_config") {
-        return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
-      }
-      if (url === "/api/candidates/c1/resume_structure" && !init) {
-        return {
-          json: async () => ({
-            sections: [{ id: "professional_summary", label: "Summary" }],
-            all_sections: allSections,
-            accent_color: "#112233",
-            catalog,
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        return {
-          json: async () => ({
-            candidate_data: { artifacts: { base_resume: { professional_summary: "Saved summary" } } },
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
-        return { ok: true, json: async () => ({}) } as Response
-      }
-      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
-    })
-    renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Page break" })).toBeInTheDocument())
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Page break" }), "page_break_before")
-    fireEvent.click(screen.getByRole("button", { name: "Save sections" }))
-    await waitFor(() => expect(screen.getByText("Resume sections saved")).toBeInTheDocument())
-    const putCall = mockedApi.mock.calls.find(
-      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
-    )
-    const body = JSON.parse(String(putCall?.[1]?.body))
-    expect(body.artifacts.resume_structure.sections.professional_summary.page_break_policy).toBe(
-      "page_break_before",
-    )
-  })
-
-  it("AST-1489: Print auto-persists page-break without Save sections", async () => {
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["prior_experience"],
-      contact_ids: [],
-      extra_id_pattern: "^[a-z][a-z0-9_]*$",
-      reserved_extra_ids: ["content"],
-      new_extra_default_format: "bullet_list",
-      page_break_policies: ["normal", "page_break_before", "avoid_split"],
-      page_break_policy_labels: {
-        normal: "Flow uninterrupted",
-        page_break_before: "New page before",
-        avoid_split: "Keep block together",
-      },
-      page_break_policy_default: "avoid_split",
-    }
-    const allSections = [
-      {
-        id: "prior_experience",
-        title: "Prior Experience",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-    ]
-    const apiCallLog: { url: string; method: string }[] = []
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      apiCallLog.push({ url, method: init?.method ?? "GET" })
-      if (url === "/api/me") {
-        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
-      }
-      if (url === "/api/state_ui_manifest") {
-        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-      }
-      if (url === "/api/candidates") {
-        return {
-          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
-        } as Response
-      }
-      if (url === "/api/ui_config") {
-        return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
-      }
-      if (url === "/api/candidates/c1/resume_structure" && !init) {
-        return {
-          json: async () => ({
-            sections: [{ id: "prior_experience", label: "Prior Experience" }],
-            all_sections: allSections,
-            accent_color: "#112233",
-            catalog,
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        return {
-          json: async () => ({
-            candidate_data: {
-              artifacts: { base_resume: { prior_experience: "Earlier roles summary" } },
-            },
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
-        return { ok: true, json: async () => ({}) } as Response
-      }
-      if (url === "/candidate/resume/base?candidate_id=c1") {
-        return {
-          ok: true,
-          text: async () =>
-            "<html><style>@media print { #prior-experience { page-break-before: always; } }</style></html>",
-        } as Response
-      }
-      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
-    })
-    renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByRole("combobox", { name: "Page break" })).toBeInTheDocument())
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Page break" }), "page_break_before")
-    await userEvent.click(screen.getByRole("button", { name: "Print" }))
-    await waitFor(() => expect(window.open).toHaveBeenCalled())
-    const putIdx = apiCallLog.findIndex(c => c.url === "/api/candidates/c1/data" && c.method === "PUT")
-    const printIdx = apiCallLog.findIndex(c => c.url.startsWith("/candidate/resume/base"))
-    expect(putIdx).toBeGreaterThanOrEqual(0)
-    expect(printIdx).toBeGreaterThan(putIdx)
-    const putCall = mockedApi.mock.calls.find(
-      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
-    )
-    const body = JSON.parse(String(putCall?.[1]?.body))
-    expect(body.artifacts.resume_structure.sections.prior_experience.page_break_policy).toBe(
-      "page_break_before",
-    )
-  })
-
-  it("AST-1490: reorder then Print keeps full body sections", async () => {
-    let candidateGets = 0
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [],
-      extra_id_pattern: "^[a-z][a-z0-9_]*$",
-      reserved_extra_ids: ["content"],
-      new_extra_default_format: "bullet_list",
-      page_break_policies: ["normal", "page_break_before", "avoid_split"],
-      page_break_policy_labels: {
-        normal: "Flow uninterrupted",
-        page_break_before: "New page before",
-        avoid_split: "Keep block together",
-      },
-      page_break_policy_default: "avoid_split",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-      {
-        id: "prior_experience",
-        title: "Prior Experience",
-        enabled: true,
-        order: 1,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: false,
-        format_locked: false,
-        page_break_policy: "avoid_split",
-      },
-    ]
-    const apiCallLog: { url: string; method: string }[] = []
-    let lastPrintHtml = ""
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      apiCallLog.push({ url, method: init?.method ?? "GET" })
-      if (url === "/api/me") {
-        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
-      }
-      if (url === "/api/state_ui_manifest") {
-        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-      }
-      if (url === "/api/candidates") {
-        return {
-          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
-        } as Response
-      }
-      if (url === "/api/ui_config") {
-        return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
-      }
-      if (url === "/api/candidates/c1/resume_structure") {
-        return {
-          json: async () => ({
-            sections: [
-              { id: "professional_summary", label: "Summary" },
-              { id: "prior_experience", label: "Prior Experience" },
-            ],
-            all_sections: allSections,
-            accent_color: "#112233",
-            catalog,
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        candidateGets += 1
-        return {
-          json: async () => ({
-            candidate_data: {
-              artifacts: {
-                base_resume: {
-                  professional_summary: "Saved summary body",
-                  prior_experience: "Earlier roles body",
-                },
-              },
-            },
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
-        return { ok: true, json: async () => ({}) } as Response
-      }
-      if (url === "/candidate/resume/base?candidate_id=c1") {
-        lastPrintHtml =
-          '<html><body><section id="summary"><p>Saved summary body</p></section><section id="prior-experience"><p>Earlier roles body</p></section></body></html>'
-        return {
-          ok: true,
-          text: async () => lastPrintHtml,
-        } as Response
-      }
-      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
-    })
-    renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByDisplayValue("Saved summary body")).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByDisplayValue("Earlier roles body")).toBeInTheDocument())
-    const getsAfterHydrate = candidateGets
-    await userEvent.click(screen.getAllByRole("button", { name: "Down" })[0]!)
-    await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument())
-    expect(candidateGets).toBe(getsAfterHydrate)
-    expect(screen.getByDisplayValue("Saved summary body")).toBeInTheDocument()
-    expect(screen.getByDisplayValue("Earlier roles body")).toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Print" }))
-    await waitFor(() => expect(window.open).toHaveBeenCalled())
-    const putIdx = apiCallLog.findIndex(c => c.url === "/api/candidates/c1/data" && c.method === "PUT")
-    const printIdx = apiCallLog.findIndex(c => c.url.startsWith("/candidate/resume/base"))
-    expect(putIdx).toBeGreaterThanOrEqual(0)
-    expect(printIdx).toBeGreaterThan(putIdx)
-    const putCall = mockedApi.mock.calls.find(
-      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
-    )
-    const putBody = JSON.parse(String(putCall?.[1]?.body))
-    expect(putBody.artifacts.resume_structure.sections.prior_experience.order).toBe(0)
-    expect(putBody.artifacts.resume_structure.sections.professional_summary.order).toBe(1)
-    expect(lastPrintHtml).toContain('id="summary"')
-    expect(lastPrintHtml).toContain('id="prior-experience"')
-    expect(lastPrintHtml).toContain("Saved summary body")
-    expect(lastPrintHtml).toContain("Earlier roles body")
-  })
-
-  it("AST-1323: structure controls on collapsible header with body between", async () => {
-    // Header authoring + body between panels (label copy locked under AST-1325).
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [],
-      extra_id_pattern: "^[a-z][a-z0-9_]*$",
-      reserved_extra_ids: ["content"],
-      new_extra_default_format: "bullet_list",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-      },
-    ]
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/me") {
-        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
-      }
-      if (url === "/api/state_ui_manifest") {
-        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-      }
-      if (url === "/api/candidates") {
-        return {
-          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
-        } as Response
-      }
-      if (url === "/api/ui_config") {
-        return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
-      }
-      if (url === "/api/candidates/c1/resume_structure" && !init) {
-        return {
-          json: async () => ({
-            sections: [{ id: "professional_summary", label: "Summary" }],
-            all_sections: allSections,
-            accent_color: "#112233",
-            catalog,
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        return {
-          json: async () => ({
-            candidate_data: { artifacts: { base_resume: { professional_summary: "Saved summary" } } },
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
-        return { ok: true, json: async () => ({}) } as Response
-      }
-      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
-    })
-    renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByDisplayValue("Saved summary")).toBeInTheDocument())
-    // Flat standalone editor must be gone; authoring lives on collapsible headers.
-    expect(screen.queryByText("Resume sections")).not.toBeInTheDocument()
-    expect(screen.queryByText("Job agent editable")).not.toBeInTheDocument()
-    const authoring = document.querySelector(".structure-authoring-header")
-    expect(authoring).toBeTruthy()
-    expect(authoring!.querySelector("select")).toBeTruthy()
-    const headers = Array.from(document.querySelectorAll(".collapsible-panel-header"))
-    expect(headers.length).toBeGreaterThan(0)
-    const bodies = Array.from(document.querySelectorAll(".collapsible-panel-body"))
-    expect(
-      bodies.some(b => (b.querySelector("textarea") as HTMLTextAreaElement | null)?.value === "Saved summary"),
-    ).toBe(true)
-  })
-
-  it("AST-1325: header row is name | style | Enabled: | Job Edit: | up/down", async () => {
-    // Bug-repro: label-before-checkbox copy + name/style slots on one structure-authoring row.
-    const catalog = {
-      body_formats: ["free_prose", "bullet_list"],
-      required_ids: ["professional_summary"],
-      contact_ids: [],
-      extra_id_pattern: "^[a-z][a-z0-9_]*$",
-      reserved_extra_ids: ["content"],
-      new_extra_default_format: "bullet_list",
-    }
-    const allSections = [
-      {
-        id: "professional_summary",
-        title: "Summary",
-        enabled: true,
-        order: 0,
-        format: "free_prose",
-        job_agent_editable: true,
-        required: true,
-        format_locked: false,
-      },
-    ]
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/me") {
-        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
-      }
-      if (url === "/api/state_ui_manifest") {
-        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-      }
-      if (url === "/api/candidates") {
-        return {
-          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
-        } as Response
-      }
-      if (url === "/api/ui_config") {
-        return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
-      }
-      if (url === "/api/candidates/c1/resume_structure" && !init) {
-        return {
-          json: async () => ({
-            sections: [{ id: "professional_summary", label: "Summary" }],
-            all_sections: allSections,
-            accent_color: "#112233",
-            catalog,
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        return {
-          json: async () => ({
-            candidate_data: { artifacts: { base_resume: { professional_summary: "Saved summary" } } },
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
-        return { ok: true, json: async () => ({}) } as Response
-      }
-      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
-    })
-    renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByDisplayValue("Saved summary")).toBeInTheDocument())
-    const authoring = document.querySelector(".structure-authoring-header") as HTMLElement | null
-    expect(authoring).toBeTruthy()
-    // Name / style slots + label-before-checkbox copy (Susan mock).
-    expect(authoring!.querySelector(".structure-authoring-name")).toBeTruthy()
-    expect(authoring!.querySelector(".structure-authoring-style")).toBeTruthy()
-    expect(screen.getByText("Enabled:")).toBeInTheDocument()
-    expect(screen.getByText("Job Edit:")).toBeInTheDocument()
-    expect(screen.queryByText("Job edit")).not.toBeInTheDocument()
-    const rowText = authoring!.textContent || ""
-    expect(rowText.indexOf("Job Edit:")).toBeGreaterThan(rowText.indexOf("Enabled:"))
-  })
-
-  it("AST-1337: Print disabled with no candidate; success opens blob tab (§6c)", async () => {
-    // No candidate → Print unavailable (disabled page-level, or absent once AST-1342 moves it into headerActions).
+  it("no candidate selected → message, no editor or print fetch", async () => {
     installMocks([])
-    const { unmount } = renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByText("No candidate selected.")).toBeInTheDocument())
-    const printNoCandidate = screen.queryByRole("button", { name: "Print" })
-    if (printNoCandidate) {
-      expect(printNoCandidate).toBeDisabled()
-      expect(printNoCandidate).toHaveClass("btn", "secondary")
-    }
-    unmount()
-
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/me") {
-        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
-      }
-      if (url === "/api/state_ui_manifest") {
-        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-      }
-      if (url === "/api/candidates") {
-        return {
-          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
-        } as Response
-      }
-      if (url === "/api/ui_config") {
-        return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
-      }
-      if (url === "/api/candidates/c1/resume_structure" && !init) {
-        return {
-          json: async () => structureByCandidate.c1,
-        } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        return {
-          json: async () => ({
-            candidate_data: { artifacts: { base_resume: baseResumeByCandidate.c1 } },
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
-        return { ok: true, json: async () => ({}) } as Response
-      }
-      if (url === "/candidate/resume/base?candidate_id=c1") {
-        return {
-          ok: true,
-          text: async () => "<html><body>base resume print</body></html>",
-        } as Response
-      }
-      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
-    })
     renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
-    await userEvent.click(screen.getByRole("button", { name: "Print" }))
-    await waitFor(() => expect(window.open).toHaveBeenCalledWith("blob:base-resume-html", "_blank"))
-    const printWin = vi.mocked(window.open).mock.results[0]?.value as { opener: Window | null }
-    expect(printWin.opener).toBeNull()
-    expect(screen.queryByText("Popup blocked — allow popups to open the HTML tab.")).not.toBeInTheDocument()
-    expect(URL.createObjectURL).toHaveBeenCalled()
-    expect(mockedApi.mock.calls.some(([u]) => String(u).startsWith("/candidate/resume/base?"))).toBe(true)
+    expect(await screen.findByText("No candidate selected.")).toBeInTheDocument()
+    expect(screen.queryByRole("separator")).toBeNull()
+    expect(mockedApi.mock.calls.some(([u]) => String(u).startsWith("/candidate/"))).toBe(false)
+  })
+})
+
+describe("AST-2084 source gates (AC2/AC3/AC5)", () => {
+  // Every .ts/.tsx file under the frontend src tree.
+  const srcRoot = resolve(root, "src/ui/frontend/src")
+  const files = (): string[] => {
+    const walk = (d: string): string[] => readdirSync(d).flatMap(n => {
+      const p = resolve(d, n)
+      return statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(n) ? [p] : []
+    })
+    return walk(srcRoot)
+  }
+  const read = (rel: string) => readFileSync(resolve(srcRoot, rel), "utf8")
+
+  it("no Save sections and no ArtifactEditor resume-mode identifiers anywhere in frontend src", () => {
+    const hits = files().flatMap(f => {
+      const text = readFileSync(f, "utf8")
+      return [/Save sections/, /useCandidateResumeStructure|structureCatalog|onStructureSave/]
+        .filter(re => re.test(text)).map(re => `${f.slice(srcRoot.length)}: ${re}`)
+    })
+    expect(hits).toEqual([])
   })
 
-  it("AST-1337: Print error and empty HTML never open a tab", async () => {
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/me") {
-        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
-      }
-      if (url === "/api/state_ui_manifest") {
-        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-      }
-      if (url === "/api/candidates") {
-        return {
-          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
-        } as Response
-      }
-      if (url === "/api/ui_config") {
-        return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
-      }
-      if (url === "/api/candidates/c1/resume_structure" && !init) {
-        return { json: async () => structureByCandidate.c1 } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        return {
-          json: async () => ({
-            candidate_data: { artifacts: { base_resume: baseResumeByCandidate.c1 } },
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
-        return { ok: true, json: async () => ({}) } as Response
-      }
-      if (url === "/candidate/resume/base?candidate_id=c1") {
-        return {
-          ok: false,
-          status: 404,
-          json: async () => ({ error: "No printable base resume content for this candidate" }),
-        } as Response
-      }
-      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
-    })
-    const { unmount } = renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
-    await userEvent.click(screen.getByRole("button", { name: "Print" }))
-    await waitFor(() =>
-      expect(screen.getAllByText("No printable base resume content for this candidate").length).toBeGreaterThan(0),
-    )
-    expect(window.open).not.toHaveBeenCalled()
-    unmount()
-
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/me") {
-        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
-      }
-      if (url === "/api/state_ui_manifest") {
-        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-      }
-      if (url === "/api/candidates") {
-        return {
-          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
-        } as Response
-      }
-      if (url === "/api/ui_config") {
-        return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
-      }
-      if (url === "/api/candidates/c1/resume_structure" && !init) {
-        return { json: async () => structureByCandidate.c1 } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        return {
-          json: async () => ({
-            candidate_data: { artifacts: { base_resume: baseResumeByCandidate.c1 } },
-          }),
-        } as Response
-      }
-      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
-        return { ok: true, json: async () => ({}) } as Response
-      }
-      if (url === "/candidate/resume/base?candidate_id=c1") {
-        return { ok: true, text: async () => "   " } as Response
-      }
-      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
-    })
-    vi.mocked(window.open).mockClear()
-    renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
-    await userEvent.click(screen.getByRole("button", { name: "Print" }))
-    await waitFor(() => expect(screen.getAllByText("HTML response was empty").length).toBeGreaterThan(0))
-    expect(window.open).not.toHaveBeenCalled()
+  it("base page has no craft_resume_base; both resume surfaces use ResumeContentEditor, not ArtifactEditor", () => {
+    const page = read("pages/ArtifactsBaseResumeContent.tsx")
+    expect(page).not.toMatch(/craft_resume_base/)
+    expect(page).toMatch(/import ResumeContentEditor/)
+    expect(page).not.toMatch(/ArtifactEditor/)
+    const modal = read("components/JobArtifactEditModal.tsx")
+    expect(modal).toMatch(/use_resume_structure\s*\?\s*<ResumeContentEditor/)
   })
 
-  it("AST-1342: Print sits in dep-actions next to Regenerate", async () => {
-    // bug-repro: orphaned page-level Print must live in ArtifactEditor dep-actions beside Regenerate.
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/me") {
-        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
-      }
-      if (url === "/api/state_ui_manifest") {
-        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
-      }
-      if (url === "/api/candidates") {
-        return {
-          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
-        } as Response
-      }
-      if (url === "/api/ui_config") {
-        return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
-      }
-      if (url === "/api/candidates/c1/resume_structure" && !init) {
-        return { json: async () => structureByCandidate.c1 } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        return {
-          json: async () => ({
-            candidate_data: { artifacts: { base_resume: baseResumeByCandidate.c1 } },
-          }),
-        } as Response
-      }
-      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
-    })
-    renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Base Resume Content" })).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
-    const actions = document.querySelector(".dep-actions")
-    expect(actions).toBeTruthy()
-    const printBtn = screen.getByRole("button", { name: "Print" })
-    expect(actions!.contains(printBtn)).toBe(true)
-    expect(printBtn).toHaveClass("btn", "secondary")
-    const labels = Array.from(actions!.querySelectorAll("button")).map(b => (b.textContent || "").trim())
-    const regenIdx = labels.findIndex(t => t === "Regenerate" || t === "Generate")
-    const printIdx = labels.findIndex(t => t === "Print" || t === "Opening…")
-    expect(regenIdx).toBeGreaterThanOrEqual(0)
-    expect(printIdx).toBe(regenIdx + 1)
-  })
-
-  it("AST-1577 / AST-2068: wires bodyShape resume_content; blur PUTs base_resume leaf once (§6c AC1/AC2)", async () => {
-    renderWithProviders(<ArtifactsBaseResumeContent />)
-    const puts = () =>
-      mockedApi.mock.calls.filter(([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT")
-    // AC2: focus + blur with no edit saves nothing.
-    const skills = await screen.findByDisplayValue("Saved skills")
-    await userEvent.click(skills)
-    await act(async () => { skills.blur() })
-    expect(puts()).toHaveLength(0)
-    const field = screen.getByDisplayValue("Saved summary")
-    await userEvent.clear(field)
-    await userEvent.type(field, "Operative body with twenty plus chars")
-    // No header Save/Cancel outside Generate review; AC1: typing alone never saves.
-    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument()
-    expect(puts()).toHaveLength(0)
-    await act(async () => { field.blur() })
-    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
-    expect(puts()).toHaveLength(1)
-    const body = JSON.parse(String(puts()[0][1]?.body))
-    expect(body.artifacts.base_resume.professional_summary).toBe("Operative body with twenty plus chars")
-    expect(body.artifacts["candidate.artifacts.base_resume"]).toBeUndefined()
-  })
-
-  it("AST-2068 AC4: Base Resume Content arrows step back, re-hydrate the body, and disable at the ends", async () => {
-    // Fake server: three versions, uuid-keyed (JSON key order ≠ chronology — position is the order).
-    const bodies: Record<string, string> = { "u-c": "v1 summary", "u-a": "v2 summary", "u-b": "v3 summary" }
-    const order = ["u-c", "u-a", "u-b"]
-    let current = "u-b"
-    const versionMap = () =>
-      Object.fromEntries(
-        [...order].sort().map(u => [u, { created_at: "t", current: u === current ? 1 : 0, position: order.indexOf(u) + 1 }]),
-      )
-    const base = "/api/candidates/c1/artifacts/candidate.artifacts.base_resume"
-    const fallback = mockedApi.getMockImplementation()!
-    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === `${base}/versions`) return { ok: true, json: async () => ({ versions: versionMap() }) } as Response
-      if (url === `${base}/current` && init?.method === "PUT") {
-        current = JSON.parse(String(init.body)).artifact_uuid
-        return { ok: true, json: async () => ({ current, versions: versionMap() }) } as Response
-      }
-      if (url === "/api/candidates/c1" && !init) {
-        return {
-          json: async () => ({
-            candidate_data: { artifacts: { base_resume: { professional_summary: bodies[current], technical_skills: "s" } } },
-          }),
-        } as Response
-      }
-      return fallback(url, init)
-    })
-    renderWithProviders(<ArtifactsBaseResumeContent />)
-    await screen.findByDisplayValue("v3 summary")
-    const back = await screen.findByRole("button", { name: "Previous version" })
-    const fwd = screen.getByRole("button", { name: "Next version" })
-    expect(screen.getByText("3 of 3")).toBeInTheDocument()
-    expect(fwd).toBeDisabled()
-    expect(back).toBeEnabled()
-    await userEvent.click(back)
-    await screen.findByDisplayValue("v2 summary")
-    expect(screen.getByText("2 of 3")).toBeInTheDocument()
-    expect(current).toBe("u-a")
-    await userEvent.click(screen.getByRole("button", { name: "Previous version" }))
-    await screen.findByDisplayValue("v1 summary")
-    expect(screen.getByText("1 of 3")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Previous version" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "Next version" })).toBeEnabled()
-    // A move is not a body write.
-    expect(mockedApi.mock.calls.some(([u, init]) => u === "/api/candidates/c1/data" && init?.method === "PUT")).toBe(false)
-  })
-
-  it("AST-1577: page and draft follow ui-consistency (no write-operative link)", () => {
-    const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..")
-    const page = readFileSync(
-      resolve(root, "src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx"),
-      "utf8",
-    )
-    expect(page).toMatch(/bodyShape="resume_content"/)
-    expect(page).not.toMatch(/useCandidateResumeStructure/)
-    const draft = readFileSync(
-      resolve(root, "canon/directives/active/patt.artifact.ui-consistency.md"),
-      "utf8",
-    )
+  it("AST-1577: ui-consistency directive still has no write-operative link", () => {
+    const draft = readFileSync(resolve(root, "canon/directives/active/patt.artifact.ui-consistency.md"), "utf8")
     expect(draft).toMatch(/^id: patt\.artifact\.ui-consistency$/m)
     expect(draft).not.toMatch(/write-operative/)
   })

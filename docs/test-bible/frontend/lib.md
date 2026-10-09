@@ -474,3 +474,9 @@ cd src/ui/frontend && npx tsc -b --noEmit && npm run test:component -- \
 **AST-1968 (pointer):** `recommendedJobReport.tsx` adds the private `phaseGradeCells` helper (column set, order, lookup, tooltip), shared by `buildPhaseSectionGradeConfidenceRow` (modal, unchanged output) and the new `buildPhaseListGradeRow` (letterless, no confidence); `gradeDot` gains `letterless`. `candidateJobActions.ts` adds `postGenerateArtifacts` — **`recommendedJobReport — AST-1968 letterless list grade row`**. Manifest: **`docs/test-bible/frontend/pages.md`** § AST-1968.
 
 **AST-1982 (pointer):** `uiConfig.ts` adds `job_title_truncate_chars` and `resolveJobTitleTruncateChars` (served value, else 50): **`tests/component/frontend/lib/test_uiConfig.test.ts`**. Manifest: **`docs/test-bible/frontend/components.md`** § AST-1982.
+
+### AST-2082 · AST-2046 (printHtml shared fetch/open helper)
+
+New `printHtml.ts`. `fetchPrintHtml({kind, id})` reads `base` → `/candidate/resume/base?candidate_id=`, `job_resume` → `/candidate/resume/<id>`, and `cover` → `/candidate/cover/<id>`, with ids URL-encoded. It returns `{ok, html}` (the exact body) or `{ok: false, error}` and never throws. The error is the builder's `error` text, else `HTTP <status>`. A blank body becomes `HTML response was empty`, and a thrown non-Error becomes `Print failed`. For `base` only, the legacy `Candidate missing artifacts.base_resume` error is mapped to the operator copy. `openHtmlInNewTab(html)` opens a blob URL with `window.open(url, "_blank")` (no feature string), sets `opener = null`, revokes the URL after 60 s, and returns `POPUP_BLOCKED_MESSAGE` when the popup is blocked. The base page and JAR modal still use their own copies until **AST-2084**.
+
+**New:** **`tests/component/frontend/lib/test_printHtml.test.ts`** (8). Manifest: [`components.md`](components.md) § AST-2082.
