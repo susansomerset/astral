@@ -7,6 +7,7 @@ from src.utils.config import (
     PROVIDER_BALANCE_REFUSAL,
     PROVIDER_CALL_BUDGET,
     PROVIDER_EMPTY_RESPONSE,
+    PROVIDER_PROBE_FAILURE,
     PROVIDER_RATE_LIMIT,
 )
 from src.utils.logging import get_logger
@@ -53,6 +54,18 @@ def is_provider_rate_limit(result: Optional[Dict[str, Any]]) -> bool:
     if not isinstance(result, dict):
         return False
     return result.get("failure_class") == PROVIDER_RATE_LIMIT["failure_class"]
+
+
+def is_provider_probe_failure(result: Optional[Dict[str, Any]]) -> bool:
+    """True when an agent/provider result dict was tagged as a failed host probe (AST-2098)."""
+    if not isinstance(result, dict):
+        return False
+    return result.get("failure_class") == PROVIDER_PROBE_FAILURE["failure_class"]
+
+
+def is_provider_state_hold(result: Optional[Dict[str, Any]]) -> bool:
+    """True when the entity keeps its state: balance refusal (AST-897) or failed host probe (AST-2098)."""
+    return is_provider_balance_refusal(result) or is_provider_probe_failure(result)
 
 
 def provider_call_http_timeout_seconds() -> float:

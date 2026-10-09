@@ -52,7 +52,7 @@ from src.utils.config import (
     DISPATCH_RETIRED_TASK_KEYS,
 )
 from src.utils.network import check_internet_reachable
-from src.utils.llm_external import is_provider_balance_refusal, is_provider_rate_limit
+from src.utils.llm_external import is_provider_balance_refusal, is_provider_probe_failure, is_provider_rate_limit
 from src.utils.logging import get_logger, log_batch_id, log_candidate_id, log_debug, flush_log_buffer
 
 logger = get_logger(__name__)
@@ -639,6 +639,22 @@ def _note_provider_rate_limit_outage(ctx: Dict, task: Dict, result: Dict) -> Non
     )
 
 
+def _note_provider_probe_outage(ctx: Dict, task: Dict, result: Dict) -> None:
+    """AST-2098: first failed-host-probe result in a run sets ctx["provider_probe_outage"] and logs one
+    WARNING; later results only add to the held tally. The run stops and the next round probes again."""
+    outage = ctx.get("provider_probe_outage")
+    if outage is None:
+        outage = ctx["provider_probe_outage"] = {"error": result.get("error") or "", "held": 0}
+        logger.warning(
+            "%s | dispatch %s %s\n  LLM host probe failed (%s)\n  The batch is stopping; entity state is held for the next round",
+            ctx.get("astral_candidate_id") or task.get("candidate_id") or "-",
+            task.get("entity_type") or "-",
+            task.get("task_key") or "-",
+            outage["error"],
+        )
+    outage["held"] += int(result.get("total_held", 0) or 0)
+
+
 async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     """Claim a batch for the given task and dispatch to consult.run_consult_task.
     Reads entity_type, trigger_state, sort_by, batch_call_mode from the DB task row.
@@ -831,8 +847,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 logger.debug("Beginning consult chunk loop on %s items", len(chunks))
 
                 async def _consult_chunk(ci: int, chunk_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-                    # AST-1867 / AST-2010: provider refused for balance or rate limit — no further calls this run
-                    if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage"):
+                    # AST-1867 / AST-2010 / AST-2098: balance refusal, rate limit or failed host probe — no further calls this run
+                    if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage") or ctx.get("provider_probe_outage"):
                         return dict(_SUMMARY_ZERO)
                     logger.debug(
                         "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=%s, batch=%s, task_key=%s]",
@@ -853,6 +869,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                         _note_provider_balance_outage(ctx, task, result)
                     if is_provider_rate_limit(result):
                         _note_provider_rate_limit_outage(ctx, task, result)
+                    if is_provider_probe_failure(result):
+                        _note_provider_probe_outage(ctx, task, result)
                     return result
 
                 head = await _consult_chunk(0, chunks[0])
@@ -880,12 +898,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                     _note_provider_balance_outage(ctx, task, result)
                 if is_provider_rate_limit(result):
                     _note_provider_rate_limit_outage(ctx, task, result)
+                if is_provider_probe_failure(result):
+                    _note_provider_probe_outage(ctx, task, result)
                 for k in s:
                     s[k] += result.get(k, 0)
         else:
             async def _one(e):
-                # AST-1867 / AST-2010: provider refused for balance or rate limit — skip (not processed); finally releases the claim
-                if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage"):
+                # AST-1867 / AST-2010 / AST-2098: balance refusal, rate limit or failed host probe — skip (not processed); finally releases the claim
+                if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage") or ctx.get("provider_probe_outage"):
                     return dict(_SUMMARY_ZERO)
                 logger.debug(
                     "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=1, batch=%s, task_key=%s]",
@@ -900,6 +920,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                     _note_provider_balance_outage(ctx, task, result)
                 if is_provider_rate_limit(result):
                     _note_provider_rate_limit_outage(ctx, task, result)
+                if is_provider_probe_failure(result):
+                    _note_provider_probe_outage(ctx, task, result)
                 return result
             results = await _warm_then_gather(_one, entities, _SUMMARY_ZERO)
             for r in results:
@@ -1425,9 +1447,10 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         logger.debug("Response from _run_dispatch_loop: %s", accumulated)
         # AST-1867: run cut short by provider outage — non-COMPLETED keeps it out of the circuit breaker.
         # AST-2010: an exhausted rate limit errors the whole batch — FAILED wins over balance INTERRUPTED.
+        # AST-2098: a failed host probe is a no-op run — INTERRUPTED, so it stays out of the circuit breaker.
         if ctx.get("provider_rate_limit_outage"):
             final_status = "FAILED"
-        elif ctx.get("provider_balance_outage"):
+        elif ctx.get("provider_balance_outage") or ctx.get("provider_probe_outage"):
             final_status = "INTERRUPTED"
     except asyncio.TimeoutError as exc:
         final_status = "INTERRUPTED"
@@ -1602,6 +1625,11 @@ async def _run_dispatch_loop(
             break
         if ctx.get("provider_rate_limit_outage"):
             logger.debug("loop stop: provider rate limit run_count=%s", run_count)
+            logger.debug("End dispatch loop after %s run(s)", run_count)
+            break
+        # AST-2098: failed host probe — stop; held entities stay eligible and the next round probes again
+        if ctx.get("provider_probe_outage"):
+            logger.debug("loop stop: provider host probe failed run_count=%s", run_count)
             logger.debug("End dispatch loop after %s run(s)", run_count)
             break
         if summary.get("total_processed", 0) == 0:
