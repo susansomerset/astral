@@ -1272,14 +1272,16 @@ class TestAst721ParseJobListConfig:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY") in transitions
         assert ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST") in transitions
-        assert ("JOBLIST_IDENTIFIED_RETRY", "WATCH") in transitions
+        # AST-2069: parse success lands in GET_UPSHOT (upshot hops precede WATCH)
+        assert ("JOBLIST_IDENTIFIED_RETRY", "GET_UPSHOT") in transitions
+        assert ("JOBLIST_IDENTIFIED_RETRY", "WATCH") not in transitions
         assert ("JOBLIST_IDENTIFIED_RETRY", "COULD_NOT_PARSE_JOBLIST") in transitions
 
     def test_parse_job_list_roster_config(self) -> None:
         parse = cfg.ROSTER_CONFIG["parse_job_list"]
         assert parse["dispatch_trigger_state"] == "JOBLIST_IDENTIFIED"
         assert parse["retry_trigger_state"] == "JOBLIST_IDENTIFIED_RETRY"
-        assert parse["pass_state"] == "WATCH"
+        assert parse["pass_state"] == "GET_UPSHOT"  # AST-2069 (was WATCH)
         assert parse["retry_state"] == "JOBLIST_IDENTIFIED_RETRY"
         assert parse["terminal_fail_state"] == "COULD_NOT_PARSE_JOBLIST"
         assert parse["selected_pjl_url_key"] == "selected_pjl_url"
@@ -1704,7 +1706,9 @@ class TestAst508InflowLocateConfig:
 
     def test_prefilter_passed_locate_transitions(self) -> None:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
-        assert ("PREFILTER_PASSED", "WATCH") in transitions
+        # AST-2069: locate success lands in GET_UPSHOT, not WATCH
+        assert ("PREFILTER_PASSED", "GET_UPSHOT") in transitions
+        assert ("PREFILTER_PASSED", "WATCH") not in transitions
         assert ("PREFILTER_PASSED", "NO_OPENINGS") in transitions
 
 
@@ -7093,6 +7097,12 @@ class TestAst1808RetryRegistryPurge:
         js["RELATIVE_JOB_LINK_RETRY"] = rel
         js["RELATIVE_LINK_FAIL"] = rel + ["RELATIVE_LINK_FAIL_RETRY"]
         js["RELATIVE_LINK_FAIL_RETRY"] = ["RELATIVE_LINK_FAIL", "RELATIVE_LINK_FAIL_RETRY"]
+        # AST-2069 added company GET_UPSHOT / UPSHOT_READY / ERROR_UPSHOT after the snapshot:
+        # bases unrestricted (None); each derived _RETRY pinned to its own base pair.
+        cs = pinned["COMPANY_STATES"]
+        for b in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
+            cs[b] = None
+            cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7767,3 +7777,45 @@ class TestAst2064ThemeExampleGradeSets:
         for gid, s in sets.items():
             assert set(s["tokens"]) == self.GRADE_TOKENS, gid
             assert all(re.fullmatch(r"#[0-9a-fA-F]{6}", v) for v in s["tokens"].values()), gid
+
+
+# AST-2069 (parent AST-2054): upshot states, transitions, dispatch registration, agent_task rows.
+# Registration only — runtime WATCH writes in roster.py move in AST-2070.
+class TestAst2069UpshotRegistration:
+    def test_states_registered(self) -> None:
+        # AC1
+        for s in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
+            assert s in cfg.COMPANY_STATES, s
+        assert cfg.COMPANY_STATES["UPSHOT_READY"]["retry_state"] == "UPSHOT_READY_RETRY"
+
+    def test_only_upshot_hop_enters_watch(self) -> None:
+        # AC2: every (X, "WATCH") pair starts from UPSHOT_READY or its retry
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        into_watch = {src for src, dst in transitions if dst == "WATCH"}
+        assert into_watch == {"UPSHOT_READY", "UPSHOT_READY_RETRY"}
+        for pair in (("WATCH", "GET_UPSHOT"), ("GET_UPSHOT", "UPSHOT_READY"), ("UPSHOT_READY", "WATCH")):
+            assert pair in transitions, pair
+        assert cfg.ROSTER_CONFIG["locate_job_page"]["pass_states"] == ["GET_UPSHOT"]
+
+    def test_dispatch_registrable(self) -> None:
+        # AC4
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        want = {"fetch_company_culture_pages": "GET_UPSHOT", "company_upshot": "UPSHOT_READY"}
+        for tk, trigger in want.items():
+            assert _dispatch_entity_type_for_task_key(tk) == "company", tk
+            assert _dispatch_trigger_state_for_task_key(tk) == trigger, tk
+
+    def test_agent_task_rows(self) -> None:
+        # AC3: Estelle upshot row with the 200-word cap; telescope row for the GET_UPSHOT fetch
+        from pathlib import Path
+
+        rows = json.loads((Path(__file__).resolve().parents[3] / "data/admin/agent_task.json").read_text())
+        by_key = {r["task_key"]: r for r in rows}
+        upshot = by_key["company_upshot"]
+        assert upshot["agent_id"] == "principal_recruiter_estelle"
+        assert "200 words" in upshot["cache_prompt"] + upshot["user_prompt"] + upshot["nocache_prompt"]
+        assert by_key["fetch_company_culture_pages"]["agent_id"] == "telescope"
