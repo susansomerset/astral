@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2096 · AST-2011 (pointer)
+
+**`TestAst2096AllXFailStates`** — `{fail_state}_ALL_X` rows (`all_x_of`, `ALL_X_FAIL_STATES`, base priors, Skipped). Primary manifest: **`docs/test-bible/core/consult.md`** § AST-2096.
+
 ### AST-1348 · AST-1346
 
 **`PHASE_SCORE_HEADER_TITLE_TEMPLATE`** + `build_state_ui_manifest()["jobs"]["recommended"]["phase_score_header_title_template"]`. Base `report_phase_tabs` `nav_label`s unchanged. Breakdown persist: **AST-1347**. Chrome: **`docs/test-bible/frontend/`**.
