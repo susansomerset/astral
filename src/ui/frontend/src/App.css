@@ -2104,7 +2104,7 @@ input.side-tab-heading-editable:focus {
 }
 
 .resume-section-new {
-  border-left-color: var(--accent-gold);
+  border-left-color: var(--accent-contrast);
 }
 
 .resume-section-removed {
@@ -2131,11 +2131,11 @@ input.side-tab-heading-editable:focus {
 .print-preview-thumb {
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: #fff;
+  background: var(--paper-bg);
 }
 
 .print-preview-thumb:hover {
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 /* === 10f. Section expand chrome (AST-893) === */
