@@ -2431,6 +2431,83 @@ class TestEncodedDecodeIsolation:
         assert out["error"] is None
 
 
+class TestAst2089SalvagedBatchSplit:
+    """AST-2089 bug-repro (AST-2090): envelope failure + salvaged_response → clean lines process, only gaps fail."""
+
+    ERR = "Agent failure: Unable to determine a company job ID for listing 002; required for payload."
+
+    async def _run(
+        self, monkeypatch: pytest.MonkeyPatch, salvaged: Any, gap_state: str = "NEW",
+    ) -> tuple:
+        transition = MagicMock()
+        logged: list = []
+        processed: list = []
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "_log_fail_dest", lambda aid, dest, reason: logged.append((aid, dest, reason)))
+        # Stub hydrate: unstubbed it raises on empty rubric criteria (same as TestEncodedDecodeIsolation).
+        monkeypatch.setattr(consult_mod, "_hydrate_response_jobs_grade_reasons", MagicMock())
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(return_value={
+                "success": False, "agent_failure": True, "parsed_response": None,
+                "error": self.ERR, "salvaged_response": salvaged, "timesheet": {},
+            }),
+        )
+
+        def process(input_job, response_job, cfg):
+            processed.append(response_job["astral_job_id"])
+            return cfg["pass_state"] if response_job["grades"][0]["grade"] == "A" else cfg["fail_state"]
+
+        jobs = [
+            {"astral_job_id": "job-0", "state": "NEW"},
+            {"astral_job_id": "job-1", "state": "NEW"},
+            {"astral_job_id": "job-2", "state": gap_state},
+        ]
+        out = await consult_mod._run_batch_consult(
+            "qualify_job_listings", "batch-2089", jobs, lambda rows: "content", process, {}, False,
+        )
+        return out, transition, logged, processed
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("gap_state", "gap_dest", "retried"),
+        [("NEW", "NEW_RETRY", 1), ("NEW_RETRY", "ERROR_QUALIFY_JOB_LISTINGS", 0)],
+    )
+    async def test_salvaged_lines_process_and_only_the_gap_fails(
+        self, monkeypatch: pytest.MonkeyPatch, gap_state: str, gap_dest: str, retried: int,
+    ) -> None:
+        salvaged = {"jobs": [
+            {
+                "astral_job_id": "job-0",
+                "grades": [{"vector": "CR", "grade": "A", "confidence": 4}],
+                "company_job_id": None,
+                "job_title": "Staff Engineer",
+                "job_link": "https://x.example/jobs/1",
+            },
+            {"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "F", "confidence": 5}]},
+        ]}
+        out, transition, logged, processed = await self._run(monkeypatch, salvaged, gap_state)
+        assert processed == ["job-0", "job-1"]
+        # Only the omitted listing takes a fail dest, first strike → holding, second → terminal.
+        transition.assert_called_once_with("qualify_job_listings", ["job-2"], gap_dest)
+        assert logged == [("job-2", gap_dest, self.ERR)]
+        assert (out["passed"], out["failed"], out["retried"], out["missing"]) == (1, 1, retried, ["job-2"])
+        assert out["success"] is False
+        assert out["agent_failure"] is True
+        assert out["error"] == self.ERR
+
+    @pytest.mark.asyncio
+    async def test_no_salvage_fails_whole_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Real AST-2089 agent shape with nothing usable: salvaged_response key present but None.
+        out, transition, logged, processed = await self._run(monkeypatch, None)
+        assert processed == []
+        transition.assert_called_once_with("qualify_job_listings", ["job-0", "job-1", "job-2"], "NEW_RETRY")
+        assert [aid for aid, _, _ in logged] == ["job-0", "job-1", "job-2"]
+        assert (out["success"], out["retried"], out["error"]) == (False, 3, self.ERR)
+        assert "agent_failure" not in out
+
+
 class TestRunBatchConsultBranches:
     @pytest.mark.asyncio
     async def test_skips_error_transition_without_error_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
