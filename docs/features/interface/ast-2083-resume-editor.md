@@ -1176,3 +1176,63 @@ Pre-plan verification: all three stages were built in a scratch tree at `7084883
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2083
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** `origin/sub/AST-2046/AST-2083-resume-editor` @ `e94f8a6`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+## Traceability
+
+AC4→S3 (+ #4 `refreshKey`) · AC5→S2–3 (#4 drops `ArtifactEditor` grep hit) · AC6→S3 · AC7→S3 · AC8→S2 · AC9→S2 · AC10→S3 · AC11→S2–3 · AC12→S2 · AC13→S2–3 · AC14→S2–3 · AC15→S3 · AC16→S1
+
+## Findings
+
+### discuss — AC5 grep until #4 lands
+- **Severity:** discuss
+- **Location:** `## Parent AC coverage`, Ground truth AC5
+- **Finding:** `Save sections` still lives on `ArtifactEditor.tsx` L1395 until AST-2084; new components omit Save/Cancel as required.
+- **Recommendation:** Treat AC5 as epic-level; #4 must delete resume mode before UAT signs AC5.
+
+### discuss — Hidden sections drop body on next body save (existing backend)
+- **Severity:** discuss
+- **Location:** Decision 12, Ground truth “Hidden content on save”
+- **Finding:** Plan correctly flags #1-era server filtering: hide then edit elsewhere can erase hidden section text.
+- **Recommendation:** Susan decides follow-up backend ticket vs accepted behavior; not a plan gap for this child.
+
+### discuss — Structure-authoring CSS removed before #4 retires markup
+- **Severity:** discuss
+- **Location:** Stage 1 diff, Decision 14
+- **Finding:** `.structure-authoring-*` rules drop here while `ArtifactEditor` resume mode remains until #4 — interim unstyled header.
+- **Recommendation:** Accept cosmetic window or defer CSS removal to #4 if Susan wants zero regression on legacy surface.
+
+### acceptable — Experience field labels fallback
+- **Severity:** acceptable
+- **Location:** `ResumeContentEditor` `EXPERIENCE_FIELD_FALLBACK`
+- **Finding:** Hardcoded Company/Title/… only when `ui_config` lacks `experience_job_ui_fields` — same fallback shape as today’s `ArtifactEditor`.
+- **Recommendation:** None; AC13 grep targets format/flow catalog strings, not field labels.
+
+### acceptable — No `## Self-assessment` block
+- **Severity:** acceptable
+- **Location:** Plan doc structure
+- **Finding:** Estimate confirm only.
+- **Recommendation:** Optional; not blocking.
+
+## R6 (summary)
+
+Definition fidelity: Four scoped files only; no #4 wiring. One `ResumeContentEditor` with `target` switch implements amended Decision 7 (shared dedicated path for base and job). Loads structure via resume_structure GETs and bodies via entity GET hydrates; compare refetches candidate base on toggle; saves via operative PUTs with dirty halves, serialized chain, job structure only when struct dirty, and server id adoption after pending rows. Stage 2 catalog-driven labels/tooltips/fonts; glyphs only client constant. Autosave model matches AC4 (no per-keystroke PUT in plan; container blur + immediate discrete controls). Compare/NEW/REMOVED/Add match parent AC14 wording. Depends on #1/#2 catalog and `printHtml` as stated.
+
+context_tokens≈65000
+
+[plan-rubric] PROCEED (Commit: e94f8a6) Editor plan; canon clean.
