@@ -2901,6 +2901,13 @@ input.side-tab-heading-editable:focus {
   gap: 6px;
 }
 
+.theme-examples-grade-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
 .theme-examples-grade-options-label,
 .theme-examples-grade-option-name {
   font-size: 12px;
