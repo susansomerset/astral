@@ -2196,3 +2196,38 @@ cd src/ui/frontend && npm run test:component -- \
 3. **Build gates:** `cd src/ui/frontend && npx tsc -b --noEmit` and `npm run lint` must be clean on the four product files.
 
 **Pass criterion:** item 1 is 31 passed, and items 2–3 hold. This is a narrowed run, not the zero-arg harness.
+
+### AST-2083 · AST-2046 (resume content editor — rows, autosave, compare, print)
+
+**Publish:** `origin/sub/AST-2046/AST-2083-resume-editor`. New `ResumeContentEditor.tsx` (base or job target) and `ResumeSectionRow.tsx`; App.css §10e2; the experience job header gets `resume-section-title`. Nothing mounts the editor yet (that's **AST-2084**), so tests render it directly. Structure comes from the `resume_structure` GET and bodies from the entity GET hydrate. Saves send only the half that changed. Base saves are one `PUT /api/candidates/<id>/data`. Job saves are a `job_resume_structure` PUT, then a `job_resume` PUT. Saves are serialized, and a failed save stays dirty and retries on the next field exit.
+
+| Area | Component tests |
+| --- | --- |
+| AC4/AC5: typing sends nothing; field exit sends one PUT and one `onSaved`; nothing dirty → no PUT; no Save/Cancel; a failed save toasts, then retries; unmount flushes; load error | new **`tests/component/frontend/components/test_ResumeContentEditor.test.tsx`** (37 total) |
+| AC6/AC8/AC13: collapsed `Label: value`; tooltip, label and font from `body_format_details`; flow glyph tooltip from the catalog (incl. `hidden_flow_label`); contact row has no format; arrows disabled at the ends; delete only on non-required rows; search over title and content (incl. experience text) | same file. The catalog fixture uses `FX …` strings that exist nowhere in `src/`, so any label on screen proves it is config-driven |
+| AC9/AC12: format options from the catalog (incl. `line`); experience format locked; `line` → `<input>`, prose → `<textarea>`; format/flow/Job Edit/accent save immediately; Hidden ↔ policy; required rows have no Hidden; label saves on field exit | same file |
+| AC7/AC10/AC11: Add Section (bottom, expanded, default format, content locked, search cleared); a blank new row is never sent; labeled → saved last, adopts the server's slug id and unlocks; delete confirm cancel/OK; arrow and drag reorder | same file (`window.confirm` fallback; no `UserPromptProvider`) |
+| AC14 (job only): differs / NEW SECTION / SECTION REMOVED placement after the nearest kept base row; base refetched on every toggle-on; Add → structure PUT then `job_resume` PUT with base content; compare error toast; job body-only and structure-only saves | same file |
+| AC15 Print: flushes before `fetchPrintHtml`; base vs `job_resume` target; fetch error and blocked popup toast | same file (`lib/printHtml` mocked; route table in [`lib.md`](lib.md) § AST-2082) |
+| AC16: job header color equals the section header color | same file. It injects the two App.css rules (`--heading` pinned) and checks the role label rule sets no color of its own |
+| Theme-token gate on the new §10e2 rules | existing **`pages/test_AdminThemeExamples.test.tsx`** (8). **2 red: product bug.** See below |
+
+**Product bug (returned to the engineer):** §10e2 in `354a93fa4` uses `var(--accent-gold)` on `.resume-section-new` and `.print-preview-thumb:hover`. Current dev retired that token in favor of `--accent-contrast`, so it's undefined there. §10e2 also hard-codes `background: #fff` on `.print-preview-thumb` outside the token blocks. The existing AST-2047/AST-2049 gates fail on the synced tree: `no hex or non-black rgba outside token blocks…` (`#fff`) and `AST-2049: no hex in .ts/.tsx source and every var(--x)…` (`App.css: --accent-gold`). These are App.css-only fixes. The tests are correct and stay as they are.
+
+**Broken / obsolete:** none from the tests' side. A full Vitest diff (dev-product `origin/tests` vs the synced sub) shows only the two theme gates above as new failures, plus `test_CandidateContext` › *restores the persisted selection's Full Name after load*. That test also fails alone on the baseline tree, so it's order-dependent and predates this ticket. Mutation check: switching body or label edits to save per keystroke turns 3 tests red, and dropping the format font turns 1 red. No routed page is touched (wiring is AST-2084), so §6c doesn't apply. The retired `.structure-authoring-*` CSS has no CSS assertions. The markup tests (`test_ArtifactEditor`, `test_ArtifactsBaseResumeContent`) are unchanged and green.
+
+## QA test manifest — AST-2083
+
+1. **New + affected (Vitest, 47 tests):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ResumeContentEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+```
+
+2. **Regression:** in the full `npm run test:component`, AST-2083 must add **no** new failure beyond item 1's two theme reds before the fix (`test_CandidateContext` title-restore is pre-existing/order-dependent).
+3. **Build gates:** `cd src/ui/frontend && npx tsc -b --noEmit` and `npm run lint` must be clean on the four product files.
+
+**Pass criterion:** item 1 is 47 passed (the two `test_AdminThemeExamples` reds turn green once the App.css token fix lands), and items 2–3 hold. This is a narrowed run, not the zero-arg harness.

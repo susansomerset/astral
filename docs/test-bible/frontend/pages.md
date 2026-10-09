@@ -3835,3 +3835,7 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/comp
 ```
 
 **Pass criterion (test-fix):** the AST-2076 `[bug-repro]` flips red → green; the other 7 cases stay green.
+
+### AST-2083 · AST-2046 (theme gate on resume editor CSS)
+
+**Unchanged test, product red:** `test_AdminThemeExamples.test.tsx` (8). Its AST-2047/AST-2049 token gates catch `var(--accent-gold)` (retired on dev, now `--accent-contrast`) and a literal `#fff` in AST-2083's App.css §10e2. That's 2 red until the product fix lands. Manifest and detail: [`components.md`](components.md) § AST-2083.
