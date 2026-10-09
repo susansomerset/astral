@@ -1146,3 +1146,86 @@ AST-2098’s `CANON: REVISE` is **addressed by this plan’s § H text as writte
 ```text
 
 **Chuckles routing:** Joan CANON: OK; Betty TESTS: REVISE = land this plan via qa-fix, plus E6 (`prefilter_company` → `_prefilter_fail` single-company probe hold). AST-2099 is the gap child, so qa-fix (F4) runs on it directly; no further gap child.
+
+
+## Radia review — AST-2099
+
+```
+[code-rubric]
+**Ticket:** AST-2099
+**Publish ref:** `c04b07deda8f5a750afd473ec847d06ed2207065` (`origin/sub/AST-2016/AST-2099-probe-fail-hold-gaps`)
+**Corpus:** canon tree at publish tip (`c04b07ded`); `canon/docs/corpus_sha.txt` absent on ref — scored `patt.task.dispatch-retry` from `canon/directives/active/patt.task.dispatch-retry.md` at tip
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.dispatch-retry | A | | |
+
+**Note:** Linear description has no `## Citations` block; the single scored id matches Component scope (`canon/directives/active/patt.task.dispatch-retry.md` only). Other canon/git-statute paths in the three-dot diff vs `origin/ftr/AST-2016-probe-fail-hold` are **sync(dev) carry**, not this ticket’s graded scope.
+
+## Column diff vs plan stage
+
+(aligned) — Joan fix-board **CANON: OK** on plan § H; landed bullet matches the plan text (ticket-id-free, inserted before “Every other failed attempt”, exhausted-429 called out).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** OK — `TestAst2098ProviderProbeOutage::test_bug_repro_probe_failure_holds_batch_interrupted` pins concrete behaviour tied to AST-2098 to-be: `consult.await_count == 1` (not 2×3), ledger `status == "INTERRUPTED"`, `(total_processed, total_errors) == (1, 0)`, breaker / `auto_run_error` / `provider_balance_outage` not called; uses literal `failure_class="provider_probe_failure"` and held summary shape (no AST-2098 symbol imports). Would fail pre-fix on call count / status, not tautology.
+- **`## What must still hold`:** OK — scoped product + test diff vs ftr:
+  - Plan A1–G + Betty E6 (`test_prefilter_company_probe_hold_keeps_state`) present; six bible § AST-2098 rows added; D5 / F2 exact-dict guards in place.
+  - Canon: empty-tokens bullet and Arc 1–5 body unchanged; only the new probe carve-out added.
+  - **`_run_batch_consult` merge (AST-2089 × AST-2098):** `salvaged = … salvaged_response` then `if not success and not salvaged:` before `is_provider_state_hold` — envelope failure with salvage processes lines; probe/balance hold without salvage unchanged. Matches Ada’s `aeb67b06b` resolution intent.
+
+## Findings
+
+#### fix-now
+
+(none)
+
+#### discuss
+
+- **Location:** `origin/ftr/AST-2016-probe-fail-hold...origin/sub/AST-2016/AST-2099-probe-fail-hold-gaps` — `src/**` beyond `consult.py`
+- **Finding:** Ticket Boundaries say tests/bible/canon only, but `sync(dev)` (`aeb67b06b`) also lands sibling product: `src/core/agent.py` (AST-2089 salvage), `src/core/candidate.py` + `src/core/dispatcher.py` (AST-2091 rubric AUTO gate), `src/core/consult.py` (AST-2096 all-X paths + salvage), `src/core/roster.py` (company upshot name-on-file). Needed for green tests on current dev, but wider than the gap-child scope line.
+- **Recommendation:** @susan — Treat as intentional merge integration on this sub, or require a follow-up to peel non-2099 product before merge-child?
+- **Default:** Keep stacked commits; document in merge-child / parent UAT that ftr picks up dev-aligned product plus AST-2098 + gap tests/canon (no revert on resolve-child).
+
+#### advisory
+
+- **Location:** Three-dot diff — `docs/features/**`, `canon/statutes/git/**`, `canon/directives/draft/**`, `data/admin/agent_task.json`, UI/tests from `merge-tests` / dev
+- **Finding:** Large doc and non-`patt.task.dispatch-retry` canon carry vs ftr; scoped AST-2099 footprint is six test modules, six bible pages, one active directive (+ qa-fix commit `21f89bd34` / canon `c04b07ded`).
+- **Recommendation:** Chuckles/issue doc: cite **scoped** paths for AST-2099 acceptance; do not attribute full 110-file stat to this ticket.
+
+- **Location:** Ada Linear comment — stale worktree `pre-commit` vs `core.hooksPath` engineer hook on `sync(dev)`
+- **Finding:** Process hygiene only; merge committed with canonical hook per Ada.
+- **Recommendation:** Chuckles refresh shared hook when convenient (downstream ops, not Radia).
+
+- **Location:** `docs/test-bible/external/openrouter.md` § AST-2098
+- **Finding:** Documents pre-existing probe `zdr` drift test (not AST-2098 product).
+- **Recommendation:** Advisory only; no review block.
+
+### What's solid
+
+- § H canon bullet landed verbatim in spirit and structure; closes AST-2098 board **CANON: REVISE**.
+- Betty plan A–G implemented; board E6 single-company `prefilter_company` → `_prefilter_fail` hold covered.
+- `[bug-repro]` and `TestAst2098*` classes assert literals tied to hold / `INTERRUPTED` / zero-token / tag contracts; repro-safety rule respected.
+- `consult.py` conflict resolution preserves **both** AST-2089 salvaged-batch split and AST-2098 provider-state hold.
+
+### Chuckles branching (read-only)
+
+| Gate | Parent shape | Next |
+|------|----------------|------|
+| **PROCEED** (C7 complete) | AST-2016 mini-parent | **Review Posted** → §3h clean-review shortcut → **User Testing**; **resolve-child** skipped |
+
+context_tokens≈38000
+```
+
+```
+[code-rubric] PROCEED (Commit: c04b07ded) gap tests and canon OK
+```
+
+**Chuckles on the discuss item:** keep. The extra `src/**` in `ftr...sub` comes from `sync(dev)` `aeb67b06b`, whose second parent is already on `origin/dev`, so those commits are no-ops when ftr lands to dev. AST-2099's own delta stays canon only, plus the `consult.py` conflict resolution Radia confirmed. No resolve-child (§3h clean shortcut).
