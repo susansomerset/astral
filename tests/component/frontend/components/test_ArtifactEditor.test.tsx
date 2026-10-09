@@ -51,7 +51,7 @@ function isPendingGenerateUrl(url: string): boolean {
 function mockApis(state = "ACTIVE_SEARCH") {
   mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
     if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-    if (url === "/api/system/ui_config") return uiConfigResponse()
+    if (url === "/api/ui_config") return uiConfigResponse()
     if (url === "/api/candidates") {
       return {
         json: async () => [{ astral_candidate_id: "c1", state, candidate_data: {} }],
@@ -101,7 +101,7 @@ function mockApis(state = "ACTIVE_SEARCH") {
 function mockBaseResumeUnsupported(state: string) {
   mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
     if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-    if (url === "/api/system/ui_config") return uiConfigResponse()
+    if (url === "/api/ui_config") return uiConfigResponse()
     if (url === "/api/candidates") {
       return { json: async () => [{ astral_candidate_id: "c1", state, candidate_data: {} }] } as Response
     }
@@ -121,19 +121,13 @@ function mockBaseResumeUnsupported(state: string) {
   })
 }
 
-// AST-2051: resume editors (structure mode / jobPersistence) autosave bodies after ArtifactEditor's
-// AUTOSAVE_MS debounce; header Save/Cancel renders only during Generate review.
-const AUTOSAVE_MS = 2000
+// AST-2051 / AST-2068: resume editors (structure mode / jobPersistence) blur-save bodies — no timer;
+// header Save/Cancel renders only during Generate review.
 
-/** Fake clock that still ticks in real time, so RTL waitFor/findBy polling and userEvent delays keep working. */
-function startAutosaveClock() {
-  vi.useFakeTimers({ shouldAdvanceTime: true })
-}
-
-/** Fire pending autosave timers and settle the PUT promise chain. */
-async function advanceAutosave(ms = AUTOSAVE_MS) {
+/** Blur the focused field (jsdom fires a bubbling focusout → dep-body onBlur) and settle the PUT chain. */
+async function blurToSave() {
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(ms)
+    ;(document.activeElement as HTMLElement | null)?.blur()
   })
 }
 
@@ -154,7 +148,7 @@ const okResponse = () => ({ ok: true, json: async () => ({}) }) as Response
 function mockBaseResumeStructure(onPut: (body: unknown) => Promise<Response> | Response, extra?: (url: string, init?: RequestInit) => Response | undefined) {
   mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
     if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-    if (url === "/api/system/ui_config") return uiConfigResponse()
+    if (url === "/api/ui_config") return uiConfigResponse()
     if (url === "/api/candidates") {
       return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
     }
@@ -228,7 +222,7 @@ describe("ArtifactEditor", () => {
   it("shows no-candidate and shape error states", async () => {
     mockedApi.mockImplementation(async (url: string) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [] } as Response
       }
@@ -242,7 +236,7 @@ describe("ArtifactEditor", () => {
 
     mockedApi.mockImplementation(async (url: string) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -280,7 +274,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -336,7 +330,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -374,7 +368,6 @@ describe("ArtifactEditor", () => {
   })
 
   it("job persistence mode loads job resume_content and autosaves PUT (AST-553 / AST-2051)", async () => {
-    startAutosaveClock()
     const putBodies: { resume_content?: Record<string, string> }[] = []
     mockJobResume(putBodies)
     renderJobResume()
@@ -385,7 +378,7 @@ describe("ArtifactEditor", () => {
     await userEvent.clear(field)
     await userEvent.type(field, "updated")
     expectNoHeaderSaveCancel()
-    await advanceAutosave()
+    await blurToSave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(
       mockedApi.mock.calls.some(
@@ -401,7 +394,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -439,7 +432,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -487,7 +480,7 @@ describe("ArtifactEditor", () => {
     let pendingCalls = 0
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -538,7 +531,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -575,7 +568,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -630,7 +623,6 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-996/AST-1351: experience job array loads in ExperienceJobsEditor and autosaves as array", async () => {
-    startAutosaveClock()
     const jobs = [
       {
         company: "Acme Corp",
@@ -644,7 +636,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -690,18 +682,17 @@ describe("ArtifactEditor", () => {
     // Autosave needs a body edit; the untouched experience array must still ride along as an array.
     await userEvent.type(screen.getByDisplayValue("Summary body"), " edited")
     expectNoHeaderSaveCancel()
-    await advanceAutosave()
+    await blurToSave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(putBodies.at(-1)?.artifacts?.base_resume?.experience).toEqual(jobs)
     expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toBe("Summary body edited")
   })
 
   it("AST-1351: legacy string experience shows unsupported notice and autosave aborts", async () => {
-    startAutosaveClock()
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -745,7 +736,7 @@ describe("ArtifactEditor", () => {
     await userEvent.type(screen.getByDisplayValue("Summary body"), " edited")
     expectNoHeaderSaveCancel()
     const noticesBefore = screen.getAllByText("unsupported resume structure, please regenerate").length
-    await advanceAutosave()
+    await blurToSave()
     // Refusal surfaces as an error toast on top of the inline notice.
     await waitFor(() =>
       expect(screen.getAllByText("unsupported resume structure, please regenerate").length).toBeGreaterThan(noticesBefore),
@@ -808,7 +799,7 @@ describe("ArtifactEditor", () => {
     ]
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [
@@ -865,7 +856,7 @@ describe("ArtifactEditor", () => {
   it("AST-1375: valid job-array experience stays allowlist-only (no escape)", async () => {
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [
@@ -915,7 +906,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -954,7 +945,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -1035,7 +1026,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -1065,7 +1056,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -1117,7 +1108,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -1150,7 +1141,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -1190,7 +1181,6 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-1382 [bug-repro]: content autosave bundles resume_structure format (prior free_prose)", async () => {
-    startAutosaveClock()
     const putBodies: { artifacts?: { base_resume?: unknown; resume_structure?: { sections?: Record<string, { format?: string; page_break_policy?: string }> } } }[] = []
     const catalog = {
       body_formats: ["free_prose", "word_cloud", "bullet_list"],
@@ -1223,7 +1213,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -1260,7 +1250,7 @@ describe("ArtifactEditor", () => {
     await waitFor(() => expect(screen.getByDisplayValue("Earlier ops and delivery.")).toBeInTheDocument())
     await userEvent.type(screen.getByDisplayValue("Earlier ops and delivery."), " More.")
     expectNoHeaderSaveCancel()
-    await advanceAutosave()
+    await blurToSave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     const arts = putBodies.at(-1)?.artifacts
     expect(arts?.resume_structure?.sections?.prior_experience?.format).toBe("free_prose")
@@ -1269,7 +1259,6 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-1476: page-break dropdown + content autosave and Save sections persist policy", async () => {
-    startAutosaveClock()
     const putBodies: { artifacts?: { resume_structure?: { sections?: Record<string, { page_break_policy?: string }> } } }[] = []
     const structureSaves: { id: string; page_break_policy: string }[][] = []
     const catalog = {
@@ -1303,7 +1292,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -1354,7 +1343,7 @@ describe("ArtifactEditor", () => {
     // Page-break is structure chrome (no body autosave); a body edit triggers the content PUT that bundles it.
     await userEvent.type(screen.getByDisplayValue("Summary body"), " edited")
     expectNoHeaderSaveCancel()
-    await advanceAutosave()
+    await blurToSave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(
       putBodies.at(-1)?.artifacts?.resume_structure?.sections?.professional_summary?.page_break_policy,
@@ -1407,7 +1396,6 @@ describe("ArtifactEditor", () => {
 
   // AST-1480: structure-mode body hydrate + edit loop (chrome vs body split; label-churn; JAR overlay)
   it("AST-1480: structure title rename keeps hydrated body and autosave still works", async () => {
-    startAutosaveClock()
     let candidateGets = 0
     const putBodies: { artifacts?: { base_resume?: Record<string, string> } }[] = []
     const catalog = {
@@ -1441,7 +1429,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -1494,7 +1482,7 @@ describe("ArtifactEditor", () => {
     await userEvent.clear(body)
     await userEvent.type(body, "Edited after rename")
     expectNoHeaderSaveCancel()
-    await advanceAutosave()
+    await blurToSave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toMatch(/Edited after rename/)
   })
@@ -1543,7 +1531,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -1631,7 +1619,6 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-1593: job_resume load uses hydrated current leaf body", async () => {
-    startAutosaveClock()
     const putBodies: { job_resume?: Record<string, string> }[] = []
     installBaseApiMocks(mockedApi, async (url, init) => {
       if (url === "/api/jobs/j1" && !init?.method) {
@@ -1670,18 +1657,17 @@ describe("ArtifactEditor", () => {
     await userEvent.clear(field)
     await userEvent.type(field, "Edited JAR")
     expectNoHeaderSaveCancel()
-    await advanceAutosave()
+    await blurToSave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(putBodies.at(-1)?.job_resume?.professional_summary).toMatch(/Edited JAR/)
   })
 
   it("AST-1480: structure mode bodies stay editable; tab chrome stays off", async () => {
-    startAutosaveClock()
     const putBodies: { artifacts?: { base_resume?: Record<string, string> } }[] = []
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -1717,7 +1703,7 @@ describe("ArtifactEditor", () => {
     await userEvent.clear(body)
     await userEvent.type(body, "Bodies editable")
     expectNoHeaderSaveCancel()
-    await advanceAutosave()
+    await blurToSave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toMatch(/Bodies editable/)
   })
@@ -1728,7 +1714,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -1770,11 +1756,10 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-1577: bodyShape resume_content structures without useCandidateResumeStructure", async () => {
-    startAutosaveClock()
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
-      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -1812,7 +1797,7 @@ describe("ArtifactEditor", () => {
     // bodyShape alone must enable structure-mode autosave (no useCandidateResumeStructure).
     await userEvent.type(screen.getByDisplayValue("Struct body"), " edited")
     expectNoHeaderSaveCancel()
-    await advanceAutosave()
+    await blurToSave()
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     const putCall = mockedApi.mock.calls.find(
       ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
@@ -1823,25 +1808,22 @@ describe("ArtifactEditor", () => {
 
   // --- AST-2051 resume editor autosave contract (AST-2056 bug-repro) ---
 
-  it("AST-2051 [bug-repro]: structure body edit autosaves after AUTOSAVE_MS with status text, no header Save/Cancel", async () => {
-    startAutosaveClock()
+  it("AST-2051 / AST-2068: structure body edit saves one PUT on blur (none while typing), status text, no header Save/Cancel", async () => {
     const puts: { artifacts?: { base_resume?: Record<string, string> } }[] = []
     mockBaseResumeStructure(body => { puts.push(body as (typeof puts)[number]); return okResponse() })
     renderBaseResumeStructure()
     await userEvent.type(await screen.findByDisplayValue("Struct body"), " edited")
     expectNoHeaderSaveCancel()
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument()
-    // Debounce: nothing before AUTOSAVE_MS (500ms margin absorbs the real-time drift of shouldAdvanceTime).
-    await advanceAutosave(AUTOSAVE_MS - 500)
+    // AST-2068 AC1: typing alone never saves; the blur saves exactly one version.
     expect(puts).toHaveLength(0)
-    await advanceAutosave(500)
+    await blurToSave()
     await waitFor(() => expect(puts).toHaveLength(1))
     expect(puts[0].artifacts?.base_resume?.professional_summary).toBe("Struct body edited")
     await waitFor(() => expect(screen.getByText("All changes saved")).toBeInTheDocument())
   })
 
-  it("AST-2051 [bug-repro]: jobPersistence Job Resume body edit autosaves PUT after AUTOSAVE_MS, no header Save/Cancel", async () => {
-    startAutosaveClock()
+  it("AST-2051 / AST-2068: jobPersistence Job Resume body edit saves one PUT on blur (none while typing), no header Save/Cancel", async () => {
     const puts: { resume_content?: Record<string, string> }[] = []
     mockJobResume(puts)
     renderJobResume()
@@ -1849,9 +1831,8 @@ describe("ArtifactEditor", () => {
     await userEvent.type(await screen.findByDisplayValue("hello"), " edited")
     expectNoHeaderSaveCancel()
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument()
-    await advanceAutosave(AUTOSAVE_MS - 500)
     expect(puts).toHaveLength(0)
-    await advanceAutosave(500)
+    await blurToSave()
     await waitFor(() => expect(puts).toHaveLength(1))
     expect(puts[0].resume_content?.professional_summary).toBe("hello edited")
     await waitFor(() => expect(screen.getByText("All changes saved")).toBeInTheDocument())
@@ -1878,7 +1859,6 @@ describe("ArtifactEditor", () => {
   }
 
   it("AST-2051: Generate review keeps header Save/Cancel and never autosaves (AST-905)", async () => {
-    startAutosaveClock()
     const puts: unknown[] = []
     mockBaseResumeStructure(body => { puts.push(body); return okResponse() }, generateHandler())
     renderBaseResumeStructure()
@@ -1887,34 +1867,35 @@ describe("ArtifactEditor", () => {
     await waitFor(() => expect(screen.getByText("Generated — review and Save or Cancel")).toBeInTheDocument())
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
-    await advanceAutosave()
+    await blurToSave()
     expect(puts).toHaveLength(0)
     // Explicit Save is still the accept step.
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(puts).toHaveLength(1))
   })
 
-  it("AST-2051: autosave timer queued before Generate does not fire during review (AST-905)", async () => {
-    startAutosaveClock()
-    const puts: unknown[] = []
+  it("AST-2068: edit typed before Generate saves once on the Regenerate blur; review never saves (AST-905)", async () => {
+    const puts: { artifacts?: { base_resume?: Record<string, string> } }[] = []
     const gen = deferred<void>()
-    mockBaseResumeStructure(body => { puts.push(body); return okResponse() }, generateHandler(gen.promise))
+    mockBaseResumeStructure(body => { puts.push(body as (typeof puts)[number]); return okResponse() }, generateHandler(gen.promise))
     renderBaseResumeStructure()
     await userEvent.type(await screen.findByDisplayValue("Struct body"), " edited")
-    // Start Generate inside the debounce window; the queued timer must no-op once review (snapshot) is open.
+    // Clicking Regenerate blurs the field: the user's own edit lands as one version before review opens.
     await clickRegenerateAndConfirm()
-    await advanceAutosave()
-    expect(puts).toHaveLength(0)
+    await waitFor(() => expect(puts).toHaveLength(1))
+    expect(puts[0].artifacts?.base_resume?.professional_summary).toBe("Struct body edited")
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
     await act(async () => { gen.resolve() })
     await waitFor(() => expect(screen.getByText("Generated — review and Save or Cancel")).toBeInTheDocument())
-    await advanceAutosave()
-    expect(puts).toHaveLength(0)
+    // Generated content in review never persists silently: a blur during review → still one PUT.
+    const reviewField = screen.getByDisplayValue("Generated summary")
+    await userEvent.click(reviewField)
+    await blurToSave()
+    expect(puts).toHaveLength(1)
   })
 
   it("AST-2051 [bug-repro]: in-flight autosave keeps dirty when a newer edit is pending; unmount flushes it", async () => {
-    startAutosaveClock()
     const puts: { artifacts?: { base_resume?: Record<string, string> } }[] = []
     const firstPut = deferred<Response>()
     mockBaseResumeStructure(body => {
@@ -1924,7 +1905,7 @@ describe("ArtifactEditor", () => {
     const { unmount } = renderBaseResumeStructure()
     const field = await screen.findByDisplayValue("Struct body")
     await userEvent.type(field, " one")
-    await advanceAutosave()
+    await blurToSave()
     await waitFor(() => expect(puts).toHaveLength(1))
     // Newer edit lands while PUT #1 is still in flight.
     await userEvent.type(field, " two")
@@ -1938,7 +1919,6 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-2051 [bug-repro]: jobPersistence autosave skips onSaved; unmount flush calls it", async () => {
-    startAutosaveClock()
     const puts: { resume_content?: Record<string, string> }[] = []
     const onSaved = vi.fn()
     mockJobResume(puts)
@@ -1946,7 +1926,7 @@ describe("ArtifactEditor", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Expand section" }))
     const field = await screen.findByDisplayValue("hello")
     await userEvent.type(field, " a")
-    await advanceAutosave()
+    await blurToSave()
     await waitFor(() => expect(puts).toHaveLength(1))
     await waitFor(() => expect(screen.getByText("All changes saved")).toBeInTheDocument())
     // JAR's onSaved re-GETs and remounts the editor — autosave ticks must not trigger it.
@@ -1956,5 +1936,58 @@ describe("ArtifactEditor", () => {
     await waitFor(() => expect(puts).toHaveLength(2))
     expect(puts[1].resume_content?.professional_summary).toBe("hello a b")
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
+  })
+
+  // --- AST-2068 version arrows on the JAR cover letter (job route) ---
+
+  it("AST-2068 AC4: JAR cover letter arrows step back via the job route; a failed move toasts and keeps the body", async () => {
+    const bodies: Record<string, string> = { "u-1": "letter v1", "u-2": "letter v2" }
+    let current = "u-2"
+    let failMove = false
+    const map = () => ({
+      "u-1": { created_at: "t", current: current === "u-1" ? 1 : 0, position: 1 },
+      "u-2": { created_at: "t", current: current === "u-2" ? 1 : 0, position: 2 },
+    })
+    const base = "/api/jobs/j1/artifacts/job.artifacts.cover_letter"
+    installBaseApiMocks(mockedApi, async (url, init) => {
+      if (url === "/api/shapes/candidates") {
+        return { json: async () => ({ detail: { cover_letter: [{ key: "body", label: "Body" }] } }) } as Response
+      }
+      if (url === "/api/jobs/j1" && !init?.method) {
+        return {
+          json: async () => ({ astral_job_id: "j1", job_data: { artifacts: { cover_letter: { body: bodies[current] } } } }),
+        } as Response
+      }
+      if (url === `${base}/versions`) return { ok: true, json: async () => ({ versions: map() }) } as Response
+      if (url === `${base}/current` && init?.method === "PUT") {
+        if (failMove) return { ok: false, status: 400, json: async () => ({ error: "not a version" }) } as Response
+        current = JSON.parse(String(init.body)).artifact_uuid
+        return { ok: true, json: async () => ({ current, versions: map() }) } as Response
+      }
+      throw new Error(`${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Cover letter"
+        artifactKey="cover_letter"
+        taskKey="draft_cover_letter"
+        shapesKey="cover_letter"
+        jobPersistence={{ jobId: "j1", artifactKey: "cover_letter" }}
+      />,
+    )
+    expect(await screen.findByText("2 of 2")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Next version" })).toBeDisabled()
+    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+    await screen.findByDisplayValue("letter v2")
+    await userEvent.click(screen.getByRole("button", { name: "Previous version" }))
+    await screen.findByDisplayValue("letter v1")
+    expect(screen.getByText("1 of 2")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Previous version" })).toBeDisabled()
+    // Server rejects the move → error toast, body and indicator unchanged.
+    failMove = true
+    await userEvent.click(screen.getByRole("button", { name: "Next version" }))
+    expect(await screen.findByText("not a version")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("letter v1")).toBeInTheDocument()
+    expect(screen.getByText("1 of 2")).toBeInTheDocument()
   })
 })

@@ -15,7 +15,7 @@ async function load(uiConfig: Record<string, unknown> = { column_types: {} }) {
   vi.resetModules()
   const api = (await import("../../../../src/ui/frontend/src/lib/api")).default
   vi.mocked(api).mockImplementation(async (url: string) => {
-    if (url === "/api/system/ui_config") return { json: async () => uiConfig } as Response
+    if (url === "/api/ui_config") return { json: async () => uiConfig } as Response
     throw new Error(`Unhandled api ${url}`)
   })
   return (await import("../../../../src/ui/frontend/src/components/JobTitleText")).default

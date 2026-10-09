@@ -1272,14 +1272,16 @@ class TestAst721ParseJobListConfig:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY") in transitions
         assert ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST") in transitions
-        assert ("JOBLIST_IDENTIFIED_RETRY", "WATCH") in transitions
+        # AST-2069: parse success lands in GET_UPSHOT (upshot hops precede WATCH)
+        assert ("JOBLIST_IDENTIFIED_RETRY", "GET_UPSHOT") in transitions
+        assert ("JOBLIST_IDENTIFIED_RETRY", "WATCH") not in transitions
         assert ("JOBLIST_IDENTIFIED_RETRY", "COULD_NOT_PARSE_JOBLIST") in transitions
 
     def test_parse_job_list_roster_config(self) -> None:
         parse = cfg.ROSTER_CONFIG["parse_job_list"]
         assert parse["dispatch_trigger_state"] == "JOBLIST_IDENTIFIED"
         assert parse["retry_trigger_state"] == "JOBLIST_IDENTIFIED_RETRY"
-        assert parse["pass_state"] == "WATCH"
+        assert parse["pass_state"] == "GET_UPSHOT"  # AST-2069 (was WATCH)
         assert parse["retry_state"] == "JOBLIST_IDENTIFIED_RETRY"
         assert parse["terminal_fail_state"] == "COULD_NOT_PARSE_JOBLIST"
         assert parse["selected_pjl_url_key"] == "selected_pjl_url"
@@ -1704,7 +1706,9 @@ class TestAst508InflowLocateConfig:
 
     def test_prefilter_passed_locate_transitions(self) -> None:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
-        assert ("PREFILTER_PASSED", "WATCH") in transitions
+        # AST-2069: locate success lands in GET_UPSHOT, not WATCH
+        assert ("PREFILTER_PASSED", "GET_UPSHOT") in transitions
+        assert ("PREFILTER_PASSED", "WATCH") not in transitions
         assert ("PREFILTER_PASSED", "NO_OPENINGS") in transitions
 
 
@@ -3515,33 +3519,49 @@ class TestAst1066ContactConfig:
         assert "first" in luc["name_paths"]
 
 
-class TestAst1071ContactSkillsConfig:
-    """AST-1071: CONTACT_CONFIG skills ACL — two candidate entity-save skills."""
+# Branches: skills map kept but empty — candidate is read-only to Contact (AST-2061).
+class TestAst2061ContactSkillsEmpty:
+    def test_skills_registry_empty(self) -> None:
+        assert cfg.CONTACT_CONFIG["skills"] == {}
 
-    def test_two_skills_not_in_task_config(self) -> None:
-        skills = cfg.CONTACT_CONFIG["skills"]
-        assert set(skills.keys()) == {"save_candidate_profile", "save_candidate_contact"}
-        for key, meta in skills.items():
-            assert key not in cfg.TASK_CONFIG
-            assert meta["entity"] == "candidate"
-            assert meta["write"] is True
-            assert isinstance(meta["description"], str) and meta["description"].strip()
-            assert isinstance(meta["allowed_paths"], tuple) and meta["allowed_paths"]
 
-    def test_allowlisted_paths_no_slack_user_id(self) -> None:
-        skills = cfg.CONTACT_CONFIG["skills"]
-        assert skills["save_candidate_profile"]["allowed_paths"] == (
-            "profile.first",
-            "profile.last",
-            "profile.pronoun_preference",
-            "profile.contact_email",
+# Branches: allowed channel types; retired task key; handler allowlist; real import-time assert fires (AST-2061).
+class TestAst2061ContactPinholeConfig:
+    def test_allowed_channel_types(self) -> None:
+        assert cfg.CONTACT_CONFIG["allowed_channel_types"] == ("im", "group")
+
+    def test_create_contact_meteorite_retired(self) -> None:
+        # [bug-repro] AST-2061: the job-writing Contact task is gone from the registry.
+        assert "create_contact_meteorite" not in cfg.CONTACT_TASK_CONFIG
+
+    def test_every_contact_handler_in_pinhole(self) -> None:
+        pinhole = cfg._CONTACT_PINHOLE_HANDLERS
+        handlers = [m["handler"] for m in cfg.CONTACT_TASK_CONFIG.values()] + [
+            m["handler"] for m in cfg.CONTACT_CONFIG["commands"].values()
+        ]
+        for handler in handlers:
+            assert handler in pinhole, handler
+        for handler, kind in pinhole.items():
+            if kind.startswith("write"):
+                assert handler.startswith("src.core.meteorite."), handler
+        assert "src.core.meteorite.create_meteorite_job" not in pinhole
+        assert "src.core.meteorite.land_meteorite" not in pinhole
+
+    def test_pinhole_assert_rejects_job_writer(self) -> None:
+        # Splice a leaking handler into the real config source so the shipped assert (not a copy) fires.
+        from pathlib import Path
+
+        text = Path(cfg.__file__).read_text(encoding="utf-8")
+        anchor = "# AST-2061 pinhole:"
+        # A moved/renamed anchor must fail loudly, not let the splice pass vacuously.
+        assert text.count(anchor) == 1
+        leak = (
+            'CONTACT_TASK_CONFIG["leak"] = {"handler": "src.core.meteorite.create_meteorite_job", '
+            '"description": "x", "param_hint": "x", "requires_candidate": True}\n'
         )
-        assert skills["save_candidate_contact"]["allowed_paths"] == (
-            "contact.contact_email",
-            "contact.reply_email",
-        )
-        for meta in skills.values():
-            assert "contact.slack_user_id" not in meta["allowed_paths"]
+        spliced = text.replace(anchor, leak + anchor, 1)
+        with pytest.raises(AssertionError, match="Contact handler outside pinhole"):
+            exec(compile(spliced, "config_spliced", "exec"), {"__name__": "config_spliced", "__file__": cfg.__file__})  # noqa: S102
 
 
 # Branches: Events/Socket Mode contracts on CONTACT_CONFIG (AST-1069).
@@ -3713,14 +3733,13 @@ class TestAst1072ConversationalEnvelopeConfig:
         assert other["agent_performance"]["status"] == "success | failure"
 
 
-# Branches: CONTACT_TASK_CONFIG six keys + collision guards (AST-1515).
+# Branches: CONTACT_TASK_CONFIG five keys + collision guards (AST-1515; create_contact_meteorite retired AST-2061).
 class TestAst1515ContactTaskConfig:
     """AST-1515: allowlisted contact-task keys distinct from TASK_CONFIG and skills ACL."""
 
     _EXPECTED_KEYS = frozenset(
         {
             "gazer_scrape",
-            "create_contact_meteorite",
             "get_job_by_pattern",
             "get_job_data",
             "get_company_data",
@@ -3728,7 +3747,7 @@ class TestAst1515ContactTaskConfig:
         }
     )
 
-    def test_six_keys_handler_metadata_and_collision_guards(self) -> None:
+    def test_five_keys_handler_metadata_and_collision_guards(self) -> None:
         block = cfg.CONTACT_TASK_CONFIG
         assert set(block.keys()) == self._EXPECTED_KEYS
         for key, meta in block.items():
@@ -4386,17 +4405,14 @@ class TestAst1105ProfileSlackFields:
         keys = [f["key"] for f in self._contact_fields()]
         assert keys.index("contact.slack_user_id") < keys.index("contact.contact_email")
         assert keys.index("contact.slack_username") == keys.index("contact.slack_user_id") + 1
-        # Resolve owns writes — not Contact skill ACL
-        paths = cfg.CONTACT_CONFIG["skills"]["save_candidate_contact"]["allowed_paths"]
-        assert "contact.slack_user_id" not in paths
-        assert "contact.slack_username" not in paths
 
 class TestAst1101HearAckConfig:
     """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
 
     def test_hear_ack_reply_text(self) -> None:
         text = cfg.CONTACT_CONFIG["hear_ack_reply_text"]
-        assert isinstance(text, str) and text.strip()
+        # AST-2072: Susan's verbatim fallback wording (double space after "planned.").
+        assert text == "That didn't work as planned.  Let's ask @susan."
 
 
 class TestAst1094ActivityConfig:
@@ -6547,13 +6563,41 @@ class TestAst1678CatalogResumeStructureBodyShape:
 
 
 class TestAst1668RecognitionReplyConfig:
-    """AST-1668: CONTACT_CONFIG known/unknown recognition reply text."""
+    """AST-1668 / AST-2072: unknown recognition reply text; known recognition key retired."""
 
     def test_recognition_reply_defaults(self) -> None:
-        known = cfg.CONTACT_CONFIG["known_recognition_reply_text"]
+        assert "known_recognition_reply_text" not in cfg.CONTACT_CONFIG
         unknown = cfg.CONTACT_CONFIG["unknown_recognition_reply_text"]
-        assert isinstance(known, str) and known.strip() == "I know who that is"
-        assert isinstance(unknown, str) and unknown.strip() == "I don't recognize you"
+        # Susan's verbatim wording: double space after "yet.", no trailing period.
+        assert unknown == "Sorry, I don't recognize you, yet.  Let's check with @susan"
+
+
+# Branches: thread_response default; import-time vocabulary assert rejects / accepts (AST-2072).
+class TestAst2072ThreadResponseConfig:
+    """AST-2072: CONTACT_CONFIG["thread_response"] placement setting."""
+
+    _LINE = '"thread_response": "threads_only",'
+
+    def _exec_with(self, value: str) -> None:
+        # Splice the value into the real config source so the shipped assert (not a copy) runs.
+        from pathlib import Path
+
+        text = Path(cfg.__file__).read_text(encoding="utf-8")
+        # A moved/renamed line must fail loudly, not let the splice pass vacuously.
+        assert text.count(self._LINE) == 1
+        spliced = text.replace(self._LINE, f'"thread_response": "{value}",', 1)
+        exec(compile(spliced, "config_spliced", "exec"), {"__name__": "config_spliced", "__file__": cfg.__file__})  # noqa: S102
+
+    def test_default_threads_only(self) -> None:
+        assert cfg.CONTACT_CONFIG["thread_response"] == "threads_only"
+
+    def test_assert_rejects_unknown_value(self) -> None:
+        with pytest.raises(AssertionError, match="sometimes"):
+            self._exec_with("sometimes")
+
+    @pytest.mark.parametrize("value", ["always_no_share", "always_with_share"])
+    def test_assert_accepts_other_vocabulary(self, value: str) -> None:
+        self._exec_with(value)
 
 
 # Branches: DISCOVERED land/vet; CSE-only resolve; resolve_website SA + WEBSITE_REVIEW edges (AST-1672).
@@ -7053,6 +7097,12 @@ class TestAst1808RetryRegistryPurge:
         js["RELATIVE_JOB_LINK_RETRY"] = rel
         js["RELATIVE_LINK_FAIL"] = rel + ["RELATIVE_LINK_FAIL_RETRY"]
         js["RELATIVE_LINK_FAIL_RETRY"] = ["RELATIVE_LINK_FAIL", "RELATIVE_LINK_FAIL_RETRY"]
+        # AST-2069 added company GET_UPSHOT / UPSHOT_READY / ERROR_UPSHOT after the snapshot:
+        # bases unrestricted (None); each derived _RETRY pinned to its own base pair.
+        cs = pinned["COMPANY_STATES"]
+        for b in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
+            cs[b] = None
+            cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7698,3 +7748,74 @@ class TestAst2047ThemeRegistry:
         css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()
         for tid in cfg.UI_CONFIG["themes"]:
             assert f'[data-theme="{tid}"]' in css, tid
+
+
+class TestAst2064ThemeExampleGradeSets:
+    """AST-2064: examples-only grade-color candidates; each set overrides exactly the grade tokens App.css declares."""
+
+    GRADE_TOKENS = frozenset({
+        "--grade-a", "--grade-b", "--grade-c", "--grade-d", "--grade-f", "--grade-x",
+        "--text-on-grade", "--text-on-grade-f",
+    })
+
+    def test_grade_sets_deep_soft_classic_labeled(self) -> None:
+        sets = cfg.UI_CONFIG.get("theme_example_grade_sets")
+        assert sets is not None, "UI_CONFIG has no theme_example_grade_sets"
+        assert {gid: s["label"] for gid, s in sets.items()} == {"deep": "Deep", "soft": "Soft", "classic": "Classic"}
+
+    def test_grade_set_tokens_are_real_app_css_grade_tokens(self) -> None:
+        # A misspelled key would set an unused custom property and silently show the panel's own colors.
+        import re
+        from pathlib import Path
+
+        css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()
+        dark = css.split(':root, [data-theme="dark"] {', 1)[1].split("}", 1)[0]
+        declared = set(re.findall(r"(--[\w-]+)\s*:", dark))
+        assert self.GRADE_TOKENS <= declared
+        sets = cfg.UI_CONFIG.get("theme_example_grade_sets")
+        assert sets is not None, "UI_CONFIG has no theme_example_grade_sets"
+        for gid, s in sets.items():
+            assert set(s["tokens"]) == self.GRADE_TOKENS, gid
+            assert all(re.fullmatch(r"#[0-9a-fA-F]{6}", v) for v in s["tokens"].values()), gid
+
+
+# AST-2069 (parent AST-2054): upshot states, transitions, dispatch registration, agent_task rows.
+# Registration only — runtime WATCH writes in roster.py move in AST-2070.
+class TestAst2069UpshotRegistration:
+    def test_states_registered(self) -> None:
+        # AC1
+        for s in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
+            assert s in cfg.COMPANY_STATES, s
+        assert cfg.COMPANY_STATES["UPSHOT_READY"]["retry_state"] == "UPSHOT_READY_RETRY"
+
+    def test_only_upshot_hop_enters_watch(self) -> None:
+        # AC2: every (X, "WATCH") pair starts from UPSHOT_READY or its retry
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        into_watch = {src for src, dst in transitions if dst == "WATCH"}
+        assert into_watch == {"UPSHOT_READY", "UPSHOT_READY_RETRY"}
+        for pair in (("WATCH", "GET_UPSHOT"), ("GET_UPSHOT", "UPSHOT_READY"), ("UPSHOT_READY", "WATCH")):
+            assert pair in transitions, pair
+        assert cfg.ROSTER_CONFIG["locate_job_page"]["pass_states"] == ["GET_UPSHOT"]
+
+    def test_dispatch_registrable(self) -> None:
+        # AC4
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        want = {"fetch_company_culture_pages": "GET_UPSHOT", "company_upshot": "UPSHOT_READY"}
+        for tk, trigger in want.items():
+            assert _dispatch_entity_type_for_task_key(tk) == "company", tk
+            assert _dispatch_trigger_state_for_task_key(tk) == trigger, tk
+
+    def test_agent_task_rows(self) -> None:
+        # AC3: Estelle upshot row with the 200-word cap; telescope row for the GET_UPSHOT fetch
+        from pathlib import Path
+
+        rows = json.loads((Path(__file__).resolve().parents[3] / "data/admin/agent_task.json").read_text())
+        by_key = {r["task_key"]: r for r in rows}
+        upshot = by_key["company_upshot"]
+        assert upshot["agent_id"] == "principal_recruiter_estelle"
+        assert "200 words" in upshot["cache_prompt"] + upshot["user_prompt"] + upshot["nocache_prompt"]
+        assert by_key["fetch_company_culture_pages"]["agent_id"] == "telescope"

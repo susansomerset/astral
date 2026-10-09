@@ -6,7 +6,7 @@
 
 | Source | Test file | Branch lock |
 | --- | --- | --- |
-| `src/external/slack.py` | `tests/component/external/test_slack.py` | no |
+| `src/external/slack.py` (incl. channel type lookup `fetch_channel_type`, AST-2061) | `tests/component/external/test_slack.py` | no |
 
 ---
 
@@ -174,3 +174,44 @@ Three public helpers on `src/external/slack.py`: `list_bot_channels` (public/pri
 **Bible shasum (publish tip):**
 - `docs/test-bible/external/slack.md` — *(filled after publish)*
 
+---
+
+### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
+
+**Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
+
+`fetch_channel_type(channel)`: gated by `require_controlled_external_io`, `conversations.info` GET, returns Slack's `channel_type` vocabulary — `is_im` → `im`, `is_mpim` → `mpim` (checked before private), `is_private`/`is_group` → `group`, else `channel`; raises on blank id or `ok:false` (with `needed`/`provided` detail via `_slack_error`). Contact's fail-closed `app_mention` gate: [`../core/contact.md`](../core/contact.md) § AST-2062.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gate (integration mode, no live opt-in → `RuntimeError`, no HTTP); flag mapping (6 params) + `conversations.info` / `params == {"channel": "C1"}`; ok:false scope detail; blank id | `src/external/slack.py` | **`TestAst2061FetchChannelType`** (4) |
+
+**Broken / obsolete this pass:** none — additive.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/external/test_slack.py::TestAst2061FetchChannelType`
+
+Full AST-2062 command (all four pages): [`../core/contact.md`](../core/contact.md) § AST-2062.
+
+### AST-2072 · AST-2050 (post_message reply_broadcast)
+
+**Parent:** [AST-2050](https://linear.app/astralcareermatch/issue/AST-2050). **Publish:** `origin/sub/AST-2050/AST-2072-estelle-thread-response`.
+
+`post_message(..., reply_broadcast=False)`: `reply_broadcast: true` goes into the `chat.postMessage` body only inside the `thread_ts` branch, so a top-level post never carries it (AC 11); default leaves every existing caller's body unchanged. Contact placement: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Exact body: thread + broadcast; broadcast without thread dropped; thread default has no flag | `src/external/slack.py` | **`TestAst2072PostMessageReplyBroadcast::test_body`** (3) |
+
+**Broken / obsolete this pass:** none — `TestAst1069ExternalSlack::test_post_message_requires_gate_and_posts` unchanged and still green.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/external/test_slack.py::TestAst2072PostMessageReplyBroadcast`
+
+Full AST-2072 command: [`../core/contact.md`](../core/contact.md) § AST-2072.

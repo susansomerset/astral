@@ -54,6 +54,7 @@ from src.data.contact_listen import (
 )
 from src.external.telescope import run_one_shot
 from src.external.slack import (
+    fetch_channel_type,
     fetch_conversation_history,
     fetch_full_conversation_history,
     fetch_user_profile,
@@ -512,7 +513,7 @@ def try_meteorite_apply_paste_from_slack(
     if row is None:
         return {"applied": False}
 
-    result = apply_paste(int(row["id"]), text, debug=debug)
+    result = apply_paste(int(row["id"]), _unwrap_slack_links(text), debug=debug)
     return {"applied": True, "result": result}
 
 
@@ -564,12 +565,15 @@ def contact_land_meteorite(
     emp = employer_name.strip() if isinstance(employer_name, str) else ""
     if emp:
         blob = f"{blob}\n\nEmployer: {emp}" if blob else f"Employer: {emp}"
+    # AST-2061: one nh3 sanitize point for every Contact meteorite write.
+    # Late import: meteorite late-imports contact.
+    from src.core.meteorite import sanitize_contact_text, stage_meteorite
+
+    blob = sanitize_contact_text(_unwrap_slack_links(blob))
     if not blob.strip():
         out = dict(err)
         out["error"] = "blob is required"
         return out
-
-    from src.core.meteorite import stage_meteorite
 
     return asyncio.run(
         stage_meteorite(
@@ -878,6 +882,11 @@ _CONTACT_COMMAND_RE = re.compile(
 _SLACK_LINK_RE = re.compile(r"<(https?://[^|>\s]+)(?:\|[^>]*)?>")
 
 
+def _unwrap_slack_links(text: str) -> str:
+    """Slack <http(s)://…|label> / <http(s)://…> → bare URL (before nh3 sanitize, AST-2061)."""
+    return _SLACK_LINK_RE.sub(r"\1", text if isinstance(text, str) else "")
+
+
 def parse_contact_command(text: str) -> tuple[str, str] | None:
     """(command_id, payload) when the first token after mentions is a registered /command; else None."""
     raw = text if isinstance(text, str) else ""
@@ -886,7 +895,7 @@ def parse_contact_command(text: str) -> tuple[str, str] | None:
     if not m or m.group(1) not in CONTACT_CONFIG["commands"]:
         logger.debug("Response from parse_contact_command: None")
         return None
-    payload = _SLACK_LINK_RE.sub(r"\1", m.group(2) or "").strip()
+    payload = _unwrap_slack_links(m.group(2) or "").strip()
     logger.debug("Response from parse_contact_command: (%r, %r)", m.group(1), payload)
     return m.group(1), payload
 
@@ -1110,18 +1119,9 @@ def run_contact_estelle_turn(
         f"astral_candidate_id={astral_candidate_id or ''}",
         f"candidate_state={candidate_state or ''}",
         "",
-        "## Available Contact skills (ACL)",
-        "Only emit skill_calls entries whose skill_key is listed below;",
-        "fields keys must be allowlisted paths; omit skill_calls when none.",
     ]
-    for skill_key, meta in contact_skills().items():
-        desc = (meta or {}).get("description") or ""
-        paths = (meta or {}).get("allowed_paths") or ()
-        path_s = ", ".join(str(x) for x in paths)
-        lines.append(f"- {skill_key}: {desc} | paths: {path_s}")
-    lines.append("")
     lines.append("## Available contact tasks (markup)")
-    lines.append("Embed instructions in agent_payload.reply only — not skill_calls.")
+    lines.append("Embed instructions in agent_payload.reply only.")
     lines.append("Syntax: ~~/<task_key> <parameters>~~")
     lines.append(
         "Only use task keys listed below. Contact executes markup after your turn "
@@ -1262,38 +1262,8 @@ def run_contact_estelle_turn(
             follow_turn.get("reply") if isinstance(follow_turn.get("reply"), str) else ""
         )
 
-    # e. Optional skill_calls (ACL via run_contact_skill)
-    skill_results = []
+    # e. AST-2061: no skill_calls — Estelle never writes candidate.
     parsed = result.get("parsed_response") if isinstance(result, dict) else None
-    raw_calls = parsed.get("skill_calls") if isinstance(parsed, dict) else None
-    calls = raw_calls if isinstance(raw_calls, list) else []
-    for item in calls:
-        if not isinstance(item, dict):
-            continue
-        skill_key = item.get("skill_key")
-        fields = item.get("fields")
-        if not isinstance(skill_key, str) or not isinstance(fields, dict):
-            continue
-        if not (isinstance(astral_candidate_id, str) and astral_candidate_id.strip()):
-            skill_results.append(
-                {"ok": False, "error": "no_candidate", "skill_key": skill_key}
-            )
-            logger.warning("%s -> %s [%s]", skill_key, "skill_failed", "no_candidate")
-            continue
-        try:
-            skill_results.append(
-                run_contact_skill(
-                    skill_key,
-                    astral_candidate_id=astral_candidate_id,
-                    fields=fields,
-                    debug=debug,
-                )
-            )
-        except Exception as exc:  # ValueError + unexpected — keep turn alive
-            skill_results.append(
-                {"ok": False, "error": str(exc), "skill_key": skill_key}
-            )
-            logger.warning("%s -> %s [%s]", skill_key, "skill_failed", str(exc))
 
     # e2. Optional land_calls → contact_land_meteorite (AST-1531; not ACL skill)
     land_results: List[Dict[str, Any]] = []
@@ -1322,7 +1292,7 @@ def run_contact_estelle_turn(
                 candidate_id=astral_candidate_id
             )
             if paste_row is not None and isinstance(text, str) and text.strip():
-                apply_out = apply_paste(int(paste_row["id"]), text, debug=debug)
+                apply_out = apply_paste(int(paste_row["id"]), _unwrap_slack_links(text), debug=debug)
                 land_results.append({"ok": True, "result": apply_out, "via": "apply_paste"})
                 continue
             if isinstance(item.get("scraps"), list) and item["scraps"]:
@@ -1388,7 +1358,7 @@ def run_contact_estelle_turn(
         "outcome": outcome,
         "reply": reply if isinstance(reply, str) else None,
         "admin_aside": aside if isinstance(aside, str) else None,
-        "skill_results": skill_results,
+        "skill_results": [],
         "land_results": land_results,
         "contact_task_results": contact_task_results,
         "slack_post": slack_post,
@@ -1545,7 +1515,26 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
         if not _is_dm_message(event):
             logger.debug("Response from handle_slack_event: accepted=False reason=not_dm")
             return {"accepted": False, "reason": "not_dm"}
-    # app_mention: accept as channel @Estelle
+    # AST-2061: Estelle acts only in DMs / private channels. app_mention carries no
+    # channel_type (and private channels use C… ids), so ask Slack; fail closed.
+    if etype == "app_mention":
+        mention_channel = event.get("channel") or ""
+        ctype = event.get("channel_type")
+        if not ctype:
+            try:
+                ctype = fetch_channel_type(mention_channel)
+            except Exception as exc:
+                logger.exception(
+                    "%s | contact channel type lookup\n  %s: %s\n  This @Estelle mention is being ignored",
+                    mention_channel or "-", type(exc).__name__, exc,
+                )
+                ctype = None
+        if ctype not in CONTACT_CONFIG["allowed_channel_types"]:
+            logger.debug(
+                "Response from handle_slack_event: accepted=False reason=channel_not_private channel_type=%r",
+                ctype,
+            )
+            return {"accepted": False, "reason": "channel_not_private"}
 
     text = event.get("text") or ""
     if not isinstance(text, str):

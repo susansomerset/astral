@@ -15,6 +15,12 @@ class TestFlattenForView:
         row = companies_mod._flatten_for_view({"company_data": {"prefilter_company_notes": "ok"}})
         assert row["prefilter_company_notes"] == "ok"
 
+    def test_lifts_company_upshot_default_empty(self) -> None:
+        # AST-2071: company_upshot lifted to top level; "" when company_data lacks it
+        row = companies_mod._flatten_for_view({"company_data": {"company_upshot": "Solid team."}})
+        assert row["company_upshot"] == "Solid team."
+        assert companies_mod._flatten_for_view({"company_data": None})["company_upshot"] == ""
+
 
 class TestCompaniesRoutes:
     def test_list_watch_view(self, companies_client: FlaskClient, auth_headers: dict[str, str]) -> None:
@@ -61,6 +67,8 @@ class TestCompaniesRoutes:
         assert resp.status_code == 200
         assert payload["job_state_counts"]["WATCH"] == 1
         assert payload["agent_story"][0]["task_key"] == "x"
+        # AST-2071 AC12: detail payload carries top-level company_upshot ("" when absent)
+        assert payload["company_upshot"] == ""
 
     def test_edit_blocks_watch_and_requires_fields(self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(companies_mod, "get_company", lambda short_name: {"state": "WATCH"})

@@ -1461,7 +1461,7 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
 
-`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
+`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**; skills emptied by **AST-2061**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1486,9 +1486,11 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Two skill ACL entries + path inventory | `src/utils/config.py` | **`TestAst1071ContactSkillsConfig`** |
+| Two skill ACL entries + path inventory | `src/utils/config.py` | retired → **`TestAst2061ContactSkillsEmpty`** |
 
 **Broken / obsolete:** AST-1066 empty-skills asserts — revised above.
+
+**Retired by AST-2061 / AST-2062:** skills ACL emptied; class TestAst1071ContactSkillsConfig replaced by TestAst2061ContactSkillsEmpty.
 
 **Integration:** none.
 
@@ -4817,3 +4819,92 @@ All 8 new/revised nodes red on pre-AST-2024 `config.py` / `agent_task.json`, gre
 **Broken / obsolete:** none — no `test_config.py` test pins the `CONTACT_CONFIG` key set. **Manifest:** [`../core/contact.md`](../core/contact.md) § AST-2035.
 
 **AST-2047 (pointer):** `UI_CONFIG["themes"]` / `default_theme` (+ import-time assert that the default is a selectable id), profile `theme` select generated from selectable entries, Tools `/admin/theme_examples`, and every registry id having an `App.css` `[data-theme]` block — **`TestAst2047ThemeRegistry`** (4). Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2047.
+
+### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
+
+**Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
+
+AST-2061 config: `CONTACT_CONFIG["skills"] = {}` (map kept for `contact_skills()` / admin routes), `CONTACT_CONFIG["allowed_channel_types"] = ("im", "group")` with import-time asserts (tuple, Slack vocabulary, never `"channel"`), `create_contact_meteorite` removed from `CONTACT_TASK_CONFIG`, and the `_CONTACT_PINHOLE_HANDLERS` allowlist + import-time assert (every task/command handler listed; `write` kinds only under `src.core.meteorite.`). Contact behavior: [`../core/contact.md`](../core/contact.md) § AST-2062.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skills registry empty | `src/utils/config.py` | **`TestAst2061ContactSkillsEmpty`** (1) |
+| `allowed_channel_types`; **[bug-repro]** retired task key; every handler in pinhole (no `create_meteorite_job` / `land_meteorite`); real import-time assert fires on a spliced `create_meteorite_job` handler (anchor `# AST-2061 pinhole:` must appear exactly once) | `src/utils/config.py` | **`TestAst2061ContactPinholeConfig`** (4) |
+| Revised: five task keys | same | **`TestAst1515ContactTaskConfig::test_five_keys_handler_metadata_and_collision_guards`** (was `test_six_keys_…`) |
+| Revised: Slack profile fields (skills ACL path read dropped) | same | **`TestAst1105ProfileSlackFields::test_slack_id_and_username_fields`** |
+
+**Broken / obsolete:** `TestAst1071ContactSkillsConfig` (replaced); `TestAst1515ContactTaskConfig::test_six_keys_…` (renamed/revised); `TestAst1105ProfileSlackFields` skills read (removed). `TestAst1073ContactEstelleTurnConfig::test_skill_calls_optional_on_chat_schema` unchanged — AST-2061 deliberately kept the optional schema entry.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/utils/test_config.py::TestAst2061ContactSkillsEmpty`
+2. `tests/component/utils/test_config.py::TestAst2061ContactPinholeConfig`
+3. Revised: `tests/component/utils/test_config.py::TestAst1515ContactTaskConfig`, `TestAst1105ProfileSlackFields`
+
+Full AST-2062 command (all four pages): [`../core/contact.md`](../core/contact.md) § AST-2062.
+
+### AST-2072 · AST-2050 (thread_response + reply text)
+
+**Parent:** [AST-2050](https://linear.app/astralcareermatch/issue/AST-2050). **Publish:** `origin/sub/AST-2050/AST-2072-estelle-thread-response`.
+
+`CONTACT_CONFIG["thread_response"]` (default `threads_only`; import-time assert limits it to `threads_only` / `always_no_share` / `always_with_share`). `known_recognition_reply_text` + its assert removed (supersedes § AST-1668's known half). New verbatim values: `unknown_recognition_reply_text` = "Sorry, I don't recognize you, yet.  Let's check with @susan", `hear_ack_reply_text` = "That didn't work as planned.  Let's ask @susan." (double spaces are deliberate). Contact behavior: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Default `threads_only`; real import-time assert rejects `"sometimes"` and accepts the other two values (spliced source, anchor line must appear exactly once) | `src/utils/config.py` | **`TestAst2072ThreadResponseConfig`** (4) |
+| Revised: known key absent; unknown exact text | same | **`TestAst1668RecognitionReplyConfig::test_recognition_reply_defaults`** |
+| Revised: hear-ack exact text | same | **`TestAst1101HearAckConfig::test_hear_ack_reply_text`** |
+
+**Broken / obsolete this pass:** `TestAst1668RecognitionReplyConfig` (read the removed key — revised); `TestAst1101HearAckConfig` tightened from non-empty to exact text.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/utils/test_config.py::TestAst2072ThreadResponseConfig`
+2. Revised: `TestAst1668RecognitionReplyConfig`, `TestAst1101HearAckConfig`
+
+Full AST-2072 command: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+### AST-2069 · AST-2054 (upshot states, task registration, agent_task rows)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054) (Company Upshot). **Publish:** `origin/sub/AST-2054/AST-2069-upshot-states-registration`. Plan: `docs/features/roster/ast-2069-upshot-states-task-registration-and-agent-task-rows.md`.
+
+Registration only: company states `GET_UPSHOT` / `UPSHOT_READY` (retry) / `ERROR_UPSHOT`; every former `(X, "WATCH")` locate/parse pair → `(X, "GET_UPSHOT")`, WATCH entered only from `UPSHOT_READY` / its retry; `ROSTER_CONFIG` locate `pass_states` + parse `pass_state` → `GET_UPSHOT`; `ROSTER_CONFIG["company_upshot"]`, `GAZER_CONFIG["fetch_company_culture_pages"]`, `TASK_CONFIG["company_upshot"]`; both keys company-entity dispatchable; two `data/admin/agent_task.json` rows (telescope fetch, Estelle `company_upshot` with the 200-word cap). **Interim (plan-accepted):** `roster.py` still hard-codes `state="WATCH"` writes until sibling **AST-2070** — not a product bug on this child.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 states; 2 only the upshot hop enters WATCH; 4 dispatch registrable; 3 agent_task rows | `src/utils/config.py`, `data/admin/agent_task.json` | new **`TestAst2069UpshotRegistration`** (4) |
+| Revised: locate/parse transitions now land in `GET_UPSHOT` | `src/utils/config.py` | **`TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions`**, **`TestAst721ParseJobListConfig::test_parse_states_and_transitions`**, **`TestAst721ParseJobListConfig::test_parse_job_list_roster_config`** (`pass_state` line) |
+| Revised: AST-1806 pinned snapshot gains the six upshot targets (bases unrestricted, `_RETRY` → own pair) | same | **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** |
+| Revised: roster batch counting mocks return the new pass state | `src/core/roster.py` (counting vs config) | see [`../core/roster.md`](../core/roster.md) § AST-2069 (10 tests) |
+
+**Broken / obsolete this pass (13, isolated A/B vs `ftr` config):** the three config transition/snapshot tests above + the ten roster tests in `roster.md` § AST-2069 — all asserted or mocked `WATCH` as the locate/parse pass state.
+
+**Pre-existing red, not this ticket:** `TestAst721ParseJobListConfig::test_parse_job_list_roster_config` still fails on `KeyError: 'max_concurrent'` with or without AST-2069 — only its `pass_state` line was revised; excluded from the manifest.
+
+**Integration:** none — no `tests/integration/` scenario reads locate/parse pass states; do not invent.
+
+## QA test manifest — AST-2069
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2069UpshotRegistration \
+  tests/component/utils/test_config.py::TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions \
+  tests/component/utils/test_config.py::TestAst721ParseJobListConfig::test_parse_states_and_transitions \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/core/test_roster.py::TestAst1847ParseJobListBatchPartialTally \
+  tests/component/core/test_roster.py::TestAst721ParseDispatchRouting::test_parse_job_list_dispatch_key \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch::test_run_company_task_routes_identified_and_retry \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_unhandled_gather_exception_increments_errors_and_continues \
+  tests/component/core/test_roster.py::TestRunCompanyTask::test_jobs_found_dispatch_pass_fail_ast469 \
+  tests/component/core/test_roster.py::test_run_company_task_jobs_found_watch_counts_passed \
+  -q
+```
+
+**Pass criterion:** 17 passed. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2069-upshot-states-registration:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/roster.md`.
