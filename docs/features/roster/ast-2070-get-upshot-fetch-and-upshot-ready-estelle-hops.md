@@ -657,3 +657,74 @@ context_tokens≈52000
   - Joan discuss 2: `_log.exception` on coat-check `ValueError` kept as planned; worth watching in UAT logs.
   - Live `dispatch_task` schedule rows for `fetch_company_culture_pages` / `company_upshot` still need creating (prep-uat reminder carried from AST-2069).
   - No tests touched; coverage is Betty's `qa-child`.
+
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2070  
+**Publish ref:** `517c1a3fa75e0f494f48467d32c4359b8a42abf2` (`origin/sub/AST-2054/AST-2070-upshot-hops`)  
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| patt.task.dispatch-retry | A | | |
+| stat.batch.claim-process-release | A | | |
+| stat.logging.debug | B | | `fetch_company_culture_pages_batch` uses gazer `debug_index`/`debug_detail` only when `debug=True`, no `logger.debug` begin/end on the company loop |
+| stat.logging.error | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.dispatcher | X | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: same grades including **B** on `stat.logging.debug` and **X** on `stat.logging.info.dispatcher`.
+
+## Frame diff
+
+- [ ] **Boundaries / prep-uat:** Live `dispatch_task` rows for `fetch_company_culture_pages` and `company_upshot` exist before epic UT ticks claim the new hops (carried from AST-2069; still out of scope for this code).
+
+## Findings
+
+**fix-now** — (none)
+
+**discuss**
+
+- **Integrated publish ref (@susan):** Three-dot diff vs `origin/dev` still includes **AST-2069** registration (`config.py`, `agent_task.json`) and **AST-2071** display (`src/ui/**`, `api_companies.py`) plus sibling issue docs — not in AST-2070 plan §Files Changed (three core files only). **Default:** Score runtime hops on `roster.py` / `gazer.py` / `consult.py`; treat stacked epic tip as merge-child norm unless Susan wants child-isolated review surfaces.
+
+**advisory**
+
+- **sibling test carry:** `merge-tests` includes unrelated frontend test edits (e.g. `test_NavigationShell.test.tsx` light-wordmark case removed) with no AST-2070 product touch — note once; not scored.
+- **UAT log noise:** `fetch_company_culture_pages_batch` logs `_log.exception` on coat-check `ValueError` (missing website) then still advances to `UPSHOT_READY` — Joan flagged; behavior matches “never fail out of GET_UPSHOT”; watch log volume in UT.
+- **Joan docstring discuss:** Stage 2 docstring reworded on tip to match connectivity abort (engineer build notes) — no code defect.
+
+### Plan fidelity (§5.4)
+
+- **Stage 1:** `_finalize_parse_dispatch_success` and legacy locate success paths use `ROSTER_CONFIG` pass state (`GET_UPSHOT`); no `state="WATCH"` literals on publish ref `roster.py`; `_PERSIST_PAGE_OPTION_URL_STATES` keys off configured pass states.
+- **Stage 2:** `fetch_company_culture_pages_batch` — connectivity abort before loop; per-company cache/scrape via `get_company_data`; always `transition_company_state` → `UPSHOT_READY`; consult routes `fetch_company_culture_pages`.
+- **Stage 3:** `company_upshot_batch` — one `do_task`, decode by `company_id`, save `company_upshot`, → `WATCH`; `_upshot_fail_dest` / `_transition_upshot_failures` for retry vs `ERROR_UPSHOT`; `empty_tokens` → terminal error; provider balance `state_held`; consult routes `company_upshot` with prefilter-style error accounting (`retried` excluded from errors).
+- **AC 8:** No hunks inside `_apply_prefilter_decoded_company_outcome` / `_run_batch_company_prefilter` bodies (plan guard intent).
+- Betty tests on ref: `test_gazer` / `test_consult` / `test_roster` upshot coverage present in diff (qa-child; not re-read full bible).
+
+### Estimate footprint (§5.4)
+
+Confirm **5** — three core modules, two batch implementations + consult wiring; fits.
+
+## What's solid
+
+- Claim/release stays in dispatcher; new batches only process the claimed `companies` list (matches `fetch_culture_pages_batch` / prefilter Pattern A).
+- Retry routing mirrors house `retry_of("UPSHOT_READY")` + `ERROR_UPSHOT` terminal; `empty_tokens` bypasses retry per `patt.task.dispatch-retry` carve-out.
+- `company_upshot_batch` preserves grade inputs in prompt blocks without mutating prefilter grade storage paths.
+
+## Recommended actions (downstream — not Radia)
+
+- Chuckles: append artifact, `docs(AST-2070): Radia review — clean`, post slim upshot, **Review Posted** → datt **PROCEED** when epic gates allow.
+- Susan/prep-uat: frame-diff `dispatch_task` rows; optional log watch on culture-fetch `ValueError` exceptions during UT.
+
+context_tokens≈45000
