@@ -1649,3 +1649,81 @@ Plan is written for (a) per the spawn instruction ("plan the call-site change �
 - **No statute/pattern amend:** On current tip the edit is a documented no-op (AST-2092 default + AST-2091 gate already fix the symptom). Belt-and-suspenders at the call site does not introduce a new corpus carve-out or contradict in-force text.
 
 **Not ESCALATE:** The (a) ship vs (b) cancel choice in **Proposed change** is lane routing for Chuckles/Susan, not ambiguous statute intent or unbounded architectural precedent.
+
+
+### AST-2103 — Radia review
+
+```
+[code-rubric]
+
+**Ticket:** AST-2103  
+**Publish ref:** `origin/sub/AST-2020/AST-2103-rubric-gate-call-site` @ `ad073edebe8648994baa8291115d150b5abf2950`  
+**Diff base:** `origin/ftr/AST-2020-rubric-gate-call-site` @ `d62d88edc281f4a479187fb47951cfa90404fa62` (merge-base = ftr tip)  
+**Corpus:** `f3186d4c58d889a3a2767e51874a11dd942f002b`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen list **empty** (AST-2103 description: **Citations:** none / no Canon Scope block — same as AST-2091 / AST-1854 fix children). No directive rows to score; not a §5.3 **ESCALATE** (Joan fix-board `[board-joan] CANON: OK`; one-line call-site change does not contradict in-force scoped statutes on the touched path).
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan fix-board only (no `validate-plan` canon table for this bug).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] not applicable — clean board opt-out** — fix-board **TESTS: OK**; no `qa-fix` / no `[bug-repro]` on this ticket (plan documents that on the current tip no repro can flip red post-AST-2092). Existing AST-2094 / AST-1780 family tests cover helper + gate behavior.
+
+**## What must still hold — OK**
+
+| Item | Check |
+|------|--------|
+| AST-1779 — helper signature/default; chain unscored; job via seam only | `empty_render_for_prompts` in `config.py` untouched; call passes only `{"rubric": {}}` |
+| AST-1780 AC5 — job alone never flips gate | `"job"` not added to `entity_contexts` |
+| AST-1791 / AST-1794 — prompt `ValueError` soft-miss | `try`/`except ValueError` path above return unchanged |
+| AST-1780 — blank/missing candidate + fail-closed on unexpected errors | Early returns + `logger.exception` path unchanged |
+| AST-1854 — hydrated `get_candidate` outside `try` | `get_candidate` still before `try` |
+| AST-1880 / AST-2091 — key → rubric → tokens; `empty_tokens` from evaluator only | Additive seam only; no change to `_candidate_dispatch_empty_render_error` or rubric gate ordering |
+| Filled rubric → not false positive | Same resolver/`cd`; explicit rubric key matches AST-1779 manifest intent |
+
+## Findings
+
+### advisory — publish-ref history vs product footprint
+
+`git diff origin/ftr/AST-2020-rubric-gate-call-site...origin/sub/AST-2020/AST-2103-rubric-gate-call-site` is large (dev sync + sibling epics AST-2019/AST-2013/AST-2015/AST-2042, tests, docs). **Product delta for AST-2103** is commit `ad073edeb` only: `src/ui/api/api_admin.py` (+4/−1 in `_evaluate_dispatch_empty_render`). Not cross-ticket **product** smuggling for this ticket (§5.4). Chuckles: when merging/stacking AST-2020, treat carried history like AST-2091 advisory — no Radia action on the one-line fix.
+
+### advisory — sibling test carry
+
+`merge-tests` / AST-2094 / AST-2091 / AST-2090 rows on the publish ref — expected §5.4 pattern; out of AST-2103 scope.
+
+### advisory — Canon Scope (off-list)
+
+Joan board cited `astral.dispatch.entity-state-bound` informally; not on frozen list by design. Change stays per-row `candidate_id`/`task_key` evaluation via existing `cd` and AST-1779 seam; no dispatch_task / claim-path edits. Matches board triage.
+
+### advisory — behavioral no-op on tip
+
+Plan **Proposed change** documents identical outputs with AST-2092 on dev; diff is belt-and-suspenders at the call site. UAT may not observe a delta — acceptable per plan path (a).
+
+## What's solid
+
+- Plan fidelity: single edit in `_evaluate_dispatch_empty_render` exactly as specified (comment explains candidate-keyed rubric + AC5).
+- Composes with AST-2092 (redundant admit) and AST-2091 (independent reason) per plan composition notes.
+- No tests asserting `entity_contexts=None` on this call site (grep clean).
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next |
+|------|----------------|------|
+| **PROCEED** (C7 complete) | AST-2020 mini-parent with **live** `ftr/AST-2020-rubric-gate-call-site` (ftr tip = merge-base) | Append artifact → `docs(AST-2103): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+| UAT (optional) | — | Spot-check list row `empty_render` / AUTO-off on candidate with empty joblist rubric; expect same as pre-fix tip (no-op) unless AST-2092 reverted in env. |
+
+context_tokens≈12000
+```
+
+```
+[code-rubric] PROCEED (Commit: ad073ede) Call-site rubric seam explicit
+```
