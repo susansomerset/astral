@@ -514,6 +514,7 @@ TASK_CONFIG = {
                 "items_schema": {
                     "company_id": {"type": "str", "required": True},
                     "upshot": {"type": "str", "required": True},
+                    "company_name": {"type": "str", "required": False},
                 },
             },
         },
