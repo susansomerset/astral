@@ -205,3 +205,142 @@ These are the plausible consolidations; they are not equivalent.
 5. **Waive empty id whenever input `job_link` is empty.** Broad; would also pass gazed jobs that lost their URL.
 
 Recommend talking through (1) vs (2) before code. (1) is the product hole; (2) is the “I wanted this in config.py” housekeeping.
+
+---
+
+## Bug: AST-2093 — batch-unique row index so every grade reply maps to its own job
+
+Parent: AST-2012 (orphaned Bug mini-parent). Affects Layer 2 decode (`agent._decode_payload` pos → id) and Layer 3 bind for the encoded Do/Get/Like grade path.
+
+### As-is
+
+Somerset `meteorite_grade_get` batch `meteorite_grade_get-a4ec9af6…` claimed 27 jobs and ended `pass:4 fail:0 error:23`. Each ~20-job LLM call (`stop=end_turn`) produced one `job consult completed`. Every other claimed id was logged `omitted from response`, routed to `METEORITE_PASSED_DO_RETRY`, omitted again on the retry run, and landed in `METEORITE_FAILED_TECHNICAL_GET`. The Somerset alert subject's `M processed` counted retry-run entities a second time.
+
+Row labels are chunk-local, and lone calls are always `000`:
+
+- `consult._consult_scored_dispatch_batch_encoded` calls `_prep_live_content(..., position=len(eligible))`, which stamps `[index=NNN]: <jd>`. Its `assemble` then prefixes `NNN: ` again from `range(len(rows))`, so each row reads `000: [index=000]: …`.
+- The dispatcher's parallel chunks (`_run_unified` → `_consult_chunk(ci, …)`) each restart at `000`.
+- A one-entity grade run (per-job `_one(e)` path, or a chunk with a single leftover row) goes `run_consult_task` → `render_verdict` → `_prep_live_content(job, …)` with the default `position=0`. Every lone call is `[index=000]`.
+- `grade_do` / `grade_get` / `grade_like` / `meteorite_like` prompts (`data/admin/agent_task.json`) say "zero-based row index (e.g. `000:`)". Alias rows `meteorite_grade_do` / `meteorite_grade_get` have empty prompts and inherit `grade_do` / `grade_get` via `master_task_key`.
+- `agent._decode_payload` maps each line through `batch_entities[pos]` with no uniqueness check.
+
+### To-be
+
+Every entity in a claimed batch is sent with its own index, unique across the whole claim. The index is the entity's claimed position (zero-padded, at least 3 digits), stable across chunks and on single-entity calls (a lone row can be `024`). Each row carries exactly one label: `[index=NNN]: …`.
+
+Decode resolves each reply line's leading index through an explicit index → entity map. Two failure cases are handled per entity:
+
+- An index that appears on more than one line becomes one `decode_failures` entry for that index's entity. All of its lines are dropped.
+- An index that isn't in the map is skipped with a warning. The entities it might have meant fall out as `omitted from response`.
+
+Only those entities go to retry or error. Everything else still grades. Tasks that pass no map keep today's positional decode. The dispatch rollup counts each entity once across the runs of one dispatch.
+
+### Repro
+
+Fixture, no DB. The decode context is what `_run_batch_consult` builds for chunk 1 of a 40-job claim with `batch_size=20` (global indexes 20–39). Grade segment shape is `_GRADE_SEG` (2-char code + letter + digit):
+
+```python
+from src.core.agent import _decode_payload
+jobs = [{"astral_job_id": f"J{i:02d}"} for i in range(20, 40)]
+ctx = {"batch_entities": jobs, "vector_labels": {}}
+payload = "\n".join(f"000|THA4|QQB3" for _ in jobs)   # model labels every line 000
+_decode_payload("grade_get", "grades_encoded_notes", payload, ctx)
+# today: 20 rows, all {"astral_job_id": "J20", ...}. J20 "completed", J21..J39 "omitted from response"
+```
+
+After the fix, with `ctx["batch_index_map"] = {20 + k: jobs[k] for k in range(20)}`:
+
+- The same payload yields `{"jobs": []}` with no `decode_failures`, because `000` is unknown in this chunk. `_run_batch_consult` routes all 20 to retry as omitted, and none is mis-graded.
+- With chunk 0's map (`{0..19}`), the payload yields one `decode_failures` row for index `000` / `J00` (duplicate index, 20 lines) and no `jobs`.
+- A correct payload (`020|…` … `039|…`) yields 20 rows mapped `J20`…`J39`.
+
+Assemble repro: chunk 1 currently renders `000: [index=000]: <jd>` for its first row. It must render `[index=020]: <jd>`.
+
+### Root cause
+
+Position is the only identity binding between a reply line and an entity. That position restarts at `000` per chunk and per lone call, and is printed twice. Decode trusts it blindly (`batch_entities[pos]`, last-wins by append order, no duplicate check). A model that echoes `000` on every line therefore collapses the whole chunk onto entity 0, and nothing in the reply can tell a correct grade from a mislabeled one.
+
+Separately, `dispatcher._run_dispatch_loop` adds each run's `total_processed` into `accumulated`. A retry run that re-claims the same ids counts them again.
+
+### Proposed change
+
+**`src/core/dispatcher.py` — `_run_unified`**
+
+1. Chunk path, in `_consult_chunk(ci, chunk_rows)`: pass `batch_index_offset=ci * chunk_sz` to `consult.run_consult_task`.
+2. Full-batch non-chunk path: pass nothing (offset defaults to `0`, and claimed order is already global).
+3. Per-entity path: before `_warm_then_gather`, build `idx_of = {id(e): i for i, e in enumerate(entities)}`. In `_one(e)`, pass `batch_index_offset=idx_of[id(e)]`.
+4. Retry double count:
+   - Immediately before `ctx["dispatch_partial"] = …`, compute `ids = [e.get("astral_job_id") or e.get("company_id") or e.get("astral_candidate_id") for e in entities]`.
+   - Take `seen = ctx.setdefault("dispatch_seen_ids", set())` and `repeats = sum(1 for i in ids if i and i in seen)`, then `seen.update(i for i in ids if i)`.
+   - On the normal return path, after `s` is fully summed, set `s["repeat_processed"] = min(repeats, s["total_processed"])`. The `min` only prevents a negative add when an outage zeroes a chunk. It is not a cap on work.
+   - `repeat_processed` is not a `_SUMMARY_ZERO` key. The existing `for k in s` merges and the `**accumulated` ledger write never see it.
+
+**`src/core/dispatcher.py` — `_run_dispatch_loop`**
+
+5. After the `for k in accumulated` add, subtract `summary.get("repeat_processed", 0)` from `accumulated["total_processed"]`. The `summary.get("total_processed", 0) == 0` stop check keeps reading the raw per-run value, so loop termination is unchanged.
+
+**`src/core/consult.py`**
+
+6. `run_consult_task`: new kwarg `batch_index_offset: int = 0`. Forward it only in the grade branch: to `grade_do_batch` / `grade_get_batch` / `grade_like_batch` / `meteorite_like_batch`, to the alias call to `_consult_scored_dispatch_batch_encoded`, and to `render_verdict` in the `len(entities) == 1` branch as `batch_index=batch_index_offset`. Other branches ignore it.
+7. `grade_do_batch` / `grade_get_batch` / `grade_like_batch` / `meteorite_like_batch`: accept `batch_index_offset: int = 0` and forward it.
+8. `_consult_scored_dispatch_batch_encoded`: new kwarg `batch_index_offset: int = 0`.
+   - The prep loop becomes `for pos, job in enumerate(jobs):` with `idx = batch_index_offset + pos`, the claimed position. Skipped rows leave gaps, which is fine because indexes only need to be unique.
+   - Call `_prep_live_content(row, company, scoring_task_key=agent_tk, position=idx)`.
+   - Keep a parallel `row_indexes: List[int]` appended next to `eligible` and `live_rows`.
+   - `assemble` becomes `body = "\n".join(live_rows)`, which drops the `f"{i:03d}: "` prefix.
+   - Pass `row_indexes=row_indexes` to `_run_batch_consult`.
+9. `_prep_live_content`: the label stays `[index={position:03d}]: …`. `:03d` widens past 999 on its own, so no limit is added. Update the docstring: `position` is the batch-unique index, and decode maps it via `batch_index_map`.
+10. `_run_batch_consult`: new kwarg `row_indexes: Optional[List[int]] = None`. When it is supplied, add `task_ctx["batch_index_map"] = dict(zip(row_indexes, jobs))`. `batch_entities` stays as-is for the positional consumers (`_normalize_rubric_task_response`, `_ensure_*_ids`, the admin replay). Callers that don't pass it (evaluate_jd, qualify, analysis assemblers) are unchanged.
+11. `render_verdict`: new kwarg `batch_index: int = 0`. Pass `position=batch_index` to `_prep_live_content`, and add `"batch_index_map": {batch_index: job_row}` to `task_ctx`. CLI and other callers default to `0`, which behaves as today.
+
+**`src/core/agent.py` — `_decode_payload`** (job/company branch only; the `grades_encoded_vet_meta` branch is untouched)
+
+12. `index_map = (ctx or {}).get("batch_index_map")`. When it is truthy:
+    - Run a pre-pass over `lines` that parses `int(fields[0])` with the same `ValueError` message on a bad field as today, and counts occurrences per index.
+    - In the main loop, look up `ent = index_map.get(pos)`.
+    - If `ent is None`: `logger.warning("%s skipped — index %s not in this batch\n  This line is not being graded", task_key, pos)`, then `continue`.
+    - If the count for `pos` is greater than 1: on first sight only (track a `reported` set), append `{id_key: ent[id_key], "pos": pos, "reason": f"[{task_key}] duplicate row index {pos:03d} on {n} lines"}` to `decode_failures`, then `continue`.
+13. When there is no map, keep the existing range check and set `ent = batch_entities[pos]`.
+14. Replace the three `batch_entities[pos][id_key]` reads with `ent[id_key]`, and extend the docstring with the map rule.
+15. `_run_batch_consult` already routes `decode_failures` per entity to `_transition_batch_consult_failures` (retry holding), and treats unmatched ids as `omitted from response`. No change is needed there.
+
+**`data/admin/agent_task.json`** — the `cache_prompt` of `grade_do`, `grade_get`, `grade_like`, `meteorite_like`
+
+16. Replace "Each JD row in --- CONTENT --- carries its own zero-based index; use the index as provided." with: "Each JD row in --- CONTENT --- carries its own unique index (`[index=NNN]`). Indexes are not sequential from 000 and may start anywhere; start each encoded line with that row's exact index."
+17. Replace "The live task uses a zero-based row index (e.g. `000:`) in --- CONTENT ---, same pattern as evaluate. Your encoded line must start with that index as provided…" with: "The live task labels each row `[index=NNN]` in --- CONTENT --- (e.g. `[index=024]`). Your encoded line must start with that row's exact index (`024|…`). Never renumber and never reuse an index. Match indexes only; do not echo external job identifiers into the payload."
+18. The edit is text only: no key, order, or other field changes. `grade_like` / `meteorite_like` are included because they share `_consult_scored_dispatch_batch_encoded` and carry the same `000:` sentence.
+
+**Decisions (explicit, within declared scope):**
+
+- `render_verdict` and the `run_consult_task` / wrapper plumbing are in `consult.py`. They carry the same "stamp batch-unique index + index map" change. Without them, a one-row tail chunk collides with chunk 0 at `000`.
+- Line-prefix leniency (accepting `[index=024]` or `024:` as `fields[0]`) is not added. A bad prefix still raises as today.
+- The timeout-partial fold (`dispatch_partial` on `INTERRUPTED`) still counts raw. Only normal-return runs dedupe.
+
+### Blast radius
+
+- **Hot-file overlap with AST-2015 / AST-2089 (in flight, Hedy):** those tickets change `do_task` envelope salvage and `_run_batch_consult` in `agent.py` / `consult.py`.
+  - This diff touches `_run_batch_consult` in one kwarg plus one `task_ctx` line, and does not touch `do_task`.
+  - The salvage decode (`consult._normalize_rubric_task_response` → `_decode_payload(…, ctx)`) receives `batch_index_map` automatically through the same `ctx`.
+  - Expect a small textual conflict at `_run_batch_consult`'s signature and `task_ctx` line on refresh-ftr.
+- `_decode_payload` other callers: `api_admin.py:1715` replay passes only `batch_entities`, so it stays positional and unchanged. The `grades_encoded_vet_meta` branch is untouched.
+- `_bind_response_jobs_to_claimed`: decoded rows already carry real ids, so it is a no-op here (it only rewrites empty / digit echoes).
+- Positional consumers of `batch_entities` (`_ensure_jobs_astral_ids`, `_ensure_companies_company_ids`, single-entity fills) are unchanged.
+- Model behavior: prompts now show non-zero starting indexes. A model that still emits `000…` gets those rows retried rather than mis-graded. Expect more `omitted` / `decode:` retries until it complies, but no false grades.
+- Ledger / UI: `dispatch_ledger.total_processed` and `entity_cost` (`total_cost / total_processed`) drop to unique counts on multi-run dispatches, so per-entity cost rises accordingly. The Somerset alert subject uses the same number.
+- Tests likely asserting the old shape (Betty's call at fix-board):
+  - assembled content `000: [index=000]:`
+  - `render_verdict` content `[index=000]`
+  - positional decode under a batch ctx
+  - `total_processed` summed across runs
+
+### What must still hold
+
+- Rubric / grade semantics, `{letter}0 → {letter}1` normalisation (AST-2053), `X` must be `X0`, and duplicate vector codes still raising are all unchanged.
+- Per-line malformed content still goes to `decode_failures`, not a batch kill (AST-1996). A clean row for the same entity still wins over a decode failure.
+- Retry-holding routing for missing or bad entities is unchanged (AST-642 / AST-1839). Provider balance / rate-limit holds are unchanged (AST-1867 / AST-2010).
+- `qualify_meteorite` link / order binds (AST-1076 / AST-1133) and the evaluate_jd / qualify assemblers are untouched.
+- Tasks with no `batch_index_map` decode exactly as today.
+- `do_task` RESPONSE dedupe suffix `_c{batch_chunk_index}` (AST-502) is unchanged.
+- Chunk 0 still runs first for cache warm, and the rest still run in parallel.
+- Dispatch loop termination (`0 processed` stop, `max_runs`, drain) behaves as today.
+- Jobs already stranded in `METEORITE_FAILED_TECHNICAL_GET` by the reported run are not reset.
