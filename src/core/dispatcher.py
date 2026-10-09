@@ -812,6 +812,11 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             clear_candidate_batch(bid)
         return s
 
+    # AST-2093: entities re-claimed by a later run of this dispatch (retry holdings) are not new work.
+    ids = [e.get("astral_job_id") or e.get("company_id") or e.get("astral_candidate_id") for e in entities]
+    seen = ctx.setdefault("dispatch_seen_ids", set())
+    repeats = sum(1 for i in ids if i and i in seen)
+    seen.update(i for i in ids if i)
     # AST-1847: in-flight run's running summary; batch runners tally into it in place so a
     # dispatch-timeout cancel can still record partial counts (_dispatch_one_body timeout branch).
     ctx["dispatch_partial"] = dict(_SUMMARY_ZERO)
@@ -847,6 +852,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                         debug,
                         batch_chunk_index=ci,
                         dispatch_task_key=dispatch_task_key,
+                        # AST-2093: chunk keeps batch-global row indexes instead of restarting at 000.
+                        batch_index_offset=ci * chunk_sz,
                     )
                     logger.debug("Response from consult.run_consult_task: %s", result)
                     if is_provider_balance_refusal(result):
@@ -883,6 +890,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 for k in s:
                     s[k] += result.get(k, 0)
         else:
+            # AST-2093: a lone call still sends the entity's claimed position, not 000.
+            idx_of = {id(e): i for i, e in enumerate(entities)}
+
             async def _one(e):
                 # AST-1867 / AST-2010: provider refused for balance or rate limit — skip (not processed); finally releases the claim
                 if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage"):
@@ -894,6 +904,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 result = await consult.run_consult_task(
                     entity_type, input_state, [e], bid, ctx, debug,
                     dispatch_task_key=dispatch_task_key,
+                    batch_index_offset=idx_of[id(e)],
                 )
                 logger.debug("Response from consult.run_consult_task: %s", result)
                 if is_provider_balance_refusal(result):
@@ -914,6 +925,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             clear_company_batch(bid)
     # Normal return only: counts travel via s now, so drop the partial to avoid double counting.
     ctx.pop("dispatch_partial", None)
+    # Outside _SUMMARY_ZERO so per-run merges and the ledger write skip it; min() only keeps an
+    # outage-zeroed run from going negative in _run_dispatch_loop.
+    s["repeat_processed"] = min(repeats, s["total_processed"])
     return s
 
 
@@ -1591,6 +1605,8 @@ async def _run_dispatch_loop(
         logger.debug("Response from _run_task: %s", summary)
         for k in accumulated:
             accumulated[k] += summary.get(k, 0)
+        # AST-2093: count each entity once across runs; the 0-processed stop below still reads the raw per-run value.
+        accumulated["total_processed"] -= summary.get("repeat_processed", 0)
         run_count += 1
         # Update ledger mid-run so the execution history reflects live progress
         if dispatch_ledger_id:

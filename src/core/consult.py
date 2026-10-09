@@ -982,7 +982,8 @@ async def _prep_live_content(
 ) -> Any:
     """Assemble live_content for an agent call. JD via tracker coat-check.
     If company provided, appends website_content via roster coat-check.
-    Row label is [index=NNN]: … (same keyed style as evaluate_jd enumerate_array); decode maps pos via batch_entities, not IDs in the prompt.
+    Row label is [index=NNN]: … (same keyed style as evaluate_jd enumerate_array). position is the entity's
+    batch-unique index (AST-2093); decode binds it back via ctx batch_index_map, not IDs in the prompt.
     Returns live_content string, or False if website_content fetch failed."""
     jd_text = await tracker.get_job_data(job, "job_description")
     if not jd_text:
@@ -1409,11 +1410,18 @@ def _apply_render_verdict_decoded_job(
 
 
 @_with_log_debug
-async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[str, Any]] = None, debug: bool = False) -> Dict[str, Any]:
+async def render_verdict(
+    task_type: str,
+    astral_job_id: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+    batch_index: int = 0,
+) -> Dict[str, Any]:
     """Full pipeline for one job through one agent task.
     Fetches job/company internally, preps live content, calls agent, audits,
     derives verdict, saves grades+score, transitions state.
     ctx: full candidate raft, forwarded to do_task for token resolution + API key override.
+    batch_index: the job's batch-unique row index from the dispatcher claim (AST-2093); 0 for lone callers.
     Returns result dict for CLI logging."""
     job = tracker.get_job(astral_job_id)
     cfg = _consult_orchestration_for_entity(
@@ -1444,7 +1452,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
         if not company:
             return _fail(f"Company not found: {job['company']}")
 
-    live_content = await _prep_live_content(job, company, scoring_task_key=agent_task)
+    live_content = await _prep_live_content(job, company, scoring_task_key=agent_task, position=batch_index)
     if not live_content:
         # _prep_live_content may have already transitioned to NEED_WEBSITE_CONTENT
         # for the LIKE case — don't clobber with error_state
@@ -1458,7 +1466,13 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
     vector_labels = _vector_labels_map(rubric_criteria, debug=debug)
     job_row = dict(job)
-    task_ctx: Dict[str, Any] = {**(ctx or {}), "batch_entities": [job_row], "vector_labels": vector_labels, "batch_size": 1}
+    task_ctx: Dict[str, Any] = {
+        **(ctx or {}),
+        "batch_entities": [job_row],
+        "batch_index_map": {batch_index: job_row},
+        "vector_labels": vector_labels,
+        "batch_size": 1,
+    }
 
     logger.debug("Calling agent.do_task: [task_key=%s, index=%s]", agent_task, astral_job_id)
     result = await do_task(task_key=agent_task, live_content=live_content, index=astral_job_id, ctx=task_ctx, debug=debug)
@@ -1631,6 +1645,7 @@ async def _run_batch_consult(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    row_indexes: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """Shared scaffolding for batch Pattern-A consult tasks (ast-326).
     Handles: live_content assembly, single do_task call, ID reconciliation,
@@ -1638,6 +1653,7 @@ async def _run_batch_consult(
     Missing IDs and bad_grades route per entity's current state via `_consult_batch_fail_dest`.
     Fabricated IDs are silently dropped.
     batch_chunk_index: parallel dispatcher chunks append suffix for agent_data RESPONSE dedupe (AST-502).
+    row_indexes: batch-unique row index per job (parallel to jobs) stamped by assemble_fn; decode binds by it (AST-2093).
     Returns unified summary dict."""
     entity_state = jobs[0].get("state") if jobs else None
     cfg = _consult_orchestration_for_entity(task_key, entity_state)
@@ -1662,6 +1678,8 @@ async def _run_batch_consult(
     # batch_entities + vector_labels passed so do_task/_decode_payload can map pos→id and code→label
     cid = _candidate_id_from_ctx(ctx)
     task_ctx = {**(ctx or {}), "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
+    if row_indexes is not None:
+        task_ctx["batch_index_map"] = dict(zip(row_indexes, jobs))
     if cid:
         task_ctx["astral_candidate_id"] = cid
     if ctx and ctx.get("candidate_data") is not None:
@@ -2383,8 +2401,10 @@ async def _consult_scored_dispatch_batch_encoded(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
-    """One encoded grade_* Pattern-A call across N sequentially pre-prepped JD rows (AST-503); mirrors evaluate_jd exclusions."""
+    """One encoded grade_* Pattern-A call across N sequentially pre-prepped JD rows (AST-503); mirrors evaluate_jd exclusions.
+    batch_index_offset: this call's first claimed position in the dispatcher batch, so row indexes stay unique across chunks (AST-2093)."""
     hdr = _GRADE_DISPATCH_TO_HEADER.get(dispatch_task_key)
     if hdr is None:
         hdr = _GRADE_DISPATCH_TO_HEADER[resolve_task_key_for_content(dispatch_task_key)]
@@ -2401,10 +2421,13 @@ async def _consult_scored_dispatch_batch_encoded(
 
     eligible: List[Dict[str, Any]] = []
     live_rows: List[str] = []
+    # Parallel to eligible: each row's batch-unique index (claimed position; skipped rows leave gaps).
+    row_indexes: List[int] = []
 
     logger.debug("Beginning %s prep loop on %s items", dispatch_task_key, len(jobs))
-    for job in jobs:
+    for pos, job in enumerate(jobs):
         aid = job["astral_job_id"]
+        idx = batch_index_offset + pos
         row = tracker.get_job(aid) or job
 
         company = None
@@ -2417,7 +2440,7 @@ async def _consult_scored_dispatch_batch_encoded(
                 skipped += 1
                 continue
 
-        lc = await _prep_live_content(row, company, scoring_task_key=agent_tk, position=len(eligible))
+        lc = await _prep_live_content(row, company, scoring_task_key=agent_tk, position=idx)
         if not lc:
             fresh = tracker.get_job(aid) or row
             if fresh.get("state") != "NEED_WEBSITE_CONTENT":
@@ -2431,6 +2454,7 @@ async def _consult_scored_dispatch_batch_encoded(
 
         eligible.append(row)
         live_rows.append(lc)
+        row_indexes.append(idx)
 
     logger.debug(
         "End %s prep loop after %s items eligible=%s skipped=%s",
@@ -2442,7 +2466,8 @@ async def _consult_scored_dispatch_batch_encoded(
         return {"success": True, "passed": 0, "failed": 0, "total": len(jobs), "skipped": skipped}
 
     def assemble(rows: List[Dict[str, Any]]) -> str:
-        body = "\n".join(f"{i:03d}: {live_rows[i]}" for i in range(len(rows)))
+        # Each live row already carries its one [index=NNN] label — no positional prefix.
+        body = "\n".join(live_rows)
         return f"CONSULT {hdr} ROWS:\n{body}"
 
     def process(input_job, response_job, _orch_cfg):
@@ -2462,6 +2487,7 @@ async def _consult_scored_dispatch_batch_encoded(
         ctx,
         debug,
         batch_chunk_index=batch_chunk_index,
+        row_indexes=row_indexes,
     )
     if skipped:
         result = {**result, "skipped": skipped, "total": len(jobs)}
@@ -2474,9 +2500,11 @@ async def grade_do_batch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
         "grade_do", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        batch_index_offset=batch_index_offset,
     )
 
 
@@ -2486,9 +2514,11 @@ async def grade_get_batch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
         "grade_get", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        batch_index_offset=batch_index_offset,
     )
 
 
@@ -2498,9 +2528,11 @@ async def grade_like_batch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
         "grade_like", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        batch_index_offset=batch_index_offset,
     )
 
 
@@ -2510,10 +2542,12 @@ async def meteorite_like_batch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
     # AST-1055: same encoded LIKE path; TASK_CONFIG.meteorite_like drives states + agent_task.
     return await _consult_scored_dispatch_batch_encoded(
         "meteorite_like", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        batch_index_offset=batch_index_offset,
     )
 
 
@@ -2657,11 +2691,14 @@ async def run_consult_task(
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
     dispatch_task_key: Optional[str] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
     """Unified dispatcher entry point. Routes on entity_type + input_state.
 
     batch_chunk_index: dispatcher sets for parallel chunked qualify / evaluate_jd / consult DO·GET·LIKE (AST-502)
     so `do_task` RESPONSE rows stay dedupe-distinct across chunks sharing one dispatch batch_id.
+    batch_index_offset: claimed position of entities[0] in the dispatcher batch; grade DO·GET·LIKE stamp
+    batch-unique row indexes from it (AST-2093). Other branches ignore it.
 
     Returns _SUMMARY_ZERO-shaped dict: {total_processed, total_passed, total_failed, total_errors}."""
     zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
@@ -2995,7 +3032,7 @@ async def run_consult_task(
             rv = await _debug_await(
                 "render_verdict",
                 f"task_key={task_key}, astral_job_id={aid}",
-                render_verdict(task_key, aid, ctx=ctx, debug=debug),
+                render_verdict(task_key, aid, ctx=ctx, debug=debug, batch_index=batch_index_offset),
             )
             if rv.get("success"):
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
@@ -3014,7 +3051,10 @@ async def run_consult_task(
             r = await _debug_await(
                 task_key,
                 f"batch_id={batch_id}, n={len(entities)}",
-                _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index),
+                _batch(
+                    batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+                    batch_index_offset=batch_index_offset,
+                ),
             )
         else:
             # Alias Do/Get — same encoded path; dispatch_task_key is the alias identity.
@@ -3023,6 +3063,7 @@ async def run_consult_task(
                 f"task_key={task_key}, batch_id={batch_id}, n={len(entities)}",
                 _consult_scored_dispatch_batch_encoded(
                     task_key, batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+                    batch_index_offset=batch_index_offset,
                 ),
             )
     elif task_key in ("analysis_upshot", "meteorite_upshot"):
