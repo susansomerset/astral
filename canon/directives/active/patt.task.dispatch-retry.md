@@ -37,5 +37,16 @@ The retry suffix is universal, configured as a string element in astral_config, 
   itself a `_RETRY` holding, or the flow configures none, it goes to the
   terminal error state that flow already uses (e.g. `FAILED_TECHNICAL`). Arc 5
   still holds: the entity never stays in its trigger, hop-label or input state.
+- **Pre-attempt provider gate — failed per-batch host probe.** On a server that
+  probes for a host before a batch's first call, a failed probe (no host named,
+  an error body, an exception, a cancelled probe — anything but an exhausted
+  rate limit) means no entity prompt is sent. Nothing was attempted for the
+  entity, so there is no failure to retry or to error: every entity in the batch
+  keeps its current loop-eligible state, takes no `_RETRY` hop and no
+  `error_state`, and is counted held, not errored. Dispatch stops the run and
+  releases the claim; the next round claims the same entities under a new batch
+  and probes again. Arc 5 is not broken — no failed attempt stays in state,
+  because none was made. An exhausted rate limit on the probe is not this
+  exemption; it stops the batch as a rate-limit outage.
 - Every other failed attempt: THIS PATTERN ALWAYS APPLIES (even with
   daisy-chain tasks.)
