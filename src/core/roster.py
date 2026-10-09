@@ -56,7 +56,12 @@ from src.data.database import (
     ensure_batch_response_entity_ids,
 )
 from src.utils.logging import get_logger, log_batch_id
-from src.utils.llm_external import is_provider_balance_refusal, is_provider_rate_limit
+from src.utils.llm_external import (
+    is_provider_balance_refusal,
+    is_provider_probe_failure,
+    is_provider_rate_limit,
+    is_provider_state_hold,
+)
 from src.utils.config import (
     ASTRAL_CONFIG,
     COMPANY_STATES,
@@ -82,9 +87,12 @@ from src.utils.formatting import (
 logger = get_logger(__name__)
 
 
-def _rate_limit_tag(r: Dict[str, Any]) -> Dict[str, Any]:
-    """AST-2010: carry an exhausted-429 failure_class up to the dispatcher (routing unchanged)."""
-    return {"failure_class": r["failure_class"]} if is_provider_rate_limit(r) else {}
+def _outage_tag(r: Dict[str, Any]) -> Dict[str, Any]:
+    """AST-2010 / AST-2098: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's
+    total_held) up to the dispatcher; routing unchanged. Empty for every other result."""
+    if not (is_provider_rate_limit(r) or is_provider_probe_failure(r)):
+        return {}
+    return {k: r[k] for k in ("failure_class", "total_held") if k in r}
 
 
 def _entity_info(entity_id: Any, entity_type: str, event: str, detail: Any) -> None:
@@ -920,12 +928,12 @@ async def run_company_task(
                 short_name, company_website, job_site_entity, debug=debug, ctx=ctx,
             )
             error_state = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
-            tag = _rate_limit_tag(result)
+            tag = _outage_tag(result)
             if result.get("error"):  # pragma: no branch
-                # AST-1867: provider refused for balance — held (AST-897 kept state), not an entity error;
+                # AST-1867: provider refused for balance / AST-2098 failed host probe — held (AST-897 kept state), not an entity error;
                 # failure_class travels up so the dispatcher can stop the batch and alert once.
-                if is_provider_balance_refusal(result):
-                    logger.debug("%s | company jobs_found held: provider_balance_refusal error=%r", short_name, result.get("error"))
+                if is_provider_state_hold(result):
+                    logger.debug("%s | company jobs_found held: %s error=%r", short_name, result.get("failure_class"), result.get("error"))
                     return {**zero, "total_held": 1, "failure_class": result.get("failure_class"), "error": result.get("error")}
                 dest = error_state if (
                     error_state
@@ -953,12 +961,12 @@ async def run_company_task(
                 return {**zero, "total_errors": 1}
             result = await run_select_job_page_dispatch(entity, batch_id, ctx, debug)
             sel_cfg = ROSTER_CONFIG["select_job_page"]
-            # AST-1867: provider refused for balance — held (AST-897 kept state), not an entity error;
+            # AST-1867: provider refused for balance / AST-2098 failed host probe — held (AST-897 kept state), not an entity error;
             # failure_class travels up so the dispatcher can stop the batch and alert once.
-            if is_provider_balance_refusal(result):
-                logger.debug("%s | company select_job_page held: provider_balance_refusal error=%r", short_name, result.get("error"))
+            if is_provider_state_hold(result):
+                logger.debug("%s | company select_job_page held: %s error=%r", short_name, result.get("failure_class"), result.get("error"))
                 return {**zero, "total_held": 1, "failure_class": result.get("failure_class"), "error": result.get("error")}
-            tag = _rate_limit_tag(result)
+            tag = _outage_tag(result)
             if result.get("error"):
                 _warn_company(short_name, "-", result["error"])
                 return {**zero, "total_errors": 1, **tag}
@@ -1538,8 +1546,8 @@ def _prefilter_fail(
     """Route retryable failures via current state (one retry then ERROR_PREFILTER); hard → error."""
     company = get_company(short_name) or {}
     current_state = (company.get("state") or "").strip()
-    # AST-897: provider balance/credit refusal — hold current loop-eligible state
-    if api_result is not None and is_provider_balance_refusal(api_result):
+    # AST-897 / AST-2098: balance refusal or failed host probe — hold current loop-eligible state
+    if api_result is not None and is_provider_state_hold(api_result):
         result["error"] = error
         result["state"] = current_state
         result["decision"] = "HOLD"
@@ -2039,9 +2047,9 @@ async def _run_batch_company_prefilter(
     logger.debug("Response from agent.do_task: %s", result)
 
     if not result.get("success"):
-        if is_provider_balance_refusal(result):
+        if is_provider_state_hold(result):
             logger.debug(
-                "Response from agent.do_task: provider_balance_refusal error=%r failure_class=%r",
+                "Response from agent.do_task: provider state hold error=%r failure_class=%r",
                 result.get("error"), result.get("failure_class"),
             )
             return {
@@ -2050,6 +2058,7 @@ async def _run_batch_company_prefilter(
                 "total": len(companies),
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
+                **({"total_held": len(companies)} if is_provider_probe_failure(result) else {}),
             }
         if result.get("empty_tokens"):
             # AST-2000: data defect — straight to ERROR_PREFILTER, never a retry holding.
@@ -2063,7 +2072,7 @@ async def _run_batch_company_prefilter(
             agent_failure=bool(result.get("agent_failure")),
             reason=result.get("error") or "do_task failed",
         )
-        return {"passed": 0, "failed": 0, "total": len(companies), "retried": retried, **_rate_limit_tag(result)}
+        return {"passed": 0, "failed": 0, "total": len(companies), "retried": retried, **_outage_tag(result)}
 
     parsed = result.get("parsed_response") or {}
     response_companies = parsed.get("companies") or []
@@ -2308,14 +2317,15 @@ async def company_upshot_batch(
     logger.debug("Response from agent.do_task: %s", result)
 
     if not result.get("success"):
-        if is_provider_balance_refusal(result):
-            # Provider refused for balance: hold state; the dispatcher stops the run and alerts once.
+        if is_provider_state_hold(result):
+            # Balance refusal or failed host probe: hold state; the dispatcher stops the run.
             return {
                 "passed": 0,
                 "failed": 0,
                 "total": len(rows),
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
+                **({"total_held": len(rows)} if is_provider_probe_failure(result) else {}),
             }
         if result.get("empty_tokens"):
             # Data defect, not an agent miss: straight to the terminal error, never the retry holding.
@@ -2324,7 +2334,7 @@ async def company_upshot_batch(
                 _log_fail_dest(r["short_name"], cfg["error_state"], "empty prompt tokens")
             return {"passed": 0, "failed": 0, "total": len(rows), "retried": 0}
         retried = _transition_upshot_failures(rows, cfg, f"do_task: {result.get('error') or 'do_task failed'}")
-        return {"passed": 0, "failed": 0, "total": len(rows), "retried": retried, **_rate_limit_tag(result)}
+        return {"passed": 0, "failed": 0, "total": len(rows), "retried": retried, **_outage_tag(result)}
 
     response_companies = (result.get("parsed_response") or {}).get("companies") or []
     received_ids = {rc.get("company_id") for rc in response_companies}
@@ -2436,9 +2446,9 @@ async def _find_job_page_from_assembled(
         )
         logger.debug("Response from agent.do_task: %s", res)
         if not res.get("success"):  # pragma: no branch
-            # Balance refusal (AST-897) and provider-call-budget timeout (AST-1189) are not model
-            # verdicts: hold the loop-eligible state so the next select_job_page dispatch retries (AST-1842).
-            if is_provider_balance_refusal(res) or res.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]:
+            # Balance refusal (AST-897), failed host probe (AST-2098), and provider-call-budget timeout (AST-1189)
+            # are not model verdicts: hold the loop-eligible state so the next select_job_page dispatch retries (AST-1842).
+            if is_provider_state_hold(res) or res.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]:
                 current_state = (get_company(short_name) or {}).get("state")
                 logger.debug(
                     "Response from agent.do_task: state held failure_class=%r error=%r current_state=%r",
@@ -2459,7 +2469,7 @@ async def _find_job_page_from_assembled(
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "SELECT_FAILED", "error": res.get("error"), "api": res})
             return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "SELECT_FAILED",
-                    **_rate_limit_tag(res)}
+                    **_outage_tag(res)}
 
         pp = res.get("run_next_parent_parsed")
         parsed_top = pp if pp is not None else res.get("parsed_response")  # type: ignore[assignment]

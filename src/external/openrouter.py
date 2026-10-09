@@ -70,7 +70,10 @@ async def probe_host(
     record_probe(response)
     host = getattr(response, "provider", None)
     if not host:
-        raise ValueError("Probe response named no provider")
+        # Hollow probe (AST-2098): name what came back — OpenRouter's own error object when the body has one,
+        # else the whole response — so the held-batch WARNING says why.
+        detail = normalize_provider_error(getattr(response, "error", None) or response, fallback="empty body")
+        raise ValueError(f"Probe response named no provider: {detail}")
     return host
 
 

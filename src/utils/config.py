@@ -5582,6 +5582,12 @@ PROVIDER_RATE_LIMIT = {
     "message_substrings": ("error code: 429", "rate_limit_error"),
 }
 
+# PROVIDER_PROBE_FAILURE — per-batch host probe failed for any reason but an exhausted 429 (AST-2098).
+# Entity state is held and the run stops; the next dispatch round mints a new batch id and probes again.
+PROVIDER_PROBE_FAILURE = {
+    "failure_class": "provider_probe_failure",
+}
+
 # PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).
 # httpx client timeout uses timeout_seconds; caller wait uses timeout_seconds + grace_seconds.
 # max_retries=0 → one attempt (SDK default 2 would allow up to 3× wall time inside the worker thread).
