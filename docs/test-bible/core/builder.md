@@ -954,3 +954,9 @@ cd src/ui/frontend && npx vitest run \
 **Pass criterion:** pytest + vitest green on lines 1–4 — not zero-arg harness / branch-lock gate.
 
 **Bible path shasum:** `docs/test-bible/core/builder.md` (fill after publish)
+
+### AST-2081 · AST-2046 (Line format; job resume HTML from the job's structure)
+
+`_emit_body_sections_html` gains a `line` branch: one `<p class="summary-intro">` with newlines collapsed to single spaces and emphasis kept. Whitespace-only text is skipped by the existing empty check. `build_resume_from_job` takes sections, order, titles, and accent from `tracker.get_job_effective_resume_structure(jid, cd)`. `_accent_source_label` / `_merge_effective_style` accept an optional `structure`. New debug label `_structure_source_label(jid)`. `build_base_resume` is not touched.
+
+**New:** **`TestAst2081LineFormatAndJobStructure`** (5: line paragraph AC13; whitespace-only skip; structure-source label; accent helpers given vs candidate structure; job A HTML follows its structure (rename / reorder / line / accent / job-only section, AC15/17/18) while job B renders from the candidate). The tests stub `tracker_mod.get_job_current` per key, the same way as AST-1593. New lines are fully branch-covered for `LOCKED_AT_100`. `test_builder.py` stays fully green (197). Manifest: [`tracker.md`](tracker.md) § AST-2081.

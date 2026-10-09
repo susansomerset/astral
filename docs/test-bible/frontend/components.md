@@ -2135,3 +2135,32 @@ git grep -n "AUTOSAVE_MS" -- src/ui/frontend/src/components/ArtifactEditor.tsx
 ```
 
 **Pass criterion:** Vitest 77/77 on the six files; `tsc` clean; grep empty. Not the zero-arg harness.
+
+### AST-2075 · AST-2028 (bug — skipped job's run panels show only RESPONSE)
+
+**Parent:** [AST-2028](https://linear.app/astralcareermatch/issue/AST-2028). **Publish:** `origin/sub/AST-2028/AST-2075-skipped-job-run-panels`. Plan: `docs/features/agent/ast-2031-job-run-modal-requests-entity-scoped-agent-data.md` § Bug: AST-2075. With `entityId`, `BatchAgentDataPanes` always shows SYSTEM / NO_CACHE / TASK / RESPONSE tabs, a single `CACHE` stand-in only when SYSTEM and every `CACHE_*` row are missing (D1-2075), opens on SYSTEM, and fills missing tabs with `No agent_data found for this part of the call — it has aged out or was never stored.`; batch-wide (no `entityId`) tabs and empty state unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** RESPONSE-only entity run → `SYSTEM, CACHE, NO_CACHE, TASK, RESPONSE`, placeholder text, real RESPONSE content | `BatchAgentDataModal.tsx` (`BatchAgentDataPanes`) | **`test_BatchAgentDataModal.test.tsx`** — **`BatchAgentDataPanes — AST-2075 … [bug-repro] RESPONSE-only entity run …`** |
+| SYSTEM present + no `CACHE_*` → no CACHE tab · zero rows → five placeholder tabs, no batch empty state | same | **`… present SYSTEM with no CACHE_* rows …`** · **`… entity run with no rows at all …`** |
+| Guards: real `CACHE_*` rows keep their tabs · batch-wide tabs + empty state unchanged | same | **`… real CACHE_* rows keep their own tabs …`** · **`… batch-wide (no entityId) unchanged …`** |
+
+**Broken / obsolete (rewritten):** the § AST-2031 `BatchAgentDataPanes` mock returned a single `NO_CACHE` row and read it through the active pane; entity mode now opens on SYSTEM (placeholder when absent). The mock row is now `SYSTEM`, so `entityId → encoded entity_id on agent data only` and `changing entityId refetches the scoped agent data` keep asserting the scoped URL before and after the fix.
+
+**Red / green:** 3 AST-2075 nodes red on the pre-fix tree (`bef2597c1`, tabs built only from present rows); 2 guards + rewritten AST-2031 nodes green there. Item 1 all green (59 pass, 1 name-skipped) against the plan's Proposed change applied in a throwaway tree (not committed — `test-fix` confirms on the real fix).
+
+## QA test manifest — AST-2075
+
+1. **Repro + regressions (Vitest):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  --testNamePattern='^(?!.*null listing_href)'
+```
+
+2. **[bug-repro] flip:** `BatchAgentDataPanes — AST-2075 missing-row placeholder tabs > [bug-repro] RESPONSE-only entity run → SYSTEM/CACHE/NO_CACHE/TASK placeholders + RESPONSE` — red pre-fix, green after `make-fix`.
+3. **Scope gate:** `git diff origin/dev...origin/sub/AST-2028/AST-2075-skipped-job-run-panels -- src/core/ src/data/ src/ui/api/` shows no AST-2075 change; `npx tsc -b --noEmit` clean.
