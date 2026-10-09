@@ -1,3 +1,68 @@
+<!-- linear-archive: AST-1879 archived 2026-10-08 -->
+
+## Linear archive (AST-1879)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1879/route-agent-calls-by-model-server-support-openrouter-api-models-for  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** katherine  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1851 — Support OpenRouter API models for agent work  
+**Blocked by / blocks / related:** parent: AST-1851; blocks: AST-1880
+
+### Description
+
+## What this implements
+
+After #2. `do_task` and the ad-hoc runner pick server + tier from agent model + brain size, use only that server's candidate key (no fallback), and call the Anthropic client or the shared compat client; dispatcher skip gate, meteorite hand-off, and Estelle's Slack turn read the key map. Does **not** own admin routes or UI (#4).
+
+## Citations
+
+new pattern *Model → server catalog routing*; `stat.logging.warning`, `stat.logging.error`.
+
+## Scope
+
+`src/core/agent.py` — `do_task` server/tier/key resolution, conversational brain override removed, client dispatch; `run_adhoc` / workbench wrapper route by server. `src/core/dispatcher.py` — skip gate on the task agent's server key. `src/core/meteorite.py` — ctx hand-off carries key map. `src/core/contact.py` — Estelle turn passes resolved candidate ctx; no candidate → fail with reason.
+
+## Acceptance criteria
+
+ 7. **Right key, no fallback.** A candidate-key task for an agent on server X, for a candidate with keys for X and Y, sends X's key (component test intercepting the outbound client). With no X key, the task fails with an error naming X and no request goes out — not with Y's key, not with an env key. Any outbound request in the no-key case = fail.
+ 8. **Ledger per server.** An Estelle (analysis) task run writes an `agent_timesheets` row whose provider is the Kimi direct server id, model is the K2.6 SKU, token columns hold the call's fresh-input / cache-read / cache-write / output volumes, and cost equals the per-type sum from catalog pricing (component test recomputes it). Provider `deepseek`, zero tokens, or a cost mismatch = fail.
+ 9. **Contact Estelle is a discrete agent.** `data/admin/agent_task.json`'s `contact_estelle_turn` row names the new contact-Estelle agent (not `principal_recruiter_estelle`); `rg -n "default_brain_setting" src/` returns nothing; an Estelle Slack turn goes out at the contact row's model + brain size (component test). Any of these not holding = fail.
+10. **No system-key tasks.** `python -c` over `TASK_CONFIG` finds no entry without `requires_candidate_key: True`; an Estelle Slack turn for a candidate with a key for her model's server goes out with that key (component test), and one for an unresolved Slack user sends no request. Any flag missing or any outbound request in the no-candidate case = fail.
+
+## Boundaries
+
+Stays inside the Scope above. Sibling slices: #1 catalog/client, #2 storage, #4 admin UI.
+
+## Notes for planning
+
+New pattern *Model → server catalog routing* is defined on parent AST-1851 (Architectural definition). Each child must stay green on its own `sub/*`. Additive only: legacy provider symbols stay importable until #4. AC 11's `default_brain_setting` grep clears when #4 deletes that key; this child removes every use of it in `agent.py`.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-29T21:34:34.751Z
+[code-rubric] PROCEED (Commit: ea18268dd) core routing by catalog
+
+#### betty — 2026-09-29T21:32:14.134Z
+@susan AC 8 heads-up: `agent_timesheets` has no `provider` column, so no row can literally store "kimi". The server id is only `_add_timesheet_entry`'s `provider` arg (SKU-on-server check + anthropic mirror switch). The test asserts insert provider=`kimi`, SKU `kimi-k2.6` (priced only on kimi), token columns, catalog cost sum, and no anthropic mirror. If you want a stored provider, that's a `database.py` change outside AST-1879's scope. Your call where it lands; not blocking this ticket.
+
+#### betty — 2026-09-29T21:32:13.098Z
+`origin/sub/AST-1851/AST-1879-route-calls-by-model-server` @ `ea18268dd` · manifest in core/agent.md
+
+#### joan — 2026-09-29T21:13:57.871Z
+[plan-rubric] PROCEED (Commit: 5c361de46) Core routing plan clean — context_tokens≈135000
+
+#### katherine — 2026-09-29T21:12:31.340Z
+`origin/sub/AST-1851/AST-1879-route-calls-by-model-server` @ `5c361de46` · catalog routing, no-fallback keys
+
+---
+
 # AST-1879 — Route agent calls by model → server
 
 - **Parent:** [AST-1851 — Support OpenRouter API models for agent work](https://linear.app/astralcareermatch/issue/AST-1851)

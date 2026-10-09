@@ -1,3 +1,98 @@
+<!-- linear-archive: AST-1974 archived 2026-10-08 -->
+
+## Linear archive (AST-1974)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1974/jobs-list-partition-views-skip-and-nav-config-jobs-navigation-changes  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1970 — Jobs Navigation changes  
+**Blocked by / blocks / related:** parent: AST-1970; blocks: AST-1976; blocks: AST-1975
+
+### Description
+
+## What this implements
+
+Delivers the backend for all six lists:
+
+* Ready / Review state lists; Skipped gaining the two build-failure states; the disjointness guard; Processing as the complement.
+* Widened, derived skip legality, plus the core skip that releases batch claims.
+* The new `view=` branches and the Applied crash fix.
+* Nav items and all six counts.
+* The manifest jobs block, with the meteorite sub-section removed.
+* The Meteorites landed-job state on the list API.
+
+Does **not** touch any React file (#2, #3).
+
+## Citations
+
+`stat.logging.info.api` (no info on GETs; one completion line on the skip POST); `stat.logging.error` (meteorite list handler wraps the new read).
+
+## Scope
+
+**Component scope:** `src/utils/config.py`, `src/data/database.py`, `src/core/tracker.py`, `src/ui/api/api_jobs.py`, `src/ui/api/api_system.py`, `src/ui/api/api_meteorite.py`.
+
+**Technical scope:**
+
+* `config.py`
+  * **State lists.** New Ready and Review state lists (`CANDIDATE_REVIEW`; `RECOMMENDED`). The existing Applied and Skipped lists are reused, and Skipped gains `ERROR_BUILD_ARTIFACTS` and `BUILD_FAILED`, with section labels and bulk-retry targets (`RECOMMENDED`, `CANDIDATE_REVIEW` — each state's only legal successor). A module-level assert keeps the four explicit lists pairwise disjoint. **Processing gets no typed-out state list:** it is the complement of the other four.
+  * **Skip legality.** `CANDIDATE_SKIPPED`'s `prior_states` widen to every job state outside the Applied and Skipped lists. That list is **derived** from those lists, not typed out, and hop labels already resolve through their base.
+  * **Nav and manifest.** The Jobs nav items are replaced. The manifest jobs block carries Processing sections (today's in-review sections plus the build-in-progress state) and Ready / Review sections, and drops the recommended `meteorite_section` entry and its backing constant. The recommended primary-action table keeps its `BUILD_ARTIFACTS` Cancel entry, because the report modal still uses it.
+  * **Meteorites columns.** The Meteorites list column config gains one column for the landed job's state.
+* `database.py` — job list and count functions gain an optional excluded-state filter, as `list_companies` already has. The candidate meteorite list read also returns each row's landed job's current state, via `astral_job_id`.
+* `tracker.py` — job list/count facades forward the new filter. A new core skip function clears the job's batch lock when one is held (as `cancel_artifact_build` does), then transitions to `CANDIDATE_SKIPPED`.
+* `api_jobs.py` — the list route's view switch is modified: new `ready`, `review`, `processing` branches (Processing = exclusion of the four lists, minus below-floor rows, which stay Skipped-only), with `in_review`, `recommended`, and `responded` removed. The Applied helper's company-linkage repair loop is deleted. It calls `list_jobs` with no candidate, which raises since AST-1598, and `job.candidate_id` scoping makes it redundant. The skip route delegates to the core skip function instead of transitioning directly.
+* `api_system.py` — the Jobs nav-count function is modified to emit counts for all six paths: Ready, Review, Applied, Processing (below-floor subtracted), Skipped (below-floor added), and Meteorites (candidate's meteorite rows).
+* `api_meteorite.py` — the list projection's key set is modified to include the landed job's state.
+
+## Acceptance criteria
+
+ 1. **Nav shape.** `GET /api/nav_config` Jobs group item labels are exactly `["Ready","Review","Applied","Processing","Skipped","Meteorites"]`, with paths `/jobs/ready`, `/jobs/review`, `/jobs/applied`, `/jobs/processing`, `/jobs/skipped`, `/jobs/meteorites`, and every item carries a `count`. **Fail:** In Review / Recommended / Responded present, any other label or order, or a missing `count`.
+ 2. **Ready.** `GET /api/jobs?view=ready&candidate_id=X` returns only `state == "CANDIDATE_REVIEW"` rows, and its length equals `SELECT COUNT(*) FROM job WHERE candidate_id='X' AND state='CANDIDATE_REVIEW'`. **Fail:** any other state, or count mismatch.
+ 3. **Review.** Same check for `view=review` and `RECOMMENDED`. **Fail:** as above.
+ 4. **Applied loads.** `GET /api/jobs?view=applied&candidate_id=X` for a real candidate returns 200 containing only the four Applied states. `rg -n "candidate_id=None" src/ui/api/api_jobs.py` returns nothing. **Fail:** 500 / ValueError, any other state, or the grep hits.
+ 5. **Skipped is terminal and editable.** A job in `ERROR_BUILD_ARTIFACTS` appears in `view=skipped`, and `GET /api/jobs/<id>` returns `fields_editable: true` with `RECOMMENDED` in `legal_next_states`. Below-floor virtual rows still appear in Skipped only. **Fail:** the job missing from Skipped, not editable, or a below-floor row also in Processing.
+ 6. **Every job exactly once.** For candidate X, the union of `astral_job_id`s across the ready, review, applied, processing, and skipped views has no duplicates, and its size equals `SELECT COUNT(*) FROM job WHERE candidate_id='X'`. A job seeded at `BUILD_ARTIFACTS.<any chain task>` appears in Processing. **Fail:** any duplicate, any job on no list, or the hop-labeled job missing.
+ 7. **Lists can't overlap; nothing typed twice.** Temporarily adding `"CANDIDATE_REVIEW"` to the Skipped list makes `python -c "import src.utils.config"` raise `AssertionError`. The processing branch in `api_jobs.py` fetches by excluding the four lists, not by passing an explicit include-list. `JOB_STATES["CANDIDATE_SKIPPED"]["prior_states"]` is computed from the Applied / Skipped lists. **Fail:** the import succeeds with the overlap, a hand-typed Processing state list exists in `config.py`, or the skip priors are a literal list (a parallel registry instead of the derivation).
+ 8. **Skip from Processing.** For a job in each of `NEW`, `PASSED_JD`, `METEORITE_QUALIFIED`, `BUILD_ARTIFACTS`, and `BUILD_ARTIFACTS.<chain task>`, `POST /api/jobs/<id>/skip` returns 200, and the job then appears in `view=skipped` as `CANDIDATE_SKIPPED` and not in `view=processing`. A job with a non-null `batch_id` has `batch_id` null after the skip. Skip on a `CANDIDATE_APPLIED` job still returns 409. **Fail:** any 409 on the five Processing states, a lingering `batch_id`, or a 200 on the Applied job.
+ 9. **Skip route logs once.** A successful skip writes exactly one `app_log` info line matching `| api /api/jobs/<id>/skip completed: POST 200`. `git diff origin/dev -- src/ui/api | rg "^\+.*logger\.info"` shows only that line (no info on the GET routes), and `src/core/tracker.py` adds no `logger.info` for skip. **Fail:** zero or two lines, or an info line on a GET route.
+10. **Counts match lists.** For candidate X, the nav `count` on each of the six items equals the row count of its page's list (the `view=` response, or the meteorites list length). **Fail:** any mismatch.
+11. **Old routes gone.** `rg -n "jobs/in_review|jobs/recommended|jobs/responded" src/ui/frontend/src src/utils/config.py src/ui/api` returns nothing, and `JobsInReview.tsx` and `JobsResponded.tsx` no longer exist. **Fail:** any hit or file present.
+12. **Builds clean.** `python -c "import src.utils.config"` exits 0. In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem absent on `origin/dev`. **Fail:** non-zero exit, or a new lint problem.
+
+## Boundaries
+
+Does not touch any file under `src/ui/frontend/` — Ready / Review / Processing pages, routes, and landing redirect are [AST-1975](https://linear.app/astralcareermatch/issue/AST-1975); the Meteorites page is [AST-1976](https://linear.app/astralcareermatch/issue/AST-1976). AC 12 is shared: this ticket clears the old paths from `config.py` and `src/ui/api`; [AST-1975](https://linear.app/astralcareermatch/issue/AST-1975) clears the frontend.
+
+## Notes for planning
+
+Parent [AST-1970](https://linear.app/astralcareermatch/issue/AST-1970) definition is authoritative (Functional scope, Architectural definition, Canon Scope: `stat.logging.info.api`, `stat.logging.error`).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1970-jobs-nav`, child `sub/AST-1970/AST-1974-jobs-nav`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T18:38:32.668Z
+[code-rubric] PROCEED (Commit: 92ec2f7c) Logging and partition clean
+
+#### betty — 2026-10-04T18:35:10.192Z
+`origin/sub/AST-1970/AST-1974-jobs-nav` @ `92ec2f7c3` · drift revised, partition covered
+
+#### ada — 2026-10-04T18:24:42.927Z
+`origin/sub/AST-1970/AST-1974-jobs-nav` @ `051c3b842` — parent ref is `ftr/AST-1970-jobs-nav`; parent AC13 `meteorite_section` grep also hits retained `report_meteorite_sections` (see plan § Review).
+
+#### joan — 2026-10-04T18:21:48.031Z
+[plan-rubric] PROCEED (Commit: 93d9d557) Backend six-list plan solid
+
+#### ada — 2026-10-04T18:20:29.769Z
+`origin/sub/AST-1970/AST-1974-jobs-nav` @ `93d9d557d` · plan ready, estimate agreed
+
+---
+
 # AST-1974 — Jobs list partition, views, skip, and nav config
 
 - **Ticket:** [AST-1974](https://linear.app/astralcareermatch/issue/AST-1974)

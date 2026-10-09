@@ -187,7 +187,7 @@ export default function TokenTextarea({
                 padding: "5px 10px", cursor: "pointer",
                 fontFamily: "monospace", fontSize: 12,
                 background: i === sel ? "var(--bg-card)" : "transparent",
-                color: i === sel ? "var(--accent-gold)" : "var(--text-secondary)",
+                color: i === sel ? "var(--accent-contrast)" : "var(--text-secondary)",
               }}
             >
               {"{$"}{token}{"}"}

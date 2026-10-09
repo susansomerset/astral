@@ -1,3 +1,80 @@
+<!-- linear-archive: AST-1965 archived 2026-10-08 -->
+
+## Linear archive (AST-1965)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1965/platform-columns-and-platform-first-totals-on-the-timesheet-query-llm  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1963 — Query LLM Platform for Timesheet Data to Finish Batch  
+**Blocked by / blocks / related:** parent: AST-1963; blocks: AST-1966
+
+### Description
+
+## What this implements
+
+Adds the platform columns to `agent_timesheets` and their writer, lets unpriced SKUs be recorded, and makes `sum_cost_by_batch` prefer platform cost. Does **not** call OpenRouter (#1) or start reconciles (#3).
+
+## Citations
+
+`patt.entity.batch-processing`.
+
+## Scope
+
+* `src/data/database.py` — **modified**. Platform columns on `agent_timesheets`, a writer for them, `_add_timesheet_entry` accepts an unpriced SKU, `sum_cost_by_batch` prefers platform cost.
+  * **New columns** on `agent_timesheets` — platform cost (nullable; null = not reconciled), native prompt / completion / cached / reasoning token counts, serving host, reconcile timestamp. Added by `_ensure_timesheets_schema` for existing databases and by `_create_agent_timesheets_table` for new ones.
+  * **New writer** — sets one row's platform columns by `agent_req_id`.
+  * **Modified function** `_add_timesheet_entry` — no longer refuses a SKU the catalog doesn't price (the server id check stays).
+  * **Modified function** `sum_cost_by_batch` — per row, platform cost when present, else the sum of `calc_cost_*`.
+* `tests/component/data/database/test_timesheets.py`, `docs/test-bible/data/database/timesheets.md` — **modified**.
+
+## Acceptance criteria
+
+"Stubbed lookup" = the component-test stub of the OpenRouter generation-stats HTTP call.
+
+3. **Unpriced calls still get a row.**
+   * **Check (**`test_llm_compat.py`**):** with catalog pricing stubbed to raise, a successful call invokes `record_timesheet` once, with `calc_cost_*` all 0 and the response's token counts. (`test_timesheets.py`, database): `_add_timesheet_entry` with a SKU the catalog doesn't price returns `True` and the row exists.
+   * **Fails if:** `record_timesheet` isn't called, or the insert is refused.
+   * **This child:** the `_add_timesheet_entry` half (database test). The `llm_compat` half is #3.
+4. **Calculated cost is never overwritten.**
+   * **Check (database test):** after the platform writer runs, the row's four `calc_cost_*` and existing token columns equal what was inserted, and the platform cost, native counts, host and timestamp equal what was written.
+   * **Fails if:** any original column changed or a platform column is null.
+5. **Platform cost wins in the total.**
+   * **Check (database test):** a batch with two rows, one reconciled (calc 0.01, platform 0.03) and one not (calc 0.02): `sum_cost_by_batch([batch])` returns `0.05`.
+   * **Fails if:** it returns 0.03 (calc only) or anything other than 0.05.
+
+## Boundaries
+
+* Does **not** call OpenRouter (#1 Model routing type and lookup - Hedy) or start reconciles / refresh the ledger (#3 Background reconcile - Ada).
+* Does **not** change `calc_cost_*` math or `backfill_agent_timesheet_costs`.
+
+## Notes for planning
+
+* Cite `patt.entity.batch-processing` — parent Architectural definition has the links.
+* Platform facts (parent § Platform research): OpenRouter `GET /api/v1/generation?id=<gen-id>`, bearer key; `total_cost`, `native_tokens_prompt` / `_completion` / `_cached` / `_reasoning`, `provider_name`; stats can lag the response by a few seconds.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T02:28:09.782Z
+[code-rubric] PROCEED (Commit: 7470f49c9) platform columns and totals
+
+#### betty — 2026-10-04T02:25:43.629Z
+`origin/sub/AST-1963/AST-1965-timesheet-platform-columns` @ `7470f49c9` · platform columns tests ready
+
+#### joan — 2026-10-04T02:20:19.263Z
+[plan-rubric] PROCEED (Commit: 283783775) platform columns and totals
+
+#### katherine — 2026-10-04T02:19:10.332Z
+`origin/sub/AST-1963/AST-1965-timesheet-platform-columns` @ `283783775` · plan ready, two stages
+
+---
+
 # AST-1965 — Platform columns and platform-first totals on the timesheet
 
 - **Ticket:** [AST-1965](https://linear.app/astralcareermatch/issue/AST-1965) · **Parent:** [AST-1963](https://linear.app/astralcareermatch/issue/AST-1963) Query LLM Platform for Timesheet Data to Finish Batch
