@@ -748,3 +748,89 @@ AST-2098 board-joan done — CANON: REVISE — dispatch-retry probe carve-out.
 
 
 **Chuckles routing:** the canon change Joan names (`canon/directives/active/patt.task.dispatch-retry.md`) is outside AST-2098's approved Component scope, and Betty's `[board-betty] TESTS: REVISE` names a test gap. Both go to one sibling gap child under AST-2016 (orphaned branch: gap child instead of inline F3/F4). AST-2098 proceeds to make-fix.
+
+
+## Radia review — AST-2098
+
+```
+[code-rubric]
+**Ticket:** AST-2098
+**Publish ref:** `19036ccf07daace568540d66f829f5cefdc0468e` (`origin/sub/AST-2016/AST-2098-probe-fail-hold`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f`
+**Overall:** CLEAN
+
+## Canon scores
+
+(no frozen directive ids in AST-2098 Linear description — no `## Citations` block; same shape as other fix-lane children with board-only canon read. Zero graded rows per review-child §5. Qualitative fix-board overlap below is **not** a second canon pass.)
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| *(frozen list empty)* | — | — | Score only ids locked at Plan Approved; none on ticket |
+
+**Fix-board Joan overlap (qualitative, not roll-up):** `patt.entity.batch-processing`, `stat.batch.claim-process-release`, `stat.logging.error`, `stat.logging.debug`, `stat.logging.info`, `astral.dispatch.entity-state-bound` — product diff consistent with Joan’s OK triage. `patt.task.dispatch-retry` — **active** pattern text still lacks the probe carve-out; implementation deliberately holds state (Susan / plan-fix); **canon wording routed to AST-2099**, not graded as a fix-now statute violation on this sub.
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — no validate-plan fix-mode (F3) artifact with per-id grades on AST-2098; Joan fix-board `[board-joan] CANON: REVISE` is qualitative + machine-readable carve-out hint only.
+
+## Frame diff
+
+- [ ] **Boundaries / Considered but excluded:** `_run_dispatch_chain_job_batch` still treats probe failure as a generic envelope error (plan ⚠️ D4). Confirm UAT does not expect hold/stop on chain-batch task keys.
+
+## Fix-specific checks
+
+- **`[bug-repro]`:** not applicable — clean board opt-out; Betty `TESTS: REVISE` and Joan canon REVISE routed to gap child **AST-2099**; qa-fix did not run on AST-2098 (per spawn brief).
+- **`## What must still hold`:** OK — traced against `origin/ftr/AST-2016-probe-fail-hold...origin/sub/AST-2016/AST-2098-probe-fail-hold` product diff:
+  - AST-1959 probe/lock/`host`/`log_llm_batch_summary` path intact; only non-429 probe tagging + hold routing added.
+  - AST-2010: exhausted-429 probe still sets `PROVIDER_RATE_LIMIT` when `stops_batch and classify_provider_rate_limit(probe_err)`; dispatcher still sets `FAILED` on `provider_rate_limit_outage` before balance/probe `INTERRUPTED`.
+  - AST-1867: balance-specific outage note/alert paths untouched; D3 preserves balance error counting on job upshot paths while probe uses `total_held`.
+  - AST-1189/1842: `PROVIDER_CALL_BUDGET` branch in `_find_job_page_from_assembled` unchanged aside from `is_provider_state_hold` widening.
+  - Healthy summaries: `total_held` only when probe hold; `_outage_tag` only forwards `failure_class` + optional `total_held` for rate-limit/probe.
+  - Claim release: no change to `_run_unified` `finally` / release contract.
+
+## Findings
+
+#### fix-now
+
+(none)
+
+#### discuss
+
+- **Location:** Plan ⚠️ D4 — `src/core/consult.py` `_run_dispatch_chain_job_batch`
+- **Finding:** Chain-batch consult tasks still count probe failure as a run error and do not stop the dispatch run via `provider_probe_outage`; plan explicitly excluded widening here.
+- **Recommendation:** @susan — Is chain-batch dispatch in scope for the same hold/stop semantics, or is meteorite single-entity grade (`render_verdict` / `run_consult_task` early return) the only UAT tripwire?
+- **Default:** Leave D4 as documented; do not expand scope on resolve-child unless Susan answers yes.
+
+#### advisory
+
+- **Location:** Three-dot diff vs `origin/ftr/AST-2016-probe-fail-hold`
+- **Finding:** Nine sibling `docs/features/**` issue-doc files ride the diff with no `src/**` changes (doc stack on sub tip). Product footprint is exactly the eight scoped files + plan-fix doc section.
+- **Recommendation:** Note once for merge-child readers; not a scope violation.
+
+- **Location:** `canon/directives/active/patt.task.dispatch-retry.md` (unchanged on this ref)
+- **Finding:** Product now holds loop-eligible state on probe failure while active Arc 5 / “every other failed attempt” text still reads literally; AST-2099 owns carve-out + bible/tests per Chuckles routing.
+- **Recommendation:** Do not block AST-2098 User Testing on canon file landing; track AST-2099 for corpus hygiene.
+
+- **Location:** `tests/**`
+- **Finding:** No test or test-bible diff on this publish ref; Ada notes one pre-fix-breaking assertion on probe error string (AC 5) deferred to AST-2099; remaining touched-suite failures match pre-fix tree.
+- **Recommendation:** AST-2099 closes Betty’s REVISE; optional UAT uses hollow-probe repro in plan-fix § Repro.
+
+### What's solid
+
+- Eight-file diff matches plan-fix **Proposed change** step order and symbols (`PROVIDER_PROBE_FAILURE`, `is_provider_state_hold`, `_outage_tag`, `_note_provider_probe_outage`, loop break + `INTERRUPTED`).
+- `usage_to_token_counts(None)` and enriched `probe_host` error text address the Oct 7 traceback and AC 5.
+- `rg '_rate_limit_tag' src/` clean on reviewed tip.
+- No `canon/**` lines in the fix diff; canon amend stays on AST-2099 by design.
+
+### Chuckles branching (read-only)
+
+| Gate | Parent shape | Next |
+|------|----------------|------|
+| **PROCEED** (C7 complete) | Normal mini-parent AST-2016 (not orphaned for merge-child) | **Review Posted** → do-all-the-things §3h clean-review shortcut → **User Testing**; **resolve-child** skipped |
+
+context_tokens≈42000
+```
+
+```
+[code-rubric] PROCEED (Commit: 19036ccf0) probe hold matches plan
+```
