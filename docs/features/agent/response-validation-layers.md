@@ -432,3 +432,130 @@ No directive needs amending and nothing here is an Archie-only precedent call (*
 (Plan text calls AST-2012 an “orphaned Bug mini-parent” for **documentation/intake**; spawn prompt correctly uses **ftr**, not ORPHANED→`dev` merge.)
 
 context_tokens≈28000
+
+---
+
+## Bug: AST-2095 — batch-unique index decode/assembly/count tests + bible (test gap for AST-2093)
+
+Parent: AST-2012. Test-gap sibling for `[board-betty] TESTS: REVISE` on AST-2093. **Test tree + bible only.** Betty's `qa-fix` lands everything below; no `src/` or `data/` change.
+
+### As-is
+
+AST-2093 is on `origin/ftr/AST-2012-grade-batch-unique-index` @ `759a19247`, but nothing in `tests/` or `docs/test-bible/` exercises its new code: `rg` for `batch_index_map`, `batch_index_offset`, `dispatch_seen_ids` or `repeat_processed` finds only the five qa-handoff edits in `test_dispatcher.py`. Those edits are shape-only (`repeat_processed: 0` and a stub that accepts `batch_index_offset`), and this plan does not redo them. So:
+
+- The AST-2093 repro (a chunk-1 reply echoing `000` on every line collapses onto entity 0) has no test.
+- `agent.py`, `consult.py` and `dispatcher.py` are LOCKED_AT_100, and the new branches below have no nodes.
+- No existing test drives the body of `_consult_scored_dispatch_batch_encoded`. `TestRunConsultTask` and `TestAst1055MeteoriteConsultRoutes` mock the `grade_*_batch` / `meteorite_like_batch` wrappers at the routing layer.
+
+### To-be
+
+Every branch AST-2093 added has a node. The `[bug-repro]` nodes are red at the pre-fix base `823d37605` and green on the `ftr` tip. The bible pages `core/agent.md`, `core/consult.md` and `core/dispatcher.md` each carry an `AST-2093` block listing exactly these nodes. Existing nodes Betty reviewed stay green as written: `TestPrepLiveContentBranches` `[index=000]: jd text` (line ~1538), and the mocked `_run_task` summaries plus the five qa-handoff nodes in `test_dispatcher.py`.
+
+### Repro
+
+Fixture objects only; there is no DB. The repro for `_decode_payload` is the AST-2093 block's fixture verbatim:
+
+- `jobs = [{"astral_job_id": f"J{i:02d}"} for i in range(20, 40)]`
+- payload: 20 lines of `000|THA4|QQB3`
+- `ctx = {"batch_entities": jobs, "vector_labels": {}, "batch_index_map": {20 + k: jobs[k] for k in range(20)}}`
+- `output_type="grades_encoded_notes"`, `task_key="grade_get"`
+
+At base `823d376` the map key is ignored, so the result is 20 rows, all `J20`. At the tip it is `{"jobs": []}` with no `decode_failures`.
+
+### Root cause
+
+Coverage gap. AST-2093 shipped through fix-board with `TESTS: REVISE` routed here, and `qa-fix` did not run on AST-2093.
+
+### Proposed change
+
+Each node is new. Place it in the named existing class (or a new `TestAst2093…` class beside it), and follow that class's fixture and monkeypatch style. "Red at base" means the node fails against `823d37605` source, which is the `[bug-repro]` gate. Nodes marked *branch* lock coverage and only need to be green at the tip.
+
+**`tests/component/core/test_agent.py`** (new class `TestAst2093BatchIndexMapDecode`, next to `TestDecodePayload` at line ~210). Call `agent._decode_payload` directly:
+
+1. **`[bug-repro]` chunk-1 all-`000` echo.** Use the Repro fixture. Assert `out == {"jobs": []}`, with no `decode_failures` key. *Red at base* (20 rows on `J20`).
+2. **`[bug-repro]` correct global indexes.** Same map, payload lines `020|THA4|QQB3` … `039|THA4|QQB3`. Assert 20 rows, with `rows[k]["astral_job_id"] == f"J{20+k:02d}"` for every `k`. *Red at base*: positions 20–39 fall outside `len(batch_entities) == 20` and are skipped, giving 0 rows.
+3. **Duplicate index → one failure.** Chunk-0 map `{k: jobs[k] for k in range(20)}`, payload 3 × `000|THA4|QQB3` plus `001|THA4|QQB3`. Assert:
+   - `jobs` has exactly one row, for `jobs[1]` (index `001`).
+   - `decode_failures == [{"astral_job_id": jobs[0]["astral_job_id"], "pos": 0, "reason": "[grade_get] duplicate row index 000 on 3 lines"}]`.
+
+   This covers both sides of the "first sight / already reported" branch. *Red at base.*
+4. **Unknown index skipped with a warning** (*branch*). Map `{20: jobs[0]}`, payload `020|THA4|QQB3` plus `555|THA4|QQB3`. Assert one row (`J20`), and `caplog` has a WARNING containing `index 555 not in this batch`.
+5. **Map pre-pass bad position raises** (*branch*). Map present, payload `abc|THA4`. Use `pytest.raises(ValueError, match="bad position field")`.
+6. **Map path routes the per-line failures through the mapped entity** (*branch*). With map `{20: jobs[0]}`:
+   - (a) `grade_get` grades-only `output_type="grades_encoded"` with trailing junk `020|THA4|junk` gives a `decode_failures` row whose id is `J20` and `pos == 20`.
+   - (b) `020|THX3` gives a `decode_failures` row with an `X requires confidence digit 0` reason for `J20`.
+
+   This proves `ent[id_key]` comes from the map and not from `batch_entities[pos]`.
+7. **No map: positional decode unchanged** (*branch, guard*). `ctx` without `batch_index_map`, payload `000|THA4|QQB3` plus `001|THA4|QQB3` against `jobs[:2]`. Assert rows `J20` and `J21`. An empty map `{}` behaves the same, since the map is checked for truthiness.
+
+**`tests/component/core/test_consult.py`**
+
+8. **`[bug-repro]` single-label assembly at the global offset** (new class `TestAst2093EncodedDispatchIndex`, after `TestEncodedDecodeIsolation` at line ~2355). Drive `consult._consult_scored_dispatch_batch_encoded("grade_get", "b1", jobs, ctx={}, batch_index_offset=20)` with 3 jobs. Monkeypatch:
+   - `tracker.get_job` returns the row.
+   - `_consult_orchestration_for_entity` returns a cfg with no `requires_company`.
+   - `_prep_live_content` returns ``f"[index={position:03d}]: jd"`` and records `position`.
+   - `_run_batch_consult` captures `assemble_fn` and its kwargs.
+
+   Assert:
+   - `_prep_live_content` positions are `[20, 21, 22]`.
+   - `assemble_fn(jobs)` returns `"CONSULT <hdr> ROWS:\n[index=020]: jd\n[index=021]: jd\n[index=022]: jd"`, with no line matching `^\d{3}: \[index=`.
+   - `row_indexes == [20, 21, 22]` is passed to `_run_batch_consult`.
+
+   *Red at base*: positions are `[0, 1, 2]`, there is a `000: ` prefix, and `_run_batch_consult` has no `row_indexes` kwarg.
+9. **Skipped row keeps its gap** (*branch*). Same setup, offset `0`, 3 jobs. The 2nd job's `_prep_live_content` returns `False` (state is not `NEED_WEBSITE_CONTENT`). Assert `row_indexes == [0, 2]` and the assembled body holds `[index=000]` and `[index=002]` only.
+10. **`_run_batch_consult` puts the map in the `do_task` ctx** (class `TestRunBatchConsult`, line ~951). Monkeypatch `do_task` to capture `ctx` and return a success with `parsed_response={"jobs": []}`.
+    - Call with `row_indexes=[20, 21]` and 2 jobs: assert `ctx["batch_index_map"] == {20: jobs[0], 21: jobs[1]}`.
+    - Call with no `row_indexes`: assert `"batch_index_map" not in ctx`. This guard covers the evaluate_jd / qualify callers.
+11. **`render_verdict` carries `batch_index`** (beside `test_render_verdict_forwards_do_task_harvest`, line ~7431). Capture the `_prep_live_content` `position` and the `do_task` ctx.
+    - `batch_index=24` gives `position == 24` and `ctx["batch_index_map"] == {24: <job_row>}`.
+    - With the kwarg omitted: `position == 0` and the map is `{0: <job_row>}`.
+12. **`run_consult_task` forwards `batch_index_offset`** (`TestRunConsultTask`, line ~492, same mocks as `test_ast503_routes_two_passed_jd_jobs_to_grade_do_batch`):
+    - (a) N>1 `grade_do` with `batch_index_offset=40`: the `grade_do_batch` mock is awaited with `batch_index_offset=40`.
+    - (b) N==1 `grade_get` with `batch_index_offset=7`: `render_verdict` is awaited with `batch_index=7`.
+    - (c) Alias `meteorite_grade_get` with N>1 and `batch_index_offset=40`: `_consult_scored_dispatch_batch_encoded` is awaited with `batch_index_offset=40`.
+13. **Wrappers forward the offset** (*branch*). Parametrize over `grade_do_batch`, `grade_get_batch`, `grade_like_batch` and `meteorite_like_batch`, with `_consult_scored_dispatch_batch_encoded` mocked. Calling with `batch_index_offset=5` awaits it with the right task key and `batch_index_offset=5`.
+
+**`tests/component/core/test_dispatcher.py`**
+
+14. **Chunk offsets** (class `TestRunUnified`, line ~238, modelled on `test_ast502_chunked_evaluate_await_chunk0_sleep_once_then_gather_tails`). Claim 5 jobs with `batch_size=2` and a chunk-exhaust key (e.g. `grade_get`). The `run_capture` stub records kwargs. Assert the `batch_index_offset` values are `{0, 2, 4}`, mapping chunk index `ci` to `ci*2`. *Red at base* (kwarg absent).
+15. **Per-entity offsets** (`TestRunUnified`). `batch_call_mode=0`, 3 claimed entities. Assert each `run_consult_task` await for entity `k` carries `batch_index_offset=k`, so offsets `{0, 1, 2}` follow claimed order and not completion order. *Red at base.*
+16. **`repeat_processed` across runs of one ctx** (`TestRunUnified`). Call `_run_unified` twice with the same `ctx`:
+    - Run 1 claims `[A, B]`.
+    - Run 2 claims `[B, C]`, with `run_consult_task` returning `total_processed=2`.
+
+    Assert run 1 has `repeat_processed == 0`, run 2 has `repeat_processed == 1`, and `ctx["dispatch_seen_ids"] == {A, B, C}`. *Red at base.*
+17. **Falsy ids and the outage `min()` guard** (*branch*).
+    - (a) An entity dict with no `astral_job_id` / `company_id` / `astral_candidate_id` is neither counted as a repeat nor added to `seen`.
+    - (b) Run 2 re-claims 2 seen ids, but the mocked consult returns `total_processed=0` (an outage-zeroed chunk). Assert `repeat_processed == 0`, not 2.
+18. **`[bug-repro]` loop dedupe** (class `TestRunDispatchLoop`, line ~2051). Mock `_run_task` to return, in order:
+    - `{total_processed: 27, total_passed: 4, …, repeat_processed: 0}`
+    - `{total_processed: 23, total_errors: 23, repeat_processed: 23}`
+    - then a zero summary, which hits the `0 processed` stop.
+
+    Assert `accumulated["total_processed"] == 27`, with passed and errors summed as usual (4 / 23). *Red at base*: 50.
+19. **Loop stop still reads the raw per-run value** (*guard*, `TestRunDispatchLoop`). A run returns `{total_processed: 3, repeat_processed: 3}`. The loop does **not** stop on "0 processed" after it: assert `_run_task` is awaited again, given `max_runs` allows it.
+
+**Bible** (`docs/test-bible/core/agent.md`, `core/consult.md`, `core/dispatcher.md`). In each, add an `AST-2093` block in the page's existing manifest-row format: one row per node above for that module (agent: 1–7, consult: 8–13, dispatcher: 14–19). Tag the `[bug-repro]` rows (1, 2, 3, 8, 14, 15, 16, 18). Note the LOCKED_AT_100 branch each *branch* row closes. Do not touch other rows.
+
+**Verify (for `test-fix`):**
+
+`/home/susan/astral/.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_consult.py tests/component/core/test_dispatcher.py -q -rf`
+
+- The new nodes are all green.
+- The failing-id set equals the `ftr` base reds: 80 in total, including the 12 dispatcher reds recorded at `823d376` on AST-2093.
+- Branch coverage on the three modules is still 100%.
+- Every `[bug-repro]` node fails when run against a `git archive 823d37605` export.
+
+### Blast radius
+
+- Only `tests/component/core/test_{agent,consult,dispatcher}.py` and the three bible pages change.
+- New classes are additive. Existing fixtures (`sqlite_in_memory` / `seeded_db` in `tests/component/core/conftest.py`) are used, not changed.
+- Nodes 14–17 share `ctx` dicts. Each test builds its own `ctx`, so `dispatch_seen_ids` must not leak between tests (no module-level ctx).
+- Pre-existing `ftr` reds (80, listed on AST-2093 test-fix) stay out of scope. New nodes must not depend on any red-path fixture.
+
+### What must still hold
+
+- Betty's five AST-2093 qa-handoff edits in `test_dispatcher.py` stay as written: `test_ast505…`, `test_ast502…`, the two per-entity outage nodes, and `test_run_unified_candidate_claim_gate`.
+- `TestPrepLiveContentBranches` `[index=000]: jd text` default-position node stays green unchanged.
+- Existing positional-decode nodes (`TestDecodePayload`, `TestAst697…`, `TestAst880…` vet branch) stay green unchanged. The vet branch takes no map.
+- No `src/` or `data/` edits. If a node can't go green without a product change, that is a `[qa-handoff]` back to the engineer, not a test tweak.
