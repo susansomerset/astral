@@ -359,3 +359,76 @@ AST-2093 board-joan done — CANON: OK.
 No directive needs amending and nothing here is an Archie-only precedent call (**ESCALATE** not warranted). If product wants a formal pattern for global batch row indexes later, that would be optional documentation outside this bug’s blast radius—not a gate for `make-fix`.
 
 **Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-2093 proceeds to make-fix on product only.
+
+
+## Radia review — AST-2093
+
+[code-rubric]
+**Ticket:** AST-2093
+**Publish ref:** `2856ad2634ee00b03a434b22f38555d2ec8c6115` (`origin/sub/AST-2012/AST-2093-grade-batch-unique-index`)
+**Diff base:** `origin/ftr/AST-2012-grade-batch-unique-index...origin/sub/AST-2012/AST-2093-grade-batch-unique-index` (6 files; product + plan doc + 5 `test_dispatcher.py` handoff nodes)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out. `[board-betty] TESTS: REVISE` routed new coverage + `[bug-repro]` to **AST-2095**; **qa-fix (F4) did not run** on this ticket. No `[bug-repro]` tag in the fix diff (only pre-existing tags elsewhere in the repo).
+
+**## What must still hold — OK** (traced against `response-validation-layers.md` § Bug: AST-2093)
+
+| Item | Verdict |
+|------|---------|
+| Rubric / grade semantics, `{letter}0→{letter}1`, `X`→`X0`, duplicate vector codes still raise | Unchanged decode body after `ent` resolution (`agent.py` job/company branch). |
+| Per-line malformed → `decode_failures`, not batch kill; clean row wins | Same `decode_failures` append paths; now use `ent[id_key]`. |
+| Retry-holding / provider holds | No edits to transition or hold paths. |
+| `qualify_meteorite` / evaluate_jd / qualify assemblers | Out of diff. |
+| No `batch_index_map` → positional decode | `elif pos < 0 or pos >= len(batch_entities)` branch preserved. |
+| `do_task` `_c{batch_chunk_index}` dedupe (AST-502) | `batch_chunk_index` still forwarded on chunk path only. |
+| Chunk 0 warm, then parallel tails | Chunk loop structure unchanged; only `batch_index_offset=ci * chunk_sz` added. |
+| Loop termination (`0 processed`, `max_runs`, drain) | Stop still uses raw `summary.get("total_processed", 0)`; dedupe applies only to `accumulated["total_processed"]`. |
+| Stranded `METEORITE_FAILED_TECHNICAL_GET` jobs not reset | No migration/reset code. |
+
+## Canon scores
+
+(no frozen Canon Scope / directive ids on AST-2093 or orphaned AST-2012 mini-parent — **zero ids to score**; `[board-joan] CANON: OK` was overlap triage only, not per-directive plan-stage grades)
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (no F3 `validate-plan` fix-mode column; Joan fix-board narrative only)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling test gap (AST-2095):** Betty’s REVISE list (`batch_index_map`, assemble shape, decode repro, `repeat_processed` dedupe) is **not** on this branch by design; UT should not treat missing those tests as a blocker on AST-2093.
+- **Sibling test carry:** `tests/component/core/test_dispatcher.py` changes (`6a2bc960f` / Betty `merge-tests`) are **this ticket’s** qa-handoff alignment for `repeat_processed` + `batch_index_offset` — not AST-2095 product scope.
+- **Hot-file overlap:** Same files as in-flight AST-2015 / AST-2089; this diff stays narrow (signature + one `task_ctx` line in `_run_batch_consult`). Expect textual conflict on refresh-ftr — coordinate merge order, not a defect in this fix.
+- **Hedy qa-handoff note:** Alternative of carrying `repeat_processed` via `ctx` instead of `_run_unified` return was raised; **implementation matches approved plan** (return dict + loop subtract). No action unless Susan wants the alternate shape before UT.
+
+## What's solid
+
+- Plan steps 1–18 land as described: global indexes via `batch_index_offset`, single `[index=NNN]` labels (no `NNN: ` prefix), `batch_index_map` in decode ctx, map-aware `_decode_payload` (unknown skip + duplicate → one `decode_failures`), prompt text in four grade cache_prompt rows, `dispatch_seen_ids` / `repeat_processed` dedupe without polluting ledger keys.
+- Full-batch non-chunk path correctly relies on default `batch_index_offset=0` (global claim order).
+- Acceptance criteria in Linear description are marked met and match the diff.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (clean, C7 complete) | **Normal** (parent AST-2012 not Done; `ftr/AST-2012-grade-batch-unique-index` base) → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing**; `resolve-child` **skipped**. |
+
+(Plan text calls AST-2012 an “orphaned Bug mini-parent” for **documentation/intake**; spawn prompt correctly uses **ftr**, not ORPHANED→`dev` merge.)
+
+context_tokens≈28000
