@@ -1958,6 +1958,21 @@ Test gap for **AST-2053** (`2d1b73da1`): in `_decode_payload`'s non-vet encoded 
 - **Green** — ftr tip `3d51b06c7` (AST-2053 `2d1b73da1` merged): 12 passed.
 - **Out of scope:** `TestDoTask::test_returns_decode_and_post_decode_validation_errors` is red on **both** trees at its first assert (`'empty agent_payload' in 'Agent failure: nope'` — failure-envelope drift, one of the pre-existing `test_agent.py` reds per AST-2057 Boundaries); its `0|CRX2` assert is never reached.
 
+### AST-2090 · AST-2015 (bug-repro — AST-2089 salvaged_response on rubric envelope failure, agent side)
+
+Test gap for **AST-2089** (`f3897829d`). In `do_task`'s AST-1839 branch (rubric-encoded, envelope `status == "failure"`), when `ctx.batch_entities` is present, the payload goes through the success-path bar (`_normalize_rubric_task_response` → `_coerce_schema_str_fields_from_list` → `_validate_response_schema` → `_validate_grade_confidence_in_payload`). If that yields ≥1 job / company it is returned as `salvaged_response`; otherwise `salvaged_response` is `None`. The failure result is otherwise unchanged (`success False`, `agent_failure True`, `parsed_response None`, `error "Agent failure: <note>"` — **AST-1846** rows above still hold). Consumer: **`core/consult.md`** (**AST-2090**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Clean lines salvaged (empty job-ID slot → `company_job_id None`, title/link in place); AST-1846 fields unchanged | `src/core/agent.py` (`do_task`) | **`TestAst2089DoTaskSalvagedResponse::test_envelope_failure_salvages_clean_lines`** (**bug-repro**) |
+| Empty / letter-pipe garbage / bad-confidence-only payload → `None` | same | **`…::test_no_salvage_without_a_clean_line`** (guard, 3 params) |
+| Schema-invalid decode → `None` | same | **`…::test_no_salvage_when_schema_invalid`** (guard) |
+| No `batch_entities` → `None` | same | **`…::test_no_salvage_without_batch_entities`** (guard) |
+
+**Integration:** none.
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):** red with pre-fix `22ff5e47a` `src/core/agent.py` + `src/core/consult.py` overlaid (scratch worktree) — repro fails `assert None == {'jobs': …}` (no `salvaged_response`); guards pass. Green on ftr tip `e8119b1da`. Run command and consult half: **`core/consult.md`** § AST-2090.
+
 ### AST-2006 · AST-2000 (bug — runtime empty-token guard)
 
 **Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `do_task` resolves every segment with an `empty_tokens` collector; any blank recognized token in a segment that is actually sent → no provider call, no hop ledger, one ERROR (`<index> | <task> skipped — empty tokens …`), result carries `empty_tokens` + `empty_token_task` (the failing hop's key on a mid-chain hop). Agent content counts only when a segment references `{$SELECTED_AGENT}`; intake-snapshot-replaced segments are dropped. AST-530 `_mid_chain_empty_caller_tokens` is folded into this guard. Siblings: config collector **`utils/config.md`**, routing **`core/consult.md`** / **`core/roster.md`** / **`core/candidate.md`** / **`core/intake.md`**, probe **`ui/api/api_admin.md`** (all § AST-2006).

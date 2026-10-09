@@ -10328,6 +10328,75 @@ class TestAst1846DoTaskAgentFailureFlag:
         assert out.get("agent_failure") is not True
 
 
+class TestAst2089DoTaskSalvagedResponse:
+    """AST-2089 bug-repro (AST-2090): rubric envelope failure on a batch keeps cleanly decoded lines in salvaged_response."""
+
+    NOTE = "Unable to determine a company job ID for listing 002; required for payload."
+
+    @staticmethod
+    def _ctx(*job_ids: str) -> Dict[str, Any]:
+        return {"astral_candidate_id": "somerset", "candidate_data": {}, "batch_entities": _batch_entities(*job_ids)}
+
+    async def _run(self, monkeypatch: pytest.MonkeyPatch, payload: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4-flash")
+        )
+        envelope = {"agent_performance": {"status": "failure", "failure_note": self.NOTE}, "agent_payload": payload}
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_llm_compat",
+            AsyncMock(return_value={
+                "success": True, "parsed_response": envelope, "api_response": _api_response("env"), "timesheet": {},
+            }),
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        return await agent_mod.do_task("qualify_job_listings", index="qualify_job_listings_batch_b2089", ctx=ctx)
+
+    @pytest.mark.asyncio
+    async def test_envelope_failure_salvages_clean_lines(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2015 production shape: model says failure over one listing; the other lines decode cleanly.
+        out = await self._run(
+            monkeypatch,
+            "000|CRA4||Staff Engineer|https://x.example/jobs/1\n001|CRF5",
+            self._ctx("job-0", "job-1", "job-2"),
+        )
+        # AST-1846 contract unchanged on the failure result.
+        assert (out["success"], out["agent_failure"], out["parsed_response"]) == (False, True, None)
+        assert out["error"] == f"Agent failure: {self.NOTE}"
+        assert out.get("salvaged_response") == {"jobs": [
+            {
+                "astral_job_id": "job-0",
+                "grades": [{"vector": "CR", "grade": "A", "confidence": 4}],
+                "company_job_id": None,
+                "job_title": "Staff Engineer",
+                "job_link": "https://x.example/jobs/1",
+            },
+            {"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "F", "confidence": 5}]},
+        ]}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("payload", ["", "not a grade line at all", "000|CRA9"])
+    async def test_no_salvage_without_a_clean_line(self, monkeypatch: pytest.MonkeyPatch, payload: str) -> None:
+        # Empty, letter-pipe garbage, and a bad-confidence-only line: nothing usable → whole-batch failure as before.
+        out = await self._run(monkeypatch, payload, self._ctx("job-0", "job-1"))
+        assert out["agent_failure"] is True
+        assert out.get("salvaged_response") is None
+
+    @pytest.mark.asyncio
+    async def test_no_salvage_when_schema_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: "jobs[0]: bad")
+        out = await self._run(monkeypatch, "000|CRA4", self._ctx("job-0"))
+        assert out["agent_failure"] is True
+        assert out.get("salvaged_response") is None
+
+    @pytest.mark.asyncio
+    async def test_no_salvage_without_batch_entities(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out = await self._run(monkeypatch, "000|CRA4", {"astral_candidate_id": "somerset", "candidate_data": {}})
+        assert out["agent_failure"] is True
+        assert out.get("salvaged_response") is None
+
+
 class TestAst2006DoTaskEmptyTokenGuard:
     """AST-2006 / AST-2000: a prompt with any blank token is never sent — one ERROR, empty_tokens on the result."""
 

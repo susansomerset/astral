@@ -42,7 +42,7 @@ There is **no** per-source-file branch-lock table (**§6b**). Prefer adding or e
 
 1. **Patterns approved** — both files `status: approved`, `approved_by: Archie`, `proposed_in: AST-1166`; `canonical_refs` point at `src/ui/frontend/src/App.css` symbols `.btn.primary` / `.btn.secondary` / `.btn.danger` / `.btn.primary.in-flight` and `.icon-control`.
 2. **Catalog indexes** — README harvested-corpus rows list both ids as `approved`; HARVEST has supporting-package + Crosswalk `create (AST-1300)` rows (no define-parent AC cite-map rows).
-3. **App.css contract** — TOC lines `14. Shared button roles` / `15. Icon control`; selectors above exist; `.btn.primary` uses `var(--cta-green)`; `.btn.primary.in-flight` uses `var(--accent-gold)`; `.btn.danger` uses `var(--danger)` + `#fff`; leftover `.modal-btn` / `.dep-btn` / `.job-list-icon-btn` / `.list-page-bulk-btn` still present.
+3. **App.css contract** — TOC lines `14. Shared button roles` / `15. Icon control`; selectors above exist; `.btn.primary` uses `var(--cta-green)`; `.btn.primary.in-flight` uses `var(--accent-contrast)` (was `--accent-gold`; renamed by AST-2076); `.btn.danger` uses `var(--danger)` + `#fff`; leftover `.modal-btn` / `.dep-btn` / `.job-list-icon-btn` / `.list-page-bulk-btn` still present.
 4. **Scope gate** — no TSX `className` uses catalog `btn primary|secondary|danger` or `icon-control`; no `Button.tsx` / `IconControl.tsx`.
 
 ---

@@ -2592,6 +2592,22 @@ async def do_task(
             _note = (_perf.get("failure_note") if isinstance(_perf, dict) else None) or parsed.get("failure_note")
             agent_err = f"Agent failure: {_note or 'Agent returned status=failure with no note'}"
             _warn_hop_no_success(task_key, agent_err)
+            # Keep cleanly decoded lines so a batch caller fails only the gaps, not the batch (AST-2089).
+            # Same validation bar as the success path; any error → None → caller fails the whole batch.
+            salvaged = None
+            if (ctx or {}).get("batch_entities"):
+                try:
+                    from src.core.consult import _normalize_rubric_task_response
+
+                    _cand = _normalize_rubric_task_response(task_key, task_config, parsed["agent_payload"], ctx)
+                    if isinstance(_cand, dict) and schema:
+                        _coerce_schema_str_fields_from_list(_cand, schema, debug=debug)
+                    if (isinstance(_cand, dict) and (_cand.get("jobs") or _cand.get("companies"))
+                            and not _validate_response_schema(_cand, schema, task_key)
+                            and not _validate_grade_confidence_in_payload(_cand, task_key)):
+                        salvaged = _cand
+                except Exception as exc:
+                    logger.debug("%s | no salvage after agent failure: %s: %s", task_key, type(exc).__name__, exc)
             if _should_store:
                 try:
                     await asyncio.to_thread(_store_response_block,
@@ -2606,7 +2622,7 @@ async def do_task(
             _close_hop_ledger(success=False, clear_log=True, failure_error=agent_err)
             return _with_harvest({"success": False, "agent_failure": True, "api_response": result.get("api_response"),
                     "parsed_response": None, "error": agent_err, "raw_response": parsed,
-                    "timesheet": result.get("timesheet", {})})
+                    "salvaged_response": salvaged, "timesheet": result.get("timesheet", {})})
         # AST-1072: preserve conversational outcome on result before unwrapping payload.
         if is_conversational_task(task_key):
             _perf_keep = parsed.get("agent_performance")

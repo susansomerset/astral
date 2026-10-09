@@ -11,24 +11,24 @@ Authoritative git workflow for Astral. Supersedes all prior branch law in `orien
 **Statute:** `orch.git.three-permanent-branches`
 **Statute:** `orch.git.flow-direction-inviolable`
 
-Three permanent branches on `origin`. Nothing else is permanent.
+Two permanent branches on `origin`. Nothing else is permanent.
 
 | Branch | Owner | Purpose |
 |--------|-------|---------|
 | `main` | Archie | Production |
-| `dev` | Chuckles | Integration |
-| `tests` | Betty | Cumulative test corpus |
+| `dev` | Chuckles | Integration — product code **and** the cumulative test corpus (`tests/`, `docs/test-bible/`) |
+
+`tests` is **retired** (AST-2107 follow-up). It stays on origin as frozen history; nothing is pushed to it or merged from it. It used to give every test two routes onto a sub (Betty's `merge-tests` and `dev`), and the two copies drifted into conflicts and silent test deletions.
 
 Flow direction is strictly one-way:
 
 ```
-dev   → ftr → sub   (work flows down at dispatch)
-tests → sub         (Betty merge-tests)
-sub   → ftr → dev   (integration flows up)
+dev   → ftr → sub   (work flows down at dispatch / sync-child)
+sub   → ftr → dev   (integration flows up: merge-child, finish-up)
 dev   → main        (release only)
 ```
 
-`tests` never merges into `dev` or `main` directly. `dev` never merges into `tests`. These directions are inviolable.
+Tests and the bible ride the same path as product code: Betty commits them on the sub. One path, one copy of every test.
 
 ---
 
@@ -57,7 +57,6 @@ Assume repo folder name **`<reponame>`** (today: `astral`). Siblings under the p
 | Pattern | Example | Branch context | Owner | Lifespan |
 |---------|---------|----------------|-------|----------|
 | `<reponame>/` | `astral/` | `dev` | Chuckles / Archie | Permanent |
-| `<reponame>-tests/` | `astral-tests/` | `tests` | Betty | Permanent |
 | `<reponame>-<IssueID>/` | `astral-AST-593/` | active `sub/*` | child assignee | Ephemeral — per parent epic |
 
 **Subs get branches, not worktrees.** One **epic worktree** per in-flight parent. Chuckles checks out **one sub-branch at a time** in that worktree.
@@ -68,7 +67,6 @@ Example layout:
 
 ```
 /Users/susan/chuckles/astral                 ← dev (integration)
-/Users/susan/chuckles/astral-tests           ← tests (Betty)
 /Users/susan/chuckles/astral-AST-777         ← sub/AST-777/AST-779 checked out now
 /Users/susan/chuckles/astral-AST-888         ← unrelated parent, parallel in flight
 ```
@@ -93,6 +91,8 @@ Structural enforcement — not prose rules.
 
 Violations fail at commit time with a clear error.
 
+**Merge commits** (a `sync-child` merge on a sub): a role-blocked path may be staged only when it is byte-identical to `HEAD`, `MERGE_HEAD`, or git's own clean auto-merge of that path — the merge takes a side, it never edits another role's files. Resolve such a conflict by taking one side whole (`git checkout origin/dev -- <path>`). `--no-verify` is never needed and never allowed.
+
 ---
 
 ## Child sub-issue sequencing
@@ -114,8 +114,8 @@ Every sub-branch follows this sequence. Ticket ID in every subject is mandatory.
 ```
 plan(AST-NNN)         ← engineer
 code(AST-NNN)         ← engineer: implementation complete
-merge-tests(AST-NNN)   ← Betty: deliver origin/tests <sha> to origin/sub
-test(AST-NNN)         ← engineer: src changes to make tests pass
+test(AST-NNN)         ← Betty: tests + bible, committed on the sub
+test(AST-NNN)         ← engineer: src changes to make tests pass (only if needed)
 docs(AST-NNN)         ← Radia: — clean OR — findings
 resolve(AST-NNN)      ← engineer: — clean OR — findings addressed
 ```
@@ -129,7 +129,7 @@ plan(AST-NNN)
 park-wip(AST-NNN)      ← blocked; work on origin
 merge-resume(AST-NNN)  ← engineer: merge ftr into sub after unblock
 code(AST-NNN)
-merge-tests(AST-NNN)   ← Betty
+test(AST-NNN)          ← Betty
 test(AST-NNN)
 docs(AST-NNN)
 resolve(AST-NNN)
@@ -143,12 +143,12 @@ resolve(AST-NNN)
 | `park-wip()` | Engineer | No | Blocked only |
 | `merge-resume()` | Engineer | No | Paired with each `park-wip()` |
 | `code()` | Engineer | Yes | Implementation complete |
-| `merge-tests()` | **Betty** | Yes\* | Merge her `origin/tests` SHA into sub; push `origin/sub` |
-| `test()` | Engineer | Yes | Src fixes for manifest green (**docs-acceptance** = no src / no scenarios) |
+| `test()` (test tree) | **Betty** | Yes\* | Tests + `docs/test-bible/**` committed on the sub; revisions are further additive commits |
+| `test()` (src) | Engineer | Conditional | Src fixes for manifest green — only when the manifest needed product changes |
 | `docs()` | Radia | Yes | Always — clean or findings |
 | `resolve()` | Engineer | Yes | Always — clean or addressed |
 
-\* **`merge-tests()`** optional when the child is **docs-acceptance** (`test()` / `code()` subject contains that phrase) — no test-tree delivery. `validate-sub-log.sh` enforces this.
+\* Betty's test-tree delivery is optional when the child is **docs-acceptance** (`test()` / `code()` / `docs()` subject contains that phrase). `validate-sub-log.sh` enforces this. A commit never carries both test-tree and `src/` changes. Subs dispatched before this change may still carry a legacy `merge-tests()` delivery; the validator accepts it.
 
 `docs()` / `resolve()` message conventions:
 
@@ -162,44 +162,19 @@ resolve(AST-NNN): — findings addressed
 
 ---
 
-## The tests branch
+## Betty's test delivery
 
-`origin/tests` is Betty's permanent branch — single source of truth for all test code and **`docs/test-bible/**`** updates (and transitional edits to the monolith until AST-598 retirement). Betty works in the permanent **`astral-tests`** worktree on local `tests` tracking `origin/tests`.
+**Statute:** `orch.git.betty-tests-on-sub` (supersedes the retired `orch.git.betty-merge-tests-one-sha`)
 
-### Betty's workflow
+Betty works in the parent's **epic worktree** on the child's sub — the same checkout the engineer uses, never at the same time (Chuckles seeds `betty-AGENTS.md` + the `betty` hook at the Code Complete handoff; `datt_trace` holds a per-worktree lock for each spawn).
 
-1. **Local commit** on `tests` in `astral-tests` (test-lane files only).
-2. **`./scripts/git/validate-tests-branch.sh`** — must pass before push.
-3. **`git push origin tests`** — publish test corpus to `origin/tests`.
-4. **`merge-tests(AST-NNN)`** — from `astral-tests`, integrate that commit onto the sub-branch and push `origin/sub/<parent>/<child>`:
-   - `git fetch origin`
-   - Check out the sub-branch locally (in `astral-tests` worktree — temporary checkout).
-   - `git merge <sha>` where `<sha>` is **the single** Betty commit for this ticket from step 1 (already on `origin/tests`).
-   - Commit message: `merge-tests(AST-NNN): origin/tests <sha>`.
-   - `git push origin HEAD:sub/<parent>/<child>`.
-   - Return to local `tests` branch in `astral-tests`.
-5. **Engineer** resumes in the **ftr worktree** — checks out the sub-branch at the `merge-tests()` tip from origin (merge-on-checkout from `ftr` as usual).
-6. **Engineer** runs tests, fixes `src/` only, commits `test(AST-NNN)`, pushes `origin/sub/...`.
+1. `sync-child.sh <publish-ref> --ftr <parent-segment> --worktree <epic-worktree>` — the sub now has `dev`, the rolled-up ftr, and the engineer's code.
+2. Write / revise tests and the bible against exactly that tree.
+3. Commit `test(AST-NNN): …` (or `docs(AST-NNN): test bible — …`) — test-tree paths only (the `betty` hook blocks `src/` and `docs/features/`).
+4. `git push origin HEAD:sub/<parent>/<child>`. Non-fast-forward → re-run `sync-child.sh`, push again.
+5. **Engineer** re-runs `sync-child.sh`, runs the manifest, fixes `src/` only, commits `test(AST-NNN)` if anything changed, pushes.
 
-Betty **never** uses the ftr worktree. She references `origin/sub/...` read-only during planning (step 1 prep); step 3 is the only write to the sub-branch, and she does it from `astral-tests`.
-
-### `merge-tests()` — one SHA, one merge
-
-**Statute:** `orch.git.betty-merge-tests-one-sha`
-
-Git mechanism is **`merge` + `push`** — Betty merges her `origin/tests` SHA into the sub-branch, then pushes. **`merge-tests()`** is the canonical commit name on the sub-branch.
-
-**One delivery per ticket.** Betty declares exactly **one** SHA per child ticket and produces exactly **one** `merge-tests(AST-NNN): origin/tests <sha>` on `origin/sub/...`. If she revises tests on `origin/tests`, amend or squash on `tests` **before** merging to the sub — **never** push twice and merge twice for the same ticket (that interleaves test SHAs and duplicate merge commits on the sub log).
-
-Betty owns the SHA — she created it in step 1. No Linear comment chain for handoff.
-
-### Why SHA, not branch tip
-
-Betty may be ahead on `origin/tests` writing tests for the next ticket. Merging branch tip would pull tests for unbuilt work. The SHA pins the merge to exactly what is ready for this ticket.
-
-`git merge <sha>` is a true merge, not a cherry-pick.
-
----
+Revisions (a `[qa-handoff]` return, a review finding) are new additive commits. There is no "one delivery" limit, so there is never a reason to rewrite a sub.
 
 ## Chuckles-owned merges
 
@@ -214,15 +189,18 @@ Before `merge-child()`, Chuckles validates the sub-branch log:
 
 - `plan()` present (alias: `docs(AST-NNN): plan — …` from plan-child)
 - `code()` present
-- `merge-tests()` present — **exactly one** per child id — **except docs-acceptance**
+- Betty's test delivery present — a `test()`/`docs()` commit touching `tests/` or `docs/test-bible/` (or a legacy `merge-tests()`) — **except docs-acceptance**
 - `test()` present
+- No single commit changing both `src/` and test-tree paths
 - `docs()` with `— clean` or `— findings`
 - `resolve()` with matching state
 - If `park-wip()`: paired `merge-resume()`
 - No commits to blocked paths (hooks enforce)
 - No **`Merge remote-tracking branch`** (git pull on sub)
 
-**Docs-acceptance:** when `test(AST-NNN):` or `code(AST-NNN):` subject contains **`docs-acceptance`** (Betty/engineer — no test-tree delivery), **`merge-tests()` is not required**. Duplicate `merge-tests()` still fails. Do not invent a Betty delivery to satisfy the gate.
+The validator judges only commits on the sub that are on neither `origin/ftr` nor `origin/dev`, so dev history never counts against a sub. `merge-child.sh` merges `origin/dev` into ftr first when ftr is behind.
+
+**Docs-acceptance:** when a `test(AST-NNN):`, `code(AST-NNN):` or `docs(AST-NNN):` subject contains **`docs-acceptance`** (no test-tree delivery), the test delivery is not required. Do not invent a Betty delivery to satisfy the gate.
 
 **Script (mandatory):** `./scripts/git/validate-sub-log.sh <publish-ref> [child-id] [ftr-ref]` — called by **`merge-child.sh`**.
 
@@ -263,16 +241,15 @@ No-op if ftr unchanged; mandatory every time.
 | `code()` | Engineer | Yes | Implementation complete |
 | `park-wip()` | Engineer | Conditional | Blocked — parked on origin |
 | `merge-resume()` | Engineer | Conditional | Ftr merged after unblock |
-| `merge-tests()` | **Betty** | Yes\* | Deliver `origin/tests` SHA to `origin/sub` (\*skip when docs-acceptance) |
-| `test()` | Engineer | Yes | Src changes — tests pass |
+| `test()` | **Betty** / Engineer | Yes\* | Betty: tests + bible on the sub. Engineer: src changes so tests pass. Never both in one commit (\*Betty's skipped when docs-acceptance) |
 | `docs()` | Radia | Yes | Review — clean or findings |
 | `resolve()` | Engineer | Yes | Review loop closed |
 | `merge-child()` | Chuckles | Yes | Sub → ftr |
 | `finish-up()` | Chuckles | Yes | Ftr → dev (parent close; after Archie sets PR Ready (Linear: Susan)) |
 
-Ten commit types. One owner each.
+Nine commit types, plus the `sync(dev|ftr|publish-ref): …` merge subjects written by `sync-child.sh`, `merge-child.sh` and `refresh-ftr.sh` (scripts never use git's default merge message).
 
-**Deprecated on new work:** `feat()`, `fix()`, and `push-tests()` — use `code()` (build), `test()` (test-child src fixes), and `merge-tests()` (Betty delivery) instead.
+**Deprecated on new work:** `feat()`, `fix()`, `push-tests()`, and `merge-tests()` — use `code()` (build) and `test()` (Betty's tests on the sub; engineer src fixes) instead.
 
 ---
 
@@ -300,9 +277,10 @@ Legacy `worktree/<IssueID>` refs on **origin** should be deleted. Only `sub/*`, 
 - Rebase of any branch pushed to origin
 - Force-push to any branch on origin
 - Simultaneous child subs on the same parent
-- Engineer commits to `tests/`, `docs/ASTRAL_TEST_BIBLE.md`, or `docs/test-bible/**`
-- Betty commits to `src/` or `docs/features/` (except `merge-tests()` merge commit on sub)
-- `tests` merging into `dev` or `main`
+- Engineer commits to `tests/`, `docs/ASTRAL_TEST_BIBLE.md`, or `docs/test-bible/**` (a merge commit may carry them only byte-identical to a parent)
+- Betty commits to `src/` or `docs/features/` (same merge-commit rule)
+- Anything pushed to or merged from the retired `tests` branch
+- `--no-verify` on any commit
 - Any agent creating `ftr/` or `sub/` refs
 - `merge-child()` before Chuckles validates commit sequence
 - Two agents' personas in one ftr worktree at the same time
@@ -328,7 +306,7 @@ Executable procedures live in global Cursor skills under `~/.cursor/skills/`. Ea
 | `orientation` | Cheat sheet + pointer here |
 | `dispatch-parent` | Epic worktree create, branch seed, `seed-agents-md` + hook |
 | `plan-child` … `resolve-child` | Sub-branch commit sequence |
-| `qa-child` / Betty test stage | `origin/tests` workflow |
+| `qa-child` / `qa-fix` | Betty's tests committed on the sub |
 | `merge-child` | Pre-merge validation; sub → ftr |
 | `finish-up` / `prep-uat` | finish-up lands ftr → `origin/dev` (parent close); prep-uat pushes `origin/dev` for staging UAT |
 

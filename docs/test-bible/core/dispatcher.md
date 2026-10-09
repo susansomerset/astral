@@ -769,6 +769,10 @@ grep -n '^_auto_thread_cap_override: Optional\[int\] = None' src/core/dispatcher
 
 **New:** `TestRunUnified::test_ast2025_fetch_relative_jd_claims_trigger_state_and_releases_on_error` — claim by `RELATIVE_JOB_LINK` for the candidate with `states == ["RELATIVE_JOB_LINK", "RELATIVE_JOB_LINK_RETRY"]` only; `clear_job_batch(batch_id)` still runs when the runner raises; `dispatch_task_key` forwarded. Green on the pre-AST-2025 tree too (generic job path + AST-2024 config) — a regression guard, not a red-first node. Primary manifest: **`docs/test-bible/core/gazer.md`** § AST-2025.
 
+### AST-2091 · AST-2013 (`run_task` rubric gate)
+
+**New:** `TestAst2091RunTaskRubricGate` — duplicate / empty rubric → `run_task` returns `False`, no thread, AUTO row gets `auto_mode=0` (Repro 3 / 4); manual row → `False`, no write; craft / non-rubric rows still start. Existing `run_task` cases (`evaluate_jd`) need no stub — embedded QC/GC merge is never empty. Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-2091.
+
 ### AST-2093 · AST-2012 (claimed position → `batch_index_offset`; retry re-claims counted once; test gap AST-2095)
 
 `_run_unified` passes `batch_index_offset=ci * chunk_sz` on the chunk path and the entity's claimed index on the per-entity path (the full-batch call relies on the default 0). Each run records claimed ids in `ctx["dispatch_seen_ids"]` (falsy ids skipped). A normal return adds `repeat_processed = min(repeats, total_processed)`, which is not a `_SUMMARY_ZERO` key. `_run_dispatch_loop` subtracts it from `accumulated["total_processed"]`, but the `0 processed` stop still reads the raw per-run value. Primary block + manifest: [`agent.md`](agent.md) § AST-2093.
