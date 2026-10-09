@@ -404,6 +404,16 @@ Tests 1, 3 and 5 are the red-pre-fix set. Betty tags whichever she proves red ag
 - No assertion depends on gunicorn being importable or installed.
 - Scope: only `tests/component/utils/test_debug_logging.py` and `docs/test-bible/utils/debug_logging.md`. AST-2079's own Scope is test-tree + bible, so there is no `[scope-gate]`.
 
+### QA test manifest (make-fix, publish tip after merge-tests `0a4dd6c23`)
+
+- `[bug-repro]` `tests/component/utils/test_debug_logging.py::TestAst2078GunicornAccessQuietFilter`: 6 passed. Betty proved tests 1, 3 and 5 red on `39bbf7afd`.
+- Bible manifest items 1–9, 11, 12 (the `debug_logging.md` pytest block): 33 passed.
+- AC6 grep gate (`--glob '!**/utils/logging.py'`): same 4 `src/` hits as `origin/dev`, so no new emit paths.
+- No product `src/` change. The product fix is AST-2078 (`2e754b15a`), on this tip via ftr.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/debug_logging.md` — `6028074e43f9b5257b7bd23bcbdfa868146177fa9b471ac4446d925208e63cd2`
+
 ## Joan fix-board — AST-2079
 
 ```
