@@ -1516,3 +1516,64 @@ What: pattern.ui.shared-button-roles (draft) — rename `--accent-gold` to `--ac
 **Roster skim:** Touches `App.css` and scoped `.tsx` files (`astral.ui.frontend-file-placement`). No new React-side business rules (`astral.layers.ui-config-driven-business-logic`). No **active** directive in `canon/directives/active/` names `--accent-gold`. The plan’s blast radius flags `canon/directives/draft/patt.ui.shared-button-roles.md` (`pattern.ui.shared-button-roles`, Archie-approved draft): solution shape still says in-flight primary is “Gold (`--accent-gold`)”, which the product rename and Light purple accents will falsify even though behavior still goes through the renamed token in `App.css`.
 
 **Verdict:** Active in-force canon is not contradicted, but the corpus still needs a small draft-pattern update so the token name and palette-dependent accent prose match the ship. That is F3 (`validate-plan` fix mode), not an Archie escalate.
+
+### Review-fix — Radia (AST-2076)
+
+[code-rubric]
+**Ticket:** AST-2076
+**Publish ref:** `e15b17f6f66df8c1ed8716e5917f3a828a359363` (`origin/sub/AST-2042/AST-2076-light-accent-contrast`)
+**Corpus:** `d245392c31f516562e70e3771abcfdd1192de869` (canon tree at publish tip includes Joan F3 draft-pattern doc commit; ticket/parent **Canon Scope:** none)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE. Fix-board Joan **CANON: REVISE** (draft `patt.ui.shared-button-roles`) addressed on sub by `f3186d4c5` (`--accent-contrast` prose + palette-dependent in-flight note) — advisory context only, not a ticket canon row.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board; F3 canon doc on sub).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `test_AdminThemeExamples.test.tsx`: `[bug-repro] AST-2076: in light and light_parchment, the accent and nav group label resolve to the header colour` resolves `var()` chains in parsed token blocks and asserts `--accent-contrast` and `--nav-group-label` equal `--heading` for `light` / `light_parchment` (fails when accents stayed dark gold). Betty also retargeted AC4 pairwise key to `--accent-contrast` (line 162).
+
+**## What must still hold — OK** — Product commit `e15b17f6f`: mechanical rename across six files; Light / Light (Parchment) accent family `#241b33` / hover / dim; `--heading` and `--nav-group-label` alias `var(--accent-contrast)` in those blocks; Dark / Slate values unchanged aside from token names; grade tokens and Theme Examples option/letterless rows untouched in this commit; no `#hex` added in `.tsx`.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sync(dev) carry:** `git diff origin/ftr/AST-2042-user-theme...e15b17f6f` is large (AST-2043, contact, tracker, etc.), but **`git diff origin/dev e15b17f6f -- src/**` differs only on the six AST-2076 files** listed in plan; other `src/**` paths match `origin/dev` (e.g. `candidate.py` 0-line diff). Do not treat sync(dev) blobs as #2076 product scope.
+- **Canon on sub:** Only `canon/directives/draft/patt.ui.shared-button-roles.md` differs from dev (+18 lines) — matches Joan F3 / plan blast radius; corpus SHA moves at tip.
+- **AC4 nuance:** `light` and `light_parchment` now share the same accent value; Lights still differ pairwise on `--bg-deep` (and `--bg-card`); plan documents shared purple accent as intentional.
+- **UAT:** Nav active link, selected candidate, focus rings, in-flight button — visual purple check in Light / Parchment.
+
+## What's solid
+
+- **Plan fidelity (`e15b17f6f`):** Six-file rename; Light purple accent family; alias pattern for `--heading` / `--nav-group-label`; `accent-gold` absent at tip.
+- **Stack hygiene vs dev:** Isolated product delta is exactly #2076 scope (+ draft canon doc), not a smuggled fix-lane product commit on top of stale ftr.
+- **Tests:** `473ff6bc7` bug-repro + bible renames; AST-2047/2049 guards still in same file.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Normal** (AST-2042 UAT-batch) | → **Review Posted** → fix-lane clean shortcut → **User Testing** (`resolve-child` skipped). |
+
+context_tokens≈16000
+[code-rubric] PROCEED (Commit: e15b17f6f) Light accent purple, token rename
+```
+
+**Stdout recommendation:** **PROCEED** → **User Testing** after Chuckles posts artifact and moves to Review Posted.
