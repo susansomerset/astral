@@ -274,3 +274,9 @@ All in `src/ui/frontend/src/components/BatchAgentDataModal.tsx`. No backend, API
 - **Parent AC9 / §7:** the batch-wide views (no `entityId`) show exactly the tabs and empty state they show today.
 - **AST-2052:** a present SYSTEM with empty caches shows no CACHE tab. Real rows render exactly as before.
 - **Parent AC10:** no change under `src/ui/api/` or `src/data/`.
+
+## Joan fix-board (AST-2075)
+
+[board-joan]  CANON: OK
+
+The patch is frontend-only in `BatchAgentDataModal.tsx` (`ENTITY_CALL_TYPES`, placeholder copy when `entityId` is set, unchanged `?entity_id=` fetch). **patt.entity.batch-processing** is unaffected: `batch_id` / entity-scoped read semantics stay on the backend; this only changes how missing rows are shown in the job run modal, not claim, storage, or join keys. **stat.logging.debug** does not apply to new React UI behavior (backend statute; no new `logger.debug` in `src/core` or elsewhere). Susan’s To-be and D3-2075 explicitly own the placeholder tabs; that is product/display scope within the parent’s already-scoped `BatchAgentDataPanes` work, not a new pattern or statute carve-out. D2’s note that “aged out” may overstate swallowed prompt-storage failures is honest copy/scope for the engineer and Betty, not a canon amendment.
