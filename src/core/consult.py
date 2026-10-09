@@ -2802,6 +2802,25 @@ async def run_consult_task(
                 "total_errors": errors,
                 **_rate_limit_tag(r),
             }
+        if task_key == "company_upshot":
+            r = await _debug_await(
+                "roster.company_upshot_batch",
+                f"batch_id={batch_id}, n={len(entities)}",
+                roster.company_upshot_batch(batch_id, entities, ctx=ctx, debug=debug),
+            )
+            total = r.get("total", len(entities))
+            passed = r.get("passed", 0)
+            failed = r.get("failed", 0)
+            # Retry-routed companies are not run errors (same accounting as prefilter_company).
+            errors = max(0, total - passed - failed - r.get("retried", 0))
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+                **_rate_limit_tag(r),
+            }
+
         if task_key == "vet_inflow_discovery":
             r = await _debug_await(
                 "roster.vet_inflow_discovery_company_batch",

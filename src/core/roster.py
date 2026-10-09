@@ -2216,6 +2216,162 @@ async def prefilter_company_batch(
     return batch_result
 
 
+# ---- Company upshot (AST-2054) ----
+
+def _upshot_fail_dest(entity_state: Optional[str], cfg: Dict[str, Any]) -> str:
+    """First failure → retry holding; a failure out of the retry holding → terminal error (patt.task.dispatch-retry)."""
+    return cfg["error_state"] if (entity_state or "").strip() == cfg["retry_state"] else cfg["retry_state"]
+
+
+def _transition_upshot_failures(companies: List[Dict[str, Any]], cfg: Dict[str, Any], reason: str) -> int:
+    """Route each company to retry or error with a per-item who -> dest [why]. Returns count sent to retry."""
+    retried = 0
+    for company in companies:
+        dest = _upshot_fail_dest(company.get("state"), cfg)
+        transition_company_state(company["short_name"], dest)
+        _log_fail_dest(company["short_name"], dest, reason)
+        if retry_base(dest):
+            retried += 1
+    return retried
+
+
+def _upshot_culture_text(website_content: Any) -> str:
+    """website_content as prompt text: [{url, content}] pages, or a legacy plain string."""
+    if isinstance(website_content, str):
+        return website_content.strip()
+    pages = [
+        p for p in (website_content or [])
+        if isinstance(p, dict) and str(p.get("content") or "").strip()
+    ]
+    return "\n\n".join(f"### {p.get('url') or ''}\n{str(p['content']).strip()}" for p in pages)
+
+
+async def company_upshot_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Pattern-A Estelle upshot batch at UPSHOT_READY: one do_task, decode by company_id,
+    save company_data.company_upshot, transition to WATCH. No verdict fail — only technical
+    failures route, once to the retry holding and then to the terminal error state."""
+    cfg = ROSTER_CONFIG["company_upshot"]
+    agent_task_key = cfg["task_key"]
+    upshot_key = ROSTER_CONFIG["company_data_keys"]["company_upshot"]
+    rows = [
+        {
+            "company_id": c["short_name"],
+            "short_name": c["short_name"],
+            "state": c.get("state"),
+            "company_data": c.get("company_data") or {},
+        }
+        for c in companies
+    ]
+    input_by_id = {r["company_id"]: r for r in rows}
+
+    # One block per company, keyed 000, 001, … to match the agent_task prompt's input contract.
+    blocks: List[str] = []
+    for r in rows:
+        cd = r["company_data"]
+        parts = [f"[company_id={r['company_id']}]", f"\n## Homepage Content\n{(cd.get('homepage_text') or '').strip()}"]
+        culture = _upshot_culture_text(cd.get("website_content"))
+        if culture:
+            parts.append(f"\n## Culture Pages\n{culture}")
+        grades = [g for g in (cd.get("prefilter_grades") or []) if isinstance(g, dict)]
+        if grades:
+            lines = "\n".join(f"- {g.get('vector')}={g.get('grade')}: {g.get('reason') or ''}" for g in grades)
+            parts.append(f"\n## Prefilter Grades\n{lines}")
+        blocks.append("\n".join(parts))
+    live_content = enumerate_array(
+        "COMPANY UPSHOT ROWS",
+        blocks,
+        index_key="index",
+        index_values=[f"{i:03d}" for i in range(len(rows))],
+    )
+
+    task_ctx = {**(ctx or {}), "batch_entities": rows, "batch_size": len(rows)}
+    do_index = f"company_upshot_batch_{batch_id}"
+    logger.debug("Calling agent.do_task: task_key=%s index=%s", agent_task_key, do_index)
+    logger.debug("Calling agent.do_task live_content: %s", live_content)
+    result = await do_task(
+        task_key=agent_task_key,
+        live_content=live_content,
+        index=do_index,
+        ctx=task_ctx,
+        debug=debug,
+    )
+    logger.debug("Response from agent.do_task: %s", result)
+
+    if not result.get("success"):
+        if is_provider_balance_refusal(result):
+            # Provider refused for balance: hold state; the dispatcher stops the run and alerts once.
+            return {
+                "passed": 0,
+                "failed": 0,
+                "total": len(rows),
+                "failure_class": result.get("failure_class"),
+                "state_held": True,
+            }
+        if result.get("empty_tokens"):
+            # Data defect, not an agent miss: straight to the terminal error, never the retry holding.
+            for r in rows:
+                transition_company_state(r["short_name"], cfg["error_state"])
+                _log_fail_dest(r["short_name"], cfg["error_state"], "empty prompt tokens")
+            return {"passed": 0, "failed": 0, "total": len(rows), "retried": 0}
+        retried = _transition_upshot_failures(rows, cfg, f"do_task: {result.get('error') or 'do_task failed'}")
+        return {"passed": 0, "failed": 0, "total": len(rows), "retried": retried, **_rate_limit_tag(result)}
+
+    response_companies = (result.get("parsed_response") or {}).get("companies") or []
+    received_ids = {rc.get("company_id") for rc in response_companies}
+    missing_rows = [r for cid, r in input_by_id.items() if cid not in received_ids]
+    retried = _transition_upshot_failures(missing_rows, cfg, "upshot batch omitted this id")
+
+    passed = 0
+    saved: Set[str] = set()
+    seen: Set[str] = set()
+    for rc in response_companies:
+        cid = rc.get("company_id")
+        # Fabricated ids never touch a row this batch didn't claim; a repeated id is decoded once.
+        if cid not in input_by_id or cid in seen:
+            continue
+        seen.add(cid)
+        upshot = str(rc.get("upshot") or "").strip()
+        if not upshot:
+            retried += _transition_upshot_failures([input_by_id[cid]], cfg, "empty upshot")
+            continue
+        try:
+            save_company_data(cid, {upshot_key: upshot})
+            transition_company_state(cid, cfg["pass_state"])
+        except ValueError as e:
+            logger.debug(
+                "%s | company upshot save\n  %s: %s\n  Routing to retry or error",
+                cid,
+                type(e).__name__,
+                e,
+                exc_info=True,
+            )
+            retried += _transition_upshot_failures([input_by_id[cid]], cfg, f"save: {type(e).__name__}: {e}")
+            continue
+        _entity_info(cid, "company", "upshot saved", f"{len(upshot.split())} words")
+        saved.add(cid)
+        passed += 1
+
+    agent_ref = result.get("agent_ref")
+    if agent_ref and saved:
+        try:
+            ensure_batch_response_entity_ids(TASK_CONFIG[agent_task_key]["entity_type"], sorted(saved), agent_ref)
+        except Exception as stamp_err:
+            logger.exception(
+                "%s | company ensure_batch_response_entity_ids\n  %s: %s\n  Continuing without stamping those entity ids",
+                batch_id,
+                type(stamp_err).__name__,
+                stamp_err,
+            )
+
+    return {"passed": passed, "failed": 0, "total": len(rows), "retried": retried}
+
+
+
 # ---- Find job page ----
 
 def _locate_empty_token_error(short_name: str, company_website: str, res: Dict[str, Any]) -> Dict[str, Any]:
