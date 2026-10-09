@@ -19,14 +19,14 @@ Checked against this ticket's `## Scope` (verbatim from parent).
 | `src/core/roster.py`, `gazer.py`, `consult.py`, `meteorite.py` — writers read config | Yes |
 | `src/core/contact.py`, `src/core/dispatcher.py`, `recommendedJobReport.tsx` — comments only | Yes |
 | `data/admin/dispatch_task.json` — notify seed trigger | Yes |
-| **`src/core/candidate.py`** — candidate craft-chain failure writer | **No — gap** |
+| `src/core/candidate.py` — `_requested_stage_failure_target` and the `run_requested_artifacts_dispatch` empty-token arm land a failing hop on its own `ERROR_<HOP TASK_KEY>` | Yes (added after the `[scope-gate]`; see Revisions) |
 
-**Gap: `src/core/candidate.py`.** Scope says "TASK_CONFIG `error_state` (artifact and candidate chain hops each name their own)", and the parent's Candidate table maps `REQUESTED_RESUME_ERROR` / `REQUESTED_ARTIFACTS_ERROR` to `ERROR_<HOP TASK_KEY>` per hop. The only writer of those states is `src/core/candidate.py`, which is not listed:
+`src/core/candidate.py` holds the only writers of the candidate error states:
 
 - `_requested_stage_failure_target` (line 3760) returns `CANDIDATE_STATES[primary]["error_state"]`.
 - `run_requested_artifacts_dispatch` empty-token arm (line 3811) reads `CANDIDATE_STATES[...]["error_state"]`.
 
-If config drops `REQUESTED_*_ERROR` and only config changes, these two reads break (`KeyError` on `error_state`, or a write to a name the registry no longer holds). AC 1 and AC 2 cannot pass without removing the stage-level error names. **Stage 7** below holds the exact change. It is **blocked** until `src/core/candidate.py` is added to Scope. Status goes to **Plan Discuss** with a `[scope-gate]` comment.
+Both switch to the failing hop's `TASK_CONFIG` `error_state` in **Stage 7**.
 
 ---
 
@@ -77,7 +77,7 @@ These settle the parent table's open cells and the places where the table and th
 | `src/core/dispatcher.py` | Docstring/comment wording only | core |
 | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | Doc comment wording only | ui |
 | `data/admin/dispatch_task.json` | `meteorite_bot_blocked_notify.trigger_state` | data |
-| `src/core/candidate.py` | **Pending scope amendment (Stage 7)** — per-hop craft error | core |
+| `src/core/candidate.py` | Craft-chain failure writers read the failing hop's `TASK_CONFIG` `error_state` (Stage 7) | core |
 
 No `tests/`, `docs/test-bible/**`, `docs/ASTRAL_TEST_BIBLE.md`, `src/data/database.py`, migrations or `canon/` edits.
 
@@ -101,7 +101,7 @@ No `tests/`, `docs/test-bible/**`, `docs/ASTRAL_TEST_BIBLE.md`, `src/data/databa
 
 ## Stage 2: Config — task configs, registries, transitions, Skipped, dispatch rule, retired map
 
-**Done when:** config imports with every module assert green. The AC 1 script prints nothing, except `bad REQUESTED_RESUME_ERROR` / `bad REQUESTED_ARTIFACTS_ERROR` while Stage 7 is blocked; the same two names are the only allowed non-map AC 2 hits until then. AC 6 prints `BUILD_ARTIFACTS` for all six keys, and all 10 `BUILD_ARTIFACTS_CHAIN_TASK_KEYS` resolve to `BUILD_ARTIFACTS`. `git grep -nwE '<AC 2 pattern>' -- src/utils/config.py` hits only lines inside `RETIRED_TERMINAL_STATE_MAP` plus the condition-word lines named in the AC 2 Decision. The AC 3-style grep over `config.py` for `"ERROR_[A-Z_]+"|"BOT_BLOCKED_[A-Z_]+"` hits nothing.
+**Done when:** config imports with every module assert green. The AC 1 script prints nothing. AC 6 prints `BUILD_ARTIFACTS` for all six keys, and all 10 `BUILD_ARTIFACTS_CHAIN_TASK_KEYS` resolve to `BUILD_ARTIFACTS`. `git grep -nwE '<AC 2 pattern>' -- src/utils/config.py` hits only lines inside `RETIRED_TERMINAL_STATE_MAP` plus the condition-word lines named in the AC 2 Decision. The AC 3-style grep over `config.py` for `"ERROR_[A-Z_]+"|"BOT_BLOCKED_[A-Z_]+"` hits nothing.
 
 Apply the **split rule** to every registry, list and map in this stage:
 
@@ -201,7 +201,7 @@ The mapping (retired → new, by writing task_key) is the parent's Pipeline flow
 6. **`CANDIDATE_STATES`:**
    - Delete `REQUESTED_RESUME_ERROR` / `REQUESTED_ARTIFACTS_ERROR` and the `error_state` key on `REQUESTED_RESUME` / `REQUESTED_ARTIFACTS`.
    - Add the 8 `CANDIDATE_CRAFT_CHAIN_ERROR_STATES` keys (prior `["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"]`, `progress_rank: 6`) via a comprehension merged after the literal.
-   - **Do not land this step until Stage 7 is unblocked**, because `candidate.py` reads the deleted `error_state`. Until then, commit Stage 2 with steps 6 and 10's candidate entries held back (see Stage 7).
+   - `candidate.py` still reads the deleted `error_state` until Stage 7 lands. That is the same between-stage gap every core writer has until its own stage; the slice is atomic at ticket level.
 7. **`METEORITE_STATES`:**
    - `NEW` prior → `[error_state_for("stage_meteorite")]`.
    - `SCRAPE_LINK` prior → `["NEW", retry_of("SCRAPE_LINK"), error_state_for("stage_meteorite", "UNPARSEABLE"), error_state_for("land_meteorite"), error_state_for("scrape_meteorite")]`. That is the split rule on `SCRAPE_ERROR` plus the human retry from the terminal.
@@ -374,15 +374,15 @@ Bind `cfg = METEORITE_INGRESS_DISPATCH_CONFIG` where a function doesn't already.
 5. **Notify / paste recovery** (2434, 2447, 2464, 2484): `list_meteorites_by_state(METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"])`, and the same name for the `apply_paste` state check and `from_state`.
 6. **`data/admin/dispatch_task.json`:** the `meteorite_bot_blocked_notify` row `trigger_state` → `"BOT_BLOCKED_SCRAPE_METEORITE"`.
 
-## Stage 7: Candidate craft-chain per-hop error — ⛔ BLOCKED on scope amendment
+## Stage 7: Candidate craft-chain per-hop error
 
-**Precondition:** `src/core/candidate.py` added to this ticket's Scope, with Files Changed updated in a `## Revisions` entry. Until then, do not run this stage and hold back Stage 2 steps 6 and 10's candidate entries. Stages 3–6 and 8 do not depend on it.
+**Done when:** `git grep -nE 'CANDIDATE_STATES\[.*\]\["error_state"\]' src/core/candidate.py` is empty, `git grep -nwE 'REQUESTED_RESUME_ERROR|REQUESTED_ARTIFACTS_ERROR' -- src/core` is empty, and `python3 -c "import src.core.candidate"` succeeds.
 
-**Done when:** `git grep -n '"error_state"\]' src/core/candidate.py` shows no read of `CANDIDATE_STATES[...]["error_state"]`, and `import src.core.candidate` succeeds.
+`TASK_CONFIG` is already imported in `candidate.py`. All 8 craft hops carry `error_state` after Stage 2 step 1.
 
-1. `_requested_stage_failure_target(primary_state, current_state, task_key: str)`: the non-primary arm returns `TASK_CONFIG[task_key]["error_state"]`. The exception-path call (≈3843) passes `start_key`. A non-bare trigger already returns early, so the failure happened on the entry hop.
-2. Empty-token arm (≈3811): `err_state = TASK_CONFIG[(response.get("empty_token_task") or start_key)]["error_state"]`. Update the AST-2000 comment.
-3. Then land Stage 2 steps 6 and 10 (candidate) in the same commit.
+1. `_requested_stage_failure_target(primary_state, current_state, task_key: str)`: the primary arm still returns `cfg["retry_state"]`. The other arm returns `TASK_CONFIG[task_key]["error_state"]`. Update the docstring: "primary → retry_state; already on retry → the failing hop's ERROR_<HOP>".
+   - The exception-path call (≈3843) passes `start_key`. By then a held hop label has already returned early (≈3837), so the state is still the bare trigger and the failure happened on the entry hop.
+2. Empty-token arm (≈3811): `err_state = TASK_CONFIG[(response.get("empty_token_task") or start_key)]["error_state"]`. Reword the AST-2000 comment to "data defect — the failing hop's own error_state, never retry".
 
 ## Stage 8: Comments, frontend doc, verification
 
@@ -400,7 +400,7 @@ Bind `cfg = METEORITE_INGRESS_DISPATCH_CONFIG` where a function doesn't already.
    - **AC 7** — covered by the Stage 2 module assert; config import proves it.
    - **Compile/lint:**
      - `python3 -m compileall -q src`
-     - `ruff check src/utils/config.py src/core/roster.py src/core/gazer.py src/core/consult.py src/core/meteorite.py src/core/contact.py src/core/dispatcher.py` (plus `src/core/candidate.py` once Stage 7 runs)
+     - `ruff check src/utils/config.py src/core/roster.py src/core/gazer.py src/core/consult.py src/core/meteorite.py src/core/contact.py src/core/dispatcher.py src/core/candidate.py`
      - `cd src/ui/frontend && npx eslint src/lib/recommendedJobReport.tsx`
    - **Smoke** — `python3 -c "import src.core.dispatcher, src.core.roster, src.core.gazer, src.core.consult, src.core.meteorite, src.core.contact"`.
 
@@ -445,7 +445,7 @@ AC 5 (scrape retry) and AC 4's behaviour half are Betty's component tests.
 
 The plan is binding. The agent:
 
-- Executes steps in order within a stage, and stages in order. Stage 7 waits on the scope amendment and Stage 9 on AST-2054. Neither blocks Stages 1–6 and 8.
+- Executes steps in order within a stage, and stages in order. Stage 9 waits on AST-2054 reaching `origin/dev`; it does not block Stages 1–8.
 - Does not skip, reorder, combine or expand steps. Does not add files, modules, configs or dependencies that aren't in the plan.
 - Never merges `origin/ftr/AST-2054-*` or `origin/sub/AST-2054/*`. Never edits `tests/`, `docs/test-bible/**`, `docs/ASTRAL_TEST_BIBLE.md` or `src/data/database.py`.
 - When a step is ambiguous, contradicts another step, references something that doesn't exist, or fails when executed literally, it **stops, comments on the Linear parent issue, and waits**. The same applies when the codebase has drifted from what the plan assumes (line numbers are approximate; function and variable names are binding).
@@ -460,6 +460,17 @@ Step: <step number and text>
 Issue: <what's ambiguous, missing, or broken>
 Proposed resolutions: <2-3 options, or "need guidance">
 ```
+
+## Revisions
+
+Revision 1 — 2026-10-09
+Driven by: Chuckles cleared the `[scope-gate]` and amended AST-2086 `## Scope` (and parent AST-2073 component Scope) to add `src/core/candidate.py` (`_requested_stage_failure_target` and the `run_requested_artifacts_dispatch` empty-token arm land a failing hop on its own `ERROR_<HOP TASK_KEY>`).
+Changes:
+- The scope-gate table now covers `candidate.py`, and Files Changed lists it.
+- Stage 7 is unblocked: its precondition and the "land Stage 2 candidate entries in the same commit" step are removed, its Done-when grep is tightened to `CANDIDATE_STATES[...]["error_state"]` reads, and the docstring and comment wording is spelled out.
+- Stage 2 no longer holds back the candidate registry change, and its Done-when no longer allows the two `REQUESTED_*_ERROR` exceptions.
+- The Stage 8 ruff list includes `candidate.py`, and the execution contract only gates Stage 9.
+- Stage 9 (AST-2054 upshot rename, gated on `origin/dev`) is unchanged.
 
 ## Estimate
 
