@@ -496,6 +496,26 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-2054: Estelle company upshot — one call per batch; saved to company_data.company_upshot.
+    # Routing lives in ROSTER_CONFIG["company_upshot"] (defined below TASK_CONFIG, so literals here).
+    "company_upshot": {
+        "response_format": "json",
+        "response_schema": {
+            "companies": {
+                "type": "list", "required": True,
+                "items_schema": {
+                    "company_id": {"type": "str", "required": True},
+                    "upshot": {"type": "str", "required": True},
+                },
+            },
+        },
+        "context_format": "company_upshot_{index}",
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "UPSHOT_READY",
+        "pass_state": "WATCH",
+        "error_state": "ERROR_UPSHOT",
+    },
     "select_job_page": {
         "response_schema": {
             "selected_page": {"type": "int", "required": True},
@@ -1292,6 +1312,12 @@ COMPANY_STATES = {
     "VET_FAILED": {},
     "NO_PREFILTER_JOBLISTS": {},
     "TO_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    # AST-2054: upshot hops between locate/parse success and WATCH.
+    "GET_UPSHOT": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "UPSHOT_READY": {
+        "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
+        "retry_state": retry_of("UPSHOT_READY"),
+    },
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "IGNORE": {},
     "METEORITE": {},  # AST-1493: roster-inert meteorite placeholders (stem-keyed); no batch_criteria
@@ -1307,6 +1333,7 @@ COMPANY_STATES = {
     "ERROR_LOCATE_JOB_PAGE": {},
     "JOBSITE_SCRAPE_ISSUE": {},
     "ERROR_GAZE": {},
+    "ERROR_UPSHOT": {},
 }
 
 # ---------------------------------------------------------------------------
@@ -2117,7 +2144,7 @@ ROSTER_CONFIG = {
         "input_state": "TO_WATCH",
         # JOBS_FOUND only — decomposed PJL pipeline uses fetch_job_pages → select_job_page → parse_job_list.
         "dispatch_input_states": ["JOBS_FOUND"],
-        "pass_states": ["WATCH"],
+        "pass_states": ["GET_UPSHOT"],
         "error_state": "ERROR_LOCATE_JOB_PAGE",
         "scrape_issue_state": "JOBSITE_SCRAPE_ISSUE",
         "max_depth": 2,
@@ -2134,10 +2161,18 @@ ROSTER_CONFIG = {
     "parse_job_list": {
         "dispatch_trigger_state": "JOBLIST_IDENTIFIED",
         "retry_trigger_state": retry_of("JOBLIST_IDENTIFIED"),
-        "pass_state": "WATCH",
+        "pass_state": "GET_UPSHOT",
         "retry_state": retry_of("JOBLIST_IDENTIFIED"),
         "terminal_fail_state": "COULD_NOT_PARSE_JOBLIST",
         "selected_pjl_url_key": "selected_pjl_url",
+    },
+    # AST-2054: Estelle company upshot hop. Retry once via UPSHOT_READY_RETRY, then ERROR_UPSHOT.
+    "company_upshot": {
+        "task_key": "company_upshot",
+        "dispatch_trigger_state": "UPSHOT_READY",
+        "pass_state": "WATCH",
+        "retry_state": retry_of("UPSHOT_READY"),
+        "error_state": "ERROR_UPSHOT",
     },
     "scrape_readiness": {
         "max_wait_ms": 20000,
@@ -2180,6 +2215,8 @@ ROSTER_CONFIG = {
         "pjl_assembled_content": "pjl_assembled_content",
         "pjl_nav_links": "pjl_nav_links",
         "selected_pjl_url": "selected_pjl_url",
+        # AST-2054: Estelle prose upshot (display-only). No coat-check handler — explicit storage only.
+        "company_upshot": "company_upshot",
     },
     "culture_pages": {
         "max_pages": 6,
@@ -2344,6 +2381,12 @@ GAZER_CONFIG = {
         "pass_state": "PJL_READY",
         "fail_state": "JOBSITE_SCRAPE_ISSUE",
         "fetch_job_pages_trigger_states": ["PREFILTER_PASSED", retry_of("PREFILTER_PASSED")],
+    },
+    # AST-2054: company culture-page fetch before the Estelle upshot. Always advances to pass_state.
+    "fetch_company_culture_pages": {
+        "fallback_batch_size": 10,   # config default only; dispatch_task.batch_size wins
+        "trigger_state": "GET_UPSHOT",
+        "pass_state": "UPSHOT_READY",
     },
     # Same string as ROSTER_CONFIG["gaze"]["error_state"] ("ERROR_GAZE").
     "gaze": {
@@ -3660,13 +3703,13 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
-    "meteorite_like", "vet_inflow_discovery", "parse_job_list",
+    "meteorite_like", "vet_inflow_discovery", "parse_job_list", "company_upshot",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
-    "resolve_website",
+    "resolve_website", "fetch_company_culture_pages", "company_upshot",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -3681,6 +3724,10 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"]
     if task_key == "select_job_page":
         return ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]
+    if task_key == "company_upshot":
+        return ROSTER_CONFIG["company_upshot"]["dispatch_trigger_state"]
+    if task_key == "fetch_company_culture_pages":
+        return GAZER_CONFIG["fetch_company_culture_pages"]["trigger_state"]
     if task_key == "recheck_no_openings":
         return "NO_OPENINGS"
     if task_key == "gaze":
@@ -4602,7 +4649,7 @@ ASTRAL_CONFIG = {
         (retry_of("HOMEPAGE_READY"), "IGNORE"),
         (retry_of("HOMEPAGE_READY"), "ERROR_PREFILTER"),
         (retry_of("HOMEPAGE_READY"), "CANNOT_READ_WEBSITE"),
-        ("TO_WATCH", "WATCH"),
+        ("TO_WATCH", "GET_UPSHOT"),
         ("TO_WATCH", "HARD_PARSE"),
         ("TO_WATCH", "CANNOT_PARSE_JOB_SITE"),
         ("TO_WATCH", "NO_OPENINGS"),
@@ -4611,14 +4658,14 @@ ASTRAL_CONFIG = {
         # NO_OPENINGS: Playwright-only recheck (recheck_no_openings batch); JOBS_FOUND is landing until AST-461 parse routing.
         ("NO_OPENINGS", "JOBS_FOUND"),
         # JOBS_FOUND: same locate/parse terminal set as TO_WATCH (AST-469).
-        ("JOBS_FOUND", "WATCH"),
+        ("JOBS_FOUND", "GET_UPSHOT"),
         ("JOBS_FOUND", "HARD_PARSE"),
         ("JOBS_FOUND", "CANNOT_PARSE_JOB_SITE"),
         ("JOBS_FOUND", "NO_OPENINGS"),
         ("JOBS_FOUND", "NO_JOBLIST"),
         ("JOBS_FOUND", "BOT_BLOCKED"),
         # PREFILTER_PASSED: same locate/parse terminal set as TO_WATCH / JOBS_FOUND (AST-508).
-        ("PREFILTER_PASSED", "WATCH"),
+        ("PREFILTER_PASSED", "GET_UPSHOT"),
         ("PREFILTER_PASSED", "HARD_PARSE"),
         ("PREFILTER_PASSED", "CANNOT_PARSE_JOB_SITE"),
         ("PREFILTER_PASSED", "NO_OPENINGS"),
@@ -4637,11 +4684,19 @@ ASTRAL_CONFIG = {
         ("PJL_READY", "BOT_BLOCKED"),  # AST-2004: shown page is a bot wall at NO_JOBLIST fall-through
         (retry_of("PREFILTER_PASSED"), "PJL_READY"),
         (retry_of("PREFILTER_PASSED"), "JOBSITE_SCRAPE_ISSUE"),
-        ("JOBLIST_IDENTIFIED", "WATCH"),
+        ("JOBLIST_IDENTIFIED", "GET_UPSHOT"),
         ("JOBLIST_IDENTIFIED", retry_of("JOBLIST_IDENTIFIED")),
         ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST"),
-        (retry_of("JOBLIST_IDENTIFIED"), "WATCH"),
+        (retry_of("JOBLIST_IDENTIFIED"), "GET_UPSHOT"),
         (retry_of("JOBLIST_IDENTIFIED"), "COULD_NOT_PARSE_JOBLIST"),
+        # AST-2054: upshot hops. WATCH → GET_UPSHOT is Susan's manual re-run via company state controls.
+        ("WATCH", "GET_UPSHOT"),
+        ("GET_UPSHOT", "UPSHOT_READY"),
+        ("UPSHOT_READY", "WATCH"),
+        ("UPSHOT_READY", retry_of("UPSHOT_READY")),
+        ("UPSHOT_READY", "ERROR_UPSHOT"),
+        (retry_of("UPSHOT_READY"), "WATCH"),
+        (retry_of("UPSHOT_READY"), "ERROR_UPSHOT"),
     ],
 
     # Candidate transitions: prior_states on CANDIDATE_STATES (AST-970); no parallel list.
@@ -4892,6 +4947,9 @@ def importance_multiplier(n: int) -> float:
 RAILWAY_CONFIG = {
     "workers": 1,
     "timeout": 300,
+    # Exact request paths (gunicorn atom `U`, no query string) whose gunicorn.access
+    # lines are dropped — background polls (AST-2078). Read by src/utils/logging.py.
+    "access_log_quiet_paths": ("/api/deploy_status",),
 }
 
 # ---------------------------------------------------------------------------
