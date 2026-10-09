@@ -418,3 +418,17 @@ No `fix-now` findings. Scope gate matches ticket Scope (database remap + CLI + c
 context_tokens≈95000
 
 [plan-rubric] PROCEED (Commit: 5c018fe77) migration plan ready
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-2073/AST-2087-terminal-state-remap` @ `efb372ef6`.
+
+**Stages delivered:**
+- Stage 1: conn-bound remap (`_terminal_state_remap_conn`, `migrate_terminal_state_names`, resolver + predecessor helpers), 6 config imports, `stage_error_state` comment reword. Code is verbatim from the plan — `6333b8f0a`
+- Stage 2: `scripts/migrations/migrate_terminal_state_names.py` (mode `100755`) — `efb372ef6`
+
+**Notes:**
+- `database.py` was edited with an exact-string Python replace (`.cursorignore` blocks the IDE tools), and the inserted block was pulled verbatim from the plan doc.
+- Lint: `ruff --extend-ignore UP,I` on `database.py` was 31 before and 31 after. The CLI is clean. Parent AC 2 grep on `database.py`: no output.
+- Verification was run on a `/tmp` copy via `ASTRAL_DB_DIR`, seeded with retired job rows, one dead-state row, and a `BOT_BLOCKED` notify dispatch row. The dry run left `sum(length(state))` unchanged. `--execute` remapped the resolvable rows and moved notify to `BOT_BLOCKED_SCRAPE_METEORITE`. `sum(length(state_history))` was unchanged. The remaining retired count equalled `skipped`, and the dead state was reported under `unregistered` and left untouched.
+- The plan's `python scripts/…` commands need `python3` (or `./scripts/…`) on hosts without `python-is-python3`.
