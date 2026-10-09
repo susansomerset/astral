@@ -138,9 +138,17 @@ def _cover_letter_source_label(
     return None
 
 
-def _accent_source_label(candidate_data: dict) -> str:
+def _structure_source_label(astral_job_id: str | None) -> str:
+    """Read-only label for which structure drives job resume HTML (AST-2081)."""
+    jid = (astral_job_id or "").strip()
+    if jid and tracker_mod.get_job_current(jid, "job.artifacts.job_resume_structure") is not None:
+        return "get_job_current(job.artifacts.job_resume_structure)"
+    return "candidate resume_structure"
+
+
+def _accent_source_label(candidate_data: dict, structure: dict | None = None) -> str:
     """Read-only label for accent color resolution path."""
-    structure = candidate_mod.resolve_resume_structure(candidate_data)
+    structure = structure if isinstance(structure, dict) else candidate_mod.resolve_resume_structure(candidate_data)
     ac = structure.get("accent_color")
     if isinstance(ac, str) and ac.strip():
         return "resume_structure.accent_color"
@@ -237,7 +245,7 @@ def build_resume_from_job(
     job_data = job.get("job_data")
     if not isinstance(job_data, dict):
         job_data = {}
-    structure = candidate_mod.resolve_resume_structure(cd)
+    structure = tracker_mod.get_job_effective_resume_structure(jid, cd)
     try:
         render = _resolve_resume_sections(job_data, cd, astral_job_id=jid)
     except ValueError as exc:
@@ -253,7 +261,7 @@ def build_resume_from_job(
     if debug:
         candidate_mod.debug_experience_jobs(_log, render)
     _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
-    style = _merge_effective_style(cd)
+    style = _merge_effective_style(cd, structure)
     cover = _resolve_cover_letter(job_data, cd, astral_job_id=jid)
     markers = _apply_resume_text_markers(render)
     ordered_body = _structure_ordered_body_ids(structure)
@@ -299,7 +307,8 @@ def build_resume_from_job(
             f"include_cover={include_cover} cover_source={cover_src!r} "
             f"cover_included={include_cover and cover is not None}"
         )
-        _log.debug_detail(f"accent_source={_accent_source_label(cd)!r}")
+        _log.debug_detail(f"accent_source={_accent_source_label(cd, structure)!r}")
+        _log.debug_detail(f"structure_source={_structure_source_label(jid)!r}")
         _log.debug_detail(f"ats_keywords_count={kw_count}")
         _log.debug_detail(f"html_chars={len(html_out)}")
         _log.debug_detail("html_preview:")
@@ -1054,11 +1063,11 @@ def _apply_contact_to_render_dict(render: dict, contact: dict, *, first: str = "
         render["candidate_contact_detail"] = "\u00a0• ".join(parts)
 
 
-def _merge_effective_style(candidate_data: dict) -> dict:
-    """``default_style`` deep-copied; accent from resume_structure, else legacy base_resume."""
+def _merge_effective_style(candidate_data: dict, structure: dict | None = None) -> dict:
+    """``default_style`` deep-copied; accent from the given (else candidate) resume_structure, else legacy base_resume."""
     base = copy.deepcopy(BUILD_CONFIG.get("default_style") or {})
     colors = base.setdefault("colors", {})
-    structure = candidate_mod.resolve_resume_structure(candidate_data)
+    structure = structure if isinstance(structure, dict) else candidate_mod.resolve_resume_structure(candidate_data)
     ac = structure.get("accent_color")
     if isinstance(ac, str) and ac.strip():
         colors["default_accent"] = ac.strip()
@@ -1652,6 +1661,10 @@ def _emit_body_sections_html(
                 if not inner_html.strip():
                     skip_reasons[key] = "skipped — empty"
                     continue
+            elif fmt == "line":
+                # AST-2081: one paragraph; line breaks collapse to single spaces.
+                one_line = " ".join(ln.strip() for ln in str(text).splitlines() if ln.strip())
+                inner_html = f'      <p class="summary-intro">{_emit_inline_emphasis_html(one_line)}</p>'
             else:
                 skip_reasons[key] = "skipped — empty"
                 continue
