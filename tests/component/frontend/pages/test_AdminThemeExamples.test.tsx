@@ -159,9 +159,25 @@ describe("App.css theme token blocks — AST-2047", () => {
     for (let i = 0; i < lights.length; i++) {
       for (let j = i + 1; j < lights.length; j++) {
         const [a, b] = [blocks.get(lights[i])!, blocks.get(lights[j])!]
-        const differs = ["--bg-deep", "--bg-card", "--accent-gold"].some(k => a[k] !== b[k])
+        const differs = ["--bg-deep", "--bg-card", "--accent-contrast"].some(k => a[k] !== b[k])
         expect(differs, `${lights[i]} vs ${lights[j]}`).toBe(true)
       }
+    }
+  })
+
+  it("[bug-repro] AST-2076: in light and light_parchment, the accent and nav group label resolve to the header colour", () => {
+    // Follow var(--x) chains inside one block; the purple itself is a palette choice (UAT), so only equality is pinned.
+    const resolveIn = (b: Record<string, string>, name: string) => {
+      let v: string | undefined = b[name]
+      for (let m; v && (m = v.match(/^var\((--[\w-]+)\)$/)); ) v = b[m[1]]
+      return v
+    }
+    for (const id of ["light", "light_parchment"]) {
+      const b = blocks.get(id)!
+      const heading = resolveIn(b, "--heading")
+      expect(heading, id).toBeDefined()
+      expect(resolveIn(b, "--accent-contrast"), `${id} --accent-contrast`).toBe(heading)
+      expect(resolveIn(b, "--nav-group-label"), `${id} --nav-group-label`).toBe(heading)
     }
   })
 
