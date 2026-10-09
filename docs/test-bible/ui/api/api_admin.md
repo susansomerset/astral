@@ -1180,3 +1180,45 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ### AST-2025 · AST-2022 (`fetch_relative_jd` in the Scheduled Actions picker — AC6)
 
 **New:** `TestAst2025FetchRelativeJdDispatchTaskKey::test_picker_lists_fetch_relative_jd_job_relative_job_link` — `GET /api/admin/dispatch_tasks/task_keys` lists `fetch_relative_jd` (agent_task catalog only, no dispatch row) as `entity_type: "job"`, `trigger_state: "RELATIVE_JOB_LINK"`. Green pre-AST-2025 too (binding landed in AST-2024) — regression guard. Primary manifest: **`docs/test-bible/core/gazer.md`** § AST-2025.
+
+### AST-2091 · AST-2013 (fix lane — block Auto/Run on duplicate or empty rubric)
+
+**Parent:** AST-2013 (orphaned mini-parent off `origin/dev`). **Publish:** `origin/sub/AST-2013/AST-2091-rubric-dup-dispatch-gate`. Plan: `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md` § Bug: AST-2091. Primary manifest lives here; component pointers in `core/candidate.md` and `core/dispatcher.md`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — list: duplicate / empty rubric → `empty_render` true, `invalid_reason` = rubric reason, AUTO forced off + WARNING (Repro 1 / 4) | `list_dtasks` | `TestAst2091RubricDispatchGate::test_list_bad_rubric_invalid_and_forces_auto_off` |
+| New — list precedence key → rubric → tokens; `empty_tokens` still rides | `list_dtasks` | `…::test_list_precedence_key_then_rubric_then_tokens` |
+| Guard — craft / non-rubric rows unaffected by an empty rubric | `list_dtasks` | `…::test_list_craft_and_non_rubric_rows_unaffected_by_empty_rubric` |
+| New — AUTO-on create / update → 400 with rubric reason, no write | `create_dtask`, `update_dtask` | `…::test_create_auto_on_bad_rubric_400`, `…::test_put_auto_on_bad_rubric_400` |
+| New — Run → 400 `started: false`, rubric outranks tokens (Repro 2) | `run_dtask` | `…::test_run_bad_rubric_400_never_starts` |
+| Guard — key reason still outranks rubric on Run (AST-1880 holds) | `run_dtask` | `…::test_run_key_error_outranks_rubric` |
+
+Tests run the **real** `rubric_dispatch_error` behind a stubbed `src.data.database.list_rubric_vectors` (plan Repro fixture: somerset `grade_do` = `TP,TP,SA`; `empty_cand` = `[]`).
+
+**Broken by the fix (stubbed this pass, `rubric_dispatch_error → None`, `raising=False`):** `TestAst1780EmptyRenderListGatesForceOff` (class autouse — 5 tests on `qualify_job_listings` / `c1` read an empty rubric); `TestDispatchTasks::test_scheduler_and_run_controls`; `TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success`; `…::test_update_dispatch_task_scored_score_floor_and_auto_mode_success`. Found by running both suites against a scratch apply of the plan's Proposed change (reverted, never committed). `test_dispatcher.py` needed **no** sweep — existing `run_task` cases use `evaluate_jd`, whose embedded QC/GC merge is never empty.
+
+**Pre-existing reds (not AST-2091, not in manifest):** on the dev-based sub, 17 in `test_api_admin.py` / `test_dispatcher.py` (`TestCircuitBreaker` signature, `TestAst841DispatchTerminalLogging`, retry-state lists, repo-JSON wording, …) + 18 in `test_candidate.py` — identical set before and after the scratch fix. On the `tests` tip `test_candidate.py` fails **collection** (`RESUME_STRUCTURE_BODY_FORMAT_DETAILS` — AST-2081 tests ahead of `origin/dev`); it collects on the sub.
+
+**Integration:** none (no `tests/integration/` scenario drives Scheduled Actions gates).
+
+## QA test manifest
+
+1. **[bug-repro] admin gates:** `tests/component/ui/api/test_api_admin.py::TestAst2091RubricDispatchGate`
+2. **[bug-repro] run_task gate:** `tests/component/core/test_dispatcher.py::TestAst2091RunTaskRubricGate`
+3. **[bug-repro] helper:** `tests/component/core/test_candidate.py::TestAst2091RubricDispatchError`
+4. **Regression (swept, green pre- and post-fix):** `test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff`, `…::TestDispatchTasks::test_scheduler_and_run_controls`, `…::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success`, `…::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success`
+5. **Branch locks:** `candidate.py`, `api_admin.py`, `dispatcher.py` stay 100% — new branches covered by items 1–3 (incl. non-dict criterion skip).
+
+**Pass criterion:** items 1–3 red on the pre-fix tree (verified on the sub base: 23 nodes — 11 admin/dispatcher red on assertion, 12 helper red on missing `rubric_dispatch_error`); all green after make-fix (verified against a scratch apply of the plan); item 4 green throughout.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst2091RubricDispatchGate \
+  tests/component/core/test_dispatcher.py::TestAst2091RunTaskRubricGate \
+  tests/component/core/test_candidate.py::TestAst2091RubricDispatchError \
+  tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success
+```

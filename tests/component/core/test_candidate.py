@@ -7519,3 +7519,69 @@ class TestAst2066CandidateVersions:
             ("set", "cand-1", "grade_do", "v01", "r1"),
         ]
         assert any("rubric criterion current set" in r.getMessage() and "V01" in r.getMessage() for r in caplog.records)
+
+
+class TestAst2091RubricDispatchError:
+    """AST-2091 [bug-repro]: dispatch gate reason for a rubric-backed task — duplicate codes or empty rubric."""
+
+    @staticmethod
+    def _vec(code: str, label: str = "L") -> dict[str, Any]:
+        return {"code": code, "label": label, "content": "…", "importance": 8}
+
+    def _stub(self, monkeypatch: pytest.MonkeyPatch, rubrics: dict[tuple, list]) -> list[tuple]:
+        # Records (candidate_id, owner_task_key) reads so alias resolution is pinned.
+        calls: list[tuple] = []
+
+        def _fake(candidate_id, owner_task_key, current_only=False):
+            calls.append((candidate_id, owner_task_key))
+            return rubrics.get((candidate_id, owner_task_key), [])
+
+        monkeypatch.setattr(candidate_mod.database, "list_rubric_vectors", _fake)
+        return calls
+
+    def test_duplicate_tp_codes_name_artifact_and_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Plan Repro fixture: somerset's do_rubric has two current TP rows (AST-2013 all-X job).
+        tp = "Hands-On Technical Partnership With Engineers"
+        calls = self._stub(monkeypatch, {("somerset", "grade_do"): [self._vec("TP", tp), self._vec("TP", tp), self._vec("SA")]})
+        err = candidate_mod.rubric_dispatch_error("somerset", "meteorite_grade_do")
+        assert err == "Rubric 'do_rubric' has duplicate vector codes: TP"
+        assert calls == [("somerset", "grade_do")]
+
+    def test_duplicates_case_insensitive_sorted_and_blank_codes_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # strip().upper() keys the count; blank codes are skipped (sync assigns V{idx}).
+        rows = [self._vec(" tp"), self._vec("TP"), self._vec("sa"), self._vec("SA "), self._vec(""), self._vec("")]
+        self._stub(monkeypatch, {("somerset", "grade_do"): rows})
+        assert candidate_mod.rubric_dispatch_error("somerset", "grade_do") == (
+            "Rubric 'do_rubric' has duplicate vector codes: SA, TP"
+        )
+
+    def test_non_dict_criteria_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Plan counts codes over dict items only; keeps candidate.py's branch lock whole.
+        monkeypatch.setattr(candidate_mod, "rubric_criteria_for_task", lambda cid, owner: ["TP", self._vec("TP"), self._vec("TP")])
+        assert candidate_mod.rubric_dispatch_error("somerset", "grade_do") == (
+            "Rubric 'do_rubric' has duplicate vector codes: TP"
+        )
+
+    def test_empty_rubric_is_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._stub(monkeypatch, {})
+        assert candidate_mod.rubric_dispatch_error("empty_cand", "meteorite_grade_do") == (
+            "Rubric 'do_rubric' is empty for this candidate."
+        )
+
+    def test_unique_codes_valid_and_alias_resolves_owner(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls = self._stub(monkeypatch, {("somerset", "grade_like"): [self._vec("TP"), self._vec("SA")]})
+        assert candidate_mod.rubric_dispatch_error("somerset", "meteorite_like") is None
+        assert calls == [("somerset", "grade_like")]
+
+    @pytest.mark.parametrize("task_key", ["craft_do_rubric", "select_job_page", "", "not_a_task"])
+    def test_craft_and_non_rubric_tasks_never_read_rubric(self, monkeypatch: pytest.MonkeyPatch, task_key: str) -> None:
+        # Craft tasks create the rubric — gating them on empty would block their own fix.
+        calls = self._stub(monkeypatch, {})
+        assert candidate_mod.rubric_dispatch_error("somerset", task_key) is None
+        assert calls == []
+
+    @pytest.mark.parametrize("cid", [None, "", "   "])
+    def test_blank_candidate_defers_to_key_gate(self, monkeypatch: pytest.MonkeyPatch, cid: Any) -> None:
+        calls = self._stub(monkeypatch, {})
+        assert candidate_mod.rubric_dispatch_error(cid, "meteorite_grade_do") is None
+        assert calls == []

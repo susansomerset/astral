@@ -768,3 +768,7 @@ grep -n '^_auto_thread_cap_override: Optional\[int\] = None' src/core/dispatcher
 ### AST-2025 · AST-2022 (`fetch_relative_jd` claim / release — AC6)
 
 **New:** `TestRunUnified::test_ast2025_fetch_relative_jd_claims_trigger_state_and_releases_on_error` — claim by `RELATIVE_JOB_LINK` for the candidate with `states == ["RELATIVE_JOB_LINK", "RELATIVE_JOB_LINK_RETRY"]` only; `clear_job_batch(batch_id)` still runs when the runner raises; `dispatch_task_key` forwarded. Green on the pre-AST-2025 tree too (generic job path + AST-2024 config) — a regression guard, not a red-first node. Primary manifest: **`docs/test-bible/core/gazer.md`** § AST-2025.
+
+### AST-2091 · AST-2013 (`run_task` rubric gate)
+
+**New:** `TestAst2091RunTaskRubricGate` — duplicate / empty rubric → `run_task` returns `False`, no thread, AUTO row gets `auto_mode=0` (Repro 3 / 4); manual row → `False`, no write; craft / non-rubric rows still start. Existing `run_task` cases (`evaluate_jd`) need no stub — embedded QC/GC merge is never empty. Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-2091.
