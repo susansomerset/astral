@@ -475,3 +475,59 @@ Stages 1–5: `1638cccdc` config (line format, `RESUME_STRUCTURE_BODY_FORMAT_DET
 **Deviations:**
 - Tracker and builder new annotations use `X | None` instead of `Optional[...]` (both modules have `from __future__ import annotations`); keeps ruff at baseline (UP045).
 - `api_jobs.py` ruff 12 → 14: two TRY401 on the `logger.exception(..., type(exc).__name__, exc)` form `stat.logging.error` mandates (existing handlers in the file use the same form). Kept per canon.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2081
+**Publish ref:** `ff46d7bd6fb80e80f3161df7b93fd68b0bbe4dee` (`origin/sub/AST-2046/AST-2081-job-structure-line-format`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+| stat.logging.debug | A | | |
+
+### Column diff vs plan stage
+
+- `stat.logging.info.api` — Joan **C/2** (plan Stage 4 logged GET completion); code **A** after Revision 1 (GET silent, PUT `logger.info` only — matches statute and candidate twin).
+- All other ids: **(aligned)** with Joan’s **A** rows.
+
+### Frame diff
+
+(none)
+
+### Findings
+
+#### fix-now
+
+(none)
+
+#### discuss
+
+(none) — Joan’s GET-info discuss was closed in Revision 1; implementation matches the documented Decision (PUT-only INFO).
+
+#### advisory
+
+- **sibling test carry:** `merge-tests` on the publish ref pulls non–AST-2081 manifest/bible rows and tests into the three-dot diff — expected, not product scope: `tests/component/core/test_roster.py`, `test_consult.py`, `test_gazer.py`, `test_contact.py`; `tests/component/frontend/components/test_BatchAgentDataModal.test.tsx`, `pages/test_AdminThemeExamples.test.tsx`; matching `docs/test-bible/core/{roster,consult,gazer,contact}.md`, `frontend/{components,pages,root}.md`. **Product** `src/**` touches only the six scoped files (config, candidate, tracker, api_candidate, api_jobs, builder).
+- **AC14 grep half:** still owned by UI siblings (#3/#4); this diff correctly limits proof to catalog payload fields (Joan acceptable).
+- **`api_jobs.py` ruff 12→14 (TRY401):** build note documents intentional match to existing `logger.exception(..., type(exc).__name__, exc)` handlers and `stat.logging.error` live-facts shape — not a canon defect.
+
+### What’s solid
+
+- Catalog: `job.artifacts.job_resume_structure` registered with closed-set and per-key asserts; `line` + `RESUME_STRUCTURE_BODY_FORMAT_DETAILS` + Hidden label + `preview_thumbnail` on artifact tabs.
+- Read path: `get_job_effective_resume_structure` → `get_job_current` / candidate fallback; editor GET uses `hydrate_from_base=True` only on that path; no write on GET.
+- Write path: structure branch mirrors candidate validation (merge → prepare sections → normalize); shared **identical-to-current** gate in `save_job_artifact` before `save_artifact`.
+- API: job structure GET/PUT follow sibling 404/400/500 patterns; PUT completion INFO only; both routes single `logger.exception` on unrouted failures.
+- DRY: `resume_structure_editor_payload` shared by candidate and job GETs; builder `line` branch + job-scoped structure/accent wired through effective structure.
+
+context_tokens≈38000
+
+[code-rubric] PROCEED (Commit: ff46d7bd6) Canon-clean; rev1 logging
