@@ -403,3 +403,32 @@ Tests 1, 3 and 5 are the red-pre-fix set. Betty tags whichever she proves red ag
 - Existing `test_debug_logging.py` classes and `test_logging_batch.py` stay green with the same results as today.
 - No assertion depends on gunicorn being importable or installed.
 - Scope: only `tests/component/utils/test_debug_logging.py` and `docs/test-bible/utils/debug_logging.md`. AST-2079's own Scope is test-tree + bible, so there is no `[scope-gate]`.
+
+## Joan fix-board — AST-2079
+
+```
+[board-joan]  CANON: OK
+```
+
+**Reasoning**
+
+Skimmed fix-board § Joan pass against `## Bug: AST-2079` on `origin/sub/AST-2074/AST-2079-gunicorn-polling-logs-tests` @ `5081be59b`. Scope is **test-tree + bible only** (`tests/component/utils/test_debug_logging.py`, `docs/test-bible/utils/debug_logging.md`); **no `src/`** on this ticket.
+
+**Canon question:** Does the proposed change conflict with or require updating any in-force directive?
+
+**No.** The patch **documents and asserts** behavior already landed for AST-2078 option (b); it does not change product logging or introduce new policy.
+
+| Touchpoint | Judgment |
+|------------|----------|
+| `stat.logging.info` / sibling logging statutes | `applies_when` is `src/**`. Tests call `get_logger` and build fake `gunicorn.access` records to prove INFO and non-access loggers are unchanged — encoding AC, not a new call-site pattern in product code. |
+| `astral.standards.logging-via-utils` | No new product bypass of the facade; tests exercise the existing filter on `gunicorn.access` inside the utils test module. |
+| `astral.standards.no-hardcoded-sets` | Test 3 monkeypatches `RAILWAY_CONFIG["access_log_quiet_paths"]` to prove config sourcing; aligns with the statute, does not amend it. |
+| Bible prose (gunicorn “out of scope” → quiet-filter exception) | Test-bible alignment with shipped AST-2078 behavior; not a `canon/directives/active` or statute file change. |
+
+No new carve-out, exception record, or Archie-level precedent is implied — Betty’s qa-fix lands tests/manifest; make-fix here is a no-product-src marker per the plan.
+
+```text
+AST-2079 board-joan done — CANON: OK.
+```
+
+context_tokens≈22000
