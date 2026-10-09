@@ -1776,3 +1776,73 @@ AST-2089 board-joan done — CANON: OK.
 **Rationale:** Against the AST-2089 plan-fix patch and the six ids it cites (`patt.task.dispatch-retry`, `patt.entity.batch-processing`, `stat.batch.claim-process-release` / plan’s `astral.batch.claim-process-release`, `stat.logging.warning` / `error` / `debug`), the change **implements** dispatch-retry per claimed entity (salvaged lines process; gaps → `_consult_batch_fail_dest`) without touching claim/release, without new logging statutes, and without amending any active directive. No in-force statute requires whole-batch fail on rubric `agent_performance` envelope `failure` or forbids a salvage side channel on that path—the pre–decode whole-batch blast radius is product behavior, same class AST-1996 already aligned with canon (fix-board OK, F3 not indicated). `qualify_job_listings` prompt edits live in `data/admin/agent_task.json`, not the corpus. Recorded choices (e.g. `salvaged_response`, trusting decodable lines over envelope status when lines are complete) are scoped product contracts already reflected in “What must still hold”; they do not open an Archie-only precedent gap that needs canon text before make-fix. **F3 (`validate-plan` fix mode) not indicated** from this board pass.
 
 **Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-2089 proceeds to make-fix on product only.
+
+
+## Radia review — AST-2089
+
+**Ticket:** AST-2089  
+**Publish ref:** `f3897829d61c0d8bf8fcaa5e4ef2acf5893dca31` (`origin/sub/AST-2015/AST-2089-qualify-listing-isolation`)  
+**Diff base:** `origin/ftr/AST-2015-qualify-listing-isolation` … publish ref (3-dot)  
+**Corpus:** `823d37605` (frozen list not in Linear Description; scored per issue doc **AST-1996 precedent** — six ids @ `823d37605`, same as Joan fix-board)  
+**Overall:** CLEAN  
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out at F2 (`[board-betty] TESTS: REVISE`); no `qa-fix` / no `[bug-repro]` on this ticket. Spawn **Relations:** coverage deferred to sibling **AST-2090** (blocks AST-2090). Not fix-now on AST-2089.
+
+**## What must still hold** — OK (traced against diff)
+
+| Item | Verdict |
+|------|---------|
+| AST-1155 AC1–AC3 (`IncompleteGradeSetError` → `bad_grades` → per-entity fail dest) | Unchanged `process_fn` loop; salvaged path still runs hydration, binding, and `process_fn` on decoded jobs. |
+| AST-1839 / AST-1846 (`success: False`, `agent_failure: True`, `parsed_response: None` on envelope failure) | `do_task` return contract preserved; `salvaged_response` is additive side channel only. |
+| AST-1996 (`decode_failures`, clean-row wins, no `_GRADE_SEG` change) | Reconciliation block unchanged; salvage feeds same `parsed` shape as success. |
+| `patt.task.dispatch-retry` (one retry; every claimed entity processes or fail-dest) | `missing` / `decode_failed` / `bad_grades` still route via `_transition_batch_consult_failures` / `_consult_batch_fail_dest`. |
+| Envelope/provider failures with **no** usable lines | Gate `if not result.get("success") and not salvaged:` leaves L1682–1722 byte-identical for balance hold, `empty_tokens`, and whole-batch fail. |
+| `response_schema` / no `qualify_job_listings` UUID fallback | No schema or `config.py` edits; prompt-only ID best-effort. |
+| Claim/release | No claim, `batch_id`, or release edits in diff. |
+
+## Canon scores
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | patt.task.dispatch-retry | A | | Salvaged/missing/decode slips → per-entity fail dest; clean lines still processed; no retry-loop widening. |
+| 2 | patt.entity.batch-processing | A | | Still operates on claimed `jobs` / `batch_entities`; no out-of-batch processing. |
+| 3 | astral.batch.claim-process-release | A | | Id-only; no claim/process/release path touched (canon file: `stat.batch.claim-process-release`). |
+| 4 | stat.logging.warning | A | | Envelope failure still `_warn_hop_no_success`; entity routing still `_log_fail_dest` / fail-dest helpers — no new ad-hoc warns. |
+| 5 | stat.logging.error | A | | Terminal fail-dest ERROR path unchanged (same helpers). |
+| 6 | stat.logging.debug | A | | Salvage miss logs at DEBUG only; matches existing decode-failure logging style. |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** triage only (`[board-joan] CANON: OK`); implemented diff matches fix-board rationale (per-entity isolation on envelope failure, no claim/release drift, prompt scoped to `qualify_job_listings` row).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Test debt (expected):** No `tests/**` or `docs/test-bible/**` in the 3-dot diff; Betty’s REVISE scope (salvage + split routing repro) is correctly parked on **AST-2090**. Susan’s UAT / merge to `origin/dev` should not assume full component coverage for this behavior until 2090 lands (same pattern as AST-1996 → AST-2001).
+- **BLE001 / `except Exception` in salvage block (`agent.py` ~L2572):** Deliberate fail-safe → `salvaged = None` → pre-fix whole-batch behavior; same shape as many existing `agent.py` catch-alls (spawn note: +1 vs base). Not on frozen list; no canon grade — downstream may narrow if a project lint rule tightens later.
+- **Broader encoded-task blast radius:** Salvage gates on `batch_entities` and applies to all rubric-encoded envelope-failure hops that use `_run_batch_consult` — intentional per plan §Blast radius (AST-1996 class), not scope creep on this ticket.
+- **Ops:** Prompt change needs Susan’s **Revert to file** for `agent_task` after merge (plan §Proposed change); not code defect.
+- **Doc delta in diff:** Large `## Bug: AST-2089` plan-fix block in the feature doc is process artifact on the sub; product scope remains the three planned paths.
+
+## What's solid
+
+- Single product commit `f3897829d` on ftr: `agent_task.json` prompt edits match plan §1 verbatim intent; `do_task` salvage uses the same decode/validate bar as success (`_normalize_rubric_task_response` → coerce → schema → grade confidence); `_run_batch_consult` split matches plan §3 (salvaged `parsed`, missing reason from `result.error`, `success`/`agent_failure`/`errors` accounting).
+- Cross-ticket hygiene: no AST-2090 test files smuggled; AST-2015 step 4 (14 stranded jobs reset) correctly absent from diff per Boundaries.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned** mini-parent AST-2015 (spawn: fresh ftr off `origin/dev`; merge target **dev**, not epic `prep-uat`) | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). After Susan UAT, merge `sub/AST-2015/AST-2089-qualify-listing-isolation` **straight to `origin/dev`** (finish-up-style; no `merge-child` / `prep-uat`). Coordinate **AST-2090** for test/bible before relying on full `test_agent` / consult component coverage for salvage routing. |
+
