@@ -340,3 +340,65 @@ context_tokens≈75000
 - **Gates:** `npx tsc -b --noEmit` exit 0 and eslint 0 problems after every stage; all Done-when greps empty; `validate-sub-log.sh --stage=build` ok.
 - **Deviations:** none — files match the plan's stage code.
 - **Known test drift for Betty:** `test_ArtifactsBaseResumeContent`, resume-mode cases in `test_ArtifactEditor`, `test_JobAnalysisReportModal` (structure authoring / blob print paths removed by plan).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2084
+**Publish ref:** `f04b6c6563bb00fc2b02b2238ed7176927bf347d` (`origin/sub/AST-2046/AST-2084-wire-resume-surfaces`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan **A**; code **A**.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Modal close vs in-flight autosave** — Closing `JobArtifactEditModal` calls `load()` on close while `ResumeContentEditor` may still have a blur-started PUT in flight; thumbnail/report can lag one save (Joan plan discuss).
+  - **@susan:** Accept for overhaul UAT or ask **AST-2083** for close-blocking / await flush?
+  - **Default:** Accept; next report reload or re-open refreshes.
+
+- **`preview_thumbnail` not on `StateUiContext`** — JAR reads `preview_thumbnail` via local `JobArtifactTab` optional field; shared manifest type unchanged (Joan plan discuss).
+  - **Default:** Ship as-is; extend `StateUiContext` in a hygiene pass when that file is touched.
+
+### advisory
+
+- **Sibling product carry on publish ref:** `origin/dev...f04b6c656` still includes **AST-2081–2083** (and dev-merge) product outside this ticket. **2084 `code()` commits** (`3ba28d33a`, `85982422f`, `1475d32b6`) touch only the four scoped frontend files; siblings are not modified by 2084.
+- **Dependencies:** Spawn lists **AST-2082** / **AST-2083** blocked-by at UT; this ref composes their primitives (`SplitPanePage`, `PrintPreview`, `ResumeContentEditor`, `printHtml`) as planned.
+- **Tests:** Tip commit `f04b6c656` rewrites base page, JAR, and retires `ArtifactEditor` resume-mode tests (plan-known drift addressed by Betty on this ref).
+
+## What’s solid
+
+- **Decision 7 wiring:** Base page is `SplitPanePage` + `ResumeContentEditor` (`kind: "base"`) + `PrintPreview` with `refreshKey` on `onSaved`; job resume uses the same editor (`kind: "job"`) in `JobArtifactEditModal`; cover stays `ArtifactEditor` shapes + `jobPersistence`.
+- **Retirement:** Product greps empty for `Save sections`, `useCandidateResumeStructure`, `structureCatalog`, `onStructureSave`, `bodyShape`/`resume_content` resume-mode surface (AC5/AC13-style cleanup on `src/ui/frontend`).
+- **JAR:** `preview_thumbnail` tabs → thumbnail `PrintPreview` + Edit (resume); application tab stays inline `ArtifactEditor`; candidate structure authoring and blob print copy removed; `handlePrintResume` uses `fetchPrintHtml` / `openHtmlInNewTab`.
+- **No new client storage keys or frontend catalog fetch** — persist/reload remain on existing editor API contracts.
+
+## Recommended actions (for Chuckles — not Radia)
+
+- Append artifact to `docs/features/interface/ast-2084-wire-resume-surfaces.md`; commit `docs(AST-2084): Radia review — clean`; push publish ref.
+- Post slim upshot via `linear_proxy.py --as radia save-comment`.
+- **Review Posted** → **PROCEED** toward UT (parent AC1–5 integration UAT on this ref).
+
+```
+[code-rubric] PROCEED (Commit: f04b6c656) One resume editor wired
+```
+
+context_tokens≈30000
