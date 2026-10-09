@@ -1246,3 +1246,71 @@ Stages 1–3: `354a93fa4` App.css §10e2 + retired structure-authoring rules rem
 **Deviations:** none. Commit prefix is `code()` per build-child (plan stage text said `feat()`).
 
 **Sequence pre-check:** `validate-sub-log.sh --stage=build` reports `git pull merge on sub` for `52d9749a3` and `7caff6333`. Both are `origin/dev` history pulled in by the §4d dev refresh (`430519442`), not commits made on this sub; they drop out of the `sub --not ftr` range once ftr absorbs `origin/dev`.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2083
+**Publish ref:** `3346cef189770785f34d3583ad40e9fa9ed13262` (`origin/sub/AST-2046/AST-2083-resume-editor`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan **A** on all three; code **A** on all three.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **AC5 (`Save sections` grep)** — `ArtifactEditor.tsx` still emits the string until **AST-2084** retires resume mode; new editor has no Save/Cancel (Joan plan discuss).
+  - **@susan:** Block parent AC5 UAT on #4 only?
+  - **Default:** Treat AC5 as epic-level; do not hold 2083 on the legacy grep hit.
+
+- **Hidden flow drops body on next body save** — Server filters (`base_resume` / job prep) still drop hidden-section text on body PUT (Decision 12 / #1-era behavior).
+  - **@susan:** Follow-up backend ticket vs accept for overhaul UAT?
+  - **Default:** Accept documented behavior; no 2083 code change.
+
+- **`.structure-authoring-*` CSS removed before #4** — `ArtifactEditor` resume markup remains briefly unstyled (Joan plan discuss).
+  - **Default:** Accept cosmetic window until **AST-2084** wiring/retirement.
+
+### advisory
+
+- **Sibling / dev product carry on publish ref:** `origin/dev...3346cef18` includes **AST-2081** backend, **AST-2082** shared UI (`printHtml`, `PrintPreview`, `SplitPanePage`, `Modal`), and **origin/dev** merges (`consult.py`, `config.py` AST-2096, `api_admin.py`, dispatcher test expectations). **AST-2083 `code()` / `test()` commits** touch only the four scoped files (+ Betty tests). Score canon against 2083 editor behavior, not sibling/dev landings.
+- **AST-2107 / `ac13766f6`:** `sync(dev)` with `--no-verify` was Susan-authorized (option D, byte-identity check 0) — **not** scored as a workflow violation per spawn brief.
+- **Post-build tip:** `7dbde0c02` theme-token tweak in `App.css` (`--accent-contrast`, `--paper-bg`) is in-scope polish; build note @ `2cf521b68` predates it.
+- **Mounting / parent ACs:** Editor is not mounted here (#4); component tests + plan Done-when cover this child (Joan acceptable).
+
+## What’s solid
+
+- **ui-consistency (Decision 7):** One `ResumeContentEditor` for `base` and `job` targets; catalog-driven format/flow labels, tooltips, fonts, and Hidden label from `resume_structure` GET `catalog`; no hardcoded “Word Cloud” / “Bullet List” / “Flow uninterrupted” in new files.
+- **read-current:** Mount loads entity GET + structure GET; `key={kind:id}` prevents cross-target bleed; Compare to Base refetches candidate base on toggle; `adoptServerIds` after pending-row saves replaces `_pending_*` with server slugs.
+- **write-operative:** Serialized `saveChainRef`; dirty-half PUTs only (job structure PUT omitted when body-only); operative routes (`/data`, `job_resume_structure`, `job_resume`); row-container `onBlur` + discrete controls flush — no per-keystroke body PUT.
+
+## Recommended actions (for Chuckles — not Radia)
+
+- Append artifact to `docs/features/interface/ast-2083-resume-editor.md`; commit `docs(AST-2083): Radia review — clean`; push publish ref.
+- Post slim upshot via `linear_proxy.py --as radia save-comment`.
+- **Review Posted** → **PROCEED** toward UT (#4 for mount + AC5 grep).
+
+```
+[code-rubric] PROCEED (Commit: 3346cef18) Autosave editor; canon clean
+```
+
+context_tokens≈32000
