@@ -2856,3 +2856,127 @@ class TestAst2066JobVersions:
             tracker_mod.list_job_artifact_versions(jid, key)
         with pytest.raises(ValueError, match=msg):
             tracker_mod.set_job_artifact_current(jid, key, "u")
+
+
+def _ast2081_candidate_structure() -> dict:
+    """Candidate structure distinguishable from the default (renamed summary title)."""
+    from src.core import candidate as candidate_mod
+
+    raw = candidate_mod.default_resume_structure()
+    raw["sections"]["professional_summary"]["title"] = "Candidate Summary"
+    return raw
+
+
+# Branches: get_job_effective_resume_structure — jid blank / set; own row with sections / empty sections /
+# none; candidate_data dict / None (+jid → _candidate_data_for_job, blank jid → {}); hydrate off / on
+# (artifacts dict / not). save_job_artifact job_resume_structure — non-dict raises; sections dict / absent;
+# accent_color present / absent. _prepare_job_resume_content — filters to the job's effective structure.
+class TestAst2081JobResumeStructure:
+    _KEY = "job.artifacts.job_resume_structure"
+
+    @staticmethod
+    def _cd() -> dict:
+        return {
+            "artifacts": {
+                "resume_structure": _ast2081_candidate_structure(),
+                "base_resume": {"professional_summary": "P", "awards": "Prize"},
+            }
+        }
+
+    @pytest.fixture
+    def db(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-1")
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: self._cd())
+        return sqlite_in_memory
+
+    def _edited(self) -> dict:
+        # AC15 edits: rename, format change (→ line), reorder (core ↔ technical), job-only extra section.
+        raw = _ast2081_candidate_structure()
+        secs = raw["sections"]
+        secs["professional_summary"]["title"] = "Profile"
+        secs["highlights"]["format"] = "line"
+        secs["core_competencies"]["order"], secs["technical_skills"]["order"] = 10, 5
+        secs["volunteer"] = {
+            "id": "volunteer", "title": "Volunteer", "enabled": True, "order": 11,
+            "job_agent_editable": True, "format": "line",
+        }
+        return raw
+
+    def test_inherits_candidate_until_edited_and_get_never_writes(self, db) -> None:
+        # AC16: no job row → candidate's structure (via loader or passed blob); read writes nothing.
+        from src.core import candidate as candidate_mod
+
+        want = candidate_mod.resolve_resume_structure(self._cd())
+        assert tracker_mod.get_job_effective_resume_structure("job-a") == want
+        assert tracker_mod.get_job_effective_resume_structure(" job-a ", self._cd()) == want
+        hydrated = tracker_mod.get_job_effective_resume_structure("job-a", hydrate_from_base=True)
+        assert hydrated == candidate_mod.hydrate_resume_structure_from_base_resume(want, self._cd()["artifacts"]["base_resume"])
+        assert "awards" in hydrated["sections"]
+        assert db.list_artifacts("job", "job-a", "job_resume_structure") == []
+
+    def test_blank_jid_and_non_dict_artifacts_fallbacks(self, db) -> None:
+        from src.core import candidate as candidate_mod
+
+        default = candidate_mod.default_resume_structure()
+        assert tracker_mod.get_job_effective_resume_structure(None) == default
+        assert tracker_mod.get_job_effective_resume_structure("  ", hydrate_from_base=True) == (
+            candidate_mod.hydrate_resume_structure_from_base_resume(default, None)
+        )
+        assert tracker_mod.get_job_effective_resume_structure(
+            "job-a", {"artifacts": "nope"}, hydrate_from_base=True
+        ) == candidate_mod.hydrate_resume_structure_from_base_resume(default, None)
+
+    def test_own_row_with_empty_sections_falls_back(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tracker_mod, "get_job_current", lambda jid, key, **k: {"sections": {}})
+        out = tracker_mod.get_job_effective_resume_structure("job-a", self._cd())
+        assert out["sections"]["professional_summary"]["title"] == "Candidate Summary"
+
+    def test_save_isolates_job_structure(self, db) -> None:
+        # AC15 + AC18: job A row holds the edits + accent; job B and the candidate are untouched.
+        uid = tracker_mod.save_job_artifact("job-a", self._KEY, {**self._edited(), "accent_color": "#0f3460"})
+        assert uid
+        own = tracker_mod.get_job_effective_resume_structure("job-a")
+        secs = own["sections"]
+        assert secs["professional_summary"]["title"] == "Profile"
+        assert secs["highlights"]["format"] == "line"
+        assert secs["technical_skills"]["order"] < secs["core_competencies"]["order"]
+        assert secs["volunteer"]["format"] == "line"
+        assert own["accent_color"] == "#0F3460"
+        other = tracker_mod.get_job_effective_resume_structure("job-b")
+        assert other["sections"]["professional_summary"]["title"] == "Candidate Summary"
+        assert "volunteer" not in other["sections"] and "accent_color" not in other
+        assert db.list_artifacts("job", "job-b", "job_resume_structure") == []
+        assert db.list_artifacts("candidate", "cand-1", "resume_structure") == []
+
+    def test_save_partial_bodies_merge_over_effective(self, db) -> None:
+        # Accent-only body keeps the inherited sections; sections-only body keeps the stored accent.
+        tracker_mod.save_job_artifact("job-a", self._KEY, {"accent_color": "#0F3460"})
+        own = tracker_mod.get_job_effective_resume_structure("job-a")
+        assert own["accent_color"] == "#0F3460"
+        assert own["sections"]["professional_summary"]["title"] == "Candidate Summary"
+        tracker_mod.save_job_artifact("job-a", self._KEY, {"sections": self._edited()["sections"]})
+        own = tracker_mod.get_job_effective_resume_structure("job-a")
+        assert own["accent_color"] == "#0F3460"
+        assert own["sections"]["professional_summary"]["title"] == "Profile"
+
+    @pytest.mark.parametrize(
+        "body,msg",
+        [
+            (["not", "a", "dict"], "job_resume_structure body must be a dict"),
+            ({"accent_color": "#123456"}, "accent_palette"),
+            ({"sections": {"professional_summary": {"title": "X", "enabled": True, "order": 1}}}, "missing required"),
+        ],
+    )
+    def test_save_rejects_invalid(self, db, body, msg: str) -> None:
+        with pytest.raises(ValueError, match=msg):
+            tracker_mod.save_job_artifact("job-a", self._KEY, body)
+        assert db.list_artifacts("job", "job-a", "job_resume_structure") == []
+
+    def test_job_only_section_survives_job_resume_save(self, db) -> None:
+        # AC17: prep filters to job A's structure (keeps volunteer); job B (inherits candidate) drops it.
+        tracker_mod.save_job_artifact("job-a", self._KEY, self._edited())
+        body = {"professional_summary": "S", "volunteer": "Food bank", "experience": []}
+        tracker_mod.save_job_artifact("job-a", "job.artifacts.job_resume", dict(body))
+        tracker_mod.save_job_artifact("job-b", "job.artifacts.job_resume", dict(body))
+        assert tracker_mod.get_job_current("job-a", "job.artifacts.job_resume")["volunteer"] == "Food bank"
+        assert "volunteer" not in tracker_mod.get_job_current("job-b", "job.artifacts.job_resume")

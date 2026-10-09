@@ -1148,6 +1148,27 @@ class TestAst1306ResumeStructureAuthorApi:
         assert by_id["candidate_name"]["required"] is True
         assert {s["id"] for s in body["sections"]}.isdisjoint({"technical_skills"})
 
+    def test_get_delegates_to_shared_editor_payload(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AST-2081: route body == resume_structure_editor_payload(resolved); catalog gains format details.
+        from src.core.candidate import (
+            hydrate_resume_structure_from_base_resume,
+            resolve_resume_structure,
+            resume_structure_editor_payload,
+        )
+
+        cd = self._cd()
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: cd)
+        body = candidate_client.get("/api/candidates/c1/resume_structure", headers=auth_headers).get_json()
+        inner = cd["candidate_data"]
+        resolved = hydrate_resume_structure_from_base_resume(
+            resolve_resume_structure(inner), (inner.get("artifacts") or {}).get("base_resume")
+        )
+        assert body == resume_structure_editor_payload(resolved)
+        assert body["catalog"]["hidden_flow_label"] == "Hidden"
+        assert body["catalog"]["body_format_details"]["word_cloud"]["label"] == "Word Cloud"
+
     def test_put_replace_drops_omitted_optional_and_keeps_required_title(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
     ) -> None:

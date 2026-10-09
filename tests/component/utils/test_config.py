@@ -1272,14 +1272,16 @@ class TestAst721ParseJobListConfig:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY") in transitions
         assert ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST") in transitions
-        assert ("JOBLIST_IDENTIFIED_RETRY", "WATCH") in transitions
+        # AST-2069: parse success lands in GET_UPSHOT (upshot hops precede WATCH)
+        assert ("JOBLIST_IDENTIFIED_RETRY", "GET_UPSHOT") in transitions
+        assert ("JOBLIST_IDENTIFIED_RETRY", "WATCH") not in transitions
         assert ("JOBLIST_IDENTIFIED_RETRY", "COULD_NOT_PARSE_JOBLIST") in transitions
 
     def test_parse_job_list_roster_config(self) -> None:
         parse = cfg.ROSTER_CONFIG["parse_job_list"]
         assert parse["dispatch_trigger_state"] == "JOBLIST_IDENTIFIED"
         assert parse["retry_trigger_state"] == "JOBLIST_IDENTIFIED_RETRY"
-        assert parse["pass_state"] == "WATCH"
+        assert parse["pass_state"] == "GET_UPSHOT"  # AST-2069 (was WATCH)
         assert parse["retry_state"] == "JOBLIST_IDENTIFIED_RETRY"
         assert parse["terminal_fail_state"] == "COULD_NOT_PARSE_JOBLIST"
         assert parse["selected_pjl_url_key"] == "selected_pjl_url"
@@ -1704,7 +1706,9 @@ class TestAst508InflowLocateConfig:
 
     def test_prefilter_passed_locate_transitions(self) -> None:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
-        assert ("PREFILTER_PASSED", "WATCH") in transitions
+        # AST-2069: locate success lands in GET_UPSHOT, not WATCH
+        assert ("PREFILTER_PASSED", "GET_UPSHOT") in transitions
+        assert ("PREFILTER_PASSED", "WATCH") not in transitions
         assert ("PREFILTER_PASSED", "NO_OPENINGS") in transitions
 
 
@@ -3503,7 +3507,7 @@ class TestAst1066ContactConfig:
         assert cc["listen_enabled"] is False
         assert cc["bot_token_env"] == "SLACK_BOT_TOKEN"
         assert cc["signing_secret_env"] == "SLACK_SIGNING_SECRET"
-        assert "non_production_reply_prefix_template" not in cc
+        assert cc["non_production_reply_prefix_template"] == "[{environment}] "
         assert isinstance(cc["skills"], dict)
         for skill_key in cc["skills"]:
             assert skill_key not in cfg.TASK_CONFIG
@@ -5105,6 +5109,7 @@ class TestAst1303ResumeStructureCatalog:
             "dual_column",
             "indented_bold_single",
             "experience_detail",
+            "line",  # AST-2081
         )
         assert cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID == {
             "professional_summary": "free_prose",
@@ -5744,6 +5749,7 @@ class TestAst1590JobArtifactCatalogKeys:
             "candidate.artifacts.resume_structure",
             "job.artifacts.job_resume",
             "job.artifacts.cover_letter",
+            "job.artifacts.job_resume_structure",  # AST-2081
             "candidate.context.strengths",
             "candidate.context.priorities",
             "candidate.context.deal_breakers",
@@ -7093,6 +7099,12 @@ class TestAst1808RetryRegistryPurge:
         js["RELATIVE_JOB_LINK_RETRY"] = rel
         js["RELATIVE_LINK_FAIL"] = rel + ["RELATIVE_LINK_FAIL_RETRY"]
         js["RELATIVE_LINK_FAIL_RETRY"] = ["RELATIVE_LINK_FAIL", "RELATIVE_LINK_FAIL_RETRY"]
+        # AST-2069 added company GET_UPSHOT / UPSHOT_READY / ERROR_UPSHOT after the snapshot:
+        # bases unrestricted (None); each derived _RETRY pinned to its own base pair.
+        cs = pinned["COMPANY_STATES"]
+        for b in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
+            cs[b] = None
+            cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7767,3 +7779,93 @@ class TestAst2064ThemeExampleGradeSets:
         for gid, s in sets.items():
             assert set(s["tokens"]) == self.GRADE_TOKENS, gid
             assert all(re.fullmatch(r"#[0-9a-fA-F]{6}", v) for v in s["tokens"].values()), gid
+
+
+# AST-2069 (parent AST-2054): upshot states, transitions, dispatch registration, agent_task rows.
+# Registration only — runtime WATCH writes in roster.py move in AST-2070.
+class TestAst2069UpshotRegistration:
+    def test_states_registered(self) -> None:
+        # AC1
+        for s in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
+            assert s in cfg.COMPANY_STATES, s
+        assert cfg.COMPANY_STATES["UPSHOT_READY"]["retry_state"] == "UPSHOT_READY_RETRY"
+
+    def test_only_upshot_hop_enters_watch(self) -> None:
+        # AC2: every (X, "WATCH") pair starts from UPSHOT_READY or its retry
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        into_watch = {src for src, dst in transitions if dst == "WATCH"}
+        assert into_watch == {"UPSHOT_READY", "UPSHOT_READY_RETRY"}
+        for pair in (("WATCH", "GET_UPSHOT"), ("GET_UPSHOT", "UPSHOT_READY"), ("UPSHOT_READY", "WATCH")):
+            assert pair in transitions, pair
+        assert cfg.ROSTER_CONFIG["locate_job_page"]["pass_states"] == ["GET_UPSHOT"]
+
+    def test_dispatch_registrable(self) -> None:
+        # AC4
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        want = {"fetch_company_culture_pages": "GET_UPSHOT", "company_upshot": "UPSHOT_READY"}
+        for tk, trigger in want.items():
+            assert _dispatch_entity_type_for_task_key(tk) == "company", tk
+            assert _dispatch_trigger_state_for_task_key(tk) == trigger, tk
+
+    def test_agent_task_rows(self) -> None:
+        # AC3: Estelle upshot row with the 200-word cap; telescope row for the GET_UPSHOT fetch
+        from pathlib import Path
+
+        rows = json.loads((Path(__file__).resolve().parents[3] / "data/admin/agent_task.json").read_text())
+        by_key = {r["task_key"]: r for r in rows}
+        upshot = by_key["company_upshot"]
+        assert upshot["agent_id"] == "principal_recruiter_estelle"
+        assert "200 words" in upshot["cache_prompt"] + upshot["user_prompt"] + upshot["nocache_prompt"]
+        assert by_key["fetch_company_culture_pages"]["agent_id"] == "telescope"
+
+
+# Branches: none (config literals + import-time asserts). AST-2081: line format, per-format editor
+# metadata (label / description / font stack), Hidden flow label, job resume structure catalog key,
+# preview_thumbnail on the recommended-job artifact tabs.
+class TestAst2081FormatCatalogAndJobStructureKey:
+    def test_line_format_appended_and_details_cover_every_format(self) -> None:
+        # AC13: line joins the tuple; no existing format dropped.
+        assert cfg.RESUME_STRUCTURE_BODY_FORMATS[-1] == "line"
+        assert set(cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS) == set(cfg.RESUME_STRUCTURE_BODY_FORMATS)
+        fonts = cfg.BUILD_CONFIG["default_style"]["fonts"]
+        for fmt, d in cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS.items():
+            assert set(d) == {"label", "description", "font_stack"}, fmt
+            assert d["label"].strip() and d["description"].strip(), fmt
+            assert d["font_stack"] in fonts, fmt
+
+    def test_labels_and_fonts_match_builder_css(self) -> None:
+        # AC14 data half: the strings the UI must not hardcode live here.
+        d = cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS
+        assert {f: d[f]["label"] for f in d} == {
+            "free_prose": "Prose",
+            "bullet_list": "Bullet List",
+            "word_cloud": "Word Cloud",
+            "dual_column": "Dual Column",
+            "indented_bold_single": "Indented Bold",
+            "experience_detail": "Experience",
+            "line": "Line",
+        }
+        # Word cloud + dual column print in the list font; everything else in the body font.
+        assert {f for f in d if d[f]["font_stack"] == "list_stack"} == {"word_cloud", "dual_column"}
+        assert cfg.RESUME_STRUCTURE_HIDDEN_FLOW_LABEL == "Hidden"
+        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS["normal"] == "Flow uninterrupted"
+
+    def test_job_resume_structure_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]
+        assert entry == {
+            "entity_type": "job",
+            "candidate_scoped": True,
+            "body_shape": "resume_structure",
+            "ingestion_owner": "tracker",
+        }
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        # AST-1678 sibling key stays absent; the job key is the job_resume_structure leaf.
+        assert "job.artifacts.resume_structure" not in cfg.ARTIFACT_CONFIG
+
+    def test_preview_thumbnail_on_resume_and_cover_tabs_only(self) -> None:
+        by_id = {t["tab_id"]: t["preview_thumbnail"] for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
+        assert by_id == {"artifact_resume": True, "artifact_cover": True, "artifact_application": False}
