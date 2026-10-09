@@ -465,3 +465,13 @@ Definition fidelity: Plan matches AST-2081 `## Scope` and parent backend slice (
 context_tokens≈42000
 
 [plan-rubric] PROCEED (Commit: 28a73a6fd) Backend plan canon-clean; discuss GET info.
+
+## Review (build)
+
+**Built:** `origin/sub/AST-2046/AST-2081-job-structure-line-format` @ `f55297be64359eab5c69de53a4589afedc4ae1c7`
+
+Stages 1–5: `1638cccdc` config (line format, `RESUME_STRUCTURE_BODY_FORMAT_DETAILS`, Hidden label, `job.artifacts.job_resume_structure`, `preview_thumbnail` flag) · `544187ded` shared `resume_structure_editor_payload` (candidate GET unchanged) · `49956da29` tracker `get_job_effective_resume_structure`, structure write branch, prep filter on job structure · `b86ebe3b4` jobs API GET + PUT · `f55297be6` builder `line` emitter and job-scoped structure/accent. Scratch checks (temp DB) green for tracker, routes, builder; `tests/component/core/test_builder.py` 192 passed (unchanged). Tests deferred to Betty — known drift: `test_config` format tuple and catalog key set (see Stage 1).
+
+**Deviations:**
+- Tracker and builder new annotations use `X | None` instead of `Optional[...]` (both modules have `from __future__ import annotations`); keeps ruff at baseline (UP045).
+- `api_jobs.py` ruff 12 → 14: two TRY401 on the `logger.exception(..., type(exc).__name__, exc)` form `stat.logging.error` mandates (existing handlers in the file use the same form). Kept per canon.
