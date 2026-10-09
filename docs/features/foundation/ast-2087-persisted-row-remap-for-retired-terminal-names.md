@@ -432,3 +432,64 @@ context_tokens≈95000
 - Lint: `ruff --extend-ignore UP,I` on `database.py` was 31 before and 31 after. The CLI is clean. Parent AC 2 grep on `database.py`: no output.
 - Verification was run on a `/tmp` copy via `ASTRAL_DB_DIR`, seeded with retired job rows, one dead-state row, and a `BOT_BLOCKED` notify dispatch row. The dry run left `sum(length(state))` unchanged. `--execute` remapped the resolvable rows and moved notify to `BOT_BLOCKED_SCRAPE_METEORITE`. `sum(length(state_history))` was unchanged. The remaining retired count equalled `skipped`, and the dead state was reported under `unregistered` and left untouched.
 - The plan's `python scripts/…` commands need `python3` (or `./scripts/…`) on hosts without `python-is-python3`.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2087
+**Publish ref:** ecb82170db85a67c6152abae46cd2903b24fcf95 (`origin/sub/AST-2073/AST-2087-terminal-state-remap`)
+**Corpus:** c04b07deda8f5a750afd473ec847d06ed2207065
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.dispatch.entity-state-bound | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded `stat.dispatch.entity-state-bound` **A**; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Epic stack vs `origin/dev`:** Three-dot diff `origin/dev...ecb82170d` still includes AST-2086 product + tests (2086 not on `dev`). AST-2087-only commits (`6333b8f0a`–`ecb82170d`) touch seven paths: `database.py`, migration CLI, tests, bible — per plan Scope. Not cross-ticket product smuggle; baseline artifact noise for reviewers until ftr lands on `dev`.
+- **Clerk id (Joan carry):** Frozen list cites `stat.dispatch.entity-state-bound`; active id is `astral.dispatch.entity-state-bound` — same statute file; alias hygiene only.
+- **Residual skips:** Unresolvable retired rows (e.g. legacy meteorite `SCRAPE_ERROR` off non-catalog triggers) stay put and count in `skipped` — AC9-consistent; operators should expect non-zero skips on dirty data (plan Out of scope / Joan discuss).
+- **Operator docs:** Plan verification uses `python3`; CLI shebang is `python3` — hosts without `python` alias need `python3` or `./scripts/...` (build stub note).
+
+## Non-canon (§5.4)
+
+- **Plan fidelity:** Stage 1–2 delivered per plan: conn-bound `_terminal_state_remap_conn` + public `migrate_terminal_state_names`, operator CLI (dry-run default, `--execute`), comment reword at meteorite insert (no `NEW_EMAIL_ERROR` literal). Consumes `RETIRED_TERMINAL_STATE_MAP` only; no new config/core edits in 2087 commits. Write surface limited to `state` and `dispatch_task.trigger_state`; no `state_history` / `state_changed_at` / `updated_at` updates; not wired into schema-ensure.
+- **Estimate footprint:** Confirm estimate **3** fits 2087-only delta (~656 lines product + tests).
+- **Cross-ticket scope:** `blockedBy` AST-2086 (UT on ftr) — dependency satisfied on publish ref; 2087 does not re-own rename grammar.
+- **Sibling test carry:** Betty’s `test_terminal_state_remap.py` + bible rows are this ticket’s qa manifest, not ftr carry.
+
+## What’s solid
+
+- **`stat.dispatch.entity-state-bound`:** `dispatch_task` remap selects rows whose `trigger_state` is a retired key, sets `trigger_state` to `dispatch_task_admin_defaults(task_key)["trigger_state"]` only when that catalog trigger is among the map targets for the old name; otherwise skips and counts (`src/data/database.py` `_terminal_state_remap_conn`). Tests assert `meteorite_bot_blocked_notify` `BOT_BLOCKED` → `BOT_BLOCKED_SCRAPE_METEORITE` (AC 8 live half).
+- **AC 9 contract:** Component tests cover dry-run no-write, execute write surface, skipped parity, dead states under `unregistered`, `state_history` stability, resolver branches (predecessor, hop/`run_next`, shared-trigger dispatch tie-break).
+- **AC 2 (data layer):** 2087 insert block derives retired names from map/config only; parent grep constraint on `database.py` satisfied (build stub).
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append artifact, `docs(AST-2087): Radia review — clean`, push publish ref, post slim upshot `--as radia`, **Review Posted** → datt **§3h** **PROCEED** (no `resolve-child` unless Susan opens a discuss).
+- **Operator (post-UT / deploy):** backup DB → dry-run CLI → Susan OK → `--execute` on each environment; expect some `skipped` on legacy edge rows.
+
+[code-rubric] PROCEED (Commit: ecb82170d) Persisted remap conforms
+
+context_tokens≈38000
