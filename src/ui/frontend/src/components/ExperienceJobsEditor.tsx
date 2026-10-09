@@ -122,7 +122,7 @@ export default function ExperienceJobsEditor({
       {value.map((job, index) => (
         <CollapsiblePanel
           key={index}
-          label={<span className="experience-jobs-editor-role-label">{roleCollapsedLabel(job)}</span>}
+          label={<span className="experience-jobs-editor-role-label resume-section-title">{roleCollapsedLabel(job)}</span>}
           defaultExpanded={false}
           actions={
             <span className="side-tab-controls">

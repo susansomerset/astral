@@ -77,14 +77,19 @@ from src.utils.config import (
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
     RESUME_STRUCTURE_BODY_FORMATS,
+    RESUME_STRUCTURE_BODY_FORMAT_DETAILS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
     RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT,
     RESUME_STRUCTURE_EXTRA_ID_PATTERN,
+    RESUME_STRUCTURE_HIDDEN_FLOW_LABEL,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+    RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+    RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID,
     RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
     RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS,
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
     RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
     TASK_CONFIG,
@@ -1558,6 +1563,31 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     return criteria
 
 
+def rubric_dispatch_error(candidate_id: Optional[str], task_key: str) -> Optional[str]:
+    """User-facing reason a rubric-backed task can't Auto/Run: duplicate codes or empty rubric (AST-2091).
+    None when the rubric is fine, the task isn't rubric-backed, or there's no candidate (key gate owns that). Pure read."""
+    # TASK_CONFIG.rubric_artifact, not rubric_owner_task_key(): craft_* tasks must stay runnable on an empty rubric.
+    rk = (TASK_CONFIG.get((task_key or "").strip()) or {}).get("rubric_artifact")
+    owner = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(rk) if rk else None
+    cid = str(candidate_id or "").strip()
+    if not owner or not cid:
+        return None
+    # Same list consult grades with (embedded QC/GC/RC merges included).
+    criteria = rubric_criteria_for_task(cid, owner)
+    if not criteria:
+        return f"Rubric '{rk}' is empty for this candidate."
+    # strip().upper() matches _vector_labels_map; blank codes skipped (sync assigns V{idx}).
+    counts: Dict[str, int] = {}
+    for c in criteria:
+        code = str(c.get("code") or "").strip().upper() if isinstance(c, dict) else ""
+        if code:
+            counts[code] = counts.get(code, 0) + 1
+    dupes = sorted(code for code, n in counts.items() if n > 1)
+    if dupes:
+        return f"Rubric '{rk}' has duplicate vector codes: {', '.join(dupes)}"
+    return None
+
+
 def rubric_criteria_for_token(candidate_id: str, owner_task_key: str) -> list:
     """Token resolver entry — same list shape as rubric_criteria_for_task."""
     return rubric_criteria_for_task(candidate_id, owner_task_key)
@@ -2958,6 +2988,75 @@ def enabled_resume_structure_sections(resolved: dict) -> list:
     }
     enabled.sort(key=lambda s: (order_by_id.get(s["id"], 0), s["id"]))
     return enabled
+
+
+def resume_structure_editor_payload(resolved: dict) -> dict:
+    """Structure-editor payload for a resolved structure (AST-2081): sections, all_sections, accent_color, catalog.
+
+    Shared by the candidate and job resume_structure GETs. Format labels/descriptions/fonts and flow
+    labels come from config only — the frontend never hardcodes them.
+    """
+    accent = resolved.get("accent_color")
+    if not isinstance(accent, str):
+        accent = None
+    required = set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
+    contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+    all_sections = []
+    sections_map = resolved.get("sections") if isinstance(resolved.get("sections"), dict) else {}
+    for sid, spec in sorted(
+        sections_map.items(),
+        key=lambda kv: (
+            kv[1].get("order", 0) if isinstance(kv[1], dict) and isinstance(kv[1].get("order"), int) else 0,
+            kv[0],
+        ),
+    ):
+        if not isinstance(spec, dict):
+            continue
+        all_sections.append({
+            "id": sid,
+            "title": spec.get("title") or "",
+            "enabled": bool(spec.get("enabled")),
+            "order": spec.get("order") if isinstance(spec.get("order"), int) else 0,
+            "format": spec.get("format") if isinstance(spec.get("format"), str) else None,
+            "job_agent_editable": bool(spec.get("job_agent_editable")),
+            "required": sid in required,
+            "format_locked": sid == "experience" or sid in contact,
+            "page_break_policy": (
+                spec["page_break_policy"]
+                if isinstance(spec.get("page_break_policy"), str)
+                and spec["page_break_policy"] in RESUME_STRUCTURE_PAGE_BREAK_POLICIES
+                else RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+            ),
+        })
+    fonts = BUILD_CONFIG["default_style"]["fonts"]
+    catalog = {
+        "body_formats": list(RESUME_STRUCTURE_BODY_FORMATS),
+        "required_ids": list(RESUME_STRUCTURE_REQUIRED_SECTION_IDS),
+        "contact_ids": list(RESUME_STRUCTURE_CONTACT_SECTION_IDS),
+        "extra_id_pattern": RESUME_STRUCTURE_EXTRA_ID_PATTERN,
+        "reserved_extra_ids": list(RESUME_STRUCTURE_RESERVED_EXTRA_IDS),
+        "new_extra_default_format": RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+        "page_break_policies": list(RESUME_STRUCTURE_PAGE_BREAK_POLICIES),
+        "page_break_policy_labels": dict(RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS),
+        "page_break_policy_default": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+        "page_break_policy_defaults": dict(RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID),
+        # AST-2081: per-format label / tooltip / preview font (CSS font-family string), id-keyed.
+        "body_format_details": {
+            fmt: {
+                "label": d["label"],
+                "description": d["description"],
+                "font_family": fonts[d["font_stack"]],
+            }
+            for fmt, d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.items()
+        },
+        "hidden_flow_label": RESUME_STRUCTURE_HIDDEN_FLOW_LABEL,
+    }
+    return {
+        "sections": enabled_resume_structure_sections(resolved),
+        "all_sections": all_sections,
+        "accent_color": accent,
+        "catalog": catalog,
+    }
 
 
 def filter_base_resume_to_structure(content: dict, section_ids: set) -> dict:

@@ -46,9 +46,9 @@
   --text-primary: #e8e4f0;
   --text-secondary: #9a8fb8;
   --text-muted: #6b6280;
-  --accent-gold: #d4a843;
-  --accent-gold-hover: #e0b854;
-  --heading: var(--accent-gold);
+  --accent-contrast: #d4a843;
+  --accent-contrast-hover: #e0b854;
+  --heading: var(--accent-contrast);
   --cta-green: #28a745;
   --cta-green-hover: #2ebd4e;
   --danger: #dc3545;
@@ -65,7 +65,7 @@
   --confidence-bullet-inactive: var(--text-muted);
   /* AST-2042: semantic tokens for former literals / undefined refs (values = the literals they replaced) */
   --nav-group-label: #f0d690;
-  --accent-gold-dim: rgba(212, 168, 67, 0.15);
+  --accent-contrast-dim: rgba(212, 168, 67, 0.15);
   --paper-bg: #ffffff;
   --text-on-grade: #1a1424;
   --text-on-grade-f: #e8e4f0;
@@ -93,9 +93,9 @@
   --text-primary: #1f1830;
   --text-secondary: #5a5070;
   --text-muted: #857b99;
-  --accent-gold: #9a7314;
-  --accent-gold-hover: #b0851c;
-  --heading: #241b33;
+  --accent-contrast: #241b33;
+  --accent-contrast-hover: #2c1b47;
+  --heading: var(--accent-contrast);
   --cta-green: #1e7e34;
   --cta-green-hover: #23913c;
   --danger: #c82333;
@@ -108,8 +108,8 @@
   --grade-x: #6b46c1;
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
-  --nav-group-label: #7a5a10;
-  --accent-gold-dim: rgba(154, 115, 20, 0.15);
+  --nav-group-label: var(--accent-contrast);
+  --accent-contrast-dim: rgba(36, 27, 51, 0.15);
   --paper-bg: #ffffff;
   --text-on-grade: #ffffff;
   --text-on-grade-f: #ffffff;
@@ -135,9 +135,9 @@
   --text-primary: #2b2116;
   --text-secondary: #6b5a43;
   --text-muted: #94826a;
-  --accent-gold: #8a5a00;
-  --accent-gold-hover: #a06c08;
-  --heading: #241b33;
+  --accent-contrast: #241b33;
+  --accent-contrast-hover: #2c1b47;
+  --heading: var(--accent-contrast);
   --cta-green: #2f7d32;
   --cta-green-hover: #388e3c;
   --danger: #b3261e;
@@ -150,8 +150,8 @@
   --grade-x: #6b46c1;
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
-  --nav-group-label: #7a4f00;
-  --accent-gold-dim: rgba(138, 90, 0, 0.15);
+  --nav-group-label: var(--accent-contrast);
+  --accent-contrast-dim: rgba(36, 27, 51, 0.15);
   --paper-bg: #ffffff;
   --text-on-grade: #ffffff;
   --text-on-grade-f: #ffffff;
@@ -177,8 +177,8 @@
   --text-primary: #18202e;
   --text-secondary: #4a5568;
   --text-muted: #7a8699;
-  --accent-gold: #2b6cb0;
-  --accent-gold-hover: #3182ce;
+  --accent-contrast: #2b6cb0;
+  --accent-contrast-hover: #3182ce;
   --heading: #241b33;
   --cta-green: #2f855a;
   --cta-green-hover: #38a169;
@@ -193,7 +193,7 @@
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
   --nav-group-label: #2c5282;
-  --accent-gold-dim: rgba(43, 108, 176, 0.15);
+  --accent-contrast-dim: rgba(43, 108, 176, 0.15);
   --paper-bg: #ffffff;
   --text-on-grade: #ffffff;
   --text-on-grade-f: #ffffff;
@@ -287,7 +287,7 @@ body {
 
 .sidebar-candidate-select select:focus {
   outline: none;
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 /* === 4d. Selected candidate state under picker (AST-1450) === */
@@ -351,7 +351,7 @@ body {
 .nav-hamburger span {
   display: block;
   height: 2px;
-  background: var(--accent-gold);
+  background: var(--accent-contrast);
   border-radius: 1px;
 }
 
@@ -430,7 +430,7 @@ body {
 
 .sidebar-candidate-menu-toggle:focus {
   outline: none;
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 .sidebar-candidate-menu-list {
@@ -462,7 +462,7 @@ body {
 }
 
 .sidebar-candidate-menu-item.is-selected {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   font-weight: 600;
 }
 
@@ -520,9 +520,9 @@ body {
 
 .nav-link.active {
   background: var(--bg-elevated);
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   font-weight: 600;
-  border-left-color: var(--accent-gold);
+  border-left-color: var(--accent-contrast);
 }
 
 .nav-link.disabled {
@@ -670,7 +670,7 @@ body {
 .perf-total-cost {
   font-size: 13px;
   font-weight: 600;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   opacity: 0.8;
 }
 
@@ -691,8 +691,8 @@ body {
 
 .list-page-search:focus {
   outline: none;
-  border-color: var(--accent-gold);
-  box-shadow: 0 0 0 2px var(--accent-gold-dim);
+  border-color: var(--accent-contrast);
+  box-shadow: 0 0 0 2px var(--accent-contrast-dim);
 }
 
 .list-page-bulk-bar {
@@ -757,7 +757,7 @@ body {
 }
 
 .list-page-table thead th .col-resize-handle:hover {
-  background: var(--accent-gold);
+  background: var(--accent-contrast);
   opacity: 0.4;
 }
 
@@ -772,7 +772,7 @@ body {
 }
 
 .list-page-table thead th.sortable:hover {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
 }
 
 .list-page-table tbody td {
@@ -828,7 +828,7 @@ body {
 .expand-toggle {
   background: none;
   border: none;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   cursor: pointer;
   font-size: 12px;
   margin-left: 4px;
@@ -994,7 +994,7 @@ body {
 }
 
 .recommended-report-title-link:hover {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   text-decoration: underline;
 }
 
@@ -1017,7 +1017,7 @@ body {
 }
 
 .recommended-report-company-link:hover {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   text-decoration: underline;
 }
 
@@ -1032,7 +1032,7 @@ body {
 }
 
 .recommended-report-job-link-text a:hover {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
 }
 
 .recommended-report-external-link {
@@ -1052,7 +1052,7 @@ body {
 
 .recommended-report-copy-feedback {
   font-size: 12px;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
 }
 
 .recommended-report-header-actions {
@@ -1382,7 +1382,7 @@ body {
 .analysis-rubric-link {
   background: none;
   border: none;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   font-size: 12px;
   cursor: pointer;
   padding: 0 0 0 36px;
@@ -1392,7 +1392,7 @@ body {
 }
 
 .analysis-rubric-link:hover {
-  color: var(--accent-gold-hover);
+  color: var(--accent-contrast-hover);
 }
 
 /* Job description and rubric text content */
@@ -1451,79 +1451,13 @@ body {
 }
 
 .base-resume-accent-swatch.selected {
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
   box-shadow: 0 0 0 1px var(--bg-elevated);
 }
 
 .base-resume-accent-swatch:focus-visible {
-  outline: 2px solid var(--accent-gold);
+  outline: 2px solid var(--accent-contrast);
   outline-offset: 2px;
-}
-
-.base-resume-structure-editor {
-  padding: 10px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
-}
-
-.base-resume-structure-editor-title {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-}
-
-.base-resume-structure-row,
-.base-resume-structure-add {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.base-resume-structure-row-id {
-  font-size: 12px;
-  color: var(--text-muted);
-  min-width: 8em;
-}
-
-.base-resume-structure-save {
-  margin-top: 4px;
-}
-
-.structure-authoring-header {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.structure-authoring-name {
-  flex: 1 1 auto;
-  min-width: 8rem;
-}
-
-.structure-authoring-style {
-  flex: 0 0 auto;
-  width: 9rem;
-  max-width: 12rem;
-}
-
-.structure-authoring-flag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-  white-space: nowrap;
-  font-weight: 400;
-  color: var(--text-muted);
 }
 
 .dep-header {
@@ -1561,7 +1495,7 @@ body {
   align-items: center;
   justify-content: center;
 }
-.sql-hist-btn:hover:not(:disabled) { border-color: var(--accent-gold); color: var(--accent-gold); }
+.sql-hist-btn:hover:not(:disabled) { border-color: var(--accent-contrast); color: var(--accent-contrast); }
 .sql-hist-btn:disabled { opacity: 0.3; cursor: default; }
 
 /* Read-only cost metrics strip shown when a model is selected */
@@ -1641,8 +1575,8 @@ body {
 
 .dep-input:focus {
   outline: none;
-  border-color: var(--accent-gold);
-  box-shadow: 0 0 0 2px var(--accent-gold-dim);
+  border-color: var(--accent-contrast);
+  box-shadow: 0 0 0 2px var(--accent-contrast-dim);
 }
 
 .dep-textarea {
@@ -1760,8 +1694,8 @@ body {
 }
 
 .tabbed-ta-tab.active {
-  color: var(--accent-gold);
-  border-bottom-color: var(--accent-gold);
+  color: var(--accent-contrast);
+  border-bottom-color: var(--accent-contrast);
 }
 
 .tabbed-ta-textarea {
@@ -1805,7 +1739,7 @@ body {
 
 .side-tab-item.active {
   background: var(--bg-elevated);
-  border-left: 3px solid var(--accent-gold);
+  border-left: 3px solid var(--accent-contrast);
   padding-left: 9px;
 }
 
@@ -1820,7 +1754,7 @@ body {
 }
 
 .side-tab-item.active .side-tab-label {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   font-weight: 600;
 }
 
@@ -1829,7 +1763,7 @@ body {
   font-family: inherit;
   background: var(--bg-deep);
   color: var(--text-primary);
-  border: 1px solid var(--accent-gold);
+  border: 1px solid var(--accent-contrast);
   border-radius: 3px;
   padding: 2px 6px;
   flex: 1;
@@ -1854,7 +1788,7 @@ body {
 }
 
 .side-tab-controls button:hover:not(:disabled) {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   background: var(--bg-deep);
 }
 
@@ -1868,7 +1802,7 @@ body {
   font-size: 13px;
   font-family: inherit;
   font-weight: 600;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   background: none;
   border: none;
   border-bottom: 1px solid var(--border-subtle);
@@ -1909,7 +1843,7 @@ input.side-tab-heading-editable:hover {
 }
 
 input.side-tab-heading-editable:focus {
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 .side-tab-textarea {
@@ -2008,7 +1942,6 @@ input.side-tab-heading-editable:focus {
 
 .experience-jobs-editor-role-label {
   font-size: 12px;
-  color: var(--text-muted);
 }
 
 .experience-jobs-editor-add {
@@ -2019,6 +1952,190 @@ input.side-tab-heading-editable:focus {
   margin: 0 0 8px;
   color: var(--danger);
   font-size: 13px;
+}
+
+/* === 10e2. Resume content editor (AST-2083) === */
+
+.resume-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.resume-editor-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.resume-editor-header .resume-editor-search {
+  flex: 1 1 10rem;
+  width: auto;
+  min-width: 8rem;
+}
+
+.resume-editor-rows {
+  padding: 8px 12px;
+}
+
+.resume-section-row {
+  margin-bottom: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.resume-section-row.is-expanded {
+  border-color: var(--border);
+}
+
+.resume-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 8px 4px 4px;
+  background: var(--bg-elevated);
+}
+
+.resume-section-header > button,
+.resume-section-header > span {
+  flex: 0 0 auto;
+}
+
+/* Section header text; experience job headers share it (AC: same computed color). */
+.resume-section-title {
+  color: var(--heading);
+}
+
+.resume-section-header > .resume-section-summary {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.resume-section-summary .resume-section-title {
+  font-weight: 600;
+}
+
+.resume-section-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.resume-section-drag {
+  color: var(--text-muted);
+  cursor: grab;
+  user-select: none;
+}
+
+.resume-section-icon,
+.resume-section-format {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.resume-section-format {
+  padding: 0 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+
+.resume-section-header .resume-section-label-input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 8rem;
+  font-weight: 600;
+}
+
+.resume-section-header .resume-section-select {
+  flex: 0 0 auto;
+  width: 10rem;
+}
+
+.resume-section-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.resume-section-body {
+  padding: 8px;
+  background: var(--bg-deep);
+}
+
+.resume-section-textarea {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.resume-section-compare {
+  margin: 8px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--border);
+  background: var(--bg-deep);
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
+.resume-section-new {
+  border-left-color: var(--accent-contrast);
+}
+
+.resume-section-removed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.resume-section-removed-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* PrintPreview thumbnail hook (AST-2082). */
+.print-preview-thumb {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--paper-bg);
+}
+
+.print-preview-thumb:hover {
+  border-color: var(--accent-contrast);
 }
 
 /* === 10f. Section expand chrome (AST-893) === */
@@ -2095,7 +2212,7 @@ input.side-tab-heading-editable:focus {
 .artifact-criterion-meta-row input[type="text"]:focus,
 .artifact-criterion-meta-row select:focus {
   outline: none;
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 .artifact-editor-add-criterion {
@@ -2193,7 +2310,7 @@ input.side-tab-heading-editable:focus {
 .admin-filters input:focus,
 .admin-filters select:focus {
   outline: none;
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 .timesheet-totals-bar {
@@ -2223,7 +2340,7 @@ input.side-tab-heading-editable:focus {
   position: sticky;
   bottom: 0;
   background: var(--bg-card);
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
   margin-bottom: 0;
   border-bottom: none;
   border-radius: 4px 4px 0 0;
@@ -2243,13 +2360,13 @@ input.side-tab-heading-editable:focus {
 
 .dispatch-status-ok { background: var(--cta-green); color: var(--text-on-color); }
 .dispatch-status-fail { background: var(--danger); color: var(--text-on-color); }
-.dispatch-status-running { background: var(--accent-gold); color: var(--bg-deep); }
+.dispatch-status-running { background: var(--accent-contrast); color: var(--bg-deep); }
 .dispatch-status-interrupted { background: var(--status-interrupted-bg); color: var(--status-interrupted-text); }
-.dispatch-status-warn { background: var(--accent-gold); color: var(--bg-deep); }
+.dispatch-status-warn { background: var(--accent-contrast); color: var(--bg-deep); }
 .dispatch-status-muted { background: var(--bg-card); color: var(--text-muted); }
 
 .dispatch-link {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   text-decoration: none;
   font-size: 13px;
 }
@@ -2303,7 +2420,7 @@ input.side-tab-heading-editable:focus {
 
 .dispatch-log-level { font-weight: 600; }
 .dispatch-log-level-error { color: var(--danger); }
-.dispatch-log-level-warning { color: var(--accent-gold); }
+.dispatch-log-level-warning { color: var(--accent-contrast); }
 .dispatch-log-level-info { color: var(--text-secondary); }
 .dispatch-log-level-debug { color: var(--text-muted); }
 
@@ -2323,7 +2440,7 @@ input.side-tab-heading-editable:focus {
   padding: 0;
   font-family: monospace;
   font-size: 12px;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -2347,7 +2464,7 @@ input.side-tab-heading-editable:focus {
 .batch-cost-summary strong { color: var(--text-primary); }
 .batch-cost-summary em { color: var(--text-muted); font-style: normal; margin-left: 4px; }
 .batch-cost-label { font-weight: 600; color: var(--text-primary); margin-right: 4px; }
-.batch-cost-total { font-weight: 600; color: var(--accent-gold); margin-left: auto; }
+.batch-cost-total { font-weight: 600; color: var(--accent-contrast); margin-left: auto; }
 
 /* Wrapper fills the modal-body (wide modal removes padding; nested owners use height:100%) */
 .batch-agent-data-wrapper {
@@ -2766,13 +2883,13 @@ input.side-tab-heading-editable:focus {
 
 .btn.primary.in-flight,
 .btn.primary.in-flight:disabled {
-  background: var(--accent-gold);
+  background: var(--accent-contrast);
   border: none;
   color: var(--bg-deep);
 }
 
 .btn.primary.in-flight:hover:not(:disabled) {
-  background: var(--accent-gold-hover);
+  background: var(--accent-contrast-hover);
 }
 
 .btn.secondary {
@@ -2826,7 +2943,7 @@ input.side-tab-heading-editable:focus {
 
 .icon-control:hover:not(:disabled) {
   color: var(--text-primary);
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 .icon-control:disabled {
@@ -2899,6 +3016,13 @@ input.side-tab-heading-editable:focus {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.theme-examples-grade-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
 }
 
 .theme-examples-grade-options-label,

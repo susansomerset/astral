@@ -52,7 +52,7 @@ from src.utils.config import (
     DISPATCH_RETIRED_TASK_KEYS,
 )
 from src.utils.network import check_internet_reachable
-from src.utils.llm_external import is_provider_balance_refusal, is_provider_rate_limit
+from src.utils.llm_external import is_provider_balance_refusal, is_provider_probe_failure, is_provider_rate_limit
 from src.utils.logging import get_logger, log_batch_id, log_candidate_id, log_debug, flush_log_buffer
 
 logger = get_logger(__name__)
@@ -639,6 +639,22 @@ def _note_provider_rate_limit_outage(ctx: Dict, task: Dict, result: Dict) -> Non
     )
 
 
+def _note_provider_probe_outage(ctx: Dict, task: Dict, result: Dict) -> None:
+    """AST-2098: first failed-host-probe result in a run sets ctx["provider_probe_outage"] and logs one
+    WARNING; later results only add to the held tally. The run stops and the next round probes again."""
+    outage = ctx.get("provider_probe_outage")
+    if outage is None:
+        outage = ctx["provider_probe_outage"] = {"error": result.get("error") or "", "held": 0}
+        logger.warning(
+            "%s | dispatch %s %s\n  LLM host probe failed (%s)\n  The batch is stopping; entity state is held for the next round",
+            ctx.get("astral_candidate_id") or task.get("candidate_id") or "-",
+            task.get("entity_type") or "-",
+            task.get("task_key") or "-",
+            outage["error"],
+        )
+    outage["held"] += int(result.get("total_held", 0) or 0)
+
+
 async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     """Claim a batch for the given task and dispatch to consult.run_consult_task.
     Reads entity_type, trigger_state, sort_by, batch_call_mode from the DB task row.
@@ -812,6 +828,11 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             clear_candidate_batch(bid)
         return s
 
+    # AST-2093: entities re-claimed by a later run of this dispatch (retry holdings) are not new work.
+    ids = [e.get("astral_job_id") or e.get("company_id") or e.get("astral_candidate_id") for e in entities]
+    seen = ctx.setdefault("dispatch_seen_ids", set())
+    repeats = sum(1 for i in ids if i and i in seen)
+    seen.update(i for i in ids if i)
     # AST-1847: in-flight run's running summary; batch runners tally into it in place so a
     # dispatch-timeout cancel can still record partial counts (_dispatch_one_body timeout branch).
     ctx["dispatch_partial"] = dict(_SUMMARY_ZERO)
@@ -831,8 +852,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 logger.debug("Beginning consult chunk loop on %s items", len(chunks))
 
                 async def _consult_chunk(ci: int, chunk_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-                    # AST-1867 / AST-2010: provider refused for balance or rate limit — no further calls this run
-                    if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage"):
+                    # AST-1867 / AST-2010 / AST-2098: balance refusal, rate limit or failed host probe — no further calls this run
+                    if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage") or ctx.get("provider_probe_outage"):
                         return dict(_SUMMARY_ZERO)
                     logger.debug(
                         "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=%s, batch=%s, task_key=%s]",
@@ -847,12 +868,16 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                         debug,
                         batch_chunk_index=ci,
                         dispatch_task_key=dispatch_task_key,
+                        # AST-2093: chunk keeps batch-global row indexes instead of restarting at 000.
+                        batch_index_offset=ci * chunk_sz,
                     )
                     logger.debug("Response from consult.run_consult_task: %s", result)
                     if is_provider_balance_refusal(result):
                         _note_provider_balance_outage(ctx, task, result)
                     if is_provider_rate_limit(result):
                         _note_provider_rate_limit_outage(ctx, task, result)
+                    if is_provider_probe_failure(result):
+                        _note_provider_probe_outage(ctx, task, result)
                     return result
 
                 head = await _consult_chunk(0, chunks[0])
@@ -880,12 +905,17 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                     _note_provider_balance_outage(ctx, task, result)
                 if is_provider_rate_limit(result):
                     _note_provider_rate_limit_outage(ctx, task, result)
+                if is_provider_probe_failure(result):
+                    _note_provider_probe_outage(ctx, task, result)
                 for k in s:
                     s[k] += result.get(k, 0)
         else:
+            # AST-2093: a lone call still sends the entity's claimed position, not 000.
+            idx_of = {id(e): i for i, e in enumerate(entities)}
+
             async def _one(e):
-                # AST-1867 / AST-2010: provider refused for balance or rate limit — skip (not processed); finally releases the claim
-                if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage"):
+                # AST-1867 / AST-2010 / AST-2098: balance refusal, rate limit or failed host probe — skip (not processed); finally releases the claim
+                if ctx.get("provider_balance_outage") or ctx.get("provider_rate_limit_outage") or ctx.get("provider_probe_outage"):
                     return dict(_SUMMARY_ZERO)
                 logger.debug(
                     "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=1, batch=%s, task_key=%s]",
@@ -894,12 +924,15 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 result = await consult.run_consult_task(
                     entity_type, input_state, [e], bid, ctx, debug,
                     dispatch_task_key=dispatch_task_key,
+                    batch_index_offset=idx_of[id(e)],
                 )
                 logger.debug("Response from consult.run_consult_task: %s", result)
                 if is_provider_balance_refusal(result):
                     _note_provider_balance_outage(ctx, task, result)
                 if is_provider_rate_limit(result):
                     _note_provider_rate_limit_outage(ctx, task, result)
+                if is_provider_probe_failure(result):
+                    _note_provider_probe_outage(ctx, task, result)
                 return result
             results = await _warm_then_gather(_one, entities, _SUMMARY_ZERO)
             for r in results:
@@ -914,6 +947,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             clear_company_batch(bid)
     # Normal return only: counts travel via s now, so drop the partial to avoid double counting.
     ctx.pop("dispatch_partial", None)
+    # Outside _SUMMARY_ZERO so per-run merges and the ledger write skip it; min() only keeps an
+    # outage-zeroed run from going negative in _run_dispatch_loop.
+    s["repeat_processed"] = min(repeats, s["total_processed"])
     return s
 
 
@@ -1425,9 +1461,10 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         logger.debug("Response from _run_dispatch_loop: %s", accumulated)
         # AST-1867: run cut short by provider outage — non-COMPLETED keeps it out of the circuit breaker.
         # AST-2010: an exhausted rate limit errors the whole batch — FAILED wins over balance INTERRUPTED.
+        # AST-2098: a failed host probe is a no-op run — INTERRUPTED, so it stays out of the circuit breaker.
         if ctx.get("provider_rate_limit_outage"):
             final_status = "FAILED"
-        elif ctx.get("provider_balance_outage"):
+        elif ctx.get("provider_balance_outage") or ctx.get("provider_probe_outage"):
             final_status = "INTERRUPTED"
     except asyncio.TimeoutError as exc:
         final_status = "INTERRUPTED"
@@ -1591,6 +1628,8 @@ async def _run_dispatch_loop(
         logger.debug("Response from _run_task: %s", summary)
         for k in accumulated:
             accumulated[k] += summary.get(k, 0)
+        # AST-2093: count each entity once across runs; the 0-processed stop below still reads the raw per-run value.
+        accumulated["total_processed"] -= summary.get("repeat_processed", 0)
         run_count += 1
         # Update ledger mid-run so the execution history reflects live progress
         if dispatch_ledger_id:
@@ -1602,6 +1641,11 @@ async def _run_dispatch_loop(
             break
         if ctx.get("provider_rate_limit_outage"):
             logger.debug("loop stop: provider rate limit run_count=%s", run_count)
+            logger.debug("End dispatch loop after %s run(s)", run_count)
+            break
+        # AST-2098: failed host probe — stop; held entities stay eligible and the next round probes again
+        if ctx.get("provider_probe_outage"):
+            logger.debug("loop stop: provider host probe failed run_count=%s", run_count)
             logger.debug("End dispatch loop after %s run(s)", run_count)
             break
         if summary.get("total_processed", 0) == 0:
@@ -1676,6 +1720,24 @@ def run_task(task_id: int, *, ui_initiated: bool = False, scheduled_sweep: bool 
 
     task = database.get_dispatch_task(task_id)
     if not task:
+        return False
+
+    # AST-2091: AUTO rows spawn here without the admin list, so the rubric gate must hold here too.
+    # late: avoid cycle with candidate → dispatcher (module-top import)
+    from src.core.candidate import rubric_dispatch_error
+    rubric_err = rubric_dispatch_error(task.get("candidate_id"), task.get("task_key") or "")
+    if rubric_err:
+        forced = bool(task.get("auto_mode"))
+        if forced:
+            _db_update_dispatch_task(task_id, auto_mode=0)
+        logger.warning(
+            "%s | dispatch_task id=%s task_key=%r %s — not started%s",
+            task.get("candidate_id") or "-",
+            task_id,
+            task.get("task_key"),
+            rubric_err,
+            ", AUTO forced off" if forced else "",
+        )
         return False
 
     # Enrich with available_count for logging

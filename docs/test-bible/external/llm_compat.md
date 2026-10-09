@@ -195,3 +195,16 @@ Expect **all passed** with the AST-2010 fix. The AST-897 / AST-1867 / AST-1877 /
 2. **No-regression:** the six touched test modules' failure set must not grow beyond the pre-existing drift above (compare against `c08219c32`).
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2009/AST-2010-openrouter-429-retry:docs/test-bible/external/llm_compat.md | shasum`
+
+### AST-2098 · AST-2099 (failed host probe tagged `provider_probe_failure`; missing usage reads zero)
+
+**Primary manifest:** [`../core/dispatcher.md`](../core/dispatcher.md) § AST-2098. Contract: on a probe server inside a batch, any probe error that is not an exhausted 429 on a `stops_batch` server is tagged `failure_class = "provider_probe_failure"` (no fallback, nothing sent; waiters share the cached error so every caller is tagged alike). An exhausted 429 keeps AST-2010's `provider_rate_limit`. `usage=None` reads as zero tokens (`usage_to_token_counts`), so the hollow probe's timesheet row is written without AST-1966's ERROR traceback, and a hollow real call still takes AST-1190's `provider_empty_response`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AST-2016 hollow probe (no provider, no usage, error body): probe only, `failure_class == "provider_probe_failure"`, error names the body, host `OpenRouter`, one zero-token timesheet row, no ERROR record | probe branch + `_timesheet_kwargs_for` | **`tests/component/external/test_llm_compat.py::TestAst2098ProbeFailureTagged::test_hollow_probe_tagged_held_no_traceback`** |
+| Non-429 probe exception → one probe, all four callers tagged | probe branch | **`::TestAst2098ProbeFailureTagged::test_non_429_probe_exception_tags_every_caller`** |
+| Hollow real call on a non-probe server (`kimi`) → `provider_empty_response`, no ERROR record | main call path | **`::TestAst2098ProbeFailureTagged::test_hollow_real_call_is_empty_response_without_traceback`** |
+| Exhausted 429 on the probe stays `provider_rate_limit` (AC 4 guard) | probe branch | **`::TestAst1959ProbeHostLock::test_ac4_failed_probe_fails_the_batch_with_no_fallback`** (unchanged) |
+
+**Integration:** none — do not invent.

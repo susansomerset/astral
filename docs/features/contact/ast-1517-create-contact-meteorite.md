@@ -1032,3 +1032,25 @@ Fix typo in upshot - should be [code-rubric] not [code-rubtic]
 ### Chuckles adjudication — fix-now `data/admin/*`
 
 Not a defect. `33f5c0b1c` / `048d297b5` are Susan's own commits already on `origin/dev` (and `origin/main`), merged into this sub by `sync-child.sh`'s routine `sync(dev)` (`8aadab7a6`). The three-dot diff vs `ftr` shows them only because `ftr` has not absorbed `dev` since dispatch. `git diff origin/dev <sub> -- data/admin/` is empty, so landing `ftr` changes nothing there. Reverting them as recommended would undo Susan's `dev` work. No resolve-child; the remaining items are discuss/advisory only. Clean-review shortcut (do-all-the-things §3h) → User Testing after merge-tree dry-run.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/41478d0f1db935d4e257cb48678efa54/b154312d-6d49-4d35-b8f8-81940824bc05/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/1959c35a-7b7b-4840-9dbf-aeb7738e93d3/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/41478d0f1db935d4e257cb48678efa54/7f95a300-1863-41bc-b2d2-3b3b3cdd345a/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2055 (parent) | ftr/AST-2055-estelle-pinhole |
+| AST-2061 | sub/AST-2055/AST-2061-estelle-pinhole |
+| AST-2062 | sub/AST-2055/AST-2062-estelle-pinhole-tests |
+
+**Epic worktree:** `astral-AST-2055/` — one active sub checked out at a time.

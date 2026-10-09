@@ -4445,3 +4445,89 @@ class TestAst1593BuilderCatalogCurrentRead:
             )
             == "get_job_current(job.artifacts.job_resume)"
         )
+
+
+def _ast2081_job_structure() -> dict[str, Any]:
+    """Job-edited structure: renamed summary, line highlights, core ↔ technical swap, accent, extra."""
+    raw = _ast1304_catalog(volunteer=_ast1304_extra("volunteer", "Volunteer", "line", 11))
+    secs = raw["sections"]
+    secs["professional_summary"]["title"] = "Profile"
+    secs["highlights"]["format"] = "line"
+    secs["core_competencies"]["order"], secs["technical_skills"]["order"] = 10, 5
+    raw["accent_color"] = builder_mod.BUILD_CONFIG["accent_palette"][2].upper()
+    return raw
+
+
+# Branches: _emit_body_sections_html line (text / emphasis / whitespace-only skip); _structure_source_label
+# (blank jid / row present / row absent); _accent_source_label + _merge_effective_style given structure /
+# None → candidate; build_resume_from_job job structure vs inherited candidate structure.
+class TestAst2081LineFormatAndJobStructure:
+    def test_line_section_prints_one_paragraph(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC13: newlines collapse; never "missing format"; emphasis still applies.
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = _ast1304_catalog(volunteer=_ast1304_extra("volunteer", "Volunteer", "line", 11))
+        html = builder_mod.build_session_base_resume(
+            structure, {"professional_summary": "Pitch", "volunteer": "<b>Food</b> bank\n  Coat drive \n\n"}
+        )
+        sec = html.split(">Volunteer</h2>", 1)[1].split("</section>", 1)[0]
+        assert sec.count("<p") == 1
+        assert '<p class="summary-intro"><b>Food</b> bank Coat drive</p>' in sec
+
+    def test_whitespace_only_line_section_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = _ast1304_catalog(volunteer=_ast1304_extra("volunteer", "Volunteer", "line", 11))
+        html = builder_mod.build_session_base_resume(structure, {"professional_summary": "Pitch", "volunteer": " \n "})
+        assert ">Volunteer</h2>" not in html
+
+    def test_structure_source_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            builder_mod.tracker_mod,
+            "get_job_current",
+            lambda jid, key, **k: {"sections": {}} if (jid, key) == ("job-a", "job.artifacts.job_resume_structure") else None,
+        )
+        assert builder_mod._structure_source_label(" job-a ") == "get_job_current(job.artifacts.job_resume_structure)"
+        assert builder_mod._structure_source_label("job-b") == "candidate resume_structure"
+        assert builder_mod._structure_source_label(None) == "candidate resume_structure"
+
+    def test_accent_helpers_prefer_given_structure(self) -> None:
+        job_structure = _ast2081_job_structure()
+        accent = job_structure["accent_color"]
+        cd = {"artifacts": {"resume_structure": candidate_mod.default_resume_structure()}}
+        assert builder_mod._merge_effective_style(cd, job_structure)["colors"]["default_accent"] == accent
+        assert builder_mod._merge_effective_style(cd, None)["colors"]["default_accent"] != accent
+        assert builder_mod._accent_source_label(cd, job_structure) == "resume_structure.accent_color"
+        assert builder_mod._accent_source_label(cd) == "BUILD_CONFIG.default_style"
+
+    def test_job_html_follows_job_structure_else_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AC15 + AC17 + AC18: job A HTML takes order/titles/format/accent/extra from its own structure;
+        # job B (no row) renders from the candidate structure.
+        job_structure = _ast2081_job_structure()
+        content = _resume_blob(
+            professional_summary="Pitch",
+            core_competencies="Python | SQL",
+            technical_skills="Languages: Python",
+            highlights="Shipped X\nShipped Y",
+            volunteer="Food bank",
+        )
+
+        def _get(jid, key, *, debug=False):
+            if key == "job.artifacts.job_resume":
+                return content
+            if key == "job.artifacts.job_resume_structure" and jid == "job-a":
+                return job_structure
+            return None
+
+        monkeypatch.setattr(builder_mod.tracker_mod, "get_job_current", _get)
+        cd = _candidate_row(base_resume=_resume_blob())
+        html_a = builder_mod.build_resume_from_job({"astral_job_id": "job-a", "job_data": {}}, cd, debug=True)
+        html_b = builder_mod.build_resume_from_job({"astral_job_id": "job-b", "job_data": {}}, cd)
+        accent = job_structure["accent_color"]
+        assert ">Profile</h2>" in html_a and ">Professional Summary</h2>" not in html_a
+        assert html_a.index(">Technical Skills</h2>") < html_a.index(">Core Competencies</h2>")
+        assert '<p class="summary-intro">Shipped X Shipped Y</p>' in html_a
+        assert '<p class="summary-intro">Food bank</p>' in html_a
+        assert accent.lower() in html_a.lower()
+        assert ">Professional Summary</h2>" in html_b and ">Profile</h2>" not in html_b
+        assert html_b.index(">Core Competencies</h2>") < html_b.index(">Technical Skills</h2>")
+        assert "Food bank" not in html_b
+        assert accent.lower() not in html_b.lower()

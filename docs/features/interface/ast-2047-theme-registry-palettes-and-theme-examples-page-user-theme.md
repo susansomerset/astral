@@ -1264,3 +1264,318 @@ context_tokens≈20000
 **Chuckles disposition:** fix-now "cross-ticket scope" (`src/core/contact.py`, `src/core/meteorite.py`, `src/external/slack.py`, `requirements.txt`, AST-1517 doc) is a false positive — all of it is AST-2055 (#266), already on `origin/dev`, carried in by the mandatory `sync-child.sh` `sync(dev)` merge (`880756d96`); ftr is behind dev. Against ftr merged with `origin/dev`, this sub's delta is exactly the four planned product files (`App.css`, `config.py`, `uiConfig.ts`, `AdminThemeExamples.tsx`) plus Betty's tests/bible and this doc. Restacking would violate sync law and re-enter on the next sync. Treated as clean → Review Posted → User Testing.
 
 **Review gate (final):** PROCEED — §3h clean-review shortcut, resolve-child skipped.
+
+## Bug: AST-2077 — Theme Examples: compact (letterless) grade-dot samples beside each grade-color option
+
+### As-is
+
+Theme Examples (`AdminThemeExamples.tsx`) shows only **lettered** grade dots: the sample table's Grade column, the panel's A–F/X grade row, and (from AST-2064) one lettered row per grade-color option (Deep, Soft, Classic). The Recommended Job List's analysis lines use **compact letterless** dots: `PhaseAnalysisLines` → `buildPhaseListGradeRow` renders a `div.recommended-list-phase-grade-row` of `<span><span class="grade-dot dot-<g> grade-dot-letterless"/></span>` (12px, colour only, AST-1968). None appear on Theme Examples, so Susan can't judge how compact dots read in each palette or grade-color option.
+
+### To-be
+
+In every palette panel, each grade-color option row (Deep, Soft, Classic) has one compact letterless sample beside it: dots A, B, C, D, F, X in the Recommended Job List's markup and classes, coloured by that option's grade tokens. Nothing else on the page changes.
+
+⚠️ **Decision — reading of "three samples":** Susan approved the To-be without picking between the two readings in the ticket, so this plan takes Chuckles' primary read. That means one compact sample per grade-color option row (three per panel), which shows letterless contrast per option. AST-2064 flagged Soft's letterless dots as the weak spot. The alternative read, three compact lines per panel in the panel's live grade colors, is not built.
+
+### Repro
+
+1. As admin, open Tools → Theme Examples (`/admin/theme_examples`).
+2. In any panel, the **Grade color options** block shows lettered 22px dots only. No 12px letterless dots appear anywhere on the page.
+
+### Root cause
+
+AST-2064's options block (plan § Bug: AST-2064, Proposed change step 4) rendered each candidate set only as a lettered row. The compact letterless variant (`grade-dot-letterless`, AST-1968) was never part of the Theme Examples sample.
+
+### Proposed change
+
+Two files, both in AST-2042's Component scope: `AdminThemeExamples.tsx` ("the real shared classes … grade dots") and `App.css` ("new section styles for the Theme Examples page"). Line anchors are at sub tip `2ea8ca006`.
+
+1. **`src/ui/frontend/src/pages/AdminThemeExamples.tsx`:** in the options block, replace the mapped option row (lines 90–98, `{Object.entries(gradeSets).map(([gid, set]) => ( … ))}`) with:
+
+   ```tsx
+                {Object.entries(gradeSets).map(([gid, set]) => (
+                  <div key={gid} className="theme-examples-grade-option">
+                    {/* Inline custom properties override this panel's grade tokens for this row only. */}
+                    <div className="theme-examples-row" style={set.tokens as CSSProperties}>
+                      <span className="theme-examples-grade-option-name">{set.label}</span>
+                      {GRADES.map(g => (
+                        <span key={g} className={`grade-dot dot-${g.toLowerCase()}`}>{g}</span>
+                      ))}
+                    </div>
+                    {/* Compact sample: Recommended Job List markup (buildPhaseListGradeRow, letterless gradeDot). */}
+                    <div className="recommended-list-phase-grade-row" style={set.tokens as CSSProperties}>
+                      {GRADES.map(g => (
+                        <span key={g}><span className={`grade-dot dot-${g.toLowerCase()} grade-dot-letterless`} /></span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+   ```
+
+   ⚠️ **Decision — sibling, not inside the row:** the compact sample sits **beside** the lettered row, in a new wrapper, not inside the `.theme-examples-row`. Betty's AST-2064 `[bug-repro]` asserts each option `.theme-examples-row`'s `.grade-dot` text is exactly A–X, and that row's inline style carries the set's tokens. Letterless dots inside the row would add six empty `.grade-dot`s and break that test. As a sibling with its own copy of `style={set.tokens}`, the sample gets the same option colours and the test stays unchanged. The wrapper class is new (`theme-examples-grade-option`), so the test's `.theme-examples-row` query still finds exactly one row per set.
+
+   ⚠️ **Decision — inline markup, not a reused helper:** `gradeDot` / `buildPhaseListGradeRow` (`lib/recommendedJobReport.tsx`) are not exported for a static sample. `buildPhaseListGradeRow` needs a job with rubric columns. `recommendedJobReport.tsx` and `PhaseAnalysisLines.tsx` are not in AST-2042's Component scope. The page repeats the same wrapper and dot classes, so the existing `.recommended-list-phase-grade-row` / `.grade-dot-letterless` CSS styles the sample and it renders identically.
+
+2. **`src/ui/frontend/src/App.css`:** in section 16, directly after the `.theme-examples-grade-options { … }` rule, insert:
+
+   ```css
+   .theme-examples-grade-option {
+     display: flex;
+     flex-wrap: wrap;
+     align-items: center;
+     gap: 16px;
+   }
+   ```
+
+   No colour, so the AST-2047 App.css contract (no hex outside token blocks) is unaffected.
+
+3. **Verify:**
+   - `rg -n "grade-dot-letterless" src/ui/frontend/src/pages/AdminThemeExamples.tsx` shows the one new line.
+   - In `src/ui/frontend`: `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` shows no problem absent before the change.
+   - `npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx`: all cases pass unchanged (AST-2047 page + App.css, AST-2064 options).
+   - Manual: each panel's three option lines show the lettered row with a 12px letterless A–X line beside it, in that option's colours.
+
+### Blast radius
+
+- Page-local. Only `AdminThemeExamples.tsx` and one new `App.css` rule change. The Recommended Job List, `PhaseAnalysisLines`, and the shared `.grade-dot*` / `.recommended-list-phase-grade-row` rules are not edited.
+- Options block DOM: each option row is now wrapped in `.theme-examples-grade-option`. Any test or selector depending on `.theme-examples-row` being a **direct** child of `.theme-examples-grade-options` would see a different shape. Betty's AST-2064 case uses descendant `querySelectorAll`, so it is unaffected.
+- No test currently asserts letterless dots on Theme Examples. Betty may want a case (fix-board's call).
+
+### What must still hold
+
+- AST-2064's `[bug-repro]`: per panel, one `.theme-examples-row` per set in order, its inline style carrying the set's tokens, and its `.grade-dot`s exactly A–X. The panel's own `.theme-examples-grade .grade-dot` stays exactly one A–X.
+- AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` in `App.css` outside `[data-theme]` blocks, no `#hex` literal in `.ts`/`.tsx`, and every `var(--x)` defined in a token block.
+- AST-2047 AC 2 / AC 6: no theme id literal in `.ts`/`.tsx`, one panel per registry id, and the page makes GET requests only.
+- Recommended Job List compact dots render exactly as before (no shared rule or component touched).
+
+### Fix-board — Joan (AST-2077)
+
+[board-joan]  CANON: OK
+
+**Read:** `## Bug: AST-2077` on `origin/sub/AST-2042/AST-2077-compact-grade-dots` — `AdminThemeExamples.tsx` adds letterless compact grade-dot rows (Recommended Job List markup/classes) beside each AST-2064 option row; `App.css` gets one layout rule (no colors). Parent **Canon Scope: none.**
+
+**Roster skim:** Touches `pages/` + `App.css` (`astral.ui.frontend-file-placement`). Sample-only UI; no new config resolution in React (`astral.layers.ui-config-driven-business-logic`). No in-force directive mentions grade dots, Theme Examples, or a requirement to export `buildPhaseListGradeRow`. Reusing existing `.grade-dot*` / `.recommended-list-phase-grade-row` CSS does not contradict any active pattern. Epic ACs in **What must still hold** are plan/product bars, not statute edits.
+
+**Verdict:** No canon conflict and no statute/pattern update required.
+
+### Review-fix — Radia (AST-2077)
+
+[code-rubric]
+**Ticket:** AST-2077
+**Publish ref:** `bdb19f46df12af75c0dc83f69cee4d4948e7847d` (`origin/sub/AST-2042/AST-2077-compact-grade-dots`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; parent **Canon Scope:** none)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `test_AdminThemeExamples.test.tsx` — `[bug-repro] each grade-color option has a letterless Recommended-list grade row beside it, in that option's tokens`: per panel, one `.recommended-list-phase-grade-row` per grade set; sibling of the lettered `.theme-examples-row` (shared parent, not nested); inline styles match mocked token hex; six empty `.grade-dot.grade-dot-letterless` with classes `dot-a`…`dot-x`. Would fail pre-fix (no letterless rows).
+
+**## What must still hold — OK** — Isolated product commit `bdb19f46d`: lettered option rows unchanged inside `.theme-examples-row`; wrapper `.theme-examples-grade-option` only adds layout; compact row duplicates Recommended List markup/classes without touching shared list components; `App.css` adds layout-only rule (no hex); page still GET-only; no theme id literals.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **`data/admin/agent_task.json` in ftr…sub:** Diff vs ftr is non-empty, but `git diff origin/dev bdb19f46d -- data/admin/agent_task.json` is **empty** — sync(dev) carry on the sub branch, not AST-2077 product (per spawn brief).
+- **`src/**` product delta vs ftr:** Only `App.css` + `AdminThemeExamples.tsx` — matches plan two-file scope.
+- **UAT:** Letterless contrast (especially Soft) remains visual; plan documents Susan’s judgment call.
+
+## What's solid
+
+- **Plan fidelity:** Option rows wrapped; letterless `recommended-list-phase-grade-row` sibling with per-set `style={set.tokens}`; `.theme-examples-grade-option` flex rule in section 16.
+- **Stack hygiene:** ftr merge-base = ftr tip (`6f99456a2`); no smuggled contact/meteorite/slack product unlike AST-2064/2065 round-1 patterns.
+- **Tests:** Betty `3ea12ee02` + unchanged AST-2047/2064 cases; repro pins To-be structure.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Normal** (AST-2042 UAT-batch) | → **Review Posted** → fix-lane clean shortcut → **User Testing** (`resolve-child` skipped). |
+
+context_tokens≈14000
+[code-rubric] PROCEED (Commit: bdb19f46d) Letterless grade-dot samples
+```
+
+**Stdout recommendation:** **PROCEED** → **User Testing** after Chuckles posts artifact and moves to Review Posted.
+
+**Review gate (final):** PROCEED — §3h clean-review shortcut, resolve-child skipped.
+
+## Bug: AST-2076 — Light themes: gold accent → header purple, token renamed `--accent-contrast`
+
+### As-is
+
+AST-2063 added `--heading` (Light palettes `#241b33`, the Dark theme's `--bg-elevated` purple) for section/page headers only. Everything else in the gold accent family still shows dark yellow in `light` and `light_parchment`:
+
+- `--accent-gold` (`light` `#9a7314`, `light_parchment` `#8a5a00`) drives 58 `var()` uses. These include the selected nav link's text and 3px left border (`.nav-link.active`), the selected candidate menu item, focus borders, link/label text, the in-flight primary button, and running/warn status chips.
+- `--accent-gold-hover` (`#b0851c` / `#a06c08`, 2 uses) and `--accent-gold-dim` (`rgba(154,115,20,.15)` / `rgba(138,90,0,.15)`, 3 uses: focus rings and the AdminDataManagement selected table).
+- `--nav-group-label` (`#7a5a10` / `#7a4f00`) drives the nav group headers (`.nav-group-label`).
+
+`light_slate` uses blues for these tokens, and Dark is gold.
+
+### To-be
+
+Per the ticket's **Resolved scope**, which Susan approved:
+
+- The gold accent family is renamed `--accent-gold` / `-hover` / `-dim` → `--accent-contrast` / `-hover` / `-dim` in every declaration and every `var()` use.
+- In `light` and `light_parchment`, the accent family is the header purple: `#241b33`, with the hover and dim in the same family. Nav group headers, the selected nav link's text and border, the selected candidate item, and every other former-gold use render purple.
+- Dark keeps its gold values and `light_slate` keeps its blue values, both under the new names.
+
+### Repro
+
+1. Set a candidate's theme to Light (or view Tools → Theme Examples, Light / Light (Parchment) panels).
+2. The nav group headers, the active nav link with its left border, and the selected candidate menu item are dark yellow, while page/section headers are purple.
+
+### Root cause
+
+AST-2063's fix introduced `--heading` and repointed only header rules to it. The nav and every other accent use still read `--accent-gold` / `--nav-group-label`, whose Light values (AST-2047 Stage 2 step 3) were darkened golds.
+
+### Proposed change
+
+Line anchors are at sub tip `dd70ebbc1`.
+
+1. **Rename (mechanical, 6 files).** Replace every `--accent-gold` substring with `--accent-contrast`. This one replacement also turns `--accent-gold-hover` / `--accent-gold-dim` into `--accent-contrast-hover` / `--accent-contrast-dim`, and no other token contains the substring. Files and current occurrence counts:
+
+   | File | Occurrences |
+   |------|-------------|
+   | `src/ui/frontend/src/App.css` | 57: 12 declarations (3 per block) + 1 `--heading: var(--accent-gold)` + 44 rule uses |
+   | `src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` | 10 |
+   | `src/ui/frontend/src/pages/AdminDataManagement.tsx` | 3 |
+   | `src/ui/frontend/src/components/StateTimeline.tsx` | 2 |
+   | `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` | 2 |
+   | `src/ui/frontend/src/components/TokenTextarea.tsx` | 1 |
+
+   Command (repo root): `sed -i 's/--accent-gold/--accent-contrast/g'` on those six paths. Afterwards, `rg -n "accent-gold" src` must return nothing.
+
+   ⚠️ **Scope note:** `AdminDataManagement`, `StateTimeline`, `RepoJsonDivergenceBanner` and `App.css` are in AST-2042's Component scope. `AdminAnthropicAdHoc.tsx` and `TokenTextarea.tsx` are listed there as "stay unchanged", because they had no literal colours to sweep. They are included here under the ticket's Susan-approved **Resolved scope** item 2 ("Rename every declaration and `var(--accent-gold…)` use"). The change is a token-name substitution inside existing `var()` strings, with no colour or logic change. Leaving them would also fail AST-2049's guard, which requires every `var(--x)` in source to be defined in a token block.
+
+2. **Light values (`App.css`, after step 1).** In **both** `[data-theme="light"]` and `[data-theme="light_parchment"]` (currently lines 96–98, 111–112 and 138–140, 153–154), set:
+
+   | Token | `light` / `light_parchment` value |
+   |-------|-----------------------------------|
+   | `--accent-contrast` | `#241b33` |
+   | `--accent-contrast-hover` | `#2c1b47` |
+   | `--accent-contrast-dim` | `rgba(36, 27, 51, 0.15)` |
+   | `--heading` | `var(--accent-contrast)` |
+   | `--nav-group-label` | `var(--accent-contrast)` |
+
+   The `:root, [data-theme="dark"]` and `[data-theme="light_slate"]` blocks change only by the step 1 rename. Their values are untouched.
+
+   ⚠️ **Decision — purple family:** `#241b33` is the header purple (today's Light `--heading`, Dark's `--bg-elevated`). The hover is Dark's next purple step, `#2c1b47` (Dark `--border`), so it stays in the family and inside the existing palette. The dim is `#241b33` at the same 0.15 alpha the gold dim used. Text on accent backgrounds (`.btn.primary.in-flight`, `.dispatch-status-running/-warn`) already uses `var(--bg-deep)`. In Light that is near-white on dark purple, which reads at least as well as the old gold.
+
+   ⚠️ **Decision — fold `--heading` / `--nav-group-label` by reference, not by deletion:** neither token can be removed. Slate's `--heading` is `#241b33` but its accent stays blue (Resolved scope item 3), and Dark's `--nav-group-label` (`#f0d690`) is a paler gold than its accent. Both tokens stay declared in all four blocks, so AST-2047 AC 4's "same token names" still holds. In the two purple Lights they become `var(--accent-contrast)`, which leaves one source value per block. That is the same pattern Dark already uses for `--heading`.
+
+3. **Verify:**
+   - `rg -n "accent-gold" src` is empty, and `rg -c "accent-contrast" src/ui/frontend/src` shows the same total as the old count (63 `var()` uses + 12 declarations).
+   - In `src/ui/frontend`: `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` shows no problem absent before the change.
+   - `npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx` passes (see Blast radius for the one stale key).
+   - Re-run AST-2047 Stage 2 step 6 check 2 (no stray colours / undefined `var()`). Check 1's Dark-equality compares token **names** against the pre-epic baseline `889c8252f`, so it will flag the renamed Dark tokens. Compare instead with the three names mapped back (`--accent-contrast*` → `--accent-gold*`). Dark values must be identical.
+   - Manual: in Light and Light (Parchment), nav group headers, the active nav link with its left border, the selected candidate item, and focus rings are purple. Dark and Slate look unchanged.
+
+### Blast radius
+
+- Every former `--accent-gold*` use changes colour in `light` and `light_parchment`. This covers nav, focus rings, links/labels, the in-flight button, status chips, the column-resize handle, and the hamburger bars. Dark and Slate rendering is unchanged.
+- **Tests (Betty's call):** `test_AdminThemeExamples.test.tsx` line 162 lists `"--accent-gold"` among the keys the Lights must pairwise differ on. After the rename that key is undefined in every block. The case still passes (via `--bg-deep`), but the key is stale and should become `--accent-contrast`. Note that `light` and `light_parchment` will now share the same accent value. `docs/test-bible/frontend/root.md` line 45 (`.btn.primary.in-flight` uses `var(--accent-gold)`) and the `pages.md` mentions also need the new name. No other test names these tokens.
+- **Canon (Joan's call):** `canon/directives/draft/patt.ui.shared-button-roles.md` (draft) names `--accent-gold`.
+- The AST-2049 source-wide guard (every `var(--x)` defined; no hex in `.ts`/`.tsx`) holds only if the rename covers all six files together.
+
+### What must still hold
+
+- AST-2047 AC 3: Dark's **values** are unchanged. Only the three accent names change.
+- AST-2047 AC 4: all four blocks declare exactly the same token names, and the Lights still differ pairwise on `--bg-deep`.
+- AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` outside token blocks, no `#hex` in `.ts`/`.tsx`, and every `var(--x)` defined in a token block.
+- AST-2063: section/page headers stay `#241b33` in all three Lights. Slate keeps its literal value, and light/parchment get it via `var(--accent-contrast)`.
+- AST-2064 / AST-2077: grade tokens and Theme Examples option rows are untouched.
+
+### Fix-board — Joan (AST-2076)
+
+[board-joan]  CANON: REVISE
+What: pattern.ui.shared-button-roles (draft) — rename `--accent-gold` to `--accent-contrast` and fix in-flight prose (accent is palette-dependent, not always gold) — align draft with global token rename
+
+**Read:** `## Bug: AST-2076` on `origin/sub/AST-2042/AST-2076-light-accent-contrast` — mechanical `--accent-gold*` → `--accent-contrast*` across six frontend files; Light / Light (Parchment) accent values set to the header purple family; `--heading` / `--nav-group-label` alias `--accent-contrast` in those blocks only. Parent **Canon Scope: none.**
+
+**Roster skim:** Touches `App.css` and scoped `.tsx` files (`astral.ui.frontend-file-placement`). No new React-side business rules (`astral.layers.ui-config-driven-business-logic`). No **active** directive in `canon/directives/active/` names `--accent-gold`. The plan’s blast radius flags `canon/directives/draft/patt.ui.shared-button-roles.md` (`pattern.ui.shared-button-roles`, Archie-approved draft): solution shape still says in-flight primary is “Gold (`--accent-gold`)”, which the product rename and Light purple accents will falsify even though behavior still goes through the renamed token in `App.css`.
+
+**Verdict:** Active in-force canon is not contradicted, but the corpus still needs a small draft-pattern update so the token name and palette-dependent accent prose match the ship. That is F3 (`validate-plan` fix mode), not an Archie escalate.
+
+### Review-fix — Radia (AST-2076)
+
+[code-rubric]
+**Ticket:** AST-2076
+**Publish ref:** `e15b17f6f66df8c1ed8716e5917f3a828a359363` (`origin/sub/AST-2042/AST-2076-light-accent-contrast`)
+**Corpus:** `d245392c31f516562e70e3771abcfdd1192de869` (canon tree at publish tip includes Joan F3 draft-pattern doc commit; ticket/parent **Canon Scope:** none)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE. Fix-board Joan **CANON: REVISE** (draft `patt.ui.shared-button-roles`) addressed on sub by `f3186d4c5` (`--accent-contrast` prose + palette-dependent in-flight note) — advisory context only, not a ticket canon row.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board; F3 canon doc on sub).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `test_AdminThemeExamples.test.tsx`: `[bug-repro] AST-2076: in light and light_parchment, the accent and nav group label resolve to the header colour` resolves `var()` chains in parsed token blocks and asserts `--accent-contrast` and `--nav-group-label` equal `--heading` for `light` / `light_parchment` (fails when accents stayed dark gold). Betty also retargeted AC4 pairwise key to `--accent-contrast` (line 162).
+
+**## What must still hold — OK** — Product commit `e15b17f6f`: mechanical rename across six files; Light / Light (Parchment) accent family `#241b33` / hover / dim; `--heading` and `--nav-group-label` alias `var(--accent-contrast)` in those blocks; Dark / Slate values unchanged aside from token names; grade tokens and Theme Examples option/letterless rows untouched in this commit; no `#hex` added in `.tsx`.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sync(dev) carry:** `git diff origin/ftr/AST-2042-user-theme...e15b17f6f` is large (AST-2043, contact, tracker, etc.), but **`git diff origin/dev e15b17f6f -- src/**` differs only on the six AST-2076 files** listed in plan; other `src/**` paths match `origin/dev` (e.g. `candidate.py` 0-line diff). Do not treat sync(dev) blobs as #2076 product scope.
+- **Canon on sub:** Only `canon/directives/draft/patt.ui.shared-button-roles.md` differs from dev (+18 lines) — matches Joan F3 / plan blast radius; corpus SHA moves at tip.
+- **AC4 nuance:** `light` and `light_parchment` now share the same accent value; Lights still differ pairwise on `--bg-deep` (and `--bg-card`); plan documents shared purple accent as intentional.
+- **UAT:** Nav active link, selected candidate, focus rings, in-flight button — visual purple check in Light / Parchment.
+
+## What's solid
+
+- **Plan fidelity (`e15b17f6f`):** Six-file rename; Light purple accent family; alias pattern for `--heading` / `--nav-group-label`; `accent-gold` absent at tip.
+- **Stack hygiene vs dev:** Isolated product delta is exactly #2076 scope (+ draft canon doc), not a smuggled fix-lane product commit on top of stale ftr.
+- **Tests:** `473ff6bc7` bug-repro + bible renames; AST-2047/2049 guards still in same file.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Normal** (AST-2042 UAT-batch) | → **Review Posted** → fix-lane clean shortcut → **User Testing** (`resolve-child` skipped). |
+
+context_tokens≈16000
+[code-rubric] PROCEED (Commit: e15b17f6f) Light accent purple, token rename
+```
+
+**Stdout recommendation:** **PROCEED** → **User Testing** after Chuckles posts artifact and moves to Review Posted.
+
+**Review gate (final):** PROCEED — §3h clean-review shortcut, resolve-child skipped.

@@ -1,7 +1,7 @@
 """
 Core gazer business logic.
 
-In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_relative_jd_batch, fetch_culture_pages_batch,
+In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_relative_jd_batch, fetch_culture_pages_batch, fetch_company_culture_pages_batch,
 fetch_website_batch, fetch_job_pages_batch, validate_title_batch,
 contact_task_gazer_scrape (AST-1516 contact-task scrape),
 ingest_meteorite_jobs_from_email_html (AST-1061 gazer-reads-email).
@@ -541,6 +541,66 @@ async def fetch_culture_pages_batch(
             f"no_links_state={no_links_state!r}"
         )
     return {"passed": passed, "failed": failed, "total": len(jobs)}
+
+
+async def fetch_company_culture_pages_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    debug: bool = False,
+) -> Dict[str, int]:
+    """Scrape culture pages into company_data.website_content for GET_UPSHOT companies (AST-2070).
+
+    Every company transitions to UPSHOT_READY whether its content was cached, scraped, or not
+    found; this hop never fails a company out. Lost connectivity raises ConnectionError before any transition.
+    Returns {"passed", "failed", "total"}.
+    """
+    if not await check_connectivity():
+        raise ConnectionError(
+            f"fetch_company_culture_pages_batch: no internet connectivity, aborting batch {batch_id} "
+            f"({len(companies)} companies)"
+        )
+    if debug:
+        _log.set_debug_flag(True)
+    pass_state = GAZER_CONFIG["fetch_company_culture_pages"]["pass_state"]
+    company_total = len(companies)
+    passed = 0
+
+    # Sequential like fetch_culture_pages_batch: each coat-check scrape opens its own browser context.
+    for company_index, company in enumerate(companies, start=1):
+        short_name = company.get("short_name") or ""
+        cd = company.get("company_data") if isinstance(company.get("company_data"), dict) else {}
+        found = cd.get("website_content")
+        if _website_content_is_recorded(found):
+            outcome = "cached"
+        else:
+            try:
+                # Coat-check scrapes culture_links_to_explore and saves website_content itself.
+                found = await get_company_data(company, "website_content")
+            except ValueError as e:
+                # Only a missing short_name/company_website escapes the coat-check; the hop still advances.
+                _log.exception(
+                    "%s | company culture page fetch\n  %s: %s\n  Moving on to %s without culture pages",
+                    short_name,
+                    type(e).__name__,
+                    e,
+                    pass_state,
+                )
+                found = None
+            outcome = "scraped" if found else "none found"
+        transition_company_state(short_name, pass_state)
+        passed += 1
+        if debug:
+            _log.debug_index(
+                func="gazer.fetch_company_culture_pages_batch",
+                index=company_index,
+                total=company_total,
+                identifier=_gazer_company_identifier(company),
+                outcome=f"passed -> {pass_state} ({outcome})",
+            )
+            _log.debug_detail(f"{_website_content_debug_summary(found)} company={short_name!r}")
+
+    return {"passed": passed, "failed": 0, "total": company_total}
+
 
 
 async def fetch_website_batch(

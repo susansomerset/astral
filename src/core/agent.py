@@ -241,7 +241,9 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     """Parse compact pipe-delimited agent_payload string into response_schema shape.
 
     Grade segments: _GRADE_SEG = 2-char code + grade letter + confidence digit (AST-357).
-    pos → astral_job_id (job) or company_id (company entity_type) via ctx["batch_entities"].
+    pos → astral_job_id (job) or company_id (company entity_type) via ctx["batch_index_map"] (batch-unique
+    index → entity) when supplied, else positionally via ctx["batch_entities"]. Under a map, an unknown index
+    is skipped (entity falls out as omitted) and an index on several lines is one decode_failure (AST-2093).
     Vector names: ctx["vector_labels"] maps 2-char codes to full rubric labels; falls back to
     raw 2-char code when the map is absent or incomplete. _render_pass_fail ignores vector names;
     _render_score requires rubric criteria with labels — callers guard with `if rubric_list` before scoring (AST-429).
@@ -312,6 +314,18 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     vector_labels: Dict[str, str] = (ctx or {}).get("vector_labels") or {}
     result_rows: List[Dict[str, Any]] = []
     decode_failures: List[Dict[str, Any]] = []
+    # AST-2093: batch-unique index → entity. When present, a line binds by its index, never by list position.
+    index_map: Dict[int, Dict[str, Any]] = (ctx or {}).get("batch_index_map") or {}
+    index_counts: Dict[int, int] = {}
+    if index_map:
+        # Pre-pass: an index echoed on several lines can't be trusted for any of them.
+        for line in lines:
+            try:
+                p = int(line.split("|")[0].strip())
+            except ValueError:
+                raise ValueError(f"[{task_key}] bad position field in line: {line!r}")
+            index_counts[p] = index_counts.get(p, 0) + 1
+    dup_reported: set = set()
     logger.debug("Beginning decode loop on %s items", len(lines))
     for line in lines:
         fields = [f.strip() for f in line.split("|")]
@@ -319,7 +333,28 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
             pos = int(fields[0])
         except (ValueError, IndexError):
             raise ValueError(f"[{task_key}] bad position field in line: {line!r}")
-        if pos < 0 or pos >= len(batch_entities):
+        if index_map:
+            ent = index_map.get(pos)
+            if ent is None:
+                # Unknown index — its intended entity falls out as "omitted from response" and retries.
+                logger.warning(
+                    "%s skipped — index %s not in this batch\n  This line is not being graded",
+                    task_key,
+                    pos,
+                )
+                continue
+            n = index_counts.get(pos, 0)
+            if n > 1:
+                # One failure per collided index; every line carrying it is dropped.
+                if pos not in dup_reported:
+                    dup_reported.add(pos)
+                    decode_failures.append({
+                        id_key: ent[id_key],
+                        "pos": pos,
+                        "reason": f"[{task_key}] duplicate row index {pos:03d} on {n} lines",
+                    })
+                continue
+        elif pos < 0 or pos >= len(batch_entities):
             # Model occasionally 1-indexes at round-number boundaries (e.g. returns 100 for last item in batch of 100).
             # Skip the line rather than killing the whole batch — the job stays in its current state and retries next run.
             logger.warning(
@@ -328,6 +363,8 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
                 pos,
             )
             continue
+        else:
+            ent = batch_entities[pos]
 
         grade_segs, meta = [], []
         for f in fields[1:]:
@@ -342,7 +379,7 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
             # One malformed line must not sink the batch — caller routes this entity retry/error (AST-1996).
             # Reason text matches the old ValueError so existing log greps keep working.
             decode_failures.append({
-                id_key: batch_entities[pos][id_key],
+                id_key: ent[id_key],
                 "pos": pos,
                 "reason": f"[{task_key}] unexpected trailing content in grades-only line: {line!r}",
             })
@@ -376,14 +413,14 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
             )
         if bad_conf:
             decode_failures.append({
-                id_key: batch_entities[pos][id_key],
+                id_key: ent[id_key],
                 "pos": pos,
                 "reason": bad_conf,
             })
             continue
 
         row: Dict[str, Any] = {
-            id_key: batch_entities[pos][id_key],
+            id_key: ent[id_key],
             "grades": grade_rows,
         }
         if with_meta:
@@ -2555,6 +2592,22 @@ async def do_task(
             _note = (_perf.get("failure_note") if isinstance(_perf, dict) else None) or parsed.get("failure_note")
             agent_err = f"Agent failure: {_note or 'Agent returned status=failure with no note'}"
             _warn_hop_no_success(task_key, agent_err)
+            # Keep cleanly decoded lines so a batch caller fails only the gaps, not the batch (AST-2089).
+            # Same validation bar as the success path; any error → None → caller fails the whole batch.
+            salvaged = None
+            if (ctx or {}).get("batch_entities"):
+                try:
+                    from src.core.consult import _normalize_rubric_task_response
+
+                    _cand = _normalize_rubric_task_response(task_key, task_config, parsed["agent_payload"], ctx)
+                    if isinstance(_cand, dict) and schema:
+                        _coerce_schema_str_fields_from_list(_cand, schema, debug=debug)
+                    if (isinstance(_cand, dict) and (_cand.get("jobs") or _cand.get("companies"))
+                            and not _validate_response_schema(_cand, schema, task_key)
+                            and not _validate_grade_confidence_in_payload(_cand, task_key)):
+                        salvaged = _cand
+                except Exception as exc:
+                    logger.debug("%s | no salvage after agent failure: %s: %s", task_key, type(exc).__name__, exc)
             if _should_store:
                 try:
                     await asyncio.to_thread(_store_response_block,
@@ -2569,7 +2622,7 @@ async def do_task(
             _close_hop_ledger(success=False, clear_log=True, failure_error=agent_err)
             return _with_harvest({"success": False, "agent_failure": True, "api_response": result.get("api_response"),
                     "parsed_response": None, "error": agent_err, "raw_response": parsed,
-                    "timesheet": result.get("timesheet", {})})
+                    "salvaged_response": salvaged, "timesheet": result.get("timesheet", {})})
         # AST-1072: preserve conversational outcome on result before unwrapping payload.
         if is_conversational_task(task_key):
             _perf_keep = parsed.get("agent_performance")

@@ -1,3 +1,64 @@
+<!-- linear-archive: AST-1917 archived 2026-10-08 -->
+
+## Linear archive (AST-1917)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1917/scheduled-actions-header-dropdown-add-a-selection-box-on-scheduled  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** hedy  
+**Priority / estimate:** None / 1  
+**Parent:** AST-1875 — add a selection box on Scheduled Tasks to set concurrent tasks limit  
+**Blocked by / blocks / related:** parent: AST-1875
+
+### Description
+
+## What this implements
+
+After #1. Adds the 1–100 dropdown to the Scheduled Actions header, pre-selected to the live cap from #1's GET route, applying changes through #1's set route. Does **not** own validation or scheduler behaviour (#1).
+
+## Citations
+
+`astral.layers.ui-config-driven-business-logic`, `astral.ui.frontend-file-placement`, `astral.config.config-source-of-truth`.
+
+## Scope
+
+* `src/ui/frontend/src/pages/AdminScheduledActions.tsx` — **modified** — new state + load of the cap from the GET route on page load; new `<select>` in the header whose options are generated from the returned bounds (no hardcoded 1/100 in the component); change handler posts to the set route and reflects the server-returned value (reverts on error).
+
+## Acceptance criteria
+
+1. **Default shown.** Fresh server start, open Scheduled Actions: header dropdown shows the value of `ASTRAL_CONFIG["max_auto_threads"]` (3 today). Fail: any other value, or no dropdown.
+2. **Range.** The dropdown offers exactly the integers 1..100 (100 options, first 1, last 100). Fail: missing/extra options or non-integer steps.
+3. **Single source for bounds** (UI half). `grep -rn '\b100\b' src/ui/frontend/src/pages/AdminScheduledActions.tsx` shows no literal used as the dropdown max. Fail: bounds hardcoded in the page.
+
+## Boundaries
+
+No backend — dispatcher getter/setter, admin routes and config bounds are #1. No new component file unless the plan justifies it.
+
+## Notes for planning
+
+Blocked by #1 (AST-1916). Dropdown sits in the `list-page-header` controls cluster beside the "N running" badge / Stop All / + Add Task.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1875-runtime-auto-thread-cap`, child `sub/AST-1875/AST-1917-header-dropdown`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-01T01:58:38.444Z
+[code-rubric] PROCEED (Commit: fa250f863) Header cap dropdown wired
+
+#### betty — 2026-10-01T01:56:32.884Z
+`origin/sub/AST-1875/AST-1917-header-dropdown` @ `fa250f863` · 7 page tests, manifest bible
+
+#### joan — 2026-10-01T01:51:37.599Z
+[plan-rubric] PROCEED (Commit: e5c8aaa) Header dropdown plan
+
+#### hedy — 2026-10-01T01:50:35.093Z
+`origin/sub/AST-1875/AST-1917-header-dropdown` @ `e5c8aaa` · header dropdown plan ready
+
+---
+
 # AST-1917 — Scheduled Actions header dropdown
 
 - **Parent:** [AST-1875 — add a selection box on Scheduled Tasks to set concurrent tasks limit](https://linear.app/astralcareermatch/issue/AST-1875)

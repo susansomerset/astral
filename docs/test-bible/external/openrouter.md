@@ -26,6 +26,19 @@ Branch coverage: `--cov-branch` over this module alone reports 100% (46 stmts, 8
 
 **Integration:** none (no `tests/integration/` scenario reaches `llm_compat` or OpenRouter).
 
+### AST-2098 · AST-2099 (hollow probe error text)
+
+**Primary manifest:** [`../core/dispatcher.md`](../core/dispatcher.md) § AST-2098. Contract: when the probe response names no `provider`, `probe_host` raises `ValueError("Probe response named no provider: <detail>")` where `<detail>` is `normalize_provider_error` over the response's `error` attr if present, else the whole response, else `"empty body"` (a `None` response). The probe is still recorded first.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Revised (AST-2098 message contract) — no-provider case remembered as `"Host probe failed: Probe response named no provider: namespace(provider=None, id='probe_resp')"` | `get_batch_host` | `TestAst1959BatchHostMap::test_failed_probe_is_remembered_for_the_key[send1-…]` |
+| New — `error` attr present → message carries OpenRouter's error text; probe recorded once | `probe_host` | `TestAst2098ProbeErrorText::test_hollow_probe_names_provider_error_body` |
+| New — `None` response → `"… named no provider: empty body"`; `None` recorded once | `probe_host` | `…::test_hollow_probe_with_no_body_says_empty_body` |
+| Revised (drift, not AST-2098) — probe copy gains `provider.zdr = True`; caller's provider has no `zdr` (product `0376f3f8c`; the test update was lost in a later tests resync) | `_probe_request_kwargs` | `TestAst1959ProbeHost::test_probe_swaps_content_drops_system_keeps_everything_else` |
+
+**Integration:** none.
+
 ### AST-1964 · AST-1963 (generation-stats lookup)
 
 **Primary manifest:** [`../utils/config.md`](../utils/config.md) § AST-1964. `get_generation_stats(generation_id, api_key)` → `GET https://openrouter.ai/api/v1/generation?id=…` with bearer key and `provider_call_http_timeout_seconds()`. Success: `{"success": True, "total_cost", "native_tokens_prompt", "native_tokens_completion", "native_tokens_cached", "native_tokens_reasoning", "provider_name"}` (OpenRouter field names verbatim; only `total_cost` required, the rest pass through as sent). Failure: `{"success": False, "error"}` — no cost key, never raises. Retries are the caller's (AST-1966).

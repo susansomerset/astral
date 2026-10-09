@@ -1106,16 +1106,16 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/19c5d0fc90a5e3a503adcd6a92005fd7/4d75d419-105f-4e0c-bd76-2b389e6f710d/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/d6893c63-fc40-4352-a9a7-15be56caf78c/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/19c5d0fc90a5e3a503adcd6a92005fd7/093a70ee-4637-48ee-9cbe-3cdb5781a809/store.db` |
+| Ada | engineer | `/home/susan/.cursor/chats/dedb6627a33e68a75b16494f7070d79e/b49e980b-7194-43ab-bef1-a6187cd47744/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/31becfa8-298a-44e6-a12a-92b6e6ecc5c7/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/dedb6627a33e68a75b16494f7070d79e/8311cb55-4861-438f-abad-81b58015841a/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1321 (parent) | ftr/AST-1321-missing-vector-grades-rubric-headers |
-| AST-1327 | sub/AST-1321/AST-1327-fix-missing-vector-grades-headers |
-| AST-1328 | sub/AST-1321/AST-1328-gap-analysis-header-tests |
+| AST-2058 (parent) | ftr/AST-2058-show-rubric-content |
+| AST-2059 | sub/AST-2058/AST-2059-show-rubric-content |
+| AST-2060 | sub/AST-2058/AST-2060-show-rubric-tests |
 
-**Epic worktree:** `astral-AST-1321/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2058/` — one active sub checked out at a time.

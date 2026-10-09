@@ -1188,6 +1188,53 @@ class TestFetchCulturePagesBatch:
 
 
 
+# AST-2070 (parent AST-2054): GET_UPSHOT culture fetch — every claimed company advances to UPSHOT_READY.
+class TestAst2070FetchCompanyCulturePagesBatch:
+    @pytest.mark.asyncio
+    async def test_aborts_without_connectivity_before_any_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=False))
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        with pytest.raises(ConnectionError, match="no internet connectivity"):
+            await gazer_mod.fetch_company_culture_pages_batch("b1", [{"short_name": "a"}])
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [True, False])
+    async def test_every_company_advances_whatever_was_found(
+        self, monkeypatch: pytest.MonkeyPatch, debug: bool,
+    ) -> None:
+        # AC4: cached / scraped / none found / coat-check ValueError / no company_data all → UPSHOT_READY
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+
+        async def _coat(company: dict[str, Any], key: str):
+            assert key == "website_content"
+            if company["short_name"] == "boom":
+                raise ValueError("no company_website")
+            if company["short_name"] == "scraped":
+                return [{"url": "https://s.co/c", "content": "culture"}]
+            return None
+
+        coat = AsyncMock(side_effect=_coat)
+        monkeypatch.setattr(gazer_mod, "get_company_data", coat)
+        companies = [
+            {"short_name": "cached", "company_data": {"website_content": [{"url": "u", "content": "kept"}]}},
+            {"short_name": "scraped", "company_data": {"culture_links_to_explore": ["https://s.co/c"]}},
+            {"short_name": "empty", "company_data": {"culture_links_to_explore": []}},
+            {"short_name": "boom", "company_data": {}},
+            {"short_name": "nodata", "company_data": None},
+        ]
+        out = await gazer_mod.fetch_company_culture_pages_batch("b2", companies, debug=debug)
+        assert out == {"passed": 5, "failed": 0, "total": 5}
+        assert [c.args for c in transition.call_args_list] == [
+            (c["short_name"], "UPSHOT_READY") for c in companies
+        ]
+        # cached content skips the scrape; the other four go through the coat-check
+        assert [c.args[0]["short_name"] for c in coat.await_args_list] == ["scraped", "empty", "boom", "nodata"]
+
+
 class TestScrapeOne:
     @pytest.mark.asyncio
     async def test_returns_page_dom(self, monkeypatch: pytest.MonkeyPatch) -> None:

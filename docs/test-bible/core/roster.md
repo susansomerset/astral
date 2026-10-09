@@ -1151,3 +1151,104 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ### AST-2010 · AST-2009 (exhausted-429 `failure_class` forwarded)
 
 **New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` rides `_find_job_page_from_assembled`'s generic select failure (still NO_JOBLIST + saved), `run_company_task` select_job_page (still counted passed via NO_JOBLIST) and JOBS_FOUND (still `error_state` + `total_errors`), and the `prefilter_company_batch` generic failure (still retried). There is no `total_held` and no `state_held`. An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+
+### AST-2098 · AST-2099 (failed host probe holds company state, counted held)
+
+**Primary manifest:** [`dispatcher.md`](dispatcher.md) § AST-2098. Contract: every roster hold branch widened from `is_provider_balance_refusal` to `is_provider_state_hold`, so a `provider_probe_failure` result keeps the company's current state (no transition, no save) and is counted `total_held`; the batch functions add `total_held` (probe only) and `run_consult_task` subtracts it from errors.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — select_job_page probe hold → `(1, 0, 0, 0)`, `held 1`, class, no `_warn_company` | `run_company_task` | `TestAst2098ProbeFailureHold::test_select_job_page_probe_hold_counts_held` |
+| New — JOBS_FOUND probe failure → `held 1`, `errors 0`, no `error_state` transition | `run_company_task` | `…::test_jobs_found_probe_hold_skips_error_state` |
+| New — `prefilter_company_batch` 2 ready companies → held, `total_held 2`, no transition; via `run_consult_task` `prefilter_company` → `errors 0`, `held 2`, class | `_run_batch_company_prefilter` + consult normalizer | `…::test_prefilter_batch_probe_hold_counts_held` |
+| New — `company_upshot_batch` 2 rows → held, `total_held 2`, no transition; via `run_consult_task` `company_upshot` → `errors 0`, `held 2`, class | `company_upshot_batch` + consult normalizer | `…::test_company_upshot_probe_hold_counts_held` |
+| New — `_find_job_page_from_assembled` probe failure → `state_held`, current state, class, no `_save_company` | `_find_job_page_from_assembled` | `…::test_find_job_page_probe_hold_keeps_state` |
+| New (board E6) — single-company `prefilter_company` → `_prefilter_fail` HOLD, current state, `state_held`, class, no transition | `prefilter_company` / `_prefilter_fail` | `…::test_prefilter_company_probe_hold_keeps_state` |
+
+**Kept:** `TestAst1867BalanceHeldCounting`, `TestAst897HoldStateOnBalanceRefusal`, `TestAst2010RateLimitForwarding` (unchanged, green).
+
+### AST-2069 · AST-2054 (locate/parse pass state → GET_UPSHOT)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2069-upshot-states-registration`. Config-only child; primary block + manifest: [`../utils/config.md`](../utils/config.md) § AST-2069.
+
+`ROSTER_CONFIG["locate_job_page"]["pass_states"]` and `["parse_job_list"]["pass_state"]` are now `GET_UPSHOT`. Batch counting compares the producer's returned `state` with that config, so tests that mock `run_parse_job_list_dispatch` / `jobs_found_process_job_site` returning `{"state": "WATCH"}` counted the pass as an error. Revised mocks to return `GET_UPSHOT` (producer is mocked — these test counting, not the producer's write).
+
+| Revised (mocked pass state `WATCH` → `GET_UPSHOT`) |
+| --- |
+| `TestAst1847ParseJobListBatchPartialTally` — `test_cancelled_company_is_not_tallied`, `test_counted_tallies_escaping_exception_once`, `test_ctx_without_dispatch_partial_is_noop`, `test_tallies_every_outcome_into_ctx_dispatch_partial` |
+| `TestAst721ParseDispatchRouting::test_parse_job_list_dispatch_key`; `TestAst721ParseJobListDispatch::test_run_company_task_routes_identified_and_retry` |
+| `TestAst891ParseJobListBatch` — `test_passes_batch_session_and_counts_definite_outcomes`, `test_unhandled_gather_exception_increments_errors_and_continues` |
+| `TestRunCompanyTask::test_jobs_found_dispatch_pass_fail_ast469`; `test_run_company_task_jobs_found_watch_counts_passed` |
+
+**Left for AST-2070:** the real `state="WATCH"` writes in `_finalize_parse_dispatch_success` and the two legacy locate-success paths (plan-accepted interim mismatch). AST-2070's manifest owns asserting those producers now write `GET_UPSHOT`.
+
+### AST-2070 · AST-2054 (GET_UPSHOT fetch + UPSHOT_READY Estelle hops)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2070-upshot-hops`. Plan: `docs/features/roster/ast-2070-get-upshot-fetch-and-upshot-ready-estelle-hops.md`. Gazer half: [`gazer.md`](gazer.md) § AST-2070; consult routing: [`consult.md`](consult.md) § AST-2070.
+
+`_finalize_parse_dispatch_success` writes `ROSTER_CONFIG["parse_job_list"]["pass_state"]`; both legacy locate finalizers write `locate_job_page.pass_states[0]` (both `GET_UPSHOT`); `_PERSIST_PAGE_OPTION_URL_STATES` is built from those config values (WATCH no longer in it — WATCH is reached by transition only, so `job_site` persisted at `GET_UPSHOT` stays). New `company_upshot_batch`: one `do_task(company_upshot)` per batch, `[company_id=…]` blocks (homepage, culture pages from list or legacy string, prefilter grades), decode by `company_id`, save `company_data.company_upshot` (stripped), transition WATCH; missing / empty-upshot / save-`ValueError` → `UPSHOT_READY_RETRY`, same from the retry → `ERROR_UPSHOT`; fabricated + duplicate ids ignored; balance refusal holds state; empty tokens → `ERROR_UPSHOT` directly; rate-limit `failure_class` carried.
+
+| AC | Component tests (`test_roster.py`) |
+| --- | --- |
+| 3 parse success → `GET_UPSHOT` + `parse_instructions` | revised **`TestAst721ParseJobListDispatch::test_success_watch_and_parse_instructions`** (return + `_save_company` state) |
+| 5 upshot saved then WATCH; 6 one call; 7 retry then error | new **`TestAst2070CompanyUpshotBatch`** (7 incl. parametrize) |
+| 2 no hard-coded WATCH writes | `rg` gate in manifest |
+| 8 grades unchanged | `git diff` gate in manifest |
+
+**Broken / obsolete (revised in place — asserted `WATCH` from real locate/parse producers):** `TestAst721ParseJobListDispatch::test_success_watch_and_parse_instructions`, `TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom`, `TestAst1840CullOffEventLoop::test_parse_dispatch_culls_off_event_loop`, `TestCheckParseResults::test_joblist_titles_paths`, `TestFinalize469BranchCoverage` (`test_after_chain_persists_job_list_visible_strip`, `test_after_chain_value_error_vis_empty_still_watch`, `test_select_only_persist_visible_on_int_coercion_success`, `test_select_only_string_page_int_error_yields_watch`), `TestJobSiteForPersist673::test_watch_writes_page_option_url` (terminal state now `GET_UPSHOT`). Names kept so older bible references resolve. Untouched: `find_job_page` pass-through mocks (lines asserting a mocked `"WATCH"` back) and the skipped AST-721 monolith case.
+
+**Branch locks:** new/changed lines in `roster.py`, `gazer.py`, `consult.py` fully covered (term-missing shows none in AST-2070 ranges). Isolated A/B on roster/gazer/consult/dispatcher/config/dispatch_tasks: failures identical to the `ftr` baseline (130 pre-existing in this 3.14 env) — none new.
+
+**Integration:** none — no `tests/integration/` scenario walks locate/parse/upshot; do not invent.
+
+## QA test manifest — AST-2070
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2070CompanyUpshotBatch \
+  tests/component/core/test_gazer.py::TestAst2070FetchCompanyCulturePagesBatch \
+  tests/component/core/test_consult.py::TestAst2070UpshotConsultRoutes \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch::test_success_watch_and_parse_instructions \
+  tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom \
+  tests/component/core/test_roster.py::TestAst1840CullOffEventLoop::test_parse_dispatch_culls_off_event_loop \
+  tests/component/core/test_roster.py::TestCheckParseResults::test_joblist_titles_paths \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_after_chain_persists_job_list_visible_strip \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_after_chain_value_error_vis_empty_still_watch \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_select_only_persist_visible_on_int_coercion_success \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_select_only_string_page_int_error_yields_watch \
+  tests/component/core/test_roster.py::TestJobSiteForPersist673::test_watch_writes_page_option_url \
+  -q
+# AC2 — expect no output
+grep -n 'state="WATCH"' src/core/roster.py
+# AC8 — expect no hunk inside either function
+git diff origin/dev -- src/core/roster.py | grep -n '_apply_prefilter_decoded_company_outcome\|_run_batch_company_prefilter'
+```
+
+**Pass criterion:** 21 passed; both greps empty. Not the zero-arg harness (this host's 3.14 env carries unrelated baseline reds).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2070-upshot-hops:docs/test-bible/core/roster.md | shasum`; same for `core/gazer.md`, `core/consult.md`.
+
+### AST-2088 · AST-2054 (bug: upshot sets a readable company_name)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2088-upshot-readable-company-name`. Plan-fix: `docs/features/roster/ast-2070-get-upshot-fetch-and-upshot-ready-estelle-hops.md` § Bug: AST-2088. Fix lane F4 (`qa-fix`, `[bug-repro]`).
+
+| Behavior | Source | Component tests |
+| --- | --- | --- |
+| Response `company_name` (stripped) → `update_company(cid, company_name=…)`; blank/missing skipped, still `WATCH`; `## Name On File` in the Estelle block | `company_upshot_batch` | new **`TestAst2088UpshotReadableCompanyName`** (1) — **repro** |
+| `company_upshot` items_schema gains optional `company_name`; prompt output shape names it | `src/utils/config.py`, `data/admin/agent_task.json` | **`TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`** (see [`../utils/config.md`](../utils/config.md) § AST-2069) — **repro** |
+
+**Red on pre-fix tree (verified):** roster repro → `update_company` called 0 times; config repro → `KeyError: 'company_name'` in items_schema. Both are the plan's root cause (contract has no name field; batch never writes it). Scratch-applied plan change (not committed) → all 13 tests below green.
+
+**Unaffected:** `TestAst2070CompanyUpshotBatch` — responses carry no `company_name`, `live_content` asserts are substring/count only.
+
+## QA test manifest — AST-2088
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2088UpshotReadableCompanyName \
+  tests/component/utils/test_config.py::TestAst2069UpshotRegistration \
+  tests/component/core/test_roster.py::TestAst2070CompanyUpshotBatch \
+  -q
+```
+
+**Pass criterion:** 13 passed. **Red→green (test-fix verifies the flip):** `TestAst2088UpshotReadableCompanyName::test_readable_name_saved_and_blank_or_missing_skipped` and `TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`.

@@ -1958,6 +1958,21 @@ Test gap for **AST-2053** (`2d1b73da1`): in `_decode_payload`'s non-vet encoded 
 - **Green** — ftr tip `3d51b06c7` (AST-2053 `2d1b73da1` merged): 12 passed.
 - **Out of scope:** `TestDoTask::test_returns_decode_and_post_decode_validation_errors` is red on **both** trees at its first assert (`'empty agent_payload' in 'Agent failure: nope'` — failure-envelope drift, one of the pre-existing `test_agent.py` reds per AST-2057 Boundaries); its `0|CRX2` assert is never reached.
 
+### AST-2090 · AST-2015 (bug-repro — AST-2089 salvaged_response on rubric envelope failure, agent side)
+
+Test gap for **AST-2089** (`f3897829d`). In `do_task`'s AST-1839 branch (rubric-encoded, envelope `status == "failure"`), when `ctx.batch_entities` is present, the payload goes through the success-path bar (`_normalize_rubric_task_response` → `_coerce_schema_str_fields_from_list` → `_validate_response_schema` → `_validate_grade_confidence_in_payload`). If that yields ≥1 job / company it is returned as `salvaged_response`; otherwise `salvaged_response` is `None`. The failure result is otherwise unchanged (`success False`, `agent_failure True`, `parsed_response None`, `error "Agent failure: <note>"` — **AST-1846** rows above still hold). Consumer: **`core/consult.md`** (**AST-2090**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Clean lines salvaged (empty job-ID slot → `company_job_id None`, title/link in place); AST-1846 fields unchanged | `src/core/agent.py` (`do_task`) | **`TestAst2089DoTaskSalvagedResponse::test_envelope_failure_salvages_clean_lines`** (**bug-repro**) |
+| Empty / letter-pipe garbage / bad-confidence-only payload → `None` | same | **`…::test_no_salvage_without_a_clean_line`** (guard, 3 params) |
+| Schema-invalid decode → `None` | same | **`…::test_no_salvage_when_schema_invalid`** (guard) |
+| No `batch_entities` → `None` | same | **`…::test_no_salvage_without_batch_entities`** (guard) |
+
+**Integration:** none.
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):** red with pre-fix `22ff5e47a` `src/core/agent.py` + `src/core/consult.py` overlaid (scratch worktree) — repro fails `assert None == {'jobs': …}` (no `salvaged_response`); guards pass. Green on ftr tip `e8119b1da`. Run command and consult half: **`core/consult.md`** § AST-2090.
+
 ### AST-2006 · AST-2000 (bug — runtime empty-token guard)
 
 **Parent:** [AST-1986](https://linear.app/astralcareermatch/issue/AST-1986) (orphaned mini-parent). **Product:** [AST-2000](https://linear.app/astralcareermatch/issue/AST-2000); canon carve-out [AST-2005](https://linear.app/astralcareermatch/issue/AST-2005) (`patt.task.dispatch-retry`). **Publish:** `origin/sub/AST-1986/AST-2006-empty-token-guard-tests`. `do_task` resolves every segment with an `empty_tokens` collector; any blank recognized token in a segment that is actually sent → no provider call, no hop ledger, one ERROR (`<index> | <task> skipped — empty tokens …`), result carries `empty_tokens` + `empty_token_task` (the failing hop's key on a mid-chain hop). Agent content counts only when a segment references `{$SELECTED_AGENT}`; intake-snapshot-replaced segments are dropped. AST-530 `_mid_chain_empty_caller_tokens` is folded into this guard. Siblings: config collector **`utils/config.md`**, routing **`core/consult.md`** / **`core/roster.md`** / **`core/candidate.md`** / **`core/intake.md`**, probe **`ui/api/api_admin.md`** (all § AST-2006).
@@ -2112,3 +2127,41 @@ Post-call ledger write runs on every call with a batch id: `llm_call_seconds` (t
 
 2. **[bug-repro] flip:** `tests/component/core/test_agent_ast2052.py::TestAst2052EntityCallView::test_bug_repro_entity_read_is_one_each_mode_call` — red pre-fix, green after `make-fix`.
 3. **Scope gate:** `git diff origin/dev...origin/sub/AST-2028/AST-2052-run-modal-each-mode-layout -- src/ui/api/ src/data/ src/ui/frontend/ src/utils/` shows no AST-2052 product change.
+
+### AST-2093 · AST-2012 (batch-unique row index → entity map decode; test gap AST-2095)
+
+**Parent:** [AST-2012](https://linear.app/astralcareermatch/issue/AST-2012). **Product:** AST-2093 on `origin/ftr/AST-2012-grade-batch-unique-index` @ `759a19247`. **Tests:** AST-2095, publish `origin/sub/AST-2012/AST-2095-grade-batch-unique-index-tests`. Plan: `docs/features/agent/response-validation-layers.md` § Bug: AST-2093 + § Bug: AST-2095. When `ctx["batch_index_map"]` is truthy, `_decode_payload` (job/company loop) binds each line by its leading index through the map, not `batch_entities[pos]`. An unknown index warns and skips. An index on more than one line is one `decode_failures` row (first sight) and every line carrying it is dropped. Per-line failures carry the mapped entity's id. No map or an empty map keeps positional decode. The vet branch takes no map. Consult / dispatcher rows: [`consult.md`](consult.md) § AST-2093, [`dispatcher.md`](dispatcher.md) § AST-2093.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** chunk-1 map `{20..39}`, 20 × `000\|THA4\|QQB3` → `{"jobs": []}`, no `decode_failures` | `src/core/agent.py` (`_decode_payload`) | **`tests/component/core/test_agent.py::TestAst2093BatchIndexMapDecode::test_bug_repro_chunk1_all_000_echo_grades_nothing`** |
+| **[bug-repro]** `020`…`039` → 20 rows `J20`…`J39` | same | **`::TestAst2093BatchIndexMapDecode::test_bug_repro_global_indexes_map_to_their_own_jobs`** |
+| **[bug-repro]** chunk-0 map, 3 × `000` + `001` → one failure `duplicate row index 000 on 3 lines` (first-sight + already-reported arcs), `001` still grades | same | **`::…::test_bug_repro_duplicate_index_is_one_failure_and_drops_its_lines`** |
+| Unknown index `555` → WARNING `index 555 not in this batch`, skipped (map-miss branch) | same | **`::…::test_unknown_index_skipped_with_warning`** |
+| Map pre-pass `abc\|THA4` → `ValueError` "bad position field" (pre-pass raise branch) | same | **`::…::test_map_prepass_bad_position_raises`** |
+| Trailing junk (`grades_encoded`) and `THX3` → `decode_failures` id `J20`, `pos` 20 from the map | same | **`::…::test_map_path_per_line_failures_carry_mapped_entity`** |
+| No map / `{}` → positional decode unchanged (guard) | same | **`::…::test_without_map_decode_stays_positional[no_map/empty_map]`** |
+
+**Kept unchanged:** `TestDecodePayload`, `TestAst697PrefilterBracketLinkDecode`, `TestAst880GradesEncodedVetMetaDecode`, and the five AST-2093 qa-handoff nodes in `test_dispatcher.py`.
+
+**Red / green:** the `[bug-repro]` nodes were run against a `git archive 823d37605` export (the pre-fix ftr base), and all 8 failed for the plan's root cause. Decode: chunk-1 echo → 20 rows all `J20`; `020`…`039` → 0 rows; duplicate → `['J20','J20','J20','J21']`. Consult: rows labeled `000: [index=000]: jd`. Dispatcher: `batch_index_offset` absent (`None`); no `repeat_processed`; loop total 50, not 27. On ftr tip `759a19247` all 23 new nodes pass. The failing-id set across `test_agent.py` / `test_consult.py` / `test_dispatcher.py` is identical before and after these tests (80 pre-existing reds). Every line and branch added by AST-2093 in `agent.py` / `consult.py` / `dispatcher.py` is covered.
+
+**Integration:** none — do not invent.
+
+## QA test manifest — AST-2095 (AST-2093 coverage)
+
+1. **New nodes (required):**
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst2093BatchIndexMapDecode \
+  tests/component/core/test_consult.py::TestAst2093EncodedDispatchIndex \
+  tests/component/core/test_dispatcher.py::TestAst2093BatchIndexDispatch \
+  -q
+```
+
+Expect **23 passed**.
+
+2. **[bug-repro] flip (8 nodes):** `TestAst2093BatchIndexMapDecode::test_bug_repro_*` (3), `TestAst2093EncodedDispatchIndex::test_bug_repro_rows_carry_one_global_label`, `TestAst2093BatchIndexDispatch::test_bug_repro_*` (4). Red on a `git archive 823d37605` export with these three test files copied in; green on the publish tip.
+3. **No-regression (required):** `/home/susan/astral/.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_consult.py tests/component/core/test_dispatcher.py -q -rf`. The failing-id set must equal the pre-existing ftr reds (80), and no `TestAst2093*` node may fail.
+4. **Scope gate:** `git diff origin/ftr/AST-2012-grade-batch-unique-index...origin/sub/AST-2012/AST-2095-grade-batch-unique-index-tests -- src/ data/` is empty.

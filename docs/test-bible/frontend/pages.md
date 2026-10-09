@@ -1413,7 +1413,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
 
-Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin/contact/listen`; toggle `PUT` enables/disables listen for this environment; non-prod copy notes `[<environment>]` reply prefix. API: **`docs/test-bible/ui/api/api_contact.md`**. Nav: **`docs/test-bible/utils/config.md`**.
+Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin/contact/listen`; toggle `PUT` enables/disables listen for this environment; no reply-prefix copy (AST-2085 retired the `[<environment>]` prefix). API: **`docs/test-bible/ui/api/api_contact.md`**. Nav: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -3582,7 +3582,7 @@ Expect 54 passed and 1 failed (the baseline red above), with all six **`AST-1979
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Routed page (**§6c**) — one labeled panel per registry id, button / table row / select / grade dots A–X / toast in each; GET-only | `pages/AdminThemeExamples.tsx` | **`test_AdminThemeExamples.test.tsx`** — **`renders one labeled panel per registry id with the shared sample; read-only (§6c, AC6)`** |
-| `App.css` token blocks — one per registry id; Light name sets equal Dark's; Lights pairwise differ on `--bg-deep` / `--bg-card` / `--accent-gold` (AC4) | `App.css` § 1 | same file — **`App.css theme token blocks — AST-2047`** (3 cases) |
+| `App.css` token blocks — one per registry id; Light name sets equal Dark's; Lights pairwise differ on `--bg-deep` / `--bg-card` / `--accent-contrast` (AC4; renamed from `--accent-gold` by AST-2076) | `App.css` § 1 | same file — **`App.css theme token blocks — AST-2047`** (3 cases) |
 | `App.css` rule bodies — no hex / non-black `rgba()` outside token blocks; every `var(--x)` in `App.css` defined in a token block (AC5, `App.css` half only — `.tsx` half is AST-2049) | `App.css` | same file — **`no hex or non-black rgba outside token blocks; …`** |
 | Registry ids / selectable / default; profile Theme options generated from the registry; Tools item admin-only; every id has an `App.css` block (AC1, AC2) | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst2047ThemeRegistry`** (4) — see [`../utils/config.md`](../utils/config.md) § AST-2047 pointer |
 | `ui_config` serves `themes` + `default_theme` (AC1) | `src/ui/api/api_system.py` (unchanged; `{**UI_CONFIG}` spread) | **`tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry`** |
@@ -3811,3 +3811,43 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/comp
 
 §6c routed-page coverage for the AST-2068 component change: **`ArtifactsBaseResumeContent`** (AC1/AC2 blur + AC4 arrows), **`ArtifactsDoJobCriteria`** (AC4 per criterion + AC2; stale `api` mock / manifest fixture repaired), **`CandidateBioSummary`** (AC4 + save-before-move). Full-paint mocks include the `/versions` and `/current` routes. Manifest: [`components.md`](components.md) § AST-2068.
 
+
+---
+
+### AST-2076 · AST-2042 (bug — Light accent → header purple; `--accent-gold*` renamed `--accent-contrast*`)
+
+**Publish:** `origin/sub/AST-2042/AST-2076-light-accent-contrast`. **Scope from** `[board-betty] TESTS: REVISE` (stale AC4 key + bible renames), plus the red-first repro qa-fix requires. Fix (plan doc § Bug: AST-2076): six-file `--accent-gold` → `--accent-contrast` rename; in `light` / `light_parchment`, accent family = header purple, `--heading` / `--nav-group-label` → `var(--accent-contrast)`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** in `light` and `light_parchment`, `--accent-contrast` and `--nav-group-label` resolve (following `var()` within the block) to the same value as `--heading` | `App.css` token blocks | **`test_AdminThemeExamples.test.tsx`** — **`App.css theme token blocks — AST-2047 > [bug-repro] AST-2076: in light and light_parchment, the accent and nav group label resolve to the header colour`** |
+| AC4 pairwise-differ key list retargeted `--accent-gold` → `--accent-contrast` | same | existing **`… > every Light block declares exactly the Dark token names, and the Lights pairwise differ (AC4)`** (still passes via `--bg-deep`) |
+| Rename complete (no `var()` left pointing at a removed name) | all `.ts`/`.tsx`/`.css` | existing AC5 + AST-2049 guards (unchanged) |
+
+**Red on pre-fix tree** (`origin/sub/…/AST-2076` @ `f3186d4c5`): `light --accent-contrast: expected undefined to be '#241b33'`. **Green** (8/8) with the plan's Proposed change steps 1–2 applied locally (not committed); `tsc -b --noEmit` clean. Purple hex values, hover/dim values, and Dark/Slate values are not pinned (palette choice → UAT; Dark-value equality is plan Verify step, not a test).
+
+**Integration:** none — frontend-only; do not invent.
+
+#### QA test manifest (AST-2076)
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx
+```
+
+**Pass criterion (test-fix):** the AST-2076 `[bug-repro]` flips red → green; the other 7 cases stay green.
+
+### AST-2083 · AST-2046 (theme gate on resume editor CSS)
+
+**Unchanged test, product red:** `test_AdminThemeExamples.test.tsx` (8). Its AST-2047/AST-2049 token gates catch `var(--accent-gold)` (retired on dev, now `--accent-contrast`) and a literal `#fff` in AST-2083's App.css §10e2. That's 2 red until the product fix lands. Manifest and detail: [`components.md`](components.md) § AST-2083.
+
+### AST-2084 · AST-2046 (Base Resume Content on the split pane)
+
+**Rewritten:** `test_ArtifactsBaseResumeContent.test.tsx` (8). The 15 old cases are retired with the page they tested (structure tabs, accent bar, structure authoring, the page's own Print and Generate). It covers:
+- **§6c page render** with full first-paint mocks: editor left (`Search sections`, sections, accent swatches) and base print preview right.
+- **Preview refresh:** the preview refetches once per editor save and never while typing (one `PUT …/data`).
+- **AC2/AC3:** no Generate/Regenerate/Save/Cancel.
+- **Candidate switch:** retargets both panes.
+- **No candidate:** shows the message, and no editor or print fetch happens.
+- **Source gates:** no `Save sections` and no `useCandidateResumeStructure|structureCatalog|onStructureSave` anywhere in `src/ui/frontend/src` (AC2/AC5). The page has no `craft_resume_base` and no `ArtifactEditor` (AC3). Both resume surfaces use `ResumeContentEditor`. The AST-1577 ui-consistency directive check is kept.
+
+Manifest: [`components.md`](components.md) § AST-2084.

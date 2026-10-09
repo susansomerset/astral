@@ -1,3 +1,84 @@
+<!-- linear-archive: AST-1873 archived 2026-10-08 -->
+
+## Linear archive (AST-1873)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1873/report-header-layout-labels-job-link-line-skip-button-recommended-job  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1862 — Recommended Job Modal Changes  
+**Blocked by / blocks / related:** parent: AST-1862; blocks: AST-1874
+
+### Description
+
+## What this implements
+
+The header component and its CSS: buttons move onto the title row with a wrapping title, the title is un-linked with the full job link shown in small text below, the copy labels are renamed, the **Skip this Job** button renders when a skip callback is passed, and the modal title bar gets smaller and tighter (report-scoped CSS only). This child does not wire data or the skip action into the modal; that is #3.
+
+## Citations
+
+`astral.standards.dry-and-focused-functions`.
+
+## Scope
+
+* `src/ui/frontend/src/components/RecommendedJobReportHeader.tsx`: modified component. The title always renders as plain text. A new small job-link line under the title takes the display text plus an optional http(s) href (hyperlinked in a new tab when the href is present). The button row renders on the title row, right-aligned. Labels change to **Copy Job Link** / **Copy Job JSON** (the **Copied** feedback is unchanged). New optional skip callback and busy props render **Skip this Job** as the last `.btn secondary` in the row, disabled while busy. The row stays visible when only Skip is present.
+* `src/ui/frontend/src/App.css`: modified rules. The header title row becomes a two-column flex row: the title/company/link column shrinks and wraps, and the buttons column does not shrink. A new job-link-line rule uses small, secondary text. New rules scoped to the report modal only (no change to the shared `.modal-title` / `.modal-header` / `.modal-body` rules) reduce the title font below 18px and cut the combined vertical gap between the title bar and the job title (today 16px header bottom padding + 20px body top padding + 12px report header top padding).
+
+## Acceptance criteria
+
+ 6. **Skip button visibility.** In `test_RecommendedJobReportHeader.test.tsx` / `test_JobAnalysisReportModal.test.tsx`, **Skip this Job** is the last button in the header button row when the detail flag is `true`, and absent when `false`. `grep -n "CANDIDATE_REVIEW\|REVIEW_LIKE" src/ui/frontend/src/components/JobAnalysisReportModal.tsx src/ui/frontend/src/components/RecommendedJobReportHeader.tsx` returns nothing. Fail = the button is shown for a non-skippable job, is not last, or the modal carries its own state list.
+ 7. **Renamed labels.** In the report header, buttons read **Copy Job Link** and **Copy Job JSON** when idle and **Copied** after click. `grep -n '"Copy Link"\|>Copy<\|"Copy"' src/ui/frontend/src/components/RecommendedJobReportHeader.tsx` returns nothing. Job Detail modal's **Copy** test still passes unedited. Fail = old label present, or the Job Detail label changed.
+ 8. **Buttons share the title row.** In `RecommendedJobReportHeader`, the button row element is a descendant of the same row container as the job title (not a sibling row below it), and App.css gives the title column `min-width: 0` plus wrapping (`overflow-wrap`/`word-break`) while the button column has `flex-shrink: 0`. Fail = buttons render in a separate row, or the title has `white-space: nowrap`/no wrap rule.
+ 9. **Title not linked, link shown below.** With `listing_href: "https://x.test/j"`, the title renders with no `<a>` ancestor, and a small link line below it shows `https://x.test/j` as an `<a href="https://x.test/j" target="_blank">`. With `listing_href: null` and `job_link: "meteorite-123"`, the line shows `meteorite-123` as plain text (no `<a>`). With neither, no link line renders. Fail = title is a link, URL not shown, or non-http text hyperlinked.
+10. **Title bar scoped.** `git diff origin/dev -- src/ui/frontend/src/App.css` shows no change to the existing `.modal-title`, `.modal-header`, or `.modal-body` rule blocks, and a new report-scoped rule sets the title font-size below `18px`. In UAT, the company-name title bar on the Recommended report is visibly smaller, with less space above the job title, while the Company and Job Detail modals look unchanged. Fail = shared modal rules edited, or other modals change.
+
+## Boundaries
+
+Does not wire data or the skip action into the modal, and does not change the default tab or Analysis header score — those are #3. No config/API changes (#1).
+
+## Notes for planning
+
+Blocks #3. Parallel with #1. Citations above are this child's Canon Scope subset of the parent's Architectural definition.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1862-recommended-job-modal-changes`, child `sub/AST-1862/<child-id>-report-header-layout-labels-skip-button`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-09-29T18:49:53.880Z
+[merge-child] blocked: `validate-sub-log.sh` fails on `origin/sub/AST-1862/AST-1873-report-header-layout-labels-skip-button` (tip `d5e2f7d0`), and no engineer fix can clear it.
+
+- **Current failure:** `075c3d78 Merge remote-tracking branch 'origin/dev' into tmp-refresh-AST-1853…`. This commit came from origin/dev (the AST-1853 PR) through the required `sync(dev)`. Nobody ran `git pull` on the sub branch. `origin/ftr/AST-1862-recommended-job-modal-changes` is 24 commits behind dev, so the validator's range (the sub branch minus ftr) still includes it.
+- **Next failure after a ftr refresh from dev:** the range would no longer contain `plan(AST-1873)`, because `d818add5 docs(AST-1873): plan —` is already on ftr. The validator would then block on "missing plan()".
+- Everything else is present: code ×3, test, one merge-tests, Joan/Radia docs, and resolve. Stacked on ftr: yes.
+
+@susan: pick one. Refresh ftr and relax the validator's plan() check when the plan commit is already on ftr, or approve a one-time merge of this child past the gate.
+
+#### hedy — 2026-09-29T18:49:08.883Z
+`origin/sub/AST-1862/AST-1873-report-header-layout-labels-skip-button` @ `d5e2f7d0` · §9a clean · ftr dry-run clean
+validate-sub-log still blocks on `075c3d78` (origin/dev merge); ftr is 24 behind dev. Chuckles: refresh ftr before merge-child.
+
+#### radia — 2026-09-29T18:47:56.847Z
+[code-rubric] PROCEED (Commit: df4b816) Header row, skip prop, scoped CSS
+
+#### betty — 2026-09-29T18:45:50.707Z
+`origin/sub/AST-1862/AST-1873-report-header-layout-labels-skip-button` @ `df4b816b` · manifest in components bible
+
+#### hedy — 2026-09-29T18:41:24.325Z
+`origin/sub/AST-1862/AST-1873-report-header-layout-labels-skip-button` @ `a547565b`
+validate-sub-log blocks on `075c3d78` (AST-1853 merge from origin/dev, not on ftr yet); plan `d818add5` already on ftr. Chuckles: refresh ftr with dev before merge-child.
+
+#### joan — 2026-09-29T18:22:50.607Z
+[plan-rubric] PROCEED (Commit: d818add5) Header/CSS plan sound
+
+#### hedy — 2026-09-29T18:18:51.146Z
+`origin/sub/AST-1862/AST-1873-report-header-layout-labels-skip-button` @ `d818add5` · plan ready, two stages
+
+---
+
 # AST-1873 — Report header layout, labels, job-link line, Skip button (Recommended Job Modal Changes)
 
 - **Linear:** [AST-1873](https://linear.app/astralcareermatch/issue/AST-1873) · parent [AST-1862](https://linear.app/astralcareermatch/issue/AST-1862) — Recommended Job Modal Changes

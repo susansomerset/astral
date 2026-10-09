@@ -56,7 +56,12 @@ from src.data.database import (
     ensure_batch_response_entity_ids,
 )
 from src.utils.logging import get_logger, log_batch_id
-from src.utils.llm_external import is_provider_balance_refusal, is_provider_rate_limit
+from src.utils.llm_external import (
+    is_provider_balance_refusal,
+    is_provider_probe_failure,
+    is_provider_rate_limit,
+    is_provider_state_hold,
+)
 from src.utils.config import (
     ASTRAL_CONFIG,
     COMPANY_STATES,
@@ -82,9 +87,12 @@ from src.utils.formatting import (
 logger = get_logger(__name__)
 
 
-def _rate_limit_tag(r: Dict[str, Any]) -> Dict[str, Any]:
-    """AST-2010: carry an exhausted-429 failure_class up to the dispatcher (routing unchanged)."""
-    return {"failure_class": r["failure_class"]} if is_provider_rate_limit(r) else {}
+def _outage_tag(r: Dict[str, Any]) -> Dict[str, Any]:
+    """AST-2010 / AST-2098: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's
+    total_held) up to the dispatcher; routing unchanged. Empty for every other result."""
+    if not (is_provider_rate_limit(r) or is_provider_probe_failure(r)):
+        return {}
+    return {k: r[k] for k in ("failure_class", "total_held") if k in r}
 
 
 def _entity_info(entity_id: Any, entity_type: str, event: str, detail: Any) -> None:
@@ -920,12 +928,12 @@ async def run_company_task(
                 short_name, company_website, job_site_entity, debug=debug, ctx=ctx,
             )
             error_state = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
-            tag = _rate_limit_tag(result)
+            tag = _outage_tag(result)
             if result.get("error"):  # pragma: no branch
-                # AST-1867: provider refused for balance — held (AST-897 kept state), not an entity error;
+                # AST-1867: provider refused for balance / AST-2098 failed host probe — held (AST-897 kept state), not an entity error;
                 # failure_class travels up so the dispatcher can stop the batch and alert once.
-                if is_provider_balance_refusal(result):
-                    logger.debug("%s | company jobs_found held: provider_balance_refusal error=%r", short_name, result.get("error"))
+                if is_provider_state_hold(result):
+                    logger.debug("%s | company jobs_found held: %s error=%r", short_name, result.get("failure_class"), result.get("error"))
                     return {**zero, "total_held": 1, "failure_class": result.get("failure_class"), "error": result.get("error")}
                 dest = error_state if (
                     error_state
@@ -953,12 +961,12 @@ async def run_company_task(
                 return {**zero, "total_errors": 1}
             result = await run_select_job_page_dispatch(entity, batch_id, ctx, debug)
             sel_cfg = ROSTER_CONFIG["select_job_page"]
-            # AST-1867: provider refused for balance — held (AST-897 kept state), not an entity error;
+            # AST-1867: provider refused for balance / AST-2098 failed host probe — held (AST-897 kept state), not an entity error;
             # failure_class travels up so the dispatcher can stop the batch and alert once.
-            if is_provider_balance_refusal(result):
-                logger.debug("%s | company select_job_page held: provider_balance_refusal error=%r", short_name, result.get("error"))
+            if is_provider_state_hold(result):
+                logger.debug("%s | company select_job_page held: %s error=%r", short_name, result.get("failure_class"), result.get("error"))
                 return {**zero, "total_held": 1, "failure_class": result.get("failure_class"), "error": result.get("error")}
-            tag = _rate_limit_tag(result)
+            tag = _outage_tag(result)
             if result.get("error"):
                 _warn_company(short_name, "-", result["error"])
                 return {**zero, "total_errors": 1, **tag}
@@ -1160,6 +1168,7 @@ def _finalize_parse_dispatch_success(
     parsed: Dict[str, Any],
     job_titles: List[Any],
 ) -> Dict[str, Any]:
+    pass_state = ROSTER_CONFIG["parse_job_list"]["pass_state"]
     container = (parsed.get("job_container") or "").strip()
     job_tag = (parsed.get("job_tag") or "").strip()
     container_index = _compute_container_index(dom_html, container, job_titles)
@@ -1168,13 +1177,13 @@ def _finalize_parse_dispatch_success(
     _save_company(
         short_name=short_name,
         company_website=company_website,
-        state="WATCH",
+        state=pass_state,
         page_option_url=list_url,
         raw_response=parsed,
     )
     return {
         "short_name": short_name,
-        "state": "WATCH",
+        "state": pass_state,
         "job_site": list_url,
         "response_type": "PARSE_DISPATCH_OK",
         "parse_instructions": parse_instructions,
@@ -1537,8 +1546,8 @@ def _prefilter_fail(
     """Route retryable failures via current state (one retry then ERROR_PREFILTER); hard → error."""
     company = get_company(short_name) or {}
     current_state = (company.get("state") or "").strip()
-    # AST-897: provider balance/credit refusal — hold current loop-eligible state
-    if api_result is not None and is_provider_balance_refusal(api_result):
+    # AST-897 / AST-2098: balance refusal or failed host probe — hold current loop-eligible state
+    if api_result is not None and is_provider_state_hold(api_result):
         result["error"] = error
         result["state"] = current_state
         result["decision"] = "HOLD"
@@ -2038,9 +2047,9 @@ async def _run_batch_company_prefilter(
     logger.debug("Response from agent.do_task: %s", result)
 
     if not result.get("success"):
-        if is_provider_balance_refusal(result):
+        if is_provider_state_hold(result):
             logger.debug(
-                "Response from agent.do_task: provider_balance_refusal error=%r failure_class=%r",
+                "Response from agent.do_task: provider state hold error=%r failure_class=%r",
                 result.get("error"), result.get("failure_class"),
             )
             return {
@@ -2049,6 +2058,7 @@ async def _run_batch_company_prefilter(
                 "total": len(companies),
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
+                **({"total_held": len(companies)} if is_provider_probe_failure(result) else {}),
             }
         if result.get("empty_tokens"):
             # AST-2000: data defect — straight to ERROR_PREFILTER, never a retry holding.
@@ -2062,7 +2072,7 @@ async def _run_batch_company_prefilter(
             agent_failure=bool(result.get("agent_failure")),
             reason=result.get("error") or "do_task failed",
         )
-        return {"passed": 0, "failed": 0, "total": len(companies), "retried": retried, **_rate_limit_tag(result)}
+        return {"passed": 0, "failed": 0, "total": len(companies), "retried": retried, **_outage_tag(result)}
 
     parsed = result.get("parsed_response") or {}
     response_companies = parsed.get("companies") or []
@@ -2215,6 +2225,172 @@ async def prefilter_company_batch(
     return batch_result
 
 
+# ---- Company upshot (AST-2054) ----
+
+def _upshot_fail_dest(entity_state: Optional[str], cfg: Dict[str, Any]) -> str:
+    """First failure → retry holding; a failure out of the retry holding → terminal error (patt.task.dispatch-retry)."""
+    return cfg["error_state"] if (entity_state or "").strip() == cfg["retry_state"] else cfg["retry_state"]
+
+
+def _transition_upshot_failures(companies: List[Dict[str, Any]], cfg: Dict[str, Any], reason: str) -> int:
+    """Route each company to retry or error with a per-item who -> dest [why]. Returns count sent to retry."""
+    retried = 0
+    for company in companies:
+        dest = _upshot_fail_dest(company.get("state"), cfg)
+        transition_company_state(company["short_name"], dest)
+        _log_fail_dest(company["short_name"], dest, reason)
+        if retry_base(dest):
+            retried += 1
+    return retried
+
+
+def _upshot_culture_text(website_content: Any) -> str:
+    """website_content as prompt text: [{url, content}] pages, or a legacy plain string."""
+    if isinstance(website_content, str):
+        return website_content.strip()
+    pages = [
+        p for p in (website_content or [])
+        if isinstance(p, dict) and str(p.get("content") or "").strip()
+    ]
+    return "\n\n".join(f"### {p.get('url') or ''}\n{str(p['content']).strip()}" for p in pages)
+
+
+async def company_upshot_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Pattern-A Estelle upshot batch at UPSHOT_READY: one do_task, decode by company_id,
+    save company_data.company_upshot, transition to WATCH. No verdict fail — only technical
+    failures route, once to the retry holding and then to the terminal error state."""
+    cfg = ROSTER_CONFIG["company_upshot"]
+    agent_task_key = cfg["task_key"]
+    upshot_key = ROSTER_CONFIG["company_data_keys"]["company_upshot"]
+    rows = [
+        {
+            "company_id": c["short_name"],
+            "short_name": c["short_name"],
+            "state": c.get("state"),
+            "company_name": c.get("company_name") or "",
+            "company_data": c.get("company_data") or {},
+        }
+        for c in companies
+    ]
+    input_by_id = {r["company_id"]: r for r in rows}
+
+    # One block per company, keyed 000, 001, … to match the agent_task prompt's input contract.
+    blocks: List[str] = []
+    for r in rows:
+        cd = r["company_data"]
+        parts = [
+            f"[company_id={r['company_id']}]",
+            f"\n## Name On File\n{r['company_name']}",
+            f"\n## Homepage Content\n{(cd.get('homepage_text') or '').strip()}",
+        ]
+        culture = _upshot_culture_text(cd.get("website_content"))
+        if culture:
+            parts.append(f"\n## Culture Pages\n{culture}")
+        grades = [g for g in (cd.get("prefilter_grades") or []) if isinstance(g, dict)]
+        if grades:
+            lines = "\n".join(f"- {g.get('vector')}={g.get('grade')}: {g.get('reason') or ''}" for g in grades)
+            parts.append(f"\n## Prefilter Grades\n{lines}")
+        blocks.append("\n".join(parts))
+    live_content = enumerate_array(
+        "COMPANY UPSHOT ROWS",
+        blocks,
+        index_key="index",
+        index_values=[f"{i:03d}" for i in range(len(rows))],
+    )
+
+    task_ctx = {**(ctx or {}), "batch_entities": rows, "batch_size": len(rows)}
+    do_index = f"company_upshot_batch_{batch_id}"
+    logger.debug("Calling agent.do_task: task_key=%s index=%s", agent_task_key, do_index)
+    logger.debug("Calling agent.do_task live_content: %s", live_content)
+    result = await do_task(
+        task_key=agent_task_key,
+        live_content=live_content,
+        index=do_index,
+        ctx=task_ctx,
+        debug=debug,
+    )
+    logger.debug("Response from agent.do_task: %s", result)
+
+    if not result.get("success"):
+        if is_provider_state_hold(result):
+            # Balance refusal or failed host probe: hold state; the dispatcher stops the run.
+            return {
+                "passed": 0,
+                "failed": 0,
+                "total": len(rows),
+                "failure_class": result.get("failure_class"),
+                "state_held": True,
+                **({"total_held": len(rows)} if is_provider_probe_failure(result) else {}),
+            }
+        if result.get("empty_tokens"):
+            # Data defect, not an agent miss: straight to the terminal error, never the retry holding.
+            for r in rows:
+                transition_company_state(r["short_name"], cfg["error_state"])
+                _log_fail_dest(r["short_name"], cfg["error_state"], "empty prompt tokens")
+            return {"passed": 0, "failed": 0, "total": len(rows), "retried": 0}
+        retried = _transition_upshot_failures(rows, cfg, f"do_task: {result.get('error') or 'do_task failed'}")
+        return {"passed": 0, "failed": 0, "total": len(rows), "retried": retried, **_outage_tag(result)}
+
+    response_companies = (result.get("parsed_response") or {}).get("companies") or []
+    received_ids = {rc.get("company_id") for rc in response_companies}
+    missing_rows = [r for cid, r in input_by_id.items() if cid not in received_ids]
+    retried = _transition_upshot_failures(missing_rows, cfg, "upshot batch omitted this id")
+
+    passed = 0
+    saved: Set[str] = set()
+    seen: Set[str] = set()
+    for rc in response_companies:
+        cid = rc.get("company_id")
+        # Fabricated ids never touch a row this batch didn't claim; a repeated id is decoded once.
+        if cid not in input_by_id or cid in seen:
+            continue
+        seen.add(cid)
+        upshot = str(rc.get("upshot") or "").strip()
+        if not upshot:
+            retried += _transition_upshot_failures([input_by_id[cid]], cfg, "empty upshot")
+            continue
+        try:
+            save_company_data(cid, {upshot_key: upshot})
+            # Root column, not company_data; short_name (company_id) is never rewritten.
+            readable_name = str(rc.get("company_name") or "").strip()
+            if readable_name:
+                update_company(cid, company_name=readable_name)
+            transition_company_state(cid, cfg["pass_state"])
+        except ValueError as e:
+            logger.debug(
+                "%s | company upshot save\n  %s: %s\n  Routing to retry or error",
+                cid,
+                type(e).__name__,
+                e,
+                exc_info=True,
+            )
+            retried += _transition_upshot_failures([input_by_id[cid]], cfg, f"save: {type(e).__name__}: {e}")
+            continue
+        _entity_info(cid, "company", "upshot saved", f"{len(upshot.split())} words name={readable_name or '-'!r}")
+        saved.add(cid)
+        passed += 1
+
+    agent_ref = result.get("agent_ref")
+    if agent_ref and saved:
+        try:
+            ensure_batch_response_entity_ids(TASK_CONFIG[agent_task_key]["entity_type"], sorted(saved), agent_ref)
+        except Exception as stamp_err:
+            logger.exception(
+                "%s | company ensure_batch_response_entity_ids\n  %s: %s\n  Continuing without stamping those entity ids",
+                batch_id,
+                type(stamp_err).__name__,
+                stamp_err,
+            )
+
+    return {"passed": passed, "failed": 0, "total": len(rows), "retried": retried}
+
+
+
 # ---- Find job page ----
 
 def _locate_empty_token_error(short_name: str, company_website: str, res: Dict[str, Any]) -> Dict[str, Any]:
@@ -2270,9 +2446,9 @@ async def _find_job_page_from_assembled(
         )
         logger.debug("Response from agent.do_task: %s", res)
         if not res.get("success"):  # pragma: no branch
-            # Balance refusal (AST-897) and provider-call-budget timeout (AST-1189) are not model
-            # verdicts: hold the loop-eligible state so the next select_job_page dispatch retries (AST-1842).
-            if is_provider_balance_refusal(res) or res.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]:
+            # Balance refusal (AST-897), failed host probe (AST-2098), and provider-call-budget timeout (AST-1189)
+            # are not model verdicts: hold the loop-eligible state so the next select_job_page dispatch retries (AST-1842).
+            if is_provider_state_hold(res) or res.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]:
                 current_state = (get_company(short_name) or {}).get("state")
                 logger.debug(
                     "Response from agent.do_task: state held failure_class=%r error=%r current_state=%r",
@@ -2293,7 +2469,7 @@ async def _find_job_page_from_assembled(
                                state="NO_JOBLIST", page_option_url=company_website,
                                raw_response={"response_type": "SELECT_FAILED", "error": res.get("error"), "api": res})
             return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "SELECT_FAILED",
-                    **_rate_limit_tag(res)}
+                    **_outage_tag(res)}
 
         pp = res.get("run_next_parent_parsed")
         parsed_top = pp if pp is not None else res.get("parsed_response")  # type: ignore[assignment]
@@ -2829,9 +3005,10 @@ async def _finalize_joblist_titles_after_chain(
     if vis_save:
         extra_cd["job_list_visible"] = vis_save
     save_company_data(short_name, extra_cd)
+    pass_state = ROSTER_CONFIG["locate_job_page"]["pass_states"][0]
     _save_company(short_name=short_name, company_website=company_website,
-                       state="WATCH", page_option_url=job_site_url, raw_response=parsed)
-    return {"short_name": short_name, "state": "WATCH", "job_site": job_site_url, "response_type": response_type, "parse_instructions": parse_instructions}
+                       state=pass_state, page_option_url=job_site_url, raw_response=parsed)
+    return {"short_name": short_name, "state": pass_state, "job_site": job_site_url, "response_type": response_type, "parse_instructions": parse_instructions}
 
 
 async def _finalize_joblist_titles_select_only(
@@ -2897,9 +3074,10 @@ async def _finalize_joblist_titles_select_only(
     if vis_save:
         extra["job_list_visible"] = vis_save
     save_company_data(short_name, extra)
+    pass_state = ROSTER_CONFIG["locate_job_page"]["pass_states"][0]
     _save_company(short_name=short_name, company_website=company_website,
-                       state="WATCH", page_option_url=job_site_url, raw_response=parsed)
-    return {"short_name": short_name, "state": "WATCH", "job_site": job_site_url, "response_type": response_type, "parse_instructions": parse_instructions}
+                       state=pass_state, page_option_url=job_site_url, raw_response=parsed)
+    return {"short_name": short_name, "state": pass_state, "job_site": job_site_url, "response_type": response_type, "parse_instructions": parse_instructions}
 
 
 async def _fetch_select_job_page(
@@ -3040,8 +3218,10 @@ def _derive_shortname_from_url(url: str) -> str:
 
 
 
+# Locate/parse success persists the listings URL as job_site; gaze reads it once the company reaches WATCH.
 _PERSIST_PAGE_OPTION_URL_STATES = frozenset({
-    "WATCH", "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE", "JOBSITE_SCRAPE_ISSUE", "BOT_BLOCKED",
+    ROSTER_CONFIG["parse_job_list"]["pass_state"], *ROSTER_CONFIG["locate_job_page"]["pass_states"],
+    "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE", "JOBSITE_SCRAPE_ISSUE", "BOT_BLOCKED",
 })
 
 

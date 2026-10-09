@@ -35,7 +35,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, job.artifacts.job_resume_structure, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678 / AST-2081)
   TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
@@ -205,6 +205,14 @@ RETRY_SUFFIX = "_RETRY"
 def retry_of(base: str) -> str:
     """Implicit retry substate name for a registered base state."""
     return f"{base}{RETRY_SUFFIX}"
+
+
+ALL_X_SUFFIX = "_ALL_X"
+
+
+def all_x_of(base: str) -> str:
+    """Second-strike all-literal-X terminal for a scored task's fail_state (AST-2096)."""
+    return f"{base}{ALL_X_SUFFIX}"
 
 
 def retry_base(state: Optional[str]) -> Optional[str]:
@@ -495,6 +503,27 @@ TASK_CONFIG = {
         "entity_type": "company",
         "requires_candidate_key": True,
         "trigger_state": None,
+    },
+    # AST-2054: Estelle company upshot — one call per batch; saved to company_data.company_upshot.
+    # Routing lives in ROSTER_CONFIG["company_upshot"] (defined below TASK_CONFIG, so literals here).
+    "company_upshot": {
+        "response_format": "json",
+        "response_schema": {
+            "companies": {
+                "type": "list", "required": True,
+                "items_schema": {
+                    "company_id": {"type": "str", "required": True},
+                    "upshot": {"type": "str", "required": True},
+                    "company_name": {"type": "str", "required": False},
+                },
+            },
+        },
+        "context_format": "company_upshot_{index}",
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "UPSHOT_READY",
+        "pass_state": "WATCH",
+        "error_state": "ERROR_UPSHOT",
     },
     "select_job_page": {
         "response_schema": {
@@ -1292,6 +1321,12 @@ COMPANY_STATES = {
     "VET_FAILED": {},
     "NO_PREFILTER_JOBLISTS": {},
     "TO_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    # AST-2054: upshot hops between locate/parse success and WATCH.
+    "GET_UPSHOT": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "UPSHOT_READY": {
+        "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
+        "retry_state": retry_of("UPSHOT_READY"),
+    },
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "IGNORE": {},
     "METEORITE": {},  # AST-1493: roster-inert meteorite placeholders (stem-keyed); no batch_criteria
@@ -1307,6 +1342,7 @@ COMPANY_STATES = {
     "ERROR_LOCATE_JOB_PAGE": {},
     "JOBSITE_SCRAPE_ISSUE": {},
     "ERROR_GAZE": {},
+    "ERROR_UPSHOT": {},
 }
 
 # ---------------------------------------------------------------------------
@@ -1893,11 +1929,8 @@ CONTACT_CONFIG = {
     "debug_state_filename": "contact_slack_debug.json",
     # Durable @Estelle per–Slack-user activity summary under ASTRAL_CONFIG["db_dir"] (AST-1094).
     "activity_state_filename": "contact_estelle_activity.json",
-    # ASTRAL_DEPLOY_ENV value (case-insensitive) that skips non-prod reply prefix.
+    # ASTRAL_DEPLOY_ENV value (case-insensitive) Manage Slack reports as production.
     "production_deploy_env": "production",
-    # Format with environment= (deploy label). AST-1067 applies when listen is on
-    # and deploy is not production.
-    "non_production_reply_prefix_template": "[{environment}] ",
     # AST-1101 / AST-2072: fallback Slack text when Contact accepts @/DM but Estelle's turn
     # posts nothing (turn raised, failed, or returned no reply).
     "hear_ack_reply_text": "That didn't work as planned.  Let's ask @susan.",
@@ -2120,7 +2153,7 @@ ROSTER_CONFIG = {
         "input_state": "TO_WATCH",
         # JOBS_FOUND only — decomposed PJL pipeline uses fetch_job_pages → select_job_page → parse_job_list.
         "dispatch_input_states": ["JOBS_FOUND"],
-        "pass_states": ["WATCH"],
+        "pass_states": ["GET_UPSHOT"],
         "error_state": "ERROR_LOCATE_JOB_PAGE",
         "scrape_issue_state": "JOBSITE_SCRAPE_ISSUE",
         "max_depth": 2,
@@ -2137,10 +2170,18 @@ ROSTER_CONFIG = {
     "parse_job_list": {
         "dispatch_trigger_state": "JOBLIST_IDENTIFIED",
         "retry_trigger_state": retry_of("JOBLIST_IDENTIFIED"),
-        "pass_state": "WATCH",
+        "pass_state": "GET_UPSHOT",
         "retry_state": retry_of("JOBLIST_IDENTIFIED"),
         "terminal_fail_state": "COULD_NOT_PARSE_JOBLIST",
         "selected_pjl_url_key": "selected_pjl_url",
+    },
+    # AST-2054: Estelle company upshot hop. Retry once via UPSHOT_READY_RETRY, then ERROR_UPSHOT.
+    "company_upshot": {
+        "task_key": "company_upshot",
+        "dispatch_trigger_state": "UPSHOT_READY",
+        "pass_state": "WATCH",
+        "retry_state": retry_of("UPSHOT_READY"),
+        "error_state": "ERROR_UPSHOT",
     },
     "scrape_readiness": {
         "max_wait_ms": 20000,
@@ -2183,6 +2224,8 @@ ROSTER_CONFIG = {
         "pjl_assembled_content": "pjl_assembled_content",
         "pjl_nav_links": "pjl_nav_links",
         "selected_pjl_url": "selected_pjl_url",
+        # AST-2054: Estelle prose upshot (display-only). No coat-check handler — explicit storage only.
+        "company_upshot": "company_upshot",
     },
     "culture_pages": {
         "max_pages": 6,
@@ -2347,6 +2390,12 @@ GAZER_CONFIG = {
         "pass_state": "PJL_READY",
         "fail_state": "JOBSITE_SCRAPE_ISSUE",
         "fetch_job_pages_trigger_states": ["PREFILTER_PASSED", retry_of("PREFILTER_PASSED")],
+    },
+    # AST-2054: company culture-page fetch before the Estelle upshot. Always advances to pass_state.
+    "fetch_company_culture_pages": {
+        "fallback_batch_size": 10,   # config default only; dispatch_task.batch_size wins
+        "trigger_state": "GET_UPSHOT",
+        "pass_state": "UPSHOT_READY",
     },
     # Same string as ROSTER_CONFIG["gaze"]["error_state"] ("ERROR_GAZE").
     "gaze": {
@@ -2639,6 +2688,14 @@ JOB_STATES = {
     "ERROR_EVALUATE_JD":      {"prior_states": None},
     "CANDIDATE_SKIPPED":      {"prior_states": []},  # AST-1974: derived after SKIPPED_STATES (Applied/Skipped complement)
 }
+
+# AST-2096: second-strike all-literal-X terminal per scored grading task — explicit rows (no validator
+# changes); priors copied from the base fail_state so {trigger}_RETRY is admitted via state_prior_states.
+_ALL_X_BASES = list(dict.fromkeys(
+    tc["fail_state"] for tc in TASK_CONFIG.values() if tc.get("grading_mode") == "scored"
+))
+JOB_STATES.update({all_x_of(b): {"prior_states": list(JOB_STATES[b]["prior_states"])} for b in _ALL_X_BASES})
+ALL_X_FAIL_STATES = [all_x_of(b) for b in _ALL_X_BASES]
 
 # ---------------------------------------------------------------------------
 # AST-1701: job ingest parent + analysis track SoT (repurposed job.source column).
@@ -3560,6 +3617,7 @@ JOBS_RECOMMENDED_REPORT_PHASE_TABS = [
     {"tab_id": "phase_like", "nav_label": "LIKE Analysis", "grades_field": "like_grades", "take_key": "take_like"},
 ]
 
+# AST-2081: preview_thumbnail — tab shows a print-preview thumbnail (instead of an inline editor) once generated.
 # AST-1100: tab keys = AST-1099 pin slots (hydrate resolves id → body on job GET).
 JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
@@ -3568,6 +3626,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "job_resume",
         "shapes_key": None,
         "use_resume_structure": True,
+        "preview_thumbnail": True,
     },
     {
         "tab_id": "artifact_cover",
@@ -3575,6 +3634,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "cover_letter",
         "shapes_key": "cover_letter",
         "use_resume_structure": False,
+        "preview_thumbnail": True,
     },
     {
         "tab_id": "artifact_application",
@@ -3582,6 +3642,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "proposed_answers",
         "shapes_key": None,
         "use_resume_structure": False,
+        "preview_thumbnail": False,
     },
 ]
 
@@ -3663,13 +3724,13 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
-    "meteorite_like", "vet_inflow_discovery", "parse_job_list",
+    "meteorite_like", "vet_inflow_discovery", "parse_job_list", "company_upshot",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
-    "resolve_website",
+    "resolve_website", "fetch_company_culture_pages", "company_upshot",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -3684,6 +3745,10 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"]
     if task_key == "select_job_page":
         return ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]
+    if task_key == "company_upshot":
+        return ROSTER_CONFIG["company_upshot"]["dispatch_trigger_state"]
+    if task_key == "fetch_company_culture_pages":
+        return GAZER_CONFIG["fetch_company_culture_pages"]["trigger_state"]
     if task_key == "recheck_no_openings":
         return "NO_OPENINGS"
     if task_key == "gaze":
@@ -3985,6 +4050,7 @@ SKIPPED_STATES = [
     "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO",
     "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET",
     "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE",
+    *ALL_X_FAIL_STATES,  # AST-2096: terminal all-X fails list Skipped, not Processing
     "ERROR_QUALIFY_JOB_LISTINGS", "ERROR_EVALUATE_JD",
     "ERROR_BUILD_ARTIFACTS", "BUILD_FAILED",
     "CANDIDATE_SKIPPED",
@@ -4605,7 +4671,7 @@ ASTRAL_CONFIG = {
         (retry_of("HOMEPAGE_READY"), "IGNORE"),
         (retry_of("HOMEPAGE_READY"), "ERROR_PREFILTER"),
         (retry_of("HOMEPAGE_READY"), "CANNOT_READ_WEBSITE"),
-        ("TO_WATCH", "WATCH"),
+        ("TO_WATCH", "GET_UPSHOT"),
         ("TO_WATCH", "HARD_PARSE"),
         ("TO_WATCH", "CANNOT_PARSE_JOB_SITE"),
         ("TO_WATCH", "NO_OPENINGS"),
@@ -4614,14 +4680,14 @@ ASTRAL_CONFIG = {
         # NO_OPENINGS: Playwright-only recheck (recheck_no_openings batch); JOBS_FOUND is landing until AST-461 parse routing.
         ("NO_OPENINGS", "JOBS_FOUND"),
         # JOBS_FOUND: same locate/parse terminal set as TO_WATCH (AST-469).
-        ("JOBS_FOUND", "WATCH"),
+        ("JOBS_FOUND", "GET_UPSHOT"),
         ("JOBS_FOUND", "HARD_PARSE"),
         ("JOBS_FOUND", "CANNOT_PARSE_JOB_SITE"),
         ("JOBS_FOUND", "NO_OPENINGS"),
         ("JOBS_FOUND", "NO_JOBLIST"),
         ("JOBS_FOUND", "BOT_BLOCKED"),
         # PREFILTER_PASSED: same locate/parse terminal set as TO_WATCH / JOBS_FOUND (AST-508).
-        ("PREFILTER_PASSED", "WATCH"),
+        ("PREFILTER_PASSED", "GET_UPSHOT"),
         ("PREFILTER_PASSED", "HARD_PARSE"),
         ("PREFILTER_PASSED", "CANNOT_PARSE_JOB_SITE"),
         ("PREFILTER_PASSED", "NO_OPENINGS"),
@@ -4640,11 +4706,19 @@ ASTRAL_CONFIG = {
         ("PJL_READY", "BOT_BLOCKED"),  # AST-2004: shown page is a bot wall at NO_JOBLIST fall-through
         (retry_of("PREFILTER_PASSED"), "PJL_READY"),
         (retry_of("PREFILTER_PASSED"), "JOBSITE_SCRAPE_ISSUE"),
-        ("JOBLIST_IDENTIFIED", "WATCH"),
+        ("JOBLIST_IDENTIFIED", "GET_UPSHOT"),
         ("JOBLIST_IDENTIFIED", retry_of("JOBLIST_IDENTIFIED")),
         ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST"),
-        (retry_of("JOBLIST_IDENTIFIED"), "WATCH"),
+        (retry_of("JOBLIST_IDENTIFIED"), "GET_UPSHOT"),
         (retry_of("JOBLIST_IDENTIFIED"), "COULD_NOT_PARSE_JOBLIST"),
+        # AST-2054: upshot hops. WATCH → GET_UPSHOT is Susan's manual re-run via company state controls.
+        ("WATCH", "GET_UPSHOT"),
+        ("GET_UPSHOT", "UPSHOT_READY"),
+        ("UPSHOT_READY", "WATCH"),
+        ("UPSHOT_READY", retry_of("UPSHOT_READY")),
+        ("UPSHOT_READY", "ERROR_UPSHOT"),
+        (retry_of("UPSHOT_READY"), "WATCH"),
+        (retry_of("UPSHOT_READY"), "ERROR_UPSHOT"),
     ],
 
     # Candidate transitions: prior_states on CANDIDATE_STATES (AST-970); no parallel list.
@@ -4895,6 +4969,9 @@ def importance_multiplier(n: int) -> float:
 RAILWAY_CONFIG = {
     "workers": 1,
     "timeout": 300,
+    # Exact request paths (gunicorn atom `U`, no query string) whose gunicorn.access
+    # lines are dropped — background polls (AST-2078). Read by src/utils/logging.py.
+    "access_log_quiet_paths": ("/api/deploy_status",),
 }
 
 # ---------------------------------------------------------------------------
@@ -5503,6 +5580,12 @@ PROVIDER_RATE_LIMIT = {
     "failure_class": "provider_rate_limit",
     "http_status_codes": (429,),
     "message_substrings": ("error code: 429", "rate_limit_error"),
+}
+
+# PROVIDER_PROBE_FAILURE — per-batch host probe failed for any reason but an exhausted 429 (AST-2098).
+# Entity state is held and the run stops; the next dispatch round mints a new batch id and probes again.
+PROVIDER_PROBE_FAILURE = {
+    "failure_class": "provider_probe_failure",
 }
 
 # PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).
@@ -6376,6 +6459,14 @@ ARTIFACT_CONFIG = {
         "body_shape": "cover_letter",
         "ingestion_owner": "tracker",
     },
+    "job.artifacts.job_resume_structure": {
+        "entity_type": "job",
+        "candidate_scoped": True,
+        # AST-2081: per-job resume structure; same structure dict contract as candidate.artifacts.resume_structure.
+        "body_shape": "resume_structure",
+        # Tracker owns first-row ingestion (job resume editor PUT); absent row → job inherits the candidate's.
+        "ingestion_owner": "tracker",
+    },
     "candidate.context.strengths": {
         "entity_type": "candidate",
         "candidate_scoped": True,
@@ -6439,6 +6530,7 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.artifacts.resume_structure",
     "job.artifacts.job_resume",
     "job.artifacts.cover_letter",
+    "job.artifacts.job_resume_structure",
     "candidate.context.strengths",
     "candidate.context.priorities",
     "candidate.context.deal_breakers",
@@ -6526,6 +6618,20 @@ assert _cl["body_shape"] == "cover_letter"
 assert _cl["body_shape"] in BUILD_CONFIG["artifact_shapes"]
 assert _cl["ingestion_owner"] == "tracker"
 assert set(_cl.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_jrs = ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]
+assert _jrs["entity_type"] == "job"
+assert _jrs["entity_type"] in ENTITY_TYPES
+assert _jrs["candidate_scoped"] is True
+assert _jrs["body_shape"] == "resume_structure"
+assert _jrs["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _jrs["ingestion_owner"] == "tracker"
+assert set(_jrs.keys()) == {
     "entity_type",
     "candidate_scoped",
     "body_shape",
@@ -6947,6 +7053,67 @@ RESUME_STRUCTURE_BODY_FORMATS = (
     "dual_column",
     "indented_bold_single",
     "experience_detail",
+    "line",
+)
+# AST-2081: editor metadata per body format — display label, tooltip description (settings + rules),
+# and the BUILD_CONFIG["default_style"]["fonts"] stack key the builder prints that format in.
+# Single SoT for format text/fonts; the frontend reads these from the structure catalog payload.
+RESUME_STRUCTURE_BODY_FORMAT_DETAILS = {
+    "free_prose": {
+        "label": "Prose",
+        "description": (
+            "Paragraphs of body text. A blank line starts a new paragraph; with no blank lines, "
+            "each line prints as its own paragraph. <i> and <b> emphasis allowed."
+        ),
+        "font_stack": "body_stack",
+    },
+    "bullet_list": {
+        "label": "Bullet List",
+        "description": "One bullet per line. Blank lines are skipped. <i> and <b> emphasis allowed.",
+        "font_stack": "body_stack",
+    },
+    "word_cloud": {
+        "label": "Word Cloud",
+        "description": (
+            "Terms print uppercase in the list font and wrap between terms. "
+            "Separate terms with | (prints as •)."
+        ),
+        "font_stack": "list_stack",
+    },
+    "dual_column": {
+        "label": "Dual Column",
+        "description": (
+            "Skills grid in the list font. One category per line as \"Category: items\"; "
+            "a line without \": \" prints as items only."
+        ),
+        "font_stack": "list_stack",
+    },
+    "indented_bold_single": {
+        "label": "Indented Bold",
+        "description": (
+            "One entry per line. Text before the first | prints bold and the rest follows after •; "
+            "a line without | prints fully bold."
+        ),
+        "font_stack": "body_stack",
+    },
+    "experience_detail": {
+        "label": "Experience",
+        "description": (
+            "Roles edited as job entries (company, title, dates, location, accomplishments). "
+            "Experience section only; its format cannot change."
+        ),
+        "font_stack": "body_stack",
+    },
+    "line": {
+        "label": "Line",
+        "description": "A single line of text. Line breaks are collapsed into spaces.",
+        "font_stack": "body_stack",
+    },
+}
+assert set(RESUME_STRUCTURE_BODY_FORMAT_DETAILS) == set(RESUME_STRUCTURE_BODY_FORMATS)
+assert all(
+    d["font_stack"] in BUILD_CONFIG["default_style"]["fonts"]
+    for d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.values()
 )
 # AST-1474: operator page-break policies on structure sections (print CSS is AST-1475).
 RESUME_STRUCTURE_PAGE_BREAK_POLICIES = (
@@ -6960,6 +7127,8 @@ RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS = {
     "page_break_before": "New page before",
     "avoid_split": "Keep block together",
 }
+# AST-2081: flow-state label for enabled=False (shown alongside the page-break policy labels).
+RESUME_STRUCTURE_HIDDEN_FLOW_LABEL = "Hidden"
 RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID = {
     sid: RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
     for sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS
@@ -7597,7 +7766,8 @@ def empty_render_for_prompts(
     ``{"empty_render": bool, "empty_tokens": list[str]}`` — siblings map ``empty_render``
     onto each ``dispatch_task`` list row / AUTO-Run gate (AST-1779 / AST-1766).
 
-    Scores ``source: candidate`` always; scores other ``TOKEN_SOURCES`` ``source`` values
+    Scores ``source: candidate`` and ``source: rubric`` always (rubric rows are
+    candidate-keyed — AST-2092); scores other ``TOKEN_SOURCES`` ``source`` values
     only when that key is present in ``entity_contexts`` (extension seam). Never scores
     ``source: chain``. Non-job entity sources in ``entity_contexts`` resolve without a
     matching ``resolve_tokens`` kwarg today (only ``job_context`` exists) — blank until a
@@ -7621,8 +7791,10 @@ def empty_render_for_prompts(
             source = spec.get("source")
             if source == "chain":
                 continue
-            # Score candidate always; other sources only via entity_contexts seam.
-            if source != "candidate" and source not in contexts:
+            # Score candidate + rubric always (rubric_vector rows are keyed per candidate +
+            # owner task; resolve_tokens reads them off the candidate view's
+            # _astral_candidate_id — AST-2092); other sources only via entity_contexts seam.
+            if source not in ("candidate", "rubric") and source not in contexts:
                 continue
             seen.add(name)
             job_context = contexts.get("job") if source == "job" else None

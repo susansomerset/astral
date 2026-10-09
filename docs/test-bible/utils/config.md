@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2096 · AST-2011 (pointer)
+
+**`TestAst2096AllXFailStates`** — `{fail_state}_ALL_X` rows (`all_x_of`, `ALL_X_FAIL_STATES`, base priors, Skipped). Primary manifest: **`docs/test-bible/core/consult.md`** § AST-2096.
+
 ### AST-1348 · AST-1346
 
 **`PHASE_SCORE_HEADER_TITLE_TEMPLATE`** + `build_state_ui_manifest()["jobs"]["recommended"]["phase_score_header_title_template"]`. Base `report_phase_tabs` `nav_label`s unchanged. Breakdown persist: **AST-1347**. Chrome: **`docs/test-bible/frontend/`**.
@@ -1461,7 +1465,7 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1066-contact-core-module-and-contact-config`.
 
-`CONTACT_CONFIG`: listen flag (default off), non-production reply prefix template, Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**; skills emptied by **AST-2061**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
+`CONTACT_CONFIG`: listen flag (default off), no reply prefix template (removed **AST-2085**), Slack env-**name** contracts, `skills` ACL home (empty at AST-1066; populated **AST-1071**; skills emptied by **AST-2061**). `CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"]` = `("contact.slack_user_id",)`. Core scaffold: **`docs/test-bible/core/contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -4330,7 +4334,7 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 
 **Parent:** [AST-1766 — Dispatch Validation](https://linear.app/astralcareermatch/issue/AST-1766). **Publish:** `origin/sub/AST-1766/AST-1779-empty-token-predicate-helper`.
 
-`empty_render_for_prompts` — candidate-scoped empty-render predicate over prompt texts via `TOKEN_SOURCES` / `resolve_tokens`; ignores `source: chain`; does not fail on empty job tokens unless `entity_contexts` supplies that source; returns `{"empty_render": bool, "empty_tokens": list[str]}` (field name frozen for sibling #2 list enrichment). `resolve_tokens(..., warn_on_empty=False)` suppresses empty/unresolved WARNINGs for the helper’s quiet probe. Config-only — no API / version hooks / React (siblings #2–#4).
+`empty_render_for_prompts` — empty-render predicate over prompt texts via `TOKEN_SOURCES` / `resolve_tokens`; scores `source: candidate` **and `source: rubric`** by default (rubric rows are candidate-keyed — **AST-2092**), other sources only via `entity_contexts`; ignores `source: chain`; does not fail on empty job tokens unless `entity_contexts` supplies that source; returns `{"empty_render": bool, "empty_tokens": list[str]}` (field name frozen for sibling #2 list enrichment). `resolve_tokens(..., warn_on_empty=False)` suppresses empty/unresolved WARNINGs for the helper’s quiet probe. Config-only — no API / version hooks / React (siblings #2–#4).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -4340,9 +4344,11 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 | Job seam via `entity_contexts` | same | **`…::test_job_seam_via_entity_contexts`** |
 | `warn_on_empty=False` quiet + default still warns | same | **`…::test_warn_on_empty_false_suppresses_empty_warning`** |
 | None/empty/non-str texts; first-seen order | same | **`…::test_none_empty_and_non_str_texts_and_order`** |
-| Rubric scored only via `entity_contexts` | same | **`…::test_rubric_scored_only_via_entity_contexts`** |
+| Rubric scored by default (and via `entity_contexts`) | same | **`…::test_rubric_scored_by_default_and_via_entity_contexts`** |
+| Empty `RUBRIC_VECTORS` → `empty_render` **[bug-repro]** (AST-2092) | same | **`…::test_empty_rubric_vectors_sets_empty_render`** |
+| Filled `RUBRIC_VECTORS` → valid (AST-2092 AC 3) | same | **`…::test_filled_rubric_vectors_validates`** |
 
-**Broken / obsolete:** none — existing `TestResolveTokens` empty-WARNING asserts keep default `warn_on_empty=True`.
+**Broken / obsolete:** none — existing `TestResolveTokens` empty-WARNING asserts keep default `warn_on_empty=True`. **AST-2094:** AST-2092 reversed the rubric rule — former line-7 node `test_rubric_scored_only_via_entity_contexts` renamed to `test_rubric_scored_by_default_and_via_entity_contexts`, default-call assertion inverted (False → True / `["GET_RUBRIC"]`).
 
 **Integration:** none — no existing scenario asserts `empty_render_for_prompts` / `warn_on_empty`; do not invent new integration coverage.
 
@@ -4354,7 +4360,9 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 4. Job entity_contexts seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_job_seam_via_entity_contexts`
 5. warn_on_empty quiet: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_warn_on_empty_false_suppresses_empty_warning`
 6. Text tolerance + order: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_none_empty_and_non_str_texts_and_order`
-7. Rubric seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_rubric_scored_only_via_entity_contexts`
+7. Rubric default + seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_rubric_scored_by_default_and_via_entity_contexts`
+8. **[bug-repro]** empty rubric (AST-2092 / AST-2094 — red on `823d37605`, green on `origin/ftr/AST-2019-rubric-empty-render-gate`): `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_empty_rubric_vectors_sets_empty_render`
+9. Filled rubric control: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_filled_rubric_vectors_validates`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -4867,3 +4875,57 @@ Full AST-2062 command (all four pages): [`../core/contact.md`](../core/contact.m
 2. Revised: `TestAst1668RecognitionReplyConfig`, `TestAst1101HearAckConfig`
 
 Full AST-2072 command: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+### AST-2069 · AST-2054 (upshot states, task registration, agent_task rows)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054) (Company Upshot). **Publish:** `origin/sub/AST-2054/AST-2069-upshot-states-registration`. Plan: `docs/features/roster/ast-2069-upshot-states-task-registration-and-agent-task-rows.md`.
+
+Registration only: company states `GET_UPSHOT` / `UPSHOT_READY` (retry) / `ERROR_UPSHOT`; every former `(X, "WATCH")` locate/parse pair → `(X, "GET_UPSHOT")`, WATCH entered only from `UPSHOT_READY` / its retry; `ROSTER_CONFIG` locate `pass_states` + parse `pass_state` → `GET_UPSHOT`; `ROSTER_CONFIG["company_upshot"]`, `GAZER_CONFIG["fetch_company_culture_pages"]`, `TASK_CONFIG["company_upshot"]`; both keys company-entity dispatchable; two `data/admin/agent_task.json` rows (telescope fetch, Estelle `company_upshot` with the 200-word cap). **Interim (plan-accepted):** `roster.py` still hard-codes `state="WATCH"` writes until sibling **AST-2070** — not a product bug on this child.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 states; 2 only the upshot hop enters WATCH; 4 dispatch registrable; 3 agent_task rows | `src/utils/config.py`, `data/admin/agent_task.json` | new **`TestAst2069UpshotRegistration`** (4) |
+| AST-2088 (bug): optional `company_name` in `company_upshot` items_schema + prompt output shape | same | **`TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`** — repro; manifest in [`../core/roster.md`](../core/roster.md) § AST-2088 |
+| Revised: locate/parse transitions now land in `GET_UPSHOT` | `src/utils/config.py` | **`TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions`**, **`TestAst721ParseJobListConfig::test_parse_states_and_transitions`**, **`TestAst721ParseJobListConfig::test_parse_job_list_roster_config`** (`pass_state` line) |
+| Revised: AST-1806 pinned snapshot gains the six upshot targets (bases unrestricted, `_RETRY` → own pair) | same | **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** |
+| Revised: roster batch counting mocks return the new pass state | `src/core/roster.py` (counting vs config) | see [`../core/roster.md`](../core/roster.md) § AST-2069 (10 tests) |
+
+**Broken / obsolete this pass (13, isolated A/B vs `ftr` config):** the three config transition/snapshot tests above + the ten roster tests in `roster.md` § AST-2069 — all asserted or mocked `WATCH` as the locate/parse pass state.
+
+**Pre-existing red, not this ticket:** `TestAst721ParseJobListConfig::test_parse_job_list_roster_config` still fails on `KeyError: 'max_concurrent'` with or without AST-2069 — only its `pass_state` line was revised; excluded from the manifest.
+
+**Integration:** none — no `tests/integration/` scenario reads locate/parse pass states; do not invent.
+
+## QA test manifest — AST-2069
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2069UpshotRegistration \
+  tests/component/utils/test_config.py::TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions \
+  tests/component/utils/test_config.py::TestAst721ParseJobListConfig::test_parse_states_and_transitions \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/core/test_roster.py::TestAst1847ParseJobListBatchPartialTally \
+  tests/component/core/test_roster.py::TestAst721ParseDispatchRouting::test_parse_job_list_dispatch_key \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch::test_run_company_task_routes_identified_and_retry \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_unhandled_gather_exception_increments_errors_and_continues \
+  tests/component/core/test_roster.py::TestRunCompanyTask::test_jobs_found_dispatch_pass_fail_ast469 \
+  tests/component/core/test_roster.py::test_run_company_task_jobs_found_watch_counts_passed \
+  -q
+```
+
+**Pass criterion:** 17 passed. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2069-upshot-states-registration:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/roster.md`.
+
+### AST-2081 · AST-2046 (Line format, format details, Hidden label, job structure key, thumbnail flag)
+
+Config only, no branches. `line` is appended to `RESUME_STRUCTURE_BODY_FORMATS`. `RESUME_STRUCTURE_BODY_FORMAT_DETAILS` holds the label, description, and `font_stack` for each format (word cloud and dual column use `list_stack`, every other format uses `body_stack`). `RESUME_STRUCTURE_HIDDEN_FLOW_LABEL = "Hidden"`. New `ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]` (job / candidate-scoped / `resume_structure` / tracker). `preview_thumbnail` is set on the three recommended-job artifact tabs (resume True, cover True, application False).
+
+| Area | Component tests |
+| --- | --- |
+| New literals (AC13, AC14 data half) | new **`TestAst2081FormatCatalogAndJobStructureKey`** (4) |
+| Revised: exact body-format tuple gains `line` | **`TestAst1303ResumeStructureCatalog::test_body_formats_defaults_emphasis_and_extra_id_rules`** |
+| Revised: exact catalog key set gains `job.artifacts.job_resume_structure` | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+
+Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2081.

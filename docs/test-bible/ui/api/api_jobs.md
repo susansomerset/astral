@@ -450,3 +450,9 @@ python -c "import src.utils.config"                                             
 `GET|PUT /api/jobs/<jid>/artifacts/<job_catalog_key>/{versions,current}`: 404 `{"error": "Not found"}` for a missing job; PUT body 400; a candidate key on the job route → 400 `not job-scoped`; AC7 (a `job_resume` uuid or another job's uuid on the `cover_letter` route → 400, current unchanged); an unexpected error logs one ERROR line (prefixed by the job's `candidate_id`, or `-`) and returns the 500 payload; a 200 PUT logs one completion line.
 
 **New:** **`TestAst2067JobVersionRoutes`** (14; real tracker/data on `sqlite_in_memory`, only `get_job` stubbed; new route lines fully branch-covered). Manifest: [`api_candidate.md`](api_candidate.md) § AST-2067 item 2.
+
+### AST-2081 · AST-2046
+
+`GET /api/jobs/<jid>/resume_structure` returns the shared editor payload for the job's effective structure (hydrated, read-only). `PUT /api/jobs/<jid>/artifacts/job_resume_structure` with body `{"job_resume_structure": {...}}` writes it through `save_job_artifact`. Both return 404 `{"error": "Not found"}` for a missing job. PUT returns 400 when the body is not a dict, and returns 400 with the `ValueError` text and no log for an invalid structure. An unexpected error logs one ERROR line (prefixed by the job's `candidate_id`, or `-`) and returns the 500 payload. Only the PUT logs a completion INFO line (Joan revision: no GET info).
+
+**New:** **`TestAst2081JobResumeStructureRoutes`** (13; real tracker/data on `sqlite_in_memory`; `get_job`, `_candidate_id_for_job`, and `_candidate_data_for_job` stubbed). Covers AC16 (GET equals the candidate payload and writes no row) and AC15/AC18 (PUT on job A shows on A; job B and the candidate are unchanged). New route lines are fully branch-covered. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2081.

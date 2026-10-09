@@ -3,7 +3,7 @@ Core tracker: job lifecycle management (AST-75).
 
 In-scope: ingest_jobs, save_meteorite_job, save_job_data, get_job_data, initialize_job,
 transition_job_state, get_new_job_batch, get_job_batch, clear_job_batch, assemble_job_copy_snapshot,
-save_job_artifact, get_job_current (AST-1592 catalog write/current-read for job keys).
+save_job_artifact, get_job_current (AST-1592 catalog write/current-read for job keys), get_job_effective_resume_structure (AST-2081).
 All writes go through database.save_job (upsert); state transition logic lives here, not in data layer.
 get_job_data: coat-check pattern — return value if present, self-heal if missing (e.g. fetch JD via playwright).
 AST-1518: contact-task read wrappers + get_job_by_pattern (candidate-scoped; no coat-check scrape).
@@ -51,6 +51,8 @@ from src.utils.logging import get_logger, log_batch_id, truncate_debug_content
 from src.utils.formatting import _strip_json_markdown_fences, parse_text
 
 logger = get_logger(__name__)
+
+_JOB_RESUME_STRUCTURE_KEY = "job.artifacts.job_resume_structure"
 
 _JOB_STATE_LIST = list(JOB_STATES.keys())
 _JOB_COLUMN_FIELDS = {"company_job_id", "job_title", "job_link"}  # initialize_job: parsed_job keys -> job table columns
@@ -407,14 +409,47 @@ def _candidate_data_for_job(astral_job_id: str) -> dict:
     return cd if isinstance(cd, dict) else {}
 
 
-def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: dict) -> Dict[str, Any]:
-    """Filter to candidate catalog; snapshot contact sections from payload or base_resume."""
+def get_job_effective_resume_structure(
+    astral_job_id: str | None,
+    candidate_data: dict | None = None,
+    *,
+    hydrate_from_base: bool = False,
+) -> dict:
+    """Job's effective resume structure (AST-2081 / patt.artifact.read-current).
+
+    Current job.artifacts.job_resume_structure row when one exists; else the owning candidate's
+    resolved structure. candidate_data: caller's loaded candidate blob for that fallback (None →
+    load the job's owner). hydrate_from_base applies to the fallback only: union base_resume
+    section keys exactly like the candidate structure GET, so an unedited job's editor payload
+    equals the candidate's. Read-only — never writes a row.
+    """
+    jid = (astral_job_id or "").strip()
+    own = get_job_current(jid, _JOB_RESUME_STRUCTURE_KEY) if jid else None
+    if isinstance(own, dict) and isinstance(own.get("sections"), dict) and own["sections"]:
+        return own
+    if isinstance(candidate_data, dict):
+        cd = candidate_data
+    else:
+        cd = _candidate_data_for_job(jid) if jid else {}
+    resolved = candidate_mod.resolve_resume_structure(cd)
+    if not hydrate_from_base:
+        return resolved
+    arts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
+    return candidate_mod.hydrate_resume_structure_from_base_resume(resolved, arts.get("base_resume"))
+
+
+def _prepare_job_resume_content(
+    resume_content: Dict[str, Any],
+    candidate_data: dict,
+    astral_job_id: str | None = None,
+) -> Dict[str, Any]:
+    """Filter to the job's effective structure (AST-2081); snapshot contact sections from payload or base_resume."""
     cd = dict(candidate_data) if isinstance(candidate_data, dict) else {}
     cid = candidate_mod.candidate_id_for_current_read(cd)
     if cid:
         # AST-1680: same hydrate→resolve SoT as consult job drafting tokens.
         candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
-    structure = candidate_mod.resolve_resume_structure(cd)
+    structure = get_job_effective_resume_structure(astral_job_id, cd)
     filtered = candidate_mod.filter_content_to_resume_structure(
         resume_content if isinstance(resume_content, dict) else {},
         structure,
@@ -514,13 +549,23 @@ def save_job_artifact(
     if key == "job.artifacts.job_resume":
         if not isinstance(blob, dict):
             raise ValueError("job_resume body must be a dict")
-        prepared: Any = _prepare_job_resume_content(blob, _candidate_data_for_job(jid))
+        prepared: Any = _prepare_job_resume_content(blob, _candidate_data_for_job(jid), jid)
         if not any(_resume_section_has_body(sid, val) for sid, val in prepared.items()):
             return None
     elif key == "job.artifacts.cover_letter":
         prepared = normalize_cover_letter_artifact(blob)
         if not _cover_letter_display_nonempty(prepared):
             return None
+    elif key == _JOB_RESUME_STRUCTURE_KEY:
+        # Same validation as the candidate structure PUT: merge over current effective, slug sections, normalize.
+        if not isinstance(blob, dict):
+            raise ValueError("job_resume_structure body must be a dict")
+        merged = dict(get_job_effective_resume_structure(jid))
+        if isinstance(blob.get("sections"), dict):
+            merged["sections"] = candidate_mod.prepare_resume_structure_sections_for_save(blob["sections"])
+        if "accent_color" in blob:
+            merged["accent_color"] = blob["accent_color"]
+        prepared = candidate_mod.normalize_resume_structure(merged)
     elif shape_name == "resume_content":
         if not isinstance(blob, dict) or not blob:
             raise ValueError("resume_content body must be a non-empty dict")
@@ -595,7 +640,7 @@ def set_job_artifact_current(
 def save_job_artifact_resume_content(astral_job_id: str, resume_content: Dict[str, Any]) -> None:
     """Merge resume_content into job_data.artifacts. AST-302; keys filtered to candidate structure."""
     cd = _candidate_data_for_job(astral_job_id)
-    prepared = _prepare_job_resume_content(resume_content, cd)
+    prepared = _prepare_job_resume_content(resume_content, cd, astral_job_id)
     save_job_data(astral_job_id, {"artifacts": {"resume_content": prepared}})
 
 
