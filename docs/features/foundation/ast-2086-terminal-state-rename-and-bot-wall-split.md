@@ -475,3 +475,43 @@ Changes:
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2086
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** `origin/sub/AST-2073/AST-2086-terminal-state-rename` @ `78dce11fa`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.dispatch-retry | A | | |
+| patt.task.daisy-chain | A | | |
+| patt.contact.command-intercept | A | | |
+| stat.dispatch.entity-state-bound | A | | |
+| patt.state.terminal-naming | A | | |
+
+## Traceability
+
+AC1→S2,S8 · AC2→S2–S8 · AC3→S1–S7,S8 · AC4→S4,S8(+Betty) · AC5→S6(+Betty) · AC6→S2 · AC7→S2 asserts,S8 · AC8 seed→S6,S8 (DB half AST-2087) · AC9 sibling/upshot→S9 gated on AST-2054 on `origin/dev` per Boundaries
+
+## Findings
+
+### discuss
+
+- **Canon list id vs clerk** — Ticket and plan cite `stat.dispatch.entity-state-bound`; active statute id is `astral.dispatch.entity-state-bound` (`canon/directives/active/stat.dispatch.entity-state-bound.md`). Plan substance matches the statute; Radia should expand the id the ticket carries or the clerk alias Archie prefers.
+- **`patt.state.terminal-naming` (proposed)** — No corpus file yet; plan correctly implements parent AST-2073 Functional scope #1–#2 (helpers, `TERMINAL_CONDITIONS`, grammar assert, AC1). Canon doc landing remains Archie/out-of-scope per plan Test impact note.
+- **Workflow** — Stage 9 and AC9 intentionally block full ticket closure until AST-2054 is on `origin/dev`; Stages 1–8 may proceed. Execution contract aligns with child Boundaries; not a plan defect.
+- **Stage 2 → Stage 7 candidate gap** — `CANDIDATE_STATES` loses `error_state` before `candidate.py` writers switch to `TASK_CONFIG`; plan documents the between-stage window; atomic at ticket level via ordered stages/commits.
+
+### acceptable
+
+- **Naming decisions** (`IMPORTED`→inflow NOT_FOUND, `stage_meteorite` UNPARSEABLE split, `FAILED_TECHNICAL` map limited to upshot tasks with AST-2087 comment) — explicit ⚠️ decisions with parent-table or AC7 rationale.
+- **Canon example drift** — `patt.task.dispatch-retry` “When this doesn’t apply” still names `FAILED_TECHNICAL`; plan defers canon text edits to Archie (Test impact). Build follows new grammar.
+
+No `fix-now` findings. Scope gate (`candidate.py`) is reflected in Scope, Files Changed, Stage 7, and Revisions. Plan Discuss cap not engaged (Plan Ready; no `[plan-discuss]` rounds).
+
+context_tokens≈78000
