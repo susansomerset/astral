@@ -283,7 +283,7 @@ export default function DataManagement() {
                 {result.columns.map(col => (
                   <th key={col} style={{
                     position: "sticky", top: 0, padding: "8px 12px", textAlign: "left",
-                    background: "var(--bg-elevated)", color: "var(--accent-gold)",
+                    background: "var(--bg-elevated)", color: "var(--accent-contrast)",
                     borderBottom: "2px solid var(--border)", whiteSpace: "nowrap",
                   }}>
                     {col}
@@ -347,7 +347,7 @@ export default function DataManagement() {
                 style={{
                   padding: "4px 10px", fontSize: 12, fontFamily: "monospace",
                   cursor: "pointer", color: "var(--text-primary)",
-                  background: t === selectedTable ? "var(--accent-gold-dim)" : "transparent",
+                  background: t === selectedTable ? "var(--accent-contrast-dim)" : "transparent",
                 }}
               >{t}</div>
             ))}
@@ -368,7 +368,7 @@ export default function DataManagement() {
                     padding: "3px 10px", fontSize: 12, fontFamily: "monospace",
                     color: "var(--text-primary)",
                   }}>
-                    {f.pk ? "🔑 " : ""}<span style={{ color: "var(--accent-gold)" }}>{f.name}</span>{" "}
+                    {f.pk ? "🔑 " : ""}<span style={{ color: "var(--accent-contrast)" }}>{f.name}</span>{" "}
                     <span style={{ color: "var(--text-muted)" }}>{f.type}</span>
                   </div>
                 ))}

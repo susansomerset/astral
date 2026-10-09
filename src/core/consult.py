@@ -32,6 +32,7 @@ from src.utils.config import (
     error_state_for,
     retry_base,
     retry_of,
+    all_x_of,
     JOB_STATES,
     PROVIDER_CALL_BUDGET,
     ASTRAL_CONFIG,
@@ -1540,9 +1541,11 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
         )
     except IncompleteGradeSetError as e:
         # Incomplete/extra or all-literal-X → retry holding (AST-1155 / AST-1760).
-        dest = _consult_batch_fail_dest(job.get("state"), error_state, agent_task)
+        all_x = isinstance(e, AllLiteralXGradeSetError)
+        dest = (_all_x_fail_dest(job.get("state"), cfg["fail_state"]) if all_x
+                else _consult_batch_fail_dest(job.get("state"), error_state, agent_task))
         grades_dbg = row_for_apply.get("grades") if isinstance(row_for_apply.get("grades"), list) else []
-        if isinstance(e, AllLiteralXGradeSetError):
+        if all_x:
             logger.debug(
                 "all literal X grade set %s %s -> %s n_grades=%s",
                 "consult.render_verdict", astral_job_id, dest or "?", len(grades_dbg),
@@ -1555,6 +1558,12 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
                 grades=grades_dbg,
                 dest=dest,
             )
+        if all_x and not retry_base(dest):
+            # Second all-X strike is a fail verdict: WARNING, and success=True so the single-entity
+            # dispatch tally counts it failed (to_state != pass_state), not an error (AST-2096).
+            _warn_job(astral_job_id, dest, str(e))
+            _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+            return {"success": True, "to_state": dest, "score": None, "grades": grades_dbg}
         _log_fail_dest(astral_job_id, dest, str(e))
         if dest:
             _transition_job_state_for_task(agent_task, [astral_job_id], dest)
@@ -1586,6 +1595,11 @@ def _consult_batch_fail_dest(entity_state: Optional[str], error_state: Optional[
         # analysis_upshot: TASK_CONFIG error_state IS the retry holding (PASSED_LIKE_RETRY)
         return error_state_for(task_key)
     return error_state
+
+
+def _all_x_fail_dest(entity_state: Optional[str], fail_state: str) -> str:
+    """AST-2096: all-literal-X — primary → retry holding (unchanged); *_RETRY → {fail_state}_ALL_X, a fail, not error_state."""
+    return JOB_STATES.get((entity_state or "").strip(), {}).get("retry_state") or all_x_of(fail_state)
 
 
 def _empty_token_fail_dest(task_key: str, error_state: Optional[str]) -> str:
@@ -1680,7 +1694,9 @@ async def _run_batch_consult(
     result = await do_task(task_key=task_key, live_content=live_content, index=do_index, ctx=task_ctx, debug=debug)
     logger.debug("Response from agent.do_task: %s", result)
 
-    if not result.get("success"):
+    # AST-2089: envelope failure with cleanly decoded lines — process those, fail only the gaps.
+    salvaged = None if result.get("success") else result.get("salvaged_response")
+    if not result.get("success") and not salvaged:
         # Envelope failure — whole batch to error_state (unless provider balance refusal — hold)
         if is_provider_balance_refusal(result):
             logger.debug(
@@ -1723,7 +1739,7 @@ async def _run_batch_consult(
             **_rate_limit_tag(result),
         }
 
-    parsed = result["parsed_response"]
+    parsed = result["parsed_response"] if result.get("success") else salvaged
     response_jobs = parsed["jobs"]
 
     try:
@@ -1792,7 +1808,9 @@ async def _run_batch_consult(
             if d:
                 missing_dest_counts[d] = missing_dest_counts.get(d, 0) + 1
         retried += _transition_batch_consult_failures(
-            task_key, missing_rows, error_state, reason="omitted from response",
+            task_key, missing_rows, error_state,
+            # Salvaged batch: the model's failure note says why these lines are absent.
+            reason=result.get("error") if salvaged else "omitted from response",
         )
     if missing:
         logger.debug("MISSING %s IDs: %s", len(missing), sorted(missing))
@@ -1821,15 +1839,20 @@ async def _run_batch_consult(
         try:
             to_state = process_fn(input_job, response_job, cfg)
         except Exception as e:
-            bad_grades.add(aid)
             if isinstance(e, AllLiteralXGradeSetError):
-                dest = _consult_batch_fail_dest(input_job.get("state"), error_state, task_key)
+                dest = _all_x_fail_dest(input_job.get("state"), cfg["fail_state"])
                 logger.debug(
                     "all literal X grade set %s %s/%s %s -> %s",
                     f"consult._run_batch_consult({task_key})",
                     job_idx, len(response_jobs),
                     _consult_job_identifier(input_job), dest or "?",
                 )
+                if not retry_base(dest):
+                    # Second all-X strike is a fail verdict, not bad grades (AST-2096).
+                    _warn_job(aid, dest, f"process_fn {type(e).__name__}: {e}")
+                    _transition_job_state_for_task(task_key, [aid], dest)
+                    failed += 1
+                    continue
             elif isinstance(e, IncompleteGradeSetError):
                 _debug_incomplete_grade_set(
                     func=f"consult._run_batch_consult({task_key})",
@@ -1840,6 +1863,7 @@ async def _run_batch_consult(
                     index=job_idx,
                     total=len(response_jobs),
                 )
+            bad_grades.add(aid)
             # One fail-destination line per job (WARNING on retry, ERROR if terminal) —
             # covers InvalidJobLinkError too; the traceback is debug-only.
             _log_fail_dest(
@@ -1883,7 +1907,7 @@ async def _run_batch_consult(
         bad_rows = [input_by_id[aid] for aid in error_ids if aid in input_by_id]
         retried += _transition_batch_consult_failures(task_key, bad_rows, error_state)
 
-    errors = []
+    errors = [result.get("error")] if salvaged and result.get("error") else []
     if fabricated:
         errors.append(f"fabricated {len(fabricated)} IDs: {sorted(fabricated)}")
     if bad_grades:
@@ -1908,8 +1932,8 @@ async def _run_batch_consult(
         task_key, len(jobs), passed, failed, len(bad_grades), len(missing), len(fabricated),
     )
 
-    return {
-        "success": not fabricated and not bad_grades and not decode_failed,
+    out = {
+        "success": not fabricated and not bad_grades and not decode_failed and not salvaged,
         "passed": passed,
         "failed": failed,
         "total": len(jobs),
@@ -1921,6 +1945,9 @@ async def _run_batch_consult(
         "error": "; ".join(errors) if errors else None,
         "truncated_note": truncated_note,
     }
+    if salvaged:
+        out["agent_failure"] = True
+    return out
 
 
 @_with_log_debug

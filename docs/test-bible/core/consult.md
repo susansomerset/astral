@@ -1393,7 +1393,7 @@ Scored Analysis apply: complete grade set of all literal `X` raises `AllLiteralX
 4. Partial-X still scores (AC4): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_apply_scored_partial_x_still_scores`
 5. Binary all-X fail (AC5): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_pass_fail_all_x_still_fail_state`
 6. First strike holding (AC1): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_first_strike`
-7. Second strike technical (AC2): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike`
+7. Second strike (AC2 — **superseded by AST-2096**; test rewritten to `_ALL_X`, see § AST-2096): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike`
 8. Mixed batch sibling pass (AC1): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_batch_mixed_all_x_sibling_still_passes`
 
 ```bash
@@ -1405,6 +1405,40 @@ Scored Analysis apply: complete grade set of all literal `X` raises `AllLiteralX
 **Pass criterion:** pytest green on the class — not zero-arg harness / branch-lock gate.
 
 **Bible path shasum (record after publish):** `git show origin/sub/AST-1759/AST-1760-all-x-scored-grades-retry-holding:docs/test-bible/core/consult.md | shasum`
+
+### AST-2096 · AST-2011 (bug-repro — all-X second strike → `{fail_state}_ALL_X`)
+
+**Publish:** `origin/sub/AST-2011/AST-2096-all-x-fail-state`. Plan: `docs/features/consult/ast-1760-all-x-scored-grades-retry-holding.md` § Bug: AST-2096.
+
+Second all-literal-`X` strike (entity already on `*_RETRY`) lands `{fail_state}_ALL_X` via `_all_x_fail_dest` as a **fail verdict**: WARNING, `render_verdict` returns `success: True`, batch counts it in `failed` (not `bad_grades` / error string). First strike → `retry_state` holding unchanged; plain `IncompleteGradeSetError` keeps → `error_state` (AST-1155). Config side: six explicit `JOB_STATES` rows derived from scored `fail_state`s (`all_x_of`, `ALL_X_FAIL_STATES`), base priors copied, on `SKIPPED_STATES`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single-entity second strike | `src/core/consult.py` `render_verdict` | **`TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike`** (rewritten) |
+| Batch second strike + first strike + sibling pass | `src/core/consult.py` `_run_batch_consult` | **`TestAst1760AllLiteralXRetry::test_batch_all_x_second_strike_counts_failed`** |
+| `_ALL_X` registration / priors / Skipped | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst2096AllXFailStates`** |
+
+**Broken / obsolete:** AST-1760 AC2 second-strike assertion (`success False` / `METEORITE_FAILED_TECHNICAL_LIKE`) — rewritten in place, not annotated.
+
+**Integration:** none.
+
+## QA test manifest
+
+`[bug-repro]` — all five red on pre-fix tree (right reason: `success False`, `failed == 0` with job-x2 → `METEORITE_FAILED_TECHNICAL_LIKE` at ERROR, `_ALL_X` rows / `ALL_X_SUFFIX` absent); must flip green after make-fix.
+
+1. `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike`
+2. `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_batch_all_x_second_strike_counts_failed`
+3. `tests/component/utils/test_config.py::TestAst2096AllXFailStates` (3 tests)
+4. Regression: rest of `TestAst1760AllLiteralXRetry` (7 tests, green pre- and post-fix).
+5. Zero-arg harness: `consult.py` + `config.py` are `LOCKED_AT_100` — new `_all_x_fail_dest` / terminal all-X branches must be covered by 1–3.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry \
+  tests/component/utils/test_config.py::TestAst2096AllXFailStates \
+  -q
+./scripts/testing/run_component_tests.sh
+```
 
 ### AST-1846 · AST-1828 (bug-repro — per-entity retry WARNING, uncounted)
 
@@ -1458,6 +1492,26 @@ Test gap for **AST-1996** (`96bc0471d`). `_should_decode_as_encoded_line` scans 
 ```
 
 `TestAst699LetterPipePositionPrefix::{test_position_prefixed_letter_pipe_bracket_tails,test_bare_letter_pipe_bracket_tails}` fail with `KeyError: 'jobs'` identically on pre-fix `57ed90983` — pre-existing, not AST-1996.
+
+### AST-2090 · AST-2015 (bug-repro — AST-2089 salvaged-batch split, consult side)
+
+Test gap for **AST-2089** (`f3897829d`). `_run_batch_consult`: when `do_task` fails with a truthy `salvaged_response`, the whole-batch failure branch is skipped and the salvaged `jobs` run the normal reconciliation + `process_fn` path. Entities with no salvaged line are `missing` and go through `_transition_batch_consult_failures` → `_consult_batch_fail_dest` (first strike → `NEW_RETRY`, already-`NEW_RETRY` → `ERROR_QUALIFY_JOB_LISTINGS`), logged with the `do_task` `error` (`Agent failure: <note>`) instead of `omitted from response`. Return: `success False`, `agent_failure True`, `error` starts with the agent failure text. With `salvaged_response None` the existing whole-batch branch runs unchanged (no `agent_failure` key). Producer: **`core/agent.md`** (**AST-2090**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Salvaged pass + fail lines processed; only the gap fails (first strike `NEW_RETRY`, second `ERROR_QUALIFY_JOB_LISTINGS`); `Agent failure` reason; `passed` / `failed` / `retried` / `missing` / `success` / `agent_failure` / `error` shape | `src/core/consult.py` (`_run_batch_consult`) | **`TestAst2089SalvagedBatchSplit::test_salvaged_lines_process_and_only_the_gap_fails`** (**bug-repro**, 2 params) |
+| `salvaged_response None` → whole batch to fail dest, nothing processed, no `agent_failure` key | same | **`…::test_no_salvage_fails_whole_batch`** (guard) |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst2089DoTaskSalvagedResponse \
+  tests/component/core/test_consult.py::TestAst2089SalvagedBatchSplit \
+  -q
+```
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):** with pre-fix `22ff5e47a` `src/core/agent.py` + `src/core/consult.py` overlaid (scratch worktree), **3 failed / 6 passed**: the 3 bug-repro nodes fail on assertions (`salvaged_response` absent; `processed == []`, all three jobs to fail dest), guards pass. On ftr tip `e8119b1da`, **9 passed**, plus guards `TestAst1846DoTaskAgentFailureFlag`, `TestEncodedDecodeIsolation`, `TestRunBatchConsult::test_routes_envelope_failure_to_error_state`, `TestAst2010RateLimitForwarding::test_batch_consult_envelope_failure_forwards_tag` (10 passed, unedited). `test_consult.py` needs `nh3` (astral `.venv` python).
 
 ### AST-2006 · AST-2000 (bug — runtime empty-token guard)
 

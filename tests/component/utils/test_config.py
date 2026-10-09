@@ -5109,6 +5109,7 @@ class TestAst1303ResumeStructureCatalog:
             "dual_column",
             "indented_bold_single",
             "experience_detail",
+            "line",  # AST-2081
         )
         assert cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID == {
             "professional_summary": "free_prose",
@@ -5748,6 +5749,7 @@ class TestAst1590JobArtifactCatalogKeys:
             "candidate.artifacts.resume_structure",
             "job.artifacts.job_resume",
             "job.artifacts.cover_letter",
+            "job.artifacts.job_resume_structure",  # AST-2081
             "candidate.context.strengths",
             "candidate.context.priorities",
             "candidate.context.deal_breakers",
@@ -6915,18 +6917,40 @@ class TestAst1779EmptyRenderForPrompts:
             "empty_tokens": ["FIRST_NAME", "FULL_NAME"],
         }
 
-    def test_rubric_scored_only_via_entity_contexts(self) -> None:
-        # Non-job seam: rubric ignored by default; scored blank when key is in entity_contexts.
+    def test_rubric_scored_by_default_and_via_entity_contexts(self) -> None:
+        # AST-2092: rubric is candidate-keyed, so it is scored by default; the seam still scores it.
         texts = ["{$GET_RUBRIC}"]
         cd = {"first": "Ada"}  # no _astral_candidate_id → resolve ""
         assert cfg.empty_render_for_prompts(texts, cd, self._TASK) == {
-            "empty_render": False,
-            "empty_tokens": [],
+            "empty_render": True,
+            "empty_tokens": ["GET_RUBRIC"],
         }
         out = cfg.empty_render_for_prompts(
             texts, cd, self._TASK, entity_contexts={"rubric": {}}
         )
         assert out == {"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}
+
+    # build_candidate_token_view shape; qualify_job_listings owns its rubric (no embedded-criteria merge).
+    _RUBRIC_VIEW = {
+        "first": "Abrams", "last": "", "full": "Abrams", "pronouns": "", "contact": {},
+        "context": {}, "artifacts": {}, "_astral_candidate_id": "cand-abrams",
+    }
+    _RUBRIC_TEXTS = ["Rubric:\n{$RUBRIC_VECTORS}"]
+
+    def test_empty_rubric_vectors_sets_empty_render(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2092 AC1: candidate has no current rubric rows for the owner → flagged.
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_token", lambda cid, owner: [])
+        out = cfg.empty_render_for_prompts(self._RUBRIC_TEXTS, dict(self._RUBRIC_VIEW), "qualify_job_listings")
+        assert out == {"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}
+
+    def test_filled_rubric_vectors_validates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2092 AC3 control: one current criterion renders non-empty → not flagged.
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_token",
+            lambda cid, owner: [{"code": "T1", "label": "Title fit", "importance": 5}],
+        )
+        out = cfg.empty_render_for_prompts(self._RUBRIC_TEXTS, dict(self._RUBRIC_VIEW), "qualify_job_listings")
+        assert out == {"empty_render": False, "empty_tokens": []}
 
 
 class TestAst2006ResolveTokensEmptyCollector:
@@ -7103,6 +7127,13 @@ class TestAst1808RetryRegistryPurge:
         for b in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
             cs[b] = None
             cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
+        # AST-2096 added six scored-task {fail_state}_ALL_X terminals: priors = base fail_state's trigger (+ _RETRY).
+        for s, trig in (("FAILED_DO_ALL_X", "PASSED_JD"), ("FAILED_GET_ALL_X", "PASSED_DO"),
+                        ("FAILED_LIKE_ALL_X", "CULTURE_READY"), ("METEORITE_FAILED_DO_ALL_X", "METEORITE_PASSED_JD"),
+                        ("METEORITE_FAILED_GET_ALL_X", "METEORITE_PASSED_DO"),
+                        ("METEORITE_FAILED_LIKE_ALL_X", "METEORITE_PASSED_GET")):
+            js[s] = [trig, f"{trig}_RETRY", f"{s}_RETRY"]
+            js[f"{s}_RETRY"] = [s, f"{s}_RETRY"]
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7819,3 +7850,95 @@ class TestAst2069UpshotRegistration:
         assert upshot["agent_id"] == "principal_recruiter_estelle"
         assert "200 words" in upshot["cache_prompt"] + upshot["user_prompt"] + upshot["nocache_prompt"]
         assert by_key["fetch_company_culture_pages"]["agent_id"] == "telescope"
+
+    def test_upshot_contract_carries_optional_company_name(self) -> None:
+        # AST-2088: optional item field (a missing name must not fail the batch) + prompt asks for it
+        from pathlib import Path
+
+        items = cfg.TASK_CONFIG["company_upshot"]["response_schema"]["companies"]["items_schema"]
+        assert items["company_name"] == {"type": "str", "required": False}
+        assert items["company_id"]["required"] is True and items["upshot"]["required"] is True
+        rows = json.loads((Path(__file__).resolve().parents[3] / "data/admin/agent_task.json").read_text())
+        prompt = {r["task_key"]: r for r in rows}["company_upshot"]["cache_prompt"]
+        assert '"company_name":' in prompt
+
+
+class TestAst2096AllXFailStates:
+    """AST-2096 [bug-repro]: second all-X strike lands {fail_state}_ALL_X — one explicit JOB_STATES row
+    per scored task's fail_state, priors copied from the base (so *_RETRY is admitted), listed Skipped."""
+
+    _ALL_X = (
+        "FAILED_DO_ALL_X", "FAILED_GET_ALL_X", "FAILED_LIKE_ALL_X",
+        "METEORITE_FAILED_DO_ALL_X", "METEORITE_FAILED_GET_ALL_X", "METEORITE_FAILED_LIKE_ALL_X",
+    )
+
+    def test_rows_registered_with_base_priors(self) -> None:
+        for state in self._ALL_X:
+            assert state in cfg.JOB_STATES, state
+            base = state.removesuffix("_ALL_X")
+            assert cfg.JOB_STATES[state]["prior_states"] == cfg.JOB_STATES[base]["prior_states"], state
+        # Second strike comes from the trigger's *_RETRY holding; first strike never lands here but is admitted.
+        priors = cfg.state_prior_states(cfg.JOB_STATES, "METEORITE_FAILED_DO_ALL_X")
+        assert "METEORITE_PASSED_JD_RETRY" in priors
+        assert "METEORITE_PASSED_JD" in priors
+
+    def test_helper_and_list_derive_from_scored_fail_states(self) -> None:
+        assert cfg.ALL_X_SUFFIX == "_ALL_X"
+        assert cfg.all_x_of("METEORITE_FAILED_DO") == "METEORITE_FAILED_DO_ALL_X"
+        scored = {tc["fail_state"] for tc in cfg.TASK_CONFIG.values() if tc.get("grading_mode") == "scored"}
+        assert sorted(cfg.ALL_X_FAIL_STATES) == sorted(self._ALL_X)
+        assert set(cfg.ALL_X_FAIL_STATES) == {cfg.all_x_of(b) for b in scored}
+        assert len(set(cfg.ALL_X_FAIL_STATES)) == len(cfg.ALL_X_FAIL_STATES)
+
+    def test_terminal_all_x_is_skipped_not_processing(self) -> None:
+        for state in self._ALL_X:
+            assert state in cfg.SKIPPED_STATES, state
+            assert state in cfg.JOBS_PROCESSING_EXCLUDED_STATES, state
+
+
+# Branches: none (config literals + import-time asserts). AST-2081: line format, per-format editor
+# metadata (label / description / font stack), Hidden flow label, job resume structure catalog key,
+# preview_thumbnail on the recommended-job artifact tabs.
+class TestAst2081FormatCatalogAndJobStructureKey:
+    def test_line_format_appended_and_details_cover_every_format(self) -> None:
+        # AC13: line joins the tuple; no existing format dropped.
+        assert cfg.RESUME_STRUCTURE_BODY_FORMATS[-1] == "line"
+        assert set(cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS) == set(cfg.RESUME_STRUCTURE_BODY_FORMATS)
+        fonts = cfg.BUILD_CONFIG["default_style"]["fonts"]
+        for fmt, d in cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS.items():
+            assert set(d) == {"label", "description", "font_stack"}, fmt
+            assert d["label"].strip() and d["description"].strip(), fmt
+            assert d["font_stack"] in fonts, fmt
+
+    def test_labels_and_fonts_match_builder_css(self) -> None:
+        # AC14 data half: the strings the UI must not hardcode live here.
+        d = cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS
+        assert {f: d[f]["label"] for f in d} == {
+            "free_prose": "Prose",
+            "bullet_list": "Bullet List",
+            "word_cloud": "Word Cloud",
+            "dual_column": "Dual Column",
+            "indented_bold_single": "Indented Bold",
+            "experience_detail": "Experience",
+            "line": "Line",
+        }
+        # Word cloud + dual column print in the list font; everything else in the body font.
+        assert {f for f in d if d[f]["font_stack"] == "list_stack"} == {"word_cloud", "dual_column"}
+        assert cfg.RESUME_STRUCTURE_HIDDEN_FLOW_LABEL == "Hidden"
+        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS["normal"] == "Flow uninterrupted"
+
+    def test_job_resume_structure_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]
+        assert entry == {
+            "entity_type": "job",
+            "candidate_scoped": True,
+            "body_shape": "resume_structure",
+            "ingestion_owner": "tracker",
+        }
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        # AST-1678 sibling key stays absent; the job key is the job_resume_structure leaf.
+        assert "job.artifacts.resume_structure" not in cfg.ARTIFACT_CONFIG
+
+    def test_preview_thumbnail_on_resume_and_cover_tabs_only(self) -> None:
+        by_id = {t["tab_id"]: t["preview_thumbnail"] for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
+        assert by_id == {"artifact_resume": True, "artifact_cover": True, "artifact_application": False}

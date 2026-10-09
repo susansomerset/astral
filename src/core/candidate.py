@@ -1558,6 +1558,31 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     return criteria
 
 
+def rubric_dispatch_error(candidate_id: Optional[str], task_key: str) -> Optional[str]:
+    """User-facing reason a rubric-backed task can't Auto/Run: duplicate codes or empty rubric (AST-2091).
+    None when the rubric is fine, the task isn't rubric-backed, or there's no candidate (key gate owns that). Pure read."""
+    # TASK_CONFIG.rubric_artifact, not rubric_owner_task_key(): craft_* tasks must stay runnable on an empty rubric.
+    rk = (TASK_CONFIG.get((task_key or "").strip()) or {}).get("rubric_artifact")
+    owner = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(rk) if rk else None
+    cid = str(candidate_id or "").strip()
+    if not owner or not cid:
+        return None
+    # Same list consult grades with (embedded QC/GC/RC merges included).
+    criteria = rubric_criteria_for_task(cid, owner)
+    if not criteria:
+        return f"Rubric '{rk}' is empty for this candidate."
+    # strip().upper() matches _vector_labels_map; blank codes skipped (sync assigns V{idx}).
+    counts: Dict[str, int] = {}
+    for c in criteria:
+        code = str(c.get("code") or "").strip().upper() if isinstance(c, dict) else ""
+        if code:
+            counts[code] = counts.get(code, 0) + 1
+    dupes = sorted(code for code, n in counts.items() if n > 1)
+    if dupes:
+        return f"Rubric '{rk}' has duplicate vector codes: {', '.join(dupes)}"
+    return None
+
+
 def rubric_criteria_for_token(candidate_id: str, owner_task_key: str) -> list:
     """Token resolver entry — same list shape as rubric_criteria_for_task."""
     return rubric_criteria_for_task(candidate_id, owner_task_key)

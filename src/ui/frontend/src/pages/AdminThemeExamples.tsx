@@ -88,12 +88,20 @@ export default function AdminThemeExamples() {
               <div className="theme-examples-grade-options">
                 <span className="theme-examples-grade-options-label">Grade color options</span>
                 {Object.entries(gradeSets).map(([gid, set]) => (
-                  // Inline custom properties override this panel's grade tokens for this row only.
-                  <div key={gid} className="theme-examples-row" style={set.tokens as CSSProperties}>
-                    <span className="theme-examples-grade-option-name">{set.label}</span>
-                    {GRADES.map(g => (
-                      <span key={g} className={`grade-dot dot-${g.toLowerCase()}`}>{g}</span>
-                    ))}
+                  <div key={gid} className="theme-examples-grade-option">
+                    {/* Inline custom properties override this panel's grade tokens for this row only. */}
+                    <div className="theme-examples-row" style={set.tokens as CSSProperties}>
+                      <span className="theme-examples-grade-option-name">{set.label}</span>
+                      {GRADES.map(g => (
+                        <span key={g} className={`grade-dot dot-${g.toLowerCase()}`}>{g}</span>
+                      ))}
+                    </div>
+                    {/* Compact sample: Recommended Job List markup (buildPhaseListGradeRow, letterless gradeDot). */}
+                    <div className="recommended-list-phase-grade-row" style={set.tokens as CSSProperties}>
+                      {GRADES.map(g => (
+                        <span key={g}><span className={`grade-dot dot-${g.toLowerCase()} grade-dot-letterless`} /></span>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
