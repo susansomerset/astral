@@ -560,6 +560,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 **AST-858 (parent):** Recommended Job Report redesign. **AST-949** fills Summary tab section bodies left empty by **AST-948**: Job Summary (`whole_jd_upshot`), Company Upshot (`prefilter_company_notes` from company GET), Noteworthy Caveats / Questions to Ask, Raw JD (collapsed); content-aware `default_expanded`; graceful empty states.
 
+> **AST-2071:** Company Upshot now reads `company_upshot` (not `prefilter_company_notes`); AST-949 Summary cases revised — see § AST-2071 below.
+
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
 | **AST-949** | Summary `renderSummarySection` bodies + company notes lift + content-aware expand | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-949 Summary tab sections`**; revised AST-948 empty-upshot shell case for new empty copy |
@@ -2062,3 +2064,36 @@ cd src/ui/frontend && npm run test:component -- \
 **[bug-repro] flip (test-fix):** `--testNamePattern="AST-2059: show rubric reads content"` — red on `06df211db`, green on ftr tip.
 
 **Pass criterion:** 11/11 green. `npx tsc -b --noEmit` clean. Not the zero-arg harness.
+
+---
+
+### AST-2071 · AST-2054 (company upshot in report + company detail)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2071-upshot-display`. Plan: `docs/features/roster/ast-2071-show-the-company-upshot-in-the-report-and-company-detail.md`. API side: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § AST-2071.
+
+Recommended report Summary **Company Upshot** renders top-level `company_upshot` from `GET /api/companies/<short_name>` (trimmed; empty → `No company upshot on file.`; `default_expanded` follows presence). `prefilter_company_notes` is no longer read there. `CompanyDetailModal` adds an **Upshot** `DetailRow` only when `company_upshot.trim()` is non-empty; Notes row unchanged. Modal-only product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC13 Company Upshot prose only (grade notes decoy hidden) | `JobAnalysisReportModal.tsx` | `test_JobAnalysisReportModal.test.tsx` — **`AST-949 Summary tab sections`** revised: **`fills Summary section bodies from upshot, company upshot, and JD`**, **`content-aware expand: …`**, **`shows empty-state copy when upshot and company upshot are missing`**, **`company upshot comes from company API, not job_data`** |
+| AC14 Upshot row present / absent; Notes unchanged | `CompanyDetailModal.tsx` | `test_CompanyDetailModal.test.tsx` — new **`AST-2071: shows an Upshot row only when company_upshot is non-empty; Notes row unchanged`** |
+
+**Broken / obsolete (revised in place):** the four AST-949 Summary cases mocked `prefilter_company_notes` as the Company Upshot body — would go red on this product. Now mock `company_upshot`, with `prefilter_company_notes: "GRADE_NOTES_DECOY"` asserted absent.
+
+**Known pre-existing red (not this ticket):** `AST-1546: Print Resume success …` and `AST-1350: Print Resume unsupported toast — no tab` in the same file fail identically with `origin/dev`'s `JobAnalysisReportModal.tsx` — untouched here.
+
+**Integration:** none — no `tests/integration/` scenario reads company detail; do not invent.
+
+## QA test manifest — AST-2071
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_companies.py -q
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_CompanyDetailModal.test.tsx
+# AC13 grep gate — expect no output
+rg -n prefilter_company_notes src/ui/frontend/src/components/JobAnalysisReportModal.tsx
+```
+
+**Pass criterion:** pytest 16/16; Vitest 57 pass + the 2 known pre-existing Print Resume reds above (59 total); `tsc` clean; grep empty. Not the zero-arg harness.

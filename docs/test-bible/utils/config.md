@@ -4844,3 +4844,26 @@ AST-2061 config: `CONTACT_CONFIG["skills"] = {}` (map kept for `contact_skills()
 3. Revised: `tests/component/utils/test_config.py::TestAst1515ContactTaskConfig`, `TestAst1105ProfileSlackFields`
 
 Full AST-2062 command (all four pages): [`../core/contact.md`](../core/contact.md) § AST-2062.
+
+### AST-2072 · AST-2050 (thread_response + reply text)
+
+**Parent:** [AST-2050](https://linear.app/astralcareermatch/issue/AST-2050). **Publish:** `origin/sub/AST-2050/AST-2072-estelle-thread-response`.
+
+`CONTACT_CONFIG["thread_response"]` (default `threads_only`; import-time assert limits it to `threads_only` / `always_no_share` / `always_with_share`). `known_recognition_reply_text` + its assert removed (supersedes § AST-1668's known half). New verbatim values: `unknown_recognition_reply_text` = "Sorry, I don't recognize you, yet.  Let's check with @susan", `hear_ack_reply_text` = "That didn't work as planned.  Let's ask @susan." (double spaces are deliberate). Contact behavior: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Default `threads_only`; real import-time assert rejects `"sometimes"` and accepts the other two values (spliced source, anchor line must appear exactly once) | `src/utils/config.py` | **`TestAst2072ThreadResponseConfig`** (4) |
+| Revised: known key absent; unknown exact text | same | **`TestAst1668RecognitionReplyConfig::test_recognition_reply_defaults`** |
+| Revised: hear-ack exact text | same | **`TestAst1101HearAckConfig::test_hear_ack_reply_text`** |
+
+**Broken / obsolete this pass:** `TestAst1668RecognitionReplyConfig` (read the removed key — revised); `TestAst1101HearAckConfig` tightened from non-empty to exact text.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/utils/test_config.py::TestAst2072ThreadResponseConfig`
+2. Revised: `TestAst1668RecognitionReplyConfig`, `TestAst1101HearAckConfig`
+
+Full AST-2072 command: [`../core/contact.md`](../core/contact.md) § AST-2072.

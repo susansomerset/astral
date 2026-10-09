@@ -7417,3 +7417,105 @@ class TestAst2006RequestedArtifactsEmptyTokens:
         assert out["total_errors"] == 1 and out["total_failed"] == 0
         warns = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
         assert len([m for m in warns if "skipped error_state REQUESTED_ARTIFACTS_ERROR" in m]) == 1
+
+
+# AST-2066 Branches: artifact_versions_by_uuid empty/rows; _candidate_catalog_entry blank key /
+# unknown key / job-scoped key / blank cid / ok; set_candidate_artifact_current revalidate ok vs
+# raises (warning, still returns); _rubric_owner_task miss; list_rubric_criterion_versions blank
+# cid / blank code / ok; set_rubric_criterion_current maps key → owner task + logs.
+class TestAst2066CandidateVersions:
+    _KEY = "candidate.artifacts.base_resume"
+
+    def test_versions_by_uuid_empty_and_shape(self) -> None:
+        assert candidate_mod.artifact_versions_by_uuid([], "artifact_uuid") == {}
+        rows = [
+            {"artifact_uuid": "u1", "created_at": "t1", "current": 0},
+            {"artifact_uuid": "u2", "created_at": "t2", "current": 1},
+        ]
+        out = candidate_mod.artifact_versions_by_uuid(rows, "artifact_uuid")
+        assert list(out) == ["u1", "u2"]
+        assert out["u2"] == {"created_at": "t2", "current": 1, "position": 2}
+
+    @pytest.mark.parametrize(
+        "cid,key,msg",
+        [
+            ("cand-1", "  ", "artifact_key required"),
+            ("cand-1", "not.a.key", "unknown catalog key"),
+            ("cand-1", "job.artifacts.cover_letter", "not candidate-owned"),
+            ("  ", "candidate.artifacts.base_resume", "candidate_id required"),
+        ],
+    )
+    def test_catalog_entry_rejects(self, cid: str, key: str, msg: str) -> None:
+        with pytest.raises(ValueError, match=msg):
+            candidate_mod.list_candidate_artifact_versions(cid, key)
+        with pytest.raises(ValueError, match=msg):
+            candidate_mod.set_candidate_artifact_current(cid, key, "u")
+
+    def test_list_and_set_current_round_trip(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        db = sqlite_in_memory
+        reval: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "revalidate_dispatch_tasks_for_artifact",
+            lambda cid, key: reval.append((cid, key)),
+        )
+        uids = [db.save_artifact("candidate", "cand-1", "base_resume", {"v": i}) for i in (1, 2, 3)]
+        out = candidate_mod.list_candidate_artifact_versions(" cand-1 ", self._KEY)
+        assert list(out) == uids
+        assert [v["position"] for v in out.values()] == [1, 2, 3]
+        assert [v["current"] for v in out.values()] == [0, 0, 1]
+        caplog.set_level("INFO")
+        assert candidate_mod.set_candidate_artifact_current("cand-1", self._KEY, uids[0]) == uids[0]
+        assert db.get_current_artifact("candidate", "cand-1", "base_resume")["artifact_uuid"] == uids[0]
+        assert reval == [("cand-1", self._KEY)]
+        assert any("artifact current set" in r.getMessage() for r in caplog.records)
+
+    def test_set_current_revalidate_failure_warns_and_returns(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(candidate_mod.database, "set_current_artifact", lambda et, cid, at, uid: uid)
+
+        def _boom(cid, key):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(candidate_mod.database, "revalidate_dispatch_tasks_for_artifact", _boom)
+        caplog.set_level("WARNING")
+        assert candidate_mod.set_candidate_artifact_current("cand-1", self._KEY, "u9") == "u9"
+        assert any("AUTO revalidation skipped after set-current" in r.getMessage() for r in caplog.records)
+
+    def test_rubric_owner_miss_and_blank_args(self) -> None:
+        with pytest.raises(ValueError, match="not a rubric criteria key"):
+            candidate_mod.list_rubric_criterion_versions("cand-1", "base_resume", "V01")
+        with pytest.raises(ValueError, match="not a rubric criteria key"):
+            candidate_mod.set_rubric_criterion_current("cand-1", "nope", "V01", "u")
+        with pytest.raises(ValueError, match="candidate_id and code required"):
+            candidate_mod.list_rubric_criterion_versions(" ", "do_rubric", "V01")
+        with pytest.raises(ValueError, match="candidate_id and code required"):
+            candidate_mod.list_rubric_criterion_versions("cand-1", "do_rubric", " ")
+
+    def test_rubric_list_and_set_map_key_to_owner_task(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        calls: list = []
+
+        def _list(cid, task, current_only=True, code=None):
+            calls.append(("list", cid, task, current_only, code))
+            return [{"rubric_vector_uuid": "r1", "created_at": "t1", "current": 1}]
+
+        def _set(cid, task, code, uid):
+            calls.append(("set", cid, task, code, uid))
+            return uid
+
+        monkeypatch.setattr(candidate_mod.database, "list_rubric_vectors", _list)
+        monkeypatch.setattr(candidate_mod.database, "set_current_rubric_vector", _set)
+        out = candidate_mod.list_rubric_criterion_versions(" cand-1 ", "do_rubric", " V01 ")
+        assert out == {"r1": {"created_at": "t1", "current": 1, "position": 1}}
+        caplog.set_level("INFO")
+        assert candidate_mod.set_rubric_criterion_current("cand-1", "do_rubric", "v01", "r1") == "r1"
+        assert calls == [
+            ("list", "cand-1", "grade_do", False, "V01"),
+            ("set", "cand-1", "grade_do", "v01", "r1"),
+        ]
+        assert any("rubric criterion current set" in r.getMessage() and "V01" in r.getMessage() for r in caplog.records)
