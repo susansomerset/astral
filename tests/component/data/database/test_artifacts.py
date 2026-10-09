@@ -629,3 +629,80 @@ class TestAst1697ArtifactZlibWriteRead:
         assert "zlib.compress" not in save_src
         assert "_decompress_payload" in row_src
 
+
+
+# AST-2066 Branches: set_current_artifact moves current (AC4) / append-after-back (AC5) /
+# re-set already-current; foreign-key uuid + unknown uuid raise with no change; blank uuid raises;
+# list_artifacts same-second rows in insertion (rowid) order.
+class TestAst2066SetCurrentArtifact:
+    _KEY = ("candidate", "cand-1", "base_resume")
+
+    def _rows(self, db) -> list:
+        return db.list_artifacts(*self._KEY)
+
+    def _snapshot(self, db) -> dict:
+        # uuid → body; bodies must never change on a move.
+        return {r["artifact_uuid"]: r["artifact_data"] for r in self._rows(db)}
+
+    def _seed_three(self, db) -> list:
+        return [db.save_artifact(*self._KEY, {"v": i}) for i in (1, 2, 3)]
+
+    def test_back_arrow_moves_current_only(self, sqlite_in_memory) -> None:
+        # AC4: v3 current → set v2; one current row, no new row, no body change.
+        db = sqlite_in_memory
+        v1, v2, v3 = self._seed_three(db)
+        before = self._snapshot(db)
+        assert db.set_current_artifact(*self._KEY, v2) == v2
+        assert db.get_current_artifact(*self._KEY)["artifact_uuid"] == v2
+        rows = self._rows(db)
+        assert [r["artifact_uuid"] for r in rows if r["current"] == 1] == [v2]
+        assert self._snapshot(db) == before
+
+    def test_edit_after_back_appends_v4(self, sqlite_in_memory) -> None:
+        # AC5: after moving to v2, a save appends v4 at the end; v2/v3 untouched.
+        db = sqlite_in_memory
+        v1, v2, v3 = self._seed_three(db)
+        db.set_current_artifact(*self._KEY, v2)
+        before = self._snapshot(db)
+        v4 = db.save_artifact(*self._KEY, {"v": "Z"})
+        rows = self._rows(db)
+        assert [r["artifact_uuid"] for r in rows] == [v1, v2, v3, v4]
+        assert rows[-1]["created_at"] >= rows[2]["created_at"]
+        assert [r["artifact_uuid"] for r in rows if r["current"] == 1] == [v4]
+        after = self._snapshot(db)
+        assert {u: after[u] for u in (v1, v2, v3)} == before
+
+    def test_reset_already_current_is_ok(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        _, _, v3 = self._seed_three(db)
+        assert db.set_current_artifact(*self._KEY, v3) == v3
+        assert [r["artifact_uuid"] for r in self._rows(db) if r["current"] == 1] == [v3]
+
+    def test_foreign_and_unknown_uuid_raise_without_change(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        v1, v2, v3 = self._seed_three(db)
+        other = db.save_artifact("candidate", "cand-2", "base_resume", {"v": "other"})
+        before = self._rows(db)
+        with pytest.raises(ValueError, match="is not a version of"):
+            db.set_current_artifact(*self._KEY, other)
+        with pytest.raises(ValueError, match="is not a version of"):
+            db.set_current_artifact(*self._KEY, "no-such-uuid")
+        assert self._rows(db) == before
+        # The foreign key's own current row is untouched too.
+        assert db.get_current_artifact("candidate", "cand-2", "base_resume")["artifact_uuid"] == other
+
+    def test_blank_uuid_raises(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_three(db)
+        with pytest.raises(ValueError, match="artifact_uuid required"):
+            db.set_current_artifact(*self._KEY, "  ")
+
+    def test_same_second_versions_list_in_insertion_order(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Whole-second created_at ties: rowid tie-break keeps v1, v2, v3 even after v1 becomes current.
+        db = sqlite_in_memory
+        monkeypatch.setattr(db, "_utc_now", lambda: "2026-10-08 12:00:00")
+        v1, v2, v3 = self._seed_three(db)
+        db.set_current_artifact(*self._KEY, v1)
+        assert [r["artifact_uuid"] for r in self._rows(db)] == [v1, v2, v3]

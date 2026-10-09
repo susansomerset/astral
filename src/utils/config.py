@@ -1898,44 +1898,23 @@ CONTACT_CONFIG = {
     # Format with environment= (deploy label). AST-1067 applies when listen is on
     # and deploy is not production.
     "non_production_reply_prefix_template": "[{environment}] ",
-    # AST-1101: fallback Slack text when Contact accepts @/DM but Estelle turn posts nothing.
-    "hear_ack_reply_text": "Heard you — Estelle is listening.",
-    # AST-1668: recognition replies after resolve (known bind vs unbound Slack user).
-    "known_recognition_reply_text": "I know who that is",
-    "unknown_recognition_reply_text": "I don't recognize you",
+    # AST-1101 / AST-2072: fallback Slack text when Contact accepts @/DM but Estelle's turn
+    # posts nothing (turn raised, failed, or returned no reply).
+    "hear_ack_reply_text": "That didn't work as planned.  Let's ask @susan.",
+    # AST-1668 / AST-2072: reply to an unbound Slack sender (bound senders get no recognition post).
+    "unknown_recognition_reply_text": "Sorry, I don't recognize you, yet.  Let's check with @susan",
+    # AST-2072: where every Estelle reply to an inbound Slack message lands.
+    #   threads_only      — in-thread only when the user posted in a thread; else a new top-level post.
+    #   always_no_share   — always in a thread (the user's thread, or a new one under their message).
+    #   always_with_share — always_no_share + Slack "Also send to channel" (reply_broadcast).
+    # Estelle-initiated posts (meteorite BOT_BLOCKED) are not replies and ignore this.
+    "thread_response": "threads_only",
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
-    # skill_key → ACL metadata. Contact-only entity-save paths (AST-1071).
-    # Keys must never appear in TASK_CONFIG (assert below).
-    "skills": {
-        "save_candidate_profile": {
-            "entity": "candidate",
-            "write": True,
-            "description": (
-                "Merge allowlisted name columns (first/last/pronouns) "
-                "for Slack Contact intake."
-            ),
-            # AST-1014 name columns — not candidate_data.profile (refused on save).
-            "allowed_paths": (
-                "first",
-                "last",
-                "pronouns",
-            ),
-        },
-        "save_candidate_contact": {
-            "entity": "candidate",
-            "write": True,
-            "description": (
-                "Merge allowlisted contact.* fields into candidate_data "
-                "(not slack_user_id — AST-1068 owns that)."
-            ),
-            "allowed_paths": (
-                "contact.contact_email",
-                "contact.reply_email",
-            ),
-        },
-    },
+    # AST-2061: Estelle has no write skills — candidate is read-only to Contact.
+    # Map kept (empty) for contact_skills()/admin routes; keys must never appear in TASK_CONFIG.
+    "skills": {},
     # AST-2035: Slack commands — `@Estelle /<command id> <payload>`, recognized only as the
     # first token after leading @mentions. handler: sync src.core.* callable
     # (candidate_id, payload, *, source_id, thread_ts, debug) -> {ok, meteorite_id, error}.
@@ -1954,6 +1933,9 @@ CONTACT_CONFIG = {
     "events_http_path": "/slack/events",
     # Bot events Contact accepts when listen is on (Slack Event Subscriptions must match).
     "bot_event_types": ("app_mention", "message"),
+    # AST-2061: Slack channel_type values where Estelle acts (DM + private channel).
+    # app_mention carries no channel_type — Contact looks it up via conversations.info.
+    "allowed_channel_types": ("im", "group"),
     # Process-local event_id dedupe capacity (single gunicorn worker — AST/Railway).
     "event_id_dedupe_max": 4096,
     # Socket Mode (local/dev only) — app-level token env name (xapp-…).
@@ -1975,8 +1957,8 @@ assert isinstance(CONTACT_CONFIG["debug_state_filename"], str) and CONTACT_CONFI
 assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
-assert isinstance(CONTACT_CONFIG["known_recognition_reply_text"], str) and CONTACT_CONFIG["known_recognition_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["unknown_recognition_reply_text"], str) and CONTACT_CONFIG["unknown_recognition_reply_text"].strip()
+assert CONTACT_CONFIG["thread_response"] in ("threads_only", "always_no_share", "always_with_share"), CONTACT_CONFIG["thread_response"]
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
@@ -1984,6 +1966,9 @@ assert str(CONTACT_CONFIG["events_http_path"]).startswith("/")
 assert CONTACT_CONFIG["bot_event_types"] and all(
     isinstance(_t, str) for _t in CONTACT_CONFIG["bot_event_types"]
 )
+assert isinstance(CONTACT_CONFIG["allowed_channel_types"], tuple) and CONTACT_CONFIG["allowed_channel_types"]
+assert set(CONTACT_CONFIG["allowed_channel_types"]) <= {"im", "mpim", "group", "channel"}
+assert "channel" not in CONTACT_CONFIG["allowed_channel_types"]  # public channels never (AST-2061)
 assert isinstance(CONTACT_CONFIG["event_id_dedupe_max"], int)
 assert CONTACT_CONFIG["event_id_dedupe_max"] > 0
 assert CONTACT_CONFIG["app_token_env"] == "SLACK_APP_TOKEN"
@@ -2010,9 +1995,6 @@ for _skill_key, _skill_meta in CONTACT_CONFIG["skills"].items():
         if _p in _name_cols:
             continue
         assert "." in _p, (_skill_key, _p)
-assert set(CONTACT_CONFIG["skills"]["save_candidate_profile"]["allowed_paths"]).issubset(
-    CANDIDATE_LIBRARY_CONFIG["name_columns"]
-)
 # AST-2035: command registry shape; ids are the bare token after "/" (no whitespace).
 assert isinstance(CONTACT_CONFIG["commands"], dict)
 for _cmd_id, _cmd_meta in CONTACT_CONFIG["commands"].items():
@@ -5026,14 +5008,6 @@ CONTACT_TASK_CONFIG = {
         "param_hint": "Single URL — remainder of the markup line after the task key.",
         "requires_candidate": True,
     },
-    "create_contact_meteorite": {
-        "handler": "src.core.meteorite.create_contact_meteorite",
-        "description": (
-            "Land a meteorite from link (scrape-first) or pasted page text."
-        ),
-        "param_hint": "URL or page text (rest of line).",
-        "requires_candidate": True,
-    },
     "get_job_by_pattern": {
         "handler": "src.core.tracker.contact_task_get_job_by_pattern",
         "description": (
@@ -5081,6 +5055,24 @@ for _ct_key, _ct_meta in CONTACT_TASK_CONFIG.items():
 # AST-2035: Contact command ids must not collide with contact-task keys.
 for _cmd_id in CONTACT_CONFIG["commands"]:
     assert _cmd_id not in CONTACT_TASK_CONFIG, _cmd_id
+# AST-2061 pinhole: every Contact command/task handler must be listed here, keyed by dotted path.
+# Writes are meteorite-only (never create_meteorite_job / job / candidate); everything else reads.
+_CONTACT_PINHOLE_HANDLERS = {
+    "src.core.meteorite.insert_slack_meteorite": "write meteorite (NEW)",
+    "src.core.gazer.contact_task_gazer_scrape": "read (external fetch, no platform write)",
+    "src.core.tracker.contact_task_get_job_by_pattern": "read job",
+    "src.core.tracker.contact_task_get_job_data": "read job",
+    "src.core.tracker.contact_task_get_company_data": "read company",
+    "src.core.tracker.contact_task_get_candidate_data": "read candidate",
+}
+assert all(
+    _h.startswith("src.core.meteorite.") for _h, _kind in _CONTACT_PINHOLE_HANDLERS.items()
+    if _kind.startswith("write")
+)
+for _h in [m["handler"] for m in CONTACT_TASK_CONFIG.values()] + [
+    m["handler"] for m in CONTACT_CONFIG["commands"].values()
+]:
+    assert _h in _CONTACT_PINHOLE_HANDLERS, f"Contact handler outside pinhole: {_h}"
 
 
 # ---------------------------------------------------------------------------
@@ -5692,6 +5684,26 @@ UI_CONFIG = {
     },
     # Theme applied when a candidate has none stored (and before candidates load).
     "default_theme": "dark",
+    # AST-2064: Light grade-color candidates shown as rows on Tools -> Theme Examples (examples-only).
+    # Each set's tokens override the panel's grade tokens for that row; the live Light set is in App.css.
+    # Retire a candidate = delete its entry; no page or CSS change.
+    "theme_example_grade_sets": {
+        "deep": {"label": "Deep", "tokens": {
+            "--grade-a": "#1e7b34", "--grade-b": "#a06500", "--grade-c": "#c05621",
+            "--grade-d": "#c53030", "--grade-f": "#742a2a", "--grade-x": "#6b46c1",
+            "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
+        }},
+        "soft": {"label": "Soft", "tokens": {
+            "--grade-a": "#b7e4c0", "--grade-b": "#fde68a", "--grade-c": "#fed7aa",
+            "--grade-d": "#fecaca", "--grade-f": "#e7b4b4", "--grade-x": "#ddd6fe",
+            "--text-on-grade": "#1f1830", "--text-on-grade-f": "#5c0f0f",
+        }},
+        "classic": {"label": "Classic", "tokens": {
+            "--grade-a": "#2f9e44", "--grade-b": "#e67700", "--grade-c": "#d9480f",
+            "--grade-d": "#e03131", "--grade-f": "#9c1c1c", "--grade-x": "#7048e8",
+            "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
+        }},
+    },
 }
 # Default must be a registered, profile-selectable palette (it is what candidates without a stored theme get).
 assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_selectable"), (

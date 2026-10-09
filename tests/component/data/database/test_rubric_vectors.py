@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from src.utils import rubric_text
 
 
@@ -506,3 +508,75 @@ class TestAst808ListVectorFeedbackContent:
         assert rows[0]["vector_content"] == "Criterion text\nA = one"
         assert rows[0]["vector_importance"] == 7
         assert rows[0]["vector_label"] == "G1 label"
+
+
+# AST-2066 Branches: list_rubric_vectors code= filter (case-insensitive, chronological) vs code=None
+# (ORDER BY code); set_current_rubric_vector moves one criterion only (AC6) + carries live importance
+# (COALESCE hit) / keeps own importance when no other current row (COALESCE miss); cross-code + unknown
+# uuid raise with no change; blank args raise.
+class TestAst2066RubricCriterionVersions:
+    _TASK = "grade_do"
+
+    def _seed(self, db) -> dict:
+        # V01: A then B (two blurs = fingerprint retire+insert); V02 untouched.
+        db.save_agent_task(self._TASK, agent_id="a1", user_prompt="p")
+        v02 = {"code": "V02", "label": "Other", "content": "keep", "importance": 3}
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1", self._TASK, [{"code": "V01", "label": "L", "content": "A", "importance": 5}, v02]
+        )
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1", self._TASK, [{"code": "V01", "label": "L", "content": "B", "importance": 8}, v02]
+        )
+        hist = db.list_rubric_vectors("cand-1", self._TASK, current_only=False, code="V01")
+        cur = {r["code"]: r["rubric_vector_uuid"] for r in db.list_rubric_vectors("cand-1", self._TASK)}
+        return {"a": hist[0]["rubric_vector_uuid"], "b": hist[1]["rubric_vector_uuid"], "v02": cur["V02"]}
+
+    def _current(self, db) -> dict:
+        return {r["code"]: r for r in db.list_rubric_vectors("cand-1", self._TASK)}
+
+    def test_code_filter_lists_one_criterion_oldest_first(self, seeded_db) -> None:
+        db = seeded_db
+        ids = self._seed(db)
+        hist = db.list_rubric_vectors("cand-1", self._TASK, current_only=False, code=" v01 ")
+        assert [r["rubric_vector_uuid"] for r in hist] == [ids["a"], ids["b"]]
+        assert [r["content"] for r in hist] == ["A", "B"]
+        # code=None keeps the existing ORDER BY code listing across codes.
+        assert [r["code"] for r in db.list_rubric_vectors("cand-1", self._TASK)] == ["V01", "V02"]
+
+    def test_set_current_moves_one_criterion_and_carries_importance(self, seeded_db) -> None:
+        # AC6: V01 back to A; V02 unchanged; one current per code; live importance (8) carried.
+        db = seeded_db
+        ids = self._seed(db)
+        assert db.set_current_rubric_vector("cand-1", self._TASK, "v01", ids["a"]) == ids["a"]
+        cur = self._current(db)
+        assert cur["V01"]["rubric_vector_uuid"] == ids["a"]
+        assert cur["V01"]["content"] == "A"
+        assert cur["V01"]["importance"] == 8
+        assert cur["V02"]["rubric_vector_uuid"] == ids["v02"]
+        all_rows = db.list_rubric_vectors("cand-1", self._TASK, current_only=False)
+        for code in ("V01", "V02"):
+            assert sum(1 for r in all_rows if r["code"] == code and r["current"] == 1) == 1
+
+    def test_reset_already_current_keeps_own_importance(self, seeded_db) -> None:
+        db = seeded_db
+        ids = self._seed(db)
+        assert db.set_current_rubric_vector("cand-1", self._TASK, "V01", ids["b"]) == ids["b"]
+        assert self._current(db)["V01"]["importance"] == 8
+
+    def test_cross_code_and_unknown_uuid_raise_without_change(self, seeded_db) -> None:
+        db = seeded_db
+        ids = self._seed(db)
+        before = db.list_rubric_vectors("cand-1", self._TASK, current_only=False)
+        with pytest.raises(ValueError, match="is not a version of"):
+            db.set_current_rubric_vector("cand-1", self._TASK, "V01", ids["v02"])
+        with pytest.raises(ValueError, match="is not a version of"):
+            db.set_current_rubric_vector("cand-1", self._TASK, "V01", "no-such-uuid")
+        assert db.list_rubric_vectors("cand-1", self._TASK, current_only=False) == before
+
+    @pytest.mark.parametrize(
+        "args",
+        [("", "grade_do", "V01", "u"), ("cand-1", "", "V01", "u"), ("cand-1", "grade_do", " ", "u"), ("cand-1", "grade_do", "V01", "")],
+    )
+    def test_blank_args_raise(self, seeded_db, args) -> None:
+        with pytest.raises(ValueError, match="required"):
+            seeded_db.set_current_rubric_vector(*args)

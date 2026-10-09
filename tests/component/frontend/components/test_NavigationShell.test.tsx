@@ -16,6 +16,10 @@ vi.mock("../../../../src/ui/frontend/src/assets/astral_logo.png", () => ({
   default: "logo.png",
 }))
 
+vi.mock("../../../../src/ui/frontend/src/assets/astral_logo_light.png", () => ({
+  default: "logo-light.png",
+}))
+
 const mockedApi = vi.mocked(api)
 
 const candidatesFixture = [
@@ -375,6 +379,25 @@ describe("NavigationShell", () => {
       await userEvent.click(within(document.querySelector(".sidebar-candidate-menu-list") as HTMLElement).getByRole("button", { name: /Grace Hopper/ }))
       await waitFor(() => expect(screen.getByRole("button", { name: "Grace Hopper" })).toBeInTheDocument())
       expect(document.querySelector(".sidebar-candidate-state")).toHaveTextContent("REQUESTED_RESUME_RETRY")
+    })
+
+    it("uses the light wordmark only when the selected profile theme is light", async () => {
+      stubNavViewport(true)
+      mockShellApis({
+        isAdmin: true,
+        candidates: [
+          { ...candidatesFixture[0], candidate_data: { theme: "light" } },
+          { ...candidatesFixture[1], candidate_data: { theme: "light_parchment" } },
+        ],
+      })
+      renderWithProviders(<NavigationShell />, { router: { initialEntries: ["/jobs"] } })
+      await waitFor(() => expect(screen.getByRole("combobox")).not.toBeDisabled())
+      expect(screen.getByAltText("Astral")).toHaveAttribute("src", "logo-light.png")
+
+      await userEvent.selectOptions(screen.getByRole("combobox"), "c2")
+      await waitFor(() =>
+        expect(screen.getByAltText("Astral")).toHaveAttribute("src", "logo.png"),
+      )
     })
 
     it("empty candidate list omits the state line", async () => {

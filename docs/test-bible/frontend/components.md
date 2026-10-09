@@ -560,6 +560,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 **AST-858 (parent):** Recommended Job Report redesign. **AST-949** fills Summary tab section bodies left empty by **AST-948**: Job Summary (`whole_jd_upshot`), Company Upshot (`prefilter_company_notes` from company GET), Noteworthy Caveats / Questions to Ask, Raw JD (collapsed); content-aware `default_expanded`; graceful empty states.
 
+> **AST-2071:** Company Upshot now reads `company_upshot` (not `prefilter_company_notes`); AST-949 Summary cases revised — see § AST-2071 below.
+
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
 | **AST-949** | Summary `renderSummarySection` bodies + company notes lift + content-aware expand | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-949 Summary tab sections`**; revised AST-948 empty-upshot shell case for new empty copy |
@@ -1979,6 +1981,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-2056 · AST-2041 (gap — resume editor autosave; product AST-2051)
 
+> **Superseded by AST-2068** (blur-save replaced the `AUTOSAVE_MS` timer): the timer rows below are historical. Current names and contract: § AST-2068.
+
 **Parent:** [AST-2041](https://linear.app/astralcareermatch/issue/AST-2041) (orphaned mini-parent). **Publish:** `origin/sub/AST-2041/AST-2056-resume-autosave-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-2051** (`origin/sub/AST-2041/AST-2051-resume-autosave`) — test tree + bible only. Plan: `docs/features/artifacts/ast-1459-resume-editor-is-not-working-properly.md` § Bug: AST-2051 / § Bug: AST-2056.
 
 Contract (AST-2051, reverses the AST-1459 explicit-Save line): resume editors (structure mode via `useCandidateResumeStructure` or `bodyShape="resume_content"`, incl. JAR Job Resume under `jobPersistence`) **autosave section bodies after `AUTOSAVE_MS` (2000)**; header shows status text ("Unsaved changes" / "All changes saved"); **Save/Cancel only during Generate review**. `shapesKey` job editors (cover letter / application responses) keep explicit Save/Cancel. Guards: queued timer no-ops while `snapshot !== null` (AST-905); `dirty` clears only when the saved tabs are still current; autosave ticks skip `jobPersistence.onSaved` (unmount flush still calls it).
@@ -2026,6 +2030,10 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-2065 · AST-2042 (UI config URL) — pointer
+
+`lib/uiConfig.ts` `[bug-repro]` URL guard (`test_uiConfig.test.ts` › **`uiConfig URL — AST-2065`**) and the `/api/system/ui_config` → `/api/ui_config` mock retarget in `test_ArtifactEditor`, `test_ContextTextPage`, `test_JobTitleText`, `test_ListPage`, `test_ListPage_listTableLayout`, `test_ListPage_ui_config_fail`. Map + manifest: **`docs/test-bible/frontend/pages.md`** § AST-2065.
+
 ### AST-2060 · AST-2058 (show rubric reads hydrated detail content; gap — product AST-2059)
 
 **Parent:** [AST-2058](https://linear.app/astralcareermatch/issue/AST-2058) (orphaned mini-parent). **Publish:** `origin/sub/AST-2058/AST-2060-show-rubric-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-2059** (`61f1f40ea`, on `ftr/AST-2058-show-rubric-content`) — test tree + bible only. Plan: `docs/features/interface/ast-1063-job-carried-rubric-hydration-for-list-columns.md` § Bug: AST-2059 / § Bug: AST-2060.
@@ -2058,3 +2066,72 @@ cd src/ui/frontend && npm run test:component -- \
 **[bug-repro] flip (test-fix):** `--testNamePattern="AST-2059: show rubric reads content"` — red on `06df211db`, green on ftr tip.
 
 **Pass criterion:** 11/11 green. `npx tsc -b --noEmit` clean. Not the zero-arg harness.
+
+---
+
+### AST-2071 · AST-2054 (company upshot in report + company detail)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2071-upshot-display`. Plan: `docs/features/roster/ast-2071-show-the-company-upshot-in-the-report-and-company-detail.md`. API side: [`../ui/api/api_companies.md`](../ui/api/api_companies.md) § AST-2071.
+
+Recommended report Summary **Company Upshot** renders top-level `company_upshot` from `GET /api/companies/<short_name>` (trimmed; empty → `No company upshot on file.`; `default_expanded` follows presence). `prefilter_company_notes` is no longer read there. `CompanyDetailModal` adds an **Upshot** `DetailRow` only when `company_upshot.trim()` is non-empty; Notes row unchanged. Modal-only product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC13 Company Upshot prose only (grade notes decoy hidden) | `JobAnalysisReportModal.tsx` | `test_JobAnalysisReportModal.test.tsx` — **`AST-949 Summary tab sections`** revised: **`fills Summary section bodies from upshot, company upshot, and JD`**, **`content-aware expand: …`**, **`shows empty-state copy when upshot and company upshot are missing`**, **`company upshot comes from company API, not job_data`** |
+| AC14 Upshot row present / absent; Notes unchanged | `CompanyDetailModal.tsx` | `test_CompanyDetailModal.test.tsx` — new **`AST-2071: shows an Upshot row only when company_upshot is non-empty; Notes row unchanged`** |
+
+**Broken / obsolete (revised in place):** the four AST-949 Summary cases mocked `prefilter_company_notes` as the Company Upshot body — would go red on this product. Now mock `company_upshot`, with `prefilter_company_notes: "GRADE_NOTES_DECOY"` asserted absent.
+
+**Known pre-existing red (not this ticket):** `AST-1546: Print Resume success …` and `AST-1350: Print Resume unsupported toast — no tab` in the same file fail identically with `origin/dev`'s `JobAnalysisReportModal.tsx` — untouched here.
+
+**Integration:** none — no `tests/integration/` scenario reads company detail; do not invent.
+
+## QA test manifest — AST-2071
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_companies.py -q
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_CompanyDetailModal.test.tsx
+# AC13 grep gate — expect no output
+rg -n prefilter_company_notes src/ui/frontend/src/components/JobAnalysisReportModal.tsx
+```
+
+**Pass criterion:** pytest 16/16; Vitest 57 pass + the 2 known pre-existing Print Resume reds above (59 total); `tsc` clean; grep empty. Not the zero-arg harness.
+
+### AST-2068 · AST-2043 (blur-save + version arrows)
+
+**Publish:** `origin/sub/AST-2043/AST-2068-version-ui`. `ArtifactEditor` blur-saves bodies (a focusout on `dep-body` after an edit → one PUT; an unchanged blur → none; no PUT while typing; never during Generate review). `AUTOSAVE_MS` is gone. The shared **`ArtifactVersionNav`** ("Previous version" / "N of M" / "Next version") orders by `position` only. It appears artifact-level on fixed-field editors (Base Resume Content, JAR cover letter / job resume), per criterion on candidate criteria pages, and artifact-level on `ContextTextPage`. A move flushes unsaved edits first, then steps from the new current and re-hydrates via the current-read GET.
+
+**Broken → revised (15, all `test_ArtifactEditor.test.tsx` + 1 page):** the fake-clock `startAutosaveClock` / `advanceAutosave` helpers were replaced by **`blurToSave()`** (`.blur()` inside `act`; jsdom fires a bubbling `focusout`). Debounce tests now assert "no PUT while typing, one PUT on blur": **`AST-2051 / AST-2068: structure body edit saves one PUT on blur…`** and **`AST-2051 / AST-2068: jobPersistence Job Resume body edit saves one PUT on blur…`**. The pre-Generate timer test became **`AST-2068: edit typed before Generate saves once on the Regenerate blur; review never saves (AST-905)`**. Clicking Regenerate is itself a blur, so the user's own edit lands before review opens, and a review blur still saves nothing (plan § Verification AC 1/2). The other 11 keep their names with `blurToSave()` in place of the timer.
+
+**Also fixed (pre-existing reds on this file set):** `AST-1577: page and draft follow ui-consistency` now reads `canon/directives/active/patt.artifact.ui-consistency.md` (moved from `draft/`; test name kept for the AST-1628 manifest filter). `test_ArtifactsDoJobCriteria.test.tsx` `api` mock gains `setAuthTokenGetter` / `setUnauthorizedHandler`, and the handlers gain `/api/state_ui_manifest` + `/api/ui_config` (the page showed "State UI manifest unavailable").
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `versionNavState` position order, empty / no-current, disabled ends, `disabled` prop | `ArtifactVersionNav.tsx` | new **`test_ArtifactVersionNav.test.tsx`** (5) |
+| AC1 / AC2 on the routed page (typing → 0 PUT, blur → 1 PUT, unchanged blur → 0) | `ArtifactEditor.tsx` via `ArtifactsBaseResumeContent` | **`AST-1577 / AST-2068: wires bodyShape resume_content; blur PUTs base_resume leaf once (§6c AC1/AC2)`** — [`pages.md`](pages.md) § AST-2068 |
+| AC4 Base Resume Content arrows (3 of 3 → 1 of 3, re-hydrate, ends disabled, no body PUT) | same | **`AST-2068 AC4: Base Resume Content arrows…`** |
+| AC4 JAR cover letter via job route + failed move → toast, body unchanged | `ArtifactEditor.tsx` (`shapesKey` + `jobPersistence`) | **`AST-2068 AC4: JAR cover letter arrows step back via the job route…`** |
+| AC4 + AC2 Do Job Criteria: V01 steps alone, V02 untouched; unchanged blur → no PUT | `ArtifactEditor.tsx` (rubric criteria) | **`AST-2068 AC4/AC2: one criterion steps back alone…`** (`test_ArtifactsDoJobCriteria.test.tsx`) |
+| AC4 Bio Summary + save-before-move (draft → save v3 → step back to v2) | `ContextTextPage.tsx` | **`AST-2068 AC4: Bio Summary unsaved draft saves before a move…`** (`test_CandidateBioSummary.test.tsx`) |
+
+**Baseline:** the full Vitest run shows 51 failures, against 52 on this tree with AST-2068's three components reverted. None of the 51 is in this file set. AC3 (`AUTOSAVE_MS` gone) is a grep gate. Frontend has no branch locks (§6b).
+
+**Manifest (test-child):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactVersionNav.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsDoJobCriteria.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateBioSummary.test.tsx
+cd src/ui/frontend && npx tsc -b --noEmit
+# AC3 grep gate — expect no output
+git grep -n "AUTOSAVE_MS" -- src/ui/frontend/src/components/ArtifactEditor.tsx
+```
+
+**Pass criterion:** Vitest 77/77 on the six files; `tsc` clean; grep empty. Not the zero-arg harness.

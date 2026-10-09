@@ -54,6 +54,7 @@ from src.data.contact_listen import (
 )
 from src.external.telescope import run_one_shot
 from src.external.slack import (
+    fetch_channel_type,
     fetch_conversation_history,
     fetch_full_conversation_history,
     fetch_user_profile,
@@ -241,20 +242,40 @@ def append_slack_conversation_message(
     )
 
 
+def _contact_reply_placement(
+    thread_ts: Optional[str], message_ts: Optional[str]
+) -> Tuple[Optional[str], bool]:
+    """Resolve ``(reply thread_ts, reply_broadcast)`` for a reply to one inbound Slack message.
+
+    Driven by ``CONTACT_CONFIG["thread_response"]`` (AST-2072); ``None`` thread_ts = top-level post.
+    The single placement rule for every Contact reply site — no per-site ``thread_ts or …`` copies.
+    """
+    # Read per call (not at import) so a config change applies without a restart path.
+    mode = CONTACT_CONFIG["thread_response"]
+    if mode == "threads_only":
+        # Thread only when the user was already in one; a top-level message gets a top-level reply.
+        return (thread_ts or None, False)
+    # always_no_share / always_with_share: the user's thread, or a new thread under their message.
+    return (thread_ts or message_ts or None, mode == "always_with_share")
+
+
 @_with_log_debug
 def contact_post_message(
     *,
     channel: str,
     text: str,
     thread_ts: Optional[str] = None,
+    reply_broadcast: bool = False,
     debug: bool = False,
 ) -> dict:
     """Post via external slack.post_message, then append outbound text into cache."""
     logger.debug(
-        "Calling post_message: [channel=%r, thread_ts=%r, text=%r]",
-        channel, thread_ts, text,
+        "Calling post_message: [channel=%r, thread_ts=%r, reply_broadcast=%s, text=%r]",
+        channel, thread_ts, reply_broadcast, text,
     )
-    resp = post_message(channel=channel, text=text, thread_ts=thread_ts)
+    resp = post_message(
+        channel=channel, text=text, thread_ts=thread_ts, reply_broadcast=reply_broadcast
+    )
     logger.debug("Response from post_message: %s", resp)
     if resp.get("ok"):
         # Prefer Slack response ts; fall back so cache still warms if shape odd.
@@ -262,6 +283,7 @@ def contact_post_message(
         if not isinstance(out_ts, str):
             out_ts = str(out_ts) if out_ts else ""
         if out_ts:
+            # Key on the thread actually posted to — a top-level reply lands on (channel, "").
             append_slack_conversation_message(
                 channel=channel,
                 thread_ts=thread_ts,
@@ -512,7 +534,7 @@ def try_meteorite_apply_paste_from_slack(
     if row is None:
         return {"applied": False}
 
-    result = apply_paste(int(row["id"]), text, debug=debug)
+    result = apply_paste(int(row["id"]), _unwrap_slack_links(text), debug=debug)
     return {"applied": True, "result": result}
 
 
@@ -564,12 +586,15 @@ def contact_land_meteorite(
     emp = employer_name.strip() if isinstance(employer_name, str) else ""
     if emp:
         blob = f"{blob}\n\nEmployer: {emp}" if blob else f"Employer: {emp}"
+    # AST-2061: one nh3 sanitize point for every Contact meteorite write.
+    # Late import: meteorite late-imports contact.
+    from src.core.meteorite import sanitize_contact_text, stage_meteorite
+
+    blob = sanitize_contact_text(_unwrap_slack_links(blob))
     if not blob.strip():
         out = dict(err)
         out["error"] = "blob is required"
         return out
-
-    from src.core.meteorite import stage_meteorite
 
     return asyncio.run(
         stage_meteorite(
@@ -878,6 +903,11 @@ _CONTACT_COMMAND_RE = re.compile(
 _SLACK_LINK_RE = re.compile(r"<(https?://[^|>\s]+)(?:\|[^>]*)?>")
 
 
+def _unwrap_slack_links(text: str) -> str:
+    """Slack <http(s)://…|label> / <http(s)://…> → bare URL (before nh3 sanitize, AST-2061)."""
+    return _SLACK_LINK_RE.sub(r"\1", text if isinstance(text, str) else "")
+
+
 def parse_contact_command(text: str) -> tuple[str, str] | None:
     """(command_id, payload) when the first token after mentions is a registered /command; else None."""
     raw = text if isinstance(text, str) else ""
@@ -886,7 +916,7 @@ def parse_contact_command(text: str) -> tuple[str, str] | None:
     if not m or m.group(1) not in CONTACT_CONFIG["commands"]:
         logger.debug("Response from parse_contact_command: None")
         return None
-    payload = _SLACK_LINK_RE.sub(r"\1", m.group(2) or "").strip()
+    payload = _unwrap_slack_links(m.group(2) or "").strip()
     logger.debug("Response from parse_contact_command: (%r, %r)", m.group(1), payload)
     return m.group(1), payload
 
@@ -1110,18 +1140,9 @@ def run_contact_estelle_turn(
         f"astral_candidate_id={astral_candidate_id or ''}",
         f"candidate_state={candidate_state or ''}",
         "",
-        "## Available Contact skills (ACL)",
-        "Only emit skill_calls entries whose skill_key is listed below;",
-        "fields keys must be allowlisted paths; omit skill_calls when none.",
     ]
-    for skill_key, meta in contact_skills().items():
-        desc = (meta or {}).get("description") or ""
-        paths = (meta or {}).get("allowed_paths") or ()
-        path_s = ", ".join(str(x) for x in paths)
-        lines.append(f"- {skill_key}: {desc} | paths: {path_s}")
-    lines.append("")
     lines.append("## Available contact tasks (markup)")
-    lines.append("Embed instructions in agent_payload.reply only — not skill_calls.")
+    lines.append("Embed instructions in agent_payload.reply only.")
     lines.append("Syntax: ~~/<task_key> <parameters>~~")
     lines.append(
         "Only use task keys listed below. Contact executes markup after your turn "
@@ -1262,38 +1283,8 @@ def run_contact_estelle_turn(
             follow_turn.get("reply") if isinstance(follow_turn.get("reply"), str) else ""
         )
 
-    # e. Optional skill_calls (ACL via run_contact_skill)
-    skill_results = []
+    # e. AST-2061: no skill_calls — Estelle never writes candidate.
     parsed = result.get("parsed_response") if isinstance(result, dict) else None
-    raw_calls = parsed.get("skill_calls") if isinstance(parsed, dict) else None
-    calls = raw_calls if isinstance(raw_calls, list) else []
-    for item in calls:
-        if not isinstance(item, dict):
-            continue
-        skill_key = item.get("skill_key")
-        fields = item.get("fields")
-        if not isinstance(skill_key, str) or not isinstance(fields, dict):
-            continue
-        if not (isinstance(astral_candidate_id, str) and astral_candidate_id.strip()):
-            skill_results.append(
-                {"ok": False, "error": "no_candidate", "skill_key": skill_key}
-            )
-            logger.warning("%s -> %s [%s]", skill_key, "skill_failed", "no_candidate")
-            continue
-        try:
-            skill_results.append(
-                run_contact_skill(
-                    skill_key,
-                    astral_candidate_id=astral_candidate_id,
-                    fields=fields,
-                    debug=debug,
-                )
-            )
-        except Exception as exc:  # ValueError + unexpected — keep turn alive
-            skill_results.append(
-                {"ok": False, "error": str(exc), "skill_key": skill_key}
-            )
-            logger.warning("%s -> %s [%s]", skill_key, "skill_failed", str(exc))
 
     # e2. Optional land_calls → contact_land_meteorite (AST-1531; not ACL skill)
     land_results: List[Dict[str, Any]] = []
@@ -1322,7 +1313,7 @@ def run_contact_estelle_turn(
                 candidate_id=astral_candidate_id
             )
             if paste_row is not None and isinstance(text, str) and text.strip():
-                apply_out = apply_paste(int(paste_row["id"]), text, debug=debug)
+                apply_out = apply_paste(int(paste_row["id"]), _unwrap_slack_links(text), debug=debug)
                 land_results.append({"ok": True, "result": apply_out, "via": "apply_paste"})
                 continue
             if isinstance(item.get("scraps"), list) and item["scraps"]:
@@ -1367,12 +1358,13 @@ def run_contact_estelle_turn(
         and outcome in ("success", "concern")
     )
     if reply_ok:
-        reply_thread_ts = thread_ts or message_ts
+        reply_ts, reply_broadcast = _contact_reply_placement(thread_ts, message_ts)
         outbound = format_contact_reply_text(reply_for_slack)
         slack_post = contact_post_message(
             channel=channel,
             text=outbound,
-            thread_ts=reply_thread_ts,
+            thread_ts=reply_ts,
+            reply_broadcast=reply_broadcast,
             debug=debug,
         )
 
@@ -1388,7 +1380,7 @@ def run_contact_estelle_turn(
         "outcome": outcome,
         "reply": reply if isinstance(reply, str) else None,
         "admin_aside": aside if isinstance(aside, str) else None,
-        "skill_results": skill_results,
+        "skill_results": [],
         "land_results": land_results,
         "contact_task_results": contact_task_results,
         "slack_post": slack_post,
@@ -1412,7 +1404,10 @@ def _run_contact_command(
 ) -> dict:
     """Run one registry command and reply per its mode; returns the estelle_turn dict."""
     meta = CONTACT_CONFIG["commands"][command_id]
-    reply_thread_ts = thread_ts or message_ts
+    # Handler anchor stays the inbound thread (or message) so later nags find this thread,
+    # independent of where thread_response puts our replies (AST-2072 AC 10).
+    anchor_ts = thread_ts or message_ts
+    reply_ts, reply_broadcast = _contact_reply_placement(thread_ts, message_ts)
     summary = {"id": command_id, "mode": meta["mode"], "ok": False, "meteorite_id": None, "error": None}
 
     # Empty payload: usage reply only, either mode — no handler, no turn.
@@ -1421,7 +1416,8 @@ def _run_contact_command(
         post = contact_post_message(
             channel=channel,
             text=format_contact_reply_text(meta["usage_reply_text"]),
-            thread_ts=reply_thread_ts,
+            thread_ts=reply_ts,
+            reply_broadcast=reply_broadcast,
             debug=debug,
         )
         return {"ok": True, "outcome": command_id, "command": summary, "slack_post": post}
@@ -1437,11 +1433,11 @@ def _run_contact_command(
         source_id = f"{channel}:{message_ts or ''}"
         logger.debug(
             "Calling %s: [candidate_id=%r, source_id=%r, thread_ts=%r, payload=%r]",
-            meta["handler"], astral_candidate_id, source_id, reply_thread_ts, payload,
+            meta["handler"], astral_candidate_id, source_id, anchor_ts, payload,
         )
         out = handler(
             astral_candidate_id, payload,
-            source_id=source_id, thread_ts=reply_thread_ts, debug=debug,
+            source_id=source_id, thread_ts=anchor_ts, debug=debug,
         )
         logger.debug("Response from %s: %s", meta["handler"], out)
         if isinstance(out, dict):
@@ -1470,7 +1466,8 @@ def _run_contact_command(
             text=format_contact_reply_text(
                 meta["ack_reply_template"].format(meteorite_id=summary["meteorite_id"])
             ),
-            thread_ts=reply_thread_ts,
+            thread_ts=reply_ts,
+            reply_broadcast=reply_broadcast,
             debug=debug,
         )
     return {"ok": summary["ok"], "outcome": command_id, "command": summary, "slack_post": post}
@@ -1545,7 +1542,26 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
         if not _is_dm_message(event):
             logger.debug("Response from handle_slack_event: accepted=False reason=not_dm")
             return {"accepted": False, "reason": "not_dm"}
-    # app_mention: accept as channel @Estelle
+    # AST-2061: Estelle acts only in DMs / private channels. app_mention carries no
+    # channel_type (and private channels use C… ids), so ask Slack; fail closed.
+    if etype == "app_mention":
+        mention_channel = event.get("channel") or ""
+        ctype = event.get("channel_type")
+        if not ctype:
+            try:
+                ctype = fetch_channel_type(mention_channel)
+            except Exception as exc:
+                logger.exception(
+                    "%s | contact channel type lookup\n  %s: %s\n  This @Estelle mention is being ignored",
+                    mention_channel or "-", type(exc).__name__, exc,
+                )
+                ctype = None
+        if ctype not in CONTACT_CONFIG["allowed_channel_types"]:
+            logger.debug(
+                "Response from handle_slack_event: accepted=False reason=channel_not_private channel_type=%r",
+                ctype,
+            )
+            return {"accepted": False, "reason": "channel_not_private"}
 
     text = event.get("text") or ""
     if not isinstance(text, str):
@@ -1654,28 +1670,29 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
             },
             debug=debug,
         )
-    # AST-1668: known/unknown recognition, then Estelle only when bound.
+    # AST-1668 / AST-2072: unbound sender gets the unknown reply only; a bound sender gets no
+    # recognition post — Estelle's own reply (turn / command / paste ack / hear-ack) is the answer.
     if result.get("accepted") and isinstance(channel, str) and channel:
         user_ok = isinstance(user, str) and bool(user.strip())
         resolve_ok = user_ok and not result.get("resolve_error")
         known = isinstance(result.get("astral_candidate_id"), str) and bool(
             result.get("astral_candidate_id")
         )
-        if resolve_ok:
-            text_key = (
-                "known_recognition_reply_text"
-                if known
-                else "unknown_recognition_reply_text"
-            )
+        # One placement decision for every reply this event can produce (thread_response).
+        reply_ts, reply_broadcast = _contact_reply_placement(
+            event.get("thread_ts"), msg_ts if isinstance(msg_ts, str) else None
+        )
+
+        # Unknown bound miss: unknown reply only — do not run Estelle as if bound.
+        if resolve_ok and not known:
             try:
-                outbound = format_contact_reply_text(str(CONTACT_CONFIG[text_key]))
-                reply_thread_ts = event.get("thread_ts")
-                if not reply_thread_ts and isinstance(msg_ts, str):
-                    reply_thread_ts = msg_ts
                 result["recognition_post"] = contact_post_message(
                     channel=channel,
-                    text=outbound,
-                    thread_ts=reply_thread_ts,
+                    text=format_contact_reply_text(
+                        str(CONTACT_CONFIG["unknown_recognition_reply_text"])
+                    ),
+                    thread_ts=reply_ts,
+                    reply_broadcast=reply_broadcast,
                     debug=debug,
                 )
             except Exception as exc:
@@ -1684,9 +1701,6 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                     result.get("astral_candidate_id") or "-", type(exc).__name__, exc,
                 )
                 result["recognition_post"] = {"ok": False, "error": str(exc)}
-
-        # Unknown bound miss: recognition only — do not run Estelle as if bound.
-        if resolve_ok and not known:
             result["estelle_turn"] = {
                 "ok": True,
                 "outcome": "unrecognized",
@@ -1731,9 +1745,6 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                     ack = format_contact_reply_text(
                         "Got it — pasted job description saved for review."
                     )
-                    reply_thread_ts = event.get("thread_ts")
-                    if not reply_thread_ts and isinstance(msg_ts, str):
-                        reply_thread_ts = msg_ts
                     result["estelle_turn"] = {
                         "ok": True,
                         "outcome": "paste_applied",
@@ -1741,7 +1752,8 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                         "slack_post": contact_post_message(
                             channel=channel,
                             text=ack,
-                            thread_ts=reply_thread_ts,
+                            thread_ts=reply_ts,
+                            reply_broadcast=reply_broadcast,
                             debug=debug,
                         ),
                     }
@@ -1785,13 +1797,11 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                     outbound = format_contact_reply_text(
                         str(CONTACT_CONFIG["hear_ack_reply_text"])
                     )
-                    reply_thread_ts = event.get("thread_ts")
-                    if not reply_thread_ts and isinstance(msg_ts, str):
-                        reply_thread_ts = msg_ts
                     result["hear_ack_post"] = contact_post_message(
                         channel=channel,
                         text=outbound,
-                        thread_ts=reply_thread_ts,
+                        thread_ts=reply_ts,
+                        reply_broadcast=reply_broadcast,
                         debug=debug,
                     )
                     logger.debug(

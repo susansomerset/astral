@@ -2807,3 +2807,52 @@ class TestAst1974CandidateSkipJob:
             ("list", {"states": None, "candidate_id": "cand-1", "order_by": "state_changed_at", "exclude_states": ["X"]}),
             ("count", {"states": None, "candidate_id": "cand-1", "exclude_states": ["X"]}),
         ]
+
+
+# AST-2066 Branches: save_job_artifact identical-to-current no-op (no current / same body hit /
+# different body miss); _job_catalog_entry blank key / unknown key / candidate key / blank jid / ok;
+# list_job_artifact_versions + set_job_artifact_current round trip on real SQLite.
+class TestAst2066JobVersions:
+    _KEY = "job.artifacts.cover_letter"
+    _BODY = {"Subject": "Re: Role", "Letter": "Hello", "signature": "Ada"}
+
+    @pytest.fixture
+    def db(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-1")
+        return sqlite_in_memory
+
+    def test_identical_cover_letter_save_is_noop(self, db) -> None:
+        # AC7: same body twice → one row, same uuid; a changed body appends.
+        u1 = tracker_mod.save_job_artifact("job-2066", self._KEY, dict(self._BODY))
+        assert tracker_mod.save_job_artifact("job-2066", self._KEY, dict(self._BODY)) == u1
+        assert len(db.list_artifacts("job", "job-2066", "cover_letter")) == 1
+        u2 = tracker_mod.save_job_artifact("job-2066", self._KEY, {**self._BODY, "Letter": "Changed"})
+        assert u2 != u1
+        assert len(db.list_artifacts("job", "job-2066", "cover_letter")) == 2
+
+    def test_list_and_set_current_round_trip(self, db) -> None:
+        uids = [
+            tracker_mod.save_job_artifact("job-2066", self._KEY, {**self._BODY, "Letter": f"v{i}"})
+            for i in (1, 2, 3)
+        ]
+        out = tracker_mod.list_job_artifact_versions(" job-2066 ", self._KEY)
+        assert list(out) == uids
+        assert [v["current"] for v in out.values()] == [0, 0, 1]
+        assert tracker_mod.set_job_artifact_current("job-2066", self._KEY, uids[1]) == uids[1]
+        assert db.get_current_artifact("job", "job-2066", "cover_letter")["artifact_data"]["Letter"] == "v2"
+        assert len(db.list_artifacts("job", "job-2066", "cover_letter")) == 3
+
+    @pytest.mark.parametrize(
+        "jid,key,msg",
+        [
+            ("job-1", " ", "artifact_key required"),
+            ("job-1", "not.a.key", "unknown catalog key"),
+            ("job-1", "candidate.artifacts.base_resume", "not job-scoped"),
+            (" ", "job.artifacts.cover_letter", "astral_job_id required"),
+        ],
+    )
+    def test_catalog_entry_rejects(self, jid: str, key: str, msg: str) -> None:
+        with pytest.raises(ValueError, match=msg):
+            tracker_mod.list_job_artifact_versions(jid, key)
+        with pytest.raises(ValueError, match=msg):
+            tracker_mod.set_job_artifact_current(jid, key, "u")
