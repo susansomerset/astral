@@ -344,3 +344,18 @@ Separately, `dispatcher._run_dispatch_loop` adds each run's `total_processed` in
 - Chunk 0 still runs first for cache warm, and the rest still run in parallel.
 - Dispatch loop termination (`0 processed` stop, `max_runs`, drain) behaves as today.
 - Jobs already stranded in `METEORITE_FAILED_TECHNICAL_GET` by the reported run are not reset.
+
+
+## Joan fix-board — AST-2093
+
+[board-joan]  CANON: OK
+
+AST-2093 board-joan done — CANON: OK.
+
+**Rationale:** Read the `## Bug: AST-2093` plan-fix block on `origin/sub/AST-2012/AST-2093-grade-batch-unique-index` (As-is through What must still hold). No frozen **Canon Scope** on the orphaned AST-2012 mini-parent; triage is roster overlap only, not R1–R7.
+
+**Overlap skim:** **`patt.entity.batch-processing`** — claim/process/release and `batch_id` as ledger join key are unchanged; deduping `total_processed` across retry runs in one dispatch loop aligns counts with unique entities worked, not a new claim shape. **`astral.seed.agent-tables-in-repo-json`** — `agent_task.json` `cache_prompt` text-only edits for grade tasks are normal repo-owned seed content. **`stat.logging.warning`** — unknown-index skips and duplicate-index handling fit per-item who/why (decode failures still route per entity; no new ERROR rollup). **`astral.agent.grade-vector-validation`** and encoded-grade semantics called out in **What must still hold** stay intact. **`patt.agent.response-decode`** / **`patt.consult.encoded-line`** exist in the taxonomy as decode-shape docs, not active rules that mandate chunk-local `000` or forbid `batch_index_map`; the fix tightens Layer 2 binding described in `response-validation-layers.md` without contradicting in-force statute text.
+
+No directive needs amending and nothing here is an Archie-only precedent call (**ESCALATE** not warranted). If product wants a formal pattern for global batch row indexes later, that would be optional documentation outside this bug’s blast radius—not a gate for `make-fix`.
+
+**Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-2093 proceeds to make-fix on product only.
