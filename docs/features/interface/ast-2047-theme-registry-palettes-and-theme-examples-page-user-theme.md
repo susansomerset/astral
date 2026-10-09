@@ -1505,3 +1505,14 @@ Line anchors are at sub tip `dd70ebbc1`.
 - AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` outside token blocks, no `#hex` in `.ts`/`.tsx`, and every `var(--x)` defined in a token block.
 - AST-2063: section/page headers stay `#241b33` in all three Lights. Slate keeps its literal value, and light/parchment get it via `var(--accent-contrast)`.
 - AST-2064 / AST-2077: grade tokens and Theme Examples option rows are untouched.
+
+### Fix-board — Joan (AST-2076)
+
+[board-joan]  CANON: REVISE
+What: pattern.ui.shared-button-roles (draft) — rename `--accent-gold` to `--accent-contrast` and fix in-flight prose (accent is palette-dependent, not always gold) — align draft with global token rename
+
+**Read:** `## Bug: AST-2076` on `origin/sub/AST-2042/AST-2076-light-accent-contrast` — mechanical `--accent-gold*` → `--accent-contrast*` across six frontend files; Light / Light (Parchment) accent values set to the header purple family; `--heading` / `--nav-group-label` alias `--accent-contrast` in those blocks only. Parent **Canon Scope: none.**
+
+**Roster skim:** Touches `App.css` and scoped `.tsx` files (`astral.ui.frontend-file-placement`). No new React-side business rules (`astral.layers.ui-config-driven-business-logic`). No **active** directive in `canon/directives/active/` names `--accent-gold`. The plan’s blast radius flags `canon/directives/draft/patt.ui.shared-button-roles.md` (`pattern.ui.shared-button-roles`, Archie-approved draft): solution shape still says in-flight primary is “Gold (`--accent-gold`)”, which the product rename and Light purple accents will falsify even though behavior still goes through the renamed token in `App.css`.
+
+**Verdict:** Active in-force canon is not contradicted, but the corpus still needs a small draft-pattern update so the token name and palette-dependent accent prose match the ship. That is F3 (`validate-plan` fix mode), not an Archie escalate.
