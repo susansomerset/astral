@@ -7103,6 +7103,13 @@ class TestAst1808RetryRegistryPurge:
         for b in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
             cs[b] = None
             cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
+        # AST-2096 added six scored-task {fail_state}_ALL_X terminals: priors = base fail_state's trigger (+ _RETRY).
+        for s, trig in (("FAILED_DO_ALL_X", "PASSED_JD"), ("FAILED_GET_ALL_X", "PASSED_DO"),
+                        ("FAILED_LIKE_ALL_X", "CULTURE_READY"), ("METEORITE_FAILED_DO_ALL_X", "METEORITE_PASSED_JD"),
+                        ("METEORITE_FAILED_GET_ALL_X", "METEORITE_PASSED_DO"),
+                        ("METEORITE_FAILED_LIKE_ALL_X", "METEORITE_PASSED_GET")):
+            js[s] = [trig, f"{trig}_RETRY", f"{s}_RETRY"]
+            js[f"{s}_RETRY"] = [s, f"{s}_RETRY"]
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
