@@ -644,3 +644,16 @@ AC 2–3 → Stage 1; AC 4 → Stage 2; AC 5–7 → Stage 3; AC 8 → Stage 1/3
 **Definition fidelity (R6):** Scope is three core files only; depends on AST-2069 registration (`fetch_company_culture_pages`, `company_upshot`, states). Out-of-scope list protects prefilter grade functions (AC 8). Estimate 5 — agree.
 
 context_tokens≈52000
+
+## Review
+
+- **Branch:** `sub/AST-2054/AST-2070-upshot-hops`
+- **Stage 1:** `7d471237c` — `_finalize_parse_dispatch_success` and both legacy locate-success paths write the configured pass state (`GET_UPSHOT`); `_PERSIST_PAGE_OPTION_URL_STATES` keys off those pass states so `job_site` still persists
+- **Stage 2:** `f8d1feabd` — `gazer.fetch_company_culture_pages_batch` (always → `UPSHOT_READY`, connectivity abort before transitions); `run_consult_task` routes `fetch_company_culture_pages`
+- **Stage 3:** `732259241` — `roster.company_upshot_batch` (one `do_task`, saves `company_upshot`, → `WATCH`; retry → `UPSHOT_READY_RETRY`, then `ERROR_UPSHOT`; `empty_tokens` → `ERROR_UPSHOT`; balance refusal held) with `_upshot_fail_dest` / `_transition_upshot_failures` / `_upshot_culture_text`; `run_consult_task` routes `company_upshot`
+- **Build notes:**
+  - All plan verify steps pass (compile, `state="WATCH"` grep empty, persist-set check, both smoke checks, prefilter-function hunk guard, lint gate clean on all three files).
+  - Joan discuss 1: Stage 2 docstring reworded to "Lost connectivity raises ConnectionError before any transition." (wording only; code as planned).
+  - Joan discuss 2: `_log.exception` on coat-check `ValueError` kept as planned; worth watching in UAT logs.
+  - Live `dispatch_task` schedule rows for `fetch_company_culture_pages` / `company_upshot` still need creating (prep-uat reminder carried from AST-2069).
+  - No tests touched; coverage is Betty's `qa-child`.
