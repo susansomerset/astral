@@ -2101,3 +2101,12 @@ Test gap for **AST-2089** (`f3897829d`). `_run_batch_consult`: when `do_task` fa
 - `TestAst1846DoTaskAgentFailureFlag` (all), `TestRunBatchConsult::test_routes_envelope_failure_to_error_state`, `TestAst2010RateLimitForwarding::test_batch_consult_envelope_failure_forwards_tag`, `TestEncodedDecodeIsolation` all stay green and unedited (verified at tip: **10 passed**).
 - No production code change.
 - Pass criterion: `pytest tests/component/core/test_agent.py::TestAst2089DoTaskSalvagedResponse tests/component/core/test_consult.py::TestAst2089SalvagedBatchSplit` gives **9 passed** on the tip. The 3 bug-repro nodes fail against pre-fix `22ff5e47a` product files.
+
+
+## Joan fix-board — AST-2090
+
+[board-joan]  CANON: OK
+
+AST-2090 board-joan done — CANON: OK.
+
+**Rationale:** AST-2090’s plan-fix patch is **tests + `docs/test-bible` only** — no `src/` or `data/`. It adds component tests and bible rows that **lock AST-2089’s already-reviewed product contract** (`salvaged_response` on rubric envelope failure when `batch_entities` is present; `_run_batch_consult` processes salvaged lines and fail-dests only gaps, with first/second-strike routing on the gap entity). That behavior was already aligned with `patt.task.dispatch-retry` on AST-2089’s fix-board pass; claim/process/release and logging statutes are untouched because there is no product diff. Bible blocks describe **coverage**, not new in-force directives or statute amendments. No canon update, carve-out, or Archie gate indicated. **F3 (`validate-plan` fix mode) not indicated** from this board pass.
