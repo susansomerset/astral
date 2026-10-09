@@ -6,6 +6,7 @@ import { useCandidate, type CandidateInfo } from "../contexts/CandidateContext"
 import api from "../lib/api"
 import AdminDeployFooter from "./AdminDeployFooter"
 import astralLogo from "../assets/astral_logo.png"
+import astralLogoLight from "../assets/astral_logo_light.png"
 
 interface NavItem { label: string; path: string; enabled: boolean; count?: number }
 interface NavGroup { label: string; items: NavItem[] }
@@ -119,6 +120,9 @@ export default function NavigationShell() {
   }
 
   const selectedCandidate = candidates.find(c => c.astral_candidate_id === selectedId)
+  // Saved profile theme "light" (the Light option) swaps in the light wordmark.
+  const logoSrc =
+    selectedCandidate?.candidate_data?.theme === "light" ? astralLogoLight : astralLogo
   const selectedLabel = selectedCandidate
     ? candidateLabel(selectedCandidate)
     : (selectedId ?? "")
@@ -157,7 +161,7 @@ export default function NavigationShell() {
             className="sidebar-logo"
             style={logoBackground ? { backgroundColor: logoBackground } : undefined}
           >
-            <img src={astralLogo} alt="Astral" />
+            <img src={logoSrc} alt="Astral" />
           </div>
           {candidates.length > 0 && (
             isWide ? (
