@@ -1160,6 +1160,7 @@ def _finalize_parse_dispatch_success(
     parsed: Dict[str, Any],
     job_titles: List[Any],
 ) -> Dict[str, Any]:
+    pass_state = ROSTER_CONFIG["parse_job_list"]["pass_state"]
     container = (parsed.get("job_container") or "").strip()
     job_tag = (parsed.get("job_tag") or "").strip()
     container_index = _compute_container_index(dom_html, container, job_titles)
@@ -1168,13 +1169,13 @@ def _finalize_parse_dispatch_success(
     _save_company(
         short_name=short_name,
         company_website=company_website,
-        state="WATCH",
+        state=pass_state,
         page_option_url=list_url,
         raw_response=parsed,
     )
     return {
         "short_name": short_name,
-        "state": "WATCH",
+        "state": pass_state,
         "job_site": list_url,
         "response_type": "PARSE_DISPATCH_OK",
         "parse_instructions": parse_instructions,
@@ -2829,9 +2830,10 @@ async def _finalize_joblist_titles_after_chain(
     if vis_save:
         extra_cd["job_list_visible"] = vis_save
     save_company_data(short_name, extra_cd)
+    pass_state = ROSTER_CONFIG["locate_job_page"]["pass_states"][0]
     _save_company(short_name=short_name, company_website=company_website,
-                       state="WATCH", page_option_url=job_site_url, raw_response=parsed)
-    return {"short_name": short_name, "state": "WATCH", "job_site": job_site_url, "response_type": response_type, "parse_instructions": parse_instructions}
+                       state=pass_state, page_option_url=job_site_url, raw_response=parsed)
+    return {"short_name": short_name, "state": pass_state, "job_site": job_site_url, "response_type": response_type, "parse_instructions": parse_instructions}
 
 
 async def _finalize_joblist_titles_select_only(
@@ -2897,9 +2899,10 @@ async def _finalize_joblist_titles_select_only(
     if vis_save:
         extra["job_list_visible"] = vis_save
     save_company_data(short_name, extra)
+    pass_state = ROSTER_CONFIG["locate_job_page"]["pass_states"][0]
     _save_company(short_name=short_name, company_website=company_website,
-                       state="WATCH", page_option_url=job_site_url, raw_response=parsed)
-    return {"short_name": short_name, "state": "WATCH", "job_site": job_site_url, "response_type": response_type, "parse_instructions": parse_instructions}
+                       state=pass_state, page_option_url=job_site_url, raw_response=parsed)
+    return {"short_name": short_name, "state": pass_state, "job_site": job_site_url, "response_type": response_type, "parse_instructions": parse_instructions}
 
 
 async def _fetch_select_job_page(
@@ -3040,8 +3043,10 @@ def _derive_shortname_from_url(url: str) -> str:
 
 
 
+# Locate/parse success persists the listings URL as job_site; gaze reads it once the company reaches WATCH.
 _PERSIST_PAGE_OPTION_URL_STATES = frozenset({
-    "WATCH", "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE", "JOBSITE_SCRAPE_ISSUE", "BOT_BLOCKED",
+    ROSTER_CONFIG["parse_job_list"]["pass_state"], *ROSTER_CONFIG["locate_job_page"]["pass_states"],
+    "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE", "JOBSITE_SCRAPE_ISSUE", "BOT_BLOCKED",
 })
 
 
