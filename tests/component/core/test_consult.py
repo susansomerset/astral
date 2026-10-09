@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
 
@@ -2506,6 +2507,144 @@ class TestAst2089SalvagedBatchSplit:
         assert [aid for aid, _, _ in logged] == ["job-0", "job-1", "job-2"]
         assert (out["success"], out["retried"], out["error"]) == (False, 3, self.ERR)
         assert "agent_failure" not in out
+
+
+class TestAst2093EncodedDispatchIndex:
+    """AST-2093: grade rows carry one batch-unique [index=NNN] label, and decode gets the index → entity map.
+
+    Branches (consult): _consult_scored_dispatch_batch_encoded idx = offset + claimed pos (skipped rows leave
+    gaps; row_indexes parallel to eligible; assemble has no positional prefix); _run_batch_consult
+    row_indexes supplied vs None; render_verdict batch_index → position + one-entry map; run_consult_task
+    forwards batch_index_offset on N==1 / N>1 / alias; grade_*_batch + meteorite_like_batch forward it.
+    """
+
+    @staticmethod
+    def _jobs(n: int) -> List[Dict[str, Any]]:
+        return [{"astral_job_id": f"job-{i}", "state": "PASSED_JD"} for i in range(n)]
+
+    def _patch_encoded(
+        self, monkeypatch: pytest.MonkeyPatch, prep_fails: tuple = ()
+    ) -> tuple:
+        """Stub prep + batch runner around _consult_scored_dispatch_batch_encoded; returns (positions, runner)."""
+        positions: List[int] = []
+
+        async def prep(row, company, scoring_task_key=None, position=0):
+            positions.append(position)
+            return False if row["astral_job_id"] in prep_fails else f"[index={position:03d}]: jd"
+
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda aid: None)
+        monkeypatch.setattr(
+            consult_mod, "_consult_orchestration_for_entity", lambda tk, st: {"agent_task": "grade_get"},
+        )
+        monkeypatch.setattr(consult_mod, "_prep_live_content", prep)
+        runner = AsyncMock(return_value={"success": True, "passed": 0, "failed": 0})
+        monkeypatch.setattr(consult_mod, "_run_batch_consult", runner)
+        return positions, runner
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_rows_carry_one_global_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] pre-fix: assemble prefixed "000: " onto "[index=000]: …" and no row_indexes reached decode.
+        hdr = consult_mod._GRADE_DISPATCH_TO_HEADER["grade_get"]
+        jobs = self._jobs(3)
+        positions, runner = self._patch_encoded(monkeypatch)
+        await consult_mod._consult_scored_dispatch_batch_encoded("grade_get", "b1", jobs, ctx={})
+        body = runner.await_args.args[3](jobs)
+        assert body == f"CONSULT {hdr} ROWS:\n[index=000]: jd\n[index=001]: jd\n[index=002]: jd"
+        assert runner.await_args.kwargs["row_indexes"] == [0, 1, 2]
+
+        # Chunk 1 of the claim starts at its claimed position, not 000.
+        positions.clear()
+        await consult_mod._consult_scored_dispatch_batch_encoded(
+            "grade_get", "b1", jobs, ctx={}, batch_index_offset=20,
+        )
+        assert positions == [20, 21, 22]
+        body = runner.await_args.args[3](jobs)
+        assert body == f"CONSULT {hdr} ROWS:\n[index=020]: jd\n[index=021]: jd\n[index=022]: jd"
+        assert not re.search(r"^\d{3}: \[index=", body, re.MULTILINE)
+        assert runner.await_args.kwargs["row_indexes"] == [20, 21, 22]
+
+    @pytest.mark.asyncio
+    async def test_skipped_row_keeps_its_index_gap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        jobs = self._jobs(3)
+        _positions, runner = self._patch_encoded(monkeypatch, prep_fails=("job-1",))
+        out = await consult_mod._consult_scored_dispatch_batch_encoded("grade_get", "b1", jobs, ctx={})
+        assert runner.await_args.kwargs["row_indexes"] == [0, 2]
+        body = runner.await_args.args[3](jobs)
+        assert re.findall(r"\[index=\d{3}\]", body) == ["[index=000]", "[index=002]"]
+        assert out["skipped"] == 1
+
+    @pytest.mark.asyncio
+    async def test_run_batch_consult_puts_index_map_in_do_task_ctx(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        do = AsyncMock(return_value={"success": False, "error": "stop after ctx capture"})
+        monkeypatch.setattr(consult_mod, "do_task", do)
+        jobs = [{"astral_job_id": "J0", "state": "METEORITE_QUALIFIED"}, {"astral_job_id": "J1", "state": "METEORITE_QUALIFIED"}]
+
+        async def _run(**kw: Any) -> Dict[str, Any]:
+            await consult_mod._run_batch_consult(
+                "evaluate_meteorite", "b1", jobs, lambda rows: "content",
+                lambda input_job, response_job, cfg: cfg["pass_state"], {}, False, **kw,
+            )
+            return do.await_args.kwargs["ctx"]
+
+        assert (await _run(row_indexes=[20, 21]))["batch_index_map"] == {20: jobs[0], 21: jobs[1]}
+        # evaluate_jd / qualify assemblers pass no row_indexes → positional decode as before.
+        assert "batch_index_map" not in await _run()
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_stamps_and_maps_batch_index(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}, "state": "PASSED_JD"}
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        prep = AsyncMock(return_value="live")
+        do = AsyncMock(return_value={"success": False, "error": "stop after ctx capture"})
+        monkeypatch.setattr(consult_mod, "_prep_live_content", prep)
+        monkeypatch.setattr(consult_mod, "do_task", do)
+
+        await consult_mod.render_verdict("grade_get", "job-1", ctx={}, batch_index=24)
+        assert prep.await_args.kwargs["position"] == 24
+        assert do.await_args.kwargs["ctx"]["batch_index_map"] == {24: job}
+
+        await consult_mod.render_verdict("grade_get", "job-1", ctx={})
+        assert prep.await_args.kwargs["position"] == 0
+        assert do.await_args.kwargs["ctx"]["batch_index_map"] == {0: job}
+
+    @pytest.mark.asyncio
+    async def test_run_consult_task_forwards_batch_index_offset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ok = {"success": True, "passed": 2, "failed": 0, "total": 2}
+        batch = AsyncMock(return_value=ok)
+        encoded = AsyncMock(return_value=ok)
+        rv = AsyncMock(return_value={"success": True, "to_state": TASK_CONFIG["grade_get"]["pass_state"]})
+        monkeypatch.setattr(consult_mod, "grade_do_batch", batch)
+        monkeypatch.setattr(consult_mod, "_consult_scored_dispatch_batch_encoded", encoded)
+        monkeypatch.setattr(consult_mod, "render_verdict", rv)
+        two = self._jobs(2)
+
+        await consult_mod.run_consult_task(
+            "job", "PASSED_JD", two, "b1", {}, dispatch_task_key="grade_do", batch_index_offset=40,
+        )
+        assert batch.await_args.kwargs["batch_index_offset"] == 40
+
+        await consult_mod.run_consult_task(
+            "job", "PASSED_JD", two[:1], "b1", {}, dispatch_task_key="grade_get", batch_index_offset=7,
+        )
+        assert rv.await_args.kwargs["batch_index"] == 7
+
+        await consult_mod.run_consult_task(
+            "job", "PASSED_JD", two, "b1", {}, dispatch_task_key="meteorite_grade_get", batch_index_offset=40,
+        )
+        assert encoded.await_args.args[0] == "meteorite_grade_get"
+        assert encoded.await_args.kwargs["batch_index_offset"] == 40
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("task_key", ["grade_do", "grade_get", "grade_like", "meteorite_like"])
+    async def test_batch_wrappers_forward_offset(self, monkeypatch: pytest.MonkeyPatch, task_key: str) -> None:
+        encoded = AsyncMock(return_value={"success": True})
+        monkeypatch.setattr(consult_mod, "_consult_scored_dispatch_batch_encoded", encoded)
+        jobs = self._jobs(2)
+        await getattr(consult_mod, f"{task_key}_batch")("b1", jobs, ctx={}, batch_index_offset=5)
+        assert encoded.await_args.args[:3] == (task_key, "b1", jobs)
+        assert encoded.await_args.kwargs["batch_index_offset"] == 5
 
 
 class TestRunBatchConsultBranches:

@@ -432,3 +432,223 @@ No directive needs amending and nothing here is an Archie-only precedent call (*
 (Plan text calls AST-2012 an “orphaned Bug mini-parent” for **documentation/intake**; spawn prompt correctly uses **ftr**, not ORPHANED→`dev` merge.)
 
 context_tokens≈28000
+
+---
+
+## Bug: AST-2095 — batch-unique index decode/assembly/count tests + bible (test gap for AST-2093)
+
+Parent: AST-2012. Test-gap sibling for `[board-betty] TESTS: REVISE` on AST-2093. **Test tree + bible only.** Betty's `qa-fix` lands everything below; no `src/` or `data/` change.
+
+### As-is
+
+AST-2093 is on `origin/ftr/AST-2012-grade-batch-unique-index` @ `759a19247`, but nothing in `tests/` or `docs/test-bible/` exercises its new code: `rg` for `batch_index_map`, `batch_index_offset`, `dispatch_seen_ids` or `repeat_processed` finds only the five qa-handoff edits in `test_dispatcher.py`. Those edits are shape-only (`repeat_processed: 0` and a stub that accepts `batch_index_offset`), and this plan does not redo them. So:
+
+- The AST-2093 repro (a chunk-1 reply echoing `000` on every line collapses onto entity 0) has no test.
+- `agent.py`, `consult.py` and `dispatcher.py` are LOCKED_AT_100, and the new branches below have no nodes.
+- No existing test drives the body of `_consult_scored_dispatch_batch_encoded`. `TestRunConsultTask` and `TestAst1055MeteoriteConsultRoutes` mock the `grade_*_batch` / `meteorite_like_batch` wrappers at the routing layer.
+
+### To-be
+
+Every branch AST-2093 added has a node. The `[bug-repro]` nodes are red at the pre-fix base `823d37605` and green on the `ftr` tip. The bible pages `core/agent.md`, `core/consult.md` and `core/dispatcher.md` each carry an `AST-2093` block listing exactly these nodes. Existing nodes Betty reviewed stay green as written: `TestPrepLiveContentBranches` `[index=000]: jd text` (line ~1538), and the mocked `_run_task` summaries plus the five qa-handoff nodes in `test_dispatcher.py`.
+
+### Repro
+
+Fixture objects only; there is no DB. The repro for `_decode_payload` is the AST-2093 block's fixture verbatim:
+
+- `jobs = [{"astral_job_id": f"J{i:02d}"} for i in range(20, 40)]`
+- payload: 20 lines of `000|THA4|QQB3`
+- `ctx = {"batch_entities": jobs, "vector_labels": {}, "batch_index_map": {20 + k: jobs[k] for k in range(20)}}`
+- `output_type="grades_encoded_notes"`, `task_key="grade_get"`
+
+At base `823d376` the map key is ignored, so the result is 20 rows, all `J20`. At the tip it is `{"jobs": []}` with no `decode_failures`.
+
+### Root cause
+
+Coverage gap. AST-2093 shipped through fix-board with `TESTS: REVISE` routed here, and `qa-fix` did not run on AST-2093.
+
+### Proposed change
+
+Each node is new. Place it in the named existing class (or a new `TestAst2093…` class beside it), and follow that class's fixture and monkeypatch style. "Red at base" means the node fails against `823d37605` source, which is the `[bug-repro]` gate. Nodes marked *branch* lock coverage and only need to be green at the tip.
+
+**`tests/component/core/test_agent.py`** (new class `TestAst2093BatchIndexMapDecode`, next to `TestDecodePayload` at line ~210). Call `agent._decode_payload` directly:
+
+1. **`[bug-repro]` chunk-1 all-`000` echo.** Use the Repro fixture. Assert `out == {"jobs": []}`, with no `decode_failures` key. *Red at base* (20 rows on `J20`).
+2. **`[bug-repro]` correct global indexes.** Same map, payload lines `020|THA4|QQB3` … `039|THA4|QQB3`. Assert 20 rows, with `rows[k]["astral_job_id"] == f"J{20+k:02d}"` for every `k`. *Red at base*: positions 20–39 fall outside `len(batch_entities) == 20` and are skipped, giving 0 rows.
+3. **Duplicate index → one failure.** Chunk-0 map `{k: jobs[k] for k in range(20)}`, payload 3 × `000|THA4|QQB3` plus `001|THA4|QQB3`. Assert:
+   - `jobs` has exactly one row, for `jobs[1]` (index `001`).
+   - `decode_failures == [{"astral_job_id": jobs[0]["astral_job_id"], "pos": 0, "reason": "[grade_get] duplicate row index 000 on 3 lines"}]`.
+
+   This covers both sides of the "first sight / already reported" branch. *Red at base.*
+4. **Unknown index skipped with a warning** (*branch*). Map `{20: jobs[0]}`, payload `020|THA4|QQB3` plus `555|THA4|QQB3`. Assert one row (`J20`), and `caplog` has a WARNING containing `index 555 not in this batch`.
+5. **Map pre-pass bad position raises** (*branch*). Map present, payload `abc|THA4`. Use `pytest.raises(ValueError, match="bad position field")`.
+6. **Map path routes the per-line failures through the mapped entity** (*branch*). With map `{20: jobs[0]}`:
+   - (a) `grade_get` grades-only `output_type="grades_encoded"` with trailing junk `020|THA4|junk` gives a `decode_failures` row whose id is `J20` and `pos == 20`.
+   - (b) `020|THX3` gives a `decode_failures` row with an `X requires confidence digit 0` reason for `J20`.
+
+   This proves `ent[id_key]` comes from the map and not from `batch_entities[pos]`.
+7. **No map: positional decode unchanged** (*branch, guard*). `ctx` without `batch_index_map`, payload `000|THA4|QQB3` plus `001|THA4|QQB3` against `jobs[:2]`. Assert rows `J20` and `J21`. An empty map `{}` behaves the same, since the map is checked for truthiness.
+
+**`tests/component/core/test_consult.py`**
+
+8. **`[bug-repro]` single-label assembly at the global offset** (new class `TestAst2093EncodedDispatchIndex`, after `TestEncodedDecodeIsolation` at line ~2355). Drive `consult._consult_scored_dispatch_batch_encoded("grade_get", "b1", jobs, ctx={}, batch_index_offset=20)` with 3 jobs. Monkeypatch:
+   - `tracker.get_job` returns the row.
+   - `_consult_orchestration_for_entity` returns a cfg with no `requires_company`.
+   - `_prep_live_content` returns ``f"[index={position:03d}]: jd"`` and records `position`.
+   - `_run_batch_consult` captures `assemble_fn` and its kwargs.
+
+   Assert:
+   - `_prep_live_content` positions are `[20, 21, 22]`.
+   - `assemble_fn(jobs)` returns `"CONSULT <hdr> ROWS:\n[index=020]: jd\n[index=021]: jd\n[index=022]: jd"`, with no line matching `^\d{3}: \[index=`.
+   - `row_indexes == [20, 21, 22]` is passed to `_run_batch_consult`.
+
+   *Red at base*: positions are `[0, 1, 2]`, there is a `000: ` prefix, and `_run_batch_consult` has no `row_indexes` kwarg.
+9. **Skipped row keeps its gap** (*branch*). Same setup, offset `0`, 3 jobs. The 2nd job's `_prep_live_content` returns `False` (state is not `NEED_WEBSITE_CONTENT`). Assert `row_indexes == [0, 2]` and the assembled body holds `[index=000]` and `[index=002]` only.
+10. **`_run_batch_consult` puts the map in the `do_task` ctx** (class `TestRunBatchConsult`, line ~951). Monkeypatch `do_task` to capture `ctx` and return a success with `parsed_response={"jobs": []}`.
+    - Call with `row_indexes=[20, 21]` and 2 jobs: assert `ctx["batch_index_map"] == {20: jobs[0], 21: jobs[1]}`.
+    - Call with no `row_indexes`: assert `"batch_index_map" not in ctx`. This guard covers the evaluate_jd / qualify callers.
+11. **`render_verdict` carries `batch_index`** (beside `test_render_verdict_forwards_do_task_harvest`, line ~7431). Capture the `_prep_live_content` `position` and the `do_task` ctx.
+    - `batch_index=24` gives `position == 24` and `ctx["batch_index_map"] == {24: <job_row>}`.
+    - With the kwarg omitted: `position == 0` and the map is `{0: <job_row>}`.
+12. **`run_consult_task` forwards `batch_index_offset`** (`TestRunConsultTask`, line ~492, same mocks as `test_ast503_routes_two_passed_jd_jobs_to_grade_do_batch`):
+    - (a) N>1 `grade_do` with `batch_index_offset=40`: the `grade_do_batch` mock is awaited with `batch_index_offset=40`.
+    - (b) N==1 `grade_get` with `batch_index_offset=7`: `render_verdict` is awaited with `batch_index=7`.
+    - (c) Alias `meteorite_grade_get` with N>1 and `batch_index_offset=40`: `_consult_scored_dispatch_batch_encoded` is awaited with `batch_index_offset=40`.
+13. **Wrappers forward the offset** (*branch*). Parametrize over `grade_do_batch`, `grade_get_batch`, `grade_like_batch` and `meteorite_like_batch`, with `_consult_scored_dispatch_batch_encoded` mocked. Calling with `batch_index_offset=5` awaits it with the right task key and `batch_index_offset=5`.
+
+**`tests/component/core/test_dispatcher.py`**
+
+14. **Chunk offsets** (class `TestRunUnified`, line ~238, modelled on `test_ast502_chunked_evaluate_await_chunk0_sleep_once_then_gather_tails`). Claim 5 jobs with `batch_size=2` and a chunk-exhaust key (e.g. `grade_get`). The `run_capture` stub records kwargs. Assert the `batch_index_offset` values are `{0, 2, 4}`, mapping chunk index `ci` to `ci*2`. *Red at base* (kwarg absent).
+15. **Per-entity offsets** (`TestRunUnified`). `batch_call_mode=0`, 3 claimed entities. Assert each `run_consult_task` await for entity `k` carries `batch_index_offset=k`, so offsets `{0, 1, 2}` follow claimed order and not completion order. *Red at base.*
+16. **`repeat_processed` across runs of one ctx** (`TestRunUnified`). Call `_run_unified` twice with the same `ctx`:
+    - Run 1 claims `[A, B]`.
+    - Run 2 claims `[B, C]`, with `run_consult_task` returning `total_processed=2`.
+
+    Assert run 1 has `repeat_processed == 0`, run 2 has `repeat_processed == 1`, and `ctx["dispatch_seen_ids"] == {A, B, C}`. *Red at base.*
+17. **Falsy ids and the outage `min()` guard** (*branch*).
+    - (a) An entity dict with no `astral_job_id` / `company_id` / `astral_candidate_id` is neither counted as a repeat nor added to `seen`.
+    - (b) Run 2 re-claims 2 seen ids, but the mocked consult returns `total_processed=0` (an outage-zeroed chunk). Assert `repeat_processed == 0`, not 2.
+18. **`[bug-repro]` loop dedupe** (class `TestRunDispatchLoop`, line ~2051). Mock `_run_task` to return, in order:
+    - `{total_processed: 27, total_passed: 4, …, repeat_processed: 0}`
+    - `{total_processed: 23, total_errors: 23, repeat_processed: 23}`
+    - then a zero summary, which hits the `0 processed` stop.
+
+    Assert `accumulated["total_processed"] == 27`, with passed and errors summed as usual (4 / 23). *Red at base*: 50.
+19. **Loop stop still reads the raw per-run value** (*guard*, `TestRunDispatchLoop`). A run returns `{total_processed: 3, repeat_processed: 3}`. The loop does **not** stop on "0 processed" after it: assert `_run_task` is awaited again, given `max_runs` allows it.
+
+**Bible** (`docs/test-bible/core/agent.md`, `core/consult.md`, `core/dispatcher.md`). In each, add an `AST-2093` block in the page's existing manifest-row format: one row per node above for that module (agent: 1–7, consult: 8–13, dispatcher: 14–19). Tag the `[bug-repro]` rows (1, 2, 3, 8, 14, 15, 16, 18). Note the LOCKED_AT_100 branch each *branch* row closes. Do not touch other rows.
+
+**Verify (for `test-fix`):**
+
+`/home/susan/astral/.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_consult.py tests/component/core/test_dispatcher.py -q -rf`
+
+- The new nodes are all green.
+- The failing-id set equals the `ftr` base reds: 80 in total, including the 12 dispatcher reds recorded at `823d376` on AST-2093.
+- Branch coverage on the three modules is still 100%.
+- Every `[bug-repro]` node fails when run against a `git archive 823d37605` export.
+
+### Blast radius
+
+- Only `tests/component/core/test_{agent,consult,dispatcher}.py` and the three bible pages change.
+- New classes are additive. Existing fixtures (`sqlite_in_memory` / `seeded_db` in `tests/component/core/conftest.py`) are used, not changed.
+- Nodes 14–17 share `ctx` dicts. Each test builds its own `ctx`, so `dispatch_seen_ids` must not leak between tests (no module-level ctx).
+- Pre-existing `ftr` reds (80, listed on AST-2093 test-fix) stay out of scope. New nodes must not depend on any red-path fixture.
+
+### What must still hold
+
+- Betty's five AST-2093 qa-handoff edits in `test_dispatcher.py` stay as written: `test_ast505…`, `test_ast502…`, the two per-entity outage nodes, and `test_run_unified_candidate_claim_gate`.
+- `TestPrepLiveContentBranches` `[index=000]: jd text` default-position node stays green unchanged.
+- Existing positional-decode nodes (`TestDecodePayload`, `TestAst697…`, `TestAst880…` vet branch) stay green unchanged. The vet branch takes no map.
+- No `src/` or `data/` edits. If a node can't go green without a product change, that is a `[qa-handoff]` back to the engineer, not a test tweak.
+
+
+## Joan fix-board — AST-2095
+
+[board-joan]  CANON: OK
+
+AST-2095 board-joan done — CANON: OK.
+
+**Rationale:** The `## Bug: AST-2095` plan-fix block is **test tree + `docs/test-bible/**` only** — no `src/` or `data/` edits. That is Betty/`qa-fix` delivery for AST-2093’s `[board-betty] TESTS: REVISE` gap, not a product or statute change.
+
+Joan’s F2 question is whether the **proposed change** conflicts with or **requires updating** any in-force directive. New pytest nodes and bible rows only **lock** behavior AST-2093 already defined (`batch_index_map`, assembly, `repeat_processed`, loop dedupe). They do not introduce new policy, carve-outs, or prompt/seed content. Parent AST-2012 has no frozen **Canon Scope**; overlap skim matches prior fix-lane test-gap siblings (e.g. roster AST-1894): **`patt.entity.batch-processing`**, decode/logging statutes, and seed rules are **exercised by tests**, not amended. Nothing needs F3 canon landing; **ESCALATE** is not warranted (no Archie precedent call—only coverage).
+
+**Chuckles routing:** Betty TESTS: REVISE (this ticket is the test work) + Joan CANON: OK → Plan Discuss → qa-fix (F4).
+
+## Radia review — AST-2095
+
+[code-rubric]
+**Ticket:** AST-2095
+**Publish ref:** `51f234e12bda47c8a00ddb1d690be3e5544108d6` (`origin/sub/AST-2012/AST-2095-grade-batch-unique-index-tests`)
+**Diff base:** `origin/ftr/AST-2012-grade-batch-unique-index` (`759a19247`)…`origin/sub/AST-2012/AST-2095-grade-batch-unique-index-tests`
+**Review corpus (ticket deliverable):** seven in-scope paths per plan blast radius — `tests/component/core/test_{agent,consult,dispatcher}.py`, `docs/test-bible/core/{agent,consult,dispatcher}.md`, `docs/features/agent/response-validation-layers.md` § Bug: AST-2095 (+ Joan fix-board) — **+919 / −6** vs ftr tip. Full tip-vs-ftr tree is **138 files** (includes `sync(dev)` / unrelated docs and **15 `src/`/`data/` files**); scored as **cross-ticket carry**, not AST-2095 product work (`4756edb1f` is test+bible only).
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**[bug-repro] OK** — qa-fix landed **8** repro nodes (Betty: red @ `823d37605`, green @ ftr `759a19247`). Assertions pin **AST-2093 to-be**, not tautologies:
+
+| # | Location | What it locks |
+|---|----------|----------------|
+| 1–3 | `TestAst2093BatchIndexMapDecode` | Chunk-1 all-`000` → `{"jobs": []}`; `020`–`039` → 20 distinct `J20`…`J39`; duplicate `000` → one `decode_failures` row + only `001` grades |
+| 8 | `TestAst2093EncodedDispatchIndex::test_bug_repro_rows_carry_one_global_label` | Single `[index=NNN]` labels, `row_indexes`, offset 20 → `[020]`…`[022]`, no `^\d{3}: \[index=` |
+| 14–16 | `TestAst2093BatchIndexDispatch` | Chunk offsets `{0:0,1:2,2:4}`; per-entity `{j0:0,j1:1,j2:2}`; `repeat_processed` 0 then 1 + `dispatch_seen_ids` |
+| 18 | `test_bug_repro_loop_counts_each_entity_once` | Somerset rollup **27** not **50**; `repeat_processed` not in `accumulated` |
+
+Tag style: `# [bug-repro]` on the assertion comment (not docstring first line); `-k bug_repro` / `test_bug_repro_*` names match Betty’s manifest. **Plausibly red pre-fix** per plan strings (20×`J20`, 0 rows, `batch_index_offset` absent, loop 50).
+
+**Branch nodes (9–13, 17, 19)** exercise map pre-pass, unknown-index WARNING, mapped-entity `decode_failures`, positional guard, skipped-row gaps, `do_task` ctx map, `render_verdict` / `run_consult_task` / wrapper forwarding, falsy-id + outage `min()`, raw `total_processed` stop guard — aligned with plan nodes 4–7, 9–13, 17, 19.
+
+**## What must still hold — OK** (AST-2095 plan § What must still hold + AST-2093 product invariants via tests)
+
+- Five AST-2093 qa-handoff `test_dispatcher.py` nodes: **no hunks** touching those tests since `759a19247`.
+- `TestPrepLiveContentBranches` `[index=000]` default: not part of this diff’s edits.
+- Additive `TestAst2093*` classes only; no `src/` / `data/` in `test(AST-2095)` commit.
+- Positional / vet decode classes left untouched by this diff.
+
+## Canon scores
+
+(no frozen Canon Scope on AST-2095 / AST-2012 mini-parent — **zero ids to score**; `[board-joan] CANON: OK` on test+bible-only delivery)
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan fix-board only; no F3 per-directive column)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Branch topology vs ticket boundary** — `@Chuckles` (merge routing, not Hedy test code): Publish tip `51f234e12` is **not** test-only vs ftr: `git diff 759a19247..sub -- src/ data/` is **non-empty** (~15 files). That delta comes from **`sync(dev)`** on the sub branch, not `4756edb1f`. AST-2095 Description forbids product on this ticket. **Default:** Roll up **only** the seven in-scope paths (or an ftr-rebased sub containing test work + conflict resolution on test/bible paths). Do **not** treat a whole-sub merge onto ftr as AST-2095 if it would land unrelated `src/` from dev sync.
+- **Bible scope gate accuracy** — `docs/test-bible/core/agent.md` § QA test manifest — AST-2095 row 4 claims `git diff ftr...sub -- src/ data/` is empty; at current tip it is **not**. **Default:** Chuckles corrects that row when appending this review (scoped seven-path gate, or “empty only when sub tip is ftr + test commits”).
+
+### advisory
+
+- **LOCKED_AT_100 AC** left unchecked on Linear; Hedy reports **100% on AST-2093-added lines/branches** with module-wide agent.py ~89% under the 80 pre-existing reds — reasonable for this test-gap ticket; not a merge blocker if Susan accepts branch-level proof.
+- **Full tip diff noise:** 138-file `sync(dev)` / docs churn on the sub ref is **out of plan blast radius**; Radia scored the **919-line** scoped deliverable.
+- **pytest convention:** `[bug-repro]` lives on inline comments, not the first line of the test body — consistent with repo habit; Betty’s repro gate already validated.
+
+## What's solid
+
+- Plan nodes **1–19** map to implemented tests + bible `AST-2093` blocks in all three core pages; manifest table in `agent.md` § QA test manifest — AST-2095 matches classes.
+- Repro fixtures mirror AST-2093 plan § Repro (`batch_index_map` 20–39, `grade_get`, `grades_encoded_notes`).
+- `sync(dev)` conflict resolution preserved **both** `TestAst2089SalvagedBatchSplit` and `TestAst2093EncodedDispatchIndex`, and both dispatcher bible sections (AST-2091 + AST-2093).
+- Betty qa-fix thread documents red→green; Hedy test-fix confirms **23/23** `TestAst2093*`, **8/8** bug-repro, **+23 passes** with **identical** 80 failing ids vs base.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **REVIEW** (discuss: merge topology + bible scope gate; artifact complete) | **Normal** → **Review Posted** → resolve **merge strategy** (not necessarily `resolve-child` on tests) → **User Testing** once sub rollup is ftr-safe |
+
+### Chuckles — discuss resolution
+
+- **Branch topology:** verified `git merge-tree --write-tree origin/dev origin/ftr/AST-2012-grade-batch-unique-index` vs sub tip `51f234e12` — `src/` + `data/` identical; only non-test delta is this plan doc. The `src/`/`data/` carry is pure `sync(dev)` content already on origin/dev; whole-sub merge onto ftr is safe (ftr lands on dev anyway). No path-filtered rollup needed.
+- **Bible scope-gate row** (`docs/test-bible/core/agent.md` § QA test manifest — AST-2095 row 4): wording is stale post-`sync(dev)` (true only vs dev+ftr, not vs bare ftr). Test-tree owned by Betty — left for her next bible touch; not a merge blocker.
+- **Coverage AC:** accepted on branch-level proof (100% of AST-2093-added lines/branches); module-wide figure belongs to a full-suite run.

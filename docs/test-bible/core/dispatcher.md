@@ -772,3 +772,18 @@ grep -n '^_auto_thread_cap_override: Optional\[int\] = None' src/core/dispatcher
 ### AST-2091 · AST-2013 (`run_task` rubric gate)
 
 **New:** `TestAst2091RunTaskRubricGate` — duplicate / empty rubric → `run_task` returns `False`, no thread, AUTO row gets `auto_mode=0` (Repro 3 / 4); manual row → `False`, no write; craft / non-rubric rows still start. Existing `run_task` cases (`evaluate_jd`) need no stub — embedded QC/GC merge is never empty. Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-2091.
+
+### AST-2093 · AST-2012 (claimed position → `batch_index_offset`; retry re-claims counted once; test gap AST-2095)
+
+`_run_unified` passes `batch_index_offset=ci * chunk_sz` on the chunk path and the entity's claimed index on the per-entity path (the full-batch call relies on the default 0). Each run records claimed ids in `ctx["dispatch_seen_ids"]` (falsy ids skipped). A normal return adds `repeat_processed = min(repeats, total_processed)`, which is not a `_SUMMARY_ZERO` key. `_run_dispatch_loop` subtracts it from `accumulated["total_processed"]`, but the `0 processed` stop still reads the raw per-run value. Primary block + manifest: [`agent.md`](agent.md) § AST-2093.
+
+| Area | Component tests (`tests/component/core/test_dispatcher.py::TestAst2093BatchIndexDispatch`) |
+| --- | --- |
+| **[bug-repro]** 5 jobs, `batch_size=2`, `grade_get` → chunk offsets `{0: 0, 1: 2, 2: 4}` | **`test_bug_repro_chunks_send_global_offsets`** |
+| **[bug-repro]** `batch_call_mode=0`, 3 jobs → offset = claimed index per entity | **`test_bug_repro_per_entity_sends_claimed_position`** |
+| **[bug-repro]** same ctx, claims `[A,B]` then `[B,C]` → `repeat_processed` 0 then 1; seen `{A,B,C}` | **`test_bug_repro_reclaimed_ids_are_repeat_processed`** |
+| Id-less entity never tracked (falsy-id arcs); outage-zeroed re-claim clamps to 0 (`min()`) | **`test_falsy_ids_never_tracked_and_outage_run_clamps_to_zero`** |
+| **[bug-repro]** Somerset shape 27 + retry 23 (`repeat_processed` 23) → accumulated 27 / passed 4 / errors 23 | **`test_bug_repro_loop_counts_each_entity_once`** |
+| All-repeat run (`3` processed, `3` repeat) does not trip the `0 processed` stop (guard) | **`test_all_repeat_run_does_not_trip_zero_processed_stop`** |
+
+**Kept:** the five AST-2093 qa-handoff nodes (`test_ast505…`, `test_ast502_chunked…`, the two per-entity outage nodes, `test_run_unified_candidate_claim_gate`) — not touched. Every test builds its own `ctx`; no module-level `dispatch_seen_ids`.
