@@ -402,3 +402,11 @@ context_tokens≈75000
 ```
 
 context_tokens≈30000
+
+## Resolution
+
+**2026-10-09 · Ada** — Radia review at `c68deb396` (PROCEED, CLEAN): no fix-now items, no product changes.
+
+- **Discuss — modal close vs in-flight autosave:** no direction from Susan in the thread, so took the review's **Default:** accept for overhaul UAT. The next report reload or re-open of the modal picks up the save. Susan can reverse this by routing close-blocking / await-flush to AST-2083.
+- **Discuss — `preview_thumbnail` not on `StateUiContext`:** took the **Default:** ship as-is on the local `JobArtifactTab` type, and extend `StateUiContext` in a hygiene pass the next time that file is touched.
+- **Advisory:** no action needed. Sibling carry is expected, and the dependencies and test drift were already handled on this ref.
