@@ -54,7 +54,7 @@ export default function BaseResumeContent() {
   }
 
   useEffect(() => {
-    api("/api/system/ui_config")
+    api("/api/ui_config")
       .then(r => r.json())
       .then(cfg => setPalette(Array.isArray(cfg.base_resume_accent_palette) ? cfg.base_resume_accent_palette : []))
       .catch(() => setPalette([]))

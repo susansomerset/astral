@@ -472,3 +472,25 @@ context_tokens≈N
 ```
 [code-rubric] PROCEED (Commit: 4cf623ac4) Bug-repro locks autosave contract
 ```
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/58ada20669ec1b4eadf1fda92576b14b/f2b4d7de-53f9-4bdd-b150-7198ce186e81/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/e65177cf-998e-4ccc-ae81-d493ed68b29f/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/58ada20669ec1b4eadf1fda92576b14b/4b19ee38-0c64-484d-a4cf-1a8b3c57a305/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2041 (parent) | ftr/AST-2041-resume-autosave |
+| AST-2051 | sub/AST-2041/AST-2051-resume-autosave |
+| AST-2056 | sub/AST-2041/AST-2056-resume-autosave-tests |
+
+**Epic worktree:** `astral-AST-2041/` — one active sub checked out at a time.
