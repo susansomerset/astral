@@ -4908,3 +4908,15 @@ Registration only: company states `GET_UPSHOT` / `UPSHOT_READY` (retry) / `ERROR
 **Pass criterion:** 17 passed. Not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2069-upshot-states-registration:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/roster.md`.
+
+### AST-2081 · AST-2046 (Line format, format details, Hidden label, job structure key, thumbnail flag)
+
+Config only, no branches. `line` is appended to `RESUME_STRUCTURE_BODY_FORMATS`. `RESUME_STRUCTURE_BODY_FORMAT_DETAILS` holds the label, description, and `font_stack` for each format (word cloud and dual column use `list_stack`, every other format uses `body_stack`). `RESUME_STRUCTURE_HIDDEN_FLOW_LABEL = "Hidden"`. New `ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]` (job / candidate-scoped / `resume_structure` / tracker). `preview_thumbnail` is set on the three recommended-job artifact tabs (resume True, cover True, application False).
+
+| Area | Component tests |
+| --- | --- |
+| New literals (AC13, AC14 data half) | new **`TestAst2081FormatCatalogAndJobStructureKey`** (4) |
+| Revised: exact body-format tuple gains `line` | **`TestAst1303ResumeStructureCatalog::test_body_formats_defaults_emphasis_and_extra_id_rules`** |
+| Revised: exact catalog key set gains `job.artifacts.job_resume_structure` | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+
+Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2081.
