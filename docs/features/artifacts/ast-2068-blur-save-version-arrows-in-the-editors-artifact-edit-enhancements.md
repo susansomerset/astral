@@ -633,3 +633,63 @@ context_tokens≈72000
 - **Deviation 2, move target after a flush (Stages 3–4):** The planned code picked the arrow's target uuid at render time, before the save-before-move flush. That contradicted Stage 4's Done-when ("…saves the edit first (N+1), then moves to N of N+1"): it would have landed on N-1 of N+1. Blocker posted on AST-2043 with three options. Susan skipped the question, so I took the recommended option, which is also the Done-when as written. `moveVersion` / `handleMove` now take a direction, re-read `<base>/versions` after any flush, and step from the new current. Back after an edit therefore returns to the version that was on screen, and forward at the newest is a no-op. This costs one extra `/versions` GET per arrow press. To reverse: pass the render-time `backUuid`/`forwardUuid` again.
 - **Not verified by hand:** a browser run of the Done-when checks was not possible here. No Playwright browser is installed, and the tool sandbox denied writing a scratch jsdom spike under `debug/spikes/AST-2068/`. Coverage relies on Betty's component manifest.
 - **Existing component tests (informational, Betty-owned):** `test_ContextTextPage` and `test_CandidateBioSummary` pass. In `test_ArtifactEditor` / `test_ArtifactsBaseResumeContent`, 15 tests drive the removed 2 s timer (`AUTOSAVE_MS`, `[bug-repro]` AST-2051 cases) and now time out, which is the expected break. `AST-1577: page and draft follow ui-consistency` fails independently of this ticket: it reads `canon/directives/draft/patt.artifact.ui-consistency.md`, which now lives under `active/`.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2068
+**Publish ref:** 41eeeddebdb4a846f087854399d81678b250ee17 (`origin/sub/AST-2043/AST-2068-version-ui`)
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded both **A** at plan; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Build § Review — manual verification
+- **Finding:** Engineer did not run `launch.sh` Done-when / row-count checks in-browser (sandbox limits); plan § Verification calls for hand verification of AC1–AC4.
+- **Question @susan:** Treat Betty’s new Vitest coverage (AC1/2/4 page + component cases, AC3 grep) as sufficient for pipeline UT, with UAT as the manual row-count pass?
+- **Default:** Proceed on green manifest + AC3 grep; Susan spot-checks blur/arrow behavior in UAT on the four named surfaces.
+
+### advisory
+
+- **sibling product/test carry:** Three-dot diff vs `origin/dev` still bundles AST-2066/2067 backend+API, other tickets’ tests (`test_contact`, slack, companies, etc.), and unrelated `origin/dev` merges (multiple merge bases warning). AST-2068 **product** delta is only `ArtifactVersionNav.tsx`, `ArtifactEditor.tsx`, `ContextTextPage.tsx`.
+- **patt.artifact.ui-consistency corpus:** Directive file remains under `active/` with Abstract “draft — Archie approval required” (Joan plan note); implementation matches pattern text (shared nav, shape-driven placement, existing PUT/GET contracts).
+- **Deviation 2 (move target):** Post-flush re-fetch of `/versions` + direction step (not render-time uuid) matches updated Done-when; one extra GET per arrow press — documented on plan Review.
+- **Deviation 1:** Single `eslint-disable-next-line react-refresh/only-export-components` on exported `versionNavState` (same pattern as `UserPrompt.tsx`).
+- **AST-1577 test:** Build notes `AST-1577: page and draft follow ui-consistency` still reads `canon/directives/draft/patt.artifact.ui-consistency.md`; Betty’s merge added an AST-1577 canon-path fix in the test manifest — confirm that test is green on tip (out of Radia lane).
+
+## What's solid
+
+- **AC3:** `AUTOSAVE_MS` removed from `ArtifactEditor.tsx` on tip; blur-save via `dep-body` `onBlur` + `dirtyRef` / `bodiesEditable` / `inReview` guards (no save during Generate review).
+- **AC1/AC2 behavior in code:** `handleBodyBlur` saves only when `dirtyRef.current`; `moveVersion` / `handleMove` await `pendingSaveRef` and flush with `doSave(..., true)` before `…/current` PUT; failed save aborts move.
+- **AC4 / read-current:** After move, `reloadFromServer()` / `loadBody()` re-hydrate from entity GET (operative current), not version-map bodies; `versionNavState` uses `position` only (AST-2067 wire contract).
+- **ui-consistency:** One `ArtifactVersionNav` + helper; artifact-level nav on `fixedFields` / job shape editors; per-criterion nav in rubric chrome; no nav when `!fixedFields` (e.g. Application Questions dict editor).
+- **Boundaries:** Scope-limited to three components; explicit Save/Cancel retained for review and non-autosave modes; context pages keep explicit Save (no blur-save on `ContextTextPage` body per plan).
+- **QA manifest:** Betty landed `test_ArtifactVersionNav`, revised 15 timer tests to `blurToSave()`, and AC4 cases on Base Resume, JAR cover letter, Do Job Criteria, Bio Summary (per issue doc / bible § AST-2068).
+
+## Recommended actions (downstream — not executed in this session)
+
+- Chuckles: append artifact, `docs(AST-2068): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.
+- datt: **PROCEED** → UT after writeback (blocked-by AST-2067 is UT on ftr, not a code gate for this sub review).
+- Optional: Susan UAT pass on AC1 row-count semantics if she wants DB-level confirmation beyond Vitest mocks.
