@@ -4330,7 +4330,7 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 
 **Parent:** [AST-1766 — Dispatch Validation](https://linear.app/astralcareermatch/issue/AST-1766). **Publish:** `origin/sub/AST-1766/AST-1779-empty-token-predicate-helper`.
 
-`empty_render_for_prompts` — candidate-scoped empty-render predicate over prompt texts via `TOKEN_SOURCES` / `resolve_tokens`; ignores `source: chain`; does not fail on empty job tokens unless `entity_contexts` supplies that source; returns `{"empty_render": bool, "empty_tokens": list[str]}` (field name frozen for sibling #2 list enrichment). `resolve_tokens(..., warn_on_empty=False)` suppresses empty/unresolved WARNINGs for the helper’s quiet probe. Config-only — no API / version hooks / React (siblings #2–#4).
+`empty_render_for_prompts` — empty-render predicate over prompt texts via `TOKEN_SOURCES` / `resolve_tokens`; scores `source: candidate` **and `source: rubric`** by default (rubric rows are candidate-keyed — **AST-2092**), other sources only via `entity_contexts`; ignores `source: chain`; does not fail on empty job tokens unless `entity_contexts` supplies that source; returns `{"empty_render": bool, "empty_tokens": list[str]}` (field name frozen for sibling #2 list enrichment). `resolve_tokens(..., warn_on_empty=False)` suppresses empty/unresolved WARNINGs for the helper’s quiet probe. Config-only — no API / version hooks / React (siblings #2–#4).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -4340,9 +4340,11 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 | Job seam via `entity_contexts` | same | **`…::test_job_seam_via_entity_contexts`** |
 | `warn_on_empty=False` quiet + default still warns | same | **`…::test_warn_on_empty_false_suppresses_empty_warning`** |
 | None/empty/non-str texts; first-seen order | same | **`…::test_none_empty_and_non_str_texts_and_order`** |
-| Rubric scored only via `entity_contexts` | same | **`…::test_rubric_scored_only_via_entity_contexts`** |
+| Rubric scored by default (and via `entity_contexts`) | same | **`…::test_rubric_scored_by_default_and_via_entity_contexts`** |
+| Empty `RUBRIC_VECTORS` → `empty_render` **[bug-repro]** (AST-2092) | same | **`…::test_empty_rubric_vectors_sets_empty_render`** |
+| Filled `RUBRIC_VECTORS` → valid (AST-2092 AC 3) | same | **`…::test_filled_rubric_vectors_validates`** |
 
-**Broken / obsolete:** none — existing `TestResolveTokens` empty-WARNING asserts keep default `warn_on_empty=True`.
+**Broken / obsolete:** none — existing `TestResolveTokens` empty-WARNING asserts keep default `warn_on_empty=True`. **AST-2094:** AST-2092 reversed the rubric rule — former line-7 node `test_rubric_scored_only_via_entity_contexts` renamed to `test_rubric_scored_by_default_and_via_entity_contexts`, default-call assertion inverted (False → True / `["GET_RUBRIC"]`).
 
 **Integration:** none — no existing scenario asserts `empty_render_for_prompts` / `warn_on_empty`; do not invent new integration coverage.
 
@@ -4354,7 +4356,9 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 4. Job entity_contexts seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_job_seam_via_entity_contexts`
 5. warn_on_empty quiet: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_warn_on_empty_false_suppresses_empty_warning`
 6. Text tolerance + order: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_none_empty_and_non_str_texts_and_order`
-7. Rubric seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_rubric_scored_only_via_entity_contexts`
+7. Rubric default + seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_rubric_scored_by_default_and_via_entity_contexts`
+8. **[bug-repro]** empty rubric (AST-2092 / AST-2094 — red on `823d37605`, green on `origin/ftr/AST-2019-rubric-empty-render-gate`): `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_empty_rubric_vectors_sets_empty_render`
+9. Filled rubric control: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_filled_rubric_vectors_validates`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
