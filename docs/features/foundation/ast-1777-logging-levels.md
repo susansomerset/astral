@@ -319,3 +319,87 @@ Clean (PROCEED, no fix-now). Discuss item (Linear description stale vs option (b
 ### Test routing — AST-2078
 
 docs-acceptance: no test-tree delivery on this ticket. fix-board `[board-betty] TESTS: REVISE` was routed to the gap sibling AST-2079 (gunicorn.access quiet-filter tests + bible), which lands its own `test()` / `merge-tests` on ftr.
+
+---
+
+## Bug: AST-2079 — gunicorn.access quiet-filter tests + bible (test gap for AST-2078)
+
+Gap sibling of AST-2078, mini-parent AST-2074. This is the test delivery for fix-board `[board-betty] TESTS: REVISE` on AST-2078, applied to the chosen **option (b)** (gate AST-2080). The plan names the tests; **Betty implements them in qa-fix**. The engineer make-fix pass on this ticket is a **no-product-src marker**.
+
+### As-is
+
+The AST-2078 filter is on `origin/ftr/AST-2074-gunicorn-polling-logs` (`code(AST-2078)` `2e754b15a`) with no test coverage:
+- No test exercises the `gunicorn.access` logger or `_QuietAccessFilter`.
+- `docs/test-bible/utils/debug_logging.md` § AST-1778 still says "Telescope / gunicorn / call-site rewrites out of scope", and its manifest has no node for the filter.
+
+### To-be
+
+One new component test class in `tests/component/utils/test_debug_logging.py` proves:
+- A `gunicorn.access` record with `U="/api/deploy_status"` is dropped.
+- A record with `U="/api/other"` is kept.
+- The quiet list is read from `RAILWAY_CONFIG`, not hardcoded.
+- `get_logger` INFO and the root logger are unaffected.
+
+The bible page records the class and a manifest node for it.
+
+### Repro
+
+There is no data-shape fixture; the fake records are built in the test (astral has no seeded DB here). Red/green reference trees:
+- **Pre-fix:** `39bbf7afd`, the tip just before `code(AST-2078)`. No filter exists, so the drop assertions fail.
+- **Fixed:** `origin/ftr/AST-2074-gunicorn-polling-logs` @ `0b35bcd2c` or later. Everything passes.
+
+### Root cause
+
+Not a product defect. AST-2078 shipped the filter, and fix-board routed its test coverage here rather than through qa-fix on AST-2078.
+
+### Proposed change
+
+All paths are test-tree, so this is Betty's work in qa-fix. **No `src/` change.**
+
+**1. `tests/component/utils/test_debug_logging.py` — new class `TestAst2078GunicornAccessQuietFilter`.** The name follows the `TestAst1988RailwayJsonIds` precedent of naming the product ticket.
+
+- **Helper:** a module-level `_access_record(path)` (or method). It returns
+  `logging.LogRecord("gunicorn.access", logging.INFO, __file__, 0, '%(h)s "%(r)s"', ({"h": "127.0.0.1", "r": f"GET {path} HTTP/1.1", "U": path},), None)`.
+  - `LogRecord` unwraps a single-Mapping args tuple, so `record.args` is the dict. That is the same shape gunicorn's `SafeAtoms` produces.
+  - Use a **plain dict**; do not import gunicorn, so the test stays hermetic.
+- **Setup:** each test calls `get_logger(__name__)` first to guarantee the attach-once has run.
+  - Do **not** reset `logging_mod._quiet_access_filter_attached`. Resetting would stack a second filter on the process-global logger and leak into other tests.
+  - Check results by truthiness, `bool(logger.filter(rec))`. On Python 3.12+ `Logger.filter` returns the record or `False`, not `True`/`False`.
+
+| # | Test | Assertion | Pre-fix (`39bbf7afd`) |
+|---|------|-----------|------------------------|
+| 1 | `test_deploy_status_access_record_dropped` | `not logging.getLogger("gunicorn.access").filter(_access_record("/api/deploy_status"))` | **red** (no filter → record passes) — bug-repro |
+| 2 | `test_other_access_record_kept` | `logging.getLogger("gunicorn.access").filter(_access_record("/api/other"))` is truthy | green (guard against over-dropping) |
+| 3 | `test_quiet_paths_read_from_railway_config` | `monkeypatch.setitem(src.utils.config.RAILWAY_CONFIG, "access_log_quiet_paths", ("/api/other",))`, then `/api/other` is dropped and `/api/deploy_status` is kept. Proves config is the source of truth (`astral.standards.no-hardcoded-sets`). | **red** |
+| 4 | `test_non_mapping_args_kept` | A `gunicorn.access` record with `args=("x",)` (not a Mapping) is kept. This guards the `isinstance(args, Mapping)` branch so a non-atoms emit never raises or drops. | green |
+| 5 | `test_filter_attached_once` | After two more `get_logger(...)` calls, exactly one filter on `logging.getLogger("gunicorn.access").filters` is an instance of `logging_mod._QuietAccessFilter` | **red** (`AttributeError`) |
+| 6 | `test_product_info_and_root_unaffected` | With `caplog.set_level(logging.INFO)`, (a) `get_logger("src.test_ast2079").info("ping")` lands in `caplog.records` at INFO; (b) a record named `src.test_ast2079` whose args mapping has `U="/api/deploy_status"` passes `logging.getLogger("src.test_ast2079").filter(...)`, because the filter is only on `gunicorn.access`; (c) no `_QuietAccessFilter` is on `logging.getLogger().filters` or on any root handler's `.filters`; (d) `logging.getLogger().level` is the same before and after a `get_logger` call. Covers `stat.logging.info`. | (a, b, d) green; (c) **red** (`AttributeError`) |
+
+Tests 1, 3 and 5 are the red-pre-fix set. Betty tags whichever she proves red against `39bbf7afd` as `[bug-repro]`; test 1 is the minimum.
+
+**2. `docs/test-bible/utils/debug_logging.md`**
+
+- § AST-1778 · AST-1777 prose: change "Telescope / gunicorn / call-site rewrites out of scope." to "Telescope / call-site rewrites out of scope; gunicorn is out of scope except the `gunicorn.access` quiet filter (§ AST-2078)."
+- New section `### AST-2078 · AST-2074 (gap sibling AST-2079 — gunicorn.access quiet filter)`, after § AST-1988. It needs:
+  - A one-paragraph summary: logger-level `_QuietAccessFilter` drops `gunicorn.access` records whose atom `U` is in `RAILWAY_CONFIG["access_log_quiet_paths"]`; attached once in `get_logger`; root and handlers are untouched.
+  - An `Area | Source | Component tests` table mapping rows 1–6 above to `src/utils/logging.py` (row 3 also `src/utils/config.py`).
+  - `**Broken / obsolete:** none`.
+  - `**Integration:** none — no integration scenario runs gunicorn.`
+- `## QA test manifest`:
+  - Add item `12. AST-2078 gunicorn.access quiet filter (bug-repro): tests/component/utils/test_debug_logging.py::TestAst2078GunicornAccessQuietFilter`.
+  - Add the same node to the pytest command block.
+  - Change the pass criterion to "items 1–9, 11, 12".
+
+### Blast radius
+
+- Test-tree only. The new class runs in the same file as `TestAst1778RailwayConsoleTransport` and `TestAst1988RailwayJsonIds`. It never resets the attach-once flag and restores config via `monkeypatch`, so existing classes are unaffected.
+- `caplog` usage matches the existing `TestPrefixedLoggerDebugGating` pattern.
+- No product file changes, so AST-2078's verified behavior and its Tests Passed state are not reopened.
+- This ticket's make-fix will be a no-product-src marker.
+
+### What must still hold
+
+- AST-2078's **What must still hold** stands; these tests encode it: only `gunicorn.access` records listed in the quiet paths are dropped, and get_logger INFO, root level and handlers are unchanged.
+- Existing `test_debug_logging.py` classes and `test_logging_batch.py` stay green with the same results as today.
+- No assertion depends on gunicorn being importable or installed.
+- Scope: only `tests/component/utils/test_debug_logging.py` and `docs/test-bible/utils/debug_logging.md`. AST-2079's own Scope is test-tree + bible, so there is no `[scope-gate]`.
