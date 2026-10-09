@@ -10,6 +10,52 @@
 
 ---
 
+### AST-2086 · AST-2073 (terminal-state grammar `ERROR_<TASK_KEY>[_<CONDITION>]` / `BOT_BLOCKED_<TASK_KEY>`; bot-wall split)
+
+**Publish:** `origin/sub/AST-2073/AST-2086-terminal-state-rename`. Plan: `docs/features/foundation/ast-2086-terminal-state-rename-and-bot-wall-split.md`.
+
+Every terminal failure / bot state on job, company, candidate and meteorite is named for the task that failed, built by `error_state_for` / `bot_blocked_state_for` (parsed back by `parse_terminal_state`, conditions closed over `TERMINAL_CONDITIONS`). `FAILED_TECHNICAL` and the dead `PREFILTER_UNKNOWN` / `HARD_PARSE` / `BUILD_FAILED` are gone; `RETIRED_TERMINAL_STATE_MAP` records old → new per entity (rows are AST-2087's). Writers read their own task's state from config: out of a retry holding → bare `ERROR_<TASK_KEY>`; empty-token → the failing hop's own error (chain and craft hops each have one); a refused empty-token edge warns, no catch-all. Meteorite scrape adopts `SCRAPE_LINK_RETRY` → `ERROR_SCRAPE_METEORITE`; expired links → `JD_SCRAPE_FAIL_CLOSED` / `_MISSING`. fetch_website / fetch_job_pages / fetch_culture_pages run `is_bot_wall` → `BOT_BLOCKED_<TASK>`; plain unreadable stays `ERROR_<TASK>_UNREADABLE`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Grammar, registries, retired map, chain/craft error sets, AC6 chain dispatch, AC7 bulk retry + labels, AC8 notify seed, gazer/roster task terminals | `src/utils/config.py` | **`TestAst2086TerminalStateGrammar`** (10) |
+| Prior-states pin across the rename | `src/utils/config.py` | **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** (AST-1806 snapshot translated via `_ast2086_translate` / `_ast2086_additions`; fixture JSON unchanged) |
+| Batch fail dest (3-arg, out of holding → `ERROR_<TASK>`), empty-token dest, chain hop errors, refused edge warns | `src/core/consult.py` | `test_consult.py` **`TestConsultBatchFailDest`** · **`TestAst2006EmptyTokenRouting`** · **`TestPrepLiveContent::test_transitions_when_website_content_missing`** — see `core/consult.md` |
+| Company terminals by writing task; parse empty-token → `ERROR_PARSE_JOB_LIST`; select bot wall → `BOT_BLOCKED_SELECT_JOB_PAGE` | `src/core/roster.py` | `test_roster.py` — see `core/roster.md` |
+| AC4 bot split (fetch_website, fetch_job_pages, fetch_culture_pages fresh + cached); task-aware JD `classified_states` | `src/core/gazer.py` | `test_gazer.py` **`TestAst2086GazerBotWallSplit`** (11) · **`TestAst1195BotBlockedErrorState`** — see `core/gazer.md` |
+| AC5 scrape retry; closed / missing; stage / land errors | `src/core/meteorite.py` | `test_meteorite.py` **`TestAst1560RunScrapeMeteorite::test_ast2086_scrape_failure_retries_once_then_errors`** — see `core/meteorite.md` |
+| Craft hop errors (`ERROR_CRAFT_<HOP>`) | `src/core/candidate.py` | `test_candidate.py` **`TestAst2006RequestedArtifactsEmptyTokens`** · **`TestAst1808RetryResolvesViaBase`** — see `core/candidate.md` |
+
+**Broken / revised (194 ticket-attributable failures, all rewritten in place):** `test_config.py` 47, `test_roster.py` 52, `test_consult.py` 31, `test_meteorite.py` 24, `test_gazer.py` 18, `test_candidate.py` 8, `test_agent.py` 6, `test_contact.py` 5, `test_api_jobs.py` 2, plus retired names in `data/database/test_meteorites.py`, `frontend/fixtures/stateUiManifestFixture.ts` (retired `skipped` entries swapped for their successors from `build_state_ui_manifest()`; the fixture stays a partial snapshot) and four frontend tests. Renamed nodes: roster `test_select_only_parse_goes_to_parse_error`, `test_scrape_error_transitions_to_select_error`; consult `…_to_bare_task_error` (×2), `test_dispatch_chain_failing_hop_error_wins_over_entry`, `test_dispatch_chain_invalid_edge_warns_without_fallback`; gazer `test_bot_maps_to_task_bot_blocked`, `test_short_text_after_click_is_relative_unreadable_with_link_resolved`; agent `test_hard_failure_transitions_hop_error_state`; candidate `test_goes_straight_to_hop_error_state`.
+
+**Integration:** none.
+
+## QA test manifest
+
+Baseline: on the epic tree the component failure set equals `origin/dev`'s (345 pre-existing, none new); Vitest failures equal dev's.
+
+1. `tests/component/utils/test_config.py::TestAst2086TerminalStateGrammar` + `::TestAst1808RetryRegistryPurge`
+2. `tests/component/core/test_gazer.py::TestAst2086GazerBotWallSplit` + `::TestAst1195BotBlockedErrorState` + `::TestAst2025FetchRelativeJdBatch`
+3. `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite`
+4. `tests/component/core/test_consult.py::TestConsultBatchFailDest` + `::TestAst2006EmptyTokenRouting` + `::TestPrepLiveContent`
+5. `tests/component/core/test_roster.py::TestAst2006EmptyTokenCompanyTerminals` + `::TestAst2004BotWalledSelect` + `::TestJobsFoundProcessJobSite469`
+6. `tests/component/core/test_candidate.py::TestAst2006RequestedArtifactsEmptyTokens` + `::TestAst1808RetryResolvesViaBase`
+7. Whole modules (no new failures vs dev): `test_config.py`, `test_roster.py`, `test_consult.py`, `test_meteorite.py`, `test_gazer.py`, `test_candidate.py`, `test_agent.py`, `test_contact.py`, `tests/component/ui/api/test_api_jobs.py`.
+8. Vitest: `test_JobsSkipped`, `test_StateUiContext`, `test_JobDetailModal`, `test_JobAnalysisReportModal`, `test_ArtifactEditor`, `test_recommendedJobReport`.
+9. **Product fix required (LOCKED_AT_100, `consult.py`):** `_prep_live_content`'s `else: tracker.transition_job_state(...)` arm is unreachable — `error_state_for(None, …)` raises first, and every caller passes `scoring_task_key`. Dev covered it; nothing can now. Drop the dead arm (or make `scoring_task_key` required).
+
+Notes (no action required): `fetch_job_pages` with one walled + one errored PJL and no prior capture lands `BOT_BLOCKED_FETCH_JOB_PAGES` with the "bot wall on every PJL" note — matches plan step 5, not pinned. `data/database/test_meteorites.py` still fails collection on dev (`METEORITE_STATES_RETENTION`); names updated, not runnable. `origin/tests` also carries AST-2096 (`_ALL_X`) tests written against pre-rename names (e.g. `METEORITE_FAILED_TECHNICAL_LIKE`) — reconcile when the second epic lands on dev.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py tests/component/core/test_roster.py tests/component/core/test_consult.py \
+  tests/component/core/test_meteorite.py tests/component/core/test_gazer.py tests/component/core/test_candidate.py \
+  tests/component/core/test_agent.py tests/component/core/test_contact.py tests/component/ui/api/test_api_jobs.py -q
+./scripts/testing/run_component_tests.sh
+```
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2073/AST-2086-terminal-state-rename:docs/test-bible/utils/config.md | shasum`
+
 ### AST-1348 · AST-1346
 
 **`PHASE_SCORE_HEADER_TITLE_TEMPLATE`** + `build_state_ui_manifest()["jobs"]["recommended"]["phase_score_header_title_template"]`. Base `report_phase_tabs` `nav_label`s unchanged. Breakdown persist: **AST-1347**. Chrome: **`docs/test-bible/frontend/`**.

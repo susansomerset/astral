@@ -894,7 +894,7 @@ class TestAst1453SkippedEditMetaAndPut:
         monkeypatch.setattr(
             jobs_mod,
             "legal_job_successor_states",
-            lambda state: list(successors or ["NEW", "FAILED_TECHNICAL"]),
+            lambda state: list(successors or ["NEW", "ERROR_GRADE_DO"]),
         )
         monkeypatch.setattr(
             jobs_mod,
@@ -1162,8 +1162,9 @@ class TestAst1974JobsPartitionRealDb:
             "j-ready": "CANDIDATE_REVIEW",
             "j-review": "RECOMMENDED",
             "j-applied": "CANDIDATE_APPLIED",
-            "j-err-build": "ERROR_BUILD_ARTIFACTS",
-            "j-build-failed": "BUILD_FAILED",
+            # AST-2086: build-chain terminals are per hop (ERROR_<HOP>); BUILD_FAILED is retired.
+            "j-err-build": "ERROR_ANTICIPATE_SCAN",
+            "j-err-cover": "ERROR_DRAFT_COVER_LETTER",
             "j-skipped": "CANDIDATE_SKIPPED",
             **{f"j-proc-{i}": s for i, s in enumerate(self._PROCESSING)},
         }
@@ -1192,7 +1193,7 @@ class TestAst1974JobsPartitionRealDb:
         assert views["ready"] == ["j-ready"]
         assert views["review"] == ["j-review"]
         assert views["applied"] == ["j-applied"]
-        assert set(views["skipped"]) == {"j-err-build", "j-build-failed", "j-skipped", "j-below"}
+        assert set(views["skipped"]) == {"j-err-build", "j-err-cover", "j-skipped", "j-below"}
         assert set(views["processing"]) == {f"j-proc-{i}" for i in range(len(self._PROCESSING))}
         union = [jid for v in self._VIEWS for jid in views[v]]
         assert len(union) == len(set(union))

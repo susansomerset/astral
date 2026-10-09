@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+Stage `REQUESTED_*_ERROR` retired: failures name the craft hop — `_requested_stage_failure_target(primary, current, task_key)` → `ERROR_<HOP>` off the holding (**`TestAst1808RetryResolvesViaBase`**); empty-token → the failing hop's (entry hop when `empty_token_task` is absent) (**`TestAst2006RequestedArtifactsEmptyTokens`**). Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-517 · AST-518 · AST-519 · AST-477
 
 **`artifacts.resume_structure`** holds the candidate-owned section catalog (id, title, enabled, order, **`job_agent_editable`**); **`artifacts.base_resume`** holds string content keyed by enabled section ids. **`craft_resume_base`** response schema requires **`resume_structure`**; **`parse_candidate_resume`** persists both blobs. Legacy global **`base_resume_structure`** and **`base_resume.accent_color`** are read shims only. **AST-518** drives **`builder.py`** body emission and **`tracker.py`** job **`resume_content`** filtering to catalog subset + contact snapshot; cover letter stored as **`Subject`** / **`Letter`** with legacy **`re_line`** / **`body`** read shims. **AST-519** exposes **`GET …/resume_structure`**, filters **`base_resume`** keys on PUT, and drives **Base Resume Content** tabs + accent from per-candidate structure (not global shapes).
@@ -2416,7 +2420,7 @@ Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (l
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Trigger / `_RETRY` / mid-chain hop label → `REQUESTED_ARTIFACTS_ERROR`; resume stage → `REQUESTED_RESUME_ERROR` | `run_requested_artifacts_dispatch` | **`TestAst2006RequestedArtifactsEmptyTokens::test_goes_straight_to_stage_error_state`** (4 params) |
+| **AST-2086:** trigger / `_RETRY` → entry hop `ERROR_CRAFT_GET_RUBRIC`; mid-chain → the failing hop's `ERROR_<HOP>`; no `empty_token_task` → entry hop's (stage `REQUESTED_*_ERROR` retired) | `run_requested_artifacts_dispatch` | **`TestAst2006RequestedArtifactsEmptyTokens::test_goes_straight_to_hop_error_state`** (4 params) |
 | `ValueError` on the error edge → one `skipped error_state …` WARNING, `total_errors == 1`, no raise | same | **`…::test_invalid_edge_warns_and_still_counts_error`** |
 
 **Broken / obsolete:** none. (`retry_holding` param is green on dev too — `_RETRY` → `error_state` was already the second-strike route.)
