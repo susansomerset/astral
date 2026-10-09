@@ -430,7 +430,7 @@ export default function AnthropicAdHoc() {
 
       {candidateName && (
         <div style={{ marginBottom: 12, fontSize: 13, color: "var(--text-secondary)" }}>
-          Candidate: <strong style={{ color: "var(--accent-gold)" }}>{candidateName}</strong>
+          Candidate: <strong style={{ color: "var(--accent-contrast)" }}>{candidateName}</strong>
         </div>
       )}
 
@@ -460,14 +460,14 @@ export default function AnthropicAdHoc() {
             borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--border)",
             color: "var(--text-secondary)",
           }}>
-            entity: <strong style={{ color: "var(--accent-gold)" }}>{entityMeta.entity_type}</strong>
+            entity: <strong style={{ color: "var(--accent-contrast)" }}>{entityMeta.entity_type}</strong>
           </span>
           <span style={{
             fontSize: 12, fontFamily: "monospace", padding: "2px 8px",
             borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--border)",
             color: "var(--text-secondary)",
           }}>
-            trigger: <strong style={{ color: "var(--accent-gold)" }}>{entityMeta.trigger_state}</strong>
+            trigger: <strong style={{ color: "var(--accent-contrast)" }}>{entityMeta.trigger_state}</strong>
           </span>
           <div className="dep-field" style={{ margin: 0, minWidth: 280, flex: 1, maxWidth: 480 }}>
             {entityMeta.batch_mode ? (
@@ -574,7 +574,7 @@ export default function AnthropicAdHoc() {
                 return (
                   <div key={t.task_key} onClick={() => handleSaveAs(t.task_key)} style={{
                     padding: "6px 12px", cursor: "pointer", fontSize: 13, fontFamily: "monospace",
-                    color: hasExisting ? "var(--accent-gold)" : "var(--text-secondary)",
+                    color: hasExisting ? "var(--accent-contrast)" : "var(--text-secondary)",
                   }}
                     onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-card)")}
                     onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
@@ -590,8 +590,8 @@ export default function AnthropicAdHoc() {
 
       {/* ── Confirmation banners ── */}
       {confirmFetch && (
-        <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-gold)" }}>
-          <span style={{ color: "var(--accent-gold)", fontSize: 13 }}>
+        <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-contrast)" }}>
+          <span style={{ color: "var(--accent-contrast)", fontSize: 13 }}>
             Replace current prompt content with prompts from <strong>{confirmFetch}</strong>?
           </span>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
@@ -601,8 +601,8 @@ export default function AnthropicAdHoc() {
         </div>
       )}
       {confirmLoad && (
-        <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-gold)" }}>
-          <span style={{ color: "var(--accent-gold)", fontSize: 13 }}>
+        <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-contrast)" }}>
+          <span style={{ color: "var(--accent-contrast)", fontSize: 13 }}>
             Replace current prompt content with imported run?
           </span>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
@@ -612,8 +612,8 @@ export default function AnthropicAdHoc() {
         </div>
       )}
       {confirmTask && (
-        <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-gold)" }}>
-          <span style={{ color: "var(--accent-gold)", fontSize: 13 }}>
+        <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-contrast)" }}>
+          <span style={{ color: "var(--accent-contrast)", fontSize: 13 }}>
             Overwrite existing prompts for <strong>{confirmTask}</strong>?
           </span>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>

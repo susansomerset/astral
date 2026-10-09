@@ -56,8 +56,8 @@ export default function StateTimeline({ history, onSelectRun }: StateTimelinePro
             }}>
               <div style={{
                 width: 10, height: 10, borderRadius: "50%",
-                background: i === 0 ? "var(--accent-gold)" : "var(--text-muted)",
-                border: i === 0 ? "2px solid var(--accent-gold)" : "2px solid var(--text-muted)",
+                background: i === 0 ? "var(--accent-contrast)" : "var(--text-muted)",
+                border: i === 0 ? "2px solid var(--accent-contrast)" : "2px solid var(--text-muted)",
               }} />
               {i < sorted.length - 1 && (
                 <div style={{ width: 2, height: 24, background: "var(--border)" }} />
