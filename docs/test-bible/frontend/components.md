@@ -2164,3 +2164,35 @@ cd src/ui/frontend && npm run test:component -- \
 
 2. **[bug-repro] flip:** `BatchAgentDataPanes — AST-2075 missing-row placeholder tabs > [bug-repro] RESPONSE-only entity run → SYSTEM/CACHE/NO_CACHE/TASK placeholders + RESPONSE` — red pre-fix, green after `make-fix`.
 3. **Scope gate:** `git diff origin/dev...origin/sub/AST-2028/AST-2075-skipped-job-run-panels -- src/core/ src/data/ src/ui/api/` shows no AST-2075 change; `npx tsc -b --noEmit` clean.
+
+### AST-2082 · AST-2046 (split pane, print preview / thumbnail, fullscreen modal)
+
+**Publish:** `origin/sub/AST-2046/AST-2082-split-pane-preview`. These are primitives only, and nothing mounts them yet (wiring belongs to **AST-2084**). New `SplitPanePage.tsx` lays out left | 6 px divider | right and fills its parent; the left panel starts at `calc(50% - 3px)`. Dragging uses `mousedown` on the divider plus `mousemove`/`mouseup` on `window`. The width is clamped to `[0, container − 6]`, and while dragging the panels get `pointer-events: none` and the root gets `user-select: none`. Unmounting mid-drag removes the listeners. New `PrintPreview.tsx` shows a `srcDoc` iframe of the builder print HTML, the builder's error text on failure, and an 816×1056 page scaled to 0.25 in thumbnail mode (204×264, `pointer-events: none`, clicks go to `onClick`). It refetches once per `refreshKey` change, but not when the caller passes a new target object with the same `kind`/`id`. `Modal` gains `size="fullscreen"`: inline styles make the card 100vw × 100vh and borderless, and the body unpadded with `overflow: hidden`. The `wide` and default sizes have no inline styles.
+
+| Area | Component tests |
+| --- | --- |
+| AC2 divider drag (+100 px → left +100 px; right panel `flex: 1`); clamp; release; listener cleanup | new **`tests/component/frontend/components/test_SplitPanePage.test.tsx`** (5). jsdom has no layout, so `getBoundingClientRect` is stubbed (root 1000 px, left 497 px). |
+| AC3 iframe `srcDoc` equals the GET body for all three targets; error text; refetch rules; stale response after unmount; thumbnail | new **`tests/component/frontend/components/test_PrintPreview.test.tsx`** (8). Mocks `lib/api`, so it goes through the real `printHtml.ts`. |
+| Fullscreen modal size; wide/default unchanged | **`test_Modal.test.tsx`** + 2 (`AST-2082: …`). The existing 8 are unchanged and green. |
+| Route table / errors / popup helper | [`lib.md`](lib.md) § AST-2082 |
+
+**AC1 (spans the content area):** jsdom can't measure layout. This ticket covers what it can: the root is `100%`×`100%`, and the fullscreen card is `100vw` with no border. Proving it end to end on the mounted surfaces is **AST-2084**'s job.
+
+**Broken / obsolete:** none. A full Vitest diff against the dev-product baseline gives the same 50 failures on both trees; they predate this ticket and include the modal/page suites. No routed page is touched, so §6c doesn't apply. No integration scenario covers the frontend.
+
+## QA test manifest — AST-2082
+
+1. **New + revised (Vitest, 31 tests):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_printHtml.test.ts \
+  ../../../tests/component/frontend/components/test_PrintPreview.test.tsx \
+  ../../../tests/component/frontend/components/test_SplitPanePage.test.tsx \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx
+```
+
+2. **Regression:** in the full `npm run test:component`, AST-2082 must add **no** new failure. The baseline has 50 failures on the `origin/tests` + dev-product tree, all from other tickets.
+3. **Build gates:** `cd src/ui/frontend && npx tsc -b --noEmit` and `npm run lint` must be clean on the four product files.
+
+**Pass criterion:** item 1 is 31 passed, and items 2–3 hold. This is a narrowed run, not the zero-arg harness.

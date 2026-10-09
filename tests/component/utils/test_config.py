@@ -3507,7 +3507,7 @@ class TestAst1066ContactConfig:
         assert cc["listen_enabled"] is False
         assert cc["bot_token_env"] == "SLACK_BOT_TOKEN"
         assert cc["signing_secret_env"] == "SLACK_SIGNING_SECRET"
-        assert cc["non_production_reply_prefix_template"] == "[{environment}] "
+        assert "non_production_reply_prefix_template" not in cc
         assert isinstance(cc["skills"], dict)
         for skill_key in cc["skills"]:
             assert skill_key not in cfg.TASK_CONFIG
@@ -7821,6 +7821,17 @@ class TestAst2069UpshotRegistration:
         assert upshot["agent_id"] == "principal_recruiter_estelle"
         assert "200 words" in upshot["cache_prompt"] + upshot["user_prompt"] + upshot["nocache_prompt"]
         assert by_key["fetch_company_culture_pages"]["agent_id"] == "telescope"
+
+    def test_upshot_contract_carries_optional_company_name(self) -> None:
+        # AST-2088: optional item field (a missing name must not fail the batch) + prompt asks for it
+        from pathlib import Path
+
+        items = cfg.TASK_CONFIG["company_upshot"]["response_schema"]["companies"]["items_schema"]
+        assert items["company_name"] == {"type": "str", "required": False}
+        assert items["company_id"]["required"] is True and items["upshot"]["required"] is True
+        rows = json.loads((Path(__file__).resolve().parents[3] / "data/admin/agent_task.json").read_text())
+        prompt = {r["task_key"]: r for r in rows}["company_upshot"]["cache_prompt"]
+        assert '"company_name":' in prompt
 
 
 # Branches: none (config literals + import-time asserts). AST-2081: line format, per-format editor
