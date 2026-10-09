@@ -1,3 +1,77 @@
+<!-- linear-archive: AST-1916 archived 2026-10-08 -->
+
+## Linear archive (AST-1916)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1916/runtime-auto-thread-cap-admin-api-add-a-selection-box-on-scheduled  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1875 — add a selection box on Scheduled Tasks to set concurrent tasks limit  
+**Blocked by / blocks / related:** parent: AST-1875; blocks: AST-1917
+
+### Description
+
+## What this implements
+
+Makes the scheduler read its concurrency cap live each tick, adds the bounded getter/setter, and exposes them as two admin routes. Ships: cap changes via API take effect on the next tick with no restart; out-of-range values are rejected. Does **not** own the page dropdown (#2).
+
+## Citations
+
+`astral.ui.single-gunicorn-worker`, `astral.config.config-source-of-truth`, `astral.layers.import-direction`, `astral.idioms.require-auth-on-protected-endpoints`, `astral.standards.logging-via-utils`, `astral.standards.in-scope-only`.
+
+## Scope
+
+* `src/core/dispatcher.py` — **modified** — new module-level runtime override for the AUTO thread cap (unset = fall back to `ASTRAL_CONFIG["max_auto_threads"]`), guarded by the existing registry lock or its own lock; new public getter returning the effective cap; new public setter that validates against the config bounds and raises on out-of-range / non-integer input; modified `_tick_loop` so the slot calculation uses the getter every tick (the "captured once at thread start" behaviour for the cap is removed; `tick_rate_minutes` capture is unchanged). The setter does not cancel running threads.
+* `src/ui/api/api_admin.py` — **modified** — new admin-protected GET route returning effective cap, config default, and bounds; new admin-protected POST/PUT route that calls the dispatcher setter and returns the new effective cap, or 400 with an error message when the value is rejected. Both under the existing `admin_bp` `/scheduler/` prefix.
+* `src/utils/config.py` — **modified** — new min/max bound fields for the AUTO thread cap alongside `max_auto_threads` (values 1 and 100). `max_auto_threads` default itself is unchanged.
+
+## Acceptance criteria
+
+3. **API bounds.** `POST` to the set route with `0`, `101`, `"abc"` or `2.5` each returns 400 and a subsequent GET still reports the prior cap. `POST` with `1` and with `100` each returns 200 and GET reports that value. Fail: any out-of-range value accepted, or an in-range value rejected.
+4. **Auth.** Both new routes return 401/403 without an admin session. Fail: 200 unauthenticated.
+5. **Tick honours the live cap.** With the cap set to N and more than N AUTO tasks due, after the next tick `GET /api/admin/scheduler/thread_status` shows at most N running entries with `is_auto: true` — and raising the cap to M > N lets the following tick spawn up to M, with no restart. Fail: running AUTO count exceeds the cap, or a change needs a restart to take effect.
+6. **No capture-once.** `grep -n 'max_auto = ASTRAL_CONFIG' src/core/dispatcher.py` returns nothing inside `_tick_loop` (the cap is not read once before the `while True`). Fail: the capture-once line survives.
+7. **Lowering is non-destructive.** With K AUTO threads running, set the cap below K: none of the K threads is cancelled (all still `running: true` in `thread_status` until they finish on their own) and no new AUTO thread spawns until running AUTO < cap. Fail: any thread killed by the change, or a spawn while at/over cap.
+8. **Single source for bounds** (backend half). The dispatcher setter/API validate against the config bound fields. Fail: bounds hardcoded outside `config.py`.
+9. **Restart resets.** Set the cap to 7, restart the server: GET reports the `config.py` default again. Fail: 7 survives restart.
+
+## Boundaries
+
+No UI — the Scheduled Actions header dropdown is #2. No persistence (in-memory only, per Susan). No other scheduler knobs (tick rate, DeepSeek concurrency, timeout).
+
+## Notes for planning
+
+Blocks #2 (the dropdown consumes this child's GET/set routes). CLICK (manual Run) threads stay outside the cap, as today.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1875-runtime-auto-thread-cap`, child `sub/AST-1875/AST-1916-runtime-cap-api`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-01T01:47:26.041Z
+[code-rubric] PROCEED (Commit: 79ddf0b29) Live cap admin API
+
+#### betty — 2026-10-01T01:44:28.952Z
+`origin/sub/AST-1875/AST-1916-runtime-cap-api` @ `79ddf0b29` · 27 tests, manifest in bible
+
+#### betty — 2026-10-01T00:56:51.115Z
+@susan — QA held at publish. Tests + bible ready as `83c022c58` (local `betty-bak/AST-1916-runtime-cap-api`; 27 new tests green, no new reds).
+
+Blocked: (1) `validate-tests-branch.sh` fails — `tests-clean-base` marker missing. (2) Normal `merge-tests` from origin/tests would drag AST-1902 `src/core/builder.py` + ast-1014 plan doc into this sub.
+
+Need your call: cherry-pick vs merge-tests vs wait for AST-1902, plus the marker. Staying Code Complete.
+
+#### joan — 2026-10-01T00:50:26.011Z
+[plan-rubric] PROCEED (Commit: 1d1b956) Backend cap API plan
+
+#### ada — 2026-10-01T00:49:02.688Z
+`origin/sub/AST-1875/AST-1916-runtime-cap-api` @ `1d1b95639` · plan ready, estimate agreed
+
+---
+
 # AST-1916 — Runtime AUTO-thread cap + admin API
 
 - **Parent:** AST-1875 — add a selection box on Scheduled Tasks to set concurrent tasks limit
