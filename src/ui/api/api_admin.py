@@ -40,6 +40,7 @@ from src.core.candidate import (
     build_candidate_token_view,
     get_candidate,
     preview_task_prompt,
+    rubric_dispatch_error,
     run_session_resume_parse,
 )
 from src.core.builder import build_session_base_resume, build_session_cover_letter
@@ -964,17 +965,20 @@ def list_dtasks():
         # AST-1780: empty-render flag + force AUTO off when non-executable.
         er = _evaluate_dispatch_empty_render(row.get("candidate_id"), row.get("task_key") or "")
         key_err = _candidate_dispatch_api_key_error(row.get("candidate_id"), row.get("task_key") or "")
-        row["empty_render"] = bool(er.get("empty_render")) or bool(key_err)
+        # AST-2091: duplicate-code / empty rubric behind a rubric-backed task.
+        rubric_err = rubric_dispatch_error(row.get("candidate_id"), row.get("task_key") or "")
+        row["empty_render"] = bool(er.get("empty_render")) or bool(key_err) or bool(rubric_err)
         # AST-1819: missing prompt tokens for the Invalid tooltip ([] when valid or unvalidatable).
         row["empty_tokens"] = list(er.get("empty_tokens") or [])
-        # AST-1880: missing platform key reason for the Invalid tooltip ("" when the key is present).
-        row["invalid_reason"] = key_err or ""
+        # AST-1880 / AST-2091: tooltip reason — key first, then rubric ("" when neither applies).
+        row["invalid_reason"] = key_err or rubric_err or ""
         if row["empty_render"] and row.get("auto_mode"):
             update_dispatch_task(row["id"], auto_mode=0)
             row["auto_mode"] = 0
             tokens = er.get("empty_tokens") or []
             why = (
                 key_err
+                or rubric_err
                 or (f"empty_render tokens={tokens}" if tokens else "empty_render (could not validate prompts)")
             )
             logger.warning(
@@ -1168,6 +1172,9 @@ def create_dtask():
         return jsonify({"error": sweep_err}), 400
     if bool(data.get("auto_mode", False)):
         err = _candidate_dispatch_api_key_error(data.get("candidate_id"), task_key)
+        if err:
+            return jsonify({"error": err}), 400
+        err = rubric_dispatch_error(data.get("candidate_id"), task_key)
         if err:
             return jsonify({"error": err}), 400
         err = _candidate_dispatch_empty_render_error(data.get("candidate_id"), task_key)
@@ -1376,6 +1383,9 @@ def update_dtask(task_id):
     if updates.get("auto_mode") == 1:
         cid = row.get("candidate_id")
         err = _candidate_dispatch_api_key_error(cid, effective_task_key)
+        if err:
+            return jsonify({"error": err}), 400
+        err = rubric_dispatch_error(cid, effective_task_key)
         if err:
             return jsonify({"error": err}), 400
         err = _candidate_dispatch_empty_render_error(cid, effective_task_key)
@@ -2086,6 +2096,9 @@ def run_dtask(task_id):
     if not row:
         return jsonify({"error": "Dispatch task not found", "started": False}), 404
     err = _candidate_dispatch_api_key_error(row.get("candidate_id"), row.get("task_key") or "")
+    if err:
+        return jsonify({"error": err, "started": False}), 400
+    err = rubric_dispatch_error(row.get("candidate_id"), row.get("task_key") or "")
     if err:
         return jsonify({"error": err, "started": False}), 400
     err = _candidate_dispatch_empty_render_error(

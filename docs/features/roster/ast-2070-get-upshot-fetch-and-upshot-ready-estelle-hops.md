@@ -728,3 +728,233 @@ Confirm **5** — three core modules, two batch implementations + consult wiring
 - Susan/prep-uat: frame-diff `dispatch_task` rows; optional log watch on culture-fetch `ValueError` exceptions during UT.
 
 context_tokens≈45000
+
+## Bug: AST-2088 — Upshot response should set a readable company_name
+
+- **Ticket:** [AST-2088](https://linear.app/astralcareermatch/issue/AST-2088) (UAT-batch Bug child of [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054))
+- **Publish ref:** `sub/AST-2054/AST-2088-upshot-readable-company-name` (origin only)
+- **Scope bound:** parent AST-2054 Component/Technical scope. The fix touches three files there: `src/utils/config.py` (`TASK_CONFIG["company_upshot"]` response schema), `data/admin/agent_task.json` (`company_upshot` row prompt), and `src/core/roster.py` (`company_upshot_batch`, the new Estelle batch).
+- **Susan's [fix] (verbatim):** "Please add to the upshot response schema to revise the company_name field (not the short_name id) with a proper, readable company name, instead of whatever was parsed by the scrapes."
+
+### As-is
+
+After the `UPSHOT_READY` hop, the `companies.company_name` column is still whatever import or scraping produced. Locate/parse success writes `_extract_company_name_from_url(...)` through `_save_company`, which gives a capitalized domain fragment like `"Acmerobotics"`. Inflow ingest writes the raw slug. The `company_upshot` response schema is `{companies: [{company_id, upshot}]}`, so Estelle has no field to return a better name, and `company_upshot_batch` never writes `company_name`.
+
+### To-be
+
+Each `company_upshot` response item can also carry `company_name`, the company's proper, readable name (e.g. `"Acme Robotics"`). When it's present and non-empty, `company_upshot_batch` writes it to the company's root `company_name` column. That happens in the same success step that saves `company_data.company_upshot` and moves the company to `WATCH`. `short_name` (the `company_id`) is never changed.
+
+### Repro
+
+Fixture (component-level; persistence is mocked, no DB row needed):
+
+```python
+rows = [{"short_name": "acmerobotics_com", "company_name": "Acmerobotics", "state": "UPSHOT_READY",
+         "company_data": {"homepage_text": "Acme Robotics builds warehouse robots."}}]
+# do_task returns:
+{"success": True, "parsed_response": {"companies": [
+    {"company_id": "acmerobotics_com", "upshot": "Acme Robotics builds warehouse robots.", "company_name": "Acme Robotics"}]}}
+```
+
+Today, `asyncio.run(roster.company_upshot_batch("b", rows))` saves the upshot and moves the company to `WATCH`, but nothing writes `company_name`. The column stays `"Acmerobotics"`. The schema has no `company_name` field, and the prompt never asks for one.
+
+### Root cause
+
+AST-2069's `company_upshot` contract (`TASK_CONFIG` schema plus the `agent_task` prompt payload shape) only defined `company_id` + `upshot`. AST-2070's `company_upshot_batch` persists only what that contract returns. No step in the pipeline asks an agent for a readable name, and the only `company_name` writers are mechanical: the URL-fragment extractor and the inflow slug.
+
+### Proposed change
+
+Implement as **one** commit: `code(AST-2088): company_upshot returns and saves a readable company_name`.
+
+1. **`src/utils/config.py`, `TASK_CONFIG["company_upshot"]["response_schema"]["companies"]["items_schema"]`:** the `"upshot": {"type": "str", "required": True},` line appears **three** times in `config.py`. The other two are `segment_key` schemas. Anchor on the unique two-line pair `"company_id": {"type": "str", "required": True},` immediately followed by `"upshot": {"type": "str", "required": True},` (currently lines 507–508). Immediately after that `upshot` line, add:
+
+   ```python
+                       "company_name": {"type": "str", "required": False},
+   ```
+
+   ⚠️ **Decision:** `required: False`. A missing name must never fail an otherwise good upshot. Schema validation failure would route the **whole batch** to retry. The validator already supports optional item fields (`_validate_schema_object_fields` in `agent.py`; precedent `failure_note` / `notes`). Don't change the `ROSTER_CONFIG["company_upshot"]` block, which has the same key in a different dict.
+
+2. **`data/admin/agent_task.json`, the `company_upshot` row:** edit with Python so formatting round-trips (`json.load` → mutate → `open(p, "w").write(json.dumps(d, indent=2, ensure_ascii=False) + "\n")`, the same method AST-2069 used). Change only that row's `cache_prompt` and `updated_at`. Make three exact `str.replace` calls, each asserted to match exactly once:
+
+   | Old (exact) | New (exact) |
+   |---|---|
+   | ``A block gives you the company's `company_id`, the text from its homepage,`` | ``A block gives you the company's `company_id`, the name we currently have on file for it, the text from its homepage,`` |
+   | ``5. Return exactly one entry per input company, using the `company_id` from its block unchanged. Don't add, skip or invent companies.`` | ``5. Return exactly one entry per input company, using the `company_id` from its block unchanged. Don't add, skip or invent companies.\n6. Give each company's proper, readable name in `company_name`: the name the company uses for itself (e.g. "Acme Robotics", not "acmerobotics_com", "Acmerobotics" or "Acme \| Home"). If the name on file is already right, return it as is.`` |
+   | `{"companies": [{"company_id": "<company_id from the block>", "upshot": "<prose upshot, under 200 words>"}]}` | `{"companies": [{"company_id": "<company_id from the block>", "company_name": "<proper, readable company name>", "upshot": "<prose upshot, under 200 words>"}]}` |
+
+   In the second row, `\n` is a real newline, and `\|` is a plain `|` (escaped only for this table). Set `updated_at` to `"2026-10-09 03:00:00"`.
+
+   ⚠️ **Decision:** `updated_at` is bumped for accuracy only. The repo-wins bootstrap (`src/core/repo_admin_json.py`) compares whole rows, so the prompt change alone makes the repo row win. `git diff` on the file must show exactly the two changed lines of the `company_upshot` row (`cache_prompt`, `updated_at`).
+
+3. **`src/core/roster.py`, `company_upshot_batch`:**
+
+   a. In the `rows = [...]` comprehension, after `"state": c.get("state"),` add:
+
+   ```python
+               "company_name": c.get("company_name") or "",
+   ```
+
+   b. In the block loop, replace
+
+   ```python
+           parts = [f"[company_id={r['company_id']}]", f"\n## Homepage Content\n{(cd.get('homepage_text') or '').strip()}"]
+   ```
+
+   with
+
+   ```python
+           parts = [
+               f"[company_id={r['company_id']}]",
+               f"\n## Name On File\n{r['company_name']}",
+               f"\n## Homepage Content\n{(cd.get('homepage_text') or '').strip()}",
+           ]
+   ```
+
+   c. In the success `try:`, replace
+
+   ```python
+               save_company_data(cid, {upshot_key: upshot})
+               transition_company_state(cid, cfg["pass_state"])
+   ```
+
+   with
+
+   ```python
+               save_company_data(cid, {upshot_key: upshot})
+               # Root column, not company_data; short_name (company_id) is never rewritten.
+               readable_name = str(rc.get("company_name") or "").strip()
+               if readable_name:
+                   update_company(cid, company_name=readable_name)
+               transition_company_state(cid, cfg["pass_state"])
+   ```
+
+   d. Replace the success log line
+
+   ```python
+           _entity_info(cid, "company", "upshot saved", f"{len(upshot.split())} words")
+   ```
+
+   with
+
+   ```python
+           _entity_info(cid, "company", "upshot saved", f"{len(upshot.split())} words name={readable_name or '-'!r}")
+   ```
+
+   `update_company` is already imported in `roster.py` (from `src.data.database`), and `company_name` is in its allowlist (`_save_company` writes it). A `ValueError` from it falls into the existing `except ValueError` → retry/error routing. No new imports.
+
+   ⚠️ **Decision:** an empty or missing `company_name` leaves the column unchanged. It isn't a failure, and the company still goes to `WATCH`. No validation or length limit is applied to the returned name beyond `strip()`.
+
+4. **Verify** (compile, lint gate as in this plan's Lint gate section, then this smoke check, run inline and not committed):
+
+   ```bash
+   PY=/home/susan/.cache/astral-component-venv/bin/python
+   $PY -m py_compile src/utils/config.py src/core/roster.py
+   $PY - <<'EOF'
+   import asyncio, json
+   import src.core.roster as R
+   from src.utils.config import TASK_CONFIG
+   assert TASK_CONFIG["company_upshot"]["response_schema"]["companies"]["items_schema"]["company_name"] == {"type": "str", "required": False}
+   p = {r["task_key"]: r for r in json.load(open("data/admin/agent_task.json"))}["company_upshot"]["cache_prompt"]
+   assert '"company_name": "<proper, readable company name>"' in p and "\n6. Give each company's proper, readable name" in p and "the name we currently have on file" in p
+   names, moves, saved = {}, {}, {}
+   async def fake_do_task(**kw):
+       assert "## Name On File\nAcmerobotics" in kw["live_content"]
+       return {"success": True, "parsed_response": {"companies": [
+           {"company_id": "a", "upshot": "Acme builds robots.", "company_name": " Acme Robotics "},
+           {"company_id": "b", "upshot": "Beta does things."},
+       ]}}
+   R.do_task = fake_do_task
+   R.save_company_data = lambda sn, d, replace=False: saved.update({sn: d})
+   R.transition_company_state = lambda sn, st: moves.update({sn: st})
+   R.update_company = lambda sn, **kw: names.update({sn: kw})
+   rows = [{"short_name": "a", "company_name": "Acmerobotics", "state": "UPSHOT_READY", "company_data": {"homepage_text": "hi"}},
+           {"short_name": "b", "state": "UPSHOT_READY", "company_data": {}}]
+   r = asyncio.run(R.company_upshot_batch("smoke", rows))
+   assert names == {"a": {"company_name": "Acme Robotics"}}, names
+   assert moves == {"a": "WATCH", "b": "WATCH"}, moves
+   assert r == {"passed": 2, "failed": 0, "total": 2, "retried": 0}, r
+   print("OK")
+   EOF
+   git diff origin/ftr/AST-2054-company-upshot -- data/admin/agent_task.json | grep -c '^[-+] ' # expect 4 (2 removed, 2 added)
+   git diff origin/dev -- src/core/roster.py | grep -nE '^@@.*(_apply_prefilter_decoded_company_outcome|_run_batch_company_prefilter)' && echo 'FAIL: grade fn hunk' || echo 'grades untouched'
+   ```
+
+   Expected: `OK`, `4`, `grades untouched`.
+
+### Blast radius
+
+- **`company_upshot_batch` only** (roster). The other `company_name` writers (`_save_company`'s URL-fragment name on locate/parse outcomes, inflow ingest slug) are untouched. They run **before** `GET_UPSHOT`, so the upshot name overwrites them for every company that reaches `WATCH`. A later `_save_company` on the same company (a re-locate outcome) would put the URL-fragment name back, but the company would go back through `GET_UPSHOT` → `UPSHOT_READY` and get renamed again. Susan's manual `WATCH → GET_UPSHOT` also re-runs it for existing companies.
+- **Readers of `company_name`** (company lists, detail modal, Recommended report header via `api_companies`) simply show the better name. No reader keys on it; joins and ids use `short_name`.
+- **AST-2069 contract:** the `company_upshot` schema and prompt gain one optional field and one rule. The `{$SELECTED_AGENT}` / `{$FIRST_NAME}` / `{$BIO_SUMMARY}` tokens, the 200-word rule and `company_id` echo are unchanged. The AST-2069 test `TestAst2069UpshotRegistration` asserts agent, `200 words` and the tokens, which all still hold. If it pins the exact schema dict, Betty revises it.
+- **AST-2070 tests:** `TestAst2070CompanyUpshotBatch` fixtures mock `save_company_data` / `transition_company_state`. `update_company` is only called when a response carries `company_name`, so existing fixtures without it are unaffected. Any assertion on the exact `_entity_info` detail string or the exact `live_content` block layout (the new `## Name On File` section) is Betty's to revise.
+- **AST-2071 display:** no change. It reads `company_upshot` and the existing `company_name`.
+
+### What must still hold
+
+- AST-2070 AC 5–7: one `do_task(company_upshot)` per batch; upshot saved then `WATCH`; missing/empty upshot → `UPSHOT_READY_RETRY` → `ERROR_UPSHOT`. A missing `company_name` is **not** a failure.
+- AST-2070 AC 8: no hunk in `_apply_prefilter_decoded_company_outcome` or `_run_batch_company_prefilter`.
+- `short_name` / `company_id` is never written by this batch.
+- AST-2069 AC 3: the `company_upshot` row keeps `agent_id` `principal_recruiter_estelle`, its prompt still contains `200 words`, and no other `agent_task` row changes.
+- Nothing outside `company_upshot_batch`, the `company_upshot` schema item and the `company_upshot` prompt row changes.
+
+### Joan fix-board (AST-2088)
+
+```text
+[board-joan]  CANON: OK
+```
+
+AST-2088 board-joan done — CANON: OK.
+
+### Radia review-fix (AST-2088)
+
+[code-rubric]
+
+**Ticket:** AST-2088  
+**Publish ref:** `c5de90bba272b0a81de9a3ac67cc8694c1c9671d` (`origin/sub/AST-2054/AST-2088-upshot-readable-company-name`)  
+**Diff base:** `origin/ftr/AST-2054-company-upshot`  
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+(no frozen Citations on AST-2088 Linear description; Joan fix-board **CANON: OK** — no directive ids to score)
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (bug ticket; fix-board only)
+
+## Frame diff
+
+(none)
+
+### Fix-specific checks
+
+**[bug-repro]** OK — `TestAst2088UpshotReadableCompanyName::test_readable_name_saved_and_blank_or_missing_skipped` pins To-be: stripped `update_company(..., company_name="Acme Robotics")` once; `## Name On File\nAcmerobotics` in `live_content`; missing/whitespace `company_name` still → `WATCH` (3 passed); `short_name` not passed to `update_company`. Would fail pre-fix (no `update_company`, no Name On File block). `TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name` guards optional schema + prompt shape. **Advisory:** first-line `[bug-repro]` tag not on the test comment (qa-fix commit message carries it).
+
+**## What must still hold** OK — for product commit `c5de90bba` only: one `do_task` path unchanged; upshot/retry/error behavior preserved; blank `company_name` non-fatal; no prefilter-function hunks vs `ftr`; Estelle row keeps `200 words` / tokens; `short_name` not rewritten.
+
+## Findings
+
+**fix-now** — (none) on the AST-2088 product commit
+
+**discuss**
+
+- **Sub tip vs fix commit (@susan):** `ftr...sub` three-dot diff includes **AST-2078** product (`src/utils/logging.py`, `RAILWAY_CONFIG["access_log_quiet_paths"]` in `config.py`) not present on `origin/ftr/AST-2054-company-upshot`, plus large `merge-tests` / `origin/tests` carry (AST-1777 bible doc, AST-2081 config tests, etc.). Plan-fix **What must still hold** last bullet limits changes to upshot schema/prompt/batch; **`c5de90bba` respects that** (3 files, 1 schema line). **Default:** PROCEED on the fix; Chuckles/merge-child treats `c5de90bba` as the bug product surface and does not attribute AST-2078 logging to AST-2088 — reconcile whether logging hunks should ride this sub into `ftr` or stay on AST-2078’s branch.
+
+**advisory**
+
+- **sibling test/doc carry:** `merge-tests(AST-2088)` expands `ftr...sub` beyond roster/config tests (expected §5.4 pattern; not scored as 2088 product scope).
+- **Integrated epic context:** Parent AST-2054 `ftr` live; normal-parent shape → Chuckles **PROCEED** → **Review Posted** → clean-review shortcut → **User Testing** (skip `resolve-child`).
+
+### Plan fidelity (§5.4)
+
+Product commit matches plan-fix **Proposed change** steps 1–3d: optional `company_name` in `items_schema`; `agent_task` `cache_prompt` + `updated_at` only; `company_upshot_batch` Name On File block, conditional `update_company`, log detail. Scope bound = parent company-upshot registration + Estelle batch (three files).
+
+## Recommended actions (downstream — not Radia)
+
+- Chuckles: append artifact to plan-fix doc section, `docs(AST-2088): Radia review — clean`, post slim upshot `--as radia`, **Review Posted** → **User Testing** (no `resolve-child`).
+- Optional: Betty add `[bug-repro]` first-line tag on repro test for machinery parity.
+
+**Parent shape:** Normal (AST-2054, `ftr` base)
+
+context_tokens≈52000
