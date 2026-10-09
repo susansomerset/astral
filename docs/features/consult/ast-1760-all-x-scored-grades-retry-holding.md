@@ -430,3 +430,79 @@ First-strike all-X still goes into `bad_grades` → `_transition_batch_consult_f
 - AC2 is **superseded** by this bug: the second strike now lands `{fail_state}_ALL_X`, not `error_state`.
 - `patt.task.dispatch-retry`: exactly one retry before terminal, with no new holding states.
 - Module-load asserts in `config.py`: "Jobs lists overlap", Processing-sections exclusion, and skipped bulk-retry/section-order equality all still pass.
+
+
+## Radia review — AST-2096 (review-fix)
+
+[code-rubric]
+**Ticket:** AST-2096
+**Publish ref:** `a135a38e31c838f8d862bdaa89fe08fd355d1fbb` (`origin/sub/AST-2011/AST-2096-all-x-fail-state`)
+**Corpus:** `2d1b73da19` (`canon/canon_clerk.py index`; `docs/canon-index.md` absent on publish ref)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK — Betty F4 + manifest `docs/test-bible/core/consult.md` § AST-2096 pin **To-be** (not tautologies):
+
+| # | Test | Pin |
+|---|------|-----|
+| 1 | `TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike` | `success True`, `to_state == METEORITE_FAILED_LIKE_ALL_X`, transition not `error_state` |
+| 2 | `…::test_batch_all_x_second_strike_counts_failed` | `failed==1`, `retried==1`, `passed==1`, `bad_grades==["job-x1"]`, `job-x2` → `METEORITE_FAILED_LIKE_ALL_X`, no `error_state` transition |
+| 3–5 | `TestAst2096AllXFailStates` (3) | six rows, priors = base, `all_x_of` / `ALL_X_FAIL_STATES` derived from scored `fail_state`s, `SKIPPED` + processing excluded |
+
+`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` AST-2096 block matches Hedy’s qa-handoff values (post–Betty merge-tests). Pre-fix failure mode matches **Root cause** / **As-is** (`success False`, `error_state`, `failed==0`, missing `_ALL_X` rows).
+
+**`## What must still hold`:** OK — traced against `origin/ftr/AST-2011-meteorite-grade-do-all-x...origin/sub/...` product diff (`src/utils/config.py`, `src/core/consult.py` only):
+
+- **AC1:** First-strike all-X still routes via `retry_state` / `bad_grades` (`test_batch_all_x_second_strike_counts_failed` job-x1; existing first-strike + mixed-batch tests untouched).
+- **AC3 / AC4 / AC5:** No change to floor scoring, partial-X math, or `_render_pass_fail` binary all-X path (`test_render_pass_fail_all_x_still_fail_state` not in product diff).
+- **AST-1155:** Non–`AllLiteralXGradeSetError` still uses `_consult_batch_fail_dest` + `_log_fail_dest` in both catch sites.
+- **`patt.task.dispatch-retry` (plan contract):** `_all_x_fail_dest` = primary `retry_state` or terminal `all_x_of(fail_state)`; no extra holding states.
+- **Config asserts:** `ALL_X_FAIL_STATES` on `SKIPPED_STATES`; rows derived with `dict.fromkeys` from scored `fail_state`s.
+
+## Canon scores
+
+(no frozen canon list on Linear Description or plan-fix **Canon Scope: none cited** — fix-lane empty scored set; not §5.3 ESCALATE because scope was explicitly declared empty on AST-2096 / AST-2011)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan `[board-joan] CANON: OK` at F2 only; no F3 `validate-plan` per-id column)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen directive ids; plan **What must still hold** cites `patt.task.dispatch-retry` as behavioral contract only.  
+  **Recommendation:** No scope amendment unless Archie wants explicit ids on every fix bug.  
+  **Default:** Proceed on empty scored set; dispatch-retry behavior verified in fix-specific §5.2.
+
+### advisory
+
+- **Location:** `git diff origin/ftr/AST-2011-meteorite-grade-do-all-x...origin/sub/AST-2011/AST-2096-all-x-fail-state`  
+  **Finding:** Full three-dot diff is 72 files (+6792 lines), mostly `docs/features/**` (66 paths) from `merge-tests(AST-2096)` / `origin/tests` carry — expected per `review-child` §5.4 sibling test/bible carry. **Product scope:** 2 `src/**` files only; tests `test_consult.py`, `test_config.py`.
+
+- **Location:** Plan **Repro** vs tests  
+  **Finding:** Repro narrative uses `meteorite_grade_do`; `[bug-repro]` uses `meteorite_like` (same scored `_all_x_fail_dest` / `cfg["fail_state"]` path).  
+  **Recommendation:** No product gap; optional follow-up test on `meteorite_grade_do` only if Susan wants somerset task name parity in tests.
+
+- **Location:** `test_render_verdict_meteorite_like_all_x_second_strike`  
+  **Finding:** Manifest item 1 is `[bug-repro]` by bible § AST-2096; first-line `[bug-repro]` tag is on the batch test / `TestAst2096AllXFailStates` class, not that method’s docstring.  
+  **Recommendation:** Cosmetic tag alignment only; assertions are substantive.
+
+## Plan fidelity (§5.4)
+
+Isolated fix diff matches plan-fix **Proposed change** items 1–7: `all_x_of` + six explicit `JOB_STATES` rows + `SKIPPED_STATES`; standalone `_all_x_fail_dest` (no `_consult_batch_fail_dest` call — correct for AST-2086 signature overlap); `render_verdict` terminal branch (`success True`, `_warn_job`); `_run_batch_consult` `failed += 1` / exclude from `bad_grades`. Estimate **3** fits footprint.
+
+## What's solid
+
+- AST-2086 merge hazard explicitly avoided on `_consult_batch_fail_dest`.
+- Board bar (Betty TESTS: REVISE) cleared: second-strike batch + config registration + rewritten AC2 single-entity test + AST-1808 snapshot block.
+
+## Chuckles — post-review branching
+
+**PROCEED** + C7 complete + **normal parent** (AST-2011 live; base `origin/ftr/AST-2011-meteorite-grade-do-all-x`) → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing**; **resolve-child** skipped.
