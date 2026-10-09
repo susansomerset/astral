@@ -689,3 +689,62 @@ Nothing else in `llm_compat.py` changes. The WARNING summary line (`log_llm_batc
 - AST-1189 / AST-1842: `PROVIDER_CALL_BUDGET` holds in `_find_job_page_from_assembled` are unchanged. A call-budget `state_held` result with no probe class still counts `total_errors: 1` where it did before.
 - Healthy and non-probe-failure results from `run_consult_task` / roster batch functions gain **no** new keys (59 component tests assert exact summary dicts).
 - The batch claim is released in `_run_unified`'s `finally` on every path, the probe-held path included.
+
+
+## Joan fix-board — AST-2098
+
+
+**Ticket:** AST-2098 — hold batch on failed host probe (parent AST-2016)  
+**Read:** `plan-fix` § Bug: AST-2098 (As-is → What must still hold) on `origin/sub/AST-2016/AST-2098-probe-fail-hold`; `canon/directives/active/patt.task.dispatch-retry.md`; roster skim (`stat.logging.error`, `astral.dispatch.entity-state-bound` — no probe/balance hold language).
+
+### Summary
+
+The product change is coherent and bounded: tag non-429 probe failures as `provider_probe_failure`, hold entity state, stop the dispatch run (`provider_probe_outage` / `INTERRUPTED`, no circuit-breaker trip), and let the next round re-probe on a new batch id. That matches Susan’s AST-2016 direction and reuses the AST-897 / AST-2010 outage pattern (`is_provider_state_hold`, `_outage_tag`, dispatcher skip keys).
+
+Canon impact is **not** “no touch.” The fix **replaces** the AST-1959 plan’s mapping of probe failure onto ordinary `patt.task.dispatch-retry` retry→error routing. Active pattern text still says failures must not persist in the trigger state (Arc 5) and that **every other** failed attempt gets the pattern (§ When this doesn’t apply — only `empty_tokens` is exempt). Holding on probe failure is the same *class* of exception as empty tokens: **no real entity attempt**, so Arc 4–5 retry semantics should not apply; the corpus should say so explicitly, as with AST-2005’s empty-token carve-out.
+
+### Ada’s question — `patt.task.dispatch-retry` Arc 5
+
+**Is there a conflict?**  
+**Yes, at the literal-text level** if probe failure is still treated as a normal “failed attempt” under dispatch-retry. Arc 5: *“Under no circumstances does a failure remain in the same state.”* The old Stage 3 rule sent probe failure through ordinary retry→error; this fix holds state instead — that **is** a deliberate departure from that reading.
+
+**Is it a product/canon blocker?**  
+**No for implementation direction** — Susan already chose hold/no-op. **Yes for canon hygiene** — the **active** `patt.task.dispatch-retry` directive should gain a second “When this doesn’t apply” bullet (probe / provider-side pre-attempt outage), parallel to empty runtime tokens: no `_RETRY` hop, hold loop-eligible state, next dispatch round retries infrastructure (new batch id / probe), not “second strike to error_state.”
+
+**Balance refusal (AST-897):** Same Arc 5 tension already exists in production without a pattern carve-out; this fix **widens the shared hold predicate** (`is_provider_state_hold`) but **does not** change balance counting (D3). Joan is **not** asking to fix balance in AST-2098; optional follow-up could document balance + probe under one “pre-attempt / provider gate” exemption.
+
+**Not ESCALATE:** Precedent is AST-2005-style carve-out text, not a new architectural precedent. Susan’s call is product; F3 lands canon wording.
+
+### Other directive overlap (skim)
+
+| Id | Triage |
+|----|--------|
+| `patt.entity.batch-processing` | OK — host map still keyed by claim `batch_id`; claim released in `finally`. |
+| `stat.batch.claim-process-release` | OK — no change to claim/release contract. |
+| `stat.logging.error` | OK — removing the `usage=None` traceback is fixing an unintended exception on an expected hollow path, not demoting a terminal entity fault; probe path stays WARNING via `log_llm_batch_summary`. |
+| `stat.logging.debug` / `stat.logging.info` | OK — plan preserves one INFO line + host. |
+| `astral.dispatch.entity-state-bound` | OK — no dispatch_task row lies. |
+
+Plan also updates the **feature doc** Canon row for `patt.task.dispatch-retry` (listed under “Amends in this doc”); that is necessary but **not sufficient** — the in-force pattern in `canon/directives/active/` should be amended in **validate-plan fix mode (F3)**.
+
+### F3 hint (if Chuckles spawns it)
+
+Add to `patt.task.dispatch-retry` § When this doesn’t apply something like: **failed per-batch host probe / provider routing gate** (no entity prompt sent for that task attempt) — hold current loop-eligible state, no `_RETRY` transition; dispatch may stop the run and retry on a later round. Cross-reference `provider_probe_failure` / AST-2098 in rationale only if canon style allows ticket refs in carve-outs.
+
+---
+
+### Machine-readable verdict (for Chuckles `linear_proxy --as joan`)
+
+```
+[board-joan]  CANON: REVISE
+What: patt.task.dispatch-retry — add "When this doesn't apply" carve-out for failed host probe (no entity attempt); Arc 5 hold — provider-side gate like empty_tokens
+```
+
+### Stdout (skill § Joan)
+
+```text
+AST-2098 board-joan done — CANON: REVISE — dispatch-retry probe carve-out.
+```
+
+
+**Chuckles routing:** the canon change Joan names (`canon/directives/active/patt.task.dispatch-retry.md`) is outside AST-2098's approved Component scope, and Betty's `[board-betty] TESTS: REVISE` names a test gap. Both go to one sibling gap child under AST-2016 (orphaned branch: gap child instead of inline F3/F4). AST-2098 proceeds to make-fix.
