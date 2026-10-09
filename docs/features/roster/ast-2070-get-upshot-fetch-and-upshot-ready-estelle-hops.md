@@ -896,3 +896,11 @@ Implement as **one** commit: `code(AST-2088): company_upshot returns and saves a
 - `short_name` / `company_id` is never written by this batch.
 - AST-2069 AC 3: the `company_upshot` row keeps `agent_id` `principal_recruiter_estelle`, its prompt still contains `200 words`, and no other `agent_task` row changes.
 - Nothing outside `company_upshot_batch`, the `company_upshot` schema item and the `company_upshot` prompt row changes.
+
+### Joan fix-board (AST-2088)
+
+```text
+[board-joan]  CANON: OK
+```
+
+AST-2088 board-joan done — CANON: OK.
