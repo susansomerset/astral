@@ -42,7 +42,7 @@
     "candidate_id": null,
     "task_key": "meteorite_bot_blocked_notify",
     "entity_type": null,
-    "trigger_state": "BOT_BLOCKED",
+    "trigger_state": "BOT_BLOCKED_SCRAPE_METEORITE",
     "sort_by": "updated_at",
     "batch_call_mode": 0,
     "freq_hrs": 0.1,
