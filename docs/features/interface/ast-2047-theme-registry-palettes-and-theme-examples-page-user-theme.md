@@ -1357,3 +1357,63 @@ Two files, both in AST-2042's Component scope: `AdminThemeExamples.tsx` ("the re
 **Roster skim:** Touches `pages/` + `App.css` (`astral.ui.frontend-file-placement`). Sample-only UI; no new config resolution in React (`astral.layers.ui-config-driven-business-logic`). No in-force directive mentions grade dots, Theme Examples, or a requirement to export `buildPhaseListGradeRow`. Reusing existing `.grade-dot*` / `.recommended-list-phase-grade-row` CSS does not contradict any active pattern. Epic ACs in **What must still hold** are plan/product bars, not statute edits.
 
 **Verdict:** No canon conflict and no statute/pattern update required.
+
+### Review-fix — Radia (AST-2077)
+
+[code-rubric]
+**Ticket:** AST-2077
+**Publish ref:** `bdb19f46df12af75c0dc83f69cee4d4948e7847d` (`origin/sub/AST-2042/AST-2077-compact-grade-dots`)
+**Corpus:** `9b1648f5f15106be183d31aadfb04054c937378f` (canon tree at publish tip; parent **Canon Scope:** none)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (bug **Citations:** none; parent **Canon Scope:** none). No directive rows to score; not §5.3 ESCALATE.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-lane `plan-fix` + fix-board Joan **CANON: OK**).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `test_AdminThemeExamples.test.tsx` — `[bug-repro] each grade-color option has a letterless Recommended-list grade row beside it, in that option's tokens`: per panel, one `.recommended-list-phase-grade-row` per grade set; sibling of the lettered `.theme-examples-row` (shared parent, not nested); inline styles match mocked token hex; six empty `.grade-dot.grade-dot-letterless` with classes `dot-a`…`dot-x`. Would fail pre-fix (no letterless rows).
+
+**## What must still hold — OK** — Isolated product commit `bdb19f46d`: lettered option rows unchanged inside `.theme-examples-row`; wrapper `.theme-examples-grade-option` only adds layout; compact row duplicates Recommended List markup/classes without touching shared list components; `App.css` adds layout-only rule (no hex); page still GET-only; no theme id literals.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **`data/admin/agent_task.json` in ftr…sub:** Diff vs ftr is non-empty, but `git diff origin/dev bdb19f46d -- data/admin/agent_task.json` is **empty** — sync(dev) carry on the sub branch, not AST-2077 product (per spawn brief).
+- **`src/**` product delta vs ftr:** Only `App.css` + `AdminThemeExamples.tsx` — matches plan two-file scope.
+- **UAT:** Letterless contrast (especially Soft) remains visual; plan documents Susan’s judgment call.
+
+## What's solid
+
+- **Plan fidelity:** Option rows wrapped; letterless `recommended-list-phase-grade-row` sibling with per-set `style={set.tokens}`; `.theme-examples-grade-option` flex rule in section 16.
+- **Stack hygiene:** ftr merge-base = ftr tip (`6f99456a2`); no smuggled contact/meteorite/slack product unlike AST-2064/2065 round-1 patterns.
+- **Tests:** Betty `3ea12ee02` + unchanged AST-2047/2064 cases; repro pins To-be structure.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Normal** (AST-2042 UAT-batch) | → **Review Posted** → fix-lane clean shortcut → **User Testing** (`resolve-child` skipped). |
+
+context_tokens≈14000
+[code-rubric] PROCEED (Commit: bdb19f46d) Letterless grade-dot samples
+```
+
+**Stdout recommendation:** **PROCEED** → **User Testing** after Chuckles posts artifact and moves to Review Posted.
