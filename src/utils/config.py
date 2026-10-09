@@ -35,7 +35,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, job.artifacts.job_resume_structure, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678 / AST-2081)
   TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
@@ -3600,6 +3600,7 @@ JOBS_RECOMMENDED_REPORT_PHASE_TABS = [
     {"tab_id": "phase_like", "nav_label": "LIKE Analysis", "grades_field": "like_grades", "take_key": "take_like"},
 ]
 
+# AST-2081: preview_thumbnail — tab shows a print-preview thumbnail (instead of an inline editor) once generated.
 # AST-1100: tab keys = AST-1099 pin slots (hydrate resolves id → body on job GET).
 JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
@@ -3608,6 +3609,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "job_resume",
         "shapes_key": None,
         "use_resume_structure": True,
+        "preview_thumbnail": True,
     },
     {
         "tab_id": "artifact_cover",
@@ -3615,6 +3617,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "cover_letter",
         "shapes_key": "cover_letter",
         "use_resume_structure": False,
+        "preview_thumbnail": True,
     },
     {
         "tab_id": "artifact_application",
@@ -3622,6 +3625,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "proposed_answers",
         "shapes_key": None,
         "use_resume_structure": False,
+        "preview_thumbnail": False,
     },
 ]
 
@@ -6431,6 +6435,14 @@ ARTIFACT_CONFIG = {
         "body_shape": "cover_letter",
         "ingestion_owner": "tracker",
     },
+    "job.artifacts.job_resume_structure": {
+        "entity_type": "job",
+        "candidate_scoped": True,
+        # AST-2081: per-job resume structure; same structure dict contract as candidate.artifacts.resume_structure.
+        "body_shape": "resume_structure",
+        # Tracker owns first-row ingestion (job resume editor PUT); absent row → job inherits the candidate's.
+        "ingestion_owner": "tracker",
+    },
     "candidate.context.strengths": {
         "entity_type": "candidate",
         "candidate_scoped": True,
@@ -6494,6 +6506,7 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.artifacts.resume_structure",
     "job.artifacts.job_resume",
     "job.artifacts.cover_letter",
+    "job.artifacts.job_resume_structure",
     "candidate.context.strengths",
     "candidate.context.priorities",
     "candidate.context.deal_breakers",
@@ -6581,6 +6594,20 @@ assert _cl["body_shape"] == "cover_letter"
 assert _cl["body_shape"] in BUILD_CONFIG["artifact_shapes"]
 assert _cl["ingestion_owner"] == "tracker"
 assert set(_cl.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_jrs = ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]
+assert _jrs["entity_type"] == "job"
+assert _jrs["entity_type"] in ENTITY_TYPES
+assert _jrs["candidate_scoped"] is True
+assert _jrs["body_shape"] == "resume_structure"
+assert _jrs["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _jrs["ingestion_owner"] == "tracker"
+assert set(_jrs.keys()) == {
     "entity_type",
     "candidate_scoped",
     "body_shape",
@@ -7002,6 +7029,67 @@ RESUME_STRUCTURE_BODY_FORMATS = (
     "dual_column",
     "indented_bold_single",
     "experience_detail",
+    "line",
+)
+# AST-2081: editor metadata per body format — display label, tooltip description (settings + rules),
+# and the BUILD_CONFIG["default_style"]["fonts"] stack key the builder prints that format in.
+# Single SoT for format text/fonts; the frontend reads these from the structure catalog payload.
+RESUME_STRUCTURE_BODY_FORMAT_DETAILS = {
+    "free_prose": {
+        "label": "Prose",
+        "description": (
+            "Paragraphs of body text. A blank line starts a new paragraph; with no blank lines, "
+            "each line prints as its own paragraph. <i> and <b> emphasis allowed."
+        ),
+        "font_stack": "body_stack",
+    },
+    "bullet_list": {
+        "label": "Bullet List",
+        "description": "One bullet per line. Blank lines are skipped. <i> and <b> emphasis allowed.",
+        "font_stack": "body_stack",
+    },
+    "word_cloud": {
+        "label": "Word Cloud",
+        "description": (
+            "Terms print uppercase in the list font and wrap between terms. "
+            "Separate terms with | (prints as •)."
+        ),
+        "font_stack": "list_stack",
+    },
+    "dual_column": {
+        "label": "Dual Column",
+        "description": (
+            "Skills grid in the list font. One category per line as \"Category: items\"; "
+            "a line without \": \" prints as items only."
+        ),
+        "font_stack": "list_stack",
+    },
+    "indented_bold_single": {
+        "label": "Indented Bold",
+        "description": (
+            "One entry per line. Text before the first | prints bold and the rest follows after •; "
+            "a line without | prints fully bold."
+        ),
+        "font_stack": "body_stack",
+    },
+    "experience_detail": {
+        "label": "Experience",
+        "description": (
+            "Roles edited as job entries (company, title, dates, location, accomplishments). "
+            "Experience section only; its format cannot change."
+        ),
+        "font_stack": "body_stack",
+    },
+    "line": {
+        "label": "Line",
+        "description": "A single line of text. Line breaks are collapsed into spaces.",
+        "font_stack": "body_stack",
+    },
+}
+assert set(RESUME_STRUCTURE_BODY_FORMAT_DETAILS) == set(RESUME_STRUCTURE_BODY_FORMATS)
+assert all(
+    d["font_stack"] in BUILD_CONFIG["default_style"]["fonts"]
+    for d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.values()
 )
 # AST-1474: operator page-break policies on structure sections (print CSS is AST-1475).
 RESUME_STRUCTURE_PAGE_BREAK_POLICIES = (
@@ -7015,6 +7103,8 @@ RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS = {
     "page_break_before": "New page before",
     "avoid_split": "Keep block together",
 }
+# AST-2081: flow-state label for enabled=False (shown alongside the page-break policy labels).
+RESUME_STRUCTURE_HIDDEN_FLOW_LABEL = "Hidden"
 RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID = {
     sid: RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
     for sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS

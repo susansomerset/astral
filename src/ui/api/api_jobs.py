@@ -10,6 +10,7 @@ from ui.api_errors import server_error_from_exception
 from src.core.consult import _phase_score_breakdown
 from src.core.agent import get_entity_agent_story
 from src.core.roster import get_company, update_company
+from src.core.candidate import resume_structure_editor_payload
 from src.core.tracker import (
     assemble_job_copy_snapshot,
     cancel_artifact_build,
@@ -17,6 +18,7 @@ from src.core.tracker import (
     count_jobs,
     get_job,
     get_job_artifacts,
+    get_job_effective_resume_structure,
     hydrate_job_artifacts_for_display,
     job_state_admits_transition,
     job_misses_dispatch_score_floor,
@@ -380,6 +382,62 @@ def put_job_cover_letter(astral_job_id):
     if not isinstance(body, dict):
         return jsonify({"error": "cover_letter must be a dict"}), 400
     save_job_artifact(astral_job_id, "job.artifacts.cover_letter", body)
+    return jsonify({"ok": True})
+
+
+@jobs_bp.route("/<astral_job_id>/resume_structure")
+@require_auth
+def get_job_resume_structure(astral_job_id):
+    """AST-2081: structure-editor payload for the job's effective resume structure (read-only)."""
+    job = get_job(astral_job_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    cid = job.get("candidate_id") or "-"
+    route = f"/api/jobs/{astral_job_id}/resume_structure"
+    try:
+        payload = resume_structure_editor_payload(
+            get_job_effective_resume_structure(astral_job_id, hydrate_from_base=True)
+        )
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the job resume editor shows no sections",
+            cid,
+            route,
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    return jsonify(payload)
+
+
+@jobs_bp.route("/<astral_job_id>/artifacts/job_resume_structure", methods=["PUT"])
+@require_auth
+def put_job_resume_structure(astral_job_id):
+    """AST-2081: write the job's own resume structure via catalog write (candidate structure untouched)."""
+    job = get_job(astral_job_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    data = request.get_json(silent=True)
+    body = data.get("job_resume_structure") if isinstance(data, dict) else None
+    if not isinstance(body, dict):
+        return jsonify({"error": "job_resume_structure must be a dict"}), 400
+    cid = job.get("candidate_id") or "-"
+    route = f"/api/jobs/{astral_job_id}/artifacts/job_resume_structure"
+    try:
+        save_job_artifact(astral_job_id, "job.artifacts.job_resume_structure", body)
+    except ValueError as exc:
+        # Invalid structure (normalize / slug reject) — routed 400, no log.
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s failed\n  %s: %s\n  Returning 500; the job resume structure is unchanged",
+            cid,
+            route,
+            type(exc).__name__,
+            exc,
+        )
+        return server_error_from_exception(exc)
+    logger.info("%s | api %s completed: PUT %s", cid, route, 200)
     return jsonify({"ok": True})
 
 
