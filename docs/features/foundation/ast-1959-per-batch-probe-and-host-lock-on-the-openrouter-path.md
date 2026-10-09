@@ -1,3 +1,107 @@
+<!-- linear-archive: AST-1959 archived 2026-10-08 -->
+
+## Linear archive (AST-1959)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1959/per-batch-probe-and-host-lock-on-the-openrouter-path-add-host  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1954 — Add host-discovery probe ahead of warm/gather; pin the batch to one provider  
+**Blocked by / blocks / related:** parent: AST-1954; blocks: AST-1960
+
+### Description
+
+## What this implements
+
+The first OpenRouter call of each dispatch batch sends one probe first, and the batch's real calls are locked to the probe's host with `only`. A failed probe fails the batch's calls with no fallback. Every `llm_compat` result returns the host that served it, and the per-call INFO line names it. This child does **not** write the ledger (#2). Requires AST-1953 on `dev`. Hedy built AST-1953's wire child in `llm_compat`.
+
+## Citations
+
+`patt.entity.batch-processing` (host map keyed on the claim's batch id); `patt.task.dispatch-retry` (probe failure is an ordinary failed call); `stat.logging.debug`; `stat.logging.info`.
+
+## Scope
+
+* `src/utils/config.py` (**modified**):
+  * **New server field:** a boolean probe flag on every `LLM_SERVER_CONFIG` entry, true on `openrouter` only, checked by the server validator. No server name is hard-coded outside config.
+  * **New constant:** the probe message text.
+* `src/external/openrouter.py` (**new**):
+  * **New probe function:** takes the real call's fully assembled request arguments, swaps the content for the probe message, drops the system block, sends it through the same client and returns the response's `provider`. It records the probe on the timesheet through the caller's `record_timesheet` callback, so its cost shows in the ledger.
+  * **New host-map function:** keyed on (batch id, the request arguments minus content and system), it returns the batch's host or the remembered probe failure. Exactly one probe runs per key, even when first calls arrive at the same time. Entries are never evicted; a restart clears them, and no cap or TTL is added.
+* `src/external/llm_compat.py` (**modified**):
+  * **Modified request assembly in** `send_to_llm_compat`: when the server's probe flag is on and a batch id is set, gets the host from the map. On success it sets `provider.only = [host]`. On a remembered failure it returns a failure result with no request sent. Otherwise the request is exactly as today.
+  * **Modified result:** carries `host`, which is the response's `provider` or, when that is absent, the server's label. The served host goes into the per-call summary.
+* `src/utils/logging.py` (**modified**): `log_llm_batch_summary`'s INFO line adds the served host and stays one line per call.
+* Tests and bibles (Betty in `qa-child`):
+  * `tests/component/utils/test_config.py`
+  * `tests/component/external/test_openrouter.py` (**new**)
+  * `tests/component/external/test_llm_compat.py`
+  * `tests/component/utils/test_logging_batch.py`
+  * `docs/test-bible/utils/config.md`
+  * `docs/test-bible/external/openrouter.md` (**new**)
+  * `docs/test-bible/external/llm_compat.md`
+  * `docs/test-bible/utils/logging_batch.md`
+
+## Acceptance criteria
+
+"Stubbed client" means the component-test stub of the Anthropic SDK client used by `test_llm_compat.py`. All checks run on the shipped tree, after AST-1953.
+
+1. **One probe per batch key, before the first real call.**
+   * **Check (component test, stubbed client, batch id set, server** `openrouter`**):** one awaited `send_to_llm_compat` call, then three concurrent calls for the same model and settings. The stub records exactly **5** requests, and the first has the probe message as its only content.
+   * **Fails if:** there are 0 or more than 1 probes, or the probe is not first.
+2. **The probe matches the real call and carries no cache.**
+   * **Check (same test):** the probe's request arguments equal the first real call's, except the content and the missing `system`. `max_tokens`, temperature/effort and `provider` are identical. No `cache_control` appears in the probe, and the probe has no `provider.only` beyond what the agent set.
+   * **Fails if:** any of those fields differs, a `cache_control` block is present, or the probe carries a host lock.
+3. **Warm and gather are locked to the probe's host.**
+   * **Check (component test):** the stubbed probe response has `provider: "DeepInfra"`. Every later request in the batch carries `provider.only == ["DeepInfra"]`, and AST-1953's other provider keys (for example `quantizations: ["bf16"]`) are unchanged.
+   * **Fails if:** `only` is missing or different, or another provider key is dropped or altered.
+4. **A failed probe fails the batch's calls with no fallback.**
+   * **Check (component test):** the stubbed probe raises a 429. The stub records exactly **1** request (the probe) across one awaited call and three concurrent calls in that batch, and every call returns `success: False`.
+   * **Fails if:** any real request is sent, a second probe is sent, or any call reports success.
+5. **No probe outside scope.**
+   * **Check (component test):** with server `kimi` or `deepseek`, or with `openrouter` and no batch id, the stub records zero probes and no request gets a host lock.
+   * **Check:** `rg -n '"openrouter"' src/external/` returns nothing.
+   * **Check:** `git diff origin/dev...HEAD --stat -- src/core/dispatcher.py` is empty.
+   * **Fails if:** there is a probe or lock in those cases, a hit for `"openrouter"`, or a dispatcher change.
+6. **The host comes back (this child's part).**
+   * **Check (component test):** an `llm_compat` result for a stubbed response with `provider: "DeepInfra"` has `host == "DeepInfra"`, and the per-call INFO line contains `DeepInfra`.
+   * **Fails if:** the host is missing from the result or the line.
+
+## Boundaries
+
+* Does **not** write `dispatch_ledger` or touch `agent.py` / `database.py`: that is #2 (Record the serving host on the dispatch ledger - Katherine).
+* Does **not** change `dispatcher.py`.
+* Uses the response's `provider` value as-is in `only`, with no slug mapping (Susan's decision; parent UAT AC 7 is the tripwire).
+
+## Notes for planning
+
+* Cite `patt.entity.batch-processing`, `patt.task.dispatch-retry`, `stat.logging.debug` and `stat.logging.info` (parent Architectural definition has the links).
+* AST-1953 (agent settings → provider object in `llm_compat`) must be on `dev` before this child plans. A gate ticket on the parent holds it.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T00:36:29.916Z
+[code-rubric] PROCEED (Commit: 67b54753) canon clean probe lock
+
+#### betty — 2026-10-04T00:33:55.801Z
+`origin/sub/AST-1954/AST-1959-probe-host-lock` @ `67b54753f` · probe/lock tests, 157 manifest
+
+#### hedy — 2026-10-04T00:28:52.473Z
+`origin/sub/AST-1954/AST-1959-probe-host-lock` @ `10377b6e3`
+
+#### joan — 2026-10-04T00:26:27.051Z
+[plan-rubric] PROCEED (Commit: 059f2a444) probe lock plan solid
+
+#### hedy — 2026-10-04T00:25:03.179Z
+`origin/sub/AST-1954/AST-1959-probe-host-lock` @ `059f2a444` · plan ready, three stages
+
+---
+
 # AST-1959 — Per-batch probe and host lock on the OpenRouter path
 
 - **Parent:** [AST-1954 — Add host-discovery probe ahead of warm/gather; pin the batch to one provider](https://linear.app/astralcareermatch/issue/AST-1954)
