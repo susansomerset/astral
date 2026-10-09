@@ -1419,3 +1419,89 @@ context_tokens≈14000
 **Stdout recommendation:** **PROCEED** → **User Testing** after Chuckles posts artifact and moves to Review Posted.
 
 **Review gate (final):** PROCEED — §3h clean-review shortcut, resolve-child skipped.
+
+## Bug: AST-2076 — Light themes: gold accent → header purple, token renamed `--accent-contrast`
+
+### As-is
+
+AST-2063 added `--heading` (Light palettes `#241b33`, the Dark theme's `--bg-elevated` purple) for section/page headers only. Everything else in the gold accent family still shows dark yellow in `light` and `light_parchment`:
+
+- `--accent-gold` (`light` `#9a7314`, `light_parchment` `#8a5a00`) drives 58 `var()` uses. These include the selected nav link's text and 3px left border (`.nav-link.active`), the selected candidate menu item, focus borders, link/label text, the in-flight primary button, and running/warn status chips.
+- `--accent-gold-hover` (`#b0851c` / `#a06c08`, 2 uses) and `--accent-gold-dim` (`rgba(154,115,20,.15)` / `rgba(138,90,0,.15)`, 3 uses: focus rings and the AdminDataManagement selected table).
+- `--nav-group-label` (`#7a5a10` / `#7a4f00`) drives the nav group headers (`.nav-group-label`).
+
+`light_slate` uses blues for these tokens, and Dark is gold.
+
+### To-be
+
+Per the ticket's **Resolved scope**, which Susan approved:
+
+- The gold accent family is renamed `--accent-gold` / `-hover` / `-dim` → `--accent-contrast` / `-hover` / `-dim` in every declaration and every `var()` use.
+- In `light` and `light_parchment`, the accent family is the header purple: `#241b33`, with the hover and dim in the same family. Nav group headers, the selected nav link's text and border, the selected candidate item, and every other former-gold use render purple.
+- Dark keeps its gold values and `light_slate` keeps its blue values, both under the new names.
+
+### Repro
+
+1. Set a candidate's theme to Light (or view Tools → Theme Examples, Light / Light (Parchment) panels).
+2. The nav group headers, the active nav link with its left border, and the selected candidate menu item are dark yellow, while page/section headers are purple.
+
+### Root cause
+
+AST-2063's fix introduced `--heading` and repointed only header rules to it. The nav and every other accent use still read `--accent-gold` / `--nav-group-label`, whose Light values (AST-2047 Stage 2 step 3) were darkened golds.
+
+### Proposed change
+
+Line anchors are at sub tip `dd70ebbc1`.
+
+1. **Rename (mechanical, 6 files).** Replace every `--accent-gold` substring with `--accent-contrast`. This one replacement also turns `--accent-gold-hover` / `--accent-gold-dim` into `--accent-contrast-hover` / `--accent-contrast-dim`, and no other token contains the substring. Files and current occurrence counts:
+
+   | File | Occurrences |
+   |------|-------------|
+   | `src/ui/frontend/src/App.css` | 12 declarations (3 per block) + 1 `--heading: var(--accent-gold)` + 46 rule uses |
+   | `src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` | 10 |
+   | `src/ui/frontend/src/pages/AdminDataManagement.tsx` | 3 |
+   | `src/ui/frontend/src/components/StateTimeline.tsx` | 2 |
+   | `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` | 2 |
+   | `src/ui/frontend/src/components/TokenTextarea.tsx` | 1 |
+
+   Command (repo root): `sed -i 's/--accent-gold/--accent-contrast/g'` on those six paths. Afterwards, `rg -n "accent-gold" src` must return nothing.
+
+   ⚠️ **Scope note:** `AdminDataManagement`, `StateTimeline`, `RepoJsonDivergenceBanner` and `App.css` are in AST-2042's Component scope. `AdminAnthropicAdHoc.tsx` and `TokenTextarea.tsx` are listed there as "stay unchanged", because they had no literal colours to sweep. They are included here under the ticket's Susan-approved **Resolved scope** item 2 ("Rename every declaration and `var(--accent-gold…)` use"). The change is a token-name substitution inside existing `var()` strings, with no colour or logic change. Leaving them would also fail AST-2049's guard, which requires every `var(--x)` in source to be defined in a token block.
+
+2. **Light values (`App.css`, after step 1).** In **both** `[data-theme="light"]` and `[data-theme="light_parchment"]` (currently lines 96–98, 111–112 and 138–140, 153–154), set:
+
+   | Token | `light` / `light_parchment` value |
+   |-------|-----------------------------------|
+   | `--accent-contrast` | `#241b33` |
+   | `--accent-contrast-hover` | `#2c1b47` |
+   | `--accent-contrast-dim` | `rgba(36, 27, 51, 0.15)` |
+   | `--heading` | `var(--accent-contrast)` |
+   | `--nav-group-label` | `var(--accent-contrast)` |
+
+   The `:root, [data-theme="dark"]` and `[data-theme="light_slate"]` blocks change only by the step 1 rename. Their values are untouched.
+
+   ⚠️ **Decision — purple family:** `#241b33` is the header purple (today's Light `--heading`, Dark's `--bg-elevated`). The hover is Dark's next purple step, `#2c1b47` (Dark `--border`), so it stays in the family and inside the existing palette. The dim is `#241b33` at the same 0.15 alpha the gold dim used. Text on accent backgrounds (`.btn.primary.in-flight`, `.dispatch-status-running/-warn`) already uses `var(--bg-deep)`. In Light that is near-white on dark purple, which reads at least as well as the old gold.
+
+   ⚠️ **Decision — fold `--heading` / `--nav-group-label` by reference, not by deletion:** neither token can be removed. Slate's `--heading` is `#241b33` but its accent stays blue (Resolved scope item 3), and Dark's `--nav-group-label` (`#f0d690`) is a paler gold than its accent. Both tokens stay declared in all four blocks, so AST-2047 AC 4's "same token names" still holds. In the two purple Lights they become `var(--accent-contrast)`, which leaves one source value per block. That is the same pattern Dark already uses for `--heading`.
+
+3. **Verify:**
+   - `rg -n "accent-gold" src` is empty, and `rg -c "accent-contrast" src/ui/frontend/src` shows the same total as the old count (63 `var()` uses + 12 declarations).
+   - In `src/ui/frontend`: `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` shows no problem absent before the change.
+   - `npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx` passes (see Blast radius for the one stale key).
+   - Re-run AST-2047 Stage 2 step 6 check 2 (no stray colours / undefined `var()`). Check 1's Dark-equality compares token **names** against the pre-epic baseline `889c8252f`, so it will flag the renamed Dark tokens. Compare instead with the three names mapped back (`--accent-contrast*` → `--accent-gold*`). Dark values must be identical.
+   - Manual: in Light and Light (Parchment), nav group headers, the active nav link with its left border, the selected candidate item, and focus rings are purple. Dark and Slate look unchanged.
+
+### Blast radius
+
+- Every former `--accent-gold*` use changes colour in `light` and `light_parchment`. This covers nav, focus rings, links/labels, the in-flight button, status chips, the column-resize handle, and the hamburger bars. Dark and Slate rendering is unchanged.
+- **Tests (Betty's call):** `test_AdminThemeExamples.test.tsx` line 162 lists `"--accent-gold"` among the keys the Lights must pairwise differ on. After the rename that key is undefined in every block. The case still passes (via `--bg-deep`), but the key is stale and should become `--accent-contrast`. Note that `light` and `light_parchment` will now share the same accent value. `docs/test-bible/frontend/root.md` line 45 (`.btn.primary.in-flight` uses `var(--accent-gold)`) and the `pages.md` mentions also need the new name. No other test names these tokens.
+- **Canon (Joan's call):** `canon/directives/draft/patt.ui.shared-button-roles.md` (draft) names `--accent-gold`.
+- The AST-2049 source-wide guard (every `var(--x)` defined; no hex in `.ts`/`.tsx`) holds only if the rename covers all six files together.
+
+### What must still hold
+
+- AST-2047 AC 3: Dark's **values** are unchanged. Only the three accent names change.
+- AST-2047 AC 4: all four blocks declare exactly the same token names, and the Lights still differ pairwise on `--bg-deep`.
+- AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` outside token blocks, no `#hex` in `.ts`/`.tsx`, and every `var(--x)` defined in a token block.
+- AST-2063: section/page headers stay `#241b33` in all three Lights. Slate keeps its literal value, and light/parchment get it via `var(--accent-contrast)`.
+- AST-2064 / AST-2077: grade tokens and Theme Examples option rows are untouched.
