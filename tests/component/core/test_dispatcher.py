@@ -430,13 +430,15 @@ class TestRunUnified:
             "batch_call_mode": 0,
         }
         out = await dispatcher_mod._run_unified(task, ctx, False)
-        assert out == consult_out
+        # AST-2093: normal return also carries repeat_processed (0 — first claim of this dispatch)
+        assert out == {**consult_out, "repeat_processed": 0}
         claim.assert_called_once()
         clear_cand.assert_called_once_with(batch_id)
         clear_co.assert_not_called()
         clear_job.assert_not_called()
         run.assert_awaited_once_with(
             "candidate", "ACTIVE_SEARCH", claimed, batch_id, ctx, False, dispatch_task_key="inflow_discovery",
+            batch_index_offset=0,  # AST-2093: lone entity sends its claimed position
         )
 
     @pytest.mark.asyncio
@@ -699,6 +701,7 @@ class TestRunUnified:
             debug: bool,
             batch_chunk_index: Optional[int] = None,
             dispatch_task_key: str = "",
+            batch_index_offset: int = 0,  # AST-2093: chunk path passes ci * chunk_sz
         ) -> Dict[str, int]:
             seq.append(("consult_enter", batch_chunk_index))
             lens.append((batch_chunk_index, len(ents)))
@@ -1788,7 +1791,8 @@ class TestAst1867ProviderBalanceOutage:
 
         assert consult.await_count == 1
         # held / failure_class stay off the summary — update_dispatch_ledger rejects unknown keys
-        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+        # AST-2093: repeat_processed rides the return (not a _SUMMARY_ZERO key, so the ledger never sees it)
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0, "repeat_processed": 0}
         assert ctx["provider_balance_outage"] == {"error": self._REFUSAL_ERR, "held": 1}
         claimed["clear"].assert_called_once_with("bid-1867")
 
@@ -1944,7 +1948,8 @@ class TestAst2010ProviderRateLimitOutage:
 
         assert consult.await_count == 1
         # failure_class / error stay off the summary — update_dispatch_ledger rejects unknown keys
-        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        # AST-2093: repeat_processed rides the return (not a _SUMMARY_ZERO key, so the ledger never sees it)
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1, "repeat_processed": 0}
         assert ctx["provider_rate_limit_outage"] == {"error": self._ERR}
         assert "provider_balance_outage" not in ctx
         claimed["clear"].assert_called_once_with("bid-1867")
@@ -2602,7 +2607,8 @@ class TestAst972CandidateStageDispatch:
         clear.assert_called_with(batch_id)
         clear.reset_mock()
         out = await dispatcher_mod._run_unified(task, ctx, False)
-        assert out == dispatcher_mod._SUMMARY_ZERO
+        # AST-2093: claimed row takes the normal return, which adds repeat_processed
+        assert out == {**dispatcher_mod._SUMMARY_ZERO, "repeat_processed": 0}
         run.assert_awaited_once()
         assert run.await_args.args[0] == "candidate"
         assert run.await_args.args[1] == "REQUESTED_ARTIFACTS"
