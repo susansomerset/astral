@@ -1,3 +1,67 @@
+<!-- linear-archive: AST-1979 archived 2026-10-08 -->
+
+## Linear archive (AST-1979)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1979/created-column-on-jobs-list-tables-add-created-to-the-job-list-table  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1971 — Add Created to the job list table  
+**Blocked by / blocks / related:** parent: AST-1971
+
+### Description
+
+## What this implements
+
+Adds the sortable Created column (job `created_at`, left of Updated / Failed At, default sort unchanged) to every job table on Ready, Review, Processing, Skipped, and Applied. Each page extends its own existing sorter. Does not touch Meteorites (#2), any backend route, or config.
+
+## Citations
+
+none — every file is under `src/ui/frontend/`, outside both statutes' territory.
+
+## Scope
+
+`src/ui/frontend/src/pages/JobsRecommended.tsx` (Created header + cell; `created_at` branch in `sortRecommendedJobs`; column-count arithmetic); `src/ui/frontend/src/pages/JobsProcessing.tsx` (Created header + cell; `created_at` branch in its existing sorter); `src/ui/frontend/src/pages/JobsSkipped.tsx` (Created header + cell in both table variants; `created_at` branch in `sortJobs`); `src/ui/frontend/src/pages/JobsApplied.tsx` (Created header + cell; `created_at` branch in `sortAppliedJobs`). All four add the optional `created_at` field to the page's `Job` interface.
+
+## Acceptance criteria
+
+1. **Column present on job lists.** On Ready, Review, Processing, Skipped (regular and below-floor tables), and Applied, every job table's header row contains a `Created` header immediately left of `Updated` (or `Failed At`). **Fail:** any in-scope table without it, or in a different position.
+2. **Value is the job's** `created_at`**.** For any row on those pages, the Created cell text equals `fmtTime(created_at, <candidate tz>)` for that job's `created_at` in the `GET /api/jobs?view=<page view>&candidate_id=X` response. A row whose `created_at` is null shows `—`. **Fail:** a cell showing `state_changed_at` / `updated_at`, a blank cell, or a timezone different from the Updated cell's.
+3. **Sorts by creation time.** Clicking `Created` once orders that table's rows by `created_at` with the same direction rule the Updated header uses on first click. Clicking again reverses it, and the sort indicator shows on Created. Null `created_at` rows are placed the same way Updated places null `state_changed_at`. **Fail:** any out-of-order pair, no reversal, or the indicator on another header.
+4. **Default sort unchanged.** On first load, each job list table is still sorted by `state_changed_at` descending, with the indicator on Updated / Failed At. **Fail:** the default switches to Created or anything else.
+5. **Extends existing sorters, no parallel path.** `rg -n "function sort" src/ui/frontend/src/pages/JobsRecommended.tsx src/ui/frontend/src/pages/JobsProcessing.tsx src/ui/frontend/src/pages/JobsSkipped.tsx src/ui/frontend/src/pages/JobsApplied.tsx` returns the same count as on `origin/dev` at branch point, and each file's `"created_at"` sort comparison sits inside that existing function. **Fail:** a new sorter function, or a sort for Created implemented outside the page's existing sorter.
+6. **Builds clean; no new lint (frontend half).** In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem that is absent on `origin/dev` (diff the problem lists). **Fail:** a non-zero exit, or any new lint problem.
+
+## Boundaries
+
+Does **not** touch Jobs → Meteorites, `JobsMeteorites.tsx`, `src/data/**`, `src/ui/api/**`, or `src/utils/config.py`. Those belong to sibling #2 (Meteorites Created from landed job). No new shared sort helper; no change to default sorts.
+
+## Notes for planning
+
+No backend change is needed: `database.list_jobs` selects `SELECT * FROM job`, so every `GET /api/jobs?view=…` row already carries `created_at`, including Skipped's below-floor virtual rows. Format the cell with the existing `<Time>` component, as the Updated cell does. Citations: none.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1971-created-col`, child `sub/AST-1971/AST-1979-created-col`. Created at dispatch-parent. Resolve with `epic_registry.py show AST-1971`.
+
+### Comments
+
+#### radia — 2026-10-04T21:06:00.437Z
+[code-rubric] PROCEED (Commit: 7a4f7760e) Four pages match AC
+
+#### betty — 2026-10-04T21:03:19.419Z
+`origin/sub/AST-1971/AST-1979-created-col` @ `7a4f7760e` · Created column tests ready
+
+#### joan — 2026-10-04T20:55:11.134Z
+[plan-rubric] PROCEED (Commit: bb2506916) Four-page Created column
+
+#### ada — 2026-10-04T20:53:47.085Z
+`origin/sub/AST-1971/AST-1979-created-col` @ `bb2506916` · plan ready, four pages
+
+---
+
 # AST-1979 — Created column on Jobs list tables
 
 - **Linear:** [AST-1979](https://linear.app/astralcareermatch/issue/AST-1979) · parent [AST-1971](https://linear.app/astralcareermatch/issue/AST-1971) (Add Created to the job list table)

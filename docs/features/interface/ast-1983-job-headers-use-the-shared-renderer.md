@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1983 archived 2026-10-08 -->
+
+## Linear archive (AST-1983)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1983/job-headers-use-the-shared-renderer-all-job-titles-in-ui-should-trail  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1981 — All Job Titles in UI should trail with an ellipsis after 50 chars  
+**Blocked by / blocks / related:** parent: AST-1981; related: AST-1972
+
+### Description
+
+## What this implements
+
+After [AST-1982](https://linear.app/astralcareermatch/issue/AST-1982) and [AST-1972](https://linear.app/astralcareermatch/issue/AST-1972) land. Applies the shared component to the Job Detail modal header, the Meteorite modal header (title part only), and the Recommended Job Report header. Widens `Modal`'s title so a header can host it. Leaves the Info-tab Title field and input full. Does not touch list pages, config, or the component itself ([AST-1982](https://linear.app/astralcareermatch/issue/AST-1982)).
+
+## Citations
+
+none — frontend only.
+
+## Scope
+
+`src/ui/frontend/src/components/Modal.tsx` (`title` prop widens to a React node; `<h2>` unchanged); `src/ui/frontend/src/components/JobDetailModal.tsx` (Modal title job-title case through the shared component; fallbacks unchanged); `src/ui/frontend/src/components/MeteoriteDetailModal.tsx` (`modalTitle` returns a node: shared component for the title part + untouched ` — <employer>`); `src/ui/frontend/src/components/RecommendedJobReportHeader.tsx` (`recommended-report-title` content through the shared component).
+
+## Acceptance criteria
+
+5. **Headers follow the rule.** With a title over 50 characters: the Job Detail modal `<h2>` text, the Recommended Job Report `.recommended-report-title` text, and the Meteorite modal `<h2>` text before `—` each start with `job_title.slice(0, 50) + "…"`. The Meteorite header's employer suffix is whole. Hovering the title shows the AC-3 tooltip. **Fail:** any full or differently-cut header title, or a cut employer.
+6. **Info-tab Title field stays full.** In the Job Detail modal, the read-only Title field and the edit input both show the complete `job_title`. **Fail:** a `…` or cut value in either.
+7. **Every in-scope surface uses the shared component** (this child's files). `rg -l "JobTitleText" src/ui/frontend/src` lists `JobDetailModal.tsx`, `MeteoriteDetailModal.tsx`, and `RecommendedJobReportHeader.tsx`. **Fail:** any file missing.
+8. **Builds clean; no new lint.** In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem that is absent on `origin/dev` (diff the problem lists). **Fail:** a non-zero exit or any new lint problem.
+
+## Boundaries
+
+Does not touch `config.py`, `uiConfig.ts`, `JobTitleText.tsx`, `App.css`, or any `pages/Jobs*.tsx` — all [AST-1982](https://linear.app/astralcareermatch/issue/AST-1982). Does not truncate the Info-tab Title field or edit input.
+
+## Notes for planning
+
+Citations: none. Consumes [AST-1982](https://linear.app/astralcareermatch/issue/AST-1982)'s shared component as-is; any change it needs goes back through [AST-1982](https://linear.app/astralcareermatch/issue/AST-1982)'s scope, not this child.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T22:24:09.936Z
+[code-rubric] PROCEED (Commit: 7dc68e85d) Headers use JobTitleText
+
+#### betty — 2026-10-04T22:22:09.237Z
+`origin/sub/AST-1981/AST-1983-job-title-headers` @ `7dc68e85d` · manifest in components.md bible
+
+#### joan — 2026-10-04T22:16:55.768Z
+[plan-rubric] PROCEED (Commit: cb0d69b) Header renderer plan ready
+
+#### hedy — 2026-10-04T22:15:43.627Z
+`origin/sub/AST-1981/AST-1983-job-title-headers` @ `cb0d69b06` · headers plan ready
+
+---
+
 # AST-1983 — Job headers use the shared renderer (All Job Titles in UI should trail with an ellipsis after 50 chars)
 
 - **Parent:** [AST-1981](https://linear.app/astralcareermatch/issue/AST-1981) — All Job Titles in UI should trail with an ellipsis after 50 chars

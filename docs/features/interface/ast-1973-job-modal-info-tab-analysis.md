@@ -1,3 +1,72 @@
+<!-- linear-archive: AST-1973 archived 2026-10-08 -->
+
+## Linear archive (AST-1973)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1973/job-modal-info-tab-analysis-via-shared-phase-lines-component-add-full  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1972 — Add full analysis to job modal Info tab  
+**Blocked by / blocks / related:** parent: AST-1972
+
+### Description
+
+## What this implements
+
+Extracts the Recommended/Review list's phase-lines block into one shared component and renders it in the Job Detail modal's Info tab above State History, with em dashes for phases not yet graded. Ships Functional scope 1–4. It does not touch the Job Analysis Report modal, the list's toggle or click behavior, or any backend route. If AST-1970 lands first, merge its `JobsRecommended.tsx` changes before editing the analysis row.
+
+## Citations
+
+`astral.ui.frontend-file-placement`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.dry-and-focused-functions`, `astral.standards.in-scope-only`.
+
+## Scope
+
+* `src/ui/frontend/src/components/PhaseAnalysisLines.tsx` (**new**): a new component that takes one job record. It derives its phase lines from `manifest.jobs.recommended.report_phase_tabs`, using that order and each tab's `grades_field`. Each line's short label comes from the matching `phase_score_columns` entry, falling back to the tab's `nav_label`. This derivation moves here from `JobsRecommended.tsx` unchanged. For each line, the component renders the label plus `buildPhaseListGradeRow(job, gradesField)`, or an em dash when that returns nothing. It reads the manifest through `useStateUi`.
+* `src/ui/frontend/src/pages/JobsRecommended.tsx` (**modified**): a modified page render. The `phaseLines` memo and the inline `recommended-analysis-lines` markup inside the analysis row are replaced by the shared component. The surrounding row, `colSpan`, click-to-open-report, and Analysis toggle stay as they are.
+* `src/ui/frontend/src/components/JobDetailModal.tsx` (**modified**): a modified `InfoTab`. The right-hand column gets an **Analysis** section label (the same `entity-section-label` style as State History) with the shared component under it, placed before the State History label. `JobDetail` gains an index signature or cast so the job record can be passed. The block is not gated on state.
+
+## Acceptance criteria
+
+1. **Block present and placed.** Open any job from Skipped or In Review. On the Info tab, the right column shows an **Analysis** label, then the phase lines, then the **State History** label, in that DOM order. **Fail:** block missing, or rendered below State History or in the left column.
+2. **Lines follow the manifest.** The block has exactly one line per `report_phase_tabs` entry, in manifest order, labeled JD, DO, GET, LIKE. **Fail:** a missing, extra, or out-of-order line.
+3. **Partial analysis shows em dashes.** For a job with `jd_grades` and `do_grades` but no `get_grades` or `like_grades`, the JD and DO lines show circles and the GET and LIKE lines show `—`. For a job with no phase grades, all four lines show `—` and the modal still renders. **Fail:** a crash, a hidden block, or circles on an ungraded phase.
+4. **Dots match the list.** For a job present on both Recommended/Review (Analysis toggle on) and in the Job Detail modal, each phase line has the same circle count, `dot-*` color classes, left-to-right order, and `title` text in both places. **Fail:** any mismatch.
+5. **No letters, no confidence.** Every grade circle inside the modal's Analysis block has empty text content, and the block contains zero `ConfidenceBullets` elements. **Fail:** a visible letter or a confidence bullet.
+6. **One shared component.** `rg -n "PhaseAnalysisLines" src/ui/frontend/src/pages/JobsRecommended.tsx src/ui/frontend/src/components/JobDetailModal.tsx` returns a hit in each file. `rg -n "report_phase_tabs|buildPhaseListGradeRow" src/ui/frontend/src/pages/JobsRecommended.tsx src/ui/frontend/src/components/JobDetailModal.tsx` returns nothing. **Fail:** either host still derives phase lines or calls the row builder itself (a copy instead of the shared component).
+7. **Recommended list unchanged.** On Recommended/Review with the Analysis toggle on, each job still has one expanded row with four lines in JD, DO, GET, LIKE order, and clicking it still opens the Job Analysis Report. Toggling off still removes every expanded row. **Fail:** any change in line count, order, circles, toggle, or click behavior compared with `origin/dev`.
+8. **No backend change.** `git diff origin/dev...<publish-ref> --stat -- src/ui/api src/core src/data src/utils` is empty. **Fail:** any file listed.
+9. **Builds clean; no new lint.** In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem that `origin/dev` does not already report. **Fail:** a non-zero build or any new lint problem.
+
+## Boundaries
+
+Single child of AST-1972 — no siblings. Does not change `JobAnalysisReportModal.tsx`, `recommendedJobReport.tsx`, `App.css`, any API/core/data/config file, or the Recommended list's toggle, columns, selection, or click-to-open behavior.
+
+## Notes for planning
+
+Detail payload already carries `{jd,do,get,like}_grades` + `_rubric` (`api_jobs.detail` → `_flatten_grades`); `buildPhaseListGradeRow` reads `job_data` first, then top-level. Only `JobsSkipped` and `JobsInReview` open `JobDetailModal`. AST-1970 (Todo) also modifies `JobsRecommended.tsx` and replaces `JobsInReview` with `JobsProcessing` — keep the list edit to the analysis-row block.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T16:41:20.834Z
+[code-rubric] PROCEED (Commit: b7949750) shared phase lines clean
+
+#### betty — 2026-10-04T16:39:05.437Z
+`origin/sub/AST-1972/AST-1973-job-modal-info-tab-analysis` @ `b79497507` · modal analysis tests + bible
+
+#### joan — 2026-10-04T16:33:12.744Z
+[plan-rubric] PROCEED (Commit: 41eb0553) Shared phase-lines plan clean
+
+#### ada — 2026-10-04T16:31:15.308Z
+`origin/sub/AST-1972/AST-1973-job-modal-info-tab-analysis` @ `41eb0553a` · shared component, modal mount
+
+---
+
 # AST-1973 — Job modal Info-tab analysis via shared phase-lines component (Add full analysis to job modal Info tab)
 
 - **Parent:** [AST-1972](https://linear.app/astralcareermatch/issue/AST-1972) — Add full analysis to job modal Info tab
