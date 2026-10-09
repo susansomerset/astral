@@ -1846,3 +1846,5 @@ AST-2089 board-joan done — CANON: OK.
 |------|--------------|-------------|
 | **PROCEED** (C7 complete) | **Orphaned** mini-parent AST-2015 (spawn: fresh ftr off `origin/dev`; merge target **dev**, not epic `prep-uat`) | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). After Susan UAT, merge `sub/AST-2015/AST-2089-qualify-listing-isolation` **straight to `origin/dev`** (finish-up-style; no `merge-child` / `prep-uat`). Coordinate **AST-2090** for test/bible before relying on full `test_agent` / consult component coverage for salvage routing. |
 
+
+**docs-acceptance (AST-2089):** no test-tree delivery on this product sub. Betty's fix-board TESTS: REVISE (salvage + split-routing repro) is routed to gap sibling [AST-2090](https://linear.app/astralcareermatch/issue/AST-2090).
