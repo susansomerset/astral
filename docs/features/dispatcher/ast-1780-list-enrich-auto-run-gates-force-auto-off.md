@@ -1546,3 +1546,189 @@ context_tokens≈22000
 ```
 [code-rubric] PROCEED (Commit: 64bcc193) Rubric gate matches plan
 ```
+
+## Bug: AST-2103 — Score rubric tokens at the dispatch empty-render call site
+
+`fix` child of orphaned mini-parent bug AST-2020 (`ftr/AST-2020-rubric-gate-call-site`). Scope is this ticket's own `## Scope`: `src/ui/api/api_admin.py`, function `_evaluate_dispatch_empty_render` only — supply the `rubric` entity-context key to `empty_render_for_prompts`. No ancestor box checked; this doc is the one that introduced `_evaluate_dispatch_empty_render` (AST-1854 / AST-2091 precedent). Canon Scope on the ticket: none — ids id-only for the board (`astral.dispatch.entity-state-bound`).
+
+> **⚠️ Headline — this change is a no-op on the current tip.** The ticket was filed on the premise that AST-2092 was not on `origin/dev`. It is now: PR #278 (`16875ec91`, AST-2019) carries `5ff29d792` `code(AST-2092)` onto `origin/dev`, and `sync-child` fast-forwarded this publish ref to dev (`3d9f1d1e5`) at plan time. AST-2091 (`64bcc1935`, `rubric_dispatch_error`) is also on dev and independently gates the exact AST-2020 symptom. The step below is correct with or without AST-2092 and composes with no double-scoring, but on this tip it changes no output. See the ⚠️ Decision at the end of **Proposed change**.
+
+### As-is
+
+Ticket As-is (pre-AST-2092 / pre-AST-2091): `_evaluate_dispatch_empty_render` calls `empty_render_for_prompts(texts, cd, tk, entity_contexts=None)`; that helper scored only `source: candidate`, so an empty `{$RUBRIC_VECTORS}` (and the AST-1405 pins `DO_RUBRIC` / `GET_RUBRIC` / `JD_RUBRIC` / `LIKE_RUBRIC` / `PREFILTER_RUBRIC`) validated `empty_render: false`. abrams' `qualify_job_listings` stayed AUTO, claimed 2 jobs, `agent.do_task` refused ("Empty tokens: RUBRIC_VECTORS"), both routed to `ERROR_QUALIFY_JOB_LISTINGS`.
+
+As-is **on this tip** (verified at plan time): the symptom no longer reproduces. `empty_render_for_prompts` scores `source: rubric` by default (AST-2092), so `_evaluate_dispatch_empty_render` already returns `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS", …]}` for a candidate with no current joblist rubric. Independently, `rubric_dispatch_error` (AST-2091) returns `"Rubric 'joblist_rubric' is empty for this candidate."` for `qualify_job_listings` and is wired into `list_dtasks`, create/update AUTO-on, `run_dtask`, and `dispatcher.run_task`.
+
+### To-be
+
+A `source: rubric` token that resolves empty for the row's candidate makes the row `empty_render: true` with that token in `empty_tokens`; AST-1780 list enrichment forces AUTO off; Invalid tooltip names the reason (AST-1819 / AST-1880 / AST-2091 precedence); AUTO-on / Run return 400; no jobs are claimed. Holds on this tip today; this ticket makes `_evaluate_dispatch_empty_render`'s rubric scoring explicit at the call site so it does not depend on the helper's default.
+
+### Repro
+
+Fixture (no DB seed — stub the rubric read; same shape AST-2094's `[bug-repro]` uses):
+
+```python
+import src.core.candidate as c
+from src.utils.config import empty_render_for_prompts
+cd = {"_astral_candidate_id": "abrams", "first": "A"}
+texts = ["Rubric: {$RUBRIC_VECTORS} pin {$DO_RUBRIC}"]
+c.rubric_criteria_for_token = lambda cid, owner: []          # no current rubric
+empty_render_for_prompts(texts, cd, "qualify_job_listings", entity_contexts=None)
+empty_render_for_prompts(texts, cd, "qualify_job_listings", entity_contexts={"rubric": {}})
+```
+
+| Tree | `entity_contexts=None` | `entity_contexts={"rubric": {}}` |
+|------|------------------------|-----------------------------------|
+| pre-`5ff29d792` (`ftr` before sync, `d62d88edc`) | `{"empty_render": False, "empty_tokens": []}` — **the bug** | `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS", "DO_RUBRIC"]}` |
+| this tip (`3d9f1d1e5`, AST-2092 on) | `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS", "DO_RUBRIC"]}` | identical |
+
+Filled rubric (`lambda cid, owner: [{"code": "TP", "label": "x"}]`) → `{"empty_render": False, "empty_tokens": []}` in all four cells. Both this-tip rows were executed at plan time.
+
+### Root cause
+
+The rubric tokens are candidate-keyed (`resolve_tokens` reads `rubric_vector` rows off the token view's `_astral_candidate_id` + owner task), but AST-1779 classed `source: rubric` as an `entity_contexts`-only source and AST-1780's call site passed `entity_contexts=None`, so the gate never scored them. AST-2092 fixed the classification in the helper; AST-2091 added a separate rubric-integrity gate. The call site itself still documents the old assumption.
+
+### Proposed change
+
+One edit, `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.py`, `src/core/candidate.py`, `src/core/dispatcher.py`, or any caller.
+
+1. **`_evaluate_dispatch_empty_render(candidate_id, task_key)`**, final line (today line 2053):
+   - From: `return empty_render_for_prompts(texts, cd, tk, entity_contexts=None)`
+   - To:
+
+     ```python
+     # Rubric tokens are candidate-keyed (resolver reads cd["_astral_candidate_id"]); the
+     # value is unused — only key presence opts source: rubric into scoring (AST-1779 seam).
+     # Job/other entity sources stay out: job tokens alone never flip the gate (AST-1780 AC5).
+     return empty_render_for_prompts(texts, cd, tk, entity_contexts={"rubric": {}})
+     ```
+   - Everything above it byte-for-byte unchanged: blank-`cid` / candidate-miss warnings + `empty_render: True`, hydrated `get_candidate` (AST-1854), `build_candidate_token_view`, silent `ValueError` soft-miss (AST-1791/1794), `logger.exception` fail-closed.
+2. No new function, import, field, log line, cache, or cap. `_candidate_dispatch_empty_render_error`, `list_dtasks`, `create_dtask`, `update_dtask`, `run_dtask` pick it up unchanged.
+
+**Composition with AST-2092 (no conflict, no double-scoring):**
+- Different files: AST-2092 touched only `config.py`; this touches only the `api_admin.py` call line. No merge conflict either way.
+- `empty_render_for_prompts` gate is `source not in ("candidate", "rubric") and source not in contexts` (post-2092) / `source != "candidate" and source not in contexts` (pre-2092). `{"rubric": {}}` admits rubric under both; post-2092 it is redundant. Each token name is resolved once (`seen` set), so a token is never scored or listed twice.
+- `contexts["rubric"]` is never read (only `contexts.get("job")` is) — `{}` vs any other value is irrelevant; `"job"` is deliberately **not** added.
+
+**Composition with AST-2091:** independent reason source. On `list_dtasks`, `empty_render` is already `er OR key_err OR rubric_err`; `empty_tokens` comes only from `er` and already carries `RUBRIC_VECTORS` on this tip. On AUTO-on / Run, `rubric_dispatch_error` runs **before** `_candidate_dispatch_empty_render_error`, so for `qualify_job_listings` the 400 body is AST-2091's `"Rubric 'joblist_rubric' is empty for this candidate."`, not the ticket To-be's `"Prompt tokens resolve empty…"`. That ordering is AST-2091's and out of this ticket's scope; unchanged here.
+
+⚠️ **Decision (for Chuckles / Susan before fix-board):** with AST-2092 on dev and on this ref, step 1 is a **no-op** — identical return values for every input on this tip. Two honest paths:
+- **(a) Ship step 1** as belt-and-suspenders: the call site states its own rubric contract and survives a future revert/narrowing of the helper default. Cost: one line + comment; make-fix / test-fix are trivial (existing AST-2094 + AST-1780/1791/1854 tests cover it; no new `[bug-repro]` can go red on this tip).
+- **(b) Cancel AST-2103 / close AST-2020 as fixed by AST-2092 + AST-2091** (both on `origin/dev`); no product edit.
+Plan is written for (a) per the spawn instruction ("plan the call-site change … state plainly if it becomes a no-op"); (b) needs no further engineer work.
+
+### Blast radius
+
+- Callers of `_evaluate_dispatch_empty_render`: `list_dtasks` (enrich + force AUTO off), `create_dtask` / `update_dtask` AUTO-on, `run_dtask`, via `_candidate_dispatch_empty_render_error`. On this tip: no behavior change. On a pre-2092 tree: every rubric-token-bearing task (incl. any `craft_*` prompt that references `{$RUBRIC_VECTORS}` or a pin, via `rubric_owner_task_key`) would gain the same flag AST-2092 already introduced — identical set, not a superset.
+- Not touched: `dispatcher.run_task` (AST-2091 rubric gate only; no empty-render gate there), AST-1781 revalidation hooks (`database._token_view_for_empty_render` / `_force_auto_off_if_empty_render` call `empty_render_for_prompts` themselves and now score rubric via AST-2092's default).
+- Tests (Betty's lane): `TestAst1780EmptyRenderListGatesForceOff` monkeypatches the evaluator — unaffected. AST-1792/1795/1855 classes stub `_dispatch_empty_render_prompt_texts` with candidate-only tokens — unaffected. AST-2094's `TestAst1779EmptyRenderForPrompts` rubric-by-default tests are on the helper — unaffected. Any test asserting `empty_render_for_prompts` was called with `entity_contexts=None` would go red (none found by name at plan time; Betty to confirm). Engineers do not edit `tests/`.
+
+### What must still hold
+
+- AST-1779: `empty_render_for_prompts` signature and default unchanged; chain never scored; job only via the seam.
+- AST-1780 AC5: job tokens alone never flip the gate — `"job"` stays out of `entity_contexts`.
+- AST-1791 / AST-1794: prompt-load `ValueError` → silent `{"empty_render": False, "empty_tokens": []}`.
+- AST-1780: blank/missing candidate → `empty_render: True` + existing warnings; unexpected exceptions → `logger.exception` + fail-closed.
+- AST-1854: hydrated `get_candidate` load stays outside the `try`.
+- AST-1880 / AST-2091: 400 precedence key → rubric → tokens; `invalid_reason` key-first then rubric; `empty_tokens` sourced only from `_evaluate_dispatch_empty_render`.
+- Filled rubric → `empty_render: False` (no false positive).
+
+
+### AST-2103 — Joan fix-board
+
+[board-joan]  CANON: OK
+
+**Read:** `## Bug: AST-2103` in `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md` (plan-fix six sections; publish ref `sub/AST-2020/AST-2103-rubric-gate-call-site`, plan context commit `fd31c854b`). Roster overlap: `astral.dispatch.entity-state-bound` (`canon/directives/active/stat.dispatch.entity-state-bound.md`); ticket Canon Scope **none** (board cites that id informally only). No pattern ids on parent scope.
+
+**The one question:** Does the proposed change conflict with or require updating any directive **in force**?
+
+**No.** Canon does not prescribe `entity_contexts=None` vs `{"rubric": {}}` on `_evaluate_dispatch_empty_render`. That contract is AST-1779 / AST-1780 feature plan and bible, same class as AST-2092’s helper default change (prior fix-board **CANON: OK** on `ast-1779` doc). This ticket only makes the call site explicit in `api_admin.py`; it does **not** edit `empty_render_for_prompts` signature or default (`## What must still hold`).
+
+- **`astral.dispatch.entity-state-bound`:** Still satisfied. Per-row `candidate_id` / task_key evaluation; no `dispatch_task`, `entity_type`, `trigger_state`, or claim-path edits. Rubric scoring remains candidate-keyed via existing resolver/`cd`; omitting `"job"` from `entity_contexts` matches plan AC5 intent and does not relax entity-binding law.
+
+- **No statute/pattern amend:** On current tip the edit is a documented no-op (AST-2092 default + AST-2091 gate already fix the symptom). Belt-and-suspenders at the call site does not introduce a new corpus carve-out or contradict in-force text.
+
+**Not ESCALATE:** The (a) ship vs (b) cancel choice in **Proposed change** is lane routing for Chuckles/Susan, not ambiguous statute intent or unbounded architectural precedent.
+
+
+### AST-2103 — Radia review
+
+```
+[code-rubric]
+
+**Ticket:** AST-2103  
+**Publish ref:** `origin/sub/AST-2020/AST-2103-rubric-gate-call-site` @ `ad073edebe8648994baa8291115d150b5abf2950`  
+**Diff base:** `origin/ftr/AST-2020-rubric-gate-call-site` @ `d62d88edc281f4a479187fb47951cfa90404fa62` (merge-base = ftr tip)  
+**Corpus:** `f3186d4c58d889a3a2767e51874a11dd942f002b`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen list **empty** (AST-2103 description: **Citations:** none / no Canon Scope block — same as AST-2091 / AST-1854 fix children). No directive rows to score; not a §5.3 **ESCALATE** (Joan fix-board `[board-joan] CANON: OK`; one-line call-site change does not contradict in-force scoped statutes on the touched path).
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan fix-board only (no `validate-plan` canon table for this bug).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] not applicable — clean board opt-out** — fix-board **TESTS: OK**; no `qa-fix` / no `[bug-repro]` on this ticket (plan documents that on the current tip no repro can flip red post-AST-2092). Existing AST-2094 / AST-1780 family tests cover helper + gate behavior.
+
+**## What must still hold — OK**
+
+| Item | Check |
+|------|--------|
+| AST-1779 — helper signature/default; chain unscored; job via seam only | `empty_render_for_prompts` in `config.py` untouched; call passes only `{"rubric": {}}` |
+| AST-1780 AC5 — job alone never flips gate | `"job"` not added to `entity_contexts` |
+| AST-1791 / AST-1794 — prompt `ValueError` soft-miss | `try`/`except ValueError` path above return unchanged |
+| AST-1780 — blank/missing candidate + fail-closed on unexpected errors | Early returns + `logger.exception` path unchanged |
+| AST-1854 — hydrated `get_candidate` outside `try` | `get_candidate` still before `try` |
+| AST-1880 / AST-2091 — key → rubric → tokens; `empty_tokens` from evaluator only | Additive seam only; no change to `_candidate_dispatch_empty_render_error` or rubric gate ordering |
+| Filled rubric → not false positive | Same resolver/`cd`; explicit rubric key matches AST-1779 manifest intent |
+
+## Findings
+
+### advisory — publish-ref history vs product footprint
+
+`git diff origin/ftr/AST-2020-rubric-gate-call-site...origin/sub/AST-2020/AST-2103-rubric-gate-call-site` is large (dev sync + sibling epics AST-2019/AST-2013/AST-2015/AST-2042, tests, docs). **Product delta for AST-2103** is commit `ad073edeb` only: `src/ui/api/api_admin.py` (+4/−1 in `_evaluate_dispatch_empty_render`). Not cross-ticket **product** smuggling for this ticket (§5.4). Chuckles: when merging/stacking AST-2020, treat carried history like AST-2091 advisory — no Radia action on the one-line fix.
+
+### advisory — sibling test carry
+
+`merge-tests` / AST-2094 / AST-2091 / AST-2090 rows on the publish ref — expected §5.4 pattern; out of AST-2103 scope.
+
+### advisory — Canon Scope (off-list)
+
+Joan board cited `astral.dispatch.entity-state-bound` informally; not on frozen list by design. Change stays per-row `candidate_id`/`task_key` evaluation via existing `cd` and AST-1779 seam; no dispatch_task / claim-path edits. Matches board triage.
+
+### advisory — behavioral no-op on tip
+
+Plan **Proposed change** documents identical outputs with AST-2092 on dev; diff is belt-and-suspenders at the call site. UAT may not observe a delta — acceptable per plan path (a).
+
+## What's solid
+
+- Plan fidelity: single edit in `_evaluate_dispatch_empty_render` exactly as specified (comment explains candidate-keyed rubric + AC5).
+- Composes with AST-2092 (redundant admit) and AST-2091 (independent reason) per plan composition notes.
+- No tests asserting `entity_contexts=None` on this call site (grep clean).
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next |
+|------|----------------|------|
+| **PROCEED** (C7 complete) | AST-2020 mini-parent with **live** `ftr/AST-2020-rubric-gate-call-site` (ftr tip = merge-base) | Append artifact → `docs(AST-2103): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+| UAT (optional) | — | Spot-check list row `empty_render` / AUTO-off on candidate with empty joblist rubric; expect same as pre-fix tip (no-op) unless AST-2092 reverted in env. |
+
+context_tokens≈12000
+```
+
+```
+[code-rubric] PROCEED (Commit: ad073ede) Call-site rubric seam explicit
+```
+
+
+### AST-2103 — test routing
+
+docs-acceptance: fix-board `[board-betty] TESTS: OK` — no qa-fix, no new tests. Existing AST-2092 / AST-2094 `TestAst1779EmptyRenderForPrompts` coverage (including the `entity_contexts={"rubric": {}}` case) already pins this behavior; the call-site change is a verified no-op on the current tip.

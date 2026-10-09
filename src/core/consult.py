@@ -31,6 +31,7 @@ from src.utils.config import (
     BUILD_ARTIFACTS_BASE_STATE,
     retry_base,
     retry_of,
+    all_x_of,
     JOB_STATES,
     PROVIDER_CALL_BUDGET,
     ASTRAL_CONFIG,
@@ -1537,9 +1538,11 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
         )
     except IncompleteGradeSetError as e:
         # Incomplete/extra or all-literal-X → retry holding (AST-1155 / AST-1760).
-        dest = _consult_batch_fail_dest(job.get("state"), error_state)
+        all_x = isinstance(e, AllLiteralXGradeSetError)
+        dest = (_all_x_fail_dest(job.get("state"), cfg["fail_state"]) if all_x
+                else _consult_batch_fail_dest(job.get("state"), error_state))
         grades_dbg = row_for_apply.get("grades") if isinstance(row_for_apply.get("grades"), list) else []
-        if isinstance(e, AllLiteralXGradeSetError):
+        if all_x:
             logger.debug(
                 "all literal X grade set %s %s -> %s n_grades=%s",
                 "consult.render_verdict", astral_job_id, dest or "?", len(grades_dbg),
@@ -1552,6 +1555,12 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
                 grades=grades_dbg,
                 dest=dest,
             )
+        if all_x and not retry_base(dest):
+            # Second all-X strike is a fail verdict: WARNING, and success=True so the single-entity
+            # dispatch tally counts it failed (to_state != pass_state), not an error (AST-2096).
+            _warn_job(astral_job_id, dest, str(e))
+            _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+            return {"success": True, "to_state": dest, "score": None, "grades": grades_dbg}
         _log_fail_dest(astral_job_id, dest, str(e))
         if dest:
             _transition_job_state_for_task(agent_task, [astral_job_id], dest)
@@ -1582,6 +1591,11 @@ def _consult_batch_fail_dest(entity_state: Optional[str], error_state: Optional[
         # analysis_upshot: TASK_CONFIG error_state IS the retry holding (PASSED_LIKE_RETRY)
         return "FAILED_TECHNICAL"
     return error_state
+
+
+def _all_x_fail_dest(entity_state: Optional[str], fail_state: str) -> str:
+    """AST-2096: all-literal-X — primary → retry holding (unchanged); *_RETRY → {fail_state}_ALL_X, a fail, not error_state."""
+    return JOB_STATES.get((entity_state or "").strip(), {}).get("retry_state") or all_x_of(fail_state)
 
 
 def _empty_token_fail_dest(*error_states: Optional[str]) -> str:
@@ -1821,15 +1835,20 @@ async def _run_batch_consult(
         try:
             to_state = process_fn(input_job, response_job, cfg)
         except Exception as e:
-            bad_grades.add(aid)
             if isinstance(e, AllLiteralXGradeSetError):
-                dest = _consult_batch_fail_dest(input_job.get("state"), error_state)
+                dest = _all_x_fail_dest(input_job.get("state"), cfg["fail_state"])
                 logger.debug(
                     "all literal X grade set %s %s/%s %s -> %s",
                     f"consult._run_batch_consult({task_key})",
                     job_idx, len(response_jobs),
                     _consult_job_identifier(input_job), dest or "?",
                 )
+                if not retry_base(dest):
+                    # Second all-X strike is a fail verdict, not bad grades (AST-2096).
+                    _warn_job(aid, dest, f"process_fn {type(e).__name__}: {e}")
+                    _transition_job_state_for_task(task_key, [aid], dest)
+                    failed += 1
+                    continue
             elif isinstance(e, IncompleteGradeSetError):
                 _debug_incomplete_grade_set(
                     func=f"consult._run_batch_consult({task_key})",
@@ -1840,6 +1859,7 @@ async def _run_batch_consult(
                     index=job_idx,
                     total=len(response_jobs),
                 )
+            bad_grades.add(aid)
             # One fail-destination line per job (WARNING on retry, ERROR if terminal) —
             # covers InvalidJobLinkError too; the traceback is debug-only.
             _log_fail_dest(

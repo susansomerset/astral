@@ -7127,6 +7127,13 @@ class TestAst1808RetryRegistryPurge:
         for b in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
             cs[b] = None
             cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
+        # AST-2096 added six scored-task {fail_state}_ALL_X terminals: priors = base fail_state's trigger (+ _RETRY).
+        for s, trig in (("FAILED_DO_ALL_X", "PASSED_JD"), ("FAILED_GET_ALL_X", "PASSED_DO"),
+                        ("FAILED_LIKE_ALL_X", "CULTURE_READY"), ("METEORITE_FAILED_DO_ALL_X", "METEORITE_PASSED_JD"),
+                        ("METEORITE_FAILED_GET_ALL_X", "METEORITE_PASSED_DO"),
+                        ("METEORITE_FAILED_LIKE_ALL_X", "METEORITE_PASSED_GET")):
+            js[s] = [trig, f"{trig}_RETRY", f"{s}_RETRY"]
+            js[f"{s}_RETRY"] = [s, f"{s}_RETRY"]
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7854,6 +7861,39 @@ class TestAst2069UpshotRegistration:
         rows = json.loads((Path(__file__).resolve().parents[3] / "data/admin/agent_task.json").read_text())
         prompt = {r["task_key"]: r for r in rows}["company_upshot"]["cache_prompt"]
         assert '"company_name":' in prompt
+
+
+class TestAst2096AllXFailStates:
+    """AST-2096 [bug-repro]: second all-X strike lands {fail_state}_ALL_X — one explicit JOB_STATES row
+    per scored task's fail_state, priors copied from the base (so *_RETRY is admitted), listed Skipped."""
+
+    _ALL_X = (
+        "FAILED_DO_ALL_X", "FAILED_GET_ALL_X", "FAILED_LIKE_ALL_X",
+        "METEORITE_FAILED_DO_ALL_X", "METEORITE_FAILED_GET_ALL_X", "METEORITE_FAILED_LIKE_ALL_X",
+    )
+
+    def test_rows_registered_with_base_priors(self) -> None:
+        for state in self._ALL_X:
+            assert state in cfg.JOB_STATES, state
+            base = state.removesuffix("_ALL_X")
+            assert cfg.JOB_STATES[state]["prior_states"] == cfg.JOB_STATES[base]["prior_states"], state
+        # Second strike comes from the trigger's *_RETRY holding; first strike never lands here but is admitted.
+        priors = cfg.state_prior_states(cfg.JOB_STATES, "METEORITE_FAILED_DO_ALL_X")
+        assert "METEORITE_PASSED_JD_RETRY" in priors
+        assert "METEORITE_PASSED_JD" in priors
+
+    def test_helper_and_list_derive_from_scored_fail_states(self) -> None:
+        assert cfg.ALL_X_SUFFIX == "_ALL_X"
+        assert cfg.all_x_of("METEORITE_FAILED_DO") == "METEORITE_FAILED_DO_ALL_X"
+        scored = {tc["fail_state"] for tc in cfg.TASK_CONFIG.values() if tc.get("grading_mode") == "scored"}
+        assert sorted(cfg.ALL_X_FAIL_STATES) == sorted(self._ALL_X)
+        assert set(cfg.ALL_X_FAIL_STATES) == {cfg.all_x_of(b) for b in scored}
+        assert len(set(cfg.ALL_X_FAIL_STATES)) == len(cfg.ALL_X_FAIL_STATES)
+
+    def test_terminal_all_x_is_skipped_not_processing(self) -> None:
+        for state in self._ALL_X:
+            assert state in cfg.SKIPPED_STATES, state
+            assert state in cfg.JOBS_PROCESSING_EXCLUDED_STATES, state
 
 
 # Branches: none (config literals + import-time asserts). AST-2081: line format, per-format editor
