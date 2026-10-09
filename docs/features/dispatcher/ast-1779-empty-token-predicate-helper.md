@@ -1025,3 +1025,74 @@ Reversing AST-1779 **plan/test** contract is intentional and documented in the A
 **Not ESCALATE:** Blast radius and operator impact are bounded in the patch (owners that can flip Invalid, no `api_admin` change, DB read tradeoff called out). No ambiguous statute intent or new corpus precedent — correction of admin vs runtime mismatch.
 
 context_tokens≈18500
+
+## Radia review — AST-2092
+
+[code-rubric]
+**Ticket:** AST-2092
+**Publish ref:** `5ff29d79214b2f6bf5e7e526ac102ac2c98baf1d` (`origin/sub/AST-2019/AST-2092-rubric-empty-render-gate`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+**Diff base:** `origin/ftr/AST-2019-rubric-empty-render-gate...origin/sub/AST-2019/AST-2092-rubric-empty-render-gate` (2 files: `src/utils/config.py` product; `docs/features/dispatcher/ast-1779-empty-token-predicate-helper.md` plan-fix + board notes).
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.dispatch.entity-state-bound | A | | Scoring filter only in `empty_render_for_prompts`; no `dispatch_task` / claim-path / registry edits. |
+| astral.standards.in-scope-only | A | | Product change confined to one function + docstring in `config.py`; no `api_admin.py` or out-of-scope refactors. |
+
+## Column diff vs plan stage
+
+no plan-stage validate-plan scores attached (Joan **fix-board CANON: OK** only; no per-id validate-plan table for AST-2092)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]:** not applicable — clean board opt-out; Betty **TESTS: REVISE** routed contract/test work to sibling **AST-2094**; no `[bug-repro]` on this publish ref.
+- **## What must still hold — OK**
+  - Return shape, `empty_render` key, first-seen `seen` dedupe, `resolved == ""` (no strip), `warn_on_empty=False` probes: unchanged below the filter edit.
+  - `source == "chain"` still `continue`s before the scoring filter; job still gated on `entity_contexts`; non-(candidate|rubric) sources still require `contexts` keys — `pronoun` / `config` / `output_type` remain unscored by default.
+  - Candidate path unchanged (`"candidate"` in the always-score tuple).
+  - No `api_admin.py`, `resolve_tokens`, `TOKEN_SOURCES`, `do_task`, or schema edits in diff.
+  - Rubric tokens use the same `resolve_tokens` probe as other scored sources (DB read path already used at runtime per plan decision).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling test carry (expected):** Plan-fix lists Betty-owned deltas in `tests/component/utils/test_config.py` (flip `test_rubric_scored_only_via_entity_contexts`, `[bug-repro]`, AC 3/4). This sub tip has **no** `tests/**` changes; **AST-2094** owns the failing contract flip noted at test-fix. Product fix here is complete relative to engineer scope; full AST-1779 test contract green waits on that sibling, not a Radia block on AST-2092.
+- **UT ordering:** Ticket **blocks AST-2094**; Chuckles can run clean-review shortcut to **User Testing** for the predicate behavior while tests land on the blocked sibling per lane split.
+
+## What's solid
+
+- Diff matches **## Proposed change** verbatim (filter + docstring only).
+- Aligns admin predicate with candidate-keyed rubric resolution and AST-2000 runtime refusal without widening blast radius beyond documented owners.
+
+## Note for Chuckles (post-review branching)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal mini-parent (**AST-2019**, live `ftr/AST-2019-rubric-empty-render-gate` — not orphaned-to-dev) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly; **resolve-child** skipped |
+
+context_tokens≈14000
+
+### Chuckles adjudication
+
+Clean (PROCEED, no fix-now / discuss). Clean-review shortcut (do-all-the-things §3h) → User Testing.
+
+### Test routing — AST-2092
+
+docs-acceptance: no test-tree delivery on this ticket. fix-board `[board-betty] TESTS: REVISE` was routed to the gap sibling AST-2094 (rubric empty-render gate tests + bible), which lands its own `test()` / `merge-tests` on ftr.
