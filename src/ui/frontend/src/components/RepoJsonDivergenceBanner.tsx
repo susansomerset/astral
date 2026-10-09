@@ -197,8 +197,8 @@ export default function RepoJsonDivergenceBanner({
   const busy = updating || reverting
   return (
     <>
-      <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-gold)" }}>
-        <span style={{ color: "var(--accent-gold)", fontSize: 13 }}>
+      <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-contrast)" }}>
+        <span style={{ color: "var(--accent-contrast)", fontSize: 13 }}>
           Local <strong>{meta.label}</strong> in the database differ from <code>{path}</code>.
           {" "}Use <strong>Show Differences</strong> to inspect drift,{" "}
           <strong>Update file with table version</strong> to write the live table to the repo JSON file, or{" "}

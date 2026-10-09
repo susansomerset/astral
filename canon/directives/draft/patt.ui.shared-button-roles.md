@@ -38,11 +38,11 @@ Use one labeled-button class family in `App.css` (pointers in `canonical_refs`):
 - `btn primary` — affirmative / commit (Save, Continue, Land Meteorite, Run, Generate idle, Add, Export, Retry, Select all when framed as a page action). Green (`--cta-green`).
 - `btn secondary` — cancel / neutral alternate (Cancel, Clear selection, Start over, non-destructive dismiss, Preview when not the commit). Muted elevated + border.
 - `btn danger` — destructive (Delete / kill / destructive confirm). Red (`--danger`).
-- `btn primary` + `in-flight` — the same primary control while a slow action runs. Gold (`--accent-gold`). Do not put `in-flight` on `secondary` or `danger`.
+- `btn primary` + `in-flight` — the same primary control while a slow action runs. Accent contrast (`--accent-contrast`; gold on Dark, purple on Light palettes, blue on Slate). Do not put `in-flight` on `secondary` or `danger`.
 - Optional size modifier `in-row` — never a fifth role. Always pair with exactly one role: `btn primary in-row`, `btn secondary in-row`, `btn danger in-row`, and `btn primary in-flight in-row` when that control is already the in-flight primary. About 60% the height of the full labeled button (cut vertical padding; keep the 14px label; do not scale type to icon-control size). Use only on labeled shared-role buttons that sit in a data-table row.
 - Markup: `className="btn primary"`, `className="btn secondary"`, `className="btn danger"`, `className="btn primary in-flight"`, `className="btn primary in-row"`, `className="btn secondary in-row"`, `className="btn danger in-row"`, `className="btn primary in-flight in-row"` (space-separated; not BEM `btn--primary`).
 - Styles live only in `src/ui/frontend/src/App.css`. Do not add a second stylesheet or a wrapper component as a substitute for these classes.
-- Do not invent a fifth labeled role or a parallel family (`dep-btn`, `modal-btn`, gold-vs-green as two systems, inline `style={{ background }}` on these actions).
+- Do not invent a fifth labeled role or a parallel family (`dep-btn`, `modal-btn`, green-vs-accent as two systems, inline `style={{ background }}` on these actions).
 - Do not change what the control does (API, enablement, label meaning) when applying this pattern — presentation only.
 
 ## When not to use

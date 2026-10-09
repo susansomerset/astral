@@ -7669,7 +7669,8 @@ def empty_render_for_prompts(
     ``{"empty_render": bool, "empty_tokens": list[str]}`` — siblings map ``empty_render``
     onto each ``dispatch_task`` list row / AUTO-Run gate (AST-1779 / AST-1766).
 
-    Scores ``source: candidate`` always; scores other ``TOKEN_SOURCES`` ``source`` values
+    Scores ``source: candidate`` and ``source: rubric`` always (rubric rows are
+    candidate-keyed — AST-2092); scores other ``TOKEN_SOURCES`` ``source`` values
     only when that key is present in ``entity_contexts`` (extension seam). Never scores
     ``source: chain``. Non-job entity sources in ``entity_contexts`` resolve without a
     matching ``resolve_tokens`` kwarg today (only ``job_context`` exists) — blank until a
@@ -7693,8 +7694,10 @@ def empty_render_for_prompts(
             source = spec.get("source")
             if source == "chain":
                 continue
-            # Score candidate always; other sources only via entity_contexts seam.
-            if source != "candidate" and source not in contexts:
+            # Score candidate + rubric always (rubric_vector rows are keyed per candidate +
+            # owner task; resolve_tokens reads them off the candidate view's
+            # _astral_candidate_id — AST-2092); other sources only via entity_contexts seam.
+            if source not in ("candidate", "rubric") and source not in contexts:
                 continue
             seen.add(name)
             job_context = contexts.get("job") if source == "job" else None

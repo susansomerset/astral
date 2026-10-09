@@ -1690,7 +1690,9 @@ async def _run_batch_consult(
     result = await do_task(task_key=task_key, live_content=live_content, index=do_index, ctx=task_ctx, debug=debug)
     logger.debug("Response from agent.do_task: %s", result)
 
-    if not result.get("success"):
+    # AST-2089: envelope failure with cleanly decoded lines — process those, fail only the gaps.
+    salvaged = None if result.get("success") else result.get("salvaged_response")
+    if not result.get("success") and not salvaged:
         # Envelope failure — whole batch to error_state (unless provider balance refusal — hold)
         if is_provider_balance_refusal(result):
             logger.debug(
@@ -1733,7 +1735,7 @@ async def _run_batch_consult(
             **_rate_limit_tag(result),
         }
 
-    parsed = result["parsed_response"]
+    parsed = result["parsed_response"] if result.get("success") else salvaged
     response_jobs = parsed["jobs"]
 
     try:
@@ -1802,7 +1804,9 @@ async def _run_batch_consult(
             if d:
                 missing_dest_counts[d] = missing_dest_counts.get(d, 0) + 1
         retried += _transition_batch_consult_failures(
-            task_key, missing_rows, error_state, reason="omitted from response",
+            task_key, missing_rows, error_state,
+            # Salvaged batch: the model's failure note says why these lines are absent.
+            reason=result.get("error") if salvaged else "omitted from response",
         )
     if missing:
         logger.debug("MISSING %s IDs: %s", len(missing), sorted(missing))
@@ -1899,7 +1903,7 @@ async def _run_batch_consult(
         bad_rows = [input_by_id[aid] for aid in error_ids if aid in input_by_id]
         retried += _transition_batch_consult_failures(task_key, bad_rows, error_state)
 
-    errors = []
+    errors = [result.get("error")] if salvaged and result.get("error") else []
     if fabricated:
         errors.append(f"fabricated {len(fabricated)} IDs: {sorted(fabricated)}")
     if bad_grades:
@@ -1924,8 +1928,8 @@ async def _run_batch_consult(
         task_key, len(jobs), passed, failed, len(bad_grades), len(missing), len(fabricated),
     )
 
-    return {
-        "success": not fabricated and not bad_grades and not decode_failed,
+    out = {
+        "success": not fabricated and not bad_grades and not decode_failed and not salvaged,
         "passed": passed,
         "failed": failed,
         "total": len(jobs),
@@ -1937,6 +1941,9 @@ async def _run_batch_consult(
         "error": "; ".join(errors) if errors else None,
         "truncated_note": truncated_note,
     }
+    if salvaged:
+        out["agent_failure"] = True
+    return out
 
 
 @_with_log_debug

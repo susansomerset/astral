@@ -2455,3 +2455,7 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ```
 
 **Pass criterion:** 29 passed on lines 1–4. Narrowed run, not the zero-arg harness / branch-lock gate. AC5 `created_at` is whole-second, so order is asserted via `rowid` (list order), not a strict `>`.
+
+### AST-2091 · AST-2013 (`rubric_dispatch_error` — dispatch gate reason)
+
+**New:** `TestAst2091RubricDispatchError` — duplicate codes (`strip().upper()`, sorted, blank codes skipped, non-dict criteria skipped) → `Rubric '<artifact>' has duplicate vector codes: …`; empty → `… is empty for this candidate.`; alias owner resolution (`meteorite_grade_do` → `grade_do`, `meteorite_like` → `grade_like`); craft / non-rubric / unknown task and blank candidate → `None` without a rubric read. Red pre-fix (helper missing). Collects on the sub; fails collection on the `tests` tip until AST-2081 config reaches `origin/dev`. Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-2091.
