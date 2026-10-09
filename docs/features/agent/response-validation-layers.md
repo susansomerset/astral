@@ -572,3 +572,83 @@ AST-2095 board-joan done — CANON: OK.
 Joan’s F2 question is whether the **proposed change** conflicts with or **requires updating** any in-force directive. New pytest nodes and bible rows only **lock** behavior AST-2093 already defined (`batch_index_map`, assembly, `repeat_processed`, loop dedupe). They do not introduce new policy, carve-outs, or prompt/seed content. Parent AST-2012 has no frozen **Canon Scope**; overlap skim matches prior fix-lane test-gap siblings (e.g. roster AST-1894): **`patt.entity.batch-processing`**, decode/logging statutes, and seed rules are **exercised by tests**, not amended. Nothing needs F3 canon landing; **ESCALATE** is not warranted (no Archie precedent call—only coverage).
 
 **Chuckles routing:** Betty TESTS: REVISE (this ticket is the test work) + Joan CANON: OK → Plan Discuss → qa-fix (F4).
+
+## Radia review — AST-2095
+
+[code-rubric]
+**Ticket:** AST-2095
+**Publish ref:** `51f234e12bda47c8a00ddb1d690be3e5544108d6` (`origin/sub/AST-2012/AST-2095-grade-batch-unique-index-tests`)
+**Diff base:** `origin/ftr/AST-2012-grade-batch-unique-index` (`759a19247`)…`origin/sub/AST-2012/AST-2095-grade-batch-unique-index-tests`
+**Review corpus (ticket deliverable):** seven in-scope paths per plan blast radius — `tests/component/core/test_{agent,consult,dispatcher}.py`, `docs/test-bible/core/{agent,consult,dispatcher}.md`, `docs/features/agent/response-validation-layers.md` § Bug: AST-2095 (+ Joan fix-board) — **+919 / −6** vs ftr tip. Full tip-vs-ftr tree is **138 files** (includes `sync(dev)` / unrelated docs and **15 `src/`/`data/` files**); scored as **cross-ticket carry**, not AST-2095 product work (`4756edb1f` is test+bible only).
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**[bug-repro] OK** — qa-fix landed **8** repro nodes (Betty: red @ `823d37605`, green @ ftr `759a19247`). Assertions pin **AST-2093 to-be**, not tautologies:
+
+| # | Location | What it locks |
+|---|----------|----------------|
+| 1–3 | `TestAst2093BatchIndexMapDecode` | Chunk-1 all-`000` → `{"jobs": []}`; `020`–`039` → 20 distinct `J20`…`J39`; duplicate `000` → one `decode_failures` row + only `001` grades |
+| 8 | `TestAst2093EncodedDispatchIndex::test_bug_repro_rows_carry_one_global_label` | Single `[index=NNN]` labels, `row_indexes`, offset 20 → `[020]`…`[022]`, no `^\d{3}: \[index=` |
+| 14–16 | `TestAst2093BatchIndexDispatch` | Chunk offsets `{0:0,1:2,2:4}`; per-entity `{j0:0,j1:1,j2:2}`; `repeat_processed` 0 then 1 + `dispatch_seen_ids` |
+| 18 | `test_bug_repro_loop_counts_each_entity_once` | Somerset rollup **27** not **50**; `repeat_processed` not in `accumulated` |
+
+Tag style: `# [bug-repro]` on the assertion comment (not docstring first line); `-k bug_repro` / `test_bug_repro_*` names match Betty’s manifest. **Plausibly red pre-fix** per plan strings (20×`J20`, 0 rows, `batch_index_offset` absent, loop 50).
+
+**Branch nodes (9–13, 17, 19)** exercise map pre-pass, unknown-index WARNING, mapped-entity `decode_failures`, positional guard, skipped-row gaps, `do_task` ctx map, `render_verdict` / `run_consult_task` / wrapper forwarding, falsy-id + outage `min()`, raw `total_processed` stop guard — aligned with plan nodes 4–7, 9–13, 17, 19.
+
+**## What must still hold — OK** (AST-2095 plan § What must still hold + AST-2093 product invariants via tests)
+
+- Five AST-2093 qa-handoff `test_dispatcher.py` nodes: **no hunks** touching those tests since `759a19247`.
+- `TestPrepLiveContentBranches` `[index=000]` default: not part of this diff’s edits.
+- Additive `TestAst2093*` classes only; no `src/` / `data/` in `test(AST-2095)` commit.
+- Positional / vet decode classes left untouched by this diff.
+
+## Canon scores
+
+(no frozen Canon Scope on AST-2095 / AST-2012 mini-parent — **zero ids to score**; `[board-joan] CANON: OK` on test+bible-only delivery)
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan fix-board only; no F3 per-directive column)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Branch topology vs ticket boundary** — `@Chuckles` (merge routing, not Hedy test code): Publish tip `51f234e12` is **not** test-only vs ftr: `git diff 759a19247..sub -- src/ data/` is **non-empty** (~15 files). That delta comes from **`sync(dev)`** on the sub branch, not `4756edb1f`. AST-2095 Description forbids product on this ticket. **Default:** Roll up **only** the seven in-scope paths (or an ftr-rebased sub containing test work + conflict resolution on test/bible paths). Do **not** treat a whole-sub merge onto ftr as AST-2095 if it would land unrelated `src/` from dev sync.
+- **Bible scope gate accuracy** — `docs/test-bible/core/agent.md` § QA test manifest — AST-2095 row 4 claims `git diff ftr...sub -- src/ data/` is empty; at current tip it is **not**. **Default:** Chuckles corrects that row when appending this review (scoped seven-path gate, or “empty only when sub tip is ftr + test commits”).
+
+### advisory
+
+- **LOCKED_AT_100 AC** left unchecked on Linear; Hedy reports **100% on AST-2093-added lines/branches** with module-wide agent.py ~89% under the 80 pre-existing reds — reasonable for this test-gap ticket; not a merge blocker if Susan accepts branch-level proof.
+- **Full tip diff noise:** 138-file `sync(dev)` / docs churn on the sub ref is **out of plan blast radius**; Radia scored the **919-line** scoped deliverable.
+- **pytest convention:** `[bug-repro]` lives on inline comments, not the first line of the test body — consistent with repo habit; Betty’s repro gate already validated.
+
+## What's solid
+
+- Plan nodes **1–19** map to implemented tests + bible `AST-2093` blocks in all three core pages; manifest table in `agent.md` § QA test manifest — AST-2095 matches classes.
+- Repro fixtures mirror AST-2093 plan § Repro (`batch_index_map` 20–39, `grade_get`, `grades_encoded_notes`).
+- `sync(dev)` conflict resolution preserved **both** `TestAst2089SalvagedBatchSplit` and `TestAst2093EncodedDispatchIndex`, and both dispatcher bible sections (AST-2091 + AST-2093).
+- Betty qa-fix thread documents red→green; Hedy test-fix confirms **23/23** `TestAst2093*`, **8/8** bug-repro, **+23 passes** with **identical** 80 failing ids vs base.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **REVIEW** (discuss: merge topology + bible scope gate; artifact complete) | **Normal** → **Review Posted** → resolve **merge strategy** (not necessarily `resolve-child` on tests) → **User Testing** once sub rollup is ftr-safe |
+
+### Chuckles — discuss resolution
+
+- **Branch topology:** verified `git merge-tree --write-tree origin/dev origin/ftr/AST-2012-grade-batch-unique-index` vs sub tip `51f234e12` — `src/` + `data/` identical; only non-test delta is this plan doc. The `src/`/`data/` carry is pure `sync(dev)` content already on origin/dev; whole-sub merge onto ftr is safe (ftr lands on dev anyway). No path-filtered rollup needed.
+- **Bible scope-gate row** (`docs/test-bible/core/agent.md` § QA test manifest — AST-2095 row 4): wording is stale post-`sync(dev)` (true only vs dev+ftr, not vs bare ftr). Test-tree owned by Betty — left for her next bible touch; not a merge blocker.
+- **Coverage AC:** accepted on branch-level proof (100% of AST-2093-added lines/branches); module-wide figure belongs to a full-suite run.
