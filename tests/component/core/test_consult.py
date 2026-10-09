@@ -6610,7 +6610,8 @@ class TestAst1760AllLiteralXRetry:
     async def test_render_verdict_meteorite_like_all_x_second_strike(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """AC2: holding + all-X → METEORITE_FAILED_TECHNICAL_LIKE."""
+        """AST-2096 (supersedes AC2): holding + all-X → METEORITE_FAILED_LIKE_ALL_X, a fail verdict
+        (success=True so single-entity dispatch tallies it failed), never error_state."""
         job = {
             "astral_job_id": "job-x",
             "company": "meteorite-co",
@@ -6619,7 +6620,6 @@ class TestAst1760AllLiteralXRetry:
             "astral_candidate_id": "c1",
         }
         transition = MagicMock()
-        err = TASK_CONFIG["meteorite_like"]["error_state"]
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
         monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
         monkeypatch.setattr(
@@ -6648,9 +6648,10 @@ class TestAst1760AllLiteralXRetry:
                 "candidate_data": {"artifacts": {"like_rubric": self._like_rubric()}},
             },
         )
-        assert out["success"] is False
-        assert out["to_state"] == err
-        transition.assert_called_once_with("meteorite_like", ["job-x"], err)
+        assert out["success"] is True
+        assert out["to_state"] == "METEORITE_FAILED_LIKE_ALL_X"
+        assert out["to_state"] != TASK_CONFIG["meteorite_like"]["error_state"]
+        transition.assert_called_once_with("meteorite_like", ["job-x"], "METEORITE_FAILED_LIKE_ALL_X")
 
     @pytest.mark.asyncio
     async def test_batch_mixed_all_x_sibling_still_passes(
@@ -6744,6 +6745,88 @@ class TestAst1760AllLiteralXRetry:
             ("job-ok",),
             "METEORITE_PASSED_LIKE",
         ) in triples
+
+    @pytest.mark.asyncio
+    async def test_batch_all_x_second_strike_counts_failed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-2096 [bug-repro] (batch): *_RETRY + all-X → fail_state_ALL_X, counted failed, not bad_grades.
+        Same batch keeps first-strike all-X → retry holding (bad_grades) and a real-letter sibling → pass."""
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
+        # job-x2: second strike; job-x1: first strike; job-ok: retry row that grades normally.
+        states = {
+            "job-x2": "METEORITE_PASSED_GET_RETRY",
+            "job-x1": "METEORITE_PASSED_GET",
+            "job-ok": "METEORITE_PASSED_GET_RETRY",
+        }
+        jobs_by_id = {
+            aid: {"astral_job_id": aid, "state": st, "astral_candidate_id": "c1", "job_title": aid}
+            for aid, st in states.items()
+        }
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda aid: dict(jobs_by_id[aid]))
+        _patch_scored_render_verdict_fixtures(
+            monkeypatch,
+            rubric=self._like_rubric(),
+            score_floor=0.0,
+            task_key="meteorite_like",
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {"astral_job_id": "job-x2", "grades": self._all_x_grades()},
+                            {"astral_job_id": "job-x1", "grades": self._all_x_grades()},
+                            {"astral_job_id": "job-ok", "grades": self._partial_x_grades()},
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+
+        def process(input_job, response_job, cfg):
+            to_state, _, _ = consult_mod._apply_render_verdict_decoded_job(
+                "meteorite_like",
+                response_job["astral_job_id"],
+                response_job,
+                cfg,
+                {"astral_candidate_id": "c1"},
+            )
+            return to_state
+
+        out = await consult_mod._run_batch_consult(
+            "meteorite_like",
+            "batch-2096-second-strike",
+            list(jobs_by_id.values()),
+            lambda rows: "content",
+            process,
+            {
+                "astral_candidate_id": "c1",
+                "candidate_data": {"artifacts": {"like_rubric": self._like_rubric()}},
+            },
+            False,
+        )
+        # Terminal all-X is a fail verdict: in failed, out of bad_grades and the error string.
+        assert out["failed"] == 1
+        assert out["passed"] == 1
+        assert out["retried"] == 1
+        assert out["bad_grades"] == ["job-x1"]
+        assert "job-x2" not in (out["error"] or "")
+        triples = sorted(
+            (c.args[0], tuple(sorted(c.args[1])), c.args[2])
+            for c in transition.call_args_list
+        )
+        assert ("meteorite_like", ("job-x2",), "METEORITE_FAILED_LIKE_ALL_X") in triples
+        assert ("meteorite_like", ("job-x1",), "METEORITE_PASSED_GET_RETRY") in triples
+        assert ("meteorite_like", ("job-ok",), "METEORITE_PASSED_LIKE") in triples
+        err = TASK_CONFIG["meteorite_like"]["error_state"]
+        assert all(t[2] != err for t in triples), triples
 
 
 # Branches: meteorite title-screen proof locks after AST-1152 peel (AST-1153 P1/P5).
