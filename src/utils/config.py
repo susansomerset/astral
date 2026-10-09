@@ -207,6 +207,14 @@ def retry_of(base: str) -> str:
     return f"{base}{RETRY_SUFFIX}"
 
 
+ALL_X_SUFFIX = "_ALL_X"
+
+
+def all_x_of(base: str) -> str:
+    """Second-strike all-literal-X terminal for a scored task's fail_state (AST-2096)."""
+    return f"{base}{ALL_X_SUFFIX}"
+
+
 def retry_base(state: Optional[str]) -> Optional[str]:
     """Base of an implicit retry substate, or None when state has no _RETRY suffix."""
     s = (state or "").strip()
@@ -2680,6 +2688,14 @@ JOB_STATES = {
     "CANDIDATE_SKIPPED":      {"prior_states": []},  # AST-1974: derived after SKIPPED_STATES (Applied/Skipped complement)
 }
 
+# AST-2096: second-strike all-literal-X terminal per scored grading task — explicit rows (no validator
+# changes); priors copied from the base fail_state so {trigger}_RETRY is admitted via state_prior_states.
+_ALL_X_BASES = list(dict.fromkeys(
+    tc["fail_state"] for tc in TASK_CONFIG.values() if tc.get("grading_mode") == "scored"
+))
+JOB_STATES.update({all_x_of(b): {"prior_states": list(JOB_STATES[b]["prior_states"])} for b in _ALL_X_BASES})
+ALL_X_FAIL_STATES = [all_x_of(b) for b in _ALL_X_BASES]
+
 # ---------------------------------------------------------------------------
 # AST-1701: job ingest parent + analysis track SoT (repurposed job.source column).
 # company = gazer/employer parent; meteorite = meteorite staging-row parent.
@@ -4029,6 +4045,7 @@ SKIPPED_STATES = [
     "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO",
     "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET",
     "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE",
+    *ALL_X_FAIL_STATES,  # AST-2096: terminal all-X fails list Skipped, not Processing
     "ERROR_QUALIFY_JOB_LISTINGS", "ERROR_EVALUATE_JD",
     "ERROR_BUILD_ARTIFACTS", "BUILD_FAILED",
     "CANDIDATE_SKIPPED",
