@@ -3839,3 +3839,15 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/comp
 ### AST-2083 · AST-2046 (theme gate on resume editor CSS)
 
 **Unchanged test, product red:** `test_AdminThemeExamples.test.tsx` (8). Its AST-2047/AST-2049 token gates catch `var(--accent-gold)` (retired on dev, now `--accent-contrast`) and a literal `#fff` in AST-2083's App.css §10e2. That's 2 red until the product fix lands. Manifest and detail: [`components.md`](components.md) § AST-2083.
+
+### AST-2084 · AST-2046 (Base Resume Content on the split pane)
+
+**Rewritten:** `test_ArtifactsBaseResumeContent.test.tsx` (8). The 15 old cases are retired with the page they tested (structure tabs, accent bar, structure authoring, the page's own Print and Generate). It covers:
+- **§6c page render** with full first-paint mocks: editor left (`Search sections`, sections, accent swatches) and base print preview right.
+- **Preview refresh:** the preview refetches once per editor save and never while typing (one `PUT …/data`).
+- **AC2/AC3:** no Generate/Regenerate/Save/Cancel.
+- **Candidate switch:** retargets both panes.
+- **No candidate:** shows the message, and no editor or print fetch happens.
+- **Source gates:** no `Save sections` and no `useCandidateResumeStructure|structureCatalog|onStructureSave` anywhere in `src/ui/frontend/src` (AC2/AC5). The page has no `craft_resume_base` and no `ArtifactEditor` (AC3). Both resume surfaces use `ResumeContentEditor`. The AST-1577 ui-consistency directive check is kept.
+
+Manifest: [`components.md`](components.md) § AST-2084.
