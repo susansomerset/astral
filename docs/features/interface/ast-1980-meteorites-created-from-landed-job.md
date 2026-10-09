@@ -1,3 +1,66 @@
+<!-- linear-archive: AST-1980 archived 2026-10-08 -->
+
+## Linear archive (AST-1980)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1980/meteorites-created-from-landed-job-add-created-to-the-job-list-table  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1971 — Add Created to the job list table  
+**Blocked by / blocks / related:** parent: AST-1971
+
+### Description
+
+## What this implements
+
+Delivers the landed job's `created_at` on the Meteorites list API, plus a config-driven, sortable Created column on Jobs → Meteorites. Does not touch any React file or the job list pages (#1).
+
+## Citations
+
+`stat.logging.error` (the existing list handler wraps the extended read; no new handler); `stat.logging.info.api` (GET route, no info line added).
+
+## Scope
+
+`src/data/database.py` (`list_meteorites_for_candidate` also returns the landed job's `created_at` under a distinct key, from the same lookup AST-1970 adds); `src/ui/api/api_meteorite.py` (`_LIST_KEYS` includes that key); `src/utils/config.py` (`JOBS_METEORITES_LIST_COLUMNS` gains a sortable `datetime` Created entry before `state_changed_at`).
+
+## Acceptance criteria
+
+ 6. **Meteorites Created = landed job's** `created_at`**.** For every row in `GET /api/candidates/X/meteorites` with a non-null `astral_job_id`, the landed-job created value equals `SELECT created_at FROM job WHERE astral_job_id = <that id>`. Rows with no `astral_job_id` carry null, and the page shows `—`. The row's own `created_at` still equals `meteorite.created_at`. **Fail:** the meteorite's timestamp shown as Created, a mismatch with the job row, or the meteorite's own `created_at` overwritten.
+ 7. **Meteorites column via config, not page code.** The response's `columns` contains a `Created` entry with `type: "datetime"` and `sortable: true`, placed immediately before `state_changed_at`. On the page, clicking `Created` sorts the rows by that value. `git diff origin/dev -- src/ui/frontend/src/pages/JobsMeteorites.tsx` is empty. **Fail:** column missing / misplaced, unsortable, or a hardcoded column added in the page.
+ 8. **One landed-job lookup.** `list_meteorites_for_candidate` gets the landed job's state (AST-1970) and `created_at` from the same lookup: one join / query, not a second per-row fetch. **Fail:** a separate query or per-row `get_job` call added for `created_at`.
+ 9. **No new logging on the list route.** `git diff origin/dev -- src/ui/api/api_meteorite.py | rg "^\+.*logger\.(info|exception|warning|error)"` returns nothing. **Fail:** any hit.
+10. **Builds clean (backend half).** `python -c "import src.utils.config"` exits 0. **Fail:** non-zero exit.
+
+## Boundaries
+
+Does **not** touch any file under `src/ui/frontend/` (including `JobsMeteorites.tsx`, which renders config-served columns through `ListPage`), and does not touch the job list pages. Those belong to sibling #1 (Created column on Jobs list tables).
+
+## Notes for planning
+
+On `dev`, `list_meteorites_for_candidate` already does `SELECT m.*, j.state AS job_state FROM meteorite m LEFT JOIN job j ON j.astral_job_id = m.astral_job_id` (from AST-1970). Extend that select by one aliased column, under a key that is **distinct** from the meteorite's own `created_at`. The key name is plan-child's call. Citations: `stat.logging.error`, `stat.logging.info.api`.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1971-created-col`, child `sub/AST-1971/AST-1980-created-col`. Created at dispatch-parent. Resolve with `epic_registry.py show AST-1971`.
+
+### Comments
+
+#### radia — 2026-10-04T21:17:46.956Z
+[code-rubric] PROCEED (Commit: 02fc15a18) Join+config Created column
+
+#### betty — 2026-10-04T21:15:45.989Z
+`origin/sub/AST-1971/AST-1980-created-col` @ `02fc15a18` · Meteorites Created tests ready
+
+#### joan — 2026-10-04T21:09:44.616Z
+[plan-rubric] PROCEED (Commit: 6cb5423c8) Join + config Created
+
+#### hedy — 2026-10-04T21:08:52.016Z
+`origin/sub/AST-1971/AST-1980-created-col` @ `6cb5423c8` · one join, config column
+
+---
+
 # AST-1980 — Meteorites Created from landed job
 
 - **Linear:** [AST-1980](https://linear.app/astralcareermatch/issue/AST-1980) · parent [AST-1971](https://linear.app/astralcareermatch/issue/AST-1971) (Add Created to the job list table)

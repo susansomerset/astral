@@ -1,3 +1,82 @@
+<!-- linear-archive: AST-1975 archived 2026-10-08 -->
+
+## Linear archive (AST-1975)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1975/ready-review-processing-pages-landing-and-jobs-routes-jobs-navigation  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1970 — Jobs Navigation changes  
+**Blocked by / blocks / related:** parent: AST-1970; related: AST-1976
+
+### Description
+
+## What this implements
+
+After #1. Delivers the frontend nav re-cut:
+
+* Ready and Review served by the Recommended list component, with the Source column and no meteorite sub-section.
+* The new Processing page, whose rows open the Job Detail modal with working Skip.
+* The first-non-empty landing redirect.
+* Removal of the In Review and Responded pages and routes.
+* The manifest type.
+
+Does **not** touch the Meteorites page (#3) or any backend file (#1).
+
+## Citations
+
+none — every file is under `src/ui/frontend/`, outside both statutes' territory.
+
+## Scope
+
+**Component scope:** `src/ui/frontend/src/routes.tsx`, `src/ui/frontend/src/components/JobsHomeRedirect.tsx` (new), `src/ui/frontend/src/pages/JobsRecommended.tsx`, `src/ui/frontend/src/pages/JobsProcessing.tsx` (new), `src/ui/frontend/src/pages/JobsInReview.tsx` (deleted), `src/ui/frontend/src/pages/JobsResponded.tsx` (deleted), `src/ui/frontend/src/contexts/StateUiContext.tsx`, `src/ui/frontend/src/pages/JobsJobDetail.tsx`, `src/ui/frontend/src/components/AdminRoute.tsx`, `src/ui/frontend/src/pages/CandidateSurferConsent.tsx`, `tests/component/frontend/pages/test_JobsInReview.test.tsx` (deleted), `tests/component/frontend/pages/test_JobsResponded.test.tsx` (deleted), `docs/test-bible/frontend/pages.md`.
+
+**Technical scope:**
+
+* `routes.tsx` — the Jobs route table is modified, and the index + catch-all render the landing redirect.
+* `JobsHomeRedirect.tsx` — a new component. It reads the resolved nav for the selected candidate and navigates to the first Jobs item with `count > 0`, falling back to the first Jobs item. It is the only place the landing choice is made.
+* `JobsRecommended.tsx` — the page component is modified to take its view (ready / review) and title from the route, fetch that view, drop the meteorite-prefix sub-section split, and add a sortable Source column showing the job's stored `source` (`—` when null).
+* `JobsProcessing.tsx` — a new page component: a state-sectioned list over `view=processing`, sections from the manifest with the existing legacy-state fallback for hop labels, and rows opening `JobDetailModal` (whose existing Skip button now succeeds on these states).
+* `StateUiContext.tsx` — the manifest TS interface is modified to match.
+* `JobsJobDetail.tsx`, `AdminRoute.tsx`, `CandidateSurferConsent.tsx` — the hard-coded `/jobs/recommended` target is modified to `/`, the landing route.
+
+## Acceptance criteria
+
+11. **Landing page.** For a candidate with Ready = 0 and Review = 3, loading `/` lands on `/jobs/review`. With all six counts at 0, it lands on `/jobs/ready`. Browsing to `/jobs/recommended` or `/nope` follows the same rule, and so does closing the detail deeplink modal. `rg -n '"/jobs/(recommended|ready|review)"' src/ui/frontend/src --glob '!routes.tsx' --glob '!JobsHomeRedirect.tsx'` returns nothing. **Fail:** a different landing page, a 404 / blank page, or another hard-coded landing target outside the redirect.
+12. **Old routes gone.** `rg -n "jobs/in_review|jobs/recommended|jobs/responded" src/ui/frontend/src src/utils/config.py src/ui/api` returns nothing, and `JobsInReview.tsx` and `JobsResponded.tsx` no longer exist. **Fail:** any hit or file present.
+13. **Ready / Review behave like Recommended, with Source.** On Review, every row has the Generate Artifacts row action and the bulk bar offers Generate. On Ready, no row does. Both pages keep the Analysis toggle and Total, and their titles read "Ready" / "Review". Each row's Source cell equals the job's `source` (`meteorite` for a meteorite-track job), and no separate "Meteorites" section heading renders. `rg -n "meteorite_section" src` returns nothing. **Fail:** Generate on a `CANDIDATE_REVIEW` row, missing toggle / Total / Source, a meteorite sub-section, or the grep hits.
+14. **Builds clean.** `python -c "import src.utils.config"` exits 0. In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem absent on `origin/dev`. **Fail:** non-zero exit, or a new lint problem.
+
+## Boundaries
+
+Does not touch any backend file ([AST-1974](https://linear.app/astralcareermatch/issue/AST-1974)) or `JobsMeteorites.tsx` ([AST-1976](https://linear.app/astralcareermatch/issue/AST-1976)). Consumes the `view=` branches, nav counts, manifest shape, and widened skip legality that [AST-1974](https://linear.app/astralcareermatch/issue/AST-1974) ships.
+
+## Notes for planning
+
+Parent [AST-1970](https://linear.app/astralcareermatch/issue/AST-1970) definition is authoritative (Functional scope, Architectural definition, Canon Scope: `stat.logging.info.api`, `stat.logging.error`).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1970-jobs-nav`, child `sub/AST-1970/AST-1975-jobs-nav`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T19:07:50.592Z
+[code-rubric] PROCEED (Commit: 031da688b) Frontend nav matches plan
+
+#### betty — 2026-10-04T19:05:55.463Z
+`origin/sub/AST-1970/AST-1975-jobs-nav` @ `031da688b` · Jobs nav tests rebuilt
+
+#### joan — 2026-10-04T18:43:34.586Z
+[plan-rubric] PROCEED (Commit: 1f25d594) Frontend routes and landing
+
+#### hedy — 2026-10-04T18:42:19.955Z
+`origin/sub/AST-1970/AST-1975-jobs-nav` @ `1f25d594a` · two-stage frontend plan
+
+---
+
 # AST-1975 — Ready / Review / Processing pages, landing, and Jobs routes
 
 - **Ticket:** [AST-1975](https://linear.app/astralcareermatch/issue/AST-1975)

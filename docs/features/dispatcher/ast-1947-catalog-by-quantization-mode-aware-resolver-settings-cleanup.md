@@ -1,3 +1,128 @@
+<!-- linear-archive: AST-1947 archived 2026-10-08 -->
+
+## Linear archive (AST-1947)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1947/catalog-by-quantization-mode-aware-resolver-settings-cleanup-support  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** katherine  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1946 — Support "Big" brain OpenRouter models  
+**Blocked by / blocks / related:** parent: AST-1946; blocks: AST-1950; blocks: AST-1948
+
+### Description
+
+## What this implements
+
+Replaces the OpenRouter catalog with the brief's 95 slugs, each with one quantization brain size, host pin and brief price, and retires `kimi-k2.6-openrouter` into the table. Adds the Deterministic / Creative mode and a resolver that turns model + size + mode into the tier a call uses. Strips the old per-size thinking/temperature fields, the Anthropic default temperatures and the dead legacy helpers. Updates the agent repo-JSON columns (`mode` in, `temperature` out) and the seed and fixture files. Does **not** touch the database, call paths, admin routes or UI (#2, #3) or the migration (#4). Katherine built AST-1938's table and builder.
+
+## Citations
+
+`stat.logging.debug` (mode-derived thinking/temperature and the pin stay visible in the compat client's existing ungated debug body logging; no `debug=` parameter).
+
+## Scope
+
+* `src/utils/config.py` (**modified**):
+  * **New quantization-to-size map:** a small constant: int4/fp4 → Little, int8/fp8 → Medium, fp16/bf16 → Big.
+  * **Modified OpenRouter table:** replaced by the brief's 95 rows. Each row holds IN / OUT / CACHE from the brief, the host routing slug, the host quantization, the reasoning flag and the host max output. The last three come from `GET https://openrouter.ai/api/v1/models/<slug>/endpoints`, matched on the brief's PROVIDER **and** QUANT (AST-1938's snapshot method). The 12 removed slugs leave the table. The row layout and field names are `plan-child`'s call.
+  * **Modified builder:** each row becomes one model with one brain size, the row's quantization size. It records whether the host can think, its max output, and `request_extras` pinning `provider.order = [host]`, `allow_fallbacks = false` and `quantizations = [row quantization]`. The uniform quantization pin replaces the one-off `gemma-4-31b-it` constant (DeepInfra hosts that slug at two quantizations).
+  * **New mode constants:** Deterministic = thinking off, temperature 0.2, OpenRouter output cap 16k. Creative = thinking on when the model can think, otherwise temperature 0.6, OpenRouter output cap 32k.
+  * **Modified catalog shape:** brain-size tiers no longer carry `thinking`, `thinking_params` or `default_temperature`. Each model carries one "can think" flag plus its thinking payload: OpenRouter per host (adaptive), `kimi-k2.6` yes (`enabled`), `claude` and `deepseek-v4` no. SKUs, pricing, `default_max_tokens` and `max_tokens_floor` on direct models are unchanged.
+  * **Modified resolver:** the model + brain-size resolver also takes the agent's mode and returns the tier a call uses. That tier's thinking flag and temperature come from the mode. It carries the thinking flag and payload under the keys `llm_compat` already reads, which is why `llm_compat.py` needs no change. On OpenRouter its output default comes from the mode cap (capped at host max); on direct models it is the size's existing default. Validation helpers reject an unknown mode.
+  * **Modified repo-JSON config:** the agent table's column list gains `mode` and drops `temperature`.
+  * **Removed:** the `kimi-k2.6-openrouter` entry (`moonshotai/kimi-k2.6` is built from its brief row), the `default_temperature` keys in `AGENT_CONFIG`, and the dead helpers `brain_setting_for_anthropic_agent_key` and `admin_brain_setting_catalog` (no callers; their route no longer exists). Also `infer_brain_setting_from_legacy_model_code`, whose only caller is the legacy fallback removed from `database.py`.
+* `data/admin/agent.json`, `docs/uat-fixtures/AST-756/expected-agent.json` (**modified**): each agent row gains `mode` (per Functional scope item 8) and loses `temperature`. No other field changes.
+* `tests/component/utils/test_config.py`, `tests/component/external/test_llm_compat.py`, `docs/test-bible/utils/config.md`, `docs/test-bible/external/llm_compat.md` (**modified**, Betty in `qa-child`).
+
+## Acceptance criteria
+
+All `python -c` checks run from the repo root on the shipped tree. "The brief" means the 95 rows in this ticket's Original brief. `SIZE = {"int4": "Little", "fp4": "Little", "int8": "Medium", "fp8": "Medium", "fp16": "Big", "bf16": "Big"}`.
+
+1. **OpenRouter catalog = the brief.**
+   * **Check:** `{k for k, m in LLM_MODEL_CONFIG.items() if m["server"] == "openrouter"}` equals the brief's 95 slugs. The script prints both set differences.
+   * **Fails if:** either difference is non-empty.
+2. **One size per OpenRouter model, from the quantization.**
+   * **Check:** for each brief slug, `model_brain_sizes(slug) == (SIZE[QUANT],)`. Spot checks: `gryphe/mythomax-l2-13b` → `('Big',)`, `qwen/qwen3-32b` → `('Medium',)`, `moonshotai/kimi-k2.6` → `('Little',)`.
+   * **Fails if:** any other tuple appears.
+3. **Pricing = the brief.**
+   * **Check:** for each brief slug, `get_sku_pricing(slug, "openrouter")` has `cpm_input` / `cpm_output` / `cpm_cache_read` equal to IN / OUT / CACHE, with `cpm_cache_write == 0`.
+   * **Fails if:** any mismatch prints, or any lookup raises.
+4. **Host and quantization pin.**
+   * **Check:** every brief slug's tier has `request_extras == {"provider": {"order": [<host routing slug>], "allow_fallbacks": False, "quantizations": [QUANT]}}`. Spot checks: `undi95/remm-slerp-l2-13b` → `mancer` / `fp8`, `google/gemma-4-31b-it` → `deepinfra` / `fp4`.
+   * **Fails if:** any pin is missing, wrong, or allows fallbacks.
+5. **Output default by mode on OpenRouter.**
+   * **Check:** the resolved OpenRouter tier's `default_max_tokens == min(16000 Deterministic | 32000 Creative, host max output)`. Spot checks: `gryphe/mythomax-l2-13b` Creative → 3686, `qwen/qwen3.5-27b` Creative → 32000, `qwen/qwen3.5-27b` Deterministic → 16000.
+   * **Fails if:** any violator prints.
+6. **Direct models persist; no stray thinking/temperature settings.**
+   * **Check:**
+     * For `claude`, `kimi-k2.6` and `deepseek-v4`, model ids, brain-size tuples, tier SKUs, `default_max_tokens`, `max_tokens_floor` and pricing rows equal pre-epic `origin/dev` values.
+     * No stored tier in `LLM_MODEL_CONFIG` has a `thinking`, `thinking_params` or `default_temperature` key. These appear only on the tier the resolver returns for a call.
+     * `rg -n "default_temperature|brain_setting_for_anthropic_agent_key|admin_brain_setting_catalog|infer_brain_setting_from_legacy_model_code" src/` returns nothing.
+     * `rg -n "temperature" src/ui/frontend/src/pages/AdminAgentPrompts.tsx` returns nothing.
+   * **Fails if:** any direct value differs, a stored tier keeps one of those keys, or any hit.
+7. **Starting modes in the seed.**
+   * **Check:** in `data/admin/agent.json`, exactly `ats_expert_atlas`, `content_writer_judith` and `principal_recruiter_estelle` are `Creative` and the other four are `Deterministic`. No row has `temperature`. `docs/uat-fixtures/AST-756/expected-agent.json` matches field-for-field.
+   * **Fails if:** any row differs or the fixture drifts.
+8. `kimi-k2.6-openrouter` **retired; catalog boots.**
+   * **Check:**
+     * `"kimi-k2.6-openrouter" not in LLM_MODEL_CONFIG` and `rg -n "kimi-k2.6-openrouter" src/` returns nothing.
+     * `validate_llm_provider_environment()` returns without raising.
+     * `GET /api/admin/agents/models` returns **98** ids.
+   * **Fails if:** any hit, `v()` raises, or the count isn't 98.
+9. **No slug or mode literal outside config.**
+   * **Check:**
+     * `rg -n "apodex/|bytedance/ui-tars|ibm-granite/|inclusionai/|meta/muse|microsoft/|minimax/|sao10k/l3|thedrummer/|z-ai/glm-4|moonshotai/kimi-k2\.[57]" src/ --glob '!src/utils/config.py'` returns nothing.
+     * `rg -n "0\.6\b|0\.2\b" src/core/agent.py src/ui/api/api_admin.py src/data/database.py` returns no mode temperature literal.
+   * **Fails if:** any hit.
+
+## Boundaries
+
+Does **not** touch the database, call paths, admin routes or UI (#2, #3) or the migration (#4). Sibling slices: #1 catalog/resolver/config, #2 database/agent/api_admin, #3 Manage Agents UI, #4 remap migration. Blocked by: none.
+
+## Notes for planning
+
+AC 7 and AC 12 are shared with #2 (and AC 7 with #3); this child owns their config/catalog halves. Removing `infer_brain_setting_from_legacy_model_code` and the agent repo-JSON `temperature` column touches names `database.py` still uses until #2 lands — plan how this sub stays importable and green on its own. Parent AST-1946 Description (Functional scope, Technical scope, Original brief with all 95 rows) is authoritative.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1946-big-brain-openrouter`, child `sub/AST-1946/AST-1947-catalog-quant-mode`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-03T02:47:10.640Z
+[code-rubric] PROCEED (Commit: 0d5db0f6f) Catalog + mode resolver clean
+
+#### betty — 2026-10-03T02:43:31.859Z
+`origin/sub/AST-1946/AST-1947-catalog-quant-mode` @ `0d5db0f6f` · catalog + mode tests ready
+
+#### joan — 2026-10-03T02:33:19.364Z
+[plan-rubric] PROCEED (Commit: 52411898) Option A pair landing
+
+#### chuckles — 2026-10-03T02:30:37.757Z
+Sequencing gap resolved: Susan picked **A** in [AST-1951](https://linear.app/astralcareermatch/issue/AST-1951). AST-1947 and AST-1948 land as a pair; no Scope change. QA manifest stays on `test_config.py` / `test_llm_compat.py`. The AC 8 endpoint count (98 ids) is checked on `ftr/AST-1946-big-brain-openrouter` after AST-1948 merges. ftr won't boot between the two merges; that's accepted. Plan goes to Plan Ready as written.
+
+#### katherine — 2026-10-03T01:55:36.379Z
+[scope-gate] `origin/sub/AST-1946/AST-1947-catalog-quant-mode` @ `52411898b` · plan written, sequencing blocked
+
+@susan Notes for planning asks: *"plan how this sub stays importable and green on its own."* With Scope as written, it can't. Every repair is in #2's files:
+
+- **Import fails:** `src/data/database.py:103` imports `infer_brain_setting_from_legacy_model_code`. Scope § Removed deletes it, so `src.data.database` (and the app) won't import until #2 lands.
+- **Runtime TypeError:** `resolve_model_brain(model_id, brain_setting)` is called with two args at `agent.py:1831`, `api_admin.py:389`, `api_admin.py:1542` and `database.py:146` (agent public view). Scope § Modified resolver adds the `mode` argument.
+- **Runtime KeyError:** `tier["default_temperature"]` is read at `agent.py:2080`, `api_admin.py:1548`, and `api_admin.py:206`, which is `GET /agents/models`, the endpoint this ticket's AC 8 counts. Scope § Modified catalog shape drops that key.
+- **Repo-JSON:** the `mode` column swap breaks the agent export SELECT until #2's schema change.
+
+Fixing any of these needs `database.py`, `agent.py` or `api_admin.py`, which are all #2's files. The agent `mode` column the call sites need also only exists after #2. This ticket's own test files (`test_config.py`, `test_llm_compat.py`) don't import `database`, so they stay runnable.
+
+Options are in the plan's § Sequencing gap:
+- **A (recommended, no Scope change):** #1 and #2 land as a pair. #1's QA manifest stays on the config and compat tests. The AC 8 endpoint count is checked on ftr after #2. Cost: ftr won't boot between the two merges.
+- **B:** widen #1 into #2's call sites. It would need a placeholder agent mode.
+- **C:** repartition so #1 is additive only. It would need interim stored thinking/temperature values.
+
+The plan is written for A. Pick A and I'll move it to Plan Ready as-is. Pick B or C and I'll re-plan.
+
+---
+
 # AST-1947 — Catalog by quantization, mode-aware resolver, settings cleanup
 
 - **Parent:** [AST-1946 — Support "Big" brain OpenRouter models](https://linear.app/astralcareermatch/issue/AST-1946)

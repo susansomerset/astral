@@ -499,3 +499,9 @@ New route lines are fully branch-covered for `LOCKED_AT_100`. **Fixture fix:** `
 ```
 
 **Pass criterion:** 69 passed (40 AST-2067 + 29 AST-2066). Narrowed run, not the zero-arg harness / branch-lock gate.
+
+### AST-2081 · AST-2046 (candidate resume_structure GET → shared payload)
+
+`get_candidate_resume_structure` now returns `resume_structure_editor_payload(resolved)` ([`../../core/candidate.md`](../../core/candidate.md) § AST-2081), and the ten `RESUME_STRUCTURE_*` imports are gone from the route module. The response is a superset of the old one: `catalog` gains `body_format_details` and `hidden_flow_label`.
+
+**New:** **`TestAst1306ResumeStructureAuthorApi::test_get_delegates_to_shared_editor_payload`** (the route body equals the helper's output). The existing AST-1306 GET/PUT tests stay green without edits. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2081.

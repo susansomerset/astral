@@ -1,3 +1,86 @@
+<!-- linear-archive: AST-1966 archived 2026-10-08 -->
+
+## Linear archive (AST-1966)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1966/background-reconcile-per-call-unpriced-rows-recorded-query-llm  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1963 — Query LLM Platform for Timesheet Data to Finish Batch  
+**Blocked by / blocks / related:** parent: AST-1963
+
+### Description
+
+## What this implements
+
+After #1 and #2. `record_timesheet_entry` starts a background reconcile for each `openrouter`-routed row (retries, platform write, closed-ledger refresh), and `llm_compat` stops skipping rows it can't price.
+
+## Citations
+
+`patt.entity.batch-processing`, `stat.logging.warning`, `stat.logging.error`, `stat.logging.debug`.
+
+## Scope
+
+* `src/external/llm_compat.py` — **modified**. A row whose local cost can't be computed is still recorded instead of skipped.
+  * **Modified function** `send_to_llm_compat` (its timesheet-kwargs helper) — when catalog pricing or token counting raises, returns row values with the available token counts and zero calculated cost instead of no row.
+* `src/core/timesheets.py` — **modified**. `record_timesheet_entry` starts the background reconcile for `openrouter`-routed rows; the reconcile (key lookup, retries, row write, ledger refresh) lives here.
+  * **Modified function** `record_timesheet_entry` — after the row is written, when the row's routing type (config helper, from its server id and SKU) is `openrouter` and it has a generation id, starts the background reconcile and returns at once.
+  * **New function (background reconcile)** — resolves the key for the row's server from the row's candidate (same source as `agent._candidate_server_key`; no key → warn and stop), calls the OpenRouter lookup up to the configured count with exponential backoff (configured base wait, doubling each try), writes the platform columns on success, then, if the row's batch has a `dispatch_ledger` row with `completed_at` set, recomputes that row's `total_cost` (`sum_cost_by_batch`) and `entity_cost` (total ÷ `total_processed`, same rule as the dispatcher) via `update_dispatch_ledger`. Runs off the caller's event loop so it outlives the batch's loop and never blocks a call. The ledger refresh recomputes from the table every time, so it is safe to run more than once and safe against the batch-close write.
+* `tests/component/external/test_llm_compat.py`, `docs/test-bible/external/llm_compat.md`, `tests/component/core/test_timesheets.py`, `docs/test-bible/core/timesheets.md` — **modified**.
+
+## Acceptance criteria
+
+"Stubbed lookup" = the component-test stub of the OpenRouter generation-stats HTTP call.
+
+3. **Unpriced calls still get a row.**
+   * **Check (**`test_llm_compat.py`**):** with catalog pricing stubbed to raise, a successful call invokes `record_timesheet` once, with `calc_cost_*` all 0 and the response's token counts. (`test_timesheets.py`, database): `_add_timesheet_entry` with a SKU the catalog doesn't price returns `True` and the row exists.
+   * **Fails if:** `record_timesheet` isn't called, or the insert is refused.
+   * **This child:** the `llm_compat` half (`test_llm_compat.py`). The database half is #2.
+4. **Recording never waits on the platform.**
+   * **Check (**`core/test_timesheets.py`**):** with the stubbed lookup blocked, `record_timesheet_entry` for an `openrouter`-routed row returns before the lookup completes and the row exists with null platform cost. For a `direct`-routed row, the stub is never called.
+   * **Fails if:** it blocks, or a direct row is looked up.
+5. **Retry then give up.**
+   * **Check (same file, sleep stubbed and recorded):** stub returns not-ready 4 times then 200 → exactly 5 calls and the row's platform columns are set. Stub fails every time → exactly 5 calls (the configured count), platform cost stays null, `calc_cost_*` unchanged, one WARNING naming the row's `agent_req_id` and batch id. With base wait 2, the recorded waits between tries are `[2, 4, 8, 16]`.
+   * **Check (**`test_config.py`**):** retry count constant is `5` and backoff base constant is `2`.
+   * **Fails if:** call count ≠ 5 in either case, the row is wrong, warnings ≠ 1, or the waits are not doubling from the base (e.g. a fixed interval).
+   * **This child:** the reconcile checks in `core/test_timesheets.py`; the `test_config.py` constant check is #1.
+6. **Late cost refreshes a closed ledger row.**
+   * **Check (**`core/test_timesheets.py`**):** a `dispatch_ledger` row with `completed_at` set, `total_processed = 2`, `total_cost = 0.02`; reconciling its one row to platform 0.06 leaves `total_cost = 0.06` and `entity_cost = 0.03`. Same with `completed_at` null → ledger row unchanged.
+   * **Fails if:** the closed row isn't refreshed, the open row is touched, or `entity_cost` ≠ total ÷ processed.
+
+## Boundaries
+
+* Does **not** change `compute_batch_cost`, `dispatcher.py` or any batch-close path — reconciliation is per call, decoupled from batch close.
+* Does **not** add config fields, the lookup function (#1) or table columns / writer (#2).
+* Direct models (Anthropic, DeepSeek, Kimi) are never looked up.
+
+## Notes for planning
+
+* Cite `patt.entity.batch-processing`, `stat.logging.warning`, `stat.logging.error`, `stat.logging.debug` — parent Architectural definition has the links.
+* Platform facts (parent § Platform research): OpenRouter `GET /api/v1/generation?id=<gen-id>`, bearer key; `total_cost`, `native_tokens_prompt` / `_completion` / `_cached` / `_reasoning`, `provider_name`; stats can lag the response by a few seconds.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T02:47:12.120Z
+[code-rubric] PROCEED (Commit: f4fd568df) background reconcile per call
+
+#### betty — 2026-10-04T02:43:30.216Z
+`origin/sub/AST-1963/AST-1966-background-reconcile` @ `f4fd568df` · reconcile tests ready
+
+#### joan — 2026-10-04T02:35:34.881Z
+[plan-rubric] PROCEED (Commit: ad8068282) reconcile and unpriced rows
+
+#### ada — 2026-10-04T02:34:04.714Z
+`origin/sub/AST-1963/AST-1966-background-reconcile` @ `ad8068282` · plan ready, prototype-verified
+
+---
+
 # AST-1966 — Background reconcile per call, unpriced rows recorded
 
 - **Ticket:** [AST-1966](https://linear.app/astralcareermatch/issue/AST-1966) · **Parent:** [AST-1963](https://linear.app/astralcareermatch/issue/AST-1963) Query LLM Platform for Timesheet Data to Finish Batch

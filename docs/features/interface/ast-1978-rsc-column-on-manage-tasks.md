@@ -1,3 +1,71 @@
+<!-- linear-archive: AST-1978 archived 2026-10-08 -->
+
+## Linear archive (AST-1978)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1978/rsc-column-on-manage-tasks-indicate-if-dollarresponse-schema-is-used  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1977 — Indicate if {$RESPONSE_SCHEMA} is used  
+**Blocked by / blocks / related:** parent: AST-1977
+
+### Description
+
+## What this implements
+
+Serve a per-task count of `{$RESPONSE_SCHEMA}` occurrences across the raw prompt segments from `/api/admin/tasks`, and show it as an **RSC** column immediately left of **System** on Manage Tasks.
+
+## Citations
+
+`astral.layers.ui-config-driven-business-logic`, `astral.standards.no-hardcoded-sets`, `astral.standards.in-scope-only`, `astral.ui.naming-conventions`.
+
+## Scope
+
+* `src/ui/api/api_admin.py`: **modified function**. The Manage Tasks row enrichment (`_enrich_tasks`) already loads the full current task row and its agent for every task. It adds one integer field per row: the token's occurrence count summed across the raw prompt segments in Functional scope item 1. It counts the raw text before `resolve_tokens` runs, because resolution substitutes the token away. The token name comes from the existing token registry (`RESPONSE_SCHEMA` in `TOKEN_SOURCES`, `src/utils/config.py`) or one named reference, not a bare string literal copied into the function. The count is computed on the server. React only displays it.
+* `src/ui/frontend/src/pages/AdminTaskPrompts.tsx`: **modified component**. Add the new field to the task row type, add a right-aligned `RSC` header between `Model` and `System`, and add the matching cell rendering the served integer. Change nothing else on the page.
+
+Functional scope item 1 (from parent): the effective system block (the task's own system prompt when it is non-empty, otherwise the agent's content, which is the same fallback the System column already uses), cache blocks A–D, the no-cache segment, and the user prompt. The count does not depend on which candidate is selected.
+
+## Acceptance criteria
+
+1. **API field present.** `GET /api/admin/tasks` (as an admin) returns every row with an integer response-schema count field. **Fail:** any row lacks the field, or its value is not an integer.
+2. **Count is correct.** For a task whose raw prompt segments contain `{$RESPONSE_SCHEMA}` exactly N times in total, counted on the DB row with `SELECT` + a manual count across `system_prompt` (or agent `content` when `system_prompt` is empty), `cache_prompt`, `cache_prompt_b`–`_d`, `nocache_prompt`, and `user_prompt`, the served field equals N. **Fail:** the served value differs from the manual count. This includes returning `0` because it counted resolved text after substitution.
+3. **Agent fallback counted.** A task with an empty `system_prompt`, whose agent `content` contains the token once and whose other segments contain none, serves a count of `1`. **Fail:** it serves `0`.
+4. **Candidate-independent.** The served count for a task is identical with and without `?candidate_id=<id>`. **Fail:** the values differ.
+5. **Column placement.** On Manage Tasks, the header order reads `… Model | RSC | System | Base Cache …`, and each row's RSC cell shows the served integer, `0` included. **Fail:** RSC is missing, sits anywhere other than immediately left of System, or shows blank for `0`.
+6. **No client-side counting.** `grep -n "RESPONSE_SCHEMA" src/ui/frontend/src/pages/AdminTaskPrompts.tsx` returns nothing. **Fail:** any match, which means React is deriving the count itself.
+7. **No bare literal in the row builder.** In the `_enrich_tasks` diff, the token appears only through a registry lookup or a single named reference, never as an inline `"{$RESPONSE_SCHEMA}"` / `"RESPONSE_SCHEMA"` string literal inside the loop. **Fail:** a bare literal appears in the function body.
+
+## Boundaries
+
+Does not change any other Manage Tasks column, the token-estimate math, or the prompt editor. Only child of [AST-1977](https://linear.app/astralcareermatch/issue/AST-1977).
+
+## Notes for planning
+
+Single vertical slice: the served field and its column are not separately testable at UAT.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Resolve with `epic_registry.py show AST-1977 --ref <this-id>`.
+
+### Comments
+
+#### radia — 2026-10-04T21:01:13.232Z
+[code-rubric] PROCEED (Commit: a7ecce19c) RSC column matches plan
+
+#### betty — 2026-10-04T20:59:07.967Z
+`origin/sub/AST-1977/AST-1978-rsc-column` @ `a7ecce19c` · RSC tests + bible landed
+
+#### joan — 2026-10-04T20:53:51.058Z
+[plan-rubric] PROCEED (Commit: ea051b757) RSC server plus column
+
+#### ada — 2026-10-04T20:52:22.113Z
+`origin/sub/AST-1977/AST-1978-rsc-column` @ `ea051b757` · server count, RSC column
+
+---
+
 # AST-1978 — RSC column on Manage Tasks (Indicate if {$RESPONSE_SCHEMA} is used)
 
 - **Linear:** [AST-1978](https://linear.app/astralcareermatch/issue/AST-1978) · parent [AST-1977](https://linear.app/astralcareermatch/issue/AST-1977)

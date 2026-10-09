@@ -1,3 +1,78 @@
+<!-- linear-archive: AST-1877 archived 2026-10-08 -->
+
+## Linear archive (AST-1877)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1877/modelserver-catalog-shared-compat-client-support-openrouter-api-models  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1851 — Support OpenRouter API models for agent work  
+**Blocked by / blocks / related:** parent: AST-1851; blocks: AST-1878
+
+### Description
+
+## What this implements
+
+Config gains the server and model catalogs (per-model brain sizes, pricing, request-extras support), and one Anthropic-Messages-compatible client is added. **Additive only:** the legacy provider symbols (`active_provider`, `get_active_llm_provider`, DeepSeek-only resolvers/pricing) and `deepseek.py` stay importable so the tree stays green until #4 deletes them. Costing reads catalog pricing. Does **not** touch the DB (#2), runtime routing (#3), or admin UI (#4).
+
+## Citations
+
+new pattern *Model → server catalog routing*; `stat.logging.debug`, `stat.logging.error`.
+
+## Scope
+
+`src/utils/config.py` — server catalog; model catalog with ordered brain sizes, SKU/flags/floors/defaults, pricing; modified resolvers; per-model brain-size validation; startup env validation; every `TASK_CONFIG` entry requires the candidate key; derived timesheet providers. `src/external/llm_compat.py` — new send function, today's result contract, server extras, `llm_external` reuse. `src/utils/cost_calculator.py` — pricing via model catalog. `src/utils/llm_external.py` — docstrings only. `env.example` — per-server env vars.
+
+## Acceptance criteria
+
+9. **Request extras, ZDR not enforced.** A server entry's request extras from config appear in the outbound request body (intercepted-request component test with a test extra), and the shipped OpenRouter entry sends no `provider.zdr`. Extras dropped, or `zdr` sent in this release = fail.
+
+## Boundaries
+
+Stays inside the Scope above. Sibling slices: #2 data, #3 runtime routing, #4 admin UI + legacy deletion.
+
+## Notes for planning
+
+New pattern *Model → server catalog routing* is defined on parent AST-1851 (Architectural definition). Each child must stay green on its own `sub/*`. Additive only: legacy provider symbols and `deepseek.py` stay importable until #4.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-29T20:39:49.770Z
+[code-rubric] PROCEED (Commit: d2bd76b0d) catalogs + compat clean
+
+#### betty — 2026-09-29T20:34:03.139Z
+`origin/sub/AST-1851/AST-1877-model-server-catalog-compat-client` @ `d2bd76b0d` · catalog + compat tests landed
+
+#### joan — 2026-09-29T20:20:22.017Z
+[plan-rubric] PROCEED (Commit: e9662278f) Catalog + compat plan clean
+
+#### ada — 2026-09-29T20:18:25.466Z
+`origin/sub/AST-1851/AST-1877-model-server-catalog-compat-client` @ `e9662278f` · finalized against amended Scope
+
+#### ada — 2026-09-29T19:56:17.294Z
+[scope-gate]
+
+Plan is complete on the publish ref except one Scope line that cannot land green on this sub, plus one partition gap. Both look like small Scope moves Chuckles can make — no approach change.
+
+1. **Move to #2 (AST-1878):** "agent model field in repo-admin columns" (`src/utils/config.py` → `REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]`).
+   Scope quote (#1): *"`src/utils/config.py` — … agent model field in repo-admin columns."*
+   Why not here: `_validate_agent_repo_json_rows` requires each `data/admin/agent.json` row's keys to equal that tuple exactly, and `fetch_agent_repo_json_export_rows` SELECTs those columns from `agent`. The DB column (and which column it is) and the agent.json values are #2's. Adding the name in #1 makes Revert-to-file raise on every row and breaks export on this sub. It belongs with #2's column + seed change (one line in config.py — a second named config.py exception, like #4's).
+
+2. **Partition gap — `src/utils/cost_calculator.py` legacy names:** #1 keeps `deepseek_usage_to_token_counts`, `calculate_cost_components_deepseek_from_counts`, `calculate_cost_components_deepseek` as catalog-backed wrappers because `src/external/deepseek.py` (#4 deletes) and `database.backfill_deepseek_agent_timesheet_costs` (#2) still import them. Parent AC 2's grep will hit them, and no child after #1 has `cost_calculator.py` in Scope. Suggest adding "`src/utils/cost_calculator.py` — delete the DeepSeek-named wrappers" to #4's legacy-retirement Scope (and #2 switching the backfill to `calculate_cost_components_from_counts`).
+
+Re-spawn me once Scope is amended and I'll flip to Plan Ready (plan already omits item 1).
+
+#### ada — 2026-09-29T19:56:16.414Z
+`origin/sub/AST-1851/AST-1877-model-server-catalog-compat-client` @ `b1ebeedd` · plan published; scope-gate below
+
+---
+
 # AST-1877 — Model/server catalog + shared compat client
 
 - **Parent:** [AST-1851 — Support OpenRouter API models for agent work](https://linear.app/astralcareermatch/issue/AST-1851)
