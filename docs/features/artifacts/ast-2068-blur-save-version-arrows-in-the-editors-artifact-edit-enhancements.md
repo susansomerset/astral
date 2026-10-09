@@ -693,3 +693,11 @@ context_tokens≈72000
 - Chuckles: append artifact, `docs(AST-2068): Radia review — clean`, post slim upshot `--as radia`, **Review Posted**.
 - datt: **PROCEED** → UT after writeback (blocked-by AST-2067 is UT on ftr, not a code gate for this sub review).
 - Optional: Susan UAT pass on AC1 row-count semantics if she wants DB-level confirmation beyond Vitest mocks.
+
+## Resolution
+
+- **Date:** 2026-10-09 · **Reviewed tip:** `41eeeddeb` (Radia: CLEAN, no fix-now)
+- **Discuss 1, hand verification:** Susan had not answered, so I took Radia's Default. The pipeline proceeds on the green manifest: Vitest 77/77 across the six manifest files, `tsc` clean, and the AC3 `AUTOSAVE_MS` grep empty, all from the test-child run. Susan spot-checks blur-save and arrows in UAT on Base Resume Content, JAR Cover Letter, Bio Summary, and one Do Job Criteria criterion, including the AC1/AC2 row counts if she wants DB-level confirmation. To reverse: run the Done-when checks in a browser before User Testing.
+- **Advisory, AST-1577 test:** confirmed green on tip. Betty's `merge-tests` repointed it at `canon/directives/active/`, and it passed in the test-child manifest run (`test_ArtifactsBaseResumeContent.test.tsx`).
+- **Advisory, other items (sibling carry, corpus draft note, deviations 1/2):** nothing to act on; they are already documented in the Review section.
+- **Product change:** none.
