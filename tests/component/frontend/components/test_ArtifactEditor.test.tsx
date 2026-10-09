@@ -749,8 +749,8 @@ describe("ArtifactEditor", () => {
 
 
   it("AST-1375: unsupported experience outside generate allowlist shows Regenerate", async () => {
-    // REQUESTED_ARTIFACTS_ERROR is not in artifact_generate_states — escape hatch must surface Regenerate.
-    mockBaseResumeUnsupported("REQUESTED_ARTIFACTS_ERROR")
+    // ERROR_CRAFT_GET_RUBRIC is not in artifact_generate_states — escape hatch must surface Regenerate.
+    mockBaseResumeUnsupported("ERROR_CRAFT_GET_RUBRIC")
     renderWithProviders(
       <ArtifactEditor
         title="Base Resume Content"
@@ -803,7 +803,7 @@ describe("ArtifactEditor", () => {
       if (url === "/api/candidates") {
         return {
           json: async () => [
-            { astral_candidate_id: "c1", state: "REQUESTED_ARTIFACTS_ERROR", candidate_data: {} },
+            { astral_candidate_id: "c1", state: "ERROR_CRAFT_GET_RUBRIC", candidate_data: {} },
           ],
         } as Response
       }
@@ -860,7 +860,7 @@ describe("ArtifactEditor", () => {
       if (url === "/api/candidates") {
         return {
           json: async () => [
-            { astral_candidate_id: "c1", state: "REQUESTED_ARTIFACTS_ERROR", candidate_data: {} },
+            { astral_candidate_id: "c1", state: "ERROR_CRAFT_GET_RUBRIC", candidate_data: {} },
           ],
         } as Response
       }

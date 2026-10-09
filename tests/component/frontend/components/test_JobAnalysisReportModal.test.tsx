@@ -734,8 +734,8 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
 
-  it("ERROR_BUILD_ARTIFACTS is not Generating… chrome", async () => {
-    installBaseApiMocks(mockedApi, jobHandler("j-err", { state: "ERROR_BUILD_ARTIFACTS" }))
+  it("ERROR_ANTICIPATE_SCAN is not Generating… chrome", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j-err", { state: "ERROR_ANTICIPATE_SCAN" }))
     renderWithProviders(<JobAnalysisReportModal jobId="j-err" onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))

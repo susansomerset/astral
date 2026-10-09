@@ -1704,7 +1704,7 @@ class TestAst1561ContactPasteRouting:
         )[0]
         db.update_meteorite(
             row_id,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             estelle_thread_ts="7777.8888",
         )
         out = contact_mod.try_meteorite_apply_paste_from_slack(
@@ -1734,7 +1734,7 @@ class TestAst1561ContactPasteRouting:
                 }
             ]
         )[0]
-        db.update_meteorite(row_id, state="BOT_BLOCKED")
+        db.update_meteorite(row_id, state="BOT_BLOCKED_SCRAPE_METEORITE")
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
         monkeypatch.setattr(
             contact_mod,
@@ -1787,7 +1787,7 @@ class TestAst1561ContactPasteRouting:
                 }
             ]
         )[0]
-        db.update_meteorite(row_id, state="BOT_BLOCKED")
+        db.update_meteorite(row_id, state="BOT_BLOCKED_SCRAPE_METEORITE")
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
         monkeypatch.setattr(
             contact_mod,
@@ -2256,7 +2256,7 @@ class TestAst1788AdminSlackChannelOrchestration:
 # Branches: parse hit (bare / label link / bare <url> / |label mention / no mention / multi-line) vs
 # miss (mid-sentence, unregistered, non-str); code ok → one ack, no turn, no hear-ack; code handler
 # soft-fail → no ack, hear-ack; empty payload → usage; agent → one turn with result in live content;
-# unbound → unknown reply, no insert; BOT_BLOCKED row untouched, paste recovery skipped.
+# unbound → unknown reply, no insert; BOT_BLOCKED_SCRAPE_METEORITE row untouched, paste recovery skipped.
 class TestAst2035ContactCommandIntercept:
     URL = "http://www.dice.com/jobs/13234abcd"
     TS = "1700000000.000100"
@@ -2421,7 +2421,7 @@ class TestAst2035ContactCommandIntercept:
         blocked = db.insert_meteorite_rows(
             [{"candidate_id": cid, "source_kind": "paste", "source_id": "blob-2035", "state": "NEW"}]
         )[0]
-        db.update_meteorite(blocked, state="BOT_BLOCKED", estelle_thread_ts=self.TS)
+        db.update_meteorite(blocked, state="BOT_BLOCKED_SCRAPE_METEORITE", estelle_thread_ts=self.TS)
         before = db.get_meteorite(blocked)
         self._bound(monkeypatch, cid)
         paste = MagicMock(return_value={"applied": False})
@@ -2430,7 +2430,7 @@ class TestAst2035ContactCommandIntercept:
         self._handle(f"<@UBOT> /add-job {jd}", "Ev-2035-ac5")
         paste.assert_not_called()
         after = db.get_meteorite(blocked)
-        assert after["state"] == "BOT_BLOCKED"
+        assert after["state"] == "BOT_BLOCKED_SCRAPE_METEORITE"
         assert after["content"] == before["content"]
         rows = db.list_meteorites_by_source("slack", f"C1:{self.TS}")
         assert len(rows) == 1 and rows[0]["state"] == "NEW" and rows[0]["content"] == jd
@@ -2665,7 +2665,7 @@ class TestAst2061ContactSanitizeEntry:
                 }
             ]
         )[0]
-        db.update_meteorite(row_id, state="BOT_BLOCKED", link="https://blocked.example/j")
+        db.update_meteorite(row_id, state="BOT_BLOCKED_SCRAPE_METEORITE", link="https://blocked.example/j")
         monkeypatch.setattr(meteorite_mod, "find_meteorite_for_estelle_thread", lambda **_k: {"id": row_id})
         out = contact_mod.try_meteorite_apply_paste_from_slack(
             astral_candidate_id="c1",
