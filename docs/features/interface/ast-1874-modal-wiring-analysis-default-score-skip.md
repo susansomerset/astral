@@ -1,3 +1,69 @@
+<!-- linear-archive: AST-1874 archived 2026-10-08 -->
+
+## Linear archive (AST-1874)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1874/modal-wiring-analysis-default-list-score-in-headers-skip-action  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1862 — Recommended Job Modal Changes  
+**Blocked by / blocks / related:** parent: AST-1862
+
+### Description
+
+## What this implements
+
+Wires everything into the report modal. The default tab comes from config (Analysis). Analysis headers show the list score through one shared formatter that the Recommended list also uses. The skip handler posts, refreshes, and closes, and is shown only when #1's flag is true. The header gets the job-link text and href that #2's props expect. Comes after #1 (flag and template) and #2 (header props).
+
+## Citations
+
+`astral.config.config-source-of-truth`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.dry-and-focused-functions`.
+
+## Scope
+
+* `src/ui/frontend/src/components/JobAnalysisReportModal.tsx`: modified component. The initial and per-job reset active tab come from the first manifest top tab instead of the literal `"summary"`. The Analysis section header labels pass the phase's list score (the `<prefix>_score` field matching each phase's `grades_field`, already flattened onto the detail GET) into the title formatter. There is a new skip handler: it calls the existing `postSkipJob`, then `onRefresh?.()` and `onClose()` on success, and shows the error toast on failure. It is wired to the header only when the detail response's skip-legal flag is true. The header gets the job-link display text (`listing_href` when http(s), else raw `job_link`) plus the http href.
+* `src/ui/frontend/src/lib/recommendedJobReport.tsx`: new exported function, the list's phase-score formatter (number to one decimal, else em dash), moved here from `JobsRecommended.tsx`, not copied. Modified function: the phase header title formatter takes an optional score and fills the new placeholder. Its no-template fallback string gets the same score segment. When the score is absent, the ` - {score}` segment is dropped, not rendered as an em dash.
+* `src/ui/frontend/src/pages/JobsRecommended.tsx`: modified. The page-local phase-score formatter is removed and the shared one imported. Column output is unchanged.
+
+## Acceptance criteria
+
+1. **Analysis is first and default.** `JOBS_RECOMMENDED_REPORT_TOP_TABS` in `src/utils/config.py` lists `analysis` at index 0 and `summary` at index 1. In `test_JobAnalysisReportModal.test.tsx`, opening the modal with the manifest renders the Analysis pane (phase sections visible) and the tab bar order is Analysis, Summary, Artifacts, Discussion. Switching to a different `jobId` after selecting Summary returns to Analysis. Fail = Summary pane shown on open, or wrong order.
+2. **No hard-coded default tab.** `grep -n 'useState("summary")\|setActiveTopTab("summary")' src/ui/frontend/src/components/JobAnalysisReportModal.tsx` returns nothing. Fail = either literal still present (a reorder in React instead of config).
+3. **Score in Analysis header.** With a job whose `jd_score` is `3.66` and `jd_score_breakdown` is `{earned: 42, possible: 50, max: 60}`, the JD Analysis section header reads exactly `JD Analysis - 3.7 - score: 42 out of 50 possible (60 max total)`. With `jd_score` absent, it reads `JD Analysis - score: 42 out of 50 possible (60 max total)`. Fail = score missing, misplaced, or not one decimal, or an empty `-` segment / em dash rendered when the score is absent.
+4. **One score formatter.** `grep -rn "toFixed(1)" src/ui/frontend/src/pages/JobsRecommended.tsx` returns nothing, and the Recommended list JD/DO/GET/LIKE cells still render `3.7` / `—` exactly as before (existing page tests pass without behavioral edits). Fail = the formatter exists in both files, or list output changed.
+5. **Skip button visibility.** In `test_RecommendedJobReportHeader.test.tsx` / `test_JobAnalysisReportModal.test.tsx`, **Skip this Job** is the last button in the header button row when the detail flag is `true`, and absent when `false`. `grep -n "CANDIDATE_REVIEW\|REVIEW_LIKE" src/ui/frontend/src/components/JobAnalysisReportModal.tsx src/ui/frontend/src/components/RecommendedJobReportHeader.tsx` returns nothing. Fail = the button is shown for a non-skippable job, is not last, or the modal carries its own state list.
+6. **Skip acts and closes.** Clicking **Skip this Job** sends `POST /api/jobs/<id>/skip`. On `200`, `onRefresh` is called once and `onClose` is called once. On `409`, the error toast shows the server message and `onClose` is not called. Fail = no POST, modal stays open on success, or closes on failure.
+
+## Boundaries
+
+Does not change header markup/CSS or labels (#2) or config/API/tracker (#1). No change to `Modal.tsx`, `CandidateJobRowActions.tsx`, `JobDetailModal.tsx`, `JobsJobDetail.tsx`.
+
+## Notes for planning
+
+After #1 (skip flag + template) and #2 (header props). Citations above are this child's Canon Scope subset of the parent's Architectural definition.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1862-recommended-job-modal-changes`, child `sub/AST-1862/<child-id>-modal-wiring-analysis-default-score-skip`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-29T20:56:21.749Z
+[code-rubric] PROCEED (Commit: 8787e464) Modal wiring, shared formatter
+
+#### betty — 2026-09-29T20:52:54.298Z
+`origin/sub/AST-1862/AST-1874-modal-wiring-analysis-default-score-skip` @ `8787e464f` · manifest in components bible
+
+#### joan — 2026-09-29T20:37:16.441Z
+[plan-rubric] PROCEED (Commit: 777031de) Modal wiring plan sound
+
+#### ada — 2026-09-29T20:35:12.674Z
+`origin/sub/AST-1862/AST-1874-modal-wiring-analysis-default-score-skip` @ `777031de2` · plan ready, two stages
+
+---
+
 # AST-1874 — Modal wiring: Analysis default, list score in headers, Skip action (Recommended Job Modal Changes)
 
 - **Linear:** [AST-1874](https://linear.app/astralcareermatch/issue/AST-1874) · parent [AST-1862](https://linear.app/astralcareermatch/issue/AST-1862) — Recommended Job Modal Changes
