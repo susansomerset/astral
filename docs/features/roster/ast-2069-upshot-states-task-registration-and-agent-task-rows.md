@@ -437,3 +437,69 @@ context_tokens≈38000
   - `origin/dev` picked up Susan's `agent_task.json` content update (`048d297b5`) before build; round-trip, key set and Company Roster `task_seq` re-verified unchanged.
   - Live `dispatch_task` schedule rows for the two keys still need creating (Joan's discuss note) — out of scope here.
   - No tests touched; coverage is Betty's `qa-child`.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2069  
+**Publish ref:** `d1d08657a42e3a4baea4b6a258458640af342880` (`origin/sub/AST-2054/AST-2069-upshot-states-registration`)  
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+| patt.task.dispatch-retry | A | | |
+| stat.dispatch.entity-state-bound | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: all three **A**; same here.
+
+## Frame diff
+
+- [ ] **Boundaries / prep-uat:** Live `dispatch_task` schedule rows for `fetch_company_culture_pages` and `company_upshot` exist (or are created in the same epic UT window) — seed `agent_task.json` + `config.py` registration alone does not schedule ticks.
+
+## Findings
+
+**fix-now** — (none)
+
+**discuss**
+
+- **Cross-ticket publish ref (@susan):** Three-dot diff vs `origin/dev` includes **AST-2071 display product** (`src/ui/api/api_companies.py`, `JobAnalysisReportModal.tsx`, `CompanyDetailModal.tsx`) and the AST-2071 plan/review doc, after `sync(publish-ref): origin/sub/AST-2054/AST-2071-upshot-display` and `sync(ftr): origin/ftr/AST-2054-company-upshot`. AST-2069 plan §Out of scope explicitly excludes `src/ui/**` (AST-2071). **Question:** Is an integrated sub/ftr tip the intended review surface for child **2069**, or should Radia/merge-child treat **2069-owned** deltas (`config.py`, `agent_task.json`) as the ticket boundary? **Default:** Proceed on the integrated tip for epic rollup; keep per-child Linear/docs traceability on each sub ref; do not peel 2071 off 2069 mid-pipeline unless Susan wants isolated child reviews.
+
+- **Ops / dispatch_task (@susan):** Joan noted live `dispatch_task` rows remain admin-created (out of scope here). AC4 is satisfied at config import/registry level; ticks will not claim the new hops until schedule rows exist. **Default:** Create or verify both rows during prep-uat / before Susan UT on the epic host — same class as other roster registrations.
+
+**advisory**
+
+- **sibling doc carry:** `docs/features/roster/ast-2071-show-the-company-upshot-in-the-report-and-company-detail.md` (Radia-clean artifact) appears in this three-dot diff — expected from ftr/2071 sync, not 2069 plan scope.
+- **sibling test carry (expected):** Betty `merge-tests` + pass-state mock updates in `test_roster.py` / `test_config.py` align config `GET_UPSHOT` with existing roster tests; `TestAst2069UpshotRegistration` covers AC1–4 on registration only.
+- **Interim runtime gap (plan-bounded):** `ROSTER_CONFIG` pass targets `GET_UPSHOT` while `roster.py` still hardcodes `"WATCH"` until AST-2070 — documented in plan; not a defect on this ticket.
+
+### Plan fidelity (§5.4)
+
+- **Stage 1:** States `GET_UPSHOT` / `UPSHOT_READY` / `ERROR_UPSHOT`; five `(X,"WATCH")` → `(X,"GET_UPSHOT")`; upshot transition pairs including manual `WATCH` → `GET_UPSHOT`; locate/parse pass → `GET_UPSHOT`; `company_upshot` roster block + `company_data_keys`; `GAZER_CONFIG["fetch_company_culture_pages"]` with `trigger_state` / `pass_state`, no `fail_state`.
+- **Stage 2:** `TASK_CONFIG["company_upshot"]` (JSON schema, `UPSHOT_READY` → `WATCH`, `ERROR_UPSHOT`); dispatch frozensets + `_dispatch_trigger_state_for_task_key` branches for both keys.
+- **Stage 3:** `agent_task.json` — two appended rows only (telescope fetch + Estelle prompt with 200-word cap and template tokens).
+- Tests/bible: registration assertions and WATCH→GET_UPSHOT mock alignment match config surface; no `src/core/roster.py` / gazer runtime in diff.
+
+### Estimate footprint (§5.4)
+
+Confirm **2** (revised from 3) — config + seed + authored prompt; footprint fits.
+
+## What's solid
+
+- `test_only_upshot_hop_enters_watch` encodes the intended transition contract (only upshot hop lands in `WATCH`).
+- Retry pattern mirrors `HOMEPAGE_READY` / `JOBLIST_IDENTIFIED` (`retry_of("UPSHOT_READY")`, `ERROR_UPSHOT` terminal).
+- Fetch task key `fetch_company_culture_pages` is consistently wired across gazer config, dispatch registry, and `agent_task`.
+
+## Recommended actions (downstream — not Radia)
+
+- Chuckles: append artifact, `docs(AST-2069): Radia review — clean`, post slim upshot, **Review Posted** → datt **PROCEED** toward UT when epic gates allow.
+- Susan/prep-uat: frame-diff checkbox on live `dispatch_task` rows; confirm integrated-tip policy for sibling 2071 on 2069 ref if she wants isolated child reviews later.
+- AST-2070: roster hardcoded `WATCH` writes remain the runtime follow-up (already planned).
+
+context_tokens≈38000
