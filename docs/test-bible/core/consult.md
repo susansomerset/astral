@@ -1494,3 +1494,13 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 | Router branch passes exactly the claimed entities + batch id | **`TestRunConsultTaskRoutes::test_ast2025_routes_fetch_relative_jd_batch`** |
 
 AC3 is an `rg` check in the manifest. Primary manifest: **`docs/test-bible/core/gazer.md`** § AST-2025.
+
+### AST-2070 · AST-2054 (upshot consult routes)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2070-upshot-hops`. Primary block + manifest: [`roster.md`](roster.md) § AST-2070.
+
+`run_consult_task` routes `fetch_company_culture_pages` → `gazer.fetch_company_culture_pages_batch` and `company_upshot` → `roster.company_upshot_batch`; retry-routed companies are not counted as errors; rate-limit `failure_class` carried.
+
+| Router branch | Component tests |
+| --- | --- |
+| both keys, summary dict + error accounting | new **`TestAst2070UpshotConsultRoutes`** (2) in `test_consult.py` |

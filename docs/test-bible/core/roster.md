@@ -1166,3 +1166,49 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 | `TestRunCompanyTask::test_jobs_found_dispatch_pass_fail_ast469`; `test_run_company_task_jobs_found_watch_counts_passed` |
 
 **Left for AST-2070:** the real `state="WATCH"` writes in `_finalize_parse_dispatch_success` and the two legacy locate-success paths (plan-accepted interim mismatch). AST-2070's manifest owns asserting those producers now write `GET_UPSHOT`.
+
+### AST-2070 · AST-2054 (GET_UPSHOT fetch + UPSHOT_READY Estelle hops)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2070-upshot-hops`. Plan: `docs/features/roster/ast-2070-get-upshot-fetch-and-upshot-ready-estelle-hops.md`. Gazer half: [`gazer.md`](gazer.md) § AST-2070; consult routing: [`consult.md`](consult.md) § AST-2070.
+
+`_finalize_parse_dispatch_success` writes `ROSTER_CONFIG["parse_job_list"]["pass_state"]`; both legacy locate finalizers write `locate_job_page.pass_states[0]` (both `GET_UPSHOT`); `_PERSIST_PAGE_OPTION_URL_STATES` is built from those config values (WATCH no longer in it — WATCH is reached by transition only, so `job_site` persisted at `GET_UPSHOT` stays). New `company_upshot_batch`: one `do_task(company_upshot)` per batch, `[company_id=…]` blocks (homepage, culture pages from list or legacy string, prefilter grades), decode by `company_id`, save `company_data.company_upshot` (stripped), transition WATCH; missing / empty-upshot / save-`ValueError` → `UPSHOT_READY_RETRY`, same from the retry → `ERROR_UPSHOT`; fabricated + duplicate ids ignored; balance refusal holds state; empty tokens → `ERROR_UPSHOT` directly; rate-limit `failure_class` carried.
+
+| AC | Component tests (`test_roster.py`) |
+| --- | --- |
+| 3 parse success → `GET_UPSHOT` + `parse_instructions` | revised **`TestAst721ParseJobListDispatch::test_success_watch_and_parse_instructions`** (return + `_save_company` state) |
+| 5 upshot saved then WATCH; 6 one call; 7 retry then error | new **`TestAst2070CompanyUpshotBatch`** (7 incl. parametrize) |
+| 2 no hard-coded WATCH writes | `rg` gate in manifest |
+| 8 grades unchanged | `git diff` gate in manifest |
+
+**Broken / obsolete (revised in place — asserted `WATCH` from real locate/parse producers):** `TestAst721ParseJobListDispatch::test_success_watch_and_parse_instructions`, `TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom`, `TestAst1840CullOffEventLoop::test_parse_dispatch_culls_off_event_loop`, `TestCheckParseResults::test_joblist_titles_paths`, `TestFinalize469BranchCoverage` (`test_after_chain_persists_job_list_visible_strip`, `test_after_chain_value_error_vis_empty_still_watch`, `test_select_only_persist_visible_on_int_coercion_success`, `test_select_only_string_page_int_error_yields_watch`), `TestJobSiteForPersist673::test_watch_writes_page_option_url` (terminal state now `GET_UPSHOT`). Names kept so older bible references resolve. Untouched: `find_job_page` pass-through mocks (lines asserting a mocked `"WATCH"` back) and the skipped AST-721 monolith case.
+
+**Branch locks:** new/changed lines in `roster.py`, `gazer.py`, `consult.py` fully covered (term-missing shows none in AST-2070 ranges). Isolated A/B on roster/gazer/consult/dispatcher/config/dispatch_tasks: failures identical to the `ftr` baseline (130 pre-existing in this 3.14 env) — none new.
+
+**Integration:** none — no `tests/integration/` scenario walks locate/parse/upshot; do not invent.
+
+## QA test manifest — AST-2070
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2070CompanyUpshotBatch \
+  tests/component/core/test_gazer.py::TestAst2070FetchCompanyCulturePagesBatch \
+  tests/component/core/test_consult.py::TestAst2070UpshotConsultRoutes \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch::test_success_watch_and_parse_instructions \
+  tests/component/core/test_roster.py::TestAst827TitleHandoffDomCull::test_parse_dispatch_passes_multi_title_culled_dom \
+  tests/component/core/test_roster.py::TestAst1840CullOffEventLoop::test_parse_dispatch_culls_off_event_loop \
+  tests/component/core/test_roster.py::TestCheckParseResults::test_joblist_titles_paths \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_after_chain_persists_job_list_visible_strip \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_after_chain_value_error_vis_empty_still_watch \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_select_only_persist_visible_on_int_coercion_success \
+  tests/component/core/test_roster.py::TestFinalize469BranchCoverage::test_select_only_string_page_int_error_yields_watch \
+  tests/component/core/test_roster.py::TestJobSiteForPersist673::test_watch_writes_page_option_url \
+  -q
+# AC2 — expect no output
+grep -n 'state="WATCH"' src/core/roster.py
+# AC8 — expect no hunk inside either function
+git diff origin/dev -- src/core/roster.py | grep -n '_apply_prefilter_decoded_company_outcome\|_run_batch_company_prefilter'
+```
+
+**Pass criterion:** 21 passed; both greps empty. Not the zero-arg harness (this host's 3.14 env carries unrelated baseline reds).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2070-upshot-hops:docs/test-bible/core/roster.md | shasum`; same for `core/gazer.md`, `core/consult.md`.
