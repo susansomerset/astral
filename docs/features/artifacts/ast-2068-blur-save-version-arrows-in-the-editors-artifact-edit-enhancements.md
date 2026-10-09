@@ -623,3 +623,13 @@ AC1→St2; AC2→St2; AC3→St2+Verification; AC4→St3+St4 (move sequence + QA 
 - **Recommendation:** Plan already flags follow-up if Susan wants narrowing; not a canon defect.
 
 context_tokens≈72000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2043/AST-2068-version-ui`
+- **Build commits:** `2a77098fa` (Stage 1), `fa8b092fb` (Stage 2), `14b2622d4` (Stage 3), `44e32dc85` (Stage 4), `e24fd4e0c` (move-target fix, see Deviation 2)
+- **Gates:** `npx tsc -b --noEmit` is clean. `npx eslint` on the three files has 0 findings, down from a baseline of 1 (the pre-existing `react-hooks/set-state-in-effect` in `ContextTextPage.tsx` no longer fires). `git grep -n "AUTOSAVE_MS" -- src/ui/frontend/src/components/ArtifactEditor.tsx` returns nothing (AC 3).
+- **Deviation 1, lint suppression (Stage 1):** `react-refresh/only-export-components` rejects exporting `versionNavState` from a component file. I added one `// eslint-disable-next-line react-refresh/only-export-components -- …` line above it, the same pattern `UserPrompt.tsx` uses. There is no behavior change and the helper stays where the plan put it. To reverse: move the helper to a new file (out of this ticket's scope).
+- **Deviation 2, move target after a flush (Stages 3–4):** The planned code picked the arrow's target uuid at render time, before the save-before-move flush. That contradicted Stage 4's Done-when ("…saves the edit first (N+1), then moves to N of N+1"): it would have landed on N-1 of N+1. Blocker posted on AST-2043 with three options. Susan skipped the question, so I took the recommended option, which is also the Done-when as written. `moveVersion` / `handleMove` now take a direction, re-read `<base>/versions` after any flush, and step from the new current. Back after an edit therefore returns to the version that was on screen, and forward at the newest is a no-op. This costs one extra `/versions` GET per arrow press. To reverse: pass the render-time `backUuid`/`forwardUuid` again.
+- **Not verified by hand:** a browser run of the Done-when checks was not possible here. No Playwright browser is installed, and the tool sandbox denied writing a scratch jsdom spike under `debug/spikes/AST-2068/`. Coverage relies on Betty's component manifest.
+- **Existing component tests (informational, Betty-owned):** `test_ContextTextPage` and `test_CandidateBioSummary` pass. In `test_ArtifactEditor` / `test_ArtifactsBaseResumeContent`, 15 tests drive the removed 2 s timer (`AUTOSAVE_MS`, `[bug-repro]` AST-2051 cases) and now time out, which is the expected break. `AST-1577: page and draft follow ui-consistency` fails independently of this ticket: it reads `canon/directives/draft/patt.artifact.ui-consistency.md`, which now lives under `active/`.
