@@ -974,6 +974,89 @@ No change to `resolve_tokens`, `TOKEN_SOURCES`, `api_admin.py`, `do_task` or sch
 - AST-1780 / AST-1819 gate behavior is unchanged apart from rubric tokens now appearing in `empty_tokens`; no `api_admin.py` edit.
 - `do_task` runtime refusal and `ERROR_*` routing (AST-2000) are untouched. No new resolver, `TOKEN_SOURCES` entry, schema, or dispatch-row change.
 
+## Bug: AST-2094 — rubric empty-render gate tests + bible (test gap for AST-2092)
+
+- **Linear:** https://linear.app/astralcareermatch/issue/AST-2094 (test-gap child of mini-parent [AST-2019](https://linear.app/astralcareermatch/issue/AST-2019); sibling of [AST-2092](https://linear.app/astralcareermatch/issue/AST-2092), merged on `origin/ftr/AST-2019-rubric-empty-render-gate` @ `4bf928114`)
+- **Publish ref:** `sub/AST-2019/AST-2094-rubric-empty-render-gate-tests` · **ftr:** `ftr/AST-2019-rubric-empty-render-gate`
+- **Canon:** none cited (AST-2094 `## Citations`: test tree + bible only). Tests pin the AST-2092 contract; no directive text involved.
+- **Explicit scope (AST-2094 `## Scope`):** `tests/component/utils/test_config.py` (`TestAst1779EmptyRenderForPrompts` only) and `docs/test-bible/utils/config.md` (AST-1779 entry). **Betty lands both files in qa-fix**; this block plans the bar. No `src/**` change.
+- **Binding input:** Betty's `[board-betty] TESTS: REVISE` on AST-2092 (verbatim in AST-2094's Description), plus the AST-2092 block above (`### Proposed change` → *Test delta*).
+
+### As-is
+
+On the ftr tip `4bf928114` (AST-2092 merged), `TestAst1779EmptyRenderForPrompts::test_rubric_scored_only_via_entity_contexts` **fails**. Its first assertion pins the AST-1779 rule (`{$GET_RUBRIC}` default call → `{"empty_render": False, "empty_tokens": []}`), but the product now returns `{"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}`. No test covers the AST-2092 bug itself: an empty rubric for a candidate that *has* an `_astral_candidate_id`. The bible's AST-1779 table row "Rubric scored only via `entity_contexts`" and manifest line 7 both describe the old rule.
+
+### To-be
+
+`TestAst1779EmptyRenderForPrompts` pins rubric-by-default scoring:
+- the flipped seam test is green;
+- a `[bug-repro]` for empty `{$RUBRIC_VECTORS}` on `qualify_job_listings` is red before AST-2092 and green on the ftr;
+- a one-criterion control (AC 3) is green on both.
+
+The bible's AST-1779 entry and manifest name all three nodes. Class result on the ftr: 9 passed, 0 failed (6 untouched + 1 flipped + 2 new).
+
+### Repro
+
+Verified on the ftr tip `4bf928114` (AST-2092 test-fix run):
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest "tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts" -q
+# → 1 failed, 6 passed — test_rubric_scored_only_via_entity_contexts:
+#   {'empty_render': True, 'empty_tokens': ['GET_RUBRIC']} != {'empty_render': False, 'empty_tokens': []}
+```
+
+The missing-repro half is the AST-2092 `### Repro` above. Pre-fix `823d37605` returns `{"empty_render": False, "empty_tokens": []}` for an empty `RUBRIC_VECTORS`; the ftr returns `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}`.
+
+### Root cause
+
+AST-2092 reversed one AST-1779 rule (rubric now scored by default). Fix-board routed the test/bible delta here, so the product landed with the pinned test still asserting the old contract and with no repro.
+
+### Proposed change
+
+All of it is Betty's (qa-fix). Exact names are her call; the assertions below are the bar. Conventions: `cfg` = `src.utils.config` (existing module alias in `test_config.py`). Stub the rubric read with `monkeypatch.setattr("src.core.candidate.rubric_criteria_for_token", lambda cid, owner: <list>)`. That attribute works because `resolve_tokens`' rubric branch imports it from `src.core.candidate` at call time. No DB, no `database.list_rubric_vectors` stub needed.
+
+**1. Flip `test_rubric_scored_only_via_entity_contexts`** (`tests/component/utils/test_config.py`, `TestAst1779EmptyRenderForPrompts`).
+- The default-call assertion becomes `== {"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}`. The fixture is unchanged (`{"first": "Ada"}`, no `_astral_candidate_id` → resolves `""`; `self._TASK` = `grade_get`).
+- The `entity_contexts={"rubric": {}}` assertion stays `{"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}` (seam still accepted, same result).
+- Update the inline comment: rubric is scored by default (AST-2092); the seam still scores it.
+- **Rename** to `test_rubric_scored_by_default_and_via_entity_contexts`, since the old name now states the reverse of the contract.
+
+**2. `[bug-repro]` — new `test_empty_rubric_vectors_sets_empty_render`** (same class, AC 1).
+- Fixture: a `build_candidate_token_view`-shaped dict with `_astral_candidate_id: "cand-abrams"`, e.g. `{"first": "Abrams", "last": "", "full": "Abrams", "pronouns": "", "contact": {}, "context": {}, "artifacts": {}, "_astral_candidate_id": "cand-abrams"}`.
+- Task: `"qualify_job_listings"` (own rubric owner, no embedded-criteria merge, so `[]` really renders `""`). Do not use `self._TASK`.
+- Stub `rubric_criteria_for_token` → `[]`.
+- Call: `cfg.empty_render_for_prompts(["Rubric:\n{$RUBRIC_VECTORS}"], view, "qualify_job_listings")`.
+- Assert `== {"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}`.
+- **Red on pre-fix `823d37605`** (`False`, `[]`), **green on the ftr**. Tag the qa-fix handoff `[bug-repro]` with this node id.
+
+**3. AC 3 control — new `test_filled_rubric_vectors_validates`** (same class).
+- Same fixture and task as item 2, with the stub returning one criterion, e.g. `[{"code": "T1", "label": "Title fit", "importance": 5}]`.
+- Assert `== {"empty_render": False, "empty_tokens": []}`. Green on both trees: it guards against over-flagging, so it isn't a repro.
+
+**4. Bible — `docs/test-bible/utils/config.md`, `### AST-1779 · AST-1766` section.**
+- **Prose (summary paragraph):** change "candidate-scoped empty-render predicate" so it reads that the predicate scores `source: candidate` **and `source: rubric`** by default (rubric rows are candidate-keyed — AST-2092), and that other sources are scored only via `entity_contexts`. The chain and job wording is unchanged.
+- **Table:** replace the row `Rubric scored only via entity_contexts` → `Rubric scored by default (and via entity_contexts)` → `…::test_rubric_scored_by_default_and_via_entity_contexts`. Add two rows: `Empty RUBRIC_VECTORS → empty_render [bug-repro] (AST-2092)` → `…::test_empty_rubric_vectors_sets_empty_render`, and `Filled RUBRIC_VECTORS → valid (AST-2092 AC 3)` → `…::test_filled_rubric_vectors_validates`.
+- **Manifest:** line 7 points at the renamed node. Add lines 8 (`[bug-repro]`) and 9 (control). The run command stays the whole class.
+- **Broken / obsolete:** one line noting the AST-2092 flip of the old line-7 node (renamed, assertion inverted).
+
+⚠️ **Decision: rename the flipped test** rather than keep the old name. `…_scored_only_via_entity_contexts` would pin a reversed contract under a false name, and the bible row has to change anyway. If Betty prefers a stable node id, keeping the name is acceptable *only* if its docstring/comment states the new contract. Bible and manifest must match whichever she picks.
+
+⚠️ **Decision: stub `rubric_criteria_for_token`, not `database.list_rubric_vectors`.** It's the resolver entry `resolve_tokens` calls, it matches Betty's verdict, and it skips the per-owner embedded-criteria merge (irrelevant for `qualify_job_listings`). Prefer `monkeypatch` over assigning the module attribute directly, so the stub can't leak into other tests.
+
+⚠️ **Decision: no `test_api_admin.py` change.** Betty's verdict: its empty-render cases stub prompt texts with no rubric tokens, so they're unaffected (confirmed: identical pass/fail sets pre/post AST-2092 in that file).
+
+### Blast radius
+
+- Two files, both Betty's: `tests/component/utils/test_config.py` (one class) and `docs/test-bible/utils/config.md` (one section). No `src/**`, canon or integration change.
+- Other `test_config.py` classes are untouched. The 28 pre-existing reds in `test_config.py` + `test_api_admin.py` (identical on `823d37605` and the ftr, AST-2092 test-fix) are out of scope and must not grow.
+- The monkeypatch is scoped to each new test; no shared fixture changes.
+
+### What must still hold
+
+- The other six `TestAst1779EmptyRenderForPrompts` tests are unchanged and green: candidate blank, job ignored without seam, chain never scored, job seam, `warn_on_empty` quiet, text tolerance/order.
+- `[bug-repro]` red on `823d37605`, green on `origin/ftr/AST-2019-rubric-empty-render-gate`. Control green on both.
+- No product source edits on this sub; the engineer's make-fix is a no-product-src marker.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
