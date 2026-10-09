@@ -1264,3 +1264,86 @@ context_tokens≈20000
 **Chuckles disposition:** fix-now "cross-ticket scope" (`src/core/contact.py`, `src/core/meteorite.py`, `src/external/slack.py`, `requirements.txt`, AST-1517 doc) is a false positive — all of it is AST-2055 (#266), already on `origin/dev`, carried in by the mandatory `sync-child.sh` `sync(dev)` merge (`880756d96`); ftr is behind dev. Against ftr merged with `origin/dev`, this sub's delta is exactly the four planned product files (`App.css`, `config.py`, `uiConfig.ts`, `AdminThemeExamples.tsx`) plus Betty's tests/bible and this doc. Restacking would violate sync law and re-enter on the next sync. Treated as clean → Review Posted → User Testing.
 
 **Review gate (final):** PROCEED — §3h clean-review shortcut, resolve-child skipped.
+
+## Bug: AST-2077 — Theme Examples: compact (letterless) grade-dot samples beside each grade-color option
+
+### As-is
+
+Theme Examples (`AdminThemeExamples.tsx`) shows only **lettered** grade dots: the sample table's Grade column, the panel's A–F/X grade row, and (from AST-2064) one lettered row per grade-color option (Deep, Soft, Classic). The Recommended Job List's analysis lines use **compact letterless** dots: `PhaseAnalysisLines` → `buildPhaseListGradeRow` renders a `div.recommended-list-phase-grade-row` of `<span><span class="grade-dot dot-<g> grade-dot-letterless"/></span>` (12px, colour only, AST-1968). None appear on Theme Examples, so Susan can't judge how compact dots read in each palette or grade-color option.
+
+### To-be
+
+In every palette panel, each grade-color option row (Deep, Soft, Classic) has one compact letterless sample beside it: dots A, B, C, D, F, X in the Recommended Job List's markup and classes, coloured by that option's grade tokens. Nothing else on the page changes.
+
+⚠️ **Decision — reading of "three samples":** Susan approved the To-be without picking between the two readings in the ticket, so this plan takes Chuckles' primary read. That means one compact sample per grade-color option row (three per panel), which shows letterless contrast per option. AST-2064 flagged Soft's letterless dots as the weak spot. The alternative read, three compact lines per panel in the panel's live grade colors, is not built.
+
+### Repro
+
+1. As admin, open Tools → Theme Examples (`/admin/theme_examples`).
+2. In any panel, the **Grade color options** block shows lettered 22px dots only. No 12px letterless dots appear anywhere on the page.
+
+### Root cause
+
+AST-2064's options block (plan § Bug: AST-2064, Proposed change step 4) rendered each candidate set only as a lettered row. The compact letterless variant (`grade-dot-letterless`, AST-1968) was never part of the Theme Examples sample.
+
+### Proposed change
+
+Two files, both in AST-2042's Component scope: `AdminThemeExamples.tsx` ("the real shared classes … grade dots") and `App.css` ("new section styles for the Theme Examples page"). Line anchors are at sub tip `2ea8ca006`.
+
+1. **`src/ui/frontend/src/pages/AdminThemeExamples.tsx`:** in the options block, replace the mapped option row (lines 90–98, `{Object.entries(gradeSets).map(([gid, set]) => ( … ))}`) with:
+
+   ```tsx
+                {Object.entries(gradeSets).map(([gid, set]) => (
+                  <div key={gid} className="theme-examples-grade-option">
+                    {/* Inline custom properties override this panel's grade tokens for this row only. */}
+                    <div className="theme-examples-row" style={set.tokens as CSSProperties}>
+                      <span className="theme-examples-grade-option-name">{set.label}</span>
+                      {GRADES.map(g => (
+                        <span key={g} className={`grade-dot dot-${g.toLowerCase()}`}>{g}</span>
+                      ))}
+                    </div>
+                    {/* Compact sample: Recommended Job List markup (buildPhaseListGradeRow, letterless gradeDot). */}
+                    <div className="recommended-list-phase-grade-row" style={set.tokens as CSSProperties}>
+                      {GRADES.map(g => (
+                        <span key={g}><span className={`grade-dot dot-${g.toLowerCase()} grade-dot-letterless`} /></span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+   ```
+
+   ⚠️ **Decision — sibling, not inside the row:** the compact sample sits **beside** the lettered row, in a new wrapper, not inside the `.theme-examples-row`. Betty's AST-2064 `[bug-repro]` asserts each option `.theme-examples-row`'s `.grade-dot` text is exactly A–X, and that row's inline style carries the set's tokens. Letterless dots inside the row would add six empty `.grade-dot`s and break that test. As a sibling with its own copy of `style={set.tokens}`, the sample gets the same option colours and the test stays unchanged. The wrapper class is new (`theme-examples-grade-option`), so the test's `.theme-examples-row` query still finds exactly one row per set.
+
+   ⚠️ **Decision — inline markup, not a reused helper:** `gradeDot` / `buildPhaseListGradeRow` (`lib/recommendedJobReport.tsx`) are not exported for a static sample. `buildPhaseListGradeRow` needs a job with rubric columns. `recommendedJobReport.tsx` and `PhaseAnalysisLines.tsx` are not in AST-2042's Component scope. The page repeats the same wrapper and dot classes, so the existing `.recommended-list-phase-grade-row` / `.grade-dot-letterless` CSS styles the sample and it renders identically.
+
+2. **`src/ui/frontend/src/App.css`:** in section 16, directly after the `.theme-examples-grade-options { … }` rule, insert:
+
+   ```css
+   .theme-examples-grade-option {
+     display: flex;
+     flex-wrap: wrap;
+     align-items: center;
+     gap: 16px;
+   }
+   ```
+
+   No colour, so the AST-2047 App.css contract (no hex outside token blocks) is unaffected.
+
+3. **Verify:**
+   - `rg -n "grade-dot-letterless" src/ui/frontend/src/pages/AdminThemeExamples.tsx` shows the one new line.
+   - In `src/ui/frontend`: `npx tsc -b --noEmit` and `npm run build` exit 0, and `npm run lint` shows no problem absent before the change.
+   - `npx vitest run --config vite.config.ts ../../../tests/component/frontend/pages/test_AdminThemeExamples.test.tsx`: all cases pass unchanged (AST-2047 page + App.css, AST-2064 options).
+   - Manual: each panel's three option lines show the lettered row with a 12px letterless A–X line beside it, in that option's colours.
+
+### Blast radius
+
+- Page-local. Only `AdminThemeExamples.tsx` and one new `App.css` rule change. The Recommended Job List, `PhaseAnalysisLines`, and the shared `.grade-dot*` / `.recommended-list-phase-grade-row` rules are not edited.
+- Options block DOM: each option row is now wrapped in `.theme-examples-grade-option`. Any test or selector depending on `.theme-examples-row` being a **direct** child of `.theme-examples-grade-options` would see a different shape. Betty's AST-2064 case uses descendant `querySelectorAll`, so it is unaffected.
+- No test currently asserts letterless dots on Theme Examples. Betty may want a case (fix-board's call).
+
+### What must still hold
+
+- AST-2064's `[bug-repro]`: per panel, one `.theme-examples-row` per set in order, its inline style carrying the set's tokens, and its `.grade-dot`s exactly A–X. The panel's own `.theme-examples-grade .grade-dot` stays exactly one A–X.
+- AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` in `App.css` outside `[data-theme]` blocks, no `#hex` literal in `.ts`/`.tsx`, and every `var(--x)` defined in a token block.
+- AST-2047 AC 2 / AC 6: no theme id literal in `.ts`/`.tsx`, one panel per registry id, and the page makes GET requests only.
+- Recommended Job List compact dots render exactly as before (no shared rule or component touched).
