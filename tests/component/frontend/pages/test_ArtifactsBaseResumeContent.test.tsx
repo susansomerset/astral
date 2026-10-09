@@ -891,26 +891,74 @@ describe("ArtifactsBaseResumeContent", () => {
     expect(printIdx).toBe(regenIdx + 1)
   })
 
-  it("AST-1577 / AST-2051: wires bodyShape resume_content; autosave PUTs base_resume leaf (§6c)", async () => {
-    // Fake clock that still ticks in real time so findBy/waitFor polling keeps working.
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+  it("AST-1577 / AST-2068: wires bodyShape resume_content; blur PUTs base_resume leaf once (§6c AC1/AC2)", async () => {
     renderWithProviders(<ArtifactsBaseResumeContent />)
-    const field = await screen.findByDisplayValue("Saved summary")
+    const puts = () =>
+      mockedApi.mock.calls.filter(([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT")
+    // AC2: focus + blur with no edit saves nothing.
+    const skills = await screen.findByDisplayValue("Saved skills")
+    await userEvent.click(skills)
+    await act(async () => { skills.blur() })
+    expect(puts()).toHaveLength(0)
+    const field = screen.getByDisplayValue("Saved summary")
     await userEvent.clear(field)
-    await userEvent.type(field, "Operative body")
-    // AST-2051: no header Save/Cancel outside Generate review; body persists via the 2000ms autosave debounce.
+    await userEvent.type(field, "Operative body with twenty plus chars")
+    // No header Save/Cancel outside Generate review; AC1: typing alone never saves.
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument()
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000)
-    })
+    expect(puts()).toHaveLength(0)
+    await act(async () => { field.blur() })
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
-    const putCall = mockedApi.mock.calls.find(
-      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
-    )
-    const body = JSON.parse(String(putCall?.[1]?.body))
-    expect(body.artifacts.base_resume.professional_summary).toBe("Operative body")
+    expect(puts()).toHaveLength(1)
+    const body = JSON.parse(String(puts()[0][1]?.body))
+    expect(body.artifacts.base_resume.professional_summary).toBe("Operative body with twenty plus chars")
     expect(body.artifacts["candidate.artifacts.base_resume"]).toBeUndefined()
+  })
+
+  it("AST-2068 AC4: Base Resume Content arrows step back, re-hydrate the body, and disable at the ends", async () => {
+    // Fake server: three versions, uuid-keyed (JSON key order ≠ chronology — position is the order).
+    const bodies: Record<string, string> = { "u-c": "v1 summary", "u-a": "v2 summary", "u-b": "v3 summary" }
+    const order = ["u-c", "u-a", "u-b"]
+    let current = "u-b"
+    const versionMap = () =>
+      Object.fromEntries(
+        [...order].sort().map(u => [u, { created_at: "t", current: u === current ? 1 : 0, position: order.indexOf(u) + 1 }]),
+      )
+    const base = "/api/candidates/c1/artifacts/candidate.artifacts.base_resume"
+    const fallback = mockedApi.getMockImplementation()!
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === `${base}/versions`) return { ok: true, json: async () => ({ versions: versionMap() }) } as Response
+      if (url === `${base}/current` && init?.method === "PUT") {
+        current = JSON.parse(String(init.body)).artifact_uuid
+        return { ok: true, json: async () => ({ current, versions: versionMap() }) } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { base_resume: { professional_summary: bodies[current], technical_skills: "s" } } },
+          }),
+        } as Response
+      }
+      return fallback(url, init)
+    })
+    renderWithProviders(<ArtifactsBaseResumeContent />)
+    await screen.findByDisplayValue("v3 summary")
+    const back = await screen.findByRole("button", { name: "Previous version" })
+    const fwd = screen.getByRole("button", { name: "Next version" })
+    expect(screen.getByText("3 of 3")).toBeInTheDocument()
+    expect(fwd).toBeDisabled()
+    expect(back).toBeEnabled()
+    await userEvent.click(back)
+    await screen.findByDisplayValue("v2 summary")
+    expect(screen.getByText("2 of 3")).toBeInTheDocument()
+    expect(current).toBe("u-a")
+    await userEvent.click(screen.getByRole("button", { name: "Previous version" }))
+    await screen.findByDisplayValue("v1 summary")
+    expect(screen.getByText("1 of 3")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Previous version" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Next version" })).toBeEnabled()
+    // A move is not a body write.
+    expect(mockedApi.mock.calls.some(([u, init]) => u === "/api/candidates/c1/data" && init?.method === "PUT")).toBe(false)
   })
 
   it("AST-1577: page and draft follow ui-consistency (no write-operative link)", () => {
@@ -922,7 +970,7 @@ describe("ArtifactsBaseResumeContent", () => {
     expect(page).toMatch(/bodyShape="resume_content"/)
     expect(page).not.toMatch(/useCandidateResumeStructure/)
     const draft = readFileSync(
-      resolve(root, "canon/directives/draft/patt.artifact.ui-consistency.md"),
+      resolve(root, "canon/directives/active/patt.artifact.ui-consistency.md"),
       "utf8",
     )
     expect(draft).toMatch(/^id: patt\.artifact\.ui-consistency$/m)
