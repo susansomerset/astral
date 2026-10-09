@@ -442,3 +442,73 @@ AST-2079 board-joan done — CANON: OK.
 ```
 
 context_tokens≈22000
+
+## Radia review — AST-2079
+
+[code-rubric]
+**Ticket:** AST-2079
+**Publish ref:** `26e540ddf274880d426141d7ec7b936b37e1f4a8` (`origin/sub/AST-2074/AST-2079-gunicorn-polling-logs-tests`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159` (`stat.logging.info` via `canon_clerk expand`; `astral.standards.no-hardcoded-sets` via `canon/statutes/astral/standards/`)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+- **[bug-repro]** OK — `TestAst2078GunicornAccessQuietFilter::test_deploy_status_access_record_dropped` is the minimum repro: asserts `/api/deploy_status` `gunicorn.access` records fail `Logger.filter` (dropped) after `get_logger` attach-once, matching AST-2078 **To-be** (poll path silent). Would fail on pre-fix `39bbf7afd` (no filter → truthy pass). Not tautological; uses concrete path `U` and logger name `gunicorn.access`. Tests 3 and 5 strengthen config-sourcing and attach-once (also red pre-fix per qa-fix). **Note:** file uses the same convention as `TestAst1988RailwayJsonIds` (class docstring “#1 is the bug-repro” + inline comment), not a first-line `[bug-repro]` marker — acceptable here.
+- **`## What must still hold`** — OK (see trace below).
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| stat.logging.info | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan F2 fix-board `CANON: OK` only)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Three-dot vs `ftr` stack noise:** `origin/ftr/AST-2074-gunicorn-polling-logs...origin/sub/.../AST-2079-...` also lists `src/core/contact.py`, `AdminManageSlack.tsx`, `tests/component/core/test_contact.py`, and several non-`debug_logging` bible pages — from `code(AST-2085)` (`e48c8e613`) on the sub branch, not from qa-fix/test commits. **`git diff origin/dev origin/sub/AST-2074/AST-2079-gunicorn-polling-logs-tests`** is **empty** for those paths; vs `dev` the ticket only adds AST-2078 product (`config.py`/`logging.py` from ftr stack) plus `test_debug_logging.py` and `docs/test-bible/utils/debug_logging.md`. Not an AST-2079 scope or canon finding.
+- **sibling product carry in three-dot:** AST-2078 `logging.py`/`config.py` appear in `origin/dev...sub` because ftr carries the fix ahead of `dev` — already reviewed on AST-2078; this ticket asserts it.
+- **Recommended action (Chuckles, merge-child):** When rolling `sub/.../AST-2079` into `ftr`, expect the branch tip to include **AST-2085** contact changes already on `origin/dev` but not yet on `ftr` — confirm rollup intent so ftr does not accidentally ship unrelated product without Susan’s merge plan.
+
+### fix-now
+
+(none)
+
+## Notes
+
+- **AST-2079 delivery (vs `origin/dev`):** `tests/component/utils/test_debug_logging.py` (+`TestAst2078GunicornAccessQuietFilter`, 6 tests), `docs/test-bible/utils/debug_logging.md` (§ AST-2078, manifest item 12, AC6 glob `!**/utils/logging.py`). Engineer tip `code(AST-2079)` `26e540ddf` is plan-doc marker only — matches Boundaries.
+- **Plan fidelity:** Implements plan-fix table rows 1–6, bible edits, and manifest; option **(b)** only (deploy_status dropped, other kept, config monkeypatch, non-Mapping guard, attach-once, product INFO/root).
+- **Estimate footprint:** Estimate **1** — fits.
+- **`## What must still hold` trace:** (1) AST-2078 AC encoded in tests 1–2, 6 — only quiet paths on `gunicorn.access` dropped; (2) test-fix reported manifest/bible green — existing classes unchanged in diff intent; (3) no `import gunicorn`; (4) scoped files on `dev` delta are test + `debug_logging` bible only.
+- **Non-canon:** Cross-ticket AST-2085 in branch history — not smuggled as AST-2079 work (dev-aligned). Raw SQL / migrations: n/a.
+
+## What's solid
+
+- Hermetic `_access_record` with Mapping unwrap matches gunicorn 26 `access_log.info(format, safe_atoms)` shape.
+- Truthiness checks on `Logger.filter` are correct for 3.12+.
+- Bible manifest and AC6 glob fix are aligned with shipped filter location.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next |
+|------|----------------|------|
+| **PROCEED** (clean, artifact complete) | Normal (AST-2074) | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Sibling AST-2078 already UT on ftr @ `0b35bcd2c`; merge this test branch per epic rollup when ready. |
+
+context_tokens≈42000
+
+### Chuckles adjudication
+
+Clean (PROCEED, no fix-now / discuss). AST-2085 rollup advisory: those commits are already on origin/dev (diff vs dev empty), so landing ftr adds nothing from them. Clean-review shortcut (do-all-the-things §3h) → User Testing.
