@@ -1457,7 +1457,7 @@ Line anchors are at sub tip `dd70ebbc1`.
 
    | File | Occurrences |
    |------|-------------|
-   | `src/ui/frontend/src/App.css` | 12 declarations (3 per block) + 1 `--heading: var(--accent-gold)` + 46 rule uses |
+   | `src/ui/frontend/src/App.css` | 57: 12 declarations (3 per block) + 1 `--heading: var(--accent-gold)` + 44 rule uses |
    | `src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` | 10 |
    | `src/ui/frontend/src/pages/AdminDataManagement.tsx` | 3 |
    | `src/ui/frontend/src/components/StateTimeline.tsx` | 2 |
