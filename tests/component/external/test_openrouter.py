@@ -25,6 +25,8 @@ from src.utils.logging import log_debug
 # Branches (get_batch_host): owner probes; waiter awaits the owner's future (same loop and another
 # thread's loop); later caller hits the map; probe exception / no provider → remembered (None, error);
 # owner cancelled → waiters get the "probe cancelled" failure; key = batch id + args minus messages/system.
+# Branches (probe_host error text, AST-2098): response has an `error` attr → its text; no `error` attr →
+# the whole response rendered; `None` response → "empty body".
 
 REAL = {
     "model": "openai/gpt-oss-120b",
@@ -66,11 +68,14 @@ class TestAst1959ProbeHost:
         probe = send.calls[0]
         assert probe["messages"] == [{"role": "user", "content": [{"type": "text", "text": cfg.LLM_PROBE_MESSAGE}]}]
         assert "system" not in probe and "cache_control" not in repr(probe)
-        # max_tokens, temperature, effort and the agent's provider object are the real call's, untouched.
-        assert {k: v for k, v in probe.items() if k != "messages"} == {
-            k: v for k, v in REAL.items() if k not in ("messages", "system")}
+        # max_tokens, temperature, effort and the agent's provider object are the real call's.
+        # zdr is added on the probe copy only.
+        expected = {k: v for k, v in REAL.items() if k not in ("messages", "system")}
+        expected["extra_body"] = {**REAL["extra_body"], "provider": {**REAL["extra_body"]["provider"], "zdr": True}}
+        assert {k: v for k, v in probe.items() if k != "messages"} == expected
         # The real call's kwargs are not mutated by building the probe.
         assert REAL["system"] and REAL["messages"][0]["content"][0]["text"] == "entity 7"
+        assert "zdr" not in REAL["extra_body"]["provider"]
         assert [r.id for r in recorded] == ["probe_resp"]
 
     @pytest.mark.asyncio
@@ -88,6 +93,38 @@ class TestAst1959ProbeHost:
         with pytest.raises(RuntimeError, match="429"):
             await openrouter.probe_host(REAL, send, recorded.append)
         assert recorded == []
+
+
+class TestAst2098ProbeErrorText:
+    """AST-2098: a hollow probe's ValueError names what the response carried, so the held-batch WARNING says why."""
+
+    @pytest.mark.asyncio
+    async def test_hollow_probe_names_provider_error_body(self) -> None:
+        hollow = SimpleNamespace(id="gen-hollow", provider=None, usage=None,
+                                 error={"message": "No endpoints found matching your data policy", "code": 404})
+        recorded: list[Any] = []
+
+        async def send(_kwargs: dict[str, Any]) -> Any:
+            return hollow
+
+        with pytest.raises(ValueError) as exc:
+            await openrouter.probe_host(REAL, send, recorded.append)
+        assert str(exc.value).startswith("Probe response named no provider: ")
+        assert "No endpoints found matching your data policy" in str(exc.value)
+        # Still recorded once: the hollow probe reaches the timesheet.
+        assert recorded == [hollow]
+
+    @pytest.mark.asyncio
+    async def test_hollow_probe_with_no_body_says_empty_body(self) -> None:
+        recorded: list[Any] = []
+
+        async def send(_kwargs: dict[str, Any]) -> Any:
+            return None
+
+        with pytest.raises(ValueError) as exc:
+            await openrouter.probe_host(REAL, send, recorded.append)
+        assert str(exc.value) == "Probe response named no provider: empty body"
+        assert recorded == [None]
 
 
 class TestAst1959BatchHostMap:
@@ -110,7 +147,9 @@ class TestAst1959BatchHostMap:
         ("send", "error"),
         [
             (_Send(raise_exc=RuntimeError("429 rate limited")), "Host probe failed: 429 rate limited"),
-            (_Send(provider=None), "Host probe failed: Probe response named no provider"),
+            # AST-2098: the no-provider error names what came back (here _Send's whole response, no `error` attr).
+            (_Send(provider=None),
+             "Host probe failed: Probe response named no provider: namespace(provider=None, id='probe_resp')"),
         ],
     )
     async def test_failed_probe_is_remembered_for_the_key(self, send: _Send, error: str) -> None:
