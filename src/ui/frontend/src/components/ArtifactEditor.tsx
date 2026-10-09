@@ -1036,16 +1036,22 @@ export default function ArtifactEditor({
   }
 
   /** Arrow move (AST-2068): flush unsaved edits as one version, move current, re-hydrate via current-read GET. */
-  async function moveVersion(base: string, body: Record<string, string>, apply: (v: VersionMap) => void) {
+  async function moveVersion(base: string, uuidField: string, dir: -1 | 1, apply: (v: VersionMap) => void) {
     setMoving(true)
     try {
       if (pendingSaveRef.current) await pendingSaveRef.current
       // autosave=true: job editors must not fire onSaved (modal reload would unmount mid-move).
       if (dirtyRef.current && !(await doSave(tabsRef.current, true))) return
+      // Step from current *after* any flush: back after an edit lands on the version that was on screen.
+      const vr = await api(`${base}/versions`)
+      if (!vr.ok) throw new Error(`Versions failed (${vr.status})`)
+      const nav = versionNavState((await vr.json()).versions as VersionMap)
+      const uuid = dir < 0 ? nav.backUuid : nav.forwardUuid
+      if (!uuid) return
       const resp = await api(`${base}/current`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ [uuidField]: uuid }),
       })
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
@@ -1064,17 +1070,14 @@ export default function ArtifactEditor({
 
   function renderVersionNav(versions: VersionMap, base: string, uuidField: string, apply: (v: VersionMap) => void) {
     const nav = versionNavState(versions)
-    const go = (uuid: string | null) => {
-      if (uuid) void moveVersion(base, { [uuidField]: uuid }, apply)
-    }
     return (
       <ArtifactVersionNav
         position={nav.position}
         total={nav.total}
         // Not `saving`: an arrow click blurs the field first; moveVersion awaits that save instead.
         disabled={inReview || generating || moving}
-        onBack={() => go(nav.backUuid)}
-        onForward={() => go(nav.forwardUuid)}
+        onBack={() => void moveVersion(base, uuidField, -1, apply)}
+        onForward={() => void moveVersion(base, uuidField, 1, apply)}
       />
     )
   }

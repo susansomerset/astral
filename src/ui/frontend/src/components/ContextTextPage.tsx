@@ -105,11 +105,17 @@ export default function ContextTextPage({ title, contextKey, bodyShape }: Contex
   }
 
   /** Arrow move (AST-2068): save an unsaved draft as one version first, move current, reload via current-read GET. */
-  async function handleMove(uuid: string | null) {
-    if (!uuid || !versionsBase) return
+  async function handleMove(dir: -1 | 1) {
+    if (!versionsBase) return
     setMoving(true)
     try {
       if (draft !== saved && !(await handleSave())) return
+      // Step from current *after* any save: back after an edit lands on the version that was on screen.
+      const vr = await api(`${versionsBase}/versions`)
+      if (!vr.ok) throw new Error(`Versions failed (${vr.status})`)
+      const step = versionNavState((await vr.json()).versions as VersionMap)
+      const uuid = dir < 0 ? step.backUuid : step.forwardUuid
+      if (!uuid) return
       const r = await api(`${versionsBase}/current`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -148,8 +154,8 @@ export default function ContextTextPage({ title, contextKey, bodyShape }: Contex
                 position={nav.position}
                 total={nav.total}
                 disabled={moving}
-                onBack={() => void handleMove(nav.backUuid)}
-                onForward={() => void handleMove(nav.forwardUuid)}
+                onBack={() => void handleMove(-1)}
+                onForward={() => void handleMove(1)}
               />
             )}
             <button className="btn secondary" onClick={handleCancel}>Cancel</button>
