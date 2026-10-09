@@ -323,3 +323,53 @@ const FULLSCREEN_BODY: CSSProperties = { padding: 0, minHeight: 0, overflow: "hi
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2082
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** `origin/sub/AST-2046/AST-2082-split-pane-preview` @ `495a7901c`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | |
+
+## Traceability
+
+AC1→S3 (fill-parent + fullscreen modal body; end-to-end proof in #4) · AC2→S3 (divider drag math) · AC3→S1–S2 (route table + iframe `srcDoc` = GET body)
+
+## Findings
+
+### acceptable — AC1–AC3 observable only after #4 wires surfaces
+- **Severity:** acceptable
+- **Location:** `## Parent AC coverage`, ticket `## Boundaries`
+- **Finding:** This child ships primitives only; split-pane span and live preview in Base Resume / job modal are integration tests for AST-2084, not missing plan stages here.
+- **Recommendation:** Betty/Radia UAT on #4 for parent AC1–3; this ticket’s Done-when commands stay component-level.
+
+### acceptable — No `## Self-assessment` block
+- **Severity:** acceptable
+- **Location:** Plan doc structure
+- **Finding:** Estimate confirm only; no conf/self-assessment section.
+- **Recommendation:** Optional; not blocking (consistent with AST-2081-style backend/UI slice plans).
+
+### discuss — Split pane has no minimum panel width
+- **Severity:** discuss
+- **Location:** Stage 3 `SplitPanePage` drag clamp (`0 … maxWidth`)
+- **Finding:** A hard drag can collapse a panel to zero width; parent AC2 only asserts ±2 px coupling on a 100 px move, not a floor.
+- **Recommendation:** If Susan wants a usability floor, add it in plan or defer to #4 polish; not a canon or scope defect.
+
+### discuss — Canon Scope gap (informational)
+- **Severity:** discuss
+- **Location:** Frozen list vs new files under `src/ui/frontend/src/{components,lib}`
+- **Finding:** `astral.ui.frontend-file-placement` and `astral.layers.import-direction` plainly govern placement/imports but are not on this ticket’s list; plan follows normal `components/` + `lib/` layout and `../lib/printHtml` imports.
+- **Recommendation:** No list change mid-flight; Archie may add on a future frontend-heavy child if the team wants explicit scoring.
+
+## R6 (summary)
+
+Definition fidelity: Four files match AST-2082 `## Scope`; no #3/#4 files touched. `printHtml.ts` centralizes the two documented print copies (callers migrate in #4). `PrintPreview` refetches on `refreshKey` + primitive target keys; no `*_data` client hydrate. `SplitPanePage` and fullscreen `Modal` inline styles respect “no App.css in this ticket.” Ground truth cites NavigationShell, Modal CSS, and existing print handlers. Stages are ordered (helper → preview → layout/modal) with explicit decisions (toast at caller, no `mode` prop, pointer-events during drag, fullscreen borderless for true `100vw`).
+
+context_tokens≈52000
