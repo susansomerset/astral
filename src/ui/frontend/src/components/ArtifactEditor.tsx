@@ -114,7 +114,6 @@ interface ArtifactEditorProps {
   headerActions?: ReactNode
 }
 
-const AUTOSAVE_MS = 2000
 const MIN_ARTIFACT_TABS = 1
 const MAX_ARTIFACT_TABS = 15
 
@@ -165,7 +164,8 @@ export default function ArtifactEditor({
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // In-flight blur-save; an arrow move awaits it before deciding whether to flush (AST-2068).
+  const pendingSaveRef = useRef<Promise<boolean> | null>(null)
   const tabsRef = useRef(tabs)
   const dirtyRef = useRef(dirty)
   const snapshotRef = useRef<SideTab[] | null>(null)
@@ -300,7 +300,7 @@ export default function ArtifactEditor({
   const inReview = snapshot !== null
   // Bodies editable in rubric chrome mode OR structure/shapes/job fixed tabs; never during Generate review.
   const bodiesEditable = !inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)
-  // Criteria (free-form) and resume structure editors autosave bodies; shapesKey job editors keep explicit Save/Cancel.
+  // Criteria (free-form) and resume structure editors blur-save bodies; shapesKey job editors keep explicit Save/Cancel.
   const autosaveBodies = tabChromeEditable || structureMode
   // Stable id-set signature: label-only and reorder-only edits do not re-GET / wipe tabs.
   const fixedFieldKeys = fixedFields
@@ -618,7 +618,7 @@ export default function ArtifactEditor({
   }
 
   // Save to backend — AST-1381: when structure authoring is on, persist formats with content Save.
-  const doSave = useCallback(async (t: SideTab[], autosave = false) => {
+  const doSave = useCallback(async (t: SideTab[], autosave = false): Promise<boolean> => {
     const fieldKeys = experienceJobFields.map(f => f.key)
     for (const tab of t) {
       const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
@@ -626,7 +626,7 @@ export default function ArtifactEditor({
         const parsed = parseExperienceJobs(tab.content, fieldKeys)
         if (!parsed.ok) {
           setToast({ text: unsupportedExperienceMessage, variant: "error" })
-          return
+          return false
         }
       }
     }
@@ -635,7 +635,7 @@ export default function ArtifactEditor({
       payload = buildPayload(t)
     } catch {
       setToast({ text: unsupportedExperienceMessage, variant: "error" })
-      return
+      return false
     }
     if (jobPersistence) {
       setSaving(true)
@@ -654,20 +654,25 @@ export default function ArtifactEditor({
           throw new Error(err.error || `Save failed (${resp.status})`)
         }
         // A newer edit typed while this PUT was in flight stays dirty so the unmount flush still saves it.
-        if (tabsRef.current === t) setDirty(false)
+        if (tabsRef.current === t) {
+          setDirty(false)
+          // Ref too: a move awaiting this save must not re-flush the same body before the next render.
+          dirtyRef.current = false
+        }
         setEverSaved(true)
         setSnapshot(null)
         setToast({ text: "Saved", variant: "success" })
         // JAR onSaved reloads the modal (unmounts this editor) — only on explicit Save / unmount flush.
         if (!autosave) jobPersistence.onSaved?.()
+        return true
       } catch (e) {
         setToast({ text: (e as Error).message || "Save failed", variant: "error" })
+        return false
       } finally {
         setSaving(false)
       }
-      return
     }
-    if (!selectedId) return
+    if (!selectedId) return false
     setSaving(true)
     try {
       const arts: Record<string, unknown> = { [artifactKey]: payload }
@@ -696,13 +701,19 @@ export default function ArtifactEditor({
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
         throw new Error(err.error || `Save failed (${resp.status})`)
       }
-      if (tabsRef.current === t) setDirty(false)
+      if (tabsRef.current === t) {
+        setDirty(false)
+        // Ref too: a move awaiting this save must not re-flush the same body before the next render.
+        dirtyRef.current = false
+      }
       setEverSaved(true)
       setSnapshot(null)
       setToast({ text: "Saved", variant: "success" })
+      return true
     } catch (e) {
       // Keep review mode (snapshot) — do not clear on failure
       setToast({ text: (e as Error).message || "Save failed", variant: "error" })
+      return false
     } finally {
       setSaving(false)
     }
@@ -721,14 +732,13 @@ export default function ArtifactEditor({
   function handleChange(next: SideTab[]) {
     setTabs(next)
     setDirty(true)
-    // Skip auto-save while reviewing generated content
-    if (autosaveBodies && bodiesEditable) {
-      if (timerRef.current) clearTimeout(timerRef.current)
-      // A timer queued before Generate must not persist (or clear the snapshot) during review — AST-905.
-      timerRef.current = setTimeout(() => {
-        if (snapshotRef.current === null) void doSave(next, true)
-      }, AUTOSAVE_MS)
-    }
+  }
+
+  // Blur-save (AST-2068): a field losing focus after an edit saves one version; an unchanged blur saves
+  // nothing. bodiesEditable is false while reviewing Generate, so review content never persists silently (AST-905).
+  function handleBodyBlur() {
+    if (!autosaveBodies || !bodiesEditable || !dirtyRef.current) return
+    pendingSaveRef.current = doSave(tabsRef.current, true)
   }
 
   const resolvedExpandedTabId = useMemo(() => {
@@ -775,7 +785,6 @@ export default function ArtifactEditor({
   // Auto-save on unmount when dirty — skip while in review (no silent persist of unreviewed Generate/recovery)
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
       if (dirtyRef.current && snapshotRef.current === null) doSave(tabsRef.current)
     }
   }, [doSave])
@@ -947,13 +956,8 @@ export default function ArtifactEditor({
     }
   }
 
-  function handleCancel() {
-    if (snapshot) {
-      setTabs(snapshot)
-      setSnapshot(null)
-      setDirty(false)
-      return
-    }
+  /** Re-run the existing current-read GET hydrate (patt.artifact.read-current) — Cancel and after a version move. */
+  function reloadFromServer() {
     if (jobPersistence) {
       if ((shapesKey || structureMode) && !fixedFieldKeys) return
       api(`/api/jobs/${encodeURIComponent(jobPersistence.jobId)}`).then(r => r.json()).then(job => {
@@ -967,6 +971,16 @@ export default function ArtifactEditor({
       applyCandidateArtifactResponse(c)
       setDirty(false)
     })
+  }
+
+  function handleCancel() {
+    if (snapshot) {
+      setTabs(snapshot)
+      setSnapshot(null)
+      setDirty(false)
+      return
+    }
+    reloadFromServer()
   }
 
   if (!jobPersistence && !selectedId) return <p style={{ padding: 20, color: "var(--text-primary)" }}>No candidate selected.</p>
@@ -1016,7 +1030,7 @@ export default function ArtifactEditor({
             )}
           </div>
         </div>
-        <div className="dep-body">
+        <div className="dep-body" onBlur={handleBodyBlur}>
           <div className="artifact-editor-collapsible-stack">
             {tabsForRail.map((tab, i) => {
               const structureRow = structureAuthoring
