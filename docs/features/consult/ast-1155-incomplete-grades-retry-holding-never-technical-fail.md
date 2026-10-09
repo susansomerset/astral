@@ -1765,3 +1765,14 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-2057 | sub/AST-2045/AST-2057-letter-conf0-tests |
 
 **Epic worktree:** `astral-AST-2045/` — one active sub checked out at a time.
+
+
+## Joan fix-board — AST-2089
+
+[board-joan]  CANON: OK
+
+AST-2089 board-joan done — CANON: OK.
+
+**Rationale:** Against the AST-2089 plan-fix patch and the six ids it cites (`patt.task.dispatch-retry`, `patt.entity.batch-processing`, `stat.batch.claim-process-release` / plan’s `astral.batch.claim-process-release`, `stat.logging.warning` / `error` / `debug`), the change **implements** dispatch-retry per claimed entity (salvaged lines process; gaps → `_consult_batch_fail_dest`) without touching claim/release, without new logging statutes, and without amending any active directive. No in-force statute requires whole-batch fail on rubric `agent_performance` envelope `failure` or forbids a salvage side channel on that path—the pre–decode whole-batch blast radius is product behavior, same class AST-1996 already aligned with canon (fix-board OK, F3 not indicated). `qualify_job_listings` prompt edits live in `data/admin/agent_task.json`, not the corpus. Recorded choices (e.g. `salvaged_response`, trusting decodable lines over envelope status when lines are complete) are scoped product contracts already reflected in “What must still hold”; they do not open an Archie-only precedent gap that needs canon text before make-fix. **F3 (`validate-plan` fix mode) not indicated** from this board pass.
+
+**Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-2089 proceeds to make-fix on product only.
