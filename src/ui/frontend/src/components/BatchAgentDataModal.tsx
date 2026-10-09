@@ -6,6 +6,10 @@ import { sumCalcCostComponents } from "../lib/timesheetCost"
 
 // Block types in canonical display order (matches BLOCK_TYPES in config.py)
 const BLOCK_TYPE_ORDER = ["SYSTEM", "CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D", "NO_CACHE", "TASK", "RESPONSE", "FEEDBACK"]
+// AST-2075: entity-scoped run always shows one Each-mode call's tabs; CACHE stands in for CACHE_A–D when the prompt rows are gone
+const ENTITY_CALL_TYPES = ["SYSTEM", "CACHE", "NO_CACHE", "TASK", "RESPONSE"]
+const TAB_ORDER = [...BLOCK_TYPE_ORDER.slice(0, 5), "CACHE", ...BLOCK_TYPE_ORDER.slice(5)]
+const MISSING_AGENT_DATA = "No agent_data found for this part of the call — it has aged out or was never stored."
 
 interface AgentDataBlock {
   agent_data_id: string
@@ -144,7 +148,7 @@ export function BatchAgentDataPanes({ batchId, candidateId, entityId, className 
       setTotals(sumTimesheets(ts))
       setLedger(ledgerData && typeof ledgerData === "object" ? ledgerData as LedgerRow : null)
       const present = BLOCK_TYPE_ORDER.filter(t => b.some(x => x.block_type === t))
-      setActiveType(present[0] ?? b[0]?.block_type ?? "")
+      setActiveType(entityId ? "SYSTEM" : (present[0] ?? b[0]?.block_type ?? ""))
     }).catch(() => {}).finally(() => setLoading(false))
   }, [batchId, candidateId, entityId])
 
@@ -200,13 +204,20 @@ export function BatchAgentDataPanes({ batchId, candidateId, entityId, className 
   for (const b of blocks) {
     ;(byType[b.block_type] ??= []).push(b)
   }
+  // CACHE placeholder only when SYSTEM is gone too — present SYSTEM + no CACHE_* means the caches were empty (AST-2052 skips those)
+  const missingTypes = entityId
+    ? ENTITY_CALL_TYPES.filter(t => t === "CACHE"
+        ? !byType.SYSTEM && !Object.keys(byType).some(k => k.startsWith("CACHE_"))
+        : !byType[t])
+    : []
+  const tabTypes = [...Object.keys(byType), ...missingTypes]
   const orderedTypes = [
-    ...BLOCK_TYPE_ORDER.filter(t => byType[t]),
-    ...Object.keys(byType).filter(t => !BLOCK_TYPE_ORDER.includes(t)),
+    ...TAB_ORDER.filter(t => tabTypes.includes(t)),
+    ...tabTypes.filter(t => !TAB_ORDER.includes(t)),
   ]
   const tabBarTabs = orderedTypes.map(t => ({
     key: t,
-    label: byType[t].length > 1 ? `${t} ×${byType[t].length}` : t,
+    label: (byType[t]?.length ?? 0) > 1 ? `${t} ×${byType[t].length}` : t,
   }))
 
   const totalCost = timesheetRows.reduce(
@@ -272,13 +283,13 @@ export function BatchAgentDataPanes({ batchId, candidateId, entityId, className 
               <textarea
                 className="entity-story-content batch-agent-data-textarea"
                 readOnly
-                value={activeType && byType[activeType] ? blockContent(byType[activeType]) : ""}
+                value={activeType && byType[activeType] ? blockContent(byType[activeType]) : missingTypes.includes(activeType) ? MISSING_AGENT_DATA : ""}
               />
             )}
           </div>
         )}
 
-        {!loading && blocks.length === 0 && (
+        {!loading && orderedTypes.length === 0 && (
           <p className="entity-empty">No agent data blocks recorded for this batch.</p>
         )}
       </div>
