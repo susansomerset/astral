@@ -1347,3 +1347,13 @@ Two files, both in AST-2042's Component scope: `AdminThemeExamples.tsx` ("the re
 - AST-2047 AC 5 / AST-2049 AC 9: no hex or non-black `rgba()` in `App.css` outside `[data-theme]` blocks, no `#hex` literal in `.ts`/`.tsx`, and every `var(--x)` defined in a token block.
 - AST-2047 AC 2 / AC 6: no theme id literal in `.ts`/`.tsx`, one panel per registry id, and the page makes GET requests only.
 - Recommended Job List compact dots render exactly as before (no shared rule or component touched).
+
+### Fix-board — Joan (AST-2077)
+
+[board-joan]  CANON: OK
+
+**Read:** `## Bug: AST-2077` on `origin/sub/AST-2042/AST-2077-compact-grade-dots` — `AdminThemeExamples.tsx` adds letterless compact grade-dot rows (Recommended Job List markup/classes) beside each AST-2064 option row; `App.css` gets one layout rule (no colors). Parent **Canon Scope: none.**
+
+**Roster skim:** Touches `pages/` + `App.css` (`astral.ui.frontend-file-placement`). Sample-only UI; no new config resolution in React (`astral.layers.ui-config-driven-business-logic`). No in-force directive mentions grade dots, Theme Examples, or a requirement to export `buildPhaseListGradeRow`. Reusing existing `.grade-dot*` / `.recommended-list-phase-grade-row` CSS does not contradict any active pattern. Epic ACs in **What must still hold** are plan/product bars, not statute edits.
+
+**Verdict:** No canon conflict and no statute/pattern update required.
