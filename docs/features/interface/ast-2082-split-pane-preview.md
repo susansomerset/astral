@@ -381,3 +381,64 @@ context_tokens≈52000
 Stages 1–3: `b701b6f36` `printHtml.ts` (`fetchPrintHtml`, `openHtmlInNewTab`, `POPUP_BLOCKED_MESSAGE`) · `821e81632` `PrintPreview.tsx` (full-panel `srcDoc` iframe, 204 × 264 thumbnail, refetch on `refreshKey`) · `78edbc31c` `SplitPanePage.tsx` + `Modal` `size="fullscreen"`. `npm run build`, `tsc -b --noEmit`, and eslint on all four files clean; `test_Modal.test.tsx` 8 passed (unchanged). Tests deferred to Betty — no known drift.
 
 **Deviations:** none. No minimum panel width (per Joan discuss note + Susan).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2082
+**Publish ref:** `3d101f16e9bc60349ebf8fdeb85be2999145a9c5` (`origin/sub/AST-2046/AST-2082-split-pane-preview`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan **A**; code **A**.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Minimum panel width** — `SplitPanePage.tsx` drag clamp `Math.max(0, …)` allows zero-width panels (Joan plan discuss; build note: no floor per Susan).
+  - **@susan:** Add a minimum left/right width (e.g. 120px) before #4 wires surfaces, or keep collapse-to-zero until polish?
+  - **Default:** Leave as shipped; revisit in **AST-2084** if split-pane UX feels broken in UAT.
+
+### advisory
+
+- **Sibling product carry (stacked publish ref):** `git diff origin/dev...origin/sub/AST-2046/AST-2082-split-pane-preview` includes **AST-2081** backend product (`src/core/{builder,candidate,tracker}.py`, `src/ui/api/api_{candidate,jobs}.py`, `src/utils/config.py`) from `sync(ftr)` / 2081 commits on the same ref. **AST-2082-only commits** (`b701b6f36`, `821e81632`, `78edbc31c`) touch only the four scoped frontend files. Score this ticket against those commits; do not re-litigate 2081 canon on 2082’s upshot (2081 review is separate).
+- **Sibling test/bible carry:** `merge-tests` / ftr sync also pulls `test_roster.py`, theme/BatchAgent modal tests, and bible rows for **AST-2081** and other siblings — expected on epic subs.
+- **Parent AC1–AC3:** Observable end-to-end only after **AST-2084** composes these primitives (Joan acceptable); component tests on this ref cover `printHtml`, `PrintPreview`, `SplitPanePage`, and fullscreen `Modal`.
+- **Canon Scope (informational):** `astral.ui.frontend-file-placement` / `astral.layers.import-direction` govern layout but are off the frozen list (Joan note); placement matches plan (`components/`, `lib/printHtml.ts`).
+
+## What’s solid
+
+- **`printHtml.ts`:** Single SoT for builder print GET paths; legacy base-resume error mapping preserved; `openHtmlInNewTab` matches existing popup/revoke behavior.
+- **`PrintPreview`:** No client hydrate from `*_data` blobs; each `refreshKey` / target change triggers `fetchPrintHtml` (server routes current-read artifacts); iframe `srcDoc` is display-only; thumbnail uses `pointerEvents: "none"` and drag-safe `SplitPanePage` panel styling.
+- **`SplitPanePage` / `Modal`:** Match plan (50/50 until drag, window listeners + cleanup, fullscreen inline card/body without `App.css`; `wide` path unchanged).
+
+## Recommended actions (for Chuckles — not Radia)
+
+- Append this artifact under `## Review (code)` (or equivalent) in `docs/features/interface/ast-2082-split-pane-preview.md`; commit `docs(AST-2082): Radia review — clean`; push publish ref.
+- Post slim upshot via `linear_proxy.py --as radia save-comment`.
+- **Review Posted** → datt **§3h** **PROCEED** toward UT (no resolve-child canon work unless Susan answers min-width discuss).
+
+```
+[code-rubric] PROCEED (Commit: 3d101f16e) Preview via print GET; four files
+```
+
+context_tokens≈28000
+
+**Chuckles:** Clean (PROCEED, no fix-now). Discuss item (minimum panel width) is a product call for Susan, not engineer work; default stands (no floor, revisit in AST-2084 UAT). The "no floor" instruction came from Chuckles relaying the Joan-approved plan, not from Susan. Clean-review shortcut (do-all-the-things §3h) → User Testing.
