@@ -1212,3 +1212,28 @@ git diff origin/dev -- src/core/roster.py | grep -n '_apply_prefilter_decoded_co
 **Pass criterion:** 21 passed; both greps empty. Not the zero-arg harness (this host's 3.14 env carries unrelated baseline reds).
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2070-upshot-hops:docs/test-bible/core/roster.md | shasum`; same for `core/gazer.md`, `core/consult.md`.
+
+### AST-2088 · AST-2054 (bug: upshot sets a readable company_name)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2088-upshot-readable-company-name`. Plan-fix: `docs/features/roster/ast-2070-get-upshot-fetch-and-upshot-ready-estelle-hops.md` § Bug: AST-2088. Fix lane F4 (`qa-fix`, `[bug-repro]`).
+
+| Behavior | Source | Component tests |
+| --- | --- | --- |
+| Response `company_name` (stripped) → `update_company(cid, company_name=…)`; blank/missing skipped, still `WATCH`; `## Name On File` in the Estelle block | `company_upshot_batch` | new **`TestAst2088UpshotReadableCompanyName`** (1) — **repro** |
+| `company_upshot` items_schema gains optional `company_name`; prompt output shape names it | `src/utils/config.py`, `data/admin/agent_task.json` | **`TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`** (see [`../utils/config.md`](../utils/config.md) § AST-2069) — **repro** |
+
+**Red on pre-fix tree (verified):** roster repro → `update_company` called 0 times; config repro → `KeyError: 'company_name'` in items_schema. Both are the plan's root cause (contract has no name field; batch never writes it). Scratch-applied plan change (not committed) → all 13 tests below green.
+
+**Unaffected:** `TestAst2070CompanyUpshotBatch` — responses carry no `company_name`, `live_content` asserts are substring/count only.
+
+## QA test manifest — AST-2088
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2088UpshotReadableCompanyName \
+  tests/component/utils/test_config.py::TestAst2069UpshotRegistration \
+  tests/component/core/test_roster.py::TestAst2070CompanyUpshotBatch \
+  -q
+```
+
+**Pass criterion:** 13 passed. **Red→green (test-fix verifies the flip):** `TestAst2088UpshotReadableCompanyName::test_readable_name_saved_and_blank_or_missing_skipped` and `TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`.
