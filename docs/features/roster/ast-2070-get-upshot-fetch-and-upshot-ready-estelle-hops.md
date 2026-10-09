@@ -599,3 +599,48 @@ summary dict.
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2070
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** `origin/sub/AST-2054/AST-2070-upshot-hops` @ `71e1ad85300df465ebe9a71579e5857717409603`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| patt.task.dispatch-retry | A | | |
+| stat.batch.claim-process-release | A | | |
+| stat.logging.debug | B | | |
+| stat.logging.error | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.dispatcher | X | | consult/gazer/roster return summaries; dispatcher still emits task-completed (unchanged) |
+
+## Traceability
+
+AC 2–3 → Stage 1; AC 4 → Stage 2; AC 5–7 → Stage 3; AC 8 → Stage 1/3 hunk guards. Parent AC 1 / 9–14 N/A (registration AST-2069, display AST-2071). Parent AC 10–11 satisfied indirectly via AC 8 + out-of-scope on prefilter bodies.
+
+## Findings
+
+**acceptable** — Claim/release stays in `dispatcher._run_unified`; new batches consume the claimed `companies` list only, matching `fetch_culture_pages_batch` / `_run_batch_company_prefilter` and the plan’s explicit claim/release note.
+
+**acceptable** — Stage 1 `_PERSIST_PAGE_OPTION_URL_STATES` change is correctly tied to `GET_UPSHOT` success writes so `job_site` persists before the upshot pipeline (not an optional extra).
+
+**discuss** — Stage 2 planned docstring line “No connectivity aborts before any transition” contradicts the code (and smoke check): `check_connectivity` raises before the loop. Fix the docstring when implementing; the executable block and AC 4 abort behavior are correct.
+
+**discuss** — `fetch_company_culture_pages` uses `_log.exception` on coat-check `ValueError` then still advances — heavy for an expected “missing website” path, but aligned with “never fail out of GET_UPSHOT”; worth watching in UAT logs, not a plan blocker.
+
+**acceptable** — `company_upshot_batch` mirrors Pattern-A prefilter: one `do_task`, `empty_tokens` → terminal error, provider balance `state_held`, `_log_fail_dest` / `_upshot_fail_dest` for retry vs `ERROR_UPSHOT`, smoke asserts AC 6–7.
+
+**acceptable** — AC 2 grep `state="WATCH"` targets the three locate/parse success paths at plan-time lines ~1171/2833/2901; no other `state="WATCH"` callers in `roster.py` today.
+
+**Definition fidelity (R6):** Scope is three core files only; depends on AST-2069 registration (`fetch_company_culture_pages`, `company_upshot`, states). Out-of-scope list protects prefilter grade functions (AC 8). Estimate 5 — agree.
+
+context_tokens≈52000
