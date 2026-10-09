@@ -1,3 +1,97 @@
+<!-- linear-archive: AST-1880 archived 2026-10-08 -->
+
+## Linear archive (AST-1880)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1880/admin-model-brain-pickers-per-platform-keys-invalid-on-missing-key  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1851 — Support OpenRouter API models for agent work  
+**Blocked by / blocks / related:** parent: AST-1851
+
+### Description
+
+## What this implements
+
+After #3. Manage Agents picks model then a model-scoped brain size; Manage Candidates shows one key field per server; Scheduled Actions flags Invalid (AUTO off, Run blocked, tooltip reason) when the candidate lacks the needed platform key; ad-hoc resolve and execution history go through the catalog. Last child, so it also retires the legacy provider path once nothing imports it. Does **not** own the catalog (#1) or storage (#2).
+
+## Citations
+
+`stat.logging.info.api`, `stat.logging.warning`.
+
+## Scope
+
+`src/ui/api/api_admin.py` — model catalog route; agent routes carry model and reject invalid sizes; ad-hoc resolve and execution-history display via catalog; Invalid evaluation + Run/Auto gate for a missing platform key. `src/ui/api/api_candidate.py` — per-server key PATCH and outbound set/not-set. `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` — model + brain-size selects. `src/ui/frontend/src/pages/AdminManageCandidates.tsx` — one key field per server. `src/ui/frontend/src/pages/AdminScheduledActions.tsx` — missing-key reason in the Invalid tooltip. `session_resume/parse` route requires `candidate_id` (in `api_admin.py` above). `src/ui/frontend/src/pages/AdminSessionResumePaste.tsx` — posts the selected candidate; Parse disabled with none selected. **Legacy retirement:** `src/utils/config.py` — delete `active_provider` / `get_active_llm_provider`, the DeepSeek-only resolvers/pricing, and `CONTACT_ESTELLE_CONFIG["default_brain_setting"]` (no other [config.py](<http://config.py>) edits). `src/external/deepseek.py` — deleted. `tests/component/external/test_deepseek.py` — deleted. `docs/test-bible/external/deepseek.md` — deleted. `src/utils/cost_calculator.py` — delete the DeepSeek-named wrappers (`deepseek_usage_to_token_counts`, `calculate_cost_components_deepseek_from_counts`, `calculate_cost_components_deepseek`) (AST-1883). `src/core/monitor.py` — `provider_balance_outage` labels the alert by the task agent's server instead of the global provider (legacy retirement; required by AC 1).
+
+## Acceptance criteria
+
+1. **Global switch gone.** `rg -n "active_provider|get_active_llm_provider" src/` returns nothing. Any hit = fail.
+2. **No server or model names outside config.** `rg -n -i "kimi|moonshot|openrouter|deepseek" src/ --glob '!src/utils/config.py'` returns nothing (frontend included). Any hit = fail.
+3. **Brain sizes are per model.** `GET /api/admin/agents/models` lists Kimi K2.6 (direct) and Kimi K2.6 via OpenRouter with exactly `Little, Big`, and Claude / DeepSeek V4 with `Little, Medium, Big`. Saving an agent on a Kimi model with brain size Medium returns 400 and leaves the row unchanged. A 200, or a list mismatch = fail.
+4. **One key per platform per candidate.** Setting a Kimi key and an OpenRouter key on one candidate via Manage Candidates leaves two rows for that candidate in the candidate key table, both Fernet ciphertext (neither equals the plaintext), and `GET` the candidate shows both servers set. One row, plaintext, or one key overwriting the other = fail.
+5. **Invalid on Scheduled Actions.** For a scheduled action whose candidate lacks the key for its task agent's server, `GET` the dispatch-task list returns `empty_render: true` with a reason naming that server, AUTO is forced off, `POST /api/admin/dispatch_tasks/<id>/run` returns 400, and the Invalid tooltip shows the reason. Adding the key flips the row back to valid on the next list. Any of these not holding = fail.
+6. **Catalog-driven admin UI.** Manage Agents' brain-size select shows only the selected model's sizes and saving persists model + size (re-GET shows both). Manage Candidates shows exactly one key field per server catalog entry. Field count ≠ server count, or hardcoded options (AC 2 grep) = fail.
+7. **DeepSeek client removed.** `test -e src/external/deepseek.py` fails and `rg -n "send_to_deepseek" src/ tests/` returns nothing. Either present = fail.
+8. **Session paste uses the selected candidate.** `POST /api/admin/session_resume/parse` without `candidate_id` returns 400 and sends no request; with a candidate holding the key for Ruth's model's server it goes out with that key (component test), and the candidate row is byte-identical before/after. A 200 without a candidate, another key on the wire, or a changed candidate row = fail.
+
+## Boundaries
+
+Stays inside the Scope above. Sibling slices: #1 catalog (except the named legacy deletions), #2 storage, #3 runtime routing.
+
+## Notes for planning
+
+New pattern *Model → server catalog routing* is defined on parent AST-1851 (Architectural definition). Each child must stay green on its own `sub/*`. Delete the legacy provider path only after confirming nothing on ftr imports it.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### betty — 2026-09-29T23:03:28.357Z
+7901a931c sub rebuilt: one merge-tests(AST-1880); tree identical; validate-sub-log ok (AST-1890)
+
+#### ada — 2026-09-29T22:19:15.888Z
+[qa-handoff]
+@Betty White, resolve-child is blocked on the sub's commit sequence, not on product code.
+
+- **Command:** `~/.cursor/scripts/git/validate-sub-log.sh sub/AST-1851/AST-1880-admin-model-pickers-platform-keys AST-1880 ftr/AST-1851-support-openrouter-api-models`
+- **Result:** `BLOCKED: duplicate merge-tests(AST-1880) on sub — count=2 (amend on tests, one merge-tests only)`
+- **The two deliveries:** `e74930781` (merge of `a0a12194f`) and `eb81cfe3a` (merge of `0ede9b9a7`, the AC 7 fix after Radia's review). `merge-child` runs the same gate, so User Testing would be recalled.
+- **Ask:** collapse these into one `merge-tests(AST-1880)` per your tests-delivery procedure. Keep the product and doc commits on top: `387f84ac5` test(), `be239f09a` resolve() (keys-only PUT info line), `5bf9495b0` resolve() (resolution notes). Then reassign me.
+- **Already green:** §9a dry-runs into `origin/dev` and the ftr are both clean. Radia's discuss items are resolved (see `## Resolution` in the issue doc). The ticket stays Review Posted.
+
+#### betty — 2026-09-29T22:17:29.860Z
+`origin/sub/AST-1851/AST-1880-admin-model-pickers-platform-keys` @ `eb81cfe3a` · AC 7 grep clean
+
+#### radia — 2026-09-29T22:16:24.332Z
+`[code-rubric] REVIEW (Commit: 387f84ac5) admin keys; api log gap`
+
+#### ada — 2026-09-29T22:14:43.116Z
+387f84ac5 manifest green: pytest 145 passed, Vitest 115 passed (2 skipped). The API Key column fix is in.
+
+#### betty — 2026-09-29T22:12:45.901Z
+`origin/sub/AST-1851/AST-1880-admin-model-pickers-platform-keys` @ `e74930781` · manifest in api_admin.md
+
+Product bug, one expected red: the `AdminManageCandidates` API Key column still checks `val === "Set"`, so it shows "⚠️ Not set" even though the API now sends per-server flags. Test: "AST-1880: API Key column lists the labels of servers with a key set". Manifest: `docs/test-bible/ui/api/api_admin.md` § QA test manifest (AST-1880).
+
+#### joan — 2026-09-29T21:45:46.498Z
+[plan-rubric] PROCEED (Commit: 16dbe56de) Admin + legacy retirement plan clean
+
+#### ada — 2026-09-29T21:44:15.141Z
+16dbe56de plan ready
+
+#### ada — 2026-09-29T21:42:51.822Z
+[scope-gate] `src/core/monitor.py` is not in Scope, but the plan needs it.
+
+- **Why:** `provider_balance_outage` (line 83) calls `get_active_llm_provider()` to label the balance-outage email. Scope says "**Legacy retirement:** `src/utils/config.py` — delete `active_provider` / `get_active_llm_provider` …", and AC 1 says "`rg -n "active_provider|get_active_llm_provider" src/` returns nothing." Neither can hold while `monitor.py` imports the function, and no Scope line names `monitor.py`.
+- **Needed change (function-level, about 2 lines):** in `provider_balance_outage`, replace the global provider with the refused task agent's server: `get_llm_server(task_llm_server_id(task_key))["label"]`. This stays inside the existing never-raises `try`, and there is no import cycle (`agent.py` does not import `monitor`). The alternative is to drop the provider name from the subject.
+- **Ask:** add `src/core/monitor.py — provider_balance_outage labels the alert by the task agent's server (legacy retirement)` to Scope. The plan is otherwise complete at 55c2c84a8 (Stage 3 step 6, marked pending).
+
+---
+
 # AST-1880 — Admin: model + brain pickers, per-platform keys, Invalid on missing key
 
 - **Parent:** [AST-1851 — Support OpenRouter API models for agent work](https://linear.app/astralcareermatch/issue/AST-1851)
