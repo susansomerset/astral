@@ -1151,3 +1151,18 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ### AST-2010 · AST-2009 (exhausted-429 `failure_class` forwarded)
 
 **New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` rides `_find_job_page_from_assembled`'s generic select failure (still NO_JOBLIST + saved), `run_company_task` select_job_page (still counted passed via NO_JOBLIST) and JOBS_FOUND (still `error_state` + `total_errors`), and the `prefilter_company_batch` generic failure (still retried). There is no `total_held` and no `state_held`. An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+
+### AST-2069 · AST-2054 (locate/parse pass state → GET_UPSHOT)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2069-upshot-states-registration`. Config-only child; primary block + manifest: [`../utils/config.md`](../utils/config.md) § AST-2069.
+
+`ROSTER_CONFIG["locate_job_page"]["pass_states"]` and `["parse_job_list"]["pass_state"]` are now `GET_UPSHOT`. Batch counting compares the producer's returned `state` with that config, so tests that mock `run_parse_job_list_dispatch` / `jobs_found_process_job_site` returning `{"state": "WATCH"}` counted the pass as an error. Revised mocks to return `GET_UPSHOT` (producer is mocked — these test counting, not the producer's write).
+
+| Revised (mocked pass state `WATCH` → `GET_UPSHOT`) |
+| --- |
+| `TestAst1847ParseJobListBatchPartialTally` — `test_cancelled_company_is_not_tallied`, `test_counted_tallies_escaping_exception_once`, `test_ctx_without_dispatch_partial_is_noop`, `test_tallies_every_outcome_into_ctx_dispatch_partial` |
+| `TestAst721ParseDispatchRouting::test_parse_job_list_dispatch_key`; `TestAst721ParseJobListDispatch::test_run_company_task_routes_identified_and_retry` |
+| `TestAst891ParseJobListBatch` — `test_passes_batch_session_and_counts_definite_outcomes`, `test_unhandled_gather_exception_increments_errors_and_continues` |
+| `TestRunCompanyTask::test_jobs_found_dispatch_pass_fail_ast469`; `test_run_company_task_jobs_found_watch_counts_passed` |
+
+**Left for AST-2070:** the real `state="WATCH"` writes in `_finalize_parse_dispatch_success` and the two legacy locate-success paths (plan-accepted interim mismatch). AST-2070's manifest owns asserting those producers now write `GET_UPSHOT`.

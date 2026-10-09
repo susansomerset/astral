@@ -412,7 +412,8 @@ class TestRunCompanyTask:
     @pytest.mark.asyncio
     async def test_jobs_found_dispatch_pass_fail_ast469(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """AST-469: locate_job_page batch includes JOBS_FOUND → jobs_found_process_job_site."""
-        jf_ok = AsyncMock(return_value={"state": "WATCH"})
+        # AST-2069: locate pass_states is GET_UPSHOT (was WATCH)
+        jf_ok = AsyncMock(return_value={"state": "GET_UPSHOT"})
         jf_err = AsyncMock(return_value={"error": "boom"})
         monkeypatch.setattr(roster_mod, "jobs_found_process_job_site", jf_ok)
 
@@ -491,7 +492,7 @@ class TestAst721ParseDispatchRouting:
 
     @pytest.mark.asyncio
     async def test_parse_job_list_dispatch_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        parse = AsyncMock(return_value={"state": "WATCH"})
+        parse = AsyncMock(return_value={"state": "GET_UPSHOT"})  # AST-2069: parse pass_state
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", parse)
         entity = _company(state="JOBLIST_IDENTIFIED")
         out = await roster_mod.run_company_task(
@@ -1309,7 +1310,7 @@ class TestAst721ParseJobListDispatch:
     async def test_run_company_task_routes_identified_and_retry(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        parse = AsyncMock(return_value={"state": "WATCH"})
+        parse = AsyncMock(return_value={"state": "GET_UPSHOT"})  # AST-2069: parse pass_state
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", parse)
         entity = self._identified_company()
         ok = await roster_mod.run_company_task(
@@ -4071,7 +4072,7 @@ async def test_run_company_task_jobs_found_watch_counts_passed(monkeypatch: pyte
     monkeypatch.setattr(
         roster_mod,
         "jobs_found_process_job_site",
-        AsyncMock(return_value={"state": "WATCH"}),
+        AsyncMock(return_value={"state": "GET_UPSHOT"}),  # AST-2069: locate pass_states
     )
     out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b1")
     assert out["total_passed"] == 1
@@ -5985,7 +5986,7 @@ class TestAst891ParseJobListBatch:
         async def _dispatch(company, batch_id, ctx, debug, batch_session=None):
             seen.append(batch_session)
             if company["short_name"] == "co-ok":
-                return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
+                return {"state": "GET_UPSHOT", "response_type": "PARSE_DISPATCH_OK"}
             if company["short_name"] == "co-retry":
                 return {"state": "JOBLIST_IDENTIFIED_RETRY", "response_type": "PARSE_DISPATCH_INFRA"}
             return {"state": "COULD_NOT_PARSE_JOBLIST", "response_type": "PARSE_DISPATCH_INFRA"}
@@ -6015,7 +6016,7 @@ class TestAst891ParseJobListBatch:
 
         async def _slow(*_a, **_k):
             await asyncio.sleep(5)
-            return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
+            return {"state": "GET_UPSHOT", "response_type": "PARSE_DISPATCH_OK"}
 
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _slow)
         monkeypatch.setitem(roster_mod.PLAYWRIGHT_CONFIG, "company_scrape_timeout_seconds", 0.05)
@@ -6033,7 +6034,7 @@ class TestAst891ParseJobListBatch:
         async def _dispatch(company, *_a, **_k):
             if company["short_name"] == "co-boom":
                 raise RuntimeError("unexpected parse boom")
-            return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
+            return {"state": "GET_UPSHOT", "response_type": "PARSE_DISPATCH_OK"}
 
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
         companies = [self._co("co-ok"), self._co("co-boom"), self._co("co-also")]
@@ -6063,7 +6064,7 @@ class TestAst891ParseJobListBatch:
         monkeypatch.setattr(
             roster_mod,
             "run_parse_job_list_dispatch",
-            AsyncMock(return_value={"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}),
+            AsyncMock(return_value={"state": "GET_UPSHOT", "response_type": "PARSE_DISPATCH_OK"}),
         )
         await roster_mod.parse_job_list_batch("batch-891", [self._co("acme")], debug=True)
         assert indexes
@@ -6087,7 +6088,7 @@ class TestAst1847ParseJobListBatchPartialTally:
         # All four _one branches: error / pass (_tally key) / retry (_tally None) / terminal.
         _mock_parse_batch_browser_session(monkeypatch)
         results = {
-            "co-ok": {"state": "WATCH"},
+            "co-ok": {"state": "GET_UPSHOT"},  # AST-2069: parse pass_state
             "co-retry": {"state": "JOBLIST_IDENTIFIED_RETRY"},
             "co-err": {"error": "boom", "state": "JOBLIST_IDENTIFIED_RETRY"},
             "co-term": {"state": "COULD_NOT_PARSE_JOBLIST"},
@@ -6120,7 +6121,7 @@ class TestAst1847ParseJobListBatchPartialTally:
         async def _dispatch(company, *_a, **_k):
             if company["short_name"] == "co-boom":
                 raise RuntimeError("boom")
-            return {"state": "WATCH"}
+            return {"state": "GET_UPSHOT"}
 
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
         ctx = self._partial_ctx()
@@ -6141,7 +6142,7 @@ class TestAst1847ParseJobListBatchPartialTally:
         async def _dispatch(company, *_a, **_k):
             if company["short_name"] == "co-hang":
                 await asyncio.sleep(3600)
-            return {"state": "WATCH"}
+            return {"state": "GET_UPSHOT"}
 
         monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _dispatch)
         ctx = self._partial_ctx()
@@ -6161,7 +6162,7 @@ class TestAst1847ParseJobListBatchPartialTally:
         # Branch lock: real ctx lacking the key → partial is None; no key invented.
         _mock_parse_batch_browser_session(monkeypatch)
         monkeypatch.setattr(
-            roster_mod, "run_parse_job_list_dispatch", AsyncMock(return_value={"state": "WATCH"}),
+            roster_mod, "run_parse_job_list_dispatch", AsyncMock(return_value={"state": "GET_UPSHOT"}),
         )
         ctx = {"entity_batch_id": "batch-1847"}
         out = await roster_mod.parse_job_list_batch("batch-1847", [self._co("co-ok")], ctx=ctx)

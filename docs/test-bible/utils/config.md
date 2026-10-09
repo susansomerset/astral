@@ -4867,3 +4867,44 @@ Full AST-2062 command (all four pages): [`../core/contact.md`](../core/contact.m
 2. Revised: `TestAst1668RecognitionReplyConfig`, `TestAst1101HearAckConfig`
 
 Full AST-2072 command: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+### AST-2069 · AST-2054 (upshot states, task registration, agent_task rows)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054) (Company Upshot). **Publish:** `origin/sub/AST-2054/AST-2069-upshot-states-registration`. Plan: `docs/features/roster/ast-2069-upshot-states-task-registration-and-agent-task-rows.md`.
+
+Registration only: company states `GET_UPSHOT` / `UPSHOT_READY` (retry) / `ERROR_UPSHOT`; every former `(X, "WATCH")` locate/parse pair → `(X, "GET_UPSHOT")`, WATCH entered only from `UPSHOT_READY` / its retry; `ROSTER_CONFIG` locate `pass_states` + parse `pass_state` → `GET_UPSHOT`; `ROSTER_CONFIG["company_upshot"]`, `GAZER_CONFIG["fetch_company_culture_pages"]`, `TASK_CONFIG["company_upshot"]`; both keys company-entity dispatchable; two `data/admin/agent_task.json` rows (telescope fetch, Estelle `company_upshot` with the 200-word cap). **Interim (plan-accepted):** `roster.py` still hard-codes `state="WATCH"` writes until sibling **AST-2070** — not a product bug on this child.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 states; 2 only the upshot hop enters WATCH; 4 dispatch registrable; 3 agent_task rows | `src/utils/config.py`, `data/admin/agent_task.json` | new **`TestAst2069UpshotRegistration`** (4) |
+| Revised: locate/parse transitions now land in `GET_UPSHOT` | `src/utils/config.py` | **`TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions`**, **`TestAst721ParseJobListConfig::test_parse_states_and_transitions`**, **`TestAst721ParseJobListConfig::test_parse_job_list_roster_config`** (`pass_state` line) |
+| Revised: AST-1806 pinned snapshot gains the six upshot targets (bases unrestricted, `_RETRY` → own pair) | same | **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** |
+| Revised: roster batch counting mocks return the new pass state | `src/core/roster.py` (counting vs config) | see [`../core/roster.md`](../core/roster.md) § AST-2069 (10 tests) |
+
+**Broken / obsolete this pass (13, isolated A/B vs `ftr` config):** the three config transition/snapshot tests above + the ten roster tests in `roster.md` § AST-2069 — all asserted or mocked `WATCH` as the locate/parse pass state.
+
+**Pre-existing red, not this ticket:** `TestAst721ParseJobListConfig::test_parse_job_list_roster_config` still fails on `KeyError: 'max_concurrent'` with or without AST-2069 — only its `pass_state` line was revised; excluded from the manifest.
+
+**Integration:** none — no `tests/integration/` scenario reads locate/parse pass states; do not invent.
+
+## QA test manifest — AST-2069
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2069UpshotRegistration \
+  tests/component/utils/test_config.py::TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions \
+  tests/component/utils/test_config.py::TestAst721ParseJobListConfig::test_parse_states_and_transitions \
+  tests/component/utils/test_config.py::TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned \
+  tests/component/core/test_roster.py::TestAst1847ParseJobListBatchPartialTally \
+  tests/component/core/test_roster.py::TestAst721ParseDispatchRouting::test_parse_job_list_dispatch_key \
+  tests/component/core/test_roster.py::TestAst721ParseJobListDispatch::test_run_company_task_routes_identified_and_retry \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_passes_batch_session_and_counts_definite_outcomes \
+  tests/component/core/test_roster.py::TestAst891ParseJobListBatch::test_unhandled_gather_exception_increments_errors_and_continues \
+  tests/component/core/test_roster.py::TestRunCompanyTask::test_jobs_found_dispatch_pass_fail_ast469 \
+  tests/component/core/test_roster.py::test_run_company_task_jobs_found_watch_counts_passed \
+  -q
+```
+
+**Pass criterion:** 17 passed. Not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2069-upshot-states-registration:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/roster.md`.
