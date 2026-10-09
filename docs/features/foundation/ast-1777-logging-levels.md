@@ -242,3 +242,76 @@ AST-2078 board-joan done — CANON: OK.
 ```
 
 context_tokens≈18500
+
+## Radia review — AST-2078
+
+[code-rubric]
+**Ticket:** AST-2078
+**Publish ref:** `2e754b15a0cb0af904feb702317b7b454bc34236` (`origin/sub/AST-2074/AST-2078-gunicorn-polling-logs`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159` (`docs/canon-index.md` absent on publish ref; `stat.logging.*` via `canon_clerk expand`; `astral.config.config-source-of-truth` and `astral.standards.no-hardcoded-sets` via `canon/statutes/astral/` mirrors at same index sha)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — clean board opt-out (fix-board Betty `TESTS: REVISE` routed to sibling AST-2079; no qa-fix / no `[bug-repro]` on this ticket per spawn context).
+- **`## What must still hold`** — OK (all items traced below).
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| stat.logging.info | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan F2 fix-board `CANON: OK` only; no F3 `validate-plan` per-id column on this ticket)
+
+## Frame diff
+
+- [ ] **Linear Description → Scope:** Reflect **option (b)** and **unchanged** `scripts/start_server.py` / Railway env (not launcher pin or env removal).
+- [ ] **Linear Description:** Remove or close **Open decision for plan-fix** — plan-fix patch records **DECISION: (b) chosen — gate AST-2080**.
+
+## Findings
+
+### discuss
+
+- **Linear description vs landed plan** — Issue description still lists an open **(a)/(b)** decision and Scope text that implies modifying `scripts/start_server.py` and Railway env in-repo. The diff implements plan-fix **(b)** only (`config.py` + `logging.py`; launcher and env untouched). **Decision:** Chuckles syncs Linear description to the plan-fix patch when appending this review (doc on branch is authoritative). **Default:** Update Linear text only; no `resolve-child` product work.
+
+### advisory
+
+- **sibling test carry:** Three-dot diff vs `origin/ftr/AST-2074-gunicorn-polling-logs` includes unrelated `docs/features/**` epic-registry **Threads** mirror churn only — no `src/**` or `tests/**` from siblings.
+- **Deploy / UAT:** Plan **ops step** (record prod `GUNICORN_CMD_ARGS` before deploy; do not remove logconfig) is not verifiable from the repo diff — track at User Testing / deploy checklist.
+- **AST-2079:** Component coverage for `_QuietAccessFilter` intentionally deferred per fix-board; not a defect on this ticket.
+
+### fix-now
+
+(none)
+
+## Notes
+
+- **Diff base:** `origin/ftr/AST-2074-gunicorn-polling-logs...origin/sub/AST-2074/AST-2078-gunicorn-polling-logs` — product delta is `src/utils/config.py` (+`access_log_quiet_paths`) and `src/utils/logging.py` (`_QuietAccessFilter`, attach-once on `gunicorn.access`).
+- **Plan fidelity (product):** Matches plan-fix option **(b)** — quiet-path tuple in `RAILWAY_CONFIG`, logger-level filter on atom `U`, late import in `filter()`, docstring update, `start_server.py` unchanged.
+- **Canon Scope:** Joan fix-board discussed `astral.standards.logging-via-utils` at F2; it is **not** on the frozen list. Infrastructure `logging.getLogger("gunicorn.access")` inside `src/utils/logging.py` is consistent with plan AC6 and frozen `stat.logging.*` canonical_refs on `get_logger` — **no ESCALATE** (not a mis-scored off-list violation in the diff).
+- **`## What must still hold` trace:** AC1–4 — no changes to `_ensure_stdout_console_handler`, `_apply_console_formatter`, or `_PrefixedLogger` emit paths; filter only on `gunicorn.access`. AC5 — `_DatabaseLogHandler` attach unchanged; dropped records never reach root/`app_log`. AC6 — single new stdlib `getLogger` site in `logging.py` for the access logger. Railway logconfig / root level / handlers not modified in repo. AST-2078 AC — no API or footer changes; `gunicorn.error` untouched by filter.
+- **Estimate footprint:** Estimate **2** — fits (~33 LOC product + plan doc).
+
+## What's solid
+
+- Config holds the quiet-path set; filter reads it via late import (cycle-safe, AST-388 precedent).
+- Attach-once beside DB handler matches existing `get_logger` side-effect pattern; inert off gunicorn.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next |
+|------|----------------|------|
+| **PROCEED** (clean, artifact complete) | Normal (AST-2074, live `ftr`) | **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped) |
+
+context_tokens≈38000
+
+### Chuckles adjudication
+
+Clean (PROCEED, no fix-now). Discuss item (Linear description stale vs option (b)) handled by Chuckles: AST-2078 description synced. Clean-review shortcut (do-all-the-things §3h) → User Testing.
