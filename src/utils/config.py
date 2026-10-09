@@ -68,7 +68,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional, Union
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -222,6 +222,67 @@ def registered_base(registry: Dict[str, Any], state: Optional[str]) -> Optional[
         return s
     base = retry_base(s)
     return base if base is not None and base in registry else None
+
+
+# ---------------------------------------------------------------------------
+# Terminal-state grammar (AST-2086, patt.state.terminal-naming): failures are
+# ERROR_<TASK_KEY>[_<CONDITION>], bot walls BOT_BLOCKED_<TASK_KEY>. Built from the
+# failing task_key — never typed. JD_SCRAPE_FAIL_CLOSED / _MISSING are the one literal family.
+# ---------------------------------------------------------------------------
+# Closed condition vocabulary — the only legal _<CONDITION> suffixes.
+TERMINAL_CONDITIONS = (
+    "UNREADABLE", "COOKIE", "NOT_FOUND", "NO_JOBLIST", "NO_JOBLIST_LINKS", "NO_SELECTION",
+    "NO_CULTURE_LINKS", "NO_WEBSITE_CONTENT", "UNPARSEABLE", "CLICK",
+)
+ERROR_STATE_PREFIX = "ERROR_"
+BOT_BLOCKED_STATE_PREFIX = "BOT_BLOCKED_"
+
+
+def error_state_for(task_key: str, condition: Optional[str] = None) -> str:
+    """ERROR_<TASK_KEY> (cause unknown) or ERROR_<TASK_KEY>_<condition> (condition ∈ TERMINAL_CONDITIONS)."""
+    tk = (task_key or "").strip()
+    if not tk or (condition is not None and condition not in TERMINAL_CONDITIONS):
+        raise ValueError(f"error_state_for: bad task_key {task_key!r} / condition {condition!r}")
+    return f"{ERROR_STATE_PREFIX}{tk.upper()}" + (f"_{condition}" if condition else "")
+
+
+def bot_blocked_state_for(task_key: str) -> str:
+    """BOT_BLOCKED_<TASK_KEY> — the failing task hit a bot / challenge wall."""
+    tk = (task_key or "").strip()
+    if not tk:
+        raise ValueError(f"bot_blocked_state_for: bad task_key {task_key!r}")
+    return f"{BOT_BLOCKED_STATE_PREFIX}{tk.upper()}"
+
+
+def parse_terminal_state(state: str) -> Optional[Tuple[str, str, Optional[str]]]:
+    """(kind, task_key, condition) for a grammar name; kind is "error" | "bot_blocked". None otherwise."""
+    s = (state or "").strip()
+    if s.startswith(BOT_BLOCKED_STATE_PREFIX) and len(s) > len(BOT_BLOCKED_STATE_PREFIX):
+        return ("bot_blocked", s[len(BOT_BLOCKED_STATE_PREFIX):].lower(), None)
+    if not s.startswith(ERROR_STATE_PREFIX) or len(s) <= len(ERROR_STATE_PREFIX):
+        return None
+    body = s[len(ERROR_STATE_PREFIX):]
+    # Longest suffix first so NO_JOBLIST_LINKS wins over NO_JOBLIST.
+    for cond in sorted(TERMINAL_CONDITIONS, key=len, reverse=True):
+        if body.endswith(f"_{cond}") and len(body) > len(cond) + 1:
+            return ("error", body[: -len(cond) - 1].lower(), cond)
+    return ("error", body.lower(), None)
+
+
+# Artifact-chain hops (run_next order); each hop names its own error, so the dispatch rule
+# keys on membership here — never on a shared error_state.
+BUILD_ARTIFACTS_CHAIN_TASK_KEYS = (
+    "anticipate_scan", "contemplate_job", "advise_job_resume", "draft_job_resume",
+    "check_job_resume", "finalize_job_resume", "draft_cover_letter", "check_cover_letter",
+    "finalize_cover_letter", "propose_application_responses",
+)
+BUILD_ARTIFACTS_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in BUILD_ARTIFACTS_CHAIN_TASK_KEYS)
+# Candidate craft chain (REQUESTED_ARTIFACTS entry craft_get_rubric, run_next order).
+CANDIDATE_CRAFT_CHAIN_TASK_KEYS = (
+    "craft_get_rubric", "craft_do_rubric", "craft_like_rubric", "craft_evaluate_meteorite_rubric",
+    "craft_jobdesc_rubric", "craft_prefilter_rubric", "craft_company_search_terms", "craft_joblist_rubric",
+)
+CANDIDATE_CRAFT_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in CANDIDATE_CRAFT_CHAIN_TASK_KEYS)
 
 
 def is_registered_state(registry: Dict[str, Any], state: Optional[str]) -> bool:
