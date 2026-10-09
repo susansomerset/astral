@@ -1179,3 +1179,26 @@ Clean (PROCEED, no fix-now / discuss). Clean-review shortcut (do-all-the-things 
 ### Test routing — AST-2092
 
 docs-acceptance: no test-tree delivery on this ticket. fix-board `[board-betty] TESTS: REVISE` was routed to the gap sibling AST-2094 (rubric empty-render gate tests + bible), which lands its own `test()` / `merge-tests` on ftr.
+
+## Joan fix-board — AST-2094
+
+```text
+[board-joan]  CANON: OK
+```
+
+```text
+AST-2094 board-joan done — CANON: OK.
+```
+
+## Reasoning
+
+**Read:** `## Bug: AST-2094` on `origin/sub/AST-2019/AST-2094-rubric-empty-render-gate-tests` @ `6401a0987` (plan-fix only on publish tip). Joan pass question: does **`### Proposed change`** conflict with or require updating any **directive in force**?
+
+**No.** Scope is **`tests/component/utils/test_config.py`** (`TestAst1779EmptyRenderForPrompts` only) and **`docs/test-bible/utils/config.md`** (AST-1779 section). **No `src/**`, no `canon/**`. Ticket cites **no canon**; work pins the already-landed AST-2092 product contract (rubric scored by default), not statute text.
+
+- **Roster skim:** Nothing in active `stat.*` / `patt.*` governs empty-render scoring rules or test-bible wording. AST-1779’s old “rubric only via `entity_contexts`” rule lived in feature plan + bible/tests, same as AST-2092 board conclusion.
+- **Bible edits** (prose, table rows, manifest) document behavior for Betty/qa-fix; they are **not** corpus directives and do not amend `astral.dispatch.entity-state-bound`, `astral.standards.in-scope-only`, or any other in-force id.
+- **Not REVISE:** No statute/pattern needs a carve-out or restatement for flipping/renaming tests or syncing the bible to AST-2092.
+- **Not ESCALATE:** Test-gap sibling with bounded blast radius; product precedent was AST-2092 + Susan’s lane split to AST-2094.
+
+context_tokens≈22000
