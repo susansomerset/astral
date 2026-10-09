@@ -583,3 +583,43 @@ git grep -n "AUTOSAVE_MS" -- src/ui/frontend/src/components/ArtifactEditor.tsx  
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2068
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** 7c52976bbe777acba168f0add8d856701f7938c4
+
+## Canon scores
+
+patt.artifact.ui-consistency | A | | 
+patt.artifact.read-current | A | | 
+
+## Traceability
+
+AC1→St2; AC2→St2; AC3→St2+Verification; AC4→St3+St4 (move sequence + QA surfaces)
+
+## Findings
+
+### acceptable
+- **Location:** Plan (whole doc)
+- **Finding:** No Conf/Risk self-assessment block (Estimate confirm only).
+- **Recommendation:** Optional; not blocking for a three-file UI ticket with staged Done-when checks.
+
+### discuss
+- **Location:** `patt.artifact.ui-consistency` (corpus)
+- **Finding:** Directive file lives under `canon/directives/active/` but its Abstract still marks **draft — Archie approval required**; child Canon Scope carries it anyway (parent Discussion lock).
+- **Recommendation:** Corpus hygiene for Archie; plan behavior matches the pattern text (shared nav, shape-driven placement, existing PUT/GET contracts).
+
+- **Location:** Stage 2 Decision — `handleBodyBlur` on `.dep-body`
+- **Finding:** Blur on importance `<select>` and other non-text controls can trigger a save attempt; server identical/fingerprint no-ops absorb unchanged net bodies.
+- **Recommendation:** Accept as literal “field loses focus”; watch UAT for noisy rubric version rows if importance-only blurs become a product issue.
+
+- **Location:** Stage 3 Decision — per-save criterion version GET fan-out
+- **Finding:** Up to 15 parallel `/versions` GETs after each criteria save by design (no client diff shortcut).
+- **Recommendation:** Plan already flags follow-up if Susan wants narrowing; not a canon defect.
+
+context_tokens≈72000
