@@ -13,7 +13,7 @@ AST-1207: Events/Socket ingress hydrates debug from Manage Slack durable SoT
 AST-1073: Contact Estelle turn loop (`run_contact_estelle_turn`).
 Conversational envelope contract: AST-1072.
 AST-1471 / AST-1531: Contact scrap path → `contact_land_meteorite` → `stage_meteorite`.
-AST-1561: BOT_BLOCKED paste recovery via `apply_paste` (no re-classify).
+AST-1561: BOT_BLOCKED_SCRAPE_METEORITE paste recovery via `apply_paste` (no re-classify).
 AST-1515: Contact-task markup parse/dispatch + same-event follow-up turn.
 AST-2035: leading /<command> intercept via CONTACT_CONFIG["commands"] (code ack or one agent turn).
 AST-1585 / patt.artifact.read-operative — Estelle pin→body for pilot
@@ -500,7 +500,7 @@ def try_meteorite_apply_paste_from_slack(
     text: str,
     debug: bool = False,
 ) -> dict:
-    """AST-1561: thread-first BOT_BLOCKED paste recovery before Estelle classify."""
+    """AST-1561: thread-first BOT_BLOCKED_SCRAPE_METEORITE paste recovery before Estelle classify."""
     if not (isinstance(astral_candidate_id, str) and astral_candidate_id.strip()):
         return {"applied": False}
     if not (isinstance(text, str) and text.strip()):
