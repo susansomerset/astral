@@ -7863,6 +7863,39 @@ class TestAst2069UpshotRegistration:
         assert '"company_name":' in prompt
 
 
+class TestAst2096AllXFailStates:
+    """AST-2096 [bug-repro]: second all-X strike lands {fail_state}_ALL_X — one explicit JOB_STATES row
+    per scored task's fail_state, priors copied from the base (so *_RETRY is admitted), listed Skipped."""
+
+    _ALL_X = (
+        "FAILED_DO_ALL_X", "FAILED_GET_ALL_X", "FAILED_LIKE_ALL_X",
+        "METEORITE_FAILED_DO_ALL_X", "METEORITE_FAILED_GET_ALL_X", "METEORITE_FAILED_LIKE_ALL_X",
+    )
+
+    def test_rows_registered_with_base_priors(self) -> None:
+        for state in self._ALL_X:
+            assert state in cfg.JOB_STATES, state
+            base = state.removesuffix("_ALL_X")
+            assert cfg.JOB_STATES[state]["prior_states"] == cfg.JOB_STATES[base]["prior_states"], state
+        # Second strike comes from the trigger's *_RETRY holding; first strike never lands here but is admitted.
+        priors = cfg.state_prior_states(cfg.JOB_STATES, "METEORITE_FAILED_DO_ALL_X")
+        assert "METEORITE_PASSED_JD_RETRY" in priors
+        assert "METEORITE_PASSED_JD" in priors
+
+    def test_helper_and_list_derive_from_scored_fail_states(self) -> None:
+        assert cfg.ALL_X_SUFFIX == "_ALL_X"
+        assert cfg.all_x_of("METEORITE_FAILED_DO") == "METEORITE_FAILED_DO_ALL_X"
+        scored = {tc["fail_state"] for tc in cfg.TASK_CONFIG.values() if tc.get("grading_mode") == "scored"}
+        assert sorted(cfg.ALL_X_FAIL_STATES) == sorted(self._ALL_X)
+        assert set(cfg.ALL_X_FAIL_STATES) == {cfg.all_x_of(b) for b in scored}
+        assert len(set(cfg.ALL_X_FAIL_STATES)) == len(cfg.ALL_X_FAIL_STATES)
+
+    def test_terminal_all_x_is_skipped_not_processing(self) -> None:
+        for state in self._ALL_X:
+            assert state in cfg.SKIPPED_STATES, state
+            assert state in cfg.JOBS_PROCESSING_EXCLUDED_STATES, state
+
+
 # Branches: none (config literals + import-time asserts). AST-2081: line format, per-format editor
 # metadata (label / description / font stack), Hidden flow label, job resume structure catalog key,
 # preview_thumbnail on the recommended-job artifact tabs.
@@ -7909,36 +7942,3 @@ class TestAst2081FormatCatalogAndJobStructureKey:
     def test_preview_thumbnail_on_resume_and_cover_tabs_only(self) -> None:
         by_id = {t["tab_id"]: t["preview_thumbnail"] for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
         assert by_id == {"artifact_resume": True, "artifact_cover": True, "artifact_application": False}
-
-
-class TestAst2096AllXFailStates:
-    """AST-2096 [bug-repro]: second all-X strike lands {fail_state}_ALL_X — one explicit JOB_STATES row
-    per scored task's fail_state, priors copied from the base (so *_RETRY is admitted), listed Skipped."""
-
-    _ALL_X = (
-        "FAILED_DO_ALL_X", "FAILED_GET_ALL_X", "FAILED_LIKE_ALL_X",
-        "METEORITE_FAILED_DO_ALL_X", "METEORITE_FAILED_GET_ALL_X", "METEORITE_FAILED_LIKE_ALL_X",
-    )
-
-    def test_rows_registered_with_base_priors(self) -> None:
-        for state in self._ALL_X:
-            assert state in cfg.JOB_STATES, state
-            base = state.removesuffix("_ALL_X")
-            assert cfg.JOB_STATES[state]["prior_states"] == cfg.JOB_STATES[base]["prior_states"], state
-        # Second strike comes from the trigger's *_RETRY holding; first strike never lands here but is admitted.
-        priors = cfg.state_prior_states(cfg.JOB_STATES, "METEORITE_FAILED_DO_ALL_X")
-        assert "METEORITE_PASSED_JD_RETRY" in priors
-        assert "METEORITE_PASSED_JD" in priors
-
-    def test_helper_and_list_derive_from_scored_fail_states(self) -> None:
-        assert cfg.ALL_X_SUFFIX == "_ALL_X"
-        assert cfg.all_x_of("METEORITE_FAILED_DO") == "METEORITE_FAILED_DO_ALL_X"
-        scored = {tc["fail_state"] for tc in cfg.TASK_CONFIG.values() if tc.get("grading_mode") == "scored"}
-        assert sorted(cfg.ALL_X_FAIL_STATES) == sorted(self._ALL_X)
-        assert set(cfg.ALL_X_FAIL_STATES) == {cfg.all_x_of(b) for b in scored}
-        assert len(set(cfg.ALL_X_FAIL_STATES)) == len(cfg.ALL_X_FAIL_STATES)
-
-    def test_terminal_all_x_is_skipped_not_processing(self) -> None:
-        for state in self._ALL_X:
-            assert state in cfg.SKIPPED_STATES, state
-            assert state in cfg.JOBS_PROCESSING_EXCLUDED_STATES, state
