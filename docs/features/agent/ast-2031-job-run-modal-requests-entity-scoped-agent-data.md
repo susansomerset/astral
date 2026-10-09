@@ -178,3 +178,99 @@ no plan-stage canon scores attached (Joan likewise scored no canon rows)
 - Epic merge: land #1–#2 before or with #3 so `entity_id` query returns sliced rows in production.
 
 context_tokens≈18000
+
+## Bug: AST-2075 — Skipped job's run panels show only the RESPONSE tab
+
+The backend Each-mode read (`get_agent_data` with `entity_id`) is unchanged. See `docs/features/agent/ast-2030-slice-agent-data-reads-and-agent-story-by-entity.md` § Bug: AST-2052. This fix lives in the modal panes (`BatchAgentDataPanes`) that this ticket wired.
+
+### As-is
+
+On staging, a run opened from a **Skipped** job's State History (`JobDetailModal` → `BatchExecutionModal` → `BatchAgentDataPanes` with `entityId`) shows only the RESPONSE tab. SYSTEM, CACHE, NO_CACHE and TASK do not appear at all.
+
+### To-be
+
+When `entityId` is set, the panes always read like one Each-mode call:
+- **Always-present tabs:** SYSTEM, NO_CACHE, TASK and RESPONSE always get a tab.
+- **CACHE_A–D:** each shows when it has a row. When the call's prompt rows are missing altogether, a single **CACHE** tab stands in for them.
+- **Missing rows:** any of those tabs with no `agent_data` row shows `No agent_data found for this part of the call — it has aged out or was never stored.` instead of disappearing (Susan's To-be: "indicate as much in the various tabs that are missing the content").
+- **Batch-wide views** (no `entityId`: Execution History, Vector Feedback, Ad Hoc) are unchanged.
+
+### Repro
+
+`BatchAgentDataPanes batchId="R" entityId="J"`, with `/api/agent_data/R?entity_id=J` returning one row only:
+
+```json
+[{"agent_data_id": "R-response-x", "block_type": "RESPONSE", "block_data": "Provider failed: …", "token_size": 1, "task_key": "consult_do", "created_at": "2026-10-08 12:00:00"}]
+```
+
+| | Tabs today | Tabs expected |
+|---|---|---|
+| Entity view | `RESPONSE` | `SYSTEM`, `CACHE`, `NO_CACHE`, `TASK`, `RESPONSE` |
+| SYSTEM tab text | (no tab) | `No agent_data found for this part of the call — it has aged out or was never stored.` |
+
+### Root cause
+
+There are two parts.
+
+1. **The prompt rows are not in the run's `batch_id`.** I found no `agent_data` retention or pruning anywhere:
+   - `rg -i "delete from agent_data|prune|retention|purge"` over `src/` and `scripts/` turns up no `agent_data` delete.
+   - `scripts/migrations/cleanup_duplicate_and_board_gaze_jobs.py` explicitly leaves `agent_data` untouched.
+
+   So nothing in code ages prompt rows out ahead of RESPONSE rows. The one in-code path that produces a RESPONSE row with no prompt rows is in `do_task` (`src/core/agent.py`):
+   - `asyncio.to_thread(_store_prompt_blocks, …)` runs inside `try / except Exception as exc: _log_swallowed_agent_data(index, task_key, exc)`. A failed prompt write logs `Continuing without that agent_data row` and goes on.
+   - The RESPONSE (failure or success) is written afterwards by a separate `_store_response_block` call.
+
+   Failed calls are what put jobs on Skipped. Staging data to confirm which call failed is not available (Susan, 2026-10-09). The storage-side cause is therefore **not** fixed here.
+2. **The panes hide what's missing.** `BatchAgentDataPanes` builds its tabs only from the row types it receives (`byType` → `orderedTypes`). So every type with no row simply vanishes, and nothing tells the admin that content is missing.
+
+### Proposed change
+
+All in `src/ui/frontend/src/components/BatchAgentDataModal.tsx`. No backend, API or schema change.
+
+1. Below `BLOCK_TYPE_ORDER`, add:
+   ```ts
+   // AST-2075: entity-scoped run always shows one Each-mode call's tabs; CACHE stands in for CACHE_A–D when the prompt rows are gone
+   const ENTITY_CALL_TYPES = ["SYSTEM", "CACHE", "NO_CACHE", "TASK", "RESPONSE"]
+   const TAB_ORDER = [...BLOCK_TYPE_ORDER.slice(0, 5), "CACHE", ...BLOCK_TYPE_ORDER.slice(5)]
+   const MISSING_AGENT_DATA = "No agent_data found for this part of the call — it has aged out or was never stored."
+   ```
+2. In the fetch effect, replace `setActiveType(present[0] ?? b[0]?.block_type ?? "")` with
+   `setActiveType(entityId ? "SYSTEM" : (present[0] ?? b[0]?.block_type ?? ""))`. In entity mode SYSTEM is always a tab, either real or a placeholder.
+3. Replace the `orderedTypes` declaration (`const orderedTypes = [ ...BLOCK_TYPE_ORDER.filter(t => byType[t]), ...Object.keys(byType).filter(t => !BLOCK_TYPE_ORDER.includes(t)), ]`) with:
+   ```ts
+   // CACHE placeholder only when SYSTEM is gone too — present SYSTEM + no CACHE_* means the caches were empty (AST-2052 skips those)
+   const missingTypes = entityId
+     ? ENTITY_CALL_TYPES.filter(t => t === "CACHE"
+         ? !byType.SYSTEM && !Object.keys(byType).some(k => k.startsWith("CACHE_"))
+         : !byType[t])
+     : []
+   const tabTypes = [...Object.keys(byType), ...missingTypes]
+   const orderedTypes = [
+     ...TAB_ORDER.filter(t => tabTypes.includes(t)),
+     ...tabTypes.filter(t => !TAB_ORDER.includes(t)),
+   ]
+   ```
+4. In `tabBarTabs`, change `label: byType[t].length > 1 ? \`${t} ×${byType[t].length}\` : t` to
+   `label: (byType[t]?.length ?? 0) > 1 ? \`${t} ×${byType[t].length}\` : t`.
+5. In the `<textarea>` `value`, change
+   `activeType && byType[activeType] ? blockContent(byType[activeType]) : ""` to
+   `activeType && byType[activeType] ? blockContent(byType[activeType]) : missingTypes.includes(activeType) ? MISSING_AGENT_DATA : ""`.
+6. Change the empty-state guard `{!loading && blocks.length === 0 && (` to `{!loading && orderedTypes.length === 0 && (`. In entity mode the placeholder tabs replace "No agent data blocks recorded for this batch." Without `entityId`, `orderedTypes` is empty exactly when `blocks` is empty, so the batch-wide behaviour stays the same.
+7. `cd src/ui/frontend && npx tsc -b --noEmit` must be clean. `git diff origin/dev...HEAD -- src/core/ src/data/ src/ui/api/` must show no AST-2075 change.
+
+⚠️ **Decision D1-2075 — which missing tabs get a placeholder.** SYSTEM, NO_CACHE, TASK and RESPONSE always do. In normal operation `do_task` always stores a non-empty system prompt, the job's live NO_CACHE, the user prompt and a response. CACHE_A–D get **one** `CACHE` placeholder, and only when SYSTEM is also missing. AST-2052 deliberately drops empty caches, so with SYSTEM present and no cache rows, "the caches were empty" is the only honest reading. Showing "aged out" there would be false.
+⚠️ **Decision D2-2075 — the storage-side cause is out of scope.** Why the prompt write failed (logged by `_log_swallowed_agent_data`) can't be diagnosed without staging logs. This fix makes the gap visible rather than guessing at a storage change.
+⚠️ **Decision D3-2075 — scope.** `BatchAgentDataModal.tsx` / `BatchAgentDataPanes` is in the parent's Component and Technical scope as a modified function. The placeholder tabs are a new display behaviour for the entity-scoped mode that this epic introduced. Susan requested them directly in the bug's To-be.
+
+### Blast radius
+
+- **`BatchAgentDataPanes` callers:** `BatchExecutionModal` (passes `entityId` only from `JobDetailModal`) gets the new tabs. `BatchAgentDataModal` (Execution History, Vector Feedback) and `AdminAnthropicAdHoc` pass no `entityId`: `missingTypes` is `[]`, so their tabs are byte-identical.
+- **Tests:** `tests/component/frontend/components/test_BatchAgentDataModal.test.tsx` entity-id cases that assert the exact tab list or the `No agent data blocks recorded…` text when `entityId` is set. `test_JobDetailModal.test.tsx` if it asserts the run modal's tabs. `test_AdminPerformanceMonitor.test.tsx` must pass unchanged (parent AC9). Betty's call (`fix-board`).
+- **Backend:** none. `get_agent_data` / AST-2052 Each-mode read is untouched.
+
+### What must still hold
+
+- **AST-2031:** the entity fetch still sends `?entity_id=`, and timesheets / ledger fetches stay batch-wide.
+- **Parent AC9 / §7:** the batch-wide views (no `entityId`) show exactly the tabs and empty state they show today.
+- **AST-2052:** a present SYSTEM with empty caches shows no CACHE tab. Real rows render exactly as before.
+- **Parent AC10:** no change under `src/ui/api/` or `src/data/`.
