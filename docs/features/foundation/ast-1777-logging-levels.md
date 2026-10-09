@@ -208,3 +208,38 @@ From AST-2078's own acceptance criteria:
 
 - Gunicorn error-log lines (boot, timeouts, crashes) still appear.
 - The footer poll cadence and the `/api/deploy_status` API are unchanged.
+
+## Joan fix-board — AST-2078
+
+```
+[board-joan]  CANON: OK
+```
+
+**Reasoning**
+
+Read the plan-fix patch at `origin/sub/AST-2074/AST-2078-gunicorn-polling-logs` @ `2d9170458` (`## Bug: AST-2078` in `docs/features/foundation/ast-1777-logging-levels.md`). `docs/canon-index.md` is not on this ref; roster skim used `canon/docs/DIRECTIVES-DIRECTORY.md` and overlapping active directives/statutes on the epic worktree (`canon/directives/active/stat.logging.*`, `canon/statutes/astral/standards/astral.standards.logging-via-utils.md`, `astral.standards.no-hardcoded-sets`, `astral.ui.single-gunicorn-worker`).
+
+**One question (canon):** Does the proposed change conflict with or require updating any in-force directive?
+
+**No conflict, no required canon edit** for either Susan option **(a)** or **(b)**:
+
+| Overlap | Judgment |
+|--------|----------|
+| `stat.logging.info` / `.warning` / `.error` / `.debug` (AST-1777 canon list) | Governs `get_logger(__name__)` call-site channels and shapes. The fix filters `gunicorn.access` records before handlers/propagation; it does not gate, demote, or reshape product `info`/`warn`/`error` JSON on stdout. “What must still hold” matches AC1–AC4. |
+| `astral.standards.logging-via-utils` | Product code must not bypass the facade; attaching a filter via `logging.getLogger("gunicorn.access")` inside `src/utils/logging.py` is facade infrastructure, consistent with AC6 (“only in `logging.py`”). |
+| `astral.standards.no-hardcoded-sets` | Quiet paths / drop-all flag live in `RAILWAY_CONFIG` in `config.py`, not inline in the filter. |
+| `stat.config.data-not-behaviour` (registry skim) | New keys are plain config values; filter logic stays in `logging.py`. |
+| Late import in `filter()` | Same documented exception family as `add_log_entry` / AST-388 on `stat.layers.import-rules` (per DIRECTIVES-DIRECTORY note); not a new canon gap. |
+| `astral.ui.single-gunicorn-worker` | Unchanged; filter is per-worker attach-once, aligned with single-worker prod. |
+
+**(a) vs (b):** Verdict is **the same (OK)** for both. **(b)** is fully inside the bug’s declared file scope without a ticket-scope amendment. **(a)** needs a **Linear scope** tweak (plan already says Chuckles amends scope if Susan picks drop-all), not a statute/pattern update. Dropping all access lines vs only `access_log_quiet_paths` is an operator/ops preference (noise vs triage), not an ambiguous statute or Archie-only precedent under fix-board rules.
+
+Susan’s open **(a)/(b)** choice blocks **make-fix** per the plan; that is **not** Joan `ESCALATE` (no architectural canon call — both paths are specified and prototype-backed).
+
+**Not in scope here:** F3 `validate-plan` fix mode, R1–R7 scoring, or posting to Linear (Chuckles via `linear_proxy --as joan`).
+
+```text
+AST-2078 board-joan done — CANON: OK.
+```
+
+context_tokens≈18500
