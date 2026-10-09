@@ -1,3 +1,101 @@
+<!-- linear-archive: AST-1958 archived 2026-10-08 -->
+
+## Linear archive (AST-1958)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1958/run-once-migration-of-live-agent-rows-refactor-agent-settings-and  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1953 — Refactor agent settings and ingest per-endpoint model options  
+**Blocked by / blocks / related:** parent: AST-1953
+
+### Description
+
+## What this implements
+
+Moves every live agent row to per-SKU ids and its starting settings, then drops `brain_setting` and `mode`. Retires AST-1950's superseded script with its test and bible. After #1, which provides the setting columns. Does **not** touch product code.
+
+## Citations
+
+none. The script is under `scripts/`, outside every directive's scope.
+
+## Scope
+
+* `scripts/migrations/remap_agent_settings.py` (**new**): a new CLI. By default it is a dry run that prints each row's planned change. `--apply` writes the Functional scope 8 values, then drops the `brain_setting` and `mode` columns. It carries a literal snapshot of which model ids could think on 2026-10-03, so it does not depend on removed config. It handles rows whose `mode` is null ([AST-1950](https://linear.app/astralcareermatch/issue/AST-1950/run-once-agent-remap-starting-modes-new-sizes-kimi-fold-support-big) never ran) by treating them as Big → Creative, else Deterministic. The docstring says: run **once per environment, right after deploy**.
+* `scripts/migrations/remap_openrouter_agents.py`, `tests/component/scripts/test_remap_openrouter_agents.py`, `docs/test-bible/dev/remap_openrouter_agents.md` (**deleted**).
+* `tests/component/scripts/test_remap_agent_settings.py`, `docs/test-bible/dev/remap_agent_settings.md` (**new**, Betty in `qa-child`).
+
+## Acceptance criteria
+
+"Stubbed client" means the component-test stubs of the Anthropic SDK client used by `test_llm_compat.py`, `test_anthropic.py` and `test_agent.py`.
+
+11. **Migration moves live rows once.**
+    * **Check (component test, temp DB with** `brain_setting` **/** `mode` **columns):** seed these rows:
+      * `claude` Medium Deterministic;
+      * `deepseek-v4` Big Creative;
+      * `kimi-k2.6` Big Creative with empty `max_tokens`;
+      * `z-ai/glm-4.6` Deterministic;
+      * `microsoft/phi-4` Creative;
+      * one row with null `mode`.
+
+      A dry run writes nothing. `--apply` yields:
+      * `claude-sonnet-4-6` with temperature 0.2 and empty effort (`claude` couldn't think);
+      * `deepseek-v4-pro` with `max_tokens >= 384000`, temperature 0.6;
+      * `kimi-k2.6` with `max_tokens` 32000, empty temperature;
+      * `z-ai/glm-4.6` with temperature 0.2 and effort `none`;
+      * `microsoft/phi-4` with temperature 0.6.
+
+      Every row has fallbacks true and empty quantization, and `PRAGMA table_info(agent)` then lists no `brain_setting` or `mode`.
+    * **Fails if:** the dry run writes, a row maps differently, or a column survives.
+
+## Boundaries
+
+No product code. Depends on #1's setting columns.
+
+## Notes for planning
+
+Parent AST-1953 Description is the authority (Functional scope, Technical scope, Susan's 2026-10-03 answers). Code it loosely — no vocabulary lists, no pre-send gating (Susan).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1953-agent-settings`, child `sub/AST-1953/AST-1958-migrate-agent-settings`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-10-03T23:34:06.306Z
+[check-linear] answered — plan()-on-ftr exception added to `validate-sub-log.sh`; AST-1958 now validates `plan=on-ftr`, merge-child unblocked.
+
+#### susan — 2026-10-03T23:32:32.219Z
+@chuckles add the plan on feature exception, please.
+
+#### chuckles — 2026-10-03T23:23:09.618Z
+[merge-child] blocked: `validate-sub-log.sh` reports `missing plan(AST-1958)` on `origin/sub/AST-1953/AST-1958-migrate-agent-settings`.
+
+- The plan commit `eb7e78caa docs(AST-1958): plan —` is already on `origin/ftr/AST-1953-agent-settings`. It leaked onto the AST-1956 and AST-1957 sub branches while engineers were switching branches in the shared epic worktree, and AST-1957's merge-child carried it onto ftr. Only the plan commit leaked; the code, Joan, and Radia commits for AST-1958 are not on ftr.
+- The validator scans only `ftr..sub`, so it can't see the plan commit. It has a `test_on_ftr` exception for a sibling-carried `test()` commit, but no matching exception for `plan()`.
+- Everything else is green: tests pass, Radia's review is clean, the sub is stacked on ftr, and dry-run merges into dev and ftr are clean.
+
+@susan, I need one call from you: add a `plan()`-on-ftr exception to `validate-sub-log.sh`, like the existing `test()` one, or approve another fix. I haven't committed a filler `plan()` or edited the validator.
+
+#### radia — 2026-10-03T23:22:30.262Z
+[code-rubric] PROCEED (Commit: 27819cc7) Run-once migration script clean
+
+#### betty — 2026-10-03T23:20:28.812Z
+`origin/sub/AST-1953/AST-1958-migrate-agent-settings` @ `1ed25a0bf` · manifest in remap bible
+
+#### katherine — 2026-10-03T23:10:58.449Z
+`origin/sub/AST-1953/AST-1958-migrate-agent-settings` @ `084acf060`
+
+#### joan — 2026-10-03T23:09:22.772Z
+[plan-rubric] PROCEED (Commit: eb7e78caa) Migration plan complete
+
+#### katherine — 2026-10-03T23:07:48.378Z
+`origin/sub/AST-1953/AST-1958-migrate-agent-settings` @ `eb7e78caa` · plan ready, script verbatim
+
+---
+
 # AST-1958 — Run-once migration of live agent rows
 
 - **Ticket:** [AST-1958](https://linear.app/astralcareermatch/issue/AST-1958) · **Parent:** [AST-1953](https://linear.app/astralcareermatch/issue/AST-1953) Refactor agent settings and ingest per-endpoint model options

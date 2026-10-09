@@ -1,3 +1,74 @@
+<!-- linear-archive: AST-1939 archived 2026-10-08 -->
+
+## Linear archive (AST-1939)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1939/remove-the-manage-task-model-picker-openrouter-support-models  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 1  
+**Parent:** AST-1937 — OpenRouter Support Models  
+**Blocked by / blocks / related:** parent: AST-1937
+
+### Description
+
+## What this implements
+
+Makes the agent row the only model source in the UI. The Manage Task modal drops the Model / Brain size selects that [AST-1909](https://linear.app/astralcareermatch/issue/AST-1909/manage-task-modal-no-model-dropdown-of-config-driven-model-keys) added, and saving a task no longer writes the agent. The list's read-only Model column stays. Runs in parallel with #1, and does **not** touch the catalog or compat client (#1).
+
+## Citations
+
+none. Frontend-only removal, and no active pattern or statute governs this page.
+
+## Scope
+
+* `src/ui/frontend/src/pages/AdminTaskPrompts.tsx`:
+  * **Removed:** the model-catalog fetch, the agent model/brain load, the model-change handler, the Model and Brain size selects with their "Applies to agent" note, and the post-save agent `PUT`. Plus the related state, types, and helper that only those used.
+  * **Unchanged:** the Agent select, the task save, and the list's read-only Model column.
+* `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx`: the modified AST-1909 modal-select cases are removed or replaced by an assertion that the modal has no Model / Brain size select and that save issues no agent `PUT`.
+* `docs/test-bible/frontend/pages.md`: the modified Manage Task entries drop the AST-1909 model-select rows.
+
+## Acceptance criteria
+
+All `python -c` checks run from the repo root on the shipped tree.
+
+9. **No task-level model picker.**
+   * **Check:**
+     * `rg -n "agents/models|editModelId|editBrainSetting|loadAgentModel|Brain size" src/ui/frontend/src/pages/AdminTaskPrompts.tsx` returns nothing.
+     * A component test opens the Manage Task modal and finds no Model or Brain size select.
+     * Saving the task issues only the task update, with no request to `/api/admin/agents/<id>`.
+     * The task list still shows the read-only Model column.
+   * **Fails if:** any grep hit, a select renders, an agent `PUT` goes out, or the Model column disappears.
+
+## Boundaries
+
+Does **not** touch `config.py` or `llm_compat.py` (sibling #1 — OpenRouter model shortlist in the catalog). Manage Agents is unchanged; the task list read-only Model column stays.
+
+## Notes for planning
+
+Citations: none. Reverses the AST-1909 modal selects (commit 9c7591ea9 on dev). Susan: the agent row is the one and only model source. Test/bible rows are Betty’s in qa-child.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1937-openrouter-support-models`, child `sub/AST-1937/AST-1939-remove-task-model-picker`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-02T18:16:14.106Z
+[code-rubric] PROCEED (Commit: fb6a5e37e) Task picker removal clean
+
+#### betty — 2026-10-02T18:13:38.658Z
+`origin/sub/AST-1937/AST-1939-remove-task-model-picker` @ `fb6a5e37e` · picker tests retired, guards added
+
+#### joan — 2026-10-02T18:06:03.694Z
+[plan-rubric] PROCEED (Commit: 0afbf60cb) Task modal picker removal clean
+
+#### ada — 2026-10-02T18:04:04.755Z
+`origin/sub/AST-1937/AST-1939-remove-task-model-picker` @ `0afbf60cb` · plan: one-stage removal
+
+---
+
 # AST-1939 — Remove the Manage Task model picker
 
 - **Parent:** [AST-1937 — OpenRouter Support Models](https://linear.app/astralcareermatch/issue/AST-1937)
