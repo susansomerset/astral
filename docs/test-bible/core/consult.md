@@ -1562,3 +1562,18 @@ AC3 is an `rg` check in the manifest. Primary manifest: **`docs/test-bible/core/
 | Router branch | Component tests |
 | --- | --- |
 | both keys, summary dict + error accounting | new **`TestAst2070UpshotConsultRoutes`** (2) in `test_consult.py` |
+
+### AST-2093 · AST-2012 (batch-unique `[index=NNN]` + index map to decode; test gap AST-2095)
+
+`_consult_scored_dispatch_batch_encoded` stamps each row `[index=offset+claimed pos]` once. A skipped row leaves its gap. `assemble` adds no `NNN: ` prefix, and `row_indexes` (parallel to eligible) goes to `_run_batch_consult`, which sets `task_ctx["batch_index_map"]` only when `row_indexes` is supplied. `render_verdict(batch_index=)` stamps that position and a one-entry map. `run_consult_task` forwards `batch_index_offset` on N==1 (`render_verdict` `batch_index`), N>1 (`grade_*_batch` / `meteorite_like_batch`) and the alias path. Primary block + manifest: [`agent.md`](agent.md) § AST-2093.
+
+| Area | Component tests (`tests/component/core/test_consult.py::TestAst2093EncodedDispatchIndex`) |
+| --- | --- |
+| **[bug-repro]** one label per row, no `000: ` prefix; offset 20 → positions `[20,21,22]`, `row_indexes` passed | **`test_bug_repro_rows_carry_one_global_label`** |
+| Skipped row keeps its gap → `row_indexes == [0, 2]` (prep-skip branch) | **`test_skipped_row_keeps_its_index_gap`** |
+| `_run_batch_consult` `row_indexes` → map in `do_task` ctx; omitted → no key (both arcs) | **`test_run_batch_consult_puts_index_map_in_do_task_ctx`** |
+| `render_verdict` `batch_index=24` → position 24 + `{24: job}`; default → 0 + `{0: job}` | **`test_render_verdict_stamps_and_maps_batch_index`** |
+| `run_consult_task` forwards offset: `grade_do` N>1, `grade_get` N==1, alias `meteorite_grade_get` N>1 | **`test_run_consult_task_forwards_batch_index_offset`** |
+| Wrappers forward offset (4 params) | **`test_batch_wrappers_forward_offset[grade_do/grade_get/grade_like/meteorite_like]`** |
+
+**Kept:** `TestPrepLiveContentBranches::test_returns_jd_when_website_pages_have_no_content` (`[index=000]: jd text`, default position) — green unchanged.
