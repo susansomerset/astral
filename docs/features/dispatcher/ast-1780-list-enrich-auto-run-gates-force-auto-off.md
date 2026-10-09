@@ -1469,3 +1469,80 @@ AST-2091 board-joan done — CANON: OK.
 ```
 
 context_tokens≈18500
+
+### Radia review-fix (AST-2091)
+
+[code-rubric]
+
+**Ticket:** AST-2091  
+**Publish ref:** `origin/sub/AST-2013/AST-2091-rubric-dup-dispatch-gate` @ `64bcc193539e35a7789ec2c030107abe805f4b48`  
+**Diff base:** `origin/ftr/AST-2013-rubric-dup-dispatch-gate` @ `823d376050014ec3899fa14eee376c75008691e8` (merge-base = ftr tip)  
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen list **empty** (AST-2091 description has no **Citations:** / Canon Scope; parent AST-2013 same — locked at Discussion). No directive rows to score; not a §5.3 ESCALATE (Joan fix-board `[board-joan] CANON: OK` roster skim; plan does not contradict in-force scoped statutes).
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan fix-board only (no `validate-plan` canon table for this bug).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — Betty’s F4 bar cleared (`test(AST-2091)` @ `f00854439`, merge-tests @ `2d6cd8eea`). Assertions pin plan **To-be** strings and behavior, not tautologies:
+
+- `TestAst2091RubricDispatchError` — exact reasons (`Rubric 'do_rubric' has duplicate vector codes: TP`, empty message), alias `meteorite_grade_do` → `grade_do`, craft/non-rubric never read DB, key-first blank candidate.
+- `TestAst2091RubricDispatchGate` — list `empty_render` / `invalid_reason` / forced `auto_mode: 0`, create/put/run **400** with plan errors, key-before-rubric precedence, rubric before token reason on Run.
+- `TestAst2091RunTaskRubricGate` — `run_task` → `False`, no thread, `auto_mode=0` when AUTO on; manual row no DB write; craft/non-rubric still start.
+
+Would fail pre-fix ftr (no `rubric_dispatch_error`, list/run/`run_task` green on duplicate TP fixture).
+
+**## What must still hold — OK**
+
+| Item | Check |
+|------|--------|
+| AST-2008 uptick / `apply_rubric_vectors_save` | No edits in diff |
+| AST-1513 `_vector_labels_map` | Untouched (`consult.py` not in diff) |
+| AST-1760 all-X / `_render_score` | Untouched |
+| AST-1791 / AST-1794 soft-miss | Rubric is additive `invalid_reason` source; rubric-backed only |
+| AST-1880 key-first | `invalid_reason` and 400 chain: key → rubric → tokens; tested |
+| AST-1819 `empty_tokens` | Still from `_evaluate_dispatch_empty_render` only |
+| No new API fields / `TASK_CONFIG` | Reuses `empty_render` + `invalid_reason` only |
+
+## Findings
+
+### advisory — publish-ref history vs product footprint
+
+`git diff ftr…sub` includes many `docs/features/**` archive commits and `sync(dev): origin/dev` on the sub tip; **product** delta is only `src/core/candidate.py`, `src/ui/api/api_admin.py`, `src/core/dispatcher.py` plus AST-2091 tests/bible (9 paths). Not cross-ticket **product** scope (§5.4). Chuckles: when landing this orphaned mini-parent fix, be aware doc-archive commits ride the branch — no Radia action on product.
+
+### advisory — sibling test carry
+
+`merge-tests(AST-2091)` + qa-fix stub sweep (`rubric_dispatch_error → None` in existing AUTO/run/`run_task` cases in `test_api_admin.py`) — expected §5.4 pattern.
+
+### advisory — Canon Scope (off-list)
+
+Joan board named `astral.layers.import-direction`, `astral.dispatch.entity-state-bound`, `astral.dispatch.seed-auto-false`, etc. Not on frozen list by design; late `rubric_dispatch_error` import in `run_task` matches plan and existing cycle break. Optional future statute for “bad rubric not AUTO-runnable” is Archie/product, not this review.
+
+## What's solid
+
+- Single shared helper `rubric_dispatch_error` wired list → create/update AUTO-on → Run → `run_task`, matching AST-1780/AST-1880 shape.
+- `TASK_CONFIG.rubric_artifact` + `RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY` (not `rubric_owner_task_key()`) preserves craft tasks.
+- Plan fidelity: three scoped files, no `AdminScheduledActions.tsx` change.
+
+## Recommended actions (Chuckles — not Radia)
+
+| Gate | Parent shape | Next |
+|------|----------------|------|
+| **PROCEED** (C7 complete) | Normal (AST-2013 live; diff vs `ftr/AST-2013-rubric-dup-dispatch-gate`) | Append artifact → `docs(AST-2091): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+| UAT (optional) | — | Plan step 5: re-save somerset Do rubric in Artifacts after deploy; spot-check AUTO forced off on other live bad rubrics per Blast radius. |
+
+context_tokens≈22000
+
+```
+[code-rubric] PROCEED (Commit: 64bcc193) Rubric gate matches plan
+```
