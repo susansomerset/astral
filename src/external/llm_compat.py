@@ -15,7 +15,7 @@ import httpx as _httpx
 
 from src.external.anthropic import _effort_body, _parse_api_response, _parse_json_response, _parse_python_code_response
 from src.external.openrouter import get_batch_host
-from src.utils.config import PROVIDER_EMPTY_RESPONSE, PROVIDER_RATE_LIMIT, get_llm_server, get_model_routing
+from src.utils.config import PROVIDER_EMPTY_RESPONSE, PROVIDER_PROBE_FAILURE, PROVIDER_RATE_LIMIT, get_llm_server, get_model_routing
 from src.utils.cost_calculator import CALC_COST_KEYS, calculate_cost_components_from_counts, usage_to_token_counts
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.llm_external import (
@@ -211,7 +211,7 @@ async def send_to_llm_compat(
         if server["probe"] and batch_id:
             host, probe_err = await get_batch_host(batch_id, api_kwargs, _send, _record_probe)
             if probe_err is not None:
-                # No fallback: nothing is sent; the entity takes the ordinary retry → error path.
+                # No fallback: nothing is sent. The tag tells the caller to hold state (AST-2098) or stop on the rate limit (AST-2010).
                 duration = (datetime.now() - start_time).total_seconds()
                 log_llm_batch_summary(logger, server_id, prompt_label, duration, error=probe_err)
                 out = {
@@ -224,6 +224,8 @@ async def send_to_llm_compat(
                 # Waiters share the cached probe error string, so every caller in the batch is tagged alike.
                 if stops_batch and classify_provider_rate_limit(probe_err):
                     out["failure_class"] = PROVIDER_RATE_LIMIT["failure_class"]
+                else:
+                    out["failure_class"] = PROVIDER_PROBE_FAILURE["failure_class"]
                 return out
             # New dicts, not in-place edits: the agent's provider keys kept, only `only` replaced.
             extra_body = api_kwargs["extra_body"]

@@ -55,14 +55,17 @@ from src.utils.config import (
 )
 from src.utils.formatting import enumerate_array, normalize_link
 from src.utils.logging import get_logger, log_batch_id, log_debug
-from src.utils.llm_external import is_provider_balance_refusal, is_provider_rate_limit
+from src.utils.llm_external import is_provider_probe_failure, is_provider_rate_limit, is_provider_state_hold
 
 logger = get_logger(__name__)
 
 
-def _rate_limit_tag(r: Dict[str, Any]) -> Dict[str, Any]:
-    """AST-2010: carry an exhausted-429 failure_class up to the dispatcher (routing unchanged)."""
-    return {"failure_class": r["failure_class"]} if is_provider_rate_limit(r) else {}
+def _outage_tag(r: Dict[str, Any]) -> Dict[str, Any]:
+    """AST-2010 / AST-2098: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's
+    total_held) up to the dispatcher; routing unchanged. Empty for every other result."""
+    if not (is_provider_rate_limit(r) or is_provider_probe_failure(r)):
+        return {}
+    return {k: r[k] for k in ("failure_class", "total_held") if k in r}
 
 
 def _with_log_debug(fn):
@@ -1221,7 +1224,7 @@ async def _run_analysis_upshot_batch(
 ) -> Dict[str, int]:
     """AST-480 / AST-1055: synthesis upshot; persist job_data.analysis_upshot → pass_state."""
     task_cfg = TASK_CONFIG[task_key]
-    processed = passed = failed = errors = 0
+    processed = passed = failed = errors = held = 0
     rl: Dict[str, Any] = {}  # AST-2010: first exhausted-429 tag seen in this loop
     base_ctx = dict(ctx or {})
     logger.debug("Beginning %s loop on %s items", task_key, len(entities))
@@ -1268,14 +1271,19 @@ async def _run_analysis_upshot_batch(
         )
         logger.debug("Response from agent.do_task: %s", result)
         if not result.get("success"):
-            rl = rl or _rate_limit_tag(result)
-            if is_provider_balance_refusal(result):
+            rl = rl or _outage_tag(result)
+            if is_provider_state_hold(result):
                 logger.debug(
-                    "provider_balance_refusal aid=%s error=%r current_state=%r",
-                    aid, result.get("error"), row.get("state"),
+                    "provider state hold failure_class=%r aid=%s error=%r current_state=%r",
+                    result.get("failure_class"), aid, result.get("error"), row.get("state"),
                 )
-                _warn_job(aid, row.get("state") or "-", "provider balance refusal — state held")
-                errors += 1
+                # AST-2098: a failed probe is held, not errored; balance keeps its AST-897 error count.
+                if is_provider_probe_failure(result):
+                    _warn_job(aid, row.get("state") or "-", "host probe failed — state held")
+                    held += 1
+                else:
+                    _warn_job(aid, row.get("state") or "-", "provider balance refusal — state held")
+                    errors += 1
                 continue
             if result.get("empty_tokens"):
                 dest = _empty_token_fail_dest(task_cfg.get("error_state"))
@@ -1315,6 +1323,7 @@ async def _run_analysis_upshot_batch(
         "total_failed": failed,
         "total_errors": errors,
         **rl,
+        **({"total_held": held} if held else {}),
     }
 
 
@@ -1465,13 +1474,17 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     logger.debug("Response from agent.do_task: %s", result)
 
     if not result.get("success"):
-        if is_provider_balance_refusal(result):
+        if is_provider_state_hold(result):
             current_state = (job.get("state") or (tracker.get_job(astral_job_id) or {}).get("state"))
             logger.debug(
-                "provider_balance_refusal aid=%s error=%r current_state=%r",
-                astral_job_id, result.get("error"), current_state,
+                "provider state hold failure_class=%r aid=%s error=%r current_state=%r",
+                result.get("failure_class"), astral_job_id, result.get("error"), current_state,
             )
-            _warn_job(astral_job_id, current_state or "-", "provider balance refusal — state held")
+            _warn_job(
+                astral_job_id, current_state or "-",
+                "host probe failed — state held" if is_provider_probe_failure(result)
+                else "provider balance refusal — state held",
+            )
             return {
                 "success": False,
                 "to_state": current_state,
@@ -1492,7 +1505,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
                 _transition_job_state_for_task(agent_task, [astral_job_id], dest)
             return {"success": False, "to_state": dest, "error": result.get("error"),
                     "failure_class": result.get("failure_class")}
-        return {**_fail(result.get("error", "do_task failed")), **_rate_limit_tag(result)}
+        return {**_fail(result.get("error", "do_task failed")), **_outage_tag(result)}
 
     parsed = result["parsed_response"]
     jobs_parse = parsed.get("jobs") if isinstance(parsed, dict) else None
@@ -1677,17 +1690,18 @@ async def _run_batch_consult(
     logger.debug("Response from agent.do_task: %s", result)
 
     if not result.get("success"):
-        # Envelope failure — whole batch to error_state (unless provider balance refusal — hold)
-        if is_provider_balance_refusal(result):
+        # Envelope failure — whole batch to error_state (unless balance refusal or failed host probe — hold)
+        if is_provider_state_hold(result):
             logger.debug(
-                "provider_balance_refusal task=%s error=%r",
-                task_key, result.get("error"),
+                "provider state hold failure_class=%r task=%s error=%r",
+                result.get("failure_class"), task_key, result.get("error"),
             )
+            why = "host probe failed" if is_provider_probe_failure(result) else "provider balance refusal"
             for job in jobs:
                 _warn_job(
                     job.get("astral_job_id"),
                     job.get("state") or "-",
-                    "provider balance refusal — state held",
+                    f"{why} — state held",
                 )
             return {
                 "success": False,
@@ -1697,6 +1711,7 @@ async def _run_batch_consult(
                 "total": len(jobs),
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
+                **({"total_held": len(jobs)} if is_provider_probe_failure(result) else {}),
             }
         if result.get("empty_tokens"):
             dest = _empty_token_fail_dest(error_state)
@@ -1716,7 +1731,7 @@ async def _run_batch_consult(
         return {
             "success": False, "error": result.get("error"),
             "passed": 0, "failed": 0, "total": len(jobs), "retried": retried,
-            **_rate_limit_tag(result),
+            **_outage_tag(result),
         }
 
     parsed = result["parsed_response"]
@@ -2794,13 +2809,13 @@ async def run_consult_task(
             failed = r.get("failed", 0)
             skipped = r.get("skipped", 0)
             # AST-1839: retry-routed companies are not run errors
-            errors = max(0, total - passed - failed - skipped - r.get("retried", 0))
+            errors = max(0, total - passed - failed - skipped - r.get("retried", 0) - r.get("total_held", 0))
             return {
                 "total_processed": total,
                 "total_passed": passed,
                 "total_failed": failed,
                 "total_errors": errors,
-                **_rate_limit_tag(r),
+                **_outage_tag(r),
             }
         if task_key == "company_upshot":
             r = await _debug_await(
@@ -2812,13 +2827,13 @@ async def run_consult_task(
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
             # Retry-routed companies are not run errors (same accounting as prefilter_company).
-            errors = max(0, total - passed - failed - r.get("retried", 0))
+            errors = max(0, total - passed - failed - r.get("retried", 0) - r.get("total_held", 0))
             return {
                 "total_processed": total,
                 "total_passed": passed,
                 "total_failed": failed,
                 "total_errors": errors,
-                **_rate_limit_tag(r),
+                **_outage_tag(r),
             }
 
         if task_key == "vet_inflow_discovery":
@@ -3000,10 +3015,14 @@ async def run_consult_task(
             if rv.get("success"):
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
                 return {"total_processed": 1, "total_passed": passed, "total_failed": 1 - passed, "total_errors": 0}
+            if is_provider_probe_failure(rv):
+                # AST-2098: failed host probe — held, not a run error; the class stops the run upstream.
+                return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0,
+                        "total_held": 1, **_outage_tag(rv)}
             # AST-1839: incomplete grades routed to a retry holding are not a run error
             retried = not rv.get("state_held") and retry_base(rv.get("to_state"))
             return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0 if retried else 1,
-                    **_rate_limit_tag(rv)}
+                    **_outage_tag(rv)}
         if task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
             _batch = {
                 "grade_do": grade_do_batch,
@@ -3052,9 +3071,9 @@ async def run_consult_task(
     total = r.get("total", len(entities))
     passed = r.get("passed", 0)
     failed = r.get("failed", 0)
-    errors = max(0, total - passed - failed - r.get("retried", 0))
+    errors = max(0, total - passed - failed - r.get("retried", 0) - r.get("total_held", 0))
     return {"total_processed": total, "total_passed": passed, "total_failed": failed, "total_errors": errors,
-            **_rate_limit_tag(r)}
+            **_outage_tag(r)}
 
 
 # ---- Timesheets (read side) ----

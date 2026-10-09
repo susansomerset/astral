@@ -79,6 +79,9 @@ def usage_to_token_counts(usage) -> dict:
     cache_miss = usage.input_tokens (fresh input after the last cache breakpoint);
     cache_read / cache_write default 0 when the server omits them.
     """
+    # Hollow response (AST-2098): no usage object reads as zero tokens, never an exception.
+    if usage is None:
+        return {"cache_read": 0, "cache_miss": 0, "output": 0, "cache_write": 0}
     return {
         "cache_read": getattr(usage, "cache_read_input_tokens", 0) or 0,
         "cache_miss": usage.input_tokens,
