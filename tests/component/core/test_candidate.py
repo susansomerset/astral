@@ -19,6 +19,7 @@ from src.utils.config import (
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_STAGE_DISPATCH,
     CANDIDATE_STATES,
+    RESUME_STRUCTURE_BODY_FORMAT_DETAILS,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
@@ -7519,3 +7520,55 @@ class TestAst2066CandidateVersions:
             ("set", "cand-1", "grade_do", "v01", "r1"),
         ]
         assert any("rubric criterion current set" in r.getMessage() and "V01" in r.getMessage() for r in caplog.records)
+
+
+# Branches: resume_structure_editor_payload — accent str / non-str; spec dict / non-dict (skipped);
+# order int / non-int (sort + row); format str / non-str; page_break_policy valid / invalid → default.
+class TestAst2081ResumeStructureEditorPayload:
+    def test_payload_rows_and_coercions(self) -> None:
+        resolved = candidate_mod.default_resume_structure()
+        resolved["accent_color"] = "#0F3460"
+        resolved["sections"]["highlights"]["page_break_policy"] = "bogus"
+        resolved["sections"]["volunteer"] = {"id": "volunteer", "title": "", "enabled": False, "order": "x", "format": 7}
+        resolved["sections"]["junk"] = "not-a-dict"
+        out = candidate_mod.resume_structure_editor_payload(resolved)
+        assert set(out) == {"sections", "all_sections", "accent_color", "catalog"}
+        assert out["accent_color"] == "#0F3460"
+        rows = {r["id"]: r for r in out["all_sections"]}
+        assert "junk" not in rows
+        # Non-int order sorts as 0 and is reported as 0; non-str format → None; empty title stays "".
+        assert out["all_sections"][0]["id"] == "candidate_name"
+        assert rows["volunteer"] == {
+            "id": "volunteer", "title": "", "enabled": False, "order": 0, "format": None,
+            "job_agent_editable": False, "required": False, "format_locked": False,
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+        }
+        assert rows["highlights"]["page_break_policy"] == RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+        assert rows["experience"]["format_locked"] is True and rows["experience"]["required"] is True
+        assert rows["candidate_name"]["format_locked"] is True
+        assert "volunteer" not in {s["id"] for s in out["sections"]}
+
+    def test_catalog_carries_format_details_and_hidden_label(self) -> None:
+        resolved = candidate_mod.default_resume_structure()
+        resolved["accent_color"] = 123
+        out = candidate_mod.resume_structure_editor_payload(resolved)
+        assert out["accent_color"] is None
+        cat = out["catalog"]
+        assert cat["body_formats"] == list(RESUME_STRUCTURE_BODY_FORMATS)
+        assert "line" in cat["body_formats"]
+        assert cat["hidden_flow_label"] == "Hidden"
+        fonts = BUILD_CONFIG["default_style"]["fonts"]
+        assert cat["body_format_details"] == {
+            fmt: {"label": d["label"], "description": d["description"], "font_family": fonts[d["font_stack"]]}
+            for fmt, d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.items()
+        }
+        # Pre-AST-2081 catalog keys still present (response is a superset).
+        assert {
+            "required_ids", "contact_ids", "extra_id_pattern", "reserved_extra_ids", "new_extra_default_format",
+            "page_break_policies", "page_break_policy_labels", "page_break_policy_default",
+            "page_break_policy_defaults",
+        } <= set(cat)
+
+    def test_non_dict_sections_yields_empty_rows(self) -> None:
+        out = candidate_mod.resume_structure_editor_payload({"sections": None})
+        assert out["all_sections"] == [] and out["sections"] == []

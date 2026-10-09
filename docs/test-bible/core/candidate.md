@@ -2455,3 +2455,9 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ```
 
 **Pass criterion:** 29 passed on lines 1–4. Narrowed run, not the zero-arg harness / branch-lock gate. AC5 `created_at` is whole-second, so order is asserted via `rowid` (list order), not a strict `>`.
+
+### AST-2081 · AST-2046 (shared structure-editor payload)
+
+New public `resume_structure_editor_payload(resolved)`. It was lifted out of the candidate resume_structure GET and is shared with the new job GET. Rows and coercions are unchanged. `catalog` gains `body_format_details` (`{fmt: {label, description, font_family}}`, where `font_family` is the resolved `BUILD_CONFIG["default_style"]["fonts"]` stack) and `hidden_flow_label`.
+
+**New:** **`TestAst2081ResumeStructureEditorPayload`** (3: row coercions incl. non-dict spec skip / non-int order / non-str format / invalid page-break → default; catalog superset + format details; non-dict `sections`). New lines are fully branch-covered for `LOCKED_AT_100`. Manifest: [`tracker.md`](tracker.md) § AST-2081.
