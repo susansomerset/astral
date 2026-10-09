@@ -276,3 +276,59 @@ All line numbers are for `src/ui/frontend/src/components/ArtifactEditor.tsx` as 
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2084
+**Overall:** APPROVED
+**Corpus:** 2d1b73da19cf1d14276e5c26f52b37aa8047d159
+**Publish ref:** `origin/sub/AST-2046/AST-2084-wire-resume-surfaces` @ `8778d5883`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+
+## Traceability
+
+AC1→S1,S2 · AC2→S1–S3 · AC3→S1 · AC4→S2 · AC5→S1–S3
+
+## Findings
+
+### discuss — Modal close vs in-flight autosave (known race)
+- **Severity:** discuss
+- **Location:** Stage 2 Decision (known limit); `ResumeContentEditor` `onSaved` while mounted
+- **Finding:** Closing the stacked modal can reload the report before a blur-started PUT finishes, so a thumbnail may lag one save until the next reload.
+- **Recommendation:** Accept for this ticket (plan defers flush/await to #3) or open a small #3 follow-up if Susan wants close-to-block until save settles.
+
+### discuss — `preview_thumbnail` typed locally, not on `StateUiContext`
+- **Severity:** discuss
+- **Location:** `JobArtifactEditModal` / Stage 2 Decision
+- **Finding:** Manifest field is read via `JobArtifactTab` optional field; shared UI context type unchanged (out of scope).
+- **Recommendation:** Fine for ship; optional hygiene ticket to extend `StateUiContext` when someone touches that file.
+
+### acceptable — Frontend test drift called out
+- **Severity:** acceptable
+- **Location:** `### Known test drift (Betty — not fixed here)`
+- **Finding:** Base page, `ArtifactEditor` resume-mode, and JAR tests will fail until Betty rewrites them against new surfaces.
+- **Recommendation:** Expected; not a plan defect.
+
+### acceptable — Cover letter modal keeps shapes Save/Cancel
+- **Severity:** acceptable
+- **Location:** AC2 mapping table, `JobArtifactEditModal` cover branch
+- **Finding:** Child AC2 targets **resume** editors only; cover `ArtifactEditor` is unchanged shapes mode.
+- **Recommendation:** Matches parent functional scope (Decision 8).
+
+### acceptable — No `## Self-assessment` block
+- **Severity:** acceptable
+- **Location:** Plan doc structure
+- **Finding:** Estimate confirm only.
+- **Recommendation:** Optional; not blocking.
+
+## R6 (summary)
+
+Definition fidelity: Exactly four scoped files; siblings untouched. Stage 1 rewires base page to `SplitPanePage` + `ResumeContentEditor` + `PrintPreview` with `refreshKey` on save. Stage 2 adds stacked fullscreen `JobArtifactEditModal` (resume vs cover via `use_resume_structure`), thumbnails + Edit for `preview_thumbnail` tabs gated by existing populated-artifact filter, drops JAR structure authoring and print blob copy for `printHtml`, reload on modal close. Stage 3 bottom-up excision of `ArtifactEditor` resume structure mode with explicit preservation list for shapes/rubric/experience paths. Dry-run + grep Done-when gates match child AC 2/3/5. Wiring completes amended Decision 7: one `ResumeContentEditor` for both resume surfaces, cover on shapes `ArtifactEditor`, parallel resume path removed.
+
+context_tokens≈75000
