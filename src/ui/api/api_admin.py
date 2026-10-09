@@ -2050,7 +2050,10 @@ def _evaluate_dispatch_empty_render(
             exc,
         )
         return {"empty_render": True, "empty_tokens": []}
-    return empty_render_for_prompts(texts, cd, tk, entity_contexts=None)
+    # Rubric tokens are candidate-keyed (resolver reads cd["_astral_candidate_id"]); the
+    # value is unused — only key presence opts source: rubric into scoring (AST-1779 seam).
+    # Job/other entity sources stay out: job tokens alone never flip the gate (AST-1780 AC5).
+    return empty_render_for_prompts(texts, cd, tk, entity_contexts={"rubric": {}})
 
 
 def _candidate_dispatch_empty_render_error(
