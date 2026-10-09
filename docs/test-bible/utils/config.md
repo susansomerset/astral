@@ -4881,6 +4881,7 @@ Registration only: company states `GET_UPSHOT` / `UPSHOT_READY` (retry) / `ERROR
 | AC | Source | Component tests |
 | --- | --- | --- |
 | 1 states; 2 only the upshot hop enters WATCH; 4 dispatch registrable; 3 agent_task rows | `src/utils/config.py`, `data/admin/agent_task.json` | new **`TestAst2069UpshotRegistration`** (4) |
+| AST-2088 (bug): optional `company_name` in `company_upshot` items_schema + prompt output shape | same | **`TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`** — repro; manifest in [`../core/roster.md`](../core/roster.md) § AST-2088 |
 | Revised: locate/parse transitions now land in `GET_UPSHOT` | `src/utils/config.py` | **`TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions`**, **`TestAst721ParseJobListConfig::test_parse_states_and_transitions`**, **`TestAst721ParseJobListConfig::test_parse_job_list_roster_config`** (`pass_state` line) |
 | Revised: AST-1806 pinned snapshot gains the six upshot targets (bases unrestricted, `_RETRY` → own pair) | same | **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** |
 | Revised: roster batch counting mocks return the new pass state | `src/core/roster.py` (counting vs config) | see [`../core/roster.md`](../core/roster.md) § AST-2069 (10 tests) |
@@ -4912,3 +4913,15 @@ Registration only: company states `GET_UPSHOT` / `UPSHOT_READY` (retry) / `ERROR
 **Pass criterion:** 17 passed. Not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2069-upshot-states-registration:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/roster.md`.
+
+### AST-2081 · AST-2046 (Line format, format details, Hidden label, job structure key, thumbnail flag)
+
+Config only, no branches. `line` is appended to `RESUME_STRUCTURE_BODY_FORMATS`. `RESUME_STRUCTURE_BODY_FORMAT_DETAILS` holds the label, description, and `font_stack` for each format (word cloud and dual column use `list_stack`, every other format uses `body_stack`). `RESUME_STRUCTURE_HIDDEN_FLOW_LABEL = "Hidden"`. New `ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]` (job / candidate-scoped / `resume_structure` / tracker). `preview_thumbnail` is set on the three recommended-job artifact tabs (resume True, cover True, application False).
+
+| Area | Component tests |
+| --- | --- |
+| New literals (AC13, AC14 data half) | new **`TestAst2081FormatCatalogAndJobStructureKey`** (4) |
+| Revised: exact body-format tuple gains `line` | **`TestAst1303ResumeStructureCatalog::test_body_formats_defaults_emphasis_and_extra_id_rules`** |
+| Revised: exact catalog key set gains `job.artifacts.job_resume_structure` | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+
+Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2081.

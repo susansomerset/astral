@@ -5109,6 +5109,7 @@ class TestAst1303ResumeStructureCatalog:
             "dual_column",
             "indented_bold_single",
             "experience_detail",
+            "line",  # AST-2081
         )
         assert cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID == {
             "professional_summary": "free_prose",
@@ -5748,6 +5749,7 @@ class TestAst1590JobArtifactCatalogKeys:
             "candidate.artifacts.resume_structure",
             "job.artifacts.job_resume",
             "job.artifacts.cover_letter",
+            "job.artifacts.job_resume_structure",  # AST-2081
             "candidate.context.strengths",
             "candidate.context.priorities",
             "candidate.context.deal_breakers",
@@ -7841,3 +7843,62 @@ class TestAst2069UpshotRegistration:
         assert upshot["agent_id"] == "principal_recruiter_estelle"
         assert "200 words" in upshot["cache_prompt"] + upshot["user_prompt"] + upshot["nocache_prompt"]
         assert by_key["fetch_company_culture_pages"]["agent_id"] == "telescope"
+
+    def test_upshot_contract_carries_optional_company_name(self) -> None:
+        # AST-2088: optional item field (a missing name must not fail the batch) + prompt asks for it
+        from pathlib import Path
+
+        items = cfg.TASK_CONFIG["company_upshot"]["response_schema"]["companies"]["items_schema"]
+        assert items["company_name"] == {"type": "str", "required": False}
+        assert items["company_id"]["required"] is True and items["upshot"]["required"] is True
+        rows = json.loads((Path(__file__).resolve().parents[3] / "data/admin/agent_task.json").read_text())
+        prompt = {r["task_key"]: r for r in rows}["company_upshot"]["cache_prompt"]
+        assert '"company_name":' in prompt
+
+
+# Branches: none (config literals + import-time asserts). AST-2081: line format, per-format editor
+# metadata (label / description / font stack), Hidden flow label, job resume structure catalog key,
+# preview_thumbnail on the recommended-job artifact tabs.
+class TestAst2081FormatCatalogAndJobStructureKey:
+    def test_line_format_appended_and_details_cover_every_format(self) -> None:
+        # AC13: line joins the tuple; no existing format dropped.
+        assert cfg.RESUME_STRUCTURE_BODY_FORMATS[-1] == "line"
+        assert set(cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS) == set(cfg.RESUME_STRUCTURE_BODY_FORMATS)
+        fonts = cfg.BUILD_CONFIG["default_style"]["fonts"]
+        for fmt, d in cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS.items():
+            assert set(d) == {"label", "description", "font_stack"}, fmt
+            assert d["label"].strip() and d["description"].strip(), fmt
+            assert d["font_stack"] in fonts, fmt
+
+    def test_labels_and_fonts_match_builder_css(self) -> None:
+        # AC14 data half: the strings the UI must not hardcode live here.
+        d = cfg.RESUME_STRUCTURE_BODY_FORMAT_DETAILS
+        assert {f: d[f]["label"] for f in d} == {
+            "free_prose": "Prose",
+            "bullet_list": "Bullet List",
+            "word_cloud": "Word Cloud",
+            "dual_column": "Dual Column",
+            "indented_bold_single": "Indented Bold",
+            "experience_detail": "Experience",
+            "line": "Line",
+        }
+        # Word cloud + dual column print in the list font; everything else in the body font.
+        assert {f for f in d if d[f]["font_stack"] == "list_stack"} == {"word_cloud", "dual_column"}
+        assert cfg.RESUME_STRUCTURE_HIDDEN_FLOW_LABEL == "Hidden"
+        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS["normal"] == "Flow uninterrupted"
+
+    def test_job_resume_structure_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]
+        assert entry == {
+            "entity_type": "job",
+            "candidate_scoped": True,
+            "body_shape": "resume_structure",
+            "ingestion_owner": "tracker",
+        }
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        # AST-1678 sibling key stays absent; the job key is the job_resume_structure leaf.
+        assert "job.artifacts.resume_structure" not in cfg.ARTIFACT_CONFIG
+
+    def test_preview_thumbnail_on_resume_and_cover_tabs_only(self) -> None:
+        by_id = {t["tab_id"]: t["preview_thumbnail"] for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
+        assert by_id == {"artifact_resume": True, "artifact_cover": True, "artifact_application": False}
