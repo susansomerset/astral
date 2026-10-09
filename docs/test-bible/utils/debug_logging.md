@@ -38,7 +38,7 @@
 
 **Parent:** [AST-1777](https://linear.app/astralcareermatch/issue/AST-1777/logging-levels). **Publish:** `origin/sub/AST-1777/AST-1778-railway-faithful-console-transport-in-get-logger`.
 
-Railway-faithful console transport in `get_logger`: product console always on **stdout**; when `RAILWAY_ENVIRONMENT` is set, `_RailwayJsonFormatter` emits JSON `level`+`message` (WARNING→`warn`, CRITICAL→`error`); off-Railway keeps plain `LEVEL name: message`. `_DatabaseLogHandler` / `_db_handler_stderr` unchanged. Telescope / gunicorn / call-site rewrites out of scope.
+Railway-faithful console transport in `get_logger`: product console always on **stdout**; when `RAILWAY_ENVIRONMENT` is set, `_RailwayJsonFormatter` emits JSON `level`+`message` (WARNING→`warn`, CRITICAL→`error`); off-Railway keeps plain `LEVEL name: message`. `_DatabaseLogHandler` / `_db_handler_stderr` unchanged. Telescope / call-site rewrites out of scope; gunicorn is out of scope except the `gunicorn.access` quiet filter (§ AST-2078).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -69,6 +69,23 @@ Railway-faithful console transport in `get_logger`: product console always on **
 
 **Integration:** none.
 
+### AST-2078 · AST-2074 (gap sibling AST-2079 — gunicorn.access quiet filter)
+
+**Tests landed under gap sibling AST-2079.** Logger-level `_QuietAccessFilter` on `gunicorn.access` drops records whose atom `U` (gunicorn's single Mapping log arg) is in `RAILWAY_CONFIG["access_log_quiet_paths"]` (default `("/api/deploy_status",)`, exact path, any status); non-Mapping args pass. Attached once in `get_logger` (`_quiet_access_filter_attached`); root level, root handlers and product loggers untouched. Records are hand-built with a plain dict — no gunicorn import. Tests never reset the attach-once flag (process-global logger) and check `Logger.filter` by truthiness (3.12+ returns the record). Red on pre-fix `39bbf7afd` / `origin/dev` `267a19496`: rows 1, 3, 5.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Poll path record dropped | `src/utils/logging.py` | **`TestAst2078GunicornAccessQuietFilter::test_deploy_status_access_record_dropped`** (**bug-repro**) |
+| Other path kept | same | **`…::test_other_access_record_kept`** |
+| Quiet list read from config | `src/utils/logging.py`, `src/utils/config.py` | **`…::test_quiet_paths_read_from_railway_config`** |
+| Non-Mapping args kept | `src/utils/logging.py` | **`…::test_non_mapping_args_kept`** |
+| Attached exactly once | same | **`…::test_filter_attached_once`** |
+| Product INFO / root level / root handlers unaffected | same | **`…::test_product_info_and_root_unaffected`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — no integration scenario runs gunicorn.
+
 ## QA test manifest
 
 1. Railway level map: `tests/component/utils/test_debug_logging.py::TestAst1778RailwayConsoleTransport::test_railway_json_formatter_maps_levels`
@@ -83,12 +100,13 @@ Railway-faithful console transport in `get_logger`: product console always on **
 10. AC6 grep gate (docs-acceptance style — no new raw `logging.getLogger` / `basicConfig` under `src/` outside `utils/logging.py`):
 
 ```bash
-rg -n 'logging\.getLogger|basicConfig' src/ --glob '!utils/logging.py'
+rg -n 'logging\.getLogger|basicConfig' src/ --glob '!**/utils/logging.py'
 ```
 
-Expect no new product emit paths from this tip vs `origin/dev` (transport-only in `src/utils/logging.py`).
+(Glob fixed in AST-2079 — `!utils/logging.py` did not exclude `src/utils/logging.py`.) Expect no new product emit paths from this tip vs `origin/dev` (transport-only in `src/utils/logging.py`).
 
 11. AST-1988 Railway JSON ids (bug-repro #1): `tests/component/utils/test_debug_logging.py::TestAst1988RailwayJsonIds`
+12. AST-2078 gunicorn.access quiet filter (bug-repro): `tests/component/utils/test_debug_logging.py::TestAst2078GunicornAccessQuietFilter`
 
 ```bash
 .venv/bin/python -m pytest \
@@ -96,11 +114,12 @@ Expect no new product emit paths from this tip vs `origin/dev` (transport-only i
   tests/component/utils/test_debug_logging.py::TestConsoleFormat \
   tests/component/utils/test_debug_logging.py::TestAst979DebugLevelPersistence \
   tests/component/utils/test_debug_logging.py::TestAst1988RailwayJsonIds \
+  tests/component/utils/test_debug_logging.py::TestAst2078GunicornAccessQuietFilter \
   tests/component/utils/test_logging_batch.py \
   -q
 ```
 
-**Pass criterion:** pytest green on items 1–9 and 11 + AC6 grep clean — not zero-arg harness / branch-lock gate.
+**Pass criterion:** pytest green on items 1–9, 11, 12 + AC6 grep clean — not zero-arg harness / branch-lock gate.
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/utils/debug_logging.md`

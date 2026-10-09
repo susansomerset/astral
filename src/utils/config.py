@@ -4947,6 +4947,9 @@ def importance_multiplier(n: int) -> float:
 RAILWAY_CONFIG = {
     "workers": 1,
     "timeout": 300,
+    # Exact request paths (gunicorn atom `U`, no query string) whose gunicorn.access
+    # lines are dropped — background polls (AST-2078). Read by src/utils/logging.py.
+    "access_log_quiet_paths": ("/api/deploy_status",),
 }
 
 # ---------------------------------------------------------------------------
