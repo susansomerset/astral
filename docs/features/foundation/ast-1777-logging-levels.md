@@ -98,3 +98,113 @@ _No comments._
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+---
+
+## Bug: AST-2078 — gunicorn access-log polling noise on prod
+
+Fix child of mini-parent AST-2074. This is the gap this doc's **Functional scope → Out of scope** ("gunicorn/access/third-party loggers that bypass `get_logger`") left open. The AST-1777 console transport itself is not changed.
+
+### As-is
+
+Every open admin tab polls `GET /api/deploy_status` every 30s (`src/ui/frontend/src/components/AdminDeployFooter.tsx` L50, `setInterval(() => fetchStatus(true), 30_000)`). Each poll writes an INFO line to the production Railway log, for example:
+
+```
+gunicorn.access: 100.64.0.1 - - [08/Oct/2026:23:11:28 +0000] "GET /api/deploy_status HTTP/1.1" 200 202 "https://astral.up.railway.app/jobs/meteorites" "Mozilla/5.0 …"
+```
+
+### To-be
+
+Background polling requests (at minimum `/api/deploy_status`) produce no INFO log line on production. Application logs from `get_logger` and gunicorn error-log lines are unchanged.
+
+### Repro
+
+There is no data fixture; this is process configuration. Steps:
+
+1. With `RAILWAY_ENVIRONMENT=x`, start gunicorn the way prod does, plus the env override prod is suspected to carry. Any log config that routes `gunicorn.access` through propagation reproduces the prefix. A minimal one is `GUNICORN_CMD_ARGS="--log-config-json /tmp/gl.json"` with `/tmp/gl.json` = `{"version": 1}` (gunicorn merges it over its `CONFIG_DEFAULTS`).
+2. Open any admin page (or run `curl localhost:$PORT/api/deploy_status`).
+3. Stdout shows `{"level": "info", "message": "gunicorn.access: … \"GET /api/deploy_status HTTP/1.1\" 200 …"}` for every request. That is `_RailwayJsonFormatter`'s shape.
+
+### Root cause
+
+- **Repo side.** `railway.toml` `startCommand = "python scripts/start_server.py"` execs `gunicorn server:app --bind --timeout --workers` with no log flags. There is no `gunicorn.conf.py`, `--config`, or log-config file in the repo. With those args alone, gunicorn 26 (`glogging.Logger.access_log_enabled`) emits nothing on `gunicorn.access`.
+- **Prod env side (not visible from the repo).** Access logging is therefore enabled by the Railway service environment, most likely `GUNICORN_CMD_ARGS`. The `gunicorn.access:` prefix narrows it down further. A bare `--access-logfile -` gives `gunicorn.access` its own `%(message)s` stdout handler with `propagate = False` (`glogging.Logger.__init__`), and that prints lines **without** the prefix. The prefix only appears when the record propagates to our root handler. That happens on gunicorn's dictConfig/fileConfig path: `--log-config`, `--log-config-json`, or `logconfig_dict` from a config file. All three apply `CONFIG_DEFAULTS` with `"gunicorn.access": {"propagate": True}`. The exact variable must be read off the Railway service; this is an ops step in Proposed change.
+- **Consequences (verified locally with gunicorn 26.2.0 and the Repro above).**
+  - On the logconfig path, `gunicorn.access` and root share one `console` handler. `_apply_console_formatter` restyles that handler to JSON, so each access line prints **twice**: once on the logger's handler, once via propagation.
+  - The record also reaches `_DatabaseLogHandler` on root, so every poll probably writes an `app_log` row too. This is inferred from propagation, not observed against a DB.
+- **Load-bearing side finding: prod INFO depends on this env logconfig.** Python's root logger defaults to `WARNING`, not `NOTSET`. So `_ensure_stdout_console_handler`'s `if root.level == logging.NOTSET: root.setLevel(logging.INFO)` never fires, and nothing else in `src/` sets the root level. Local gunicorn runs show:
+  - With no env override or with a bare `--access-logfile -`, `get_logger(...).info(...)` lines do **not** reach stdout at all.
+  - They appear only when a gunicorn logconfig path applies `CONFIG_DEFAULTS` `"root": {"level": "INFO"}`.
+
+  This is a separate latent AST-1777 defect. It is **not** absorbed here (scope gate); Chuckles should file it as its own bug. It constrains this fix, though: **neither the repo nor the ops step may remove the env logconfig**, or prod loses every INFO app log (AST-2078 AC2 / AST-1777 AC1).
+
+### Proposed change
+
+**EXPLICIT DECISION — Susan has not chosen. make-fix must not start until she picks (a) or (b).**
+**Recommendation: (b).**
+
+**Common to both — ops step (Railway prod service variables; Susan/ops, not a repo change):** read the platform service's variables for `GUNICORN_CMD_ARGS` (and any `--config` it names). Record the exact value as a Linear comment on AST-2078 before deploy. **Do not remove the logconfig part.** Per Root cause, it is what keeps prod INFO app logs alive today. This narrows the bug Scope's "remove or correct the env override" to "read and record" until the root-level latent bug is fixed separately.
+
+#### Option (a) — no access lines on prod at all
+
+**The CLI pin the bug Scope assumed is unsafe (verified locally):**
+
+- Adding `--log-config ""` / `--log-config-json ""` (empty is falsy, so gunicorn skips dictConfig) silences access lines. But it also drops root back to `WARNING`, so every `get_logger` INFO line vanishes. That breaks AST-2078 AC2.
+- Adding `--access-logfile /dev/null` alone does nothing on the logconfig path. dictConfig runs after `_set_handler` and re-attaches `console` with `propagate: True`; both duplicate poll lines still printed.
+- `logconfig_dict` (config-file only) and `--log-syslog` (store-true) can't be pinned from the CLI at all.
+
+So the only safe way to deliver (a) from the repo is the same filter mechanism as (b), switched to drop everything:
+
+1. `src/utils/config.py` / `RAILWAY_CONFIG`: add `"access_log_enabled": False` with a one-line comment: "False drops every gunicorn.access record in-process; Railway env cannot re-enable it."
+2. `src/utils/logging.py`: same `_QuietAccessFilter` class, attach-once, and late import as (b) step 2. `filter(record)` simply returns `RAILWAY_CONFIG["access_log_enabled"]`. The docstring line becomes: "Telescope console setup is out of scope; gunicorn access lines are dropped when `RAILWAY_CONFIG['access_log_enabled']` is False (AST-2078)."
+3. `scripts/start_server.py`: **unchanged**.
+
+**Scope consequence:** the bug Scope allows `src/utils/logging.py` "only if step 3 is chosen". Choosing (a) therefore needs Chuckles to amend Scope so `logging.py` also covers the drop-all filter. This is a small omission, the same kind of change, with no Archie widening. If Susan picks (a), treat that pick as the amendment trigger.
+
+Files: `src/utils/config.py`, `src/utils/logging.py`.
+
+#### Option (b) — keep access lines, drop config-listed quiet polling paths (recommended)
+
+A logger-level filter on `gunicorn.access` runs before **any** handler on that logger and before propagation. It holds no matter which gunicorn setting enabled access logging: `--access-logfile`, `--log-config*`, `logconfig_dict`, or syslog. It also never touches root level or handlers, so prod INFO is unaffected.
+
+1. `src/utils/config.py` / `RAILWAY_CONFIG`: add `"access_log_quiet_paths": ("/api/deploy_status",)` with a comment: "Exact request paths (gunicorn atom `U`, no query string) whose gunicorn.access lines are dropped — background polls." Tuple, per no-hardcoded-sets.
+2. `src/utils/logging.py`:
+   - New `class _QuietAccessFilter(logging.Filter)`. `filter(record)` returns `False` when `record.args` is a `Mapping` and `record.args.get("U") in RAILWAY_CONFIG["access_log_quiet_paths"]`; otherwise `True`. gunicorn passes its `SafeAtoms` dict as the single log arg, so `record.args` is that mapping and `"U"` is `PATH_INFO`. Verified against installed gunicorn 26.2.0.
+   - **Late import** `from src.utils.config import RAILWAY_CONFIG` *inside* `filter()`. `config.py` imports `get_logger` at module top, so a top-level or `get_logger`-time import would be circular. This is the same late-import precedent as `add_log_entry` (B2 / AST-388). Comment it.
+   - In `get_logger`, next to the DB-handler attach-once block: attach one `_QuietAccessFilter` to `logging.getLogger("gunicorn.access")` exactly once, guarded by a module flag like `_db_handler_attached`. The worker imports the app, so this runs in the worker process that serves requests (no `--preload`). On SIGHUP the workers restart and re-attach. gunicorn's dictConfig, which runs in the master before the app import, does not clear logger filters.
+   - Update the module docstring line "Telescope and gunicorn console setup are out of scope." to: "Telescope console setup is out of scope; gunicorn access lines for `RAILWAY_CONFIG['access_log_quiet_paths']` are dropped (AST-2078)."
+3. `scripts/start_server.py`: **unchanged** under (b) too. No CLI arg can safely change access logging (see (a)), and the filter applies on or off Railway. Leaving the launcher untouched is a subset of declared scope.
+4. Matching is **exact path, any status code**. A failing `/api/deploy_status` (5xx) still surfaces through Flask's error log, which propagates to root, and through gunicorn.error for crashes or timeouts. Status-aware filtering is not proposed (no heuristics without approval).
+
+**Why (b):** both options are now the same mechanism and roughly the same lines of code. (b) is fully inside declared Scope, and it keeps real request lines for triage. **Why someone might pick (a):** Susan wants zero access lines on prod and `app_log` free of all access rows, not just polls. It costs one Scope amendment.
+
+**Prototyped locally against gunicorn 26.2.0 + our `get_logger`, env `--log-config-json`:** (b)'s filter dropped `/api/deploy_status` and kept `/api/other`. Under a bare `--access-logfile -` env, (b) still dropped the poll. The filter is logger-level, so it applies before the access logger's own handler too.
+
+**Rejected:**
+
+- The launcher CLI pin, for the reasons under (a).
+- Popping `GUNICORN_CMD_ARGS` from `os.environ` in the launcher. It is a different kind of change than Scope, and it drops the logconfig that prod INFO depends on.
+- Fixing the root `WARNING` default here. It is a separate bug and must not be absorbed.
+
+### Blast radius
+
+- `scripts/start_server.py` (the only gunicorn launcher per `railway.toml`) is untouched under both options. Telescope (`service/telescope/`) has its own launcher and logging and is not touched.
+- `src/utils/logging.py` (both options): every `get_logger` caller passes through the attach-once block. The filter sits only on `gunicorn.access`, so root, the DB handler, and `_apply_console_formatter` are unchanged. Off gunicorn (dispatcher CLI, scripts), `gunicorn.access` never emits, so the filter is inert.
+- `app_log`: the poll rows that propagation probably wrote stop under both options. Under (b), non-poll access lines still reach `app_log` if the env path propagates. That is pre-existing behavior and not widened here.
+- Tests: no existing test asserts gunicorn access output. Betty decides at fix-board whether the filter needs a component test. A `LogRecord` with a `SafeAtoms`-style mapping arg is enough; gunicorn does not need to run.
+- Separate latent bug, not fixed here: root logger `WARNING` default means INFO app logs depend on the Railway env logconfig (Root cause).
+
+### What must still hold
+
+From AST-1777's acceptance criteria:
+
+- AC1–3: `get_logger` info/warning/error still map to Railway `info`/`warn`/`error` JSON on stdout. Console handler stream and formatter are untouched.
+- AC4: the off-Railway plain `LEVEL name: message` on stdout is unchanged.
+- AC5: `app_log` rows from `get_logger` emits keep the same level, logger_name, and message. Only `gunicorn.access` records are dropped: polls under (b), all of them under (a).
+- AC6: no new `logging.getLogger`/`basicConfig` emit paths outside `src/utils/logging.py`. The filter's `logging.getLogger("gunicorn.access")` lives in `logging.py`.
+- The Railway env logconfig stays in place, and root level and handlers are not touched by this fix.
+
+From AST-2078's own acceptance criteria:
+
+- Gunicorn error-log lines (boot, timeouts, crashes) still appear.
+- The footer poll cadence and the `/api/deploy_status` API are unchanged.
