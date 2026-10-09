@@ -2070,6 +2070,36 @@ class TestRunConsultTaskRoutes:
         assert out["total_processed"] == 0
 
 
+# AST-2070 (parent AST-2054): run_consult_task routes the two upshot company task keys.
+class TestAst2070UpshotConsultRoutes:
+    @pytest.mark.asyncio
+    async def test_routes_fetch_company_culture_pages(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        batch = AsyncMock(return_value={"total": 3, "passed": 2, "failed": 0})
+        monkeypatch.setattr("src.core.gazer.fetch_company_culture_pages_batch", batch)
+        companies = [{"short_name": "c1"}, {"short_name": "c2"}, {"short_name": "c3"}]
+        out = await consult_mod.run_consult_task(
+            "company", "GET_UPSHOT", companies, "batch-1", {}, dispatch_task_key="fetch_company_culture_pages",
+        )
+        batch.assert_awaited_once()
+        assert out == {"total_processed": 3, "total_passed": 2, "total_failed": 0, "total_errors": 1}
+
+    @pytest.mark.asyncio
+    async def test_routes_company_upshot_retries_are_not_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        batch = AsyncMock(return_value={
+            "total": 4, "passed": 1, "failed": 0, "retried": 2, "failure_class": "provider_rate_limit",
+        })
+        monkeypatch.setattr("src.core.roster.company_upshot_batch", batch)
+        companies = [{"short_name": f"c{i}"} for i in range(4)]
+        out = await consult_mod.run_consult_task(
+            "company", "UPSHOT_READY", companies, "batch-2", {}, dispatch_task_key="company_upshot",
+        )
+        batch.assert_awaited_once()
+        assert out == {
+            "total_processed": 4, "total_passed": 1, "total_failed": 0, "total_errors": 1,
+            "failure_class": "provider_rate_limit",
+        }
+
+
 class TestAst797QualifyInlineValidateTitle:
     @pytest.mark.asyncio
     async def test_qualify_runs_inline_validate_for_new_jobs(self, monkeypatch: pytest.MonkeyPatch) -> None:

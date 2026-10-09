@@ -9,7 +9,8 @@ stdout: on Railway (`RAILWAY_ENVIRONMENT` set) each line is JSON with `level` +
 `message`, plus `batch_id` / `candidate_id` when set; off-Railway the plain `LEVEL name: message` format remains. The
 database handler stores message only — level and logger_name are columns.
 Switching to Better Stack or another provider means updating this module only.
-Telescope and gunicorn console setup are out of scope.
+Telescope console setup is out of scope; gunicorn access lines for
+`RAILWAY_CONFIG['access_log_quiet_paths']` are dropped (AST-2078).
 
 B2 / D2 (AST-388): `add_log_entry` is imported inside `_flush_buffer` only (late import — utils must not load `data` at module import time). Handler errors print one line to stderr so failures are visible without crashing the logging caller.
 
@@ -43,6 +44,7 @@ import logging
 import os
 import sys
 import threading
+from collections.abc import Mapping
 from typing import Any, Optional
 
 # Dispatcher sets this at batch run start; logging handler reads it on each emit
@@ -236,8 +238,28 @@ class _DatabaseLogHandler(logging.Handler):
             )
 
 
+class _QuietAccessFilter(logging.Filter):
+    """Drop gunicorn.access records for config-listed background polling paths (AST-2078).
+
+    Logger-level, so it applies before gunicorn's own access handler and before
+    propagation to root — whichever gunicorn setting enabled access logging.
+    gunicorn passes its atoms dict as the single log arg; atom `U` is PATH_INFO.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Late import: config.py imports get_logger at module top (same cycle guard as AST-388).
+        from src.utils.config import RAILWAY_CONFIG
+
+        args = record.args
+        return not (
+            isinstance(args, Mapping)
+            and args.get("U") in RAILWAY_CONFIG["access_log_quiet_paths"]
+        )
+
+
 _db_handler_attached = False
 _db_handler_instance: Optional[_DatabaseLogHandler] = None
+_quiet_access_filter_attached = False
 
 
 def flush_log_buffer() -> None:
@@ -441,5 +463,11 @@ def get_logger(name: Optional[str] = None, debug_flag: bool = False) -> _Prefixe
         logging.getLogger().addHandler(_db_handler_instance)
         atexit.register(flush_log_buffer)
         _db_handler_attached = True
+
+    # Runs in the gunicorn worker at app import; inert off gunicorn (gunicorn.access never emits).
+    global _quiet_access_filter_attached
+    if not _quiet_access_filter_attached:
+        logging.getLogger("gunicorn.access").addFilter(_QuietAccessFilter())
+        _quiet_access_filter_attached = True
 
     return _PrefixedLogger(base_logger, debug_flag=debug_flag)

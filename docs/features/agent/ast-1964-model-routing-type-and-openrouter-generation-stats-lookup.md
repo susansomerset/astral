@@ -1,3 +1,84 @@
+<!-- linear-archive: AST-1964 archived 2026-10-08 -->
+
+## Linear archive (AST-1964)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1964/model-routing-type-and-openrouter-generation-stats-lookup-query-llm  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1963 — Query LLM Platform for Timesheet Data to Finish Batch  
+**Blocked by / blocks / related:** parent: AST-1963; blocks: AST-1966
+
+### Description
+
+## What this implements
+
+Adds the `direct` / `openrouter` routing type to every model (and switches the provider-object check to it), the retry constants, and the external function that fetches one call's billed cost, native tokens and host. Does **not** touch the database, `llm_compat` or `core/timesheets.py` (#2, #3). Hedy built `openrouter.py` in AST-1959.
+
+## Citations
+
+`stat.logging.debug`.
+
+## Scope
+
+* `src/utils/config.py` — **modified**. Routing type on every model; `resolve_agent_settings` reads it; a helper to get a timesheet row's routing; reconcile retry count and wait constants.
+  * **New model field** — a routing type on every `LLM_MODEL_CONFIG` entry, `openrouter` for entries built by `_build_openrouter_models`, `direct` for every hand-written entry; allowed values in one config tuple.
+  * **Modified validator** `validate_llm_provider_environment` — rejects a model whose routing type is missing or not an allowed value.
+  * **Modified function** `resolve_agent_settings` — builds the OpenRouter provider object when the model's routing type is `openrouter`, instead of comparing `server` to the string `"openrouter"`.
+  * **New helper** — routing type for a (server id, SKU) pair, the two values a timesheet row carries; raises on unknown.
+  * **New constants** — reconcile retry count (default 5) and the backoff base wait (default 2 seconds, doubled after each try).
+* `src/external/openrouter.py` — **modified**. Fetch one call's generation stats by generation id and key.
+  * **New function** — takes a generation id and an API key, calls OpenRouter's generation-stats endpoint, returns billed total cost, native prompt / completion / cached / reasoning token counts and serving host, or an error result when the call fails or the record isn't ready. No database or candidate access; the caller passes the key.
+* `tests/component/utils/test_config.py`, `docs/test-bible/utils/config.md`, `tests/component/external/test_openrouter.py`, `docs/test-bible/external/openrouter.md` — **modified**.
+
+## Acceptance criteria
+
+"Stubbed lookup" = the component-test stub of the OpenRouter generation-stats HTTP call.
+
+1. **Routing type is the source of truth.**
+   * **Check (**`test_config.py`**):** every `LLM_MODEL_CONFIG` entry built from `OPENROUTER_MODEL_TABLE` has routing `openrouter`; `kimi-k2.6`, every `claude-*` and both `deepseek-*` entries have `direct`; a model with a missing or unknown routing makes `validate_llm_provider_environment` raise.
+   * **Check:** `rg -n '"openrouter"' src/external/ src/core/timesheets.py src/data/database.py` returns nothing, and `rg -n 'server"\] == "openrouter"' src/utils/config.py` returns nothing.
+   * **Fails if:** any value differs, the validator accepts a bad value, or either grep hits.
+2. **Lookup returns billed numbers or an error.**
+   * **Check (**`test_openrouter.py`**, stubbed lookup):** a stubbed 200 with `total_cost: 0.0123`, `native_tokens_cached: 400`, `provider_name: "DeepInfra"` returns those values; a stubbed 404 and a stubbed timeout each return an error result and raise nothing.
+   * **Fails if:** a value differs from the stub, or a failure raises or returns a cost.
+3. **Retry then give up** (this child's part).
+   * **Check (**`test_config.py`**):** retry count constant is `5` and backoff base constant is `2`.
+   * **Fails if:** either constant differs.
+
+## Boundaries
+
+* Does **not** touch `src/data/database.py` (#2 Platform columns - Katherine) or `src/external/llm_compat.py` / `src/core/timesheets.py` (#3 Background reconcile - Ada).
+* Does **not** change how direct models (Anthropic, DeepSeek, Kimi) are priced; they keep today's calculated cost.
+* No sweep, no cap on backoff — the retry count bounds it.
+
+## Notes for planning
+
+* Cite `stat.logging.debug` — parent Architectural definition has the links.
+* Platform facts (parent § Platform research): OpenRouter `GET /api/v1/generation?id=<gen-id>`, bearer key; `total_cost`, `native_tokens_prompt` / `_completion` / `_cached` / `_reasoning`, `provider_name`; stats can lag the response by a few seconds.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T02:15:29.708Z
+[code-rubric] PROCEED (Commit: 3c645827b) routing and stats lookup
+
+#### betty — 2026-10-04T02:13:12.561Z
+`origin/sub/AST-1963/AST-1964-routing-and-generation-lookup` @ `3c645827b` · routing + lookup tests ready
+
+#### joan — 2026-10-04T02:07:16.720Z
+[plan-rubric] PROCEED (Commit: d51e4959f) routing and lookup plan
+
+#### hedy — 2026-10-04T02:05:36.720Z
+`origin/sub/AST-1963/AST-1964-routing-and-generation-lookup` @ `d51e4959f` · plan ready for Joan
+
+---
+
 # AST-1964 — Model routing type and OpenRouter generation-stats lookup
 
 - **Ticket:** [AST-1964](https://linear.app/astralcareermatch/issue/AST-1964) · **Parent:** [AST-1963](https://linear.app/astralcareermatch/issue/AST-1963) Query LLM Platform for Timesheet Data to Finish Batch

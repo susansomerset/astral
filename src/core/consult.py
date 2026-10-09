@@ -2709,6 +2709,24 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
+        if task_key == "fetch_company_culture_pages":
+            from src.core.gazer import fetch_company_culture_pages_batch
+            r = await _debug_await(
+                "gazer.fetch_company_culture_pages_batch",
+                f"batch_id={batch_id}, n={len(entities)}",
+                fetch_company_culture_pages_batch(batch_id, entities, debug=debug),
+            )
+            total = r.get("total", len(entities))
+            passed = r.get("passed", 0)
+            failed = r.get("failed", 0)
+            errors = max(0, total - passed - failed)
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+            }
+
         from src.utils.config import INFLOW_CONFIG
         if task_key == INFLOW_CONFIG["resolve"]["task_key"]:
             # Align with run_company_task terminal_ok: the resolve not-found terminal is a completed terminal.
@@ -2787,6 +2805,25 @@ async def run_consult_task(
                 "total_errors": errors,
                 **_rate_limit_tag(r),
             }
+        if task_key == "company_upshot":
+            r = await _debug_await(
+                "roster.company_upshot_batch",
+                f"batch_id={batch_id}, n={len(entities)}",
+                roster.company_upshot_batch(batch_id, entities, ctx=ctx, debug=debug),
+            )
+            total = r.get("total", len(entities))
+            passed = r.get("passed", 0)
+            failed = r.get("failed", 0)
+            # Retry-routed companies are not run errors (same accounting as prefilter_company).
+            errors = max(0, total - passed - failed - r.get("retried", 0))
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+                **_rate_limit_tag(r),
+            }
+
         if task_key == "vet_inflow_discovery":
             r = await _debug_await(
                 "roster.vet_inflow_discovery_company_batch",

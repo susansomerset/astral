@@ -556,3 +556,15 @@ Test-data note: bot / closed signals must trail the body — `_prune_jd` trims t
 3. **AC5 (required):** `rg -n '_apply_jd_gates' src/core/gazer.py` → one `def` + one call in `fetch_jd_batch` + one in `fetch_relative_jd_batch`; no `_classify_jd(` call inside either runner body.
 
 **Pass criterion:** all three — not zero-arg harness / branch-lock gate (baseline reds in these files unchanged by AST-2025).
+
+### AST-2070 · AST-2054 (GET_UPSHOT culture fetch)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2070-upshot-hops`. Primary block + manifest: [`roster.md`](roster.md) § AST-2070.
+
+`fetch_company_culture_pages_batch`: connectivity loss raises before any transition; otherwise every company → `UPSHOT_READY` (cached `website_content` skips the coat-check; scraped / none found / coat-check `ValueError` / missing `company_data` all advance). Returns `{passed: n, failed: 0, total: n}`.
+
+| AC | Component tests |
+| --- | --- |
+| 4 GET_UPSHOT always advances; connectivity abort | new **`TestAst2070FetchCompanyCulturePagesBatch`** (3 incl. debug parametrize) in `test_gazer.py` |
+
+**Broken / obsolete:** none — additive function.

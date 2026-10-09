@@ -1,3 +1,69 @@
+<!-- linear-archive: AST-1982 archived 2026-10-08 -->
+
+## Linear archive (AST-1982)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1982/shared-job-title-renderer-list-tables-all-job-titles-in-ui-should  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1981 — All Job Titles in UI should trail with an ellipsis after 50 chars  
+**Blocked by / blocks / related:** parent: AST-1981; blocks: AST-1983; related: AST-1971; related: AST-1967
+
+### Description
+
+## What this implements
+
+After [AST-1967](https://linear.app/astralcareermatch/issue/AST-1967) and [AST-1971](https://linear.app/astralcareermatch/issue/AST-1971) land. Builds the config-driven 50-character rule and the wrapped, portaled full-title tooltip as one shared component, and applies it to the Job Title cell on Ready, Review, Processing, Skipped, Applied, and Meteorites. Does not touch any modal or report header ([AST-1983](https://linear.app/astralcareermatch/issue/AST-1983)).
+
+## Citations
+
+none — frontend and a `UI_CONFIG` value only; no in-force directive reaches these files.
+
+## Scope
+
+`src/utils/config.py` (new `UI_CONFIG` job-title truncate key, value 50); `src/ui/frontend/src/lib/uiConfig.ts` (type key + resolver with fallback, mirroring `resolveCellTruncateChars`); `src/ui/frontend/src/components/JobTitleText.tsx` (**new** — cuts via `truncateForDisplay` at the resolved length, portaled `role="tooltip"` with the full title only when cut, caller-supplied fallback); `src/ui/frontend/src/App.css` (tooltip class: fixed max-width, normal wrapping, elevated surface); `src/ui/frontend/src/pages/JobsRecommended.tsx`, `JobsProcessing.tsx`, `JobsSkipped.tsx`, `JobsApplied.tsx` (Job Title `<td>` renders the shared component, `—` fallback; sorters / aria / clicks unchanged); `src/ui/frontend/src/pages/JobsMeteorites.tsx` (`job_title` render branch in the column-mapping `useMemo` returns the shared component).
+
+## Acceptance criteria
+
+1. **Long titles cut at 50.** Take a job whose `job_title` is longer than 50 characters, in each list table on Ready, Review, Processing, Skipped (each table variant), Applied, and Meteorites. Its Job Title cell text equals `job_title.slice(0, 50) + "…"`. **Fail:** any other length, a missing `…`, or the full title shown.
+2. **Short titles untouched.** A job whose title is 50 characters or fewer shows its exact title, and hovering it renders no `[role="tooltip"]` element and no `title` attribute. **Fail:** a `…`, a tooltip, or a native title on a short title.
+3. **Tooltip shows full, wrapped, unclipped.** Hovering a cut title renders one `[role="tooltip"]` whose `textContent` equals the full `job_title`. The element is a descendant of `document.body` and is **not** inside the table or modal subtree. Its computed `white-space` is `normal` and its computed `max-width` is a fixed pixel value (not `none`). A title over 100 characters renders on more than one line (element `offsetHeight` > one line-height). Mouse-out removes it. **Fail:** truncated or clipped tooltip text, a native browser tooltip instead, single-line overflow, or a tooltip that stays after mouse-out.
+4. **Meteorites job title at 50, other columns at 30.** On Jobs → Meteorites, a row with a 45-character `job_title` shows the full 45 characters with no `…`. A 60-character title shows 50 characters plus `…`. Any other column value over 30 characters still shows 30 characters plus `…`. **Fail:** job title cut at 30, or other columns changed.
+5. **One source for 50, one cut function.** `GET /api/system/ui_config` returns the new job-title key with value `50`. Changing it in `UI_CONFIG` to `20` and reloading cuts every in-scope title at 20 (manual check, reverted). `rg -n "job_title.*\.slice\(|\b50\b" src/ui/frontend/src/pages src/ui/frontend/src/components` returns no hit added by this epic, and `rg -n "\.slice\(" src/ui/frontend/src/components/JobTitleText.tsx` returns nothing (it cuts via `truncateForDisplay`). **Fail:** a hardcoded 50 or a second slicing path.
+6. **Every in-scope surface uses the shared component** (this child's files). `rg -l "JobTitleText" src/ui/frontend/src` lists `JobsRecommended.tsx`, `JobsProcessing.tsx`, `JobsSkipped.tsx`, `JobsApplied.tsx`, and `JobsMeteorites.tsx`. `rg -n '\{job\.job_title \|\| "\\u2014"\}' src/ui/frontend/src/pages` returns nothing. **Fail:** any file missing, or a raw title cell left.
+7. **Sort and search use the full title.** On Ready, sorting by Job Title orders rows the same as on `origin/dev` at branch point. On Meteorites, searching for a word that appears only after character 50 of a title still returns that row. **Fail:** a changed order or a missed search hit.
+8. **Builds clean; no new lint.** `python -c "import src.utils.config"` exits 0. In `src/ui/frontend`, `npm run build` exits 0, and `npm run lint` reports no problem that is absent on `origin/dev` (diff the problem lists). **Fail:** a non-zero exit or any new lint problem.
+
+## Boundaries
+
+Does not touch `Modal.tsx`, `JobDetailModal.tsx`, `MeteoriteDetailModal.tsx`, or `RecommendedJobReportHeader.tsx` — those headers are [AST-1983](https://linear.app/astralcareermatch/issue/AST-1983), which consumes this child's component. Does not change `ListTableTruncatedCell`, `truncateForDisplay`, or the generic 30-character truncation on other `ListPage` columns.
+
+## Notes for planning
+
+Citations: none. [AST-1971](https://linear.app/astralcareermatch/issue/AST-1971) (PR #227, Created column) edits the same four list pages and `config.py` and had not yet landed on `dev` at dispatch — expect adjacent-line merges on sync.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-04T22:12:35.339Z
+[code-rubric] PROCEED (Commit: 01a29571b) Clean list-title cut
+
+#### betty — 2026-10-04T22:10:26.054Z
+`origin/sub/AST-1981/AST-1982-job-title-renderer` @ `01a29571b` · manifest in components.md bible
+
+#### joan — 2026-10-04T22:01:47.664Z
+[plan-rubric] PROCEED (Commit: 5f4b9bf) List tables plan ready
+
+#### ada — 2026-10-04T22:00:07.103Z
+`origin/sub/AST-1981/AST-1982-job-title-renderer` @ `5f4b9bf00ba81d86679534e4361437f859d21b1b` · plan ready
+
+---
+
 # AST-1982 — Shared job-title renderer + list tables (All Job Titles in UI should trail with an ellipsis after 50 chars)
 
 - **Parent:** [AST-1981](https://linear.app/astralcareermatch/issue/AST-1981) — All Job Titles in UI should trail with an ellipsis after 50 chars

@@ -1,3 +1,66 @@
+<!-- linear-archive: AST-1872 archived 2026-10-08 -->
+
+## Linear archive (AST-1872)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1872/config-tab-order-score-template-and-server-side-skip-flag-recommended  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1862 — Recommended Job Modal Changes  
+**Blocked by / blocks / related:** parent: AST-1862; blocks: AST-1874
+
+### Description
+
+## What this implements
+
+Backend and config only: the report top tabs are reordered so Analysis is first, the header title template gains the score placeholder, and the job detail response carries a flag saying whether Skip is legal, decided by core's prior-state rule. No UI changes. #3 consumes the flag and template.
+
+## Citations
+
+`astral.config.config-source-of-truth`, `astral.state.core-decides-transitions`, `astral.layers.ui-config-driven-business-logic`, `astral.idioms.require-auth-on-protected-endpoints`.
+
+## Scope
+
+* `src/utils/config.py`: modified constant. The Recommended report top-tab list is reordered so `analysis` comes first and `summary` second, with the rest unchanged. Modified constant: the phase score header title template gains a score placeholder between the phase label and the breakdown, rendering as `{phase_label} - {score} - score: {earned} out of {possible} possible ({max} max total)`. Both already flow to React through the state-UI manifest.
+* `src/core/tracker.py`: new public function. Given a current job state and a target state, it returns whether the target's configured prior states admit the current one, reusing the existing private prior-state matcher (so `BUILD_ARTIFACTS` hop sub-states behave exactly as `transition_job_state` treats them). No change to `transition_job_state`.
+* `src/ui/api/api_jobs.py`: modified function (job detail route). It attaches a boolean field saying whether the job can move to `CANDIDATE_SKIPPED`, computed through the new tracker function. The field name is `plan-child`'s call. No new route, and the skip route is unchanged.
+
+## Acceptance criteria
+
+1. **Analysis is first and default.** `JOBS_RECOMMENDED_REPORT_TOP_TABS` in `src/utils/config.py` lists `analysis` at index 0 and `summary` at index 1. In `test_JobAnalysisReportModal.test.tsx`, opening the modal with the manifest renders the Analysis pane (phase sections visible) and the tab bar order is Analysis, Summary, Artifacts, Discussion. Switching to a different `jobId` after selecting Summary returns to Analysis. Fail = Summary pane shown on open, or wrong order.
+2. **Skip legality is server-resolved.** `GET /api/jobs/<id>` for a job in `RECOMMENDED`, `CANDIDATE_REVIEW`, or a `BUILD_ARTIFACTS` hop sub-state returns the skip-legal flag `true`. For `CANDIDATE_SKIPPED` or `CANDIDATE_APPLIED` it returns `false`. Fail = any of those inverted, or the flag missing.
+3. **No new routes or schema.** `git diff origin/dev...<ftr> -- src/data/ src/ui/frontend/src/components/Modal.tsx` is empty, and `grep -n "@jobs_bp.route" src/ui/api/api_jobs.py | wc -l` is unchanged from `origin/dev`. Fail = any change there.
+
+## Boundaries
+
+No UI changes — header layout/labels/Skip button render are #2; modal wiring, default tab, score in headers, skip action are #3.
+
+## Notes for planning
+
+Blocks #3. Citations above are this child's Canon Scope subset of the parent's Architectural definition.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1862-recommended-job-modal-changes`, child `sub/AST-1862/<child-id>-config-tab-order-score-template-skip-flag`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-29T18:35:00.277Z
+[code-rubric] PROCEED (Commit: 938dc37) Core-owned can_skip, config tabs
+
+#### betty — 2026-09-29T18:31:36.859Z
+`origin/sub/AST-1862/AST-1872-config-tab-order-score-template-skip-flag` @ `938dc37d` · manifest in tracker bible
+
+#### joan — 2026-09-29T18:23:03.739Z
+[plan-rubric] PROCEED (Commit: be770690) Backend config plan sound
+
+#### katherine — 2026-09-29T18:19:39.709Z
+`origin/sub/AST-1862/AST-1872-config-tab-order-score-template-skip-flag` @ `be770690` · plan ready, two stages
+
+---
+
 # AST-1872 — Config tab order, score template, and server-side skip flag (Recommended Job Modal Changes)
 
 - **Linear:** [AST-1872](https://linear.app/astralcareermatch/issue/AST-1872) · parent [AST-1862](https://linear.app/astralcareermatch/issue/AST-1862)

@@ -86,7 +86,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const { selectedId, candidates } = useCandidate()
   const [job, setJob] = useState<JobDetail | null>(null)
   const [companyWebsite, setCompanyWebsite] = useState<string | null>(null)
-  const [companyNotes, setCompanyNotes] = useState<string | null>(null)
+  const [companyUpshot, setCompanyUpshot] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [primaryBusy, setPrimaryBusy] = useState(false)
@@ -116,7 +116,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setLoading(true)
     setError(null)
     setCompanyWebsite(null)
-    setCompanyNotes(null)
+    setCompanyUpshot(null)
     try {
       const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`)
       if (!res.ok) {
@@ -136,12 +136,14 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           .then(co => {
             const site = co?.company_website
             setCompanyWebsite(typeof site === "string" && site.trim() ? site.trim() : null)
-            const notes = co?.prefilter_company_notes
-            setCompanyNotes(typeof notes === "string" && notes.trim() ? notes.trim() : null)
+            const companyUpshotText = co?.company_upshot
+            setCompanyUpshot(
+              typeof companyUpshotText === "string" && companyUpshotText.trim() ? companyUpshotText.trim() : null,
+            )
           })
           .catch(() => {
             setCompanyWebsite(null)
-            setCompanyNotes(null)
+            setCompanyUpshot(null)
           })
       }
     } catch (e) {
@@ -318,7 +320,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     return (manifest?.jobs.recommended.report_summary_sections ?? []).map(s => {
       let default_expanded = s.default_expanded
       if (s.section_id === "job_summary") default_expanded = true
-      else if (s.section_id === "company_upshot") default_expanded = !!companyNotes
+      else if (s.section_id === "company_upshot") default_expanded = !!companyUpshot
       else if (s.section_id === "caveats") default_expanded = hasCaveats
       else if (s.section_id === "questions") default_expanded = hasQuestions
       else if (s.section_id === "raw_jd") default_expanded = false
@@ -328,7 +330,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
         default_expanded,
       }
     })
-  }, [manifest, companyNotes, hasCaveats, hasQuestions])
+  }, [manifest, companyUpshot, hasCaveats, hasQuestions])
 
   const analysisSections = useMemo((): ReportSectionDef[] => {
     const template = manifest?.jobs.recommended.phase_score_header_title_template ?? ""
@@ -447,7 +449,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }
 
     if (sectionId === "company_upshot") {
-      if (companyNotes) return <p className="job-analysis-upshot-body">{companyNotes}</p>
+      if (companyUpshot) return <p className="job-analysis-upshot-body">{companyUpshot}</p>
       return <p className="recommended-report-empty">No company upshot on file.</p>
     }
 
