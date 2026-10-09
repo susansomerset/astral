@@ -997,3 +997,31 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-2006 | sub/AST-1986/AST-2006-empty-token-guard-tests |
 
 **Epic worktree:** `astral-AST-1986/` — one active sub checked out at a time.
+
+## Joan fix-board — AST-2092
+
+```text
+[board-joan]  CANON: OK
+```
+
+```text
+AST-2092 board-joan done — CANON: OK.
+```
+
+## Reasoning
+
+**Read:** `## Bug: AST-2092` on `origin/sub/AST-2019/AST-2092-rubric-empty-render-gate` (plan-fix patch); roster skim for overlap with `config.py` / dispatch validation; resolved **`astral.dispatch.entity-state-bound`** (`canon/directives/active/stat.dispatch.entity-state-bound.md`) and **`astral.standards.in-scope-only`** (`canon/statutes/astral/standards/astral.standards.in-scope-only.md`) as cited in the patch.
+
+**The one question:** Does the proposed change conflict with or require updating any **directive in force**?
+
+**No.** Active statutes/patterns do not encode AST-1779’s “do not score `rubric` by default” rule. That rule lives in the **AST-1779 feature plan** and test-bible (`test_rubric_scored_only_via_entity_contexts`), not in the canon corpus. Grep over `canon/directives` shows no `empty_render`, `empty_render_for_prompts`, or admin-time rubric-scoring law.
+
+- **`astral.dispatch.entity-state-bound`:** Still satisfied. The fix only changes default scoring in `empty_render_for_prompts`; no `dispatch_task` row, `entity_type`, `trigger_state`, or claim-path edits. Aligning the admin predicate with candidate-keyed rubric resolution does not violate entity-binding law.
+
+- **`astral.standards.in-scope-only`:** Conforms. Product footprint is `src/utils/config.py` → one function + docstring, as scoped.
+
+Reversing AST-1779 **plan/test** contract is intentional and documented in the AST-2092 patch (rubric rows are per-candidate; matches AST-2000 runtime refusal). That is **not** a statute/pattern amend — Betty’s test/bible updates cover the behavioral contract; no F3 canon landing required from this triage pass.
+
+**Not ESCALATE:** Blast radius and operator impact are bounded in the patch (owners that can flip Invalid, no `api_admin` change, DB read tradeoff called out). No ambiguous statute intent or new corpus precedent — correction of admin vs runtime mismatch.
+
+context_tokens≈18500
