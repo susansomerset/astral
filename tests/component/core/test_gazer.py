@@ -38,15 +38,21 @@ class TestPruneJd:
         assert gazer_mod._prune_jd("before marker after") == "before marker after"
 
 class TestAst1195BotBlockedErrorState:
-    """AST-1195: gazer bot classification maps to universal BOT_BLOCKED."""
+    """AST-1195 · AST-2086: JD classification is task-aware — bot / cookie name the calling task."""
 
-    def test_bot_maps_to_bot_blocked(self) -> None:
-        assert gazer_mod._JD_ERROR_STATES["bot"] == "BOT_BLOCKED"
-        assert "JD_SCRAPE_FAIL_BOT" not in gazer_mod._JD_ERROR_STATES.values()
-        # Sibling scrape-fail ids unchanged.
-        assert gazer_mod._JD_ERROR_STATES["cookie"] == "JD_SCRAPE_FAIL_COOKIE"
-        assert gazer_mod._JD_ERROR_STATES["missing"] == "JD_SCRAPE_FAIL_MISSING"
-        assert gazer_mod._JD_ERROR_STATES["closed"] == "JD_SCRAPE_FAIL_CLOSED"
+    def test_bot_maps_to_task_bot_blocked(self) -> None:
+        fj = gazer_mod.GAZER_CONFIG["fetch_jd"]["classified_states"]
+        fr = gazer_mod.GAZER_CONFIG["fetch_relative_jd"]["classified_states"]
+        assert fj == {
+            "cookie": "ERROR_FETCH_JD_COOKIE", "bot": "BOT_BLOCKED_FETCH_JD",
+            "missing": "JD_SCRAPE_FAIL_MISSING", "closed": "JD_SCRAPE_FAIL_CLOSED",
+        }
+        assert fr == {
+            "cookie": "ERROR_FETCH_RELATIVE_JD_COOKIE", "bot": "BOT_BLOCKED_FETCH_RELATIVE_JD",
+            "missing": "JD_SCRAPE_FAIL_MISSING", "closed": "JD_SCRAPE_FAIL_CLOSED",
+        }
+        # The module-level universal map is gone; callers pass their own task's map.
+        assert not hasattr(gazer_mod, "_JD_ERROR_STATES")
 
 
 class TestAst2004IsBotWall:
@@ -264,7 +270,7 @@ class TestFetchWebsiteBatch:
         assert out == {"passed": 0, "failed": 2, "errors": 0, "skipped": 0, "total": 2}
         assert transition.call_count == 2
         assert save.call_count == 2
-        transition.assert_any_call("co-bad", "CANNOT_READ_WEBSITE")
+        transition.assert_any_call("co-bad", "ERROR_FETCH_WEBSITE_UNREADABLE")
 
     @pytest.mark.asyncio
     async def test_success_persists_homepage_and_nav_links(
@@ -360,8 +366,8 @@ class TestFetchWebsiteFailRouting:
         cfg = gazer_mod.GAZER_CONFIG["fetch_website"]
         infra = "[playwright:channel_error] boom"
         assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND", infra, cfg) == "WEBSITE_FOUND_RETRY"
-        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND_RETRY", infra, cfg) == "CANNOT_READ_WEBSITE"
-        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND", "site unreadable", cfg) == "CANNOT_READ_WEBSITE"
+        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND_RETRY", infra, cfg) == "ERROR_FETCH_WEBSITE_UNREADABLE"
+        assert gazer_mod._fetch_website_fail_destination("WEBSITE_FOUND", "site unreadable", cfg) == "ERROR_FETCH_WEBSITE_UNREADABLE"
 
     @pytest.mark.asyncio
     async def test_infra_scrape_error_retries_from_website_found(
@@ -413,7 +419,7 @@ class TestFetchWebsiteFailRouting:
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
         assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
-        transition.assert_called_once_with("acme", "CANNOT_READ_WEBSITE")
+        transition.assert_called_once_with("acme", "ERROR_FETCH_WEBSITE_UNREADABLE")
 
     @pytest.mark.asyncio
     async def test_unhandled_gather_exception_increments_errors_and_continues(
@@ -516,7 +522,7 @@ class TestAst882HomepageReadyWfrSkip:
         ]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
         assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
-        transition.assert_called_once_with("acme", "CANNOT_READ_WEBSITE")
+        transition.assert_called_once_with("acme", "ERROR_FETCH_WEBSITE_UNREADABLE")
 
     @pytest.mark.asyncio
     async def test_mixed_second_strike_and_fresh_both_scrape(
@@ -579,7 +585,7 @@ class TestFetchJobPagesBatch:
         companies = [{"short_name": "co-empty", "company_data": {}}]
         out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=debug)
         assert out == {"passed": 0, "failed": 1, "total": 1}
-        transition.assert_called_once_with("co-empty", "JOBSITE_SCRAPE_ISSUE")
+        transition.assert_called_once_with("co-empty", "ERROR_FETCH_JOB_PAGES_UNREADABLE")
 
     @pytest.mark.asyncio
     async def test_success_transitions_pjl_ready_and_persists(
@@ -808,7 +814,7 @@ class TestFetchJobPagesBatch:
         ]
         out = await gazer_mod.fetch_job_pages_batch("batch-1", companies, debug=debug)
         assert out == {"passed": 0, "failed": 1, "total": 1}
-        transition.assert_called_once_with("acme", "JOBSITE_SCRAPE_ISSUE")
+        transition.assert_called_once_with("acme", "ERROR_FETCH_JOB_PAGES_UNREADABLE")
         assert save.call_args_list[-1][0][1]["prefilter_company_notes"] == (
             "fetch_job_pages: all PJL scrapes failed"
         )
@@ -953,8 +959,8 @@ class TestAst2025FetchRelativeJdBatch:
         out = await gazer_mod.fetch_relative_jd_batch("b-1", jobs)
         assert out == {"passed": 1, "failed": 3, "total": 4}
         assert rel_env.states() == {
-            "j-ok": "JD_READY", "j-bot": "BOT_BLOCKED",
-            "j-closed": "JD_SCRAPE_FAIL_CLOSED", "j-gone": "RELATIVE_LINK_FAIL",
+            "j-ok": "JD_READY", "j-bot": "BOT_BLOCKED_FETCH_RELATIVE_JD",
+            "j-closed": "JD_SCRAPE_FAIL_CLOSED", "j-gone": "ERROR_FETCH_RELATIVE_JD_CLICK",
         }
         # Telescope opens the company job_site and clicks the stored relative href.
         assert {c.args for c in rel_env.click.await_args_list} == {
@@ -976,7 +982,7 @@ class TestAst2025FetchRelativeJdBatch:
                 "b-2", [_rel_job("j-gone", "/gone"), _rel_job("j-boom", "/boom")]
             )
         assert out == {"passed": 0, "failed": 2, "total": 2}
-        assert rel_env.states() == {"j-gone": "RELATIVE_LINK_FAIL", "j-boom": "RELATIVE_LINK_FAIL"}
+        assert rel_env.states() == {"j-gone": "ERROR_FETCH_RELATIVE_JD_CLICK", "j-boom": "ERROR_FETCH_RELATIVE_JD_CLICK"}
         rel_env.persist.assert_not_called()
         gone = [r for r in caplog.records if "j-gone" in r.getMessage()]
         boom = [r for r in caplog.records if "j-boom" in r.getMessage()]
@@ -989,7 +995,7 @@ class TestAst2025FetchRelativeJdBatch:
         rel_env.routes["/odd"] = ("/still/relative", _OK_JD)
         out = await gazer_mod.fetch_relative_jd_batch("b-3", [_rel_job("j-odd", "/odd")])
         assert out["failed"] == 1
-        assert rel_env.states() == {"j-odd": "RELATIVE_LINK_FAIL"}
+        assert rel_env.states() == {"j-odd": "ERROR_FETCH_RELATIVE_JD_CLICK"}
         rel_env.persist.assert_not_called()
 
     @pytest.mark.asyncio
@@ -997,19 +1003,21 @@ class TestAst2025FetchRelativeJdBatch:
         jobs = [_rel_job("j-nosite", "/a", site=""), _rel_job("j-nolink", "")]
         out = await gazer_mod.fetch_relative_jd_batch("b-4", jobs)
         assert out == {"passed": 0, "failed": 2, "total": 2}
-        assert rel_env.states() == {"j-nosite": "RELATIVE_LINK_FAIL", "j-nolink": "RELATIVE_LINK_FAIL"}
+        assert rel_env.states() == {"j-nosite": "ERROR_FETCH_RELATIVE_JD_CLICK", "j-nolink": "ERROR_FETCH_RELATIVE_JD_CLICK"}
         rel_env.click.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_short_text_after_click_is_jd_scrape_fail_with_link_resolved(self, rel_env) -> None:
+    async def test_short_text_after_click_is_relative_unreadable_with_link_resolved(self, rel_env) -> None:
         rel_env.routes.update({"/short": ("https://ats.example/s", "too short"),
                                "/blank": ("https://ats.example/b", "   ")})
         out = await gazer_mod.fetch_relative_jd_batch(
             "b-5", [_rel_job("j-short", "/short"), _rel_job("j-blank", "/blank")]
         )
         assert out["failed"] == 2
-        # Destination reached → fetch_jd's JD_SCRAPE_FAIL (not RELATIVE_LINK_FAIL), link resolved.
-        assert rel_env.states() == {"j-short": "JD_SCRAPE_FAIL", "j-blank": "JD_SCRAPE_FAIL"}
+        # AST-2086: destination reached → this task's own _UNREADABLE (not _CLICK, not fetch_jd's), link resolved.
+        assert rel_env.states() == {
+            "j-short": "ERROR_FETCH_RELATIVE_JD_UNREADABLE", "j-blank": "ERROR_FETCH_RELATIVE_JD_UNREADABLE",
+        }
         assert rel_env.persist.call_count == 2
 
     @pytest.mark.asyncio
@@ -1034,9 +1042,12 @@ class TestAst2025FetchRelativeJdBatch:
         rel_env.routes["/ok"] = ("https://ats.example/ok", _OK_JD)
         await gazer_mod.fetch_jd_batch("b-7", [{"astral_job_id": "j-abs", "job_link": "https://x.example/j"}])
         await gazer_mod.fetch_relative_jd_batch("b-8", [_rel_job("j-rel", "/ok")])
+        # AST-2086: each runner passes its own task's unreadable terminal and classified_states map.
         assert seen == [
-            {"aid": "j-abs", "short_state": "JD_SCRAPE_FAIL", "pass_state": "JD_READY"},
-            {"aid": "j-rel", "short_state": "JD_SCRAPE_FAIL", "pass_state": "JD_READY"},
+            {"aid": "j-abs", "short_state": "ERROR_FETCH_JD_UNREADABLE", "pass_state": "JD_READY",
+             "classified_states": gazer_mod.GAZER_CONFIG["fetch_jd"]["classified_states"]},
+            {"aid": "j-rel", "short_state": "ERROR_FETCH_RELATIVE_JD_UNREADABLE", "pass_state": "JD_READY",
+             "classified_states": gazer_mod.GAZER_CONFIG["fetch_relative_jd"]["classified_states"]},
         ]
 
 
@@ -1082,8 +1093,8 @@ class TestFetchCulturePagesBatch:
         ]
         out = await gazer_mod.fetch_culture_pages_batch("batch-1", jobs)
         assert out == {"passed": 0, "failed": 2, "total": 2}
-        assert transition.call_args_list[0].args == (["j-empty"], "NEED_CULTURE_CONTENT")
-        assert transition.call_args_list[1].args == (["j-miss"], "NEED_CULTURE_CONTENT")
+        assert transition.call_args_list[0].args == (["j-empty"], "ERROR_FETCH_CULTURE_PAGES_UNREADABLE")
+        assert transition.call_args_list[1].args == (["j-miss"], "ERROR_FETCH_CULTURE_PAGES_UNREADABLE")
 
     @pytest.mark.asyncio
     async def test_cached_website_content_passes_without_coat_check(
@@ -1121,7 +1132,7 @@ class TestFetchCulturePagesBatch:
             "batch-1", [{"astral_job_id": "j-nolink", "company": "acme"}],
         )
         assert out == {"passed": 0, "failed": 1, "total": 1}
-        transition.assert_called_once_with(["j-nolink"], "NO_CULTURE_LINKS")
+        transition.assert_called_once_with(["j-nolink"], "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS")
 
     @pytest.mark.asyncio
     async def test_coat_check_pass_and_empty_fail(
@@ -1158,7 +1169,7 @@ class TestFetchCulturePagesBatch:
         out = await gazer_mod.fetch_culture_pages_batch("batch-1", jobs)
         assert out == {"passed": 1, "failed": 1, "total": 2}
         assert transition.call_args_list[0].args == (["j-ok"], "CULTURE_READY")
-        assert transition.call_args_list[1].args == (["j-bad"], "NEED_CULTURE_CONTENT")
+        assert transition.call_args_list[1].args == (["j-bad"], "ERROR_FETCH_CULTURE_PAGES_UNREADABLE")
         assert co_ok["company_data"]["website_content"][0]["content"] == "ok culture"
 
     @pytest.mark.asyncio
@@ -2095,3 +2106,118 @@ class TestAst1516ContactTaskGazerScrape:
         details = " ".join(c.args[0] for c in log.debug_detail.call_args_list if c.args)
         assert "visible_chars=" in details
         assert "links_count=1" in details
+
+
+# AST-2086 AC4: fetch_website / fetch_job_pages / fetch_culture_pages run the shared is_bot_wall
+# detector — a bot wall lands on BOT_BLOCKED_<TASK_KEY>; plain unreadable stays ERROR_<TASK_KEY>_UNREADABLE.
+class TestAst2086GazerBotWallSplit:
+    _JDC = gazer_mod.TRACKER_CONFIG["jd_classifier"]
+    _BOT = "Welcome. " + " ".join(_JDC["bot_signals"][: _JDC.get("bot_threshold", 2)])
+
+    def test_bot_text_trips_shared_detector(self) -> None:
+        # Guard: the fixture text must actually be a bot wall, or every test below proves nothing.
+        assert gazer_mod.is_bot_wall(self._BOT)
+        assert not gazer_mod.is_bot_wall("open roles at acme")
+
+    def test_fetch_website_fail_destination_bot_first(self) -> None:
+        cfg = gazer_mod.GAZER_CONFIG["fetch_website"]
+        dest = gazer_mod._fetch_website_fail_destination
+        assert dest("WEBSITE_FOUND", "", cfg, self._BOT) == "BOT_BLOCKED_FETCH_WEBSITE"
+        # Bot wall wins over the infra retry ladder and over a retry re-fail.
+        assert dest("WEBSITE_FOUND", "[playwright:channel_error] boom", cfg, self._BOT) == "BOT_BLOCKED_FETCH_WEBSITE"
+        assert dest("WEBSITE_FOUND_RETRY", "site unreadable", cfg, self._BOT) == "BOT_BLOCKED_FETCH_WEBSITE"
+        # No error and no wall → success path (None); plain unreadable → the _UNREADABLE failure.
+        assert dest("WEBSITE_FOUND", "", cfg, "acme homepage") is None
+        assert dest("WEBSITE_FOUND", "site unreadable", cfg, "") == "ERROR_FETCH_WEBSITE_UNREADABLE"
+
+    @pytest.mark.asyncio
+    async def test_fetch_website_bot_wall_is_bot_blocked_not_homepage(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        _mock_batch_browser_session(monkeypatch)
+        transition, save = MagicMock(), MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
+        monkeypatch.setattr(gazer_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            gazer_mod, "scrape_company_homepage_content",
+            AsyncMock(return_value={"company_website": "https://acme.com", "visible_text": self._BOT, "error": None}),
+        )
+        out = await gazer_mod.fetch_website_batch("b-2086", [{"short_name": "acme", "company_website": "https://acme.com"}])
+        assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
+        transition.assert_called_once_with("acme", "BOT_BLOCKED_FETCH_WEBSITE")
+        # Only the notes write — the wall text is never persisted as homepage_text.
+        notes_key = gazer_mod.ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]
+        save.assert_called_once_with("acme", {notes_key: "bot wall"})
+
+    @pytest.mark.asyncio
+    async def test_fetch_job_pages_all_walled_is_bot_blocked(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out, transition, saved, _scrape, _log = await TestFetchJobPagesBatch._run_pjl(
+            monkeypatch,
+            {"possible_joblist_links": ["acme.com/careers", "acme.com/jobs"]},
+            {
+                "acme.com/careers": {"url": "https://acme.com/careers", "visible_text": self._BOT, "page_links": []},
+                "acme.com/jobs": {"url": "https://acme.com/jobs", "visible_text": self._BOT, "page_links": []},
+            },
+        )
+        assert out == {"passed": 0, "failed": 1, "total": 1}
+        transition.assert_called_once_with("acme", "BOT_BLOCKED_FETCH_JOB_PAGES")
+        # A wall is not page content: nothing merged into the capture.
+        assert saved["pjl_scrape_pages"] == []
+
+    @pytest.mark.asyncio
+    async def test_fetch_job_pages_walled_with_prior_capture_still_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        prior = {"url": "https://acme.com/careers", "visible_text": "OLD BOARD"}
+        out, transition, saved, _scrape, _log = await TestFetchJobPagesBatch._run_pjl(
+            monkeypatch,
+            {"possible_joblist_links": ["acme.com/careers"], "pjl_scrape_pages": [prior]},
+            {"acme.com/careers": {"url": "https://acme.com/careers", "visible_text": self._BOT, "page_links": []}},
+        )
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with("acme", "PJL_READY")
+        assert saved["pjl_scrape_pages"] == [prior]
+
+    @staticmethod
+    def _culture_env(monkeypatch: pytest.MonkeyPatch, company: Dict[str, Any], fetched: Any) -> MagicMock:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        monkeypatch.setattr(gazer_mod, "get_company", MagicMock(return_value=company))
+        monkeypatch.setattr(gazer_mod, "get_company_data", AsyncMock(return_value=fetched))
+        return transition
+
+    def test_website_content_bot_walled_shapes(self) -> None:
+        walled = gazer_mod._website_content_bot_walled
+        assert walled([{"url": "a", "content": self._BOT}, {"url": "b", "content": self._BOT}])
+        assert not walled([{"url": "a", "content": self._BOT}, {"url": "b", "content": "our values"}])
+        assert walled([{"url": "a", "content": self._BOT}, "not-a-page"])  # non-dict entries are ignored
+        assert walled(self._BOT)  # legacy string capture
+        assert not walled("")
+        assert not walled([])
+        assert not walled(None)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [False, True])
+    async def test_fetch_culture_pages_fresh_all_walled_is_bot_blocked(self, monkeypatch: pytest.MonkeyPatch, debug: bool) -> None:
+        company = {"short_name": "acme", "company_data": {"culture_links_to_explore": ["https://acme.com/c"]}}
+        transition = self._culture_env(monkeypatch, company, [{"url": "https://acme.com/c", "content": self._BOT}])
+        out = await gazer_mod.fetch_culture_pages_batch("b-2086", [{"astral_job_id": "j-wall", "company": "acme"}], debug=debug)
+        assert out == {"passed": 0, "failed": 1, "total": 1}
+        transition.assert_called_once_with(["j-wall"], "BOT_BLOCKED_FETCH_CULTURE_PAGES")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("debug", [False, True])
+    async def test_fetch_culture_pages_cached_all_walled_is_bot_blocked(self, monkeypatch: pytest.MonkeyPatch, debug: bool) -> None:
+        company = {"short_name": "acme", "company_data": {"website_content": [{"url": "https://acme.com/c", "content": self._BOT}]}}
+        transition = self._culture_env(monkeypatch, company, None)
+        out = await gazer_mod.fetch_culture_pages_batch("b-2086", [{"astral_job_id": "j-cache", "company": "acme"}], debug=debug)
+        assert out == {"passed": 0, "failed": 1, "total": 1}
+        transition.assert_called_once_with(["j-cache"], "BOT_BLOCKED_FETCH_CULTURE_PAGES")
+
+    @pytest.mark.asyncio
+    async def test_fetch_culture_pages_one_usable_page_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Only an all-walled capture is bot-blocked; one gradeable page is enough to pass.
+        company = {"short_name": "acme", "company_data": {"culture_links_to_explore": ["https://acme.com/c"]}}
+        fetched = [{"url": "https://acme.com/c", "content": self._BOT}, {"url": "https://acme.com/v", "content": "our values"}]
+        transition = self._culture_env(monkeypatch, company, fetched)
+        out = await gazer_mod.fetch_culture_pages_batch("b-2086", [{"astral_job_id": "j-mixed", "company": "acme"}])
+        assert out == {"passed": 1, "failed": 0, "total": 1}
+        transition.assert_called_once_with(["j-mixed"], "CULTURE_READY")

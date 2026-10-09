@@ -555,7 +555,9 @@ class TestBuildStateUiManifest:
     def test_ast562_recommended_prior_states_allow_cancel_from_build(self) -> None:
         priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"]
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
-        assert cfg.ERROR_BUILD_ARTIFACTS_STATE in priors
+        # AST-2086: per-hop chain error states replace ERROR_BUILD_ARTIFACTS.
+        for st in cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES:
+            assert st in priors, st
 
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
         # AST-948 / AST-1550: report_top_tabs + report_summary_sections;
@@ -800,7 +802,8 @@ class TestAst803FlatBuildArtifactsChainDispatch:
 
     def test_flat_build_artifacts_registered_in_job_states(self) -> None:
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in cfg.JOB_STATES
-        assert cfg.ERROR_BUILD_ARTIFACTS_STATE in cfg.JOB_STATES
+        for st in cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES:
+            assert st in cfg.JOB_STATES, st
         assert cfg.JOB_STATES[cfg.BUILD_ARTIFACTS_BASE_STATE]["prior_states"] == ["RECOMMENDED"]
 
     def test_flat_build_artifacts_is_processing_section(self) -> None:
@@ -828,11 +831,14 @@ class TestAst803FlatBuildArtifactsChainDispatch:
     def test_resume_hops_carry_chain_task_type(self) -> None:
         for tk in self.HOPS:
             assert cfg.TASK_CONFIG[tk]["task_type"] == "CHAIN"
-            assert cfg.TASK_CONFIG[tk]["error_state"] == cfg.ERROR_BUILD_ARTIFACTS_STATE
+            # AST-2086: each hop names its own ERROR_<HOP>.
+            assert cfg.TASK_CONFIG[tk]["error_state"] == cfg.error_state_for(tk)
 
     def test_build_failed_prior_includes_flat_build_artifacts(self) -> None:
-        priors = cfg.JOB_STATES["BUILD_FAILED"]["prior_states"]
-        assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
+        # AST-2086: dead BUILD_FAILED is deleted; per-hop chain errors carry the BUILD_ARTIFACTS prior.
+        assert "BUILD_FAILED" not in cfg.JOB_STATES
+        for st in cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES:
+            assert cfg.JOB_STATES[st]["prior_states"] == [cfg.BUILD_ARTIFACTS_BASE_STATE], st
 
 
 class TestAst1111JobArtifactEntryShadowDeleted:
@@ -1194,7 +1200,8 @@ class TestAst702PrefilterBatchConfig:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("HOMEPAGE_READY", "PREFILTER_PASSED") in transitions
         assert ("HOMEPAGE_READY", "WEBSITE_FOUND_RETRY") in transitions
-        assert ("HOMEPAGE_READY", "CANNOT_READ_WEBSITE") in transitions
+        # AST-2086: prefilter terminals are ERROR_PREFILTER_COMPANY*.
+        assert ("HOMEPAGE_READY", "ERROR_PREFILTER_COMPANY_UNREADABLE") in transitions
 
     def test_prefilter_dispatch_batch_mode_and_defaults(self) -> None:
         from src.utils.config import (
@@ -1268,14 +1275,17 @@ class TestAst721ParseJobListConfig:
         # AST-1808: retry is an implicit substate — valid via its base, never a registry key.
         assert cfg.is_registered_state(cfg.COMPANY_STATES, "JOBLIST_IDENTIFIED_RETRY")
         assert "JOBLIST_IDENTIFIED_RETRY" not in cfg.COMPANY_STATES
-        assert "COULD_NOT_PARSE_JOBLIST" in cfg.COMPANY_STATES
+        # AST-2086: ERROR_PARSE_JOB_LIST_UNPARSEABLE → ERROR_PARSE_JOB_LIST_UNPARSEABLE (+ bare empty-token).
+        assert "ERROR_PARSE_JOB_LIST_UNPARSEABLE" in cfg.COMPANY_STATES
+        assert "ERROR_PARSE_JOB_LIST" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY") in transitions
-        assert ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST") in transitions
+        assert ("JOBLIST_IDENTIFIED", "ERROR_PARSE_JOB_LIST_UNPARSEABLE") in transitions
+        assert ("JOBLIST_IDENTIFIED", "ERROR_PARSE_JOB_LIST") in transitions
         # AST-2069: parse success lands in GET_UPSHOT (upshot hops precede WATCH)
         assert ("JOBLIST_IDENTIFIED_RETRY", "GET_UPSHOT") in transitions
         assert ("JOBLIST_IDENTIFIED_RETRY", "WATCH") not in transitions
-        assert ("JOBLIST_IDENTIFIED_RETRY", "COULD_NOT_PARSE_JOBLIST") in transitions
+        assert ("JOBLIST_IDENTIFIED_RETRY", "ERROR_PARSE_JOB_LIST_UNPARSEABLE") in transitions
 
     def test_parse_job_list_roster_config(self) -> None:
         parse = cfg.ROSTER_CONFIG["parse_job_list"]
@@ -1283,7 +1293,8 @@ class TestAst721ParseJobListConfig:
         assert parse["retry_trigger_state"] == "JOBLIST_IDENTIFIED_RETRY"
         assert parse["pass_state"] == "GET_UPSHOT"  # AST-2069 (was WATCH)
         assert parse["retry_state"] == "JOBLIST_IDENTIFIED_RETRY"
-        assert parse["terminal_fail_state"] == "COULD_NOT_PARSE_JOBLIST"
+        assert parse["terminal_fail_state"] == "ERROR_PARSE_JOB_LIST_UNPARSEABLE"
+        assert parse["error_state"] == "ERROR_PARSE_JOB_LIST"  # AST-2086 empty-token / bare
         assert parse["selected_pjl_url_key"] == "selected_pjl_url"
         assert parse["max_concurrent"] == 3  # AST-891 batch semaphore
 
@@ -1307,11 +1318,11 @@ class TestAst720SelectJobPageConfig:
         # AST-1808: implicit retry substate.
         assert cfg.is_registered_state(cfg.COMPANY_STATES, "PREFILTER_PASSED_RETRY")
         assert "PREFILTER_PASSED_RETRY" not in cfg.COMPANY_STATES
-        assert "NO_PJL_SELECTED" in cfg.COMPANY_STATES
+        assert "ERROR_SELECT_JOB_PAGE_NO_SELECTION" in cfg.COMPANY_STATES  # AST-2086 (was ERROR_SELECT_JOB_PAGE_NO_SELECTION)
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("PJL_READY", "JOBLIST_IDENTIFIED") in transitions
         assert ("PJL_READY", "PREFILTER_PASSED_RETRY") in transitions
-        assert ("PJL_READY", "NO_PJL_SELECTED") in transitions
+        assert ("PJL_READY", "ERROR_SELECT_JOB_PAGE_NO_SELECTION") in transitions
         assert ("PREFILTER_PASSED_RETRY", "PJL_READY") in transitions
 
     def test_select_job_page_roster_config(self) -> None:
@@ -1319,7 +1330,7 @@ class TestAst720SelectJobPageConfig:
         assert sel["dispatch_trigger_state"] == "PJL_READY"
         assert sel["identified_state"] == "JOBLIST_IDENTIFIED"
         assert sel["retry_state"] == "PREFILTER_PASSED_RETRY"
-        assert sel["exhausted_state"] == "NO_PJL_SELECTED"
+        assert sel["exhausted_state"] == "ERROR_SELECT_JOB_PAGE_NO_SELECTION"
         assert sel["selected_pjl_url_key"] == "selected_pjl_url"
         keys = cfg.ROSTER_CONFIG["company_data_keys"]
         assert keys["selected_pjl_url"] == "selected_pjl_url"
@@ -1339,12 +1350,15 @@ class TestAst719FetchJobPagesConfig:
         assert "PJL_READY" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("PREFILTER_PASSED", "PJL_READY") in transitions
-        assert ("PREFILTER_PASSED", "JOBSITE_SCRAPE_ISSUE") in transitions
+        # AST-2086: fetch_job_pages fail splits into unreadable + bot wall.
+        assert ("PREFILTER_PASSED", "ERROR_FETCH_JOB_PAGES_UNREADABLE") in transitions
+        assert ("PREFILTER_PASSED", "BOT_BLOCKED_FETCH_JOB_PAGES") in transitions
 
     def test_gazer_fetch_job_pages_config(self) -> None:
         entry = cfg.GAZER_CONFIG["fetch_job_pages"]
         assert entry["pass_state"] == "PJL_READY"
-        assert entry["fail_state"] == "JOBSITE_SCRAPE_ISSUE"
+        assert entry["fail_state"] == "ERROR_FETCH_JOB_PAGES_UNREADABLE"
+        assert entry["bot_blocked_state"] == "BOT_BLOCKED_FETCH_JOB_PAGES"
         assert entry["fallback_batch_size"] == 10
 
     def test_dispatch_registry_and_pjl_data_keys(self) -> None:
@@ -1373,14 +1387,18 @@ class TestAst701FetchWebsiteConfig:
         assert "HOMEPAGE_READY" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("WEBSITE_FOUND", "HOMEPAGE_READY") in transitions
-        assert ("WEBSITE_FOUND", "CANNOT_READ_WEBSITE") in transitions
+        # AST-2086: fetch_website fail splits into unreadable + bot wall.
+        assert ("WEBSITE_FOUND", "ERROR_FETCH_WEBSITE_UNREADABLE") in transitions
+        assert ("WEBSITE_FOUND", "BOT_BLOCKED_FETCH_WEBSITE") in transitions
         assert ("WEBSITE_FOUND_RETRY", "HOMEPAGE_READY") in transitions
-        assert ("WEBSITE_FOUND_RETRY", "CANNOT_READ_WEBSITE") in transitions
+        assert ("WEBSITE_FOUND_RETRY", "ERROR_FETCH_WEBSITE_UNREADABLE") in transitions
+        assert ("WEBSITE_FOUND_RETRY", "BOT_BLOCKED_FETCH_WEBSITE") in transitions
 
     def test_gazer_fetch_website_config(self) -> None:
         entry = cfg.GAZER_CONFIG["fetch_website"]
         assert entry["pass_state"] == "HOMEPAGE_READY"
-        assert entry["fail_state"] == "CANNOT_READ_WEBSITE"
+        assert entry["fail_state"] == "ERROR_FETCH_WEBSITE_UNREADABLE"
+        assert entry["bot_blocked_state"] == "BOT_BLOCKED_FETCH_WEBSITE"
         assert entry["retry_state"] == "WEBSITE_FOUND_RETRY"
         assert entry["fallback_batch_size"] == 10
 
@@ -1405,27 +1423,34 @@ class TestAst874FetchCulturePagesConfig:
 
     def test_job_states_and_like_priors(self) -> None:
         # AST-1156: Skipped Retry lands LIKE fails back on CULTURE_READY.
+        # AST-2086: ERROR_GRADE_LIKE / NEED_WEBSITE_CONTENT split to per-task names.
         assert cfg.JOB_STATES["CULTURE_READY"]["prior_states"] == [
             "PASSED_GET",
             "FAILED_LIKE",
-            "FAILED_TECHNICAL_LIKE",
-            "NEED_WEBSITE_CONTENT",
+            "ERROR_GRADE_LIKE",
+            "ERROR_GRADE_LIKE_NO_WEBSITE_CONTENT",
+            "ERROR_ANALYSIS_UPSHOT_NO_WEBSITE_CONTENT",
         ]
-        assert cfg.JOB_STATES["NEED_CULTURE_CONTENT"]["prior_states"] == ["PASSED_GET"]
-        assert cfg.JOB_STATES["NO_CULTURE_LINKS"]["prior_states"] == ["PASSED_GET"]
+        for st in (
+            "ERROR_FETCH_CULTURE_PAGES_UNREADABLE",
+            "BOT_BLOCKED_FETCH_CULTURE_PAGES",
+            "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS",
+        ):
+            assert cfg.JOB_STATES[st]["prior_states"] == ["PASSED_GET"], st
         # AST-1155: CULTURE_READY_RETRY is also a prior for LIKE outcomes — derived, not declared (AST-1808).
-        for t in ("PASSED_LIKE", "FAILED_LIKE", "FAILED_TECHNICAL_LIKE"):
+        for t in ("PASSED_LIKE", "FAILED_LIKE", "ERROR_GRADE_LIKE"):
             assert cfg.JOB_STATES[t]["prior_states"] == ["CULTURE_READY"], t
             assert "CULTURE_READY_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, t), t
-        assert "CULTURE_READY" in cfg.JOB_STATES["NEED_WEBSITE_CONTENT"]["prior_states"]
+        assert "CULTURE_READY" in cfg.JOB_STATES["ERROR_GRADE_LIKE_NO_WEBSITE_CONTENT"]["prior_states"]
 
     def test_gazer_and_dispatch_registry(self) -> None:
         from src.utils.config import _dispatch_trigger_state_for_task_key
 
         entry = cfg.GAZER_CONFIG["fetch_culture_pages"]
         assert entry["pass_state"] == "CULTURE_READY"
-        assert entry["fail_state"] == "NEED_CULTURE_CONTENT"
-        assert entry["no_links_state"] == "NO_CULTURE_LINKS"
+        assert entry["fail_state"] == "ERROR_FETCH_CULTURE_PAGES_UNREADABLE"
+        assert entry["no_links_state"] == "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS"
+        assert entry["bot_blocked_state"] == "BOT_BLOCKED_FETCH_CULTURE_PAGES"
         assert entry["fallback_batch_size"] == 10
         # AST-960: fetch_culture_pages is gazer runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "fetch_culture_pages" not in cfg.TASK_CONFIG
@@ -1441,16 +1466,25 @@ class TestAst874FetchCulturePagesConfig:
         assert "CULTURE_READY" in cfg.PASSED_SCORE_GATED_STATES
         # AST-1974: Processing (ex In Review) = complement of the four explicit lists.
         assert "CULTURE_READY" not in cfg.JOBS_PROCESSING_EXCLUDED_STATES
-        assert "NEED_CULTURE_CONTENT" in cfg.SKIPPED_STATES
-        assert "NO_CULTURE_LINKS" in cfg.SKIPPED_STATES
+        assert "ERROR_FETCH_CULTURE_PAGES_UNREADABLE" in cfg.SKIPPED_STATES
+        assert "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS" in cfg.SKIPPED_STATES
+        assert "BOT_BLOCKED_FETCH_CULTURE_PAGES" in cfg.SKIPPED_STATES
         review_states = [row["state"] for row in cfg.JOBS_PROCESSING_UI_SECTIONS]
         assert review_states.index("PASSED_GET") < review_states.index("CULTURE_READY")
         assert review_states.index("CULTURE_READY") < review_states.index("PASSED_LIKE")
-        assert cfg.JOBS_SKIPPED_SECTION_ORDER.index("NEED_WEBSITE_CONTENT") < cfg.JOBS_SKIPPED_SECTION_ORDER.index(
-            "NEED_CULTURE_CONTENT"
+        order = cfg.JOBS_SKIPPED_SECTION_ORDER
+        assert order.index("ERROR_ANALYSIS_UPSHOT_NO_WEBSITE_CONTENT") < order.index(
+            "ERROR_FETCH_CULTURE_PAGES_UNREADABLE"
         )
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["NEED_CULTURE_CONTENT"] == "Need Culture Content"
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["NO_CULTURE_LINKS"] == "No Culture Links"
+        # Bot split sits right after the no-links key, labelled like the bare BOT_BLOCKED it split from.
+        assert order.index("BOT_BLOCKED_FETCH_CULTURE_PAGES") == order.index(
+            "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS"
+        ) + 1
+        labels = cfg.JOBS_SKIPPED_SECTION_LABELS
+        assert labels["ERROR_FETCH_CULTURE_PAGES_UNREADABLE"] == "Need Culture Content"
+        assert labels["ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS"] == "No Culture Links"
+        assert labels["BOT_BLOCKED_FETCH_CULTURE_PAGES"] == "Bot Blocked"
+        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["BOT_BLOCKED_FETCH_CULTURE_PAGES"] == "PASSED_GET"
 
 
 
@@ -1491,7 +1525,8 @@ class TestAst507EncodedPrefilterConfig:
     def test_company_states_and_transitions(self) -> None:
         assert "PREFILTER_PASSED" in cfg.COMPANY_STATES
         assert "PREFILTER_FAILED" in cfg.COMPANY_STATES
-        assert "NO_PREFILTER_JOBLISTS" in cfg.COMPANY_STATES
+        # AST-2086: prefilter terminals renamed onto ERROR_PREFILTER_COMPANY*.
+        assert "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS" in cfg.COMPANY_STATES
         # AST-1808: implicit retry substate.
         assert cfg.is_registered_state(cfg.COMPANY_STATES, "WEBSITE_FOUND_RETRY")
         assert "WEBSITE_FOUND_RETRY" not in cfg.COMPANY_STATES
@@ -1500,7 +1535,9 @@ class TestAst507EncodedPrefilterConfig:
         assert cfg.is_registered_state(cfg.COMPANY_STATES, "HOMEPAGE_READY_RETRY")
         assert "HOMEPAGE_READY_RETRY" not in cfg.COMPANY_STATES
         assert cfg.ROSTER_CONFIG["prefilter"]["retry_state"] == "HOMEPAGE_READY_RETRY"
-        assert cfg.ROSTER_CONFIG["prefilter"]["no_pjl_state"] == "NO_PREFILTER_JOBLISTS"
+        assert cfg.ROSTER_CONFIG["prefilter"]["no_pjl_state"] == "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS"
+        assert cfg.ROSTER_CONFIG["prefilter"]["error_state"] == "ERROR_PREFILTER_COMPANY"
+        assert cfg.ROSTER_CONFIG["prefilter"]["unreadable_state"] == "ERROR_PREFILTER_COMPANY_UNREADABLE"
         assert cfg.ROSTER_CONFIG["prefilter"]["pjl_url_data_key"] == "possible_joblist_links"
         assert (
             cfg.ROSTER_CONFIG["company_data_keys"]["possible_joblist_links"]
@@ -1509,19 +1546,19 @@ class TestAst507EncodedPrefilterConfig:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("WEBSITE_FOUND", "PREFILTER_PASSED") in transitions
         assert ("WEBSITE_FOUND", "PREFILTER_FAILED") in transitions
-        assert ("WEBSITE_FOUND", "NO_PREFILTER_JOBLISTS") in transitions
+        assert ("WEBSITE_FOUND", "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS") in transitions
         assert ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY") in transitions
-        assert ("WEBSITE_FOUND", "ERROR_PREFILTER") in transitions
-        assert ("HOMEPAGE_READY", "NO_PREFILTER_JOBLISTS") in transitions
+        assert ("WEBSITE_FOUND", "ERROR_PREFILTER_COMPANY") in transitions
+        assert ("HOMEPAGE_READY", "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS") in transitions
         # AST-1839: HR → HR_RETRY first strike; out of HR_RETRY to every evaluate/terminal outcome; envelope HR → WFR kept.
         assert ("HOMEPAGE_READY", "HOMEPAGE_READY_RETRY") in transitions
         assert ("HOMEPAGE_READY", "WEBSITE_FOUND_RETRY") in transitions
         for dest in (
-            "PREFILTER_PASSED", "PREFILTER_FAILED", "NO_PREFILTER_JOBLISTS", "TO_WATCH",
-            "IGNORE", "ERROR_PREFILTER", "CANNOT_READ_WEBSITE",
+            "PREFILTER_PASSED", "PREFILTER_FAILED", "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS", "TO_WATCH",
+            "IGNORE", "ERROR_PREFILTER_COMPANY", "ERROR_PREFILTER_COMPANY_UNREADABLE",
         ):
             assert ("HOMEPAGE_READY_RETRY", dest) in transitions, dest
-        assert "NO_PREFILTER_JOBLISTS" not in cfg.ROSTER_CONFIG["prefilter"]["pass_states"]
+        assert "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS" not in cfg.ROSTER_CONFIG["prefilter"]["pass_states"]
 
     def test_prefilter_company_grades_encoded(self) -> None:
         entry = cfg.TASK_CONFIG["prefilter_company"]
@@ -1596,9 +1633,10 @@ class TestAst505InflowDiscoveryConfig:
         assert "DISCOVERED" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("NEW", "WEBSITE_FOUND") not in transitions
-        assert ("NEW", "NO_WEBSITE") not in transitions
+        # AST-2086: NO_WEBSITE → ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND on the inflow path.
+        assert ("NEW", "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND") not in transitions
         assert ("DISCOVERED", "WEBSITE_FOUND") in transitions
-        assert ("DISCOVERED", "NO_WEBSITE") in transitions
+        assert ("DISCOVERED", "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND") in transitions
 
     def test_vet_failed_state_and_transition(self) -> None:
         assert "VET_FAILED" in cfg.COMPANY_STATES
@@ -1658,7 +1696,7 @@ class TestAst506InflowResolveConfig:
         assert "ai_task_key" not in r
         assert r["waiting_state"] == "WEBSITE_REVIEW"
         assert r["pass_state"] == "WEBSITE_REVIEW"
-        assert r["fail_state"] == "NO_WEBSITE"
+        assert r["fail_state"] == "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND"  # AST-2086
         assert r["hit_list_data_key"] == "inflow_resolve_website_hits"
 
     def test_inflow_resolve_website_dispatch_admin_defaults(self) -> None:
@@ -2251,11 +2289,12 @@ class TestAst898NewRetryQualifyHolding:
     def test_consult_batch_fail_dest_matrix(self) -> None:
         from src.core import consult as consult_mod
 
-        err = cfg.TASK_CONFIG["qualify_job_listings"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest("VALID_TITLE", err) == "NEW_RETRY"
-        assert consult_mod._consult_batch_fail_dest("NEW", err) == "NEW_RETRY"
-        assert consult_mod._consult_batch_fail_dest("NEW_RETRY", err) == err
-        assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err) == err
+        tk = "qualify_job_listings"
+        err = cfg.TASK_CONFIG[tk]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("VALID_TITLE", err, tk) == "NEW_RETRY"
+        assert consult_mod._consult_batch_fail_dest("NEW", err, tk) == "NEW_RETRY"
+        assert consult_mod._consult_batch_fail_dest("NEW_RETRY", err, tk) == err
+        assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err, tk) == err
 
 
 class TestAst1339MeteoriteNewRetryQualifyHolding:
@@ -2293,11 +2332,12 @@ class TestAst1339MeteoriteNewRetryQualifyHolding:
     def test_consult_batch_fail_dest_matrix(self) -> None:
         from src.core import consult as consult_mod
 
-        err = cfg.TASK_CONFIG["qualify_meteorite"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW", err) == "METEORITE_NEW_RETRY"
+        tk = "qualify_meteorite"
+        err = cfg.TASK_CONFIG[tk]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW", err, tk) == "METEORITE_NEW_RETRY"
         assert (
-            consult_mod._consult_batch_fail_dest("METEORITE_NEW_RETRY", err)
-            == "METEORITE_ERROR_QUALIFY"
+            consult_mod._consult_batch_fail_dest("METEORITE_NEW_RETRY", err, tk)
+            == "ERROR_QUALIFY_METEORITE"  # AST-2086 (was ERROR_QUALIFY_METEORITE)
         )
 
 
@@ -3018,15 +3058,15 @@ class TestAst1053MeteoriteGdlJobStates:
     )
     _FAIL = (
         "METEORITE_FAILED_QUALIFY",  # AST-1060
-        "METEORITE_ERROR_QUALIFY",  # AST-1060
+        "ERROR_QUALIFY_METEORITE",  # AST-1060
         "METEORITE_FAILED_JD",
-        "METEORITE_ERROR_EVALUATE_JD",
+        "ERROR_EVALUATE_METEORITE",
         "METEORITE_FAILED_DO",
-        "METEORITE_FAILED_TECHNICAL_DO",
+        "ERROR_METEORITE_GRADE_DO",
         "METEORITE_FAILED_GET",
-        "METEORITE_FAILED_TECHNICAL_GET",
+        "ERROR_METEORITE_GRADE_GET",
         "METEORITE_FAILED_LIKE",
-        "METEORITE_FAILED_TECHNICAL_LIKE",
+        "ERROR_METEORITE_LIKE",
     )
 
     def test_job_states_priors(self) -> None:
@@ -3037,30 +3077,30 @@ class TestAst1053MeteoriteGdlJobStates:
         # AST-1808: declared priors are base-only; each dropped *_RETRY holding is a derived prior
         # (AST-1339 / AST-1338 METEORITE_NEW_RETRY leave-holding; AST-1155 graded-trigger holdings).
         declared = {
-            "METEORITE_QUALIFIED": (["METEORITE_NEW", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "METEORITE_NEW_RETRY"),
+            "METEORITE_QUALIFIED": (["METEORITE_NEW", "METEORITE_FAILED_JD", "ERROR_EVALUATE_METEORITE"], "METEORITE_NEW_RETRY"),
             "METEORITE_FAILED_QUALIFY": (["METEORITE_NEW"], "METEORITE_NEW_RETRY"),
-            "METEORITE_ERROR_QUALIFY": (["METEORITE_NEW"], "METEORITE_NEW_RETRY"),
+            "ERROR_QUALIFY_METEORITE": (["METEORITE_NEW"], "METEORITE_NEW_RETRY"),
             "METEORITE_PASSED_JD": (
-                ["METEORITE_QUALIFIED", "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO"],
+                ["METEORITE_QUALIFIED", "METEORITE_FAILED_DO", "ERROR_METEORITE_GRADE_DO"],
                 "METEORITE_QUALIFIED_RETRY",
             ),
             "METEORITE_FAILED_JD": (["METEORITE_QUALIFIED"], "METEORITE_QUALIFIED_RETRY"),
-            "METEORITE_ERROR_EVALUATE_JD": (["METEORITE_QUALIFIED"], "METEORITE_QUALIFIED_RETRY"),
+            "ERROR_EVALUATE_METEORITE": (["METEORITE_QUALIFIED"], "METEORITE_QUALIFIED_RETRY"),
             "METEORITE_PASSED_DO": (
-                ["METEORITE_PASSED_JD", "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET"],
+                ["METEORITE_PASSED_JD", "METEORITE_FAILED_GET", "ERROR_METEORITE_GRADE_GET"],
                 "METEORITE_PASSED_JD_RETRY",
             ),
             "METEORITE_FAILED_DO": (["METEORITE_PASSED_JD"], "METEORITE_PASSED_JD_RETRY"),
-            "METEORITE_FAILED_TECHNICAL_DO": (["METEORITE_PASSED_JD"], "METEORITE_PASSED_JD_RETRY"),
+            "ERROR_METEORITE_GRADE_DO": (["METEORITE_PASSED_JD"], "METEORITE_PASSED_JD_RETRY"),
             "METEORITE_PASSED_GET": (
-                ["METEORITE_PASSED_DO", "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE"],
+                ["METEORITE_PASSED_DO", "METEORITE_FAILED_LIKE", "ERROR_METEORITE_LIKE"],
                 "METEORITE_PASSED_DO_RETRY",
             ),
             "METEORITE_FAILED_GET": (["METEORITE_PASSED_DO"], "METEORITE_PASSED_DO_RETRY"),
-            "METEORITE_FAILED_TECHNICAL_GET": (["METEORITE_PASSED_DO"], "METEORITE_PASSED_DO_RETRY"),
+            "ERROR_METEORITE_GRADE_GET": (["METEORITE_PASSED_DO"], "METEORITE_PASSED_DO_RETRY"),
             "METEORITE_PASSED_LIKE": (["METEORITE_PASSED_GET"], "METEORITE_PASSED_GET_RETRY"),
             "METEORITE_FAILED_LIKE": (["METEORITE_PASSED_GET"], "METEORITE_PASSED_GET_RETRY"),
-            "METEORITE_FAILED_TECHNICAL_LIKE": (["METEORITE_PASSED_GET"], "METEORITE_PASSED_GET_RETRY"),
+            "ERROR_METEORITE_LIKE": (["METEORITE_PASSED_GET"], "METEORITE_PASSED_GET_RETRY"),
             "PASSED_LIKE": (["CULTURE_READY"], "CULTURE_READY_RETRY"),
         }
         for target, (raw, retry) in declared.items():
@@ -3103,14 +3143,14 @@ class TestAst1053MeteoriteGdlJobStates:
         for state in self._FAIL:
             assert state in order, state
             assert order.count(state) == 1, state
-        assert order.index("FAILED_TECHNICAL_LIKE") < order.index("METEORITE_FAILED_LIKE")
+        assert order.index("ERROR_GRADE_LIKE") < order.index("METEORITE_FAILED_LIKE")
         assert order.index("METEORITE_FAILED_LIKE") < order.index("FAILED_GET")
         assert order.index("FAILED_JD") < order.index("METEORITE_FAILED_JD")
         assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_JD"] == "Meteorite Failed JD"
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_EVALUATE_JD"] == "Meteorite Error Evaluate JD"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["ERROR_EVALUATE_METEORITE"] == "Meteorite Error Evaluate JD"
         assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_QUALIFY"] == "Meteorite Failed Qualify"
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_QUALIFY"] == "Meteorite Error Qualify"
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_TECHNICAL_LIKE"] == (
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["ERROR_QUALIFY_METEORITE"] == "Meteorite Error Qualify"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["ERROR_METEORITE_LIKE"] == (
             "Meteorite Failed Technical LIKE"
         )
 
@@ -3125,10 +3165,10 @@ class TestAst1053MeteoriteGdlJobStates:
         assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_DO"] == "do_grades"
         assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_GET"] == "get_grades"
         assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_LIKE"] == "like_grades"
-        assert "METEORITE_FAILED_TECHNICAL_DO" not in cfg.JOBS_SKIPPED_GRADE_FIELD
-        assert "METEORITE_ERROR_EVALUATE_JD" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "ERROR_METEORITE_GRADE_DO" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "ERROR_EVALUATE_METEORITE" not in cfg.JOBS_SKIPPED_GRADE_FIELD
         assert "METEORITE_FAILED_QUALIFY" not in cfg.JOBS_SKIPPED_GRADE_FIELD
-        assert "METEORITE_ERROR_QUALIFY" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "ERROR_QUALIFY_METEORITE" not in cfg.JOBS_SKIPPED_GRADE_FIELD
 
     def test_non_meteorite_gdl_and_recommended_untouched(self) -> None:
         # AC2 smoke: score-gated exceptions + non-meteorite GDL priors.
@@ -3151,7 +3191,7 @@ class TestAst1053MeteoriteGdlJobStates:
         assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == [
             "JD_READY",
             "FAILED_DO",
-            "FAILED_TECHNICAL_DO",
+            "ERROR_GRADE_DO",
         ]
         assert "JD_READY_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "PASSED_JD")
         # Non-meteorite qualify path untouched (AST-1060 AC7 smoke).
@@ -3251,7 +3291,7 @@ class TestAst1060QualifyMeteoriteConfig:
         assert tc["output_type"] == "fields"
         assert tc["pass_state"] == "METEORITE_QUALIFIED"
         assert tc["fail_state"] == "METEORITE_FAILED_QUALIFY"
-        assert tc["error_state"] == "METEORITE_ERROR_QUALIFY"
+        assert tc["error_state"] == "ERROR_QUALIFY_METEORITE"
         assert tc["agent_task"] == "qualify_meteorite"
         assert tc["entity_type"] == "job"
         assert tc["requires_candidate_key"] is True
@@ -3413,24 +3453,27 @@ class TestAst1195SchemaNullsAndBotBlocked:
     def test_bot_blocked_registry_and_skipped_ui(self) -> None:
         from src.utils import config as cfg
 
-        assert "BOT_BLOCKED" in cfg.JOB_STATES
+        # AST-2086: bare BOT_BLOCKED split per writing task (fetch_jd / fetch_relative_jd / qualify_meteorite).
+        bots = ("BOT_BLOCKED_FETCH_JD", "BOT_BLOCKED_FETCH_RELATIVE_JD", "BOT_BLOCKED_QUALIFY_METEORITE")
+        assert "BOT_BLOCKED" not in cfg.JOB_STATES
         assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES
-        # AST-2024: RELATIVE_JOB_LINK click-through fetch can also land a job in BOT_BLOCKED.
-        assert cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"] == ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"]
-        # AST-1808: METEORITE_NEW_RETRY prior is derived (AST-1339), not declared.
-        assert "METEORITE_NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "BOT_BLOCKED")
-        assert "BOT_BLOCKED" in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
-        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
-        assert "BOT_BLOCKED" in cfg.SKIPPED_STATES
-        assert "BOT_BLOCKED" in cfg.JOBS_SKIPPED_SECTION_ORDER
-        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["BOT_BLOCKED"] == "PASSED_JOBLIST"
-        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE
-        assert "BOT_BLOCKED" in cfg.GAZER_CONFIG["fetch_jd"]["error_states"]
-        assert "JD_SCRAPE_FAIL_BOT" not in cfg.GAZER_CONFIG["fetch_jd"]["error_states"]
-        # Title-case fallback — no explicit JOBS_SKIPPED_SECTION_LABELS pin required.
         skipped = cfg.build_state_ui_manifest()["jobs"]["skipped"]
-        assert skipped["section_labels"]["BOT_BLOCKED"] == "Bot Blocked"
-        assert skipped["bulk_retry_to_state_by_from_state"]["BOT_BLOCKED"] == "PASSED_JOBLIST"
+        for bot in bots:
+            # AST-2024: RELATIVE_JOB_LINK click-through fetch can also land a job bot-blocked (carried prior).
+            assert cfg.JOB_STATES[bot]["prior_states"] == ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"], bot
+            # AST-1808: METEORITE_NEW_RETRY prior is derived (AST-1339), not declared.
+            assert "METEORITE_NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, bot), bot
+            assert bot in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"], bot
+            assert bot in cfg.SKIPPED_STATES, bot
+            assert bot in cfg.JOBS_SKIPPED_SECTION_ORDER, bot
+            assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE[bot] == "PASSED_JOBLIST", bot
+            # Effective label of the bare state it split from (title-case "Bot Blocked").
+            assert skipped["section_labels"][bot] == "Bot Blocked", bot
+            assert skipped["bulk_retry_to_state_by_from_state"][bot] == "PASSED_JOBLIST", bot
+        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
+        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE
+        assert cfg.GAZER_CONFIG["fetch_jd"]["classified_states"]["bot"] == "BOT_BLOCKED_FETCH_JD"
+        assert cfg.GAZER_CONFIG["fetch_relative_jd"]["classified_states"]["bot"] == "BOT_BLOCKED_FETCH_RELATIVE_JD"
 
 
 class TestAst1197QualifyMeteoriteApplyKnobs:
@@ -3441,9 +3484,9 @@ class TestAst1197QualifyMeteoriteApplyKnobs:
 
         tc = cfg.TASK_CONFIG["qualify_meteorite"]
         assert tc["email_link_prefix"] == "email-"
-        assert tc["bot_blocked_state"] == "BOT_BLOCKED"
-        assert "METEORITE_NEW" in cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"]
-        assert "METEORITE_NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "BOT_BLOCKED")
+        assert tc["bot_blocked_state"] == "BOT_BLOCKED_QUALIFY_METEORITE"  # AST-2086
+        assert "METEORITE_NEW" in cfg.JOB_STATES["BOT_BLOCKED_QUALIFY_METEORITE"]["prior_states"]
+        assert "METEORITE_NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "BOT_BLOCKED_QUALIFY_METEORITE")
 
     def test_challenge_bot_signals_present(self) -> None:
         from src.utils import config as cfg
@@ -3624,7 +3667,7 @@ class TestAst1055MeteoriteLikeUpshotTasks:
 
         assert like["pass_state"] == "METEORITE_PASSED_LIKE"
         assert like["fail_state"] == "METEORITE_FAILED_LIKE"
-        assert like["error_state"] == "METEORITE_FAILED_TECHNICAL_LIKE"
+        assert like["error_state"] == "ERROR_METEORITE_LIKE"
         assert like["requires_company"] is False
         assert like["rubric_artifact"] == "like_rubric"
         assert like["grades_key"] == "like_grades"
@@ -4786,13 +4829,13 @@ class TestAst1156SkippedBulkRetryMap:
     def test_ac_critical_hop_targets(self) -> None:
         m = cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE
         assert m["METEORITE_FAILED_DO"] == "METEORITE_PASSED_JD"
-        assert m["METEORITE_FAILED_TECHNICAL_DO"] == "METEORITE_PASSED_JD"
+        assert m["ERROR_METEORITE_GRADE_DO"] == "METEORITE_PASSED_JD"
         assert m["FAILED_DO"] == "PASSED_JD"
         assert m["FAILED_GET"] == "PASSED_DO"
         assert m["FAILED_LIKE"] == "CULTURE_READY"
         assert m["METEORITE_FAILED_LIKE"] == "METEORITE_PASSED_GET"
         # Primaries only — not AST-1155 *_RETRY holdings.
-        assert m["FAILED_TECHNICAL_LIKE"] == "CULTURE_READY"
+        assert m["ERROR_GRADE_LIKE"] == "CULTURE_READY"
         assert "RETRY" not in m["METEORITE_FAILED_DO"]
 
     def test_manifest_exposes_map_not_scalar_new(self) -> None:
@@ -4866,7 +4909,7 @@ class TestAst1220TaskAliasConfigContract:
         assert do["master_task_key"] == "grade_do"
         assert do["pass_state"] == "METEORITE_PASSED_DO"
         assert do["fail_state"] == "METEORITE_FAILED_DO"
-        assert do["error_state"] == "METEORITE_FAILED_TECHNICAL_DO"
+        assert do["error_state"] == "ERROR_METEORITE_GRADE_DO"
         assert do["trigger_state"] == "METEORITE_PASSED_JD"
         assert do["entity_type"] == "job"
         assert do["scored"] is True
@@ -4874,7 +4917,7 @@ class TestAst1220TaskAliasConfigContract:
         assert get["master_task_key"] == "grade_get"
         assert get["pass_state"] == "METEORITE_PASSED_GET"
         assert get["fail_state"] == "METEORITE_FAILED_GET"
-        assert get["error_state"] == "METEORITE_FAILED_TECHNICAL_GET"
+        assert get["error_state"] == "ERROR_METEORITE_GRADE_GET"
         assert get["trigger_state"] == "METEORITE_PASSED_DO"
         assert "agent_task" not in get
         # AST-1221: symbol deleted (AST-1220 had emptied the dict).
@@ -4893,9 +4936,9 @@ class TestAst1220TaskAliasConfigContract:
         assert "meteorite_grade_get" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         for st in (
             "METEORITE_FAILED_DO",
-            "METEORITE_FAILED_TECHNICAL_DO",
+            "ERROR_METEORITE_GRADE_DO",
             "METEORITE_FAILED_GET",
-            "METEORITE_FAILED_TECHNICAL_GET",
+            "ERROR_METEORITE_GRADE_GET",
         ):
             assert st in cfg._TRANSITION_STATES_USED_BY_SCORED_TASKS
             assert cfg.dispatch_claim_uses_score_floor(st) is True
@@ -5564,16 +5607,31 @@ class TestAst1557MeteoriteStates:
 
     def test_seven_keys_and_new_entry(self) -> None:
         # AST-1773: CHECK_UNIQUE + DUPLICATE join the closed set; READY priors via uniqueness hop.
+        # AST-2086: BOT_BLOCKED / SCRAPE_ERROR / LINK_EXPIRED / NEW_EMAIL_ERROR renamed per writing task;
+        # scrape gains its explicit SCRAPE_LINK_RETRY companion + ERROR_SCRAPE_METEORITE terminal.
         assert set(cfg.METEORITE_STATES) == {
-            "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
+            "NEW", "SCRAPE_LINK", "SCRAPE_LINK_RETRY", "ERROR_SCRAPE_METEORITE", "CHECK_UNIQUE", "READY",
+            "BOT_BLOCKED_SCRAPE_METEORITE", "JD_SCRAPE_FAIL_CLOSED", "JD_SCRAPE_FAIL_MISSING",
+            "ERROR_STAGE_METEORITE_UNPARSEABLE", "ERROR_LAND_METEORITE", "NOT_A_JOB", "ERROR_STAGE_METEORITE",
+            "DUPLICATE", "LANDED", "ABANDONED",
         }
         assert "ERROR" not in cfg.METEORITE_STATES
-        assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
-        assert cfg.METEORITE_STATES["LINK_EXPIRED"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["ERROR_STAGE_METEORITE"]
+        assert cfg.METEORITE_STATES["JD_SCRAPE_FAIL_CLOSED"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["JD_SCRAPE_FAIL_MISSING"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["SCRAPE_LINK_RETRY"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["ERROR_SCRAPE_METEORITE"]["prior_states"] == ["SCRAPE_LINK_RETRY"]
+        assert cfg.METEORITE_STATES["SCRAPE_LINK"]["prior_states"] == [
+            "NEW", "SCRAPE_LINK_RETRY", "ERROR_STAGE_METEORITE_UNPARSEABLE", "ERROR_LAND_METEORITE",
+            "ERROR_SCRAPE_METEORITE",
+        ]
         assert cfg.METEORITE_STATES["CHECK_UNIQUE"]["prior_states"] == ["NEW", "SCRAPE_LINK"]
         assert cfg.METEORITE_STATES["DUPLICATE"]["prior_states"] == ["CHECK_UNIQUE"]
-        assert cfg.METEORITE_STATES["READY"]["prior_states"] == ["CHECK_UNIQUE", "BOT_BLOCKED"]
+        assert cfg.METEORITE_STATES["READY"]["prior_states"] == ["CHECK_UNIQUE", "BOT_BLOCKED_SCRAPE_METEORITE"]
+        assert cfg.METEORITE_STATES["ABANDONED"]["prior_states"] == [
+            "BOT_BLOCKED_SCRAPE_METEORITE", "SCRAPE_LINK_RETRY", "ERROR_STAGE_METEORITE_UNPARSEABLE",
+            "ERROR_LAND_METEORITE",
+        ]
         assert all("prior_states" in entry for entry in cfg.METEORITE_STATES.values())
 
     def test_distinct_from_job_states_meteorite_labels(self) -> None:
@@ -5622,17 +5680,28 @@ class TestAst1560IngressDispatchConfig:
             "land_trigger_state",
         ):
             assert ingress[tr] in cfg.METEORITE_STATES
-        assert set(ingress["scrape_page_status_states"].values()) <= {
+        # AST-2086: closed / missing split onto JD_SCRAPE_FAIL_*; blocked → BOT_BLOCKED_SCRAPE_METEORITE.
+        assert set(ingress["scrape_page_status_states"].values()) == {
             "CHECK_UNIQUE",
-            "BOT_BLOCKED",
-            "SCRAPE_ERROR",
-            "LINK_EXPIRED",
+            "BOT_BLOCKED_SCRAPE_METEORITE",
+            "JD_SCRAPE_FAIL_CLOSED",
+            "JD_SCRAPE_FAIL_MISSING",
         }
         page = ingress["scrape_page_status_states"]
-        assert page["closed"] == "LINK_EXPIRED"
-        assert page["missing"] == "LINK_EXPIRED"
-        assert page["blocked"] == "BOT_BLOCKED"
+        assert page["closed"] == "JD_SCRAPE_FAIL_CLOSED"
+        assert page["missing"] == "JD_SCRAPE_FAIL_MISSING"
+        assert page["blocked"] == "BOT_BLOCKED_SCRAPE_METEORITE"
         assert page["ok"] == "CHECK_UNIQUE"
+        assert ingress["scrape_retry_state"] == "SCRAPE_LINK_RETRY"
+        assert ingress["scrape_error_state"] == "ERROR_SCRAPE_METEORITE"
+        assert ingress["stage_error_state"] == "ERROR_STAGE_METEORITE"
+        assert ingress["stage_unparseable_state"] == "ERROR_STAGE_METEORITE_UNPARSEABLE"
+        assert ingress["land_error_state"] == "ERROR_LAND_METEORITE"
+        for k in ("scrape_retry_state", "scrape_error_state", "stage_error_state",
+                  "stage_unparseable_state", "land_error_state"):
+            assert ingress[k] in cfg.METEORITE_STATES, k
+        # Scrape claims both its trigger and the retry companion (patt.task.dispatch-retry).
+        assert cfg.dispatch_claim_states("SCRAPE_LINK", "meteorite") == ["SCRAPE_LINK", "SCRAPE_LINK_RETRY"]
 
     def test_seed_catalog_has_ingress_dispatch_rows(self) -> None:
         assert "dispatch_task-meteorite-ingress" in cfg.SEED_CONFIG
@@ -5651,7 +5720,7 @@ class TestAst1561BotBlockedNotifyConfig:
     def test_notify_config_literals(self) -> None:
         notify = cfg.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
         assert notify["task_key"] == "meteorite_bot_blocked_notify"
-        assert notify["trigger_state"] == "BOT_BLOCKED"
+        assert notify["trigger_state"] == "BOT_BLOCKED_SCRAPE_METEORITE"  # AST-2086
         assert notify["trigger_state"] in cfg.METEORITE_STATES
         assert "{link}" in notify["dm_first_template"]
         assert "{nag_count}" in notify["dm_nag_template"]
@@ -5662,7 +5731,7 @@ class TestAst1561BotBlockedNotifyConfig:
         sql = cfg.SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]
         blob = sql if isinstance(sql, str) else "\n".join(sql)
         assert "meteorite_bot_blocked_notify" in blob
-        assert "BOT_BLOCKED" in blob
+        assert "'BOT_BLOCKED_SCRAPE_METEORITE'" in blob
 
 
 class TestAst1562RetentionConfig:
@@ -6443,9 +6512,9 @@ class TestAst1621MeteoriteEntityTypeRegistry:
             "SCRAPE_LINK",
             "SCRAPE_LINK_RETRY",
         ]
-        assert cfg.dispatch_claim_states("BOT_BLOCKED", "meteorite") == [
-            "BOT_BLOCKED",
-            "BOT_BLOCKED_RETRY",
+        assert cfg.dispatch_claim_states("BOT_BLOCKED_SCRAPE_METEORITE", "meteorite") == [
+            "BOT_BLOCKED_SCRAPE_METEORITE",
+            "BOT_BLOCKED_SCRAPE_METEORITE_RETRY",
         ]
 
     def test_dispatch_sort_by_meteorite(self) -> None:
@@ -6467,7 +6536,7 @@ class TestAst1621MeteoriteEntityTypeRegistry:
 
         notify = cfg.SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]
         notify_blob = notify if isinstance(notify, str) else "\n".join(notify)
-        assert ", 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED'" in notify_blob
+        assert ", 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED_SCRAPE_METEORITE'" in notify_blob
         assert ", 'meteorite_bot_blocked_notify', NULL," not in notify_blob
 
         retire = cfg.SEED_CONFIG["dispatch_task-meteorite-ingress-retire-null-pool"]
@@ -6614,14 +6683,14 @@ class TestAst1672DiscoveredResolveRegistrySsot:
             ("DISCOVERED", "WEBSITE_FOUND"),
             ("DISCOVERED", "VET_FAILED"),
             ("DISCOVERED", "WEBSITE_REVIEW"),
-            ("DISCOVERED", "NO_WEBSITE"),
+            ("DISCOVERED", "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND"),
             ("WEBSITE_REVIEW", "WEBSITE_FOUND"),
-            ("WEBSITE_REVIEW", "NO_WEBSITE"),
+            ("WEBSITE_REVIEW", "ERROR_RESOLVE_WEBSITE_NOT_FOUND"),
         ):
             assert edge in transitions
         for gone in (
             ("NEW", "WEBSITE_FOUND"),
-            ("NEW", "NO_WEBSITE"),
+            ("NEW", "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND"),
             ("NEW", "VET_FAILED"),
         ):
             assert gone not in transitions
@@ -6634,7 +6703,7 @@ class TestAst1672DiscoveredResolveRegistrySsot:
         assert entry["trigger_state"] == "WEBSITE_REVIEW"
         assert entry["agent_task"] == "find_company_website"
         assert entry["pass_state"] == "WEBSITE_FOUND"
-        assert entry["fail_state"] == "NO_WEBSITE"
+        assert entry["fail_state"] == "ERROR_RESOLVE_WEBSITE_NOT_FOUND"  # AST-2086
         assert entry["context_format"] == "find_company_website_{index}"
         # Agent identity stays agent-only; SA is resolve_website.
         assert cfg.TASK_CONFIG["find_company_website"]["trigger_state"] is None
@@ -6761,21 +6830,23 @@ class TestAst1712MailboxKeyAndClassifyStates:
 
     def test_classify_states_and_no_dispatch_triggers(self) -> None:
         # AST-1773: closed set includes CHECK_UNIQUE / DUPLICATE; scrape ok → CHECK_UNIQUE.
+        # AST-2086: renamed set (see TestAst1557MeteoriteStates for the full prior pins).
         assert set(cfg.METEORITE_STATES) == {
-            "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
+            "NEW", "SCRAPE_LINK", "SCRAPE_LINK_RETRY", "ERROR_SCRAPE_METEORITE", "CHECK_UNIQUE", "READY",
+            "BOT_BLOCKED_SCRAPE_METEORITE", "JD_SCRAPE_FAIL_CLOSED", "JD_SCRAPE_FAIL_MISSING",
+            "ERROR_STAGE_METEORITE_UNPARSEABLE", "ERROR_LAND_METEORITE", "NOT_A_JOB", "ERROR_STAGE_METEORITE",
+            "DUPLICATE", "LANDED", "ABANDONED",
         }
         assert "ERROR" not in cfg.METEORITE_STATES
-        assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+        assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["ERROR_STAGE_METEORITE"]
         assert cfg.METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
-        assert cfg.METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
-        assert cfg.METEORITE_STATES["SCRAPE_LINK"]["prior_states"] == ["NEW", "SCRAPE_ERROR"]
-        assert cfg.METEORITE_STATES["LINK_EXPIRED"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["ERROR_STAGE_METEORITE"]["prior_states"] is None
+        assert cfg.METEORITE_STATES["ERROR_STAGE_METEORITE_UNPARSEABLE"]["prior_states"] == ["NEW"]
         page = cfg.METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"]
-        assert page["closed"] == "LINK_EXPIRED"
-        assert page["missing"] == "LINK_EXPIRED"
+        assert page["closed"] == "JD_SCRAPE_FAIL_CLOSED"
+        assert page["missing"] == "JD_SCRAPE_FAIL_MISSING"
         assert page["ok"] == "CHECK_UNIQUE"
-        forbidden = {"NEW_EMAIL_ERROR", "NOT_A_JOB"}
+        forbidden = {"ERROR_STAGE_METEORITE", "NOT_A_JOB"}
         for entry in cfg.METEORITE_DISPATCH_TASKS:
             assert entry.get("trigger_state") not in forbidden
         ingress = cfg.METEORITE_INGRESS_DISPATCH_CONFIG
@@ -7134,6 +7205,11 @@ class TestAst1808RetryRegistryPurge:
                         ("METEORITE_FAILED_LIKE_ALL_X", "METEORITE_PASSED_GET")):
             js[s] = [trig, f"{trig}_RETRY", f"{s}_RETRY"]
             js[f"{s}_RETRY"] = [s, f"{s}_RETRY"]
+        # AST-2086 renamed terminals through RETIRED_TERMINAL_STATE_MAP (pinned literally in
+        # TestAst2086RetiredTerminalStateMap): each old key/prior → all its new names; dead keys dropped.
+        for name, entity in (("JOB_STATES", "job"), ("COMPANY_STATES", "company"), ("CANDIDATE_STATES", "candidate")):
+            pinned[name] = self._ast2086_translate(pinned[name], cfg.RETIRED_TERMINAL_STATE_MAP[entity])
+        self._ast2086_additions(pinned)
         for name in self._REGISTRIES:
             reg = getattr(cfg, name)
             targets = list(reg) + [cfg.retry_of(b) for b in reg]
@@ -7155,10 +7231,60 @@ class TestAst1808RetryRegistryPurge:
 
         err = "ERROR_EVALUATE_JD"
         for primary, holding in TestAst1155GradedRetryHoldings._PAIRS:
-            assert consult_mod._consult_batch_fail_dest(primary, err) == holding, primary
-            assert consult_mod._consult_batch_fail_dest(holding, err) == err, holding
-        # analysis_upshot: error_state IS the retry holding → second failure is FAILED_TECHNICAL.
-        assert consult_mod._consult_batch_fail_dest("PASSED_LIKE_RETRY", "PASSED_LIKE_RETRY") == "FAILED_TECHNICAL"
+            assert consult_mod._consult_batch_fail_dest(primary, err, "evaluate_jd") == holding, primary
+            assert consult_mod._consult_batch_fail_dest(holding, err, "evaluate_jd") == err, holding
+        # analysis_upshot: error_state IS the retry holding → second failure is the task's bare
+        # ERROR_<TASK_KEY> (AST-2086; was generic FAILED_TECHNICAL).
+        assert (
+            consult_mod._consult_batch_fail_dest("PASSED_LIKE_RETRY", "PASSED_LIKE_RETRY", "analysis_upshot")
+            == "ERROR_ANALYSIS_UPSHOT"
+        )
+        assert (
+            consult_mod._consult_batch_fail_dest("PASSED_LIKE_RETRY", "PASSED_LIKE_RETRY", "meteorite_upshot")
+            == "ERROR_METEORITE_UPSHOT"
+        )
+
+    @staticmethod
+    def _ast2086_translate(reg: dict, rmap: dict) -> dict:
+        dead = {"PREFILTER_UNKNOWN", "HARD_PARSE", "BUILD_FAILED"}
+
+        def split(s: str) -> tuple:
+            base = s[: -len(cfg.RETRY_SUFFIX)] if s.endswith(cfg.RETRY_SUFFIX) else s
+            return base, s[len(base):]
+
+        def tr(s: str, own: tuple = ("", "")) -> list:
+            base, suffix = split(s)
+            if base in dead:
+                return []
+            # A key's reference to itself (X / X_RETRY) follows that key's own new name only.
+            if own[0] and base == split(own[0])[0]:
+                return [split(own[1])[0] + suffix]
+            if base in rmap:
+                return [n + suffix for n in rmap[base].values()]
+            return [s]
+
+        out: dict = {}
+        for k, v in reg.items():
+            for nk in tr(k):
+                priors = None if v is None else [n for p in v for n in tr(p, (k, nk))]
+                if nk in out and out[nk] is not None and priors is not None:
+                    priors = list(dict.fromkeys(out[nk] + priors))
+                out[nk] = priors
+        return out
+
+    @staticmethod
+    def _ast2086_additions(pinned: dict) -> None:
+        """Deliberate AST-2086 registry additions beyond the 1:N rename (plan Stage 2)."""
+        js, cs = pinned["JOB_STATES"], pinned["COMPANY_STATES"]
+        # Culture-pages bot split: new terminal off PASSED_GET; Skipped retry re-enters PASSED_GET.
+        bot, sib = "BOT_BLOCKED_FETCH_CULTURE_PAGES", "ERROR_FETCH_CULTURE_PAGES_UNREADABLE"
+        js[bot] = [bot if p == sib else f"{bot}_RETRY" if p == f"{sib}_RETRY" else p for p in js[sib]]
+        js[f"{bot}_RETRY"] = [bot, f"{bot}_RETRY"]
+        js["PASSED_GET"] = js["PASSED_GET"] + [bot, f"{bot}_RETRY"]
+        # New company terminals (fetch_website / fetch_job_pages bot walls, parse empty-token): unrestricted.
+        for b in ("BOT_BLOCKED_FETCH_WEBSITE", "BOT_BLOCKED_FETCH_JOB_PAGES", "ERROR_PARSE_JOB_LIST"):
+            cs[b] = None
+            cs[f"{b}_RETRY"] = [b, f"{b}_RETRY"]
 
 
 class TestAst1877LlmCatalogConfig:
@@ -7594,13 +7720,19 @@ class TestAst1974JobsListPartition:
 
     def test_skipped_gains_build_failure_states(self) -> None:
         # AC 5 — terminal build failures live on Skipped with labels + only-legal-successor retry.
-        for s in ("ERROR_BUILD_ARTIFACTS", "BUILD_FAILED"):
+        # AST-2086: ERROR_BUILD_ARTIFACTS split per chain hop (same label + retry); dead BUILD_FAILED deleted.
+        chain = list(cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES)
+        assert len(chain) == 10
+        for s in chain:
             assert s in cfg.SKIPPED_STATES, s
-        assert cfg.JOBS_SKIPPED_SECTION_ORDER[:2] == ["ERROR_BUILD_ARTIFACTS", "BUILD_FAILED"]
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["ERROR_BUILD_ARTIFACTS"] == "Error Build Artifacts"
-        assert cfg.JOBS_SKIPPED_SECTION_LABELS["BUILD_FAILED"] == "Build Failed"
-        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["ERROR_BUILD_ARTIFACTS"] == "RECOMMENDED"
-        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["BUILD_FAILED"] == "CANDIDATE_REVIEW"
+            assert cfg.JOBS_SKIPPED_SECTION_LABELS[s] == "Error Build Artifacts", s
+            assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE[s] == "RECOMMENDED", s
+        assert cfg.JOBS_SKIPPED_SECTION_ORDER[:10] == chain
+        for gone in ("ERROR_BUILD_ARTIFACTS", "BUILD_FAILED"):
+            assert gone not in cfg.SKIPPED_STATES, gone
+            assert gone not in cfg.JOBS_SKIPPED_SECTION_ORDER, gone
+            assert gone not in cfg.JOBS_SKIPPED_SECTION_LABELS, gone
+            assert gone not in cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE, gone
 
     def test_excluded_list_is_disjoint_concatenation(self) -> None:
         # AC 6 / AC 7 — Processing exclusion is derived from the four explicit lists, no overlap.
@@ -7633,7 +7765,7 @@ class TestAst1974JobsListPartition:
         for s in ("NEW", "PASSED_JD", "METEORITE_QUALIFIED", cfg.BUILD_ARTIFACTS_BASE_STATE,
                   "CANDIDATE_REVIEW", "RECOMMENDED"):
             assert s in priors, s
-        for s in ("CANDIDATE_APPLIED", "ERROR_BUILD_ARTIFACTS", "BUILD_FAILED", "CANDIDATE_SKIPPED"):
+        for s in ("CANDIDATE_APPLIED", *cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES, "CANDIDATE_SKIPPED"):
             assert s not in priors, s
 
     def test_processing_sections_end_with_build_and_avoid_explicit_lists(self) -> None:
@@ -7656,9 +7788,12 @@ class TestAst1974JobsListPartition:
         # Report modal still offers Cancel on a running build.
         assert rec["primary_actions_by_state"][cfg.BUILD_ARTIFACTS_BASE_STATE][0]["action_key"] == "cancel_build"
         sk = jobs["skipped"]
-        assert sk["section_order"][:2] == ["ERROR_BUILD_ARTIFACTS", "BUILD_FAILED"]
-        assert sk["section_labels"]["BUILD_FAILED"] == "Build Failed"
-        assert sk["bulk_retry_to_state_by_from_state"]["ERROR_BUILD_ARTIFACTS"] == "RECOMMENDED"
+        chain = list(cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES)
+        assert sk["section_order"][:10] == chain
+        assert "BUILD_FAILED" not in sk["section_labels"]
+        for s in chain:
+            assert sk["section_labels"][s] == "Error Build Artifacts", s
+            assert sk["bulk_retry_to_state_by_from_state"][s] == "RECOMMENDED", s
 
     def test_meteorites_columns_gain_job_state_after_job(self) -> None:
         keys = [c["key"] for c in cfg.JOBS_METEORITES_LIST_COLUMNS]
@@ -7675,31 +7810,37 @@ class TestAst1974JobsListPartition:
 
 
 # AST-2004 · AST-1998: company BOT_BLOCK → BOT_BLOCKED (terminal) + PJL_READY → BOT_BLOCKED transition.
+# AST-2086: the select-side company bot state is now BOT_BLOCKED_SELECT_JOB_PAGE.
 class TestAst2004CompanyBotBlocked:
     def test_rename_complete_and_terminal(self) -> None:
-        assert "BOT_BLOCKED" in cfg.COMPANY_STATES and "BOT_BLOCK" not in cfg.COMPANY_STATES
-        assert cfg.COMPANY_STATES["BOT_BLOCKED"] == {}
+        assert "BOT_BLOCKED_SELECT_JOB_PAGE" in cfg.COMPANY_STATES
+        assert "BOT_BLOCKED" not in cfg.COMPANY_STATES and "BOT_BLOCK" not in cfg.COMPANY_STATES
+        assert cfg.COMPANY_STATES["BOT_BLOCKED_SELECT_JOB_PAGE"] == {}
 
     def test_transitions_renamed_and_pjl_ready_added(self) -> None:
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
-        assert not [t for t in transitions if "BOT_BLOCK" in t]
+        assert not [t for t in transitions if "BOT_BLOCK" in t and not any(
+            x.startswith("BOT_BLOCKED_") for x in t if "BOT_BLOCK" in x)]
         for src in ("TO_WATCH", "JOBS_FOUND", "PREFILTER_PASSED", "PJL_READY"):
-            assert (src, "BOT_BLOCKED") in transitions, src
+            assert (src, "BOT_BLOCKED_SELECT_JOB_PAGE") in transitions, src
 
 
-# AST-2024 · AST-2022: RELATIVE_JOB_LINK / RELATIVE_LINK_FAIL registry + fetch_relative_jd wiring.
+# AST-2024 · AST-2022: RELATIVE_JOB_LINK / ERROR_FETCH_RELATIVE_JD_CLICK registry + fetch_relative_jd wiring.
 # Branches: AC1 registry (exact priors, no VALID_TITLE); skipped list / order / label / bulk retry +
 # manifest; processing section + manifest order; GAZER_CONFIG block; dispatch trigger / entity rules;
 # qualify relative_link_state; no score floor on RELATIVE_JOB_LINK (plan decision).
 class TestAst2024RelativeJobLinkRegistry:
-    _JD_OUTCOMES = ("JD_READY", "BOT_BLOCKED", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE",
+    # AST-2086: bare BOT_BLOCKED / JD_SCRAPE_FAIL / _COOKIE split per fetch task (both carry the prior).
+    _JD_OUTCOMES = ("JD_READY", "BOT_BLOCKED_FETCH_JD", "BOT_BLOCKED_FETCH_RELATIVE_JD",
+                    "ERROR_FETCH_JD_UNREADABLE", "ERROR_FETCH_RELATIVE_JD_UNREADABLE",
+                    "ERROR_FETCH_JD_COOKIE", "ERROR_FETCH_RELATIVE_JD_COOKIE",
                     "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED")
 
     def test_ac1_registry(self) -> None:
         j = cfg.JOB_STATES
-        assert set(j["RELATIVE_JOB_LINK"]["prior_states"]) == {"NEW", "RELATIVE_LINK_FAIL"}
-        assert j["RELATIVE_LINK_FAIL"]["prior_states"] == ["RELATIVE_JOB_LINK"]
-        for s in ("RELATIVE_JOB_LINK", "RELATIVE_LINK_FAIL"):
+        assert set(j["RELATIVE_JOB_LINK"]["prior_states"]) == {"NEW", "ERROR_FETCH_RELATIVE_JD_CLICK"}
+        assert j["ERROR_FETCH_RELATIVE_JD_CLICK"]["prior_states"] == ["RELATIVE_JOB_LINK"]
+        for s in ("RELATIVE_JOB_LINK", "ERROR_FETCH_RELATIVE_JD_CLICK"):
             assert "VALID_TITLE" not in j[s]["prior_states"], s
         for s in self._JD_OUTCOMES:
             assert "RELATIVE_JOB_LINK" in j[s]["prior_states"], s
@@ -7707,14 +7848,14 @@ class TestAst2024RelativeJobLinkRegistry:
         assert "NEW_RETRY" in cfg.state_prior_states(j, "RELATIVE_JOB_LINK")
 
     def test_relative_link_fail_skipped_with_bulk_retry(self) -> None:
-        assert "RELATIVE_LINK_FAIL" in cfg.SKIPPED_STATES
-        assert "RELATIVE_LINK_FAIL" in cfg.JOBS_SKIPPED_SECTION_ORDER
+        assert "ERROR_FETCH_RELATIVE_JD_CLICK" in cfg.SKIPPED_STATES
+        assert "ERROR_FETCH_RELATIVE_JD_CLICK" in cfg.JOBS_SKIPPED_SECTION_ORDER
         assert "RELATIVE_JOB_LINK" not in cfg.SKIPPED_STATES
-        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["RELATIVE_LINK_FAIL"] == "RELATIVE_JOB_LINK"
+        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["ERROR_FETCH_RELATIVE_JD_CLICK"] == "RELATIVE_JOB_LINK"
         sk = cfg.build_state_ui_manifest()["jobs"]["skipped"]
-        assert "RELATIVE_LINK_FAIL" in sk["section_order"]
-        assert sk["section_labels"]["RELATIVE_LINK_FAIL"] == "Relative Link Fail"
-        assert sk["bulk_retry_to_state_by_from_state"]["RELATIVE_LINK_FAIL"] == "RELATIVE_JOB_LINK"
+        assert "ERROR_FETCH_RELATIVE_JD_CLICK" in sk["section_order"]
+        assert sk["section_labels"]["ERROR_FETCH_RELATIVE_JD_CLICK"] == "Relative Link Fail"
+        assert sk["bulk_retry_to_state_by_from_state"]["ERROR_FETCH_RELATIVE_JD_CLICK"] == "RELATIVE_JOB_LINK"
 
     def test_relative_job_link_processing_section_after_passed_joblist(self) -> None:
         ps = cfg.build_state_ui_manifest()["jobs"]["processing_sections"]
@@ -7727,14 +7868,20 @@ class TestAst2024RelativeJobLinkRegistry:
         g = cfg.GAZER_CONFIG["fetch_relative_jd"]
         assert g["trigger_state"] == "RELATIVE_JOB_LINK"
         assert g["pass_state"] == "JD_READY"
-        assert g["fail_state"] == "RELATIVE_LINK_FAIL"
-        # Click reached a page → every fetch_jd JD outcome (its fail_state included) is an error_state;
-        # fail_state is reserved for the click itself failing.
-        fj = cfg.GAZER_CONFIG["fetch_jd"]
-        assert set(g["error_states"]) == {fj["fail_state"], *fj["error_states"]}
+        assert g["fail_state"] == "ERROR_FETCH_RELATIVE_JD_CLICK"
+        # AST-2086: click reached a page → this task's own unreadable + classified names (shared
+        # JD_SCRAPE_FAIL_CLOSED / _MISSING); fail_state is reserved for the click itself failing.
+        assert g["unreadable_state"] == "ERROR_FETCH_RELATIVE_JD_UNREADABLE"
+        assert g["classified_states"] == {
+            "cookie": "ERROR_FETCH_RELATIVE_JD_COOKIE",
+            "bot": "BOT_BLOCKED_FETCH_RELATIVE_JD",
+            "missing": "JD_SCRAPE_FAIL_MISSING",
+            "closed": "JD_SCRAPE_FAIL_CLOSED",
+        }
+        assert "error_states" not in g
         assert isinstance(g["fallback_batch_size"], int) and g["fallback_batch_size"] > 0
         # Every outcome state is legal from the trigger state.
-        for s in [g["pass_state"], g["fail_state"], *g["error_states"]]:
+        for s in [g["pass_state"], g["fail_state"], g["unreadable_state"], *g["classified_states"].values()]:
             assert "RELATIVE_JOB_LINK" in cfg.JOB_STATES[s]["prior_states"], s
 
     def test_dispatch_rules_and_qualify_key(self) -> None:
@@ -7815,7 +7962,7 @@ class TestAst2064ThemeExampleGradeSets:
 class TestAst2069UpshotRegistration:
     def test_states_registered(self) -> None:
         # AC1
-        for s in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_UPSHOT"):
+        for s in ("GET_UPSHOT", "UPSHOT_READY", "ERROR_COMPANY_UPSHOT"):
             assert s in cfg.COMPANY_STATES, s
         assert cfg.COMPANY_STATES["UPSHOT_READY"]["retry_state"] == "UPSHOT_READY_RETRY"
 
@@ -7942,3 +8089,237 @@ class TestAst2081FormatCatalogAndJobStructureKey:
     def test_preview_thumbnail_on_resume_and_cover_tabs_only(self) -> None:
         by_id = {t["tab_id"]: t["preview_thumbnail"] for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
         assert by_id == {"artifact_resume": True, "artifact_cover": True, "artifact_application": False}
+
+
+# AST-2086 · AST-2073: terminal-state grammar — ERROR_<TASK_KEY>[_<CONDITION>] / BOT_BLOCKED_<TASK_KEY>.
+# Branches: naming helpers (bare / condition / bad condition / blank key) + parse (bot / longest-suffix
+# error / bare error / non-terminal); AC 1 registry grammar; retired-name map pinned literally (AC 2 / AC 7
+# source); AC 6 chain dispatch rule; AC 7 bulk-retry + label carry-over vs origin/dev; AC 8 seed JSON;
+# candidate craft-chain per-hop errors; is_build_artifacts_in_progress on per-hop chain errors.
+class TestAst2086TerminalStateGrammar:
+    _CONDITIONS = (
+        "UNREADABLE", "COOKIE", "NOT_FOUND", "NO_JOBLIST", "NO_JOBLIST_LINKS", "NO_SELECTION",
+        "NO_CULTURE_LINKS", "NO_WEBSITE_CONTENT", "UNPARSEABLE", "CLICK",
+    )
+    _RETIRED = (
+        "FAILED_TECHNICAL", "FAILED_TECHNICAL_DO", "FAILED_TECHNICAL_GET", "FAILED_TECHNICAL_LIKE",
+        "BOT_BLOCKED", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "PREFILTER_UNKNOWN", "HARD_PARSE",
+        "BUILD_FAILED", "LINK_EXPIRED", "SCRAPE_ERROR", "NEW_EMAIL_ERROR", "ERROR_BUILD_ARTIFACTS",
+        "REQUESTED_RESUME_ERROR", "REQUESTED_ARTIFACTS_ERROR", "NO_WEBSITE", "ERROR_UPSHOT",
+    )
+
+    def test_condition_vocabulary_closed(self) -> None:
+        assert cfg.TERMINAL_CONDITIONS == self._CONDITIONS
+        assert cfg.ERROR_STATE_PREFIX == "ERROR_"
+        assert cfg.BOT_BLOCKED_STATE_PREFIX == "BOT_BLOCKED_"
+
+    def test_builders(self) -> None:
+        assert cfg.error_state_for("select_job_page") == "ERROR_SELECT_JOB_PAGE"
+        assert cfg.error_state_for(" select_job_page ", "NO_JOBLIST") == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
+        assert cfg.bot_blocked_state_for("fetch_jd") == "BOT_BLOCKED_FETCH_JD"
+        for bad in ("", "   "):
+            with pytest.raises(ValueError):
+                cfg.error_state_for(bad)
+            with pytest.raises(ValueError):
+                cfg.bot_blocked_state_for(bad)
+        # TECHNICAL is not a vocabulary word — a generic catch-all can't be minted.
+        with pytest.raises(ValueError):
+            cfg.error_state_for("grade_do", "TECHNICAL")
+
+    def test_parse_round_trip(self) -> None:
+        assert cfg.parse_terminal_state("BOT_BLOCKED_FETCH_JD") == ("bot_blocked", "fetch_jd", None)
+        # Longest condition suffix wins (NO_JOBLIST_LINKS over NO_JOBLIST).
+        assert cfg.parse_terminal_state("ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS") == (
+            "error", "prefilter_company", "NO_JOBLIST_LINKS",
+        )
+        assert cfg.parse_terminal_state("ERROR_SELECT_JOB_PAGE_NO_JOBLIST") == (
+            "error", "select_job_page", "NO_JOBLIST",
+        )
+        assert cfg.parse_terminal_state("ERROR_GRADE_DO") == ("error", "grade_do", None)
+        for other in ("JD_SCRAPE_FAIL_CLOSED", "PASSED_JD", "BOT_BLOCKED"):
+            assert cfg.parse_terminal_state(other) is None, other
+
+    def test_ac1_registries_follow_grammar(self) -> None:
+        def is_task(k: str) -> bool:
+            try:
+                cfg._dispatch_trigger_state_for_task_key(k)
+                return True
+            except KeyError:
+                return k in cfg.TASK_CONFIG
+
+        bad = []
+        for reg in (cfg.JOB_STATES, cfg.COMPANY_STATES, cfg.CANDIDATE_STATES, cfg.METEORITE_STATES):
+            for s in reg:
+                if "FAILED_TECHNICAL" in s or ("ERROR" in s and not s.startswith("ERROR_")) or s == "BOT_BLOCKED":
+                    bad.append(("shape", s))
+                if s.startswith("BOT_BLOCKED_") and not is_task(s[12:].lower()):
+                    bad.append(("bot", s))
+                if s.startswith("ERROR_") and not is_task(s[6:].lower()) and not any(
+                    s.endswith("_" + v) and is_task(s[6:-len(v) - 1].lower()) for v in self._CONDITIONS
+                ):
+                    bad.append(("err", s))
+                if s in self._RETIRED:
+                    bad.append(("retired", s))
+        assert bad == []
+
+    def test_retired_map_pinned(self) -> None:
+        cl = {"closed": "JD_SCRAPE_FAIL_CLOSED", "missing": "JD_SCRAPE_FAIL_MISSING"}
+        chain = {k: cfg.error_state_for(k) for k in (
+            "anticipate_scan", "contemplate_job", "advise_job_resume", "draft_job_resume", "check_job_resume",
+            "finalize_job_resume", "draft_cover_letter", "check_cover_letter", "finalize_cover_letter",
+            "propose_application_responses",
+        )}
+        craft = {k: cfg.error_state_for(k) for k in (
+            "craft_get_rubric", "craft_do_rubric", "craft_like_rubric", "craft_evaluate_meteorite_rubric",
+            "craft_jobdesc_rubric", "craft_prefilter_rubric", "craft_company_search_terms", "craft_joblist_rubric",
+        )}
+        assert cfg.RETIRED_TERMINAL_STATE_MAP == {
+            "job": {
+                "FAILED_TECHNICAL": {"analysis_upshot": "ERROR_ANALYSIS_UPSHOT", "meteorite_upshot": "ERROR_METEORITE_UPSHOT"},
+                "FAILED_TECHNICAL_DO": {"grade_do": "ERROR_GRADE_DO"},
+                "FAILED_TECHNICAL_GET": {"grade_get": "ERROR_GRADE_GET"},
+                "FAILED_TECHNICAL_LIKE": {"grade_like": "ERROR_GRADE_LIKE"},
+                "METEORITE_FAILED_TECHNICAL_DO": {"meteorite_grade_do": "ERROR_METEORITE_GRADE_DO"},
+                "METEORITE_FAILED_TECHNICAL_GET": {"meteorite_grade_get": "ERROR_METEORITE_GRADE_GET"},
+                "METEORITE_FAILED_TECHNICAL_LIKE": {"meteorite_like": "ERROR_METEORITE_LIKE"},
+                "METEORITE_ERROR_QUALIFY": {"qualify_meteorite": "ERROR_QUALIFY_METEORITE"},
+                "METEORITE_ERROR_EVALUATE_JD": {"evaluate_meteorite": "ERROR_EVALUATE_METEORITE"},
+                "JD_SCRAPE_FAIL": {"fetch_jd": "ERROR_FETCH_JD_UNREADABLE", "fetch_relative_jd": "ERROR_FETCH_RELATIVE_JD_UNREADABLE"},
+                "JD_SCRAPE_FAIL_COOKIE": {"fetch_jd": "ERROR_FETCH_JD_COOKIE", "fetch_relative_jd": "ERROR_FETCH_RELATIVE_JD_COOKIE"},
+                "BOT_BLOCKED": {
+                    "fetch_jd": "BOT_BLOCKED_FETCH_JD",
+                    "fetch_relative_jd": "BOT_BLOCKED_FETCH_RELATIVE_JD",
+                    "qualify_meteorite": "BOT_BLOCKED_QUALIFY_METEORITE",
+                },
+                "RELATIVE_LINK_FAIL": {"fetch_relative_jd": "ERROR_FETCH_RELATIVE_JD_CLICK"},
+                "NEED_CULTURE_CONTENT": {"fetch_culture_pages": "ERROR_FETCH_CULTURE_PAGES_UNREADABLE"},
+                "NO_CULTURE_LINKS": {"fetch_culture_pages": "ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS"},
+                "NEED_WEBSITE_CONTENT": {
+                    "grade_like": "ERROR_GRADE_LIKE_NO_WEBSITE_CONTENT",
+                    "analysis_upshot": "ERROR_ANALYSIS_UPSHOT_NO_WEBSITE_CONTENT",
+                },
+                "ERROR_BUILD_ARTIFACTS": chain,
+            },
+            "company": {
+                "NO_WEBSITE": {
+                    "inflow_resolve_website": "ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND",
+                    "resolve_website": "ERROR_RESOLVE_WEBSITE_NOT_FOUND",
+                },
+                "CANNOT_READ_WEBSITE": {
+                    "fetch_website": "ERROR_FETCH_WEBSITE_UNREADABLE",
+                    "prefilter_company": "ERROR_PREFILTER_COMPANY_UNREADABLE",
+                },
+                "ERROR_PREFILTER": {"prefilter_company": "ERROR_PREFILTER_COMPANY"},
+                "NO_PREFILTER_JOBLISTS": {"prefilter_company": "ERROR_PREFILTER_COMPANY_NO_JOBLIST_LINKS"},
+                "JOBSITE_SCRAPE_ISSUE": {
+                    "select_job_page": "ERROR_SELECT_JOB_PAGE_UNREADABLE",
+                    "fetch_job_pages": "ERROR_FETCH_JOB_PAGES_UNREADABLE",
+                },
+                "ERROR_LOCATE_JOB_PAGE": {"select_job_page": "ERROR_SELECT_JOB_PAGE"},
+                "CANNOT_PARSE_JOB_SITE": {"select_job_page": "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"},
+                "NO_JOBLIST": {"select_job_page": "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"},
+                "NO_PJL_SELECTED": {"select_job_page": "ERROR_SELECT_JOB_PAGE_NO_SELECTION"},
+                "BOT_BLOCKED": {"select_job_page": "BOT_BLOCKED_SELECT_JOB_PAGE"},
+                "COULD_NOT_PARSE_JOBLIST": {"parse_job_list": "ERROR_PARSE_JOB_LIST_UNPARSEABLE"},
+                "ERROR_UPSHOT": {"company_upshot": "ERROR_COMPANY_UPSHOT"},
+            },
+            "candidate": {"REQUESTED_RESUME_ERROR": craft, "REQUESTED_ARTIFACTS_ERROR": craft},
+            "meteorite": {
+                "BOT_BLOCKED": {"scrape_meteorite": "BOT_BLOCKED_SCRAPE_METEORITE"},
+                "LINK_EXPIRED": cl,
+                "SCRAPE_ERROR": {
+                    "stage_meteorite": "ERROR_STAGE_METEORITE_UNPARSEABLE",
+                    "scrape_meteorite": "ERROR_SCRAPE_METEORITE",
+                    "land_meteorite": "ERROR_LAND_METEORITE",
+                },
+                "NEW_EMAIL_ERROR": {"stage_meteorite": "ERROR_STAGE_METEORITE"},
+            },
+        }
+        # Dead states are never listed (deleted, not renamed).
+        flat = {old for ent in cfg.RETIRED_TERMINAL_STATE_MAP.values() for old in ent}
+        assert flat.isdisjoint({"PREFILTER_UNKNOWN", "HARD_PARSE", "BUILD_FAILED"})
+
+    def test_ac6_chain_dispatch_on_membership(self) -> None:
+        assert cfg.BUILD_ARTIFACTS_CHAIN_TASK_KEYS == (
+            "anticipate_scan", "contemplate_job", "advise_job_resume", "draft_job_resume", "check_job_resume",
+            "finalize_job_resume", "draft_cover_letter", "check_cover_letter", "finalize_cover_letter",
+            "propose_application_responses",
+        )
+        assert cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES == tuple(
+            cfg.error_state_for(k) for k in cfg.BUILD_ARTIFACTS_CHAIN_TASK_KEYS
+        )
+        for k in cfg.BUILD_ARTIFACTS_CHAIN_TASK_KEYS:
+            assert cfg._dispatch_trigger_state_for_task_key(k) == "BUILD_ARTIFACTS", k
+            assert cfg.TASK_CONFIG[k]["error_state"] == cfg.error_state_for(k), k
+        assert not hasattr(cfg, "ERROR_BUILD_ARTIFACTS_STATE")
+        for st in cfg.BUILD_ARTIFACTS_CHAIN_ERROR_STATES:
+            assert cfg.is_build_artifacts_in_progress(st) is True, st
+        assert cfg.is_build_artifacts_in_progress("ERROR_GRADE_DO") is False
+
+    def test_ac7_bulk_retry_and_label_carried(self) -> None:
+        # origin/dev values (pre-AST-2086) for every retired key that had a bulk-retry target.
+        old = {
+            "FAILED_TECHNICAL": ("NEW", "Failed Technical"),
+            "FAILED_TECHNICAL_DO": ("PASSED_JD", "Failed Technical DO"),
+            "FAILED_TECHNICAL_GET": ("PASSED_DO", "Failed Technical GET"),
+            "FAILED_TECHNICAL_LIKE": ("CULTURE_READY", "Failed Technical LIKE"),
+            "METEORITE_FAILED_TECHNICAL_DO": ("METEORITE_PASSED_JD", "Meteorite Failed Technical DO"),
+            "METEORITE_FAILED_TECHNICAL_GET": ("METEORITE_PASSED_DO", "Meteorite Failed Technical GET"),
+            "METEORITE_FAILED_TECHNICAL_LIKE": ("METEORITE_PASSED_GET", "Meteorite Failed Technical LIKE"),
+            "METEORITE_ERROR_QUALIFY": ("METEORITE_NEW", "Meteorite Error Qualify"),
+            "METEORITE_ERROR_EVALUATE_JD": ("METEORITE_QUALIFIED", "Meteorite Error Evaluate JD"),
+            "JD_SCRAPE_FAIL": ("PASSED_JOBLIST", "Jd Scrape Fail"),
+            "JD_SCRAPE_FAIL_COOKIE": ("PASSED_JOBLIST", "Jd Scrape Fail Cookie"),
+            "BOT_BLOCKED": ("PASSED_JOBLIST", "Bot Blocked"),
+            "RELATIVE_LINK_FAIL": ("RELATIVE_JOB_LINK", "Relative Link Fail"),
+            "NEED_CULTURE_CONTENT": ("PASSED_GET", "Need Culture Content"),
+            "NO_CULTURE_LINKS": ("PASSED_GET", "No Culture Links"),
+            "NEED_WEBSITE_CONTENT": ("CULTURE_READY", "Need Website Content"),
+            "ERROR_BUILD_ARTIFACTS": ("RECOMMENDED", "Error Build Artifacts"),
+        }
+        manifest = cfg.build_state_ui_manifest()["jobs"]["skipped"]
+        for old_name, (target, label) in old.items():
+            for new in cfg.RETIRED_TERMINAL_STATE_MAP["job"][old_name].values():
+                assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE[new] == target, new
+                assert manifest["section_labels"][new] == label, new
+                assert new in cfg.SKIPPED_STATES, new
+                assert new in cfg.JOBS_SKIPPED_SECTION_ORDER, new
+
+    def test_ac8_notify_seed_json(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads((Path(cfg.__file__).resolve().parents[2] / "data/admin/dispatch_task.json").read_text())
+        trig = [r["trigger_state"] for r in rows if r.get("task_key") == "meteorite_bot_blocked_notify"]
+        assert trig == ["BOT_BLOCKED_SCRAPE_METEORITE"]
+
+    def test_candidate_craft_chain_errors(self) -> None:
+        assert cfg.CANDIDATE_CRAFT_CHAIN_TASK_KEYS == (
+            "craft_get_rubric", "craft_do_rubric", "craft_like_rubric", "craft_evaluate_meteorite_rubric",
+            "craft_jobdesc_rubric", "craft_prefilter_rubric", "craft_company_search_terms", "craft_joblist_rubric",
+        )
+        for k in cfg.CANDIDATE_CRAFT_CHAIN_TASK_KEYS:
+            st = cfg.error_state_for(k)
+            assert cfg.TASK_CONFIG[k]["error_state"] == st, k
+            assert cfg.CANDIDATE_STATES[st]["prior_states"] == ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"], k
+            assert cfg.CANDIDATE_STATES[st]["progress_rank"] == 6, k
+        for gone in ("REQUESTED_RESUME_ERROR", "REQUESTED_ARTIFACTS_ERROR"):
+            assert gone not in cfg.CANDIDATE_STATES, gone
+        for base in ("REQUESTED_RESUME", "REQUESTED_ARTIFACTS"):
+            assert "error_state" not in cfg.CANDIDATE_STATES[base], base
+
+    def test_gazer_and_roster_task_terminals(self) -> None:
+        g, r = cfg.GAZER_CONFIG, cfg.ROSTER_CONFIG
+        assert g["fetch_jd"]["fail_state"] == "ERROR_FETCH_JD_UNREADABLE"
+        assert g["fetch_jd"]["classified_states"] == {
+            "cookie": "ERROR_FETCH_JD_COOKIE", "bot": "BOT_BLOCKED_FETCH_JD",
+            "missing": "JD_SCRAPE_FAIL_MISSING", "closed": "JD_SCRAPE_FAIL_CLOSED",
+        }
+        assert "error_states" not in g["fetch_jd"]
+        loc = r["locate_job_page"]
+        assert loc["error_state"] == "ERROR_SELECT_JOB_PAGE"
+        assert loc["scrape_issue_state"] == "ERROR_SELECT_JOB_PAGE_UNREADABLE"
+        assert loc["no_joblist_state"] == "ERROR_SELECT_JOB_PAGE_NO_JOBLIST"
+        assert loc["unparseable_state"] == "ERROR_SELECT_JOB_PAGE_UNPARSEABLE"
+        assert loc["bot_blocked_state"] == "BOT_BLOCKED_SELECT_JOB_PAGE"
+        assert r["gaze"]["error_state"] == "ERROR_GAZE"
+        assert g["gaze"]["error_state"] == "ERROR_GAZE"

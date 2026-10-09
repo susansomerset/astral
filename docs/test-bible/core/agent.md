@@ -369,14 +369,14 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 | --- | --- | --- |
 | Hop failure apply (provider → held state) + claim release + debug | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease`** |
 | Bug repro: provider failure holds state (AST-1941 / AST-1942) | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease::test_apply_provider_failed_holds_state_and_releases`** |
-| Hard-string path still transitions (release added) | `src/core/agent.py` | **`TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts`** |
+| Hard-string path still transitions (release added) — **AST-2086:** lands the hop's own `ERROR_ANTICIPATE_SCAN` | `src/core/agent.py` | **`TestAst848DispatchChainDoTask::test_hard_failure_transitions_hop_error_state`** |
 
 **AST-1191** narrowed run:
 
 ```bash
 .venv/bin/python -m pytest \
   tests/component/core/test_agent.py::TestAst1191ArtifactHopFailureRelease \
-  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask::test_hard_failure_transitions_hop_error_state \
   -q
 ```
 

@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+AC5: **`TestAst1560RunScrapeMeteorite::test_ast2086_scrape_failure_retries_once_then_errors`** — `SCRAPE_LINK` → `SCRAPE_LINK_RETRY` (claimed by the same dispatch) → `ERROR_SCRAPE_METEORITE`. Closed / missing → `JD_SCRAPE_FAIL_CLOSED` / `_MISSING` (fail, not error); `BOT_BLOCKED_SCRAPE_METEORITE`; stage → `ERROR_STAGE_METEORITE[_UNPARSEABLE]`; land → `ERROR_LAND_METEORITE`. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-1041 · AST-1034
 
 **Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.

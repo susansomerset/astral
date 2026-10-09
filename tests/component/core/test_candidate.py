@@ -246,10 +246,10 @@ class TestAst1808RetryResolvesViaBase:
     def test_requested_stage_failure_target_retry_only_row(self, base: str) -> None:
         cfg_b = candidate_mod.CANDIDATE_STATES[base]
         retry = f"{base}_RETRY"
-        # Retry-only dispatch row: failing while on retry → error_state (no KeyError, no retry loop).
-        assert candidate_mod._requested_stage_failure_target(retry, retry) == cfg_b["error_state"]
+        # Retry-only dispatch row: failing while on retry → the failing hop's ERROR_<HOP> (AST-2086; no retry loop).
+        assert candidate_mod._requested_stage_failure_target(retry, retry, "craft_get_rubric") == "ERROR_CRAFT_GET_RUBRIC"
         # Primary row on its base still routes to the retry holding.
-        assert candidate_mod._requested_stage_failure_target(base, base) == cfg_b["retry_state"]
+        assert candidate_mod._requested_stage_failure_target(base, base, "craft_get_rubric") == cfg_b["retry_state"]
 
     def test_check_context_complete_retry_matches_base(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def _run(state: str) -> bool:
@@ -1896,7 +1896,7 @@ class TestAst970CandidateStateMachine:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda _cid: {"state": "REQUESTED_RESUME_ERROR", "state_history": []},
+            lambda _cid: {"state": "ERROR_CRAFT_GET_RUBRIC", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         candidate_mod.transition_candidate_state("somerset", "INACTIVE")
@@ -1907,7 +1907,7 @@ class TestAst970CandidateStateMachine:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda _cid: {"state": "REQUESTED_RESUME_ERROR", "state_history": []},
+            lambda _cid: {"state": "ERROR_CRAFT_GET_RUBRIC", "state_history": []},
         )
         with pytest.raises(candidate_mod.IllegalCandidateTransition, match="Invalid candidate state transition"):
             candidate_mod.transition_candidate_state("somerset", "RESUME_READY")
@@ -2130,9 +2130,10 @@ class TestAst972RequestedStageDispatch:
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
         out = await candidate_mod.run_requested_artifacts_dispatch("c1")
         # AST-1839: out of the holding → error_state counts as an error, not a failure.
+        # AST-2086: the entry hop (craft_get_rubric) names the error, not the stage.
         assert out["total_errors"] == 1
         assert out["total_failed"] == 0
-        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_ERROR")
+        trans.assert_called_once_with("c1", "ERROR_CRAFT_GET_RUBRIC")
 
     def test_resume_wrapper_worker_removed(self) -> None:
         assert not hasattr(candidate_mod, "run_requested_resume_dispatch")
@@ -7373,32 +7374,35 @@ class TestAst1781ArtifactRotateRevalidateHook:
 class TestAst2006RequestedArtifactsEmptyTokens:
     """AST-2006 / AST-2000: empty_tokens on a requested-stage run → stage error_state, counted as an error, no retry."""
 
-    _EMPTY = {"success": False, "error": "Empty tokens: X (task=t)", "empty_tokens": ["X"], "empty_token_task": "t"}
+    _EMPTY = {"success": False, "error": "Empty tokens: X (task=t)", "empty_tokens": ["X"]}
 
-    def _patch(self, monkeypatch: pytest.MonkeyPatch, state: str, trans: MagicMock) -> None:
+    def _patch(self, monkeypatch: pytest.MonkeyPatch, state: str, trans: MagicMock, empty_task: Any = "craft_get_rubric") -> None:
         monkeypatch.setattr(
             candidate_mod.database, "get_candidate",
             lambda cid: {"astral_candidate_id": cid, "state": state, "candidate_data": {}},
         )
-        monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        result = {**self._EMPTY, **({"empty_token_task": empty_task} if empty_task else {})}
+        monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value=result))
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        ("trigger", "want"),
+        ("trigger", "empty_task", "want"),
         [
-            ("REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_ERROR"),
-            ("REQUESTED_ARTIFACTS_RETRY", "REQUESTED_ARTIFACTS_ERROR"),
-            (dispatch_hop_label("REQUESTED_ARTIFACTS", "craft_do_rubric"), "REQUESTED_ARTIFACTS_ERROR"),  # mid-chain
-            ("REQUESTED_RESUME", "REQUESTED_RESUME_ERROR"),
+            ("REQUESTED_ARTIFACTS", "craft_get_rubric", "ERROR_CRAFT_GET_RUBRIC"),
+            ("REQUESTED_ARTIFACTS_RETRY", "craft_get_rubric", "ERROR_CRAFT_GET_RUBRIC"),
+            # mid-chain: the failing hop names its own error, not the stage
+            (dispatch_hop_label("REQUESTED_ARTIFACTS", "craft_do_rubric"), "craft_like_rubric", "ERROR_CRAFT_LIKE_RUBRIC"),
+            # no empty_token_task on the result → the entry hop's error
+            ("REQUESTED_RESUME", None, "ERROR_CRAFT_GET_RUBRIC"),
         ],
-        ids=["trigger", "retry_holding", "hop_label", "resume_stage"],
+        ids=["trigger", "retry_holding", "hop_label", "entry_fallback"],
     )
-    async def test_goes_straight_to_stage_error_state(
-        self, monkeypatch: pytest.MonkeyPatch, trigger: str, want: str,
+    async def test_goes_straight_to_hop_error_state(
+        self, monkeypatch: pytest.MonkeyPatch, trigger: str, empty_task: Any, want: str,
     ) -> None:
         trans = MagicMock()
-        self._patch(monkeypatch, trigger, trans)
+        self._patch(monkeypatch, trigger, trans, empty_task)
         out = await candidate_mod.run_requested_artifacts_dispatch("c1", trigger_state=trigger)
         trans.assert_called_once_with("c1", want)
         assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
@@ -7414,10 +7418,10 @@ class TestAst2006RequestedArtifactsEmptyTokens:
         self._patch(monkeypatch, "REQUESTED_ARTIFACTS", trans)
         with caplog.at_level(logging.WARNING):
             out = await candidate_mod.run_requested_artifacts_dispatch("c1")
-        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_ERROR")
+        trans.assert_called_once_with("c1", "ERROR_CRAFT_GET_RUBRIC")
         assert out["total_errors"] == 1 and out["total_failed"] == 0
         warns = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-        assert len([m for m in warns if "skipped error_state REQUESTED_ARTIFACTS_ERROR" in m]) == 1
+        assert len([m for m in warns if "skipped error_state ERROR_CRAFT_GET_RUBRIC" in m]) == 1
 
 
 # AST-2066 Branches: artifact_versions_by_uuid empty/rows; _candidate_catalog_entry blank key /
