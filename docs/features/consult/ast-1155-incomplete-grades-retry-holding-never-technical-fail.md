@@ -1595,6 +1595,155 @@ AST-2057 board-joan done — CANON: OK.
 
 context_tokens≈N
 
+## Bug: AST-2089 — qualify_job_listings: one listing without a job ID must not fail the whole batch
+
+**Linear:** [AST-2089](https://linear.app/astralcareermatch/issue/AST-2089) · **Mini-parent:** [AST-2015](https://linear.app/astralcareermatch/issue/AST-2015) · **Publish ref:** `sub/AST-2015/AST-2089-qualify-listing-isolation` · **Project:** Astral Dispatcher · **Ancestor:** AST-1996 block above (per-line isolation → per-entity retry, not hop error)
+
+**Canon (no frozen list on ticket or mini-parent — AST-1996 precedent, resolved @ `823d37605`):** `patt.task.dispatch-retry` (read — an entity with an invalid response routes retry/error by *current* state; a failure never persists in state; one retry, not a loop), `patt.entity.batch-processing` (id-only — process only claimed rows). Id-only for make-fix: `astral.batch.claim-process-release`, `stat.logging.warning`, `stat.logging.error`, `stat.logging.debug`.
+
+**Scope gate:** Susan approved AST-2015 Proposed step 3 (ancestor checked), so both layers are in scope — `data/admin/agent_task.json` (prompt text), `src/core/agent.py::do_task` (AST-1839 envelope-failure branch keeps the decoded payload), `src/core/consult.py::_run_batch_consult` (split the batch). AST-2015 step 4 (reset the 14 stranded `ERROR_QUALIFY_JOB_LISTINGS` jobs) is Susan's one-off data step per the ticket Boundaries — **not** in make-fix.
+
+### As-is
+
+A Somerset `qualify_job_listings` batch of 16 (`qualify_job_listings-67d036c7-…`) came back with `agent_performance.status = "failure"`, `failure_note` "Unable to determine a company job ID for listing 002; required for payload." `do_task`'s AST-1839 rubric-encoded branch (`src/core/agent.py` ~L2550) turns that into `success: False, agent_failure: True, parsed_response: None` **before the payload is decoded**. `_run_batch_consult`'s `do_task`-failed branch then sends **all 16** through `_transition_batch_consult_failures` — 2 → `NEW_RETRY`, 14 already in `NEW_RETRY` → terminal `ERROR_QUALIFY_JOB_LISTINGS`. One ID-less listing sank 15 good ones.
+
+### To-be
+
+1. **Prompt:** the company job ID is best-effort per listing. With no ID, the model leaves the `company_job_id` slot empty on that line and keeps grading; a single-listing gap is never an envelope `failure`.
+2. **Code guard:** if the model still returns an envelope `failure` on a rubric-encoded batch, every line that decodes cleanly is processed to pass/fail as normal; only entities with no usable line route through `_consult_batch_fail_dest` (first strike → `NEW_RETRY`, second → `ERROR_QUALIFY_JOB_LISTINGS`). An envelope failure with no usable lines behaves exactly as today.
+
+### Repro
+
+Fixture (no DB — the envelope `send_to_llm_compat` hands `do_task`, plus `batch_entities` as `_run_batch_consult` passes them):
+
+```python
+ents = [{"astral_job_id": "J0", "state": "NEW"},
+        {"astral_job_id": "J1", "state": "NEW_RETRY"},
+        {"astral_job_id": "J2", "state": "NEW"}]
+envelope = {
+    "agent_performance": {"status": "failure",
+        "failure_note": "Unable to determine a company job ID for listing 002; required for payload."},
+    # J0 + J1 clean (one pass, one fail line); J2 omitted by the model
+    "agent_payload": "000|ERA4|MEA4|PGA4|WAA3|MWA3|KOA4|QCA5|8398237461|Staff Engineer|https://x.example/jobs/8398237461\n"
+                     "001|ERA2|MEA4|PGF5|WAA4|MWX0|KOA5|QCA2|2983982372",
+}
+# do_task("qualify_job_listings", ctx={"batch_entities": ents, ...}) with send_to_llm_compat → envelope
+# today: {"success": False, "agent_failure": True, "parsed_response": None, "error": "Agent failure: Unable to …"}
+# _run_batch_consult today: J0 → NEW_RETRY, J1 → ERROR_QUALIFY_JOB_LISTINGS, J2 → NEW_RETRY (all three fail-dest)
+# to-be: J0 → PASSED_JOBLIST, J1 → FAILED_JOBLIST, J2 → NEW_RETRY ("Agent failure: …" reason)
+```
+
+Production: batch `qualify_job_listings-67d036c7-…`, 16 jobs → 2 `NEW_RETRY` + 14 `ERROR_QUALIFY_JOB_LISTINGS`.
+
+### Root cause
+
+1. **Prompt (trigger).** `qualify_job_listings.cache_prompt` STEP 1 ("Deduce the company job ID…") and STEP 5 ("ONLY include the job ID determined in STEP 1") read as mandatory, and nothing says what to do when there is none. The model escalates to the envelope `failure` that `prompt_prefix` reserves for "prevented from performing your task". `response_schema` already has `company_job_id` `required: False`, `_decode_payload` maps an empty meta slot to `None` (`row[key] = meta[i] or None`), and `tracker.initialize_job` takes `company_job_id=None` (it only skips the identity-triple dedup) — so the gap was never a real blocker downstream.
+   - **Proposed step 2 (git history) — nothing to restore.** Every version of the row since it landed in `data/admin/agent_task.json` has the same STEP 1 / STEP 5 / COMPANY JOB IDENTIFIER text. The 2026-10-07 03:51 edit (`c06eaefdf`) only touched the `## GRADE SET COMPLETENESS` heading/sentence; the 2026-10-08 23:44 edit (`2ea8ca006`) only rewrote STEP 3 (job link). No job-ID fallback wording ever existed → write new wording.
+2. **Code (blast radius).** `do_task`'s AST-1839 branch returns `parsed_response: None` before decode, so `_run_batch_consult` has no per-line data and can only fail the whole batch — the same whole-batch blast radius AST-1996 removed for malformed grade lines.
+
+### Proposed change
+
+Three files. One `code(AST-2089)` commit.
+
+**1. `data/admin/agent_task.json` — `qualify_job_listings` row, `cache_prompt` only.**
+
+Edit only the `cache_prompt` string of the row with `"task_key": "qualify_job_listings"`. No other row, column, or `updated_at` bump (repo convention for `code(...)` prompt edits — e.g. AST-1910). Do **not** touch `docs/uat-fixtures/AST-756/expected-agent_task.json` (its qualify row already diverges from repo; out of scope). Three exact text replacements (`\n` = newline in the JSON string):
+
+- STEP 1 — replace
+  `STEP 1 - DETERMINE JOB ID: Deduce the company job ID from the html content.`
+  with
+  `STEP 1 - DETERMINE JOB ID: Deduce the company job ID from the html content. This is best-effort for each listing: if you cannot find a job ID for a listing, leave its company_job_id field empty and keep going — still grade that listing and still include its other fields exactly as you otherwise would.`
+- STEP 5 — replace
+  `then ONLY include the job ID determined in STEP 1.`
+  with
+  `then ONLY include the job ID determined in STEP 1 (if STEP 1 found no job ID, end the line after the grade segments).`
+- COMPANY JOB IDENTIFIER — replace
+  `This may be a UUID or a long integer or a hyphenated string that differentiates the job, so that future scans can identify it has already seen.`
+  with
+  `This may be a UUID or a long integer or a hyphenated string that differentiates the job, so that future scans can identify it has already seen.\nIf a listing has no identifier you can find, leave the company_job_id field empty but keep its pipe so the fields after it stay in position, e.g. "003|ERA4|MEA4|PGA4|WAA3|MWA3|KOA4|QCA5||Job Title|https://www.workheredummy.com/jobs/abc".\nA missing job ID — or any other gap in a single listing — is NEVER a reason to set agent_performance to "failure". Grade every listing you can; "failure" is only for being prevented from performing the task at all.`
+
+**DB sync:** server start does not load repo admin JSON (AST-1455); after the commit lands, Susan applies the row via Manage Tasks → **Revert to file** for `agent_task` (`repo_admin_json.revert_repo_admin_json_table`) — the normal path for repo prompt edits. No migration.
+
+**2. `src/core/agent.py::do_task` — AST-1839 envelope-failure branch keeps the decoded lines.**
+
+Inside `if rubric_encoded and _agent_performance_status(_perf) == "failure":` (~L2554), after `_warn_hop_no_success(...)` and before the `_should_store` block, try to decode the payload the same way the success path does:
+
+```python
+# Keep cleanly decoded lines so a batch caller fails only the gaps, not the batch (AST-2089).
+salvaged = None
+if (ctx or {}).get("batch_entities"):
+    try:
+        from src.core.consult import _normalize_rubric_task_response
+
+        _cand = _normalize_rubric_task_response(task_key, task_config, parsed["agent_payload"], ctx)
+        if isinstance(_cand, dict) and schema:
+            _coerce_schema_str_fields_from_list(_cand, schema, debug=debug)
+        if (isinstance(_cand, dict) and (_cand.get("jobs") or _cand.get("companies"))
+                and not _validate_response_schema(_cand, schema, task_key)
+                and not _validate_grade_confidence_in_payload(_cand, task_key)):
+            salvaged = _cand
+    except Exception as exc:
+        logger.debug("%s | no salvage after agent failure: %s: %s", task_key, type(exc).__name__, exc)
+```
+
+Return dict: add `"salvaged_response": salvaged` (key always present, `None` when nothing usable). **Everything else in the return is unchanged** — `success: False`, `agent_failure: True`, `parsed_response: None`, same `error`, same failure RESPONSE block stored, same `_close_hop_ledger(success=False, …)`.
+
+- Same validation bar as the success path (`_normalize_rubric_task_response` → `_coerce_schema_str_fields_from_list` → `_validate_response_schema` → `_validate_grade_confidence_in_payload`). Any decode/schema/confidence error → `salvaged = None` → caller behaves exactly as today. No partial-validation shortcut.
+- `decode_failures` (AST-1996) rides along inside `salvaged` unchanged.
+- Gate on `batch_entities` only (needed for pos → id mapping); no task-key list.
+
+⚠️ **Decision — new `salvaged_response` key, not `parsed_response`.** Options weighed: (a) put the decoded dict in `parsed_response` on the failure result — matches the Technical scope wording literally, but changes the contract every `success=False` consumer reads and flips `test_agent.py::TestAst1846DoTaskAgentFailureFlag::test_rubric_envelope_failure_sets_agent_failure` (`parsed_response is None`); (b) don't return early — run the full success path with an `agent_failure` flag set — touches ~6 return points and the success-path RESPONSE store/`agent_ref`; (c) side key `salvaged_response`, consumed only by `_run_batch_consult` — same "keep the parsed payload" intent, smallest blast radius. **Chose (c).** Roster prefilter (`agent_failure` consumer) never reads the key → company routing unchanged.
+
+**3. `src/core/consult.py::_run_batch_consult` — process the salvaged lines, fail only the gaps.**
+
+a. Gate the whole-batch failure branch on "no salvage":
+
+```python
+salvaged = None if result.get("success") else result.get("salvaged_response")
+if not result.get("success") and not salvaged:
+    ...  # existing block unchanged: provider balance hold, empty_tokens, whole-batch fail dest
+```
+
+b. Source `parsed` from either result:
+
+```python
+parsed = result["parsed_response"] if result.get("success") else salvaged
+```
+
+c. Missing-ID reason — the existing `if missing:` transition uses `reason="omitted from response"`; on a salvaged batch pass the model's note so each fail-dest line says why:
+
+```python
+reason=result.get("error") if salvaged else "omitted from response",
+```
+
+d. Return dict: `success` becomes `not fabricated and not bad_grades and not decode_failed and not salvaged`; when `salvaged`, insert `result.get("error")` (the `"Agent failure: …"` text) as the first entry of `errors`; add `"agent_failure": True` when `salvaged` (absent otherwise — byte-identical return for non-salvaged batches).
+
+Nothing else changes: `_hydrate_response_jobs_grade_reasons`, `_bind_response_jobs_to_claimed`, `missing`/`fabricated`/`decode_failed` reconciliation, `process_fn`, `bad_grades` routing all run on the salvaged jobs exactly as on a success. `result.get("agent_ref")` is absent on the failure result, so `ensure_batch_response_entity_ids` is skipped (the stored RESPONSE block is the failure audit block, not a clean one) — acceptable, no edit. No new log calls: missing entities log via `_transition_batch_consult_failures` → `_log_fail_dest` (WARNING on retry holding / ERROR on terminal, AST-1839); `_warn_hop_no_success` in `do_task` still logs the envelope failure once.
+
+⚠️ **Decision — envelope `failure` with every line clean.** If the model says `failure` but every claimed entity has a line that decodes, validates, and passes `process_fn` (`_require_complete_grade_set` etc.), all of them are processed and none routes to fail dest — the note survives only in the hop WARNING and `errors`. That is the To-be ("a per-listing gap never becomes an envelope failure"), but it does mean we trust complete grade lines over the envelope status. A genuine "can't do this batch" response with an empty / undecodable payload is unchanged (whole batch → fail dest).
+
+⚠️ **Decision — no parsing of the failure note.** The note names a listing ("listing 002") but we do not regex it. Which entities fail is decided by what's missing/bad in the payload (an omitted line → `missing`; an ID-less but graded line → processed, `company_job_id=None`). Robust to any note wording.
+
+⚠️ **Decision — no change to retry semantics.** First strike → `NEW_RETRY`, already-`NEW_RETRY` → `ERROR_QUALIFY_JOB_LISTINGS` via the unchanged `_consult_batch_fail_dest` (AST-898 / AST-1839 / `patt.task.dispatch-retry`).
+
+### Blast radius
+
+- **Prompt:** `qualify_job_listings` row only; live after Susan's Revert-to-file. No test or bible pins this prompt text (`rg "DETERMINE JOB ID|COMPANY JOB IDENTIFIER|AUGMENT DATA" tests docs/test-bible` → none). `grades_encoded_meta` payload_instructions in `src/utils/config.py` (positional `…|{company_job_id}[|{job_title}|{job_link}…]`) unchanged — the empty-slot wording matches its existing decode (`meta[i] or None`).
+- **`do_task` AST-1839 branch:** reached by every rubric-encoded task whose envelope says `failure` — `qualify_job_listings`, `evaluate_jd` / `evaluate_meteorite`, `grade_do/get/like`, `meteorite_like`, prefilter company (roster). The only externally visible change is the new `salvaged_response` key on that failure result; `success`/`agent_failure`/`parsed_response`/`error` unchanged. Extra cost: one decode attempt on an already-failed hop.
+- **`_run_batch_consult` callers:** `qualify_job_listings`, `evaluate_jd_batch` / `evaluate_meteorite_batch`, `grade_*_batch`, `_consult_scored_dispatch_batch_encoded`. All gain the same isolation when the model returns envelope `failure` with usable lines (intended — same class as AST-1996). Any `do_task` result without `salvaged_response` (mocks, provider failures, empty_tokens, balance refusal) follows the existing failed branch byte-for-byte.
+- **Roster prefilter (`roster.py` ~L2040):** reads `success`/`agent_failure` only → unchanged (prefilter keeps AST-1846 whole-batch routing).
+- **Tests that assume today's behavior (Betty's tree — make-fix does not edit):** `test_agent.py::TestAst1846DoTaskAgentFailureFlag` — all four still green (`parsed_response is None` holds; prefilter `"000|RCA5"` either salvages into `salvaged_response` or not, neither asserted). Any `_run_batch_consult` test that mocks `do_task` → `{"success": False, …}` has no `salvaged_response` → unchanged. New coverage (agent failure + salvaged lines → split routing) is fix-board / qa-fix's call.
+
+### What must still hold
+
+- **AST-1155 AC1–AC3:** incomplete/extra grade sets still raise `IncompleteGradeSetError` in `process_fn` → `bad_grades` → first strike holding, second terminal — now also on salvaged jobs.
+- **AST-1839 / AST-1846:** rubric-encoded envelope `failure` still returns `success: False, agent_failure: True, parsed_response: None` with the same `error` text; roster prefilter routing on `agent_failure` unchanged.
+- **AST-1996:** `decode_failures` still route per entity; clean row wins; no `_GRADE_SEG` change.
+- **`patt.task.dispatch-retry`:** exactly one retry; every claimed entity either processes or transitions to its fail dest — none left in `NEW` / `NEW_RETRY`.
+- **Envelope / provider failures with no usable lines** (empty payload, undecodable payload, schema-invalid decode, provider balance hold, `empty_tokens`): identical to today.
+- **`response_schema`:** unchanged (`company_job_id` stays `required: False`); no `company_job_id` fallback for `qualify_job_listings` (AST-1119 UUID-from-link stays `qualify_meteorite`-only).
+- **Claim/release:** no change to claim, `batch_id`, or release.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
