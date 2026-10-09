@@ -1,3 +1,83 @@
+<!-- linear-archive: AST-1949 archived 2026-10-08 -->
+
+## Linear archive (AST-1949)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1949/mode-select-in-manage-agents-temperature-controls-removed-support-big  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1946 — Support "Big" brain OpenRouter models  
+**Blocked by / blocks / related:** parent: AST-1946
+
+### Description
+
+## What this implements
+
+Adds the required Mode select to the add/edit agent form and swaps the list's Temp column for Mode. Removes the temperature input and the temperature pre-fill on size change. After #2. Does **not** touch the backend.
+
+## Citations
+
+none. Frontend-only change, and no active pattern or statute governs this page.
+
+## Scope
+
+* `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` (**modified**): the modified add/edit form gains a required Mode select, sent as `mode`, and drops the temperature input and the temperature half of the size pre-fill. The modified agents list swaps the Temp column for a Mode column. The `Agent` / model types drop `temperature`, `model_code` and `default_temperature`.
+* `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx`, `docs/test-bible/frontend/pages.md` (**modified**, Betty in `qa-child`).
+
+## Acceptance criteria
+
+All `python -c` checks run from the repo root on the shipped tree. "The brief" means the 95 rows in this ticket's Original brief. `SIZE = {"int4": "Little", "fp4": "Little", "int8": "Medium", "fp8": "Medium", "fp16": "Big", "bf16": "Big"}`.
+
+7. **Direct models persist; no stray thinking/temperature settings.**
+   * **Check:**
+     * For `claude`, `kimi-k2.6` and `deepseek-v4`, model ids, brain-size tuples, tier SKUs, `default_max_tokens`, `max_tokens_floor` and pricing rows equal pre-epic `origin/dev` values.
+     * No stored tier in `LLM_MODEL_CONFIG` has a `thinking`, `thinking_params` or `default_temperature` key. These appear only on the tier the resolver returns for a call.
+     * `rg -n "default_temperature|brain_setting_for_anthropic_agent_key|admin_brain_setting_catalog|infer_brain_setting_from_legacy_model_code" src/` returns nothing.
+     * `rg -n "temperature" src/ui/frontend/src/pages/AdminAgentPrompts.tsx` returns nothing.
+   * **Fails if:** any direct value differs, a stored tier keeps one of those keys, or any hit.
+8. **Manage Agents.**
+   * **Check (frontend component test):**
+     * The edit form renders a Mode select with exactly Deterministic / Creative and sends `mode` on save, with no `temperature` in the body.
+     * No temperature input renders for any model.
+     * The list has a Mode column and no Temp column.
+   * **Fails if:** any of those is missing or a temperature control remains.
+
+## Boundaries
+
+Does **not** touch the backend. Sibling slices: #1 catalog/resolver/config, #2 database/agent/api_admin, #3 Manage Agents UI, #4 remap migration. Blocked by: #2 (AST-1948).
+
+## Notes for planning
+
+From AC 7 only the `AdminAgentPrompts.tsx` temperature grep is this child's. Parent AST-1946 Description (Functional scope, Technical scope, Original brief with all 95 rows) is authoritative.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1946-big-brain-openrouter`, child `sub/AST-1946/AST-1949-manage-agents-mode`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-03T03:21:46.318Z
+[code-rubric] PROCEED (Commit: e55b2cf87) Manage Agents mode UI clean
+
+#### ada — 2026-10-03T03:20:37.149Z
+`origin/sub/AST-1946/AST-1949-manage-agents-mode` @ `e55b2cf87` · manifest 14/14 green, grep empty, scope page-only (run on a `git archive` of the ref — shared worktree was on AST-1950)
+
+#### betty — 2026-10-03T03:19:37.807Z
+`origin/sub/AST-1946/AST-1949-manage-agents-mode` @ `e55b2cf87` · mode UI tests ready
+
+#### ada — 2026-10-03T03:17:31.072Z
+`origin/sub/AST-1946/AST-1949-manage-agents-mode` @ `867543bd9`
+
+#### joan — 2026-10-03T03:14:42.973Z
+[plan-rubric] PROCEED (Commit: 85e7b902) Mode UI replaces temperature
+
+#### ada — 2026-10-03T03:13:20.676Z
+`origin/sub/AST-1946/AST-1949-manage-agents-mode` @ `85e7b9026` · Mode replaces temperature UI
+
+---
+
 # AST-1949 — Mode select in Manage Agents; temperature controls removed
 
 - **Parent:** [AST-1946 — Support "Big" brain OpenRouter models](https://linear.app/astralcareermatch/issue/AST-1946)
