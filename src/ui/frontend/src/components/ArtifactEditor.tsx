@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import ArtifactVersionNav, { versionNavState, type VersionMap } from "./ArtifactVersionNav"
 import CollapsiblePanel from "./CollapsiblePanel"
 import type { Catalog, SectionRow } from "./ResumeStructureEditor"
 import ExperienceJobsEditor, {
@@ -135,6 +136,11 @@ function criteriaToTabs(
   }))
 }
 
+/** AST-2067 per-criterion version route base (rubric criteria key + shared code). */
+function rubricCriterionVersionsBase(candidateId: string, artifactKey: string, code: string) {
+  return `/api/candidates/${candidateId}/rubric/${encodeURIComponent(artifactKey)}/${encodeURIComponent(code)}`
+}
+
 export default function ArtifactEditor({
   title,
   artifactKey,
@@ -182,6 +188,10 @@ export default function ArtifactEditor({
   const [hasChainData, setHasChainData] = useState(false)
   const [expandedTabId, setExpandedTabId] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
+  // AST-2068 version arrows: maps keyed by row uuid; per-criterion maps keyed by rubric code.
+  const [artifactVersions, setArtifactVersions] = useState<VersionMap | null>(null)
+  const [criterionVersions, setCriterionVersions] = useState<Record<string, VersionMap>>({})
+  const [moving, setMoving] = useState(false)
 
   // Unmount: abort in-flight Generate; gate late setState
   useEffect(() => {
@@ -306,6 +316,18 @@ export default function ArtifactEditor({
   const fixedFieldKeys = fixedFields
     ? [...fixedFields.map(f => f.key)].sort().join("\0")
     : ""
+  // Artifact-level arrows on fixed-field bodies only (resume_content structure, cover_letter shape) —
+  // chosen by editor shape, not a key list. Candidate criteria step per criterion instead; job dict
+  // editors (Application Questions) are not catalog artifacts and get none.
+  const artifactVersionsBase = !fixedFields
+    ? null
+    : jobPersistence
+      ? `/api/jobs/${encodeURIComponent(jobPersistence.jobId)}/artifacts/${encodeURIComponent(`job.artifacts.${jobPersistence.artifactKey}`)}`
+      : selectedId
+        ? `/api/candidates/${selectedId}/artifacts/${encodeURIComponent(`candidate.artifacts.${artifactKey}`)}`
+        : null
+  // Free-form criteria chrome on a candidate page = rubric_vector criteria.
+  const criterionVersionsOn = tabChromeEditable && !jobPersistence && !!selectedId
 
   /** Display order: importance descending (plan); storage order unchanged in `tabs` / payload. */
   const tabsSortedForRail = useMemo(() => {
@@ -599,6 +621,43 @@ export default function ArtifactEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobPersistence, selectedId, artifactKey, fixedFieldKeys, shapesKey, structureMode, chainArtifactKeys])
 
+  /** Fetch version maps (on load + after each save). Non-OK / network error → that nav hides; never blocks editing. */
+  const refreshVersions = useCallback(async () => {
+    const getVersions = async (base: string): Promise<VersionMap | null> => {
+      try {
+        const r = await api(`${base}/versions`)
+        return r.ok ? ((await r.json()).versions as VersionMap) : null
+      } catch {
+        return null
+      }
+    }
+    if (artifactVersionsBase) {
+      const v = await getVersions(artifactVersionsBase)
+      if (mountedRef.current) setArtifactVersions(v)
+    }
+    if (criterionVersionsOn && selectedId) {
+      // Every coded criterion: the client cannot tell which codes the server just appended/upticked.
+      const codes = [...new Set(tabsRef.current.map(t => t.code).filter((c): c is string => !!c))]
+      const pairs = await Promise.all(
+        codes.map(async c => [c, await getVersions(rubricCriterionVersionsBase(selectedId, artifactKey, c))] as const),
+      )
+      if (!mountedRef.current) return
+      const next: Record<string, VersionMap> = {}
+      for (const [c, v] of pairs) if (v) next[c] = v
+      setCriterionVersions(next)
+    }
+  }, [artifactVersionsBase, criterionVersionsOn, selectedId, artifactKey])
+
+  // Version maps follow every (re)load; clear on unload so a previous candidate's map never drives a move.
+  useEffect(() => {
+    if (!loaded) {
+      setArtifactVersions(null)
+      setCriterionVersions({})
+      return
+    }
+    void refreshVersions()
+  }, [loaded, refreshVersions])
+
   // Build the payload from current tabs
   function buildPayload(t: SideTab[]) {
     if (fixedFields || (jobPersistence && !shapesKey && !structureMode)) {
@@ -662,6 +721,7 @@ export default function ArtifactEditor({
         setEverSaved(true)
         setSnapshot(null)
         setToast({ text: "Saved", variant: "success" })
+        await refreshVersions()
         // JAR onSaved reloads the modal (unmounts this editor) — only on explicit Save / unmount flush.
         if (!autosave) jobPersistence.onSaved?.()
         return true
@@ -709,6 +769,7 @@ export default function ArtifactEditor({
       setEverSaved(true)
       setSnapshot(null)
       setToast({ text: "Saved", variant: "success" })
+      await refreshVersions()
       return true
     } catch (e) {
       // Keep review mode (snapshot) — do not clear on failure
@@ -727,6 +788,7 @@ export default function ArtifactEditor({
     fixedFields,
     structureAuthoring,
     structureRows,
+    refreshVersions,
   ])
 
   function handleChange(next: SideTab[]) {
@@ -973,6 +1035,61 @@ export default function ArtifactEditor({
     })
   }
 
+  /** Arrow move (AST-2068): flush unsaved edits as one version, move current, re-hydrate via current-read GET. */
+  async function moveVersion(base: string, body: Record<string, string>, apply: (v: VersionMap) => void) {
+    setMoving(true)
+    try {
+      if (pendingSaveRef.current) await pendingSaveRef.current
+      // autosave=true: job editors must not fire onSaved (modal reload would unmount mid-move).
+      if (dirtyRef.current && !(await doSave(tabsRef.current, true))) return
+      const resp = await api(`${base}/current`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
+        throw new Error(err.error || `Move failed (${resp.status})`)
+      }
+      const data = await resp.json()
+      if (!mountedRef.current) return
+      apply(data.versions as VersionMap)
+      reloadFromServer()
+    } catch (e) {
+      if (mountedRef.current) setToast({ text: (e as Error).message || "Move failed", variant: "error" })
+    } finally {
+      if (mountedRef.current) setMoving(false)
+    }
+  }
+
+  function renderVersionNav(versions: VersionMap, base: string, uuidField: string, apply: (v: VersionMap) => void) {
+    const nav = versionNavState(versions)
+    const go = (uuid: string | null) => {
+      if (uuid) void moveVersion(base, { [uuidField]: uuid }, apply)
+    }
+    return (
+      <ArtifactVersionNav
+        position={nav.position}
+        total={nav.total}
+        // Not `saving`: an arrow click blurs the field first; moveVersion awaits that save instead.
+        disabled={inReview || generating || moving}
+        onBack={() => go(nav.backUuid)}
+        onForward={() => go(nav.forwardUuid)}
+      />
+    )
+  }
+
+  function renderCriterionNav(code: string) {
+    const versions = criterionVersions[code]
+    if (!criterionVersionsOn || !selectedId || !versions) return null
+    return renderVersionNav(
+      versions,
+      rubricCriterionVersionsBase(selectedId, artifactKey, code),
+      "rubric_vector_uuid",
+      v => setCriterionVersions(prev => ({ ...prev, [code]: v })),
+    )
+  }
+
   function handleCancel() {
     if (snapshot) {
       setTabs(snapshot)
@@ -1003,6 +1120,8 @@ export default function ArtifactEditor({
         <div className="dep-header">
           <h1 className="dep-title">{title}</h1>
           <div className="dep-actions">
+            {artifactVersionsBase && artifactVersions
+              && renderVersionNav(artifactVersions, artifactVersionsBase, "artifact_uuid", setArtifactVersions)}
             {canGenerate && (
               <button
                 className={`btn primary${generating ? " in-flight" : ""}`}
@@ -1156,8 +1275,9 @@ export default function ArtifactEditor({
                 }
                 actions={
                   structureRow ? undefined : tabChromeEditable ? (
-                    <span className="side-tab-controls">
-                      {!rubricMode && (
+                  <span className="side-tab-controls">
+                    {tab.code ? renderCriterionNav(tab.code) : null}
+                    {!rubricMode && (
                         <>
                           <button type="button" disabled={i === 0} onClick={() => moveTab(i, -1)} title="Move up">
                             ▲
