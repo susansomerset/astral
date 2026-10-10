@@ -706,3 +706,7 @@ no plan-stage scores attached (Joan F2 `[board-joan] CANON: OK` + roster skim on
 
 Append this artifact to the AST-2120 issue doc, commit `docs(AST-2120): Radia review — clean`, push publish ref, post slim upshot `--as radia`.
 
+
+### Test routing — AST-2120
+
+fix-board `[board-betty] TESTS: REVISE` → the repro and the AST-1154 marker-test decision go to gap sibling [AST-2121](https://linear.app/astralcareermatch/issue/AST-2121) (`sub/AST-2108/AST-2121-qualify-grade-set-tests`). This sub ships product and docs only, so it is docs-acceptance for the test tree.
