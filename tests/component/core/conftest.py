@@ -37,6 +37,7 @@ _SCHEMA_FLAGS = (
     "_vector_feedback_schema_ensured",
     "_artifact_schema_ensured",  # AST-1352 / AST-1364 / singular+cid AST-1597
     "_meteorite_schema_ensured",  # AST-1557 staging table
+    "_telescope_data_schema_ensured",  # AST-2131 / AST-2132 gazer keeps
     "_ast723_rubric_token_migration_applied",
 )
 
