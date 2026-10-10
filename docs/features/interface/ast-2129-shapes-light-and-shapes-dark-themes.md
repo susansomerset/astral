@@ -383,3 +383,15 @@ AC1→Stage 1 (registry + config verify; API/profile UI proof via Betty `test_co
 - **Recommendation:** Betty manifest documents carve-outs if still red on tip.
 
 context_tokens≈42000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2101/AST-2129-shapes-themes`
+- **Stage 1:** `3176c80f7` — `UI_CONFIG["themes"]` + `shapes_light`, `shapes_dark`
+- **Stage 2:** `d4f1182e4` — twin selectors on the Dark/Light token blocks; 12 shape ring tokens per block
+- **Stage 3:** `fc9e51606` — Shapes-only §9b rules (SVG reveal, fill/ring, X cross + drop-shadow ring, centroid letter)
+- **Verify:** themes = `['dark', 'light', 'shapes_light', 'shapes_dark']`, default `dark`; ruff on `config.py` = 102 (baseline); `--grade-a:` count 2; `tsc --noEmit` and `tsc -b --noEmit` OK; `npm run build` OK (minified CSS keeps the `calc()` drop-shadows); `import src.utils.config` OK; App.css diff vs ftr removes only the two token-block selector lines + the Light comment line (Stage 2), no §9b line changed; no hex in the Stage 3 insert.
+- **Expected reds for Betty (plan Stage 3 step 6), no other red:**
+  - `test_config.py::TestAst2047ThemeRegistry::test_registry_ids_selectable_and_default` and `::test_profile_theme_select_options_are_the_selectable_entries`: pin two ids / labels.
+  - `test_AppCss.test.tsx`: all 5 cases. `blockRe` matches neither selector-list block, so `blocks` is empty and every case built on it fails, including "Dark is :root and [data-theme=dark]; one block per registry id", "every Light block declares exactly the Dark token names…", "[bug-repro] AST-2076…", "no hex or non-black rgba outside token blocks…", and "AST-2049: no hex in .ts/.tsx source…". The last two were already red on `origin/dev` for `--tp-lvl` (AST-2128 Review).
+- **No browser pass:** AC 3–5 computed-style checks (Joan discuss) are left to Betty / parent UAT.
