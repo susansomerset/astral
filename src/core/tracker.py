@@ -3,9 +3,9 @@ Core tracker: job lifecycle management (AST-75).
 
 In-scope: ingest_jobs, save_meteorite_job, save_job_data, get_job_data, initialize_job,
 transition_job_state, get_new_job_batch, get_job_batch, clear_job_batch, assemble_job_copy_snapshot,
-save_job_artifact, get_job_current (AST-1592 catalog write/current-read for job keys), get_job_effective_resume_structure (AST-2081).
+save_job_artifact, get_job_current (AST-1592 catalog write/current-read for job keys), get_job_effective_resume_structure (AST-2081). compose_job_description (AST-2133: preamble + scraped JD, read-only).
 All writes go through database.save_job (upsert); state transition logic lives here, not in data layer.
-get_job_data: coat-check pattern — return value if present, self-heal if missing (e.g. fetch JD via playwright).
+get_job_data: coat-check pattern — return value if present (JD key: the composed JD), self-heal if missing (e.g. fetch JD via playwright).
 AST-1518: contact-task read wrappers + get_job_by_pattern (candidate-scoped; no coat-check scrape).
 """
 
@@ -48,7 +48,7 @@ from src.utils.config import (
     validate_value,
 )
 from src.utils.logging import get_logger, log_batch_id, truncate_debug_content
-from src.utils.formatting import _strip_json_markdown_fences, parse_text
+from src.utils.formatting import _strip_json_markdown_fences, collapse_consecutive_blank_lines, parse_text
 
 logger = get_logger(__name__)
 
@@ -1185,22 +1185,47 @@ def save_job_data(
     replace=True overwrites the entire job_data blob; use only when intentionally replacing."""
     database.save_job(astral_job_id, job_data=job_data, merge=not replace)
 
+def compose_job_description(job: Dict[str, Any]) -> str:
+    """The complete JD every consumer reads (AST-2130): preamble (job_data.job_description — email /
+    pasted / agent-parsed text), then the scraped capture referenced by jd_telescope_data_id run
+    through the same collapse + prune rules fetch_jd gates on. Read-only — never saved back.
+
+    No reference -> exactly the stored preamble (pasted / meteorite / pre-AST-2130 jobs).
+    Reference whose row is gone -> preamble alone (resolve_telescope_value warns once)."""
+    # Lazy import: gazer imports tracker at module load (same cycle break as the self-heal below)
+    from src.core.gazer import _prune_jd, resolve_telescope_value
+
+    job_data = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
+    keys = TRACKER_CONFIG["job_data_keys"]
+    preamble = job_data.get(keys["job_description"]) or ""
+    ref = job_data.get(keys["jd_telescope_data_id"])
+    if not ref:
+        return preamble
+    logger.debug("Calling resolve_telescope_value: [%s]", ref)
+    raw = resolve_telescope_value(ref) or ""
+    logger.debug("Response from resolve_telescope_value: %s", raw)
+    # Stored capture is raw (AST-2132); collapse then prune, in _apply_jd_gates order
+    scraped = _prune_jd(collapse_consecutive_blank_lines(raw), job.get("job_title") or "")
+    # Blank halves drop so a preamble-less scraped job is just the pruned capture
+    return "\n\n".join(part for part in (preamble, scraped) if part.strip())
+
+
 async def get_job_data(job: Dict[str, Any], key: str) -> Any:
-    """Return job_data[key]. For job_description key (from config), if missing: fetch via playwright
-    get_visible_text with the job's job_link, save to job_data, then return. Caller gets value either
-    way (coat-check pattern). Returns None if key not present and not a self-healable key."""
+    """Return job_data[key]; for the job_description key (from config) return the composed JD
+    (compose_job_description). If that is missing or short: self-heal via fetch_jd_batch, then return
+    the composed JD. Caller gets value either way (coat-check pattern). Returns None if key not present and not a self-healable key."""
     # Always read directly from job["job_data"] so Phase 1 write-backs are visible here
     if not isinstance(job.get("job_data"), dict):
         job["job_data"] = {}
     job_data = job["job_data"]
     jd_key = TRACKER_CONFIG.get("job_data_keys", {}).get("job_description", "job_description")
     min_chars = TRACKER_CONFIG.get("jd_min_chars", 200)
-    # Happy path: value already present and long enough
-    if key in job_data and job_data[key]:
-        if key != jd_key or len(job_data[key]) >= min_chars:
-            return job_data[key]
     if key != jd_key:
-        return None
+        return job_data.get(key) or None
+    # Happy path: composed JD (preamble + referenced capture) already long enough
+    composed = compose_job_description(job)
+    if len(composed) >= min_chars:
+        return composed
     # Self-heal: belt-and-suspenders before any agent call sees a missing JD.
     # Delegates to fetch_jd_batch (single job) so prune rules live in one place.
     astral_job_id = job.get("astral_job_id", "")
@@ -1211,8 +1236,8 @@ async def get_job_data(job: Dict[str, Any], key: str) -> Any:
     except Exception as e:
         logger.warning(f"get_job_data: fetch_jd_batch self-heal failed for {astral_job_id}: {e}")
         return None
-    # job["job_data"] was written back by fetch_jd_batch if successful
-    return job["job_data"].get(jd_key)
+    # fetch_jd_batch wrote the jd_telescope_data_id reference back into job["job_data"] on pass
+    return compose_job_description(job) or None
 
 
 def get_job(astral_job_id: str) -> Optional[Dict[str, Any]]:
