@@ -323,3 +323,10 @@ AC1→Stage 2 (1–2, 5, 13); AC2→Stage 2 (4, 13 browser); AC3→Stage 2 (4 va
 - **Recommendation:** None.
 
 context_tokens≈32000
+
+## Review
+
+- **Build commits:** `8563c103a` (Stage 1) and `b2439231d` (Stage 2) on `origin/sub/AST-2100/AST-2123-grade-settings-sets`.
+- **Checks:** `npm run build` exits 0. All 47 settings labels count 2 in `App.css`. The `text-on-grade`, old Light hex, confidence-literal, and AC 8 / AC 9 greps are all clean. `test_AppCss` fails only on the pre-existing `--tp-lvl`. `npm run lint` reports 29 problems (25 errors, 4 warnings), identical on the pre-build tree; no `.ts`/`.tsx` changed, so none are this ticket's.
+- **Browser check (headless Chromium, real `App.css`, app markup classes):** Light compact dots compute `inset 0 0 0 1.5px <ring>` and lettered, tab and header-cell dots compute `2px`, all A–X with the table fills and inks. Tab and header-cell dots stay 11px, plain lettered 12px, weight 700. Dark keeps today's fills and inks with a `0px` spread. Bullets are 4px, 3px gap, 0.55 off / 1 on in both themes. Light `.modal-card` is `rgb(255, 255, 255)`.
+- **For Betty:** `test_AppCss.test.tsx` lines 27–29 still carry the superset check that this ticket was meant to restore to exact equality (two blocks now: `dark`, `light`).
