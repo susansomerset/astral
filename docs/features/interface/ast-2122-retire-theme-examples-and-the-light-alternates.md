@@ -30,7 +30,17 @@ The Bright + ring palette has been picked, so the comparison scaffolding goes. T
 | `src/ui/frontend/src/routes.tsx` | Delete the `AdminThemeExamples` import and the `admin/theme_examples` route | ui |
 | `src/ui/frontend/src/pages/AdminThemeExamples.tsx` | Delete the file | ui (page) |
 
-`tests/component/frontend/pages/test_AdminThemeExamples.test.tsx`, `tests/component/utils/test_config.py` and the three bible pages are in this ticket's Scope, but they belong to **Betty** (`qa-child`). The engineer does not touch them (test-tree ban).
+**Betty (`qa-child`): in this ticket's Scope, but never edited by the engineer (test-tree ban).** Steps are in **qa-child steps** below.
+
+| File | Change | Owner |
+|------|--------|-------|
+| `tests/component/frontend/pages/test_AdminThemeExamples.test.tsx` | Delete the file | Betty |
+| `tests/component/utils/test_config.py` | Two-id registry; Tools has no Theme Examples item; retire `TestAst2064ThemeExampleGradeSets` | Betty |
+| `tests/component/ui/api/test_api_system.py` | `/api/ui_config` serves exactly `dark` + `light` and no `theme_example_grade_sets` | Betty |
+| `tests/component/core/test_candidate.py` | Swap the retired ids in the rejected-theme parametrize for `"Light"` | Betty |
+| `tests/component/ui/api/test_api_candidate.py` | Swap `light_parchment` in the 400 loop for `"Light"` | Betty |
+| `tests/component/frontend/components/test_NavigationShell.test.tsx` | Swap the second candidate's `light_parchment` theme for `dark` | Betty |
+| `docs/test-bible/frontend/pages.md`, `docs/test-bible/frontend/components.md`, `docs/test-bible/utils/config.md` | Retire or repoint Theme Examples / alternate-palette entries | Betty |
 
 ## Stage 1: Retire Theme Examples and the Light alternates
 
@@ -98,18 +108,29 @@ The Bright + ring palette has been picked, so the comparison scaffolding goes. T
 
 10. Commit only the four files: `git commit -m "code(AST-2122): retire Theme Examples page and Light alternates"`, then `git push origin HEAD:sub/AST-2100/AST-2122-retire-theme-examples`.
 
-## Notes for qa-child (Betty) — test-scope gap, not engineer work
+## qa-child steps (Betty — not engineer work)
 
-This ticket's Scope names only `test_AdminThemeExamples.test.tsx` and `test_config.py` under `tests/`. At tip `266642874`, four more test files reference the retired ids. AC 9's `git grep … -- src tests` will hit them, and one will **fail**:
+Betty runs these at Code Complete, on top of the engineer's Stage 1 commit, in one `test(AST-2122)` commit on the sub. Line numbers are at tip `266642874`. Together with Stage 1, they make the AC 8 / AC 9 greps over `tests` return nothing and turn `test_api_system.py` green again.
 
-| File | Line | Effect after this ticket |
-|------|------|--------------------------|
-| `tests/component/ui/api/test_api_system.py` | 75–76 | **Fails**: asserts the four-id set and the `light_slate` entry |
-| `tests/component/core/test_candidate.py` | 352 | Still passes (the ids are now invalid anyway), but it is an AC 9 grep hit |
-| `tests/component/ui/api/test_api_candidate.py` | 290 | Still passes, but it is an AC 9 grep hit |
-| `tests/component/frontend/components/test_NavigationShell.test.tsx` | 390 | Still runs, but it is an AC 9 grep hit |
+1. **`tests/component/frontend/pages/test_AdminThemeExamples.test.tsx`:** delete the file (`git rm`).
+2. **`tests/component/utils/test_config.py`**, `TestAst2047ThemeRegistry`:
+   - In `test_registry_ids_selectable_and_default` (line 7912), assert `list(themes) == ["dark", "light"]`.
+   - Replace `test_tools_nav_theme_examples_admin_only` (lines 7928–7931) with a test that asserts that the Tools group is `admin_only` and that its item labels are exactly `["Data Management", "Agent Ad Hoc", "Telescope", "Cost Reconciliation", "Resume Paste", "Cover Letter Paste"]` (AC 8).
+   - Leave `test_every_registry_id_has_an_app_css_block` unchanged. It stays green because the `dark` / `light` blocks remain.
+   - Delete the whole `TestAst2064ThemeExampleGradeSets` class (lines 7942–7971) and add an assertion that `"theme_example_grade_sets" not in cfg.UI_CONFIG` (AC 9).
+3. **`tests/component/ui/api/test_api_system.py`**, `test_ui_config_serves_theme_registry` (lines 75–76): replace the two assertions with:
+   - `assert set(payload["themes"]) == {"dark", "light"}`
+   - `assert payload["themes"]["light"] == {"label": "Light", "profile_selectable": True}`
+   - `assert "theme_example_grade_sets" not in payload`
 
-Betty and Chuckles need to decide whether these files join the test scope. The engineer does not edit them.
+   Keep the `default_theme` assertion.
+4. **`tests/component/core/test_candidate.py`** (lines 351–352): change the parametrize to `["neon", "Light", "", None, ["light"]]` and the comment above it to `# Unknown id, wrong-case near-miss, blank, null, unhashable.` `"Light"` is rejected because `src/core/candidate.py:964–966` checks exact membership in the selectable ids.
+5. **`tests/component/ui/api/test_api_candidate.py`** (line 290): change the loop to `for bad in ("neon", "Light"):`.
+6. **`tests/component/frontend/components/test_NavigationShell.test.tsx`** (line 390): change the second candidate's `candidate_data: { theme: "light_parchment" }` to `{ theme: "dark" }`. The test still proves that only `theme === "light"` (`NavigationShell.tsx:125`) swaps in `logo-light.png`, and that `c2` shows `logo.png`.
+7. **Bible:** in `docs/test-bible/frontend/pages.md`, `docs/test-bible/frontend/components.md` and `docs/test-bible/utils/config.md`, retire or repoint every entry that runs `test_AdminThemeExamples.test.tsx` or lists `light_parchment` / `light_slate` / `theme_example_grade_sets` as live coverage, and record the changes above under an AST-2122 entry. Betty decides the exact wording.
+8. **Verify:**
+   - `git grep -n -i -e theme_examples -e ThemeExamples -e theme-examples -e 'Theme Examples' -e theme_example_grade_sets -- src tests` and `git grep -n -e light_parchment -e light_slate -- src tests` hit only `src/ui/frontend/src/App.css` ([AST-2123](https://linear.app/astralcareermatch/issue/AST-2123)'s carve-out).
+   - The edited pytest files and `test_NavigationShell.test.tsx` pass.
 
 ## Estimate
 
@@ -156,3 +177,9 @@ AC8→Stage 1 (steps 1–7, 9) + Betty in-scope tests/bible; AC9→Stage 1 (conf
 - **Recommendation:** None.
 
 context_tokens≈18500
+
+## Revisions
+
+Revision 1 — 2026-10-10
+Driven by: Joan validate round 1 fix-now ("extend this child's `## Scope` and the plan (Files Changed + explicit Betty/`qa-child` steps) to cover all four files"); Chuckles amended the Linear `## Scope` to add them.
+Changes: Files Changed gains a Betty table covering every in-scope test and bible file, including `test_api_system.py`, `test_candidate.py`, `test_api_candidate.py` and `test_NavigationShell.test.tsx`. The open "Notes for qa-child" decision is replaced by explicit `qa-child steps` 1–8 with exact replacement values, so the AC 8 / AC 9 greps over `tests` come back clean at User Testing. Engineer Stage 1 is unchanged.
