@@ -6041,11 +6041,13 @@ UI_CONFIG = {
     "adhoc_import_runs_limit": 10,
     "adhoc_import_picker_visible_rows": 5,
     # AST-2042: theme registry — palette id -> label + whether the profile Theme select offers it.
-    # Each id needs a matching [data-theme="<id>"] block in App.css.
-    # Adding/retiring a palette = one entry here + one CSS block.
+    # Each id needs a [data-theme="<id>"] selector on an App.css token block; a Shapes twin (AST-2129)
+    # shares its sibling's block, so Shapes - Light/Dark can never drift from Light/Dark colours.
     "themes": {
         "dark": {"label": "Dark", "profile_selectable": True},
         "light": {"label": "Light", "profile_selectable": True},
+        "shapes_light": {"label": "Shapes - Light", "profile_selectable": True},
+        "shapes_dark": {"label": "Shapes - Dark", "profile_selectable": True},
     },
     # Theme applied when a candidate has none stored (and before candidates load).
     "default_theme": "dark",
