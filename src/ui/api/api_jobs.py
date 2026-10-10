@@ -293,11 +293,11 @@ def detail(astral_job_id):
 @jobs_bp.route("/<astral_job_id>", methods=["PUT"])
 @require_auth
 def persist_skipped_edits(astral_job_id):
-    """Persist title/link/JD/state for a job currently in SKIPPED_STATES (AST-1453)."""
+    """Persist title/link/state for a job currently in SKIPPED_STATES (AST-1453). JD is read-only (AST-2133)."""
     data = request.get_json(force=True) or {}
     fields = {
         k: data[k]
-        for k in ("job_title", "job_link", "job_description", "state")
+        for k in ("job_title", "job_link", "state")
         if k in data
     }
     if not fields:

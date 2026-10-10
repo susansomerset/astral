@@ -1495,14 +1495,15 @@ def legal_job_successor_states(from_state: str) -> List[str]:
 
 
 def persist_skipped_job_edits(astral_job_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
-    """Persist title/link/JD (and optional state hop) only when job.state is in SKIPPED_STATES."""
+    """Persist title/link (and optional state hop) only when job.state is in SKIPPED_STATES.
+    The JD is read-only (AST-2133) — a job_description field is ignored."""
     job = get_job(astral_job_id)
     if not job:
         raise ValueError(f"Job not found: {astral_job_id}")
     if (job.get("state") or "") not in SKIPPED_STATES:
         raise ValueError("Job is not in a skipped state")
 
-    # Column + JD writes first so an unregistered target still keeps field edits
+    # Column writes first so an unregistered target still keeps field edits
     col: Dict[str, Any] = {}
     if "job_title" in fields:
         title = fields["job_title"] if fields["job_title"] is not None else ""
@@ -1516,10 +1517,6 @@ def persist_skipped_job_edits(astral_job_id: str, fields: Dict[str, Any]) -> Dic
         if not link:
             raise ValueError("job_link required")
         col["job_link"] = link
-    if "job_description" in fields:
-        text = "" if fields["job_description"] is None else str(fields["job_description"])
-        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
-        save_job_data(astral_job_id, {jd_key: text})
     if col:
         try:
             if save_job(astral_job_id, **col) is False:
