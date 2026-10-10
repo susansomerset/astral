@@ -4770,7 +4770,11 @@ _ENCODED_GRADE_SET_COMPLETENESS = (
     "instructions for this run. Omitting a code is invalid.\n"
     "When there is no signal for a vector, emit {code}X0 — never skip that segment.\n"
     "Do not invent extra codes beyond the rubric. Do not invent letter grades to fill gaps — "
-    "use X with confidence 0 when the source is silent."
+    "use X with confidence 0 when the source is silent.\n"
+    # Example lines show a fixed code count; models copy that length unless told otherwise.
+    "Example lines are illustrative — their code count is not a template. Each line carries "
+    "exactly as many grade segments as the rubric has codes; check every line against the "
+    "rubric code list before moving on."
 )
 
 # ---------------------------------------------------------------------------

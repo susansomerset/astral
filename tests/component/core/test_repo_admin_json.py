@@ -1168,7 +1168,9 @@ class TestAst1144ParseMeteoriteEmailMetadataPrompt:
 class TestAst1154GradedTaskCompletenessPrompts:
     """AST-1154: seven multi-vector graded agent_task cache_prompts require full grade-set."""
 
+    # Fixture rows still carry the ticket-id sentinel; catalog prompts are ticket-free (c06eaefdf).
     _MARKER = "GRADE SET COMPLETENESS (AST-1154)"
+    _CATALOG_MARKER = "## GRADE SET COMPLETENESS"
     _KEYS = (
         "prefilter_company",
         "qualify_job_listings",
@@ -1184,7 +1186,7 @@ class TestAst1154GradedTaskCompletenessPrompts:
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         for key in self._KEYS:
             cache = by[key]["cache_prompt"]
-            assert self._MARKER in cache, key
+            assert self._CATALOG_MARKER in cache, key
             assert "Omitting a code is invalid" in cache or (
                 "never omit a code" in cache
             ), key
@@ -1198,6 +1200,21 @@ class TestAst1154GradedTaskCompletenessPrompts:
         for key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
             assert "silent vectors must be {code}X0." in by[key]["cache_prompt"], key
         assert "silent vectors must be X0." in by["prefilter_company"]["cache_prompt"]
+
+    def test_qualify_cache_prompt_grade_count_and_metadata_omit_scope(self) -> None:
+        # Bug-repro: 7-code examples must not cap the segment count, and the metadata
+        # "omit unstated" rule must not leak into salary / employment-type grades.
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        cache = by["qualify_job_listings"]["cache_prompt"]
+        assert "shows 7 codes for illustration only — the code count is not a template" in cache
+        assert "as many segments as the rubric has codes" in cache
+        assert "Omit any metadata key/value pair whose value is not stated" in cache
+        assert "never to grade segments" in cache
+        assert "{code}X0 when the listing does not state it" in cache
+        assert "Omit any data whose value is not stated" not in cache
+        # names-not-ticket-ids guard (regression only; true before and after the fix).
+        assert "AST-" not in cache
 
     def test_fixture_graded_keys_carry_completeness_marker(self) -> None:
         # AST-1196: per-key fixture lockstep (not whole-file catalog↔fixture bytes).
