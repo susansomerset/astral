@@ -2348,3 +2348,34 @@ This is the step that covers the production case (1-job batch, `V01A3` or prose)
 - **AST-2091:** empty and duplicate rubric messages unchanged; craft_* tasks still runnable on an empty rubric.
 - **`_GRADE_SEG`** unchanged; no code coercion at decode.
 
+
+### Fix board — Joan (F2)
+
+[board-joan] CANON: OK
+
+**Ticket:** AST-2126 (Plan Ready, Hedy) · mini-parent AST-2112 · publish ref `sub/AST-2112/AST-2126-do-rubric-undecodable-codes` @ `cfd59ab62`.
+
+**Diff note (read-only):** `origin/ftr/AST-2112-do-rubric-undecodable-codes...origin/sub/AST-2126-do-rubric-undecodable-codes` is **plan-fix + registry mirrors + `scripts/ci/ftr-merge-ready.sh` only** — no `src/` yet. This pass judges the **`## Bug: AST-2126`** patch (As-is / To-be / Root cause / Proposed change / Blast radius / What must still hold), not Radia’s later diff score.
+
+**Cited roster (issue doc, AST-1996 precedent):** `patt.task.dispatch-retry` (read), `patt.entity.batch-processing` (read); id-only for make-fix: `stat.logging.warning`, `stat.logging.debug`. `docs/canon-index.md` absent on this tree; overlap checked via `canon/directives/active/patt.task.dispatch-retry.md`, `patt.entity.batch-processing.md`, and roster grep — **no active directive** defines rubric criterion code shape, `V{idx}` sync fallback, or `_GRADE_SEG` width.
+
+**One-question triage — does the proposed change conflict with or require updating in-force canon?**
+
+**No.** Same class as AST-1996 / AST-2089 fix-board OK:
+
+1. **`patt.task.dispatch-retry`** — Steps 4–5 route zero-segment / letter-pipe-empty replies through the **existing** `decode_failures` → per-entity `_consult_batch_fail_dest` path (AST-1996). The patch explicitly preserves AST-1155 incomplete-set semantics (`IncompleteGradeSetError`, first `*_RETRY` / second `error_state`) for true missing/extra vector sets. More entities seeing decode-failure routing instead of silent `grades: []` **implements** “invalid response → transition by current state,” not a second retry loop or a failure left in trigger state.
+
+2. **`patt.entity.batch-processing`** — No claim/release / `batch_size` / process-only-claimed-rows edits. Blast radius is consult decode, rubric save/sync, and dispatch Invalid messaging.
+
+3. **`stat.logging.warning` / `stat.logging.debug`** — New `logger.warning` on code repair is **use** of the existing logging statute, not an amendment. No new logging directive or level contract.
+
+4. **No statute amendment like AST-2053** — That fix needed **REVISE** because product decode contradicted draft `astral.agent.confidence-bounds` text. Here the plan **refuses** `_GRADE_SEG` widening (Decision: wire contract stays; fix is code supply + diagnostics). Active corpus does not require `V01`-style fallbacks or forbid `decode_failures` on letter-pipe fallback.
+
+5. **`rubric_dispatch_error` “invalid vector codes”** — Product/AST-2091 messaging family; not encoded in `canon/directives/active`. “What must still hold” keeps empty/duplicate strings and craft_* empty-rubric behavior; adding a third Invalid reason does not contradict any in-force pattern id on the roster.
+
+6. **Recorded decisions** (`_uptick_duplicate_rubric_codes` name, strict stored-code Invalid, no decoder coercion) are implementation choices already in the patch — not an open Archie precedent fork.
+
+**F3 (`validate-plan` fix mode):** not indicated from this board pass.
+
+**ESCALATE:** not indicated — bounded blast radius, scope-gate on `_normalize_rubric_task_response` already answered without widening epic scope.
+
