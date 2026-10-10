@@ -217,3 +217,54 @@ No gazer JD write or resolve-helper changes (AST-2132). No roster / company path
 ## Estimate
 
 Confirm Chuckles estimate: 5 — revise to 3 because the reader consumes AST-2132's existing pattern and the rest is mechanical call-site and field removal across four known files (light cross-layer glue).
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2133
+**Overall:** APPROVED
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (canon tree at publish tip; `docs/canon-index.md` absent on ref)
+**Publish ref:** `origin/sub/AST-2130/AST-2133-composed-jd` @ `5873f8586e51cf93728d24bdff5aef2c2c11ed61`
+
+## Canon scores
+
+stat.logging.debug | A |
+stat.logging.warning | A |
+stat.logging.error | A |
+
+## Traceability
+
+AC7 → Stage 1 (`compose_job_description`: preamble + collapse/prune on raw capture, `"\n\n"` join) + Stage 4 (`_compose_jd_for_response` on `list_view` / `detail`, response-only); AC8 → Stage 3 (consult call sites) + tracker as sole reader — **on this sub** grep still hits `api_admin.py` (2 lines) until AST-2134 per plan `## AC traceability`; AC9 → Stage 2 (field tuple / `persist_skipped_job_edits` drop JD; 400 when no valid fields) + Stage 5 (modal read-only + grep).
+
+### discuss — AC 8 vs sibling AST-2134
+
+- **Location:** Child AC 8 (zero grep hits) vs plan Stages 3 / 8 and `## AC traceability`.
+- **Finding:** `api_admin._build_adhoc_live_content` remains in the AC 8 pattern until AST-2134; plan documents that and names `tracker.compose_job_description` for 2134. Isolated sub UAT on AC 8 as written will fail until 2134 merges on `ftr`.
+- **Recommendation:** Score AC 8 at parent UAT or after 2134; do not widen AST-2133 scope to edit `api_admin.py`.
+
+### discuss — AC 7 separator
+
+- **Location:** Stage 1 Decision (`"\n\n"` between preamble and pruned capture).
+- **Finding:** Parent AC says “P followed by the pruned scraped text”; plan adds one blank line for readability (modal/prompts already collapse runs). Likely acceptable for operators; if Susan wants byte-concat with no blank line, clarify before UAT.
+- **Recommendation:** Optional parent AC wording note; not a plan blocker.
+
+### acceptable — List-view N× resolve
+
+- **Location:** `## Flags for Chuckles / Archie` / Stage 4 Decision.
+- **Finding:** One `telescope_data` read per referenced list row; bulk compose deferred pending approval — honest blast-radius flag.
+- **Recommendation:** None at plan stage.
+
+### acceptable — Lazy `_prune_jd` import from gazer
+
+- **Location:** Stage 1 `compose_job_description`.
+- **Finding:** Reuses gate-order prune rules without editing AST-2132’s file; cycle broken via lazy import (same pattern as existing tracker↔gazer).
+- **Recommendation:** Builder follows plan; no duplicate prune copy.
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan structure (`## Estimate` confirm only).
+- **Finding:** Stage 0 drift gate + five stages carry complexity; not blocking.
+
+**R6 (summary):** Four-file scope matches ticket. Composed reader, self-heal on composed length, read-only API/modal, and consult rewires align with parent functional items 6–7 and child Boundaries (no gazer/roster/migration). Stage 0 gates on AST-2132 symbols on the sub (`resolve_telescope_value`, `jd_telescope_data_id` save path). No `fix-now` gaps.
+
+context_tokens≈62000
