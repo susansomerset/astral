@@ -335,3 +335,55 @@ No gazer changes (AST-2132), no composed-JD implementation (AST-2133 — Stage 5
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2134
+**Overall:** APPROVED
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (canon tree at `56c4455`; `docs/canon-index.md` absent on ref)
+**Publish ref:** `origin/sub/AST-2130/AST-2134-roster-telescope-data` @ `56c4455ebcd4f5056c726e8bee3c86202a2bf1c1`
+
+## Canon scores
+
+stat.logging.debug | A |
+stat.logging.warning | A |
+stat.logging.error | A |
+stat.logging.info.entity | A |
+
+## Traceability
+
+AC5 (roster-written keys per Boundaries) → Stage 2 (`pjl_scrape_pages` `{url, id, links_id}`) + Stage 3 (`nav_links`, `website_content`, `job_list_visible`, `prefilter_company` `nav_links` id); `homepage_text` after `fetch_website` is gazer (AST-2132), not this ticket — N/A here. AC6 → Stage 1 (`_resolved_company_data` / readers) + Stage 4 (admin company preview + strip-on-read); migration “after clear” side is AST-2135 — fresh-write / id-swap parity only on this child. AC7 (parent AC11 — delete row, no blob surgery) → Stage 1 `get_company_data` resolve + fall-through to coat-check.
+
+### discuss — Stage 5 depends on AST-2133
+
+- **Location:** Stage 0 item 5; Stage 5; `## Flags`.
+- **Finding:** `compose_job_description` and parent AC8 grep close only when Stage 5 lands after AST-2133 merge on `ftr`; plan gates with 🛑 stop after Stages 1–4 if missing.
+- **Recommendation:** Ensure Linear `blockedBy` AST-2133 → AST-2134 for Stage 5 (or equivalent merge order); do not stub composer in roster/admin.
+
+### discuss — Pipeline scrapes not named in Scope
+
+- **Location:** `## Flags` (TRY_LINKS / JOBS_FOUND / list-page DOM paths).
+- **Finding:** Parent functional item 3 (“every pipeline scrape… kept”) vs this Scope omitting `_fetch_job_links_content`, `jobs_found_process_job_site`, `_scrape_list_page_dom_for_parse`.
+- **Recommendation:** Archie/product call whether a follow-up child or scope amendment is needed; not a plan defect for the two files named on the ticket.
+
+### discuss — Child AC 5 quote vs Boundaries
+
+- **Location:** Ticket AC 5 (mentions `homepage_text` / `fetch_website`) vs `## Boundaries` (“roster-written keys”).
+- **Finding:** Plan and Verification correctly scope AC5 to roster coat-check / PJL / job-list writers; gazer homepage ids are AST-2132.
+- **Recommendation:** UAT scripts for AST-2134 should use Boundaries slice, not full parent AC5 alone.
+
+### acceptable — Admin company resolve vs roster `_resolved_pjl_pages`
+
+- **Location:** Stage 4 step 3 (per-key `resolve_telescope_value`) vs Stage 1 `_resolved_pjl_pages`.
+- **Finding:** AC6 admin tasks (`prefilter_company`, `select_job_page`, `gaze`) do not assemble from `pjl_scrape_pages`; PJL ledger shape is roster-internal until a preview needs it.
+- **Recommendation:** If a future admin task reads `pjl_scrape_pages`, reuse roster helper or shared resolve — out of scope here.
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan structure (`## Estimate` confirm only).
+- **Finding:** Five stages + `/tmp` verification matrix carry complexity; not blocking.
+
+**R6 (summary):** Two-file scope matches ticket. Central resolve path, writer→gazer keep, PJL merge ids, `get_company_data` AC11 behavior, and admin preview parity are definition-faithful for the roster/admin slice. Lazy gazer imports respect ownership (no direct `database` telescope calls from roster/admin). DRY via one `_resolve_company_value` / `_resolved_company_data`. No `fix-now` gaps.
+
+context_tokens≈72000
