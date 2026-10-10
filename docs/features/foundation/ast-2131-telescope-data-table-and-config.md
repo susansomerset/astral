@@ -50,7 +50,7 @@ If any item does not hold, **stop** and post the 🛑 comment on AST-2130 (forma
        url TEXT,
        data_type TEXT NOT NULL,
        content BLOB NOT NULL,
-       created_at <same column definition agent_data uses for created_at>
+       created_at TIMESTAMP NOT NULL
    );
    CREATE INDEX IF NOT EXISTS idx_telescope_data_candidate_created
        ON telescope_data (candidate_id, created_at);
@@ -78,7 +78,7 @@ If any item does not hold, **stop** and post the 🛑 comment on AST-2130 (forma
        data_type is free text — deliberately no allow-list (new content types
        need no code gate). content is plain text; compressed at rest."""
    ```
-   Body: `conn = _get_connection()`; `try:` `_ensure_telescope_data_schema(conn)`; `new_id = str(uuid.uuid4())`; `INSERT INTO telescope_data (telescope_data_id, candidate_id, url, data_type, content) VALUES (?, ?, ?, ?, ?)` with `_compress_payload(content)`; `conn.commit()`; `return new_id`; `finally: conn.close()`. Let `created_at` take the column default. No `try/except`, no logging — errors propagate.
+   Body: `conn = _get_connection()`; `try:` `_ensure_telescope_data_schema(conn)`; `new_id = str(uuid.uuid4())`; `INSERT INTO telescope_data (telescope_data_id, candidate_id, url, data_type, content, created_at) VALUES (?, ?, ?, ?, ?, ?)` with `_compress_payload(content)` and `_utc_now()` (same timestamp source `save_agent_data` uses); `conn.commit()`; `return new_id`; `finally: conn.close()`. No `try/except`, no logging — errors propagate.
 3. Add:
    ```python
    def get_telescope_data_for_ids(telescope_data_ids):
@@ -191,3 +191,8 @@ AC1 → Stage 1 (schema-ensure, registry, inventory, `.schema telescope_data`); 
 
 **R6 (summary):** Definition fidelity matches child `## Scope` and Boundaries (no gazer, roster, migration). Files Changed ⊆ ticket Scope. Stage 0 matches live `database.py` (`_compress_payload`, `_decompress_payload`, `_UPSERT_LAZY_SCHEMA_HANDLERS`, `_UPSERT_SCHEMA_ENSURE_FLAGS`, `_ensure_agent_data_schema`, `ensure_all_upsert_registry_schemas_at_startup`). DRY: explicit mirror of `agent_data` lazy ensure + compressed blob I/O. No sibling creep. No `fix-now` gaps.
 
+## Revisions
+
+Revision 1 — 2026-10-10
+Driven by: Ada's build-child Stage 2 stop on AST-2130 (`created_at` "column default" vs live `agent_data.created_at TIMESTAMP NOT NULL` with no DEFAULT); Chuckles decision: option 1.
+Changes: Stage 1 step 2 — `created_at TIMESTAMP NOT NULL` written out (mirrors `agent_data`; no DEFAULT). Stage 2 step 2 — `save_telescope_data` INSERT now lists `created_at` and passes `_utc_now()`, same timestamp source as `save_agent_data`; removed "take the column default".
