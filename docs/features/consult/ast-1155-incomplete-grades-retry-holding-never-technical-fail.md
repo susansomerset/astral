@@ -2231,7 +2231,7 @@ Why technical, not the retry holding: consistent with a second strike from `*_RE
 
 ### Proposed change
 
-One `code(AST-2126)` commit; steps 1–4 are inside AST-2126 `## Scope`; **step 5 is pending a scope amendment** (`[scope-gate]` on AST-2126) — if declined, drop step 5 and nothing else changes.
+One `code(AST-2126)` commit; steps 1–5 are inside AST-2126 `## Scope` (step 5 per the amended Technical scope line: "`src/core/consult.py`: … **Modified function** `_normalize_rubric_task_response`: for `grades_encoded_notes` jobs, a letter-pipe fallback row with zero grades becomes one `decode_failures` entry per batch entity (raw reply as reason) instead of a silent `grades: []` row." — amended per AST-2126 `[scope-gate]`).
 
 **1. `src/core/candidate.py` — pre-save helper fills/repairs codes.**
 
@@ -2304,7 +2304,7 @@ if with_notes and not grade_segs:
 
 Add to the docstring's decode_failures sentence: "…and a `grades_encoded_notes` line with no grade segments". Reachable when another line in the payload carries a valid segment (multi-entity batches).
 
-**5. (Pending scope amendment) `src/core/consult.py::_normalize_rubric_task_response` — letter-pipe zero-grade → decode failures.** In the `isinstance(payload, str)` branch, after `row = _job_from_letter_pipe(text, task_config, ctx)` and before the company/job returns:
+**5. `src/core/consult.py::_normalize_rubric_task_response` — letter-pipe zero-grade → decode failures.** In the `isinstance(payload, str)` branch, after `row = _job_from_letter_pipe(text, task_config, ctx)` and before the company/job returns:
 
 ```python
 if not company_entity and task_config.get("output_type") == "grades_encoded_notes" and not row.get("grades"):
