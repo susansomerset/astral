@@ -183,3 +183,37 @@ context_tokens≈18500
 Revision 1 — 2026-10-10
 Driven by: Joan validate round 1 fix-now ("extend this child's `## Scope` and the plan (Files Changed + explicit Betty/`qa-child` steps) to cover all four files"); Chuckles amended the Linear `## Scope` to add them.
 Changes: Files Changed gains a Betty table covering every in-scope test and bible file, including `test_api_system.py`, `test_candidate.py`, `test_api_candidate.py` and `test_NavigationShell.test.tsx`. The open "Notes for qa-child" decision is replaced by explicit `qa-child steps` 1–8 with exact replacement values, so the AC 8 / AC 9 greps over `tests` come back clean at User Testing. Engineer Stage 1 is unchanged.
+
+## Joan validate — round 2
+
+[plan-rubric]
+**Ticket:** AST-2122
+**Overall:** APPROVED
+**Corpus:** c04b07deda8f5a750afd473ec847d06ed2207065
+**Publish ref:** `origin/sub/AST-2100/AST-2122-retire-theme-examples` @ `dcd2c21c83184c0d19ff961b14ca22785d2243fb`
+
+## Canon scores
+
+_(empty — parent and child Canon Scope locked **none** at Discussion; no directive ids to score.)_
+
+## Traceability
+
+AC8→Stage 1 (1–7, 9–10) + qa-child 1–2, 7–8; AC9→Stage 1 (2–3, 5) + qa-child 2–6, 8; AC10→Stage 1 step 8 (+ Betty suite green per qa-child 8).
+
+## Findings
+
+### acceptable
+
+- **Location:** Plan Discuss round 1; Linear `## Scope`; `## qa-child steps`
+- **Finding:** Prior fix-now (four test files outside Scope) is closed: Scope lists all six test touchpoints; Betty table and steps 1–8 give concrete edits and grep verification aligned with AC 8/9 carve-out (`App.css` only in `src`).
+- **Recommendation:** None.
+
+- **Location:** Parent functional scope 6–7; boundaries (`App.css` → AST-2123)
+- **Finding:** Engineer four-file Stage 1 matches ticket Scope; no sibling creep.
+- **Recommendation:** None.
+
+- **Location:** `## Codebase facts` (tip `266642874`) vs publish `dcd2c21`
+- **Finding:** Line anchors may drift slightly; qa-child steps cite the same tip — low risk for Betty.
+- **Recommendation:** None.
+
+context_tokens≈24000
