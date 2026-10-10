@@ -30,11 +30,16 @@ describe("AST-2084 JobArtifactEditModal", () => {
     expect(document.querySelector(".modal-overlay")).toBeNull()
   })
 
-  it("job resume: stacked full-screen split pane with the job editor and job_resume preview; a save bumps the preview once", () => {
+  it("AST-2115 [bug-repro]: job resume opens a stacked 80%-width split pane over the page with the job editor and job_resume preview; a save bumps the preview once", () => {
     render(<JobArtifactEditModal jobId="j1" tab={RESUME} onClose={vi.fn()} />)
     expect(document.querySelector(".modal-overlay--stacked")).toBeTruthy()
     expect(screen.getByRole("heading", { name: "Job Resume" })).toBeInTheDocument()
-    expect((document.querySelector(".modal-card") as HTMLElement).style.width).toBe("100vw")
+    // AST-2115: 80vw × 90vh card with its border kept, not the edge-to-edge fullscreen card.
+    const card = document.querySelector(".modal-card") as HTMLElement
+    expect(card.style.width).toBe("80vw")
+    expect(card.style.height).toBe("90vh")
+    expect(card.style.borderStyle).toBe("")
+    expect((card.querySelector(".modal-body") as HTMLElement).style.padding).toBe("0px")
     expect(screen.getByRole("separator")).toBeInTheDocument()
     expect(screen.queryByTestId("artifact-editor")).toBeNull()
     expect(props.editor.target).toEqual({ kind: "job", id: "j1" })
