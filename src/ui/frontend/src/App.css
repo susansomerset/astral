@@ -34,9 +34,10 @@
 /* === 1. Design Tokens === */
 
 /* Dark is the default palette (:root) and also [data-theme="dark"] so a Dark panel can sit inside a Light page.
+   Shapes - Dark (AST-2129) shares this block: same colours, one declaration, no drift.
    Each [data-theme] block must declare the SAME custom-property names as this one — aliases like
    --confidence-bullet-* included, since var() inside a custom property resolves where it is declared. */
-:root, [data-theme="dark"] {
+:root, [data-theme="dark"], [data-theme="shapes_dark"] {
   --bg-deep: #0f0b18;
   --bg-card: #1a1424;
   --bg-elevated: #241b33;
@@ -97,6 +98,19 @@
   --grade-d-ring-width-lettered: 0;
   --grade-f-ring-width-lettered: 0;
   --grade-x-ring-width-lettered: 0;
+  /* AST-2129: Shapes ring — SVG stroke width per grade, compact then lettered (Dark: no ring) */
+  --grade-a-shape-ring-width: 0px;
+  --grade-b-shape-ring-width: 0px;
+  --grade-c-shape-ring-width: 0px;
+  --grade-d-shape-ring-width: 0px;
+  --grade-f-shape-ring-width: 0px;
+  --grade-x-shape-ring-width: 0px;
+  --grade-a-shape-ring-width-lettered: 0px;
+  --grade-b-shape-ring-width-lettered: 0px;
+  --grade-c-shape-ring-width-lettered: 0px;
+  --grade-d-shape-ring-width-lettered: 0px;
+  --grade-f-shape-ring-width-lettered: 0px;
+  --grade-x-shape-ring-width-lettered: 0px;
   /* Confidence bullets (AST-357) — map to nav link colors; tune without changing global palette */
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
@@ -120,8 +134,9 @@
   --error: #f87171;
 }
 
-/* AST-2042: Light palette — what the profile's Light applies (UI_CONFIG themes). */
-[data-theme="light"] {
+/* AST-2042: Light palette — what the profile's Light applies (UI_CONFIG themes).
+   Shapes - Light (AST-2129) shares this block: same colours, one declaration, no drift. */
+[data-theme="light"], [data-theme="shapes_light"] {
   --bg-deep: #f5f3fa;
   --bg-card: #ffffff;
   --bg-elevated: #ece8f4;
@@ -181,6 +196,19 @@
   --grade-d-ring-width-lettered: 2px;
   --grade-f-ring-width-lettered: 2px;
   --grade-x-ring-width-lettered: 2px;
+  /* AST-2129: Shapes ring — SVG stroke width per grade, compact then lettered */
+  --grade-a-shape-ring-width: 1.5px;
+  --grade-b-shape-ring-width: 1.5px;
+  --grade-c-shape-ring-width: 1.5px;
+  --grade-d-shape-ring-width: 1.5px;
+  --grade-f-shape-ring-width: 1.5px;
+  --grade-x-shape-ring-width: 1.5px;
+  --grade-a-shape-ring-width-lettered: 2.5px;
+  --grade-b-shape-ring-width-lettered: 2.5px;
+  --grade-c-shape-ring-width-lettered: 2.5px;
+  --grade-d-shape-ring-width-lettered: 2.5px;
+  --grade-f-shape-ring-width-lettered: 2.5px;
+  --grade-x-shape-ring-width-lettered: 2.5px;
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
   --confidence-bullet-inactive-opacity: 0.55;
