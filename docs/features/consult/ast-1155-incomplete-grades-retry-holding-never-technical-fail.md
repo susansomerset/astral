@@ -2389,3 +2389,98 @@ Docstring: change "A letter segment with confidence 0 is normalised to confidenc
 - The `No rubric description for vector … grade …` message text is unchanged.
 - AST-1910's QC prompt rule stays. No prompt, `src/utils/config.py`, or `data/admin/agent_task.json` change.
 - No save-time / dispatch-preflight rubric validation (AST-2091 untouched). Somerset's missing F row is an ops data fix.
+
+
+## Joan fix-board — AST-2124
+
+**Corpus read:** `origin/sub/AST-2116/AST-2124-missing-grade-fail` — `## Bug: AST-2124` block in `docs/features/consult/ast-1155-incomplete-grades-retry-holding-never-technical-fail.md` (As-is / To-be / Repro / Root cause / Proposed change / Blast radius / What must still hold).
+
+**Roster skim:** `astral.agent.confidence-bounds` (plan amends both copies), `patt.task.dispatch-retry` (id-only per ticket). Overlap checks: `stat.logging.warning` (hydrate scenario), `canon/docs/DIRECTIVES-DIRECTORY.md` L224 (index row only, not amended in plan).
+
+---
+
+### The one question
+
+Does the **Proposed change** conflict with or require updating any directive **in force**?
+
+**Yes — one statute must move before the product change matches written law.** No other active statute or pattern needs an edit for this patch; nothing rises to an Archie-only fork.
+
+---
+
+### `astral.agent.confidence-bounds` (REVISE — required)
+
+**In force today (publish ref):**
+
+- **Draft** (`canon/directives/draft/stat.agent.confidence-bounds.md`): AST-2053 carve-out — `{A–F}0` → same letter, confidence `1`; conforming example `CFC0` → `C` / `1`.
+- **Harvest** (`canon/statutes/astral/agent/astral.agent.confidence-bounds.md`): no decode exception; statement is only “1–5 for letters, 0 with X; F1 no signal.”
+
+**Proposed product + canon (§9):** `{A–F}0` → `X0`; explicit “X is always no signal” including hydrate fallback; conforming `CFC0` → `X` / `0`; violating example for hydrate raising on missing X row.
+
+Until both files match §9, the code **violates** the draft statute (it would remove `{letter}1` normalization the draft still mandates) and **extends** behavior (decode exception, X hydrate policy) beyond what the harvest copy states. The ticket correctly puts **both copies** in scope (Susan-approved; fixes AST-2053 dual-copy drift).
+
+**Wording review (not ESCALATE):** The drafted Statement keeps the existing scoring line (F1 / multipliers unchanged), replaces the sanctioned slip from letter1 to X0, and documents X-at-hydrate without inventing new confidence bounds. Conforming/Violating examples match the repro. That is a straight **supersession of AST-2053’s in-statute text**, not an ambiguous new precedent.
+
+**F3:** `validate-plan` fix mode should land/validate §9 verbatim (frontmatter untouched per plan).
+
+---
+
+### `patt.task.dispatch-retry` (no canon change)
+
+Plan routes **missing letter description** to each task’s **`fail_state`** with a per-entity WARNING — **not** `_RETRY` / batch technical-fail. That does **not** contradict the pattern:
+
+- Retry still applies to **invalid agent attempts**; the plan classifies missing rubric text as **rubric data**, same lane as “retry cannot fix.”
+- Structural hydrate `ValueError` (empty rubric, unknown vector) keeps AST-1839 batch retry/error routing per **What must still hold**.
+- The pattern’s **empty_tokens** carve-out already shows “not every failure is an agent retry.”
+
+No statute amendment required; id-only cite is accurate.
+
+---
+
+### `stat.logging.warning` (no canon change)
+
+The prefilter hydrate → `HOMEPAGE_READY_RETRY` example describes **batch structural** hydrate failure logging. AST-2124 keeps that path for plain `ValueError` and adds entity-scoped `_warn_job` / `_warn_company` to **`fail_state`** for `MissingRubricDescriptionError`. Handlers still use the existing `retry_base(dest)` warning vs error split. No Statement edit indicated.
+
+---
+
+### Non-blocking drift (not fix-board REVISE scope)
+
+- `canon/docs/DIRECTIVES-DIRECTORY.md` L224 still summarizes confidence-bounds without decode or X-hydrate rules. Plan does not touch it (same as AST-2053 deferral). Stale index prose; not an in-force statute body conflict for this triage pass.
+
+---
+
+### Recorded plan decisions vs canon
+
+- **QC / AST-1910:** Prompt rule unchanged; X hydrates with fixed reason — consistent with amended “X always no signal” and existing scoring no-signal math. No extra statute.
+- **`AllLiteralXGradeSetError`:** More lines may hit AST-2096 all-X retry before fail — product choice documented in plan; not forbidden by `patt.task.dispatch-retry` or confidence-bounds as drafted.
+
+---
+
+### ESCALATE check
+
+No open architectural question that needs Archie beyond **canon text already written in §9** and Susan’s AST-2116 rule. **Not ESCALATE.**
+
+---
+
+### Chuckles routing (documentation)
+
+Betty’s line not run here. If Betty is **OK** or **REVISE**, Joan **REVISE** → **Plan Discuss** and spawn **`validate-plan` fix mode (F3)** before **`make-fix`**, unless both board lines are REVISE (F3 then F4 per skill table).
+
+---
+
+### Machine-readable verdict (for Linear comment)
+
+```text
+[board-joan]  CANON: REVISE
+What: astral.agent.confidence-bounds — Statement + Conforming/Violating must record letter0→X0 and X always no-signal at hydrate — per plan-fix §9 in both statute copies
+```
+
+### Stdout (skill one-liner)
+
+```text
+AST-2124 board-joan done — CANON: REVISE — confidence-bounds X0 both copies.
+```
+
+```text
+context_tokens≈14500
+
+**Chuckles routing:** Betty `TESTS: REVISE` (three AST-2053 decode tests break, and there is no repro coverage) goes to a sibling gap child under AST-2116 (orphaned branch). Joan `CANON: REVISE` stays on AST-2124. Both `astral.agent.confidence-bounds` copies are already inside AST-2124's declared scope, and §9 above is the wording Joan validated, so make-fix lands §9 verbatim. A separate canon child would duplicate that scope (AST-2053 precedent). AST-2124 proceeds to make-fix.
