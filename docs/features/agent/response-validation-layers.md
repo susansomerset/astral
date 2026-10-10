@@ -652,3 +652,25 @@ Tag style: `# [bug-repro]` on the assertion comment (not docstring first line); 
 - **Branch topology:** verified `git merge-tree --write-tree origin/dev origin/ftr/AST-2012-grade-batch-unique-index` vs sub tip `51f234e12` — `src/` + `data/` identical; only non-test delta is this plan doc. The `src/`/`data/` carry is pure `sync(dev)` content already on origin/dev; whole-sub merge onto ftr is safe (ftr lands on dev anyway). No path-filtered rollup needed.
 - **Bible scope-gate row** (`docs/test-bible/core/agent.md` § QA test manifest — AST-2095 row 4): wording is stale post-`sync(dev)` (true only vs dev+ftr, not vs bare ftr). Test-tree owned by Betty — left for her next bible touch; not a merge blocker.
 - **Coverage AC:** accepted on branch-level proof (100% of AST-2093-added lines/branches); module-wide figure belongs to a full-suite run.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/bf4b83fa530486fab353322f3f5a4fe7/48aa5ff5-a216-4d51-9e41-7bc047a9ff1d/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/c2b2e1ad-e66c-42ed-91c0-6d13536d4a33/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/bf4b83fa530486fab353322f3f5a4fe7/6fdfe3fe-1a6f-4e4a-9383-5537896ab59f/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2012 (parent) | ftr/AST-2012-grade-batch-unique-index |
+| AST-2093 | sub/AST-2012/AST-2093-grade-batch-unique-index |
+| AST-2095 | sub/AST-2012/AST-2095-grade-batch-unique-index-tests |
+
+**Epic worktree:** `astral-AST-2012/` — one active sub checked out at a time.

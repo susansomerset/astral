@@ -602,3 +602,26 @@ context_tokens≈78000
 ```
 
 context_tokens≈52000
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/e7e7b26a221ccd991251f638958bc70b/e745efbb-6bee-4f68-85a1-7515aed0e3cc/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/e7e7b26a221ccd991251f638958bc70b/d2b30ed8-67a6-4908-8438-6dd590f9eeee/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/e7e7b26a221ccd991251f638958bc70b/5479d8da-044b-478f-bbfe-65f4feee6f58/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/e7e7b26a221ccd991251f638958bc70b/875e9cf6-ec2e-46c5-823e-989f6aadefbb/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2073 (parent) | ftr/AST-2073-revise-terminal-states |
+| AST-2086 | sub/AST-2073/AST-2086-terminal-state-rename |
+| AST-2087 | sub/AST-2073/AST-2087-terminal-state-remap |
+
+**Epic worktree:** `astral-AST-2073/` — one active sub checked out at a time.

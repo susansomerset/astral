@@ -2601,12 +2601,12 @@ UAT: `TASK_CONFIG["parse_meteorite_email"].response_schema.jobs.items_schema.met
 
 **Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.
 
-Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload_instructions` (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`); not on `grades_encoded_vet_meta` / `grades_json`. Seven graded `agent_task` `cache_prompt`s carry the same AST-1154 marker + VALIDATE/Rules tighteners; AST-756 fixture stays byte-identical. Retry/Skipped Retry remain AST-1155 / AST-1156.
+Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload_instructions` (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`); not on `grades_encoded_vet_meta` / `grades_json`. Seven graded `agent_task` `cache_prompt`s carry a `## GRADE SET COMPLETENESS` section (ticket-free since `c06eaefdf`; the AST-756 fixture rows still carry the `(AST-1154)` sentinel) + VALIDATE/Rules tighteners. AST-2120 adds, on `qualify_job_listings`, the illustrative-code-count sentence (7-code examples are not a segment-count template) and scopes the "omit unstated" rule to metadata only; the shared constant gains one closing line ("their code count is not a template") on the same four types. Retry/Skipped Retry remain AST-1155 / AST-1156.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Shared encoded completeness clause | `src/utils/config.py` | **`TestAst1154EncodedGradeSetCompleteness`** |
-| Graded task prompts + fixture lock | `data/admin/agent_task.json` | **`TestAst1154GradedTaskCompletenessPrompts`**; existing **`TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`** |
+| Shared encoded completeness clause | `src/utils/config.py` | **`TestAst1154EncodedGradeSetCompleteness`** (incl. **`::test_grade_count_not_template_on_multi_vector_types`**, AST-2121 bug-repro) |
+| Graded task prompts + fixture marker | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1154GradedTaskCompletenessPrompts`** (incl. **`::test_qualify_cache_prompt_grade_count_and_metadata_omit_scope`**, AST-2121 bug-repro); existing **`TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`** |
 
 **Broken / obsolete:** none — additive prompt/contract text; catalog count unchanged.
 
@@ -2619,6 +2619,29 @@ Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload
   tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte \
   -q
 ```
+
+### AST-2121 · AST-2108 (qualify grade-set repro — test gap for AST-2120)
+
+**Publish:** `origin/sub/AST-2108/AST-2121-qualify-grade-set-tests`. Test tree + bible only; product fix is AST-2120 (on ftr @ `6ad17bcbb`).
+
+**Revised:** `TestAst1154GradedTaskCompletenessPrompts::test_marker_and_tighten_lines_on_graded_cache_prompts` — catalog check now `_CATALOG_MARKER = "## GRADE SET COMPLETENESS"` (stale `(AST-1154)` sentinel stripped from catalog by `c06eaefdf`; red before this pass). Every other assertion unchanged. Fixture-side `test_fixture_graded_keys_carry_completeness_marker` untouched (still `_MARKER`).
+
+**Broken / obsolete:** none new. AST-756 whole-file twins (`TestAst1494…::test_fixture_byte_identical_to_catalog`, `TestAst1773…::test_fixture_catalog_byte_lockstep`) stay red — out of scope.
+
+**Integration:** none.
+
+**Repro-first (gap-child — AST-2120 already on ftr):** with `27cd7cbcf`'s `data/admin/agent_task.json` + `src/utils/config.py` swapped in → **2 failed, 4 passed**: both new nodes red for the root-cause reason (qualify prompt lacks the illustrative-count sentence; constant lacks "their code count is not a template"); revised marker test green. Restored sub tip → **6 passed**. Whole-file baseline (`test_repo_admin_json.py` + `test_config.py`): 62 → 61 failed, the only delta being the marker test fixed; no new failures.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness \
+  -q
+```
+
+Repro node ids (`[bug-repro]`): `test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts::test_qualify_cache_prompt_grade_count_and_metadata_omit_scope`, `test_config.py::TestAst1154EncodedGradeSetCompleteness::test_grade_count_not_template_on_multi_vector_types`. `docs/test-bible/core/repo_admin_json.md` manifests already list the class-level node — no edit.
 
 ### AST-1155 · AST-1150
 
