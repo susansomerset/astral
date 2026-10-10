@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+Company terminals renamed by writing task (select / parse / prefilter / resolve / upshot): `ERROR_SELECT_JOB_PAGE_*`, `BOT_BLOCKED_SELECT_JOB_PAGE`, `ERROR_PARSE_JOB_LIST_UNPARSEABLE`, `ERROR_PREFILTER_COMPANY_*`, `ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND` / `ERROR_RESOLVE_WEBSITE_NOT_FOUND`, `ERROR_COMPANY_UPSHOT`. Parse empty-token (dispatch and select-only chain) → bare `ERROR_PARSE_JOB_LIST`; JOBS_FOUND scrape error → required `locate_job_page.error_state` (`ERROR_SELECT_JOB_PAGE`, no fallback): **`TestAst2006EmptyTokenCompanyTerminals`**, **`TestJobsFoundProcessJobSite469::test_scrape_error_transitions_to_select_error`**. Agent `response_type` literals (`NO_JOBLIST`, `JOBSITE_SCRAPE_ISSUE`, …) are unchanged. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-463 · AST-460
 
 **`recheck_no_openings`** dispatch batch: Playwright **`get_visible_text`** on stored **`job_site`** only; substring match on **`company_data.no_jobs_message`** keeps **NO_OPENINGS** + **`last_scan_at`**; absence transitions to **JOBS_FOUND**. **TO_WATCH** **`find_job_page`** path unchanged. Admin adhoc live preview echoes **`job_site`** for **`recheck_no_openings`**. **AST-1821:** failed attempts (missing **`job_site`**, missing **`no_jobs_message`**, Playwright exception) also stamp **`last_scan_at`**; missing **`short_name`** does not.
@@ -1141,7 +1145,7 @@ rg -in "linkedin" src/core/roster.py     # expect no output
 | Prefilter batch → every company `ERROR_PREFILTER`; summary `retried == 0` | `_run_batch_company_prefilter` | **`TestAst2006EmptyTokenCompanyTerminals::test_prefilter_batch_goes_to_error_prefilter`** |
 | select_job_page → `ERROR_LOCATE_JOB_PAGE`, `"error"`, no `state_held`, no `NO_JOBLIST` save | `_find_job_page_from_assembled` / `_locate_empty_token_error` | **`…::test_select_job_page_goes_to_error_locate_without_no_joblist`** |
 | parse hop returns `{empty_tokens, error}`, no notes save | `_fetch_parse_job_list` | **`…::test_fetch_parse_job_list_surfaces_empty_tokens_without_notes`** |
-| select-only parse → `ERROR_LOCATE_JOB_PAGE`, no parse notes | `_finalize_joblist_titles_select_only` | **`…::test_select_only_parse_goes_to_error_locate`** |
+| select-only parse → `ERROR_PARSE_JOB_LIST` (**AST-2086**: the parse hop owns it; was `ERROR_LOCATE_JOB_PAGE`), no parse notes | `_finalize_joblist_titles_select_only` | **`…::test_select_only_parse_goes_to_parse_error`** |
 | Parse dispatch from `JOBLIST_IDENTIFIED` and `_RETRY` → `COULD_NOT_PARSE_JOBLIST`, `"error"`, no save | `run_parse_job_list_dispatch` | **`…::test_parse_dispatch_goes_to_terminal_from_either_trigger`** (2 params) |
 
 **Broken / obsolete:** none.

@@ -3856,15 +3856,14 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
     raise ValueError(f"unsupported craft task_key for dispatch persist: {task_key!r}")
 
 
-def _requested_stage_failure_target(primary_state: str, current_state: str) -> str:
-    """Primary → retry_state; already on retry (or other) → error_state."""
+def _requested_stage_failure_target(primary_state: str, current_state: str, task_key: str) -> str:
+    """Primary → retry_state; already on retry → the failing hop's ERROR_<HOP>."""
     # Retry-only dispatch rows pass {base}_RETRY; resolve to the base, then compare against it
-    # so a failure while on retry lands on error_state, never back into retry (AST-642).
+    # so a failure while on retry lands on the hop's error_state, never back into retry (AST-642).
     primary = registered_base(CANDIDATE_STATES, primary_state) or primary_state
-    cfg = CANDIDATE_STATES[primary]
     if current_state == primary:
-        return cfg["retry_state"]
-    return cfg["error_state"]
+        return CANDIDATE_STATES[primary]["retry_state"]
+    return TASK_CONFIG[task_key]["error_state"]
 
 
 async def run_requested_artifacts_dispatch(
@@ -3906,8 +3905,8 @@ async def run_requested_artifacts_dispatch(
             debug=debug,
         )
         if response and response.get("empty_tokens") and is_registered_state(CANDIDATE_STATES, bare_trigger):
-            # AST-2000: data defect — stage error_state from trigger / hop label / _RETRY, never retry.
-            err_state = CANDIDATE_STATES[registered_base(CANDIDATE_STATES, bare_trigger) or bare_trigger]["error_state"]
+            # AST-2000: data defect — the failing hop's own error_state, never retry.
+            err_state = TASK_CONFIG[(response.get("empty_token_task") or start_key)]["error_state"]
             logger.debug("empty_tokens route candidate_id=%s dest=%s", candidate_id, err_state)
             try:
                 transition_candidate_state(candidate_id, err_state)
@@ -3939,7 +3938,8 @@ async def run_requested_artifacts_dispatch(
         if not is_registered_state(CANDIDATE_STATES, bare_trigger):
             logger.warning(msg, candidate_id, e)
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-        target = _requested_stage_failure_target(bare_trigger, current)
+        # A held hop label returned above, so the failure is on the entry hop (start_key).
+        target = _requested_stage_failure_target(bare_trigger, current, start_key)
         # AST-1839: retry holding → WARNING, uncounted; error_state (out of the holding) → ERROR, counted.
         (logger.warning if retry_base(target) else logger.error)(msg + " -> %s", candidate_id, e, target)
         try:

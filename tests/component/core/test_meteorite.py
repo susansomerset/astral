@@ -996,7 +996,7 @@ class TestAst1703EmailBreadcrumb:
         assert out["total_failed"] == 0
         assert out["total_errors"] == 1
         row = db.get_meteorite(row_id)
-        assert row["state"] == "SCRAPE_ERROR"
+        assert row["state"] == "ERROR_STAGE_METEORITE_UNPARSEABLE"
         assert "breadcrumb" in (row.get("error") or "")
 
     def test_stage_meteorite_schema_accepts_breadcrumb_fields(self) -> None:
@@ -1088,7 +1088,7 @@ class TestAst1560RunStageMeteorite:
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog
     ) -> None:
         # AST-2034 (parent AC8): unclassified NEW now goes to Ruth; a Ruth failure parks the
-        # row at NEW_EMAIL_ERROR — the old SCRAPE_ERROR "missing classify_outcome" arm is a Fail.
+        # row at ERROR_STAGE_METEORITE — the old SCRAPE_ERROR "missing classify_outcome" arm is a Fail.
         import logging
 
         import src.core.agent as agent_mod
@@ -1110,11 +1110,11 @@ class TestAst1560RunStageMeteorite:
         assert out["total_failed"] == 0
         assert out["total_errors"] == 1
         row = db.get_meteorite(row_id)
-        assert row["state"] == "NEW_EMAIL_ERROR"
+        assert row["state"] == "ERROR_STAGE_METEORITE"
         assert row["error"] == "llm down"
         assert not any("missing classify_outcome" in r.getMessage() for r in caplog.records)
         # _row_miss warning names the row and the human-reset next step.
-        assert any("NEW_EMAIL_ERROR" in r.getMessage() for r in caplog.records)
+        assert any("ERROR_STAGE_METEORITE" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.skipif(
@@ -1122,7 +1122,7 @@ class TestAst1560RunStageMeteorite:
     reason="AST-1560 run_scrape_meteorite not on this publish tip",
 )
 class TestAst1560RunScrapeMeteorite:
-    """AST-1560 / AST-1774: SCRAPE_LINK → CHECK_UNIQUE | BOT_BLOCKED | ERROR."""
+    """AST-1560 / AST-1774: SCRAPE_LINK → CHECK_UNIQUE | BOT_BLOCKED_SCRAPE_METEORITE | SCRAPE_LINK_RETRY → ERROR_SCRAPE_METEORITE."""
 
     @pytest.mark.asyncio
     async def test_ok_visible_text_to_ready(
@@ -1189,16 +1189,16 @@ class TestAst1560RunScrapeMeteorite:
                     task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
                 )
             )
-        # AST-1751: scrape BOT_BLOCKED is fail-only (not pass, not error).
+        # AST-1751: scrape BOT_BLOCKED_SCRAPE_METEORITE is fail-only (not pass, not error).
         assert out["total_failed"] == 1
         assert out["total_passed"] == 0
         assert out["total_errors"] == 0
-        assert db.get_meteorite(row_id)["state"] == "BOT_BLOCKED"
-        # Product: _row_miss → logger.warning "… — scrape blocked at {link}" / BOT_BLOCKED.
+        assert db.get_meteorite(row_id)["state"] == "BOT_BLOCKED_SCRAPE_METEORITE"
+        # Product: _row_miss → logger.warning "… — scrape blocked at {link}" / BOT_BLOCKED_SCRAPE_METEORITE.
         assert any(
-            "scrape blocked at" in r.getMessage() and "BOT_BLOCKED" in r.getMessage()
+            "scrape blocked at" in r.getMessage() and "BOT_BLOCKED_SCRAPE_METEORITE" in r.getMessage()
             for r in caplog.records
-        ), "expected _row_miss warning with scrape blocked + BOT_BLOCKED"
+        ), "expected _row_miss warning with scrape blocked + BOT_BLOCKED_SCRAPE_METEORITE"
 
     @pytest.mark.asyncio
     async def test_sibling_rows_do_not_abort_batch(
@@ -1239,14 +1239,14 @@ class TestAst1560RunScrapeMeteorite:
         # AST-1751: ERROR row must not also bump total_failed.
         assert out["total_failed"] == 0
         assert out["total_errors"] == 1
-        assert db.get_meteorite(bad_id)["state"] == "SCRAPE_ERROR"
+        assert db.get_meteorite(bad_id)["state"] == "SCRAPE_LINK_RETRY"
         assert db.get_meteorite(good_id)["state"] == "CHECK_UNIQUE"
 
     @pytest.mark.asyncio
     async def test_ast1751_error_only_batch_fail_zero_error_n(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """AST-1751 bug-repro: five SCRAPE_ERROR rows → fail:0 error:5 (not fail:5)."""
+        """AST-1751 bug-repro: five failing SCRAPE_LINK rows (→ SCRAPE_LINK_RETRY) → fail:0 error:5 (not fail:5)."""
         db = sqlite_in_memory
         cid = "cand-scp-err5"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E5"})
@@ -1272,6 +1272,25 @@ class TestAst1560RunScrapeMeteorite:
             "AST-1751: ERROR-only batch must report fail:0 (errors are not also fails)"
         )
         assert out["total_errors"] == 5
+
+    @pytest.mark.asyncio
+    async def test_ast2086_scrape_failure_retries_once_then_errors(self, sqlite_in_memory) -> None:
+        """AST-2086 AC5: SCRAPE_LINK failure → SCRAPE_LINK_RETRY; a failure from the retry → ERROR_SCRAPE_METEORITE."""
+        db = sqlite_in_memory
+        cid = "cand-scp-retry"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "R"})
+        row_id = _insert_meteorite_row(db, cid, state="SCRAPE_LINK", link="not-http")
+        tk = METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]
+
+        first = await meteorite_mod.run_scrape_meteorite(_ingress_task(batch_id="scrape-retry-1", candidate_id=cid, task_key=tk))
+        assert db.get_meteorite(row_id)["state"] == "SCRAPE_LINK_RETRY"
+        assert (first["total_errors"], first["total_failed"]) == (1, 0)
+
+        # The retry companion is claimed by the same scrape dispatch; the second strike is terminal.
+        second = await meteorite_mod.run_scrape_meteorite(_ingress_task(batch_id="scrape-retry-2", candidate_id=cid, task_key=tk))
+        assert second["total_processed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "ERROR_SCRAPE_METEORITE"
+        assert (second["total_errors"], second["total_failed"]) == (1, 0)
 
     @pytest.mark.asyncio
     async def test_ast1750_scrape_closed_error_includes_signal_text_len_final_url(
@@ -1311,10 +1330,10 @@ class TestAst1560RunScrapeMeteorite:
                 debug=True,
             )
 
-        # AST-1752: closed content is LINK_EXPIRED fail, not SCRAPE_ERROR.
+        # AST-1752: closed content is a JD_SCRAPE_FAIL_CLOSED fail, not an error.
         assert out["total_failed"] == 1
         assert out["total_errors"] == 0
-        assert db.get_meteorite(row_id)["state"] == "LINK_EXPIRED"
+        assert db.get_meteorite(row_id)["state"] == "JD_SCRAPE_FAIL_CLOSED"
         err = db.get_meteorite(row_id)["error"] or ""
         assert "scrape_closed" in err, f"expected scrape_closed in error, got {err!r}"
         assert "signal=" in err, (
@@ -1332,8 +1351,8 @@ class TestAst1560RunScrapeMeteorite:
             for r in caplog.records
         ), "AST-1750: warning must carry the same diagnostic why string"
         assert any(
-            "This row is LINK_EXPIRED" in r.getMessage() for r in caplog.records
-        ), "AST-1752: closed warning next step is LINK_EXPIRED"
+            "This row is JD_SCRAPE_FAIL_CLOSED" in r.getMessage() for r in caplog.records
+        ), "AST-1752: closed warning next step is JD_SCRAPE_FAIL_CLOSED"
 
     @pytest.mark.asyncio
     async def test_ast1752_missing_content_is_link_expired_fail(
@@ -1342,7 +1361,7 @@ class TestAst1560RunScrapeMeteorite:
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """AST-1752 bug-repro: missing content verdict is LINK_EXPIRED fail, not SCRAPE_ERROR."""
+        """AST-1752 bug-repro: missing content verdict is a JD_SCRAPE_FAIL_MISSING fail, not an error."""
         import logging
 
         db = sqlite_in_memory
@@ -1377,14 +1396,14 @@ class TestAst1560RunScrapeMeteorite:
         assert out["total_errors"] == 0
         assert out["total_passed"] == 0
         row = db.get_meteorite(row_id)
-        assert row["state"] == "LINK_EXPIRED"
+        assert row["state"] == "JD_SCRAPE_FAIL_MISSING"
         err = row["error"] or ""
         assert "scrape_missing" in err
         assert "signal=None" in err
         assert f"text_len={len(visible)}" in err
         assert "final_url=" in err
         assert any(
-            "This row is LINK_EXPIRED" in r.getMessage() for r in caplog.records
+            "This row is JD_SCRAPE_FAIL_MISSING" in r.getMessage() for r in caplog.records
         )
 
 
@@ -1458,15 +1477,15 @@ class TestAst1560RunLandMeteorite:
         # AST-1751: land ERROR arm bumps total_errors only — not total_failed.
         assert out["total_failed"] == 0
         assert out["total_errors"] == 1
-        assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
+        assert db.get_meteorite(row_id)["state"] == "ERROR_LAND_METEORITE"
 
 
 @pytest.mark.skipif(
     not hasattr(meteorite_mod, "apply_paste"),
-    reason="AST-1561 BOT_BLOCKED paste recovery not on this publish tip",
+    reason="AST-1561 BOT_BLOCKED_SCRAPE_METEORITE paste recovery not on this publish tip",
 )
 class TestAst1561ApplyPaste:
-    """AST-1561: BOT_BLOCKED → READY via paste (no classify)."""
+    """AST-1561: BOT_BLOCKED_SCRAPE_METEORITE → READY via paste (no classify)."""
 
     def test_moves_bot_blocked_to_ready(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1475,7 +1494,7 @@ class TestAst1561ApplyPaste:
         row_id = _insert_meteorite_row(
             db,
             cid,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             link="https://blocked.example/j",
         )
         out = meteorite_mod.apply_paste(row_id, "Full JD paste " + ("x" * 40))
@@ -1498,7 +1517,7 @@ class TestAst1561ApplyPaste:
         db = sqlite_in_memory
         cid = "cand-paste-empty"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
-        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED")
+        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED_SCRAPE_METEORITE")
         assert meteorite_mod.apply_paste(row_id, "   ")["error"] == "empty_paste"
 
 
@@ -1514,7 +1533,7 @@ class TestAst1561BotBlockedLookup:
         row_id = _insert_meteorite_row(
             db,
             cid,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             estelle_thread_ts="1234.5678",
         )
         found = meteorite_mod.find_meteorite_for_estelle_thread(
@@ -1532,7 +1551,7 @@ class TestAst1561BotBlockedLookup:
             cid,
             source_kind="paste",
             source_id="blob-1",
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
         )
         found = meteorite_mod.find_meteorite_bot_blocked_paste_source(candidate_id=cid)
         assert found is not None
@@ -1560,7 +1579,7 @@ class TestAst1561RunNotifyBotBlocked:
         row_id = _insert_meteorite_row(
             db,
             cid,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             link="https://jobs.example/blocked",
         )
         monkeypatch.setattr(
@@ -1592,7 +1611,7 @@ class TestAst1561RunNotifyBotBlocked:
         row_id = _insert_meteorite_row(
             db,
             cid,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             nag_count=nag_limit,
         )
         post = MagicMock()
@@ -1699,7 +1718,7 @@ class TestAst1559CheckInbox:
         assert out["total_errors"] == 1
         rows = db.list_meteorites_by_source("email", mid)
         assert len(rows) == 1
-        assert rows[0]["state"] == "NEW_EMAIL_ERROR"
+        assert rows[0]["state"] == "ERROR_STAGE_METEORITE"
         archive.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1777,7 +1796,7 @@ class TestAst1559CheckInbox:
     reason="AST-1689 electronic_contact map/persist not on this publish tip",
 )
 class TestAst1689ElectronicContactMapPersist:
-    """AST-1689: map Ruth contact → row; soft-fail; BOT_BLOCKED preserve; no job_data."""
+    """AST-1689: map Ruth contact → row; soft-fail; BOT_BLOCKED_SCRAPE_METEORITE preserve; no job_data."""
 
     @pytest.mark.asyncio
     async def test_text_outcome_stores_contact_on_row(
@@ -1951,11 +1970,11 @@ class TestAst1689ElectronicContactMapPersist:
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
-        # AST-1751: scrape BOT_BLOCKED counts as fail (contact column still preserved).
+        # AST-1751: scrape BOT_BLOCKED_SCRAPE_METEORITE counts as fail (contact column still preserved).
         assert out["total_failed"] == 1
         assert out["total_passed"] == 0
         row = db.get_meteorite(row_id)
-        assert row["state"] == "BOT_BLOCKED"
+        assert row["state"] == "BOT_BLOCKED_SCRAPE_METEORITE"
         assert row[col] == "keep@example.com"
 
     @pytest.mark.asyncio
@@ -2057,7 +2076,7 @@ class TestAst1689ElectronicContactMapPersist:
 
 @pytest.mark.skipif(not hasattr(meteorite_mod, "run_land_meteorite"), reason="AST-1560 land runner not on this publish tip")
 class TestAst1693RunLandBotBlocked:
-    """AST-1693: claim BOT_BLOCKED; contentful land with http job_link; empty stays."""
+    """AST-1693: claim BOT_BLOCKED_SCRAPE_METEORITE; contentful land with http job_link; empty stays."""
 
     @pytest.mark.asyncio
     async def test_contentful_bot_blocked_lands_with_http_link(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2065,7 +2084,7 @@ class TestAst1693RunLandBotBlocked:
         cid = "cand-1693-land"
         link = "https://example.test/job/1"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
-        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED", content="Non-scrape JD " + ("q" * 40), link=link)
+        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED_SCRAPE_METEORITE", content="Non-scrape JD " + ("q" * 40), link=link)
         captured: dict = {}
         def _save(_cid, **kwargs):
             captured.update(kwargs)
@@ -2082,30 +2101,30 @@ class TestAst1693RunLandBotBlocked:
         db = sqlite_in_memory
         cid = "cand-1693-empty"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
-        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED", content="", link="https://example.test/job/empty")
+        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED_SCRAPE_METEORITE", content="", link="https://example.test/job/empty")
         out = await meteorite_mod.run_land_meteorite(_ingress_task(batch_id="land-1693-empty", candidate_id=cid, task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]))
         assert out["total_failed"] == 0 and out["total_errors"] == 0 and out["total_passed"] == 0
         row = db.get_meteorite(row_id)
-        assert row["state"] == "BOT_BLOCKED" and not row.get("astral_job_id")
+        assert row["state"] == "BOT_BLOCKED_SCRAPE_METEORITE" and not row.get("astral_job_id")
 
 
 @pytest.mark.skipif(not hasattr(meteorite_mod, "run_notify_meteorite_bot_blocked"), reason="AST-1561 notify runner not on this publish tip")
 class TestAst1693NotifySkipsContentful:
-    """AST-1693: contentful BOT_BLOCKED belongs to land — notify must not DM."""
+    """AST-1693: contentful BOT_BLOCKED_SCRAPE_METEORITE belongs to land — notify must not DM."""
 
     @pytest.mark.asyncio
     async def test_skips_contentful_bot_blocked(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
         db = sqlite_in_memory
         cid = "cand-1693-notify"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "N", "contact": {"slack_user_id": "U-1693"}})
-        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED", content="Paste-ready JD " + ("x" * 40), link="https://jobs.example/blocked-contentful")
+        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED_SCRAPE_METEORITE", content="Paste-ready JD " + ("x" * 40), link="https://jobs.example/blocked-contentful")
         post = MagicMock()
         monkeypatch.setattr(meteorite_mod, "_resolve_slack_dm_channel_for_candidate", lambda _c: "D-1693")
         monkeypatch.setattr("src.core.contact.contact_post_message", post)
         out = await meteorite_mod.run_notify_meteorite_bot_blocked(_notify_task(batch_id="notify-1693-skip", candidate_id=cid))
         assert out["total_passed"] == 0
         row = db.get_meteorite(row_id)
-        assert row["state"] == "BOT_BLOCKED" and not row.get("estelle_notified_at")
+        assert row["state"] == "BOT_BLOCKED_SCRAPE_METEORITE" and not row.get("estelle_notified_at")
         post.assert_not_called()
 
 
@@ -2230,7 +2249,7 @@ class TestAst1713StageSavesRuthRow:
         assert out["error"] and "candidate not found" in out["error"]
         rows = db.list_meteorites_by_source("email", "mid-miss")
         assert len(rows) == 1
-        assert rows[0]["state"] == "NEW_EMAIL_ERROR"
+        assert rows[0]["state"] == "ERROR_STAGE_METEORITE"
 
     def test_insert_binds_caller_state(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -2753,7 +2772,7 @@ class TestAst1774RunCheckUniqueMeteorite:
         row_id = _insert_meteorite_row(
             db,
             cid,
-            state="BOT_BLOCKED",
+            state="BOT_BLOCKED_SCRAPE_METEORITE",
             link="https://jobs.example.com/blocked",
         )
         out = meteorite_mod.apply_paste(row_id, "Paste JD body " + ("p" * 40))
@@ -3498,7 +3517,7 @@ class TestAst2061ContactSanitize:
     @staticmethod
     def _bot_blocked_row(db, cid: str) -> int:
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
-        return _insert_meteorite_row(db, cid, state="BOT_BLOCKED", link="https://blocked.example/j")
+        return _insert_meteorite_row(db, cid, state="BOT_BLOCKED_SCRAPE_METEORITE", link="https://blocked.example/j")
 
     def test_insert_slack_meteorite_stores_sanitized_content(self, sqlite_in_memory) -> None:
         # [bug-repro] AST-2061: Contact markup / entity-encoded script never reaches stored content.
@@ -3564,8 +3583,8 @@ class TestAst2061ContactSanitize:
 
 
 # Branches: link_list → SCRAPE_LINK; single_jd_no_link → CHECK_UNIQUE; skip → NOT_A_JOB (failed);
-# do_task fail → NEW_EMAIL_ERROR (TestAst1560RunStageMeteorite::test_missing_classify_outcome_…);
-# map fail → NEW_EMAIL_ERROR with outcome kept; candidate missing → NEW_EMAIL_ERROR;
+# do_task fail → ERROR_STAGE_METEORITE (TestAst1560RunStageMeteorite::test_missing_classify_outcome_…);
+# map fail → ERROR_STAGE_METEORITE with outcome kept; candidate missing → ERROR_STAGE_METEORITE;
 # multi_jd_inline 3 jobs → original routed + 2 unclaimed classified NEW siblings;
 # classified row → zero do_task calls; classify agent_data batch = claim id; claim released.
 class TestAst2034StageHopClassify:
@@ -3651,7 +3670,7 @@ class TestAst2034StageHopClassify:
         out = await self._run("cand-2034-map", "b-2034-map")
         assert (out["total_errors"], out["total_failed"]) == (1, 0)
         row = db.get_meteorite(row_id)
-        assert row["state"] == "NEW_EMAIL_ERROR"
+        assert row["state"] == "ERROR_STAGE_METEORITE"
         assert row["error"] == "url scrap missing http(s) job_link"
         assert row["classify_outcome"] == "link_list"
 
@@ -3666,7 +3685,7 @@ class TestAst2034StageHopClassify:
         assert calls == []
         assert out["total_errors"] == 1
         row = db.get_meteorite(row_id)
-        assert row["state"] == "NEW_EMAIL_ERROR"
+        assert row["state"] == "ERROR_STAGE_METEORITE"
         assert "candidate not found" in row["error"]
 
     @pytest.mark.asyncio

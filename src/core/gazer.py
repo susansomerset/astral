@@ -79,8 +79,15 @@ def _is_fetch_website_infra_error(error: str) -> bool:
     return msg.startswith("[playwright:")
 
 
-def _fetch_website_fail_destination(company_state: str, error: str, cfg: Dict[str, Any]) -> str:
-    """Route infra → retry once; site failure or retry re-fail → CANNOT_READ_WEBSITE."""
+def _fetch_website_fail_destination(
+    company_state: str, error: str, cfg: Dict[str, Any], visible_text: str = "",
+) -> Optional[str]:
+    """Route infra → retry once; bot wall → BOT_BLOCKED_<task>; site failure or retry re-fail → fail_state.
+    None when the scrape neither errored nor hit a bot wall (success path)."""
+    if is_bot_wall(visible_text):
+        return cfg["bot_blocked_state"]
+    if not error:
+        return None
     retry_state = cfg["retry_state"]
     fail_state = cfg["fail_state"]
     if _is_fetch_website_infra_error(error):
@@ -99,14 +106,6 @@ def _gazer_company_identifier(row: Dict[str, Any]) -> str:
     """Primary debug identifier for a company row in gaze batches."""
     return str(row.get("short_name") or "?")
 
-
-# Maps _classify_jd() return value → scrape-fail / bot state name
-_JD_ERROR_STATES = {
-    "cookie":  "JD_SCRAPE_FAIL_COOKIE",
-    "bot":     "BOT_BLOCKED",  # AST-1195: universal bot/challenge state
-    "missing": "JD_SCRAPE_FAIL_MISSING",
-    "closed":  "JD_SCRAPE_FAIL_CLOSED",
-}
 
 # Maps _classify_jd() → Estelle/contact page_status (parent AC2: blocked/ok/closed/missing)
 _CONTACT_PAGE_STATUS = {
@@ -184,12 +183,15 @@ def _classify_jd(text: str) -> str:
     return "ok"
 
 
-def _apply_jd_gates(job: dict[str, Any], text: str, *, short_state: str, pass_state: str) -> bool:
+def _apply_jd_gates(
+    job: dict[str, Any], text: str, *, short_state: str, pass_state: str, classified_states: Dict[str, str],
+) -> bool:
     """Shared JD gates for fetch_jd_batch and fetch_relative_jd_batch (AST-2025).
 
     collapse blank lines -> empty check -> prune -> min_chars -> classify. Saves the JD and
-    transitions the job. Empty / too-short -> short_state; classified -> _JD_ERROR_STATES;
-    ok -> pass_state. Returns True only when the job reached pass_state.
+    transitions the job. Empty / too-short -> short_state; classified -> the calling task's
+    GAZER_CONFIG classified_states (cookie / bot / missing / closed); ok -> pass_state.
+    Returns True only when the job reached pass_state.
     """
     jd_key = TRACKER_CONFIG.get("job_data_keys", {}).get("job_description", "job_description")
     min_chars = TRACKER_CONFIG.get("jd_min_chars", 200)
@@ -206,7 +208,7 @@ def _apply_jd_gates(job: dict[str, Any], text: str, *, short_state: str, pass_st
         return False
     classification = _classify_jd(text)
     if classification != "ok":
-        error_state = _JD_ERROR_STATES[classification]
+        error_state = classified_states[classification]
         # Save the text so the bad capture is inspectable in the DB
         save_job_data(aid, {jd_key: text})
         _log.warning("%s -> %s [JD classified %r]", aid, error_state, classification)
@@ -227,13 +229,13 @@ async def fetch_jd_batch(
     debug: bool = False,
     ) -> Dict[str, int]:
     """Scrape, prune, and gate JDs for a batch of jobs (ast-326).
-    Transitions each job to JD_READY (pass) or JD_SCRAPE_FAIL (fail/short).
+    Transitions each job to JD_READY (pass) or ERROR_FETCH_JD_UNREADABLE (fail/short).
     Returns {"passed": N, "failed": N, "total": N}."""
     if not await check_connectivity():
         raise ConnectionError(f"fetch_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)")
     if debug:
         _log.set_debug_flag(True)
-    # Success / generic scrape-fail transitions (classified JD errors route via _JD_ERROR_STATES)
+    # Success / generic scrape-fail transitions (classified JD errors route via classified_states)
     pass_state = GAZER_CONFIG["fetch_jd"]["pass_state"]
     fail_state = GAZER_CONFIG["fetch_jd"]["fail_state"]
     job_total = len(jobs)
@@ -285,7 +287,10 @@ async def fetch_jd_batch(
             "Calling JD gates: [astral_job_id=%s short_state=%s pass_state=%s text=%s]",
             aid, fail_state, pass_state, text,
         )
-        gated = _apply_jd_gates(job, text, short_state=fail_state, pass_state=pass_state)
+        gated = _apply_jd_gates(
+            job, text, short_state=fail_state, pass_state=pass_state,
+            classified_states=GAZER_CONFIG["fetch_jd"]["classified_states"],
+        )
         _log.debug("Response from JD gates: %s", gated)
         if gated:
             passed += 1
@@ -320,8 +325,8 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
     cfg = GAZER_CONFIG["fetch_relative_jd"]
     pass_state = cfg["pass_state"]
     fail_state = cfg["fail_state"]
-    # Empty / too-short text after a successful click: same JD_SCRAPE_FAIL as fetch_jd.
-    short_state = GAZER_CONFIG["fetch_jd"]["fail_state"]
+    # Empty / too-short text after a successful click: this task's own unreadable terminal.
+    short_state = cfg["unreadable_state"]
     passed = failed = 0
 
     async def _fetch_one(job: dict[str, Any]) -> None:
@@ -358,7 +363,9 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
             "Calling JD gates: [astral_job_id=%s short_state=%s pass_state=%s text=%s]",
             aid, short_state, pass_state, text,
         )
-        gated = _apply_jd_gates(job, text, short_state=short_state, pass_state=pass_state)
+        gated = _apply_jd_gates(
+            job, text, short_state=short_state, pass_state=pass_state, classified_states=cfg["classified_states"],
+        )
         _log.debug("Response from JD gates: %s", gated)
         if gated:
             _log.info("%s | job %s: %s (batch: %s)", aid, "relative link fetched", pass_state, batch_id)
@@ -384,6 +391,15 @@ def _website_content_is_recorded(website_content: Any) -> bool:
     return False
 
 
+def _website_content_bot_walled(content: Any) -> bool:
+    """True when every fetched page in website_content is a bot wall (nothing usable to grade)."""
+    if isinstance(content, list):
+        pages = [p.get("content") or "" for p in content if isinstance(p, dict)]
+    else:
+        pages = [content] if isinstance(content, str) and content else []
+    return bool(pages) and all(is_bot_wall(t) for t in pages)
+
+
 def _website_content_debug_summary(website_content: Any) -> str:
     """Short found/recorded summary for fetch_culture_pages debug detail lines."""
     if isinstance(website_content, list):
@@ -405,8 +421,10 @@ async def fetch_culture_pages_batch(
 ) -> Dict[str, int]:
     """Ensure culture page content via roster coat-check; gate jobs to CULTURE_READY (AST-874).
 
-    Transitions each job to CULTURE_READY (pass), NEED_CULTURE_CONTENT (coat-check fail),
-    or NO_CULTURE_LINKS (no culture_links_to_explore). Returns {"passed", "failed", "total"}.
+    Transitions each job to CULTURE_READY (pass), ERROR_FETCH_CULTURE_PAGES_UNREADABLE (coat-check
+    fail), BOT_BLOCKED_FETCH_CULTURE_PAGES (every page a bot wall, cached or fresh), or
+    ERROR_FETCH_CULTURE_PAGES_NO_CULTURE_LINKS (no culture_links_to_explore).
+    Returns {"passed", "failed", "total"}.
     """
     if not await check_connectivity():
         raise ConnectionError(
@@ -418,6 +436,7 @@ async def fetch_culture_pages_batch(
     cfg = GAZER_CONFIG["fetch_culture_pages"]
     pass_state = cfg["pass_state"]
     fail_state = cfg["fail_state"]
+    bot_state = cfg["bot_blocked_state"]
     no_links_state = cfg["no_links_state"]
     job_total = len(jobs)
     passed = failed = 0
@@ -468,6 +487,18 @@ async def fetch_culture_pages_batch(
 
         recorded = cd.get("website_content")
         if _website_content_is_recorded(recorded):
+            if _website_content_bot_walled(recorded):
+                transition_job_state([aid], bot_state)
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_culture_pages_batch",
+                        index=job_index,
+                        total=job_total,
+                        identifier=_gazer_job_identifier(job),
+                        outcome=f"failed — bot wall -> {bot_state} (cached)",
+                    )
+                failed += 1
+                continue
             transition_job_state([aid], pass_state)
             if debug:
                 _log.debug_index(
@@ -504,6 +535,18 @@ async def fetch_culture_pages_batch(
         content = await get_company_data(company, "website_content")
         if content:
             company.setdefault("company_data", {})["website_content"] = content
+            if _website_content_bot_walled(content):
+                transition_job_state([aid], bot_state)
+                if debug:
+                    _log.debug_index(
+                        func="gazer.fetch_culture_pages_batch",
+                        index=job_index,
+                        total=job_total,
+                        identifier=_gazer_job_identifier(job),
+                        outcome=f"failed — bot wall -> {bot_state}",
+                    )
+                failed += 1
+                continue
             transition_job_state([aid], pass_state)
             if debug:
                 _log.debug_index(
@@ -538,7 +581,7 @@ async def fetch_culture_pages_batch(
         _log.debug_detail(
             f"summary passed={passed} failed={failed} total={job_total} "
             f"pass_state={pass_state!r} fail_state={fail_state!r} "
-            f"no_links_state={no_links_state!r}"
+            f"bot_state={bot_state!r} no_links_state={no_links_state!r}"
         )
     return {"passed": passed, "failed": failed, "total": len(jobs)}
 
@@ -610,7 +653,7 @@ async def fetch_website_batch(
 ) -> Dict[str, int]:
     """Scrape homepage + nav_links for WEBSITE_FOUND companies (AST-701).
     Transitions each company to HOMEPAGE_READY (pass), WEBSITE_FOUND_RETRY (infra retry),
-    or CANNOT_READ_WEBSITE (fail). Returns {"passed", "failed", "errors", "skipped", "total"};
+    BOT_BLOCKED_FETCH_WEBSITE (bot wall) or ERROR_FETCH_WEBSITE_UNREADABLE (fail). Returns {"passed", "failed", "errors", "skipped", "total"};
     every claimed row is scraped, so skipped stays 0 (AST-1810 removed the AST-892 split)."""
     if not await check_connectivity():
         raise ConnectionError(
@@ -658,19 +701,22 @@ async def fetch_website_batch(
             scrape = await scrape_company_homepage_content(
                 short_name, original_website, batch_session=batch_session
             )
-            if scrape.get("error"):
-                dest = _fetch_website_fail_destination(company_state, scrape["error"], cfg)
+            dest = _fetch_website_fail_destination(
+                company_state, scrape.get("error") or "", cfg, scrape.get("visible_text") or "",
+            )
+            if dest:
+                reason = scrape.get("error") or "bot wall"
                 if debug:
                     _log.debug_index(
                         func="gazer.fetch_website_batch",
                         index=company_index,
                         total=company_total,
                         identifier=_gazer_company_identifier(company),
-                        outcome=f"failed — {scrape['error']!s} -> {dest}",
+                        outcome=f"failed — {reason!s} -> {dest}",
                     )
                     _log.debug_detail(f"company_website={original_website!r}")
                 transition_company_state(short_name, dest)
-                save_company_data(short_name, {notes_key: scrape["error"]})
+                save_company_data(short_name, {notes_key: reason})
                 failed += 1
                 return
             canonical = scrape["company_website"]
@@ -735,7 +781,8 @@ async def fetch_job_pages_batch(
     debug: bool = False,
 ) -> Dict[str, int]:
     """Scrape possible_joblist_links (refresh: upsert per URL, AST-1995) for PREFILTER_PASSED companies (AST-719).
-    Transitions each company to PJL_READY (pass) or JOBSITE_SCRAPE_ISSUE (fail).
+    Transitions each company to PJL_READY (pass), BOT_BLOCKED_FETCH_JOB_PAGES (bot wall on every
+    PJL, no prior capture) or ERROR_FETCH_JOB_PAGES_UNREADABLE (fail).
     Returns {"passed": N, "failed": N, "total": N}."""
     if not await check_connectivity():
         raise ConnectionError(
@@ -747,6 +794,7 @@ async def fetch_job_pages_batch(
     cfg = GAZER_CONFIG["fetch_job_pages"]
     pass_state = cfg["pass_state"]
     fail_state = cfg["fail_state"]
+    bot_state = cfg["bot_blocked_state"]
     notes_key = ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]
     company_total = len(companies)
     passed = failed = 0
@@ -786,9 +834,14 @@ async def fetch_job_pages_batch(
             prior_by_key = {normalize_link(r["url"]): r for r in pjl_pages if r.get("url")}
             run_nav_urls: List[str] = []
 
+            walled = False
             # AST-1995: every candidate is re-scraped each run — no already-scraped skip.
             for url_idx, url in enumerate(candidate_urls, start=1):
                 record = await _scrape_pjl_page(url, browser_context, debug=debug)
+                # A bot wall is not page content: drop it like a failed scrape so the prior capture survives.
+                if not record.get("error") and is_bot_wall(record.get("visible_text") or ""):
+                    record = {**record, "error": "bot wall"}
+                    walled = True
                 if debug:
                     err = record.get("error")
                     chars = len(record.get("visible_text") or "")
@@ -846,10 +899,12 @@ async def fetch_job_pages_batch(
                         ),
                     )
             else:
-                transition_company_state(short_name, fail_state)
+                dest = bot_state if walled else fail_state
+                transition_company_state(short_name, dest)
                 save_company_data(
                     short_name,
-                    {notes_key: "fetch_job_pages: all PJL scrapes failed"},
+                    {notes_key: "fetch_job_pages: bot wall on every PJL" if walled
+                     else "fetch_job_pages: all PJL scrapes failed"},
                 )
                 failed += 1
                 if debug:
@@ -858,7 +913,7 @@ async def fetch_job_pages_batch(
                         index=company_index,
                         total=company_total,
                         identifier=_gazer_company_identifier(company),
-                        outcome=f"failed — no storable PJL content -> {fail_state}",
+                        outcome=f"failed — no storable PJL content -> {dest}",
                     )
 
         await asyncio.gather(

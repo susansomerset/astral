@@ -20,6 +20,8 @@ Per-cluster manifest blocks: `data/database/<cluster>.md`.
 
 **AST-1557:** `meteorite` staging table cluster — `tests/component/data/database/test_meteorites.py` (see `data/database/meteorites.md`).
 
+**AST-2087:** retired terminal-state remap (`_terminal_state_remap_conn`, `migrate_terminal_state_names`, `scripts/migrations/migrate_terminal_state_names.py`) — `tests/component/data/database/test_terminal_state_remap.py` (see `data/database/terminal_state_remap.md`).
+
 ---
 
 ### AST-454 · AST-453

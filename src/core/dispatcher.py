@@ -107,7 +107,7 @@ def _meteorite_ingress_runner(task_key: str):
 
 
 def _is_meteorite_bot_blocked_notify_task_key(task_key: str) -> bool:
-    """True for BOT_BLOCKED Estelle notify runner (AST-1561)."""
+    """True for BOT_BLOCKED_SCRAPE_METEORITE Estelle notify runner (AST-1561)."""
     return (task_key or "").strip() == METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]
 
 
@@ -1185,7 +1185,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                 )
         return
 
-    # AST-1561: BOT_BLOCKED Estelle notify — custom branch before mailbox / check_email.
+    # AST-1561: BOT_BLOCKED_SCRAPE_METEORITE Estelle notify — custom branch before mailbox / check_email.
     if _is_meteorite_bot_blocked_notify_task_key(task_key):
         from src.core.meteorite import run_notify_meteorite_bot_blocked
 
