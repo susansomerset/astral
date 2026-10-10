@@ -217,3 +217,9 @@ AC8→Stage 1 (1–7, 9–10) + qa-child 1–2, 7–8; AC9→Stage 1 (2–3, 5) 
 - **Recommendation:** None.
 
 context_tokens≈24000
+
+## Review
+
+- **Build commit:** `c52758bbc` on `origin/sub/AST-2100/AST-2122-retire-theme-examples` (Stage 1).
+- **Checks:** `py_compile`, `import src.utils.config`, `tsc -b --noEmit`, `tsc --noEmit`, `eslint` on `routes.tsx` / `uiConfig.ts`: all exit 0. The AC 8 / AC 9 greps over `src` hit only `App.css`.
+- **Pending (Betty, qa-child steps 1–8):** `test_AdminThemeExamples.test.tsx` and `test_api_system.py` stay red until qa-child lands.
