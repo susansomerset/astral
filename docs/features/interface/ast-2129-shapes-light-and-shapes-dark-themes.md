@@ -395,3 +395,64 @@ context_tokens≈42000
   - `test_config.py::TestAst2047ThemeRegistry::test_registry_ids_selectable_and_default` and `::test_profile_theme_select_options_are_the_selectable_entries`: pin two ids / labels.
   - `test_AppCss.test.tsx`: all 5 cases. `blockRe` matches neither selector-list block, so `blocks` is empty and every case built on it fails, including "Dark is :root and [data-theme=dark]; one block per registry id", "every Light block declares exactly the Dark token names…", "[bug-repro] AST-2076…", "no hex or non-black rgba outside token blocks…", and "AST-2049: no hex in .ts/.tsx source…". The last two were already red on `origin/dev` for `--tp-lvl` (AST-2128 Review).
 - **No browser pass:** AC 3–5 computed-style checks (Joan discuss) are left to Betty / parent UAT.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2129
+**Publish ref:** `ea9c22a3a47fa6d252f00233f316058127712f77` (`origin/sub/AST-2101/AST-2129-shapes-themes`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+_(empty — **Citations:** none; explicit empty frozen list at Plan Approved. No directive ids to score; not §5.3 ESCALATE — same posture as Joan validate.)_
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+- [ ] **Considered but excluded:** Shapes - Light profile uses Light tokens but `NavigationShell` still shows the dark wordmark (`theme === "light"` only). Plan Out-of-scope observation — confirm follow-up vs epic amendment before closing parent UAT on branding.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Child **AC 3–5** vs Betty static CSS pins (`test_AppCss` describe `App.css Shapes grade marks — AST-2129`)
+- **Finding:** ACs describe computed styles in a real browser (paths visible, ring widths, centroid tolerances). Engineer verify + Betty tests parse `App.css` declarations (selectors, tokens, `filter`/`calc` literals) — they do not run cascade/computed-style in jsdom. Matches Joan plan-stage note and issue doc **Review** (“No browser pass”).
+- **Question @susan:** Is parent **AST-2101** UAT on Recommended list + Job Analysis Report with both Shapes themes the required backstop for AC 3–5 before calling the epic done?
+- **Default:** Treat Betty’s static pins + engineer `npm run build` / grep gates as sufficient for this child’s **User Testing**; parent UAT owns visual AC 3–5 unless Susan flags a gap in UAT.
+
+- **Location:** Child **AC 7** vs pre-existing `test_AppCss` hex cases (`--tp-lvl`)
+- **Finding:** Plan **Out-of-scope observations** and AST-2128 Radia note: two `test_AppCss` cases can remain red on `origin/dev` for Task Performance tints. **Tests Passed** implies Betty’s manifest matches AST-2128-style exclusions or green subset; Linear AC 7 still reads “`test_AppCss.test.tsx` passes” without qualification.
+- **Question @susan:** Same as AST-2128 — amend AC 7 / manifest wording when the `--tp-lvl` story is picked up, or leave manifest as pipeline bar?
+- **Default:** Do not block AST-2129 **User Testing** on `--tp-lvl` product/CSS fix; document exclusion in bible manifest until a scoped ticket amends `App.css` or the test.
+
+### advisory
+
+- **sibling product/test carry (three-dot vs `origin/dev`):** Diff includes [AST-2128](https://linear.app/astralcareermatch/issue/AST-2128) work (`GradeMark.tsx`, four call sites, `test_GradeMark`, `components.md`, `ast-2128` plan doc) because that child is not on `origin/dev` yet and sits under this sub. AST-2129 engineer commits (`3176c80f7` … `fc9e51606`) touch only `config.py` and `App.css`; **Boundaries** respected.
+- **Scope divergence:** `tests/component/ui/api/test_api_system.py` updated for four-theme `GET /api/ui_config` (AC 1). Linear **Scope** names `test_config` + bible paths only; change is aligned with AC 1 and duplicates registry proof usefully.
+- **Canon Scope observation:** `astral.config.config-source-of-truth` would govern `UI_CONFIG["themes"]` but is not on the frozen list (**Citations:** none). Registry entries match plan (order, labels, `profile_selectable`, `default_theme` unchanged).
+- **Plan fidelity:** Stage 1–3 product diff matches staged plan — twin selector lists, 12 shape-ring tokens per block, §9b Shapes rules (SVG reveal, fill/ring, X drop-shadow ring, centroid letter, global `.grade-dot > svg { display: none }`), `0px` Dark shape-ring tokens for valid `calc()` on X filter.
+
+## What's solid
+
+- **Registry:** `shapes_light` / `shapes_dark` added with correct labels; comment documents twin-block model.
+- **AC 2 structure:** `--grade-a:` count remains 2; Dark opens `:root, [data-theme="dark"], [data-theme="shapes_dark"]`; Light opens `[data-theme="light"], [data-theme="shapes_light"]`.
+- **Betty follow-through:** `test_AppCss` selector-list `blockRe`, AC2 twin test, shape-ring token test, and Shapes §9b static suite; `TestAst2047ThemeRegistry` four-id pins; `test_api_system` four-theme payload — closes engineer “expected reds” from pre-`ea9c22a3a` **Review** stub.
+- **Dependency:** CSS assumes AST-2128 mark DOM (`display="none"` SVG, bare letter); no `GradeMark` edits on 2129 commits.
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append artifact, `docs(AST-2129): Radia review — clean`, push publish ref, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** → **User Testing** (no resolve-child unless Susan answers discuss items).
+- Optional: file or link follow-up for Shapes - Light wordmark if parent UAT catches it.
+- Parent UAT: exercise AC 3–5 on Shapes themes in browser per discuss **Default** unless Susan narrows.
+
+context_tokens≈22000
