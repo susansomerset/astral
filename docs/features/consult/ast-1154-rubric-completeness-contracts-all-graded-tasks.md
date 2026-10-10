@@ -641,3 +641,68 @@ No active statute or pattern in `canon/directives/active` defines the seven-segm
 
 **Chuckles routing (with Betty’s line TBD):** Joan **OK** pairs with Betty **OK** → **Plan Approved** and `make-fix` without F3; Joan **OK** with Betty **REVISE** → **qa-fix** only, still no F3.
 
+
+### Radia review — AST-2120 (F7)
+
+[code-rubric] PROCEED (Commit: f47d996b2) Prompt copy closes both hypotheses
+
+**Ticket:** AST-2120  
+**Publish ref:** `origin/sub/AST-2108/AST-2120-qualify-missing-grade-vectors` @ `f47d996b26125c7f15be4e2b8f9f9702b07d7de1`  
+**Corpus:** (no `docs/canon-index.md` or `canon/docs/corpus_sha.txt` on publish ref — Joan overlap ids resolved from `canon/statutes/**` at tip `f47d996b2`)  
+**Overall:** CLEAN  
+
+**Diff base:** `origin/ftr/AST-2108-qualify-missing-grade-vectors...origin/sub/AST-2108/AST-2120-qualify-missing-grade-vectors` (3 files: `data/admin/agent_task.json`, `src/utils/config.py`, plan-fix appendix in `docs/features/consult/ast-1154-rubric-completeness-contracts-all-graded-tasks.md`). `src/core/consult.py` unchanged (empty diff vs ftr).
+
+## Canon scores
+
+*(Frozen list: Linear `## Citations` → none; scored Joan fix-board overlap from plan-fix § Fix board — Joan (F2), same fix-lane precedent as AST-1821 / AST-1995.)*
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | astral.seed.agent-tables-in-repo-json | A | | In-place `qualify_job_listings` `cache_prompt` edit in `data/admin/agent_task.json` only; no re-serialize churn. |
+| 2 | astral.config.config-source-of-truth | A | | Clarifying copy appended to `_ENCODED_GRADE_SET_COMPLETENESS`; propagates to the four multi-vector `payload_instructions` concatenations only. |
+| 3 | astral.standards.names-not-ticket-ids | A | | New `agent_task.json` text has no `AST-*`; existing `GRADE SET COMPLETENESS (AST-1154)` sentinel in `config.py` left as planned precedent. |
+| 4 | astral.agent.grade-vector-validation | X | | `consult.py` / `_require_complete_grade_set` untouched by design. |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan F2 `[board-joan] CANON: OK` + roster skim only; no `validate-plan` per-id column on ticket)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — split to AST-2121 (Betty `TESTS: REVISE`; repro coverage lands on sibling gap child; no `[bug-repro]` on this sub by design).
+- **## What must still hold — OK** — Stage-1 constant scope (four encoded types get appended sentence; `grades_encoded_vet_meta` / `grades_json` do not); qualify row keeps `## GRADE SET COMPLETENESS` + pinned STEP 4 line; metadata-only omit + `never to grade segments`; `consult.py` validation/routing unchanged; no ticket ids in catalog prompt (verified at tip).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** AST-2121 owns qa-fix repro for illustrative-count + metadata-only omit assertions; this sub deliberately ships product/docs only.
+- **plan metadata:** Bug appendix still says AST-2108 is an “orphaned” parent; intake/spawn uses live `ftr/AST-2108-qualify-missing-grade-vectors` (normal mini-parent). Cosmetic doc drift only.
+
+## What's solid
+
+- Diff matches plan-fix **Proposed change** (both hypotheses): STEP 4 illustrative-count line, scoped metadata omit, shared `_ENCODED_GRADE_SET_COMPLETENESS` append, qualify-only catalog touch.
+- Plan fidelity vs **To-be** is tight; estimate **2** fits the footprint.
+- No cross-ticket product smuggle; no `tests/**` on this sub.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next |
+|------|--------------|------|
+| **PROCEED** (C7 complete) | Normal (AST-2108 + live ftr) | **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+
+Append this artifact to the AST-2120 issue doc, commit `docs(AST-2120): Radia review — clean`, push publish ref, post slim upshot `--as radia`.
+
