@@ -710,3 +710,105 @@ Append this artifact to the AST-2120 issue doc, commit `docs(AST-2120): Radia re
 ### Test routing — AST-2120
 
 fix-board `[board-betty] TESTS: REVISE` → the repro and the AST-1154 marker-test decision go to gap sibling [AST-2121](https://linear.app/astralcareermatch/issue/AST-2121) (`sub/AST-2108/AST-2121-qualify-grade-set-tests`). This sub ships product and docs only, so it is docs-acceptance for the test tree.
+
+---
+
+## Bug: AST-2121 — qualify grade-set prompt tests + bible (test gap for AST-2120)
+
+- **Linear:** [AST-2121](https://linear.app/astralcareermatch/issue/AST-2121) (test-gap child of mini-parent [AST-2108](https://linear.app/astralcareermatch/issue/AST-2108); sibling of [AST-2120](https://linear.app/astralcareermatch/issue/AST-2120), merged on `origin/ftr/AST-2108-qualify-missing-grade-vectors` @ `6ad17bcbb`)
+- **Publish ref:** `sub/AST-2108/AST-2121-qualify-grade-set-tests` · **ftr:** `ftr/AST-2108-qualify-missing-grade-vectors`
+- **Canon:** none cited (AST-2121 `## Citations`: test tree + bible only). The one constraint carried in is `astral.standards.names-not-ticket-ids`: no ticket id goes back into prompt text (AST-2120 § What must still hold).
+- **Explicit scope (AST-2121 `## Scope`):** `tests/component/core/test_repo_admin_json.py` (`TestAst1154GradedTaskCompletenessPrompts`), `tests/component/utils/test_config.py` (`TestAst1154EncodedGradeSetCompleteness`), `docs/test-bible/core/repo_admin_json.md`, `docs/test-bible/utils/config.md`. **Betty lands all of them in qa-fix**; this block plans the bar. **No `src/**` or `data/**` change.**
+- **Binding input:** Betty's `[board-betty] TESTS: REVISE` on AST-2120 (verbatim in AST-2121's Description), plus the AST-2120 block above (`### Proposed change` steps 1–2, `### Blast radius` → Tests).
+
+### As-is
+
+On the ftr tip `6ad17bcbb` (AST-2120 merged), every green AST-1154 test passes on both the pre-fix base `27cd7cbcf` and the tip, so nothing pins AST-2120's three prompt changes. `TestAst1154GradedTaskCompletenessPrompts::test_marker_and_tighten_lines_on_graded_cache_prompts` is **red on both trees**: `_MARKER = "GRADE SET COMPLETENESS (AST-1154)"` is asserted in the catalog `cache_prompt`s, and Susan's `c06eaefdf` deliberately stripped ticket ids from them (first failure: `AssertionError: prefilter_company`). The bible's `### AST-1154 · AST-1150` section (`docs/test-bible/utils/config.md`) still says "Seven graded `agent_task` `cache_prompt`s carry the same AST-1154 marker".
+
+### To-be
+
+The AST-1154 classes pin AST-2120's contract:
+- a `[bug-repro]` on the `qualify_job_listings` catalog row is red on `27cd7cbcf` and green on the ftr tip;
+- a shared-constant assertion in `test_config.py` is red on `27cd7cbcf` and green on the tip;
+- the catalog marker test is green on both trees, checking a ticket-free marker;
+- the bible names all of these nodes.
+
+Both AST-1154 classes are fully green on the tip.
+
+### Repro
+
+Verified read-only against both trees via `git show <ref>:data/admin/agent_task.json` / `src/utils/config.py` (AST-2121 plan-fix run):
+
+| Check on current `qualify_job_listings` `cache_prompt` / config | `27cd7cbcf` | tip `6ad17bcbb` |
+| --- | --- | --- |
+| `"shows 7 codes for illustration only"` in prompt | False | True |
+| `"never to grade segments"` in prompt | False | True |
+| `"Omit any data whose value is not stated"` **absent** from prompt | False | True |
+| `"AST-"` absent from prompt | True | True |
+| `"their code count is not a template"` in `src/utils/config.py` | 0 hits | 1 hit |
+| `"## GRADE SET COMPLETENESS"` in all 7 graded catalog rows | True | True |
+| Every other assertion of `test_marker_and_tighten_lines_on_graded_cache_prompts` (omit/never-omit, `evaluate_jd`, `qualify_job_listings`, `{code}X0` ×4, `prefilter_company` phrases) | True | True |
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest -q \
+  "tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts" \
+  "tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness"
+# tip today → 1 failed (marker test, AssertionError: prefilter_company), 3 passed
+```
+
+### Root cause
+
+Fix-board routed AST-2120's test delta here, so the product landed without a repro. The marker test's red is a stale pin: it asserts a ticket-id sentinel that the catalog intentionally no longer carries. That is a test-contract drift, not a product regression.
+
+### Proposed change
+
+All of it is Betty's (qa-fix). Exact names are her call; the assertions below are the bar. Use the system interpreter or `/home/susan/astral/.venv/bin/python` (the venv is needed for `test_consult.py`, not for these two files). Catalog rows load as in the existing class: `json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))`, current rows keyed by `task_key`. `cfg` = `src.utils.config`.
+
+**1. `[bug-repro]` — new `test_qualify_cache_prompt_grade_count_and_metadata_omit_scope`** (`test_repo_admin_json.py`, `TestAst1154GradedTaskCompletenessPrompts`). On the current `qualify_job_listings` `cache_prompt`, assert:
+- `"shows 7 codes for illustration only — the code count is not a template"` in prompt;
+- `"as many segments as the rubric has codes"` in prompt;
+- `"Omit any metadata key/value pair whose value is not stated"` in prompt;
+- `"never to grade segments"` in prompt and `"{code}X0 when the listing does not state it"` in prompt;
+- `"Omit any data whose value is not stated"` **not** in prompt;
+- `"AST-"` **not** in prompt (names-not-ticket-ids guard; true on both trees, so it is a regression guard, not the repro signal).
+
+**Red on `27cd7cbcf`, green on the ftr tip.** Tag the qa-fix handoff `[bug-repro]` with this node id.
+
+**2. Shared constant — new `test_grade_count_not_template_on_multi_vector_types`** (`test_config.py`, `TestAst1154EncodedGradeSetCompleteness`). Assert:
+- `"their code count is not a template"` in `cfg._ENCODED_GRADE_SET_COMPLETENESS`;
+- the same phrase in `payload_instructions` for exactly the four `self._MULTI` types;
+- the phrase is **not** in `grades_encoded_vet_meta` / `grades_json`.
+
+Red on `27cd7cbcf` (the constant lacks the sentence), green on the tip. This is a second repro node and may share the `[bug-repro]` tag with item 1.
+
+**3. Resolve the red marker test** (`test_marker_and_tighten_lines_on_graded_cache_prompts`). Recommended: change only the **catalog** check to a ticket-free marker, `"## GRADE SET COMPLETENESS"`; that heading is present on all seven rows on both trees. Keep every other assertion in the test byte-identical.
+- Do **not** change `test_fixture_graded_keys_carry_completeness_marker`. The AST-756 fixture still carries `GRADE SET COMPLETENESS (AST-1154)` on all seven rows and is out of scope.
+- Splitting the class constant (e.g. `_CATALOG_MARKER` vs the existing `_MARKER` for the fixture) is fine.
+- Rejected alternatives:
+  - re-adding `(AST-1154)` to the prompts, which violates names-not-ticket-ids and Susan's `c06eaefdf`;
+  - skip/xfail, which loses the only completeness pin on the seven rows.
+
+**4. Bible.**
+- `docs/test-bible/utils/config.md`, `### AST-1154 · AST-1150`:
+  - **Prose:** "carry the same AST-1154 marker" becomes "carry a `## GRADE SET COMPLETENESS` section (ticket-free since `c06eaefdf`) + VALIDATE/Rules tighteners".
+  - **Same paragraph:** add that AST-2120 adds the illustrative-code-count sentence and the metadata-only omit rule on `qualify_job_listings`, plus one sentence on the shared constant.
+  - **Table:** list the new node ids.
+  - **Manifest:** add both new node ids next to the existing class lines.
+- `docs/test-bible/core/repo_admin_json.md`: add the new `TestAst1154…` node to the manifests that already list `TestAst1154GradedTaskCompletenessPrompts` (~lines 274 / 750), or confirm the class-level node already covers it. Betty's call.
+- Leave the `TestAst786…::test_repo_json_matches_uat_fixture_byte_for_byte` manifest line as she finds it (fixture identity is out of scope).
+
+**5. Engineer side (Ada).** No product commit on this ticket. `test-fix` runs Betty's manifest on the tip: the `[bug-repro]` node(s) green, both AST-1154 classes fully green. It also re-runs the whole-file baseline (`test_config.py`, `test_repo_admin_json.py`, `test_consult.py` under the venv), expecting no new failures. At `f47d996b2` that baseline was 84 failed / 975 passed / 25 skipped; Betty's fix should drop it by exactly 1.
+
+### Blast radius
+
+- Test tree and bible only; no product behavior changes.
+- AST-756 fixture byte-identity tests (`TestAst1494…`, `TestAst1773…`) stay red. They're out of scope and untouched.
+- Other `TestAst1154*` users: `tests/component/core/test_candidate.py:4041` only mentions the section in a comment. It doesn't depend on the marker string.
+
+### What must still hold
+
+- No `src/**` or `data/**` change on this ticket. AST-2120's product text stays exactly as merged at `6ad17bcbb`.
+- The existing pinned phrases stay asserted: `{code}X0`, `never skip that segment`, `Every rubric vector code must appear exactly once per job line`, `never omit a code`, the `evaluate_jd` / `grade_*` / `prefilter_company` tighteners.
+- The constant stays absent from `grades_encoded_vet_meta` / `grades_json`.
+- No ticket id re-enters `agent_task.json` prompt text.
+- The fixture-side AST-1154 marker test keeps checking the fixture's own (ticket-id) marker. It is not weakened.
