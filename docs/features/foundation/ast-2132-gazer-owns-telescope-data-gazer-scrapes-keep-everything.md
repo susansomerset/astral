@@ -325,3 +325,15 @@ AC3 → Stage 1 (`keep_*` / `scrape_*_and_keep`), Stage 2 (`fetch_jd_batch` + `f
 **R6 (summary):** Single-file scope holds. Stage 0 gates on AST-2131 symbols present on the sub (`save_telescope_data` at `database.py`). Ownership model (core→data only via gazer), keep-before-route for bot walls, raw capture + `jd_telescope_data_id`, enumerated PAGE_LINKS, and resolve tolerance match parent functional items 2–3 for the gazer slice. No `fix-now` gaps.
 
 context_tokens≈52000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2130/AST-2132-gazer-telescope-owner`
+- **Stage 0:** drift check clean — `save_telescope_data` / `get_telescope_data_for_ids` / `ensure_all_upsert_registry_schemas_at_startup` in `database.py`; `TELESCOPE_DATA_CONFIG["data_types"]` + `jd_telescope_data_id` in config; gazer call sites as planned; ruff baseline 67.
+- **Stage 1:** `e48c71fb7` — telescope API (`is_telescope_id`, `keep_telescope_data`, `keep_page_scrape`, `scrape_visible_text_and_keep`, `scrape_page_links_and_keep`, `resolve_telescope_value`). New annotations use builtin generics (`str | None`, `dict[...]`) so ruff stays at baseline.
+- **Stage 2:** `dc4ca951d` — `_apply_jd_gates` stores `jd_telescope_data_id`; `fetch_jd_batch` scrapes via `scrape_visible_text_and_keep`; `fetch_relative_jd_batch` keeps its click-through capture.
+- **Stage 3:** `fd2b906f8` — `fetch_website_batch` keeps before routing, stores `homepage_text` / `nav_links` ids; `fetch_job_pages_batch` keeps each page (ids on the record), writes `pjl_assembled_content` / `pjl_nav_links` as `None`; unused imports dropped.
+- **Stage 4:** `ab54313c3` — culture-cache checks resolve ids.
+- **Verify:** `py_compile` OK; ruff 66 (baseline 67). Scratch checks (temp `ASTRAL_DB_DIR`, stubbed Telescope / transitions — under `/tmp`, `debug/` is cursorignored): Stage 1 keep / blank / resolve shapes incl. missing row; Stage 2 ok / closed / bot / short — 4 VISIBLE_TEXT rows with job `candidate_id`, refs on ok + classified only, `job_description` preamble untouched, states unchanged; Stage 3 homepage / nav ids resolve to rows with company `candidate_id`, bot-walled homepage + PJL kept, derived PJL fields `None`; Stage 4 bot-walled ids → bot state (cached), readable ids + legacy pass cached. AC 4: both commands empty.
+- **Existing tests (Betty):** across every test file referencing gazer, 11 new failures vs untouched ftr (145 pre-existing reds there), all in `tests/component/core/test_gazer.py` and all asserting the pre-AST-2130 contract: `TestFetchWebsiteBatch` ×2 (`homepage_text` text, not id), `TestAst882HomepageReadyWfrSkip::test_scrapes_wfr_even_when_homepage_text_present` (same), `TestFetchJobPagesBatch` ×5 (`pjl_assembled_content` / `pjl_nav_links` strings), `TestFetchJdBatch::test_routes_classified_failures_and_passes` and `TestAst2025FetchRelativeJdBatch` ×2 (`get_visible_text` mocked as a bare string — wrapper now asks `return_final_url=True`; `job_description` key; gate kwargs without `telescope_data_id`).
+- **No new tests** — coverage is Betty's (qa-child).
