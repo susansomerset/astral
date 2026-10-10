@@ -28,7 +28,6 @@
  * 13. Execution History
  * 14. Shared button roles
  * 15. Icon control
- * 16. Theme Examples (AST-2042)
  */
 
 
@@ -82,8 +81,7 @@
   --error: #f87171;
 }
 
-/* AST-2042: Light palettes. "light" is what the profile's Light applies; the other two are
-   examples-only alternates shown on Tools -> Theme Examples (UI_CONFIG themes). */
+/* AST-2042: Light palette — what the profile's Light applies (UI_CONFIG themes). */
 [data-theme="light"] {
   --bg-deep: #f5f3fa;
   --bg-card: #ffffff;
@@ -124,90 +122,6 @@
   --success: #2e7d32;
   --warning: #b26a00;
   --error: #c62828;
-}
-
-[data-theme="light_parchment"] {
-  --bg-deep: #f6f0e4;
-  --bg-card: #fffbf2;
-  --bg-elevated: #efe6d4;
-  --border: #dccfb4;
-  --border-subtle: #e9dfca;
-  --text-primary: #2b2116;
-  --text-secondary: #6b5a43;
-  --text-muted: #94826a;
-  --accent-contrast: #241b33;
-  --accent-contrast-hover: #2c1b47;
-  --heading: var(--accent-contrast);
-  --cta-green: #2f7d32;
-  --cta-green-hover: #388e3c;
-  --danger: #b3261e;
-  --danger-hover: #921f18;
-  --grade-a: #1e7b34;
-  --grade-b: #a06500;
-  --grade-c: #c05621;
-  --grade-d: #c53030;
-  --grade-f: #742a2a;
-  --grade-x: #6b46c1;
-  --confidence-bullet-active: var(--text-secondary);
-  --confidence-bullet-inactive: var(--text-muted);
-  --nav-group-label: var(--accent-contrast);
-  --accent-contrast-dim: rgba(36, 27, 51, 0.15);
-  --paper-bg: #ffffff;
-  --text-on-grade: #ffffff;
-  --text-on-grade-f: #ffffff;
-  --text-on-color: #ffffff;
-  --status-interrupted-bg: #ecd9a8;
-  --status-interrupted-text: #5c3f06;
-  --danger-tint: rgba(179, 38, 30, 0.08);
-  --warning-tint: rgba(212, 155, 0, 0.12);
-  --tint-subtle: rgba(43, 33, 22, 0.03);
-  --tint-soft: rgba(43, 33, 22, 0.04);
-  --tint-medium: rgba(43, 33, 22, 0.06);
-  --success: #2e7d32;
-  --warning: #a35a00;
-  --error: #b3261e;
-}
-
-[data-theme="light_slate"] {
-  --bg-deep: #eef1f6;
-  --bg-card: #ffffff;
-  --bg-elevated: #e3e8f0;
-  --border: #c9d2df;
-  --border-subtle: #dde3ec;
-  --text-primary: #18202e;
-  --text-secondary: #4a5568;
-  --text-muted: #7a8699;
-  --accent-contrast: #2b6cb0;
-  --accent-contrast-hover: #3182ce;
-  --heading: #241b33;
-  --cta-green: #2f855a;
-  --cta-green-hover: #38a169;
-  --danger: #c53030;
-  --danger-hover: #9b2c2c;
-  --grade-a: #1e7b34;
-  --grade-b: #a06500;
-  --grade-c: #c05621;
-  --grade-d: #c53030;
-  --grade-f: #742a2a;
-  --grade-x: #6b46c1;
-  --confidence-bullet-active: var(--text-secondary);
-  --confidence-bullet-inactive: var(--text-muted);
-  --nav-group-label: #2c5282;
-  --accent-contrast-dim: rgba(43, 108, 176, 0.15);
-  --paper-bg: #ffffff;
-  --text-on-grade: #ffffff;
-  --text-on-grade-f: #ffffff;
-  --text-on-color: #ffffff;
-  --status-interrupted-bg: #fbe7b5;
-  --status-interrupted-text: #744210;
-  --danger-tint: rgba(197, 48, 48, 0.08);
-  --warning-tint: rgba(214, 158, 46, 0.12);
-  --tint-subtle: rgba(24, 32, 46, 0.03);
-  --tint-soft: rgba(24, 32, 46, 0.04);
-  --tint-medium: rgba(24, 32, 46, 0.06);
-  --success: #2f855a;
-  --warning: #b7791f;
-  --error: #c53030;
 }
 
 /* === 2. Base / Reset === */
@@ -2997,88 +2911,4 @@ input.side-tab-heading-editable:focus {
 .icon-control:disabled {
   opacity: 0.45;
   cursor: default;
-}
-
-/* === 16. Theme Examples (AST-2042) === */
-
-.theme-examples {
-  padding: 20px;
-}
-
-.theme-examples-status {
-  padding: 20px;
-  color: var(--text-primary);
-}
-
-.theme-examples-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 16px;
-}
-
-/* Each panel carries data-theme, so its own background/text come from that palette's tokens. */
-.theme-examples-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 16px;
-  background: var(--bg-deep);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.theme-examples-label {
-  margin: 0;
-  font-size: 16px;
-  color: var(--heading);
-}
-
-.theme-examples-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.theme-examples-grade {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-}
-
-/* Toast and modal card are fixed/overlay chrome in the app; pin them into the panel flow here. */
-.theme-examples-panel .toast {
-  position: static;
-}
-
-.theme-examples-panel .modal-card {
-  width: auto;
-  max-width: none;
-  max-height: none;
-}
-
-/* AST-2064: grade-color candidate rows (tokens come inline from UI_CONFIG theme_example_grade_sets). */
-.theme-examples-grade-options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.theme-examples-grade-option {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 16px;
-}
-
-.theme-examples-grade-options-label,
-.theme-examples-grade-option-name {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.theme-examples-grade-option-name {
-  width: 56px;
 }
