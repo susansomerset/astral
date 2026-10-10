@@ -279,3 +279,47 @@ The labels (with `<g>` = a, b, c, d, f, x where shown): `--grade-<g>` (6, fills,
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+**Ticket:** AST-2123
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `origin/sub/AST-2100/AST-2123-grade-settings-sets` @ `d648e8416d757965cf886201ecdda0cd8fefab61`
+
+## Canon scores
+
+_(empty — parent and child Canon Scope locked **none** at Discussion; no directive ids to score.)_
+
+## Traceability
+
+AC1→Stage 2 (1–2, 5, 13); AC2→Stage 2 (4, 13 browser); AC3→Stage 2 (4 values; plan documents OKLab ≥15); AC4→Stage 2 (8 letterless overrides, 13); AC5→Stage 2 (7–9, 12, 13); AC6→Stage 2 (1, 8 Dark widths 0, 13); AC7→Stage 2 (2, 5, 10–11, 13); AC8→Stage 1 (1–4, 5); AC9→Stage 1 (3–4, 5); AC10→Stage 2 (3, 6, 13 grep); AC11→Stage 2 (4 Light fills only; 13 spot-check); builds→Stage 1–2 `npm run build` / lint.
+
+## Findings
+
+### discuss
+
+- **Location:** Linear assignee vs validate-plan §1
+- **Finding:** Ticket assignee is Ada Lovelace, not Joan; spawn still requested Joan review. Plan content is unaffected.
+- **Recommendation:** Chuckles may reassign Joan only for the validate gate if your workflow requires it; no plan doc change.
+
+- **Location:** Child AC 2–7, 11; plan `Files Changed` / Betty note
+- **Finding:** Computed-style and OKLab ACs are not automatable in vitest (`test_AppCss` structural only); Stage 2 step 13 browser spot-check + parent UAT carry visual proof. Consistent with App.css-only Scope.
+- **Recommendation:** None for approval; keep step 13 in the build checklist.
+
+### acceptable
+
+- **Location:** AST-2122 dependency; Stage 1 before Stage 2; `test_every_registry_id_has_an_app_css_block`
+- **Finding:** Ordering matches parent partition; post-sync two-theme registry before deleting alternate CSS blocks.
+- **Recommendation:** None.
+
+- **Location:** §9b specificity (`:not()` avoided); report-context 11px rules unchanged
+- **Finding:** Plan explicitly addresses AC 5 letter-size regression risk.
+- **Recommendation:** None.
+
+- **Location:** `test_AppCss` / `--tp-lvl` pre-existing red
+- **Finding:** Documented carve-out; stage verify gates limit failures to `--tp-lvl` only.
+- **Recommendation:** None.
+
+context_tokens≈32000
