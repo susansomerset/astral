@@ -615,3 +615,29 @@ Expected pytest: no new failures relative to the baseline on the ftr tip (`27cd7
 - The metadata no-guess rule still holds for key/value pairs (no inferred `salary_range` / `location`).
 - No change to `_require_complete_grade_set`, `_render_score`, `_validate_grades`, or AST-1155 retry/error routing.
 - No Linear ticket ids in `agent_task.json` prompt text.
+
+### Fix board — Joan (F2)
+
+[board-joan] CANON: OK
+
+**Ticket:** AST-2120 (Plan Ready, Ada) · parent AST-2108 · **Diff judged:** `origin/ftr/AST-2108-qualify-missing-grade-vectors...origin/sub/AST-2108/AST-2120-qualify-missing-grade-vectors` — only the plan-fix appendix in `docs/features/consult/ast-1154-rubric-completeness-contracts-all-graded-tasks.md` (131 lines); no product delta on the sub yet. Triage is against **Proposed change** / **Blast radius** / **What must still hold**, not an implementation review.
+
+**Question:** Does this fix require touching canon (statutes/patterns)?
+
+**Answer:** No. F3 (`validate-plan` fix mode) is not needed for canon.
+
+**Roster skim** (`canon/statutes/README.md` harvest table + paths touched in the plan):
+
+| Overlap | Assessment |
+|--------|------------|
+| `astral.seed.agent-tables-in-repo-json` | **Conforms.** `qualify_job_listings` `cache_prompt` edits in `data/admin/agent_task.json` are exactly what this statute expects; operator sync after deploy matches the AST-1492 kill-switch already in the statute’s Notes. |
+| `astral.config.config-source-of-truth` | **Conforms.** Appending clarifying text to `_ENCODED_GRADE_SET_COMPLETENESS` in `src/utils/config.py` is behavior-driving copy in the right module; no env split or scatter. |
+| `astral.standards.names-not-ticket-ids` | **Conforms.** Plan keeps new `agent_task.json` text free of `AST-*`; leaves the existing `GRADE SET COMPLETENESS (AST-1154)` sentinel in `config.py` byte-identical — same non-blocking precedent already recorded in the AST-1154 feature doc (comments/carve-outs; not a rename mandate). |
+| `astral.agent.grade-vector-validation` | **N/A / unchanged.** Applies to `src/core/**`; plan keeps `consult.py` and `_require_complete_grade_set` untouched. Prompt tightening supports existing set-based validation, does not relax it. |
+
+No active statute or pattern in `canon/directives/active` defines the seven-segment examples, the unscoped “Omit any data whose value is not stated” line, or a rule that would **forbid** scoping that sentence to metadata or stating that example line length is illustrative. The behavioral law (“every rubric code on the line; `X0` when silent; never omit”) lives in the AST-1154 **feature** contract and shipped prompts; this fix removes competing prompt signals, it does not invent a new product rule that needs a statute amendment.
+
+**ESCALATE check:** Susan already closed the architectural fork (no code-side expected-code-list guard; prompt-only). That is intake/plan scope, not an ambiguous statute or new precedent that only Archie can encode in canon.
+
+**Chuckles routing (with Betty’s line TBD):** Joan **OK** pairs with Betty **OK** → **Plan Approved** and `make-fix` without F3; Joan **OK** with Betty **REVISE** → **qa-fix** only, still no F3.
+
