@@ -15,6 +15,7 @@ from src.core.tracker import (
     assemble_job_copy_snapshot,
     cancel_artifact_build,
     candidate_skip_job,
+    compose_job_description,
     count_jobs,
     get_job,
     get_job_artifacts,
@@ -114,6 +115,14 @@ def _attach_skipped_edit_meta(job: dict) -> dict:
     return job
 
 
+def _compose_jd_for_response(job: dict) -> dict:
+    """Response only (AST-2133): job_data.job_description carries the composed JD the UI reads.
+    New dict on the row — the stored job_data is never written back."""
+    jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
+    job["job_data"] = {**jd, "job_description": compose_job_description(job)}
+    return job
+
+
 @jobs_bp.route("")
 @require_auth
 def list_view():
@@ -128,14 +137,14 @@ def list_view():
 
     if view == "ready":
         rows = list_jobs(states=list(READY_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")
-        return jsonify([_flatten_grades(r) for r in rows])
+        return jsonify([_compose_jd_for_response(_flatten_grades(r)) for r in rows])
     elif view == "review":
         rows = list_jobs(states=list(REVIEW_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")
-        return jsonify([_flatten_grades(r) for r in rows])
+        return jsonify([_compose_jd_for_response(_flatten_grades(r)) for r in rows])
     elif view == "applied":
         # job.candidate_id scoping (AST-1598) covers every Applied row; no company-linkage repair.
         rows = list_jobs(states=list(APPLIED_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")
-        return jsonify([_flatten_grades(r) for r in rows])
+        return jsonify([_compose_jd_for_response(_flatten_grades(r)) for r in rows])
     elif view == "processing":
         # Complement of the four explicit lists — never an include-list (AST-1974).
         rows = list_jobs(
@@ -148,10 +157,10 @@ def list_view():
             floors = score_floor_by_trigger_for_candidate(candidate_id)
             if floors:
                 rows = [r for r in rows if not job_misses_dispatch_score_floor(r, floors)]
-        return jsonify([_flatten_grades(r) for r in rows])
+        return jsonify([_compose_jd_for_response(_flatten_grades(r)) for r in rows])
     elif view == "skipped":
         rows = list_jobs(states=list(SKIPPED_STATES), candidate_id=candidate_id, order_by="state_changed_at")
-        out = [_flatten_grades(r) for r in rows]
+        out = [_compose_jd_for_response(_flatten_grades(r)) for r in rows]
         if candidate_id:
             floors = score_floor_by_trigger_for_candidate(candidate_id)
             for r in list_jobs_below_dispatch_score_floor(candidate_id):
@@ -160,7 +169,7 @@ def list_view():
                 ann = dict(r)
                 ann["virtual_skip"] = True
                 ann["dispatch_score_floor"] = float(fl) if fl is not None else None
-                out.append(_flatten_grades(ann))
+                out.append(_compose_jd_for_response(_flatten_grades(ann)))
         out.sort(key=lambda j: (j.get("state_changed_at") or ""), reverse=True)
         return jsonify(out)
     else:
@@ -194,7 +203,7 @@ def detail(astral_job_id):
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
-    job = _flatten_grades(job)
+    job = _compose_jd_for_response(_flatten_grades(job))
     _attach_skipped_edit_meta(job)
     # AST-1872: server-resolved Skip legality for the Recommended report (core owns the prior-state rule)
     job["can_skip"] = job_state_admits_transition(job.get("state") or "", "CANDIDATE_SKIPPED")
