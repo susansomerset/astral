@@ -252,3 +252,61 @@ context_tokens≈38000
 - **Verify:** `py_compile` both files OK; ruff `database.py` 707 / `config.py` 102 (= `origin/dev` baseline). Scratch check (in `/tmp`, since `debug/` is cursorignored) on a fresh DB and a backup copy of local `astral.db`: startup ensure ×2 no-op, `.schema` shows all six columns + index (AC 1); `save_telescope_data("cand","https://x","JSON",'{"a":1}')` → 36-char uuid, `data_type='JSON'` (AC 2); reads return plain content, missing id → `None` / omitted, `[]` → `{}`. One INSERT for the table: 6 columns / 6 `?` / 6-tuple.
 - **Pre-existing reds (same set on `origin/ftr/AST-2130-telescope-data`, not caused here):** `test_database.py::TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex` (5 cases — `job` has no column `company`), `test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key` and `::test_ensure_batch_response_entity_ids_tags_copies`. `test_agent_data.py`, `test_bootstrap.py`, `test_terminal_state_remap.py` green.
 - **No new tests** — telescope_data coverage is Betty's (qa-child).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2131
+**Publish ref:** `973adacec306797eff5d68efccc9c2d5e53a9c2e` (`origin/sub/AST-2130/AST-2131-telescope-data-table`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored all three logging directives **A** at plan (Revisions 0 and 1); code review matches.
+
+## Frame diff
+
+- [ ] **Acceptance criteria (Linear):** AC1 table shape + index via startup registry ensure on existing DB; AC2 ungated `data_type="JSON"` save/read — covered by `TestAst2131TelescopeData` (engineer to tick after spot-check).
+- [ ] **Boundaries:** Plan §Boundaries still says “No tests or bible edits (Betty)”; tip includes Betty’s `test_telescope_data.py`, `TestAst2131TelescopeDataConfig`, and bible manifest — tick when team accepts qa-child as authoritative over that plan line.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Plan line vs pipeline:** `docs/features/foundation/ast-2131-telescope-data-table-and-config.md` §Boundaries (“No tests or bible edits”) conflicts with the published diff (`tests/component/data/database/test_telescope_data.py`, `tests/component/utils/test_config.py::TestAst2131TelescopeDataConfig`, `docs/test-bible/data/database/telescope_data.md`, bible index lines). Treat as expected **qa-child** output, not implementer scope creep; no product revert needed.
+- **Mirror variance:** `save_telescope_data` / `get_telescope_data_for_ids` use direct `conn` + `finally` without `_run_with_retry`; `get_agent_data_for_ids` wraps `_run_with_retry`. Plan Stage 2 specified the direct shape; acceptable unless a later hardening pass wants parity for SQLITE_BUSY resilience.
+- **Pre-existing reds:** Issue doc / bible note AST-846 and AST-984 failures on ftr baseline — unchanged by this sub-tip; manifest item 4 is baseline parity, not full `tests/component/data` green.
+
+## Notes (Canon Scope — not scored)
+
+- `TELESCOPE_DATA_CONFIG`, `jd_telescope_data_id`, and registry naming align with parent technical intent; frozen list is logging-only. Joan’s plan-stage **discuss** stands: amend parent Canon Scope on a later child if `config.config-source-of-truth` / `stat.general.registry-not-literals` should be scored explicitly — do **not** widen AST-2131’s frozen list in flight.
+
+## What’s solid
+
+- Product slice matches ticket **Scope**: `telescope_data` DDL + index, both `_UPSERT_*` maps, header inventory, `save_telescope_data` (6 columns / 6 binds / `_utc_now()`), plain-content reads, `TELESCOPE_DATA_CONFIG` + assert, `TRACKER_CONFIG["job_data_keys"]["jd_telescope_data_id"]`.
+- No `logger` / `get_logger` / `log_debug` in the **product** diff; errors propagate from `src/data/` as the plan’s binding consequence states.
+- Tests lock AC1 (registry + idempotent ensure on `seeded_db`), AC2 (JSON `data_type`), reads, compression, config guard via `_splice_exec`; `conftest.py` `_SCHEMA_FLAGS` addition prevents cross-test schema-flag leakage.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append this artifact to the issue doc, commit `docs(AST-2131): Radia review — clean`, post slim upshot, move **Review Posted**; datt **PROCEED** → **User Testing** (no fix-now).
+- Optional: tick Frame diff rows in the issue doc during **resolve-child** §10 if still open.
+
+context_tokens≈28000
