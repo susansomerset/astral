@@ -2346,6 +2346,54 @@ input.side-tab-heading-editable:focus {
   border-radius: 4px 4px 0 0;
 }
 
+/* === 12b. Task Performance (admin script page) === */
+
+.tp-wrap { max-height: calc(100vh - 230px); }
+.tp-table thead th { height: 30px; padding: 4px 8px; z-index: 3; top: 24px; }
+.tp-table thead tr.tp-band th { top: 0; height: 24px; padding: 2px 8px; background: var(--bg-deep); border-bottom: 1px solid var(--border); }
+.tp-band-th { cursor: pointer; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent-contrast); }
+.tp-band-th:hover { background: var(--bg-elevated); }
+.tp-table td { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tp-a-left { text-align: left; }
+.tp-a-center { text-align: center; }
+.tp-a-right { text-align: right; }
+.tp-table td.tp-f-text { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.tp-table .tp-label { position: sticky; left: 0; z-index: 1; min-width: 360px; max-width: 520px; }
+.tp-table thead th.tp-label { z-index: 5; background: var(--bg-elevated); }
+.tp-table thead tr.tp-band th.tp-label { background: var(--bg-deep); }
+/* Money: integer half right-aligned, fraction half left-aligned, so decimals line up. */
+.tp-money { display: inline-flex; }
+.tp-mi { display: inline-block; min-width: 4.5ch; text-align: right; }
+.tp-mf { display: inline-block; min-width: 7ch; text-align: left; }
+.tp-twisty { display: inline-block; width: 16px; cursor: pointer; color: var(--text-secondary); user-select: none; }
+.tp-click { cursor: pointer; }
+.tp-twisty-off { visibility: hidden; cursor: default; }
+/* Every row = opaque card base + level tint, so sticky cells never show what scrolls under them. */
+.tp-row td {
+  background:
+    linear-gradient(var(--tp-lvl, transparent), var(--tp-lvl, transparent)),
+    var(--bg-card);
+}
+.tp-total { --tp-lvl: hsla(330, 65%, 58%, 0.34); }
+.tp-group { --tp-lvl: hsla(275, 60%, 58%, 0.30); }
+.tp-task { --tp-lvl: hsla(215, 70%, 58%, 0.24); }
+.tp-version { --tp-lvl: hsla(170, 55%, 45%, 0.20); }
+.tp-candidate { --tp-lvl: hsla(40, 70%, 55%, 0.11); }
+.tp-total td, .tp-group td { font-weight: 700; }
+.tp-task td, .tp-version td { font-weight: 600; }
+.tp-total-row td { position: sticky; top: 54px; z-index: 3; border-bottom: 2px solid var(--border); }
+.tp-total-row td.tp-label { z-index: 5; }
+.tp-line td { color: var(--text-secondary); font-size: 12px; }
+/* Rows kept only because a descendant matches the Pass/Fail/Error/Runs filters. */
+.tp-ctx td { color: var(--text-secondary); font-weight: 400; }
+.tp-tri { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.tp-tri-row { display: flex; }
+.tp-tri-btn { padding: 5px 9px; border: 1px solid var(--border); background: var(--bg-deep); color: var(--text-primary); font-size: 12px; cursor: pointer; margin-left: -1px; }
+.tp-tri-btn:first-of-type { border-radius: 4px 0 0 4px; margin-left: 0; }
+.tp-tri-btn:last-of-type { border-radius: 0 4px 4px 0; }
+.tp-tri-btn.on { background: var(--accent-contrast); color: var(--bg-deep); border-color: var(--accent-contrast); }
+.tp-note { font-size: 12px; color: var(--text-secondary); align-self: center; }
+
 /* === 13. Execution History === */
 
 .dispatch-status-badge {

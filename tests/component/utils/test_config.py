@@ -5363,6 +5363,7 @@ class TestAst1386ThreeSegmentAdminNav:
         "/admin/task_prompts",
         "/admin/scheduled_queries",
         "/admin/agent_timesheets",
+        "/admin/task_performance",
     ]
     _TOOLS_PATHS = [
         "/admin/data_management",
