@@ -484,3 +484,134 @@ Full active statute set (65) scored in-session — 0 fix-now. Stage 1 / Stage 2 
 **2026-08-03** — Radia **0 fix-now**. Discuss on `astral.standards.names-not-ticket-ids` (ticket-id in `GRADE SET COMPLETENESS (AST-1154)` sentinel): **kept as shipped**. Renaming would churn Betty’s marker assertions and Manage Tasks copy for a non-blocking, already-precedented pattern; no product code change this pass.
 
 **Publish tip after resolve:** see `resolve(AST-1154): — clean` commit on `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.
+
+---
+
+## Bug: AST-2120 — qualify grade lines omit `Full-Time W2 Employment` / `Minimum Base Salary`
+
+**Linear:** [AST-2120](https://linear.app/astralcareermatch/issue/AST-2120) (fix child of orphaned bug [AST-2108](https://linear.app/astralcareermatch/issue/AST-2108); recurrences [AST-2109](https://linear.app/astralcareermatch/issue/AST-2109), [AST-2111](https://linear.app/astralcareermatch/issue/AST-2111))  
+**Publish ref:** `sub/AST-2108/AST-2120-qualify-missing-grade-vectors` · **ftr:** `ftr/AST-2108-qualify-missing-grade-vectors`  
+**Scope:** AST-2120 `## Scope` — prompt copy only (Susan: no code-side guard).
+
+### As-is
+
+Johnson `qualify_job_listings` batch `qualify_job_listings-11d238b6…` (2026-10-09): 9 of 21 encoded lines omit rubric codes — 8 drop both `Full-Time W2 Employment` and `Minimum Base Salary`, 1 drops only `Full-Time W2 Employment`. `_require_complete_grade_set` (`src/core/consult.py`) raises `IncompleteGradeSetError: _render_score: missing vectors […]`; AST-1155 routing correctly sends first strikes to `NEW_RETRY` and second strikes to `ERROR_QUALIFY_JOB_LISTINGS` (5 jobs). The Stage 1 + Stage 2 completeness contract from this doc is present in the prompt three times and the model still omits the same two codes.
+
+### To-be
+
+Every `qualify_job_listings` line carries exactly one grade segment per live-rubric code, however many codes the rubric has. A listing that does not state salary or employment type grades those vectors `{code}X0`; it never omits them.
+
+### Repro
+
+No DB fixture is possible from the planning environment (see Root cause). Prompt-level repro against the repo catalog:
+
+```bash
+python3 -c "
+import json
+r = {x['task_key']: x for x in json.load(open('data/admin/agent_task.json')) if x.get('current') == 1}['qualify_job_listings']
+c = r['cache_prompt']
+print('7-code example anchors:', c.count('ERA4|MEA4|PG'))          # 2 (STEP 4 + COMPANY JOB IDENTIFIER)
+print('unscoped omit rule:', 'Omit any data whose value is not stated' in c)   # True
+print('variable-length rule:', 'illustrative only' in c)          # False
+"
+```
+
+Live repro: any candidate whose joblist rubric has more than 7 vectors, including salary / employment-type vectors, run through `qualify_job_listings` against job-board listings that state neither salary nor W2 status.
+
+### Root cause
+
+**Evidence unreachable from this environment.** `data/astral.db` here is a dev copy: `rubric_vector` has 0 rows, and `agent_data` / `app_log` hold nothing for batch `11d238b6`. Johnson's production `rubric_vector` rows and the stored RESPONSE block (`_store_response_block`, index `qualify_job_listings_batch_qualify_job_listings-11d238b6…`) live only on the Railway host. So neither bug-find hypothesis can be confirmed or ruled out, and this fix closes **both**:
+
+1. **Tail truncation at the example length.** Every grade example the qualify model sees has exactly 7 segments: STEP 4 (`ERA4|MEA4|PGF4|WAA3|MWA3|KOA4|QCA5`), `## COMPANY JOB IDENTIFIER` (`003|ERA4|…|QCA5||…`), and three 7-code lines in `grades_encoded_meta` `payload_instructions` (`src/utils/config.py`, injected via `{$OUTPUT_INSTRUCTIONS}`). Nothing says the count is illustrative. If Johnson's rubric has more than 7 codes, ending with `Minimum Base Salary` then `Full-Time W2 Employment`, a length-copying model drops exactly these two, or only the last one (the 1-of-9 line).
+2. **The metadata "omit" rule leaks into grading.** `## EXTRACT METADATA` ends with the unscoped sentence "Omit any data whose value is not stated — do NOT guess or infer." Its own example is `salary_range`. Salary and W2 status are exactly what job-board listings usually leave unstated, so the model plausibly applies "omit" to those two grade vectors instead of `{code}X0`.
+
+The contract wording itself (Stage 1 constant, Stage 2 section and STEP 4 line) is correct. It just doesn't override these two competing signals. Grading validation is set-based (`_grade_set_vector_diff`), so segment order never affects pass/fail; "in rubric order" below is a model-side checklist aid only.
+
+**Options considered:** (a) qualify-row copy only, which closes hypothesis 2 and half of hypothesis 1 but leaves the three 7-code `grades_encoded_meta` examples unqualified; (b) **(a) plus one sentence in `_ENCODED_GRADE_SET_COMPLETENESS`** — chosen, because with the evidence unreachable both anchors must be neutralized, and the conditional `config.py` line in Scope covers exactly this; (c) rewrite examples to a different length, rejected because it just moves the anchor; (d) code-side expected-code-list token, ruled out by Susan; (e) delete the examples, rejected because they carry format information the model needs.
+
+### Proposed change
+
+All copy is plain text with **no Linear ticket ids** (`astral.standards.names-not-ticket-ids`; Susan stripped ticket numbers from `agent_task.json` in `c06eaefdf`). Edit `data/admin/agent_task.json` by **exact in-place string replacement on the raw file** (literal `—` and `\n` escapes, as the file already uses). Do **not** `json.load`/`json.dump` the file, because re-serializing reformats all 61 current rows.
+
+**1. `data/admin/agent_task.json` — `qualify_job_listings` (`"current": 1`) `cache_prompt` only.** Leave `user_prompt`, uuids, `updated_at`, and every other row unchanged.
+
+a. **STEP 4 (hypothesis 1).** Directly after the existing line `Every rubric vector code must appear exactly once per job line; use X0 when silent — never omit a code.` (keep that line byte-identical, because a test pins it), insert one new line:
+
+```text
+Every grade example in these instructions shows 7 codes for illustration only — the code count is not a template. Emit one segment per code in the rubric, in the order the rubric lists them, as many segments as the rubric has codes.
+```
+
+Raw-file edit: replace `never omit a code.\n\nSTEP 5 - AUGMENT DATA:` with `never omit a code.\nEvery grade example in these instructions shows 7 codes for illustration only — the code count is not a template. Emit one segment per code in the rubric, in the order the rubric lists them, as many segments as the rubric has codes.\n\nSTEP 5 - AUGMENT DATA:`. That substring is unique in the file: the other `never omit a code.\n\nSTEP` occurrence is followed by `STEP 4 - PACKAGE RESPONSE`.
+
+b. **`## EXTRACT METADATA` (hypothesis 2).** Replace the sentence (unique in the file, 1 occurrence)
+
+`Omit any data whose value is not stated — do NOT guess or infer.`
+
+with
+
+```text
+Omit any metadata key/value pair whose value is not stated — do NOT guess or infer. This applies to metadata only, never to grade segments: a rubric vector about salary, compensation, or employment type is still graded on every line, as {code}X0 when the listing does not state it.
+```
+
+c. Do **not** change the STEP 4 example string, the `## COMPANY JOB IDENTIFIER` example, the `## GRADE SET COMPLETENESS` section, or STEP 5.
+
+**2. `src/utils/config.py` — `_ENCODED_GRADE_SET_COMPLETENESS` (hypothesis 1, shared anchor).** Append one sentence as a new final line of the constant. Keep the existing `GRADE SET COMPLETENESS (AST-1154)` header and the four existing lines byte-identical, because tests pin the marker, `{code}X0`, and `never skip that segment`:
+
+```python
+    "use X with confidence 0 when the source is silent.\n"
+    "Example lines are illustrative — their code count is not a template. Each line carries "
+    "exactly as many grade segments as the rubric has codes; check every line against the "
+    "rubric code list before moving on."
+```
+
+That is: add `\n` to the end of the current last literal, then the new literal(s). No other `config.py` change: no example edits, no new constant, and the four `payload_instructions` concatenations stay as they are.
+
+**3. `src/core/consult.py` — unchanged.** Confirm with `git diff origin/ftr/AST-2108-qualify-missing-grade-vectors -- src/core/consult.py` → empty.
+
+**4. Verify (make-fix):**
+
+```bash
+python3 -c "
+import json
+from src.utils import config as c
+rows = json.load(open('data/admin/agent_task.json'))
+r = {x['task_key']: x for x in rows if x.get('current') == 1}['qualify_job_listings']['cache_prompt']
+assert 'Every rubric vector code must appear exactly once per job line' in r
+assert 'shows 7 codes for illustration only' in r
+assert 'Omit any metadata key/value pair whose value is not stated' in r
+assert 'Omit any data whose value is not stated' not in r
+assert 'never to grade segments' in r
+assert 'AST-' not in r
+k = c._ENCODED_GRADE_SET_COMPLETENESS
+assert 'GRADE SET COMPLETENESS (AST-1154)' in k and 'their code count is not a template' in k
+ots = c.ASTRAL_CONFIG['output_types']
+for t in ('grades_encoded','grades_encoded_notes','grades_encoded_meta','grades_encoded_prefilter_links'):
+    assert 'their code count is not a template' in ots[t]['payload_instructions'], t
+for t in ('grades_encoded_vet_meta','grades_json'):
+    assert 'their code count is not a template' not in ots[t]['payload_instructions'], t
+print('ok')
+"
+git diff --stat origin/ftr/AST-2108-qualify-missing-grade-vectors -- data/admin/agent_task.json   # 1 file, small +/-; no whole-file reformat
+python3 -m pytest -q tests/component/core/test_repo_admin_json.py tests/component/utils/test_config.py
+```
+
+Expected pytest: no new failures relative to the baseline on the ftr tip (`27cd7cbcf`): **61 failed, 668 passed, 18 skipped** across those two files. All 61 are pre-existing catalog/fixture/config drift unrelated to this bug. Compare by failing-test id list, not by count alone.
+
+**5. Post-merge operator step (Susan; not make-fix).** Boot-time repo-JSON apply is disabled (`astral.seed.agent-tables-in-repo-json`, AST-1492 kill-switch), so the catalog edit does not reach production on deploy. Apply it with either Manage Tasks (paste the new `qualify_job_listings` `cache_prompt` on the live row) or **Revert to file** on `agent_task`. Revert to file is table-wide (`revert_repo_admin_json_table`) and overwrites any live-only edits on every other row, so only use it if the divergence banner shows no other drift. The `config.py` sentence ships with the deploy. Optional one-off: reset the 5 errored jobs (`d1a4ad6c…`, `2595edb2…`, `02b00d9b…`, `3b3efc56…`, `a995bac1…`) to `NEW`.
+
+### Blast radius
+
+- **`_ENCODED_GRADE_SET_COMPLETENESS` consumers:** every task whose output type is `grades_encoded`, `grades_encoded_notes`, `grades_encoded_meta`, or `grades_encoded_prefilter_links` (`prefilter_company`, `qualify_job_listings`, `evaluate_jd`, `grade_do`, `grade_get`, `grade_like`, and meteorite twins). The new sentence states a rule that is already true for all of them, so behavior can only get more complete. Token cost is about 40 tokens per call.
+- **AST-1760 all-X guard (`_require_not_all_literal_x`):** more `X0` on salary/W2 only trips it if *every* vector is X. That outcome is unchanged and correctly routed.
+- **Tests:** `TestAst1154EncodedGradeSetCompleteness` (`tests/component/utils/test_config.py`) pins the marker, `{code}X0`, and `never skip that segment`, all preserved. `TestAst1154GradedTaskCompletenessPrompts::test_marker_and_tighten_lines_on_graded_cache_prompts` (`tests/component/core/test_repo_admin_json.py`) is **already red on the ftr tip** (`27cd7cbcf`), before this fix: it asserts `GRADE SET COMPLETENESS (AST-1154)` in the catalog `cache_prompt`s, and `c06eaefdf` ("Removed … linear ticket numbers") stripped that marker from all seven rows. This fix neither causes nor repairs that failure. Betty owns the test question; do not re-add a ticket id to the prompt. Its qualify-specific phrase `Every rubric vector code must appear exactly once per job line` is preserved. No test pins the STEP 4 example or the old "Omit any data…" sentence.
+- **`docs/uat-fixtures/AST-756/expected-agent_task.json`:** not edited (out of scope). It already diverges from the catalog on dev. Tests that still assert whole-file catalog↔fixture identity (`TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`, `TestAst1773…::test_fixture_catalog_byte_lockstep`) are **already red** on the ftr tip and stay red. This fix adds no new identity failure, because no test pins qualify-row lockstep. The fixture-side AST-1154 test checks only the fixture's own marker and stays green.
+- **Production rows:** see Proposed change step 5. No DB schema, migration, or `database.py` change.
+
+### What must still hold
+
+- Stage 1: the constant stays on exactly the four multi-vector encoded types and stays absent from `grades_encoded_vet_meta` / `grades_json`; the existing constant text is byte-identical except for the appended line.
+- Stage 2: the qualify row keeps its `## GRADE SET COMPLETENESS` section and the STEP 4 line `Every rubric vector code must appear exactly once per job line; use X0 when silent — never omit a code.`
+- "`X0` when silent, never omit, never invent codes or letter grades" remains the rule. The new copy only removes the two competing signals (example length; unscoped "omit").
+- The metadata no-guess rule still holds for key/value pairs (no inferred `salary_range` / `location`).
+- No change to `_require_complete_grade_set`, `_render_score`, `_validate_grades`, or AST-1155 retry/error routing.
+- No Linear ticket ids in `agent_task.json` prompt text.
