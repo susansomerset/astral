@@ -178,3 +178,11 @@ AC6→Stage 1 (`GradeMark` `role="img"` / `aria-label` / `aria-hidden` SVG) + Be
 - **Recommendation:** None.
 
 context_tokens≈28000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2101/AST-2128-shared-grade-mark`
+- **Stage 1:** `c101f9489` — `GradeMark.tsx`
+- **Stage 2:** `a31045b7b` — four call sites on `GradeMark`; trailing blank line dropped from `GradeMark.tsx` (plan code block extraction artifact)
+- **Verify:** `grade-dot dot-` hits only `GradeMark.tsx`; no `gradeDot(` left; `tsc -b --noEmit` OK; scoped eslint = the 1 baseline `JobsSkipped.tsx` `set-state-in-effect` error; `import src.utils.config` OK; `TestAst2047ThemeRegistry` 5 passed.
+- **Vitest:** 197/200 across the AC 7 suites + `test_AgentAnalysisHeader` + `test_AppCss`. The 3 failures fail identically on the pre-change tip `9a267a790` (baseline, not this ticket): `test_AppCss` "no hex or non-black rgba outside token blocks… (AC5)" and "AST-2049: no hex in .ts/.tsx source… (AC9)", and `test_JobDetailModal` "AST-1695 … null listing_href → no Link <a>". Flag for Betty: child AC 9 names `test_AppCss.test.tsx` as passing.
