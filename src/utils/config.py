@@ -5879,6 +5879,7 @@ NAV_CONFIG = [
             {"label": "Manage Tasks", "path": "/admin/task_prompts"},
             {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
             {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
+            {"label": "Task Performance", "path": "/admin/task_performance"},
         ],
     },
     {

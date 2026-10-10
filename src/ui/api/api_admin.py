@@ -23,6 +23,7 @@ from src.data.database import (
 )
 
 from src.core.consult import list_timesheets
+from src.core.task_performance import build_task_performance
 from src.core.inbox import count_inbox_bound_by_candidate
 from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
@@ -856,6 +857,20 @@ def _ledger_filters(*keys: str) -> dict:
 def list_ledger():
     params = _ledger_filters("task_key", "candidate_id", "status", "date_from", "date_to")
     return jsonify(list_dispatch_ledger(**params))
+
+
+@admin_bp.route("/task_performance")
+@require_admin
+def task_performance():
+    """Task Performance roster. Ledger lines are opt-in: lines=all, or line_task_key+line_version+line_candidate."""
+    a = request.args
+    lines = "all" if a.get("lines") == "all" else (
+        (a["line_task_key"], a.get("line_version", ""), a.get("line_candidate", "")) if a.get("line_task_key") else None
+    )
+    return jsonify(build_task_performance(
+        date_from=a.get("date_from"), date_to=a.get("date_to"),
+        current_only=a.get("current_only") == "1", candidate_id=a.get("candidate_id") or None, lines=lines,
+    ))
 
 
 @admin_bp.route("/dispatch_ledger/<batch_id>")
