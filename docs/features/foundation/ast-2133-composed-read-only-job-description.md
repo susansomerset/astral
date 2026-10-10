@@ -268,3 +268,16 @@ AC7 → Stage 1 (`compose_job_description`: preamble + collapse/prune on raw cap
 **R6 (summary):** Four-file scope matches ticket. Composed reader, self-heal on composed length, read-only API/modal, and consult rewires align with parent functional items 6–7 and child Boundaries (no gazer/roster/migration). Stage 0 gates on AST-2132 symbols on the sub (`resolve_telescope_value`, `jd_telescope_data_id` save path). No `fix-now` gaps.
 
 context_tokens≈62000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2130/AST-2133-composed-jd`
+- **Stage 0:** drift check clean — `resolve_telescope_value` / `_prune_jd` in gazer, `jd_telescope_data_id` + `jd_min_chars` in config, `collapse_consecutive_blank_lines` in formatting; AC 8 grep = the 9 planned lines; ruff baselines tracker 157 / consult 224 / api_jobs 14; `npm ci` (tree clean after), `tsc -b --noEmit` clean, eslint on the modal 0.
+- **Stage 1:** `0676bb4c0` — `compose_job_description`; `get_job_data` JD key returns the composed JD, self-heal block unchanged.
+- **Stage 2:** `ddaa166e3` — `persist_skipped_job_edits` ignores `job_description`; `PUT /api/jobs/<id>` no longer accepts it.
+- **Stage 3:** `28b551d4c` — consult token context, `qualify_meteorite`, `_jd_ready_for_evaluate`, `evaluate_jd_batch` read the composed JD. **Kept** `jd_key` in `qualify_meteorite` and the `TRACKER_CONFIG` import: the step-2 re-grep found one more use — the `parsed_job` write (`jd_key: jd_text`) that lands the meteorite JD as preamble — so deleting the line was wrong; the plan's re-grep fallback (step 6) applied.
+- **Stage 4:** `83b19402c` — `_compose_jd_for_response` on every `list_view` row and in `detail`. Call-site count is **6** (5 `r` + 1 `ann`), not the "7" in the plan text; the plan's own list names those 6 — all were converted.
+- **Stage 5:** `a010c737d` — modal JD read-only, out of draft / dirty check / payload; JD tab shows only when there is a JD.
+- **Verify:** `py_compile` OK; ruff tracker 156 (baseline 157), consult 224, api_jobs 14; tsc clean, eslint 0; AC 8 grep → only `api_admin.py` 1497 / 1506 (AST-2134); AC 9 modal grep empty. Scratch checks (temp `ASTRAL_DB_DIR` under `/tmp`, DB path asserted): Stage 1 compose cases (no ref exact, ref + preamble, ref only, missing row → preamble + one warning) and `get_job_data` no self-heal on long composed; Stage 2 JD-only PUT → 400, title + JD → title saved, JD unchanged; Stage 3 token context / readiness / evaluate + qualify assembled content carry the composed JD; Stage 4 detail + skipped list return the composed JD, stored `job_data` byte-identical.
+- **Existing tests (Betty):** over the 12 test files that reference the touched functions, 3 new failures vs untouched ftr (pre-existing reds there unchanged), all asserting the pre-AST-2133 contract: `test_tracker.py::TestAst1453PersistSkippedJobEdits::test_writes_title_link_jd_then_transition` and `::test_empty_jd_persists_without_strip_whole_blob` (expect the JD write), `test_api_jobs.py::TestJobsRoutes::test_list_processing_filters_score_floor` (expects `job_data == {}`; now carries the composed `job_description`). `test_page_intake.py` fails collection on both trees (missing module) — not this ticket's.
+- **No new tests** — coverage is Betty's (qa-child).
