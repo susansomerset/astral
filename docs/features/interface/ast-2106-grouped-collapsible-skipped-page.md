@@ -214,3 +214,60 @@ context_tokens≈52000
 - Build base: synced with `--ftr AST-2102-group-skipped-jobs`; AST-2105's `6913fcd98` is an ancestor of HEAD.
 - `npx tsc -b --noEmit` exit 0; `npm run build` exit 0; `npm run lint` 29 problems (25 errors, 4 warnings) before and after; AC 10 `rg` returns nothing; `git diff -w` shows no change inside the per-section body.
 - For Betty: `tests/component/frontend/fixtures/stateUiManifestFixture.ts` still lacks `skipped.groups`, so `test_JobsSkipped.test.tsx` cases that render rows will throw until the fixture gains it (see Notes for QA above).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2106
+**Publish ref:** `a571f0d8bb2fb7eee96760955e27c70bfb3efa58` (`origin/sub/AST-2102/AST-2106-grouped-skipped-page`)
+**Corpus:** `c04b07deda8f5a750afd473ec847d06ed2207065`
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (Description **Citations:** none; parent **Canon Scope:** none). No directive ids to score.
+
+| (none) | — | — | — |
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded the same empty canon column; no per-id grades to compare.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling carry vs `origin/dev`:** Three-dot diff also includes AST-2105 product and QA (`src/utils/config.py`, `tests/component/utils/test_config.py`, `docs/test-bible/utils/config.md`, `ast-2105` issue doc) because this sub is built on `ftr/AST-2102-group-skipped-jobs` before AST-2105 is on `origin/dev`. Expected merge-base behavior — not AST-2106 scope creep. AST-2106’s own commits touch only the two frontend files (`7673e3216`) and Betty’s fixture/tests/bible (`a571f0d8b`).
+- **Build stub staleness:** Review stub still says the manifest fixture lacks `groups`; the test commit added `groups` mirroring AST-2105. Product and tests are aligned; Chuckles may refresh the stub when appending this review.
+- **Canon Scope (intentional):** UI placement / manifest-driven UI spirit applies in principle; frozen list correctly stays empty — not **ESCALATE**.
+
+## What's solid
+
+- **Plan fidelity:** `StateUiContext` `groups` type matches Stage 1; `skipGroups` memo implements member → prefix → catch-all, manifest order, empty groups dropped; below-floor section uses `below_dispatch_key` (Fail member per manifest).
+- **AC 7 design:** Second `useSectionExpandPolicy({ expandAll: true })` with inverted semantics (collapsed keys in the set, groups start open) keeps Expand One for sections; candidate change resets both key sets in one effect — matches plan and hook behavior.
+- **AC 9:** No `handleRetry` / `bulk_state` hunks in the page diff; **AC9** test asserts two distinct POST bodies for mixed Error + Fail selection.
+- **AC 10:** Ticket `rg` on `JobsSkipped.tsx` returns no matches at publish tip.
+- **Tests:** Eight new cases cover AC 4–9 with `GROUP_TEXT` anchoring to avoid `Fail` vs `Failed LIKE` ambiguity; fixture `groups` matches AST-2105 manifest shape; bible documents manifest and commands.
+
+## Recommended actions (Chuckles / downstream — not Radia)
+
+- Append this artifact to `docs/features/interface/ast-2106-grouped-collapsible-skipped-page.md`; commit `docs(AST-2106): Radia review — clean`; push `origin/sub/AST-2102/AST-2106-grouped-skipped-page`.
+- Post slim upshot via `linear_proxy.py --as radia save-comment`; move to **Review Posted**; **PROCEED** → **User Testing** (no **resolve-child** unless Susan wants build-stub wording updated).
+
+context_tokens≈22000
+
+```
+[code-rubric] PROCEED (Commit: a571f0d8b) Grouped Skipped page clean
+```
