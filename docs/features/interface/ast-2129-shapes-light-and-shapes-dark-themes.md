@@ -314,3 +314,72 @@ No `GradeMark.tsx`, call-site, `uiConfig.ts`, `CandidateContext.tsx` or `candida
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2129
+**Overall:** APPROVED
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (canon tree at publish tip; `docs/canon-index.md` absent on ref)
+**Publish ref:** `origin/sub/AST-2101/AST-2129-shapes-themes` @ `1d7298b65e75c2d29611632cbf7fe9cd8c286b85`
+
+## Canon scores
+
+_(empty — child **Citations:** none; parent **Canon Scope:** none — locked at Discussion. No directive ids to score; not §4a ESCALATE — explicit empty scope.)_
+
+## Traceability
+
+AC1→Stage 1 (registry + config verify; API/profile UI proof via Betty `test_config` + parent UAT); AC2→Stage 2 (selector lists + `--grade-a:` count); AC3→Stage 3 (Shapes §9b fill/reset/SVG reveal; computed proof not in engineer verify — Betty/UAT); AC4→Stage 3 (shape-ring tokens + path `stroke-width` / X `filter`; Betty notes on X ring target); AC5→Stage 3 step 5 (centroid `font-size`/`padding`; X `font-size: 0` — Betty assert per plan); AC6→Stage 3 (add-only §9b diff gate + global `.grade-dot > svg { display: none }` + unchanged circle rules); AC7→Stage 3 partial (`tsc`, `build`, `import config`; `test_AppCss`/`test_config` deferred to Betty with documented expected reds until qa-child).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Child AC 7 vs Stage 3 step 6 “Expected reds”
+- **Finding:** Linear AC 7 requires `test_AppCss` and `TestAst2047ThemeRegistry` pass; engineer stages explicitly expect those to fail until Betty updates tests/bible (selector-list blocks, four ids).
+- **Recommendation:** Acceptable partition if Betty’s manifest lands before User Testing; Chuckles should ensure qa-child is in the child’s exit path. No plan rewrite required for approval.
+
+- **Location:** Child AC 3–5 vs Stage 3 verify
+- **Finding:** Computed-style ACs (paths, rings, centroid tolerances) have no browser/headless spot-check in engineer verify (unlike AST-2123’s Stage 2 step 13 pattern).
+- **Recommendation:** Optional build-child Review browser pass on Shapes themes for AC 3–5; parent UAT remains backstop.
+
+- **Location:** `astral.config.config-source-of-truth` (not on frozen list)
+- **Finding:** New theme ids correctly land in `UI_CONFIG["themes"]` only; statute not on **Canon Scope: none** list.
+- **Recommendation:** Archie may leave **none**; plan matches parent Technical scope.
+
+- **Location:** Out-of-scope — `NavigationShell.tsx` wordmark
+- **Finding:** Shapes - Light gets Light tokens but not the light wordmark (`theme === "light"` only); documented in plan, not in either child Scope.
+- **Recommendation:** Susan chooses follow-up vs epic amendment; does not block this plan’s in-scope CSS/registry work.
+
+- **Location:** AC 5 wording vs Stage 3 X letter hiding
+- **Finding:** AC pass line names `visibility: hidden` or `display: none`; plan uses `font-size: 0` to preserve `role="img"` / `aria-label` (parent capability 6 via AST-2128). Fail condition is visible letter — plan’s approach satisfies that.
+- **Recommendation:** Betty follow plan integration note (`font-size: 0px`, not visibility).
+
+### acceptable
+
+- **Location:** AST-2128 dependency; Boundaries (no `GradeMark` edits)
+- **Finding:** Stage 3 targets existing mark DOM (`display="none"` SVG, bare letter); CSS-only option **(A)** and X ring option **(a)** match resolved open questions.
+- **Recommendation:** None.
+
+- **Location:** Stage 3 placement / specificity (after letterless; Shapes reset source order; `0,3,0` Shapes letter rules vs report-context `11px`)
+- **Finding:** Load-bearing decisions are spelled out and match current `App.css` selectors on the epic branch.
+- **Recommendation:** None.
+
+- **Location:** X ring via four `drop-shadow`s; `0px` vs `0` for Dark shape-ring tokens
+- **Finding:** Creative but bounded workaround for single-path `GradeMark`; `calc(0px * 0.7071)` rationale is sound.
+- **Recommendation:** None.
+
+- **Location:** Scope gate; Files Changed vs Betty-owned paths
+- **Finding:** Matches AST-2128 pattern — engineer touches `config.py` + `App.css` only.
+- **Recommendation:** None.
+
+- **Location:** Pre-existing `test_AppCss` `--tp-lvl` reds (plan Out-of-scope)
+- **Finding:** Not introduced by this ticket; plan flags same exclusion pattern as AST-2128 Radia note.
+- **Recommendation:** Betty manifest documents carve-outs if still red on tip.
+
+context_tokens≈42000
