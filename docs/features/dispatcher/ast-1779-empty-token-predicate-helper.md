@@ -1065,21 +1065,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/f0a75aef789ee42caac941d18f28106f/34aaeabe-4695-4001-a3c7-efe11486c218/store.db` |
-| Hedy | engineer | `/home/susan/.cursor/chats/f0a75aef789ee42caac941d18f28106f/ef8ca9e2-3491-4731-8c1e-b09d9d177747/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/59053c5f-3440-4c3e-9814-c71d7dea1800/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/f0a75aef789ee42caac941d18f28106f/09c049fb-14f5-4389-8960-c8babfe4d299/store.db` |
+| Ada | engineer | `/home/susan/.cursor/chats/eb1070acfeb025b5dc68043424798744/9ab40e5f-23a8-4a58-ba7c-7e05c1a4756b/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/5d4ca2d8-52dc-4e20-baf9-7b9aa29f4583/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/eb1070acfeb025b5dc68043424798744/31d8f277-f2d6-4373-b1ba-3d134bccbe77/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1986 (parent) | ftr/AST-1986-runtime-empty-token-error |
-| AST-2000 | sub/AST-1986/AST-2000-runtime-empty-token-error |
-| AST-2005 | sub/AST-1986/AST-2005-dispatch-retry-carve-out |
-| AST-2006 | sub/AST-1986/AST-2006-empty-token-guard-tests |
+| AST-2019 (parent) | ftr/AST-2019-rubric-empty-render-gate |
+| AST-2092 | sub/AST-2019/AST-2092-rubric-empty-render-gate |
+| AST-2094 | sub/AST-2019/AST-2094-rubric-empty-render-gate-tests |
 
-**Epic worktree:** `astral-AST-1986/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2019/` — one active sub checked out at a time.
 
 ## Joan fix-board — AST-2092
 
