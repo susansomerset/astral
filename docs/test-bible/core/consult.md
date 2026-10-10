@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+`_consult_batch_fail_dest(state, error_state, task_key)`: out of the holding → bare `ERROR_<TASK_KEY>` (**`TestConsultBatchFailDest`**); `_empty_token_fail_dest(task_key, error_state)` and chain hop errors / refused edge warns (**`TestAst2006EmptyTokenRouting`**); missing website content → `ERROR_<TASK>_NO_WEBSITE_CONTENT` (**`TestPrepLiveContent`**). Manifest item 9: dead `else` arm in `_prep_live_content`. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-429 · AST-358
 
 **`_render_score`** uses AST-358 three-knob math (`RUBRIC_TOTAL / V`, `grade_value` × confidence, `importance_multiplier` per rubric row). **`_rubric_to_weights`** and **`GRADE_QUALITY_LEGACY`** removed. Depends on **AST-428** config on the same sub branch stack.
@@ -1521,9 +1525,9 @@ Test gap for **AST-2089** (`f3897829d`). `_run_batch_consult`: when `do_task` fa
 | --- | --- | --- |
 | Helper: first wins (hop before entry); retry holding skipped; retry-only / unset → `FAILED_TECHNICAL` | `_empty_token_fail_dest` | **`TestAst2006EmptyTokenRouting::test_empty_token_fail_dest`** (4 params) |
 | AST-2000 Repro 3: `grade_do` @ `PASSED_JD` → `FAILED_TECHNICAL_DO`, `retried == 0` (control: generic failure → `PASSED_JD_RETRY`) | `_run_batch_consult` | **`…::test_run_batch_consult_goes_to_error_state_not_retry`** · **`…::test_run_batch_consult_generic_failure_still_retries`** |
-| `analysis_upshot` (`error_state` = retry holding) → `FAILED_TECHNICAL`, counted error | `_run_analysis_upshot_batch` | **`…::test_analysis_upshot_retry_error_state_falls_to_failed_technical`** |
+| `analysis_upshot` (`error_state` = retry holding) → bare `ERROR_ANALYSIS_UPSHOT` (**AST-2086**; was `FAILED_TECHNICAL`), counted error | `_run_analysis_upshot_batch` | **`…::test_analysis_upshot_retry_error_state_falls_to_bare_task_error`** |
 | `to_state` = orchestration `error_state`, transitioned | `render_verdict` | **`…::test_render_verdict_transitions_to_error_state`** |
-| Mid-chain hop label → hop's `ERROR_BUILD_ARTIFACTS`; hop with none → entry's; `ValueError` → `FAILED_TECHNICAL`; claim released, error counted | `_run_dispatch_chain_job_batch` | **`…::test_dispatch_chain_mid_hop_goes_to_hop_error_state`** · **`…::test_dispatch_chain_hop_without_error_state_uses_entry`** · **`…::test_dispatch_chain_invalid_edge_falls_to_failed_technical`** |
+| **AST-2086:** mid-chain hop label → the failing hop's own `ERROR_<HOP>`; every hop has one, so it wins over the entry's; refused edge (`ValueError`) → WARNING, label kept, no `FAILED_TECHNICAL`; claim released, error counted | `_run_dispatch_chain_job_batch` | **`…::test_dispatch_chain_mid_hop_goes_to_hop_error_state`** · **`…::test_dispatch_chain_failing_hop_error_wins_over_entry`** · **`…::test_dispatch_chain_invalid_edge_warns_without_fallback`** |
 
 **Broken / obsolete:** none — existing routing tests stub generic `success: False` (no `empty_tokens`). `render_verdict` case is green on dev too (`grade_do`'s `error_state` is not a retry holding); kept as the AST-2000 contract pin.
 

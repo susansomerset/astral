@@ -659,7 +659,7 @@ async def resolve_company_website(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """CSE-only fetch hop for inflow_resolve_website → persist hits → WEBSITE_REVIEW | NO_WEBSITE; never do_task."""
+    """CSE-only fetch hop for inflow_resolve_website → persist hits → WEBSITE_REVIEW | ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND; never do_task."""
     del ctx  # fetch hop — no agent call
     _ = debug
     cfg = INFLOW_CONFIG["resolve"]
@@ -710,7 +710,7 @@ async def resolve_website_company(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """resolve_website AI apply — load persisted CSE hits → find_company_website → WEBSITE_FOUND | NO_WEBSITE."""
+    """resolve_website AI apply — load persisted CSE hits → find_company_website → WEBSITE_FOUND | ERROR_RESOLVE_WEBSITE_NOT_FOUND."""
     hit_key = INFLOW_CONFIG["resolve"]["hit_list_data_key"]
     sa_cfg = TASK_CONFIG["resolve_website"]
     agent_task_key = sa_cfg["agent_task"]  # find_company_website — agent identity, not SA key
@@ -970,14 +970,14 @@ async def run_company_task(
             if result.get("error"):
                 _warn_company(short_name, "-", result["error"])
                 return {**zero, "total_errors": 1, **tag}
-            # BOT_BLOCKED deliberately absent: bot-blocked is fail-only (AST-1751 / AST-2004).
+            # bot-blocked deliberately absent: bot-blocked is fail-only (AST-1751 / AST-2004).
             terminal_ok = frozenset({
                 sel_cfg.get("identified_state"),
                 sel_cfg.get("exhausted_state"),
                 sel_cfg.get("retry_state"),
                 "NO_OPENINGS",
-                "JOBSITE_SCRAPE_ISSUE",
-                "NO_JOBLIST",
+                ROSTER_CONFIG["locate_job_page"]["scrape_issue_state"],
+                ROSTER_CONFIG["locate_job_page"]["no_joblist_state"],
             })
             if result.get("state") in sel_cfg.get("pass_states", []) or result.get("state") in terminal_ok:
                 return {**zero, "total_passed": 1, **tag}
@@ -1053,9 +1053,9 @@ async def run_select_job_page_dispatch(
     assembled_content, page_url_map, visible_map = _pjl_maps_from_company_data(cdata)
     if not assembled_content.strip():
         _save_company(short_name=short_name, company_website=company_website,
-                      state="NO_PJL_SELECTED", page_option_url=company_website,
+                      state=ROSTER_CONFIG["select_job_page"]["exhausted_state"], page_option_url=company_website,
                       raw_response={"response_type": "NO_PJL_ASSEMBLED"})
-        return {"short_name": short_name, "state": "NO_PJL_SELECTED", "job_site": "", "response_type": "NO_PJL_ASSEMBLED"}
+        return {"short_name": short_name, "state": ROSTER_CONFIG["select_job_page"]["exhausted_state"], "job_site": "", "response_type": "NO_PJL_ASSEMBLED"}
     nav_links = _nav_links_for_try_links(cdata)
     live_content = _build_select_job_page_live_content(assembled_content, nav_links)
     logger.debug(
@@ -1257,7 +1257,7 @@ async def run_parse_job_list_dispatch(
         parsed = await _fetch_parse_job_list(dom_joined, short_name, debug=debug, ctx=ctx)
         if parsed.get("empty_tokens"):
             # AST-2000: terminal parse state, no retry — "error" makes the dispatcher count an error.
-            terminal = ROSTER_CONFIG["parse_job_list"]["terminal_fail_state"]
+            terminal = ROSTER_CONFIG["parse_job_list"]["error_state"]
             transition_company_state(short_name, terminal)
             return {"short_name": short_name, "state": terminal, "error": parsed.get("error")}
         container = (parsed.get("job_container") or "").strip()
@@ -1543,7 +1543,7 @@ def _prefilter_fail(
     *,
     api_result: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Route retryable failures via current state (one retry then ERROR_PREFILTER); hard → error."""
+    """Route retryable failures via current state (one retry then ERROR_PREFILTER_COMPANY); hard → error."""
     company = get_company(short_name) or {}
     current_state = (company.get("state") or "").strip()
     # AST-897 / AST-2098: balance refusal or failed host probe — hold current loop-eligible state
@@ -1828,10 +1828,11 @@ async def prefilter_company(
             short_name, company_website, browser_context=browser_context
         )
         if scrape.get("error"):
-            transition_company_state(short_name, "CANNOT_READ_WEBSITE")
+            unreadable = ROSTER_CONFIG["prefilter"]["unreadable_state"]
+            transition_company_state(short_name, unreadable)
             save_company_data(short_name, {"prefilter_company_notes": scrape["error"]})
             result["error"] = scrape["error"]
-            result["state"] = "CANNOT_READ_WEBSITE"
+            result["state"] = unreadable
             return result
         company_website = scrape["company_website"]
         visible_text = scrape["visible_text"]
@@ -2061,7 +2062,7 @@ async def _run_batch_company_prefilter(
                 **({"total_held": len(companies)} if is_provider_probe_failure(result) else {}),
             }
         if result.get("empty_tokens"):
-            # AST-2000: data defect — straight to ERROR_PREFILTER, never a retry holding.
+            # AST-2000: data defect — straight to ERROR_PREFILTER_COMPANY, never a retry holding.
             for company in companies:
                 if company.get("short_name"):
                     transition_company_state(company["short_name"], cfg["error_state"])
@@ -2204,10 +2205,11 @@ async def prefilter_company_batch(
                 short_name,
             )
             continue
-        transition_company_state(short_name, "CANNOT_READ_WEBSITE")
+        unreadable = ROSTER_CONFIG["prefilter"]["unreadable_state"]
+        transition_company_state(short_name, unreadable)
         save_company_data(short_name, {"prefilter_company_notes": "No homepage_text in company_data"})
         skipped += 1
-        logger.debug("End not_ready skip: %s -> CANNOT_READ_WEBSITE", short_name)
+        logger.debug("End not_ready skip: %s -> %s", short_name, unreadable)
 
     if not ready:
         return {
@@ -2393,9 +2395,11 @@ async def company_upshot_batch(
 
 # ---- Find job page ----
 
-def _locate_empty_token_error(short_name: str, company_website: str, res: Dict[str, Any]) -> Dict[str, Any]:
-    """AST-2000: empty-token select/parse in the locate flow → ERROR_LOCATE_JOB_PAGE (no retry, no NO_JOBLIST)."""
-    err_st = ROSTER_CONFIG["locate_job_page"]["error_state"]
+def _locate_empty_token_error(
+    short_name: str, company_website: str, res: Dict[str, Any], *, err_state: str,
+) -> Dict[str, Any]:
+    """AST-2000: empty-token select/parse in the locate flow → the failing task's bare ERROR_<TASK_KEY> (no retry)."""
+    err_st = err_state
     transition_company_state(short_name, err_st)
     return {
         "short_name": short_name,
@@ -2464,19 +2468,21 @@ async def _find_job_page_from_assembled(
                     "state_held": True,
                 }
             if res.get("empty_tokens"):
-                return _locate_empty_token_error(short_name, company_website, res)
+                return _locate_empty_token_error(
+                    short_name, company_website, res, err_state=ROSTER_CONFIG["locate_job_page"]["error_state"],
+                )
             _save_company(short_name=short_name, company_website=company_website,
-                               state="NO_JOBLIST", page_option_url=company_website,
+                               state=ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], page_option_url=company_website,
                                raw_response={"response_type": "SELECT_FAILED", "error": res.get("error"), "api": res})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "SELECT_FAILED",
+            return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], "job_site": company_website, "response_type": "SELECT_FAILED",
                     **_outage_tag(res)}
 
         pp = res.get("run_next_parent_parsed")
         parsed_top = pp if pp is not None else res.get("parsed_response")  # type: ignore[assignment]
         if not isinstance(parsed_top, dict):  # pragma: no branch
             _save_company(short_name=short_name, company_website=company_website,
-                               state="NO_JOBLIST", page_option_url=company_website, raw_response={"parse": "invalid"})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
+                               state=ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], page_option_url=company_website, raw_response={"parse": "invalid"})
+            return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], "job_site": company_website, "response_type": "NO_JOBLIST_FOUND"}
 
         response_type = str(parsed_top.get("response_type") or "")
 
@@ -2534,8 +2540,8 @@ async def _find_job_page_from_assembled(
 
         if not try_links or not try_link_retry_pending:
             _save_company(short_name=short_name, company_website=company_website,
-                               state="NO_JOBLIST", page_option_url=company_website, raw_response=parsed_top)
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
+                               state=ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], page_option_url=company_website, raw_response=parsed_top)
+            return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], "job_site": company_website, "response_type": response_type}
 
         logger.debug("Beginning TRY_LINKS scrape loop on %s items", len(try_links))
         retry_content, retry_url_map, retry_dom_map, retry_visible = await _fetch_job_links_content(
@@ -2543,8 +2549,8 @@ async def _find_job_page_from_assembled(
         )
         if not retry_content.strip():
             _save_company(short_name=short_name, company_website=company_website,
-                               state="NO_JOBLIST", page_option_url=company_website, raw_response=parsed_top)
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
+                               state=ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], page_option_url=company_website, raw_response=parsed_top)
+            return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], "job_site": company_website, "response_type": response_type}
 
         page_url_map.update(retry_url_map)
         page_dom_map.update(retry_dom_map)
@@ -2591,7 +2597,7 @@ async def jobs_found_process_job_site(
     """AST-469: JOBS_FOUND — fresh scrape of stored job_site; same select→parse chain as TO_WATCH locate (no stale job_list_visible)."""
     job_site = (job_site or "").strip()
     if not job_site:
-        return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": "", "response_type": "MISSING_JOB_SITE"}
+        return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], "job_site": "", "response_type": "MISSING_JOB_SITE"}
 
     _strip_company_data_keys(short_name, ("job_list_visible",))
 
@@ -2604,10 +2610,9 @@ async def jobs_found_process_job_site(
             type(ex).__name__,
             ex,
         )
-        err_st = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
-        if err_st:
-            transition_company_state(short_name, err_st)
-        return {"short_name": short_name, "state": err_st or "ERROR_LOCATE_JOB_PAGE", "job_site": job_site, "response_type": "SCRAPE_FAIL"}
+        err_st = ROSTER_CONFIG["locate_job_page"]["error_state"]
+        transition_company_state(short_name, err_st)
+        return {"short_name": short_name, "state": err_st, "job_site": job_site, "response_type": "SCRAPE_FAIL"}
 
     if final_url and final_url != job_site:
         update_company(short_name, job_site=final_url)
@@ -2621,9 +2626,9 @@ async def jobs_found_process_job_site(
         )
         if not assembled_content.strip():
             _save_company(short_name=short_name, company_website=company_website,
-                               state="NO_JOBLIST", page_option_url=company_website,
+                               state=ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], page_option_url=company_website,
                                raw_response={"response_type": "JOBS_FOUND_SCRAPE_EMPTY", "job_site": job_site})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": job_site, "response_type": "JOBS_FOUND_SCRAPE_EMPTY"}
+            return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], "job_site": job_site, "response_type": "JOBS_FOUND_SCRAPE_EMPTY"}
 
         return await _find_job_page_from_assembled(
             short_name=short_name,
@@ -2964,16 +2969,16 @@ async def _finalize_joblist_titles_after_chain(
     dom_html = page_dom_map.get(selected_page, "") if selected_page is not None else ""
     if not dom_html:
         _save_company(short_name=short_name, company_website=company_website,
-                           state="NO_JOBLIST", page_option_url=company_website, raw_response=select_parsed)
-        return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
+                           state=ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], page_option_url=company_website, raw_response=select_parsed)
+        return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], "job_site": company_website, "response_type": response_type}
 
     # AST-1840: CPU-bound cull off the event loop
     dom_joined, _, cull_outcome = await asyncio.to_thread(_culled_dom_for_parse, dom_html, job_titles)
     if cull_outcome == "cull_miss" or not dom_joined.strip():
         logger.debug("Response from _culled_dom_for_parse: cull_miss possible bot block")
         _save_company(short_name=short_name, company_website=company_website,
-                           state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=select_parsed)
-        return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
+                           state=ROSTER_CONFIG["locate_job_page"]["unparseable_state"], page_option_url=job_site_url, raw_response=select_parsed)
+        return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["unparseable_state"], "job_site": job_site_url, "response_type": response_type}
     full_dom_html = dom_html
 
     container = (parsed.get("job_container") or "").strip()
@@ -2982,15 +2987,15 @@ async def _finalize_joblist_titles_after_chain(
     if not container or not job_tag:
         save_company_data(short_name, {"parse_job_list_notes": "parse returned empty container or job_tag"})
         _save_company(short_name=short_name, company_website=company_website,
-                           state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=parsed)
-        return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
+                           state=ROSTER_CONFIG["locate_job_page"]["unparseable_state"], page_option_url=job_site_url, raw_response=parsed)
+        return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["unparseable_state"], "job_site": job_site_url, "response_type": response_type}
 
     err, raw_job_listings, _ = _validate_parse_job_list_raw_job_listings(dom_joined, container, job_tag, parsed.get("job_ids", []))
     if err:
         save_company_data(short_name, {"parse_job_list_notes": err})
         _save_company(short_name=short_name, company_website=company_website,
-                           state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=parsed)
-        return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
+                           state=ROSTER_CONFIG["locate_job_page"]["unparseable_state"], page_option_url=job_site_url, raw_response=parsed)
+        return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["unparseable_state"], "job_site": job_site_url, "response_type": response_type}
 
     container_index = _compute_container_index(full_dom_html, container, job_titles)
     parse_instructions = {"container": container, "job_tag": job_tag, "container_index": container_index}
@@ -3031,21 +3036,23 @@ async def _finalize_joblist_titles_select_only(
     dom_html = page_dom_map.get(selected_page, "") if selected_page is not None else ""
     if not dom_html:
         _save_company(short_name=short_name, company_website=company_website,
-                           state="NO_JOBLIST", page_option_url=company_website, raw_response=select_parsed)
-        return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
+                           state=ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], page_option_url=company_website, raw_response=select_parsed)
+        return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], "job_site": company_website, "response_type": response_type}
 
     # AST-1840: CPU-bound cull off the event loop
     dom_joined, _, cull_outcome = await asyncio.to_thread(_culled_dom_for_parse, dom_html, job_titles)
     if cull_outcome == "cull_miss" or not dom_joined.strip():
         logger.debug("Response from _culled_dom_for_parse: cull_miss possible bot block")
         _save_company(short_name=short_name, company_website=company_website,
-                           state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=select_parsed)
-        return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
+                           state=ROSTER_CONFIG["locate_job_page"]["unparseable_state"], page_option_url=job_site_url, raw_response=select_parsed)
+        return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["unparseable_state"], "job_site": job_site_url, "response_type": response_type}
     full_dom_html = dom_html
 
     parsed = await _fetch_parse_job_list(dom_joined, short_name, debug=debug, ctx=ctx)
     if parsed.get("empty_tokens"):
-        return _locate_empty_token_error(short_name, company_website, parsed)
+        return _locate_empty_token_error(
+            short_name, company_website, parsed, err_state=ROSTER_CONFIG["parse_job_list"]["error_state"],
+        )
 
     container = (parsed.get("job_container") or "").strip()
     job_tag = (parsed.get("job_tag") or "").strip()
@@ -3053,15 +3060,15 @@ async def _finalize_joblist_titles_select_only(
     if not container or not job_tag:
         save_company_data(short_name, {"parse_job_list_notes": "parse returned empty container or job_tag"})
         _save_company(short_name=short_name, company_website=company_website,
-                           state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=parsed)
-        return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
+                           state=ROSTER_CONFIG["locate_job_page"]["unparseable_state"], page_option_url=job_site_url, raw_response=parsed)
+        return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["unparseable_state"], "job_site": job_site_url, "response_type": response_type}
 
     err, raw_job_listings, _ = _validate_parse_job_list_raw_job_listings(dom_joined, container, job_tag, parsed.get("job_ids", []))
     if err:
         save_company_data(short_name, {"parse_job_list_notes": err})
         _save_company(short_name=short_name, company_website=company_website,
-                           state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=parsed)
-        return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
+                           state=ROSTER_CONFIG["locate_job_page"]["unparseable_state"], page_option_url=job_site_url, raw_response=parsed)
+        return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["unparseable_state"], "job_site": job_site_url, "response_type": response_type}
 
     container_index = _compute_container_index(full_dom_html, container, job_titles)
     parse_instructions = {"container": container, "job_tag": job_tag, "container_index": container_index}
@@ -3158,7 +3165,7 @@ async def _check_parse_results(
             suppress_job_site=suppress,
         )
         logger.debug(
-            "Response from select_job_page: JOBSITE_SCRAPE_ISSUE summary=%r job_site=%s",
+            "Response from select_job_page: scrape issue summary=%r job_site=%s",
             summary, job_site_url,
         )
         return {
@@ -3179,13 +3186,14 @@ async def _check_parse_results(
     walled_url = _first_bot_walled_page(page_url_map or {}, visible_map or {}) if decomposed else ""
     if walled_url:
         _save_company(short_name=short_name, company_website=company_website,
-                      state="BOT_BLOCKED", page_option_url=walled_url, raw_response=result)
-        logger.debug("Response from select_job_page: %s -> BOT_BLOCKED job_site=%s", response_type, walled_url)
-        return {"short_name": short_name, "state": "BOT_BLOCKED", "job_site": walled_url, "response_type": response_type}
+                      state=ROSTER_CONFIG["locate_job_page"]["bot_blocked_state"], page_option_url=walled_url, raw_response=result)
+        logger.debug("Response from select_job_page: %s -> %s job_site=%s", response_type,
+                     ROSTER_CONFIG["locate_job_page"]["bot_blocked_state"], walled_url)
+        return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["bot_blocked_state"], "job_site": walled_url, "response_type": response_type}
 
     _save_company(short_name=short_name, company_website=company_website,
-                       state="NO_JOBLIST", page_option_url=company_website, raw_response=result)
-    return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
+                       state=ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], page_option_url=company_website, raw_response=result)
+    return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], "job_site": company_website, "response_type": response_type}
 
 
 
@@ -3221,7 +3229,8 @@ def _derive_shortname_from_url(url: str) -> str:
 # Locate/parse success persists the listings URL as job_site; gaze reads it once the company reaches WATCH.
 _PERSIST_PAGE_OPTION_URL_STATES = frozenset({
     ROSTER_CONFIG["parse_job_list"]["pass_state"], *ROSTER_CONFIG["locate_job_page"]["pass_states"],
-    "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE", "JOBSITE_SCRAPE_ISSUE", "BOT_BLOCKED",
+    "NO_OPENINGS", ROSTER_CONFIG["locate_job_page"]["unparseable_state"],
+    ROSTER_CONFIG["locate_job_page"]["scrape_issue_state"], ROSTER_CONFIG["locate_job_page"]["bot_blocked_state"],
 })
 
 
@@ -3273,8 +3282,8 @@ def _save_company(
         job_tag: Optional job tag (legacy)
         parse_instructions: Optional parse_instructions blob
         pre_run_job_site: Pre-run job_site column; fetched from DB when omitted
-        jobsite_scrape_issue_summary: Optional Grace summary for JOBSITE_SCRAPE_ISSUE
-        jobsite_scrape_issue_evidence: Optional page-text evidence for JOBSITE_SCRAPE_ISSUE
+        jobsite_scrape_issue_summary: Optional Grace summary for select_job_page response_type JOBSITE_SCRAPE_ISSUE
+        jobsite_scrape_issue_evidence: Optional page-text evidence for select_job_page response_type JOBSITE_SCRAPE_ISSUE
     """
     if pre_run_job_site is None:
         row = get_company(short_name)
@@ -3577,7 +3586,7 @@ def _compute_container_index(full_dom: str, container_selector: str, job_titles:
 
 async def _fetch_parse_job_list(dom_html: str, short_name: str, debug: bool = False, ctx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Call parse_job_list task: culled DOM only; returns container, job_tag, job_ids.
-    Returns empty dict on failure so caller can fall through to CANNOT_PARSE_JOB_SITE."""
+    Returns empty dict on failure so caller can fall through to ERROR_SELECT_JOB_PAGE_UNPARSEABLE."""
     _ = debug
     logger.debug("Calling agent.do_task: task_key=parse_job_list index=%s", short_name)
     logger.debug("Calling agent.do_task live_content: %s", dom_html or "")
