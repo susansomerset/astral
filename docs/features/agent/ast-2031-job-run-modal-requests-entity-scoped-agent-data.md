@@ -280,3 +280,56 @@ All in `src/ui/frontend/src/components/BatchAgentDataModal.tsx`. No backend, API
 [board-joan]  CANON: OK
 
 The patch is frontend-only in `BatchAgentDataModal.tsx` (`ENTITY_CALL_TYPES`, placeholder copy when `entityId` is set, unchanged `?entity_id=` fetch). **patt.entity.batch-processing** is unaffected: `batch_id` / entity-scoped read semantics stay on the backend; this only changes how missing rows are shown in the job run modal, not claim, storage, or join keys. **stat.logging.debug** does not apply to new React UI behavior (backend statute; no new `logger.debug` in `src/core` or elsewhere). Susan’s To-be and D3-2075 explicitly own the placeholder tabs; that is product/display scope within the parent’s already-scoped `BatchAgentDataPanes` work, not a new pattern or statute carve-out. D2’s note that “aged out” may overstate swallowed prompt-storage failures is honest copy/scope for the engineer and Betty, not a canon amendment.
+
+## Radia review-fix (AST-2075)
+
+[code-rubric]
+**Ticket:** AST-2075
+**Publish ref:** 2e80369af80edf16418ef875afc48e123c964115
+**Ftr base:** 29333729925ac857384f33e930875234c9a0a757 (ancestor of publish ref — confirmed)
+**Corpus:** 2344ae3265b15125a8f4a655946fcfe66b3e1def
+**Overall:** CLEAN
+**Parent shape:** Normal (not orphaned)
+
+## Canon scores
+patt.entity.batch-processing | A |
+stat.logging.debug | X |
+
+## Column diff vs plan stage
+no plan-stage canon scores attached (Joan fix-board **CANON: OK**)
+
+## Frame diff
+(none)
+
+## [bug-repro]
+**OK** — `[bug-repro]` lives in `tests/component/frontend/components/test_BatchAgentDataModal.test.tsx` (`BatchAgentDataPanes — AST-2075 missing-row placeholder tabs`), landed on `dev` at `d8eb8c5bd` and **absent from the ftr…sub diff by design** (qa-fix repro-first on dev). Assertion pins plan § Repro: RESPONSE-only entity fetch → tabs `SYSTEM`, `CACHE`, `NO_CACHE`, `TASK`, `RESPONSE`; opens on SYSTEM with `MISSING_AGENT_DATA` copy; RESPONSE shows real body; TASK placeholder on click. Would fail pre-fix tab list (`RESPONSE` only).
+
+## ## What must still hold
+**OK**
+- **AST-2031:** `?entity_id=` fetch and batch-wide timesheets/ledger URLs unchanged in diff (only tab/placeholder logic added).
+- **Parent AC9 / §7:** `missingTypes` is `[]` without `entityId`; `orderedTypes` / empty-state guard preserve batch-wide behavior — covered by `test_batch-wide (no entityId) unchanged`.
+- **AST-2052 / D1-2075:** CACHE placeholder only when SYSTEM missing and no `CACHE_*` rows — `test_present SYSTEM with no CACHE_* rows → no CACHE tab`.
+- **Parent AC10:** no `src/ui/api/` or `src/data/` files in ftr…sub diff.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+- **advisory** | `[bug-repro]` location | Repro test not on bug publish ref; regression depends on `dev` (or merged ftr) carrying `d8eb8c5bd`. Manifest must keep running the AST-2075 describe block on fix-lane **test-fix**.
+- **advisory** | `stat.logging.debug` | **X** — React-only change; statute Notes exclude React debug-contract duty; no new backend `logger.debug`.
+
+## What's solid
+- Isolated diff: `BatchAgentDataModal.tsx` + plan patch in `ast-2031` doc only (119 insertions / 6 deletions).
+- Plan steps 1–6 implemented: `ENTITY_CALL_TYPES`, `TAB_ORDER`, `MISSING_AGENT_DATA`, entity default active tab `SYSTEM`, CACHE placeholder rule, safe `byType[t]?.` labels, placeholder textarea text, `orderedTypes.length === 0` empty state.
+- Vitest describe adds D1 guards (real `CACHE_*`, all-empty entity run) beyond `[bug-repro]`.
+
+## Chuckles branching (read-only)
+**PROCEED** + normal parent → **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped).
+
+
+[code-rubric] PROCEED (Commit: 2e80369af) entity placeholder tabs OK
