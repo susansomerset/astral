@@ -1314,3 +1314,90 @@ Stages 1–3: `354a93fa4` App.css §10e2 + retired structure-authoring rules rem
 ```
 
 context_tokens≈32000
+
+## Bug: AST-2114 — Search shows every Experience job instead of only the matching ones
+
+### As-is
+
+The resume editor's search filters whole section rows. When the query matches text inside one or more Experience jobs, the Experience row stays visible, and expanding it shows every job, matching or not.
+
+### To-be
+
+When the query matches inside Experience jobs (and not the section's own title), the expanded Experience section shows only the jobs whose text matches. Other sections filter exactly as today (Core Competencies etc. show whole). An empty query, or a query that matches the Experience section title, shows every job.
+
+### Repro
+
+Fixture (base or job target): `experience` body
+`[{ company: "Acme", title: "Lead", accomplishments: ["Scaled search"] }, { company: "Globex", title: "Engineer", accomplishments: ["Built billing"] }]`.
+
+1. Type `acme` in **Search sections**. The Experience row stays (correct).
+2. Expand Experience. Both the "Acme, Lead" and "Globex, Engineer" job panels render. Expected: only "Acme, Lead".
+
+### Root cause
+
+`ResumeContentEditor` decides visibility per row only: `matches(title, body)` tests the section title, then `bodyText(body)`, the whole job array flattened into one string. Nothing carries per-job match information down. `ResumeSectionRow` hands the full array to `ExperienceJobsEditor`, which renders every `value` entry.
+
+### Proposed change
+
+A view-only filter. The body array, indexes, and every save path stay untouched, so `ExperienceJobsEditor`'s edit/move/remove handlers keep using the original indexes.
+
+1. **`ResumeContentEditor.tsx`**
+   - Extract the per-job string from `bodyText` into a new helper, and have `bodyText` use it (the output is unchanged):
+     ```ts
+     /** Plain text of one experience job: head fields joined " · ", then "• " accomplishments. */
+     function jobText(job: ExperienceJob, fields: ExperienceJobField[]): string {
+       const head = fields.filter(f => f.key !== "accomplishments").map(f => String(job[f.key] ?? "").trim()).filter(Boolean)
+       const acc = Array.isArray(job.accomplishments) ? job.accomplishments.map(a => `• ${a}`) : []
+       return [head.join(" · "), ...acc].filter(Boolean).join("\n")
+     }
+     ```
+     `bodyText`'s array branch becomes `return body.map(job => jobText(job, fields)).join("\n\n")`.
+   - Directly under `matches`, add:
+     ```ts
+     // AST-2114: a query that matches inside Experience jobs (not the section title) shows only those jobs.
+     const visibleJobs = (title: string, body: SectionBody | undefined): ReadonlySet<number> | undefined =>
+       !q || title.toLowerCase().includes(q) || !Array.isArray(body)
+         ? undefined
+         : new Set(body.flatMap((job, i) => (jobText(job, experienceFields).toLowerCase().includes(q) ? [i] : [])))
+     ```
+   - On the `<ResumeSectionRow …>` element add `visibleJobs={visibleJobs(row.title, bodies[row.id])}`. Non-experience bodies are strings, so they get `undefined`.
+2. **`ResumeSectionRow.tsx`**
+   - Add to `ResumeSectionRowProps`:
+     ```ts
+     /** Experience only: job indexes the search leaves visible; undefined shows every job. */
+     visibleJobs?: ReadonlySet<number>
+     ```
+   - Destructure it, and pass `visible={visibleJobs}` on the `<ExperienceJobsEditor …>` element.
+3. **`ExperienceJobsEditor.tsx`**
+   - Add to `ExperienceJobsEditorProps`:
+     ```ts
+     /** Search filter: only these job indexes render; undefined renders every job. */
+     visible?: ReadonlySet<number>
+     ```
+     Destructure `visible`.
+   - In the map, skip jobs outside the set, keeping `key={index}` and every handler on the original `index`:
+     `{value.map((job, index) => visible && !visible.has(index) ? null : (<CollapsiblePanel key={index} …>…</CollapsiblePanel>))}`.
+   - Render the **Add role** button only when `!visible` (see Decision 1).
+
+No `App.css` change. No backend change.
+
+**Decisions (flagged for the board / Susan):**
+
+1. **Add role is hidden while the job filter is active.** A new blank job matches no query, so it would vanish the moment it was added. Clear the search to add a role.
+2. **A section-title match shows every job**, e.g. a query of `exper`. The whole section is the hit.
+3. **Experience does not auto-expand on search.** Row expansion stays manual, as in AST-2083 Decision 17, so the filtered jobs show when Susan expands the row. Collapsed job panels keep their own open/closed state (keyed by original index).
+4. **Job match rule = section match rule:** case-insensitive substring over `jobText`, the same text the section haystack is built from. So a body match on Experience always leaves at least one job visible (the search box is single-line, so a query can't span the `"\n\n"` job separator).
+5. **Job ▲/▼ still move within the full list** (same as section arrows under search, AST-2083 Decision 18), and a job edited out of the match disappears, the same as a section row does today.
+
+### Blast radius
+
+- **`ExperienceJobsEditor`** is also rendered by `ArtifactEditor.tsx` (L1050). That caller passes no `visible`, so its behavior is unchanged.
+- **`bodyText`** feeds the search haystack, the collapsed preview, and the Compare `differs` block. Its output is byte-identical after the `jobText` extraction.
+- **Tests:** `test_ResumeContentEditor.test.tsx` "search filters…" asserts row ids only (`acme` → `["experience"]`), so it is unaffected. `test_ExperienceJobsEditor.test.tsx` "Add role" cases render without `visible`, so they are unaffected. New coverage (job-level filter, Add role hidden) is Betty's call.
+
+### What must still hold
+
+- AST-2083 AC6: row-level search, case-insensitive on title and content; clearing restores every row and every job.
+- AC4 / autosave: filtering never fires a PUT or `onSaved`; edits to a visible job save the full job array, hidden jobs included, unchanged.
+- AC11 / AC14 / AC16: section reorder, Compare to Base, and the experience header color are unchanged.
+- AC13: no new hardcoded format or flow strings.
