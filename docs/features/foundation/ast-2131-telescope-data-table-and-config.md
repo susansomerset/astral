@@ -152,3 +152,42 @@ No gazer functions or callers (AST-2132), no JD composition (AST-2133), no roste
 Confirm Chuckles estimate: 3 — revise to 2 because this is a known pattern (mirror `agent_data` schema-ensure + compressed save/read) across two files with no callers yet.
 
 Gap to flag: the planner's read tool was blocked on `src/data/database.py` (reported as `.cursorignore` / permission denied; no matching ignore rule found in the repo). Stage 0 exists for that reason. If the builder hits the same block, Susan must lift it before build-child.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2131
+**Overall:** APPROVED
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (canon tree at publish tip; `docs/canon-index.md` absent on ref)
+**Publish ref:** `origin/sub/AST-2130/AST-2131-telescope-data-table` @ `0f16fb099035705e9f58e1fc4c7e56b9c4b1aac3`
+
+## Canon scores
+
+stat.logging.debug | A |
+stat.logging.warning | A |
+stat.logging.error | A |
+
+## Traceability
+
+AC1 → Stage 1 (schema-ensure, registry, inventory, `.schema telescope_data`); AC2 → Stage 2 (`save_telescope_data` + manual scratch verify); ticket Scope config slice → Stage 3 (`TELESCOPE_DATA_CONFIG`, assert, `jd_telescope_data_id`); parent epic AC3–11 N/A (this child Boundaries).
+
+### acceptable — Stage 0 mirror wording vs `get_agent_data_for_ids`
+
+- **Location:** Stage 0 item 5.
+- **Finding:** Checklist says the symbol returns a dict keyed by id; live `get_agent_data_for_ids` returns `{agent_data_id: row_dict}` with resolved `block_data`, not plain string content. Stage 2 correctly targets plain content for telescope reads.
+- **Recommendation:** Builder uses Stage 0 only to confirm symbol presence and compression/schema patterns; no plan rewrite required.
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan structure (`## Estimate` confirm only).
+- **Finding:** R6 self-assessment axes are implicit; work is a documented `agent_data` mirror across two files with Stage 0 drift gate for the planner’s `database.py` read block.
+- **Recommendation:** Optional self-assessment for parity with larger tickets; not blocking.
+
+### discuss — Canon Scope vs config/registry statutes
+
+- **Location:** Ticket Citations (three `stat.logging.*` only) vs Stage 3 `TELESCOPE_DATA_CONFIG` / `TRACKER_CONFIG` keys.
+- **Finding:** New named keys and id lists in `config.py` align with parent Technical scope and registry-not-literals intent, but no `config.config-source-of-truth` / `stat.general.registry-not-literals` on the frozen child list.
+- **Recommendation:** Archie may amend parent Canon Scope on a future child if explicit config statutes should be scored; do not widen AST-2131’s list in flight.
+
+**R6 (summary):** Definition fidelity matches child `## Scope` and Boundaries (no gazer, roster, migration). Files Changed ⊆ ticket Scope. Stage 0 matches live `database.py` (`_compress_payload`, `_decompress_payload`, `_UPSERT_LAZY_SCHEMA_HANDLERS`, `_UPSERT_SCHEMA_ENSURE_FLAGS`, `_ensure_agent_data_schema`, `ensure_all_upsert_registry_schemas_at_startup`). DRY: explicit mirror of `agent_data` lazy ensure + compressed blob I/O. No sibling creep. No `fix-now` gaps.
+
