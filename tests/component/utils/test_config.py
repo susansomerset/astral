@@ -8324,3 +8324,81 @@ class TestAst2086TerminalStateGrammar:
         assert loc["bot_blocked_state"] == "BOT_BLOCKED_SELECT_JOB_PAGE"
         assert r["gaze"]["error_state"] == "ERROR_GAZE"
         assert g["gaze"]["error_state"] == "ERROR_GAZE"
+
+
+# Branches: AC1 manifest groups (order, keys, labels, prefixes, members); AC2 rule partition leaves
+# only INVALID_TITLE in Other; manifest lists are copies; AC3 member guard + catch-all-last guard fire.
+class TestAst2105SkippedGroupRules:
+    """AST-2105: JOBS_SKIPPED_GROUPS registry, import guards, manifest jobs.skipped.groups."""
+
+    @staticmethod
+    def _splice_exec(old: str, new: str, probe_name: str) -> None:
+        # Re-exec the real config source with one line swapped, so the shipped assert (not a copy) fires.
+        import types
+        from pathlib import Path
+
+        src = Path(cfg.__file__).read_text(encoding="utf-8")
+        # A moved/renamed anchor must fail loudly, not let the splice pass vacuously.
+        assert src.count(old) == 1, old
+        mod = types.ModuleType(probe_name)
+        mod.__file__ = cfg.__file__  # config resolves repo paths from __file__ at import
+        # Fake filename keeps coverage from attributing probe lines to config.py.
+        exec(compile(src.replace(old, new, 1), f"<{probe_name}>", "exec"), mod.__dict__)  # noqa: S102
+
+    def test_ac1_manifest_groups_exact(self) -> None:
+        sk = cfg.build_state_ui_manifest()["jobs"]["skipped"]
+        assert sk["groups"] == [
+            {"key": "error", "label": "Error", "prefixes": ["ERROR_"], "members": []},
+            {"key": "bot_block", "label": "Bot block", "prefixes": ["BOT_BLOCKED_"], "members": []},
+            {
+                "key": "fail",
+                "label": "Fail",
+                "prefixes": ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"],
+                "members": ["CANDIDATE_SKIPPED", sk["below_dispatch_key"]],
+            },
+            {"key": "other", "label": "Other", "prefixes": [], "members": []},
+        ]
+        # Registry is the only source: manifest rows mirror JOBS_SKIPPED_GROUPS in insertion order.
+        assert [g["key"] for g in sk["groups"]] == list(cfg.JOBS_SKIPPED_GROUPS)
+
+    def test_ac2_rules_leave_only_invalid_title_in_other(self) -> None:
+        # Ticket AC 2 rule, verbatim: members first, then prefixes, else the last (catch-all) group.
+        g = cfg.build_state_ui_manifest()["jobs"]["skipped"]["groups"]
+
+        def grp(s: str) -> str:
+            for x in g:
+                if s in x["members"]:
+                    return x["label"]
+            for x in g:
+                if any(s.startswith(p) for p in x["prefixes"]):
+                    return x["label"]
+            return g[-1]["label"]
+
+        assert sorted(s for s in cfg.SKIPPED_STATES if grp(s) == "Other") == ["INVALID_TITLE"]
+
+    def test_manifest_lists_are_copies(self) -> None:
+        # Mutating one manifest build must not leak into the registry or the next build.
+        groups = cfg.build_state_ui_manifest()["jobs"]["skipped"]["groups"]
+        groups[2]["prefixes"].append("X_")
+        groups[2]["members"].append("X")
+        assert cfg.JOBS_SKIPPED_GROUPS["fail"]["prefixes"] == ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"]
+        assert "X" not in cfg.build_state_ui_manifest()["jobs"]["skipped"]["groups"][2]["members"]
+
+    def test_ac3_guard_rejects_non_skipped_member(self) -> None:
+        line = '"members": ["CANDIDATE_SKIPPED", JOBS_SKIPPED_BELOW_DISPATCH_KEY],'
+        with pytest.raises(AssertionError, match="member is not a Skipped state"):
+            self._splice_exec(
+                line,
+                '"members": ["CANDIDATE_SKIPPED", JOBS_SKIPPED_BELOW_DISPATCH_KEY, "NOT_A_STATE"],',
+                "cfg_ast2105_member_probe",
+            )
+
+    def test_guard_rejects_catch_all_not_last(self) -> None:
+        # A group after Other makes Other unreachable-as-last; the second guard must fire.
+        line = '"other": {"label": "Other", "prefixes": [], "members": []},'
+        with pytest.raises(AssertionError, match="only the last group may be the catch-all"):
+            self._splice_exec(
+                line,
+                line + '\n    "extra": {"label": "Extra", "prefixes": ["X_"], "members": []},',
+                "cfg_ast2105_catchall_probe",
+            )
