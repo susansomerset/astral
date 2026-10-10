@@ -10,9 +10,69 @@ There is **no** per-source-file branch-lock table (**§6b**). Prefer adding or e
 
 | Ticket | Behavior | Sources | Manifest |
 | --- | --- | --- | --- |
+| **AST-2123** | Grade base / lettered / confidence settings tokens in Dark + Light; §9b and confidence rules read them; alternate blocks, §16 and `--text-on-grade*` deleted | `src/ui/frontend/src/App.css` | **`test_AppCss.test.tsx`** (exact block ↔ registry restored) + AC greps — § AST-2123 below |
 | **AST-2122** | `App.css` theme token-block contract + AST-2049 epic-wide hex / `var()` guard (moved from the retired Theme Examples page test) | `src/ui/frontend/src/App.css`, all non-test `src/ui/frontend/src/**/*.{ts,tsx,css}` | **`tests/component/frontend/test_AppCss.test.tsx`** (5) — § AST-2122 below |
 | **AST-1317** | Amend `pattern.ui.shared-button-roles` with optional `in-row` size; unused `.btn.in-row` in `App.css` | `src/ui/frontend/src/App.css`, `canon/patterns/ui/pattern.ui.shared-button-roles.md`, `canon/patterns/HARVEST.md` | docs-acceptance (grep/read) — no pytest; call-site apply is **AST-1318** |
 | **AST-1300** | Approved `pattern.ui.shared-button-roles` + `pattern.ui.icon-control`; unused `.btn` / `.icon-control` in `App.css` | `src/ui/frontend/src/App.css`, `canon/patterns/ui/pattern.ui.shared-button-roles.md`, `canon/patterns/ui/pattern.ui.icon-control.md`, `canon/patterns/README.md`, `canon/patterns/HARVEST.md` | docs-acceptance (grep/read) — no pytest; call-site remediations are **AST-1301** / **AST-1302** |
+
+---
+
+### AST-2123 · AST-2100 (grade settings sets — Light Bright + ring, Dark as-is)
+
+**Publish:** `origin/sub/AST-2100/AST-2123-grade-settings-sets`. `App.css` only: both token blocks declare the 47 grade settings (per grade: fill, `-ring`, `-ring-width`, `-ink`, `-letter-size`, `-letter-weight`, `-ring-width-lettered`; confidence: `-active`, `-inactive`, `-inactive-opacity`, `-size`, `-gap`). Light takes the Bright + ring values; Dark's ring widths are 0. `.dot-<g>` and `.grade-dot-letterless.dot-<g>` draw fill and inset ring from them; the confidence rules read gap, size and opacity from them. The `light_parchment` / `light_slate` blocks, §16 Theme Examples CSS and `--text-on-grade*` are deleted.
+
+| Area | Component tests |
+| --- | --- |
+| Blocks equal the registry exactly (`dark`, `light`) | **`test_AppCss.test.tsx`** › **`Dark is :root and [data-theme=dark]; one block per registry id`** (revised: AST-2122's superset check tightened back to exact) |
+| Every Light block declares exactly the Dark names (stylesheet header rule) | **`test_AppCss.test.tsx`** › **`every Light block declares exactly the Dark token names…`** (unchanged; covers the 47 new names in both blocks) |
+| No hex outside token blocks; every `var(--x)` defined (new `var(--grade-*)` / `var(--confidence-bullet-*)` refs) | **`test_AppCss.test.tsx`** AC5 + AST-2049 cases (unchanged) |
+| AC 1, 7, 8, 9, 10 (label counts, no confidence literals, no retired names, no `text-on-grade`) | grep lines in the manifest — structural, no new test |
+
+**Not covered by component tests (jsdom has no cascade):** AC 2, 4, 5, 6, 7 (computed half) and 11 are computed-style checks. AC 3 is OKLab arithmetic on palette values. All go to browser / parent UAT, as the plan and Joan's validate note say.
+
+**Broken / obsolete:** only the superset check above. No other test reads `.grade-dot`, `.dot-*`, `.confidence-bullet*` or `--text-on-grade*` from `App.css`. The other `App.css`-reading Vitests (`AdminDeployFooter`, `CandidateJobRowActions`, `JobTitleText`, `ListPage`, `Modal`, `ResumeContentEditor`, `AdminManageEmail`, `AdminPerformanceMonitor`) and the confidence-bullet markup tests (`ConfidenceBullets`, `recommendedJobReport`) are green. `test_config.py::TestAst2047ThemeRegistry::test_every_registry_id_has_an_app_css_block` stays green. No integration scenario reads `App.css`.
+
+#### QA test manifest (AST-2123)
+
+1. **Vitest (required):**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/test_AppCss.test.tsx \
+  ../../../tests/component/frontend/components/test_{AdminDeployFooter,CandidateJobRowActions,ConfidenceBullets,JobTitleText,ListPage,Modal,ResumeContentEditor}.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/pages/test_{AdminManageEmail,AdminPerformanceMonitor}.test.tsx
+```
+
+Expect 151 passed, 2 failed. The 2 known reds are the `test_AppCss` AC5 and AST-2049 cases. They may name **only** `--tp-lvl` (dev `5f4850a20`, §12b — see § AST-2122). Any other name is an AST-2123 defect.
+
+2. **Pytest:** `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst2047ThemeRegistry` — 5 passed.
+
+3. **AC 1 (each of 47 labels exactly twice):**
+
+```bash
+for g in a b c d f x; do for s in "" -ring -ring-width -ink -letter-size -letter-weight -ring-width-lettered; do
+  echo "--grade-$g$s $(git grep -c -- "--grade-$g$s:" src/ui/frontend/src/App.css | cut -d: -f2)"; done; done
+for s in active inactive inactive-opacity size gap; do
+  echo "--confidence-bullet-$s $(git grep -c -- "--confidence-bullet-$s:" src/ui/frontend/src/App.css | cut -d: -f2)"; done
+```
+
+Every line ends in `2`.
+
+4. **AC 7 / 8 / 9 / 10 greps (each returns nothing):**
+
+```bash
+git grep -n -A6 '^\.confidence-bullet' -- src/ui/frontend/src/App.css | grep -E '4px|3px|0\.55'
+git grep -n -i -e theme_examples -e ThemeExamples -e theme-examples -e 'Theme Examples' -e theme_example_grade_sets -- src tests
+git grep -n -e light_parchment -e light_slate -- src tests
+git grep -n 'text-on-grade' -- src/ui/frontend/src src/utils
+```
+
+AC 8 / AC 9 have no `App.css` carve-out any more; that was only for AST-2122.
+
+5. **Build:** `cd src/ui/frontend && npx tsc -b --noEmit && npm run build` exit 0.
+
+**Pass criterion:** items 1–5 hold. Narrowed runs, not the zero-arg harness. AC 2–7 computed / 11 are UAT.
 
 ---
 
