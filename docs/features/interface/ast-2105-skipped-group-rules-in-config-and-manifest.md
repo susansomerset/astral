@@ -183,3 +183,59 @@ Slim upshot: `[plan-rubric] PROCEED (Commit: a1d2e90ea) Config groups manifest r
 - Build base: AST-2073's ftr is still merged on this sub (no new commits on it since plan); `sync-child.sh` also brought in a newer `origin/dev` (`68782e475`).
 - Compile + import clean. Ruff on `config.py`: 102 before, 102 after.
 - AC 1 script prints `AC1 ok`; AC 2 prints `['INVALID_TITLE']`; AC 3 temporary `"NOT_A_STATE"` member raised `AssertionError: JOBS_SKIPPED_GROUPS: member is not a Skipped state`, reverted (no `NOT_A_STATE` in the diff).
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2105
+**Publish ref:** `a030f1aa545341d9196606fec0760f8ed19dcba1` (`origin/sub/AST-2102/AST-2105-skipped-group-rules`)
+**Corpus:** `c04b07deda8f5a750afd473ec847d06ed2207065`
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (Description **Citations:** none; parent **Canon Scope:** none). No directive ids to score.
+
+| (none) | — | — | — |
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded the same empty canon column; no per-id grades to compare.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Canon Scope (intentional):** Config-as-manifest-registry work matches the spirit of UI/config law discussed at plan (Joan **discuss**), but the frozen list correctly stays empty — not scored, not **ESCALATE**.
+- **Diff vs `origin/dev`:** Three-dot diff is limited to `src/utils/config.py`, Betty’s `tests/component/utils/test_config.py::TestAst2105SkippedGroupRules`, `docs/test-bible/utils/config.md`, and the issue doc. AST-2073’s ftr merge remains in branch history (`8802d4707`) but does not appear as product delta vs current `origin/dev` (2073 content is already on the baseline).
+- **Plan scope vs pipeline:** Ticket **Scope** names `config.py` only; tests and bible are expected **qa-child** / **test-child** carry, aligned with the plan’s QA notes and manifest — not scope creep.
+- **Linear wording:** Description still says “After AST-2073 is Done” while **blockedBy** AST-2073 is User Testing; implementation followed the documented ftr merge-base — no product gap.
+
+## What's solid
+
+- `JOBS_SKIPPED_GROUPS` matches the approved plan verbatim: dict keyed by group id, `ERROR_STATE_PREFIX` / `BOT_BLOCKED_STATE_PREFIX` on Error/Bot block, Fail literals and members including `JOBS_SKIPPED_BELOW_DISPATCH_KEY`, Other as sole catch-all last.
+- Both import-time guards ship with the planned messages; manifest `"groups"` uses `list(...)` copies consistent with neighboring manifest keys.
+- **TestAst2105SkippedGroupRules** covers AC 1 (exact manifest), AC 2 (partition → Other = `INVALID_TITLE` only), AC 3 and catch-all-last via `_splice_exec` on the real module source (same family as AST-2061 pinhole probe), plus copy isolation on manifest lists.
+- Bible block documents the five tests and manifest commands; no integration tier claimed.
+
+## Recommended actions (Chuckles / downstream — not Radia)
+
+- Append this artifact to `docs/features/interface/ast-2105-skipped-group-rules-in-config-and-manifest.md`, commit `docs(AST-2105): Radia review — clean`, push `origin/sub/AST-2102/AST-2105-skipped-group-rules`.
+- Post slim upshot below via `linear_proxy.py --as radia save-comment`; move to **Review Posted**; **PROCEED** → datt routes toward **User Testing** (no **resolve-child** unless Susan wants doc tick pass on AC checkboxes only).
+
+context_tokens≈28000
+
+Slim upshot: `[code-rubric] PROCEED (Commit: a030f1aa5) Skipped groups manifest clean`
