@@ -124,3 +124,14 @@ Capture hook: **`docs/test-bible/core/agent.md`**. Admin API columns: **`docs/te
 `list_rubric_vectors(..., code=)` returns one criterion's rows oldest first (case-insensitive code; `code=None` keeps `ORDER BY code`). `set_current_rubric_vector` moves current for one code only and carries the leaving row's live `importance` onto the target (keeps its own when there is no other current row); a cross-code or unknown uuid raises with no change.
 
 **New:** **`TestAst2066RubricCriterionVersions`** (8 incl. 4 blank-arg params; AC6 via two real `sync_rubric_vectors_from_criteria` blurs). Manifest: [`../../core/candidate.md`](../../core/candidate.md) § AST-2066 item 2.
+
+### AST-2127 · AST-2112 (sync rejects undecodable codes — AST-2126)
+
+`sync_rubric_vectors_from_criteria` no longer invents `V{idx}` for a blank code: any code not matching `[A-Z]{2}` after `strip().upper()` raises `ValueError: criterion N code '<raw>' is not two letters A-Z`, and nothing is committed for the owner (an earlier valid criterion in the same call included). Lowercase valid codes are stored uppercased. Primary manifest: [`../../core/consult.md`](../../core/consult.md) § AST-2127.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `V01` / blank / `A` / `G1` / `CLR` → raise, no current rows | `src/data/database.py` | **`TestAst2126SyncRejectsUndecodableCodes::test_invalid_code_raises_and_writes_nothing`** (5) |
+| ` tp` → stored `TP` | same | **`…::test_lowercase_code_stored_uppercased`** |
+
+**Fixture revision (14 nodes):** `TestAst723SyncRubricVectors` (`G1`→`GA`, `A`/`B`→`AA`/`BB`), `TestAst724VectorFeedbackRows`, `TestAst725ListVectorFeedback` (`vector_code="ga"`), `TestAst725AggregateVectorFeedback` (`GA`/`GB`), `TestAst808ListVectorFeedbackContent`, `TestAst809VectorFeedbackBatchMetadata`, `TestAst2066RubricCriterionVersions` (`V01`/`V02`→`VA`/`VB`; case-insensitive inputs ` va ` / `va`). Assertions otherwise unchanged.

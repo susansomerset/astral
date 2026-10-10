@@ -1591,3 +1591,42 @@ AC3 is an `rg` check in the manifest. Primary manifest: **`docs/test-bible/core/
 | Wrappers forward offset (4 params) | **`test_batch_wrappers_forward_offset[grade_do/grade_get/grade_like/meteorite_like]`** |
 
 **Kept:** `TestPrepLiveContentBranches::test_returns_jd_when_website_pages_have_no_content` (`[index=000]: jd text`, default position) — green unchanged.
+
+### AST-2127 · AST-2112 (bug-repro — AST-2126 undecodable Do rubric codes / zero-grade replies)
+
+Test gap for **AST-2126** (`4e9731267`, on `origin/ftr/AST-2112-do-rubric-undecodable-codes` @ `f83f8d71f`; pre-fix base `54e186b79`). A `grades_encoded_notes` reply with no `_GRADE_SEG` match (Somerset's `V01A3`-style codes, or prose) fell to `_job_from_letter_pipe` and returned a silent `grades: []` row, which `_require_complete_grade_set` then reported as every label missing. Now every batch entity becomes one `decode_failures` entry carrying the raw reply (AST-1996 route); `_require_complete_grade_set` reports missing **and** unknown in one reason. Primary manifest lives here; pointers in **`core/agent.md`**, **`core/candidate.md`**, **`data/database/rubric_vectors.md`**, **`ui/api/api_candidate.md`** (each § AST-2127).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| 1-job `grade_do`, payload `000\|V01A3\|V02B4` or prose → `{"jobs": [], "decode_failures": [{J0, pos 0, raw-reply reason}]}` | `src/core/consult.py` (`_normalize_rubric_task_response`) | **`TestAst2126ZeroGradeRepliesAreDecodeFailures::test_bug_repro_one_job_zero_grades_is_decode_failure`** (2 params, **bug-repro**) |
+| 2 entities, prose → one failure per entity, `pos` 0/1 | same | **`…::test_every_entity_gets_one_failure`** |
+| Letter-pipe reply that yields grades → row unchanged, no `decode_failures` | same | **`…::test_letter_pipe_with_grades_unchanged`** (guard) |
+| Company task (`prefilter_company`) zero grades → `companies` row, no `decode_failures` | same | **`…::test_company_task_zero_grades_keeps_row`** (guard) |
+| Missing + unknown → `_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']` | `src/core/consult.py` (`_require_complete_grade_set`) | **`…::test_require_complete_grade_set_reports_missing_and_unknown`** |
+
+Single-side `missing vectors` / `unknown vectors` tests (`TestRenderScore::test_rejects_unknown_or_missing_vectors`, AST-1155 rows) are untouched and stay byte-identical.
+
+**Broken / obsolete (rewritten this pass, 31 nodes):** the 2 candidate tests (see **`core/candidate.md`** § AST-2127); 27 fixtures that seeded `rubric_vector` through `sync_rubric_vectors_from_criteria` with codes that aren't `[A-Z]{2}` — `test_agent.py` (13: `TestAst1486FeedbackEntityIdStamp`, `TestAst724VectorFeedbackCapture`, `TestAst809VectorFeedbackBatchMetadata`, `TestAst816VectorFeedbackCapture`, `TestAst820VectorFeedbackDebugTrace`, `TestAst862CleanParseFeedbackBlock`) and `test_rubric_vectors.py` (14: `TestAst723SyncRubricVectors` ×2, `TestAst724VectorFeedbackRows` ×2, `TestAst725ListVectorFeedback` ×2, `TestAst725AggregateVectorFeedback`, `TestAst808ListVectorFeedbackContent`, `TestAst809VectorFeedbackBatchMetadata` ×2, `TestAst2066RubricCriterionVersions` ×4); and `test_api_candidate.py::TestAst2067CandidateVersionRoutes` (2, scope-amended). Codes renamed only — `G1`→`GA`, `G2`→`GB`, `V01`→`VA`, `V02`→`VB`, `CLR`→`CL`, `DOR`→`DO`, `A`→`AA`, `B`→`BB` (lowercase case-insensitivity inputs `g1`/`v01` → `ga`/`va`; vector-review strings `G1RACOVK` → `GARACOVK`). No assertion weakened, skipped, or xfailed.
+
+**Integration:** none (no `tests/integration/` scenario saves rubrics or decodes grade replies).
+
+## QA test manifest
+
+1. **[bug-repro] flip:** `tests/component/core/test_consult.py::TestAst2126ZeroGradeRepliesAreDecodeFailures::test_bug_repro_one_job_zero_grades_is_decode_failure` (2 params).
+2. **AST-2126 steps 1–4 + rewrites:** `test_consult.py::TestAst2126ZeroGradeRepliesAreDecodeFailures`, `test_agent.py::TestDecodePayload::test_ast2126_notes_line_without_segments_is_decode_failure`, `test_candidate.py::TestAst2126RubricCodeFill`, `test_candidate.py::TestAst2008RubricCodeUptick`, `test_candidate.py::TestAst2091RubricDispatchError`, `test_rubric_vectors.py::TestAst2126SyncRejectsUndecodableCodes`.
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  tests/component/core/test_consult.py::TestAst2126ZeroGradeRepliesAreDecodeFailures \
+  tests/component/core/test_agent.py::TestDecodePayload::test_ast2126_notes_line_without_segments_is_decode_failure \
+  tests/component/core/test_candidate.py::TestAst2126RubricCodeFill \
+  tests/component/core/test_candidate.py::TestAst2008RubricCodeUptick \
+  tests/component/core/test_candidate.py::TestAst2091RubricDispatchError \
+  tests/component/data/database/test_rubric_vectors.py::TestAst2126SyncRejectsUndecodableCodes \
+  -q
+```
+
+**Red/green proof (Betty, qa-fix 2026-10-10):** with `src/core/{agent,candidate,consult}.py` + `src/data/database.py` checked out from `54e186b79` (restored after; never committed) → **22 failed / 20 passed**; every red is an assertion on the AST-2126 contract (silent `grades: []` row; single-side reason; `['', 'V02', ' tp', 'TX']` codes; `DID NOT RAISE ValueError` in sync; `None` dispatch reason; `['tp']` stored). The 20 passing are unchanged-contract AST-2008/AST-2091 nodes (incl. the split `test_duplicates_strip_and_sorted`) plus the two consult guards. On the publish tip → **42 passed**.
+
+3. **No-regression (required):** `/home/susan/astral/.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_candidate.py tests/component/core/test_consult.py tests/component/data/database/test_rubric_vectors.py tests/component/scripts/test_backfill_rubric_vectors.py tests/component/ui/api/test_api_candidate.py -q`. Recorded: pre-fix product (`54e186b79` src) **94 failed / 1393 passed**; tip before this pass **125 failed** (94 + 31 AST-2126); tip with this pass **94 failed / 1416 passed / 7 skipped** — failing-id set identical to the pre-fix environment baseline (`no such table: job`, seed state `NEW`, host probes, etc.). Pass = same 94 ids, no `TestAst2126*` / renamed node failing.
+4. **Scope gate:** `git diff origin/ftr/AST-2112-do-rubric-undecodable-codes...origin/sub/AST-2112/AST-2127-do-rubric-code-tests -- src/ data/` is empty.

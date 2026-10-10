@@ -8207,3 +8207,58 @@ class TestAst2006EmptyTokenRouting:
             r.levelname == "WARNING" and "empty_tokens dest ERROR_ANTICIPATE_SCAN refused" in r.getMessage()
             for r in caplog.records
         )
+
+
+# AST-2126 [bug-repro] (AST-2127): a grades_encoded_notes reply with no _GRADE_SEG match (V01-style codes or
+# prose) falls to the letter-pipe path. Pre-fix it returned a silent {"grades": []} row that later failed
+# _require_complete_grade_set with every label missing; now every batch entity is a decode failure carrying
+# the raw reply (AST-1996 route). Branches: job task + zero grades → decode_failures (1 and 2 entities);
+# letter-pipe with grades → row unchanged; company task with zero grades → companies row, no decode_failures.
+class TestAst2126ZeroGradeRepliesAreDecodeFailures:
+    _RUBRIC = [
+        {"code": "V01", "label": "Vector 1", "content": "x", "importance": 5},
+        {"code": "V02", "label": "Vector 2", "content": "x", "importance": 5},
+    ]
+
+    def _normalize(self, monkeypatch: pytest.MonkeyPatch, task_key: str, payload: str, entities: list) -> dict:
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda cid, cfg: self._RUBRIC)
+        return consult_mod._normalize_rubric_task_response(
+            task_key, TASK_CONFIG[task_key], {"agent_payload": payload}, {"batch_entities": entities}
+        )
+
+    @pytest.mark.parametrize("payload", ["000|V01A3|V02B4", "This candidate is a strong fit."])
+    def test_bug_repro_one_job_zero_grades_is_decode_failure(
+        self, monkeypatch: pytest.MonkeyPatch, payload: str
+    ) -> None:
+        out = self._normalize(monkeypatch, "grade_do", payload, [{"astral_job_id": "J0", "state": "PASSED_JD"}])
+        assert out == {
+            "jobs": [],
+            "decode_failures": [
+                {"astral_job_id": "J0", "pos": 0, "reason": f"[grade_do] no grade segments in reply: {payload!r}"}
+            ],
+        }
+
+    def test_every_entity_gets_one_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out = self._normalize(monkeypatch, "grade_do", "prose reply", [{"astral_job_id": "J0"}, {"astral_job_id": "J1"}])
+        assert out["jobs"] == []
+        assert [(f["astral_job_id"], f["pos"]) for f in out["decode_failures"]] == [("J0", 0), ("J1", 1)]
+        assert all("no grade segments in reply: 'prose reply'" in f["reason"] for f in out["decode_failures"])
+
+    def test_letter_pipe_with_grades_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out = self._normalize(monkeypatch, "grade_do", "A|B", [{"astral_job_id": "J0"}])
+        assert "decode_failures" not in out
+        assert out["jobs"][0]["astral_job_id"] == "J0"
+        assert [(g["vector"], g["grade"]) for g in out["jobs"][0]["grades"]] == [("Vector 1", "A"), ("Vector 2", "B")]
+
+    def test_company_task_zero_grades_keeps_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out = self._normalize(monkeypatch, "prefilter_company", "prose reply", [{"company_id": "C0"}])
+        assert "decode_failures" not in out
+        assert out["companies"][0]["company_id"] == "C0"
+        assert out["companies"][0]["grades"] == []
+
+    def test_require_complete_grade_set_reports_missing_and_unknown(self) -> None:
+        # Wrong-but-valid-shape codes must not read the same as an empty reply.
+        rubric = [{"label": "A"}, {"label": "B"}]
+        with pytest.raises(consult_mod.IncompleteGradeSetError) as exc:
+            consult_mod._require_complete_grade_set(rubric, [{"vector": "ZZ", "grade": "A", "confidence": 3}])
+        assert str(exc.value) == "_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']"

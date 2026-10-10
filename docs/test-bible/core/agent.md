@@ -2165,3 +2165,13 @@ Expect **23 passed**.
 2. **[bug-repro] flip (8 nodes):** `TestAst2093BatchIndexMapDecode::test_bug_repro_*` (3), `TestAst2093EncodedDispatchIndex::test_bug_repro_rows_carry_one_global_label`, `TestAst2093BatchIndexDispatch::test_bug_repro_*` (4). Red on a `git archive 823d37605` export with these three test files copied in; green on the publish tip.
 3. **No-regression (required):** `/home/susan/astral/.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_consult.py tests/component/core/test_dispatcher.py -q -rf`. The failing-id set must equal the pre-existing ftr reds (80), and no `TestAst2093*` node may fail.
 4. **Scope gate:** `git diff origin/ftr/AST-2012-grade-batch-unique-index...origin/sub/AST-2012/AST-2095-grade-batch-unique-index-tests -- src/ data/` is empty.
+
+### AST-2127 · AST-2112 (bug-repro — AST-2126 zero-segment notes line)
+
+`_decode_payload` (`grades_encoded_notes`): a line with no grade segment is a per-entity `decode_failures` entry (`[task] no grade segments in encoded line: '<line>'`) and is skipped; other lines decode. AST-1996 notes-tail guard (`test_ast1996_notes_type_tail_is_not_a_decode_failure`) unchanged — that line has a segment. Primary manifest: **`core/consult.md`** § AST-2127.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `000\|AAA3\|ok` + `001\|just notes` → job-0 row (`notes == "ok"`), job-1 a decode failure at pos 1 | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2126_notes_line_without_segments_is_decode_failure`** |
+
+**Fixture revision:** 13 vector-feedback tests (`TestAst1486FeedbackEntityIdStamp`, `TestAst724VectorFeedbackCapture`, `TestAst809VectorFeedbackBatchMetadata`, `TestAst816VectorFeedbackCapture`, `TestAst820VectorFeedbackDebugTrace`, `TestAst862CleanParseFeedbackBlock`) seed `GA` / `CL` / `DO` instead of `G1` / `CLR` / `DOR` (sync now rejects non-`[A-Z]{2}`); review strings follow (`GARACOVK`, `CLRACOVK`, `DORACOVK`).
