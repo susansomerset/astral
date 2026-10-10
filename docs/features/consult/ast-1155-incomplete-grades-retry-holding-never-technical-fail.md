@@ -2549,3 +2549,32 @@ Add a 2-entity prose case asserting one entry per entity, `pos` 0 and 1. Add gua
 
 - AST-1996 notes-tail guard, AST-1155 single-side `missing` / `unknown` messages, AST-2008 duplicate re-letter (including Decision C exhaustion), and AST-2091 empty / duplicate messages: all asserted unchanged.
 - No test is skipped, xfailed, or loosened to absorb AST-2126; fixture code renames only.
+
+### Fix board — Joan (F2) — AST-2127
+
+[board-joan] CANON: OK
+
+**Ticket:** AST-2127 (Plan Ready, Hedy) · mini-parent AST-2112 · test-gap sibling of AST-2126 · publish ref `sub/AST-2112/AST-2127-do-rubric-code-tests` @ `7caaae194`.
+
+**Diff note:** `origin/ftr/AST-2112-do-rubric-undecodable-codes...origin/sub/AST-2112/AST-2127-do-rubric-code-tests` adds **only** the `## Bug: AST-2127` plan-fix block (+99 lines) in `docs/features/consult/ast-1155-incomplete-grades-retry-holding-never-technical-fail.md`. No `src/**`, `canon/**`, `data/**`, or test files on the sub yet — Betty’s `qa-fix` lands the tree; this pass judges the patch.
+
+**Citations / roster:** AST-2127 `## Citations`: **none** (“test tree and bible only”). The patch header repeats **Canon: none cited**. No frozen canon list to score; no roster row plausibly requires amendment for test-only work.
+
+**One-question triage — does the proposed change conflict with or require updating in-force statutes/patterns?**
+
+**No.** Same class as Joan fix-board **AST-2001** and **AST-2090**:
+
+1. **Scope** — Component and Technical scope are **tests** (`test_consult.py`, `test_agent.py`, `test_candidate.py`, `test_rubric_vectors.py`) and **`docs/test-bible/**` only**. Boundaries: no product `src/` or `data/`. Blast radius: “test tree and bible only; no product behaviour changes.”
+
+2. **What the work does** — Locks **AST-2126’s already board-reviewed product contract** (`[bug-repro]` on letter-pipe zero-grade → `decode_failures`, sync `[A-Z]{2}` rejection, invalid-code dispatch message, combined missing+unknown reason, zero-segment notes line, revised uptick/dispatch tests, 27 fixture code renames). That product intent was triaged **CANON: OK** on AST-2126 (`patt.task.dispatch-retry` alignment via existing `decode_failures` routing; no `_GRADE_SEG` widening; no statute text contradiction). This ticket **documents and asserts** that contract; it does not introduce new in-force law.
+
+3. **Bible edits** — Rows name nodes and replace stale “blank pass-through” / `V{idx}` fallback **wording** to match shipped AST-2126 behaviour. Test-bible blocks are **coverage manifests**, not corpus directives (per prior fix-board rationale on test-only siblings).
+
+4. **“What must still hold”** — Explicitly preserves AST-1996 notes-tail guard, AST-1155 single-side messages, AST-2008 Decision C, AST-2091 empty/duplicate strings — all **test assertions**, not canon patches.
+
+5. **REVISE / ESCALATE triggers absent** — No plan to amend `canon/directives/**`, no new pattern carve-out, no architectural fork (product fix stays on AST-2126; Hedy’s role here is `test-fix` verification per patch §7). Nothing like AST-2053’s required `astral.agent.confidence-bounds` statute move.
+
+**F3 (`validate-plan` fix mode):** not indicated from this board pass.
+
+**Relation to AST-2126:** Betty **REVISE** on AST-2126 routed the 29-test delta here; Joan **OK** on AST-2126 did not reserve a canon follow-up. AST-2127 closes the test gap without canon work.
+
