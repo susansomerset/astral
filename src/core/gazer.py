@@ -291,15 +291,17 @@ def _classify_jd(text: str) -> str:
 
 def _apply_jd_gates(
     job: dict[str, Any], text: str, *, short_state: str, pass_state: str, classified_states: Dict[str, str],
+    telescope_data_id: str | None,
 ) -> bool:
     """Shared JD gates for fetch_jd_batch and fetch_relative_jd_batch (AST-2025).
 
-    collapse blank lines -> empty check -> prune -> min_chars -> classify. Saves the JD and
-    transitions the job. Empty / too-short -> short_state; classified -> the calling task's
+    collapse blank lines -> empty check -> prune -> min_chars -> classify. Stores the scraped-JD
+    reference (telescope_data row id of the raw capture) — never JD text; job_description stays
+    the preamble (AST-2130) — and transitions the job. Empty / too-short -> short_state; classified -> the calling task's
     GAZER_CONFIG classified_states (cookie / bot / missing / closed); ok -> pass_state.
     Returns True only when the job reached pass_state.
     """
-    jd_key = TRACKER_CONFIG.get("job_data_keys", {}).get("job_description", "job_description")
+    ref_key = TRACKER_CONFIG["job_data_keys"]["jd_telescope_data_id"]
     min_chars = TRACKER_CONFIG.get("jd_min_chars", 200)
     aid = job.get("astral_job_id", "")
     text = collapse_consecutive_blank_lines(text)
@@ -315,16 +317,16 @@ def _apply_jd_gates(
     classification = _classify_jd(text)
     if classification != "ok":
         error_state = classified_states[classification]
-        # Save the text so the bad capture is inspectable in the DB
-        save_job_data(aid, {jd_key: text})
+        # Reference the kept capture so the bad page stays inspectable; job_description (preamble) is untouched
+        save_job_data(aid, {ref_key: telescope_data_id})
         _log.warning("%s -> %s [JD classified %r]", aid, error_state, classification)
         transition_job_state([aid], error_state)
         return False
-    save_job_data(aid, {jd_key: text})
+    save_job_data(aid, {ref_key: telescope_data_id})
     # Write back into in-memory dict so coat-check is a true no-op if called after this
     if not isinstance(job.get("job_data"), dict):
         job["job_data"] = {}
-    job["job_data"][jd_key] = text
+    job["job_data"][ref_key] = telescope_data_id
     transition_job_state([aid], pass_state)
     return True
 
@@ -374,7 +376,7 @@ async def fetch_jd_batch(
             failed += 1
             return
         try:
-            text = await get_visible_text(url=job_link)
+            text, _, row_id = await scrape_visible_text_and_keep(job.get("candidate_id"), job_link)
         except Exception as e:
             if debug:
                 _log.debug_index(
@@ -396,9 +398,11 @@ async def fetch_jd_batch(
         gated = _apply_jd_gates(
             job, text, short_state=fail_state, pass_state=pass_state,
             classified_states=GAZER_CONFIG["fetch_jd"]["classified_states"],
+            telescope_data_id=row_id,
         )
         _log.debug("Response from JD gates: %s", gated)
         if gated:
+            _log.info("%s | job %s: %s (batch: %s)", aid, "JD kept", pass_state, batch_id)
             passed += 1
         else:
             failed += 1
@@ -458,6 +462,7 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
             transition_job_state([aid], fail_state)
             failed += 1
             return
+        row_id = keep_telescope_data(job.get("candidate_id"), final_url, _VISIBLE_TEXT, text)
         if not final_url.startswith(("http://", "https://")):
             _log.warning("%s -> %s [click-through returned non-http final_url %r]", aid, fail_state, final_url)
             transition_job_state([aid], fail_state)
@@ -471,6 +476,7 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
         )
         gated = _apply_jd_gates(
             job, text, short_state=short_state, pass_state=pass_state, classified_states=cfg["classified_states"],
+            telescope_data_id=row_id,
         )
         _log.debug("Response from JD gates: %s", gated)
         if gated:
