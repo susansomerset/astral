@@ -1401,3 +1401,67 @@ No `App.css` change. No backend change.
 - AC4 / autosave: filtering never fires a PUT or `onSaved`; edits to a visible job save the full job array, hidden jobs included, unchanged.
 - AC11 / AC14 / AC16: section reorder, Compare to Base, and the experience header color are unchanged.
 - AC13: no new hardcoded format or flow strings.
+
+### Radia review — AST-2114
+
+[code-rubric]
+**Ticket:** AST-2114
+**Publish ref:** `d0f64342a8f39641122b2fb149b2012b79e85e0a` (`origin/sub/AST-2046/AST-2114-search-experience-subelements`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159` (no frozen canon ids; fix-board Joan **CANON: OK**)
+**Overall:** CLEAN
+
+## Canon scores
+
+(no frozen directive ids on AST-2114 — no statute rollup)
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (bug `plan-fix` patch only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `0eb45a64b`: editor integration test pins `acme` → one job label, `BILLING` → Globex only, `exper` / empty → both jobs, Add role hidden while filtered, `puts().length === 0` on filter-only; second test saves full `[ACME, edited Globex]` while filtered. `ExperienceJobsEditor` test pins `visible={Set([1])}`, index-1 edit/move/remove against hidden index 0, Add role absent. Engineer reports red at pre-fix / green at `304535727`.
+
+**## What must still hold — OK**
+
+- **AC6:** Row-level search unchanged; `visibleJobs` only narrows Experience job panels when title does not match and body is a job array.
+- **AC4 / autosave:** View-only filter; no new PUT/`onSaved` on search (covered by repro test).
+- **AC11 / AC14 / AC16:** `bodyText` refactored via `jobText` with identical concatenation; reorder/compare/header paths untouched.
+- **AC13:** No new format/flow catalog strings in product diff.
+- **Blast radius:** `ArtifactEditor` still calls `ExperienceJobsEditor` without `visible` (unchanged).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **`ftr...sub` carry:** Three-dot diff includes `scripts/ci/ftr-merge-ready.sh` from **sync(dev)** (`01606b791` / `caf06c1ed`), not from `304535727`. Bug product scope is three components + tests + plan/bible rows. Chuckles should not treat the CI script change as part of this bug’s product verdict unless intentionally rolling dev on the sub.
+- **Plan decisions 1–5** (Add role hidden while filtered, title match shows all jobs, no auto-expand, substring rule, move within full list) are implemented and exercised in repro tests.
+
+## What’s solid
+
+- Matches plan-fix option: `jobText` extraction, `visibleJobs` in `ResumeContentEditor`, prop plumbing through `ResumeSectionRow`, render-time filter in `ExperienceJobsEditor` with stable `key={index}` and handlers on original indexes.
+- `origin/ftr/AST-2046-resume-edit-overhaul...sub` is a tight diff (8 files) after `sync(ftr)` on tip — unlike heavier dev-stack bugs.
+
+## Recommended actions (for Chuckles — not Radia)
+
+- Append artifact under `## Bug: AST-2114` in `docs/features/interface/ast-2083-resume-editor.md`; commit `docs(AST-2114): Radia review — clean`; push publish ref.
+- Post slim upshot via `linear_proxy.py --as radia save-comment`.
+- **Parent shape:** normal (AST-2046 live) → **Review Posted** → fix-lane **PROCEED** → **User Testing** (skip `resolve-child`).
+
+```
+[code-rubric] PROCEED (Commit: d0f64342a) Experience job search filter
+```
+
+context_tokens≈20000
