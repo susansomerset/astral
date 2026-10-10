@@ -295,27 +295,41 @@ def _vector_labels_map(rubric_criteria: list, *, debug: bool = False) -> Dict[st
     return out
 
 
+# Fixed reason for X when the vector's rubric has no X row (AST-2124: X is always no signal).
+_X_NO_SIGNAL_REASON = "No signal"
+
+
+class MissingRubricDescriptionError(ValueError):
+    """Letter grade (confidence > 0) with no description in its vector's rubric — fails that entity, not the batch (AST-2124)."""
+
+
 def _lookup_rubric_reason_for_grade(rubric_criteria: list, vector_label: str, letter: str) -> str:
-    """Rubric line description for this vector + grade letter (AST-351). Raises ValueError if missing."""
+    """Rubric line description for this vector + grade letter (AST-351).
+    X falls back to a fixed no-signal reason; a letter with no description raises MissingRubricDescriptionError;
+    an unknown vector raises ValueError."""
     item = _find_rubric_criterion(rubric_criteria, vector_label)
+    lt = (letter or "").upper()
+    if item is not None:
+        gd = item.get("grade_descriptions")
+        if isinstance(gd, list):
+            for row in gd:
+                if str(row.get("grade", "")).upper() == lt:
+                    desc = row.get("description")
+                    if desc is not None and str(desc).strip():
+                        return str(desc).strip()
+        try:
+            rows = rubric_text.parse_trailing_grade_table_lines(item.get("content") or "")
+        except ValueError:
+            rows = []
+        for row in rows:
+            if row["grade"].upper() == lt:
+                return row["description"]
+    # X never fails hydrate — even with no X row (or no matching criterion at all).
+    if lt == "X":
+        return _X_NO_SIGNAL_REASON
     if item is None:
         raise ValueError(f"No rubric criterion matching vector {vector_label!r}")
-    lt = (letter or "").upper()
-    gd = item.get("grade_descriptions")
-    if isinstance(gd, list):
-        for row in gd:
-            if str(row.get("grade", "")).upper() == lt:
-                desc = row.get("description")
-                if desc is not None and str(desc).strip():
-                    return str(desc).strip()
-    try:
-        rows = rubric_text.parse_trailing_grade_table_lines(item.get("content") or "")
-    except ValueError:
-        rows = []
-    for row in rows:
-        if row["grade"].upper() == lt:
-            return row["description"]
-    raise ValueError(f"No rubric description for vector {vector_label!r} grade {letter}")
+    raise MissingRubricDescriptionError(f"No rubric description for vector {vector_label!r} grade {letter}")
 
 def _hydrate_grade_reasons_from_rubric(grades: list, rubric_criteria: list) -> None:
     if not rubric_criteria:
@@ -353,13 +367,20 @@ def _rubric_snapshot_for_job_data(rubric_criteria: list) -> list:
     return out
 
 
-def _hydrate_response_jobs_grade_reasons(jobs: list, rubric_criteria: list) -> None:
+def _hydrate_response_jobs_grade_reasons(jobs: list, rubric_criteria: list) -> Dict[str, str]:
+    """Hydrate each row; return {astral_job_id: reason} for rows with a missing letter description (AST-2124).
+    Structural ValueErrors (empty rubric, unknown vector) still raise for the whole batch."""
+    missing: Dict[str, str] = {}
     for job in jobs:
         if not isinstance(job, dict):
             continue
         glist = job.get("grades")
         if isinstance(glist, list):
-            _hydrate_grade_reasons_from_rubric(glist, rubric_criteria)
+            try:
+                _hydrate_grade_reasons_from_rubric(glist, rubric_criteria)
+            except MissingRubricDescriptionError as e:
+                missing[str(job.get("astral_job_id") or "")] = str(e)
+    return missing
 
 
 # AST-603: shared rubric response normalization (prefilter + future consult reuse).
@@ -777,6 +798,13 @@ def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: An
                 _ensure_jobs_astral_ids(decoded.get("jobs") or [], batch_entities)
             return decoded
         row = _job_from_letter_pipe(text, task_config, ctx)
+        if not company_entity and task_config.get("output_type") == "grades_encoded_notes" and not row.get("grades"):
+            # No decodable grades anywhere in the reply — every entity retries with the raw reply (AST-2126).
+            return {"jobs": [], "decode_failures": [
+                {"astral_job_id": e.get("astral_job_id"), "pos": i,
+                 "reason": f"[{task_key}] no grade segments in reply: {text!r}"}
+                for i, e in enumerate(batch_entities)
+            ]}
         if company_entity:
             if len(batch_entities) == 1:
                 row["company_id"] = batch_entities[0].get("company_id")
@@ -839,10 +867,14 @@ def _grade_set_vector_diff(
 def _require_complete_grade_set(rubric_criteria: list, grades: list) -> None:
     """Raise IncompleteGradeSetError when grades are not an exact match to live rubric labels."""
     missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
+    # Both halves in one reason — wrong codes must not read the same as an empty reply (AST-2126).
+    parts = []
     if missing:
-        raise IncompleteGradeSetError(f"_render_score: missing vectors {sorted(missing)}")
+        parts.append(f"missing vectors {sorted(missing)}")
     if extra:
-        raise IncompleteGradeSetError(f"_render_score: unknown vectors {sorted(extra)}")
+        parts.append(f"unknown vectors {sorted(extra)}")
+    if parts:
+        raise IncompleteGradeSetError("_render_score: " + "; ".join(parts))
 
 
 def _require_not_all_literal_x(grades: list) -> None:
@@ -1349,7 +1381,14 @@ def _apply_render_verdict_decoded_job(
         raise ValueError("agent response missing grades")
     rk = cfg.get("rubric_artifact")
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
-    _hydrate_grade_reasons_from_rubric(grades, rubric_criteria)
+    try:
+        _hydrate_grade_reasons_from_rubric(grades, rubric_criteria)
+    except MissingRubricDescriptionError as e:
+        # Fail verdict for this row only — no grade save, no score (AST-2124).
+        fail_state = cfg["fail_state"]
+        _warn_job(astral_job_id, fail_state, f"hydrate: {e}")
+        _transition_job_state_for_task(agent_task, [astral_job_id], fail_state)
+        return fail_state, None, grades
 
     agent_cfg = TASK_CONFIG[agent_task]
     mode = agent_cfg.get("grading_mode", "binary")
@@ -1775,8 +1814,20 @@ async def _run_batch_consult(
     parsed = result["parsed_response"] if result.get("success") else salvaged
     response_jobs = parsed["jobs"]
 
+    _bind_response_jobs_to_claimed(response_jobs, jobs)
+    if task_key == "qualify_meteorite":
+        _bind_response_jobs_by_job_link(response_jobs, jobs)
+        _bind_unmatched_empty_link_jobs_by_order(response_jobs, jobs)
+        bound_ids = [
+            (rj.get("astral_job_id") or "").strip()
+            for rj in response_jobs
+            if isinstance(rj, dict)
+        ]
+        logger.debug("qualify_meteorite bound astral_job_ids=%s", bound_ids)
+
+    # After binding so missing-description misses key by the claimed id (AST-2124).
     try:
-        _hydrate_response_jobs_grade_reasons(response_jobs, rubric_criteria)
+        hydrate_missing = _hydrate_response_jobs_grade_reasons(response_jobs, rubric_criteria)
     except ValueError as e:
         # Per-job severity is logged by _transition_batch_consult_failures (AST-1839)
         logger.debug(
@@ -1795,17 +1846,6 @@ async def _run_batch_consult(
             "total": len(jobs),
             "retried": retried,
         }
-
-    _bind_response_jobs_to_claimed(response_jobs, jobs)
-    if task_key == "qualify_meteorite":
-        _bind_response_jobs_by_job_link(response_jobs, jobs)
-        _bind_unmatched_empty_link_jobs_by_order(response_jobs, jobs)
-        bound_ids = [
-            (rj.get("astral_job_id") or "").strip()
-            for rj in response_jobs
-            if isinstance(rj, dict)
-        ]
-        logger.debug("qualify_meteorite bound astral_job_ids=%s", bound_ids)
 
     ts = result.get("timesheet", {})
     logger.debug(
@@ -1867,6 +1907,12 @@ async def _run_batch_consult(
     for job_idx, response_job in enumerate(response_jobs, start=1):
         aid = response_job["astral_job_id"]
         if aid in fabricated:
+            continue
+        if aid in hydrate_missing:
+            # Missing rubric text is data, not an agent slip — fail this entity only, no retry (AST-2124).
+            _warn_job(aid, cfg["fail_state"], f"hydrate: {hydrate_missing[aid]}")
+            _transition_job_state_for_task(task_key, [aid], cfg["fail_state"])
+            failed += 1
             continue
         input_job = input_by_id[aid]
         try:

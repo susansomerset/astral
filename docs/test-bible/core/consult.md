@@ -1591,3 +1591,70 @@ AC3 is an `rg` check in the manifest. Primary manifest: **`docs/test-bible/core/
 | Wrappers forward offset (4 params) | **`test_batch_wrappers_forward_offset[grade_do/grade_get/grade_like/meteorite_like]`** |
 
 **Kept:** `TestPrepLiveContentBranches::test_returns_jd_when_website_pages_have_no_content` (`[index=000]: jd text`, default position) — green unchanged.
+
+### AST-2125 · AST-2116 (bug-repro — missing rubric grade description fails only that job; X never fails hydrate)
+
+**AST-2124** (`0d01e20d2`): `_lookup_rubric_reason_for_grade` returns the rubric's X text or the fixed `_X_NO_SIGNAL_REASON` (`"No signal"`) for `X`, never raising. A letter grade with no description raises `MissingRubricDescriptionError` (a `ValueError` subclass, same message). An unknown vector or an empty rubric stays a plain `ValueError`, so the batch-wide AST-1839 route still applies. `_hydrate_response_jobs_grade_reasons` returns `{astral_job_id: reason}` for misses and runs after id binding. `_run_batch_consult` sends each miss to `cfg["fail_state"]` with one WARNING `<id> -> <fail_state> [hydrate: …]`, with no retry and no `bad_grades`; siblings go through `process_fn`. `_apply_render_verdict_decoded_job` does the same for a single row, with no grade save. Roster side: **`core/roster.md`** (AST-2125). Decode side: **`core/agent.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch: J0 (PS F3, no F row) → `METEORITE_FAILED_DO` WARNING only; J1 applies, its CF `X0` reason `"No signal"`; passed 1 / failed 1 / retried 0 | `src/core/consult.py` (`_run_batch_consult`) | **`TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job`** (**bug-repro**) |
+| Single row: miss → `("METEORITE_FAILED_DO", None, grades)`, transition once, no `save_job_data` | `_apply_render_verdict_decoded_job` | **`…::test_single_row_miss_fails_without_save`** |
+| `X` → `"No signal"` with no X row and on an unknown vector; X row text when present | `_lookup_rubric_reason_for_grade` | **`…::test_x_without_x_row_is_no_signal`**, **`…::test_x_with_x_row_uses_rubric_text`** |
+| Letter miss → `MissingRubricDescriptionError` (is a `ValueError`); unknown vector → plain `ValueError` | same | **`…::test_missing_letter_vs_unknown_vector`** |
+| Blank matching row falls through to trailing table past a non-matching row | same | **`…::test_blank_row_falls_through_to_trailing_table`** |
+| Batch helper returns `{J0: reason}`, hydrates J1; empty rubric still raises | `_hydrate_response_jobs_grade_reasons` | **`…::test_batch_hydrate_returns_misses_structural_still_raises`** |
+
+**Integration:** none.
+
+**QA test manifest (test-fix):**
+
+1. **[bug-repro]** `tests/component/core/test_consult.py::TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job`.
+2. `pytest tests/component/core/test_consult.py::TestAst2125MissingRubricDescription tests/component/core/test_roster.py::TestAst2125PrefilterMissingDescription` → **9 passed**.
+3. `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` → **0 failed**.
+4. Hunk coverage: #2, #3, `test_consult.py::TestRubricLookup`, `test_consult.py::TestAst1076QualifyMeteoritePlaceholderId` with `--cov=src/core --cov-branch` → no missing line / partial branch inside `git diff -U0 0d01e20d2^ 0d01e20d2 -- src/core/` hunks.
+5. `git diff origin/ftr/AST-2116-missing-grade-fail -- src/ canon/` empty (test-tree only).
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):**
+
+- **Red** — `src/core/{consult,roster,agent}.py` from pre-fix `01606b791` swapped into a `/tmp` `git archive` copy: 10 of 12 fail (9 new + 3 decode rewrites). Repro: `Actual: mock('meteorite_grade_do', ['J0', 'J1'], 'METEORITE_PASSED_JD_RETRY')` (whole batch to retry); roster batch `retried 2, failed 0`. Guards `test_x_with_x_row_uses_rubric_text` / `test_blank_row_falls_through_to_trailing_table` pass on both trees.
+- **Green** — sub tip (src identical to `0d01e20d2` / ftr `8726a8be0`): 9 new + 12 decode-class passed; `TestRubricLookup`, `TestAst1846*` (consult + roster), `TestEncodedDecodeIsolation`, `TestAst1076QualifyMeteoritePlaceholderId` green; hunk coverage (#4) clean in agent / consult / roster.
+
+### AST-2127 · AST-2112 (bug-repro — AST-2126 undecodable Do rubric codes / zero-grade replies)
+
+Test gap for **AST-2126** (`4e9731267`, on `origin/ftr/AST-2112-do-rubric-undecodable-codes` @ `f83f8d71f`; pre-fix base `54e186b79`). A `grades_encoded_notes` reply with no `_GRADE_SEG` match (Somerset's `V01A3`-style codes, or prose) fell to `_job_from_letter_pipe` and returned a silent `grades: []` row, which `_require_complete_grade_set` then reported as every label missing. Now every batch entity becomes one `decode_failures` entry carrying the raw reply (AST-1996 route); `_require_complete_grade_set` reports missing **and** unknown in one reason. Primary manifest lives here; pointers in **`core/agent.md`**, **`core/candidate.md`**, **`data/database/rubric_vectors.md`**, **`ui/api/api_candidate.md`** (each § AST-2127).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| 1-job `grade_do`, payload `000\|V01A3\|V02B4` or prose → `{"jobs": [], "decode_failures": [{J0, pos 0, raw-reply reason}]}` | `src/core/consult.py` (`_normalize_rubric_task_response`) | **`TestAst2126ZeroGradeRepliesAreDecodeFailures::test_bug_repro_one_job_zero_grades_is_decode_failure`** (2 params, **bug-repro**) |
+| 2 entities, prose → one failure per entity, `pos` 0/1 | same | **`…::test_every_entity_gets_one_failure`** |
+| Letter-pipe reply that yields grades → row unchanged, no `decode_failures` | same | **`…::test_letter_pipe_with_grades_unchanged`** (guard) |
+| Company task (`prefilter_company`) zero grades → `companies` row, no `decode_failures` | same | **`…::test_company_task_zero_grades_keeps_row`** (guard) |
+| Missing + unknown → `_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']` | `src/core/consult.py` (`_require_complete_grade_set`) | **`…::test_require_complete_grade_set_reports_missing_and_unknown`** |
+
+Single-side `missing vectors` / `unknown vectors` tests (`TestRenderScore::test_rejects_unknown_or_missing_vectors`, AST-1155 rows) are untouched and stay byte-identical.
+
+**Broken / obsolete (rewritten this pass, 31 nodes):** the 2 candidate tests (see **`core/candidate.md`** § AST-2127); 27 fixtures that seeded `rubric_vector` through `sync_rubric_vectors_from_criteria` with codes that aren't `[A-Z]{2}` — `test_agent.py` (13: `TestAst1486FeedbackEntityIdStamp`, `TestAst724VectorFeedbackCapture`, `TestAst809VectorFeedbackBatchMetadata`, `TestAst816VectorFeedbackCapture`, `TestAst820VectorFeedbackDebugTrace`, `TestAst862CleanParseFeedbackBlock`) and `test_rubric_vectors.py` (14: `TestAst723SyncRubricVectors` ×2, `TestAst724VectorFeedbackRows` ×2, `TestAst725ListVectorFeedback` ×2, `TestAst725AggregateVectorFeedback`, `TestAst808ListVectorFeedbackContent`, `TestAst809VectorFeedbackBatchMetadata` ×2, `TestAst2066RubricCriterionVersions` ×4); and `test_api_candidate.py::TestAst2067CandidateVersionRoutes` (2, scope-amended). Codes renamed only — `G1`→`GA`, `G2`→`GB`, `V01`→`VA`, `V02`→`VB`, `CLR`→`CL`, `DOR`→`DO`, `A`→`AA`, `B`→`BB` (lowercase case-insensitivity inputs `g1`/`v01` → `ga`/`va`; vector-review strings `G1RACOVK` → `GARACOVK`). No assertion weakened, skipped, or xfailed.
+
+**Integration:** none (no `tests/integration/` scenario saves rubrics or decodes grade replies).
+
+## QA test manifest
+
+1. **[bug-repro] flip:** `tests/component/core/test_consult.py::TestAst2126ZeroGradeRepliesAreDecodeFailures::test_bug_repro_one_job_zero_grades_is_decode_failure` (2 params).
+2. **AST-2126 steps 1–4 + rewrites:** `test_consult.py::TestAst2126ZeroGradeRepliesAreDecodeFailures`, `test_agent.py::TestDecodePayload::test_ast2126_notes_line_without_segments_is_decode_failure`, `test_candidate.py::TestAst2126RubricCodeFill`, `test_candidate.py::TestAst2008RubricCodeUptick`, `test_candidate.py::TestAst2091RubricDispatchError`, `test_rubric_vectors.py::TestAst2126SyncRejectsUndecodableCodes`.
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest \
+  tests/component/core/test_consult.py::TestAst2126ZeroGradeRepliesAreDecodeFailures \
+  tests/component/core/test_agent.py::TestDecodePayload::test_ast2126_notes_line_without_segments_is_decode_failure \
+  tests/component/core/test_candidate.py::TestAst2126RubricCodeFill \
+  tests/component/core/test_candidate.py::TestAst2008RubricCodeUptick \
+  tests/component/core/test_candidate.py::TestAst2091RubricDispatchError \
+  tests/component/data/database/test_rubric_vectors.py::TestAst2126SyncRejectsUndecodableCodes \
+  -q
+```
+
+**Red/green proof (Betty, qa-fix 2026-10-10):** with `src/core/{agent,candidate,consult}.py` + `src/data/database.py` checked out from `54e186b79` (restored after; never committed) → **22 failed / 20 passed**; every red is an assertion on the AST-2126 contract (silent `grades: []` row; single-side reason; `['', 'V02', ' tp', 'TX']` codes; `DID NOT RAISE ValueError` in sync; `None` dispatch reason; `['tp']` stored). The 20 passing are unchanged-contract AST-2008/AST-2091 nodes (incl. the split `test_duplicates_strip_and_sorted`) plus the two consult guards. On the publish tip → **42 passed**.
+
+3. **No-regression (required):** `/home/susan/astral/.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_candidate.py tests/component/core/test_consult.py tests/component/data/database/test_rubric_vectors.py tests/component/scripts/test_backfill_rubric_vectors.py tests/component/ui/api/test_api_candidate.py -q`. Recorded: pre-fix product (`54e186b79` src) **94 failed / 1393 passed**; tip before this pass **125 failed** (94 + 31 AST-2126); tip with this pass **94 failed / 1416 passed / 7 skipped** — failing-id set identical to the pre-fix environment baseline (`no such table: job`, seed state `NEW`, host probes, etc.). Pass = same 94 ids, no `TestAst2126*` / renamed node failing.
+4. **Scope gate:** `git diff origin/ftr/AST-2112-do-rubric-undecodable-codes...origin/sub/AST-2112/AST-2127-do-rubric-code-tests -- src/ data/` is empty.

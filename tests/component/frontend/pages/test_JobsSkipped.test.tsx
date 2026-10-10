@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react"
+import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
@@ -415,5 +415,122 @@ describe("JobsSkipped — AST-1979 Created column", () => {
     renderWithProviders(<JobsSkipped />)
     await userEvent.click(await screen.findByRole("button", { name: section }))
     await expectJobTitleCells(screen.getByRole("table"))
+  })
+})
+
+describe("JobsSkipped — AST-2106 grouped, collapsible Skipped page", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  const job = (id: string, state: string) => ({
+    astral_job_id: id,
+    job_title: `Role ${id}`,
+    company: "Co",
+    state,
+    state_changed_at: "2026-01-01T00:00:00Z",
+  })
+  // Group heading buttons read "▼<label> (<count>)"; section buttons never use a bare group label.
+  const GROUP_TEXT = /^\u25BC(Error|Bot block|Fail|Other) \(\d+\)$/
+  const groupHeadings = () =>
+    screen.queryAllByRole("button").map(b => b.textContent ?? "").filter(t => GROUP_TEXT.test(t)).map(t => t.slice(1))
+  const groupBox = (heading: string) => {
+    const btn = screen.getAllByRole("button").find(b => b.textContent === `\u25BC${heading}`)
+    expect(btn, heading).toBeTruthy()
+    return btn!.parentElement!
+  }
+  // Exactly these section buttons sit inside the group (sections collapsed, so no row-action buttons).
+  const expectSectionsIn = (heading: string, sections: RegExp[]) => {
+    const box = groupBox(heading)
+    for (const name of sections) expect(within(box).getByRole("button", { name })).toBeInTheDocument()
+    expect(within(box).getAllByRole("button")).toHaveLength(1 + sections.length)
+  }
+  const render = async (rows: unknown[]) => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("skipped", rows))
+    renderWithProviders(<JobsSkipped />)
+    await waitFor(() => expect(groupHeadings().length).toBeGreaterThan(0))
+  }
+
+  it("AC4: Error, Bot block, Fail headings in order with counts; each section under its own group; no Other", async () => {
+    await render([
+      job("e1", "ERROR_GRADE_DO"), job("b1", "BOT_BLOCKED_FETCH_JD"),
+      job("f1", "FAILED_JD"), job("s1", "CANDIDATE_SKIPPED"),
+    ])
+    expect(groupHeadings()).toEqual(["Error (1)", "Bot block (1)", "Fail (2)"])
+    expectSectionsIn("Error (1)", [/Failed Technical DO/])
+    expectSectionsIn("Bot block (1)", [/BOT_BLOCKED_FETCH_JD/])
+    expectSectionsIn("Fail (2)", [/Failed Job Description/, /CANDIDATE_SKIPPED/])
+  })
+
+  it("AC5: INVALID_TITLE adds Other (1) last", async () => {
+    await render([
+      job("e1", "ERROR_GRADE_DO"), job("b1", "BOT_BLOCKED_FETCH_JD"),
+      job("f1", "FAILED_JD"), job("s1", "CANDIDATE_SKIPPED"), job("i1", "INVALID_TITLE"),
+    ])
+    expect(groupHeadings()).toEqual(["Error (1)", "Bot block (1)", "Fail (2)", "Other (1)"])
+    expectSectionsIn("Other (1)", [/INVALID_TITLE/])
+  })
+
+  it("AC5: unmapped legacy ERROR_SOMETHING_OLD lands in Error, MYSTERY_STATE in Other (after Fail)", async () => {
+    await render([job("x1", "ERROR_SOMETHING_OLD"), job("m1", "MYSTERY_STATE"), job("f1", "FAILED_JD")])
+    expect(groupHeadings()).toEqual(["Error (1)", "Fail (1)", "Other (1)"])
+    expectSectionsIn("Error (1)", [/ERROR SOMETHING OLD/])
+    expectSectionsIn("Fail (1)", [/Failed Job Description/])
+    expectSectionsIn("Other (1)", [/MYSTERY STATE/])
+  })
+
+  it("AC6: virtual_skip below-floor row renders under Fail, below Error", async () => {
+    await render([floorJob, job("e1", "ERROR_GRADE_DO")])
+    expect(groupHeadings()).toEqual(["Error (1)", "Fail (1)"])
+    expectSectionsIn("Fail (1)", [/Below dispatch score floor/])
+    expectSectionsIn("Error (1)", [/Failed Technical DO/])
+  })
+
+  it("AC7: group heading collapses its sections and restores them with section expand state intact", async () => {
+    await render([job("f1", "FAILED_JD"), job("f2", "FAILED_DO"), job("e1", "ERROR_GRADE_DO")])
+    await userEvent.click(screen.getByRole("button", { name: /Failed Job Description/ }))
+    expect(screen.getByText("Role f1")).toBeInTheDocument()
+
+    await userEvent.click(groupBox("Fail (2)").querySelector("button")!)
+    expect(screen.queryByRole("button", { name: /Failed Job Description/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Failed DO/ })).not.toBeInTheDocument()
+    expect(screen.queryByText("Role f1")).not.toBeInTheDocument()
+    // Other groups untouched.
+    expectSectionsIn("Error (1)", [/Failed Technical DO/])
+
+    await userEvent.click(groupBox("Fail (2)").querySelector("button")!)
+    // Re-expanded: the open section is still open, the closed one still closed.
+    expect(screen.getByText("Role f1")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Failed DO/ })).toBeInTheDocument()
+    expect(screen.queryByText("Role f2")).not.toBeInTheDocument()
+  })
+
+  it("AC8: only a FAILED_JD job renders only the Fail heading", async () => {
+    await render([job("f1", "FAILED_JD")])
+    expect(groupHeadings()).toEqual(["Fail (1)"])
+  })
+
+  it("AC8: no skipped jobs shows the empty-state text and no group heading", async () => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("skipped", []))
+    renderWithProviders(<JobsSkipped />)
+    await waitFor(() => expect(screen.getByText("No skipped jobs")).toBeInTheDocument())
+    expect(groupHeadings()).toEqual([])
+  })
+
+  it("AC9: mixed Error + FAILED_DO selection posts one bulk_state per distinct retry target", async () => {
+    await render([job("e1", "ERROR_EVALUATE_JD"), job("d1", "FAILED_DO")])
+    await userEvent.click(screen.getByRole("button", { name: /ERROR_EVALUATE_JD/ }))
+    await userEvent.click(screen.getByRole("checkbox"))
+    await userEvent.click(screen.getByRole("button", { name: /Failed DO/ }))
+    await userEvent.click(screen.getByRole("checkbox"))
+    await userEvent.click(screen.getByRole("button", { name: "Retry (2)" }))
+    await waitFor(() => expect(screen.getByText("2 jobs queued for retry")).toBeInTheDocument())
+    const posts = mockedApi.mock.calls.filter(([url]) => url === "/api/jobs/bulk_state").map(([, init]) => init?.body)
+    expect(posts).toEqual(expect.arrayContaining([
+      JSON.stringify({ astral_job_ids: ["e1"], to_state: "JD_READY" }),
+      JSON.stringify({ astral_job_ids: ["d1"], to_state: "PASSED_JD" }),
+    ]))
+    expect(posts).toHaveLength(2)
   })
 })

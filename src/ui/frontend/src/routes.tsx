@@ -68,8 +68,6 @@ import SessionResumePaste from "./pages/AdminSessionResumePaste"
 import SessionCoverLetter from "./pages/AdminSessionCoverLetter"
 import AdminManageEmail from "./pages/AdminManageEmail"
 import AdminManageSlack from "./pages/AdminManageSlack"
-import AdminThemeExamples from "./pages/AdminThemeExamples"
-
 const routes: RouteObject[] = [
   { path: "authenticate", element: <Authenticate /> },
   {
@@ -147,8 +145,6 @@ const routes: RouteObject[] = [
           { path: "admin/session_cover_letter", element: <AdminRoute><SessionCoverLetter /></AdminRoute> },
           { path: "admin/manage_email", element: <AdminRoute><AdminManageEmail /></AdminRoute> },
           { path: "admin/manage_slack", element: <AdminRoute><AdminManageSlack /></AdminRoute> },
-          { path: "admin/theme_examples", element: <AdminRoute><AdminThemeExamples /></AdminRoute> },
-
           // Catch-all
           { path: "*", element: <JobsHomeRedirect /> },
         ],

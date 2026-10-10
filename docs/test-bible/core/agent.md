@@ -1922,7 +1922,7 @@ Expect 40 reds in `test_agent.py` and 12 in `test_dispatcher.py`. Each one fails
 
 ### AST-2001 · AST-1884 (bug-repro — AST-1996 decode-line isolation, agent side)
 
-Test gap for **AST-1996** (`96bc0471d`): `_decode_payload` records grades-only trailing content (a token failing `_GRADE_SEG`, e.g. `DEC35`) in `decode_failures` (`astral_job_id`, `pos`, `reason` — reason text identical to the old `ValueError`) and skips that line; clean lines in the same payload still decode. Key present **only** when a line failed. `_meta` / `_notes` output types keep the tail as meta/notes (never a decode failure). Bad position, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload; an X segment with nonzero confidence is a per-line `decode_failures` entry (since `f8d3f9a12`); a letter with confidence 0 is normalised to 1 (**AST-2053**, see AST-2057). Routing / batch side: **`core/consult.md`** (**AST-2001**).
+Test gap for **AST-1996** (`96bc0471d`): `_decode_payload` records grades-only trailing content (a token failing `_GRADE_SEG`, e.g. `DEC35`) in `decode_failures` (`astral_job_id`, `pos`, `reason` — reason text identical to the old `ValueError`) and skips that line; clean lines in the same payload still decode. Key present **only** when a line failed. `_meta` / `_notes` output types keep the tail as meta/notes (never a decode failure). Bad position, duplicate code (**AST-1513**) and the vet branch still raise for the whole payload; an X segment with nonzero confidence is a per-line `decode_failures` entry (since `f8d3f9a12`); a letter with confidence 0 decodes as `X0` (**AST-2124**, see AST-2125; was `{letter}1` under AST-2053). Routing / batch side: **`core/consult.md`** (**AST-2001**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1937,11 +1937,13 @@ Test gap for **AST-1996** (`96bc0471d`): `_decode_payload` records grades-only t
 
 Test gap for **AST-2053** (`2d1b73da1`): in `_decode_payload`'s non-vet encoded loop, a letter segment with confidence `0` (`{A-F}0`) decodes as the same letter with confidence `1` (no signal) — no `decode_failures` entry. Unchanged: X with nonzero confidence → `decode_failures`; letter confidence 6–9 fails `_GRADE_SEG` → trailing-content `decode_failures`; vet branch (`grades_encoded_vet_meta`) still raises on `LT{letter}0`. Statute: `astral.agent.confidence-bounds`.
 
+**Superseded by AST-2124 / AST-2125:** letter0 now decodes as `X0`, not `{letter}1`. The rows below cite the current asserts.
+
 | Area | Source | Component tests |
 | --- | --- | --- |
-| `CFC0`/`SSC0`/`TCC0` line decodes as conf 1, both entities in `jobs`, no `decode_failures` key | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1`** (**bug-repro**) |
-| `0\|CRA7` trailing failure; `_notes` `CRF0` → `F/1` with notes kept; vet `LTA0` raises | same | **`…::test_ast2053_normalisation_boundaries`** (guard) |
-| `0\|CRA0` → `A/1` grade row (flipped from raise) | same | **`TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence`** |
+| `CFC0`/`SSC0`/`TCC0` line decodes as `X0`, both entities in `jobs`, no `decode_failures` key | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2124_letter_conf0_decodes_as_x0`** (**bug-repro**) |
+| `0\|CRA7` trailing failure; `_notes` `CRF0` → `X/0` with notes kept; vet `LTA0` raises | same | **`…::test_ast2053_normalisation_boundaries`** (guard) |
+| `0\|CRA0` → `X/0` grade row (flipped from raise) | same | **`TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence`** |
 | `0\|CRX2` → X-branch `decode_failures` entry (flipped from raise) | same | **`TestDecodePayload::test_rejects_bad_positions_and_records_trailing_meta`** |
 
 **Integration:** none.
@@ -1957,6 +1959,18 @@ Test gap for **AST-2053** (`2d1b73da1`): in `_decode_payload`'s non-vet encoded 
 - **Red** — pre-fix `src/core/agent.py` from `06df211db` (byte-identical to `055c53c2a`), swapped in temporarily: repro fails `['job-1'] == ['job-0', 'job-1']` (`CFC0` line went to `decode_failures`); `test_ast2053_normalisation_boundaries` fails at `_notes` `CRF0` (`IndexError`, no job row); `0|CRA0` rewrite fails (got `decode_failures` "non-X grade requires confidence 1-5, got 0"). 3 failed / 9 passed across the two decode classes.
 - **Green** — ftr tip `3d51b06c7` (AST-2053 `2d1b73da1` merged): 12 passed.
 - **Out of scope:** `TestDoTask::test_returns_decode_and_post_decode_validation_errors` is red on **both** trees at its first assert (`'empty agent_payload' in 'Agent failure: nope'` — failure-envelope drift, one of the pre-existing `test_agent.py` reds per AST-2057 Boundaries); its `0|CRX2` assert is never reached.
+
+### AST-2125 · AST-2116 (letter0 → X0 decode — AST-2124)
+
+**AST-2124** (`0d01e20d2`) changes `_decode_payload`'s non-vet encoded loop: a letter segment with confidence `0` (`{A-F}0`) is stored as `X0`, replacing AST-2053's `{letter}1`. `X0` is always no signal. Unchanged: X with nonzero confidence → `decode_failures`; letter confidence 6–9 → trailing-content `decode_failures`; vet (`grades_encoded_vet_meta`) still raises on `LT{letter}0`. Statute: `astral.agent.confidence-bounds`. Hydrate side: **`core/consult.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `CFC0`/`SSC0`/`TCC0` → `X/0`, both entities in `jobs`, no `decode_failures` key | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2124_letter_conf0_decodes_as_x0`** |
+| `_notes` `CRF0` → `X/0`, notes kept; `0\|CRA7` trailing failure; vet `LTA0` raises | same | **`…::test_ast2053_normalisation_boundaries`** |
+| `0\|CRA0` → `X/0` grade row | same | **`TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence`** |
+
+**Integration:** none.
 
 ### AST-2090 · AST-2015 (bug-repro — AST-2089 salvaged_response on rubric envelope failure, agent side)
 
@@ -2165,3 +2179,13 @@ Expect **23 passed**.
 2. **[bug-repro] flip (8 nodes):** `TestAst2093BatchIndexMapDecode::test_bug_repro_*` (3), `TestAst2093EncodedDispatchIndex::test_bug_repro_rows_carry_one_global_label`, `TestAst2093BatchIndexDispatch::test_bug_repro_*` (4). Red on a `git archive 823d37605` export with these three test files copied in; green on the publish tip.
 3. **No-regression (required):** `/home/susan/astral/.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_consult.py tests/component/core/test_dispatcher.py -q -rf`. The failing-id set must equal the pre-existing ftr reds (80), and no `TestAst2093*` node may fail.
 4. **Scope gate:** `git diff origin/ftr/AST-2012-grade-batch-unique-index...origin/sub/AST-2012/AST-2095-grade-batch-unique-index-tests -- src/ data/` is empty.
+
+### AST-2127 · AST-2112 (bug-repro — AST-2126 zero-segment notes line)
+
+`_decode_payload` (`grades_encoded_notes`): a line with no grade segment is a per-entity `decode_failures` entry (`[task] no grade segments in encoded line: '<line>'`) and is skipped; other lines decode. AST-1996 notes-tail guard (`test_ast1996_notes_type_tail_is_not_a_decode_failure`) unchanged — that line has a segment. Primary manifest: **`core/consult.md`** § AST-2127.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `000\|AAA3\|ok` + `001\|just notes` → job-0 row (`notes == "ok"`), job-1 a decode failure at pos 1 | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2126_notes_line_without_segments_is_decode_failure`** |
+
+**Fixture revision:** 13 vector-feedback tests (`TestAst1486FeedbackEntityIdStamp`, `TestAst724VectorFeedbackCapture`, `TestAst809VectorFeedbackBatchMetadata`, `TestAst816VectorFeedbackCapture`, `TestAst820VectorFeedbackDebugTrace`, `TestAst862CleanParseFeedbackBlock`) seed `GA` / `CL` / `DO` instead of `G1` / `CLR` / `DOR` (sync now rejects non-`[A-Z]{2}`); review strings follow (`GARACOVK`, `CLRACOVK`, `DORACOVK`).

@@ -348,8 +348,8 @@ class TestAst2048ThemeAllowlist:
         save.assert_called_once()
         assert theme in repr(save.call_args)
 
-    # Unknown id, examples-only alternates, blank, null, unhashable.
-    @pytest.mark.parametrize("theme", ["neon", "light_parchment", "light_slate", "", None, ["light"]])
+    # Unknown id, wrong-case near-miss, blank, null, unhashable.
+    @pytest.mark.parametrize("theme", ["neon", "Light", "", None, ["light"]])
     def test_unselectable_theme_rejected_and_not_saved(self, monkeypatch: pytest.MonkeyPatch, theme: Any) -> None:
         save = MagicMock()
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
@@ -401,7 +401,7 @@ class TestNormalizeRubricArtifactsOnSaveExtended:
 
 # AST-2008 (reverses AST-1513's save-time raise): duplicate codes self-heal by re-lettering the later
 # code's last char (X, Y, Z, A … W) before every rubric save. Branches (_uptick_duplicate_rubric_codes):
-# non-dict / blank code pass through; first occurrence kept; later duplicate → first unreserved letter
+# non-dict passes through (blank/invalid codes are filled — AST-2126, TestAst2126RubricCodeFill); first occurrence kept; later duplicate → first unreserved letter
 # (reserved = every original code, so a later original is never stolen); all 26 taken → kept + warning.
 class TestAst2008RubricCodeUptick:
     _HT_LABEL = "Hands-On Technical Partnership With Engineers"
@@ -431,14 +431,16 @@ class TestAst2008RubricCodeUptick:
         out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
         assert [c["code"] for c in out] == ["TP", "TY", "TX"]
 
-    def test_uptick_is_pure_and_passes_non_dict_and_blank_codes(self) -> None:
-        raw, blank = "raw", _criterion(code="  ")
+    def test_uptick_is_pure_passes_non_dict_and_fills_blank_codes(self) -> None:
+        # AST-2126: a blank code is filled from the label (was passed through for sync's V{idx} fallback).
+        raw, blank = "raw", _criterion(code="  ", label="Hands On")
         first, dup = _criterion(code="TP"), _criterion(code="TP")
         crit = [raw, blank, first, dup]
         out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
         assert out is not crit
-        assert out[0] is raw and out[1] is blank and out[2] is first
-        # Shallow copy for the re-lettered item; the input dict (may be an EMBEDDED_* ref) is untouched.
+        assert out[0] is raw and out[2] is first
+        # Shallow copies for the filled and re-lettered items; input dicts (may be EMBEDDED_* refs) untouched.
+        assert out[1] is not blank and out[1]["code"] == "HO"
         assert out[3] is not dup and out[3]["code"] == "TX" and dup["code"] == "TP"
         assert [c.get("code") for c in crit[1:]] == ["  ", "TP", "TP"]
 
@@ -474,6 +476,53 @@ class TestAst2008RubricCodeUptick:
         arts: Dict[str, Any] = {"jobdesc_rubric": [_criterion(code="JD"), _criterion(code="JD")]}
         candidate_mod.apply_rubric_vectors_save("c2008", arts)
         assert [c["code"] for c in synced[0][2]] == ["JD", "JX", "QC", "GC"]
+
+
+# AST-2126 (AST-2127 tests): every code leaves the save helper as [A-Z]{2} (agent._GRADE_SEG). Branches
+# (_uptick_duplicate_rubric_codes + _derive_rubric_code): blank / V01 / lowercase / whitespace normalised;
+# label base = two word initials, first two letters of one word, else none → AA…ZZ scan; derived collision
+# → base[0] + uptick letter; one WARNING per fill; every AA–ZZ reserved → ValueError.
+class TestAst2126RubricCodeFill:
+    def test_plan_probe_codes(self) -> None:
+        crit = [
+            _criterion(code="", label="Hands-On Technical Partnership"),
+            _criterion(code="V02", label="Speaking Truth"),
+            _criterion(code=" tp", label="Tee"),
+            _criterion(code="TP", label="Dup"),
+        ]
+        out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
+        assert [c["code"] for c in out] == ["HO", "ST", "TP", "TX"]
+        # " tp" normalised in a copy; an already-exact code keeps the input object.
+        assert out[2] is not crit[2] and crit[2]["code"] == " tp"
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [("Leadership", "LE"), ("123", "AA"), ("", "AA"), ("Q", "AA")],
+    )
+    def test_label_base(self, label: str, code: str) -> None:
+        out = candidate_mod._uptick_duplicate_rubric_codes([_criterion(code="", label=label)], "do_rubric")
+        assert out[0]["code"] == code
+
+    def test_derived_collision_upticks_and_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level("WARNING")
+        crit = [_criterion(code="", label="Hands On"), _criterion(code=None, label="Hands On")]
+        out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
+        assert [c["code"] for c in out] == ["HO", "HX"]
+        msgs = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert sum("invalid code" in m and "do_rubric" in m for m in msgs) == 2
+        assert any(m.endswith("-> HO") for m in msgs) and any(m.endswith("-> HX") for m in msgs)
+
+    def test_derived_skips_reserved_original(self) -> None:
+        # HO is a later item's own valid code, so the blank "Hands On" takes HX.
+        crit = [_criterion(code="", label="Hands On"), _criterion(code="HO", label="Other")]
+        out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
+        assert [c["code"] for c in out] == ["HX", "HO"]
+
+    def test_no_free_code_raises(self) -> None:
+        letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        crit = [_criterion(code=a + b) for a in letters for b in letters] + [_criterion(code="", label="Late")]
+        with pytest.raises(ValueError, match="no free two-letter code for 'Late'"):
+            candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
 
 
 class TestNormalizeImportanceValue:
@@ -7579,7 +7628,7 @@ class TestAst2081ResumeStructureEditorPayload:
 
 
 class TestAst2091RubricDispatchError:
-    """AST-2091 [bug-repro]: dispatch gate reason for a rubric-backed task — duplicate codes or empty rubric."""
+    """AST-2091 [bug-repro]: dispatch gate reason for a rubric-backed task — duplicate codes, invalid codes (AST-2126), or empty rubric."""
 
     @staticmethod
     def _vec(code: str, label: str = "L") -> dict[str, Any]:
@@ -7604,12 +7653,27 @@ class TestAst2091RubricDispatchError:
         assert err == "Rubric 'do_rubric' has duplicate vector codes: TP"
         assert calls == [("somerset", "grade_do")]
 
-    def test_duplicates_case_insensitive_sorted_and_blank_codes_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # strip().upper() keys the count; blank codes are skipped (sync assigns V{idx}).
-        rows = [self._vec(" tp"), self._vec("TP"), self._vec("sa"), self._vec("SA "), self._vec(""), self._vec("")]
+    def test_duplicates_strip_and_sorted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # strip() keys the count over valid stored codes.
+        rows = [self._vec(" TP"), self._vec("TP"), self._vec("SA"), self._vec("SA ")]
         self._stub(monkeypatch, {("somerset", "grade_do"): rows})
         assert candidate_mod.rubric_dispatch_error("somerset", "grade_do") == (
             "Rubric 'do_rubric' has duplicate vector codes: SA, TP"
+        )
+
+    def test_invalid_codes_win_over_duplicates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2126: strict on the stored value — lowercase and blank are undecodable; sorted, blank as (blank).
+        rows = [self._vec(" tp"), self._vec("TP"), self._vec("sa"), self._vec("SA "), self._vec(""), self._vec("")]
+        self._stub(monkeypatch, {("somerset", "grade_do"): rows})
+        assert candidate_mod.rubric_dispatch_error("somerset", "grade_do") == (
+            "Rubric 'do_rubric' has invalid vector codes: (blank), sa, tp — re-save the rubric"
+        )
+
+    def test_v01_code_is_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2126 repro: sync's old V{idx} fallback code can never match _GRADE_SEG.
+        self._stub(monkeypatch, {("somerset", "grade_do"): [self._vec("V01", "One"), self._vec("AB", "Two")]})
+        assert candidate_mod.rubric_dispatch_error("somerset", "meteorite_grade_do") == (
+            "Rubric 'do_rubric' has invalid vector codes: V01 — re-save the rubric"
         )
 
     def test_non_dict_criteria_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:

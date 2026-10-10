@@ -278,15 +278,27 @@ class TestDecodePayload:
         assert out["jobs"][0]["notes"] == "note text"
         assert "decode_failures" not in out
 
-    def test_ast2053_letter_conf0_normalised_to_conf1(self) -> None:
-        # AST-2053 repro (AST-2045 production shape): {letter}0 decodes as {letter}1; no decode failure.
+    def test_ast2126_notes_line_without_segments_is_decode_failure(self) -> None:
+        # AST-2126: line 1 has notes but no grade segment → retry that entity with the raw line; line 0 untouched.
+        ctx = {"batch_entities": _batch_entities("job-0", "job-1")}
+        out = agent_mod._decode_payload("grade_do", "grades_encoded_notes", "000|AAA3|ok\n001|just notes", ctx)
+        assert [j["astral_job_id"] for j in out["jobs"]] == ["job-0"]
+        assert out["jobs"][0]["notes"] == "ok"
+        assert out["decode_failures"] == [{
+            "astral_job_id": "job-1",
+            "pos": 1,
+            "reason": "[grade_do] no grade segments in encoded line: '001|just notes'",
+        }]
+
+    def test_ast2124_letter_conf0_decodes_as_x0(self) -> None:
+        # AST-2124 (replaces AST-2053's {letter}1): {letter}0 decodes as X0; no decode failure.
         ctx = {"batch_entities": _batch_entities("job-0", "job-1")}
         out = agent_mod._decode_payload(
             "task", "grades", "000|CFC0|ECD5|SSC0|TCC0|QCA5\n001|CFC3|ECD5|ORX0", ctx,
         )
         assert [j["astral_job_id"] for j in out["jobs"]] == ["job-0", "job-1"]
         assert [(g["vector"], g["grade"], g["confidence"]) for g in out["jobs"][0]["grades"]] == [
-            ("CF", "C", 1), ("EC", "D", 5), ("SS", "C", 1), ("TC", "C", 1), ("QC", "A", 5),
+            ("CF", "X", 0), ("EC", "D", 5), ("SS", "X", 0), ("TC", "X", 0), ("QC", "A", 5),
         ]
         assert "decode_failures" not in out
 
@@ -296,11 +308,11 @@ class TestDecodePayload:
         out = agent_mod._decode_payload("task", "grades", "0|CRA7", ctx)
         assert out["jobs"] == []
         assert out["decode_failures"][0]["reason"] == "[task] unexpected trailing content in grades-only line: '0|CRA7'"
-        # Normalisation applies on every non-vet encoded type (shared loop); notes tail still kept.
+        # Letter0 → X0 applies on every non-vet encoded type (shared loop, AST-2124); notes tail still kept.
         notes = agent_mod._decode_payload("task", "grades_encoded_notes", "0|CRF0|note text", ctx)
-        assert notes["jobs"][0]["grades"] == [{"vector": "CR", "grade": "F", "confidence": 1}]
+        assert notes["jobs"][0]["grades"] == [{"vector": "CR", "grade": "X", "confidence": 0}]
         assert notes["jobs"][0]["notes"] == "note text"
-        # Vet path is out of AST-2053 scope: LT{letter}0 still raises for the whole payload.
+        # Vet path is out of AST-2053/AST-2124 scope: LT{letter}0 still raises for the whole payload.
         with pytest.raises(ValueError, match="non-X grade requires confidence 1-5, got 0"):
             agent_mod._decode_payload("task", "grades_encoded_vet_meta", "0|LTA0|https://x.com", ctx)
 
@@ -2669,9 +2681,9 @@ class TestDecodeAndAuditBranches:
         payload = {"jobs": ["bad", {"grades": [{"grade": "A", "confidence": 2, "vector": "fit"}]}]}
         assert agent_mod._validate_grade_confidence_in_payload(payload, "task") is None
         ctx = {"batch_entities": _batch_entities("job-1")}
-        # AST-2053: letter confidence 0 is normalised to 1, not rejected.
+        # AST-2124: letter confidence 0 decodes as X0, not rejected and not {letter}1.
         assert agent_mod._decode_payload("task", "grades", "0|CRA0", ctx) == {
-            "jobs": [{"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "A", "confidence": 1}]}],
+            "jobs": [{"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "X", "confidence": 0}]}],
         }
 
     def test_audit_and_failure_block_helpers(self) -> None:
@@ -5760,7 +5772,7 @@ class TestAst724VectorFeedbackCapture:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         prompt_blocks: List[Dict[str, str]] = []
         agent_mod._capture_rubric_vector_feedback(
@@ -5770,7 +5782,7 @@ class TestAst724VectorFeedbackCapture:
             batch_id="batch-724-clean",
             entity_type="candidate",
             index=None,
-            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            perf={"status": "success", "vector_reviews": ["GARACOVK"]},
             debug=False,
             prompt_blocks=prompt_blocks,
             batch_size=1,
@@ -5796,7 +5808,7 @@ class TestAst724VectorFeedbackCapture:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         prompt_blocks: List[Dict[str, str]] = []
         agent_mod._capture_rubric_vector_feedback(
@@ -5822,7 +5834,7 @@ class TestAst724VectorFeedbackCapture:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         prompt_blocks: List[Dict[str, str]] = []
         agent_mod._capture_rubric_vector_feedback(
@@ -5832,7 +5844,7 @@ class TestAst724VectorFeedbackCapture:
             batch_id="batch-724-fail",
             entity_type="candidate",
             index=None,
-            perf={"status": "failure", "vector_reviews": ["G1RACOVK"]},
+            perf={"status": "failure", "vector_reviews": ["GARACOVK"]},
             debug=False,
             prompt_blocks=prompt_blocks,
             batch_size=1,
@@ -5851,7 +5863,7 @@ class TestAst809VectorFeedbackBatchMetadata:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         prompt_blocks: List[Dict[str, str]] = []
         agent_mod._capture_rubric_vector_feedback(
@@ -5861,7 +5873,7 @@ class TestAst809VectorFeedbackBatchMetadata:
             batch_id="",
             entity_type="candidate",
             index=None,
-            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            perf={"status": "success", "vector_reviews": ["GARACOVK"]},
             debug=False,
             prompt_blocks=prompt_blocks,
             batch_size=5,
@@ -5874,7 +5886,7 @@ class TestAst809VectorFeedbackBatchMetadata:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         completed = "2026-06-25 14:30:00"
         agent_mod._capture_rubric_vector_feedback(
@@ -5884,7 +5896,7 @@ class TestAst809VectorFeedbackBatchMetadata:
             batch_id="batch-809-meta",
             entity_type="candidate",
             index=None,
-            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            perf={"status": "success", "vector_reviews": ["GARACOVK"]},
             debug=False,
             prompt_blocks=[],
             batch_size=7,
@@ -5907,8 +5919,8 @@ class TestAst816VectorFeedbackCapture:
             "cand-1",
             "evaluate_jd",
             [
-                {"code": "CLR", "label": "Culture", "content": "c\nA = one", "importance": 5},
-                {"code": "DOR", "label": "Domain", "content": "d\nA = one", "importance": 5},
+                {"code": "CL", "label": "Culture", "content": "c\nA = one", "importance": 5},
+                {"code": "DO", "label": "Domain", "content": "d\nA = one", "importance": 5},
             ],
         )
         agent_mod._capture_rubric_vector_feedback(
@@ -5920,7 +5932,7 @@ class TestAst816VectorFeedbackCapture:
             index=None,
             perf={
                 "status": "success",
-                "vector_reviews": '["CLRRACOVK", "DORRACOVK"]',
+                "vector_reviews": '["CLRACOVK", "DORACOVK"]',
             },
             debug=False,
             prompt_blocks=[],
@@ -5937,7 +5949,7 @@ class TestAst816VectorFeedbackCapture:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "evaluate_jd",
-            [{"code": "CLR", "label": "Culture", "content": "c\nA = one", "importance": 5}],
+            [{"code": "CL", "label": "Culture", "content": "c\nA = one", "importance": 5}],
         )
         prompt_blocks: List[Dict[str, str]] = []
         agent_mod._capture_rubric_vector_feedback(
@@ -5947,7 +5959,7 @@ class TestAst816VectorFeedbackCapture:
             batch_id="batch-816-diag",
             entity_type="candidate",
             index=None,
-            perf={"status": "success", "vector_reviews": ["CLRRACOVK", "DORRACOVK"]},
+            perf={"status": "success", "vector_reviews": ["CLRACOVK", "DORACOVK"]},
             debug=True,
             prompt_blocks=prompt_blocks,
             batch_size=1,
@@ -5966,7 +5978,7 @@ class TestAst820VectorFeedbackDebugTrace:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one", "importance": 5}],
         )
         agent_mod._capture_rubric_vector_feedback(
             task_key="grade_get",
@@ -5975,7 +5987,7 @@ class TestAst820VectorFeedbackDebugTrace:
             batch_id="",
             entity_type="candidate",
             index=None,
-            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            perf={"status": "success", "vector_reviews": ["GARACOVK"]},
             debug=True,
             prompt_blocks=[],
             batch_size=1,
@@ -5993,7 +6005,7 @@ class TestAst820VectorFeedbackDebugTrace:
             batch_id="batch-820-empty",
             entity_type="candidate",
             index=None,
-            perf={"status": "success", "vector_reviews": ["CLRRACOVK"]},
+            perf={"status": "success", "vector_reviews": ["CLRACOVK"]},
             debug=True,
             prompt_blocks=[],
             batch_size=1,
@@ -6009,7 +6021,7 @@ class TestAst820VectorFeedbackDebugTrace:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one", "importance": 5}],
         )
         agent_mod._capture_rubric_vector_feedback(
             task_key="grade_get",
@@ -6018,7 +6030,7 @@ class TestAst820VectorFeedbackDebugTrace:
             batch_id="batch-820-trace",
             entity_type="candidate",
             index=None,
-            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            perf={"status": "success", "vector_reviews": ["GARACOVK"]},
             debug=True,
             prompt_blocks=[],
             batch_size=1,
@@ -6349,10 +6361,10 @@ class TestAst862CleanParseFeedbackBlock:
         db.sync_rubric_vectors_from_criteria(
             "somerset",
             "grade_like",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         prompt_blocks: List[Dict[str, str]] = []
-        reviews = ["G1RACOVK"]
+        reviews = ["GARACOVK"]
         agent_mod._capture_rubric_vector_feedback(
             task_key="grade_like",
             owner_task_key="grade_like",
@@ -6380,7 +6392,7 @@ class TestAst862CleanParseFeedbackBlock:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         monkeypatch.setattr(
             agent_mod,
@@ -6395,7 +6407,7 @@ class TestAst862CleanParseFeedbackBlock:
             batch_id="batch-862-fb-fail",
             entity_type="candidate",
             index=None,
-            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            perf={"status": "success", "vector_reviews": ["GARACOVK"]},
             debug=False,
             prompt_blocks=prompt_blocks,
             batch_size=1,
@@ -6423,7 +6435,7 @@ class TestAst1486FeedbackEntityIdStamp:
         db.sync_rubric_vectors_from_criteria(
             "somerset",
             "grade_like",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         prompt_blocks: List[Dict[str, str]] = []
         agent_mod._capture_rubric_vector_feedback(
@@ -6433,7 +6445,7 @@ class TestAst1486FeedbackEntityIdStamp:
             batch_id="batch-1486-stamp",
             entity_type="candidate",
             index="somerset",
-            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            perf={"status": "success", "vector_reviews": ["GARACOVK"]},
             debug=False,
             prompt_blocks=prompt_blocks,
             batch_size=1,
@@ -6450,7 +6462,7 @@ class TestAst1486FeedbackEntityIdStamp:
         db.sync_rubric_vectors_from_criteria(
             "cand-1",
             "grade_get",
-            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+            [{"code": "GA", "label": "GA", "content": "body\nA = one\nB = two", "importance": 5}],
         )
         prompt_blocks: List[Dict[str, str]] = []
         agent_mod._capture_rubric_vector_feedback(
@@ -6460,7 +6472,7 @@ class TestAst1486FeedbackEntityIdStamp:
             batch_id="batch-1486-null",
             entity_type="candidate",
             index=None,
-            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            perf={"status": "success", "vector_reviews": ["GARACOVK"]},
             debug=False,
             prompt_blocks=prompt_blocks,
             batch_size=1,
@@ -6478,7 +6490,7 @@ class TestAst1486FeedbackEntityIdStamp:
             "candidate",
             "grade_get",
             "batch-1486-direct",
-            '["G1RACOVK"]',
+            '["GARACOVK"]',
             index="somerset",
         )
         rows = db.get_agent_data_by_batch("batch-1486-direct", block_type="FEEDBACK")

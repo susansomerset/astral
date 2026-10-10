@@ -4329,6 +4329,31 @@ JOBS_SKIPPED_SECTION_LABELS = {
     bot_blocked_state_for("qualify_meteorite"): "Bot Blocked",
 }
 
+# AST-2105: Skipped page groups, in display order, keyed by group id. A row's group is the
+# first whose members list its state, else the first whose prefixes match it, else the last
+# group — the catch-all, with neither prefixes nor members. Prefixes and members live here only;
+# the React page reads them from build_state_ui_manifest()["jobs"]["skipped"]["groups"].
+JOBS_SKIPPED_GROUPS = {
+    "error": {"label": "Error", "prefixes": [ERROR_STATE_PREFIX], "members": []},
+    "bot_block": {"label": "Bot block", "prefixes": [BOT_BLOCKED_STATE_PREFIX], "members": []},
+    "fail": {
+        "label": "Fail",
+        "prefixes": ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"],
+        # Resurrect-only manual skip + the below-floor virtual section (not a JOB_STATES key).
+        "members": ["CANDIDATE_SKIPPED", JOBS_SKIPPED_BELOW_DISPATCH_KEY],
+    },
+    "other": {"label": "Other", "prefixes": [], "members": []},
+}
+# Explicit members must be real Skipped states (or the below-floor key), so a rename can't orphan one.
+assert all(
+    m in SKIPPED_STATES or m == JOBS_SKIPPED_BELOW_DISPATCH_KEY
+    for g in JOBS_SKIPPED_GROUPS.values() for m in g["members"]
+), "JOBS_SKIPPED_GROUPS: member is not a Skipped state"
+# Exactly one catch-all, and it is last — anything after it would be unreachable.
+assert [not (g["prefixes"] or g["members"]) for g in JOBS_SKIPPED_GROUPS.values()] == (
+    [False] * (len(JOBS_SKIPPED_GROUPS) - 1) + [True]
+), "JOBS_SKIPPED_GROUPS: only the last group may be the catch-all"
+
 # Which `job[...]` grade blob to read for rubric columns (keys ⊆ JOB_STATES).
 JOBS_IN_REVIEW_GRADE_FIELD = {
     retry_of("VALID_TITLE"): "joblist_grades",
@@ -4595,6 +4620,11 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "section_order": skipped_order,
                 "section_labels": skipped_labels,
                 "bulk_retry_to_state_by_from_state": dict(JOBS_SKIPPED_BULK_RETRY_TO_STATE),
+                # AST-2105: ordered group rules (key, label, prefixes, members) — catch-all last.
+                "groups": [
+                    {"key": k, "label": g["label"], "prefixes": list(g["prefixes"]), "members": list(g["members"])}
+                    for k, g in JOBS_SKIPPED_GROUPS.items()
+                ],
             },
             "detail": {"already_skipped_state": "CANDIDATE_SKIPPED"},
             "recommended": {
@@ -6011,36 +6041,14 @@ UI_CONFIG = {
     "adhoc_import_runs_limit": 10,
     "adhoc_import_picker_visible_rows": 5,
     # AST-2042: theme registry — palette id -> label + whether the profile Theme select offers it.
-    # Each id needs a matching [data-theme="<id>"] block in App.css; ids not profile_selectable
-    # only appear on Tools -> Theme Examples. Adding/retiring a palette = one entry here + one CSS block.
+    # Each id needs a matching [data-theme="<id>"] block in App.css.
+    # Adding/retiring a palette = one entry here + one CSS block.
     "themes": {
         "dark": {"label": "Dark", "profile_selectable": True},
         "light": {"label": "Light", "profile_selectable": True},
-        "light_parchment": {"label": "Light (Parchment)", "profile_selectable": False},
-        "light_slate": {"label": "Light (Slate)", "profile_selectable": False},
     },
     # Theme applied when a candidate has none stored (and before candidates load).
     "default_theme": "dark",
-    # AST-2064: Light grade-color candidates shown as rows on Tools -> Theme Examples (examples-only).
-    # Each set's tokens override the panel's grade tokens for that row; the live Light set is in App.css.
-    # Retire a candidate = delete its entry; no page or CSS change.
-    "theme_example_grade_sets": {
-        "deep": {"label": "Deep", "tokens": {
-            "--grade-a": "#1e7b34", "--grade-b": "#a06500", "--grade-c": "#c05621",
-            "--grade-d": "#c53030", "--grade-f": "#742a2a", "--grade-x": "#6b46c1",
-            "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
-        }},
-        "soft": {"label": "Soft", "tokens": {
-            "--grade-a": "#b7e4c0", "--grade-b": "#fde68a", "--grade-c": "#fed7aa",
-            "--grade-d": "#fecaca", "--grade-f": "#e7b4b4", "--grade-x": "#ddd6fe",
-            "--text-on-grade": "#1f1830", "--text-on-grade-f": "#5c0f0f",
-        }},
-        "classic": {"label": "Classic", "tokens": {
-            "--grade-a": "#2f9e44", "--grade-b": "#e67700", "--grade-c": "#d9480f",
-            "--grade-d": "#e03131", "--grade-f": "#9c1c1c", "--grade-x": "#7048e8",
-            "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
-        }},
-    },
 }
 # Default must be a registered, profile-selectable palette (it is what candidates without a stored theme get).
 assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_selectable"), (
@@ -6146,7 +6154,6 @@ NAV_CONFIG = [
             {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
             {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},
-            {"label": "Theme Examples", "path": "/admin/theme_examples"},
         ],
     },
 ]

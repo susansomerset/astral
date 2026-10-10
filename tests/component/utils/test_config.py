@@ -5421,6 +5421,7 @@ class TestAst1386ThreeSegmentAdminNav:
     _TOOLS_PATHS = [
         "/admin/data_management",
         "/admin/anthropic_ad_hoc",
+        "/admin/telescope",
         "/admin/cost_reconciliation",
         "/admin/session_resume_paste",
         "/admin/session_cover_letter",
@@ -7905,11 +7906,12 @@ class TestAst2024RelativeJobLinkRegistry:
 
 
 class TestAst2047ThemeRegistry:
-    """AST-2047: UI_CONFIG theme registry drives the profile Theme select, Tools nav item, and App.css blocks."""
+    """AST-2047: UI_CONFIG theme registry drives the profile Theme select and App.css blocks.
+    AST-2122: the examples-only alternates, grade-color sets and Tools examples item are retired."""
 
     def test_registry_ids_selectable_and_default(self) -> None:
         themes = cfg.UI_CONFIG["themes"]
-        assert list(themes) == ["dark", "light", "light_parchment", "light_slate"]
+        assert list(themes) == ["dark", "light"]
         assert [tid for tid, t in themes.items() if t["profile_selectable"]] == ["dark", "light"]
         assert cfg.UI_CONFIG["default_theme"] == "dark"
 
@@ -7925,10 +7927,18 @@ class TestAst2047ThemeRegistry:
         ]
         assert [o["label"] for o in theme["options"]] == ["Dark", "Light"]
 
-    def test_tools_nav_theme_examples_admin_only(self) -> None:
+    def test_tools_nav_admin_only_six_items(self) -> None:
+        # AST-2122 AC8: the examples item is gone; the other six Tools items stay, in order.
         tools = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Tools")
         assert tools.get("admin_only") is True
-        assert {"label": "Theme Examples", "path": "/admin/theme_examples"} in tools["items"]
+        assert [i["label"] for i in tools["items"]] == [
+            "Data Management", "Agent Ad Hoc", "Telescope", "Cost Reconciliation", "Resume Paste", "Cover Letter Paste",
+        ]
+
+    def test_no_grade_set_candidates_key(self) -> None:
+        # AST-2122 AC9: the examples-only grade-color candidates left UI_CONFIG with their page.
+        # Suffix match, not the literal key: AC8 requires the retired key name to be absent from tests/.
+        assert [k for k in cfg.UI_CONFIG if k.endswith("_grade_sets")] == []
 
     def test_every_registry_id_has_an_app_css_block(self) -> None:
         # Adding a palette = one registry entry + one [data-theme] block; a missing block would render unthemed.
@@ -7937,35 +7947,6 @@ class TestAst2047ThemeRegistry:
         css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()
         for tid in cfg.UI_CONFIG["themes"]:
             assert f'[data-theme="{tid}"]' in css, tid
-
-
-class TestAst2064ThemeExampleGradeSets:
-    """AST-2064: examples-only grade-color candidates; each set overrides exactly the grade tokens App.css declares."""
-
-    GRADE_TOKENS = frozenset({
-        "--grade-a", "--grade-b", "--grade-c", "--grade-d", "--grade-f", "--grade-x",
-        "--text-on-grade", "--text-on-grade-f",
-    })
-
-    def test_grade_sets_deep_soft_classic_labeled(self) -> None:
-        sets = cfg.UI_CONFIG.get("theme_example_grade_sets")
-        assert sets is not None, "UI_CONFIG has no theme_example_grade_sets"
-        assert {gid: s["label"] for gid, s in sets.items()} == {"deep": "Deep", "soft": "Soft", "classic": "Classic"}
-
-    def test_grade_set_tokens_are_real_app_css_grade_tokens(self) -> None:
-        # A misspelled key would set an unused custom property and silently show the panel's own colors.
-        import re
-        from pathlib import Path
-
-        css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()
-        dark = css.split(':root, [data-theme="dark"] {', 1)[1].split("}", 1)[0]
-        declared = set(re.findall(r"(--[\w-]+)\s*:", dark))
-        assert self.GRADE_TOKENS <= declared
-        sets = cfg.UI_CONFIG.get("theme_example_grade_sets")
-        assert sets is not None, "UI_CONFIG has no theme_example_grade_sets"
-        for gid, s in sets.items():
-            assert set(s["tokens"]) == self.GRADE_TOKENS, gid
-            assert all(re.fullmatch(r"#[0-9a-fA-F]{6}", v) for v in s["tokens"].values()), gid
 
 
 # AST-2069 (parent AST-2054): upshot states, transitions, dispatch registration, agent_task rows.
@@ -8334,3 +8315,81 @@ class TestAst2086TerminalStateGrammar:
         assert loc["bot_blocked_state"] == "BOT_BLOCKED_SELECT_JOB_PAGE"
         assert r["gaze"]["error_state"] == "ERROR_GAZE"
         assert g["gaze"]["error_state"] == "ERROR_GAZE"
+
+
+# Branches: AC1 manifest groups (order, keys, labels, prefixes, members); AC2 rule partition leaves
+# only INVALID_TITLE in Other; manifest lists are copies; AC3 member guard + catch-all-last guard fire.
+class TestAst2105SkippedGroupRules:
+    """AST-2105: JOBS_SKIPPED_GROUPS registry, import guards, manifest jobs.skipped.groups."""
+
+    @staticmethod
+    def _splice_exec(old: str, new: str, probe_name: str) -> None:
+        # Re-exec the real config source with one line swapped, so the shipped assert (not a copy) fires.
+        import types
+        from pathlib import Path
+
+        src = Path(cfg.__file__).read_text(encoding="utf-8")
+        # A moved/renamed anchor must fail loudly, not let the splice pass vacuously.
+        assert src.count(old) == 1, old
+        mod = types.ModuleType(probe_name)
+        mod.__file__ = cfg.__file__  # config resolves repo paths from __file__ at import
+        # Fake filename keeps coverage from attributing probe lines to config.py.
+        exec(compile(src.replace(old, new, 1), f"<{probe_name}>", "exec"), mod.__dict__)  # noqa: S102
+
+    def test_ac1_manifest_groups_exact(self) -> None:
+        sk = cfg.build_state_ui_manifest()["jobs"]["skipped"]
+        assert sk["groups"] == [
+            {"key": "error", "label": "Error", "prefixes": ["ERROR_"], "members": []},
+            {"key": "bot_block", "label": "Bot block", "prefixes": ["BOT_BLOCKED_"], "members": []},
+            {
+                "key": "fail",
+                "label": "Fail",
+                "prefixes": ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"],
+                "members": ["CANDIDATE_SKIPPED", sk["below_dispatch_key"]],
+            },
+            {"key": "other", "label": "Other", "prefixes": [], "members": []},
+        ]
+        # Registry is the only source: manifest rows mirror JOBS_SKIPPED_GROUPS in insertion order.
+        assert [g["key"] for g in sk["groups"]] == list(cfg.JOBS_SKIPPED_GROUPS)
+
+    def test_ac2_rules_leave_only_invalid_title_in_other(self) -> None:
+        # Ticket AC 2 rule, verbatim: members first, then prefixes, else the last (catch-all) group.
+        g = cfg.build_state_ui_manifest()["jobs"]["skipped"]["groups"]
+
+        def grp(s: str) -> str:
+            for x in g:
+                if s in x["members"]:
+                    return x["label"]
+            for x in g:
+                if any(s.startswith(p) for p in x["prefixes"]):
+                    return x["label"]
+            return g[-1]["label"]
+
+        assert sorted(s for s in cfg.SKIPPED_STATES if grp(s) == "Other") == ["INVALID_TITLE"]
+
+    def test_manifest_lists_are_copies(self) -> None:
+        # Mutating one manifest build must not leak into the registry or the next build.
+        groups = cfg.build_state_ui_manifest()["jobs"]["skipped"]["groups"]
+        groups[2]["prefixes"].append("X_")
+        groups[2]["members"].append("X")
+        assert cfg.JOBS_SKIPPED_GROUPS["fail"]["prefixes"] == ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"]
+        assert "X" not in cfg.build_state_ui_manifest()["jobs"]["skipped"]["groups"][2]["members"]
+
+    def test_ac3_guard_rejects_non_skipped_member(self) -> None:
+        line = '"members": ["CANDIDATE_SKIPPED", JOBS_SKIPPED_BELOW_DISPATCH_KEY],'
+        with pytest.raises(AssertionError, match="member is not a Skipped state"):
+            self._splice_exec(
+                line,
+                '"members": ["CANDIDATE_SKIPPED", JOBS_SKIPPED_BELOW_DISPATCH_KEY, "NOT_A_STATE"],',
+                "cfg_ast2105_member_probe",
+            )
+
+    def test_guard_rejects_catch_all_not_last(self) -> None:
+        # A group after Other makes Other unreachable-as-last; the second guard must fire.
+        line = '"other": {"label": "Other", "prefixes": [], "members": []},'
+        with pytest.raises(AssertionError, match="only the last group may be the catch-all"):
+            self._splice_exec(
+                line,
+                line + '\n    "extra": {"label": "Extra", "prefixes": ["X_"], "members": []},',
+                "cfg_ast2105_catchall_probe",
+            )

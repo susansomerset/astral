@@ -220,6 +220,29 @@ describe('Modal — AST-1767', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
   })
 
+  it('AST-2115 [bug-repro]: size="overlay" is an 80vw × 90vh card that keeps its chrome; body unpadded', () => {
+    render(
+      wrap(
+        <Modal open onClose={vi.fn()} title="Over" size="overlay" showFooter={false}>
+          <p>Panes</p>
+        </Modal>,
+      ),
+    )
+    const card = document.querySelector('.modal-card') as HTMLElement
+    expect(card).not.toHaveClass('modal-card--wide')
+    expect(card.style.width).toBe('80vw')
+    expect(card.style.height).toBe('90vh')
+    expect(card.style.maxWidth).toBe('80vw')
+    expect(card.style.maxHeight).toBe('90vh')
+    // Card border / radius come from .modal-card — that chrome is what reads as "over the page".
+    expect(card.style.borderStyle).toBe('')
+    expect(card.style.borderRadius).toBe('')
+    // Same split-pane body as fullscreen: SplitPanePage fills it and owns its own scroll.
+    const body = card.querySelector('.modal-body') as HTMLElement
+    expect(body.style.padding).toBe('0px')
+    expect(body.style.overflow).toBe('hidden')
+  })
+
   it('AST-2082: wide and default sizes carry no inline size styles', () => {
     const { rerender } = render(
       wrap(

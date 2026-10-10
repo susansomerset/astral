@@ -907,3 +907,24 @@ no plan-stage scores attached (Joan F2 `[board-joan] CANON: OK` only)
 
 Append artifact to AST-2121 issue doc, `docs(AST-2121): Radia review — clean`, push publish ref, post slim upshot `--as radia`.
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/e821d027c771f1b0ce6b5dfb6f078b8d/272ab72d-678b-4684-9580-62c9dc07db7c/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/e821d027c771f1b0ce6b5dfb6f078b8d/de45c69f-3d78-4c87-b94d-bb78a2cf0c69/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/e821d027c771f1b0ce6b5dfb6f078b8d/179b0c04-bb39-4dc4-9842-d039bf575f37/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2108 (parent) | ftr/AST-2108-qualify-missing-grade-vectors |
+| AST-2120 | sub/AST-2108/AST-2120-qualify-missing-grade-vectors |
+| AST-2121 | sub/AST-2108/AST-2121-qualify-grade-set-tests |
+
+**Epic worktree:** `astral-AST-2108/` — one active sub checked out at a time.

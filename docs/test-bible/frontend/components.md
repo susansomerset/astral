@@ -2026,7 +2026,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** item 1 all green (105 pass, 3 name-skipped). `npx tsc -b --noEmit` clean. Not the zero-arg harness.
 
-**AST-2049 (pointer):** inline colors in `ArtifactEditor`, `ContextTextPage`, `NavigationShell`, `ProfileTextPage`, `RepoJsonDivergenceBanner`, `StateTimeline`, `TabbedTextArea` moved onto `App.css` tokens — no color asserted by their tests; AC9 source-wide guard lives in `test_AdminThemeExamples.test.tsx`. Manifest: [`pages.md`](pages.md) § AST-2049.
+**AST-2049 (pointer):** inline colors in `ArtifactEditor`, `ContextTextPage`, `NavigationShell`, `ProfileTextPage`, `RepoJsonDivergenceBanner`, `StateTimeline`, `TabbedTextArea` moved onto `App.css` tokens — no color asserted by their tests; AC9 source-wide guard lives in `tests/component/frontend/test_AppCss.test.tsx` (moved from the retired `pages/test_AdminThemeExamples.test.tsx` by AST-2122; [`root.md`](root.md) § AST-2122). Manifest: [`pages.md`](pages.md) § AST-2049.
 
 ---
 
@@ -2199,6 +2199,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-2083 · AST-2046 (resume content editor — rows, autosave, compare, print)
 
+> **AST-2122:** the theme-token gate moved to **`tests/component/frontend/test_AppCss.test.tsx`** (5 cases; page cases deleted). Use that path in place of `pages/test_AdminThemeExamples.test.tsx` below.
+
 **Publish:** `origin/sub/AST-2046/AST-2083-resume-editor`. New `ResumeContentEditor.tsx` (base or job target) and `ResumeSectionRow.tsx`; App.css §10e2; the experience job header gets `resume-section-title`. Nothing mounts the editor yet (that's **AST-2084**), so tests render it directly. Structure comes from the `resume_structure` GET and bodies from the entity GET hydrate. Saves send only the half that changed. Base saves are one `PUT /api/candidates/<id>/data`. Job saves are a `job_resume_structure` PUT, then a `job_resume` PUT. Saves are serialized, and a failed save stays dirty and retries on the next field exit.
 
 | Area | Component tests |
@@ -2232,6 +2234,32 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** item 1 is 47 passed (the two `test_AdminThemeExamples` reds turn green once the App.css token fix lands), and items 2–3 hold. This is a narrowed run, not the zero-arg harness.
 
+### AST-2114 · AST-2046 (bug: search shows every Experience job, not just the matches)
+
+**Publish:** `origin/sub/AST-2046/AST-2114-search-experience-subelements`. Fix lane: a qa-fix repro after fix-board said TESTS: REVISE. In the plan-fix (`docs/features/interface/ast-2083-resume-editor.md` § Bug: AST-2114), `ResumeContentEditor` computes a per-job match set (`visibleJobs`) and passes it through `ResumeSectionRow` to a new `ExperienceJobsEditor` `visible` prop. This is view-only: the body array, the indexes and the saves are untouched. Add role hides while the filter is on. A section-title match or an empty query shows every job. `ArtifactEditor` passes no `visible`, so it's unchanged.
+
+| Behavior | Test |
+| --- | --- |
+| Two-job base: `acme` → only "Acme, Lead"; `BILLING` (accomplishment) → only Globex; `exper` (title hit) and empty → both; Add role hidden only while filtered; no PUT | **`test_ResumeContentEditor.test.tsx`** `AST-2114 … [bug-repro] a job-text match shows only matching jobs…` (new) |
+| Editing a filtered job saves the full array, the hidden job included; filtering alone sends nothing (AC4 still holds) | same file, `editing a filtered job saves the full array…` (new guard; green before and after) |
+| `visible={new Set([1])}`: only index 1 renders; edit / Move up / Remove act on the original index 1 in the full list; no Add role | **`test_ExperienceJobsEditor.test.tsx`** `AST-2114 … [bug-repro] renders only visible indexes…` (new; props cast so it compiles before the fix) |
+
+**Repro status:** on the pre-fix sub, exactly the 2 `[bug-repro]` cases are red. One fails with `expected ['Acme, Lead', 'Globex, Engineer'] to deeply equal ['Acme, Lead']`, the other because First still renders. The other 40 are green. With the plan's change temporarily applied to the three product files, then reverted (not committed), all 42 pass. `test-fix` must confirm the same flip on Katherine's real fix. The existing AST-2083 search case checks rows only, with a one-job fixture, and is unaffected.
+
+## QA test manifest — AST-2114
+
+1. **Repro + neighbors (Vitest, 42 tests):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ResumeContentEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx
+```
+
+2. **Build gates:** `cd src/ui/frontend && npx tsc -b --noEmit` and `npm run lint` are clean on the three product files.
+
+**Pass criterion:** item 1 is 42 passed, including both `AST-2114 [bug-repro]` cases, and item 2 holds.
+
 ### AST-2084 · AST-2046 (wire resume surfaces — base page, job edit modal, thumbnails; ArtifactEditor resume mode retired)
 
 **Publish:** `origin/sub/AST-2046/AST-2084-wire-resume-surfaces`. Base Resume Content is now `SplitPanePage` with `ResumeContentEditor` (base) on the left and `PrintPreview` (base) on the right. The preview refreshes on the editor's `onSaved`. New `JobArtifactEditModal` is a stacked full-screen `Modal` holding a split pane: the job resume uses `ResumeContentEditor` (job) + the `job_resume` preview, and the cover letter uses `ArtifactEditor` (shapes + job persistence, `craft_cover_letter`) + the `cover` preview. JAR's Artifacts tab shows a `PrintPreview` thumbnail for each `preview_thumbnail` tab that has content (click → modal), plus Edit on the job resume. Closing the modal reloads the report. Print Resume goes through `printHtml` with no structure persist. `ArtifactEditor`'s resume structure mode is removed.
@@ -2240,7 +2268,7 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- |
 | AC4: thumbnails only for generated artifacts; no inline editors; click / Edit → stacked modal over the report; cover thumbnail → cover editor + cover preview; close reloads; nothing generated → no thumbnails and no print fetches | **`test_JobAnalysisReportModal.test.tsx`**: 4 new `AST-2084:` cases replace AST-1476 / AST-1489 / AST-1490 and the old "populated Artifacts shows editable Job Resume" case. The empty-Artifacts case gains the no-thumbnail assert |
 | Print Resume via the shared helper, no candidate `resume_structure` GET/PUT | same file, `AST-2084: Print Resume…`. AST-1546 / AST-1350 now seed `job_resume` (AST-1593 key). They were red before this ticket and are green now |
-| Modal wiring: closed when `tab` is null; resume vs cover branch; preview `refreshKey` bumps on each editor's `onSaved`; stacked, 100vw, no footer; Close → `onClose` | new **`tests/component/frontend/components/test_JobArtifactEditModal.test.tsx`** (4). Children are stubbed because they have their own suites |
+| Modal wiring: closed when `tab` is null; resume vs cover branch; preview `refreshKey` bumps on each editor's `onSaved`; stacked, no footer (width: 80vw overlay since **AST-2115**, below); Close → `onClose` | new **`tests/component/frontend/components/test_JobArtifactEditModal.test.tsx`** (4). Children are stubbed because they have their own suites |
 | Base page (§6c render, AC2/AC3/AC5 source gates) | [`pages.md`](pages.md) § AST-2084 |
 | `ArtifactEditor` rubric/criteria/shapes paths unchanged | **`test_ArtifactEditor.test.tsx`**: 22 remaining cases green |
 
@@ -2251,7 +2279,7 @@ cd src/ui/frontend && npm run test:component -- \
 - `test_JobAnalysisReportModal.test.tsx`: AST-1476 structure authoring, AST-1489 print auto-persist, AST-1490 reorder-then-print.
 - `test_ArtifactsBaseResumeContent.test.tsx`: all 15 old cases (structure tabs, accent bar, structure authoring, the page's own Print and Generate). See [`pages.md`](pages.md) § AST-2084.
 
-**Regression:** comparing the full Vitest suite against ftr product shows **0 new** failures (1093 tests, 46 failing, all pre-existing) and 2 fixed (AST-1546 / AST-1350). Mutation check: dropping the page's preview bump, the JAR thumbnail branch, or the modal's `stacked` flag turns 6 cases red. **AC1** (edge-to-edge layout) can't be measured in jsdom. What it can show: the split pane root is `100%`, and the fullscreen card is `100vw` (`test_JobArtifactEditModal` / AST-2082 `test_SplitPanePage`). No integration scenario covers these surfaces.
+**Regression:** comparing the full Vitest suite against ftr product shows **0 new** failures (1093 tests, 46 failing, all pre-existing) and 2 fixed (AST-1546 / AST-1350). Mutation check: dropping the page's preview bump, the JAR thumbnail branch, or the modal's `stacked` flag turns 6 cases red. **AC1** (edge-to-edge layout) can't be measured in jsdom. What it can show: the split pane root is `100%` (AST-2082 `test_SplitPanePage`). The job edit modal's card width is now pinned by **AST-2115** (80vw overlay, not edge-to-edge). No integration scenario covers these surfaces.
 
 ## QA test manifest — AST-2084
 
@@ -2269,3 +2297,29 @@ cd src/ui/frontend && npm run test:component -- \
 3. **Build gates:** `cd src/ui/frontend && npx tsc -b --noEmit` and `npm run lint` must be clean on the four product files.
 
 **Pass criterion:** item 1 is 89 passed, and items 2–3 hold. This is a narrowed run, not the zero-arg harness.
+
+### AST-2115 · AST-2046 (bug: job edit modal 80% width, over the page)
+
+**Publish:** `origin/sub/AST-2046/AST-2115-job-modal-80-width`. Fix lane: a qa-fix repro after fix-board said TESTS: REVISE. In the plan-fix (option B, `docs/features/interface/ast-2084-wire-resume-surfaces.md` § Bug: AST-2115), `Modal` gains `size="overlay"`: the card is inline 80vw × 90vh (`max*` matching), with no border or radius override, so the `.modal-card` chrome stays and it reads as sitting over the page. The body uses the same unpadded, `overflow: hidden` style as fullscreen. `JobArtifactEditModal` switches from `fullscreen` to `overlay`, and keeps `stacked` and no footer. The `fullscreen` size itself is unchanged, and so is its AST-2082 case.
+
+| Behavior | Test |
+| --- | --- |
+| `size="overlay"` card is 80vw × 90vh; border and radius not overridden; body unpadded and `overflow: hidden`; no `--wide` class | **`test_Modal.test.tsx`** `AST-2115 [bug-repro]: size="overlay"…` (new) |
+| Job resume modal card is 80vw × 90vh, border kept, body unpadded (it replaces the AST-2084 `100vw` assert) | **`test_JobArtifactEditModal.test.tsx`** `AST-2115 [bug-repro]: job resume opens a stacked 80%-width…` (rewritten AST-2084 case) |
+
+**Repro status:** on the pre-fix sub, exactly these 2 cases are red (`expected '100vw' to be '80vw'` and `expected '' to be '80vw'`); the other 13 are green. With the plan's change temporarily applied to `Modal.tsx` and `JobArtifactEditModal.tsx`, then reverted (not committed), all 15 pass. `test-fix` must confirm the same flip on Ada's real fix. jsdom can't measure the visual "over the page" read; the inline style plus the kept card chrome is the proxy.
+
+## QA test manifest — AST-2115
+
+1. **Repro + neighbors (Vitest, 15 tests):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobArtifactEditModal.test.tsx
+```
+
+2. **Gate:** `git grep -n 'size="fullscreen"' -- src/ui/frontend/src` is empty (plan-fix gate).
+3. **Build gates:** `cd src/ui/frontend && npx tsc -b --noEmit` and `npm run lint` are clean.
+
+**Pass criterion:** item 1 is 15 passed, including both `AST-2115 [bug-repro]` cases, and items 2–3 hold.

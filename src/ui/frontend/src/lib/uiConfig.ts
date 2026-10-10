@@ -3,9 +3,6 @@ import api from "./api"
 interface ColumnTypeConfig { align: "left" | "right" | "center"; number_format: string | null }
 /** AST-2042: one theme registry entry served from UI_CONFIG.themes (keyed by palette id). */
 export interface ThemeEntry { label: string; profile_selectable: boolean }
-/** AST-2064: examples-only grade-color candidate; tokens are CSS custom properties (e.g. "--grade-a") -> color. */
-export interface GradeSetEntry { label: string; tokens: Record<string, string> }
-
 export interface UiConfig {
   column_types: Record<string, ColumnTypeConfig>
   list_table_frozen_data_columns?: number
@@ -16,8 +13,6 @@ export interface UiConfig {
   themes?: Record<string, ThemeEntry>
   /** AST-2042: palette applied when the selected candidate has no stored theme. */
   default_theme?: string
-  /** AST-2064: grade-color candidates rendered as rows on Theme Examples. */
-  theme_example_grade_sets?: Record<string, GradeSetEntry>
 }
 
 let _uiConfig: UiConfig | null = null

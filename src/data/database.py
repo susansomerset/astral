@@ -59,6 +59,7 @@ via return values (duplicate -> False, no records -> False / count).
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import time
 import uuid
@@ -5976,7 +5977,10 @@ def sync_rubric_vectors_from_criteria(
             for idx, item in enumerate(criteria_list):
                 if not isinstance(item, dict):
                     raise ValueError(f"criterion {idx + 1} must be an object")
-                code = (item.get("code") or "").strip() or f"V{idx + 1:02d}"
+                code = (item.get("code") or "").strip().upper()
+                # Must match agent._GRADE_SEG's [A-Z]{2}; candidate save fills/repairs codes before sync (AST-2126).
+                if not re.fullmatch(r"[A-Z]{2}", code):
+                    raise ValueError(f"criterion {idx + 1} code {item.get('code')!r} is not two letters A-Z")
                 label = (item.get("label") or "").strip() or code
                 content = item.get("content") or ""
                 if not str(content).strip():
