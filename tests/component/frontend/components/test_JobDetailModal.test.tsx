@@ -151,7 +151,7 @@ describe("JobDetailModal — AST-1454 skipped-field editors", () => {
     ...jobPayload,
     state: "CANDIDATE_SKIPPED",
     fields_editable: true,
-    legal_next_states: ["NEW", "FAILED_TECHNICAL"],
+    legal_next_states: ["NEW", "ERROR_GRADE_DO"],
     job_data: {},
   }
 
@@ -210,7 +210,7 @@ describe("JobDetailModal — AST-1454 skipped-field editors", () => {
     expect(screen.getByDisplayValue("https://example.com").tagName).toBe("INPUT")
     expect(screen.getByRole("combobox")).toBeInTheDocument()
     expect(screen.getByRole("option", { name: "No change" })).toBeInTheDocument()
-    expect(screen.getByRole("option", { name: "FAILED_TECHNICAL" })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "ERROR_GRADE_DO" })).toBeInTheDocument()
     expect(screen.getByRole("option", { name: "NEW" })).toBeInTheDocument()
 
     await userEvent.click(screen.getByText("Job Description"))
@@ -289,7 +289,7 @@ describe("JobDetailModal — AST-1695 listing_href", () => {
     mockedCopy.mockResolvedValue(true)
   })
 
-  it("read-only BOT_BLOCKED: Link <a> from listing_href; raw job_link not wrapped", async () => {
+  it("read-only BOT_BLOCKED_FETCH_JD: Link <a> from listing_href; raw job_link not wrapped", async () => {
     mockedApi.mockImplementation(async (url: string) => {
       if (url === "/api/state_ui_manifest") {
         return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
@@ -306,7 +306,7 @@ describe("JobDetailModal — AST-1695 listing_href", () => {
             legal_next_states: [],
             job_link: "https://example.com/column",
             listing_href: "https://example.com/listing",
-            state: "BOT_BLOCKED",
+            state: "BOT_BLOCKED_FETCH_JD",
           }),
         } as Response
       }
@@ -365,7 +365,7 @@ describe("JobDetailModal — AST-1695 listing_href", () => {
             legal_next_states: ["NEW"],
             job_link: "paste-me",
             listing_href: "https://example.com/open",
-            state: "BOT_BLOCKED",
+            state: "BOT_BLOCKED_FETCH_JD",
           }),
         } as Response
       }

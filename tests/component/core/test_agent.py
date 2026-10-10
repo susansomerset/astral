@@ -6151,7 +6151,7 @@ class TestAst848DispatchChainDoTask:
         )
 
     @pytest.mark.asyncio
-    async def test_hard_failure_transitions_error_build_artifacts(
+    async def test_hard_failure_transitions_hop_error_state(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
@@ -6182,7 +6182,7 @@ class TestAst848DispatchChainDoTask:
             ctx=self._dispatch_chain_ctx(graduate=True),
         )
         assert out["success"] is False
-        transition.assert_called_once_with(["job-848"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        transition.assert_called_once_with(["job-848"], "ERROR_ANTICIPATE_SCAN")
         release.assert_called_once_with("job-848")
 
     def test_dispatch_chain_ctx_reads_trigger_and_graduate_flag(self) -> None:
@@ -6634,7 +6634,7 @@ class TestAst1191ArtifactHopFailureRelease:
             entity_type="job",
             index="job-1191",
             ctx=self._dispatch_ctx(),
-            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            task_config={"error_state": "ERROR_ANTICIPATE_SCAN"},
             error="Provider call exceeded per-call time budget (600s)",
             debug=False,
             provider_failed=True,
@@ -6657,7 +6657,7 @@ class TestAst1191ArtifactHopFailureRelease:
             entity_type="job",
             index="job-1191",
             ctx=self._dispatch_ctx(),
-            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            task_config={"error_state": "ERROR_ANTICIPATE_SCAN"},
             error="Insufficient Balance",
             debug=False,
             provider_failed=True,
@@ -6680,7 +6680,7 @@ class TestAst1191ArtifactHopFailureRelease:
             entity_type="job",
             index="job-1191",
             ctx={ "astral_candidate_id": "somerset",},
-            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            task_config={"error_state": "ERROR_ANTICIPATE_SCAN"},
             error="Provider call failed",
             debug=False,
             provider_failed=True,
@@ -6696,7 +6696,7 @@ class TestAst1191ArtifactHopFailureRelease:
             entity_type="candidate",
             index="cand-1191",
             ctx={ "astral_candidate_id": "somerset",},
-            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            task_config={"error_state": "ERROR_ANTICIPATE_SCAN"},
             error="Provider call failed",
             debug=False,
             provider_failed=True,
@@ -6865,13 +6865,13 @@ class TestAst1298OrphanedJobClaimRelease:
                 entity_type="job",
                 index="job-1298",
                 ctx=self._dispatch_ctx(),
-                task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+                task_config={"error_state": "ERROR_ANTICIPATE_SCAN"},
                 error="Job not found",
                 debug=False,
                 provider_failed=True,
                 failure_class="provider_connection_error",
             )
-        transition.assert_called_once_with(["job-1298"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        transition.assert_called_once_with(["job-1298"], "ERROR_ANTICIPATE_SCAN")
         release.assert_called_once_with("job-1298")
 
     @pytest.mark.asyncio
