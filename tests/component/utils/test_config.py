@@ -4770,6 +4770,16 @@ class TestAst1154EncodedGradeSetCompleteness:
         assert self._MARKER not in ots["grades_encoded_vet_meta"]["payload_instructions"]
         assert self._MARKER not in ots["grades_json"]["payload_instructions"]
 
+    def test_grade_count_not_template_on_multi_vector_types(self) -> None:
+        # Bug-repro: example lines' code count must not read as a segment-count template.
+        phrase = "their code count is not a template"
+        assert phrase in cfg._ENCODED_GRADE_SET_COMPLETENESS
+        ots = cfg.ASTRAL_CONFIG["output_types"]
+        for key in self._MULTI:
+            assert phrase in ots[key]["payload_instructions"], key
+        assert phrase not in ots["grades_encoded_vet_meta"]["payload_instructions"]
+        assert phrase not in ots["grades_json"]["payload_instructions"]
+
 
 class TestAst1155GradedRetryHoldings:
     """AST-1155: graded-trigger *_RETRY holdings + dispatch claim companions."""
