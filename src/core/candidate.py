@@ -1430,27 +1430,61 @@ def opt_out_surfer_consent(candidate_id: str, *, debug: bool = False) -> dict:
     return surfer_consent_dto(candidate_id)
 
 
+# Encoded-grade decode (agent._GRADE_SEG) only matches two uppercase letters.
+_RUBRIC_CODE_RE = re.compile(r"^[A-Z]{2}$")
 # AST-2008: last-letter sequence for re-lettering a duplicate rubric code (X, Y, Z, then A… wrapping).
 _RUBRIC_CODE_UPTICK_LETTERS = "XYZABCDEFGHIJKLMNOPQRSTUVW"
+_ASCII_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _derive_rubric_code(label: str, reserved: set) -> Optional[str]:
+    """First free two-letter code for a label: word initials, then first-letter uptick, then every AA–ZZ (AST-2126)."""
+    words = re.findall(r"[A-Z]+", (label or "").upper())
+    if len(words) > 1:
+        base = words[0][0] + words[1][0]
+    elif words and len(words[0]) > 1:
+        base = words[0][:2]
+    else:
+        base = ""
+    pool = ([base] + [base[0] + ch for ch in _RUBRIC_CODE_UPTICK_LETTERS]) if base else []
+    # Full AA–ZZ enumeration so a free code is always found while one exists.
+    pool += [a + b for a in _ASCII_UPPER for b in _ASCII_UPPER]
+    return next((c for c in pool if c not in reserved), None)
 
 
 def _uptick_duplicate_rubric_codes(criteria: list, artifact_key: str) -> list:
-    """Re-letter later duplicate codes in one rubric list; first occurrence keeps its code (AST-2008).
-    Pure: returns a new list; a re-lettered item is a shallow copy (inputs may be EMBEDDED_* refs)."""
-    # Every original code is reserved up front so a re-letter never takes a later item's own code.
+    """Make every code a decodable two-letter code (fill blank/invalid from the label), then re-letter later
+    duplicates; first occurrence keeps its code (AST-2008, AST-2126).
+    Pure: returns a new list; a changed item is a shallow copy (inputs may be EMBEDDED_* refs)."""
+    # Every valid original code is reserved up front so a fill/re-letter never takes a later item's own code.
     reserved = {
         str(c.get("code") or "").strip().upper()
         for c in criteria
-        if isinstance(c, dict) and str(c.get("code") or "").strip()
+        if isinstance(c, dict) and _RUBRIC_CODE_RE.match(str(c.get("code") or "").strip().upper())
     }
     seen: set = set()
     out: list = []
     for item in criteria:
-        code = str(item.get("code") or "").strip() if isinstance(item, dict) else ""
-        # Non-dict / blank code: not a duplicate concern (sync assigns V{idx}).
-        if not code or code.upper() not in seen:
-            seen.add(code.upper())
+        # Non-dict: sync raises on it — pass through untouched.
+        if not isinstance(item, dict):
             out.append(item)
+            continue
+        code = str(item.get("code") or "").strip().upper()
+        if not _RUBRIC_CODE_RE.match(code):
+            # Blank / V01-style / wrong length: the model would echo a code _GRADE_SEG can never match.
+            label = (item.get("label") or "").strip()
+            new_code = _derive_rubric_code(label, reserved)
+            if new_code is None:
+                raise ValueError(f"Rubric {artifact_key!r}: no free two-letter code for {label!r}")
+            reserved.add(new_code)
+            seen.add(new_code)
+            logger.warning("Rubric %r: invalid code %r on %r -> %s", artifact_key, item.get("code"), label, new_code)
+            out.append({**item, "code": new_code})
+            continue
+        if code not in seen:
+            seen.add(code)
+            # Store the normalized form (e.g. " tp" -> "TP"); untouched when already exact.
+            out.append(item if item.get("code") == code else {**item, "code": code})
             continue
         label = (item.get("label") or code).strip()
         new_code = next(
@@ -1564,8 +1598,9 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
 
 
 def rubric_dispatch_error(candidate_id: Optional[str], task_key: str) -> Optional[str]:
-    """User-facing reason a rubric-backed task can't Auto/Run: duplicate codes or empty rubric (AST-2091).
-    None when the rubric is fine, the task isn't rubric-backed, or there's no candidate (key gate owns that). Pure read."""
+    """User-facing reason a rubric-backed task can't Auto/Run: duplicate codes, invalid codes, or empty rubric
+    (AST-2091, AST-2126). None when the rubric is fine, the task isn't rubric-backed, or there's no candidate
+    (key gate owns that). Pure read."""
     # TASK_CONFIG.rubric_artifact, not rubric_owner_task_key(): craft_* tasks must stay runnable on an empty rubric.
     rk = (TASK_CONFIG.get((task_key or "").strip()) or {}).get("rubric_artifact")
     owner = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(rk) if rk else None
@@ -1576,7 +1611,15 @@ def rubric_dispatch_error(candidate_id: Optional[str], task_key: str) -> Optiona
     criteria = rubric_criteria_for_task(cid, owner)
     if not criteria:
         return f"Rubric '{rk}' is empty for this candidate."
-    # strip().upper() matches _vector_labels_map; blank codes skipped (sync assigns V{idx}).
+    # Strict on the stored value: the prompt shows it as-is, and _GRADE_SEG never matches a V01 / lowercase echo.
+    bad = sorted({
+        str(c.get("code") or "").strip() or "(blank)"
+        for c in criteria
+        if isinstance(c, dict) and not _RUBRIC_CODE_RE.match(str(c.get("code") or "").strip())
+    })
+    if bad:
+        return f"Rubric '{rk}' has invalid vector codes: {', '.join(bad)} — re-save the rubric"
+    # strip().upper() matches _vector_labels_map.
     counts: Dict[str, int] = {}
     for c in criteria:
         code = str(c.get("code") or "").strip().upper() if isinstance(c, dict) else ""

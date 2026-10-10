@@ -1752,19 +1752,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Hedy | engineer | `/home/susan/.cursor/chats/4eaeab051343ea0f36ee897b3311beac/3243ca1c-f682-4a1e-ae55-93a87d832f4e/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/4eaeab051343ea0f36ee897b3311beac/a4888efb-2303-4b65-8bd1-80571030782e/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/4eaeab051343ea0f36ee897b3311beac/86e4e46e-ceee-4b82-b1e7-9c91c80cb878/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/de9faf08e19c239b8f0a0bd6ddfecd80/defa03f0-ec16-4084-bb6e-c0ad8d9d68be/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/de9faf08e19c239b8f0a0bd6ddfecd80/f69208f6-63ec-42dc-9756-35526cf02336/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/de9faf08e19c239b8f0a0bd6ddfecd80/8ba51883-018f-4dd4-9c53-876873f2b880/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-2116 (parent) | ftr/AST-2116-missing-grade-fail |
-| AST-2124 | sub/AST-2116/AST-2124-missing-grade-fail |
-| AST-2125 | sub/AST-2116/AST-2125-missing-grade-fail-tests |
+| AST-2112 (parent) | ftr/AST-2112-do-rubric-undecodable-codes |
+| AST-2126 | sub/AST-2112/AST-2126-do-rubric-undecodable-codes |
+| AST-2127 | sub/AST-2112/AST-2127-do-rubric-code-tests |
 
-**Epic worktree:** `astral-AST-2116/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2112/` — one active sub checked out at a time.
 
 ## Joan fix-board — AST-2089
 
@@ -2180,7 +2180,6 @@ Agent repro exercises the **real** decode/validate bar (not a mock of salvage lo
 | Gate | Parent shape | Next action |
 |------|--------------|-------------|
 | **PROCEED** (C7 complete) | **Orphaned** AST-2015 | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). After Susan UAT, merge sub straight to **`origin/dev`** (with AST-2089 product already on ftr). Stack **AST-2089** + **AST-2090** for any merge that needs salvage coverage before relying on component consult/agent suites. |
-
 
 ## Bug: AST-2124 — Missing rubric grade description fails only that entity; letter0 decodes as X0
 
@@ -2626,6 +2625,276 @@ context_tokens≈14500
 ---
 
 **Docs-acceptance (AST-2124):** no test-tree change on this ticket. Betty's `[board-betty] TESTS: REVISE` coverage, including the `[bug-repro]` and the AST-2053 decode-test update (letter0 → X0), lands on gap child AST-2125.
+
+## Bug: AST-2126 — Do rubric codes always decodable; name the empty-grade case
+
+**Linear:** [AST-2126](https://linear.app/astralcareermatch/issue/AST-2126) · **Mini-parent:** [AST-2112](https://linear.app/astralcareermatch/issue/AST-2112) (dupes AST-2113 / AST-2118 / AST-2119) · **Publish ref:** `sub/AST-2112/AST-2126-do-rubric-undecodable-codes` · **Project:** Astral Dispatcher
+
+**Canon:** `docs/canon-index.md` is not present on this tree — carried from the AST-1996 block above: `patt.task.dispatch-retry` (read — invalid response for an entity → retry or error by *current* state), `patt.entity.batch-processing` (read). Id-only for make-fix: `stat.logging.warning`, `stat.logging.debug`.
+
+### As-is
+
+Every Somerset Do run since 2026-10-09 (`grade_do` and `meteorite_grade_do`, 1-job batches, two hosts, 73–83 output tokens) raises `IncompleteGradeSetError: _render_score: missing vectors [...]` naming **all 11** Do labels and lands `FAILED_TECHNICAL_DO` / `METEORITE_FAILED_TECHNICAL_DO`. The failure text says nothing about what the model actually returned.
+
+### To-be
+
+Every saved rubric criterion carries a code the encoded-grade decoder can match (`[A-Z]{2}`), so a well-formed reply scores. A rubric with an undecodable code is repaired at save and shown Invalid on Scheduled Actions until it is. A reply that yields no grade segments is a per-entity decode failure whose reason carries the raw reply (AST-1996 route), not a silent `grades: []` row. AST-1155 retry-then-error is unchanged.
+
+### Repro
+
+No DB — monkeypatch the rubric the letter-pipe fallback reads (run 2026-10-10 on `01606b791`):
+
+```python
+from src.core import consult as c
+from src.utils.config import TASK_CONFIG
+rubric = [{"code": f"V{i:02d}", "label": f"Vector {i}", "content": "x", "importance": 5} for i in range(1, 12)]
+c._rubric_criteria_for_cfg = lambda cid, cfg: rubric
+cfg = TASK_CONFIG["grade_do"]            # output_type grades_encoded_notes
+ctx = {"batch_entities": [{"astral_job_id": "J0", "state": "PASSED_JD"}],
+       "vector_labels": c._vector_labels_map(rubric)}
+c._normalize_rubric_task_response("grade_do", cfg,
+    {"agent_payload": "000|" + "|".join(f"V{i:02d}A3" for i in range(1, 12)) + "|Solid fit"}, ctx)
+# today: {'jobs': [{'grades': [], 'possible_job_links': [], 'astral_job_id': 'J0'}]}
+c._normalize_rubric_task_response("grade_do", cfg,
+    {"agent_payload": "This candidate is a strong fit."}, ctx)
+# today: identical — {'jobs': [{'grades': [], 'possible_job_links': [], 'astral_job_id': 'J0'}]}
+```
+
+Either row then fails `_require_complete_grade_set` with every label missing — the production symptom exactly.
+
+Save side: `candidate._uptick_duplicate_rubric_codes([{"code": "", "label": "Hands-On Technical Partnership", …}], "do_rubric")` passes the blank code through, and `database.sync_rubric_vectors_from_criteria` stores it as `V01` (`f"V{idx + 1:02d}"`).
+
+### Root cause
+
+**Staging evidence unreachable from this environment.** The worktree's `data/astral.db` (symlink to `~/astral/data/astral.db`) has zero `rubric_vector` and zero `job` rows; no staging DB / Railway access here. So Somerset's live `grade_do` codes and the raw reply for job `cfcccdcb-1c07-4b23-9a46-834382f2ef42` (batch `meteorite_grade_do-3f837cd7-…`) are **not** confirmed. The plan closes both hypotheses.
+
+1. **Save path can mint undecodable codes.** `sync_rubric_vectors_from_criteria` (`src/data/database.py`) gives a blank code `V{idx+1:02d}`; the pre-save helper `_uptick_duplicate_rubric_codes` (`src/core/candidate.py`) deliberately skips blank codes ("sync assigns V{idx}") and never checks shape. `_GRADE_SEG` (`src/core/agent.py`) is `^[A-Z]{2}[grade][0-5]$`, so the prompt teaches the model codes the decoder can never match. `rubric_dispatch_error` checks only empty rubric + duplicate codes, so nothing flags it.
+2. **Zero-segment replies are silently empty (correction to the bug's "notes fold" wording).** On a 1-job batch neither `V01A3`-style segments nor prose ever reach `_decode_payload`: `_should_decode_as_encoded_line` finds no `_GRADE_SEG` match, so `_normalize_rubric_task_response` falls to `_job_from_letter_pipe`, which returns `grades: []` (proved by Repro). The notes fold in `_decode_payload` only applies when *some* line has a valid segment. No `decode_failure`, no raw reply in any log line.
+3. **`_require_complete_grade_set` reports half the diff.** It raises on `missing` before ever reporting `unknown`, so a reply with wrong-but-valid-shape codes looks identical to an empty reply.
+
+Why technical, not the retry holding: consistent with a second strike from `*_RETRY` (AST-1155), unconfirmed against state history — no change; retry-then-error is the contract.
+
+### Proposed change
+
+One `code(AST-2126)` commit; steps 1–5 are inside AST-2126 `## Scope` (step 5 per the amended Technical scope line: "`src/core/consult.py`: … **Modified function** `_normalize_rubric_task_response`: for `grades_encoded_notes` jobs, a letter-pipe fallback row with zero grades becomes one `decode_failures` entry per batch entity (raw reply as reason) instead of a silent `grades: []` row." — amended per AST-2126 `[scope-gate]`).
+
+**1. `src/core/candidate.py` — pre-save helper fills/repairs codes.**
+
+- Module constant above `_RUBRIC_CODE_UPTICK_LETTERS`:
+
+  ```python
+  # Encoded-grade decode (agent._GRADE_SEG) only matches two uppercase letters.
+  _RUBRIC_CODE_RE = re.compile(r"^[A-Z]{2}$")
+  ```
+
+- New private `_derive_rubric_code(label: str, reserved: set) -> Optional[str]` directly above `_uptick_duplicate_rubric_codes`: `words = re.findall(r"[A-Z]+", label.upper())`; base = first letters of the first two words, or the first two letters of a single word of ≥2 letters, else `""`. Candidate order: `base`, then `base[0] + ch` for `ch in _RUBRIC_CODE_UPTICK_LETTERS` (only when base is non-empty), then every `a + b` over `A–Z × A–Z`. Return the first not in `reserved`, else `None`. Full enumeration — no cap.
+- `_uptick_duplicate_rubric_codes` (keep the name — Betty's tests reference it): docstring → "Make every code a decodable two-letter code (fill blank/invalid from the label), then re-letter later duplicates; first occurrence keeps its code (AST-2008, AST-2126)." Loop per item:
+  - Non-dict → append unchanged (sync still raises on it).
+  - `code = str(item.get("code") or "").strip().upper()`; `reserved` = uppercase originals that match `_RUBRIC_CODE_RE` (built up front, as today).
+  - Code fails `_RUBRIC_CODE_RE` → `new_code = _derive_rubric_code(label, reserved)`; `None` → `raise ValueError(f"Rubric {artifact_key!r}: no free two-letter code for {label!r}")` (caller → HTTP 400; unlike Decision C an invalid code is never decodable, so it can't be kept). Else add to `reserved` and `seen`, `logger.warning("Rubric %r: invalid code %r on %r -> %s", artifact_key, item.get("code"), label, new_code)`, append `{**item, "code": new_code}`, continue.
+  - Valid code not yet seen → append (shallow copy with the uppercased code only when the raw value differs, e.g. `" tp"`), continue.
+  - Valid duplicate → existing uptick branch unchanged.
+- `rubric_dispatch_error`: after the empty check and **before** the duplicate check:
+
+  ```python
+  bad = sorted({
+      str(c.get("code") or "").strip() or "(blank)"
+      for c in criteria
+      if isinstance(c, dict) and not _RUBRIC_CODE_RE.match(str(c.get("code") or "").strip())
+  })
+  if bad:
+      return f"Rubric '{rk}' has invalid vector codes: {', '.join(bad)} — re-save the rubric"
+  ```
+
+  Update the docstring ("duplicate codes, invalid codes, or empty rubric") and replace the "blank codes skipped (sync assigns V{idx})" comments here and in the helper.
+
+**2. `src/data/database.py::sync_rubric_vectors_from_criteria` — no fallback, reject bad codes.** Add `import re` to the stdlib imports. Replace the `or f"V{idx + 1:02d}"` line with:
+
+```python
+code = (item.get("code") or "").strip().upper()
+# Must match agent._GRADE_SEG's [A-Z]{2}; candidate save fills/repairs codes before sync (AST-2126).
+if not re.fullmatch(r"[A-Z]{2}", code):
+    raise ValueError(f"criterion {idx + 1} code {item.get('code')!r} is not two letters A-Z")
+```
+
+Same raise semantics as the existing "content is empty" raise in the same loop.
+
+**3. `src/core/consult.py::_require_complete_grade_set` — one reason, both halves.**
+
+```python
+missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
+parts = []
+if missing:
+    parts.append(f"missing vectors {sorted(missing)}")
+if extra:
+    parts.append(f"unknown vectors {sorted(extra)}")
+if parts:
+    raise IncompleteGradeSetError("_render_score: " + "; ".join(parts))
+```
+
+Single-side messages stay byte-identical; same class, same routing.
+
+**4. `src/core/agent.py::_decode_payload` — zero-segment notes line → decode failure.** Right after the existing trailing-content `if meta and not with_meta and not with_notes:` block:
+
+```python
+if with_notes and not grade_segs:
+    # A notes-only line has no grades to score — retry the entity, keep the raw line (AST-2126).
+    decode_failures.append({
+        id_key: ent[id_key],
+        "pos": pos,
+        "reason": f"[{task_key}] no grade segments in encoded line: {line!r}",
+    })
+    continue
+```
+
+Add to the docstring's decode_failures sentence: "…and a `grades_encoded_notes` line with no grade segments". Reachable when another line in the payload carries a valid segment (multi-entity batches).
+
+**5. `src/core/consult.py::_normalize_rubric_task_response` — letter-pipe zero-grade → decode failures.** In the `isinstance(payload, str)` branch, after `row = _job_from_letter_pipe(text, task_config, ctx)` and before the company/job returns:
+
+```python
+if not company_entity and task_config.get("output_type") == "grades_encoded_notes" and not row.get("grades"):
+    # No decodable grades anywhere in the reply — every entity retries with the raw reply (AST-2126).
+    return {"jobs": [], "decode_failures": [
+        {"astral_job_id": e.get("astral_job_id"), "pos": i,
+         "reason": f"[{task_key}] no grade segments in reply: {text!r}"}
+        for i, e in enumerate(batch_entities)
+    ]}
+```
+
+This is the step that covers the production case (1-job batch, `V01A3` or prose). `_run_batch_consult` already routes `decode_failures` per entity (AST-1996); `_validate_response_schema` accepts an empty `jobs` list (AST-1996 Proposed change §2). Raw reply untruncated in the reason.
+
+**6. Operator step (staging, no repo change — after deploy):**
+
+1. Read-only first: Somerset `rubric_vector` rows for owner `grade_do` (`current = 1` — codes + labels), the stored raw reply for job `cfcccdcb-1c07-4b23-9a46-834382f2ef42`, and its state history. Post them on AST-2112 — this settles which hypothesis held.
+2. Confirm Scheduled Actions shows the Somerset Do tasks **Invalid** ("invalid vector codes") if codes are `V01`-style.
+3. Open Somerset's Do rubric in Artifacts and Save unchanged — step 1 assigns derived two-letter codes; sync retires the `V*` rows and inserts the new ones. Confirm the tasks flip valid.
+4. If step 1 shows proper 2-letter codes already, the defect is the model replying without segments: steps 4–5 make the next failure log carry the raw reply; that diagnosis is a follow-up, not this ticket.
+
+⚠️ **Decision — keep the helper name.** `_uptick_duplicate_rubric_codes` now also fills codes; renaming would break AST-2008 tests and bible rows for no behavioral gain.
+
+⚠️ **Decision — dispatch gate is strict on the stored value.** A stored `tp` is Invalid (prompt shows it as-is; `_GRADE_SEG` won't match a lowercase echo). Save uppercases, so a re-save repairs it.
+
+⚠️ **Decision — no `_GRADE_SEG` change.** Widening the decoder to `V01` would change the AST-357 wire contract for every encoded task; the fix is on the code supply side.
+
+### Blast radius
+
+- **`_uptick_duplicate_rubric_codes` / `apply_rubric_vectors_save`:** shared by UI rubric save and craft persist (all rubric artifacts, not just Do). Any rubric with blank/invalid codes gets new codes on its next save; `rubric_vector` history (AST-2066) is keyed by code, so a re-coded criterion starts a fresh version chain. Embedded QC/GC/RC are already valid.
+- **`sync_rubric_vectors_from_criteria`:** also called by `scripts/migrations/backfill_rubric_vectors.py`, which has its **own** `V{idx}` fallback (line 75, out of scope) — a re-run with blank-coded legacy criteria now raises in sync instead of writing `V01`. One-shot AST-723 migration; flag only.
+- **`rubric_dispatch_error`:** callers `dispatcher` (Auto gate), `task_performance` cache, four `api_admin` sites — any candidate with stored invalid codes turns Invalid / blocks Auto until re-saved (intended).
+- **`_require_complete_grade_set`:** message changes only when both halves are non-empty; routing is by exception class.
+- **`_decode_payload` / `_normalize_rubric_task_response`:** reachable only for `grades_encoded_notes` (grade_do/get/like, meteorite twins); other output types unchanged. Admin ad-hoc test on such a reply now shows `decode_failures` instead of an empty grade row.
+- **Tests assuming today's behavior (Betty — make-fix does not edit):** `test_uptick_is_pure_and_passes_non_dict_and_blank_codes` (blank now filled — flips); any rubric-vector sync test relying on `V01` for a blank code; any consult test asserting the exact message when both missing and unknown are present; letter-pipe tests for `grade_*` with zero grades.
+
+### What must still hold
+
+- **AST-1155:** incomplete/extra sets raise `IncompleteGradeSetError`; first strike → `*_RETRY`, second → `error_state`; complete sets incl. `X`/`0` score unchanged.
+- **AST-1996:** `decode_failures` shape (id, pos, reason), clean row wins, no key on clean payloads.
+- **AST-2008:** first occurrence keeps its code; later duplicates re-lettered via `_RUBRIC_CODE_UPTICK_LETTERS`; exhausted duplicate kept + WARNING (Decision C).
+- **AST-2091:** empty and duplicate rubric messages unchanged; craft_* tasks still runnable on an empty rubric.
+- **`_GRADE_SEG`** unchanged; no code coercion at decode.
+
+
+### Fix board — Joan (F2)
+
+[board-joan] CANON: OK
+
+**Ticket:** AST-2126 (Plan Ready, Hedy) · mini-parent AST-2112 · publish ref `sub/AST-2112/AST-2126-do-rubric-undecodable-codes` @ `cfd59ab62`.
+
+**Diff note (read-only):** `origin/ftr/AST-2112-do-rubric-undecodable-codes...origin/sub/AST-2126-do-rubric-undecodable-codes` is **plan-fix + registry mirrors + `scripts/ci/ftr-merge-ready.sh` only** — no `src/` yet. This pass judges the **`## Bug: AST-2126`** patch (As-is / To-be / Root cause / Proposed change / Blast radius / What must still hold), not Radia’s later diff score.
+
+**Cited roster (issue doc, AST-1996 precedent):** `patt.task.dispatch-retry` (read), `patt.entity.batch-processing` (read); id-only for make-fix: `stat.logging.warning`, `stat.logging.debug`. `docs/canon-index.md` absent on this tree; overlap checked via `canon/directives/active/patt.task.dispatch-retry.md`, `patt.entity.batch-processing.md`, and roster grep — **no active directive** defines rubric criterion code shape, `V{idx}` sync fallback, or `_GRADE_SEG` width.
+
+**One-question triage — does the proposed change conflict with or require updating in-force canon?**
+
+**No.** Same class as AST-1996 / AST-2089 fix-board OK:
+
+1. **`patt.task.dispatch-retry`** — Steps 4–5 route zero-segment / letter-pipe-empty replies through the **existing** `decode_failures` → per-entity `_consult_batch_fail_dest` path (AST-1996). The patch explicitly preserves AST-1155 incomplete-set semantics (`IncompleteGradeSetError`, first `*_RETRY` / second `error_state`) for true missing/extra vector sets. More entities seeing decode-failure routing instead of silent `grades: []` **implements** “invalid response → transition by current state,” not a second retry loop or a failure left in trigger state.
+
+2. **`patt.entity.batch-processing`** — No claim/release / `batch_size` / process-only-claimed-rows edits. Blast radius is consult decode, rubric save/sync, and dispatch Invalid messaging.
+
+3. **`stat.logging.warning` / `stat.logging.debug`** — New `logger.warning` on code repair is **use** of the existing logging statute, not an amendment. No new logging directive or level contract.
+
+4. **No statute amendment like AST-2053** — That fix needed **REVISE** because product decode contradicted draft `astral.agent.confidence-bounds` text. Here the plan **refuses** `_GRADE_SEG` widening (Decision: wire contract stays; fix is code supply + diagnostics). Active corpus does not require `V01`-style fallbacks or forbid `decode_failures` on letter-pipe fallback.
+
+5. **`rubric_dispatch_error` “invalid vector codes”** — Product/AST-2091 messaging family; not encoded in `canon/directives/active`. “What must still hold” keeps empty/duplicate strings and craft_* empty-rubric behavior; adding a third Invalid reason does not contradict any in-force pattern id on the roster.
+
+6. **Recorded decisions** (`_uptick_duplicate_rubric_codes` name, strict stored-code Invalid, no decoder coercion) are implementation choices already in the patch — not an open Archie precedent fork.
+
+**F3 (`validate-plan` fix mode):** not indicated from this board pass.
+
+**ESCALATE:** not indicated — bounded blast radius, scope-gate on `_normalize_rubric_task_response` already answered without widening epic scope.
+
+
+### Radia review — AST-2126 (F7)
+
+[code-rubric] PROCEED (Commit: 4e9731267) Rubric decode + diagnostics
+
+**Ticket:** AST-2126  
+**Publish ref:** `4e97312678aa170ff44f597d47fdc81fa0f8fcc2` (`origin/sub/AST-2112/AST-2126-do-rubric-undecodable-codes`)  
+**Diff base:** `origin/ftr/AST-2112-do-rubric-undecodable-codes`  
+**Corpus:** `c04b07deda8f5a750afd473ec847d06ed2207065`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.dispatch-retry | A | | Zero-segment / letter-pipe-empty → `decode_failures` → existing `_consult_batch_fail_dest`; `IncompleteGradeSetError` path unchanged for true incomplete sets |
+| patt.entity.batch-processing | A | | No claim/release, `batch_size`, or batch-id processing changes |
+| stat.logging.warning | A | | Code-repair and duplicate-resolution warnings on rubric save use `logger.warning` with artifact, code, label context |
+| stat.logging.debug | X | | No new or altered `logger.debug` in the product diff |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan **fix-board** CANON: OK @ plan tip `cfd59ab62`; no `validate-plan` fix-mode column)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — split to AST-2127 (fix-board TESTS: REVISE; repro and bible holes assigned to sibling; no `[bug-repro]` on this sub by design).
+
+**## What must still hold — OK**
+
+- **AST-1155:** `_require_complete_grade_set` still raises `IncompleteGradeSetError`; single-sided messages unchanged; combined missing+unknown only when both halves non-empty; batch/single-entity routing via `_consult_batch_fail_dest` / `_all_x_fail_dest` untouched in the diff.
+- **AST-1996:** `decode_failures` entries carry `astral_job_id`, `pos`, `reason`; `_run_batch_consult` still subtracts decode-failed ids from `missing` and transitions per entity; new paths return `jobs: []` plus failures (no silent `grades: []` row for `grades_encoded_notes` letter-pipe fallback).
+- **AST-2008:** First valid occurrence keeps code; duplicate branch + Decision C (exhausted uptick → keep + WARNING) preserved after fill/normalize pass.
+- **AST-2091:** Empty-rubric and duplicate-code strings unchanged; invalid-code gate runs before duplicate aggregation; `craft_*` still short-circuits on empty criteria before invalid-code scan.
+- **`_GRADE_SEG`:** Unchanged in `agent.py`; fix is code supply + diagnostics only.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `scripts/ci/ftr-merge-ready.sh` and several `docs/features/**` registry mirror edits ride the sub via ftr/dev sync — not AST-2126 product scope; no test-bible or pytest changes on this tip.
+- **test debt (AST-2127):** Hedy’s Tests Passed note — 2 expected candidate test breaks + 27 fixture failures from non–`[A-Z]{2}` codes in `sync_rubric_vectors_from_criteria` callers — tracked on AST-2127, not scored as product defects on this diff.
+- **operator step 6:** Somerset staging read / rubric re-save remains post-deploy operator work per plan; not a code gap on tip `4e9731267`.
+
+## What’s solid
+
+- Product diff matches plan-fix steps 1–5: `_derive_rubric_code` + strict sync, `rubric_dispatch_error` invalid-code gate, combined incomplete reason, `_decode_payload` zero-segment notes line, `_normalize_rubric_task_response` production letter-pipe path.
+- Production 1-job `V01`/prose case now surfaces raw reply on the AST-1996 retry route instead of masking as empty grades → technical fail with all labels “missing.”
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-2112, live `ftr`) | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Merge path stays mini-parent / `merge-child` rules when siblings allow. |
+
+
+### Test routing — AST-2126
+
+fix-board `[board-betty] TESTS: REVISE` → the repro, the two broken candidate tests, and the 27 sync fixtures that pass codes that are not two letters go to gap sibling [AST-2127](https://linear.app/astralcareermatch/issue/AST-2127) (`sub/AST-2112/AST-2127-do-rubric-code-tests`). This sub ships product and docs only, so it is docs-acceptance for the test tree.
 
 ## Bug: AST-2125 — Missing-grade per-entity fail + letter0 → X0 tests and bible (test gap for AST-2124)
 
@@ -3137,3 +3406,197 @@ context_tokens≈18500
 **Recommended actions (downstream only — not executed here):** Append artifact; `docs(AST-2125): Radia review — clean`; push sub; post slim upshot `--as radia`; advance per §3h.
 
 ---
+
+## Bug: AST-2127 — Do rubric code + zero-grade decode tests + bible (test gap for AST-2126)
+
+- **Linear:** [AST-2127](https://linear.app/astralcareermatch/issue/AST-2127) (test-gap child of mini-parent [AST-2112](https://linear.app/astralcareermatch/issue/AST-2112); sibling of [AST-2126](https://linear.app/astralcareermatch/issue/AST-2126), merged on `origin/ftr/AST-2112-do-rubric-undecodable-codes` @ `f83f8d71f`)
+- **Publish ref:** `sub/AST-2112/AST-2127-do-rubric-code-tests` · **ftr:** `ftr/AST-2112-do-rubric-undecodable-codes` · **pre-fix base:** `54e186b79`
+- **Canon:** none cited (AST-2127 `## Citations`: test tree + bible only).
+- **Explicit scope (AST-2127 `## Scope`):** `tests/component/core/test_consult.py`, `tests/component/core/test_agent.py`, `tests/component/core/test_candidate.py`, `tests/component/data/database/test_rubric_vectors.py`, `docs/test-bible/core/{consult,agent,candidate}.md`, `docs/test-bible/data/database/rubric_vectors.md`. The Technical scope says "new and revised component tests only", which covers revising the 27 sync fixtures. **Betty lands all of it in qa-fix**; this block sets the bar. **No `src/**` or `data/**` change.**
+- **Binding input:** Betty's `[board-betty] TESTS: REVISE` on AST-2126 (verbatim in AST-2127's Description), the AST-2126 block above (`### Proposed change` steps 1–5, `### What must still hold`), and Hedy's AST-2126 make-fix test note (29 new failures).
+
+### As-is
+
+On the ftr tip `f83f8d71f`, nothing pins AST-2126's five product changes. Every one of them behaves differently on the base, yet no test fails there for the right reason. Running the five touched files under `/home/susan/astral/.venv/bin/python` (`test_agent.py`, `test_candidate.py`, `test_consult.py`, `test_rubric_vectors.py`, `tests/component/scripts/test_backfill_rubric_vectors.py`) gives **122 failed / 1196 passed / 7 skipped**. Of those, 93 failures are a pre-existing environment baseline (e.g. `no such table: job`, host probes) and are identical before AST-2126. The other **29 are new with AST-2126**:
+
+- **2 candidate tests whose assertions are now stale:**
+  - `TestAst2008RubricCodeUptick::test_uptick_is_pure_and_passes_non_dict_and_blank_codes`: blank codes are now filled, not passed through.
+  - `TestAst2091RubricDispatchError::test_duplicates_case_insensitive_sorted_and_blank_codes_ignored`: the invalid-code reason now fires before the duplicate reason on ` tp` / `sa` / blank rows.
+- **27 fixture failures:** these tests seed `rubric_vector` by calling `db.sync_rubric_vectors_from_criteria(...)` with codes that aren't two uppercase letters (`G1` ×20, `V01` ×4, `CLR` ×2, `A` ×1). AST-2126 step 2 now raises `ValueError: criterion N code '…' is not two letters A-Z`.
+  - `test_agent.py` (13): `TestAst1486FeedbackEntityIdStamp` (2), `TestAst724VectorFeedbackCapture` (3), `TestAst809VectorFeedbackBatchMetadata` (2), `TestAst816VectorFeedbackCapture` (2), `TestAst820VectorFeedbackDebugTrace` (2), `TestAst862CleanParseFeedbackBlock` (2). Sync call sites are around lines 5760–6009 and 6289–6423.
+  - `test_rubric_vectors.py` (14): `TestAst723SyncRubricVectors::{test_fingerprint_change_retires_and_inserts_new_row, test_removed_code_retires_row}`, `TestAst724VectorFeedbackRows` (2), `TestAst725ListVectorFeedback` (2), `TestAst725AggregateVectorFeedback` (1), `TestAst808ListVectorFeedbackContent` (1), `TestAst809VectorFeedbackBatchMetadata` (2), `TestAst2066RubricCriterionVersions` (4). Sync call sites are around lines 221–527.
+
+### To-be
+
+- A `[bug-repro]` on `_normalize_rubric_task_response` is red on `54e186b79` and green on the tip.
+- Steps 1–4 of AST-2126 each have a node that is red on the base and green on the tip.
+- The 2 candidate tests assert the new contract.
+- The 27 fixtures seed valid two-letter codes and keep asserting what they asserted before.
+- The bible names every new and revised node.
+- On the tip, the five-file run drops to the 93-failure environment baseline, with no failure from AST-2126.
+
+### Repro
+
+Verified read-only by running one probe script on both trees. The base was a `git archive 54e186b79` export with `ASTRAL_DB_DIR` pointed at an empty temp dir. The probe monkeypatches `consult._rubric_criteria_for_cfg` and `candidate.rubric_criteria_for_task`, with no DB writes. Run with `/home/susan/astral/.venv/bin/python`:
+
+| Probe | `54e186b79` (pre-fix) | tip `f83f8d71f` |
+| --- | --- | --- |
+| `_normalize_rubric_task_response("grade_do", cfg, {"agent_payload": "000\|V01A3\|V02B4"}, {"batch_entities": [J0]})` | `{'jobs': [{'grades': [], 'possible_job_links': [], 'astral_job_id': 'J0'}]}` | `{'jobs': [], 'decode_failures': [{'astral_job_id': 'J0', 'pos': 0, 'reason': "[grade_do] no grade segments in reply: '000\|V01A3\|V02B4'"}]}` |
+| same, payload `"prose reply"` | same silent `grades: []` row | same shape, reason `… no grade segments in reply: 'prose reply'` |
+| `_decode_payload("grade_do", "grades_encoded_notes", "000\|AAA3\|ok\n001\|just notes", {J0, J1})` | J1 row `{'grades': [], 'notes': 'just notes'}`, no `decode_failures` | J0 row unchanged; J1 absent from `jobs`; `decode_failures` = `[{'astral_job_id': 'J1', 'pos': 1, 'reason': "[grade_do] no grade segments in encoded line: '001\|just notes'"}]` |
+| `_require_complete_grade_set([{label A}, {label B}], [{vector ZZ}])` | `_render_score: missing vectors ['A', 'B']` | `_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']` |
+| `_uptick_duplicate_rubric_codes([("", "Hands-On Technical Partnership"), ("V02", "Speaking Truth"), (" tp", "Tee"), ("TP", "Dup")], "do_rubric")` codes | `['', 'V02', ' tp', 'TX']` | `['HO', 'ST', 'TP', 'TX']` |
+| `rubric_dispatch_error("somerset", "grade_do")` over `[V01 "One", AB "Two"]` | `None` | `"Rubric 'do_rubric' has invalid vector codes: V01 — re-save the rubric"` |
+
+Sync rejection (step 2) needs the DB fixture, so it was proven by the 27 failures above (`ValueError: criterion 1 code 'G1' is not two letters A-Z`), not by the probe.
+
+### Root cause
+
+Fix-board routed AST-2126's test delta here, so the product landed with no repro or step coverage. The 29 reds are stale test contracts, not regressions:
+- The 2 candidate tests pin AST-2008/AST-2091's "blank code passes through / ignored" behaviour, which AST-2126 deliberately ended.
+- The 27 fixtures relied on sync accepting any string as a code. That is the `V{idx}` / free-form leniency AST-2126 removed. Production saves can't hit this, because they go through `_uptick_duplicate_rubric_codes` first.
+
+### Proposed change
+
+All of it is Betty's (qa-fix). Exact test names are her call; the assertions below are the bar. Run with `/home/susan/astral/.venv/bin/python` (the system interpreter lacks `nh3`, so `test_consult.py` won't collect without the venv).
+
+**1. `[bug-repro]` (`test_consult.py`): zero-grade letter-pipe becomes `decode_failures`.** Use `TASK_CONFIG["grade_do"]` and monkeypatch `consult._rubric_criteria_for_cfg` to a 2-criterion `V01`/`V02` rubric. For both a `"000|V01A3|V02B4"` payload and a prose payload, with a 1-job `batch_entities`, assert:
+- the result is `{"jobs": [], "decode_failures": [...]}` with exactly one entry;
+- the entry has `astral_job_id == "J0"` and `pos == 0`;
+- the entry's `reason` contains `"no grade segments in reply"` and the raw payload text.
+
+Add a 2-entity prose case asserting one entry per entity, `pos` 0 and 1. Add guards: a `grades_encoded_notes` letter-pipe reply that *does* yield grades is unchanged, and a company-entity task (`prefilter_company`) with zero grades still returns `{"companies": [row]}` with no `decode_failures`. **Red on `54e186b79`, green on the tip.** Tag the qa-fix handoff `[bug-repro]` with this node id.
+
+**2. Combined reason (`test_consult.py`).** `_require_complete_grade_set` with both missing and unknown vectors raises `IncompleteGradeSetError` with the message exactly `"_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']"`. The existing single-side message tests stay byte-identical and untouched.
+
+**3. Zero-segment notes line (`test_agent.py`).** Call `_decode_payload("grade_do", "grades_encoded_notes", "000|AAA3|ok\n001|just notes", ctx)` with a 2-entity `batch_entities`. Assert:
+- J0's row is unchanged, keeping `notes == "ok"`;
+- no J1 row is in `jobs`;
+- `decode_failures == [{"astral_job_id": "J1", "pos": 1, "reason": "[grade_do] no grade segments in encoded line: '001|just notes'"}]`.
+
+`test_ast1996_notes_type_tail_is_not_a_decode_failure` must stay green, untouched.
+
+**4. Candidate (`test_candidate.py`).**
+- **Revise `test_uptick_is_pure_and_passes_non_dict_and_blank_codes`.** Purity and non-dict pass-through stay. A blank code is now **filled**, and the filled item is a shallow copy with the input untouched. Expected codes for the probe list are `['HO', 'ST', 'TP', 'TX']`: a blank code derives from the label initials, `V02` is replaced, ` tp` is normalized to `TP`, and the duplicate `TP` is re-lettered to `TX`. A rename to `…_fills_blank_codes` is fine.
+- **Add fill edge cases.** A single-word label gives its first two letters, e.g. `"Leadership"` → `LE`. A label with no letters falls to the first free `AA…ZZ` code. A derived code collision moves to `base[0]` + the uptick letters, e.g. two `"Hands On"` blanks → `HO`, `HX`. Two WARNING lines are logged on fill (`invalid code … -> XX`).
+- **Revise `test_duplicates_case_insensitive_sorted_and_blank_codes_ignored`.** Split it in two:
+  - Duplicates over **valid** stored codes (e.g. `TP`, `TP`, `SA`, `SA`) still return the existing `"duplicate vector codes: SA, TP"` message.
+  - Rows with ` tp` / `sa` / blank now return `"Rubric '<rk>' has invalid vector codes: (blank), sa, tp — re-save the rubric"`: sorted, raw stripped values, blank shown as `(blank)`. Invalid wins over duplicate.
+- **New:** `rubric_dispatch_error` on `[V01, AB]` returns the invalid-codes message above. An empty rubric still returns the `is empty` message, and craft_* tasks are still `None` (AST-2091 guards unchanged).
+
+**5. Sync (`test_rubric_vectors.py`).**
+- **New:** `sync_rubric_vectors_from_criteria` raises `ValueError` matching `"code 'V01' is not two letters A-Z"` for `V01`, `""` (blank, no fallback), `"A"`, `"G1"` and `"CLR"`, and writes **no** `current = 1` row for that owner. A lowercase `"tp"` is stored as `TP`.
+- **Fixture revision (27 nodes in this file and `test_agent.py`, listed in As-is):** replace each invalid seed code with a two-letter code, applied consistently to every assertion, vector-review payload, `vector_code` filter and `list_rubric_vector_uuid_by_code` key that references it in the same test. Suggested mapping: `G1`→`GA`, `V01`→`VA`, `CLR`→`CL`, `A`→`AA`, `B`→`BB`. Test intent is otherwise unchanged; do not weaken or skip any assertion.
+
+**6. Bible.**
+- `docs/test-bible/core/consult.md`, `core/agent.md`, `core/candidate.md` and `data/database/rubric_vectors.md`: add an `AST-2126 · AST-2112` section, or rows in the existing AST-1996 / AST-2008 / AST-2091 / AST-723 sections, naming every new and revised node.
+- `candidate.md` rows ~1780–1783 (AST-2008 uptick) and the AST-2091 rows: update the "blank code pass through" / "blank codes ignored" wording to the fill / invalid-code contract.
+- `rubric_vectors.md` § AST-723: replace any "`V{idx}` fallback" wording with "codes not matching `[A-Z]{2}` raise".
+
+**7. Engineer side (Hedy).** No product commit on this ticket. `test-fix` runs Betty's manifest on the tip: the `[bug-repro]` node green (and red on `54e186b79`, per Betty's handoff), and items 2–5 green. It then re-runs the five-file baseline above, expecting **93 failed** (environment only, identical node set to the pre-AST-2126 run), the 29 AST-2126 reds gone, and no new failures.
+
+### Blast radius
+
+- Test tree and bible only; no product behaviour changes.
+- `test_api_candidate.py` V01 rubric-route tests (Betty's guard note) store explicit codes and don't go through sync. If any path there reaches sync, it fails the same way and the same two-letter fixture rule applies; flag it in the qa-fix handoff rather than widening scope silently.
+- `tests/component/scripts/test_backfill_rubric_vectors.py`: green on the tip. The script's own `V{idx}` fallback (AST-2126 Blast radius) is not exercised through sync by these tests. Out of scope.
+
+### What must still hold
+
+- AST-1996 notes-tail guard, AST-1155 single-side `missing` / `unknown` messages, AST-2008 duplicate re-letter (including Decision C exhaustion), and AST-2091 empty / duplicate messages: all asserted unchanged.
+- No test is skipped, xfailed, or loosened to absorb AST-2126; fixture code renames only.
+
+### Fix board — Joan (F2) — AST-2127
+
+[board-joan] CANON: OK
+
+**Ticket:** AST-2127 (Plan Ready, Hedy) · mini-parent AST-2112 · test-gap sibling of AST-2126 · publish ref `sub/AST-2112/AST-2127-do-rubric-code-tests` @ `7caaae194`.
+
+**Diff note:** `origin/ftr/AST-2112-do-rubric-undecodable-codes...origin/sub/AST-2112/AST-2127-do-rubric-code-tests` adds **only** the `## Bug: AST-2127` plan-fix block (+99 lines) in `docs/features/consult/ast-1155-incomplete-grades-retry-holding-never-technical-fail.md`. No `src/**`, `canon/**`, `data/**`, or test files on the sub yet — Betty’s `qa-fix` lands the tree; this pass judges the patch.
+
+**Citations / roster:** AST-2127 `## Citations`: **none** (“test tree and bible only”). The patch header repeats **Canon: none cited**. No frozen canon list to score; no roster row plausibly requires amendment for test-only work.
+
+**One-question triage — does the proposed change conflict with or require updating in-force statutes/patterns?**
+
+**No.** Same class as Joan fix-board **AST-2001** and **AST-2090**:
+
+1. **Scope** — Component and Technical scope are **tests** (`test_consult.py`, `test_agent.py`, `test_candidate.py`, `test_rubric_vectors.py`) and **`docs/test-bible/**` only**. Boundaries: no product `src/` or `data/`. Blast radius: “test tree and bible only; no product behaviour changes.”
+
+2. **What the work does** — Locks **AST-2126’s already board-reviewed product contract** (`[bug-repro]` on letter-pipe zero-grade → `decode_failures`, sync `[A-Z]{2}` rejection, invalid-code dispatch message, combined missing+unknown reason, zero-segment notes line, revised uptick/dispatch tests, 27 fixture code renames). That product intent was triaged **CANON: OK** on AST-2126 (`patt.task.dispatch-retry` alignment via existing `decode_failures` routing; no `_GRADE_SEG` widening; no statute text contradiction). This ticket **documents and asserts** that contract; it does not introduce new in-force law.
+
+3. **Bible edits** — Rows name nodes and replace stale “blank pass-through” / `V{idx}` fallback **wording** to match shipped AST-2126 behaviour. Test-bible blocks are **coverage manifests**, not corpus directives (per prior fix-board rationale on test-only siblings).
+
+4. **“What must still hold”** — Explicitly preserves AST-1996 notes-tail guard, AST-1155 single-side messages, AST-2008 Decision C, AST-2091 empty/duplicate strings — all **test assertions**, not canon patches.
+
+5. **REVISE / ESCALATE triggers absent** — No plan to amend `canon/directives/**`, no new pattern carve-out, no architectural fork (product fix stays on AST-2126; Hedy’s role here is `test-fix` verification per patch §7). Nothing like AST-2053’s required `astral.agent.confidence-bounds` statute move.
+
+**F3 (`validate-plan` fix mode):** not indicated from this board pass.
+
+**Relation to AST-2126:** Betty **REVISE** on AST-2126 routed the 29-test delta here; Joan **OK** on AST-2126 did not reserve a canon follow-up. AST-2127 closes the test gap without canon work.
+
+
+### Radia review — AST-2127 (F7)
+
+[code-rubric] PROCEED (Commit: ad3f0054a) Test gap locks AST-2126
+
+**Ticket:** AST-2127  
+**Publish ref:** `ad3f0054a377c475d96bf9ca75d638888e39b6a4` (`origin/sub/AST-2112/AST-2127-do-rubric-code-tests`)  
+**Diff base (lane):** `origin/ftr/AST-2112-do-rubric-undecodable-codes`  
+**Scored slice:** `7e32d7bfa` (`test(AST-2127): bug-repro…`), `c3d8b0956` (marker), `ad3f0054a` (post–`sync(dev)` restore); **excluded** from scoring: `4c2645474` / dev landing product + unrelated dev test carry (AST-2114/2115/2105/2106, AST-2124/2125 already on `origin/dev`)  
+**Corpus:** (none — `## Citations`: test tree + bible only; Joan fix-board CANON: OK, no frozen roster)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+(no frozen canon list on ticket — test/bible-only scope per plan-fix and Joan F2; canon pass not applicable)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan **fix-board** CANON: OK @ plan tip `7caaae194`; no `validate-plan` fix-mode column)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `TestAst2126ZeroGradeRepliesAreDecodeFailures::test_bug_repro_one_job_zero_grades_is_decode_failure` (2 params) calls `_normalize_rubric_task_response("grade_do", …)` with monkeypatched rubric and 1-job `batch_entities`. It asserts **`jobs == []`**, exactly **one** `decode_failures` entry with `astral_job_id == "J0"`, `pos == 0`, and `reason == f"[grade_do] no grade segments in reply: {payload!r}"` for both `000|V01A3|V02B4` and prose — concrete AST-2126 To-be, not a tautology; would fail on pre-fix silent `grades: []` (Betty/Hedy red→green at `54e186b79` vs ftr tip). Sibling methods in the same class cover plan steps 2–3 guards (2-entity prose, letter-pipe with grades, company task, combined missing+unknown).
+
+**`sync(dev)` merge integrity (ad3f0054a) OK** — `git diff origin/dev...ad3f0054a` on conflict files: `test_consult.py` adds **only** the AST-2126/2127 block after `TestAst2125MissingRubricDescription` (class count 1 on dev and tip). `test_agent.py` adds **`test_ast2126_notes_line_without_segments_is_decode_failure`**; **`test_ast2124_letter_conf0_decodes_as_x0`** present on both dev and tip (AST-2053 conf0→1 test correctly dropped per dev). Betty’s restore commit re-aligns AST-2124 expectations (X0) with dev — no dev test class dropped.
+
+**## What must still hold — OK**
+
+- **AST-1996:** `test_ast1996_notes_type_tail_is_not_a_decode_failure` untouched; zero-segment test is a separate node with J0 row + J1 `decode_failures`.
+- **AST-1155:** Combined-reason test is additive; bible states single-side `TestRenderScore` nodes byte-identical.
+- **AST-2008 / AST-2091:** Candidate rewrites (`test_uptick_is_pure_passes_non_dict_and_fills_blank_codes`, split duplicate vs invalid-code cases, `rubric_dispatch_error` on `V01`) match plan §4 probes.
+- **AST-2126 sync step 2:** `TestAst2126SyncRejectsUndecodableCodes` parametrizes `V01`, `""`, `A`, `G1`, `CLR` with `ValueError` + `not two letters A-Z`.
+- **Scope-amended API fixtures:** `TestAst2067CandidateVersionRoutes` seeds `VA`/`VB` (not `V01`/`V02`); routes/filters updated, assertions not loosened.
+- **No skip/xfail** introduced on scored AST-2127 nodes.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Dev sync carry on sub:** `origin/ftr...origin/sub` still includes non–AST-2127 test/bible deltas (resume/skipped UI tests, roster, config bible, large AST-1155 doc append from dev merges). Treat as **environment/stacking**, not AST-2127 product or test authorship; Hedy scope-gate: `ad3f0054a` touches no `src/`/`data/`; ftr…sub `src/` delta is dev auto-merge only.
+- **Bible scope-gate line:** `docs/test-bible/core/consult.md` § AST-2127 item 4 still claims `git diff ftr…sub -- src/ data/` is **empty**; post–`sync(dev)` that three-dot diff is **not** empty (dev product). Prefer Hedy’s Tests Passed comment + commits `c3d8b0956`/`ad3f0054a` for gate truth; optional bible wording fix is docs-only, not merge-blocking.
+- **Plan §7 vs manifest:** Six-file no-regression run (incl. `test_api_candidate.py`) matches scope-amended ticket Description; plan-fix §7 “five-file” prose is slightly stale — manifest § QA is authoritative.
+
+## What’s solid
+
+- AST-2127-owned delta vs ftr (`7e32d7bfa` + `ad3f0054a` on tests/bible): repro, agent notes-line, candidate, sync rejection, fixture renames, `api_candidate` § AST-2067, bible § AST-2127 + manifest bash block align with Betty’s AST-2126 board bar.
+- `test-fix` evidence on tip: bug-repro red at `54e186b79` product overlay, green at `ad3f0054a`; manifest 42 passed; 94-id environment baseline unchanged set.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-2112, live `ftr`) | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Mini-parent merge rules when AST-2112 siblings allow. |
+

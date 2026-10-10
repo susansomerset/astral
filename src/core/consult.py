@@ -798,6 +798,13 @@ def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: An
                 _ensure_jobs_astral_ids(decoded.get("jobs") or [], batch_entities)
             return decoded
         row = _job_from_letter_pipe(text, task_config, ctx)
+        if not company_entity and task_config.get("output_type") == "grades_encoded_notes" and not row.get("grades"):
+            # No decodable grades anywhere in the reply — every entity retries with the raw reply (AST-2126).
+            return {"jobs": [], "decode_failures": [
+                {"astral_job_id": e.get("astral_job_id"), "pos": i,
+                 "reason": f"[{task_key}] no grade segments in reply: {text!r}"}
+                for i, e in enumerate(batch_entities)
+            ]}
         if company_entity:
             if len(batch_entities) == 1:
                 row["company_id"] = batch_entities[0].get("company_id")
@@ -860,10 +867,14 @@ def _grade_set_vector_diff(
 def _require_complete_grade_set(rubric_criteria: list, grades: list) -> None:
     """Raise IncompleteGradeSetError when grades are not an exact match to live rubric labels."""
     missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
+    # Both halves in one reason — wrong codes must not read the same as an empty reply (AST-2126).
+    parts = []
     if missing:
-        raise IncompleteGradeSetError(f"_render_score: missing vectors {sorted(missing)}")
+        parts.append(f"missing vectors {sorted(missing)}")
     if extra:
-        raise IncompleteGradeSetError(f"_render_score: unknown vectors {sorted(extra)}")
+        parts.append(f"unknown vectors {sorted(extra)}")
+    if parts:
+        raise IncompleteGradeSetError("_render_score: " + "; ".join(parts))
 
 
 def _require_not_all_literal_x(grades: list) -> None:
