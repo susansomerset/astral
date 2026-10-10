@@ -1186,7 +1186,7 @@ def build_job_token_context(
         # AST-1680: table-backed structure SoT for job drafting tokens (no blob-only bypass).
         hydrate_operative_resume_structure_for_response(cid, cd)
     jd_data = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
-    visible = (jd_data.get("job_description") or "").strip()
+    visible = tracker.compose_job_description(job).strip()
     out: Dict[str, str] = {"VISIBLE_JD": visible}
     phase_tokens = tuple((JOB_TOKEN_CONFIG.get("analysis_phases") or {}).keys())
     job_id = str(job.get("astral_job_id") or "")
@@ -2223,7 +2223,7 @@ async def qualify_meteorite(
 
     logger.debug("Beginning qualify_meteorite loop on %s items", len(jobs))
     for ji, j in enumerate(jobs, start=1):
-        jd_len = len((j.get("job_data") or {}).get(jd_key, "") or "")
+        jd_len = len(tracker.compose_job_description(j))
         logger.debug(
             "input job %s/%s %s job_link=%r job_description_chars=%s",
             ji, len(jobs), _consult_job_identifier(j),
@@ -2235,7 +2235,7 @@ async def qualify_meteorite(
         # AST-1197: CONTENT label matches qualify_meteorite agent_task (stored email HTML / scraped JD).
         lines = [
             f"{i:03d}: job_link: {j.get('job_link') or ''}\n"
-            f"CONTENT:\n{(j.get('job_data') or {}).get(jd_key, '') or ''}"
+            f"CONTENT:\n{tracker.compose_job_description(j)}"
             for i, j in enumerate(jobs)
         ]
         return "METEORITE JOBS:\n" + "\n".join(lines)
@@ -2248,7 +2248,7 @@ async def qualify_meteorite(
         ruth_link = (response_job.get("job_link") or "").strip()
         input_link = (input_job.get("job_link") or "").strip()
         jd_text = (response_job.get("jd_text") or "").strip()
-        input_jd = ((input_job.get("job_data") or {}).get(jd_key, "") or "")
+        input_jd = tracker.compose_job_description(input_job)
         email_prefix = cfg["email_link_prefix"]
         # Ruth http(s) wins; else Create-time ATS URL; else Ruth email- / other token.
         if ruth_link.startswith("http"):
@@ -2342,7 +2342,7 @@ async def qualify_meteorite(
 
 
 def _jd_ready_for_evaluate(job: Dict[str, Any], min_chars: int) -> bool:
-    jd = ((job.get("job_data") or {}).get("job_description") or "").strip()
+    jd = tracker.compose_job_description(job).strip()
     return len(jd) >= min_chars
 
 
@@ -2358,7 +2358,7 @@ async def evaluate_jd_batch(
     """Batch JD dealbreaker screen (Pattern A, ast-326). Thin wrapper over _run_batch_consult.
 
     Jobs short on JD are transitioned separately; JD-ready remainder run together in one `_run_batch_consult`
-    / one `do_task` when dispatcher ``batch_call_mode=1`` (AST-501). Expects scraped JD in ``job_data``.
+    / one `do_task` when dispatcher ``batch_call_mode=1`` (AST-501). Reads the composed JD (tracker.compose_job_description).
 
     ``task_key`` defaults to "evaluate_jd" (regular gazer-discovered jobs); pass "evaluate_meteorite"
     for candidate-submitted jobs, which score against their own meteorite_jobdesc_rubric and land on
@@ -2383,7 +2383,7 @@ async def evaluate_jd_batch(
 
     for ni, job in enumerate(not_ready_jobs, start=1):
         aid = job["astral_job_id"]
-        jd = ((job.get("job_data") or {}).get("job_description") or "").strip()
+        jd = tracker.compose_job_description(job).strip()
         tracker.save_job_data(aid, {
             "jd_readiness_skip": {
                 "reason": "empty_or_short_jd",
@@ -2412,8 +2412,7 @@ async def evaluate_jd_batch(
     # Score is informational only — does not affect pass/fail verdict.
     rubric_list = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
     def assemble(jobs):
-        jd_key = "job_description"
-        jd_texts = [j.get("job_data", {}).get(jd_key, "") or "" for j in jobs]
+        jd_texts = [tracker.compose_job_description(j) for j in jobs]
         # Use 0-based position index so the model's input labels match its output positions
         index_values = [f"{i:03d}" for i in range(len(jobs))]
         return enumerate_array("JD LISTINGS", jd_texts, index_key="index", index_values=index_values)
