@@ -25,8 +25,6 @@ from src.core.roster import (
     save_company_data,
     scrape_company_homepage_content,
     transition_company_state,
-    _assemble_pjl_content,
-    _merge_pjl_nav_links,
     _merge_pjl_scrape_record,
     _scrape_pjl_page,
 )
@@ -70,9 +68,7 @@ from src.external.telescope import (
 from src.utils.formatting import (
     collapse_consecutive_blank_lines,
     enumerate_array,
-    normalize_link,
     normalize_pasted_list_email_html,
-    parse_enumerate_array,
 )
 from src.utils.logging import get_logger, truncate_debug_content
 
@@ -813,6 +809,8 @@ async def fetch_website_batch(
             scrape = await scrape_company_homepage_content(
                 short_name, original_website, batch_session=batch_session
             )
+            # Keep every capture — bot walls included — before routing (AST-2132).
+            text_id, links_id = keep_page_scrape(company.get("candidate_id"), scrape["company_website"], scrape)
             dest = _fetch_website_fail_destination(
                 company_state, scrape.get("error") or "", cfg, scrape.get("visible_text") or "",
             )
@@ -836,11 +834,12 @@ async def fetch_website_batch(
             nav_links = scrape.get("enumerated_nav_links") or ""
             nav_count = len([ln for ln in nav_links.splitlines() if ln.strip()]) if nav_links else 0
             redirect = "yes" if canonical != original_website else "no"
-            data_to_save: Dict[str, Any] = {"homepage_text": visible_text}
-            if nav_links:
-                data_to_save["nav_links"] = nav_links
+            data_to_save: Dict[str, Any] = {"homepage_text": text_id}
+            if links_id:
+                data_to_save["nav_links"] = links_id
             save_company_data(short_name, data_to_save)
             transition_company_state(short_name, pass_state)
+            _log.info("%s | company %s: %s (batch: %s)", short_name, "homepage kept", pass_state, batch_id)
             passed += 1
             if debug:
                 _log.debug_index(
@@ -926,6 +925,7 @@ async def fetch_job_pages_batch(
             nonlocal passed, failed
             short_name = company.get("short_name") or ""
             cd = company.get("company_data") or {}
+            candidate_id = company.get("candidate_id")
             candidate_urls = cd.get("possible_joblist_links") or []
             if not candidate_urls:
                 _log.warning("[%s] fetch_job_pages: no possible_joblist_links", short_name)
@@ -942,14 +942,14 @@ async def fetch_job_pages_batch(
                 return
 
             pjl_pages = list(cd.get("pjl_scrape_pages") or [])
-            # Pre-run snapshot: a failed re-scrape carries that URL's last-known nav links forward.
-            prior_by_key = {normalize_link(r["url"]): r for r in pjl_pages if r.get("url")}
-            run_nav_urls: List[str] = []
 
             walled = False
             # AST-1995: every candidate is re-scraped each run — no already-scraped skip.
             for url_idx, url in enumerate(candidate_urls, start=1):
                 record = await _scrape_pjl_page(url, browser_context, debug=debug)
+                text_id, links_id = keep_page_scrape(candidate_id, record["url"], record)
+                # Row ids ride on the record for the PJL merge (AST-2134 reshapes pjl_scrape_pages to {url, id}).
+                record = {**record, "visible_text_id": text_id, "page_links_id": links_id}
                 # A bot wall is not page content: drop it like a failed scrape so the prior capture survives.
                 if not record.get("error") and is_bot_wall(record.get("visible_text") or ""):
                     record = {**record, "error": "bot wall"}
@@ -975,30 +975,24 @@ async def fetch_job_pages_batch(
                             f"enumerated_nav_chars={len(enum_nav)} collapsed_visible_chars={chars}"
                         )
                 pjl_pages = _merge_pjl_scrape_record(pjl_pages, record)
-                # Same success test as _merge_pjl_scrape_record: no error and non-empty text.
-                if not record.get("error") and (record.get("visible_text") or "").strip():
-                    run_nav_urls.extend(record.get("page_links") or [])
-                else:
-                    prior = prior_by_key.get(normalize_link(url))
-                    if prior:
-                        prior_map = parse_enumerate_array(prior.get("enumerated_nav_links") or "")
-                        run_nav_urls.extend(prior_map[k] for k in sorted(prior_map))
 
-            assembled = _assemble_pjl_content(pjl_pages)
-            # Rebuilt from this run only (empty base) so vanished links drop off; always written,
-            # even "" — readers fall back to homepage nav_links when empty.
             save_company_data(
                 short_name,
                 {
                     "pjl_scrape_pages": pjl_pages,
-                    "pjl_assembled_content": assembled,
-                    "pjl_nav_links": _merge_pjl_nav_links("", run_nav_urls),
+                    # Derived on read from pjl_scrape_pages (AST-2134); None clears copies written before AST-2130.
+                    "pjl_assembled_content": None,
+                    "pjl_nav_links": None,
                 },
             )
 
             if pjl_pages:
                 transition_company_state(short_name, pass_state)
                 passed += 1
+                _log.info(
+                    "%s | company %s: %s (batch: %s)",
+                    short_name, "job pages kept", f"{len(pjl_pages)} page(s) -> {pass_state}", batch_id,
+                )
                 if debug:
                     _log.debug_index(
                         func="gazer.fetch_job_pages_batch",
