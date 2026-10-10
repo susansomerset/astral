@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+Company terminals renamed by writing task (select / parse / prefilter / resolve / upshot): `ERROR_SELECT_JOB_PAGE_*`, `BOT_BLOCKED_SELECT_JOB_PAGE`, `ERROR_PARSE_JOB_LIST_UNPARSEABLE`, `ERROR_PREFILTER_COMPANY_*`, `ERROR_INFLOW_RESOLVE_WEBSITE_NOT_FOUND` / `ERROR_RESOLVE_WEBSITE_NOT_FOUND`, `ERROR_COMPANY_UPSHOT`. Parse empty-token (dispatch and select-only chain) → bare `ERROR_PARSE_JOB_LIST`; JOBS_FOUND scrape error → required `locate_job_page.error_state` (`ERROR_SELECT_JOB_PAGE`, no fallback): **`TestAst2006EmptyTokenCompanyTerminals`**, **`TestJobsFoundProcessJobSite469::test_scrape_error_transitions_to_select_error`**. Agent `response_type` literals (`NO_JOBLIST`, `JOBSITE_SCRAPE_ISSUE`, …) are unchanged. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-463 · AST-460
 
 **`recheck_no_openings`** dispatch batch: Playwright **`get_visible_text`** on stored **`job_site`** only; substring match on **`company_data.no_jobs_message`** keeps **NO_OPENINGS** + **`last_scan_at`**; absence transitions to **JOBS_FOUND**. **TO_WATCH** **`find_job_page`** path unchanged. Admin adhoc live preview echoes **`job_site`** for **`recheck_no_openings`**. **AST-1821:** failed attempts (missing **`job_site`**, missing **`no_jobs_message`**, Playwright exception) also stamp **`last_scan_at`**; missing **`short_name`** does not.
@@ -1141,7 +1145,7 @@ rg -in "linkedin" src/core/roster.py     # expect no output
 | Prefilter batch → every company `ERROR_PREFILTER`; summary `retried == 0` | `_run_batch_company_prefilter` | **`TestAst2006EmptyTokenCompanyTerminals::test_prefilter_batch_goes_to_error_prefilter`** |
 | select_job_page → `ERROR_LOCATE_JOB_PAGE`, `"error"`, no `state_held`, no `NO_JOBLIST` save | `_find_job_page_from_assembled` / `_locate_empty_token_error` | **`…::test_select_job_page_goes_to_error_locate_without_no_joblist`** |
 | parse hop returns `{empty_tokens, error}`, no notes save | `_fetch_parse_job_list` | **`…::test_fetch_parse_job_list_surfaces_empty_tokens_without_notes`** |
-| select-only parse → `ERROR_LOCATE_JOB_PAGE`, no parse notes | `_finalize_joblist_titles_select_only` | **`…::test_select_only_parse_goes_to_error_locate`** |
+| select-only parse → `ERROR_PARSE_JOB_LIST` (**AST-2086**: the parse hop owns it; was `ERROR_LOCATE_JOB_PAGE`), no parse notes | `_finalize_joblist_titles_select_only` | **`…::test_select_only_parse_goes_to_parse_error`** |
 | Parse dispatch from `JOBLIST_IDENTIFIED` and `_RETRY` → `COULD_NOT_PARSE_JOBLIST`, `"error"`, no save | `run_parse_job_list_dispatch` | **`…::test_parse_dispatch_goes_to_terminal_from_either_trigger`** (2 params) |
 
 **Broken / obsolete:** none.
@@ -1151,6 +1155,21 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ### AST-2010 · AST-2009 (exhausted-429 `failure_class` forwarded)
 
 **New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` rides `_find_job_page_from_assembled`'s generic select failure (still NO_JOBLIST + saved), `run_company_task` select_job_page (still counted passed via NO_JOBLIST) and JOBS_FOUND (still `error_state` + `total_errors`), and the `prefilter_company_batch` generic failure (still retried). There is no `total_held` and no `state_held`. An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+
+### AST-2098 · AST-2099 (failed host probe holds company state, counted held)
+
+**Primary manifest:** [`dispatcher.md`](dispatcher.md) § AST-2098. Contract: every roster hold branch widened from `is_provider_balance_refusal` to `is_provider_state_hold`, so a `provider_probe_failure` result keeps the company's current state (no transition, no save) and is counted `total_held`; the batch functions add `total_held` (probe only) and `run_consult_task` subtracts it from errors.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — select_job_page probe hold → `(1, 0, 0, 0)`, `held 1`, class, no `_warn_company` | `run_company_task` | `TestAst2098ProbeFailureHold::test_select_job_page_probe_hold_counts_held` |
+| New — JOBS_FOUND probe failure → `held 1`, `errors 0`, no `error_state` transition | `run_company_task` | `…::test_jobs_found_probe_hold_skips_error_state` |
+| New — `prefilter_company_batch` 2 ready companies → held, `total_held 2`, no transition; via `run_consult_task` `prefilter_company` → `errors 0`, `held 2`, class | `_run_batch_company_prefilter` + consult normalizer | `…::test_prefilter_batch_probe_hold_counts_held` |
+| New — `company_upshot_batch` 2 rows → held, `total_held 2`, no transition; via `run_consult_task` `company_upshot` → `errors 0`, `held 2`, class | `company_upshot_batch` + consult normalizer | `…::test_company_upshot_probe_hold_counts_held` |
+| New — `_find_job_page_from_assembled` probe failure → `state_held`, current state, class, no `_save_company` | `_find_job_page_from_assembled` | `…::test_find_job_page_probe_hold_keeps_state` |
+| New (board E6) — single-company `prefilter_company` → `_prefilter_fail` HOLD, current state, `state_held`, class, no transition | `prefilter_company` / `_prefilter_fail` | `…::test_prefilter_company_probe_hold_keeps_state` |
+
+**Kept:** `TestAst1867BalanceHeldCounting`, `TestAst897HoldStateOnBalanceRefusal`, `TestAst2010RateLimitForwarding` (unchanged, green).
 
 ### AST-2069 · AST-2054 (locate/parse pass state → GET_UPSHOT)
 
@@ -1212,3 +1231,39 @@ git diff origin/dev -- src/core/roster.py | grep -n '_apply_prefilter_decoded_co
 **Pass criterion:** 21 passed; both greps empty. Not the zero-arg harness (this host's 3.14 env carries unrelated baseline reds).
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2070-upshot-hops:docs/test-bible/core/roster.md | shasum`; same for `core/gazer.md`, `core/consult.md`.
+
+### AST-2088 · AST-2054 (bug: upshot sets a readable company_name)
+
+**Parent:** [AST-2054](https://linear.app/astralcareermatch/issue/AST-2054). **Publish:** `origin/sub/AST-2054/AST-2088-upshot-readable-company-name`. Plan-fix: `docs/features/roster/ast-2070-get-upshot-fetch-and-upshot-ready-estelle-hops.md` § Bug: AST-2088. Fix lane F4 (`qa-fix`, `[bug-repro]`).
+
+| Behavior | Source | Component tests |
+| --- | --- | --- |
+| Response `company_name` (stripped) → `update_company(cid, company_name=…)`; blank/missing skipped, still `WATCH`; `## Name On File` in the Estelle block | `company_upshot_batch` | new **`TestAst2088UpshotReadableCompanyName`** (1) — **repro** |
+| `company_upshot` items_schema gains optional `company_name`; prompt output shape names it | `src/utils/config.py`, `data/admin/agent_task.json` | **`TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`** (see [`../utils/config.md`](../utils/config.md) § AST-2069) — **repro** |
+
+**Red on pre-fix tree (verified):** roster repro → `update_company` called 0 times; config repro → `KeyError: 'company_name'` in items_schema. Both are the plan's root cause (contract has no name field; batch never writes it). Scratch-applied plan change (not committed) → all 13 tests below green.
+
+**Unaffected:** `TestAst2070CompanyUpshotBatch` — responses carry no `company_name`, `live_content` asserts are substring/count only.
+
+## QA test manifest — AST-2088
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst2088UpshotReadableCompanyName \
+  tests/component/utils/test_config.py::TestAst2069UpshotRegistration \
+  tests/component/core/test_roster.py::TestAst2070CompanyUpshotBatch \
+  -q
+```
+
+**Pass criterion:** 13 passed. **Red→green (test-fix verifies the flip):** `TestAst2088UpshotReadableCompanyName::test_readable_name_saved_and_blank_or_missing_skipped` and `TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`.
+
+### AST-2125 · AST-2116 (missing rubric grade description → that company alone to PREFILTER_FAILED)
+
+**AST-2124** (`0d01e20d2`): `_apply_prefilter_decoded_company_outcome` catches `MissingRubricDescriptionError` from hydrate. It logs one WARNING `<short_name> -> PREFILTER_FAILED [hydrate: …]`, transitions to `cfg["fail_state"]`, and returns it, with no grade save and no retry. The batch path (`_run_batch_company_prefilter`) gets this through the same helper; structural hydrate errors keep the AST-1846 batch route. Consult side: **`core/consult.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single company: `fit` B (no B row) → `PREFILTER_FAILED`, one WARNING, no `save_company_data` | `src/core/roster.py` (`_apply_prefilter_decoded_company_outcome`) | **`TestAst2125PrefilterMissingDescription::test_apply_outcome_miss_to_prefilter_failed`** |
+| Batch: miss → `PREFILTER_FAILED` unsaved; sibling F5 applies its own verdict (saved with reason); retried 0, no ERROR | `_run_batch_company_prefilter` | **`…::test_batch_miss_fails_only_that_company`** |
+
+**Integration:** none.

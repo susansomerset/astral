@@ -1,4 +1,4 @@
-import { useRef, useCallback, useContext, type ReactNode } from "react"
+import { useRef, useCallback, useContext, type CSSProperties, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { ConfirmContext } from "./UserPrompt"
 
@@ -10,11 +10,26 @@ export interface ModalProps {
   children: ReactNode
   onSave?: () => void
   dirty?: boolean
-  size?: "wide"
+  /** "fullscreen": card fills the viewport, body unpadded (split-pane modals).
+   *  "overlay": 80vw card over the dimmed page, body unpadded (split-pane modals that must read as over the page). */
+  size?: "wide" | "fullscreen" | "overlay"
   stacked?: boolean
   /** When false, omit Cancel/Save footer strip (default true). */
   showFooter?: boolean
 }
+
+// Inline so the size ships with the component; App.css is outside this ticket's scope.
+const FULLSCREEN_CARD: CSSProperties = {
+  width: "100vw",
+  height: "100vh",
+  maxWidth: "100vw",
+  maxHeight: "100vh",
+  border: "none",
+  borderRadius: 0,
+}
+// No border/radius override: .modal-card's chrome is what makes it read as "over" the page.
+const OVERLAY_CARD: CSSProperties = { width: "80vw", height: "90vh", maxWidth: "80vw", maxHeight: "90vh" }
+const FULLSCREEN_BODY: CSSProperties = { padding: 0, minHeight: 0, overflow: "hidden" }
 
 export default function Modal({ open, onClose, title, children, onSave, dirty, size, stacked, showFooter = true }: ModalProps) {
   const ctxConfirm = useContext(ConfirmContext)
@@ -27,6 +42,7 @@ export default function Modal({ open, onClose, title, children, onSave, dirty, s
   if (!open) return null
 
   const isDirty = dirty ?? touchedRef.current
+  const fullscreen = size === "fullscreen"
   const guardedClose = async () => {
     if (isDirty && onSave) {
       // Without UserPromptProvider (unit tests): use synchronous window.confirm so fireEvent-driven tests behave.
@@ -45,12 +61,12 @@ export default function Modal({ open, onClose, title, children, onSave, dirty, s
 
   return createPortal(
     <div className={`modal-overlay${stacked ? " modal-overlay--stacked" : ""}`}>
-      <div className={`modal-card${size === "wide" ? " modal-card--wide" : ""}`}>
+      <div className={`modal-card${size === "wide" ? " modal-card--wide" : ""}`} style={fullscreen ? FULLSCREEN_CARD : size === "overlay" ? OVERLAY_CARD : undefined}>
         <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
           <button type="button" className="icon-control" onClick={guardedClose} title="Close" aria-label="Close">×</button>
         </div>
-        <div className="modal-body" onInput={onBodyInput} onChange={onBodyInput}>
+        <div className="modal-body" style={fullscreen || size === "overlay" ? FULLSCREEN_BODY : undefined} onInput={onBodyInput} onChange={onBodyInput}>
           {children}
         </div>
         {showFooter && (

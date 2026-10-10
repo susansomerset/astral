@@ -888,6 +888,175 @@ no plan-stage validate-plan table for AST-2006 (Joan fix-board **CANON: OK** in 
 
 context_tokens≈28000
 
+## Bug: AST-2092 — score rubric tokens in the Scheduled Actions empty-render gate
+
+- **Linear:** https://linear.app/astralcareermatch/issue/AST-2092 (fix child of orphaned bug [AST-2019](https://linear.app/astralcareermatch/issue/AST-2019), its mini-parent)
+- **Publish ref:** `sub/AST-2019/AST-2092-rubric-empty-render-gate` · **ftr:** `ftr/AST-2019-rubric-empty-render-gate`
+- **Canon:** `astral.dispatch.entity-state-bound` (inherited from AST-1779; no `dispatch_task` row, `entity_type`, `trigger_state` or claim-helper change), `astral.standards.in-scope-only` (one product file, below). AST-2019 cites no canon of its own.
+- **Explicit scope (AST-2092 `## Scope`):** `src/utils/config.py` `empty_render_for_prompts` (product, whole fix); `tests/component/utils/test_config.py` (Betty-owned; planned below, landed by Betty). No `api_admin.py` change.
+- **Reverses one AST-1779 rule:** Stage 1 step 3's "**Do not score** `pronoun`, `rubric`, `config` …" — for `rubric` only. Every other AST-1779 rule stands.
+
+### As-is
+
+`empty_render_for_prompts` scores `source: candidate` by default and any other source only when it is a key in `entity_contexts`. All six `source: rubric` tokens (`RUBRIC_VECTORS`, `GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_RUBRIC`, `PREFILTER_RUBRIC`) are therefore skipped. `api_admin._evaluate_dispatch_empty_render` always passes `entity_contexts=None`, so a candidate with no current `rubric_vector` rows for a task's owner shows that dispatch row **valid**. AUTO/Run then claims entities, and `do_task`'s AST-2000 runtime guard refuses the prompt (`Empty tokens: RUBRIC_VECTORS`). That's Abrams' `qualify_job_listings` batch: 10 jobs claimed, all routed to `ERROR_QUALIFY_JOB_LISTINGS`.
+
+### To-be
+
+Rubric tokens are scored by default, like candidate tokens: rubric rows are keyed per candidate (`candidate_id` + owner task), so they are candidate-scoped data. A candidate whose rubric for a task's owner is empty gets `empty_render: True` with the rubric token in `empty_tokens`. Scheduled Actions shows the row Invalid (tooltip names the token), forces AUTO off, and refuses AUTO-on / Run with 400. Nothing gets claimed. `chain` is still never scored; `job` (and every other non-candidate, non-rubric source) is still scored only via `entity_contexts`.
+
+### Repro
+
+Fixture only (rubric rows come from `database.list_rubric_vectors`; stub the resolver entry). Run against tip `823d37605`:
+
+```python
+import src.core.candidate as c
+from src.utils import config as cfg
+view = {"first": "Abrams", "last": "", "full": "Abrams", "pronouns": "", "contact": {},
+        "context": {}, "artifacts": {}, "_astral_candidate_id": "cand-abrams"}  # build_candidate_token_view shape
+c.rubric_criteria_for_token = lambda cid, owner: []          # no current rubric_vector rows
+cfg.resolve_tokens("{$RUBRIC_VECTORS}", view, "qualify_job_listings", warn_on_empty=False)  # → ""
+cfg.empty_render_for_prompts(["Rubric:\n{$RUBRIC_VECTORS}"], view, "qualify_job_listings")
+```
+
+**Today:** `{"empty_render": False, "empty_tokens": []}`, although the token renders `""`. **Expected after fix:** `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}`. With the stub returning one criterion, the result is `{"empty_render": False, "empty_tokens": []}`, both before and after the fix.
+
+### Root cause
+
+The default scoring filter in `empty_render_for_prompts` (`if source != "candidate" and source not in contexts: continue`) treats `rubric` as a non-candidate entity source. AST-1779 excluded it deliberately, but `resolve_tokens`' rubric branch resolves solely from the candidate view (`_astral_candidate_id`) and the task's rubric owner (`rubric_owner_task_key(task_key)`, or the token's pinned `owner_task_key`). It needs no entity context, so the admin-time predicate already has everything it needs to score it.
+
+### Proposed change
+
+**One file, one function:** `src/utils/config.py` → `empty_render_for_prompts`.
+
+1. Replace the default-scoring filter:
+
+   ```python
+               # Score candidate + rubric always (rubric_vector rows are keyed per candidate +
+               # owner task; resolve_tokens reads them off the candidate view's
+               # _astral_candidate_id — AST-2092); other sources only via entity_contexts seam.
+               if source not in ("candidate", "rubric") and source not in contexts:
+                   continue
+   ```
+
+   Everything else in the function stays as it is: the `chain` early `continue` (before this filter), the `seen` dedupe, `job_context` only for `source == "job"`, the single-token `resolve_tokens(..., chain_context=None, warn_on_empty=False)` probe, the exact `resolved == ""` test, and the return shape. Rubric tokens go through that same probe; no new resolver and no rubric-specific code.
+
+2. Update the docstring's scoring sentence to: ``Scores ``source: candidate`` and ``source: rubric`` always (rubric rows are candidate-keyed — AST-2092); scores other ``TOKEN_SOURCES`` ``source`` values only when that key is present in ``entity_contexts`` (extension seam). Never scores ``source: chain``.`` Leave the rest of the docstring alone.
+
+No change to `resolve_tokens`, `TOKEN_SOURCES`, `api_admin.py`, `do_task` or schema. List enrich (`GET /api/admin/dispatch_tasks`), the PUT AUTO-on gate and the POST run gate all call `_evaluate_dispatch_empty_render` → `empty_render_for_prompts`, so they pick up the change unchanged.
+
+**Test delta, Betty-owned** (`tests/component/utils/test_config.py`, `TestAst1779EmptyRenderForPrompts`). Engineer test-tree ban applies; Betty lands these:
+
+- **Flip** `test_rubric_scored_only_via_entity_contexts`: its first assertion (default call → `empty_render: False` for `{$GET_RUBRIC}` with no `_astral_candidate_id`) becomes `{"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}`. The `entity_contexts={"rubric": {}}` assertion stays `True`. Rename is Betty's call.
+- **`[bug-repro]`** (AC 1): the Repro above. Monkeypatch `src.core.candidate.rubric_criteria_for_token` → `[]`, use a token view with `_astral_candidate_id`, task `qualify_job_listings`, `{$RUBRIC_VECTORS}`, and assert `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}`. Red on the pre-fix tip, green after.
+- **AC 3:** same fixture with the stub returning one criterion → `{"empty_render": False, "empty_tokens": []}`.
+- **AC 4 controls:** the existing `test_chain_only_never_scores`, `test_filled_candidate_ignores_blank_job_without_entity_contexts` and `test_job_seam_via_entity_contexts` must still pass unchanged.
+
+⚠️ **Decision: an unresolvable rubric owner counts as empty.** A task whose prompt carries `{$RUBRIC_VECTORS}` while `rubric_owner_task_key(task_key)` is `None` resolves `""` today and is flagged. That matches the AST-2000 runtime guard, which would refuse the same prompt (`"".strip() == ""`), so the Invalid flag tells the truth about what Run would do. Today no row hits this: all eight seeded consumers that reference `{$RUBRIC_VECTORS}` (`qualify_job_listings`, `grade_get` / `_do` / `_like`, `evaluate_jd`, `evaluate_meteorite`, `meteorite_like`, `prefilter_company`) resolve an owner. A missing `_astral_candidate_id` is the same case (`""` → flagged); in the admin path it can't happen, because `_evaluate_dispatch_empty_render` returns early with no candidate.
+
+⚠️ **Decision: no new exception handling.** Rubric scoring adds the predicate's first DB read (`database.list_rubric_vectors(..., current_only=True)`, one per distinct rubric token per row evaluation). `_evaluate_dispatch_empty_render` calls the helper outside its `try`, so a DB error now surfaces on list enrich / gates instead of being swallowed. That's the same unguarded read `do_task` already makes at runtime, and the DB serving the dispatch list is the same one. Adding a `try` here (or a cache / limit) would be a pattern nobody approved, and `api_admin.py` is out of scope. If Susan wants a soft-miss there, that's a separate ticket.
+
+⚠️ **Decision: `PREFILTER_RUBRIC` is in, though the ticket doesn't name it.** It is `source: rubric` in `TOKEN_SOURCES`, and the change is keyed on the source, not on token names. Per the To-be, *every* rubric-sourced token gets scored.
+
+### Blast radius
+
+- **Who can newly flip to Invalid:** dispatch rows whose prompts reference a rubric token and whose candidate has no current rows for that owner. In practice that means owners `qualify_job_listings` and `grade_get` / `grade_do` / `grade_like` (incl. `meteorite_like` → `grade_like`). Owners `prefilter_company`, `evaluate_jd` and `evaluate_meteorite` never resolve empty, because `rubric_criteria_for_task` merges the embedded RC / QC / GC criteria. No `craft_*_rubric` prompt references a rubric token (checked `data/admin/agent_task.json`), so crafting a missing rubric is never blocked by this gate.
+- **Operator-visible:** rows that currently run, but whose rubric is empty, will show Invalid and lose AUTO on the next list load (AST-1780 force-off). That's the intended outcome. They were already failing at runtime into `ERROR_*`.
+- **Cost:** one `list_rubric_vectors` query per distinct rubric token per dispatch row each time Scheduled Actions enriches or gates. No limit or cache is added (not approved).
+- **Shared code:** `empty_render_for_prompts` has one product caller (`api_admin._evaluate_dispatch_empty_render`), and AST-1780 / AST-1819 consume its output shape, which is unchanged. `resolve_tokens` is untouched, so the AST-2000 runtime guard and admin preview are unaffected.
+- **Tests that assume the old rule:** `TestAst1779EmptyRenderForPrompts::test_rubric_scored_only_via_entity_contexts` (flip above). `test_api_admin.py` empty-render cases only matter if a fixture prompt carries a rubric token. Betty should confirm in qa-fix; they're outside AST-2092 scope.
+- **Operator step (not code, from the ticket):** craft/approve Abrams' joblist rubric (`craft_joblist_rubric`), then reset the 10 `ERROR_QUALIFY_JOB_LISTINGS` jobs to `NEW`.
+
+### What must still hold
+
+- AST-1779 contract: return shape `{"empty_render": bool, "empty_tokens": list[str]}`, field name `empty_render`, first-seen order, exact `== ""` (no strip), `warn_on_empty=False` probes (no WARNING spam on list polls).
+- `source: chain` is never scored, even when it's under `entity_contexts`. `source: job` is scored only via `entity_contexts`. `pronoun`, `config` and `output_type` are still unscored by default.
+- Candidate tokens are scored exactly as today (AST-1779 AC 1, 3).
+- AST-1780 / AST-1819 gate behavior is unchanged apart from rubric tokens now appearing in `empty_tokens`; no `api_admin.py` edit.
+- `do_task` runtime refusal and `ERROR_*` routing (AST-2000) are untouched. No new resolver, `TOKEN_SOURCES` entry, schema, or dispatch-row change.
+
+## Bug: AST-2094 — rubric empty-render gate tests + bible (test gap for AST-2092)
+
+- **Linear:** https://linear.app/astralcareermatch/issue/AST-2094 (test-gap child of mini-parent [AST-2019](https://linear.app/astralcareermatch/issue/AST-2019); sibling of [AST-2092](https://linear.app/astralcareermatch/issue/AST-2092), merged on `origin/ftr/AST-2019-rubric-empty-render-gate` @ `4bf928114`)
+- **Publish ref:** `sub/AST-2019/AST-2094-rubric-empty-render-gate-tests` · **ftr:** `ftr/AST-2019-rubric-empty-render-gate`
+- **Canon:** none cited (AST-2094 `## Citations`: test tree + bible only). Tests pin the AST-2092 contract; no directive text involved.
+- **Explicit scope (AST-2094 `## Scope`):** `tests/component/utils/test_config.py` (`TestAst1779EmptyRenderForPrompts` only) and `docs/test-bible/utils/config.md` (AST-1779 entry). **Betty lands both files in qa-fix**; this block plans the bar. No `src/**` change.
+- **Binding input:** Betty's `[board-betty] TESTS: REVISE` on AST-2092 (verbatim in AST-2094's Description), plus the AST-2092 block above (`### Proposed change` → *Test delta*).
+
+### As-is
+
+On the ftr tip `4bf928114` (AST-2092 merged), `TestAst1779EmptyRenderForPrompts::test_rubric_scored_only_via_entity_contexts` **fails**. Its first assertion pins the AST-1779 rule (`{$GET_RUBRIC}` default call → `{"empty_render": False, "empty_tokens": []}`), but the product now returns `{"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}`. No test covers the AST-2092 bug itself: an empty rubric for a candidate that *has* an `_astral_candidate_id`. The bible's AST-1779 table row "Rubric scored only via `entity_contexts`" and manifest line 7 both describe the old rule.
+
+### To-be
+
+`TestAst1779EmptyRenderForPrompts` pins rubric-by-default scoring:
+- the flipped seam test is green;
+- a `[bug-repro]` for empty `{$RUBRIC_VECTORS}` on `qualify_job_listings` is red before AST-2092 and green on the ftr;
+- a one-criterion control (AC 3) is green on both.
+
+The bible's AST-1779 entry and manifest name all three nodes. Class result on the ftr: 9 passed, 0 failed (6 untouched + 1 flipped + 2 new).
+
+### Repro
+
+Verified on the ftr tip `4bf928114` (AST-2092 test-fix run):
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest "tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts" -q
+# → 1 failed, 6 passed — test_rubric_scored_only_via_entity_contexts:
+#   {'empty_render': True, 'empty_tokens': ['GET_RUBRIC']} != {'empty_render': False, 'empty_tokens': []}
+```
+
+The missing-repro half is the AST-2092 `### Repro` above. Pre-fix `823d37605` returns `{"empty_render": False, "empty_tokens": []}` for an empty `RUBRIC_VECTORS`; the ftr returns `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}`.
+
+### Root cause
+
+AST-2092 reversed one AST-1779 rule (rubric now scored by default). Fix-board routed the test/bible delta here, so the product landed with the pinned test still asserting the old contract and with no repro.
+
+### Proposed change
+
+All of it is Betty's (qa-fix). Exact names are her call; the assertions below are the bar. Conventions: `cfg` = `src.utils.config` (existing module alias in `test_config.py`). Stub the rubric read with `monkeypatch.setattr("src.core.candidate.rubric_criteria_for_token", lambda cid, owner: <list>)`. That attribute works because `resolve_tokens`' rubric branch imports it from `src.core.candidate` at call time. No DB, no `database.list_rubric_vectors` stub needed.
+
+**1. Flip `test_rubric_scored_only_via_entity_contexts`** (`tests/component/utils/test_config.py`, `TestAst1779EmptyRenderForPrompts`).
+- The default-call assertion becomes `== {"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}`. The fixture is unchanged (`{"first": "Ada"}`, no `_astral_candidate_id` → resolves `""`; `self._TASK` = `grade_get`).
+- The `entity_contexts={"rubric": {}}` assertion stays `{"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}` (seam still accepted, same result).
+- Update the inline comment: rubric is scored by default (AST-2092); the seam still scores it.
+- **Rename** to `test_rubric_scored_by_default_and_via_entity_contexts`, since the old name now states the reverse of the contract.
+
+**2. `[bug-repro]` — new `test_empty_rubric_vectors_sets_empty_render`** (same class, AC 1).
+- Fixture: a `build_candidate_token_view`-shaped dict with `_astral_candidate_id: "cand-abrams"`, e.g. `{"first": "Abrams", "last": "", "full": "Abrams", "pronouns": "", "contact": {}, "context": {}, "artifacts": {}, "_astral_candidate_id": "cand-abrams"}`.
+- Task: `"qualify_job_listings"` (own rubric owner, no embedded-criteria merge, so `[]` really renders `""`). Do not use `self._TASK`.
+- Stub `rubric_criteria_for_token` → `[]`.
+- Call: `cfg.empty_render_for_prompts(["Rubric:\n{$RUBRIC_VECTORS}"], view, "qualify_job_listings")`.
+- Assert `== {"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}`.
+- **Red on pre-fix `823d37605`** (`False`, `[]`), **green on the ftr**. Tag the qa-fix handoff `[bug-repro]` with this node id.
+
+**3. AC 3 control — new `test_filled_rubric_vectors_validates`** (same class).
+- Same fixture and task as item 2, with the stub returning one criterion, e.g. `[{"code": "T1", "label": "Title fit", "importance": 5}]`.
+- Assert `== {"empty_render": False, "empty_tokens": []}`. Green on both trees: it guards against over-flagging, so it isn't a repro.
+
+**4. Bible — `docs/test-bible/utils/config.md`, `### AST-1779 · AST-1766` section.**
+- **Prose (summary paragraph):** change "candidate-scoped empty-render predicate" so it reads that the predicate scores `source: candidate` **and `source: rubric`** by default (rubric rows are candidate-keyed — AST-2092), and that other sources are scored only via `entity_contexts`. The chain and job wording is unchanged.
+- **Table:** replace the row `Rubric scored only via entity_contexts` → `Rubric scored by default (and via entity_contexts)` → `…::test_rubric_scored_by_default_and_via_entity_contexts`. Add two rows: `Empty RUBRIC_VECTORS → empty_render [bug-repro] (AST-2092)` → `…::test_empty_rubric_vectors_sets_empty_render`, and `Filled RUBRIC_VECTORS → valid (AST-2092 AC 3)` → `…::test_filled_rubric_vectors_validates`.
+- **Manifest:** line 7 points at the renamed node. Add lines 8 (`[bug-repro]`) and 9 (control). The run command stays the whole class.
+- **Broken / obsolete:** one line noting the AST-2092 flip of the old line-7 node (renamed, assertion inverted).
+
+⚠️ **Decision: rename the flipped test** rather than keep the old name. `…_scored_only_via_entity_contexts` would pin a reversed contract under a false name, and the bible row has to change anyway. If Betty prefers a stable node id, keeping the name is acceptable *only* if its docstring/comment states the new contract. Bible and manifest must match whichever she picks.
+
+⚠️ **Decision: stub `rubric_criteria_for_token`, not `database.list_rubric_vectors`.** It's the resolver entry `resolve_tokens` calls, it matches Betty's verdict, and it skips the per-owner embedded-criteria merge (irrelevant for `qualify_job_listings`). Prefer `monkeypatch` over assigning the module attribute directly, so the stub can't leak into other tests.
+
+⚠️ **Decision: no `test_api_admin.py` change.** Betty's verdict: its empty-render cases stub prompt texts with no rubric tokens, so they're unaffected (confirmed: identical pass/fail sets pre/post AST-2092 in that file).
+
+### Blast radius
+
+- Two files, both Betty's: `tests/component/utils/test_config.py` (one class) and `docs/test-bible/utils/config.md` (one section). No `src/**`, canon or integration change.
+- Other `test_config.py` classes are untouched. The 28 pre-existing reds in `test_config.py` + `test_api_admin.py` (identical on `823d37605` and the ftr, AST-2092 test-fix) are out of scope and must not grow.
+- The monkeypatch is scoped to each new test; no shared fixture changes.
+
+### What must still hold
+
+- The other six `TestAst1779EmptyRenderForPrompts` tests are unchanged and green: candidate blank, job ignored without seam, chain never scored, job seam, `warn_on_empty` quiet, text tolerance/order.
+- `[bug-repro]` red on `823d37605`, green on `origin/ftr/AST-2019-rubric-empty-render-gate`. Control green on both.
+- No product source edits on this sub; the engineer's make-fix is a no-product-src marker.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
@@ -896,18 +1065,206 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/f0a75aef789ee42caac941d18f28106f/34aaeabe-4695-4001-a3c7-efe11486c218/store.db` |
-| Hedy | engineer | `/home/susan/.cursor/chats/f0a75aef789ee42caac941d18f28106f/ef8ca9e2-3491-4731-8c1e-b09d9d177747/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/59053c5f-3440-4c3e-9814-c71d7dea1800/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/f0a75aef789ee42caac941d18f28106f/09c049fb-14f5-4389-8960-c8babfe4d299/store.db` |
+| Ada | engineer | `/home/susan/.cursor/chats/eb1070acfeb025b5dc68043424798744/9ab40e5f-23a8-4a58-ba7c-7e05c1a4756b/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/5d4ca2d8-52dc-4e20-baf9-7b9aa29f4583/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/eb1070acfeb025b5dc68043424798744/31d8f277-f2d6-4373-b1ba-3d134bccbe77/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1986 (parent) | ftr/AST-1986-runtime-empty-token-error |
-| AST-2000 | sub/AST-1986/AST-2000-runtime-empty-token-error |
-| AST-2005 | sub/AST-1986/AST-2005-dispatch-retry-carve-out |
-| AST-2006 | sub/AST-1986/AST-2006-empty-token-guard-tests |
+| AST-2019 (parent) | ftr/AST-2019-rubric-empty-render-gate |
+| AST-2092 | sub/AST-2019/AST-2092-rubric-empty-render-gate |
+| AST-2094 | sub/AST-2019/AST-2094-rubric-empty-render-gate-tests |
 
-**Epic worktree:** `astral-AST-1986/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2019/` — one active sub checked out at a time.
+
+## Joan fix-board — AST-2092
+
+```text
+[board-joan]  CANON: OK
+```
+
+```text
+AST-2092 board-joan done — CANON: OK.
+```
+
+## Reasoning
+
+**Read:** `## Bug: AST-2092` on `origin/sub/AST-2019/AST-2092-rubric-empty-render-gate` (plan-fix patch); roster skim for overlap with `config.py` / dispatch validation; resolved **`astral.dispatch.entity-state-bound`** (`canon/directives/active/stat.dispatch.entity-state-bound.md`) and **`astral.standards.in-scope-only`** (`canon/statutes/astral/standards/astral.standards.in-scope-only.md`) as cited in the patch.
+
+**The one question:** Does the proposed change conflict with or require updating any **directive in force**?
+
+**No.** Active statutes/patterns do not encode AST-1779’s “do not score `rubric` by default” rule. That rule lives in the **AST-1779 feature plan** and test-bible (`test_rubric_scored_only_via_entity_contexts`), not in the canon corpus. Grep over `canon/directives` shows no `empty_render`, `empty_render_for_prompts`, or admin-time rubric-scoring law.
+
+- **`astral.dispatch.entity-state-bound`:** Still satisfied. The fix only changes default scoring in `empty_render_for_prompts`; no `dispatch_task` row, `entity_type`, `trigger_state`, or claim-path edits. Aligning the admin predicate with candidate-keyed rubric resolution does not violate entity-binding law.
+
+- **`astral.standards.in-scope-only`:** Conforms. Product footprint is `src/utils/config.py` → one function + docstring, as scoped.
+
+Reversing AST-1779 **plan/test** contract is intentional and documented in the AST-2092 patch (rubric rows are per-candidate; matches AST-2000 runtime refusal). That is **not** a statute/pattern amend — Betty’s test/bible updates cover the behavioral contract; no F3 canon landing required from this triage pass.
+
+**Not ESCALATE:** Blast radius and operator impact are bounded in the patch (owners that can flip Invalid, no `api_admin` change, DB read tradeoff called out). No ambiguous statute intent or new corpus precedent — correction of admin vs runtime mismatch.
+
+context_tokens≈18500
+
+## Radia review — AST-2092
+
+[code-rubric]
+**Ticket:** AST-2092
+**Publish ref:** `5ff29d79214b2f6bf5e7e526ac102ac2c98baf1d` (`origin/sub/AST-2019/AST-2092-rubric-empty-render-gate`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+**Diff base:** `origin/ftr/AST-2019-rubric-empty-render-gate...origin/sub/AST-2019/AST-2092-rubric-empty-render-gate` (2 files: `src/utils/config.py` product; `docs/features/dispatcher/ast-1779-empty-token-predicate-helper.md` plan-fix + board notes).
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.dispatch.entity-state-bound | A | | Scoring filter only in `empty_render_for_prompts`; no `dispatch_task` / claim-path / registry edits. |
+| astral.standards.in-scope-only | A | | Product change confined to one function + docstring in `config.py`; no `api_admin.py` or out-of-scope refactors. |
+
+## Column diff vs plan stage
+
+no plan-stage validate-plan scores attached (Joan **fix-board CANON: OK** only; no per-id validate-plan table for AST-2092)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]:** not applicable — clean board opt-out; Betty **TESTS: REVISE** routed contract/test work to sibling **AST-2094**; no `[bug-repro]` on this publish ref.
+- **## What must still hold — OK**
+  - Return shape, `empty_render` key, first-seen `seen` dedupe, `resolved == ""` (no strip), `warn_on_empty=False` probes: unchanged below the filter edit.
+  - `source == "chain"` still `continue`s before the scoring filter; job still gated on `entity_contexts`; non-(candidate|rubric) sources still require `contexts` keys — `pronoun` / `config` / `output_type` remain unscored by default.
+  - Candidate path unchanged (`"candidate"` in the always-score tuple).
+  - No `api_admin.py`, `resolve_tokens`, `TOKEN_SOURCES`, `do_task`, or schema edits in diff.
+  - Rubric tokens use the same `resolve_tokens` probe as other scored sources (DB read path already used at runtime per plan decision).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Sibling test carry (expected):** Plan-fix lists Betty-owned deltas in `tests/component/utils/test_config.py` (flip `test_rubric_scored_only_via_entity_contexts`, `[bug-repro]`, AC 3/4). This sub tip has **no** `tests/**` changes; **AST-2094** owns the failing contract flip noted at test-fix. Product fix here is complete relative to engineer scope; full AST-1779 test contract green waits on that sibling, not a Radia block on AST-2092.
+- **UT ordering:** Ticket **blocks AST-2094**; Chuckles can run clean-review shortcut to **User Testing** for the predicate behavior while tests land on the blocked sibling per lane split.
+
+## What's solid
+
+- Diff matches **## Proposed change** verbatim (filter + docstring only).
+- Aligns admin predicate with candidate-keyed rubric resolution and AST-2000 runtime refusal without widening blast radius beyond documented owners.
+
+## Note for Chuckles (post-review branching)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal mini-parent (**AST-2019**, live `ftr/AST-2019-rubric-empty-render-gate` — not orphaned-to-dev) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly; **resolve-child** skipped |
+
+context_tokens≈14000
+
+### Chuckles adjudication
+
+Clean (PROCEED, no fix-now / discuss). Clean-review shortcut (do-all-the-things §3h) → User Testing.
+
+### Test routing — AST-2092
+
+docs-acceptance: no test-tree delivery on this ticket. fix-board `[board-betty] TESTS: REVISE` was routed to the gap sibling AST-2094 (rubric empty-render gate tests + bible), which lands its own `test()` / `merge-tests` on ftr.
+
+## Joan fix-board — AST-2094
+
+```text
+[board-joan]  CANON: OK
+```
+
+```text
+AST-2094 board-joan done — CANON: OK.
+```
+
+## Reasoning
+
+**Read:** `## Bug: AST-2094` on `origin/sub/AST-2019/AST-2094-rubric-empty-render-gate-tests` @ `6401a0987` (plan-fix only on publish tip). Joan pass question: does **`### Proposed change`** conflict with or require updating any **directive in force**?
+
+**No.** Scope is **`tests/component/utils/test_config.py`** (`TestAst1779EmptyRenderForPrompts` only) and **`docs/test-bible/utils/config.md`** (AST-1779 section). **No `src/**`, no `canon/**`. Ticket cites **no canon**; work pins the already-landed AST-2092 product contract (rubric scored by default), not statute text.
+
+- **Roster skim:** Nothing in active `stat.*` / `patt.*` governs empty-render scoring rules or test-bible wording. AST-1779’s old “rubric only via `entity_contexts`” rule lived in feature plan + bible/tests, same as AST-2092 board conclusion.
+- **Bible edits** (prose, table rows, manifest) document behavior for Betty/qa-fix; they are **not** corpus directives and do not amend `astral.dispatch.entity-state-bound`, `astral.standards.in-scope-only`, or any other in-force id.
+- **Not REVISE:** No statute/pattern needs a carve-out or restatement for flipping/renaming tests or syncing the bible to AST-2092.
+- **Not ESCALATE:** Test-gap sibling with bounded blast radius; product precedent was AST-2092 + Susan’s lane split to AST-2094.
+
+context_tokens≈22000
+
+## Radia review — AST-2094
+
+[code-rubric]
+**Ticket:** AST-2094
+**Publish ref:** `b3d69a189f0d0ffc1a3a29a33c271902e7223ba0` (`origin/sub/AST-2019/AST-2094-rubric-empty-render-gate-tests`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159`
+**Overall:** CLEAN
+
+**Diff base (scored):** `origin/ftr/AST-2019-rubric-empty-render-gate...origin/sub/AST-2019/AST-2094-rubric-empty-render-gate-tests`, **scoped to ticket footprint** — `tests/component/utils/test_config.py`, `docs/test-bible/utils/config.md`, plus plan-fix doc block in `docs/features/dispatcher/ast-1779-empty-token-predicate-helper.md`.
+
+**Drift note (not a finding):** The unscoped three-dot diff shows ~77 files (many `docs/features/**` archive lines from `sync(dev)` on the publish ref). `git diff origin/dev...origin/sub/AST-2019/AST-2094-rubric-empty-render-gate-tests` collapses to **4 files** (2092 product on ftr + 2094 tests/bible/plan). **`src/**` delta vs ftr is empty (0 bytes)** — matches `code(AST-2094): no product src` and **## What must still hold**.
+
+## Canon scores
+
+Frozen list: **(none cited)** — AST-2094 Description / plan-fix: test tree + bible only; no directive ids to score. Joan **fix-board CANON: OK** (no statute/pattern amend required for test-gap work).
+
+## Column diff vs plan stage
+
+no plan-stage validate-plan scores attached (Joan **fix-board CANON: OK** only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — `test_empty_rubric_vectors_sets_empty_render` (first-line comment `[bug-repro] AST-2092 AC1`):
+  - Pins **concrete** `{"empty_render": True, "empty_tokens": ["RUBRIC_VECTORS"]}` on `qualify_job_listings` with `_astral_candidate_id`, `Rubric:\n{$RUBRIC_VECTORS}`, and `monkeypatch` stub `rubric_criteria_for_token` → `[]`.
+  - Matches AST-2092 **## To-be** / **### Repro** (not tautological; not duplicating product filter logic alone).
+  - Would be **red** on pre-fix `823d37605` (`False`, `[]`) and **green** with AST-2092 on ftr — repro-first contract satisfied.
+- **## What must still hold — OK**
+  - Single hunk in `TestAst1779EmptyRenderForPrompts` only; six control tests (candidate blank, job/chain, seam, warn quiet, order) **unchanged** in diff.
+  - Flipped + renamed `test_rubric_scored_by_default_and_via_entity_contexts` aligns default and seam assertions with AST-2092.
+  - AC3 control `test_filled_rubric_vectors_validates` asserts non-flag path with one criterion.
+  - No `src/**` on sub vs ftr; bible § AST-1779 prose/table/manifest/broken line match **### Proposed change** item 4.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Publish-ref hygiene:** `sync(dev)` / archive doc commits sit on the sub tip ahead of Betty’s `test()` + `merge-tests`; score and footprint use **ftr…sub** scoped to tests/bible/plan only — do **not** treat bulk `docs/features/**` archive deltas as AST-2094 scope or cross-ticket product smuggle.
+- **Lane split closed:** AST-2092 product on ftr + AST-2094 tests/bible completes Betty’s **TESTS: REVISE** routing from AST-2092 board.
+
+## What's solid
+
+- Plan fidelity: rename, flip, two new nodes, monkeypatch target, bible manifest lines 7–9, and obsolete note all match plan-fix bar.
+- `[bug-repro]` is the Abrams / `RUBRIC_VECTORS` path from the product ticket, not the GET_RUBRIC seam-only flip alone.
+
+## Note for Chuckles (post-review branching)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal mini-parent (**AST-2019**, live ftr) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing**; **resolve-child** skipped |
+
+context_tokens≈15000
+
+### Chuckles adjudication
+
+Clean (PROCEED, no fix-now / discuss). sync(dev) drift on the publish ref is not ticket scope (origin/dev...sub collapses to the 2092 product + 2094 tests/bible/plan). Clean-review shortcut (do-all-the-things §3h) → User Testing.

@@ -625,6 +625,97 @@ class TestAst1959ProbeHostLock:
         assert out["success"] is True and len(c.calls) == 2
 
 
+_HOLLOW_ERR = {"message": "No endpoints found matching your data policy", "code": 404}
+
+
+class _HollowProbeClient(_RecordingClient):
+    """The probe gets AST-2016's hollow reply (no provider, no usage, an error body); real calls answer normally."""
+
+    def create(self, **kwargs: Any) -> Any:
+        if _is_probe(kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(id="gen-hollow", provider=None, usage=None, content=[], stop_reason=None,
+                                   error=_HOLLOW_ERR)
+        return super().create(**kwargs)
+
+
+class _HollowRealClient(_RecordingClient):
+    """Every call answers hollow: no usage, no content, no stop reason (AST-1190 shape on a non-probe server)."""
+
+    def create(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        return SimpleNamespace(id="gen-hollow-real", usage=None, content=[], stop_reason=None)
+
+
+# AST-2098 — a non-429 probe failure is tagged provider_probe_failure (the caller holds state); a missing
+# usage reads as zero tokens with no ERROR traceback, on the probe row and on a hollow real call.
+# Literals only (no AST-2098 imports) so these fail by assertion on the pre-fix tree.
+class TestAst2098ProbeFailureTagged:
+    FC = "provider_probe_failure"
+    BF16 = TestAst1959ProbeHostLock.BF16
+
+    @pytest.fixture(autouse=True)
+    def _fresh_host_map(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(openrouter, "_hosts", {})
+        monkeypatch.setattr(llm_compat.time, "sleep", lambda _s: None)
+        monkeypatch.setattr(llm_compat, "_slots", {})
+
+    @pytest.fixture
+    def batch(self):
+        token = log_batch_id.set("batch-2098")
+        yield "batch-2098"
+        log_batch_id.reset(token)
+
+    @staticmethod
+    def _errors(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+        return [r for r in caplog.records if r.name == "src.external.llm_compat" and r.levelno >= logging.ERROR]
+
+    @pytest.mark.asyncio
+    async def test_hollow_probe_tagged_held_no_traceback(self, monkeypatch, batch, caplog) -> None:
+        c = _HollowProbeClient()
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: c)
+        rows: list[dict] = []
+        with caplog.at_level(logging.ERROR, logger="src.external.llm_compat"):
+            out = await _send(tier=_tier(**self.BF16), record_timesheet=lambda **kw: rows.append(kw))
+        # The probe alone went out; nothing is sent after a failed probe.
+        assert len(c.calls) == 1 and _is_probe(c.calls[0])
+        assert out["success"] is False
+        assert out["failure_class"] == self.FC
+        assert out["error"].startswith("Host probe failed: Probe response named no provider: ")
+        assert "No endpoints found matching your data policy" in out["error"]
+        assert out["host"] == "OpenRouter"
+        assert len(rows) == 1
+        r = rows[0]
+        assert (r["cache_read_tokens"], r["total_no_cache_input_tokens"], r["total_output_tokens"],
+                r["cache_write_tokens"]) == (0, 0, 0, 0)
+        # AST-2016's AttributeError traceback on the probe row is gone.
+        assert self._errors(caplog) == []
+
+    @pytest.mark.asyncio
+    async def test_non_429_probe_exception_tags_every_caller(self, monkeypatch, batch) -> None:
+        c = _HostClient(raise_on_probe=RuntimeError("upstream 503"))
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: c)
+        kw = {"tier": _tier(**self.BF16)}
+        first = await _send(**kw)
+        outs = [first, *await asyncio.gather(*(_send(**kw) for _ in range(3)))]
+        # One probe; waiters and later callers share the cached failure, all tagged alike.
+        assert len(c.calls) == 1
+        assert [o["success"] for o in outs] == [False] * 4
+        assert [o.get("failure_class") for o in outs] == [self.FC] * 4
+
+    @pytest.mark.asyncio
+    async def test_hollow_real_call_is_empty_response_without_traceback(self, monkeypatch, caplog) -> None:
+        c = _HollowRealClient()
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: c)
+        with caplog.at_level(logging.ERROR, logger="src.external.llm_compat"):
+            out = await _send(server_id="kimi", sku="kimi-k2.6", tier=_tier("kimi-k2.6"))
+        # AST-1190 routing unchanged; usage=None now reads as zero tokens instead of raising.
+        assert len(c.calls) == 1
+        assert out["success"] is False
+        assert out["failure_class"] == "provider_empty_response"
+        assert self._errors(caplog) == []
+
+
 # AST-1966: every call gets a timesheet row. Branches (_timesheet_kwargs_for): token counts raise → zero tokens,
 # logged once; direct routing + catalog price raises → zero calc_cost_*, logged once; openrouter routing skips catalog.
 class TestAst1966UnpricedRowRecorded:

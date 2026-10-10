@@ -35,7 +35,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, job.artifacts.job_resume_structure, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678 / AST-2081)
   TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
@@ -56,7 +56,7 @@ Config sections:
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557); `CHECK_UNIQUE` / `DUPLICATE` uniqueness gate (AST-1773)
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560); check_unique hop (AST-1773)
-  METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
+  METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED_SCRAPE_METEORITE Estelle DM notify + nag limits (AST-1561)
   REVIEW_DUPLICATE_METEORITE_CONFIG — Ruth duplicate-review closed outcomes + peer id key (AST-1773)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL, Slack commands registry (AST-1066 / AST-1206 / AST-2035; distinct from TASK_CONFIG)
@@ -68,7 +68,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional, Union
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -164,7 +164,6 @@ _EXPERIENCE_JOB_ARRAY_FIELD_OPTIONAL: Dict[str, Any] = {
 # Optional TASK_CONFIG.task_type: CRAFT | RUBRIC | CHAT | CHAIN (schema-only except CHAIN in consult).
 TASK_TYPES = frozenset({"CRAFT", "RUBRIC", "CHAT", "CHAIN"})
 BUILD_ARTIFACTS_BASE_STATE = "BUILD_ARTIFACTS"
-ERROR_BUILD_ARTIFACTS_STATE = "ERROR_BUILD_ARTIFACTS"
 LEGACY_BUILD_ARTIFACTS_PREFIX = "BUILD_ARTIFACTS."
 RESUME_ARTIFACT_COMPOUND_PREFIX = LEGACY_BUILD_ARTIFACTS_PREFIX
 
@@ -207,6 +206,14 @@ def retry_of(base: str) -> str:
     return f"{base}{RETRY_SUFFIX}"
 
 
+ALL_X_SUFFIX = "_ALL_X"
+
+
+def all_x_of(base: str) -> str:
+    """Second-strike all-literal-X terminal for a scored task's fail_state (AST-2096)."""
+    return f"{base}{ALL_X_SUFFIX}"
+
+
 def retry_base(state: Optional[str]) -> Optional[str]:
     """Base of an implicit retry substate, or None when state has no _RETRY suffix."""
     s = (state or "").strip()
@@ -222,6 +229,67 @@ def registered_base(registry: Dict[str, Any], state: Optional[str]) -> Optional[
         return s
     base = retry_base(s)
     return base if base is not None and base in registry else None
+
+
+# ---------------------------------------------------------------------------
+# Terminal-state grammar (AST-2086, patt.state.terminal-naming): failures are
+# ERROR_<TASK_KEY>[_<CONDITION>], bot walls BOT_BLOCKED_<TASK_KEY>. Built from the
+# failing task_key — never typed. JD_SCRAPE_FAIL_CLOSED / _MISSING are the one literal family.
+# ---------------------------------------------------------------------------
+# Closed condition vocabulary — the only legal _<CONDITION> suffixes.
+TERMINAL_CONDITIONS = (
+    "UNREADABLE", "COOKIE", "NOT_FOUND", "NO_JOBLIST", "NO_JOBLIST_LINKS", "NO_SELECTION",
+    "NO_CULTURE_LINKS", "NO_WEBSITE_CONTENT", "UNPARSEABLE", "CLICK",
+)
+ERROR_STATE_PREFIX = "ERROR_"
+BOT_BLOCKED_STATE_PREFIX = "BOT_BLOCKED_"
+
+
+def error_state_for(task_key: str, condition: Optional[str] = None) -> str:
+    """ERROR_<TASK_KEY> (cause unknown) or ERROR_<TASK_KEY>_<condition> (condition ∈ TERMINAL_CONDITIONS)."""
+    tk = (task_key or "").strip()
+    if not tk or (condition is not None and condition not in TERMINAL_CONDITIONS):
+        raise ValueError(f"error_state_for: bad task_key {task_key!r} / condition {condition!r}")
+    return f"{ERROR_STATE_PREFIX}{tk.upper()}" + (f"_{condition}" if condition else "")
+
+
+def bot_blocked_state_for(task_key: str) -> str:
+    """BOT_BLOCKED_<TASK_KEY> — the failing task hit a bot / challenge wall."""
+    tk = (task_key or "").strip()
+    if not tk:
+        raise ValueError(f"bot_blocked_state_for: bad task_key {task_key!r}")
+    return f"{BOT_BLOCKED_STATE_PREFIX}{tk.upper()}"
+
+
+def parse_terminal_state(state: str) -> Optional[Tuple[str, str, Optional[str]]]:
+    """(kind, task_key, condition) for a grammar name; kind is "error" | "bot_blocked". None otherwise."""
+    s = (state or "").strip()
+    if s.startswith(BOT_BLOCKED_STATE_PREFIX) and len(s) > len(BOT_BLOCKED_STATE_PREFIX):
+        return ("bot_blocked", s[len(BOT_BLOCKED_STATE_PREFIX):].lower(), None)
+    if not s.startswith(ERROR_STATE_PREFIX) or len(s) <= len(ERROR_STATE_PREFIX):
+        return None
+    body = s[len(ERROR_STATE_PREFIX):]
+    # Longest suffix first so NO_JOBLIST_LINKS wins over NO_JOBLIST.
+    for cond in sorted(TERMINAL_CONDITIONS, key=len, reverse=True):
+        if body.endswith(f"_{cond}") and len(body) > len(cond) + 1:
+            return ("error", body[: -len(cond) - 1].lower(), cond)
+    return ("error", body.lower(), None)
+
+
+# Artifact-chain hops (run_next order); each hop names its own error, so the dispatch rule
+# keys on membership here — never on a shared error_state.
+BUILD_ARTIFACTS_CHAIN_TASK_KEYS = (
+    "anticipate_scan", "contemplate_job", "advise_job_resume", "draft_job_resume",
+    "check_job_resume", "finalize_job_resume", "draft_cover_letter", "check_cover_letter",
+    "finalize_cover_letter", "propose_application_responses",
+)
+BUILD_ARTIFACTS_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in BUILD_ARTIFACTS_CHAIN_TASK_KEYS)
+# Candidate craft chain (REQUESTED_ARTIFACTS entry craft_get_rubric, run_next order).
+CANDIDATE_CRAFT_CHAIN_TASK_KEYS = (
+    "craft_get_rubric", "craft_do_rubric", "craft_like_rubric", "craft_evaluate_meteorite_rubric",
+    "craft_jobdesc_rubric", "craft_prefilter_rubric", "craft_company_search_terms", "craft_joblist_rubric",
+)
+CANDIDATE_CRAFT_CHAIN_ERROR_STATES = tuple(error_state_for(k) for k in CANDIDATE_CRAFT_CHAIN_TASK_KEYS)
 
 
 def is_registered_state(registry: Dict[str, Any], state: Optional[str]) -> bool:
@@ -462,7 +530,7 @@ TASK_CONFIG = {
         "trigger_state": "WEBSITE_REVIEW",
         "agent_task": "find_company_website",
         "pass_state": "WEBSITE_FOUND",
-        "fail_state": "NO_WEBSITE",
+        "fail_state": error_state_for("resolve_website", "NOT_FOUND"),
     },
     "prefilter_company": {
         "response_format": "json",
@@ -495,6 +563,27 @@ TASK_CONFIG = {
         "entity_type": "company",
         "requires_candidate_key": True,
         "trigger_state": None,
+    },
+    # AST-2054: Estelle company upshot — one call per batch; saved to company_data.company_upshot.
+    # Routing lives in ROSTER_CONFIG["company_upshot"] (defined below TASK_CONFIG, so literals here).
+    "company_upshot": {
+        "response_format": "json",
+        "response_schema": {
+            "companies": {
+                "type": "list", "required": True,
+                "items_schema": {
+                    "company_id": {"type": "str", "required": True},
+                    "upshot": {"type": "str", "required": True},
+                    "company_name": {"type": "str", "required": False},
+                },
+            },
+        },
+        "context_format": "company_upshot_{index}",
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "UPSHOT_READY",
+        "pass_state": "WATCH",
+        "error_state": error_state_for("company_upshot"),
     },
     "select_job_page": {
         "response_schema": {
@@ -576,7 +665,7 @@ TASK_CONFIG = {
         # AST-2022: pass + non-empty, non-http(s) job_link → here instead of InvalidJobLinkError (routing is AST-2025).
         "relative_link_state": "RELATIVE_JOB_LINK",
         "fail_state": "FAILED_JOBLIST",
-        "error_state": "ERROR_QUALIFY_JOB_LISTINGS",
+        "error_state": error_state_for("qualify_job_listings"),
         "min_job_title_length": 5,
         "context_format": "qualify_job_listings_{index}",
         "entity_type": "job",
@@ -612,9 +701,9 @@ TASK_CONFIG = {
         "min_jd_chars": 40,          # usable visible JD floor (align with METEORITE_EMAIL_INGEST_CONFIG)
         "pass_state": "METEORITE_QUALIFIED",
         "fail_state": "METEORITE_FAILED_QUALIFY",
-        "error_state": "METEORITE_ERROR_QUALIFY",
+        "error_state": error_state_for("qualify_meteorite"),
         "email_link_prefix": "email-",  # AST-1197: synthesized job_link token when there is no ATS URL
-        "bot_blocked_state": "BOT_BLOCKED",  # AST-1197: challenge/Cloudflare JD → universal bot state (AST-1195)
+        "bot_blocked_state": bot_blocked_state_for("qualify_meteorite"),  # AST-1197: challenge/Cloudflare JD
         "company_stem_response_key": "company_stem",  # AST-1494: RESPONSE + enrich map key
         "context_format": "qualify_meteorite_{index}",
         "entity_type": "job",
@@ -696,7 +785,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "PASSED_JD",
         "fail_state": "FAILED_JD",
-        "error_state": "ERROR_EVALUATE_JD",
+        "error_state": error_state_for("evaluate_jd"),
         "min_jd_chars": 80,
         "not_ready_state": "PASSED_JOBLIST",
         "context_format": "evaluate_jd_{index}",
@@ -730,7 +819,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "METEORITE_PASSED_JD",
         "fail_state": "METEORITE_FAILED_JD",
-        "error_state": "METEORITE_ERROR_EVALUATE_JD",
+        "error_state": error_state_for("evaluate_meteorite"),
         # Matches qualify_meteorite's own min_jd_chars (40) — that task is the authoritative
         # usability gate for meteorite content, so this pre-filter is structurally a no-op by
         # the time a job reaches METEORITE_QUALIFIED. Deliberately no not_ready_state: unlike
@@ -765,7 +854,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "PASSED_DO",
         "fail_state": "FAILED_DO",
-        "error_state": "FAILED_TECHNICAL_DO",
+        "error_state": error_state_for("grade_do"),
         "save_prefix": "do",
         "grading_mode": "scored",
         "context_format": "grade_do_{index}",
@@ -790,7 +879,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "PASSED_GET",
         "fail_state": "FAILED_GET",
-        "error_state": "FAILED_TECHNICAL_GET",
+        "error_state": error_state_for("grade_get"),
         "save_prefix": "get",
         "grading_mode": "scored",
         "context_format": "grade_get_{index}",
@@ -818,7 +907,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "METEORITE_PASSED_DO",
         "fail_state": "METEORITE_FAILED_DO",
-        "error_state": "METEORITE_FAILED_TECHNICAL_DO",
+        "error_state": error_state_for("meteorite_grade_do"),
         "save_prefix": "do",
         "grading_mode": "scored",
         "context_format": "meteorite_grade_do_{index}",
@@ -843,7 +932,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "METEORITE_PASSED_GET",
         "fail_state": "METEORITE_FAILED_GET",
-        "error_state": "METEORITE_FAILED_TECHNICAL_GET",
+        "error_state": error_state_for("meteorite_grade_get"),
         "save_prefix": "get",
         "grading_mode": "scored",
         "context_format": "meteorite_grade_get_{index}",
@@ -868,7 +957,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "PASSED_LIKE",
         "fail_state": "FAILED_LIKE",
-        "error_state": "FAILED_TECHNICAL_LIKE",
+        "error_state": error_state_for("grade_like"),
         "save_prefix": "like",
         "requires_company": True,
         "grading_mode": "scored",
@@ -933,7 +1022,7 @@ TASK_CONFIG = {
         "fallback_batch_size": 10,
         "pass_state": "METEORITE_PASSED_LIKE",
         "fail_state": "METEORITE_FAILED_LIKE",
-        "error_state": "METEORITE_FAILED_TECHNICAL_LIKE",
+        "error_state": error_state_for("meteorite_like"),
         "save_prefix": "like",
         "requires_company": False,
         "grading_mode": "scored",
@@ -995,7 +1084,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "contemplate_job": {
         "response_schema": {
@@ -1007,7 +1095,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "advise_job_resume": {
         "response_schema": {
@@ -1019,7 +1106,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     # Structure-keyed resume draft hop (AST-551 / AST-594); section bodies validated at runtime.
     "draft_job_resume": {
@@ -1045,7 +1131,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "check_job_resume": {
         "response_schema": {
@@ -1057,7 +1142,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
     },
     "finalize_job_resume": {
         "response_schema": {
@@ -1075,7 +1159,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "task_type": "CHAIN",
-        "error_state": ERROR_BUILD_ARTIFACTS_STATE,
         "artifact_key": "job.artifacts.job_resume",
     },
     "draft_cover_letter": {
@@ -1164,7 +1247,10 @@ assert TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] in (
     TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
 )
 assert TASK_CONFIG["qualify_meteorite"]["email_link_prefix"] == "email-"
-assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == "BOT_BLOCKED"
+assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == bot_blocked_state_for("qualify_meteorite")
+# AST-2086: every artifact / candidate craft chain hop names its own failure (ERROR_<HOP>).
+for _hop in (*BUILD_ARTIFACTS_CHAIN_TASK_KEYS, *CANDIDATE_CRAFT_CHAIN_TASK_KEYS):
+    TASK_CONFIG[_hop]["error_state"] = error_state_for(_hop)
 
 def is_conversational_task(task_key: str) -> bool:
     """True when TASK_CONFIG marks the task as CHAT (AST-1072 conversational envelope)."""
@@ -1280,33 +1366,46 @@ COMPANY_STATES = {
         "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
         "retry_state": retry_of("HOMEPAGE_READY"),
     },
-    "NO_WEBSITE": {},
     # AST-1672: waiting between CSE fetch and resolve_website AI hop — need sort_by for admin defaults.
     "WEBSITE_REVIEW": {"batch_criteria": {"sort_by": "updated_at"}},
     "PREFILTER_PASSED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "PJL_READY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "JOBLIST_IDENTIFIED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
-    "COULD_NOT_PARSE_JOBLIST": {},
-    "NO_PJL_SELECTED": {},
     "PREFILTER_FAILED": {},
     "VET_FAILED": {},
-    "NO_PREFILTER_JOBLISTS": {},
     "TO_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    # AST-2054: upshot hops between locate/parse success and WATCH.
+    "GET_UPSHOT": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
+    "UPSHOT_READY": {
+        "batch_criteria": {"limit": 10, "sort_by": "updated_at"},
+        "retry_state": retry_of("UPSHOT_READY"),
+    },
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "IGNORE": {},
     "METEORITE": {},  # AST-1493: roster-inert meteorite placeholders (stem-keyed); no batch_criteria
-    "PREFILTER_UNKNOWN": {},
-    "HARD_PARSE": {},
     "NO_OPENINGS": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "JOBS_FOUND": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
-    "NO_JOBLIST": {},
-    "CANNOT_PARSE_JOB_SITE": {},
-    "CANNOT_READ_WEBSITE": {},
-    "BOT_BLOCKED": {},
-    "ERROR_PREFILTER": {},
-    "ERROR_LOCATE_JOB_PAGE": {},
-    "JOBSITE_SCRAPE_ISSUE": {},
-    "ERROR_GAZE": {},
+    # AST-2086 terminal grammar: ERROR_<TASK_KEY>[_<CONDITION>] / BOT_BLOCKED_<TASK_KEY>, by writing task.
+    error_state_for("inflow_resolve_website", "NOT_FOUND"): {},
+    error_state_for("resolve_website", "NOT_FOUND"): {},
+    error_state_for("fetch_website", "UNREADABLE"): {},
+    bot_blocked_state_for("fetch_website"): {},
+    error_state_for("prefilter_company"): {},
+    error_state_for("prefilter_company", "NO_JOBLIST_LINKS"): {},
+    error_state_for("prefilter_company", "UNREADABLE"): {},
+    error_state_for("fetch_job_pages", "UNREADABLE"): {},
+    bot_blocked_state_for("fetch_job_pages"): {},
+    # select_job_page also owns the JOBS_FOUND locate flow (same agent, shared writers).
+    error_state_for("select_job_page"): {},
+    error_state_for("select_job_page", "NO_SELECTION"): {},
+    error_state_for("select_job_page", "NO_JOBLIST"): {},
+    error_state_for("select_job_page", "UNREADABLE"): {},
+    error_state_for("select_job_page", "UNPARSEABLE"): {},
+    bot_blocked_state_for("select_job_page"): {},
+    error_state_for("parse_job_list"): {},
+    error_state_for("parse_job_list", "UNPARSEABLE"): {},
+    error_state_for("gaze"): {},
+    error_state_for("company_upshot"): {},
 }
 
 # ---------------------------------------------------------------------------
@@ -1349,11 +1448,6 @@ CANDIDATE_STATES = {
             "ALL_TOPICS_READY_STALE",
         ],
         "retry_state": retry_of("REQUESTED_RESUME"),
-        "error_state": "REQUESTED_RESUME_ERROR",
-        "progress_rank": 4,
-    },
-    "REQUESTED_RESUME_ERROR": {
-        "prior_states": ["REQUESTED_RESUME"],
         "progress_rank": 4,
     },
     "RESUME_READY": {
@@ -1380,12 +1474,12 @@ CANDIDATE_STATES = {
             "PAUSE_SEARCH",
         ],
         "retry_state": retry_of("REQUESTED_ARTIFACTS"),
-        "error_state": "REQUESTED_ARTIFACTS_ERROR",
         "progress_rank": 6,
     },
-    "REQUESTED_ARTIFACTS_ERROR": {
-        "prior_states": ["REQUESTED_ARTIFACTS"],
-        "progress_rank": 6,
+    # AST-2086: a failing craft hop lands on its own ERROR_<HOP> (TASK_CONFIG error_state).
+    **{
+        s: {"prior_states": ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"], "progress_rank": 6}
+        for s in CANDIDATE_CRAFT_CHAIN_ERROR_STATES
     },
     "ARTIFACTS_READY": {
         "prior_states": [
@@ -1904,7 +1998,7 @@ CONTACT_CONFIG = {
     #   threads_only      — in-thread only when the user posted in a thread; else a new top-level post.
     #   always_no_share   — always in a thread (the user's thread, or a new one under their message).
     #   always_with_share — always_no_share + Slack "Also send to channel" (reply_broadcast).
-    # Estelle-initiated posts (meteorite BOT_BLOCKED) are not replies and ignore this.
+    # Estelle-initiated posts (meteorite bot-wall notify) are not replies and ignore this.
     "thread_response": "threads_only",
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
@@ -2109,17 +2203,23 @@ ROSTER_CONFIG = {
         "retry_state": retry_of("HOMEPAGE_READY"),
         # Agent-envelope failure (bad source content) → one fetch_website re-scrape (AST-1839)
         "envelope_retry_state": retry_of("WEBSITE_FOUND"),
-        "error_state": "ERROR_PREFILTER",
-        "no_pjl_state": "NO_PREFILTER_JOBLISTS",
+        "error_state": error_state_for("prefilter_company"),
+        "no_pjl_state": error_state_for("prefilter_company", "NO_JOBLIST_LINKS"),
+        # Homepage scrape error / not-ready skip (AST-2086).
+        "unreadable_state": error_state_for("prefilter_company", "UNREADABLE"),
         "pjl_url_data_key": "possible_joblist_links",
     },
     "locate_job_page": {
         "input_state": "TO_WATCH",
         # JOBS_FOUND only — decomposed PJL pipeline uses fetch_job_pages → select_job_page → parse_job_list.
         "dispatch_input_states": ["JOBS_FOUND"],
-        "pass_states": ["WATCH"],
-        "error_state": "ERROR_LOCATE_JOB_PAGE",
-        "scrape_issue_state": "JOBSITE_SCRAPE_ISSUE",
+        "pass_states": ["GET_UPSHOT"],
+        # Runs the select_job_page agent; outcomes carry select_job_page names (AST-2086).
+        "error_state": error_state_for("select_job_page"),
+        "scrape_issue_state": error_state_for("select_job_page", "UNREADABLE"),
+        "no_joblist_state": error_state_for("select_job_page", "NO_JOBLIST"),
+        "unparseable_state": error_state_for("select_job_page", "UNPARSEABLE"),
+        "bot_blocked_state": bot_blocked_state_for("select_job_page"),
         "max_depth": 2,
     },
     "select_job_page": {
@@ -2127,17 +2227,27 @@ ROSTER_CONFIG = {
         "pass_states": ["JOBLIST_IDENTIFIED", retry_of("PREFILTER_PASSED")],
         "retry_state": retry_of("PREFILTER_PASSED"),
         "identified_state": "JOBLIST_IDENTIFIED",
-        "exhausted_state": "NO_PJL_SELECTED",
+        "exhausted_state": error_state_for("select_job_page", "NO_SELECTION"),
         "pjl_url_data_key": "possible_joblist_links",
         "selected_pjl_url_key": "selected_pjl_url",
     },
     "parse_job_list": {
         "dispatch_trigger_state": "JOBLIST_IDENTIFIED",
         "retry_trigger_state": retry_of("JOBLIST_IDENTIFIED"),
-        "pass_state": "WATCH",
+        "pass_state": "GET_UPSHOT",
         "retry_state": retry_of("JOBLIST_IDENTIFIED"),
-        "terminal_fail_state": "COULD_NOT_PARSE_JOBLIST",
+        "terminal_fail_state": error_state_for("parse_job_list", "UNPARSEABLE"),
+        # Empty-token data defect — bare, never a retry (AST-2000 / AST-2086).
+        "error_state": error_state_for("parse_job_list"),
         "selected_pjl_url_key": "selected_pjl_url",
+    },
+    # AST-2054: Estelle company upshot hop. Retry once via UPSHOT_READY_RETRY, then ERROR_COMPANY_UPSHOT.
+    "company_upshot": {
+        "task_key": "company_upshot",
+        "dispatch_trigger_state": "UPSHOT_READY",
+        "pass_state": "WATCH",
+        "retry_state": retry_of("UPSHOT_READY"),
+        "error_state": error_state_for("company_upshot"),
     },
     "scrape_readiness": {
         "max_wait_ms": 20000,
@@ -2160,7 +2270,7 @@ ROSTER_CONFIG = {
         ],
     },
     "gaze": {
-        "error_state": "ERROR_GAZE",
+        "error_state": error_state_for("gaze"),
     },
     "company_data_keys": {
         "homepage_text": "homepage_text",
@@ -2180,6 +2290,8 @@ ROSTER_CONFIG = {
         "pjl_assembled_content": "pjl_assembled_content",
         "pjl_nav_links": "pjl_nav_links",
         "selected_pjl_url": "selected_pjl_url",
+        # AST-2054: Estelle prose upshot (display-only). No coat-check handler — explicit storage only.
+        "company_upshot": "company_upshot",
     },
     "culture_pages": {
         "max_pages": 6,
@@ -2234,7 +2346,7 @@ INFLOW_CONFIG = {
         "dispatch_trigger_state": "DISCOVERED",
         "waiting_state": "WEBSITE_REVIEW",
         "pass_state": "WEBSITE_REVIEW",  # ≥1 CSE hit → waiting
-        "fail_state": "NO_WEBSITE",  # zero CSE hits → terminal
+        "fail_state": error_state_for("inflow_resolve_website", "NOT_FOUND"),  # zero CSE hits → terminal
         "hit_list_data_key": "inflow_resolve_website_hits",
     },
     "vet": {
@@ -2303,13 +2415,14 @@ GAZER_CONFIG = {
     "fetch_jd": {
         "fallback_batch_size": 10,
         "pass_state": "JD_READY",
-        "fail_state": "JD_SCRAPE_FAIL",
-        "error_states": [
-            "JD_SCRAPE_FAIL_COOKIE",
-            "BOT_BLOCKED",
-            "JD_SCRAPE_FAIL_MISSING",
-            "JD_SCRAPE_FAIL_CLOSED",
-        ],
+        "fail_state": error_state_for("fetch_jd", "UNREADABLE"),
+        # _classify_jd() result → state; expired-link names are shared with fetch_relative_jd.
+        "classified_states": {
+            "cookie": error_state_for("fetch_jd", "COOKIE"),
+            "bot": bot_blocked_state_for("fetch_jd"),
+            "missing": "JD_SCRAPE_FAIL_MISSING",
+            "closed": "JD_SCRAPE_FAIL_CLOSED",
+        },
     },
     # AST-2022: click-through fetch for relative-link jobs (runner is AST-2025).
     # Click reached a page → same JD gates/outcomes as fetch_jd; click failed → fail_state.
@@ -2317,37 +2430,46 @@ GAZER_CONFIG = {
         "fallback_batch_size": 10,   # config default only; dispatch_task.batch_size wins
         "trigger_state": "RELATIVE_JOB_LINK",
         "pass_state": "JD_READY",
-        "fail_state": "RELATIVE_LINK_FAIL",
-        "error_states": [
-            "JD_SCRAPE_FAIL",
-            "JD_SCRAPE_FAIL_COOKIE",
-            "BOT_BLOCKED",
-            "JD_SCRAPE_FAIL_MISSING",
-            "JD_SCRAPE_FAIL_CLOSED",
-        ],
+        "fail_state": error_state_for("fetch_relative_jd", "CLICK"),
+        "unreadable_state": error_state_for("fetch_relative_jd", "UNREADABLE"),
+        "classified_states": {
+            "cookie": error_state_for("fetch_relative_jd", "COOKIE"),
+            "bot": bot_blocked_state_for("fetch_relative_jd"),
+            "missing": "JD_SCRAPE_FAIL_MISSING",
+            "closed": "JD_SCRAPE_FAIL_CLOSED",
+        },
     },
     "fetch_culture_pages": {
         "fallback_batch_size": 10,
         "pass_state": "CULTURE_READY",
-        "fail_state": "NEED_CULTURE_CONTENT",
-        "no_links_state": "NO_CULTURE_LINKS",
+        "fail_state": error_state_for("fetch_culture_pages", "UNREADABLE"),
+        "no_links_state": error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"),
+        "bot_blocked_state": bot_blocked_state_for("fetch_culture_pages"),
     },
     "fetch_website": {
         "fallback_batch_size": 10,
         "pass_state": "HOMEPAGE_READY",
-        "fail_state": "CANNOT_READ_WEBSITE",
+        "fail_state": error_state_for("fetch_website", "UNREADABLE"),
+        "bot_blocked_state": bot_blocked_state_for("fetch_website"),
         # Shared retry holding; fetch_website claims all of it (AST-1810).
         "retry_state": retry_of("WEBSITE_FOUND"),
     },
     "fetch_job_pages": {
         "fallback_batch_size": 10,
         "pass_state": "PJL_READY",
-        "fail_state": "JOBSITE_SCRAPE_ISSUE",
+        "fail_state": error_state_for("fetch_job_pages", "UNREADABLE"),
+        "bot_blocked_state": bot_blocked_state_for("fetch_job_pages"),
         "fetch_job_pages_trigger_states": ["PREFILTER_PASSED", retry_of("PREFILTER_PASSED")],
     },
-    # Same string as ROSTER_CONFIG["gaze"]["error_state"] ("ERROR_GAZE").
+    # AST-2054: company culture-page fetch before the Estelle upshot. Always advances to pass_state.
+    "fetch_company_culture_pages": {
+        "fallback_batch_size": 10,   # config default only; dispatch_task.batch_size wins
+        "trigger_state": "GET_UPSHOT",
+        "pass_state": "UPSHOT_READY",
+    },
+    # Same name as ROSTER_CONFIG["gaze"]["error_state"].
     "gaze": {
-        "error_state": "ERROR_GAZE",
+        "error_state": error_state_for("gaze"),
     },
 }
 
@@ -2570,72 +2692,104 @@ JOB_STATES = {
     "VALID_TITLE":            {"prior_states": ["NEW"],                "retry_state": retry_of("NEW")},  # post–title-screen; retry → NEW_RETRY (AST-898); retry_of: drain-only; no new writes from NEW qualify path
     "INVALID_TITLE":          {"prior_states": ["NEW"]},
     # AST-2022: relative-link qualify passes park here for the click-through fetch (fetch_relative_jd).
-    "RELATIVE_JOB_LINK":      {"prior_states": ["NEW", "RELATIVE_LINK_FAIL"]},  # NEW_RETRY resolves through its base; RELATIVE_LINK_FAIL = Skipped bulk retry
-    "RELATIVE_LINK_FAIL":     {"prior_states": ["RELATIVE_JOB_LINK"]},  # click target missing / Telescope error; job_link still relative
-    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "JD_READY", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED"]},
+    "RELATIVE_JOB_LINK":      {"prior_states": ["NEW", error_state_for("fetch_relative_jd", "CLICK")]},  # NEW_RETRY resolves through its base; CLICK = Skipped bulk retry
+    error_state_for("fetch_relative_jd", "CLICK"): {"prior_states": ["RELATIVE_JOB_LINK"]},  # click target missing / Telescope error; job_link still relative
+    "PASSED_JOBLIST":         {"prior_states": [
+        "NEW", "VALID_TITLE", "JD_READY",
+        error_state_for("fetch_jd", "UNREADABLE"), error_state_for("fetch_relative_jd", "UNREADABLE"),
+        error_state_for("fetch_jd", "COOKIE"), error_state_for("fetch_relative_jd", "COOKIE"),
+        bot_blocked_state_for("fetch_jd"), bot_blocked_state_for("fetch_relative_jd"), bot_blocked_state_for("qualify_meteorite"),
+        "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED",
+    ]},
     "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE"]},
-    "FAILED_TECHNICAL":       {"prior_states": None},                                            # generic technical failure
-    "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", "ERROR_EVALUATE_JD", "RELATIVE_JOB_LINK"],    "retry_state": retry_of("JD_READY")},  # retry_of: evaluate_jd retry holding state
-    "JD_SCRAPE_FAIL":         {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
-    "JD_SCRAPE_FAIL_COOKIE":  {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
-    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"]},  # AST-1195: universal bot/challenge
+    # Upshot second failure (from its _RETRY holding) — origin hop known, so no generic catch-all.
+    error_state_for("analysis_upshot"): {"prior_states": None},
+    error_state_for("meteorite_upshot"): {"prior_states": None},
+    "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", error_state_for("evaluate_jd"), "RELATIVE_JOB_LINK"],    "retry_state": retry_of("JD_READY")},  # retry_of: evaluate_jd retry holding state
+    error_state_for("fetch_jd", "UNREADABLE"): {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    error_state_for("fetch_relative_jd", "UNREADABLE"): {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    error_state_for("fetch_jd", "COOKIE"): {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    error_state_for("fetch_relative_jd", "COOKIE"): {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
+    # AST-1195 / AST-2086: bot / challenge walls, one per writing task.
+    bot_blocked_state_for("fetch_jd"): {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"]},
+    bot_blocked_state_for("fetch_relative_jd"): {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"]},
+    bot_blocked_state_for("qualify_meteorite"): {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "RELATIVE_JOB_LINK"]},
     "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
     "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST", "RELATIVE_JOB_LINK"]},
-    "PASSED_JD":              {"prior_states": ["JD_READY", "FAILED_DO", "FAILED_TECHNICAL_DO"], "retry_state": retry_of("PASSED_JD")},  # retry_of: grade_do incomplete-grade holding (AST-1155)
+    "PASSED_JD":              {"prior_states": ["JD_READY", "FAILED_DO", error_state_for("grade_do")], "retry_state": retry_of("PASSED_JD")},  # retry_of: grade_do incomplete-grade holding (AST-1155)
     "FAILED_JD":              {"prior_states": ["JD_READY"]},
-    "PASSED_DO":              {"prior_states": ["PASSED_JD", "FAILED_GET", "FAILED_TECHNICAL_GET"], "retry_state": retry_of("PASSED_DO")},  # retry_of: grade_get incomplete-grade holding (AST-1155)
+    "PASSED_DO":              {"prior_states": ["PASSED_JD", "FAILED_GET", error_state_for("grade_get")], "retry_state": retry_of("PASSED_DO")},  # retry_of: grade_get incomplete-grade holding (AST-1155)
     "FAILED_DO":              {"prior_states": ["PASSED_JD"]},
-    "FAILED_TECHNICAL_DO":    {"prior_states": ["PASSED_JD"]},
-    "PASSED_GET":             {"prior_states": ["PASSED_DO", "NEED_CULTURE_CONTENT", "NO_CULTURE_LINKS"]},
+    error_state_for("grade_do"): {"prior_states": ["PASSED_JD"]},
+    "PASSED_GET":             {"prior_states": [
+        "PASSED_DO",
+        error_state_for("fetch_culture_pages", "UNREADABLE"),
+        bot_blocked_state_for("fetch_culture_pages"),
+        error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"),
+    ]},
     "FAILED_GET":             {"prior_states": ["PASSED_DO"]},
-    "FAILED_TECHNICAL_GET":   {"prior_states": ["PASSED_DO"]},
+    error_state_for("grade_get"): {"prior_states": ["PASSED_DO"]},
     # AST-874: culture fetch gate between GET and LIKE.
-    "CULTURE_READY":          {"prior_states": ["PASSED_GET", "FAILED_LIKE", "FAILED_TECHNICAL_LIKE", "NEED_WEBSITE_CONTENT"], "retry_state": retry_of("CULTURE_READY")},  # retry_of: grade_like incomplete-grade holding (AST-1155)
-    "NEED_CULTURE_CONTENT":   {"prior_states": ["PASSED_GET"]},
-    "NO_CULTURE_LINKS":       {"prior_states": ["PASSED_GET"]},
+    "CULTURE_READY":          {"prior_states": [
+        "PASSED_GET", "FAILED_LIKE", error_state_for("grade_like"),
+        error_state_for("grade_like", "NO_WEBSITE_CONTENT"), error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"),
+    ], "retry_state": retry_of("CULTURE_READY")},  # retry_of: grade_like incomplete-grade holding (AST-1155)
+    error_state_for("fetch_culture_pages", "UNREADABLE"): {"prior_states": ["PASSED_GET"]},
+    bot_blocked_state_for("fetch_culture_pages"): {"prior_states": ["PASSED_GET"]},
+    error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"): {"prior_states": ["PASSED_GET"]},
     # LIKE needs company website; scrape can fail after GET / CULTURE_READY (not only from DO).
-    "NEED_WEBSITE_CONTENT":   {"prior_states": ["PASSED_DO", "PASSED_GET", "CULTURE_READY"]},
+    # Only requires_company tasks (grade_like, analysis_upshot) write ERROR_<TASK_KEY>_NO_WEBSITE_CONTENT.
+    error_state_for("grade_like", "NO_WEBSITE_CONTENT"): {"prior_states": ["PASSED_DO", "PASSED_GET", "CULTURE_READY"]},
+    error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"): {"prior_states": ["PASSED_DO", "PASSED_GET", "CULTURE_READY"]},
     # AST-479: consult_like success queues here for analysis_upshot (sibling); not auto-promoted to BUILD_ARTIFACTS.
     "PASSED_LIKE":            {"prior_states": ["CULTURE_READY"]},
-    # Holding state after a post-LIKE synthesis technical failure (sibling batch); consult_like API errors stay FAILED_TECHNICAL_LIKE.
+    # Holding state after a post-LIKE synthesis technical failure (sibling batch); grade_like API errors land on ERROR_GRADE_LIKE.
     # Upshot succeeded — candidate-facing "recommended" until UI moves job into artifact build (separate epic).
-    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "METEORITE_PASSED_LIKE", BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE]},
+    "RECOMMENDED":            {"prior_states": ["PASSED_LIKE", "METEORITE_PASSED_LIKE", BUILD_ARTIFACTS_BASE_STATE, *BUILD_ARTIFACTS_CHAIN_ERROR_STATES]},
     BUILD_ARTIFACTS_BASE_STATE: {"prior_states": ["RECOMMENDED"]},
-    ERROR_BUILD_ARTIFACTS_STATE: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE]},
-    "BUILD_FAILED":           {"prior_states": [BUILD_ARTIFACTS_BASE_STATE]},
+    # One failure per artifact-chain hop (ERROR_<HOP>).
+    **{s: {"prior_states": [BUILD_ARTIFACTS_BASE_STATE]} for s in BUILD_ARTIFACTS_CHAIN_ERROR_STATES},
     # AST-311/312: return-to-review from skipped and post-outcome states
-    "CANDIDATE_REVIEW":       {"prior_states": ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "BUILD_FAILED", "CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
+    "CANDIDATE_REVIEW":       {"prior_states": ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_SKIPPED", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_APPLIED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED", BUILD_ARTIFACTS_BASE_STATE, "RECOMMENDED"]},
     "CANDIDATE_INTERVIEW":    {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_REJECTED":     {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_GHOSTED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "FAILED_LIKE":            {"prior_states": ["CULTURE_READY"]},
-    "FAILED_TECHNICAL_LIKE":  {"prior_states": ["CULTURE_READY"]},
+    error_state_for("grade_like"): {"prior_states": ["CULTURE_READY"]},
     # AST-1052 / AST-1053 / AST-1058: parallel meteorite track (no CULTURE_READY hop).
     # METEORITE_NEW = pre-AI landing (create / gazer ingest). Ruth qualify_meteorite →
     # METEORITE_QUALIFIED (GDL entry). evaluate_meteorite claims METEORITE_QUALIFIED only (AST-1060).
     "METEORITE_NEW":                  {"prior_states": None, "retry_state": retry_of("METEORITE_NEW")},  # retry_of: qualify_meteorite retry holding (AST-1338)
-    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "retry_state": retry_of("METEORITE_QUALIFIED")},  # retry_of: meteorite evaluate_meteorite incomplete-grade holding (AST-1155)
+    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_FAILED_JD", error_state_for("evaluate_meteorite")], "retry_state": retry_of("METEORITE_QUALIFIED")},  # retry_of: meteorite evaluate_meteorite incomplete-grade holding (AST-1155)
     "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW"]},
-    "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW"]},
-    "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO"], "retry_state": retry_of("METEORITE_PASSED_JD")},  # retry_of: meteorite grade_do incomplete-grade holding (AST-1155)
+    error_state_for("qualify_meteorite"): {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_FAILED_DO", error_state_for("meteorite_grade_do")], "retry_state": retry_of("METEORITE_PASSED_JD")},  # retry_of: meteorite grade_do incomplete-grade holding (AST-1155)
     "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_QUALIFIED"]},
-    "METEORITE_ERROR_EVALUATE_JD":    {"prior_states": ["METEORITE_QUALIFIED"]},
-    "METEORITE_PASSED_DO":            {"prior_states": ["METEORITE_PASSED_JD", "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET"], "retry_state": retry_of("METEORITE_PASSED_DO")},  # retry_of: meteorite grade_get incomplete-grade holding (AST-1155)
+    error_state_for("evaluate_meteorite"): {"prior_states": ["METEORITE_QUALIFIED"]},
+    "METEORITE_PASSED_DO":            {"prior_states": ["METEORITE_PASSED_JD", "METEORITE_FAILED_GET", error_state_for("meteorite_grade_get")], "retry_state": retry_of("METEORITE_PASSED_DO")},  # retry_of: meteorite grade_get incomplete-grade holding (AST-1155)
     "METEORITE_FAILED_DO":            {"prior_states": ["METEORITE_PASSED_JD"]},
-    "METEORITE_FAILED_TECHNICAL_DO":  {"prior_states": ["METEORITE_PASSED_JD"]},
-    "METEORITE_PASSED_GET":           {"prior_states": ["METEORITE_PASSED_DO", "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE"], "retry_state": retry_of("METEORITE_PASSED_GET")},  # retry_of: meteorite_like incomplete-grade holding (AST-1155)
+    error_state_for("meteorite_grade_do"): {"prior_states": ["METEORITE_PASSED_JD"]},
+    "METEORITE_PASSED_GET":           {"prior_states": ["METEORITE_PASSED_DO", "METEORITE_FAILED_LIKE", error_state_for("meteorite_like")], "retry_state": retry_of("METEORITE_PASSED_GET")},  # retry_of: meteorite_like incomplete-grade holding (AST-1155)
     "METEORITE_FAILED_GET":           {"prior_states": ["METEORITE_PASSED_DO"]},
-    "METEORITE_FAILED_TECHNICAL_GET": {"prior_states": ["METEORITE_PASSED_DO"]},
+    error_state_for("meteorite_grade_get"): {"prior_states": ["METEORITE_PASSED_DO"]},
     # LIKE claimed from METEORITE_PASSED_GET (no CULTURE_READY) — sibling AST-1054/1055.
     "METEORITE_PASSED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET"]},
     "METEORITE_FAILED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET"]},
-    "METEORITE_FAILED_TECHNICAL_LIKE":{"prior_states": ["METEORITE_PASSED_GET"]},
+    error_state_for("meteorite_like"): {"prior_states": ["METEORITE_PASSED_GET"]},
     # Upshot technical-hold after meteorite LIKE (mirrors PASSED_LIKE_RETRY) — sibling AST-1055.
-    "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
-    "ERROR_EVALUATE_JD":      {"prior_states": None},
+    error_state_for("qualify_job_listings"): {"prior_states": None},
+    error_state_for("evaluate_jd"): {"prior_states": None},
     "CANDIDATE_SKIPPED":      {"prior_states": []},  # AST-1974: derived after SKIPPED_STATES (Applied/Skipped complement)
 }
+
+# AST-2096: second-strike all-literal-X terminal per scored grading task — explicit rows (no validator
+# changes); priors copied from the base fail_state so {trigger}_RETRY is admitted via state_prior_states.
+_ALL_X_BASES = list(dict.fromkeys(
+    tc["fail_state"] for tc in TASK_CONFIG.values() if tc.get("grading_mode") == "scored"
+))
+JOB_STATES.update({all_x_of(b): {"prior_states": list(JOB_STATES[b]["prior_states"])} for b in _ALL_X_BASES})
+ALL_X_FAIL_STATES = [all_x_of(b) for b in _ALL_X_BASES]
 
 # ---------------------------------------------------------------------------
 # AST-1701: job ingest parent + analysis track SoT (repurposed job.source column).
@@ -2726,17 +2880,28 @@ assert isinstance(METEORITE_CONFIG["land_outcome_created"], str) and METEORITE_C
 assert isinstance(METEORITE_CONFIG["land_outcome_duplicate_skip"], str) and METEORITE_CONFIG["land_outcome_duplicate_skip"]
 assert isinstance(METEORITE_CONFIG["land_outcome_superseded"], str) and METEORITE_CONFIG["land_outcome_superseded"]
 assert isinstance(METEORITE_CONFIG["land_outcome_error"], str) and METEORITE_CONFIG["land_outcome_error"]
-assert "BOT_BLOCKED" in JOB_STATES  # AST-1197: qualify process destination
-assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
+assert bot_blocked_state_for("qualify_meteorite") in JOB_STATES  # AST-1197: qualify process destination
+assert "METEORITE_NEW" in JOB_STATES[bot_blocked_state_for("qualify_meteorite")]["prior_states"]
 
 # AST-1557: flat meteorite staging-row states (table spine). Keys are NOT JOB_STATES
 # METEORITE_* job lifecycle labels — core transitions decide targets; data accepts state as param.
 METEORITE_STATES = {
     "NEW": {
-        "prior_states": ["NEW_EMAIL_ERROR"],  # human reset from stage failure
+        "prior_states": [error_state_for("stage_meteorite")],  # human reset from stage failure
     },
     "SCRAPE_LINK": {
-        "prior_states": ["NEW", "SCRAPE_ERROR"],  # link outcomes; retry from SCRAPE_ERROR
+        # link outcomes; human retry from any scrape / stage-unparseable / land failure
+        "prior_states": [
+            "NEW", retry_of("SCRAPE_LINK"), error_state_for("stage_meteorite", "UNPARSEABLE"),
+            error_state_for("land_meteorite"), error_state_for("scrape_meteorite"),
+        ],
+    },
+    # Explicit key (not only the implicit companion): update_meteorite accepts registry keys only.
+    retry_of("SCRAPE_LINK"): {
+        "prior_states": ["SCRAPE_LINK"],  # first scrape failure; scrape_meteorite claims it with SCRAPE_LINK
+    },
+    error_state_for("scrape_meteorite"): {
+        "prior_states": [retry_of("SCRAPE_LINK")],  # failure from the retry companion is terminal
     },
     # AST-1773: uniqueness gate before land (stage/scrape landable success → CHECK_UNIQUE)
     "CHECK_UNIQUE": {
@@ -2744,21 +2909,28 @@ METEORITE_STATES = {
     },
     "READY": {
         # uniqueness hop promote; Estelle paste recovery (not stage/scrape success)
-        "prior_states": ["CHECK_UNIQUE", "BOT_BLOCKED"],
+        "prior_states": ["CHECK_UNIQUE", bot_blocked_state_for("scrape_meteorite")],
     },
-    "BOT_BLOCKED": {
+    bot_blocked_state_for("scrape_meteorite"): {
         "prior_states": ["SCRAPE_LINK"],
     },
-    "LINK_EXPIRED": {
-        "prior_states": ["SCRAPE_LINK"],  # closed/missing content; not a scrape retry
+    # Expired link by page status (job track's names); not a scrape retry.
+    "JD_SCRAPE_FAIL_CLOSED": {
+        "prior_states": ["SCRAPE_LINK"],
     },
-    "SCRAPE_ERROR": {
-        "prior_states": ["SCRAPE_LINK"],  # retry-holding after Playwright / scrape miss
+    "JD_SCRAPE_FAIL_MISSING": {
+        "prior_states": ["SCRAPE_LINK"],
+    },
+    error_state_for("stage_meteorite", "UNPARSEABLE"): {
+        "prior_states": ["NEW"],  # classified row can't be acted on (skip / missing link or content)
+    },
+    error_state_for("land_meteorite"): {
+        "prior_states": ["READY", bot_blocked_state_for("scrape_meteorite")],
     },
     "NOT_A_JOB": {
         "prior_states": None,  # insert-legal; scheduled cleanup; not a dispatch trigger; not stale
     },
-    "NEW_EMAIL_ERROR": {
+    error_state_for("stage_meteorite"): {
         "prior_states": None,  # insert-legal; not a dispatch trigger; human resets via NEW
     },
     # AST-1773: terminal duplicate hold (from CHECK_UNIQUE only; scheduled cleanup later)
@@ -2769,18 +2941,24 @@ METEORITE_STATES = {
         "prior_states": ["READY"],
     },
     "ABANDONED": {
-        "prior_states": ["BOT_BLOCKED", "SCRAPE_ERROR"],  # nag limit / terminal stale
+        # nag limit / terminal stale
+        "prior_states": [
+            bot_blocked_state_for("scrape_meteorite"), retry_of("SCRAPE_LINK"),
+            error_state_for("stage_meteorite", "UNPARSEABLE"), error_state_for("land_meteorite"),
+        ],
     },
 }
 
 assert set(METEORITE_STATES) == {
-    "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-    "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
+    "NEW", "SCRAPE_LINK", retry_of("SCRAPE_LINK"), error_state_for("scrape_meteorite"), "CHECK_UNIQUE",
+    "READY", bot_blocked_state_for("scrape_meteorite"), "JD_SCRAPE_FAIL_CLOSED", "JD_SCRAPE_FAIL_MISSING",
+    error_state_for("stage_meteorite", "UNPARSEABLE"), error_state_for("land_meteorite"), "NOT_A_JOB",
+    error_state_for("stage_meteorite"), "DUPLICATE", "LANDED", "ABANDONED",
 }
 assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
-assert METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+assert METEORITE_STATES["NEW"]["prior_states"] == [error_state_for("stage_meteorite")]
 assert METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
-assert METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
+assert METEORITE_STATES[error_state_for("stage_meteorite")]["prior_states"] is None
 for _ms, _mcfg in METEORITE_STATES.items():
     _priors = _mcfg["prior_states"]
     if _priors is not None:
@@ -2799,11 +2977,17 @@ METEORITE_INGRESS_DISPATCH_CONFIG = {
     "land_trigger_state": "READY",
     "batch_size": 10,
     "scrape_page_status_states": {
-        "blocked": "BOT_BLOCKED",
+        "blocked": bot_blocked_state_for("scrape_meteorite"),
         "ok": "CHECK_UNIQUE",
-        "closed": "LINK_EXPIRED",
-        "missing": "LINK_EXPIRED",
+        "closed": "JD_SCRAPE_FAIL_CLOSED",
+        "missing": "JD_SCRAPE_FAIL_MISSING",
     },
+    # patt.task.dispatch-retry: first scrape failure → retry companion; failure from it → terminal.
+    "scrape_retry_state": retry_of("SCRAPE_LINK"),
+    "scrape_error_state": error_state_for("scrape_meteorite"),
+    "stage_error_state": error_state_for("stage_meteorite"),
+    "stage_unparseable_state": error_state_for("stage_meteorite", "UNPARSEABLE"),
+    "land_error_state": error_state_for("land_meteorite"),
 }
 _mid_ingress = METEORITE_INGRESS_DISPATCH_CONFIG
 assert len({
@@ -2822,13 +3006,16 @@ for _tr in (
 ):
     assert _mid_ingress[_tr] in METEORITE_STATES
 assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
-    "CHECK_UNIQUE", "BOT_BLOCKED", "SCRAPE_ERROR", "LINK_EXPIRED",
+    "CHECK_UNIQUE", bot_blocked_state_for("scrape_meteorite"), "JD_SCRAPE_FAIL_CLOSED", "JD_SCRAPE_FAIL_MISSING",
 }
+assert all(_mid_ingress[k] in METEORITE_STATES for k in (
+    "scrape_retry_state", "scrape_error_state", "stage_error_state", "stage_unparseable_state", "land_error_state",
+))
 
-# AST-1561: scheduled BOT_BLOCKED → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
+# AST-1561: scheduled BOT_BLOCKED_SCRAPE_METEORITE → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
 METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
     "task_key": "meteorite_bot_blocked_notify",
-    "trigger_state": "BOT_BLOCKED",
+    "trigger_state": bot_blocked_state_for("scrape_meteorite"),
     "batch_size": 10,
     "nag_limit": 3,
     "dm_first_template": (
@@ -2842,7 +3029,7 @@ METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
 }
 _mid_notify = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
 assert isinstance(_mid_notify["task_key"], str) and _mid_notify["task_key"]
-assert _mid_notify["trigger_state"] == "BOT_BLOCKED"
+assert _mid_notify["trigger_state"] == bot_blocked_state_for("scrape_meteorite")
 assert _mid_notify["trigger_state"] in METEORITE_STATES
 assert isinstance(_mid_notify["batch_size"], int) and _mid_notify["batch_size"] >= 1
 assert isinstance(_mid_notify["nag_limit"], int) and _mid_notify["nag_limit"] >= 1
@@ -3378,20 +3565,21 @@ SEED_CONFIG = {
         "    AND d.trigger_state = 'CHECK_UNIQUE'"
         ")",
     ),
-    # stat.dispatch.entity-state-bound: per-candidate BOT_BLOCKED Estelle notify runner
+    # stat.dispatch.entity-state-bound: per-candidate bot-blocked Estelle notify runner
     # (was NULL candidate_id global pool pre-remediation).
     "dispatch_task-meteorite-bot-blocked-notify": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT c.candidate_id, 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED', 'updated_at', "
+        f") SELECT c.candidate_id, 'meteorite_bot_blocked_notify', 'meteorite', "
+        f"'{METEORITE_BOT_BLOCKED_NOTIFY_CONFIG['trigger_state']}', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
         "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
         "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'meteorite_bot_blocked_notify' "
-        "    AND d.trigger_state = 'BOT_BLOCKED'"
+        f"    AND d.trigger_state = '{METEORITE_BOT_BLOCKED_NOTIFY_CONFIG['trigger_state']}'"
         ")",
     ),
     # stat.dispatch.entity-state-bound: one-time operator cleanup for legacy NULL-candidate_id
@@ -3557,6 +3745,7 @@ JOBS_RECOMMENDED_REPORT_PHASE_TABS = [
     {"tab_id": "phase_like", "nav_label": "LIKE Analysis", "grades_field": "like_grades", "take_key": "take_like"},
 ]
 
+# AST-2081: preview_thumbnail — tab shows a print-preview thumbnail (instead of an inline editor) once generated.
 # AST-1100: tab keys = AST-1099 pin slots (hydrate resolves id → body on job GET).
 JOBS_RECOMMENDED_ARTIFACT_TABS = [
     {
@@ -3565,6 +3754,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "job_resume",
         "shapes_key": None,
         "use_resume_structure": True,
+        "preview_thumbnail": True,
     },
     {
         "tab_id": "artifact_cover",
@@ -3572,6 +3762,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "cover_letter",
         "shapes_key": "cover_letter",
         "use_resume_structure": False,
+        "preview_thumbnail": True,
     },
     {
         "tab_id": "artifact_application",
@@ -3579,6 +3770,7 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
         "artifact_key": "proposed_answers",
         "shapes_key": None,
         "use_resume_structure": False,
+        "preview_thumbnail": False,
     },
 ]
 
@@ -3660,13 +3852,13 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
-    "meteorite_like", "vet_inflow_discovery", "parse_job_list",
+    "meteorite_like", "vet_inflow_discovery", "parse_job_list", "company_upshot",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
-    "resolve_website",
+    "resolve_website", "fetch_company_culture_pages", "company_upshot",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -3681,6 +3873,10 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"]
     if task_key == "select_job_page":
         return ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]
+    if task_key == "company_upshot":
+        return ROSTER_CONFIG["company_upshot"]["dispatch_trigger_state"]
+    if task_key == "fetch_company_culture_pages":
+        return GAZER_CONFIG["fetch_company_culture_pages"]["trigger_state"]
     if task_key == "recheck_no_openings":
         return "NO_OPENINGS"
     if task_key == "gaze":
@@ -3736,17 +3932,9 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "PASSED_LIKE"
     if task_key == "meteorite_upshot":
         return "METEORITE_PASSED_LIKE"
-    _tc = TASK_CONFIG.get(task_key) or {}
-    if _tc.get("task_type") == "CHAIN" and _tc.get("error_state") == ERROR_BUILD_ARTIFACTS_STATE:
-        return BUILD_ARTIFACTS_BASE_STATE
-    # Cover-letter hops share the artifact chain's claim surface. CANDIDATE_REVIEW is the
-    # graduation *output* (DISPATCH_CHAIN_TERMINAL_GRADUATION), never the input.
-    if task_key in (
-        "draft_cover_letter",
-        "check_cover_letter",
-        "finalize_cover_letter",
-        "propose_application_responses",
-    ):
+    # Every artifact-chain hop (cover-letter hops included) claims BUILD_ARTIFACTS. CANDIDATE_REVIEW
+    # is the graduation *output* (DISPATCH_CHAIN_TERMINAL_GRADUATION), never the input.
+    if task_key in BUILD_ARTIFACTS_CHAIN_TASK_KEYS:
         return BUILD_ARTIFACTS_BASE_STATE
     cfg = TASK_CONFIG.get(task_key)
     if cfg and cfg.get("trigger_state") is not None:
@@ -3969,21 +4157,26 @@ def trigger_state_used_by_scored_dispatch_task(trigger_state: Optional[str]) -> 
 
 SKIPPED_STATES = [
     "INVALID_TITLE",
-    "FAILED_JOBLIST", "JD_SCRAPE_FAIL",
-    "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED", "RELATIVE_LINK_FAIL",
-    "FAILED_JD", "FAILED_TECHNICAL",
-    "FAILED_DO", "FAILED_TECHNICAL_DO",
-    "FAILED_GET", "FAILED_TECHNICAL_GET",
-    "NEED_WEBSITE_CONTENT",
-    "NEED_CULTURE_CONTENT", "NO_CULTURE_LINKS",
-    "FAILED_LIKE", "FAILED_TECHNICAL_LIKE",
-    "METEORITE_FAILED_QUALIFY", "METEORITE_ERROR_QUALIFY",
-    "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD",
-    "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO",
-    "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET",
-    "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE",
-    "ERROR_QUALIFY_JOB_LISTINGS", "ERROR_EVALUATE_JD",
-    "ERROR_BUILD_ARTIFACTS", "BUILD_FAILED",
+    "FAILED_JOBLIST",
+    error_state_for("fetch_jd", "UNREADABLE"), error_state_for("fetch_relative_jd", "UNREADABLE"),
+    error_state_for("fetch_jd", "COOKIE"), error_state_for("fetch_relative_jd", "COOKIE"),
+    bot_blocked_state_for("fetch_jd"), bot_blocked_state_for("fetch_relative_jd"), bot_blocked_state_for("qualify_meteorite"),
+    "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED", error_state_for("fetch_relative_jd", "CLICK"),
+    "FAILED_JD", error_state_for("analysis_upshot"), error_state_for("meteorite_upshot"),
+    "FAILED_DO", error_state_for("grade_do"),
+    "FAILED_GET", error_state_for("grade_get"),
+    error_state_for("grade_like", "NO_WEBSITE_CONTENT"), error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"),
+    error_state_for("fetch_culture_pages", "UNREADABLE"), error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"),
+    bot_blocked_state_for("fetch_culture_pages"),
+    "FAILED_LIKE", error_state_for("grade_like"),
+    "METEORITE_FAILED_QUALIFY", error_state_for("qualify_meteorite"),
+    "METEORITE_FAILED_JD", error_state_for("evaluate_meteorite"),
+    "METEORITE_FAILED_DO", error_state_for("meteorite_grade_do"),
+    "METEORITE_FAILED_GET", error_state_for("meteorite_grade_get"),
+    "METEORITE_FAILED_LIKE", error_state_for("meteorite_like"),
+    *ALL_X_FAIL_STATES,  # AST-2096: terminal all-X fails list Skipped, not Processing
+    error_state_for("qualify_job_listings"), error_state_for("evaluate_jd"),
+    *BUILD_ARTIFACTS_CHAIN_ERROR_STATES,
     "CANDIDATE_SKIPPED",
 ]
 
@@ -4054,70 +4247,112 @@ JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS = [
 
 assert all(row["state"] in (*READY_JOB_STATES, *REVIEW_JOB_STATES) for row in JOBS_RECOMMENDED_UI_SECTIONS)
 
+# AST-2086: a split retired key's new names sit where it sat, expanded in place.
 JOBS_SKIPPED_SECTION_ORDER = [
-    "ERROR_BUILD_ARTIFACTS",
-    "BUILD_FAILED",
+    *BUILD_ARTIFACTS_CHAIN_ERROR_STATES,
     "FAILED_LIKE",
-    "FAILED_TECHNICAL_LIKE",
+    error_state_for("grade_like"),
     "METEORITE_FAILED_LIKE",
-    "METEORITE_FAILED_TECHNICAL_LIKE",
+    error_state_for("meteorite_like"),
     "FAILED_GET",
-    "FAILED_TECHNICAL_GET",
+    error_state_for("grade_get"),
     "METEORITE_FAILED_GET",
-    "METEORITE_FAILED_TECHNICAL_GET",
+    error_state_for("meteorite_grade_get"),
     "FAILED_DO",
-    "FAILED_TECHNICAL_DO",
+    error_state_for("grade_do"),
     "METEORITE_FAILED_DO",
-    "METEORITE_FAILED_TECHNICAL_DO",
-    "NEED_WEBSITE_CONTENT",
-    "NEED_CULTURE_CONTENT",
-    "NO_CULTURE_LINKS",
+    error_state_for("meteorite_grade_do"),
+    error_state_for("grade_like", "NO_WEBSITE_CONTENT"),
+    error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"),
+    error_state_for("fetch_culture_pages", "UNREADABLE"),
+    error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"),
+    bot_blocked_state_for("fetch_culture_pages"),
     "FAILED_JD",
-    "FAILED_TECHNICAL",
+    error_state_for("analysis_upshot"),
+    error_state_for("meteorite_upshot"),
     "METEORITE_FAILED_JD",
-    "METEORITE_ERROR_EVALUATE_JD",
+    error_state_for("evaluate_meteorite"),
     "METEORITE_FAILED_QUALIFY",
-    "METEORITE_ERROR_QUALIFY",
+    error_state_for("qualify_meteorite"),
     "FAILED_JOBLIST",
     "INVALID_TITLE",
-    "JD_SCRAPE_FAIL",
-    "JD_SCRAPE_FAIL_COOKIE",
-    "BOT_BLOCKED",
+    error_state_for("fetch_jd", "UNREADABLE"),
+    error_state_for("fetch_relative_jd", "UNREADABLE"),
+    error_state_for("fetch_jd", "COOKIE"),
+    error_state_for("fetch_relative_jd", "COOKIE"),
+    bot_blocked_state_for("fetch_jd"),
+    bot_blocked_state_for("fetch_relative_jd"),
+    bot_blocked_state_for("qualify_meteorite"),
     "JD_SCRAPE_FAIL_MISSING",
     "JD_SCRAPE_FAIL_CLOSED",
-    "RELATIVE_LINK_FAIL",
-    "ERROR_QUALIFY_JOB_LISTINGS",
-    "ERROR_EVALUATE_JD",
+    error_state_for("fetch_relative_jd", "CLICK"),
+    error_state_for("qualify_job_listings"),
+    error_state_for("evaluate_jd"),
     "CANDIDATE_SKIPPED",
 ]
 
+# AST-2086: renamed keys keep the retired name's effective label (explicit or title-case fallback).
 JOBS_SKIPPED_SECTION_LABELS = {
-    "ERROR_BUILD_ARTIFACTS": "Error Build Artifacts",
-    "BUILD_FAILED": "Build Failed",
+    **{s: "Error Build Artifacts" for s in BUILD_ARTIFACTS_CHAIN_ERROR_STATES},
     "FAILED_JOBLIST": "Failed Job List",
     "FAILED_JD": "Failed Job Description",
-    "FAILED_TECHNICAL": "Failed Technical",
+    error_state_for("analysis_upshot"): "Failed Technical",
+    error_state_for("meteorite_upshot"): "Failed Technical",
     "FAILED_GET": "Failed GET",
-    "FAILED_TECHNICAL_GET": "Failed Technical GET",
+    error_state_for("grade_get"): "Failed Technical GET",
     "FAILED_DO": "Failed DO",
-    "FAILED_TECHNICAL_DO": "Failed Technical DO",
-    "NEED_WEBSITE_CONTENT": "Need Website Content",
-    "NEED_CULTURE_CONTENT": "Need Culture Content",
-    "NO_CULTURE_LINKS": "No Culture Links",
+    error_state_for("grade_do"): "Failed Technical DO",
+    error_state_for("grade_like", "NO_WEBSITE_CONTENT"): "Need Website Content",
+    error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"): "Need Website Content",
+    error_state_for("fetch_culture_pages", "UNREADABLE"): "Need Culture Content",
+    error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"): "No Culture Links",
+    bot_blocked_state_for("fetch_culture_pages"): "Bot Blocked",
     "FAILED_LIKE": "Failed LIKE",
-    "FAILED_TECHNICAL_LIKE": "Failed Technical LIKE",
+    error_state_for("grade_like"): "Failed Technical LIKE",
     "METEORITE_FAILED_QUALIFY": "Meteorite Failed Qualify",
-    "METEORITE_ERROR_QUALIFY": "Meteorite Error Qualify",
+    error_state_for("qualify_meteorite"): "Meteorite Error Qualify",
     "METEORITE_FAILED_JD": "Meteorite Failed JD",
-    "METEORITE_ERROR_EVALUATE_JD": "Meteorite Error Evaluate JD",
+    error_state_for("evaluate_meteorite"): "Meteorite Error Evaluate JD",
     "METEORITE_FAILED_DO": "Meteorite Failed DO",
-    "METEORITE_FAILED_TECHNICAL_DO": "Meteorite Failed Technical DO",
+    error_state_for("meteorite_grade_do"): "Meteorite Failed Technical DO",
     "METEORITE_FAILED_GET": "Meteorite Failed GET",
-    "METEORITE_FAILED_TECHNICAL_GET": "Meteorite Failed Technical GET",
+    error_state_for("meteorite_grade_get"): "Meteorite Failed Technical GET",
     "METEORITE_FAILED_LIKE": "Meteorite Failed LIKE",
-    "METEORITE_FAILED_TECHNICAL_LIKE": "Meteorite Failed Technical LIKE",
-    "RELATIVE_LINK_FAIL": "Relative Link Fail",
+    error_state_for("meteorite_like"): "Meteorite Failed Technical LIKE",
+    error_state_for("fetch_relative_jd", "CLICK"): "Relative Link Fail",
+    error_state_for("fetch_jd", "UNREADABLE"): "Jd Scrape Fail",
+    error_state_for("fetch_relative_jd", "UNREADABLE"): "Jd Scrape Fail",
+    error_state_for("fetch_jd", "COOKIE"): "Jd Scrape Fail Cookie",
+    error_state_for("fetch_relative_jd", "COOKIE"): "Jd Scrape Fail Cookie",
+    bot_blocked_state_for("fetch_jd"): "Bot Blocked",
+    bot_blocked_state_for("fetch_relative_jd"): "Bot Blocked",
+    bot_blocked_state_for("qualify_meteorite"): "Bot Blocked",
 }
+
+# AST-2105: Skipped page groups, in display order, keyed by group id. A row's group is the
+# first whose members list its state, else the first whose prefixes match it, else the last
+# group — the catch-all, with neither prefixes nor members. Prefixes and members live here only;
+# the React page reads them from build_state_ui_manifest()["jobs"]["skipped"]["groups"].
+JOBS_SKIPPED_GROUPS = {
+    "error": {"label": "Error", "prefixes": [ERROR_STATE_PREFIX], "members": []},
+    "bot_block": {"label": "Bot block", "prefixes": [BOT_BLOCKED_STATE_PREFIX], "members": []},
+    "fail": {
+        "label": "Fail",
+        "prefixes": ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"],
+        # Resurrect-only manual skip + the below-floor virtual section (not a JOB_STATES key).
+        "members": ["CANDIDATE_SKIPPED", JOBS_SKIPPED_BELOW_DISPATCH_KEY],
+    },
+    "other": {"label": "Other", "prefixes": [], "members": []},
+}
+# Explicit members must be real Skipped states (or the below-floor key), so a rename can't orphan one.
+assert all(
+    m in SKIPPED_STATES or m == JOBS_SKIPPED_BELOW_DISPATCH_KEY
+    for g in JOBS_SKIPPED_GROUPS.values() for m in g["members"]
+), "JOBS_SKIPPED_GROUPS: member is not a Skipped state"
+# Exactly one catch-all, and it is last — anything after it would be unreachable.
+assert [not (g["prefixes"] or g["members"]) for g in JOBS_SKIPPED_GROUPS.values()] == (
+    [False] * (len(JOBS_SKIPPED_GROUPS) - 1) + [True]
+), "JOBS_SKIPPED_GROUPS: only the last group may be the catch-all"
 
 # Which `job[...]` grade blob to read for rubric columns (keys ⊆ JOB_STATES).
 JOBS_IN_REVIEW_GRADE_FIELD = {
@@ -4191,49 +4426,151 @@ for _row in JOBS_RECOMMENDED_REPORT_PHASE_TABS:
 # Keys ⊆ JOBS_SKIPPED_SECTION_ORDER except CANDIDATE_SKIPPED (Resurrect-only).
 JOBS_SKIPPED_BULK_RETRY_TO_STATE = {
     # AST-1974: artifact build failures — each state's only legal successor.
-    "ERROR_BUILD_ARTIFACTS": "RECOMMENDED",
-    "BUILD_FAILED": "CANDIDATE_REVIEW",
+    **{s: "RECOMMENDED" for s in BUILD_ARTIFACTS_CHAIN_ERROR_STATES},
     # Regular rubric / qualify / JD
     "FAILED_JOBLIST": "NEW",
-    "ERROR_QUALIFY_JOB_LISTINGS": "NEW",
+    error_state_for("qualify_job_listings"): "NEW",
     "INVALID_TITLE": "NEW",
     "FAILED_JD": "JD_READY",
-    "ERROR_EVALUATE_JD": "JD_READY",
-    # Full restart: origin hop unknowable (prior_states None / upshot-path generic).
-    "FAILED_TECHNICAL": "NEW",
+    error_state_for("evaluate_jd"): "JD_READY",
+    # Upshot second failure: full restart, as before the per-task split.
+    error_state_for("analysis_upshot"): "NEW",
+    error_state_for("meteorite_upshot"): "NEW",
     "FAILED_DO": "PASSED_JD",
-    "FAILED_TECHNICAL_DO": "PASSED_JD",
+    error_state_for("grade_do"): "PASSED_JD",
     "FAILED_GET": "PASSED_DO",
-    "FAILED_TECHNICAL_GET": "PASSED_DO",
+    error_state_for("grade_get"): "PASSED_DO",
     "FAILED_LIKE": "CULTURE_READY",
-    "FAILED_TECHNICAL_LIKE": "CULTURE_READY",
+    error_state_for("grade_like"): "CULTURE_READY",
     # Meteorite rubric / qualify / JD
     "METEORITE_FAILED_QUALIFY": "METEORITE_NEW",
-    "METEORITE_ERROR_QUALIFY": "METEORITE_NEW",
+    error_state_for("qualify_meteorite"): "METEORITE_NEW",
     "METEORITE_FAILED_JD": "METEORITE_QUALIFIED",
-    "METEORITE_ERROR_EVALUATE_JD": "METEORITE_QUALIFIED",
+    error_state_for("evaluate_meteorite"): "METEORITE_QUALIFIED",
     "METEORITE_FAILED_DO": "METEORITE_PASSED_JD",
-    "METEORITE_FAILED_TECHNICAL_DO": "METEORITE_PASSED_JD",
+    error_state_for("meteorite_grade_do"): "METEORITE_PASSED_JD",
     "METEORITE_FAILED_GET": "METEORITE_PASSED_DO",
-    "METEORITE_FAILED_TECHNICAL_GET": "METEORITE_PASSED_DO",
+    error_state_for("meteorite_grade_get"): "METEORITE_PASSED_DO",
     "METEORITE_FAILED_LIKE": "METEORITE_PASSED_GET",
-    "METEORITE_FAILED_TECHNICAL_LIKE": "METEORITE_PASSED_GET",
+    error_state_for("meteorite_like"): "METEORITE_PASSED_GET",
     # Non-rubric hop re-entry (replace hard-coded NEW; not AC-critical but map-complete)
-    "JD_SCRAPE_FAIL": "PASSED_JOBLIST",
-    "JD_SCRAPE_FAIL_COOKIE": "PASSED_JOBLIST",
-    "BOT_BLOCKED": "PASSED_JOBLIST",
+    error_state_for("fetch_jd", "UNREADABLE"): "PASSED_JOBLIST",
+    error_state_for("fetch_relative_jd", "UNREADABLE"): "PASSED_JOBLIST",
+    error_state_for("fetch_jd", "COOKIE"): "PASSED_JOBLIST",
+    error_state_for("fetch_relative_jd", "COOKIE"): "PASSED_JOBLIST",
+    bot_blocked_state_for("fetch_jd"): "PASSED_JOBLIST",
+    bot_blocked_state_for("fetch_relative_jd"): "PASSED_JOBLIST",
+    bot_blocked_state_for("qualify_meteorite"): "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_MISSING": "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_CLOSED": "PASSED_JOBLIST",
-    "RELATIVE_LINK_FAIL": "RELATIVE_JOB_LINK",  # AST-2022: back to the click-through fetch
-    "NEED_CULTURE_CONTENT": "PASSED_GET",
-    "NO_CULTURE_LINKS": "PASSED_GET",
-    "NEED_WEBSITE_CONTENT": "CULTURE_READY",
+    error_state_for("fetch_relative_jd", "CLICK"): "RELATIVE_JOB_LINK",  # AST-2022: back to the click-through fetch
+    error_state_for("fetch_culture_pages", "UNREADABLE"): "PASSED_GET",
+    error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS"): "PASSED_GET",
+    bot_blocked_state_for("fetch_culture_pages"): "PASSED_GET",
+    error_state_for("grade_like", "NO_WEBSITE_CONTENT"): "CULTURE_READY",
+    error_state_for("analysis_upshot", "NO_WEBSITE_CONTENT"): "CULTURE_READY",
 }
 assert "CANDIDATE_SKIPPED" not in JOBS_SKIPPED_BULK_RETRY_TO_STATE
 assert all(k in JOB_STATES and v in JOB_STATES for k, v in JOBS_SKIPPED_BULK_RETRY_TO_STATE.items())
 assert all(k in JOBS_SKIPPED_SECTION_ORDER for k in JOBS_SKIPPED_BULK_RETRY_TO_STATE)
 _skipped_retryable = [s for s in JOBS_SKIPPED_SECTION_ORDER if s != "CANDIDATE_SKIPPED"]
 assert set(JOBS_SKIPPED_BULK_RETRY_TO_STATE) == set(_skipped_retryable)
+
+# AST-2086: entity -> retired terminal name -> {writing task_key: new name}; read by the AST-2087
+# migration. The only place retired names survive. A FAILED_TECHNICAL row whose history names any
+# other task_key resolves to error_state_for(task_key). Meteorite LINK_EXPIRED keys on page status.
+RETIRED_TERMINAL_STATE_MAP: Dict[str, Dict[str, Dict[str, str]]] = {
+    "job": {
+        "FAILED_TECHNICAL": {k: error_state_for(k) for k in ("analysis_upshot", "meteorite_upshot")},
+        "FAILED_TECHNICAL_DO": {"grade_do": error_state_for("grade_do")},
+        "FAILED_TECHNICAL_GET": {"grade_get": error_state_for("grade_get")},
+        "FAILED_TECHNICAL_LIKE": {"grade_like": error_state_for("grade_like")},
+        "METEORITE_FAILED_TECHNICAL_DO": {"meteorite_grade_do": error_state_for("meteorite_grade_do")},
+        "METEORITE_FAILED_TECHNICAL_GET": {"meteorite_grade_get": error_state_for("meteorite_grade_get")},
+        "METEORITE_FAILED_TECHNICAL_LIKE": {"meteorite_like": error_state_for("meteorite_like")},
+        "METEORITE_ERROR_QUALIFY": {"qualify_meteorite": error_state_for("qualify_meteorite")},
+        "METEORITE_ERROR_EVALUATE_JD": {"evaluate_meteorite": error_state_for("evaluate_meteorite")},
+        "JD_SCRAPE_FAIL": {k: error_state_for(k, "UNREADABLE") for k in ("fetch_jd", "fetch_relative_jd")},
+        "JD_SCRAPE_FAIL_COOKIE": {k: error_state_for(k, "COOKIE") for k in ("fetch_jd", "fetch_relative_jd")},
+        "BOT_BLOCKED": {k: bot_blocked_state_for(k) for k in ("fetch_jd", "fetch_relative_jd", "qualify_meteorite")},
+        "RELATIVE_LINK_FAIL": {"fetch_relative_jd": error_state_for("fetch_relative_jd", "CLICK")},
+        "NEED_CULTURE_CONTENT": {"fetch_culture_pages": error_state_for("fetch_culture_pages", "UNREADABLE")},
+        "NO_CULTURE_LINKS": {"fetch_culture_pages": error_state_for("fetch_culture_pages", "NO_CULTURE_LINKS")},
+        "NEED_WEBSITE_CONTENT": {k: error_state_for(k, "NO_WEBSITE_CONTENT") for k in ("grade_like", "analysis_upshot")},
+        "ERROR_BUILD_ARTIFACTS": dict(zip(BUILD_ARTIFACTS_CHAIN_TASK_KEYS, BUILD_ARTIFACTS_CHAIN_ERROR_STATES)),
+    },
+    "company": {
+        "NO_WEBSITE": {k: error_state_for(k, "NOT_FOUND") for k in ("inflow_resolve_website", "resolve_website")},
+        "CANNOT_READ_WEBSITE": {
+            "fetch_website": error_state_for("fetch_website", "UNREADABLE"),
+            "prefilter_company": error_state_for("prefilter_company", "UNREADABLE"),
+        },
+        "ERROR_PREFILTER": {"prefilter_company": error_state_for("prefilter_company")},
+        "NO_PREFILTER_JOBLISTS": {"prefilter_company": error_state_for("prefilter_company", "NO_JOBLIST_LINKS")},
+        "JOBSITE_SCRAPE_ISSUE": {k: error_state_for(k, "UNREADABLE") for k in ("select_job_page", "fetch_job_pages")},
+        "ERROR_LOCATE_JOB_PAGE": {"select_job_page": error_state_for("select_job_page")},
+        "CANNOT_PARSE_JOB_SITE": {"select_job_page": error_state_for("select_job_page", "UNPARSEABLE")},
+        "NO_JOBLIST": {"select_job_page": error_state_for("select_job_page", "NO_JOBLIST")},
+        "NO_PJL_SELECTED": {"select_job_page": error_state_for("select_job_page", "NO_SELECTION")},
+        "BOT_BLOCKED": {"select_job_page": bot_blocked_state_for("select_job_page")},
+        "COULD_NOT_PARSE_JOBLIST": {"parse_job_list": error_state_for("parse_job_list", "UNPARSEABLE")},
+        "ERROR_UPSHOT": {"company_upshot": error_state_for("company_upshot")},
+    },
+    "candidate": {
+        old: dict(zip(CANDIDATE_CRAFT_CHAIN_TASK_KEYS, CANDIDATE_CRAFT_CHAIN_ERROR_STATES))
+        for old in ("REQUESTED_RESUME_ERROR", "REQUESTED_ARTIFACTS_ERROR")
+    },
+    "meteorite": {
+        "BOT_BLOCKED": {"scrape_meteorite": bot_blocked_state_for("scrape_meteorite")},
+        "LINK_EXPIRED": {"closed": "JD_SCRAPE_FAIL_CLOSED", "missing": "JD_SCRAPE_FAIL_MISSING"},
+        "SCRAPE_ERROR": {
+            "stage_meteorite": error_state_for("stage_meteorite", "UNPARSEABLE"),
+            "scrape_meteorite": error_state_for("scrape_meteorite"),
+            "land_meteorite": error_state_for("land_meteorite"),
+        },
+        "NEW_EMAIL_ERROR": {"stage_meteorite": error_state_for("stage_meteorite")},
+    },
+}
+_TERMINAL_REGISTRIES = {"job": JOB_STATES, "company": COMPANY_STATES, "candidate": CANDIDATE_STATES, "meteorite": METEORITE_STATES}
+for _ent, _olds in RETIRED_TERMINAL_STATE_MAP.items():
+    for _old, _by_task in _olds.items():
+        assert _old not in _TERMINAL_REGISTRIES[_ent], (_ent, _old)
+        assert all(_new in _TERMINAL_REGISTRIES[_ent] for _new in _by_task.values()), (_ent, _old)
+
+# Pre-AST-2086 (bulk-retry target, effective Skipped label) per retired job key; every new name inherits both (AC 7).
+_RETIRED_JOB_SKIPPED_SNAPSHOT = {
+    "ERROR_BUILD_ARTIFACTS": ("RECOMMENDED", "Error Build Artifacts"),
+    "FAILED_TECHNICAL": ("NEW", "Failed Technical"),
+    "FAILED_TECHNICAL_DO": ("PASSED_JD", "Failed Technical DO"),
+    "FAILED_TECHNICAL_GET": ("PASSED_DO", "Failed Technical GET"),
+    "FAILED_TECHNICAL_LIKE": ("CULTURE_READY", "Failed Technical LIKE"),
+    "METEORITE_ERROR_QUALIFY": ("METEORITE_NEW", "Meteorite Error Qualify"),
+    "METEORITE_ERROR_EVALUATE_JD": ("METEORITE_QUALIFIED", "Meteorite Error Evaluate JD"),
+    "METEORITE_FAILED_TECHNICAL_DO": ("METEORITE_PASSED_JD", "Meteorite Failed Technical DO"),
+    "METEORITE_FAILED_TECHNICAL_GET": ("METEORITE_PASSED_DO", "Meteorite Failed Technical GET"),
+    "METEORITE_FAILED_TECHNICAL_LIKE": ("METEORITE_PASSED_GET", "Meteorite Failed Technical LIKE"),
+    "JD_SCRAPE_FAIL": ("PASSED_JOBLIST", "Jd Scrape Fail"),
+    "JD_SCRAPE_FAIL_COOKIE": ("PASSED_JOBLIST", "Jd Scrape Fail Cookie"),
+    "BOT_BLOCKED": ("PASSED_JOBLIST", "Bot Blocked"),
+    "RELATIVE_LINK_FAIL": ("RELATIVE_JOB_LINK", "Relative Link Fail"),
+    "NEED_CULTURE_CONTENT": ("PASSED_GET", "Need Culture Content"),
+    "NO_CULTURE_LINKS": ("PASSED_GET", "No Culture Links"),
+    "NEED_WEBSITE_CONTENT": ("CULTURE_READY", "Need Website Content"),
+}
+for _old, (_target, _label) in _RETIRED_JOB_SKIPPED_SNAPSHOT.items():
+    for _new in RETIRED_TERMINAL_STATE_MAP["job"][_old].values():
+        assert JOBS_SKIPPED_BULK_RETRY_TO_STATE.get(_new) == _target, (_old, _new)
+        assert JOBS_SKIPPED_SECTION_LABELS.get(_new, _new.replace("_", " ").title()) == _label, (_old, _new)
+
+# Grammar: every ERROR_ / BOT_BLOCKED_ registry key round-trips through parse_terminal_state + its helper.
+for _reg in _TERMINAL_REGISTRIES.values():
+    for _key in _reg:
+        if not _key.startswith((ERROR_STATE_PREFIX, BOT_BLOCKED_STATE_PREFIX)):
+            continue
+        _parsed = parse_terminal_state(_key)
+        assert _parsed is not None, _key
+        _kind, _tk, _cond = _parsed
+        assert (bot_blocked_state_for(_tk) if _kind == "bot_blocked" else error_state_for(_tk, _cond)) == _key, _key
 
 
 def build_state_ui_manifest() -> Dict[str, Any]:
@@ -4283,6 +4620,11 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "section_order": skipped_order,
                 "section_labels": skipped_labels,
                 "bulk_retry_to_state_by_from_state": dict(JOBS_SKIPPED_BULK_RETRY_TO_STATE),
+                # AST-2105: ordered group rules (key, label, prefixes, members) — catch-all last.
+                "groups": [
+                    {"key": k, "label": g["label"], "prefixes": list(g["prefixes"]), "members": list(g["members"])}
+                    for k, g in JOBS_SKIPPED_GROUPS.items()
+                ],
             },
             "detail": {"already_skipped_state": "CANDIDATE_SKIPPED"},
             "recommended": {
@@ -4458,7 +4800,11 @@ _ENCODED_GRADE_SET_COMPLETENESS = (
     "instructions for this run. Omitting a code is invalid.\n"
     "When there is no signal for a vector, emit {code}X0 — never skip that segment.\n"
     "Do not invent extra codes beyond the rubric. Do not invent letter grades to fill gaps — "
-    "use X with confidence 0 when the source is silent."
+    "use X with confidence 0 when the source is silent.\n"
+    # Example lines show a fixed code count; models copy that length unless told otherwise.
+    "Example lines are illustrative — their code count is not a template. Each line carries "
+    "exactly as many grade segments as the rubric has codes; check every line against the "
+    "rubric code list before moving on."
 )
 
 # ---------------------------------------------------------------------------
@@ -4558,90 +4904,105 @@ ASTRAL_CONFIG = {
     # State list lives in COMPANY_STATES; transitions here.
     "company_state_transitions": [
         ("IMPORTED", "WEBSITE_FOUND"),
-        ("IMPORTED", "NO_WEBSITE"),
+        ("IMPORTED", error_state_for("inflow_resolve_website", "NOT_FOUND")),
         ("IMPORTED", "WEBSITE_REVIEW"),
         # AST-1672: inflow leaves NEW; DISCOVERED owns vet + CSE; WEBSITE_REVIEW owns AI apply.
         ("DISCOVERED", "WEBSITE_FOUND"),
         ("DISCOVERED", "VET_FAILED"),
         ("DISCOVERED", "WEBSITE_REVIEW"),
-        ("DISCOVERED", "NO_WEBSITE"),
+        ("DISCOVERED", error_state_for("inflow_resolve_website", "NOT_FOUND")),
         ("WEBSITE_REVIEW", "WEBSITE_FOUND"),
-        ("WEBSITE_REVIEW", "NO_WEBSITE"),
+        ("WEBSITE_REVIEW", error_state_for("resolve_website", "NOT_FOUND")),
         ("WEBSITE_FOUND", "TO_WATCH"),
         ("WEBSITE_FOUND", "IGNORE"),
         ("WEBSITE_FOUND", "PREFILTER_PASSED"),
         ("WEBSITE_FOUND", "PREFILTER_FAILED"),
-        ("WEBSITE_FOUND", "NO_PREFILTER_JOBLISTS"),
+        ("WEBSITE_FOUND", error_state_for("prefilter_company", "NO_JOBLIST_LINKS")),
         ("WEBSITE_FOUND", retry_of("WEBSITE_FOUND")),
-        ("WEBSITE_FOUND", "ERROR_PREFILTER"),
+        ("WEBSITE_FOUND", error_state_for("prefilter_company")),
         ("WEBSITE_FOUND", "HOMEPAGE_READY"),
-        ("WEBSITE_FOUND", "CANNOT_READ_WEBSITE"),
+        ("WEBSITE_FOUND", error_state_for("fetch_website", "UNREADABLE")),
+        ("WEBSITE_FOUND", bot_blocked_state_for("fetch_website")),
         (retry_of("WEBSITE_FOUND"), "HOMEPAGE_READY"),
-        (retry_of("WEBSITE_FOUND"), "CANNOT_READ_WEBSITE"),
+        (retry_of("WEBSITE_FOUND"), error_state_for("fetch_website", "UNREADABLE")),
+        (retry_of("WEBSITE_FOUND"), bot_blocked_state_for("fetch_website")),
         (retry_of("WEBSITE_FOUND"), "TO_WATCH"),
         (retry_of("WEBSITE_FOUND"), "IGNORE"),
         (retry_of("WEBSITE_FOUND"), "PREFILTER_PASSED"),
         (retry_of("WEBSITE_FOUND"), "PREFILTER_FAILED"),
-        (retry_of("WEBSITE_FOUND"), "NO_PREFILTER_JOBLISTS"),
+        (retry_of("WEBSITE_FOUND"), error_state_for("prefilter_company", "NO_JOBLIST_LINKS")),
         (retry_of("WEBSITE_FOUND"), retry_of("WEBSITE_FOUND")),
-        (retry_of("WEBSITE_FOUND"), "ERROR_PREFILTER"),
+        (retry_of("WEBSITE_FOUND"), error_state_for("prefilter_company")),
         ("HOMEPAGE_READY", "PREFILTER_PASSED"),
         ("HOMEPAGE_READY", "PREFILTER_FAILED"),
-        ("HOMEPAGE_READY", "NO_PREFILTER_JOBLISTS"),
+        ("HOMEPAGE_READY", error_state_for("prefilter_company", "NO_JOBLIST_LINKS")),
         ("HOMEPAGE_READY", "TO_WATCH"),
         ("HOMEPAGE_READY", "IGNORE"),
         ("HOMEPAGE_READY", retry_of("WEBSITE_FOUND")),
         ("HOMEPAGE_READY", retry_of("HOMEPAGE_READY")),
-        ("HOMEPAGE_READY", "ERROR_PREFILTER"),
-        ("HOMEPAGE_READY", "CANNOT_READ_WEBSITE"),
+        ("HOMEPAGE_READY", error_state_for("prefilter_company")),
+        ("HOMEPAGE_READY", error_state_for("prefilter_company", "UNREADABLE")),
         # AST-1839: prefilter parsing-failure holding → pass/fail/error
         (retry_of("HOMEPAGE_READY"), "PREFILTER_PASSED"),
         (retry_of("HOMEPAGE_READY"), "PREFILTER_FAILED"),
-        (retry_of("HOMEPAGE_READY"), "NO_PREFILTER_JOBLISTS"),
+        (retry_of("HOMEPAGE_READY"), error_state_for("prefilter_company", "NO_JOBLIST_LINKS")),
         (retry_of("HOMEPAGE_READY"), "TO_WATCH"),
         (retry_of("HOMEPAGE_READY"), "IGNORE"),
-        (retry_of("HOMEPAGE_READY"), "ERROR_PREFILTER"),
-        (retry_of("HOMEPAGE_READY"), "CANNOT_READ_WEBSITE"),
-        ("TO_WATCH", "WATCH"),
-        ("TO_WATCH", "HARD_PARSE"),
-        ("TO_WATCH", "CANNOT_PARSE_JOB_SITE"),
+        (retry_of("HOMEPAGE_READY"), error_state_for("prefilter_company")),
+        (retry_of("HOMEPAGE_READY"), error_state_for("prefilter_company", "UNREADABLE")),
+        ("TO_WATCH", "GET_UPSHOT"),
+        ("TO_WATCH", error_state_for("select_job_page", "UNPARSEABLE")),
         ("TO_WATCH", "NO_OPENINGS"),
-        ("TO_WATCH", "NO_JOBLIST"),
-        ("TO_WATCH", "BOT_BLOCKED"),
+        ("TO_WATCH", error_state_for("select_job_page", "NO_JOBLIST")),
+        ("TO_WATCH", bot_blocked_state_for("select_job_page")),
         # NO_OPENINGS: Playwright-only recheck (recheck_no_openings batch); JOBS_FOUND is landing until AST-461 parse routing.
         ("NO_OPENINGS", "JOBS_FOUND"),
         # JOBS_FOUND: same locate/parse terminal set as TO_WATCH (AST-469).
-        ("JOBS_FOUND", "WATCH"),
-        ("JOBS_FOUND", "HARD_PARSE"),
-        ("JOBS_FOUND", "CANNOT_PARSE_JOB_SITE"),
+        ("JOBS_FOUND", "GET_UPSHOT"),
+        ("JOBS_FOUND", error_state_for("select_job_page", "UNPARSEABLE")),
         ("JOBS_FOUND", "NO_OPENINGS"),
-        ("JOBS_FOUND", "NO_JOBLIST"),
-        ("JOBS_FOUND", "BOT_BLOCKED"),
+        ("JOBS_FOUND", error_state_for("select_job_page", "NO_JOBLIST")),
+        ("JOBS_FOUND", bot_blocked_state_for("select_job_page")),
+        ("JOBS_FOUND", error_state_for("select_job_page")),
         # PREFILTER_PASSED: same locate/parse terminal set as TO_WATCH / JOBS_FOUND (AST-508).
-        ("PREFILTER_PASSED", "WATCH"),
-        ("PREFILTER_PASSED", "HARD_PARSE"),
-        ("PREFILTER_PASSED", "CANNOT_PARSE_JOB_SITE"),
+        ("PREFILTER_PASSED", "GET_UPSHOT"),
+        ("PREFILTER_PASSED", error_state_for("select_job_page", "UNPARSEABLE")),
         ("PREFILTER_PASSED", "NO_OPENINGS"),
-        ("PREFILTER_PASSED", "NO_JOBLIST"),
-        ("PREFILTER_PASSED", "BOT_BLOCKED"),
+        ("PREFILTER_PASSED", error_state_for("select_job_page", "NO_JOBLIST")),
+        ("PREFILTER_PASSED", bot_blocked_state_for("select_job_page")),
         ("PREFILTER_PASSED", "PJL_READY"),
-        ("TO_WATCH", "JOBSITE_SCRAPE_ISSUE"),
-        ("JOBS_FOUND", "JOBSITE_SCRAPE_ISSUE"),
-        ("PREFILTER_PASSED", "JOBSITE_SCRAPE_ISSUE"),
+        ("TO_WATCH", error_state_for("select_job_page", "UNREADABLE")),
+        ("JOBS_FOUND", error_state_for("select_job_page", "UNREADABLE")),
+        ("PREFILTER_PASSED", error_state_for("select_job_page", "UNREADABLE")),
+        ("PREFILTER_PASSED", error_state_for("fetch_job_pages", "UNREADABLE")),
+        ("PREFILTER_PASSED", bot_blocked_state_for("fetch_job_pages")),
         ("PJL_READY", "JOBLIST_IDENTIFIED"),
         ("PJL_READY", retry_of("PREFILTER_PASSED")),
-        ("PJL_READY", "NO_PJL_SELECTED"),
+        ("PJL_READY", error_state_for("select_job_page", "NO_SELECTION")),
         ("PJL_READY", "NO_OPENINGS"),
-        ("PJL_READY", "JOBSITE_SCRAPE_ISSUE"),
-        ("PJL_READY", "NO_JOBLIST"),
-        ("PJL_READY", "BOT_BLOCKED"),  # AST-2004: shown page is a bot wall at NO_JOBLIST fall-through
+        ("PJL_READY", error_state_for("select_job_page", "UNREADABLE")),
+        ("PJL_READY", error_state_for("select_job_page", "NO_JOBLIST")),
+        ("PJL_READY", error_state_for("select_job_page")),
+        ("PJL_READY", error_state_for("select_job_page", "UNPARSEABLE")),
+        ("PJL_READY", bot_blocked_state_for("select_job_page")),  # AST-2004: shown page is a bot wall at the no-joblist fall-through
         (retry_of("PREFILTER_PASSED"), "PJL_READY"),
-        (retry_of("PREFILTER_PASSED"), "JOBSITE_SCRAPE_ISSUE"),
-        ("JOBLIST_IDENTIFIED", "WATCH"),
+        (retry_of("PREFILTER_PASSED"), error_state_for("fetch_job_pages", "UNREADABLE")),
+        (retry_of("PREFILTER_PASSED"), bot_blocked_state_for("fetch_job_pages")),
+        ("JOBLIST_IDENTIFIED", "GET_UPSHOT"),
         ("JOBLIST_IDENTIFIED", retry_of("JOBLIST_IDENTIFIED")),
-        ("JOBLIST_IDENTIFIED", "COULD_NOT_PARSE_JOBLIST"),
-        (retry_of("JOBLIST_IDENTIFIED"), "WATCH"),
-        (retry_of("JOBLIST_IDENTIFIED"), "COULD_NOT_PARSE_JOBLIST"),
+        ("JOBLIST_IDENTIFIED", error_state_for("parse_job_list", "UNPARSEABLE")),
+        ("JOBLIST_IDENTIFIED", error_state_for("parse_job_list")),
+        (retry_of("JOBLIST_IDENTIFIED"), "GET_UPSHOT"),
+        (retry_of("JOBLIST_IDENTIFIED"), error_state_for("parse_job_list", "UNPARSEABLE")),
+        (retry_of("JOBLIST_IDENTIFIED"), error_state_for("parse_job_list")),
+        # AST-2054: upshot hops. WATCH → GET_UPSHOT is Susan's manual re-run via company state controls.
+        ("WATCH", "GET_UPSHOT"),
+        ("GET_UPSHOT", "UPSHOT_READY"),
+        ("UPSHOT_READY", "WATCH"),
+        ("UPSHOT_READY", retry_of("UPSHOT_READY")),
+        ("UPSHOT_READY", error_state_for("company_upshot")),
+        (retry_of("UPSHOT_READY"), "WATCH"),
+        (retry_of("UPSHOT_READY"), error_state_for("company_upshot")),
     ],
 
     # Candidate transitions: prior_states on CANDIDATE_STATES (AST-970); no parallel list.
@@ -4892,6 +5253,9 @@ def importance_multiplier(n: int) -> float:
 RAILWAY_CONFIG = {
     "workers": 1,
     "timeout": 300,
+    # Exact request paths (gunicorn atom `U`, no query string) whose gunicorn.access
+    # lines are dropped — background polls (AST-2078). Read by src/utils/logging.py.
+    "access_log_quiet_paths": ("/api/deploy_status",),
 }
 
 # ---------------------------------------------------------------------------
@@ -5502,6 +5866,12 @@ PROVIDER_RATE_LIMIT = {
     "message_substrings": ("error code: 429", "rate_limit_error"),
 }
 
+# PROVIDER_PROBE_FAILURE — per-batch host probe failed for any reason but an exhausted 429 (AST-2098).
+# Entity state is held and the run stops; the next dispatch round mints a new batch id and probes again.
+PROVIDER_PROBE_FAILURE = {
+    "failure_class": "provider_probe_failure",
+}
+
 # PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).
 # httpx client timeout uses timeout_seconds; caller wait uses timeout_seconds + grace_seconds.
 # max_retries=0 → one attempt (SDK default 2 would allow up to 3× wall time inside the worker thread).
@@ -5671,36 +6041,14 @@ UI_CONFIG = {
     "adhoc_import_runs_limit": 10,
     "adhoc_import_picker_visible_rows": 5,
     # AST-2042: theme registry — palette id -> label + whether the profile Theme select offers it.
-    # Each id needs a matching [data-theme="<id>"] block in App.css; ids not profile_selectable
-    # only appear on Tools -> Theme Examples. Adding/retiring a palette = one entry here + one CSS block.
+    # Each id needs a matching [data-theme="<id>"] block in App.css.
+    # Adding/retiring a palette = one entry here + one CSS block.
     "themes": {
         "dark": {"label": "Dark", "profile_selectable": True},
         "light": {"label": "Light", "profile_selectable": True},
-        "light_parchment": {"label": "Light (Parchment)", "profile_selectable": False},
-        "light_slate": {"label": "Light (Slate)", "profile_selectable": False},
     },
     # Theme applied when a candidate has none stored (and before candidates load).
     "default_theme": "dark",
-    # AST-2064: Light grade-color candidates shown as rows on Tools -> Theme Examples (examples-only).
-    # Each set's tokens override the panel's grade tokens for that row; the live Light set is in App.css.
-    # Retire a candidate = delete its entry; no page or CSS change.
-    "theme_example_grade_sets": {
-        "deep": {"label": "Deep", "tokens": {
-            "--grade-a": "#1e7b34", "--grade-b": "#a06500", "--grade-c": "#c05621",
-            "--grade-d": "#c53030", "--grade-f": "#742a2a", "--grade-x": "#6b46c1",
-            "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
-        }},
-        "soft": {"label": "Soft", "tokens": {
-            "--grade-a": "#b7e4c0", "--grade-b": "#fde68a", "--grade-c": "#fed7aa",
-            "--grade-d": "#fecaca", "--grade-f": "#e7b4b4", "--grade-x": "#ddd6fe",
-            "--text-on-grade": "#1f1830", "--text-on-grade-f": "#5c0f0f",
-        }},
-        "classic": {"label": "Classic", "tokens": {
-            "--grade-a": "#2f9e44", "--grade-b": "#e67700", "--grade-c": "#d9480f",
-            "--grade-d": "#e03131", "--grade-f": "#9c1c1c", "--grade-x": "#7048e8",
-            "--text-on-grade": "#ffffff", "--text-on-grade-f": "#ffffff",
-        }},
-    },
 }
 # Default must be a registered, profile-selectable palette (it is what candidates without a stored theme get).
 assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_selectable"), (
@@ -5793,6 +6141,7 @@ NAV_CONFIG = [
             {"label": "Manage Tasks", "path": "/admin/task_prompts"},
             {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
             {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
+            {"label": "Task Performance", "path": "/admin/task_performance"},
         ],
     },
     {
@@ -5805,7 +6154,6 @@ NAV_CONFIG = [
             {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
             {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},
-            {"label": "Theme Examples", "path": "/admin/theme_examples"},
         ],
     },
 ]
@@ -6373,6 +6721,14 @@ ARTIFACT_CONFIG = {
         "body_shape": "cover_letter",
         "ingestion_owner": "tracker",
     },
+    "job.artifacts.job_resume_structure": {
+        "entity_type": "job",
+        "candidate_scoped": True,
+        # AST-2081: per-job resume structure; same structure dict contract as candidate.artifacts.resume_structure.
+        "body_shape": "resume_structure",
+        # Tracker owns first-row ingestion (job resume editor PUT); absent row → job inherits the candidate's.
+        "ingestion_owner": "tracker",
+    },
     "candidate.context.strengths": {
         "entity_type": "candidate",
         "candidate_scoped": True,
@@ -6436,6 +6792,7 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.artifacts.resume_structure",
     "job.artifacts.job_resume",
     "job.artifacts.cover_letter",
+    "job.artifacts.job_resume_structure",
     "candidate.context.strengths",
     "candidate.context.priorities",
     "candidate.context.deal_breakers",
@@ -6523,6 +6880,20 @@ assert _cl["body_shape"] == "cover_letter"
 assert _cl["body_shape"] in BUILD_CONFIG["artifact_shapes"]
 assert _cl["ingestion_owner"] == "tracker"
 assert set(_cl.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_jrs = ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]
+assert _jrs["entity_type"] == "job"
+assert _jrs["entity_type"] in ENTITY_TYPES
+assert _jrs["candidate_scoped"] is True
+assert _jrs["body_shape"] == "resume_structure"
+assert _jrs["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _jrs["ingestion_owner"] == "tracker"
+assert set(_jrs.keys()) == {
     "entity_type",
     "candidate_scoped",
     "body_shape",
@@ -6830,7 +7201,7 @@ parse_resume_artifact_hop = legacy_build_artifacts_hop
 
 def is_build_artifacts_in_progress(state: str) -> bool:
     st = (state or "").strip()
-    if st in (BUILD_ARTIFACTS_BASE_STATE, ERROR_BUILD_ARTIFACTS_STATE):
+    if st == BUILD_ARTIFACTS_BASE_STATE or st in BUILD_ARTIFACTS_CHAIN_ERROR_STATES:
         return True
     return st.startswith(LEGACY_BUILD_ARTIFACTS_PREFIX)
 
@@ -6944,6 +7315,67 @@ RESUME_STRUCTURE_BODY_FORMATS = (
     "dual_column",
     "indented_bold_single",
     "experience_detail",
+    "line",
+)
+# AST-2081: editor metadata per body format — display label, tooltip description (settings + rules),
+# and the BUILD_CONFIG["default_style"]["fonts"] stack key the builder prints that format in.
+# Single SoT for format text/fonts; the frontend reads these from the structure catalog payload.
+RESUME_STRUCTURE_BODY_FORMAT_DETAILS = {
+    "free_prose": {
+        "label": "Prose",
+        "description": (
+            "Paragraphs of body text. A blank line starts a new paragraph; with no blank lines, "
+            "each line prints as its own paragraph. <i> and <b> emphasis allowed."
+        ),
+        "font_stack": "body_stack",
+    },
+    "bullet_list": {
+        "label": "Bullet List",
+        "description": "One bullet per line. Blank lines are skipped. <i> and <b> emphasis allowed.",
+        "font_stack": "body_stack",
+    },
+    "word_cloud": {
+        "label": "Word Cloud",
+        "description": (
+            "Terms print uppercase in the list font and wrap between terms. "
+            "Separate terms with | (prints as •)."
+        ),
+        "font_stack": "list_stack",
+    },
+    "dual_column": {
+        "label": "Dual Column",
+        "description": (
+            "Skills grid in the list font. One category per line as \"Category: items\"; "
+            "a line without \": \" prints as items only."
+        ),
+        "font_stack": "list_stack",
+    },
+    "indented_bold_single": {
+        "label": "Indented Bold",
+        "description": (
+            "One entry per line. Text before the first | prints bold and the rest follows after •; "
+            "a line without | prints fully bold."
+        ),
+        "font_stack": "body_stack",
+    },
+    "experience_detail": {
+        "label": "Experience",
+        "description": (
+            "Roles edited as job entries (company, title, dates, location, accomplishments). "
+            "Experience section only; its format cannot change."
+        ),
+        "font_stack": "body_stack",
+    },
+    "line": {
+        "label": "Line",
+        "description": "A single line of text. Line breaks are collapsed into spaces.",
+        "font_stack": "body_stack",
+    },
+}
+assert set(RESUME_STRUCTURE_BODY_FORMAT_DETAILS) == set(RESUME_STRUCTURE_BODY_FORMATS)
+assert all(
+    d["font_stack"] in BUILD_CONFIG["default_style"]["fonts"]
+    for d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.values()
 )
 # AST-1474: operator page-break policies on structure sections (print CSS is AST-1475).
 RESUME_STRUCTURE_PAGE_BREAK_POLICIES = (
@@ -6957,6 +7389,8 @@ RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS = {
     "page_break_before": "New page before",
     "avoid_split": "Keep block together",
 }
+# AST-2081: flow-state label for enabled=False (shown alongside the page-break policy labels).
+RESUME_STRUCTURE_HIDDEN_FLOW_LABEL = "Hidden"
 RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID = {
     sid: RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
     for sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS
@@ -7594,7 +8028,8 @@ def empty_render_for_prompts(
     ``{"empty_render": bool, "empty_tokens": list[str]}`` — siblings map ``empty_render``
     onto each ``dispatch_task`` list row / AUTO-Run gate (AST-1779 / AST-1766).
 
-    Scores ``source: candidate`` always; scores other ``TOKEN_SOURCES`` ``source`` values
+    Scores ``source: candidate`` and ``source: rubric`` always (rubric rows are
+    candidate-keyed — AST-2092); scores other ``TOKEN_SOURCES`` ``source`` values
     only when that key is present in ``entity_contexts`` (extension seam). Never scores
     ``source: chain``. Non-job entity sources in ``entity_contexts`` resolve without a
     matching ``resolve_tokens`` kwarg today (only ``job_context`` exists) — blank until a
@@ -7618,8 +8053,10 @@ def empty_render_for_prompts(
             source = spec.get("source")
             if source == "chain":
                 continue
-            # Score candidate always; other sources only via entity_contexts seam.
-            if source != "candidate" and source not in contexts:
+            # Score candidate + rubric always (rubric_vector rows are keyed per candidate +
+            # owner task; resolve_tokens reads them off the candidate view's
+            # _astral_candidate_id — AST-2092); other sources only via entity_contexts seam.
+            if source not in ("candidate", "rubric") and source not in contexts:
                 continue
             seen.add(name)
             job_context = contexts.get("job") if source == "job" else None

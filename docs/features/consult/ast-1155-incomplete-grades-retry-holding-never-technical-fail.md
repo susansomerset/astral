@@ -1595,6 +1595,155 @@ AST-2057 board-joan done — CANON: OK.
 
 context_tokens≈N
 
+## Bug: AST-2089 — qualify_job_listings: one listing without a job ID must not fail the whole batch
+
+**Linear:** [AST-2089](https://linear.app/astralcareermatch/issue/AST-2089) · **Mini-parent:** [AST-2015](https://linear.app/astralcareermatch/issue/AST-2015) · **Publish ref:** `sub/AST-2015/AST-2089-qualify-listing-isolation` · **Project:** Astral Dispatcher · **Ancestor:** AST-1996 block above (per-line isolation → per-entity retry, not hop error)
+
+**Canon (no frozen list on ticket or mini-parent — AST-1996 precedent, resolved @ `823d37605`):** `patt.task.dispatch-retry` (read — an entity with an invalid response routes retry/error by *current* state; a failure never persists in state; one retry, not a loop), `patt.entity.batch-processing` (id-only — process only claimed rows). Id-only for make-fix: `astral.batch.claim-process-release`, `stat.logging.warning`, `stat.logging.error`, `stat.logging.debug`.
+
+**Scope gate:** Susan approved AST-2015 Proposed step 3 (ancestor checked), so both layers are in scope — `data/admin/agent_task.json` (prompt text), `src/core/agent.py::do_task` (AST-1839 envelope-failure branch keeps the decoded payload), `src/core/consult.py::_run_batch_consult` (split the batch). AST-2015 step 4 (reset the 14 stranded `ERROR_QUALIFY_JOB_LISTINGS` jobs) is Susan's one-off data step per the ticket Boundaries — **not** in make-fix.
+
+### As-is
+
+A Somerset `qualify_job_listings` batch of 16 (`qualify_job_listings-67d036c7-…`) came back with `agent_performance.status = "failure"`, `failure_note` "Unable to determine a company job ID for listing 002; required for payload." `do_task`'s AST-1839 rubric-encoded branch (`src/core/agent.py` ~L2550) turns that into `success: False, agent_failure: True, parsed_response: None` **before the payload is decoded**. `_run_batch_consult`'s `do_task`-failed branch then sends **all 16** through `_transition_batch_consult_failures` — 2 → `NEW_RETRY`, 14 already in `NEW_RETRY` → terminal `ERROR_QUALIFY_JOB_LISTINGS`. One ID-less listing sank 15 good ones.
+
+### To-be
+
+1. **Prompt:** the company job ID is best-effort per listing. With no ID, the model leaves the `company_job_id` slot empty on that line and keeps grading; a single-listing gap is never an envelope `failure`.
+2. **Code guard:** if the model still returns an envelope `failure` on a rubric-encoded batch, every line that decodes cleanly is processed to pass/fail as normal; only entities with no usable line route through `_consult_batch_fail_dest` (first strike → `NEW_RETRY`, second → `ERROR_QUALIFY_JOB_LISTINGS`). An envelope failure with no usable lines behaves exactly as today.
+
+### Repro
+
+Fixture (no DB — the envelope `send_to_llm_compat` hands `do_task`, plus `batch_entities` as `_run_batch_consult` passes them):
+
+```python
+ents = [{"astral_job_id": "J0", "state": "NEW"},
+        {"astral_job_id": "J1", "state": "NEW_RETRY"},
+        {"astral_job_id": "J2", "state": "NEW"}]
+envelope = {
+    "agent_performance": {"status": "failure",
+        "failure_note": "Unable to determine a company job ID for listing 002; required for payload."},
+    # J0 + J1 clean (one pass, one fail line); J2 omitted by the model
+    "agent_payload": "000|ERA4|MEA4|PGA4|WAA3|MWA3|KOA4|QCA5|8398237461|Staff Engineer|https://x.example/jobs/8398237461\n"
+                     "001|ERA2|MEA4|PGF5|WAA4|MWX0|KOA5|QCA2|2983982372",
+}
+# do_task("qualify_job_listings", ctx={"batch_entities": ents, ...}) with send_to_llm_compat → envelope
+# today: {"success": False, "agent_failure": True, "parsed_response": None, "error": "Agent failure: Unable to …"}
+# _run_batch_consult today: J0 → NEW_RETRY, J1 → ERROR_QUALIFY_JOB_LISTINGS, J2 → NEW_RETRY (all three fail-dest)
+# to-be: J0 → PASSED_JOBLIST, J1 → FAILED_JOBLIST, J2 → NEW_RETRY ("Agent failure: …" reason)
+```
+
+Production: batch `qualify_job_listings-67d036c7-…`, 16 jobs → 2 `NEW_RETRY` + 14 `ERROR_QUALIFY_JOB_LISTINGS`.
+
+### Root cause
+
+1. **Prompt (trigger).** `qualify_job_listings.cache_prompt` STEP 1 ("Deduce the company job ID…") and STEP 5 ("ONLY include the job ID determined in STEP 1") read as mandatory, and nothing says what to do when there is none. The model escalates to the envelope `failure` that `prompt_prefix` reserves for "prevented from performing your task". `response_schema` already has `company_job_id` `required: False`, `_decode_payload` maps an empty meta slot to `None` (`row[key] = meta[i] or None`), and `tracker.initialize_job` takes `company_job_id=None` (it only skips the identity-triple dedup) — so the gap was never a real blocker downstream.
+   - **Proposed step 2 (git history) — nothing to restore.** Every version of the row since it landed in `data/admin/agent_task.json` has the same STEP 1 / STEP 5 / COMPANY JOB IDENTIFIER text. The 2026-10-07 03:51 edit (`c06eaefdf`) only touched the `## GRADE SET COMPLETENESS` heading/sentence; the 2026-10-08 23:44 edit (`2ea8ca006`) only rewrote STEP 3 (job link). No job-ID fallback wording ever existed → write new wording.
+2. **Code (blast radius).** `do_task`'s AST-1839 branch returns `parsed_response: None` before decode, so `_run_batch_consult` has no per-line data and can only fail the whole batch — the same whole-batch blast radius AST-1996 removed for malformed grade lines.
+
+### Proposed change
+
+Three files. One `code(AST-2089)` commit.
+
+**1. `data/admin/agent_task.json` — `qualify_job_listings` row, `cache_prompt` only.**
+
+Edit only the `cache_prompt` string of the row with `"task_key": "qualify_job_listings"`. No other row, column, or `updated_at` bump (repo convention for `code(...)` prompt edits — e.g. AST-1910). Do **not** touch `docs/uat-fixtures/AST-756/expected-agent_task.json` (its qualify row already diverges from repo; out of scope). Three exact text replacements (`\n` = newline in the JSON string):
+
+- STEP 1 — replace
+  `STEP 1 - DETERMINE JOB ID: Deduce the company job ID from the html content.`
+  with
+  `STEP 1 - DETERMINE JOB ID: Deduce the company job ID from the html content. This is best-effort for each listing: if you cannot find a job ID for a listing, leave its company_job_id field empty and keep going — still grade that listing and still include its other fields exactly as you otherwise would.`
+- STEP 5 — replace
+  `then ONLY include the job ID determined in STEP 1.`
+  with
+  `then ONLY include the job ID determined in STEP 1 (if STEP 1 found no job ID, end the line after the grade segments).`
+- COMPANY JOB IDENTIFIER — replace
+  `This may be a UUID or a long integer or a hyphenated string that differentiates the job, so that future scans can identify it has already seen.`
+  with
+  `This may be a UUID or a long integer or a hyphenated string that differentiates the job, so that future scans can identify it has already seen.\nIf a listing has no identifier you can find, leave the company_job_id field empty but keep its pipe so the fields after it stay in position, e.g. "003|ERA4|MEA4|PGA4|WAA3|MWA3|KOA4|QCA5||Job Title|https://www.workheredummy.com/jobs/abc".\nA missing job ID — or any other gap in a single listing — is NEVER a reason to set agent_performance to "failure". Grade every listing you can; "failure" is only for being prevented from performing the task at all.`
+
+**DB sync:** server start does not load repo admin JSON (AST-1455); after the commit lands, Susan applies the row via Manage Tasks → **Revert to file** for `agent_task` (`repo_admin_json.revert_repo_admin_json_table`) — the normal path for repo prompt edits. No migration.
+
+**2. `src/core/agent.py::do_task` — AST-1839 envelope-failure branch keeps the decoded lines.**
+
+Inside `if rubric_encoded and _agent_performance_status(_perf) == "failure":` (~L2554), after `_warn_hop_no_success(...)` and before the `_should_store` block, try to decode the payload the same way the success path does:
+
+```python
+# Keep cleanly decoded lines so a batch caller fails only the gaps, not the batch (AST-2089).
+salvaged = None
+if (ctx or {}).get("batch_entities"):
+    try:
+        from src.core.consult import _normalize_rubric_task_response
+
+        _cand = _normalize_rubric_task_response(task_key, task_config, parsed["agent_payload"], ctx)
+        if isinstance(_cand, dict) and schema:
+            _coerce_schema_str_fields_from_list(_cand, schema, debug=debug)
+        if (isinstance(_cand, dict) and (_cand.get("jobs") or _cand.get("companies"))
+                and not _validate_response_schema(_cand, schema, task_key)
+                and not _validate_grade_confidence_in_payload(_cand, task_key)):
+            salvaged = _cand
+    except Exception as exc:
+        logger.debug("%s | no salvage after agent failure: %s: %s", task_key, type(exc).__name__, exc)
+```
+
+Return dict: add `"salvaged_response": salvaged` (key always present, `None` when nothing usable). **Everything else in the return is unchanged** — `success: False`, `agent_failure: True`, `parsed_response: None`, same `error`, same failure RESPONSE block stored, same `_close_hop_ledger(success=False, …)`.
+
+- Same validation bar as the success path (`_normalize_rubric_task_response` → `_coerce_schema_str_fields_from_list` → `_validate_response_schema` → `_validate_grade_confidence_in_payload`). Any decode/schema/confidence error → `salvaged = None` → caller behaves exactly as today. No partial-validation shortcut.
+- `decode_failures` (AST-1996) rides along inside `salvaged` unchanged.
+- Gate on `batch_entities` only (needed for pos → id mapping); no task-key list.
+
+⚠️ **Decision — new `salvaged_response` key, not `parsed_response`.** Options weighed: (a) put the decoded dict in `parsed_response` on the failure result — matches the Technical scope wording literally, but changes the contract every `success=False` consumer reads and flips `test_agent.py::TestAst1846DoTaskAgentFailureFlag::test_rubric_envelope_failure_sets_agent_failure` (`parsed_response is None`); (b) don't return early — run the full success path with an `agent_failure` flag set — touches ~6 return points and the success-path RESPONSE store/`agent_ref`; (c) side key `salvaged_response`, consumed only by `_run_batch_consult` — same "keep the parsed payload" intent, smallest blast radius. **Chose (c).** Roster prefilter (`agent_failure` consumer) never reads the key → company routing unchanged.
+
+**3. `src/core/consult.py::_run_batch_consult` — process the salvaged lines, fail only the gaps.**
+
+a. Gate the whole-batch failure branch on "no salvage":
+
+```python
+salvaged = None if result.get("success") else result.get("salvaged_response")
+if not result.get("success") and not salvaged:
+    ...  # existing block unchanged: provider balance hold, empty_tokens, whole-batch fail dest
+```
+
+b. Source `parsed` from either result:
+
+```python
+parsed = result["parsed_response"] if result.get("success") else salvaged
+```
+
+c. Missing-ID reason — the existing `if missing:` transition uses `reason="omitted from response"`; on a salvaged batch pass the model's note so each fail-dest line says why:
+
+```python
+reason=result.get("error") if salvaged else "omitted from response",
+```
+
+d. Return dict: `success` becomes `not fabricated and not bad_grades and not decode_failed and not salvaged`; when `salvaged`, insert `result.get("error")` (the `"Agent failure: …"` text) as the first entry of `errors`; add `"agent_failure": True` when `salvaged` (absent otherwise — byte-identical return for non-salvaged batches).
+
+Nothing else changes: `_hydrate_response_jobs_grade_reasons`, `_bind_response_jobs_to_claimed`, `missing`/`fabricated`/`decode_failed` reconciliation, `process_fn`, `bad_grades` routing all run on the salvaged jobs exactly as on a success. `result.get("agent_ref")` is absent on the failure result, so `ensure_batch_response_entity_ids` is skipped (the stored RESPONSE block is the failure audit block, not a clean one) — acceptable, no edit. No new log calls: missing entities log via `_transition_batch_consult_failures` → `_log_fail_dest` (WARNING on retry holding / ERROR on terminal, AST-1839); `_warn_hop_no_success` in `do_task` still logs the envelope failure once.
+
+⚠️ **Decision — envelope `failure` with every line clean.** If the model says `failure` but every claimed entity has a line that decodes, validates, and passes `process_fn` (`_require_complete_grade_set` etc.), all of them are processed and none routes to fail dest — the note survives only in the hop WARNING and `errors`. That is the To-be ("a per-listing gap never becomes an envelope failure"), but it does mean we trust complete grade lines over the envelope status. A genuine "can't do this batch" response with an empty / undecodable payload is unchanged (whole batch → fail dest).
+
+⚠️ **Decision — no parsing of the failure note.** The note names a listing ("listing 002") but we do not regex it. Which entities fail is decided by what's missing/bad in the payload (an omitted line → `missing`; an ID-less but graded line → processed, `company_job_id=None`). Robust to any note wording.
+
+⚠️ **Decision — no change to retry semantics.** First strike → `NEW_RETRY`, already-`NEW_RETRY` → `ERROR_QUALIFY_JOB_LISTINGS` via the unchanged `_consult_batch_fail_dest` (AST-898 / AST-1839 / `patt.task.dispatch-retry`).
+
+### Blast radius
+
+- **Prompt:** `qualify_job_listings` row only; live after Susan's Revert-to-file. No test or bible pins this prompt text (`rg "DETERMINE JOB ID|COMPANY JOB IDENTIFIER|AUGMENT DATA" tests docs/test-bible` → none). `grades_encoded_meta` payload_instructions in `src/utils/config.py` (positional `…|{company_job_id}[|{job_title}|{job_link}…]`) unchanged — the empty-slot wording matches its existing decode (`meta[i] or None`).
+- **`do_task` AST-1839 branch:** reached by every rubric-encoded task whose envelope says `failure` — `qualify_job_listings`, `evaluate_jd` / `evaluate_meteorite`, `grade_do/get/like`, `meteorite_like`, prefilter company (roster). The only externally visible change is the new `salvaged_response` key on that failure result; `success`/`agent_failure`/`parsed_response`/`error` unchanged. Extra cost: one decode attempt on an already-failed hop.
+- **`_run_batch_consult` callers:** `qualify_job_listings`, `evaluate_jd_batch` / `evaluate_meteorite_batch`, `grade_*_batch`, `_consult_scored_dispatch_batch_encoded`. All gain the same isolation when the model returns envelope `failure` with usable lines (intended — same class as AST-1996). Any `do_task` result without `salvaged_response` (mocks, provider failures, empty_tokens, balance refusal) follows the existing failed branch byte-for-byte.
+- **Roster prefilter (`roster.py` ~L2040):** reads `success`/`agent_failure` only → unchanged (prefilter keeps AST-1846 whole-batch routing).
+- **Tests that assume today's behavior (Betty's tree — make-fix does not edit):** `test_agent.py::TestAst1846DoTaskAgentFailureFlag` — all four still green (`parsed_response is None` holds; prefilter `"000|RCA5"` either salvages into `salvaged_response` or not, neither asserted). Any `_run_batch_consult` test that mocks `do_task` → `{"success": False, …}` has no `salvaged_response` → unchanged. New coverage (agent failure + salvaged lines → split routing) is fix-board / qa-fix's call.
+
+### What must still hold
+
+- **AST-1155 AC1–AC3:** incomplete/extra grade sets still raise `IncompleteGradeSetError` in `process_fn` → `bad_grades` → first strike holding, second terminal — now also on salvaged jobs.
+- **AST-1839 / AST-1846:** rubric-encoded envelope `failure` still returns `success: False, agent_failure: True, parsed_response: None` with the same `error` text; roster prefilter routing on `agent_failure` unchanged.
+- **AST-1996:** `decode_failures` still route per entity; clean row wins; no `_GRADE_SEG` change.
+- **`patt.task.dispatch-retry`:** exactly one retry; every claimed entity either processes or transitions to its fail dest — none left in `NEW` / `NEW_RETRY`.
+- **Envelope / provider failures with no usable lines** (empty payload, undecodable payload, schema-invalid decode, provider balance hold, `empty_tokens`): identical to today.
+- **`response_schema`:** unchanged (`company_job_id` stays `required: False`); no `company_job_id` fallback for `qualify_job_listings` (AST-1119 UUID-from-link stays `qualify_meteorite`-only).
+- **Claim/release:** no change to claim, `batch_id`, or release.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
@@ -1603,16 +1752,1851 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Hedy | engineer | `/home/susan/.cursor/chats/764489cc5790684bd14a57ff2d29f405/5754654a-d352-4d7c-9e94-3baf74b61295/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/a778d6a0-76e9-477f-b0b6-e91b715f8cfe/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/764489cc5790684bd14a57ff2d29f405/79ed6eff-f2bc-4920-912f-4fe82547cd04/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/de9faf08e19c239b8f0a0bd6ddfecd80/defa03f0-ec16-4084-bb6e-c0ad8d9d68be/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/de9faf08e19c239b8f0a0bd6ddfecd80/f69208f6-63ec-42dc-9756-35526cf02336/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/de9faf08e19c239b8f0a0bd6ddfecd80/8ba51883-018f-4dd4-9c53-876873f2b880/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-2045 (parent) | ftr/AST-2045-letter-conf0-normalize |
-| AST-2053 | sub/AST-2045/AST-2053-letter-conf0-normalize |
-| AST-2057 | sub/AST-2045/AST-2057-letter-conf0-tests |
+| AST-2112 (parent) | ftr/AST-2112-do-rubric-undecodable-codes |
+| AST-2126 | sub/AST-2112/AST-2126-do-rubric-undecodable-codes |
+| AST-2127 | sub/AST-2112/AST-2127-do-rubric-code-tests |
 
-**Epic worktree:** `astral-AST-2045/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2112/` — one active sub checked out at a time.
+
+## Joan fix-board — AST-2089
+
+[board-joan]  CANON: OK
+
+AST-2089 board-joan done — CANON: OK.
+
+**Rationale:** Against the AST-2089 plan-fix patch and the six ids it cites (`patt.task.dispatch-retry`, `patt.entity.batch-processing`, `stat.batch.claim-process-release` / plan’s `astral.batch.claim-process-release`, `stat.logging.warning` / `error` / `debug`), the change **implements** dispatch-retry per claimed entity (salvaged lines process; gaps → `_consult_batch_fail_dest`) without touching claim/release, without new logging statutes, and without amending any active directive. No in-force statute requires whole-batch fail on rubric `agent_performance` envelope `failure` or forbids a salvage side channel on that path—the pre–decode whole-batch blast radius is product behavior, same class AST-1996 already aligned with canon (fix-board OK, F3 not indicated). `qualify_job_listings` prompt edits live in `data/admin/agent_task.json`, not the corpus. Recorded choices (e.g. `salvaged_response`, trusting decodable lines over envelope status when lines are complete) are scoped product contracts already reflected in “What must still hold”; they do not open an Archie-only precedent gap that needs canon text before make-fix. **F3 (`validate-plan` fix mode) not indicated** from this board pass.
+
+**Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-2089 proceeds to make-fix on product only.
+
+
+## Radia review — AST-2089
+
+**Ticket:** AST-2089  
+**Publish ref:** `f3897829d61c0d8bf8fcaa5e4ef2acf5893dca31` (`origin/sub/AST-2015/AST-2089-qualify-listing-isolation`)  
+**Diff base:** `origin/ftr/AST-2015-qualify-listing-isolation` … publish ref (3-dot)  
+**Corpus:** `823d37605` (frozen list not in Linear Description; scored per issue doc **AST-1996 precedent** — six ids @ `823d37605`, same as Joan fix-board)  
+**Overall:** CLEAN  
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out at F2 (`[board-betty] TESTS: REVISE`); no `qa-fix` / no `[bug-repro]` on this ticket. Spawn **Relations:** coverage deferred to sibling **AST-2090** (blocks AST-2090). Not fix-now on AST-2089.
+
+**## What must still hold** — OK (traced against diff)
+
+| Item | Verdict |
+|------|---------|
+| AST-1155 AC1–AC3 (`IncompleteGradeSetError` → `bad_grades` → per-entity fail dest) | Unchanged `process_fn` loop; salvaged path still runs hydration, binding, and `process_fn` on decoded jobs. |
+| AST-1839 / AST-1846 (`success: False`, `agent_failure: True`, `parsed_response: None` on envelope failure) | `do_task` return contract preserved; `salvaged_response` is additive side channel only. |
+| AST-1996 (`decode_failures`, clean-row wins, no `_GRADE_SEG` change) | Reconciliation block unchanged; salvage feeds same `parsed` shape as success. |
+| `patt.task.dispatch-retry` (one retry; every claimed entity processes or fail-dest) | `missing` / `decode_failed` / `bad_grades` still route via `_transition_batch_consult_failures` / `_consult_batch_fail_dest`. |
+| Envelope/provider failures with **no** usable lines | Gate `if not result.get("success") and not salvaged:` leaves L1682–1722 byte-identical for balance hold, `empty_tokens`, and whole-batch fail. |
+| `response_schema` / no `qualify_job_listings` UUID fallback | No schema or `config.py` edits; prompt-only ID best-effort. |
+| Claim/release | No claim, `batch_id`, or release edits in diff. |
+
+## Canon scores
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | patt.task.dispatch-retry | A | | Salvaged/missing/decode slips → per-entity fail dest; clean lines still processed; no retry-loop widening. |
+| 2 | patt.entity.batch-processing | A | | Still operates on claimed `jobs` / `batch_entities`; no out-of-batch processing. |
+| 3 | astral.batch.claim-process-release | A | | Id-only; no claim/process/release path touched (canon file: `stat.batch.claim-process-release`). |
+| 4 | stat.logging.warning | A | | Envelope failure still `_warn_hop_no_success`; entity routing still `_log_fail_dest` / fail-dest helpers — no new ad-hoc warns. |
+| 5 | stat.logging.error | A | | Terminal fail-dest ERROR path unchanged (same helpers). |
+| 6 | stat.logging.debug | A | | Salvage miss logs at DEBUG only; matches existing decode-failure logging style. |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** triage only (`[board-joan] CANON: OK`); implemented diff matches fix-board rationale (per-entity isolation on envelope failure, no claim/release drift, prompt scoped to `qualify_job_listings` row).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Test debt (expected):** No `tests/**` or `docs/test-bible/**` in the 3-dot diff; Betty’s REVISE scope (salvage + split routing repro) is correctly parked on **AST-2090**. Susan’s UAT / merge to `origin/dev` should not assume full component coverage for this behavior until 2090 lands (same pattern as AST-1996 → AST-2001).
+- **BLE001 / `except Exception` in salvage block (`agent.py` ~L2572):** Deliberate fail-safe → `salvaged = None` → pre-fix whole-batch behavior; same shape as many existing `agent.py` catch-alls (spawn note: +1 vs base). Not on frozen list; no canon grade — downstream may narrow if a project lint rule tightens later.
+- **Broader encoded-task blast radius:** Salvage gates on `batch_entities` and applies to all rubric-encoded envelope-failure hops that use `_run_batch_consult` — intentional per plan §Blast radius (AST-1996 class), not scope creep on this ticket.
+- **Ops:** Prompt change needs Susan’s **Revert to file** for `agent_task` after merge (plan §Proposed change); not code defect.
+- **Doc delta in diff:** Large `## Bug: AST-2089` plan-fix block in the feature doc is process artifact on the sub; product scope remains the three planned paths.
+
+## What's solid
+
+- Single product commit `f3897829d` on ftr: `agent_task.json` prompt edits match plan §1 verbatim intent; `do_task` salvage uses the same decode/validate bar as success (`_normalize_rubric_task_response` → coerce → schema → grade confidence); `_run_batch_consult` split matches plan §3 (salvaged `parsed`, missing reason from `result.error`, `success`/`agent_failure`/`errors` accounting).
+- Cross-ticket hygiene: no AST-2090 test files smuggled; AST-2015 step 4 (14 stranded jobs reset) correctly absent from diff per Boundaries.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned** mini-parent AST-2015 (spawn: fresh ftr off `origin/dev`; merge target **dev**, not epic `prep-uat`) | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). After Susan UAT, merge `sub/AST-2015/AST-2089-qualify-listing-isolation` **straight to `origin/dev`** (finish-up-style; no `merge-child` / `prep-uat`). Coordinate **AST-2090** for test/bible before relying on full `test_agent` / consult component coverage for salvage routing. |
+
+
+**docs-acceptance (AST-2089):** no test-tree delivery on this product sub. Betty's fix-board TESTS: REVISE (salvage + split-routing repro) is routed to gap sibling [AST-2090](https://linear.app/astralcareermatch/issue/AST-2090).
+
+
+## Bug: AST-2090 — Salvaged-batch split routing tests + bible (test gap for AST-2089)
+
+**Linear:** [AST-2090](https://linear.app/astralcareermatch/issue/AST-2090) · **Mini-parent:** [AST-2015](https://linear.app/astralcareermatch/issue/AST-2015) · **Publish ref:** `sub/AST-2015/AST-2090-qualify-listing-isolation-tests` · **Project:** Astral Dispatcher · **Fixes gap from:** `[board-betty] TESTS: REVISE` on AST-2089
+
+**Canon:** none beyond AST-2089's (`patt.task.dispatch-retry` — the consult tests assert its first-strike / second-strike routing on the gap entity). Test tree only; no `src/` or `data/`.
+
+**Lane note:** every edit below is under `tests/` or `docs/test-bible/`, so Betty lands it (qa-fix). This block specifies the delta; the engineer does not edit the test tree.
+
+### As-is
+
+AST-2089 (`f3897829d`, merged into `origin/ftr/AST-2015-qualify-listing-isolation`) added two things. `do_task` now returns `salvaged_response` on a rubric-encoded envelope failure when `batch_entities` is present and the payload decodes cleanly. `_run_batch_consult` now processes those salvaged lines and routes only the missing entities to their fail destination. No test or bible row covers either behavior. The existing nodes still pass because their mocks have no `salvaged_response` key and assert `parsed_response is None`, which still holds. So a regression of the split back to whole-batch failure would ship silently.
+
+### To-be
+
+Two new test classes, one per side, each with a bug-repro test that fails on the pre-fix product files (`22ff5e47a`) and passes on the AST-2089 tip, plus guards that pass on both. Two bible blocks list them.
+
+### Repro
+
+Captured by running the exact classes below from a scratch copy against both trees, with `/home/susan/astral/.venv/bin/python`. `test_consult.py` needs `nh3`, which the worktree's default `python3` lacks.
+
+| Tree | Result |
+| --- | --- |
+| AST-2089 tip (`e8119b1da`) | **9 passed** |
+| Pre-fix product (`22ff5e47a` `src/core/agent.py` + `src/core/consult.py`) | **3 failed, 6 passed**. The failures are exactly the bug-repro nodes: `test_envelope_failure_salvages_clean_lines` (no `salvaged_response`) and both params of `test_salvaged_lines_process_and_only_the_gap_fails` (all 3 jobs go to `NEW_RETRY`, nothing processed). |
+
+Literal tip outputs the asserts lock:
+
+- `do_task` with payload `"000|CRA4||Staff Engineer|https://x.example/jobs/1\n001|CRF5"` and entities `job-0..2` returns `salvaged_response = {"jobs": [{job-0, CR/A/4, company_job_id None, job_title "Staff Engineer", job_link …}, {job-1, CR/F/5}]}`. It also keeps `success False`, `agent_failure True`, `parsed_response None`, and `error "Agent failure: <note>"`.
+- `_run_batch_consult` with that salvage processes `job-0` (pass) and `job-1` (fail), sends `job-2` to `NEW_RETRY` (or to `ERROR_QUALIFY_JOB_LISTINGS` from `NEW_RETRY`), and logs the `Agent failure: …` reason. It returns `passed 1, failed 1, missing ["job-2"], success False, agent_failure True, error "Agent failure: …"`.
+
+### Root cause
+
+AST-2089 was a product-only fix by design. Betty's board verdict routed the coverage here (same split as AST-1996 → AST-2001 and AST-2053 → AST-2057). Nothing is wrong in the product; the tests are simply missing.
+
+### Proposed change
+
+One `test(AST-2090)` commit by Betty: `tests/component/core/test_agent.py`, `tests/component/core/test_consult.py`, `docs/test-bible/core/agent.md`, `docs/test-bible/core/consult.md`. No imports to add, because both files already import `AsyncMock`, `MagicMock`, `pytest`, `Any`, `Dict`, `agent_mod` / `consult_mod`, and `test_agent.py` already has `_agent_rows`, `_api_response`, `_batch_entities` and the autouse `_candidate_server_key_stub`.
+
+**1. `tests/component/core/test_agent.py`: new class directly after `TestAst1846DoTaskAgentFailureFlag` (before `TestAst2006DoTaskEmptyTokenGuard`), verbatim:**
+
+```python
+class TestAst2089DoTaskSalvagedResponse:
+    """AST-2089 bug-repro (AST-2090): rubric envelope failure on a batch keeps cleanly decoded lines in salvaged_response."""
+
+    NOTE = "Unable to determine a company job ID for listing 002; required for payload."
+
+    @staticmethod
+    def _ctx(*job_ids: str) -> Dict[str, Any]:
+        return {"astral_candidate_id": "somerset", "candidate_data": {}, "batch_entities": _batch_entities(*job_ids)}
+
+    async def _run(self, monkeypatch: pytest.MonkeyPatch, payload: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows(model_id="deepseek-v4-flash")
+        )
+        envelope = {"agent_performance": {"status": "failure", "failure_note": self.NOTE}, "agent_payload": payload}
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_llm_compat",
+            AsyncMock(return_value={
+                "success": True, "parsed_response": envelope, "api_response": _api_response("env"), "timesheet": {},
+            }),
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        return await agent_mod.do_task("qualify_job_listings", index="qualify_job_listings_batch_b2089", ctx=ctx)
+
+    @pytest.mark.asyncio
+    async def test_envelope_failure_salvages_clean_lines(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2015 production shape: model says failure over one listing; the other lines decode cleanly.
+        out = await self._run(
+            monkeypatch,
+            "000|CRA4||Staff Engineer|https://x.example/jobs/1\n001|CRF5",
+            self._ctx("job-0", "job-1", "job-2"),
+        )
+        # AST-1846 contract unchanged on the failure result.
+        assert (out["success"], out["agent_failure"], out["parsed_response"]) == (False, True, None)
+        assert out["error"] == f"Agent failure: {self.NOTE}"
+        assert out.get("salvaged_response") == {"jobs": [
+            {
+                "astral_job_id": "job-0",
+                "grades": [{"vector": "CR", "grade": "A", "confidence": 4}],
+                "company_job_id": None,
+                "job_title": "Staff Engineer",
+                "job_link": "https://x.example/jobs/1",
+            },
+            {"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "F", "confidence": 5}]},
+        ]}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("payload", ["", "not a grade line at all", "000|CRA9"])
+    async def test_no_salvage_without_a_clean_line(self, monkeypatch: pytest.MonkeyPatch, payload: str) -> None:
+        # Empty, letter-pipe garbage, and a bad-confidence-only line: nothing usable → whole-batch failure as before.
+        out = await self._run(monkeypatch, payload, self._ctx("job-0", "job-1"))
+        assert out["agent_failure"] is True
+        assert out.get("salvaged_response") is None
+
+    @pytest.mark.asyncio
+    async def test_no_salvage_when_schema_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(agent_mod, "_validate_response_schema", lambda parsed, schema, task_key: "jobs[0]: bad")
+        out = await self._run(monkeypatch, "000|CRA4", self._ctx("job-0"))
+        assert out["agent_failure"] is True
+        assert out.get("salvaged_response") is None
+
+    @pytest.mark.asyncio
+    async def test_no_salvage_without_batch_entities(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out = await self._run(monkeypatch, "000|CRA4", {"astral_candidate_id": "somerset", "candidate_data": {}})
+        assert out["agent_failure"] is True
+        assert out.get("salvaged_response") is None
+```
+
+**2. `tests/component/core/test_consult.py`: new class directly after `TestEncodedDecodeIsolation` (before `TestRunBatchConsultBranches`), verbatim:**
+
+```python
+class TestAst2089SalvagedBatchSplit:
+    """AST-2089 bug-repro (AST-2090): envelope failure + salvaged_response → clean lines process, only gaps fail."""
+
+    ERR = "Agent failure: Unable to determine a company job ID for listing 002; required for payload."
+
+    async def _run(
+        self, monkeypatch: pytest.MonkeyPatch, salvaged: Any, gap_state: str = "NEW",
+    ) -> tuple:
+        transition = MagicMock()
+        logged: list = []
+        processed: list = []
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "_log_fail_dest", lambda aid, dest, reason: logged.append((aid, dest, reason)))
+        # Stub hydrate: unstubbed it raises on empty rubric criteria (same as TestEncodedDecodeIsolation).
+        monkeypatch.setattr(consult_mod, "_hydrate_response_jobs_grade_reasons", MagicMock())
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(return_value={
+                "success": False, "agent_failure": True, "parsed_response": None,
+                "error": self.ERR, "salvaged_response": salvaged, "timesheet": {},
+            }),
+        )
+
+        def process(input_job, response_job, cfg):
+            processed.append(response_job["astral_job_id"])
+            return cfg["pass_state"] if response_job["grades"][0]["grade"] == "A" else cfg["fail_state"]
+
+        jobs = [
+            {"astral_job_id": "job-0", "state": "NEW"},
+            {"astral_job_id": "job-1", "state": "NEW"},
+            {"astral_job_id": "job-2", "state": gap_state},
+        ]
+        out = await consult_mod._run_batch_consult(
+            "qualify_job_listings", "batch-2089", jobs, lambda rows: "content", process, {}, False,
+        )
+        return out, transition, logged, processed
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("gap_state", "gap_dest", "retried"),
+        [("NEW", "NEW_RETRY", 1), ("NEW_RETRY", "ERROR_QUALIFY_JOB_LISTINGS", 0)],
+    )
+    async def test_salvaged_lines_process_and_only_the_gap_fails(
+        self, monkeypatch: pytest.MonkeyPatch, gap_state: str, gap_dest: str, retried: int,
+    ) -> None:
+        salvaged = {"jobs": [
+            {
+                "astral_job_id": "job-0",
+                "grades": [{"vector": "CR", "grade": "A", "confidence": 4}],
+                "company_job_id": None,
+                "job_title": "Staff Engineer",
+                "job_link": "https://x.example/jobs/1",
+            },
+            {"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "F", "confidence": 5}]},
+        ]}
+        out, transition, logged, processed = await self._run(monkeypatch, salvaged, gap_state)
+        assert processed == ["job-0", "job-1"]
+        # Only the omitted listing takes a fail dest, first strike → holding, second → terminal.
+        transition.assert_called_once_with("qualify_job_listings", ["job-2"], gap_dest)
+        assert logged == [("job-2", gap_dest, self.ERR)]
+        assert (out["passed"], out["failed"], out["retried"], out["missing"]) == (1, 1, retried, ["job-2"])
+        assert out["success"] is False
+        assert out["agent_failure"] is True
+        assert out["error"] == self.ERR
+
+    @pytest.mark.asyncio
+    async def test_no_salvage_fails_whole_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Real AST-2089 agent shape with nothing usable: salvaged_response key present but None.
+        out, transition, logged, processed = await self._run(monkeypatch, None)
+        assert processed == []
+        transition.assert_called_once_with("qualify_job_listings", ["job-0", "job-1", "job-2"], "NEW_RETRY")
+        assert [aid for aid, _, _ in logged] == ["job-0", "job-1", "job-2"]
+        assert (out["success"], out["retried"], out["error"]) == (False, 3, self.ERR)
+        assert "agent_failure" not in out
+```
+
+**3. `docs/test-bible/core/agent.md`: new block directly after `### AST-2057 · AST-2045 …` (before `### AST-2006`):**
+
+```markdown
+### AST-2090 · AST-2015 (bug-repro — AST-2089 salvaged_response on rubric envelope failure, agent side)
+
+Test gap for **AST-2089** (`f3897829d`). In `do_task`'s AST-1839 branch (rubric-encoded, envelope `status == "failure"`), when `ctx.batch_entities` is present, the payload goes through the success-path bar (`_normalize_rubric_task_response` → `_coerce_schema_str_fields_from_list` → `_validate_response_schema` → `_validate_grade_confidence_in_payload`). If that yields ≥1 job / company it is returned as `salvaged_response`; otherwise `salvaged_response` is `None`. The failure result is otherwise unchanged (`success False`, `agent_failure True`, `parsed_response None`, `error "Agent failure: <note>"` — **AST-1846** rows above still hold). Consumer: **`core/consult.md`** (**AST-2090**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Clean lines salvaged (empty job-ID slot → `company_job_id None`, title/link in place); AST-1846 fields unchanged | `src/core/agent.py` (`do_task`) | **`TestAst2089DoTaskSalvagedResponse::test_envelope_failure_salvages_clean_lines`** (**bug-repro**) |
+| Empty / letter-pipe garbage / bad-confidence-only payload → `None` | same | **`…::test_no_salvage_without_a_clean_line`** (guard, 3 params) |
+| Schema-invalid decode → `None` | same | **`…::test_no_salvage_when_schema_invalid`** (guard) |
+| No `batch_entities` → `None` | same | **`…::test_no_salvage_without_batch_entities`** (guard) |
+
+**Integration:** none.
+```
+
+**4. `docs/test-bible/core/consult.md`: new block directly after `### AST-2001 · AST-1884 …` and its run command / note (before `### AST-2006`):**
+
+````markdown
+### AST-2090 · AST-2015 (bug-repro — AST-2089 salvaged-batch split, consult side)
+
+Test gap for **AST-2089** (`f3897829d`). `_run_batch_consult`: when `do_task` fails with a truthy `salvaged_response`, the whole-batch failure branch is skipped and the salvaged `jobs` run the normal reconciliation + `process_fn` path. Entities with no salvaged line are `missing` and go through `_transition_batch_consult_failures` → `_consult_batch_fail_dest` (first strike → `NEW_RETRY`, already-`NEW_RETRY` → `ERROR_QUALIFY_JOB_LISTINGS`), logged with the `do_task` `error` (`Agent failure: <note>`) instead of `omitted from response`. Return: `success False`, `agent_failure True`, `error` starts with the agent failure text. With `salvaged_response None` the existing whole-batch branch runs unchanged (no `agent_failure` key). Producer: **`core/agent.md`** (**AST-2090**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Salvaged pass + fail lines processed; only the gap fails (first strike `NEW_RETRY`, second `ERROR_QUALIFY_JOB_LISTINGS`); `Agent failure` reason; `passed` / `failed` / `retried` / `missing` / `success` / `agent_failure` / `error` shape | `src/core/consult.py` (`_run_batch_consult`) | **`TestAst2089SalvagedBatchSplit::test_salvaged_lines_process_and_only_the_gap_fails`** (**bug-repro**, 2 params) |
+| `salvaged_response None` → whole batch to fail dest, nothing processed, no `agent_failure` key | same | **`…::test_no_salvage_fails_whole_batch`** (guard) |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst2089DoTaskSalvagedResponse \
+  tests/component/core/test_consult.py::TestAst2089SalvagedBatchSplit \
+  -q
+```
+````
+
+⚠️ **Decision: two classes, not new rows in `TestAst1846DoTaskAgentFailureFlag` / `TestRunBatchConsult`.** Keeps AST-1846's class and the old consult nodes byte-identical (the AC says they must stay green). It also gives each bible row a stable node id, which matches the AST-2001 / AST-2057 precedent.
+
+⚠️ **Decision: `out.get("salvaged_response")`, not `out["salvaged_response"]`.** The guards then pass on both trees (on the pre-fix tree the key is absent, which reads as `None`), and the bug-repro fails pre-fix with an assertion error rather than a `KeyError`.
+
+⚠️ **Decision: "missing or incomplete" means missing only, plus a second-strike param.** The Scope line allows either. An *incomplete* salvaged line raises in `process_fn` and goes through the existing `bad_grades` path (reason `process_fn …`, not `Agent failure`), which **AST-1155** rows already cover; re-asserting it here would test old code. The second param (`NEW_RETRY` → `ERROR_QUALIFY_JOB_LISTINGS`) locks `patt.task.dispatch-retry` on the gap entity instead.
+
+⚠️ **Decision: schema-invalid is forced with a monkeypatch.** No encoded `qualify_job_listings` line decodes into a schema-invalid row (the decoder always emits `astral_job_id` + `grades`), so the test patches `agent_mod._validate_response_schema` to return an error. That exercises the real branch without inventing a payload shape.
+
+⚠️ **Decision: hydrate is stubbed in the consult class.** Same reason as `TestEncodedDecodeIsolation._run`: with an empty rubric, `_hydrate_response_jobs_grade_reasons` raises before the split runs (that is why `TestRunBatchConsult::test_counts_passed_and_failed_rows` is a pre-existing red).
+
+### Blast radius
+
+- Test tree and bible only; no `src/` or `data/`. The product was verified by AST-2089 test-fix (68/666/7 identical base vs tip) and Radia (PROCEED).
+- The new classes are additive and self-contained (each patches only via `monkeypatch`). No existing test is edited.
+- Bible: two new blocks; no existing row changes.
+- Pre-existing reds in `test_agent.py` / `test_consult.py` on ftr (68 total, including `TestRunBatchConsult::test_counts_passed_and_failed_rows`) are out of scope per the AST-2090 Boundaries.
+
+### What must still hold
+
+- `TestAst1846DoTaskAgentFailureFlag` (all), `TestRunBatchConsult::test_routes_envelope_failure_to_error_state`, `TestAst2010RateLimitForwarding::test_batch_consult_envelope_failure_forwards_tag`, `TestEncodedDecodeIsolation` all stay green and unedited (verified at tip: **10 passed**).
+- No production code change.
+- Pass criterion: `pytest tests/component/core/test_agent.py::TestAst2089DoTaskSalvagedResponse tests/component/core/test_consult.py::TestAst2089SalvagedBatchSplit` gives **9 passed** on the tip. The 3 bug-repro nodes fail against pre-fix `22ff5e47a` product files.
+
+
+## Joan fix-board — AST-2090
+
+[board-joan]  CANON: OK
+
+AST-2090 board-joan done — CANON: OK.
+
+**Rationale:** AST-2090’s plan-fix patch is **tests + `docs/test-bible` only** — no `src/` or `data/`. It adds component tests and bible rows that **lock AST-2089’s already-reviewed product contract** (`salvaged_response` on rubric envelope failure when `batch_entities` is present; `_run_batch_consult` processes salvaged lines and fail-dests only gaps, with first/second-strike routing on the gap entity). That behavior was already aligned with `patt.task.dispatch-retry` on AST-2089’s fix-board pass; claim/process/release and logging statutes are untouched because there is no product diff. Bible blocks describe **coverage**, not new in-force directives or statute amendments. No canon update, carve-out, or Archie gate indicated. **F3 (`validate-plan` fix mode) not indicated** from this board pass.
+
+
+## Radia review — AST-2090
+
+**Ticket:** AST-2090  
+**Publish ref:** `8e751e38ea8b069f613e51e0aad4842878a3ab1d` (`origin/sub/AST-2015/AST-2090-qualify-listing-isolation-tests`)  
+**Diff base:** `origin/ftr/AST-2015-qualify-listing-isolation` … publish ref (3-dot)  
+**Corpus:** `823d37605` (issue doc: **canon limited to `patt.task.dispatch-retry`** for consult first/second-strike asserts; test-tree only — no `src/` / `canon/` delta)  
+**Overall:** CLEAN  
+
+## Fix-specific checks
+
+**[bug-repro] OK** — Three repro nodes (not tautological; would fail pre-fix `22ff5e47a` product per plan §Repro / bible red–green record):
+
+| Node | What it pins (AST-2089 **To-be**) | Pre-fix failure mode |
+|------|-----------------------------------|----------------------|
+| `TestAst2089DoTaskSalvagedResponse::test_envelope_failure_salvages_clean_lines` | Real `do_task` on production Somerset-shaped envelope + payload; `salvaged_response` equals concrete two-job dict (`company_job_id None`, title/link on job-0); AST-1846 tuple `(success False, agent_failure True, parsed_response None)` + full `Agent failure: <note>` | No `salvaged_response` / `None == {jobs:…}` |
+| `TestAst2089SalvagedBatchSplit::test_salvaged_lines_process_and_only_the_gap_fails` (×2) | Mocked `do_task` failure + truthy salvage; `processed == ["job-0","job-1"]`; single `_transition_job_state_for_task` to gap only (`NEW_RETRY` vs `ERROR_QUALIFY_JOB_LISTINGS`); `_log_fail_dest` reason `ERR`; return `passed/failed/retried/missing/success/agent_failure/error` | Pre-fix ignores salvage → `processed == []`, all three to fail dest |
+| *(guards, not repro)* | `test_no_salvage_*` / `test_no_salvage_fails_whole_batch` lock `salvaged_response is None` whole-batch path and `agent_failure` absent on that path | Pass on both trees (by design) |
+
+Agent repro exercises the **real** decode/validate bar (not a mock of salvage logic). Consult repro intentionally stubs `do_task` to isolate `_run_batch_consult` split routing — matches plan §Proposed change and AST-2001/2057 test-gap precedent; together with the agent class it covers the full AST-2089 contract.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| No production change | `git diff` vs ftr: **zero** bytes under `src/`, `data/`, `canon/` |
+| AST-1846 / envelope-failure consult guards unedited | Diff touches only additive classes after `TestAst1846DoTaskAgentFailureFlag` / `TestEncodedDecodeIsolation`; spawn + plan: 10 existing guards green at tip |
+| `TestEncodedDecodeIsolation` / AST-1996 rows | Unchanged; new class is sibling, not edit |
+| Pass criterion 9 new + guards | Not re-run in this review (ASK); **trust spawn** (Hedy: 3 repro red pre-fix, 9 green + 10 guards at tip) |
+
+## Canon scores
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | patt.task.dispatch-retry | A | | Bug-repro parametrize locks gap entity `NEW`→`NEW_RETRY` and `NEW_RETRY`→`ERROR_QUALIFY_JOB_LISTINGS`; clean salvaged lines processed, not left in trigger state. |
+
+*(Issue doc: “Canon: none beyond AST-2089's (`patt.task.dispatch-retry` …)”. No other frozen ids scored.)*
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** `CANON: OK`; test/bible delta matches plan-fix **Proposed change** items 1–4 (classes, bible blocks, decisions).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **`[bug-repro]` first-line comment:** Repro nodes are named in class docstrings + bible tables (same gap as AST-2057 Radia note); optional hygiene for `[qa-handoff]` machinery — not a gate on this ticket.
+- **Consult repro is unit-scoped:** No single test runs agent salvage → consult split end-to-end; plan §Integration: none. Regression of the handoff would require both classes to miss — acceptable for test-gap sibling.
+- **Pre-existing ftr reds:** Plan Boundaries: ~68 unrelated `test_agent`/`test_consult` reds on ftr remain out of scope; merge/UAT should not treat full-file green as AST-2090 pass criterion (manifest: the two new classes only).
+- **Doc diff bulk:** Feature doc adds full `## Bug: AST-2090` block (+ prior AST-2089 Radia artifact already on ftr); product scope of *this* sub remains tests + bible only.
+
+## What's solid
+
+- Tip commit `8e751e38e` is test-gap only (`code(AST-2090): no product src`).
+- Implementations match plan verbatim; `out.get("salvaged_response")` guard pattern preserves pre-fix guard greens.
+- Bible `agent.md` / `consult.md` blocks cross-link producer/consumer and document red/green record + run command.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | **Orphaned** AST-2015 | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). After Susan UAT, merge sub straight to **`origin/dev`** (with AST-2089 product already on ftr). Stack **AST-2089** + **AST-2090** for any merge that needs salvage coverage before relying on component consult/agent suites. |
+
+## Bug: AST-2124 — Missing rubric grade description fails only that entity; letter0 decodes as X0
+
+**Linear:** [AST-2124](https://linear.app/astralcareermatch/issue/AST-2124) · **Mini-parent:** [AST-2116](https://linear.app/astralcareermatch/issue/AST-2116) · **Publish ref:** `sub/AST-2116/AST-2124-missing-grade-fail` · **Project:** Astral Dispatcher · **Ancestor:** `## Bug: AST-2053` block above. This ticket **replaces** that block's `{letter}0 → {letter}1` normal form with `X0`, on Susan's rule (AST-2116 To-be + Decisions, 2026-10-10).
+
+**Canon (no frozen list on ticket or mini-parent):** `astral.agent.confidence-bounds` (read; amended here, both copies), `patt.task.dispatch-retry` (id-only; retry routing is unchanged for every cause except this one, which leaves the retry route).
+
+### As-is
+
+- **Batch-wide hydrate.** `_run_batch_consult` (`src/core/consult.py`) hydrates every response row in one `_hydrate_response_jobs_grade_reasons` call. The first letter grade with no rubric description raises `ValueError("No rubric description for vector … grade …")`, and the `except ValueError` sends **every job in the batch** through `_transition_batch_consult_failures` (primary state goes to the retry holding, a job already in the retry holding goes to terminal error). `_run_batch_company_prefilter` (`src/core/roster.py`) does the same with `_transition_prefilter_batch_failures(fail_class="hydrate")`. A retry can never succeed, because the rubric text is still missing. Production: Somerset `meteorite_grade_do-8c5dd940-…`, vector `Process & Systems Design` graded **F**. Both jobs failed: one to `METEORITE_PASSED_JD_RETRY`, the other to `METEORITE_FAILED_TECHNICAL_DO`.
+- **Single-row hydrate raises.** `_apply_render_verdict_decoded_job` (consult) and `_apply_prefilter_decoded_company_outcome` (roster) call `_hydrate_grade_reasons_from_rubric` unguarded. `render_verdict` turns the raise into `_fail` (error_state). `prefilter_company` turns it into `_prefilter_fail` (retry, then error).
+- **X can fail hydrate.** `_lookup_rubric_reason_for_grade` treats `X` like any other letter. A vector with no X row, such as the embedded Quality Check (AST-1898 / AST-1910), raises.
+- **letter0 → letter1.** `_decode_payload` (`src/core/agent.py`, non-vet encoded loop) rewrites `{A-F}0` to `{letter}1` (AST-2053). So an `F0` comes through as `F1` and still needs an F description at hydrate.
+
+### To-be
+
+Susan's rule, applied at every rubric hydrate site (consult batch, consult single row, prefilter batch, prefilter single company):
+
+- A **letter grade (confidence > 0) with no description** in its vector's rubric logs **one WARNING** naming the vector and letter, and sends **that entity alone** to its task's `fail_state`. It is not an error and not a retry. Every other entity in the batch applies normally.
+- **`X` never fails hydrate.** Its reason is the vector's X text when the rubric has one; otherwise a fixed no-signal reason.
+- **`{A-F}0` decodes as `X0`**, replacing AST-2053's `{letter}1`.
+- `astral.agent.confidence-bounds` states letter0 → X0 and "X is always no signal", in both copies.
+
+### Repro
+
+Fixture (no DB). Rubric with no F row on one vector; batch of two jobs; only `J0` grades that vector F:
+
+```python
+from src.core import consult as c
+rubric = [
+    {"code": "PS", "label": "Process & Systems Design",
+     "grade_descriptions": [{"grade": g, "description": f"{g} text"} for g in "ABCD"]},
+    {"code": "CF", "label": "Culture Fit",
+     "grade_descriptions": [{"grade": g, "description": f"{g} text"} for g in "ABCDF"]},
+]
+jobs = [
+    {"astral_job_id": "J0", "grades": [{"vector": "Process & Systems Design", "grade": "F", "confidence": 3},
+                                       {"vector": "Culture Fit", "grade": "B", "confidence": 4}]},
+    {"astral_job_id": "J1", "grades": [{"vector": "Process & Systems Design", "grade": "B", "confidence": 4},
+                                       {"vector": "Culture Fit", "grade": "X", "confidence": 0}]},
+]
+c._hydrate_response_jobs_grade_reasons(jobs, rubric)
+# today: ValueError "No rubric description for vector 'Process & Systems Design' grade F"
+#        → in _run_batch_consult, J0 AND J1 both go to error routing.
+#        (J1's Culture Fit X would also raise on its own: no X row.)
+# to-be: returns {"J0": "No rubric description for vector 'Process & Systems Design' grade F"};
+#        J1 fully hydrated, its Culture Fit X reason == c._X_NO_SIGNAL_REASON.
+#        In _run_batch_consult: J0 -> cfg["fail_state"] (one WARNING), J1 -> process_fn as normal.
+
+from src.core.agent import _decode_payload
+out = _decode_payload("meteorite_grade_do", "grades_encoded",
+                      "000|CFF0|PSB3", {"batch_entities": [{"astral_job_id": "J0"}]})
+# today: CF row == {"grade": "F", "confidence": 1}
+# to-be: CF row == {"grade": "X", "confidence": 0}
+```
+
+### Root cause
+
+1. **Batch-scoped exception for an entity-scoped defect.** A missing description is a property of one entity's grade against the rubric, but hydrate signals it with the same `ValueError` as structural failures (empty rubric). The batch callers catch it once and route the whole batch through the technical-failure (retry/error) path.
+2. **Retry is the wrong route.** The missing text is rubric data. Re-asking the model cannot add it, so the retry spends a strike and then the job goes terminal error.
+3. **`X` is looked up as if it were a letter**, so a rubric with no X row turns a legitimate "no signal" into a hydrate failure.
+4. **AST-2053's letter1 normal form keeps the letter**, so `F0` still needs an F description.
+
+### Proposed change
+
+Three code files plus two canon copies. One `code(AST-2124)` commit.
+
+**1. `src/core/consult.py`: lookup.** Above `_lookup_rubric_reason_for_grade` add:
+
+```python
+# Fixed reason for X when the vector's rubric has no X row (AST-2124: X is always no signal).
+_X_NO_SIGNAL_REASON = "No signal"
+
+
+class MissingRubricDescriptionError(ValueError):
+    """Letter grade (confidence > 0) with no description in its vector's rubric — fails that entity, not the batch (AST-2124)."""
+```
+
+In `_lookup_rubric_reason_for_grade`:
+- Right after `item = _find_rubric_criterion(...)` and `lt = ...`, and **before** the `item is None` raise, X short-circuits so it never raises: if `lt == "X"`, return the X description from `grade_descriptions` / trailing table when `item` has one, else `_X_NO_SIGNAL_REASON`. Implement it by moving the `item is None` raise below the existing two loops, guarding the loops with `if item is not None`, and ending with:
+  ```python
+  if lt == "X":
+      return _X_NO_SIGNAL_REASON
+  if item is None:
+      raise ValueError(f"No rubric criterion matching vector {vector_label!r}")
+  raise MissingRubricDescriptionError(f"No rubric description for vector {vector_label!r} grade {letter}")
+  ```
+  The message text is unchanged, so existing log greps and `match="No rubric description"` asserts still hold.
+- Docstring: "Raises ValueError if missing" becomes "X falls back to a fixed no-signal reason; a letter with no description raises MissingRubricDescriptionError; an unknown vector raises ValueError."
+
+**2. `src/core/consult.py`: `_hydrate_response_jobs_grade_reasons` returns misses instead of raising.**
+
+```python
+def _hydrate_response_jobs_grade_reasons(jobs: list, rubric_criteria: list) -> Dict[str, str]:
+    """Hydrate each row; return {astral_job_id: reason} for rows with a missing letter description (AST-2124).
+    Structural ValueErrors (empty rubric, unknown vector) still raise for the whole batch."""
+    missing: Dict[str, str] = {}
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
+        glist = job.get("grades")
+        if isinstance(glist, list):
+            try:
+                _hydrate_grade_reasons_from_rubric(glist, rubric_criteria)
+            except MissingRubricDescriptionError as e:
+                missing[str(job.get("astral_job_id") or "")] = str(e)
+    return missing
+```
+
+`_hydrate_grade_reasons_from_rubric` is unchanged. It still stops at the first missing letter in a row, which gives one reason per entity.
+
+**3. `src/core/consult.py`: `_run_batch_consult`.**
+- **Move** the hydrate `try:` block from just before `_bind_response_jobs_to_claimed` to just **after** the `if task_key == "qualify_meteorite":` binding block, so misses are keyed by the bound claim id. Keep its `except ValueError` body unchanged; it now catches only structural errors (empty rubric, unknown vector). The call becomes `hydrate_missing = _hydrate_response_jobs_grade_reasons(response_jobs, rubric_criteria)`.
+- In the per-job loop, right after the `if aid in fabricated: continue` guard, before `process_fn`:
+  ```python
+  if aid in hydrate_missing:
+      # Missing rubric text is data, not an agent slip — fail this entity only, no retry (AST-2124).
+      _warn_job(aid, cfg["fail_state"], f"hydrate: {hydrate_missing[aid]}")
+      _transition_job_state_for_task(task_key, [aid], cfg["fail_state"])
+      failed += 1
+      continue
+  ```
+  `cfg` is the same `_run_batch_consult` orchestration the AST-2096 all-X branch already uses (`meteorite_grade_do` → `METEORITE_FAILED_DO`, `evaluate_jd` → its own `fail_state`). The entity is **not** added to `bad_grades`, so it is counted as a processed RESPONSE id and adds nothing to `errors`.
+
+**4. `src/core/consult.py`: `_apply_render_verdict_decoded_job`.** Replace the bare `_hydrate_grade_reasons_from_rubric(grades, rubric_criteria)` with:
+
+```python
+    try:
+        _hydrate_grade_reasons_from_rubric(grades, rubric_criteria)
+    except MissingRubricDescriptionError as e:
+        # Fail verdict for this row only — no grade save, no score (AST-2124).
+        fail_state = cfg["fail_state"]
+        _warn_job(astral_job_id, fail_state, f"hydrate: {e}")
+        _transition_job_state_for_task(agent_task, [astral_job_id], fail_state)
+        return fail_state, None, grades
+```
+
+`render_verdict` already treats a normal return with `to_state != pass_state` as a fail (`success: True`), so the caller needs no change. In the `grade_*` batch path this branch is never reached, because step 3 pulls the entity out before `process_fn`. It covers `render_verdict` single-row.
+
+**5. `src/core/roster.py`: `_apply_prefilter_decoded_company_outcome`.** Import `MissingRubricDescriptionError` alongside `_hydrate_grade_reasons_from_rubric` and wrap the hydrate the same way:
+
+```python
+        try:
+            _hydrate_grade_reasons_from_rubric(grades, rubric_list)
+        except MissingRubricDescriptionError as e:
+            # Fail this company only — no retry, no grade save (AST-2124).
+            _warn_company(short_name, cfg["fail_state"], f"hydrate: {e}")
+            transition_company_state(short_name, cfg["fail_state"])
+            return cfg["fail_state"]
+```
+
+`cfg["fail_state"]` is `PREFILTER_FAILED` (AC 2). `HOMEPAGE_READY`, its retry, and `WEBSITE_FOUND` → `PREFILTER_FAILED` are all legal transitions (`config.py` ~L4885–4913). In `prefilter_company`, the return falls through to `decision = "IGNORE"`, `state = PREFILTER_FAILED`.
+
+**6. `src/core/roster.py`: `_run_batch_company_prefilter`.** No routing code. The batch `_hydrate_response_jobs_grade_reasons(...)` call stays inside its `try/except ValueError` (structural errors only now), and its return value is ignored. A company with a missing description is hydrated again in `_apply_prefilter_decoded_company_outcome` (step 5), which returns `PREFILTER_FAILED`. That value is not in `pass_states`, so it counts as `failed += 1`.
+
+**7. `src/core/roster.py`: prefilter notes builder (~L3427).** Checked for consistency; no change. `except ValueError: return None` still catches the subclass. X no longer raises there, so notes for X rows now build.
+
+**8. `src/core/agent.py::_decode_payload`, non-vet encoded segment loop.** Replace the AST-2053 block:
+
+```python
+            # Sanctioned slip (astral.agent.confidence-bounds): models write {letter}0 for "no signal" — store X0 (AST-2124).
+            if letter != "X" and conf_d == 0:
+                letter = "X"
+```
+
+Docstring: change "A letter segment with confidence 0 is normalised to confidence 1 (AST-2053)." to "A letter segment with confidence 0 is stored as X0 (AST-2124)." The vet branch (`grades_encoded_vet_meta`), `_GRADE_SEG`, and the X-nonzero `decode_failures` branch are unchanged.
+
+**9. Canon: both copies of `astral.agent.confidence-bounds`.** The files are `canon/directives/draft/stat.agent.confidence-bounds.md` and `canon/statutes/astral/agent/astral.agent.confidence-bounds.md`. After this change their bodies are identical. Frontmatter is untouched in both.
+- `# Statement`, full replacement:
+  > Every graded row carries integer `confidence`: `1`–`5` for letter grades `A`–`F`, and `0` with `X`. `X` is always no signal, whether or not the vector's rubric has an `X` row; rubric hydrate never fails on `X` (it uses the rubric's `X` text when present, else a fixed no-signal reason). One sanctioned exception at decode: the encoded grade decoder (`_decode_payload`, non-vet paths) rewrites a letter segment written with confidence `0` (`{A-F}0`) to `X0`, rather than failing the line. No other out-of-bounds confidence is coerced. At scoring, confidence `1` (including `F1`) is treated as no signal; multipliers live in `CONFIDENCE_MULTIPLIERS`.
+- `### Conforming`: in the draft, replace the AST-2053 bullet; in the harvest copy, append it:
+  `` - `_decode_payload` turns encoded `CFC0` into `{"grade": "X", "confidence": 0}`; the row is no signal and the line is not a decode failure. ``
+- `### Violating`: append `` - Hydrate raises on an `X` grade because the vector's rubric has no `X` row. ``
+
+⚠️ **Decision: answering AST-2053's two reasons for rejecting X0.**
+1. **Quality Check X (AST-1910).** AST-1910 forbade QC X because hydrate raised on it (QC has only A/B/C/F rows) and errored the whole batch. Under Susan's rule X always hydrates, so a QC `X` hydrates to `_X_NO_SIGNAL_REASON`, whether the model wrote it or it came from a QC `{letter}0` rewrite. Verdict math is unchanged: QC `X0` and QC `{letter}1` are both no signal (`_effective_no_signal_for_score`; `_render_pass_fail` only dealbreaks on F with confidence ≥ 2). The QC prompt rule ("never X, never 0; thin JD → F") stays, so a QC X is still a model slip. It now just costs nothing instead of a batch. The only visible difference is that a slipped QC shows "No signal" in `jd_grades` rather than the letter's rubric text. Accepted under Decision 1 ("X is no signal whether or not explicit in the rubric").
+2. **`AllLiteralXGradeSetError` pressure.** A line now becomes all-literal-X only when **every** segment is `X` or `{letter}0`, meaning the model gave no signal on any vector. Before (letter1 form), such a scored line reached `_render_score` with every row excluded from V, scored 0, and failed on the score floor (or passed when the floor is 0). Now it raises `AllLiteralXGradeSetError`: primary state → retry holding, then `{fail_state}_ALL_X` (AST-2096). The binary path is unchanged (`_render_pass_fail` all-X → `fail_state`, the same as "no confidence > 1"). Net effect: an all-no-signal scored line spends one retry before its fail verdict instead of failing (or passing) on a zero score. That matches what the line means under Susan's rule (no signal at all), and it is the existing, approved all-X route, so it is accepted as is. A line with any graded vector is unaffected.
+
+⚠️ **Decision: no grade save on a missing-description fail.** The entity's grade set can't be fully hydrated, so steps 3–5 transition and warn only, the same as the AST-2096 all-X fail. Nothing is written to `{prefix}_grades` / `prefilter_grades`, which avoids list columns rendering a row with a reason-less grade. The WARNING line carries the vector and letter.
+
+⚠️ **Decision: precedence.** Hydrate runs before the completeness / all-X checks on every path (as today), so a missing description wins over an incomplete grade set. Both are entity-scoped, and a fail is the outcome that can't be fixed by retrying.
+
+⚠️ **Decision: structural hydrate errors keep batch routing.** An empty rubric (`rubric criteria missing or empty`) and an unknown vector (`No rubric criterion matching vector`, which can only appear for letters now) stay plain `ValueError` and keep today's batch-wide retry/error route. Susan's rule covers missing grade text only. Widening it to these errors would be a scope change.
+
+⚠️ **Decision: fixed X reason text is `"No signal"`.** It is one constant, `_X_NO_SIGNAL_REASON`; reword it on request.
+
+### Blast radius
+
+- **Batch consult callers:** `qualify_job_listings`, `qualify_meteorite` (no grades, so hydrate is a no-op), `evaluate_jd` / `evaluate_meteorite` (process relies on the batch hydrate, so step 3 is their only fail route), and `grade_do/get/like` + meteorite aliases (process → `_apply_render_verdict_decoded_job`). The batch hydrate moves after ID binding. Binding only rewrites ids and hydrate only touches `grades`, so order doesn't matter to either.
+- **Prefilter:** batch and single-company both route through step 5. The notes builder is unchanged.
+- **Decode:** every non-vet encoded output type (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`) shares the loop, so all of them get `X0`. More `X` rows overall, all of which now hydrate.
+- **Tests (Betty's tree; make-fix does not edit):**
+  - `tests/component/core/test_agent.py::…::test_ast2053_letter_conf0_normalised_to_conf1` (~L281) expects `{letter}1`. It needs a rewrite to `X0`, as does its `docs/test-bible/core/agent.md` AST-2053 entry.
+  - `tests/component/core/test_consult.py` ~L1452 `test_treats_parse_errors_as_empty_rows` (letter A, `match="No rubric description"`) stays green, because the subclass has the same message.
+  - `test_consult.py` ~L8000–8033 and `test_roster.py` ~L6790–6824 stub `_hydrate_response_jobs_grade_reasons` with a plain `ValueError`, which is the structural path, so they stay green.
+  - Any test asserting `_lookup_rubric_reason_for_grade(..., "X")` raises on a no-X-row vector goes red by design.
+  - New coverage (qa-fix): per-entity fail with a sibling applying, X with no X row, letter0 → X0, and the single-row consult + both prefilter paths.
+
+### What must still hold
+
+- Clean batches (every grade described) apply exactly as today: same states, scores, saves, and log lines.
+- Structural hydrate errors keep the AST-1839 batch routing (WARNING into a holding, ERROR out of one).
+- Decode failures (AST-1996), missing ids, salvaged batches (AST-2089), and all-X (AST-1760 / AST-2096) routing are untouched.
+- `X` with nonzero confidence still produces a `decode_failures` entry with today's reason text. The vet path still raises on confidence 0. `_GRADE_SEG` is unchanged.
+- The `No rubric description for vector … grade …` message text is unchanged.
+- AST-1910's QC prompt rule stays. No prompt, `src/utils/config.py`, or `data/admin/agent_task.json` change.
+- No save-time / dispatch-preflight rubric validation (AST-2091 untouched). Somerset's missing F row is an ops data fix.
+
+
+## Joan fix-board — AST-2124
+
+**Corpus read:** `origin/sub/AST-2116/AST-2124-missing-grade-fail` — `## Bug: AST-2124` block in `docs/features/consult/ast-1155-incomplete-grades-retry-holding-never-technical-fail.md` (As-is / To-be / Repro / Root cause / Proposed change / Blast radius / What must still hold).
+
+**Roster skim:** `astral.agent.confidence-bounds` (plan amends both copies), `patt.task.dispatch-retry` (id-only per ticket). Overlap checks: `stat.logging.warning` (hydrate scenario), `canon/docs/DIRECTIVES-DIRECTORY.md` L224 (index row only, not amended in plan).
+
+---
+
+### The one question
+
+Does the **Proposed change** conflict with or require updating any directive **in force**?
+
+**Yes — one statute must move before the product change matches written law.** No other active statute or pattern needs an edit for this patch; nothing rises to an Archie-only fork.
+
+---
+
+### `astral.agent.confidence-bounds` (REVISE — required)
+
+**In force today (publish ref):**
+
+- **Draft** (`canon/directives/draft/stat.agent.confidence-bounds.md`): AST-2053 carve-out — `{A–F}0` → same letter, confidence `1`; conforming example `CFC0` → `C` / `1`.
+- **Harvest** (`canon/statutes/astral/agent/astral.agent.confidence-bounds.md`): no decode exception; statement is only “1–5 for letters, 0 with X; F1 no signal.”
+
+**Proposed product + canon (§9):** `{A–F}0` → `X0`; explicit “X is always no signal” including hydrate fallback; conforming `CFC0` → `X` / `0`; violating example for hydrate raising on missing X row.
+
+Until both files match §9, the code **violates** the draft statute (it would remove `{letter}1` normalization the draft still mandates) and **extends** behavior (decode exception, X hydrate policy) beyond what the harvest copy states. The ticket correctly puts **both copies** in scope (Susan-approved; fixes AST-2053 dual-copy drift).
+
+**Wording review (not ESCALATE):** The drafted Statement keeps the existing scoring line (F1 / multipliers unchanged), replaces the sanctioned slip from letter1 to X0, and documents X-at-hydrate without inventing new confidence bounds. Conforming/Violating examples match the repro. That is a straight **supersession of AST-2053’s in-statute text**, not an ambiguous new precedent.
+
+**F3:** `validate-plan` fix mode should land/validate §9 verbatim (frontmatter untouched per plan).
+
+---
+
+### `patt.task.dispatch-retry` (no canon change)
+
+Plan routes **missing letter description** to each task’s **`fail_state`** with a per-entity WARNING — **not** `_RETRY` / batch technical-fail. That does **not** contradict the pattern:
+
+- Retry still applies to **invalid agent attempts**; the plan classifies missing rubric text as **rubric data**, same lane as “retry cannot fix.”
+- Structural hydrate `ValueError` (empty rubric, unknown vector) keeps AST-1839 batch retry/error routing per **What must still hold**.
+- The pattern’s **empty_tokens** carve-out already shows “not every failure is an agent retry.”
+
+No statute amendment required; id-only cite is accurate.
+
+---
+
+### `stat.logging.warning` (no canon change)
+
+The prefilter hydrate → `HOMEPAGE_READY_RETRY` example describes **batch structural** hydrate failure logging. AST-2124 keeps that path for plain `ValueError` and adds entity-scoped `_warn_job` / `_warn_company` to **`fail_state`** for `MissingRubricDescriptionError`. Handlers still use the existing `retry_base(dest)` warning vs error split. No Statement edit indicated.
+
+---
+
+### Non-blocking drift (not fix-board REVISE scope)
+
+- `canon/docs/DIRECTIVES-DIRECTORY.md` L224 still summarizes confidence-bounds without decode or X-hydrate rules. Plan does not touch it (same as AST-2053 deferral). Stale index prose; not an in-force statute body conflict for this triage pass.
+
+---
+
+### Recorded plan decisions vs canon
+
+- **QC / AST-1910:** Prompt rule unchanged; X hydrates with fixed reason — consistent with amended “X always no signal” and existing scoring no-signal math. No extra statute.
+- **`AllLiteralXGradeSetError`:** More lines may hit AST-2096 all-X retry before fail — product choice documented in plan; not forbidden by `patt.task.dispatch-retry` or confidence-bounds as drafted.
+
+---
+
+### ESCALATE check
+
+No open architectural question that needs Archie beyond **canon text already written in §9** and Susan’s AST-2116 rule. **Not ESCALATE.**
+
+---
+
+### Chuckles routing (documentation)
+
+Betty’s line not run here. If Betty is **OK** or **REVISE**, Joan **REVISE** → **Plan Discuss** and spawn **`validate-plan` fix mode (F3)** before **`make-fix`**, unless both board lines are REVISE (F3 then F4 per skill table).
+
+---
+
+### Machine-readable verdict (for Linear comment)
+
+```text
+[board-joan]  CANON: REVISE
+What: astral.agent.confidence-bounds — Statement + Conforming/Violating must record letter0→X0 and X always no-signal at hydrate — per plan-fix §9 in both statute copies
+```
+
+### Stdout (skill one-liner)
+
+```text
+AST-2124 board-joan done — CANON: REVISE — confidence-bounds X0 both copies.
+```
+
+```text
+context_tokens≈14500
+```
+
+**Chuckles routing:** Betty `TESTS: REVISE` (three AST-2053 decode tests break, and there is no repro coverage) goes to a sibling gap child under AST-2116 (orphaned branch). Joan `CANON: REVISE` stays on AST-2124. Both `astral.agent.confidence-bounds` copies are already inside AST-2124's declared scope, and §9 above is the wording Joan validated, so make-fix lands §9 verbatim. A separate canon child would duplicate that scope (AST-2053 precedent). AST-2124 proceeds to make-fix.
+
+
+## Radia review — AST-2124
+
+[code-rubric]
+
+**Ticket:** AST-2124  
+**Publish ref:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768` (`origin/sub/AST-2116/AST-2124-missing-grade-fail`)  
+**Review base:** `origin/ftr/AST-2116-missing-grade-fail` @ `27cd7cbcf10523e4c2b25039ec2b64d4be162ef1` (merge-base = ftr tip)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — ids resolved from `canon/directives/**` at tip; canon tree @ tip `26c4e86a4d`)  
+**Overall:** FIX-NOW  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+| patt.task.dispatch-retry | A | | |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** only (`CANON: REVISE` pre-make-fix); post-tip both statute copies + `_decode_payload` / hydrate paths match plan-fix **Proposed change** §1–§9. No `validate-plan` fix-mode per-id column on the issue doc.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — Betty **TESTS: REVISE** routed to sibling **AST-2125** (spawn brief); qa-fix did not run on this ticket.  
+- **## What must still hold — OK** (verified on isolated `code(AST-2124)` slice `0d01e20d2` vs ftr tip):  
+  - Structural hydrate `ValueError` still batch-routes via unchanged `except ValueError` in `_run_batch_consult` / prefilter batch (only `MissingRubricDescriptionError` is entity-scoped).  
+  - Missing-description routes to `cfg["fail_state"]` with `_warn_job` / `_warn_company`, not `_consult_batch_fail_dest` / `_prefilter_fail` retry.  
+  - `X` + nonzero conf → `decode_failures` branch unchanged in `agent.py`; vet `grades_encoded_vet_meta` conf-0 raise unchanged; `_GRADE_SEG` unchanged.  
+  - `{letter}0` → `X0` (not `{letter}1`).  
+  - `No rubric description for vector … grade …` message preserved via `MissingRubricDescriptionError` subclass.  
+  - Plan boundary for this ticket: no `agent_task.json` / `config.py` edits in `code(AST-2124)` (sibling carry is separate finding below).
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket scope in mandated review diff** (`review-child` §5.4): `git diff origin/ftr/AST-2116-missing-grade-fail...origin/sub/AST-2116/AST-2124-missing-grade-fail` is **19 files / ~1k insertions**, not the five-file AST-2124 fix. Merge-base equals ftr tip, but the publish ref stacks **28 commits** after ftr, including **`code(AST-2120)`** and **`test(AST-2121)`** / **`code(AST-2121)`** docs, plus `sync(dev)`, CI, and epic-registry doc mirrors. Sibling **product** in the mandated diff: `data/admin/agent_task.json`, `src/utils/config.py` (qualify metadata / grade-count prompt scope — AST-2120). Sibling **tests**: `tests/component/core/test_repo_admin_json.py`, `tests/component/utils/test_config.py`. This ticket cannot be certified on the skill-mandated three-dot diff until Chuckles **`merge-child`** lands sibling product into **`origin/ftr/AST-2116-missing-grade-fail`** (or otherwise absorbs AST-2120/2121) and re-syncs **`origin/sub/AST-2116/AST-2124-missing-grade-fail`** so `ftr...sub` isolates AST-2124 (AST-2053 round-1 precedent). **Default:** do not use the §3h clean-review shortcut to **User Testing** on this publish ref until the review base is corrected; treat **`0d01e20d2`** (`code(AST-2124)`) as the known-good product slice meanwhile.
+
+### discuss
+
+- **F3 (`validate-plan` fix mode) not recorded** — Joan fix-board §F3 asked for validate-plan before make-fix; Chuckles routing proceeded to make-fix with §9 verbatim on-ticket. Implementation matches Joan’s §9 wording on tip. **Default:** no recall; optional retro F3 doc-only if process hygiene matters; do not block on this once cross-ticket base is fixed.
+
+### advisory
+
+- **Isolated AST-2124 product slice** (`0d01e20d2`): matches plan-fix — `MissingRubricDescriptionError`, batch hydrate after binding, per-entity `fail_state`, X no-signal hydrate, `{letter}0`→`X0`, both `astral.agent.confidence-bounds` copies byte-aligned per §9.  
+- **Sibling test carry** in mandated diff: AST-2120/2121 test + bible rows; AST-2053 decode tests still expect `{letter}1` — **AST-2125** per spawn brief (not scored as missing repro here).  
+- **Doc diff bulk:** feature doc AST-2124 block + Joan fix-board + prior sibling Radia artifacts; expected on a stacked sub.  
+- **sibling test carry:** paths above in mandated diff.
+
+## What's solid
+
+- Entity-scoped missing rubric text vs batch technical-fail matches Susan’s rule and `patt.task.dispatch-retry` intent (data defect → terminal fail, not retry).  
+- Canon and decode/hydrate move together; dual-copy drift from AST-2053 is closed on this slice.  
+- Hydrate ordering after ID binding fixes miss map keyed by claimed `astral_job_id`.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (fix-now: cross-ticket / review base) | Normal mini-parent (live ftr) | **Review Posted** → `merge-child` / rebase publish ref so `ftr...sub` is AST-2124-only → re-run Radia or accept round-2 on isolated tip → then **resolve-child** if needed → **User Testing**; §3h shortcut **not** until clean. |
+| **REVIEW** | Blocks **AST-2125** (tests) | Expect red component decode tests on composite tip until AST-2125 lands; not AST-2124 fix-now. |
+
+**Recommended actions (downstream only — not executed here):** Land AST-2120 (and any other sibling product) on ftr via `merge-child`; re-cut/rebase `sub/AST-2116/AST-2124-missing-grade-fail`; append this artifact; `docs(AST-2124): Radia review — findings`; push sub; post slim upshot `--as radia`.
+
+**Chuckles routing:** the cross-ticket commits Radia flagged (AST-2120/AST-2121, CI, registry mirrors) are all already on `origin/dev` and arrived via `sync(dev)`; the only commits unique to the sub are AST-2124's own. Remedy is `refresh-ftr` (dev → ftr) so `ftr...sub` isolates AST-2124, then a round-2 review on the corrected base — no product change.
+
+
+## Radia review — AST-2124 (round 2)
+
+
+**Ticket:** AST-2124  
+**Publish ref:** `350dd6ca0490b7bbe66bf777e1d847dcf7bcf93c` (`origin/sub/AST-2116/AST-2124-missing-grade-fail`)  
+**Review base:** `origin/ftr/AST-2116-missing-grade-fail` @ `01606b7913aed27aac8ff312c0432f24d8ed9b05` (post **refresh-ftr**; round-1 cross-ticket base issue cleared)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — ids resolved from `canon/directives/**` at tip)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+| patt.task.dispatch-retry | A | | |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** only (`CANON: REVISE` pre-make-fix); implemented diff matches plan-fix **Proposed change** §1–§9 (both statute copies + product). No `validate-plan` fix-mode per-id column.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — Betty **TESTS: REVISE** routed to sibling **AST-2125**; qa-fix did not run on this ticket.  
+- **## What must still hold — OK** (mandated `ftr...sub` product/canon diff):  
+  - Structural hydrate `ValueError` → unchanged batch retry/error routing; only `MissingRubricDescriptionError` is entity-scoped.  
+  - Missing description → `cfg["fail_state"]` + WARNING, not `_consult_batch_fail_dest` / prefilter retry.  
+  - AST-1996 decode-failure / salvage / all-X surfaces untouched except `{letter}0` → `X0`.  
+  - `X` + nonzero conf → `decode_failures`; vet conf-0 raise; `_GRADE_SEG` unchanged.  
+  - Error message text for missing letter descriptions preserved (subclass of `ValueError`).  
+  - No `agent_task.json`, `config.py`, or prompt edits in this diff (plan boundary respected).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Round 1 remediation confirmed:** `git diff origin/ftr/AST-2116-missing-grade-fail...origin/sub/AST-2116/AST-2124-missing-grade-fail` is **6 files** (both confidence-bounds copies, plan doc, `agent.py`, `consult.py`, `roster.py`) — no sibling product carry.  
+- **F3 (`validate-plan` fix mode)** not recorded before make-fix; implementation matches Joan fix-board §9. Process note only; not gating after isolated diff.  
+- **Tests:** AST-2053 decode tests expecting `{letter}1` remain red until **AST-2125**; expected per spawn brief, not this ticket’s repro gate.  
+- **Doc diff bulk:** feature doc includes plan-fix, Joan fix-board, and round-1 Radia artifact — doc-only on tip after `code(AST-2124)`.
+
+## What's solid
+
+- Susan’s rule is implemented end-to-end: entity-scoped missing rubric text, X always hydrates, letter0 → X0, dual statute copies aligned.  
+- Hydrate after ID binding keys `hydrate_missing` by claimed `astral_job_id`.  
+- `patt.task.dispatch-retry`: rubric-data defects exit via `fail_state`, not retry holding.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal mini-parent (live ftr) | Already **Review Posted** → **§3h clean-review shortcut** → **User Testing** (skip `resolve-child`). Then `merge-child` when rollup-ready; **AST-2125** still owns test/bible gap. |
+
+**Recommended actions (downstream only — not executed here):** Append this round-2 artifact; `docs(AST-2124): Radia review — clean`; push sub; post slim upshot `--as radia`; move to **User Testing** per §3h if not already there.
+
+---
+
+**Docs-acceptance (AST-2124):** no test-tree change on this ticket. Betty's `[board-betty] TESTS: REVISE` coverage, including the `[bug-repro]` and the AST-2053 decode-test update (letter0 → X0), lands on gap child AST-2125.
+
+## Bug: AST-2126 — Do rubric codes always decodable; name the empty-grade case
+
+**Linear:** [AST-2126](https://linear.app/astralcareermatch/issue/AST-2126) · **Mini-parent:** [AST-2112](https://linear.app/astralcareermatch/issue/AST-2112) (dupes AST-2113 / AST-2118 / AST-2119) · **Publish ref:** `sub/AST-2112/AST-2126-do-rubric-undecodable-codes` · **Project:** Astral Dispatcher
+
+**Canon:** `docs/canon-index.md` is not present on this tree — carried from the AST-1996 block above: `patt.task.dispatch-retry` (read — invalid response for an entity → retry or error by *current* state), `patt.entity.batch-processing` (read). Id-only for make-fix: `stat.logging.warning`, `stat.logging.debug`.
+
+### As-is
+
+Every Somerset Do run since 2026-10-09 (`grade_do` and `meteorite_grade_do`, 1-job batches, two hosts, 73–83 output tokens) raises `IncompleteGradeSetError: _render_score: missing vectors [...]` naming **all 11** Do labels and lands `FAILED_TECHNICAL_DO` / `METEORITE_FAILED_TECHNICAL_DO`. The failure text says nothing about what the model actually returned.
+
+### To-be
+
+Every saved rubric criterion carries a code the encoded-grade decoder can match (`[A-Z]{2}`), so a well-formed reply scores. A rubric with an undecodable code is repaired at save and shown Invalid on Scheduled Actions until it is. A reply that yields no grade segments is a per-entity decode failure whose reason carries the raw reply (AST-1996 route), not a silent `grades: []` row. AST-1155 retry-then-error is unchanged.
+
+### Repro
+
+No DB — monkeypatch the rubric the letter-pipe fallback reads (run 2026-10-10 on `01606b791`):
+
+```python
+from src.core import consult as c
+from src.utils.config import TASK_CONFIG
+rubric = [{"code": f"V{i:02d}", "label": f"Vector {i}", "content": "x", "importance": 5} for i in range(1, 12)]
+c._rubric_criteria_for_cfg = lambda cid, cfg: rubric
+cfg = TASK_CONFIG["grade_do"]            # output_type grades_encoded_notes
+ctx = {"batch_entities": [{"astral_job_id": "J0", "state": "PASSED_JD"}],
+       "vector_labels": c._vector_labels_map(rubric)}
+c._normalize_rubric_task_response("grade_do", cfg,
+    {"agent_payload": "000|" + "|".join(f"V{i:02d}A3" for i in range(1, 12)) + "|Solid fit"}, ctx)
+# today: {'jobs': [{'grades': [], 'possible_job_links': [], 'astral_job_id': 'J0'}]}
+c._normalize_rubric_task_response("grade_do", cfg,
+    {"agent_payload": "This candidate is a strong fit."}, ctx)
+# today: identical — {'jobs': [{'grades': [], 'possible_job_links': [], 'astral_job_id': 'J0'}]}
+```
+
+Either row then fails `_require_complete_grade_set` with every label missing — the production symptom exactly.
+
+Save side: `candidate._uptick_duplicate_rubric_codes([{"code": "", "label": "Hands-On Technical Partnership", …}], "do_rubric")` passes the blank code through, and `database.sync_rubric_vectors_from_criteria` stores it as `V01` (`f"V{idx + 1:02d}"`).
+
+### Root cause
+
+**Staging evidence unreachable from this environment.** The worktree's `data/astral.db` (symlink to `~/astral/data/astral.db`) has zero `rubric_vector` and zero `job` rows; no staging DB / Railway access here. So Somerset's live `grade_do` codes and the raw reply for job `cfcccdcb-1c07-4b23-9a46-834382f2ef42` (batch `meteorite_grade_do-3f837cd7-…`) are **not** confirmed. The plan closes both hypotheses.
+
+1. **Save path can mint undecodable codes.** `sync_rubric_vectors_from_criteria` (`src/data/database.py`) gives a blank code `V{idx+1:02d}`; the pre-save helper `_uptick_duplicate_rubric_codes` (`src/core/candidate.py`) deliberately skips blank codes ("sync assigns V{idx}") and never checks shape. `_GRADE_SEG` (`src/core/agent.py`) is `^[A-Z]{2}[grade][0-5]$`, so the prompt teaches the model codes the decoder can never match. `rubric_dispatch_error` checks only empty rubric + duplicate codes, so nothing flags it.
+2. **Zero-segment replies are silently empty (correction to the bug's "notes fold" wording).** On a 1-job batch neither `V01A3`-style segments nor prose ever reach `_decode_payload`: `_should_decode_as_encoded_line` finds no `_GRADE_SEG` match, so `_normalize_rubric_task_response` falls to `_job_from_letter_pipe`, which returns `grades: []` (proved by Repro). The notes fold in `_decode_payload` only applies when *some* line has a valid segment. No `decode_failure`, no raw reply in any log line.
+3. **`_require_complete_grade_set` reports half the diff.** It raises on `missing` before ever reporting `unknown`, so a reply with wrong-but-valid-shape codes looks identical to an empty reply.
+
+Why technical, not the retry holding: consistent with a second strike from `*_RETRY` (AST-1155), unconfirmed against state history — no change; retry-then-error is the contract.
+
+### Proposed change
+
+One `code(AST-2126)` commit; steps 1–5 are inside AST-2126 `## Scope` (step 5 per the amended Technical scope line: "`src/core/consult.py`: … **Modified function** `_normalize_rubric_task_response`: for `grades_encoded_notes` jobs, a letter-pipe fallback row with zero grades becomes one `decode_failures` entry per batch entity (raw reply as reason) instead of a silent `grades: []` row." — amended per AST-2126 `[scope-gate]`).
+
+**1. `src/core/candidate.py` — pre-save helper fills/repairs codes.**
+
+- Module constant above `_RUBRIC_CODE_UPTICK_LETTERS`:
+
+  ```python
+  # Encoded-grade decode (agent._GRADE_SEG) only matches two uppercase letters.
+  _RUBRIC_CODE_RE = re.compile(r"^[A-Z]{2}$")
+  ```
+
+- New private `_derive_rubric_code(label: str, reserved: set) -> Optional[str]` directly above `_uptick_duplicate_rubric_codes`: `words = re.findall(r"[A-Z]+", label.upper())`; base = first letters of the first two words, or the first two letters of a single word of ≥2 letters, else `""`. Candidate order: `base`, then `base[0] + ch` for `ch in _RUBRIC_CODE_UPTICK_LETTERS` (only when base is non-empty), then every `a + b` over `A–Z × A–Z`. Return the first not in `reserved`, else `None`. Full enumeration — no cap.
+- `_uptick_duplicate_rubric_codes` (keep the name — Betty's tests reference it): docstring → "Make every code a decodable two-letter code (fill blank/invalid from the label), then re-letter later duplicates; first occurrence keeps its code (AST-2008, AST-2126)." Loop per item:
+  - Non-dict → append unchanged (sync still raises on it).
+  - `code = str(item.get("code") or "").strip().upper()`; `reserved` = uppercase originals that match `_RUBRIC_CODE_RE` (built up front, as today).
+  - Code fails `_RUBRIC_CODE_RE` → `new_code = _derive_rubric_code(label, reserved)`; `None` → `raise ValueError(f"Rubric {artifact_key!r}: no free two-letter code for {label!r}")` (caller → HTTP 400; unlike Decision C an invalid code is never decodable, so it can't be kept). Else add to `reserved` and `seen`, `logger.warning("Rubric %r: invalid code %r on %r -> %s", artifact_key, item.get("code"), label, new_code)`, append `{**item, "code": new_code}`, continue.
+  - Valid code not yet seen → append (shallow copy with the uppercased code only when the raw value differs, e.g. `" tp"`), continue.
+  - Valid duplicate → existing uptick branch unchanged.
+- `rubric_dispatch_error`: after the empty check and **before** the duplicate check:
+
+  ```python
+  bad = sorted({
+      str(c.get("code") or "").strip() or "(blank)"
+      for c in criteria
+      if isinstance(c, dict) and not _RUBRIC_CODE_RE.match(str(c.get("code") or "").strip())
+  })
+  if bad:
+      return f"Rubric '{rk}' has invalid vector codes: {', '.join(bad)} — re-save the rubric"
+  ```
+
+  Update the docstring ("duplicate codes, invalid codes, or empty rubric") and replace the "blank codes skipped (sync assigns V{idx})" comments here and in the helper.
+
+**2. `src/data/database.py::sync_rubric_vectors_from_criteria` — no fallback, reject bad codes.** Add `import re` to the stdlib imports. Replace the `or f"V{idx + 1:02d}"` line with:
+
+```python
+code = (item.get("code") or "").strip().upper()
+# Must match agent._GRADE_SEG's [A-Z]{2}; candidate save fills/repairs codes before sync (AST-2126).
+if not re.fullmatch(r"[A-Z]{2}", code):
+    raise ValueError(f"criterion {idx + 1} code {item.get('code')!r} is not two letters A-Z")
+```
+
+Same raise semantics as the existing "content is empty" raise in the same loop.
+
+**3. `src/core/consult.py::_require_complete_grade_set` — one reason, both halves.**
+
+```python
+missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
+parts = []
+if missing:
+    parts.append(f"missing vectors {sorted(missing)}")
+if extra:
+    parts.append(f"unknown vectors {sorted(extra)}")
+if parts:
+    raise IncompleteGradeSetError("_render_score: " + "; ".join(parts))
+```
+
+Single-side messages stay byte-identical; same class, same routing.
+
+**4. `src/core/agent.py::_decode_payload` — zero-segment notes line → decode failure.** Right after the existing trailing-content `if meta and not with_meta and not with_notes:` block:
+
+```python
+if with_notes and not grade_segs:
+    # A notes-only line has no grades to score — retry the entity, keep the raw line (AST-2126).
+    decode_failures.append({
+        id_key: ent[id_key],
+        "pos": pos,
+        "reason": f"[{task_key}] no grade segments in encoded line: {line!r}",
+    })
+    continue
+```
+
+Add to the docstring's decode_failures sentence: "…and a `grades_encoded_notes` line with no grade segments". Reachable when another line in the payload carries a valid segment (multi-entity batches).
+
+**5. `src/core/consult.py::_normalize_rubric_task_response` — letter-pipe zero-grade → decode failures.** In the `isinstance(payload, str)` branch, after `row = _job_from_letter_pipe(text, task_config, ctx)` and before the company/job returns:
+
+```python
+if not company_entity and task_config.get("output_type") == "grades_encoded_notes" and not row.get("grades"):
+    # No decodable grades anywhere in the reply — every entity retries with the raw reply (AST-2126).
+    return {"jobs": [], "decode_failures": [
+        {"astral_job_id": e.get("astral_job_id"), "pos": i,
+         "reason": f"[{task_key}] no grade segments in reply: {text!r}"}
+        for i, e in enumerate(batch_entities)
+    ]}
+```
+
+This is the step that covers the production case (1-job batch, `V01A3` or prose). `_run_batch_consult` already routes `decode_failures` per entity (AST-1996); `_validate_response_schema` accepts an empty `jobs` list (AST-1996 Proposed change §2). Raw reply untruncated in the reason.
+
+**6. Operator step (staging, no repo change — after deploy):**
+
+1. Read-only first: Somerset `rubric_vector` rows for owner `grade_do` (`current = 1` — codes + labels), the stored raw reply for job `cfcccdcb-1c07-4b23-9a46-834382f2ef42`, and its state history. Post them on AST-2112 — this settles which hypothesis held.
+2. Confirm Scheduled Actions shows the Somerset Do tasks **Invalid** ("invalid vector codes") if codes are `V01`-style.
+3. Open Somerset's Do rubric in Artifacts and Save unchanged — step 1 assigns derived two-letter codes; sync retires the `V*` rows and inserts the new ones. Confirm the tasks flip valid.
+4. If step 1 shows proper 2-letter codes already, the defect is the model replying without segments: steps 4–5 make the next failure log carry the raw reply; that diagnosis is a follow-up, not this ticket.
+
+⚠️ **Decision — keep the helper name.** `_uptick_duplicate_rubric_codes` now also fills codes; renaming would break AST-2008 tests and bible rows for no behavioral gain.
+
+⚠️ **Decision — dispatch gate is strict on the stored value.** A stored `tp` is Invalid (prompt shows it as-is; `_GRADE_SEG` won't match a lowercase echo). Save uppercases, so a re-save repairs it.
+
+⚠️ **Decision — no `_GRADE_SEG` change.** Widening the decoder to `V01` would change the AST-357 wire contract for every encoded task; the fix is on the code supply side.
+
+### Blast radius
+
+- **`_uptick_duplicate_rubric_codes` / `apply_rubric_vectors_save`:** shared by UI rubric save and craft persist (all rubric artifacts, not just Do). Any rubric with blank/invalid codes gets new codes on its next save; `rubric_vector` history (AST-2066) is keyed by code, so a re-coded criterion starts a fresh version chain. Embedded QC/GC/RC are already valid.
+- **`sync_rubric_vectors_from_criteria`:** also called by `scripts/migrations/backfill_rubric_vectors.py`, which has its **own** `V{idx}` fallback (line 75, out of scope) — a re-run with blank-coded legacy criteria now raises in sync instead of writing `V01`. One-shot AST-723 migration; flag only.
+- **`rubric_dispatch_error`:** callers `dispatcher` (Auto gate), `task_performance` cache, four `api_admin` sites — any candidate with stored invalid codes turns Invalid / blocks Auto until re-saved (intended).
+- **`_require_complete_grade_set`:** message changes only when both halves are non-empty; routing is by exception class.
+- **`_decode_payload` / `_normalize_rubric_task_response`:** reachable only for `grades_encoded_notes` (grade_do/get/like, meteorite twins); other output types unchanged. Admin ad-hoc test on such a reply now shows `decode_failures` instead of an empty grade row.
+- **Tests assuming today's behavior (Betty — make-fix does not edit):** `test_uptick_is_pure_and_passes_non_dict_and_blank_codes` (blank now filled — flips); any rubric-vector sync test relying on `V01` for a blank code; any consult test asserting the exact message when both missing and unknown are present; letter-pipe tests for `grade_*` with zero grades.
+
+### What must still hold
+
+- **AST-1155:** incomplete/extra sets raise `IncompleteGradeSetError`; first strike → `*_RETRY`, second → `error_state`; complete sets incl. `X`/`0` score unchanged.
+- **AST-1996:** `decode_failures` shape (id, pos, reason), clean row wins, no key on clean payloads.
+- **AST-2008:** first occurrence keeps its code; later duplicates re-lettered via `_RUBRIC_CODE_UPTICK_LETTERS`; exhausted duplicate kept + WARNING (Decision C).
+- **AST-2091:** empty and duplicate rubric messages unchanged; craft_* tasks still runnable on an empty rubric.
+- **`_GRADE_SEG`** unchanged; no code coercion at decode.
+
+
+### Fix board — Joan (F2)
+
+[board-joan] CANON: OK
+
+**Ticket:** AST-2126 (Plan Ready, Hedy) · mini-parent AST-2112 · publish ref `sub/AST-2112/AST-2126-do-rubric-undecodable-codes` @ `cfd59ab62`.
+
+**Diff note (read-only):** `origin/ftr/AST-2112-do-rubric-undecodable-codes...origin/sub/AST-2126-do-rubric-undecodable-codes` is **plan-fix + registry mirrors + `scripts/ci/ftr-merge-ready.sh` only** — no `src/` yet. This pass judges the **`## Bug: AST-2126`** patch (As-is / To-be / Root cause / Proposed change / Blast radius / What must still hold), not Radia’s later diff score.
+
+**Cited roster (issue doc, AST-1996 precedent):** `patt.task.dispatch-retry` (read), `patt.entity.batch-processing` (read); id-only for make-fix: `stat.logging.warning`, `stat.logging.debug`. `docs/canon-index.md` absent on this tree; overlap checked via `canon/directives/active/patt.task.dispatch-retry.md`, `patt.entity.batch-processing.md`, and roster grep — **no active directive** defines rubric criterion code shape, `V{idx}` sync fallback, or `_GRADE_SEG` width.
+
+**One-question triage — does the proposed change conflict with or require updating in-force canon?**
+
+**No.** Same class as AST-1996 / AST-2089 fix-board OK:
+
+1. **`patt.task.dispatch-retry`** — Steps 4–5 route zero-segment / letter-pipe-empty replies through the **existing** `decode_failures` → per-entity `_consult_batch_fail_dest` path (AST-1996). The patch explicitly preserves AST-1155 incomplete-set semantics (`IncompleteGradeSetError`, first `*_RETRY` / second `error_state`) for true missing/extra vector sets. More entities seeing decode-failure routing instead of silent `grades: []` **implements** “invalid response → transition by current state,” not a second retry loop or a failure left in trigger state.
+
+2. **`patt.entity.batch-processing`** — No claim/release / `batch_size` / process-only-claimed-rows edits. Blast radius is consult decode, rubric save/sync, and dispatch Invalid messaging.
+
+3. **`stat.logging.warning` / `stat.logging.debug`** — New `logger.warning` on code repair is **use** of the existing logging statute, not an amendment. No new logging directive or level contract.
+
+4. **No statute amendment like AST-2053** — That fix needed **REVISE** because product decode contradicted draft `astral.agent.confidence-bounds` text. Here the plan **refuses** `_GRADE_SEG` widening (Decision: wire contract stays; fix is code supply + diagnostics). Active corpus does not require `V01`-style fallbacks or forbid `decode_failures` on letter-pipe fallback.
+
+5. **`rubric_dispatch_error` “invalid vector codes”** — Product/AST-2091 messaging family; not encoded in `canon/directives/active`. “What must still hold” keeps empty/duplicate strings and craft_* empty-rubric behavior; adding a third Invalid reason does not contradict any in-force pattern id on the roster.
+
+6. **Recorded decisions** (`_uptick_duplicate_rubric_codes` name, strict stored-code Invalid, no decoder coercion) are implementation choices already in the patch — not an open Archie precedent fork.
+
+**F3 (`validate-plan` fix mode):** not indicated from this board pass.
+
+**ESCALATE:** not indicated — bounded blast radius, scope-gate on `_normalize_rubric_task_response` already answered without widening epic scope.
+
+
+### Radia review — AST-2126 (F7)
+
+[code-rubric] PROCEED (Commit: 4e9731267) Rubric decode + diagnostics
+
+**Ticket:** AST-2126  
+**Publish ref:** `4e97312678aa170ff44f597d47fdc81fa0f8fcc2` (`origin/sub/AST-2112/AST-2126-do-rubric-undecodable-codes`)  
+**Diff base:** `origin/ftr/AST-2112-do-rubric-undecodable-codes`  
+**Corpus:** `c04b07deda8f5a750afd473ec847d06ed2207065`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.dispatch-retry | A | | Zero-segment / letter-pipe-empty → `decode_failures` → existing `_consult_batch_fail_dest`; `IncompleteGradeSetError` path unchanged for true incomplete sets |
+| patt.entity.batch-processing | A | | No claim/release, `batch_size`, or batch-id processing changes |
+| stat.logging.warning | A | | Code-repair and duplicate-resolution warnings on rubric save use `logger.warning` with artifact, code, label context |
+| stat.logging.debug | X | | No new or altered `logger.debug` in the product diff |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan **fix-board** CANON: OK @ plan tip `cfd59ab62`; no `validate-plan` fix-mode column)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — split to AST-2127 (fix-board TESTS: REVISE; repro and bible holes assigned to sibling; no `[bug-repro]` on this sub by design).
+
+**## What must still hold — OK**
+
+- **AST-1155:** `_require_complete_grade_set` still raises `IncompleteGradeSetError`; single-sided messages unchanged; combined missing+unknown only when both halves non-empty; batch/single-entity routing via `_consult_batch_fail_dest` / `_all_x_fail_dest` untouched in the diff.
+- **AST-1996:** `decode_failures` entries carry `astral_job_id`, `pos`, `reason`; `_run_batch_consult` still subtracts decode-failed ids from `missing` and transitions per entity; new paths return `jobs: []` plus failures (no silent `grades: []` row for `grades_encoded_notes` letter-pipe fallback).
+- **AST-2008:** First valid occurrence keeps code; duplicate branch + Decision C (exhausted uptick → keep + WARNING) preserved after fill/normalize pass.
+- **AST-2091:** Empty-rubric and duplicate-code strings unchanged; invalid-code gate runs before duplicate aggregation; `craft_*` still short-circuits on empty criteria before invalid-code scan.
+- **`_GRADE_SEG`:** Unchanged in `agent.py`; fix is code supply + diagnostics only.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `scripts/ci/ftr-merge-ready.sh` and several `docs/features/**` registry mirror edits ride the sub via ftr/dev sync — not AST-2126 product scope; no test-bible or pytest changes on this tip.
+- **test debt (AST-2127):** Hedy’s Tests Passed note — 2 expected candidate test breaks + 27 fixture failures from non–`[A-Z]{2}` codes in `sync_rubric_vectors_from_criteria` callers — tracked on AST-2127, not scored as product defects on this diff.
+- **operator step 6:** Somerset staging read / rubric re-save remains post-deploy operator work per plan; not a code gap on tip `4e9731267`.
+
+## What’s solid
+
+- Product diff matches plan-fix steps 1–5: `_derive_rubric_code` + strict sync, `rubric_dispatch_error` invalid-code gate, combined incomplete reason, `_decode_payload` zero-segment notes line, `_normalize_rubric_task_response` production letter-pipe path.
+- Production 1-job `V01`/prose case now surfaces raw reply on the AST-1996 retry route instead of masking as empty grades → technical fail with all labels “missing.”
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-2112, live `ftr`) | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Merge path stays mini-parent / `merge-child` rules when siblings allow. |
+
+
+### Test routing — AST-2126
+
+fix-board `[board-betty] TESTS: REVISE` → the repro, the two broken candidate tests, and the 27 sync fixtures that pass codes that are not two letters go to gap sibling [AST-2127](https://linear.app/astralcareermatch/issue/AST-2127) (`sub/AST-2112/AST-2127-do-rubric-code-tests`). This sub ships product and docs only, so it is docs-acceptance for the test tree.
+
+## Bug: AST-2125 — Missing-grade per-entity fail + letter0 → X0 tests and bible (test gap for AST-2124)
+
+**Linear:** [AST-2125](https://linear.app/astralcareermatch/issue/AST-2125) · **Mini-parent:** [AST-2116](https://linear.app/astralcareermatch/issue/AST-2116) · **Publish ref:** `sub/AST-2116/AST-2125-missing-grade-fail-tests` · **Project:** Astral Dispatcher · **Fixes gap from:** `[board-betty] TESTS: REVISE` on AST-2124 · **Precedent:** `## Bug: AST-2057` block above (test gap for AST-2053).
+
+**Canon:** none beyond AST-2124's (`astral.agent.confidence-bounds`, already landed on both copies). Test tree and bible only; no `src/`.
+
+**Lane note:** every edit below is under `tests/` or `docs/test-bible/`, so Betty lands it (qa-fix). This block specifies the delta; the engineer does not edit the test tree. Every test below was **dry-run** from a throwaway file outside the repo against both trees (red/green record at the end of this block), so the asserts are known-good, not guesses.
+
+### As-is
+
+AST-2124 (`0d01e20d2`) is on `origin/ftr/AST-2116-missing-grade-fail` (`8726a8be0`). The test tree still has two problems:
+
+- **Three tests assert AST-2053's `{letter}0 → {letter}1`** and are red on the ftr tip. All three are in `tests/component/core/test_agent.py`:
+  - `TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1`
+  - `TestDecodePayload::test_ast2053_normalisation_boundaries` (the `_notes` `CRF0` → `F/1` assert)
+  - `TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` (the `0|CRA0` → `A/1` assert)
+- **No coverage for AST-2124's new branches** in the `LOCKED_AT_100` modules:
+  - the per-entity hydrate miss (consult batch loop, `_apply_render_verdict_decoded_job`, `_apply_prefilter_decoded_company_outcome`);
+  - the X no-signal fallback and the `MissingRubricDescriptionError` / unknown-vector split in `_lookup_rubric_reason_for_grade`;
+  - `_hydrate_response_jobs_grade_reasons` returning misses.
+- **Bible:** `docs/test-bible/core/agent.md` (the AST-2001 prose plus the AST-2057 block) still says letter0 → letter1. `core/consult.md` and `core/roster.md` say nothing about the per-entity miss.
+
+The existing hydrate-stub tests stay green (`TestAst1846*` in both files, `TestEncodedDecodeIsolation`, `TestRubricLookup::test_treats_parse_errors_as_empty_rows`), as Betty's board comment confirmed.
+
+### To-be
+
+- The three decode tests assert the X0 contract.
+- New tests pin all of the following:
+  - the production repro (one job's missing F description sends **only that job** to `METEORITE_FAILED_DO` with one WARNING, while its batch sibling applies);
+  - the single-row consult miss, and both prefilter paths, to `PREFILTER_FAILED`;
+  - X with no X row → `"No signal"`;
+  - the lookup error split.
+- Together with existing suites, the new tests cover every added line and branch of AST-2124's three `src/` hunks.
+- The bible matches.
+
+### Repro
+
+**[bug-repro]** is `test_consult.py::TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job` (code in Proposed change #4). It feeds `_run_batch_consult("meteorite_grade_do", …)` a stubbed `do_task` with two jobs in `METEORITE_PASSED_JD`, against the real hydrate and a rubric whose `Process & Systems Design` vector has no F row:
+
+- `J0`: `Process & Systems Design` F3 (no description), `Culture Fit` B4.
+- `J1`: `Process & Systems Design` B4, `Culture Fit` X0 (no X row on that vector).
+
+| Tree | Result |
+| --- | --- |
+| Pre-fix `src/core/{consult,roster,agent}.py` from `01606b791` | **Red**: `Expected: mock('meteorite_grade_do', ['J0'], 'METEORITE_FAILED_DO')` / `Actual: mock('meteorite_grade_do', ['J0', 'J1'], 'METEORITE_PASSED_JD_RETRY')`. This is the production shape: the whole batch goes to retry. |
+| ftr tip `8726a8be0` (AST-2124 merged) | **Green** |
+
+### Root cause
+
+AST-2124 changed the decode contract and added new hydrate branches. The test-tree updates were split off to this gap child by fix-board, per the AST-2057 precedent. The product is correct; the tests are stale or missing.
+
+### Proposed change
+
+One `test(AST-2125)` commit by Betty covering `tests/component/core/test_agent.py`, `test_consult.py`, `test_roster.py`, and `docs/test-bible/core/{agent,consult,roster}.md`.
+
+**1. `test_agent.py` — `TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1` → rename to `test_ast2124_letter_conf0_decodes_as_x0`. Body:**
+
+```python
+    def test_ast2124_letter_conf0_decodes_as_x0(self) -> None:
+        # AST-2124 (replaces AST-2053's {letter}1): {letter}0 decodes as X0; no decode failure.
+        ctx = {"batch_entities": _batch_entities("job-0", "job-1")}
+        out = agent_mod._decode_payload(
+            "task", "grades", "000|CFC0|ECD5|SSC0|TCC0|QCA5\n001|CFC3|ECD5|ORX0", ctx,
+        )
+        assert [j["astral_job_id"] for j in out["jobs"]] == ["job-0", "job-1"]
+        assert [(g["vector"], g["grade"], g["confidence"]) for g in out["jobs"][0]["grades"]] == [
+            ("CF", "X", 0), ("EC", "D", 5), ("SS", "X", 0), ("TC", "X", 0), ("QC", "A", 5),
+        ]
+        assert "decode_failures" not in out
+```
+
+**2. `test_agent.py` — `TestDecodePayload::test_ast2053_normalisation_boundaries` (name kept).** Replace the two `_notes` lines and their comment with:
+
+```python
+        # Letter0 → X0 applies on every non-vet encoded type (shared loop, AST-2124); notes tail still kept.
+        notes = agent_mod._decode_payload("task", "grades_encoded_notes", "0|CRF0|note text", ctx)
+        assert notes["jobs"][0]["grades"] == [{"vector": "CR", "grade": "X", "confidence": 0}]
+```
+
+The `0|CRA7` trailing-failure assert, the `notes == "note text"` assert, and the vet `LTA0` raise stay as they are. Change the vet comment to "Vet path is out of AST-2053/AST-2124 scope: …".
+
+**3. `test_agent.py` — `TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` (name kept).** Replace the last assert and its comment with:
+
+```python
+        # AST-2124: letter confidence 0 decodes as X0, not rejected and not {letter}1.
+        assert agent_mod._decode_payload("task", "grades", "0|CRA0", ctx) == {
+            "jobs": [{"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "X", "confidence": 0}]}],
+        }
+```
+
+**4. `test_consult.py` — new class `TestAst2125MissingRubricDescription`, appended at end of file.** Uses the file's existing `consult_mod`, `_patch_scored_render_verdict_fixtures`, `AsyncMock`, `MagicMock`, `List`, `Dict`, `Any`.
+
+```python
+class TestAst2125MissingRubricDescription:
+    """AST-2124: a letter grade with no rubric description fails only that entity (fail_state, WARNING);
+    X never fails hydrate. Bug-repro: AST-2116 Somerset meteorite_grade_do (PS graded F, no F row)."""
+
+    _PS = "Process & Systems Design"
+    _CF = "Culture Fit"
+    _MISS = "No rubric description for vector 'Process & Systems Design' grade F"
+
+    @classmethod
+    def _rubric(cls) -> List[Dict[str, Any]]:
+        # Production shape: PS has no F row; neither vector has an X row.
+        return [
+            {"code": "PS", "label": cls._PS, "importance": 5,
+             "grade_descriptions": [{"grade": g, "description": f"PS {g}"} for g in "ABCD"]},
+            {"code": "CF", "label": cls._CF, "importance": 3,
+             "grade_descriptions": [{"grade": g, "description": f"CF {g}"} for g in "ABCDF"]},
+        ]
+
+    @classmethod
+    def _miss_grades(cls) -> List[Dict[str, Any]]:
+        return [{"vector": cls._PS, "grade": "F", "confidence": 3}, {"vector": cls._CF, "grade": "B", "confidence": 4}]
+
+    @classmethod
+    def _clean_grades(cls) -> List[Dict[str, Any]]:
+        return [{"vector": cls._PS, "grade": "B", "confidence": 4}, {"vector": cls._CF, "grade": "X", "confidence": 0}]
+
+    def test_x_without_x_row_is_no_signal(self) -> None:
+        assert consult_mod._X_NO_SIGNAL_REASON == "No signal"
+        assert consult_mod._lookup_rubric_reason_for_grade(self._rubric(), self._CF, "X") == "No signal"
+        # X never fails hydrate — not even on a vector the rubric doesn't know.
+        assert consult_mod._lookup_rubric_reason_for_grade(self._rubric(), "Nope", "X") == "No signal"
+
+    def test_x_with_x_row_uses_rubric_text(self) -> None:
+        rubric = self._rubric()
+        rubric[1]["grade_descriptions"].append({"grade": "X", "description": "CF unknown"})
+        assert consult_mod._lookup_rubric_reason_for_grade(rubric, self._CF, "X") == "CF unknown"
+
+    def test_blank_row_falls_through_to_trailing_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Re-indented AST-2124 arcs: blank matching row continues; non-matching table row continues.
+        criteria = [{"label": "Fit", "content": "body", "grade_descriptions": [{"grade": "A", "description": "  "}]}]
+        monkeypatch.setattr(
+            rubric_text, "parse_trailing_grade_table_lines",
+            lambda content: [{"grade": "B", "description": "table B"}, {"grade": "A", "description": "table A"}],
+        )
+        assert consult_mod._lookup_rubric_reason_for_grade(criteria, "Fit", "A") == "table A"
+
+    def test_missing_letter_vs_unknown_vector(self) -> None:
+        with pytest.raises(consult_mod.MissingRubricDescriptionError, match="No rubric description") as miss:
+            consult_mod._lookup_rubric_reason_for_grade(self._rubric(), self._PS, "F")
+        assert isinstance(miss.value, ValueError)
+        with pytest.raises(ValueError, match="No rubric criterion matching vector") as unknown:
+            consult_mod._lookup_rubric_reason_for_grade(self._rubric(), "Nope", "A")
+        assert not isinstance(unknown.value, consult_mod.MissingRubricDescriptionError)
+
+    def test_batch_hydrate_returns_misses_structural_still_raises(self) -> None:
+        jobs = [{"astral_job_id": "J0", "grades": self._miss_grades()},
+                {"astral_job_id": "J1", "grades": self._clean_grades()}, "junk"]
+        assert consult_mod._hydrate_response_jobs_grade_reasons(jobs, self._rubric()) == {"J0": self._MISS}
+        assert [g["reason"] for g in jobs[1]["grades"]] == ["PS B", "No signal"]
+        with pytest.raises(ValueError, match="rubric criteria missing or empty"):
+            consult_mod._hydrate_response_jobs_grade_reasons([{"astral_job_id": "J1", "grades": self._clean_grades()}], [])
+
+    @pytest.mark.asyncio
+    async def test_batch_miss_fails_only_that_job(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # [bug-repro] AST-2116: pre-fix both jobs went to METEORITE_PASSED_JD_RETRY.
+        caplog.set_level("DEBUG")
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: self._rubric())
+        monkeypatch.setattr(consult_mod, "ensure_batch_response_entity_ids", MagicMock())
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value={
+            "success": True, "timesheet": {},
+            "parsed_response": {"jobs": [{"astral_job_id": "J0", "grades": self._miss_grades()},
+                                         {"astral_job_id": "J1", "grades": self._clean_grades()}]},
+        }))
+        process = MagicMock(side_effect=lambda _i, _r, cfg: cfg["pass_state"])
+        jobs = [{"astral_job_id": a, "state": "METEORITE_PASSED_JD"} for a in ("J0", "J1")]
+        out = await consult_mod._run_batch_consult(
+            "meteorite_grade_do", "b-2116", jobs, lambda rows: "content", process, {}, False,
+        )
+        transition.assert_called_once_with("meteorite_grade_do", ["J0"], "METEORITE_FAILED_DO")
+        assert [c.args[1]["astral_job_id"] for c in process.call_args_list] == ["J1"]
+        assert [g["reason"] for g in process.call_args.args[1]["grades"]] == ["PS B", "No signal"]
+        assert (out["success"], out["passed"], out["failed"], out["retried"]) == (True, 1, 1, 0)
+        assert [(r.levelname, r.getMessage()) for r in caplog.records if "J0 -> " in r.getMessage()] == [
+            ("WARNING", f"J0 -> METEORITE_FAILED_DO [hydrate: {self._MISS}]"),
+        ]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+    def test_single_row_miss_fails_without_save(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod.tracker, "get_job",
+                            lambda aid: {"astral_job_id": aid, "state": "METEORITE_PASSED_JD"})
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=self._rubric(), task_key="meteorite_grade_do")
+        cfg = consult_mod._consult_orchestration("meteorite_grade_do")
+        grades = self._miss_grades()
+        out = consult_mod._apply_render_verdict_decoded_job(
+            "meteorite_grade_do", "J0", {"grades": grades, "notes": ""}, cfg, {"astral_candidate_id": "c1"},
+        )
+        assert out == ("METEORITE_FAILED_DO", None, grades)
+        transition.assert_called_once_with("meteorite_grade_do", ["J0"], "METEORITE_FAILED_DO")
+        save.assert_not_called()
+```
+
+`rubric_text` is already imported in `test_consult.py` (used by `TestRubricLookup`).
+
+**5. `test_roster.py` — new class `TestAst2125PrefilterMissingDescription`, directly after `TestAst1846PrefilterRetryWarnThenError`.**
+
+```python
+class TestAst2125PrefilterMissingDescription:
+    """AST-2124: prefilter letter grade with no rubric description → that company alone to PREFILTER_FAILED (WARNING)."""
+
+    _MISS = "No rubric description for vector 'fit' grade B"
+
+    @staticmethod
+    def _env(monkeypatch: pytest.MonkeyPatch) -> tuple:
+        # fit has A/F rows only, so B is a missing description.
+        rubric = [{"label": "fit", "code": "fit", "importance": 5, "content": "body",
+                   "grade_descriptions": [{"grade": "A", "description": "one"}, {"grade": "F", "description": "fail"}]}]
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"state_history": []}))
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_task", lambda *_a, **_k: rubric)
+        monkeypatch.setattr("src.core.consult._dispatch_score_floor_for_task", lambda *_a, **_k: 0.0)
+        return transition, save
+
+    def test_apply_outcome_miss_to_prefilter_failed(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from src.utils.config import ROSTER_CONFIG
+
+        caplog.set_level("DEBUG")
+        transition, save = self._env(monkeypatch)
+        out = roster_mod._apply_prefilter_decoded_company_outcome(
+            "acme_com",
+            {"grades": [{"vector": "fit", "grade": "B", "confidence": 3}], "possible_job_links": []},
+            {**ROSTER_CONFIG["prefilter"]},
+            {"astral_candidate_id": "c1"},
+        )
+        assert out == "PREFILTER_FAILED"
+        transition.assert_called_once_with("acme_com", "PREFILTER_FAILED")
+        save.assert_not_called()
+        assert [(r.levelname, r.getMessage()) for r in caplog.records if "acme_com -> " in r.getMessage()] == [
+            ("WARNING", f"acme_com -> PREFILTER_FAILED [hydrate: {self._MISS}]"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_batch_miss_fails_only_that_company(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        transition, save = self._env(monkeypatch)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={
+            "success": True,
+            "parsed_response": {"companies": [
+                {"company_id": "acme_com", "grades": [{"vector": "fit", "grade": "B", "confidence": 3}]},
+                {"company_id": "beta_com", "grades": [{"vector": "fit", "grade": "F", "confidence": 5}]},
+            ]},
+        }))
+        companies = [{"short_name": s, "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "x"}}
+                     for s in ("acme_com", "beta_com")]
+        out = await roster_mod._run_batch_company_prefilter("b-2116", companies, ctx={"astral_candidate_id": "c1"})
+        # Pre-fix: both companies → HOMEPAGE_READY_RETRY (retried 2). Now: no retry, sibling applies its own verdict.
+        assert out == {"passed": 0, "failed": 2, "total": 2, "retried": 0}
+        assert [c.args for c in transition.call_args_list] == [
+            ("acme_com", "PREFILTER_FAILED"), ("beta_com", "PREFILTER_FAILED"),
+        ]
+        # The sibling went through the normal verdict path (F5 dealbreaker → saved with reason); the miss saved nothing.
+        assert [c.args[0] for c in save.call_args_list] == ["beta_com"]
+        assert save.call_args.args[1]["prefilter_grades"][0]["reason"] == "fail"
+        assert not [r for r in caplog.records if r.levelno >= 40]
+```
+
+**6. `docs/test-bible/core/agent.md`.**
+
+- **AST-2001 block prose (~L1925):** replace "a letter with confidence 0 is normalised to 1 (**AST-2053**, see AST-2057)" with "a letter with confidence 0 decodes as `X0` (**AST-2124**, see AST-2125; was `{letter}1` under AST-2053)".
+- **AST-2057 block:** after its first paragraph, insert the line "**Superseded by AST-2124 / AST-2125:** letter0 now decodes as `X0`, not `{letter}1`. The rows below cite the current asserts." Then make these row edits:
+  - Row 1: change "decodes as conf 1" to "decodes as `X0`", and change the node to **`TestDecodePayload::test_ast2124_letter_conf0_decodes_as_x0`**.
+  - Row 2: change "`_notes` `CRF0` → `F/1`" to "`_notes` `CRF0` → `X/0`".
+  - Row 3: change "`0\|CRA0` → `A/1` grade row" to "`0\|CRA0` → `X/0` grade row".
+  - Row 4 and the AST-2057 manifest / red-green record are historical; leave them unchanged.
+- **New block directly after the AST-2057 block**, before the next `###`:
+
+  ```markdown
+  ### AST-2125 · AST-2116 (letter0 → X0 decode — AST-2124)
+
+  **AST-2124** (`0d01e20d2`) changes `_decode_payload`'s non-vet encoded loop: a letter segment with confidence `0` (`{A-F}0`) is stored as `X0`, replacing AST-2053's `{letter}1`. `X0` is always no signal. Unchanged: X with nonzero confidence → `decode_failures`; letter confidence 6–9 → trailing-content `decode_failures`; vet (`grades_encoded_vet_meta`) still raises on `LT{letter}0`. Statute: `astral.agent.confidence-bounds`. Hydrate side: **`core/consult.md`** (AST-2125).
+
+  | Area | Source | Component tests |
+  | --- | --- | --- |
+  | `CFC0`/`SSC0`/`TCC0` → `X/0`, both entities in `jobs`, no `decode_failures` key | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2124_letter_conf0_decodes_as_x0`** |
+  | `_notes` `CRF0` → `X/0`, notes kept; `0\|CRA7` trailing failure; vet `LTA0` raises | same | **`…::test_ast2053_normalisation_boundaries`** |
+  | `0\|CRA0` → `X/0` grade row | same | **`TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence`** |
+
+  **Integration:** none.
+  ```
+
+**7. `docs/test-bible/core/consult.md` — new block at end of file:**
+
+```markdown
+### AST-2125 · AST-2116 (bug-repro — missing rubric grade description fails only that job; X never fails hydrate)
+
+**AST-2124** (`0d01e20d2`): `_lookup_rubric_reason_for_grade` returns the rubric's X text or the fixed `_X_NO_SIGNAL_REASON` (`"No signal"`) for `X`, never raising. A letter grade with no description raises `MissingRubricDescriptionError` (a `ValueError` subclass, same message). An unknown vector or an empty rubric stays a plain `ValueError`, so the batch-wide AST-1839 route still applies. `_hydrate_response_jobs_grade_reasons` returns `{astral_job_id: reason}` for misses and runs after id binding. `_run_batch_consult` sends each miss to `cfg["fail_state"]` with one WARNING `<id> -> <fail_state> [hydrate: …]`, with no retry and no `bad_grades`; siblings go through `process_fn`. `_apply_render_verdict_decoded_job` does the same for a single row, with no grade save. Roster side: **`core/roster.md`** (AST-2125). Decode side: **`core/agent.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch: J0 (PS F3, no F row) → `METEORITE_FAILED_DO` WARNING only; J1 applies, its CF `X0` reason `"No signal"`; passed 1 / failed 1 / retried 0 | `src/core/consult.py` (`_run_batch_consult`) | **`TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job`** (**bug-repro**) |
+| Single row: miss → `("METEORITE_FAILED_DO", None, grades)`, transition once, no `save_job_data` | `_apply_render_verdict_decoded_job` | **`…::test_single_row_miss_fails_without_save`** |
+| `X` → `"No signal"` with no X row and on an unknown vector; X row text when present | `_lookup_rubric_reason_for_grade` | **`…::test_x_without_x_row_is_no_signal`**, **`…::test_x_with_x_row_uses_rubric_text`** |
+| Letter miss → `MissingRubricDescriptionError` (is a `ValueError`); unknown vector → plain `ValueError` | same | **`…::test_missing_letter_vs_unknown_vector`** |
+| Blank matching row falls through to trailing table past a non-matching row | same | **`…::test_blank_row_falls_through_to_trailing_table`** |
+| Batch helper returns `{J0: reason}`, hydrates J1; empty rubric still raises | `_hydrate_response_jobs_grade_reasons` | **`…::test_batch_hydrate_returns_misses_structural_still_raises`** |
+
+**Integration:** none.
+```
+
+**8. `docs/test-bible/core/roster.md` — new block at end of file:**
+
+```markdown
+### AST-2125 · AST-2116 (missing rubric grade description → that company alone to PREFILTER_FAILED)
+
+**AST-2124** (`0d01e20d2`): `_apply_prefilter_decoded_company_outcome` catches `MissingRubricDescriptionError` from hydrate. It logs one WARNING `<short_name> -> PREFILTER_FAILED [hydrate: …]`, transitions to `cfg["fail_state"]`, and returns it, with no grade save and no retry. The batch path (`_run_batch_company_prefilter`) gets this through the same helper; structural hydrate errors keep the AST-1846 batch route. Consult side: **`core/consult.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single company: `fit` B (no B row) → `PREFILTER_FAILED`, one WARNING, no `save_company_data` | `src/core/roster.py` (`_apply_prefilter_decoded_company_outcome`) | **`TestAst2125PrefilterMissingDescription::test_apply_outcome_miss_to_prefilter_failed`** |
+| Batch: miss → `PREFILTER_FAILED` unsaved; sibling F5 applies its own verdict (saved with reason); retried 0, no ERROR | `_run_batch_company_prefilter` | **`…::test_batch_miss_fails_only_that_company`** |
+
+**Integration:** none.
+```
+
+⚠️ **Decision: rename only the one test whose name states the old contract.** `…_normalised_to_conf1` would be false after the edit, so it becomes `test_ast2124_letter_conf0_decodes_as_x0`, and the AST-2057 bible row moves with it (#6). `test_ast2053_normalisation_boundaries` and `…_invalid_confidence` stay neutral enough to keep their node ids (AST-2057's own decision).
+
+⚠️ **Decision: the decode tests are not the `[bug-repro]`.** They are red pre-fix too, but the AST-2116 production defect is the batch-wide hydrate failure, so the `[bug-repro]` tag is the consult batch test (#4) only.
+
+⚠️ **Decision: the roster batch sibling grades F5, not a pass.** A prefilter pass needs PJL URL hydration from nav links (plus the score floor), which adds fixture weight unrelated to this fix. An F5 dealbreaker still runs the full normal verdict path (save with hydrated reason, transition), which is what "sibling applies normally" means. The test tells it apart from the miss by the save call: the sibling is saved, the miss is not.
+
+⚠️ **Decision: coverage relies on two existing suites for re-indented lines.** AST-2124 re-indented the lookup's row loops and moved the `qualify_meteorite` binding block. With the new tests plus `TestRubricLookup` and `TestAst1076QualifyMeteoritePlaceholderId`, every added line and branch arc of the AST-2124 hunks is covered (measured, see the record below).
+
+### Blast radius
+
+- Test tree and bible only; no `src/` or canon.
+- Touches three existing `test_agent.py` functions (assert-only, plus one rename). Everything else is new classes.
+- The pre-existing reds in the three component files are not in scope: 129 failures, identical on the pre-fix and fix trees per AST-2124 test-fix, including `TestAst707EmbeddedRcBatchHydration`, `TestAst718PrefilterPjlRouting`, `TestAst1133QualifyMeteoriteListCreated::test_debug_detail_includes_link_source_input`, and the `TestDoTask*` set.
+- Bible: one prose sentence and three rows in the AST-2057 block, plus three new blocks.
+
+### What must still hold
+
+- The AST-1846 consult/roster hydrate-stub tests, `TestEncodedDecodeIsolation`, and `TestRubricLookup` stay green and unchanged.
+- In the edited decode tests, the `0|CRA7` trailing-failure assert and the vet `LTA0` raise are kept as they are.
+- No `src/` change: `git diff origin/ftr/AST-2116-missing-grade-fail -- src/ canon/` must be empty.
+
+### QA test manifest (proposed for test-fix)
+
+1. **[bug-repro]** `tests/component/core/test_consult.py::TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job`.
+2. `pytest tests/component/core/test_consult.py::TestAst2125MissingRubricDescription tests/component/core/test_roster.py::TestAst2125PrefilterMissingDescription` → **9 passed**.
+3. `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` → **0 failed**.
+4. Hunk coverage: run #2, #3, `test_consult.py::TestRubricLookup`, and `test_consult.py::TestAst1076QualifyMeteoritePlaceholderId` with `--cov=src/core --cov-branch`. There should be no missing line or partial branch inside `git diff -U0 0d01e20d2^ 0d01e20d2 -- src/core/` hunks.
+5. `git diff origin/ftr/AST-2116-missing-grade-fail -- src/ canon/` empty.
+
+### Dry-run record (plan-fix, throwaway file outside the repo — not committed)
+
+The same test bodies as #1–#5 were run from `/tmp` with `PYTHONPATH=.` and a local `.venv` (repo `requirements.txt`).
+
+- **Green:** ftr tip `8726a8be0` gives 12 passed (the 9 new tests plus the 3 decode rewrites, run as a probe copy).
+- **Red:** with `src/core/{consult,roster,agent}.py` from `01606b791` swapped in, 10 of 12 fail. The two that pass are guards that were already true pre-fix: `test_x_with_x_row_uses_rubric_text` and `test_blank_row_falls_through_to_trailing_table`. The bug-repro failure is `Actual: mock('meteorite_grade_do', ['J0', 'J1'], 'METEORITE_PASSED_JD_RETRY')`. The roster batch test fails with `retried 2`, `failed 0`.
+- **Coverage (step 4):** consult, roster and agent all report no missing line and no partial branch inside the AST-2124 hunks.
+
+
+## Joan fix-board — AST-2125
+
+
+**Corpus read:** `origin/sub/AST-2116/AST-2125-missing-grade-fail-tests` — `## Bug: AST-2125` in `docs/features/consult/ast-1155-incomplete-grades-retry-holding-never-technical-fail.md` (full plan-fix block including QA manifest and dry-run record).
+
+**Context from this thread:** AST-2124 Joan pass was **CANON: REVISE** (`astral.agent.confidence-bounds`, both copies). On `origin/ftr/AST-2116-missing-grade-fail`, that statute now records letter0→`X0`, “X is always no signal” at hydrate, and the `CFC0`→`X/0` conforming example — aligned with AST-2124 product (`0d01e20d2`).
+
+---
+
+### The one question
+
+Does this **Proposed change** conflict with or **require updating** any directive **in force**?
+
+**No.** This ticket does not touch `canon/` or `src/`. It only updates component tests and `docs/test-bible/` to match **already-landed** AST-2124 behavior and statute text.
+
+---
+
+### Scope (plan-fix)
+
+- **Canon line on ticket:** “none beyond AST-2124's (`astral.agent.confidence-bounds`, already landed on both copies). Test tree and bible only; no `src/`.”
+- **Blast radius / What must still hold:** `git diff origin/ftr/AST-2116-missing-grade-fail -- src/ canon/` must stay **empty**.
+- **Precedent:** Same lane as **AST-2057** (test gap for AST-2053) and **AST-2090** (test gap for AST-2089); fix-board Joan on those was **CANON: OK**.
+
+---
+
+### `astral.agent.confidence-bounds` (reference only — no edit)
+
+Proposed work **asserts** the ftr statute contract:
+
+| Plan area | Statute / product alignment |
+|-----------|-----------------------------|
+| Three `test_agent.py` rewrites | `X0` decode, no `decode_failures` for `{letter}0` — matches Statement + Conforming on ftr |
+| `TestAst2125MissingRubricDescription` | `MissingRubricDescriptionError`, X→`"No signal"`, entity-scoped batch fail — matches hydrate / violating clauses on ftr |
+| Bible blocks in `agent.md` / `consult.md` / `roster.md` | **Coverage documentation**; cite `astral.agent.confidence-bounds` and AST-2124 commit; supersede AST-2057 **bible** rows, not statute files |
+
+Nothing in the patch asks for a new carve-out, contradicts letter0→`X0`, or reopens AST-2053 `{letter}1` in canon. Stale AST-2053 **test** names/asserts are what this ticket fixes.
+
+---
+
+### `patt.task.dispatch-retry` and other roster rows
+
+- Bible/consult tests document **per-entity** `fail_state` + WARNING for missing descriptions, **no** batch retry — same product contract AST-2124 already validated; **dispatch-retry** is not amended and does not need a fix-lane canon pass here.
+- **`stat.logging.warning`:** Tests expect per-item WARNING shapes for entity-scoped hydrate misses; no new logging statute language.
+- **`canon/docs/DIRECTIVES-DIRECTORY.md` L224:** Still a short index summary; out of scope for AST-2125 (and AST-2124 plan). Not a blocker for **OK**.
+
+---
+
+### ESCALATE check
+
+No product diff, no statute draft, no architectural fork. **Not ESCALATE.**
+
+---
+
+### Chuckles routing (documentation)
+
+Joan **CANON: OK** → with Betty **REVISE** (expected for this gap child), branch per skill: **Plan Discuss**, spawn **qa-fix (F4)** alone once Betty’s line is REVISE; **F3 (`validate-plan` fix mode) not indicated** from this board pass.
+
+---
+
+### Machine-readable verdict (for Linear comment)
+
+```text
+[board-joan]  CANON: OK
+```
+
+### Stdout (skill one-liner)
+
+```text
+AST-2125 board-joan done — CANON: OK.
+```
+
+```text
+context_tokens≈18500
+```
+[AST-2116 | AST-2125] Joan/validate fix-board - complete 4bb16b66 model=composer-2.5 - (22s) > OK
+
+**Chuckles routing:** Joan CANON: OK; Betty TESTS: REVISE = land this plan via qa-fix (#1–#8, nothing missing). AST-2125 is the gap child, so qa-fix (F4) runs on it directly; no further gap child.
+
+
+## Radia review — AST-2125
+
+[code-rubric]
+
+**Ticket:** AST-2125  
+**Publish ref:** `96375e3214b9edb635004c2e9ecb6a0bcc20e06b` (`origin/sub/AST-2116/AST-2125-missing-grade-fail-tests`)  
+**Review base:** `origin/ftr/AST-2116-missing-grade-fail` @ `8726a8be083ff94302385c5b3a46c19cd9e50276` (AST-2124 product + canon merged)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — id resolved from `canon/directives/**` at ftr tip)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+
+*(Ticket canon line: test/bible only — asserts ftr statute + AST-2124 product; no `canon/` edits.)*
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** `CANON: OK` only; implemented test/bible delta matches plan-fix **Proposed change** items 1–8 and QA manifest.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — `TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job` pins concrete AST-2124 **To-be**: `transition.assert_called_once_with("meteorite_grade_do", ["J0"], "METEORITE_FAILED_DO")` (not `["J0","J1"]` → `METEORITE_PASSED_JD_RETRY`); sibling `J1` alone through `process_fn` with hydrated `["PS B", "No signal"]`; `(passed, failed, retried) == (1, 1, 0)`; single WARNING on `J0` with hydrate reason. Would fail on pre-AST-2124 product (plan dry-run / spawn brief). Not tautological.  
+- **## What must still hold — OK** — `git diff origin/ftr/AST-2116-missing-grade-fail...origin/sub/AST-2116/AST-2125-missing-grade-fail-tests` has **no** `src/` or `canon/`; mandated seven-file scope only. Decode edits keep `0|CRA7` trailing-failure and vet `LTA0` raise in `test_ast2053_normalisation_boundaries`. No edits to AST-1846 hydrate-stub / `TestEncodedDecodeIsolation` / `TestRubricLookup` in this diff.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **`[bug-repro]` tag placement:** comment is inside `test_batch_miss_fails_only_that_job` (after `caplog.set_level`), not the function’s first line; manifest + `docs/test-bible/core/consult.md` name the node — same optional hygiene class as AST-2057 / AST-2090 Radia notes, not a gate.  
+- **Doc diff bulk:** feature doc adds full `## Bug: AST-2125` + Joan fix-board block; product scope remains tests + bible only (`code(AST-2125)` empty-src marker per AST-2121 precedent).  
+- **Pre-existing component reds** called out in plan **Blast radius** (129 failures off-epic) — out of scope for this gap child.
+
+## What's solid
+
+- Three stale AST-2053 decode asserts rewritten to **X0**; bible rows supersede AST-2057 decode prose without touching statute files.  
+- Consult + roster classes cover lookup split, batch hydrate map, single-row miss, and prefilter batch sibling behavior aligned with AST-2124.  
+- Four commits on sub (`plan-fix` → Joan → `test(AST-2125)` → `code(AST-2125)`); no cross-ticket product carry in mandated diff.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal mini-parent | **Review Posted** → §3h clean-review shortcut → **User Testing** (skip `resolve-child`). |
+
+**Recommended actions (downstream only — not executed here):** Append artifact; `docs(AST-2125): Radia review — clean`; push sub; post slim upshot `--as radia`; advance per §3h.
+
+---
+
+## Bug: AST-2127 — Do rubric code + zero-grade decode tests + bible (test gap for AST-2126)
+
+- **Linear:** [AST-2127](https://linear.app/astralcareermatch/issue/AST-2127) (test-gap child of mini-parent [AST-2112](https://linear.app/astralcareermatch/issue/AST-2112); sibling of [AST-2126](https://linear.app/astralcareermatch/issue/AST-2126), merged on `origin/ftr/AST-2112-do-rubric-undecodable-codes` @ `f83f8d71f`)
+- **Publish ref:** `sub/AST-2112/AST-2127-do-rubric-code-tests` · **ftr:** `ftr/AST-2112-do-rubric-undecodable-codes` · **pre-fix base:** `54e186b79`
+- **Canon:** none cited (AST-2127 `## Citations`: test tree + bible only).
+- **Explicit scope (AST-2127 `## Scope`):** `tests/component/core/test_consult.py`, `tests/component/core/test_agent.py`, `tests/component/core/test_candidate.py`, `tests/component/data/database/test_rubric_vectors.py`, `docs/test-bible/core/{consult,agent,candidate}.md`, `docs/test-bible/data/database/rubric_vectors.md`. The Technical scope says "new and revised component tests only", which covers revising the 27 sync fixtures. **Betty lands all of it in qa-fix**; this block sets the bar. **No `src/**` or `data/**` change.**
+- **Binding input:** Betty's `[board-betty] TESTS: REVISE` on AST-2126 (verbatim in AST-2127's Description), the AST-2126 block above (`### Proposed change` steps 1–5, `### What must still hold`), and Hedy's AST-2126 make-fix test note (29 new failures).
+
+### As-is
+
+On the ftr tip `f83f8d71f`, nothing pins AST-2126's five product changes. Every one of them behaves differently on the base, yet no test fails there for the right reason. Running the five touched files under `/home/susan/astral/.venv/bin/python` (`test_agent.py`, `test_candidate.py`, `test_consult.py`, `test_rubric_vectors.py`, `tests/component/scripts/test_backfill_rubric_vectors.py`) gives **122 failed / 1196 passed / 7 skipped**. Of those, 93 failures are a pre-existing environment baseline (e.g. `no such table: job`, host probes) and are identical before AST-2126. The other **29 are new with AST-2126**:
+
+- **2 candidate tests whose assertions are now stale:**
+  - `TestAst2008RubricCodeUptick::test_uptick_is_pure_and_passes_non_dict_and_blank_codes`: blank codes are now filled, not passed through.
+  - `TestAst2091RubricDispatchError::test_duplicates_case_insensitive_sorted_and_blank_codes_ignored`: the invalid-code reason now fires before the duplicate reason on ` tp` / `sa` / blank rows.
+- **27 fixture failures:** these tests seed `rubric_vector` by calling `db.sync_rubric_vectors_from_criteria(...)` with codes that aren't two uppercase letters (`G1` ×20, `V01` ×4, `CLR` ×2, `A` ×1). AST-2126 step 2 now raises `ValueError: criterion N code '…' is not two letters A-Z`.
+  - `test_agent.py` (13): `TestAst1486FeedbackEntityIdStamp` (2), `TestAst724VectorFeedbackCapture` (3), `TestAst809VectorFeedbackBatchMetadata` (2), `TestAst816VectorFeedbackCapture` (2), `TestAst820VectorFeedbackDebugTrace` (2), `TestAst862CleanParseFeedbackBlock` (2). Sync call sites are around lines 5760–6009 and 6289–6423.
+  - `test_rubric_vectors.py` (14): `TestAst723SyncRubricVectors::{test_fingerprint_change_retires_and_inserts_new_row, test_removed_code_retires_row}`, `TestAst724VectorFeedbackRows` (2), `TestAst725ListVectorFeedback` (2), `TestAst725AggregateVectorFeedback` (1), `TestAst808ListVectorFeedbackContent` (1), `TestAst809VectorFeedbackBatchMetadata` (2), `TestAst2066RubricCriterionVersions` (4). Sync call sites are around lines 221–527.
+
+### To-be
+
+- A `[bug-repro]` on `_normalize_rubric_task_response` is red on `54e186b79` and green on the tip.
+- Steps 1–4 of AST-2126 each have a node that is red on the base and green on the tip.
+- The 2 candidate tests assert the new contract.
+- The 27 fixtures seed valid two-letter codes and keep asserting what they asserted before.
+- The bible names every new and revised node.
+- On the tip, the five-file run drops to the 93-failure environment baseline, with no failure from AST-2126.
+
+### Repro
+
+Verified read-only by running one probe script on both trees. The base was a `git archive 54e186b79` export with `ASTRAL_DB_DIR` pointed at an empty temp dir. The probe monkeypatches `consult._rubric_criteria_for_cfg` and `candidate.rubric_criteria_for_task`, with no DB writes. Run with `/home/susan/astral/.venv/bin/python`:
+
+| Probe | `54e186b79` (pre-fix) | tip `f83f8d71f` |
+| --- | --- | --- |
+| `_normalize_rubric_task_response("grade_do", cfg, {"agent_payload": "000\|V01A3\|V02B4"}, {"batch_entities": [J0]})` | `{'jobs': [{'grades': [], 'possible_job_links': [], 'astral_job_id': 'J0'}]}` | `{'jobs': [], 'decode_failures': [{'astral_job_id': 'J0', 'pos': 0, 'reason': "[grade_do] no grade segments in reply: '000\|V01A3\|V02B4'"}]}` |
+| same, payload `"prose reply"` | same silent `grades: []` row | same shape, reason `… no grade segments in reply: 'prose reply'` |
+| `_decode_payload("grade_do", "grades_encoded_notes", "000\|AAA3\|ok\n001\|just notes", {J0, J1})` | J1 row `{'grades': [], 'notes': 'just notes'}`, no `decode_failures` | J0 row unchanged; J1 absent from `jobs`; `decode_failures` = `[{'astral_job_id': 'J1', 'pos': 1, 'reason': "[grade_do] no grade segments in encoded line: '001\|just notes'"}]` |
+| `_require_complete_grade_set([{label A}, {label B}], [{vector ZZ}])` | `_render_score: missing vectors ['A', 'B']` | `_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']` |
+| `_uptick_duplicate_rubric_codes([("", "Hands-On Technical Partnership"), ("V02", "Speaking Truth"), (" tp", "Tee"), ("TP", "Dup")], "do_rubric")` codes | `['', 'V02', ' tp', 'TX']` | `['HO', 'ST', 'TP', 'TX']` |
+| `rubric_dispatch_error("somerset", "grade_do")` over `[V01 "One", AB "Two"]` | `None` | `"Rubric 'do_rubric' has invalid vector codes: V01 — re-save the rubric"` |
+
+Sync rejection (step 2) needs the DB fixture, so it was proven by the 27 failures above (`ValueError: criterion 1 code 'G1' is not two letters A-Z`), not by the probe.
+
+### Root cause
+
+Fix-board routed AST-2126's test delta here, so the product landed with no repro or step coverage. The 29 reds are stale test contracts, not regressions:
+- The 2 candidate tests pin AST-2008/AST-2091's "blank code passes through / ignored" behaviour, which AST-2126 deliberately ended.
+- The 27 fixtures relied on sync accepting any string as a code. That is the `V{idx}` / free-form leniency AST-2126 removed. Production saves can't hit this, because they go through `_uptick_duplicate_rubric_codes` first.
+
+### Proposed change
+
+All of it is Betty's (qa-fix). Exact test names are her call; the assertions below are the bar. Run with `/home/susan/astral/.venv/bin/python` (the system interpreter lacks `nh3`, so `test_consult.py` won't collect without the venv).
+
+**1. `[bug-repro]` (`test_consult.py`): zero-grade letter-pipe becomes `decode_failures`.** Use `TASK_CONFIG["grade_do"]` and monkeypatch `consult._rubric_criteria_for_cfg` to a 2-criterion `V01`/`V02` rubric. For both a `"000|V01A3|V02B4"` payload and a prose payload, with a 1-job `batch_entities`, assert:
+- the result is `{"jobs": [], "decode_failures": [...]}` with exactly one entry;
+- the entry has `astral_job_id == "J0"` and `pos == 0`;
+- the entry's `reason` contains `"no grade segments in reply"` and the raw payload text.
+
+Add a 2-entity prose case asserting one entry per entity, `pos` 0 and 1. Add guards: a `grades_encoded_notes` letter-pipe reply that *does* yield grades is unchanged, and a company-entity task (`prefilter_company`) with zero grades still returns `{"companies": [row]}` with no `decode_failures`. **Red on `54e186b79`, green on the tip.** Tag the qa-fix handoff `[bug-repro]` with this node id.
+
+**2. Combined reason (`test_consult.py`).** `_require_complete_grade_set` with both missing and unknown vectors raises `IncompleteGradeSetError` with the message exactly `"_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']"`. The existing single-side message tests stay byte-identical and untouched.
+
+**3. Zero-segment notes line (`test_agent.py`).** Call `_decode_payload("grade_do", "grades_encoded_notes", "000|AAA3|ok\n001|just notes", ctx)` with a 2-entity `batch_entities`. Assert:
+- J0's row is unchanged, keeping `notes == "ok"`;
+- no J1 row is in `jobs`;
+- `decode_failures == [{"astral_job_id": "J1", "pos": 1, "reason": "[grade_do] no grade segments in encoded line: '001|just notes'"}]`.
+
+`test_ast1996_notes_type_tail_is_not_a_decode_failure` must stay green, untouched.
+
+**4. Candidate (`test_candidate.py`).**
+- **Revise `test_uptick_is_pure_and_passes_non_dict_and_blank_codes`.** Purity and non-dict pass-through stay. A blank code is now **filled**, and the filled item is a shallow copy with the input untouched. Expected codes for the probe list are `['HO', 'ST', 'TP', 'TX']`: a blank code derives from the label initials, `V02` is replaced, ` tp` is normalized to `TP`, and the duplicate `TP` is re-lettered to `TX`. A rename to `…_fills_blank_codes` is fine.
+- **Add fill edge cases.** A single-word label gives its first two letters, e.g. `"Leadership"` → `LE`. A label with no letters falls to the first free `AA…ZZ` code. A derived code collision moves to `base[0]` + the uptick letters, e.g. two `"Hands On"` blanks → `HO`, `HX`. Two WARNING lines are logged on fill (`invalid code … -> XX`).
+- **Revise `test_duplicates_case_insensitive_sorted_and_blank_codes_ignored`.** Split it in two:
+  - Duplicates over **valid** stored codes (e.g. `TP`, `TP`, `SA`, `SA`) still return the existing `"duplicate vector codes: SA, TP"` message.
+  - Rows with ` tp` / `sa` / blank now return `"Rubric '<rk>' has invalid vector codes: (blank), sa, tp — re-save the rubric"`: sorted, raw stripped values, blank shown as `(blank)`. Invalid wins over duplicate.
+- **New:** `rubric_dispatch_error` on `[V01, AB]` returns the invalid-codes message above. An empty rubric still returns the `is empty` message, and craft_* tasks are still `None` (AST-2091 guards unchanged).
+
+**5. Sync (`test_rubric_vectors.py`).**
+- **New:** `sync_rubric_vectors_from_criteria` raises `ValueError` matching `"code 'V01' is not two letters A-Z"` for `V01`, `""` (blank, no fallback), `"A"`, `"G1"` and `"CLR"`, and writes **no** `current = 1` row for that owner. A lowercase `"tp"` is stored as `TP`.
+- **Fixture revision (27 nodes in this file and `test_agent.py`, listed in As-is):** replace each invalid seed code with a two-letter code, applied consistently to every assertion, vector-review payload, `vector_code` filter and `list_rubric_vector_uuid_by_code` key that references it in the same test. Suggested mapping: `G1`→`GA`, `V01`→`VA`, `CLR`→`CL`, `A`→`AA`, `B`→`BB`. Test intent is otherwise unchanged; do not weaken or skip any assertion.
+
+**6. Bible.**
+- `docs/test-bible/core/consult.md`, `core/agent.md`, `core/candidate.md` and `data/database/rubric_vectors.md`: add an `AST-2126 · AST-2112` section, or rows in the existing AST-1996 / AST-2008 / AST-2091 / AST-723 sections, naming every new and revised node.
+- `candidate.md` rows ~1780–1783 (AST-2008 uptick) and the AST-2091 rows: update the "blank code pass through" / "blank codes ignored" wording to the fill / invalid-code contract.
+- `rubric_vectors.md` § AST-723: replace any "`V{idx}` fallback" wording with "codes not matching `[A-Z]{2}` raise".
+
+**7. Engineer side (Hedy).** No product commit on this ticket. `test-fix` runs Betty's manifest on the tip: the `[bug-repro]` node green (and red on `54e186b79`, per Betty's handoff), and items 2–5 green. It then re-runs the five-file baseline above, expecting **93 failed** (environment only, identical node set to the pre-AST-2126 run), the 29 AST-2126 reds gone, and no new failures.
+
+### Blast radius
+
+- Test tree and bible only; no product behaviour changes.
+- `test_api_candidate.py` V01 rubric-route tests (Betty's guard note) store explicit codes and don't go through sync. If any path there reaches sync, it fails the same way and the same two-letter fixture rule applies; flag it in the qa-fix handoff rather than widening scope silently.
+- `tests/component/scripts/test_backfill_rubric_vectors.py`: green on the tip. The script's own `V{idx}` fallback (AST-2126 Blast radius) is not exercised through sync by these tests. Out of scope.
+
+### What must still hold
+
+- AST-1996 notes-tail guard, AST-1155 single-side `missing` / `unknown` messages, AST-2008 duplicate re-letter (including Decision C exhaustion), and AST-2091 empty / duplicate messages: all asserted unchanged.
+- No test is skipped, xfailed, or loosened to absorb AST-2126; fixture code renames only.
+
+### Fix board — Joan (F2) — AST-2127
+
+[board-joan] CANON: OK
+
+**Ticket:** AST-2127 (Plan Ready, Hedy) · mini-parent AST-2112 · test-gap sibling of AST-2126 · publish ref `sub/AST-2112/AST-2127-do-rubric-code-tests` @ `7caaae194`.
+
+**Diff note:** `origin/ftr/AST-2112-do-rubric-undecodable-codes...origin/sub/AST-2112/AST-2127-do-rubric-code-tests` adds **only** the `## Bug: AST-2127` plan-fix block (+99 lines) in `docs/features/consult/ast-1155-incomplete-grades-retry-holding-never-technical-fail.md`. No `src/**`, `canon/**`, `data/**`, or test files on the sub yet — Betty’s `qa-fix` lands the tree; this pass judges the patch.
+
+**Citations / roster:** AST-2127 `## Citations`: **none** (“test tree and bible only”). The patch header repeats **Canon: none cited**. No frozen canon list to score; no roster row plausibly requires amendment for test-only work.
+
+**One-question triage — does the proposed change conflict with or require updating in-force statutes/patterns?**
+
+**No.** Same class as Joan fix-board **AST-2001** and **AST-2090**:
+
+1. **Scope** — Component and Technical scope are **tests** (`test_consult.py`, `test_agent.py`, `test_candidate.py`, `test_rubric_vectors.py`) and **`docs/test-bible/**` only**. Boundaries: no product `src/` or `data/`. Blast radius: “test tree and bible only; no product behaviour changes.”
+
+2. **What the work does** — Locks **AST-2126’s already board-reviewed product contract** (`[bug-repro]` on letter-pipe zero-grade → `decode_failures`, sync `[A-Z]{2}` rejection, invalid-code dispatch message, combined missing+unknown reason, zero-segment notes line, revised uptick/dispatch tests, 27 fixture code renames). That product intent was triaged **CANON: OK** on AST-2126 (`patt.task.dispatch-retry` alignment via existing `decode_failures` routing; no `_GRADE_SEG` widening; no statute text contradiction). This ticket **documents and asserts** that contract; it does not introduce new in-force law.
+
+3. **Bible edits** — Rows name nodes and replace stale “blank pass-through” / `V{idx}` fallback **wording** to match shipped AST-2126 behaviour. Test-bible blocks are **coverage manifests**, not corpus directives (per prior fix-board rationale on test-only siblings).
+
+4. **“What must still hold”** — Explicitly preserves AST-1996 notes-tail guard, AST-1155 single-side messages, AST-2008 Decision C, AST-2091 empty/duplicate strings — all **test assertions**, not canon patches.
+
+5. **REVISE / ESCALATE triggers absent** — No plan to amend `canon/directives/**`, no new pattern carve-out, no architectural fork (product fix stays on AST-2126; Hedy’s role here is `test-fix` verification per patch §7). Nothing like AST-2053’s required `astral.agent.confidence-bounds` statute move.
+
+**F3 (`validate-plan` fix mode):** not indicated from this board pass.
+
+**Relation to AST-2126:** Betty **REVISE** on AST-2126 routed the 29-test delta here; Joan **OK** on AST-2126 did not reserve a canon follow-up. AST-2127 closes the test gap without canon work.
+
+
+### Radia review — AST-2127 (F7)
+
+[code-rubric] PROCEED (Commit: ad3f0054a) Test gap locks AST-2126
+
+**Ticket:** AST-2127  
+**Publish ref:** `ad3f0054a377c475d96bf9ca75d638888e39b6a4` (`origin/sub/AST-2112/AST-2127-do-rubric-code-tests`)  
+**Diff base (lane):** `origin/ftr/AST-2112-do-rubric-undecodable-codes`  
+**Scored slice:** `7e32d7bfa` (`test(AST-2127): bug-repro…`), `c3d8b0956` (marker), `ad3f0054a` (post–`sync(dev)` restore); **excluded** from scoring: `4c2645474` / dev landing product + unrelated dev test carry (AST-2114/2115/2105/2106, AST-2124/2125 already on `origin/dev`)  
+**Corpus:** (none — `## Citations`: test tree + bible only; Joan fix-board CANON: OK, no frozen roster)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+(no frozen canon list on ticket — test/bible-only scope per plan-fix and Joan F2; canon pass not applicable)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan **fix-board** CANON: OK @ plan tip `7caaae194`; no `validate-plan` fix-mode column)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `TestAst2126ZeroGradeRepliesAreDecodeFailures::test_bug_repro_one_job_zero_grades_is_decode_failure` (2 params) calls `_normalize_rubric_task_response("grade_do", …)` with monkeypatched rubric and 1-job `batch_entities`. It asserts **`jobs == []`**, exactly **one** `decode_failures` entry with `astral_job_id == "J0"`, `pos == 0`, and `reason == f"[grade_do] no grade segments in reply: {payload!r}"` for both `000|V01A3|V02B4` and prose — concrete AST-2126 To-be, not a tautology; would fail on pre-fix silent `grades: []` (Betty/Hedy red→green at `54e186b79` vs ftr tip). Sibling methods in the same class cover plan steps 2–3 guards (2-entity prose, letter-pipe with grades, company task, combined missing+unknown).
+
+**`sync(dev)` merge integrity (ad3f0054a) OK** — `git diff origin/dev...ad3f0054a` on conflict files: `test_consult.py` adds **only** the AST-2126/2127 block after `TestAst2125MissingRubricDescription` (class count 1 on dev and tip). `test_agent.py` adds **`test_ast2126_notes_line_without_segments_is_decode_failure`**; **`test_ast2124_letter_conf0_decodes_as_x0`** present on both dev and tip (AST-2053 conf0→1 test correctly dropped per dev). Betty’s restore commit re-aligns AST-2124 expectations (X0) with dev — no dev test class dropped.
+
+**## What must still hold — OK**
+
+- **AST-1996:** `test_ast1996_notes_type_tail_is_not_a_decode_failure` untouched; zero-segment test is a separate node with J0 row + J1 `decode_failures`.
+- **AST-1155:** Combined-reason test is additive; bible states single-side `TestRenderScore` nodes byte-identical.
+- **AST-2008 / AST-2091:** Candidate rewrites (`test_uptick_is_pure_passes_non_dict_and_fills_blank_codes`, split duplicate vs invalid-code cases, `rubric_dispatch_error` on `V01`) match plan §4 probes.
+- **AST-2126 sync step 2:** `TestAst2126SyncRejectsUndecodableCodes` parametrizes `V01`, `""`, `A`, `G1`, `CLR` with `ValueError` + `not two letters A-Z`.
+- **Scope-amended API fixtures:** `TestAst2067CandidateVersionRoutes` seeds `VA`/`VB` (not `V01`/`V02`); routes/filters updated, assertions not loosened.
+- **No skip/xfail** introduced on scored AST-2127 nodes.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Dev sync carry on sub:** `origin/ftr...origin/sub` still includes non–AST-2127 test/bible deltas (resume/skipped UI tests, roster, config bible, large AST-1155 doc append from dev merges). Treat as **environment/stacking**, not AST-2127 product or test authorship; Hedy scope-gate: `ad3f0054a` touches no `src/`/`data/`; ftr…sub `src/` delta is dev auto-merge only.
+- **Bible scope-gate line:** `docs/test-bible/core/consult.md` § AST-2127 item 4 still claims `git diff ftr…sub -- src/ data/` is **empty**; post–`sync(dev)` that three-dot diff is **not** empty (dev product). Prefer Hedy’s Tests Passed comment + commits `c3d8b0956`/`ad3f0054a` for gate truth; optional bible wording fix is docs-only, not merge-blocking.
+- **Plan §7 vs manifest:** Six-file no-regression run (incl. `test_api_candidate.py`) matches scope-amended ticket Description; plan-fix §7 “five-file” prose is slightly stale — manifest § QA is authoritative.
+
+## What’s solid
+
+- AST-2127-owned delta vs ftr (`7e32d7bfa` + `ad3f0054a` on tests/bible): repro, agent notes-line, candidate, sync rejection, fixture renames, `api_candidate` § AST-2067, bible § AST-2127 + manifest bash block align with Betty’s AST-2126 board bar.
+- `test-fix` evidence on tip: bug-repro red at `54e186b79` product overlay, green at `ad3f0054a`; manifest 42 passed; 94-id environment baseline unchanged set.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-2112, live `ftr`) | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Mini-parent merge rules when AST-2112 siblings allow. |
+

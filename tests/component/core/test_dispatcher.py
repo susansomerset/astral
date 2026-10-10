@@ -430,13 +430,15 @@ class TestRunUnified:
             "batch_call_mode": 0,
         }
         out = await dispatcher_mod._run_unified(task, ctx, False)
-        assert out == consult_out
+        # AST-2093: normal return also carries repeat_processed (0 — first claim of this dispatch)
+        assert out == {**consult_out, "repeat_processed": 0}
         claim.assert_called_once()
         clear_cand.assert_called_once_with(batch_id)
         clear_co.assert_not_called()
         clear_job.assert_not_called()
         run.assert_awaited_once_with(
             "candidate", "ACTIVE_SEARCH", claimed, batch_id, ctx, False, dispatch_task_key="inflow_discovery",
+            batch_index_offset=0,  # AST-2093: lone entity sends its claimed position
         )
 
     @pytest.mark.asyncio
@@ -699,6 +701,7 @@ class TestRunUnified:
             debug: bool,
             batch_chunk_index: Optional[int] = None,
             dispatch_task_key: str = "",
+            batch_index_offset: int = 0,  # AST-2093: chunk path passes ci * chunk_sz
         ) -> Dict[str, int]:
             seq.append(("consult_enter", batch_chunk_index))
             lens.append((batch_chunk_index, len(ents)))
@@ -1788,7 +1791,8 @@ class TestAst1867ProviderBalanceOutage:
 
         assert consult.await_count == 1
         # held / failure_class stay off the summary — update_dispatch_ledger rejects unknown keys
-        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+        # AST-2093: repeat_processed rides the return (not a _SUMMARY_ZERO key, so the ledger never sees it)
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0, "repeat_processed": 0}
         assert ctx["provider_balance_outage"] == {"error": self._REFUSAL_ERR, "held": 1}
         claimed["clear"].assert_called_once_with("bid-1867")
 
@@ -1944,7 +1948,8 @@ class TestAst2010ProviderRateLimitOutage:
 
         assert consult.await_count == 1
         # failure_class / error stay off the summary — update_dispatch_ledger rejects unknown keys
-        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        # AST-2093: repeat_processed rides the return (not a _SUMMARY_ZERO key, so the ledger never sees it)
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1, "repeat_processed": 0}
         assert ctx["provider_rate_limit_outage"] == {"error": self._ERR}
         assert "provider_balance_outage" not in ctx
         claimed["clear"].assert_called_once_with("bid-1867")
@@ -2043,6 +2048,154 @@ class TestAst2010ProviderRateLimitOutage:
         edges["breaker"].assert_not_called()
 
 
+# AST-2098 branches: first failed-host-probe result marks ctx["provider_probe_outage"] {"error", "held"} at
+# all three _run_unified call sites; remaining work skipped; loop stops after the run; ledger INTERRUPTED,
+# no alert, no auto_run_error, breaker skipped; rate limit's FAILED wins. Literals only (no AST-2098
+# imports) so the repro fails by assertion on the pre-fix tree.
+class TestAst2098ProviderProbeOutage:
+    """AST-2098: a failed host probe is a no-op run — entities held, run stopped, next round probes again."""
+
+    _FC = "provider_probe_failure"
+    _ERR = "Host probe failed: Probe response named no provider: {'message': 'No endpoints found'}"
+    _edges = staticmethod(TestAst1867ProviderBalanceOutage._edges)
+    _claim_companies = staticmethod(TestAst1867ProviderBalanceOutage._claim_companies)
+    _claim_jobs = staticmethod(TestAst2010ProviderRateLimitOutage._claim_jobs)
+
+    @staticmethod
+    def _held(**extra: Any) -> Dict[str, Any]:
+        return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0, "total_held": 1, **extra}
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_probe_failure_holds_batch_interrupted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2016 incident shape: 2-job meteorite_grade_get, per-entity warm-then-gather, max_runs 3.
+        # Pre-fix the dispatcher ignores the tag: every job is sent every run (2 × 3 = 6), ledger COMPLETED.
+        edges = self._edges(monkeypatch, 2098)
+        # held jobs stay eligible — only the outage stop can end the loop early
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda _t: 24)
+        clear = self._claim_jobs(monkeypatch, 2, "METEORITE_PASSED_DO")
+        consult = AsyncMock(return_value=self._held(failure_class=self._FC, error=self._ERR))
+        monkeypatch.setattr("src.core.consult.run_consult_task", consult)
+        task = {
+            "id": 2098, "task_key": "meteorite_grade_get", "candidate_id": "cand-1", "entity_type": "job",
+            "trigger_state": "METEORITE_PASSED_DO", "batch_call_mode": 0, "batch_size": 2, "auto_mode": 1,
+            "max_runs": 3,
+        }
+        await dispatcher_mod._dispatch_one(task)
+
+        # warm entity held → gather entity never sent, no second run; claim released
+        assert consult.await_count == 1
+        clear.assert_called_once_with("bid-2010")
+        kw = edges["update_dispatch_ledger"].call_args.kwargs
+        assert kw["status"] == "INTERRUPTED"
+        assert (kw["total_processed"], kw["total_errors"]) == (1, 0)
+        edges["breaker"].assert_not_called()
+        edges["auto_run_error"].assert_not_called()
+        edges["provider_balance_outage"].assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_unified_per_entity_skips_after_probe_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._edges(monkeypatch, 20982)
+        claimed = self._claim_companies(monkeypatch, 3)
+        consult = AsyncMock(return_value=self._held(failure_class=self._FC, error=self._ERR))
+        monkeypatch.setattr("src.core.consult.run_consult_task", consult)
+        task = {
+            "id": 20982, "task_key": "select_job_page", "entity_type": "company",
+            "trigger_state": "PJL_READY", "batch_call_mode": 0, "batch_size": 3,
+        }
+        ctx: Dict[str, Any] = {"astral_candidate_id": "cand-1"}
+        out = await dispatcher_mod._run_unified(task, ctx, False)
+
+        assert consult.await_count == 1
+        # held / failure_class stay off the summary — update_dispatch_ledger rejects unknown keys
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+        assert ctx["provider_probe_outage"] == {"error": self._ERR, "held": 1}
+        assert "provider_balance_outage" not in ctx and "provider_rate_limit_outage" not in ctx
+        claimed["clear"].assert_called_once_with("bid-1867")
+
+    @pytest.mark.asyncio
+    async def test_run_unified_chunk_split_skips_tail_after_head_probe_failure(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._edges(monkeypatch, 20983)
+        self._claim_jobs(monkeypatch, 3, "JD_READY")
+        consult = AsyncMock(return_value=self._held(failure_class=self._FC, error=self._ERR))
+        monkeypatch.setattr("src.core.consult.run_consult_task", consult)
+        task = {
+            "id": 20983, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY",
+            "batch_call_mode": 1, "batch_size": 1, "score_floor": 0.5,
+        }
+        ctx: Dict[str, Any] = {"astral_candidate_id": "cand-1"}
+        await dispatcher_mod._run_unified(task, ctx, False)
+
+        # head chunk held → both tail chunks skipped
+        assert consult.await_count == 1
+        assert ctx["provider_probe_outage"] == {"error": self._ERR, "held": 1}
+
+    @pytest.mark.asyncio
+    async def test_run_unified_full_batch_marks_probe_outage(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._edges(monkeypatch, 20984)
+        self._claim_jobs(monkeypatch, 2, "JD_READY")
+        consult = AsyncMock(return_value=self._held(total_held=2, failure_class=self._FC, error=self._ERR))
+        monkeypatch.setattr("src.core.consult.run_consult_task", consult)
+        # batch_size ≥ claimed → one consult call for the whole batch (no chunk split)
+        task = {
+            "id": 20984, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY",
+            "batch_call_mode": 1, "batch_size": 5, "score_floor": 0.5,
+        }
+        ctx: Dict[str, Any] = {"astral_candidate_id": "cand-1"}
+        await dispatcher_mod._run_unified(task, ctx, False)
+
+        assert consult.await_count == 1
+        assert ctx["provider_probe_outage"] == {"error": self._ERR, "held": 2}
+
+    @pytest.mark.asyncio
+    async def test_run_dispatch_loop_stops_after_probe_outage_run(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # finite eligibility so the pre-fix loop (no outage stop) still terminates
+        monkeypatch.setattr(
+            dispatcher_mod.database, "count_eligible_for_dispatch_task", MagicMock(side_effect=[24, 24, 24, 0]),
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+
+        async def _run(task, ctx, debug):
+            ctx["provider_probe_outage"] = {"error": self._ERR, "held": 1}
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+
+        run_task = AsyncMock(side_effect=_run)
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run_task)
+        # max_runs 0 = unlimited: only the outage stop (or drained eligibility) ends the loop
+        task = {"id": 20985, "task_key": "meteorite_grade_get", "entity_type": "job", "auto_mode": 1, "max_runs": 0}
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        await dispatcher_mod._run_dispatch_loop(
+            {"astral_candidate_id": "cand-1"}, task, "meteorite_grade_get", "bid", accumulated, "bid",
+        )
+
+        assert run_task.await_count == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("with_rate_limit", "status"), [(False, "INTERRUPTED"), (True, "FAILED")])
+    async def test_dispatch_one_probe_outage_status(
+        self, monkeypatch: pytest.MonkeyPatch, with_rate_limit: bool, status: str,
+    ) -> None:
+        edges = self._edges(monkeypatch, 20986)
+
+        async def _loop(ctx, task, task_key, batch_id, accumulated, dispatch_ledger_id):
+            ctx["provider_probe_outage"] = {"error": self._ERR, "held": 1}
+            if with_rate_limit:
+                ctx["provider_rate_limit_outage"] = {"error": "Error code: 429 - rate limited"}
+            accumulated["total_processed"] = 1
+
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=_loop))
+        task = {"id": 20986, "task_key": "meteorite_grade_get", "candidate_id": "cand-1", "auto_mode": 1}
+        await dispatcher_mod._dispatch_one(task)
+
+        # rate limit's FAILED wins over the probe outage's INTERRUPTED
+        assert edges["update_dispatch_ledger"].call_args.kwargs["status"] == status
+        # no probe alert (AST-2098 Boundary); a no-op run never trips auto_run_error or the breaker
+        edges["provider_balance_outage"].assert_not_called()
+        edges["auto_run_error"].assert_not_called()
+        edges["breaker"].assert_not_called()
+
+
 class TestRunDispatchLoop:
     @pytest.mark.asyncio
     async def test_skips_when_queue_below_min_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2135,6 +2288,128 @@ class TestRunDispatchLoop:
         task = {"id": 14, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY", "auto_mode": 1, "min_count": 1, "max_runs": 0}
         await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
         assert accumulated["total_processed"] == 1
+
+
+class TestAst2093BatchIndexDispatch:
+    """AST-2093: claimed position reaches consult as batch_index_offset; retry re-claims count once per dispatch.
+
+    Branches (dispatcher): _run_unified chunk path offset = ci * chunk_sz; per-entity path offset = claimed
+    index; dispatch_seen_ids repeat vs new vs falsy id; repeat_processed = min(repeats, total_processed);
+    _run_dispatch_loop subtracts repeat_processed but stops on the raw per-run total_processed.
+    Every test builds its own ctx — dispatch_seen_ids must never leak between tests.
+    """
+
+    _OK = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+
+    def _patch_claims(self, monkeypatch: pytest.MonkeyPatch, batch_id: str, *claims: List[Dict[str, Any]]) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", MagicMock(return_value=5))
+        monkeypatch.setattr(
+            "src.core.tracker.get_new_job_batch", MagicMock(side_effect=[(batch_id, list(c)) for c in claims]),
+        )
+        monkeypatch.setattr("src.core.tracker.clear_job_batch", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.asyncio, "sleep", AsyncMock())
+
+    @staticmethod
+    def _task(batch_size: int, batch_call_mode: int, task_key: str = "grade_get") -> Dict[str, Any]:
+        return {
+            "entity_type": "job", "trigger_state": "PASSED_JD", "task_key": task_key,
+            "batch_size": batch_size, "batch_call_mode": batch_call_mode, "id": 2093,
+        }
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_chunks_send_global_offsets(self, monkeypatch: pytest.MonkeyPatch, batch_id: str) -> None:
+        # [bug-repro] pre-fix: no batch_index_offset → every chunk restarts its row labels at 000.
+        self._patch_claims(monkeypatch, batch_id, [{"astral_job_id": f"j{i}"} for i in range(5)])
+        run = AsyncMock(return_value=dict(self._OK))
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        await dispatcher_mod._run_unified(self._task(2, 1), {"astral_candidate_id": "c1"}, False)
+        sent = {c.kwargs["batch_chunk_index"]: c.kwargs.get("batch_index_offset") for c in run.call_args_list}
+        assert sent == {0: 0, 1: 2, 2: 4}
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_per_entity_sends_claimed_position(self, monkeypatch: pytest.MonkeyPatch, batch_id: str) -> None:
+        # [bug-repro] pre-fix: lone calls all render [index=000].
+        self._patch_claims(monkeypatch, batch_id, [{"astral_job_id": f"j{i}"} for i in range(3)])
+        run = AsyncMock(return_value=dict(self._OK))
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        await dispatcher_mod._run_unified(self._task(1, 0), {"astral_candidate_id": "c1"}, False)
+        sent = {c.args[2][0]["astral_job_id"]: c.kwargs.get("batch_index_offset") for c in run.call_args_list}
+        assert sent == {"j0": 0, "j1": 1, "j2": 2}
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_reclaimed_ids_are_repeat_processed(self, monkeypatch: pytest.MonkeyPatch, batch_id: str) -> None:
+        # [bug-repro] pre-fix: no seen-id ledger, so a retry run's re-claim reads as fresh work.
+        self._patch_claims(
+            monkeypatch, batch_id,
+            [{"astral_job_id": "A"}, {"astral_job_id": "B"}],
+            [{"astral_job_id": "B"}, {"astral_job_id": "C"}],
+        )
+        monkeypatch.setattr(
+            "src.core.consult.run_consult_task", AsyncMock(return_value={**self._OK, "total_processed": 2}),
+        )
+        ctx: Dict[str, Any] = {"astral_candidate_id": "c1"}
+        first = await dispatcher_mod._run_unified(self._task(5, 1), ctx, False)
+        second = await dispatcher_mod._run_unified(self._task(5, 1), ctx, False)
+        assert first["repeat_processed"] == 0
+        assert second["repeat_processed"] == 1
+        assert ctx["dispatch_seen_ids"] == {"A", "B", "C"}
+
+    @pytest.mark.asyncio
+    async def test_falsy_ids_never_tracked_and_outage_run_clamps_to_zero(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        both = [{"astral_job_id": "A"}, {"astral_job_id": "B"}]
+        self._patch_claims(monkeypatch, batch_id, [{"state": "PASSED_JD"}], [{"state": "PASSED_JD"}], both, both)
+        run = AsyncMock(side_effect=[
+            {**self._OK, "total_processed": 1},
+            {**self._OK, "total_processed": 1},
+            {**self._OK, "total_processed": 2},
+            dict(self._OK),  # outage-zeroed re-claim: nothing processed, so nothing can be a repeat
+        ])
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        ctx: Dict[str, Any] = {"astral_candidate_id": "c1"}
+        task = self._task(5, 1)
+        assert (await dispatcher_mod._run_unified(task, ctx, False))["repeat_processed"] == 0
+        assert (await dispatcher_mod._run_unified(task, ctx, False))["repeat_processed"] == 0
+        assert ctx["dispatch_seen_ids"] == set()
+        assert (await dispatcher_mod._run_unified(task, ctx, False))["repeat_processed"] == 0
+        assert (await dispatcher_mod._run_unified(task, ctx, False))["repeat_processed"] == 0
+        assert ctx["dispatch_seen_ids"] == {"A", "B"}
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_loop_counts_each_entity_once(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] Somerset shape: 27 claimed, 23 omitted → retry run re-claims the same 23. Pre-fix: 50.
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 27)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        run = AsyncMock(side_effect=[
+            {"total_processed": 27, "total_passed": 4, "total_failed": 0, "total_errors": 0, "repeat_processed": 0},
+            {"total_processed": 23, "total_passed": 0, "total_failed": 0, "total_errors": 23, "repeat_processed": 23},
+            dict(dispatcher_mod._SUMMARY_ZERO),
+        ])
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {"id": 2093, "task_key": "grade_get", "entity_type": "job", "trigger_state": "PASSED_JD", "auto_mode": 1, "min_count": 1, "max_runs": 0}
+        await dispatcher_mod._run_dispatch_loop({}, task, "grade_get", "batch-1", accumulated, None)
+        assert run.await_count == 3
+        assert (accumulated["total_processed"], accumulated["total_passed"], accumulated["total_errors"]) == (27, 4, 23)
+        assert "repeat_processed" not in accumulated
+
+    @pytest.mark.asyncio
+    async def test_all_repeat_run_does_not_trip_zero_processed_stop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Stop check reads the raw per-run total_processed (3), not the deduped contribution (0).
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 3)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        run = AsyncMock(side_effect=[
+            {"total_processed": 3, "total_passed": 0, "total_failed": 0, "total_errors": 0, "repeat_processed": 3},
+            dict(dispatcher_mod._SUMMARY_ZERO),
+        ])
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {"id": 2094, "task_key": "grade_get", "entity_type": "job", "trigger_state": "PASSED_JD", "auto_mode": 1, "min_count": 1, "max_runs": 0}
+        await dispatcher_mod._run_dispatch_loop({}, task, "grade_get", "batch-1", accumulated, None)
+        assert run.await_count == 2
+        assert accumulated["total_processed"] == 0
 
 
 class TestAst802InflowDiscoveryDebug:
@@ -2602,7 +2877,8 @@ class TestAst972CandidateStageDispatch:
         clear.assert_called_with(batch_id)
         clear.reset_mock()
         out = await dispatcher_mod._run_unified(task, ctx, False)
-        assert out == dispatcher_mod._SUMMARY_ZERO
+        # AST-2093: claimed row takes the normal return, which adds repeat_processed
+        assert out == {**dispatcher_mod._SUMMARY_ZERO, "repeat_processed": 0}
         run.assert_awaited_once()
         assert run.await_args.args[0] == "candidate"
         assert run.await_args.args[1] == "REQUESTED_ARTIFACTS"
@@ -4133,3 +4409,62 @@ class TestAst1916AutoThreadCap:
         assert spawned == []
         assert sorted(dispatcher_mod._task_registry) == [1, 2, 3]
         cancel.assert_not_called()
+
+
+class TestAst2091RunTaskRubricGate:
+    """AST-2091 [bug-repro]: run_task refuses a bad-rubric row and forces AUTO off — no list load needed."""
+
+    @pytest.fixture(autouse=True)
+    def _wire(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Real candidate.rubric_dispatch_error behind a stubbed table read (plan Repro fixture).
+        tp = {"code": "TP", "label": "Hands-On Technical Partnership With Engineers", "content": "…", "importance": 8}
+        rubrics = {("somerset", "grade_do"): [tp, dict(tp), {"code": "SA", "label": "SA", "content": "…", "importance": 7}]}
+        monkeypatch.setattr(
+            "src.data.database.list_rubric_vectors",
+            lambda cid, owner, current_only=False: rubrics.get((cid, owner), []),
+        )
+        self.started: list = []
+        self.updates: list = []
+        test = self
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                self.daemon, self.name = daemon, name
+
+            def start(self) -> None:
+                test.started.append(self)
+
+            def is_alive(self) -> bool:
+                return False
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", lambda tid, **kw: self.updates.append((tid, kw)))
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 1)
+
+    def _row(self, monkeypatch: pytest.MonkeyPatch, cid: str, auto_mode: int, task_key: str = "meteorite_grade_do") -> None:
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_dispatch_task",
+            lambda tid: {"id": tid, "task_key": task_key, "entity_type": "meteorite",
+                         "trigger_state": "METEORITE_PASSED_JD", "candidate_id": cid, "auto_mode": auto_mode},
+        )
+
+    @pytest.mark.parametrize("cid", ["somerset", "empty_cand"])
+    def test_auto_row_not_started_and_auto_forced_off(self, monkeypatch: pytest.MonkeyPatch, cid: str) -> None:
+        # Repro 3 / 4: was True + thread spawned, AUTO left on.
+        self._row(monkeypatch, cid, auto_mode=1)
+        assert dispatcher_mod.run_task(2091) is False
+        assert self.started == []
+        assert self.updates == [(2091, {"auto_mode": 0})]
+        assert 2091 not in dispatcher_mod._task_registry
+
+    def test_manual_row_not_started_no_auto_write(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._row(monkeypatch, "somerset", auto_mode=0)
+        assert dispatcher_mod.run_task(2092, ui_initiated=True) is False
+        assert (self.started, self.updates) == ([], [])
+
+    @pytest.mark.parametrize("task_key", ["craft_do_rubric", "select_job_page"])
+    def test_craft_and_non_rubric_rows_still_start(self, monkeypatch: pytest.MonkeyPatch, task_key: str) -> None:
+        self._row(monkeypatch, "empty_cand", auto_mode=1, task_key=task_key)
+        assert dispatcher_mod.run_task(2093) is True
+        assert len(self.started) == 1 and self.updates == []

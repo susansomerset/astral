@@ -77,14 +77,19 @@ from src.utils.config import (
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
     RESUME_STRUCTURE_BODY_FORMATS,
+    RESUME_STRUCTURE_BODY_FORMAT_DETAILS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
     RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT,
     RESUME_STRUCTURE_EXTRA_ID_PATTERN,
+    RESUME_STRUCTURE_HIDDEN_FLOW_LABEL,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+    RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+    RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID,
     RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
     RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS,
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
     RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
     TASK_CONFIG,
@@ -1425,27 +1430,61 @@ def opt_out_surfer_consent(candidate_id: str, *, debug: bool = False) -> dict:
     return surfer_consent_dto(candidate_id)
 
 
+# Encoded-grade decode (agent._GRADE_SEG) only matches two uppercase letters.
+_RUBRIC_CODE_RE = re.compile(r"^[A-Z]{2}$")
 # AST-2008: last-letter sequence for re-lettering a duplicate rubric code (X, Y, Z, then A… wrapping).
 _RUBRIC_CODE_UPTICK_LETTERS = "XYZABCDEFGHIJKLMNOPQRSTUVW"
+_ASCII_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _derive_rubric_code(label: str, reserved: set) -> Optional[str]:
+    """First free two-letter code for a label: word initials, then first-letter uptick, then every AA–ZZ (AST-2126)."""
+    words = re.findall(r"[A-Z]+", (label or "").upper())
+    if len(words) > 1:
+        base = words[0][0] + words[1][0]
+    elif words and len(words[0]) > 1:
+        base = words[0][:2]
+    else:
+        base = ""
+    pool = ([base] + [base[0] + ch for ch in _RUBRIC_CODE_UPTICK_LETTERS]) if base else []
+    # Full AA–ZZ enumeration so a free code is always found while one exists.
+    pool += [a + b for a in _ASCII_UPPER for b in _ASCII_UPPER]
+    return next((c for c in pool if c not in reserved), None)
 
 
 def _uptick_duplicate_rubric_codes(criteria: list, artifact_key: str) -> list:
-    """Re-letter later duplicate codes in one rubric list; first occurrence keeps its code (AST-2008).
-    Pure: returns a new list; a re-lettered item is a shallow copy (inputs may be EMBEDDED_* refs)."""
-    # Every original code is reserved up front so a re-letter never takes a later item's own code.
+    """Make every code a decodable two-letter code (fill blank/invalid from the label), then re-letter later
+    duplicates; first occurrence keeps its code (AST-2008, AST-2126).
+    Pure: returns a new list; a changed item is a shallow copy (inputs may be EMBEDDED_* refs)."""
+    # Every valid original code is reserved up front so a fill/re-letter never takes a later item's own code.
     reserved = {
         str(c.get("code") or "").strip().upper()
         for c in criteria
-        if isinstance(c, dict) and str(c.get("code") or "").strip()
+        if isinstance(c, dict) and _RUBRIC_CODE_RE.match(str(c.get("code") or "").strip().upper())
     }
     seen: set = set()
     out: list = []
     for item in criteria:
-        code = str(item.get("code") or "").strip() if isinstance(item, dict) else ""
-        # Non-dict / blank code: not a duplicate concern (sync assigns V{idx}).
-        if not code or code.upper() not in seen:
-            seen.add(code.upper())
+        # Non-dict: sync raises on it — pass through untouched.
+        if not isinstance(item, dict):
             out.append(item)
+            continue
+        code = str(item.get("code") or "").strip().upper()
+        if not _RUBRIC_CODE_RE.match(code):
+            # Blank / V01-style / wrong length: the model would echo a code _GRADE_SEG can never match.
+            label = (item.get("label") or "").strip()
+            new_code = _derive_rubric_code(label, reserved)
+            if new_code is None:
+                raise ValueError(f"Rubric {artifact_key!r}: no free two-letter code for {label!r}")
+            reserved.add(new_code)
+            seen.add(new_code)
+            logger.warning("Rubric %r: invalid code %r on %r -> %s", artifact_key, item.get("code"), label, new_code)
+            out.append({**item, "code": new_code})
+            continue
+        if code not in seen:
+            seen.add(code)
+            # Store the normalized form (e.g. " tp" -> "TP"); untouched when already exact.
+            out.append(item if item.get("code") == code else {**item, "code": code})
             continue
         label = (item.get("label") or code).strip()
         new_code = next(
@@ -1556,6 +1595,40 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     if owner_task_key in ("evaluate_jd", "evaluate_meteorite"):
         return _merge_embedded_evaluate_jd_criteria(criteria)
     return criteria
+
+
+def rubric_dispatch_error(candidate_id: Optional[str], task_key: str) -> Optional[str]:
+    """User-facing reason a rubric-backed task can't Auto/Run: duplicate codes, invalid codes, or empty rubric
+    (AST-2091, AST-2126). None when the rubric is fine, the task isn't rubric-backed, or there's no candidate
+    (key gate owns that). Pure read."""
+    # TASK_CONFIG.rubric_artifact, not rubric_owner_task_key(): craft_* tasks must stay runnable on an empty rubric.
+    rk = (TASK_CONFIG.get((task_key or "").strip()) or {}).get("rubric_artifact")
+    owner = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(rk) if rk else None
+    cid = str(candidate_id or "").strip()
+    if not owner or not cid:
+        return None
+    # Same list consult grades with (embedded QC/GC/RC merges included).
+    criteria = rubric_criteria_for_task(cid, owner)
+    if not criteria:
+        return f"Rubric '{rk}' is empty for this candidate."
+    # Strict on the stored value: the prompt shows it as-is, and _GRADE_SEG never matches a V01 / lowercase echo.
+    bad = sorted({
+        str(c.get("code") or "").strip() or "(blank)"
+        for c in criteria
+        if isinstance(c, dict) and not _RUBRIC_CODE_RE.match(str(c.get("code") or "").strip())
+    })
+    if bad:
+        return f"Rubric '{rk}' has invalid vector codes: {', '.join(bad)} — re-save the rubric"
+    # strip().upper() matches _vector_labels_map.
+    counts: Dict[str, int] = {}
+    for c in criteria:
+        code = str(c.get("code") or "").strip().upper() if isinstance(c, dict) else ""
+        if code:
+            counts[code] = counts.get(code, 0) + 1
+    dupes = sorted(code for code, n in counts.items() if n > 1)
+    if dupes:
+        return f"Rubric '{rk}' has duplicate vector codes: {', '.join(dupes)}"
+    return None
 
 
 def rubric_criteria_for_token(candidate_id: str, owner_task_key: str) -> list:
@@ -2960,6 +3033,75 @@ def enabled_resume_structure_sections(resolved: dict) -> list:
     return enabled
 
 
+def resume_structure_editor_payload(resolved: dict) -> dict:
+    """Structure-editor payload for a resolved structure (AST-2081): sections, all_sections, accent_color, catalog.
+
+    Shared by the candidate and job resume_structure GETs. Format labels/descriptions/fonts and flow
+    labels come from config only — the frontend never hardcodes them.
+    """
+    accent = resolved.get("accent_color")
+    if not isinstance(accent, str):
+        accent = None
+    required = set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
+    contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+    all_sections = []
+    sections_map = resolved.get("sections") if isinstance(resolved.get("sections"), dict) else {}
+    for sid, spec in sorted(
+        sections_map.items(),
+        key=lambda kv: (
+            kv[1].get("order", 0) if isinstance(kv[1], dict) and isinstance(kv[1].get("order"), int) else 0,
+            kv[0],
+        ),
+    ):
+        if not isinstance(spec, dict):
+            continue
+        all_sections.append({
+            "id": sid,
+            "title": spec.get("title") or "",
+            "enabled": bool(spec.get("enabled")),
+            "order": spec.get("order") if isinstance(spec.get("order"), int) else 0,
+            "format": spec.get("format") if isinstance(spec.get("format"), str) else None,
+            "job_agent_editable": bool(spec.get("job_agent_editable")),
+            "required": sid in required,
+            "format_locked": sid == "experience" or sid in contact,
+            "page_break_policy": (
+                spec["page_break_policy"]
+                if isinstance(spec.get("page_break_policy"), str)
+                and spec["page_break_policy"] in RESUME_STRUCTURE_PAGE_BREAK_POLICIES
+                else RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+            ),
+        })
+    fonts = BUILD_CONFIG["default_style"]["fonts"]
+    catalog = {
+        "body_formats": list(RESUME_STRUCTURE_BODY_FORMATS),
+        "required_ids": list(RESUME_STRUCTURE_REQUIRED_SECTION_IDS),
+        "contact_ids": list(RESUME_STRUCTURE_CONTACT_SECTION_IDS),
+        "extra_id_pattern": RESUME_STRUCTURE_EXTRA_ID_PATTERN,
+        "reserved_extra_ids": list(RESUME_STRUCTURE_RESERVED_EXTRA_IDS),
+        "new_extra_default_format": RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+        "page_break_policies": list(RESUME_STRUCTURE_PAGE_BREAK_POLICIES),
+        "page_break_policy_labels": dict(RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS),
+        "page_break_policy_default": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+        "page_break_policy_defaults": dict(RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID),
+        # AST-2081: per-format label / tooltip / preview font (CSS font-family string), id-keyed.
+        "body_format_details": {
+            fmt: {
+                "label": d["label"],
+                "description": d["description"],
+                "font_family": fonts[d["font_stack"]],
+            }
+            for fmt, d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.items()
+        },
+        "hidden_flow_label": RESUME_STRUCTURE_HIDDEN_FLOW_LABEL,
+    }
+    return {
+        "sections": enabled_resume_structure_sections(resolved),
+        "all_sections": all_sections,
+        "accent_color": accent,
+        "catalog": catalog,
+    }
+
+
 def filter_base_resume_to_structure(content: dict, section_ids: set) -> dict:
     """Keep only section-id keys; drop accent_color and other non-section keys."""
     if not isinstance(content, dict):
@@ -3757,15 +3899,14 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
     raise ValueError(f"unsupported craft task_key for dispatch persist: {task_key!r}")
 
 
-def _requested_stage_failure_target(primary_state: str, current_state: str) -> str:
-    """Primary → retry_state; already on retry (or other) → error_state."""
+def _requested_stage_failure_target(primary_state: str, current_state: str, task_key: str) -> str:
+    """Primary → retry_state; already on retry → the failing hop's ERROR_<HOP>."""
     # Retry-only dispatch rows pass {base}_RETRY; resolve to the base, then compare against it
-    # so a failure while on retry lands on error_state, never back into retry (AST-642).
+    # so a failure while on retry lands on the hop's error_state, never back into retry (AST-642).
     primary = registered_base(CANDIDATE_STATES, primary_state) or primary_state
-    cfg = CANDIDATE_STATES[primary]
     if current_state == primary:
-        return cfg["retry_state"]
-    return cfg["error_state"]
+        return CANDIDATE_STATES[primary]["retry_state"]
+    return TASK_CONFIG[task_key]["error_state"]
 
 
 async def run_requested_artifacts_dispatch(
@@ -3807,8 +3948,8 @@ async def run_requested_artifacts_dispatch(
             debug=debug,
         )
         if response and response.get("empty_tokens") and is_registered_state(CANDIDATE_STATES, bare_trigger):
-            # AST-2000: data defect — stage error_state from trigger / hop label / _RETRY, never retry.
-            err_state = CANDIDATE_STATES[registered_base(CANDIDATE_STATES, bare_trigger) or bare_trigger]["error_state"]
+            # AST-2000: data defect — the failing hop's own error_state, never retry.
+            err_state = TASK_CONFIG[(response.get("empty_token_task") or start_key)]["error_state"]
             logger.debug("empty_tokens route candidate_id=%s dest=%s", candidate_id, err_state)
             try:
                 transition_candidate_state(candidate_id, err_state)
@@ -3840,7 +3981,8 @@ async def run_requested_artifacts_dispatch(
         if not is_registered_state(CANDIDATE_STATES, bare_trigger):
             logger.warning(msg, candidate_id, e)
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-        target = _requested_stage_failure_target(bare_trigger, current)
+        # A held hop label returned above, so the failure is on the entry hop (start_key).
+        target = _requested_stage_failure_target(bare_trigger, current, start_key)
         # AST-1839: retry holding → WARNING, uncounted; error_state (out of the holding) → ERROR, counted.
         (logger.warning if retry_base(target) else logger.error)(msg + " -> %s", candidate_id, e, target)
         try:

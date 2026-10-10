@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+Stage `REQUESTED_*_ERROR` retired: failures name the craft hop — `_requested_stage_failure_target(primary, current, task_key)` → `ERROR_<HOP>` off the holding (**`TestAst1808RetryResolvesViaBase`**); empty-token → the failing hop's (entry hop when `empty_token_task` is absent) (**`TestAst2006RequestedArtifactsEmptyTokens`**). Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-517 · AST-518 · AST-519 · AST-477
 
 **`artifacts.resume_structure`** holds the candidate-owned section catalog (id, title, enabled, order, **`job_agent_editable`**); **`artifacts.base_resume`** holds string content keyed by enabled section ids. **`craft_resume_base`** response schema requires **`resume_structure`**; **`parse_candidate_resume`** persists both blobs. Legacy global **`base_resume_structure`** and **`base_resume.accent_color`** are read shims only. **AST-518** drives **`builder.py`** body emission and **`tracker.py`** job **`resume_content`** filtering to catalog subset + contact snapshot; cover letter stored as **`Subject`** / **`Letter`** with legacy **`re_line`** / **`body`** read shims. **AST-519** exposes **`GET …/resume_structure`**, filters **`base_resume`** keys on PUT, and drives **Base Resume Content** tabs + accent from per-candidate structure (not global shapes).
@@ -1775,7 +1779,7 @@ Board REVISE: no save-time duplicate rubric-code guard. Product fix lands on AST
 | Revised (was AST-1513 raise) — duplicate codes no longer raise on save (Repro 1) | `normalize_rubric_artifacts_on_save` | `TestAst2008RubricCodeUptick::test_normalize_accepts_duplicate_do_rubric_codes` |
 | New — later duplicate re-lettered `TP`→`TX` + one WARNING (artifact key, code, new code) | `_uptick_duplicate_rubric_codes` | `…::test_uptick_reletters_later_duplicate_and_logs` |
 | New — reserved originals: `TP,TP,TX` → `TP,TY,TX` (Repro 2) | `_uptick_duplicate_rubric_codes` | `…::test_uptick_never_takes_a_later_original_code` |
-| New — pure: new list, shallow copy for re-lettered item, input untouched; non-dict + blank code pass through | `_uptick_duplicate_rubric_codes` | `…::test_uptick_is_pure_and_passes_non_dict_and_blank_codes` |
+| New — pure: new list, shallow copy for re-lettered item, input untouched; non-dict passes through; blank code **filled** from the label (**AST-2126**, rewritten in AST-2127 — was "blank code passes through") | `_uptick_duplicate_rubric_codes` | `…::test_uptick_is_pure_passes_non_dict_and_fills_blank_codes` |
 | New — Decision C: all 26 candidates reserved → kept + WARNING, never raises | `_uptick_duplicate_rubric_codes` | `…::test_uptick_exhausted_keeps_duplicate_and_warns` |
 | New — shared save path upticks before sync (UI + craft) | `apply_rubric_vectors_save` | `…::test_apply_save_upticks_before_sync` |
 | New — uptick after QC/GC merge; embedded codes untouched (AST-1085 holds) | `apply_rubric_vectors_save` | `…::test_apply_save_upticks_after_embedded_merge` |
@@ -2416,7 +2420,7 @@ Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (l
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Trigger / `_RETRY` / mid-chain hop label → `REQUESTED_ARTIFACTS_ERROR`; resume stage → `REQUESTED_RESUME_ERROR` | `run_requested_artifacts_dispatch` | **`TestAst2006RequestedArtifactsEmptyTokens::test_goes_straight_to_stage_error_state`** (4 params) |
+| **AST-2086:** trigger / `_RETRY` → entry hop `ERROR_CRAFT_GET_RUBRIC`; mid-chain → the failing hop's `ERROR_<HOP>`; no `empty_token_task` → entry hop's (stage `REQUESTED_*_ERROR` retired) | `run_requested_artifacts_dispatch` | **`TestAst2006RequestedArtifactsEmptyTokens::test_goes_straight_to_hop_error_state`** (4 params) |
 | `ValueError` on the error edge → one `skipped error_state …` WARNING, `total_errors == 1`, no raise | same | **`…::test_invalid_edge_warns_and_still_counts_error`** |
 
 **Broken / obsolete:** none. (`retry_holding` param is green on dev too — `_RETRY` → `error_state` was already the second-strike route.)
@@ -2455,3 +2459,31 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 ```
 
 **Pass criterion:** 29 passed on lines 1–4. Narrowed run, not the zero-arg harness / branch-lock gate. AC5 `created_at` is whole-second, so order is asserted via `rowid` (list order), not a strict `>`.
+
+### AST-2081 · AST-2046 (shared structure-editor payload)
+
+New public `resume_structure_editor_payload(resolved)`. It was lifted out of the candidate resume_structure GET and is shared with the new job GET. Rows and coercions are unchanged. `catalog` gains `body_format_details` (`{fmt: {label, description, font_family}}`, where `font_family` is the resolved `BUILD_CONFIG["default_style"]["fonts"]` stack) and `hidden_flow_label`.
+
+**New:** **`TestAst2081ResumeStructureEditorPayload`** (3: row coercions incl. non-dict spec skip / non-int order / non-str format / invalid page-break → default; catalog superset + format details; non-dict `sections`). New lines are fully branch-covered for `LOCKED_AT_100`. Manifest: [`tracker.md`](tracker.md) § AST-2081.
+
+### AST-2091 · AST-2013 (`rubric_dispatch_error` — dispatch gate reason)
+
+**New:** `TestAst2091RubricDispatchError` — duplicate codes (`strip().upper()`, sorted, non-dict criteria skipped; since **AST-2126** blank / lowercase / `V01` codes return the invalid-codes reason first — see § AST-2127) → `Rubric '<artifact>' has duplicate vector codes: …`; empty → `… is empty for this candidate.`; alias owner resolution (`meteorite_grade_do` → `grade_do`, `meteorite_like` → `grade_like`); craft / non-rubric / unknown task and blank candidate → `None` without a rubric read. Red pre-fix (helper missing). Collects on the sub; fails collection on the `tests` tip until AST-2081 config reaches `origin/dev`. Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** § AST-2091.
+
+### AST-2127 · AST-2112 (bug-repro — AST-2126 rubric codes always `[A-Z]{2}`)
+
+`_uptick_duplicate_rubric_codes` now fills blank / invalid codes from the label (`_derive_rubric_code`: two word initials, else first two letters of one word, else none → first free `AA…ZZ`; derived collision → `base[0]` + uptick letter; one WARNING per fill; every `AA–ZZ` reserved → `ValueError`), normalises ` tp` → `TP` in a copy, then re-letters duplicates (AST-2008 unchanged). `rubric_dispatch_error` returns `Rubric '<rk>' has invalid vector codes: … — re-save the rubric` (strict on the stored value, sorted, blank as `(blank)`) before the duplicate check. Primary manifest: **`core/consult.md`** § AST-2127.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Plan probe `['', 'V02', ' tp', 'TP']` → `['HO', 'ST', 'TP', 'TX']`; normalised copy | `_uptick_duplicate_rubric_codes` | **`TestAst2126RubricCodeFill::test_plan_probe_codes`** |
+| Label base: `Leadership`→`LE`; `123` / `""` / `Q` → `AA` | `_derive_rubric_code` | **`…::test_label_base`** (4) |
+| Two `Hands On` blanks → `HO`, `HX` + two `invalid code … -> XX` WARNINGs | same | **`…::test_derived_collision_upticks_and_warns`** |
+| Later valid original `HO` reserved → blank takes `HX` | same | **`…::test_derived_skips_reserved_original`** |
+| All 676 codes reserved → `ValueError: … no free two-letter code for 'Late'` | same | **`…::test_no_free_code_raises`** |
+| Blank code filled (rewritten) | `_uptick_duplicate_rubric_codes` | **`TestAst2008RubricCodeUptick::test_uptick_is_pure_passes_non_dict_and_fills_blank_codes`** |
+| Valid duplicates (`" TP"`, `TP`, `SA`, `"SA "`) → duplicate reason (split from old test) | `rubric_dispatch_error` | **`TestAst2091RubricDispatchError::test_duplicates_strip_and_sorted`** |
+| ` tp` / `sa` / blank → `invalid vector codes: (blank), sa, tp` wins over duplicates (split from old test) | same | **`…::test_invalid_codes_win_over_duplicates`** |
+| `[V01, AB]` via `meteorite_grade_do` → `invalid vector codes: V01` | same | **`…::test_v01_code_is_invalid`** |
+
+**Broken / obsolete (rewritten, not annotated):** `TestAst2008RubricCodeUptick::test_uptick_is_pure_and_passes_non_dict_and_blank_codes` → `…_fills_blank_codes`; `TestAst2091RubricDispatchError::test_duplicates_case_insensitive_sorted_and_blank_codes_ignored` → split into the two rows above. AST-2091 empty / craft / alias / blank-candidate guards unchanged.

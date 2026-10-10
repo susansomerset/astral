@@ -178,7 +178,7 @@ describe("recommendedJobReport — AST-951 Artifacts helpers", () => {
   it("isArtifactsBuildInProgress covers base and hop, not ERROR", () => {
     expect(isArtifactsBuildInProgress("BUILD_ARTIFACTS")).toBe(true)
     expect(isArtifactsBuildInProgress("BUILD_ARTIFACTS.draft_job_resume")).toBe(true)
-    expect(isArtifactsBuildInProgress("ERROR_BUILD_ARTIFACTS")).toBe(false)
+    expect(isArtifactsBuildInProgress("ERROR_ANTICIPATE_SCAN")).toBe(false)
     expect(isArtifactsBuildInProgress("RECOMMENDED")).toBe(false)
   })
 

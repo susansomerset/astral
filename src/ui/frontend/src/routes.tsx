@@ -54,6 +54,7 @@ import CandidateSurfer from "./pages/CandidateSurfer"
 import ScheduledActions from "./pages/AdminScheduledActions"
 import PerformanceMonitor from "./pages/AdminPerformanceMonitor"
 import AgentTimesheets from "./pages/AdminAgentTimesheets"
+import TaskPerformance from "./pages/AdminTaskPerformance"
 import VectorFeedback from "./pages/AdminVectorFeedback"
 import CostReconciliation from "./pages/AdminCostReconciliation"
 import ManageCandidates from "./pages/AdminManageCandidates"
@@ -67,8 +68,6 @@ import SessionResumePaste from "./pages/AdminSessionResumePaste"
 import SessionCoverLetter from "./pages/AdminSessionCoverLetter"
 import AdminManageEmail from "./pages/AdminManageEmail"
 import AdminManageSlack from "./pages/AdminManageSlack"
-import AdminThemeExamples from "./pages/AdminThemeExamples"
-
 const routes: RouteObject[] = [
   { path: "authenticate", element: <Authenticate /> },
   {
@@ -132,6 +131,7 @@ const routes: RouteObject[] = [
           { path: "admin/scheduled_actions", element: <AdminRoute><ScheduledActions /></AdminRoute> },
           { path: "admin/performance_monitor", element: <AdminRoute><PerformanceMonitor /></AdminRoute> },
           { path: "admin/agent_timesheets", element: <AdminRoute><AgentTimesheets /></AdminRoute> },
+          { path: "admin/task_performance", element: <AdminRoute><TaskPerformance /></AdminRoute> },
           { path: "admin/vector_feedback", element: <AdminRoute><VectorFeedback /></AdminRoute> },
           { path: "admin/cost_reconciliation", element: <AdminRoute><CostReconciliation /></AdminRoute> },
           { path: "admin/manage_candidates", element: <AdminRoute><ManageCandidates /></AdminRoute> },
@@ -145,8 +145,6 @@ const routes: RouteObject[] = [
           { path: "admin/session_cover_letter", element: <AdminRoute><SessionCoverLetter /></AdminRoute> },
           { path: "admin/manage_email", element: <AdminRoute><AdminManageEmail /></AdminRoute> },
           { path: "admin/manage_slack", element: <AdminRoute><AdminManageSlack /></AdminRoute> },
-          { path: "admin/theme_examples", element: <AdminRoute><AdminThemeExamples /></AdminRoute> },
-
           // Catch-all
           { path: "*", element: <JobsHomeRedirect /> },
         ],

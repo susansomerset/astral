@@ -800,3 +800,41 @@ New `candidate_skip_job`: not found → ValueError; illegal (e.g. `CANDIDATE_APP
 `save_job_artifact` identical-to-current no-op: when the prepared body equals the current row's body, it returns the existing uuid and adds no row (AC7). New `list_job_artifact_versions` / `set_job_artifact_current` (job catalog keys only; candidate keys raise `not job-scoped`).
 
 **New:** **`TestAst2066JobVersions`** (6, real SQLite; new lines fully branch-covered for `LOCKED_AT_100`). Existing cover-letter `save_job_artifact` tests stub only `save_artifact`, so the no-op lookup reads the harness DB; the fake job ids never match, and they stay green. Manifest: [`candidate.md`](candidate.md) § AST-2066 item 4.
+
+### AST-2081 · AST-2046 (job resume structure, Line format, format/flow catalog)
+
+**Publish:** `origin/sub/AST-2046/AST-2081-job-structure-line-format`. Backend only. New catalog key `job.artifacts.job_resume_structure`. `get_job_effective_resume_structure(jid, cd=None, *, hydrate_from_base=False)` returns the job's current row when it has non-empty `sections`, else the candidate's resolved structure (hydrated from `base_resume` only on the editor GET path). The read never writes. `save_job_artifact` merges the structure body over the job's effective structure, slugs the sections, normalizes, and raises `ValueError` on an invalid body. `_prepare_job_resume_content(content, cd, jid=None)` filters to the job's effective structure, so job-only sections survive a `job_resume` save.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC16 inherit until edited; GET writes no row; blank jid / non-dict artifacts / empty-sections row fall back | `src/core/tracker.py` | **`TestAst2081JobResumeStructure::test_inherits_candidate_until_edited_and_get_never_writes`**, **`…::test_blank_jid_and_non_dict_artifacts_fallbacks`**, **`…::test_own_row_with_empty_sections_falls_back`** |
+| AC15 + AC18 isolation (rename / format → line / reorder / accent on job A; job B and candidate untouched); partial bodies merge | same | **`…::test_save_isolates_job_structure`**, **`…::test_save_partial_bodies_merge_over_effective`** |
+| Invalid body → `ValueError`, no row | same | **`…::test_save_rejects_invalid`** (3) |
+| AC17 job-only section survives the `job_resume` save (job B, inheriting, drops it) | same | **`…::test_job_only_section_survives_job_resume_save`** |
+
+Real SQLite (`sqlite_in_memory`). Only `_candidate_id_for_job` / `_candidate_data_for_job` are stubbed. New lines are fully branch-covered for `LOCKED_AT_100`. Sibling pages: [`builder.md`](builder.md), [`candidate.md`](candidate.md), [`../ui/api/api_jobs.md`](../ui/api/api_jobs.md), [`../ui/api/api_candidate.md`](../ui/api/api_candidate.md), [`../utils/config.md`](../utils/config.md) § AST-2081.
+
+**Broken / obsolete (revised this pass):** the plan's two known config drifts. `test_config.py::TestAst1303ResumeStructureCatalog::test_body_formats_defaults_emphasis_and_extra_id_rules` gains `line`. `…::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys` gains `job.artifacts.job_resume_structure`. A full `tests/component` diff against the `origin/dev` product found no other new failures. No integration scenario touches resume structure.
+
+**Manifest (test-child) — narrowed:**
+
+1. AST-2081 nodes, 42 tests (4 config + 2 revised config + 3 candidate + 9 tracker + 5 builder + 13 job routes + 6 candidate GET class):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2081FormatCatalogAndJobStructureKey \
+  tests/component/utils/test_config.py::TestAst1303ResumeStructureCatalog::test_body_formats_defaults_emphasis_and_extra_id_rules \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/core/test_candidate.py::TestAst2081ResumeStructureEditorPayload \
+  tests/component/core/test_tracker.py::TestAst2081JobResumeStructure \
+  tests/component/core/test_builder.py::TestAst2081LineFormatAndJobStructure \
+  tests/component/ui/api/test_api_jobs.py::TestAst2081JobResumeStructureRoutes \
+  tests/component/ui/api/test_api_candidate.py::TestAst1306ResumeStructureAuthorApi \
+  -q
+```
+
+2. Regression: `tests/component/core/test_builder.py` must be fully green (197 passed). The other five files have to match the `origin/dev`-product baseline failure counts, which predate this ticket: `test_candidate.py` 18, `test_tracker.py` 17, `test_api_candidate.py` 2, `test_api_jobs.py` 2, `test_config.py` 31. AST-2081 must add **no** new failure.
+
+3. AC14 grep (frontend half): this is **AST-2083 / AST-2084**. The data half is covered by item 1 (config + catalog payload).
+
+**Pass criterion:** item 1 is 42 passed, and item 2 holds. This is a narrowed run, not the zero-arg harness / branch-lock gate.

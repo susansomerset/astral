@@ -28,7 +28,6 @@
  * 13. Execution History
  * 14. Shared button roles
  * 15. Icon control
- * 16. Theme Examples (AST-2042)
  */
 
 
@@ -46,9 +45,9 @@
   --text-primary: #e8e4f0;
   --text-secondary: #9a8fb8;
   --text-muted: #6b6280;
-  --accent-gold: #d4a843;
-  --accent-gold-hover: #e0b854;
-  --heading: var(--accent-gold);
+  --accent-contrast: #d4a843;
+  --accent-contrast-hover: #e0b854;
+  --heading: var(--accent-contrast);
   --cta-green: #28a745;
   --cta-green-hover: #2ebd4e;
   --danger: #dc3545;
@@ -60,15 +59,54 @@
   --grade-d: #dc3545;
   --grade-f: #8b0000;
   --grade-x: #a78bfa;
+  /* AST-2123: grade base settings — ring colour + compact ring width (Dark: width 0, no ring; colour = fill) */
+  --grade-a-ring: #28a745;
+  --grade-b-ring: #ffc107;
+  --grade-c-ring: #fd7e14;
+  --grade-d-ring: #dc3545;
+  --grade-f-ring: #8b0000;
+  --grade-x-ring: #a78bfa;
+  --grade-a-ring-width: 0;
+  --grade-b-ring-width: 0;
+  --grade-c-ring-width: 0;
+  --grade-d-ring-width: 0;
+  --grade-f-ring-width: 0;
+  --grade-x-ring-width: 0;
+  /* AST-2123: lettered settings — a lettered dot takes its grade base and adds these */
+  --grade-a-ink: #1a1424;
+  --grade-b-ink: #1a1424;
+  --grade-c-ink: #1a1424;
+  --grade-d-ink: #1a1424;
+  --grade-f-ink: #e8e4f0;
+  --grade-x-ink: #1a1424;
+  --grade-a-letter-size: 12px;
+  --grade-b-letter-size: 12px;
+  --grade-c-letter-size: 12px;
+  --grade-d-letter-size: 12px;
+  --grade-f-letter-size: 12px;
+  --grade-x-letter-size: 12px;
+  --grade-a-letter-weight: 700;
+  --grade-b-letter-weight: 700;
+  --grade-c-letter-weight: 700;
+  --grade-d-letter-weight: 700;
+  --grade-f-letter-weight: 700;
+  --grade-x-letter-weight: 700;
+  --grade-a-ring-width-lettered: 0;
+  --grade-b-ring-width-lettered: 0;
+  --grade-c-ring-width-lettered: 0;
+  --grade-d-ring-width-lettered: 0;
+  --grade-f-ring-width-lettered: 0;
+  --grade-x-ring-width-lettered: 0;
   /* Confidence bullets (AST-357) — map to nav link colors; tune without changing global palette */
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
+  --confidence-bullet-inactive-opacity: 0.55;
+  --confidence-bullet-size: 4px;
+  --confidence-bullet-gap: 3px;
   /* AST-2042: semantic tokens for former literals / undefined refs (values = the literals they replaced) */
   --nav-group-label: #f0d690;
-  --accent-gold-dim: rgba(212, 168, 67, 0.15);
+  --accent-contrast-dim: rgba(212, 168, 67, 0.15);
   --paper-bg: #ffffff;
-  --text-on-grade: #1a1424;
-  --text-on-grade-f: #e8e4f0;
   --text-on-color: #ffffff;
   --status-interrupted-bg: #7a5c1e;
   --status-interrupted-text: #f5d98b;
@@ -82,8 +120,7 @@
   --error: #f87171;
 }
 
-/* AST-2042: Light palettes. "light" is what the profile's Light applies; the other two are
-   examples-only alternates shown on Tools -> Theme Examples (UI_CONFIG themes). */
+/* AST-2042: Light palette — what the profile's Light applies (UI_CONFIG themes). */
 [data-theme="light"] {
   --bg-deep: #f5f3fa;
   --bg-card: #ffffff;
@@ -93,26 +130,65 @@
   --text-primary: #1f1830;
   --text-secondary: #5a5070;
   --text-muted: #857b99;
-  --accent-gold: #9a7314;
-  --accent-gold-hover: #b0851c;
-  --heading: #241b33;
+  --accent-contrast: #241b33;
+  --accent-contrast-hover: #2c1b47;
+  --heading: var(--accent-contrast);
   --cta-green: #1e7e34;
   --cta-green-hover: #23913c;
   --danger: #c82333;
   --danger-hover: #a71d2a;
-  --grade-a: #1e7b34;
-  --grade-b: #a06500;
-  --grade-c: #c05621;
-  --grade-d: #c53030;
-  --grade-f: #742a2a;
-  --grade-x: #6b46c1;
+  /* AST-2123: Bright + ring — grade base settings: fill, ring colour, compact ring width */
+  --grade-a: #2f9e44;
+  --grade-b: #f5b700;
+  --grade-c: #f76707;
+  --grade-d: #c92a3a;
+  --grade-f: #5c1414;
+  --grade-x: #7048e8;
+  --grade-a-ring: #006200;
+  --grade-b-ring: #b57700;
+  --grade-c-ring: #b41400;
+  --grade-d-ring: #850000;
+  --grade-f-ring: #210000;
+  --grade-x-ring: #4100a8;
+  --grade-a-ring-width: 1.5px;
+  --grade-b-ring-width: 1.5px;
+  --grade-c-ring-width: 1.5px;
+  --grade-d-ring-width: 1.5px;
+  --grade-f-ring-width: 1.5px;
+  --grade-x-ring-width: 1.5px;
+  /* AST-2123: lettered settings — a lettered dot takes its grade base and adds these */
+  --grade-a-ink: #ffffff;
+  --grade-b-ink: #2b2000;
+  --grade-c-ink: #1f0d00;
+  --grade-d-ink: #ffffff;
+  --grade-f-ink: #ffffff;
+  --grade-x-ink: #ffffff;
+  --grade-a-letter-size: 12px;
+  --grade-b-letter-size: 12px;
+  --grade-c-letter-size: 12px;
+  --grade-d-letter-size: 12px;
+  --grade-f-letter-size: 12px;
+  --grade-x-letter-size: 12px;
+  --grade-a-letter-weight: 700;
+  --grade-b-letter-weight: 700;
+  --grade-c-letter-weight: 700;
+  --grade-d-letter-weight: 700;
+  --grade-f-letter-weight: 700;
+  --grade-x-letter-weight: 700;
+  --grade-a-ring-width-lettered: 2px;
+  --grade-b-ring-width-lettered: 2px;
+  --grade-c-ring-width-lettered: 2px;
+  --grade-d-ring-width-lettered: 2px;
+  --grade-f-ring-width-lettered: 2px;
+  --grade-x-ring-width-lettered: 2px;
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
-  --nav-group-label: #7a5a10;
-  --accent-gold-dim: rgba(154, 115, 20, 0.15);
+  --confidence-bullet-inactive-opacity: 0.55;
+  --confidence-bullet-size: 4px;
+  --confidence-bullet-gap: 3px;
+  --nav-group-label: var(--accent-contrast);
+  --accent-contrast-dim: rgba(36, 27, 51, 0.15);
   --paper-bg: #ffffff;
-  --text-on-grade: #ffffff;
-  --text-on-grade-f: #ffffff;
   --text-on-color: #ffffff;
   --status-interrupted-bg: #f3e3b5;
   --status-interrupted-text: #6b4e12;
@@ -124,90 +200,6 @@
   --success: #2e7d32;
   --warning: #b26a00;
   --error: #c62828;
-}
-
-[data-theme="light_parchment"] {
-  --bg-deep: #f6f0e4;
-  --bg-card: #fffbf2;
-  --bg-elevated: #efe6d4;
-  --border: #dccfb4;
-  --border-subtle: #e9dfca;
-  --text-primary: #2b2116;
-  --text-secondary: #6b5a43;
-  --text-muted: #94826a;
-  --accent-gold: #8a5a00;
-  --accent-gold-hover: #a06c08;
-  --heading: #241b33;
-  --cta-green: #2f7d32;
-  --cta-green-hover: #388e3c;
-  --danger: #b3261e;
-  --danger-hover: #921f18;
-  --grade-a: #1e7b34;
-  --grade-b: #a06500;
-  --grade-c: #c05621;
-  --grade-d: #c53030;
-  --grade-f: #742a2a;
-  --grade-x: #6b46c1;
-  --confidence-bullet-active: var(--text-secondary);
-  --confidence-bullet-inactive: var(--text-muted);
-  --nav-group-label: #7a4f00;
-  --accent-gold-dim: rgba(138, 90, 0, 0.15);
-  --paper-bg: #ffffff;
-  --text-on-grade: #ffffff;
-  --text-on-grade-f: #ffffff;
-  --text-on-color: #ffffff;
-  --status-interrupted-bg: #ecd9a8;
-  --status-interrupted-text: #5c3f06;
-  --danger-tint: rgba(179, 38, 30, 0.08);
-  --warning-tint: rgba(212, 155, 0, 0.12);
-  --tint-subtle: rgba(43, 33, 22, 0.03);
-  --tint-soft: rgba(43, 33, 22, 0.04);
-  --tint-medium: rgba(43, 33, 22, 0.06);
-  --success: #2e7d32;
-  --warning: #a35a00;
-  --error: #b3261e;
-}
-
-[data-theme="light_slate"] {
-  --bg-deep: #eef1f6;
-  --bg-card: #ffffff;
-  --bg-elevated: #e3e8f0;
-  --border: #c9d2df;
-  --border-subtle: #dde3ec;
-  --text-primary: #18202e;
-  --text-secondary: #4a5568;
-  --text-muted: #7a8699;
-  --accent-gold: #2b6cb0;
-  --accent-gold-hover: #3182ce;
-  --heading: #241b33;
-  --cta-green: #2f855a;
-  --cta-green-hover: #38a169;
-  --danger: #c53030;
-  --danger-hover: #9b2c2c;
-  --grade-a: #1e7b34;
-  --grade-b: #a06500;
-  --grade-c: #c05621;
-  --grade-d: #c53030;
-  --grade-f: #742a2a;
-  --grade-x: #6b46c1;
-  --confidence-bullet-active: var(--text-secondary);
-  --confidence-bullet-inactive: var(--text-muted);
-  --nav-group-label: #2c5282;
-  --accent-gold-dim: rgba(43, 108, 176, 0.15);
-  --paper-bg: #ffffff;
-  --text-on-grade: #ffffff;
-  --text-on-grade-f: #ffffff;
-  --text-on-color: #ffffff;
-  --status-interrupted-bg: #fbe7b5;
-  --status-interrupted-text: #744210;
-  --danger-tint: rgba(197, 48, 48, 0.08);
-  --warning-tint: rgba(214, 158, 46, 0.12);
-  --tint-subtle: rgba(24, 32, 46, 0.03);
-  --tint-soft: rgba(24, 32, 46, 0.04);
-  --tint-medium: rgba(24, 32, 46, 0.06);
-  --success: #2f855a;
-  --warning: #b7791f;
-  --error: #c53030;
 }
 
 /* === 2. Base / Reset === */
@@ -287,7 +279,7 @@ body {
 
 .sidebar-candidate-select select:focus {
   outline: none;
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 /* === 4d. Selected candidate state under picker (AST-1450) === */
@@ -351,7 +343,7 @@ body {
 .nav-hamburger span {
   display: block;
   height: 2px;
-  background: var(--accent-gold);
+  background: var(--accent-contrast);
   border-radius: 1px;
 }
 
@@ -430,7 +422,7 @@ body {
 
 .sidebar-candidate-menu-toggle:focus {
   outline: none;
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 .sidebar-candidate-menu-list {
@@ -462,7 +454,7 @@ body {
 }
 
 .sidebar-candidate-menu-item.is-selected {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   font-weight: 600;
 }
 
@@ -520,9 +512,9 @@ body {
 
 .nav-link.active {
   background: var(--bg-elevated);
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   font-weight: 600;
-  border-left-color: var(--accent-gold);
+  border-left-color: var(--accent-contrast);
 }
 
 .nav-link.disabled {
@@ -670,7 +662,7 @@ body {
 .perf-total-cost {
   font-size: 13px;
   font-weight: 600;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   opacity: 0.8;
 }
 
@@ -691,8 +683,8 @@ body {
 
 .list-page-search:focus {
   outline: none;
-  border-color: var(--accent-gold);
-  box-shadow: 0 0 0 2px var(--accent-gold-dim);
+  border-color: var(--accent-contrast);
+  box-shadow: 0 0 0 2px var(--accent-contrast-dim);
 }
 
 .list-page-bulk-bar {
@@ -757,7 +749,7 @@ body {
 }
 
 .list-page-table thead th .col-resize-handle:hover {
-  background: var(--accent-gold);
+  background: var(--accent-contrast);
   opacity: 0.4;
 }
 
@@ -772,7 +764,7 @@ body {
 }
 
 .list-page-table thead th.sortable:hover {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
 }
 
 .list-page-table tbody td {
@@ -828,7 +820,7 @@ body {
 .expand-toggle {
   background: none;
   border: none;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   cursor: pointer;
   font-size: 12px;
   margin-left: 4px;
@@ -994,7 +986,7 @@ body {
 }
 
 .recommended-report-title-link:hover {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   text-decoration: underline;
 }
 
@@ -1017,7 +1009,7 @@ body {
 }
 
 .recommended-report-company-link:hover {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   text-decoration: underline;
 }
 
@@ -1032,7 +1024,7 @@ body {
 }
 
 .recommended-report-job-link-text a:hover {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
 }
 
 .recommended-report-external-link {
@@ -1052,7 +1044,7 @@ body {
 
 .recommended-report-copy-feedback {
   font-size: 12px;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
 }
 
 .recommended-report-header-actions {
@@ -1286,7 +1278,7 @@ body {
 
 /* === 9b. Analysis Header & Grade Dots === */
 
-/* Grade dot badge — circular, colored background, dark centered letter */
+/* Grade dot badge — circular. Fill, ring and letter all come from the per-grade theme settings (AST-2123). */
 .grade-dot {
   display: inline-flex;
   align-items: center;
@@ -1294,18 +1286,61 @@ body {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-on-grade);
   flex-shrink: 0;
 }
 
-.dot-a { background: var(--grade-a); }
-.dot-b { background: var(--grade-b); }
-.dot-c { background: var(--grade-c); }
-.dot-d { background: var(--grade-d); }
-.dot-f { background: var(--grade-f); color: var(--text-on-grade-f); }
-.dot-x { background: var(--grade-x); }
+/* Lettered (default): grade base fill + ring colour, plus the grade's lettered settings.
+   Specificity 0,1,0 on purpose: the report-context .grade-dot rules (0,2,0) keep their 11px letter size. */
+.dot-a {
+  background: var(--grade-a);
+  color: var(--grade-a-ink);
+  font-size: var(--grade-a-letter-size);
+  font-weight: var(--grade-a-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-a-ring-width-lettered) var(--grade-a-ring);
+}
+.dot-b {
+  background: var(--grade-b);
+  color: var(--grade-b-ink);
+  font-size: var(--grade-b-letter-size);
+  font-weight: var(--grade-b-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-b-ring-width-lettered) var(--grade-b-ring);
+}
+.dot-c {
+  background: var(--grade-c);
+  color: var(--grade-c-ink);
+  font-size: var(--grade-c-letter-size);
+  font-weight: var(--grade-c-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-c-ring-width-lettered) var(--grade-c-ring);
+}
+.dot-d {
+  background: var(--grade-d);
+  color: var(--grade-d-ink);
+  font-size: var(--grade-d-letter-size);
+  font-weight: var(--grade-d-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-d-ring-width-lettered) var(--grade-d-ring);
+}
+.dot-f {
+  background: var(--grade-f);
+  color: var(--grade-f-ink);
+  font-size: var(--grade-f-letter-size);
+  font-weight: var(--grade-f-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-f-ring-width-lettered) var(--grade-f-ring);
+}
+.dot-x {
+  background: var(--grade-x);
+  color: var(--grade-x-ink);
+  font-size: var(--grade-x-letter-size);
+  font-weight: var(--grade-x-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-x-ring-width-lettered) var(--grade-x-ring);
+}
+
+/* Compact (letterless): same fill + ring colour, compact ring width */
+.grade-dot-letterless.dot-a { box-shadow: inset 0 0 0 var(--grade-a-ring-width) var(--grade-a-ring); }
+.grade-dot-letterless.dot-b { box-shadow: inset 0 0 0 var(--grade-b-ring-width) var(--grade-b-ring); }
+.grade-dot-letterless.dot-c { box-shadow: inset 0 0 0 var(--grade-c-ring-width) var(--grade-c-ring); }
+.grade-dot-letterless.dot-d { box-shadow: inset 0 0 0 var(--grade-d-ring-width) var(--grade-d-ring); }
+.grade-dot-letterless.dot-f { box-shadow: inset 0 0 0 var(--grade-f-ring-width) var(--grade-f-ring); }
+.grade-dot-letterless.dot-x { box-shadow: inset 0 0 0 var(--grade-x-ring-width) var(--grade-x-ring); }
 
 /* AST-1968: colour-only grade circle for Recommended list analysis lines */
 .grade-dot-letterless {
@@ -1350,17 +1385,17 @@ body {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: var(--confidence-bullet-gap);
   line-height: 1;
   min-height: 6px;
 }
 
 .confidence-bullet {
-  width: 4px;
-  height: 4px;
+  width: var(--confidence-bullet-size);
+  height: var(--confidence-bullet-size);
   border-radius: 50%;
   background: var(--confidence-bullet-inactive);
-  opacity: 0.55;
+  opacity: var(--confidence-bullet-inactive-opacity);
 }
 
 .confidence-bullet--on {
@@ -1382,7 +1417,7 @@ body {
 .analysis-rubric-link {
   background: none;
   border: none;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   font-size: 12px;
   cursor: pointer;
   padding: 0 0 0 36px;
@@ -1392,7 +1427,7 @@ body {
 }
 
 .analysis-rubric-link:hover {
-  color: var(--accent-gold-hover);
+  color: var(--accent-contrast-hover);
 }
 
 /* Job description and rubric text content */
@@ -1451,79 +1486,13 @@ body {
 }
 
 .base-resume-accent-swatch.selected {
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
   box-shadow: 0 0 0 1px var(--bg-elevated);
 }
 
 .base-resume-accent-swatch:focus-visible {
-  outline: 2px solid var(--accent-gold);
+  outline: 2px solid var(--accent-contrast);
   outline-offset: 2px;
-}
-
-.base-resume-structure-editor {
-  padding: 10px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
-}
-
-.base-resume-structure-editor-title {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-}
-
-.base-resume-structure-row,
-.base-resume-structure-add {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.base-resume-structure-row-id {
-  font-size: 12px;
-  color: var(--text-muted);
-  min-width: 8em;
-}
-
-.base-resume-structure-save {
-  margin-top: 4px;
-}
-
-.structure-authoring-header {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.structure-authoring-name {
-  flex: 1 1 auto;
-  min-width: 8rem;
-}
-
-.structure-authoring-style {
-  flex: 0 0 auto;
-  width: 9rem;
-  max-width: 12rem;
-}
-
-.structure-authoring-flag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-  white-space: nowrap;
-  font-weight: 400;
-  color: var(--text-muted);
 }
 
 .dep-header {
@@ -1561,7 +1530,7 @@ body {
   align-items: center;
   justify-content: center;
 }
-.sql-hist-btn:hover:not(:disabled) { border-color: var(--accent-gold); color: var(--accent-gold); }
+.sql-hist-btn:hover:not(:disabled) { border-color: var(--accent-contrast); color: var(--accent-contrast); }
 .sql-hist-btn:disabled { opacity: 0.3; cursor: default; }
 
 /* Read-only cost metrics strip shown when a model is selected */
@@ -1641,8 +1610,8 @@ body {
 
 .dep-input:focus {
   outline: none;
-  border-color: var(--accent-gold);
-  box-shadow: 0 0 0 2px var(--accent-gold-dim);
+  border-color: var(--accent-contrast);
+  box-shadow: 0 0 0 2px var(--accent-contrast-dim);
 }
 
 .dep-textarea {
@@ -1760,8 +1729,8 @@ body {
 }
 
 .tabbed-ta-tab.active {
-  color: var(--accent-gold);
-  border-bottom-color: var(--accent-gold);
+  color: var(--accent-contrast);
+  border-bottom-color: var(--accent-contrast);
 }
 
 .tabbed-ta-textarea {
@@ -1805,7 +1774,7 @@ body {
 
 .side-tab-item.active {
   background: var(--bg-elevated);
-  border-left: 3px solid var(--accent-gold);
+  border-left: 3px solid var(--accent-contrast);
   padding-left: 9px;
 }
 
@@ -1820,7 +1789,7 @@ body {
 }
 
 .side-tab-item.active .side-tab-label {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   font-weight: 600;
 }
 
@@ -1829,7 +1798,7 @@ body {
   font-family: inherit;
   background: var(--bg-deep);
   color: var(--text-primary);
-  border: 1px solid var(--accent-gold);
+  border: 1px solid var(--accent-contrast);
   border-radius: 3px;
   padding: 2px 6px;
   flex: 1;
@@ -1854,7 +1823,7 @@ body {
 }
 
 .side-tab-controls button:hover:not(:disabled) {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   background: var(--bg-deep);
 }
 
@@ -1868,7 +1837,7 @@ body {
   font-size: 13px;
   font-family: inherit;
   font-weight: 600;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   background: none;
   border: none;
   border-bottom: 1px solid var(--border-subtle);
@@ -1909,7 +1878,7 @@ input.side-tab-heading-editable:hover {
 }
 
 input.side-tab-heading-editable:focus {
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 .side-tab-textarea {
@@ -2008,7 +1977,6 @@ input.side-tab-heading-editable:focus {
 
 .experience-jobs-editor-role-label {
   font-size: 12px;
-  color: var(--text-muted);
 }
 
 .experience-jobs-editor-add {
@@ -2019,6 +1987,190 @@ input.side-tab-heading-editable:focus {
   margin: 0 0 8px;
   color: var(--danger);
   font-size: 13px;
+}
+
+/* === 10e2. Resume content editor (AST-2083) === */
+
+.resume-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.resume-editor-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.resume-editor-header .resume-editor-search {
+  flex: 1 1 10rem;
+  width: auto;
+  min-width: 8rem;
+}
+
+.resume-editor-rows {
+  padding: 8px 12px;
+}
+
+.resume-section-row {
+  margin-bottom: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.resume-section-row.is-expanded {
+  border-color: var(--border);
+}
+
+.resume-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 8px 4px 4px;
+  background: var(--bg-elevated);
+}
+
+.resume-section-header > button,
+.resume-section-header > span {
+  flex: 0 0 auto;
+}
+
+/* Section header text; experience job headers share it (AC: same computed color). */
+.resume-section-title {
+  color: var(--heading);
+}
+
+.resume-section-header > .resume-section-summary {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.resume-section-summary .resume-section-title {
+  font-weight: 600;
+}
+
+.resume-section-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.resume-section-drag {
+  color: var(--text-muted);
+  cursor: grab;
+  user-select: none;
+}
+
+.resume-section-icon,
+.resume-section-format {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.resume-section-format {
+  padding: 0 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+
+.resume-section-header .resume-section-label-input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 8rem;
+  font-weight: 600;
+}
+
+.resume-section-header .resume-section-select {
+  flex: 0 0 auto;
+  width: 10rem;
+}
+
+.resume-section-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.resume-section-body {
+  padding: 8px;
+  background: var(--bg-deep);
+}
+
+.resume-section-textarea {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.resume-section-compare {
+  margin: 8px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--border);
+  background: var(--bg-deep);
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
+.resume-section-new {
+  border-left-color: var(--accent-contrast);
+}
+
+.resume-section-removed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.resume-section-removed-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* PrintPreview thumbnail hook (AST-2082). */
+.print-preview-thumb {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--paper-bg);
+}
+
+.print-preview-thumb:hover {
+  border-color: var(--accent-contrast);
 }
 
 /* === 10f. Section expand chrome (AST-893) === */
@@ -2095,7 +2247,7 @@ input.side-tab-heading-editable:focus {
 .artifact-criterion-meta-row input[type="text"]:focus,
 .artifact-criterion-meta-row select:focus {
   outline: none;
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 .artifact-editor-add-criterion {
@@ -2193,7 +2345,7 @@ input.side-tab-heading-editable:focus {
 .admin-filters input:focus,
 .admin-filters select:focus {
   outline: none;
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 .timesheet-totals-bar {
@@ -2223,11 +2375,59 @@ input.side-tab-heading-editable:focus {
   position: sticky;
   bottom: 0;
   background: var(--bg-card);
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
   margin-bottom: 0;
   border-bottom: none;
   border-radius: 4px 4px 0 0;
 }
+
+/* === 12b. Task Performance (admin script page) === */
+
+.tp-wrap { max-height: calc(100vh - 230px); }
+.tp-table thead th { height: 30px; padding: 4px 8px; z-index: 3; top: 24px; }
+.tp-table thead tr.tp-band th { top: 0; height: 24px; padding: 2px 8px; background: var(--bg-deep); border-bottom: 1px solid var(--border); }
+.tp-band-th { cursor: pointer; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent-contrast); }
+.tp-band-th:hover { background: var(--bg-elevated); }
+.tp-table td { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tp-a-left { text-align: left; }
+.tp-a-center { text-align: center; }
+.tp-a-right { text-align: right; }
+.tp-table td.tp-f-text { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.tp-table .tp-label { position: sticky; left: 0; z-index: 1; min-width: 360px; max-width: 520px; }
+.tp-table thead th.tp-label { z-index: 5; background: var(--bg-elevated); }
+.tp-table thead tr.tp-band th.tp-label { background: var(--bg-deep); }
+/* Money: integer half right-aligned, fraction half left-aligned, so decimals line up. */
+.tp-money { display: inline-flex; }
+.tp-mi { display: inline-block; min-width: 4.5ch; text-align: right; }
+.tp-mf { display: inline-block; min-width: 7ch; text-align: left; }
+.tp-twisty { display: inline-block; width: 16px; cursor: pointer; color: var(--text-secondary); user-select: none; }
+.tp-click { cursor: pointer; }
+.tp-twisty-off { visibility: hidden; cursor: default; }
+/* Every row = opaque card base + level tint, so sticky cells never show what scrolls under them. */
+.tp-row td {
+  background:
+    linear-gradient(var(--tp-lvl, transparent), var(--tp-lvl, transparent)),
+    var(--bg-card);
+}
+.tp-total { --tp-lvl: hsla(330, 65%, 58%, 0.34); }
+.tp-group { --tp-lvl: hsla(275, 60%, 58%, 0.30); }
+.tp-task { --tp-lvl: hsla(215, 70%, 58%, 0.24); }
+.tp-version { --tp-lvl: hsla(170, 55%, 45%, 0.20); }
+.tp-candidate { --tp-lvl: hsla(40, 70%, 55%, 0.11); }
+.tp-total td, .tp-group td { font-weight: 700; }
+.tp-task td, .tp-version td { font-weight: 600; }
+.tp-total-row td { position: sticky; top: 54px; z-index: 3; border-bottom: 2px solid var(--border); }
+.tp-total-row td.tp-label { z-index: 5; }
+.tp-line td { color: var(--text-secondary); font-size: 12px; }
+/* Rows kept only because a descendant matches the Pass/Fail/Error/Runs filters. */
+.tp-ctx td { color: var(--text-secondary); font-weight: 400; }
+.tp-tri { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.tp-tri-row { display: flex; }
+.tp-tri-btn { padding: 5px 9px; border: 1px solid var(--border); background: var(--bg-deep); color: var(--text-primary); font-size: 12px; cursor: pointer; margin-left: -1px; }
+.tp-tri-btn:first-of-type { border-radius: 4px 0 0 4px; margin-left: 0; }
+.tp-tri-btn:last-of-type { border-radius: 0 4px 4px 0; }
+.tp-tri-btn.on { background: var(--accent-contrast); color: var(--bg-deep); border-color: var(--accent-contrast); }
+.tp-note { font-size: 12px; color: var(--text-secondary); align-self: center; }
 
 /* === 13. Execution History === */
 
@@ -2243,13 +2443,13 @@ input.side-tab-heading-editable:focus {
 
 .dispatch-status-ok { background: var(--cta-green); color: var(--text-on-color); }
 .dispatch-status-fail { background: var(--danger); color: var(--text-on-color); }
-.dispatch-status-running { background: var(--accent-gold); color: var(--bg-deep); }
+.dispatch-status-running { background: var(--accent-contrast); color: var(--bg-deep); }
 .dispatch-status-interrupted { background: var(--status-interrupted-bg); color: var(--status-interrupted-text); }
-.dispatch-status-warn { background: var(--accent-gold); color: var(--bg-deep); }
+.dispatch-status-warn { background: var(--accent-contrast); color: var(--bg-deep); }
 .dispatch-status-muted { background: var(--bg-card); color: var(--text-muted); }
 
 .dispatch-link {
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   text-decoration: none;
   font-size: 13px;
 }
@@ -2303,7 +2503,7 @@ input.side-tab-heading-editable:focus {
 
 .dispatch-log-level { font-weight: 600; }
 .dispatch-log-level-error { color: var(--danger); }
-.dispatch-log-level-warning { color: var(--accent-gold); }
+.dispatch-log-level-warning { color: var(--accent-contrast); }
 .dispatch-log-level-info { color: var(--text-secondary); }
 .dispatch-log-level-debug { color: var(--text-muted); }
 
@@ -2323,7 +2523,7 @@ input.side-tab-heading-editable:focus {
   padding: 0;
   font-family: monospace;
   font-size: 12px;
-  color: var(--accent-gold);
+  color: var(--accent-contrast);
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -2347,7 +2547,7 @@ input.side-tab-heading-editable:focus {
 .batch-cost-summary strong { color: var(--text-primary); }
 .batch-cost-summary em { color: var(--text-muted); font-style: normal; margin-left: 4px; }
 .batch-cost-label { font-weight: 600; color: var(--text-primary); margin-right: 4px; }
-.batch-cost-total { font-weight: 600; color: var(--accent-gold); margin-left: auto; }
+.batch-cost-total { font-weight: 600; color: var(--accent-contrast); margin-left: auto; }
 
 /* Wrapper fills the modal-body (wide modal removes padding; nested owners use height:100%) */
 .batch-agent-data-wrapper {
@@ -2766,13 +2966,13 @@ input.side-tab-heading-editable:focus {
 
 .btn.primary.in-flight,
 .btn.primary.in-flight:disabled {
-  background: var(--accent-gold);
+  background: var(--accent-contrast);
   border: none;
   color: var(--bg-deep);
 }
 
 .btn.primary.in-flight:hover:not(:disabled) {
-  background: var(--accent-gold-hover);
+  background: var(--accent-contrast-hover);
 }
 
 .btn.secondary {
@@ -2826,87 +3026,10 @@ input.side-tab-heading-editable:focus {
 
 .icon-control:hover:not(:disabled) {
   color: var(--text-primary);
-  border-color: var(--accent-gold);
+  border-color: var(--accent-contrast);
 }
 
 .icon-control:disabled {
   opacity: 0.45;
   cursor: default;
-}
-
-/* === 16. Theme Examples (AST-2042) === */
-
-.theme-examples {
-  padding: 20px;
-}
-
-.theme-examples-status {
-  padding: 20px;
-  color: var(--text-primary);
-}
-
-.theme-examples-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 16px;
-}
-
-/* Each panel carries data-theme, so its own background/text come from that palette's tokens. */
-.theme-examples-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 16px;
-  background: var(--bg-deep);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.theme-examples-label {
-  margin: 0;
-  font-size: 16px;
-  color: var(--heading);
-}
-
-.theme-examples-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.theme-examples-grade {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-}
-
-/* Toast and modal card are fixed/overlay chrome in the app; pin them into the panel flow here. */
-.theme-examples-panel .toast {
-  position: static;
-}
-
-.theme-examples-panel .modal-card {
-  width: auto;
-  max-width: none;
-  max-height: none;
-}
-
-/* AST-2064: grade-color candidate rows (tokens come inline from UI_CONFIG theme_example_grade_sets). */
-.theme-examples-grade-options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.theme-examples-grade-options-label,
-.theme-examples-grade-option-name {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.theme-examples-grade-option-name {
-  width: 56px;
 }

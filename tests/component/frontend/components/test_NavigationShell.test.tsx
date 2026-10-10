@@ -387,7 +387,7 @@ describe("NavigationShell", () => {
         isAdmin: true,
         candidates: [
           { ...candidatesFixture[0], candidate_data: { theme: "light" } },
-          { ...candidatesFixture[1], candidate_data: { theme: "light_parchment" } },
+          { ...candidatesFixture[1], candidate_data: { theme: "dark" } },
         ],
       })
       renderWithProviders(<NavigationShell />, { router: { initialEntries: ["/jobs"] } })

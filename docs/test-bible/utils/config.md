@@ -10,6 +10,84 @@
 
 ---
 
+### AST-2086 · AST-2073 (terminal-state grammar `ERROR_<TASK_KEY>[_<CONDITION>]` / `BOT_BLOCKED_<TASK_KEY>`; bot-wall split)
+
+**Publish:** `origin/sub/AST-2073/AST-2086-terminal-state-rename`. Plan: `docs/features/foundation/ast-2086-terminal-state-rename-and-bot-wall-split.md`.
+
+Every terminal failure / bot state on job, company, candidate and meteorite is named for the task that failed, built by `error_state_for` / `bot_blocked_state_for` (parsed back by `parse_terminal_state`, conditions closed over `TERMINAL_CONDITIONS`). `FAILED_TECHNICAL` and the dead `PREFILTER_UNKNOWN` / `HARD_PARSE` / `BUILD_FAILED` are gone; `RETIRED_TERMINAL_STATE_MAP` records old → new per entity (rows are AST-2087's). Writers read their own task's state from config: out of a retry holding → bare `ERROR_<TASK_KEY>`; empty-token → the failing hop's own error (chain and craft hops each have one); a refused empty-token edge warns, no catch-all. Meteorite scrape adopts `SCRAPE_LINK_RETRY` → `ERROR_SCRAPE_METEORITE`; expired links → `JD_SCRAPE_FAIL_CLOSED` / `_MISSING`. fetch_website / fetch_job_pages / fetch_culture_pages run `is_bot_wall` → `BOT_BLOCKED_<TASK>`; plain unreadable stays `ERROR_<TASK>_UNREADABLE`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Grammar, registries, retired map, chain/craft error sets, AC6 chain dispatch, AC7 bulk retry + labels, AC8 notify seed, gazer/roster task terminals | `src/utils/config.py` | **`TestAst2086TerminalStateGrammar`** (10) |
+| Prior-states pin across the rename | `src/utils/config.py` | **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** (AST-1806 snapshot translated via `_ast2086_translate` / `_ast2086_additions`; fixture JSON unchanged) |
+| Batch fail dest (3-arg, out of holding → `ERROR_<TASK>`), empty-token dest, chain hop errors, refused edge warns | `src/core/consult.py` | `test_consult.py` **`TestConsultBatchFailDest`** · **`TestAst2006EmptyTokenRouting`** · **`TestPrepLiveContent::test_transitions_when_website_content_missing`** — see `core/consult.md` |
+| Company terminals by writing task; parse empty-token → `ERROR_PARSE_JOB_LIST`; select bot wall → `BOT_BLOCKED_SELECT_JOB_PAGE` | `src/core/roster.py` | `test_roster.py` — see `core/roster.md` |
+| AC4 bot split (fetch_website, fetch_job_pages, fetch_culture_pages fresh + cached); task-aware JD `classified_states` | `src/core/gazer.py` | `test_gazer.py` **`TestAst2086GazerBotWallSplit`** (11) · **`TestAst1195BotBlockedErrorState`** — see `core/gazer.md` |
+| AC5 scrape retry; closed / missing; stage / land errors | `src/core/meteorite.py` | `test_meteorite.py` **`TestAst1560RunScrapeMeteorite::test_ast2086_scrape_failure_retries_once_then_errors`** — see `core/meteorite.md` |
+| Craft hop errors (`ERROR_CRAFT_<HOP>`) | `src/core/candidate.py` | `test_candidate.py` **`TestAst2006RequestedArtifactsEmptyTokens`** · **`TestAst1808RetryResolvesViaBase`** — see `core/candidate.md` |
+
+**Broken / revised (194 ticket-attributable failures, all rewritten in place):** `test_config.py` 47, `test_roster.py` 52, `test_consult.py` 31, `test_meteorite.py` 24, `test_gazer.py` 18, `test_candidate.py` 8, `test_agent.py` 6, `test_contact.py` 5, `test_api_jobs.py` 2, plus retired names in `data/database/test_meteorites.py`, `frontend/fixtures/stateUiManifestFixture.ts` (retired `skipped` entries swapped for their successors from `build_state_ui_manifest()`; the fixture stays a partial snapshot) and four frontend tests. Renamed nodes: roster `test_select_only_parse_goes_to_parse_error`, `test_scrape_error_transitions_to_select_error`; consult `…_to_bare_task_error` (×2), `test_dispatch_chain_failing_hop_error_wins_over_entry`, `test_dispatch_chain_invalid_edge_warns_without_fallback`; gazer `test_bot_maps_to_task_bot_blocked`, `test_short_text_after_click_is_relative_unreadable_with_link_resolved`; agent `test_hard_failure_transitions_hop_error_state`; candidate `test_goes_straight_to_hop_error_state`.
+
+**Integration:** none.
+
+## QA test manifest
+
+Baseline: on the epic tree the component failure set equals `origin/dev`'s (345 pre-existing, none new); Vitest failures equal dev's.
+
+1. `tests/component/utils/test_config.py::TestAst2086TerminalStateGrammar` + `::TestAst1808RetryRegistryPurge`
+2. `tests/component/core/test_gazer.py::TestAst2086GazerBotWallSplit` + `::TestAst1195BotBlockedErrorState` + `::TestAst2025FetchRelativeJdBatch`
+3. `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite`
+4. `tests/component/core/test_consult.py::TestConsultBatchFailDest` + `::TestAst2006EmptyTokenRouting` + `::TestPrepLiveContent`
+5. `tests/component/core/test_roster.py::TestAst2006EmptyTokenCompanyTerminals` + `::TestAst2004BotWalledSelect` + `::TestJobsFoundProcessJobSite469`
+6. `tests/component/core/test_candidate.py::TestAst2006RequestedArtifactsEmptyTokens` + `::TestAst1808RetryResolvesViaBase`
+7. Whole modules (no new failures vs dev): `test_config.py`, `test_roster.py`, `test_consult.py`, `test_meteorite.py`, `test_gazer.py`, `test_candidate.py`, `test_agent.py`, `test_contact.py`, `tests/component/ui/api/test_api_jobs.py`.
+8. Vitest: `test_JobsSkipped`, `test_StateUiContext`, `test_JobDetailModal`, `test_JobAnalysisReportModal`, `test_ArtifactEditor`, `test_recommendedJobReport`.
+9. **Product fix required (LOCKED_AT_100, `consult.py`):** `_prep_live_content`'s `else: tracker.transition_job_state(...)` arm is unreachable — `error_state_for(None, …)` raises first, and every caller passes `scoring_task_key`. Dev covered it; nothing can now. Drop the dead arm (or make `scoring_task_key` required).
+
+Notes (no action required): `fetch_job_pages` with one walled + one errored PJL and no prior capture lands `BOT_BLOCKED_FETCH_JOB_PAGES` with the "bot wall on every PJL" note — matches plan step 5, not pinned. `data/database/test_meteorites.py` still fails collection on dev (`METEORITE_STATES_RETENTION`); names updated, not runnable. `origin/tests` also carries AST-2096 (`_ALL_X`) tests written against pre-rename names (e.g. `METEORITE_FAILED_TECHNICAL_LIKE`) — reconcile when the second epic lands on dev.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py tests/component/core/test_roster.py tests/component/core/test_consult.py \
+  tests/component/core/test_meteorite.py tests/component/core/test_gazer.py tests/component/core/test_candidate.py \
+  tests/component/core/test_agent.py tests/component/core/test_contact.py tests/component/ui/api/test_api_jobs.py -q
+./scripts/testing/run_component_tests.sh
+```
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2073/AST-2086-terminal-state-rename:docs/test-bible/utils/config.md | shasum`
+
+### AST-2105 · AST-2102 (Skipped group rules — `JOBS_SKIPPED_GROUPS` + manifest `jobs.skipped.groups`)
+
+**Publish:** `origin/sub/AST-2102/AST-2105-skipped-group-rules` (carries AST-2073's ftr until it lands on dev). Plan: `docs/features/interface/ast-2105-skipped-group-rules-in-config-and-manifest.md`.
+
+`JOBS_SKIPPED_GROUPS` (dict keyed by group id, insertion order = display order): Error (`ERROR_STATE_PREFIX`), Bot block (`BOT_BLOCKED_STATE_PREFIX`), Fail (`FAILED_` / `METEORITE_FAILED_` / `JD_SCRAPE_FAIL_` + members `CANDIDATE_SKIPPED`, `JOBS_SKIPPED_BELOW_DISPATCH_KEY`), Other (catch-all, last). Two import-time asserts: every member is a `SKIPPED_STATES` key or the below-dispatch key; exactly one catch-all, last. `build_state_ui_manifest()["jobs"]["skipped"]["groups"]` emits an ordered list of `{key, label, prefixes, members}` copies. Other `jobs.skipped` keys unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1 exact groups; AC2 Other = `INVALID_TITLE` only; manifest lists are copies; AC3 member guard + catch-all-last guard (source splice, same pattern as AST-2061 / AST-1974) | `src/utils/config.py` | **`TestAst2105SkippedGroupRules`** (5) |
+
+**Broken / revised:** none — no existing node pins the `jobs.skipped` key set. `tests/component/frontend/fixtures/stateUiManifestFixture.ts` stays a partial snapshot without `groups` (page consumer is sibling **AST-2106**).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. `tests/component/utils/test_config.py::TestAst2105SkippedGroupRules` (5 — all must pass).
+2. Whole module `tests/component/utils/test_config.py` — no new failures vs `origin/dev` (+ AST-2073 merged base).
+3. `python3 -c "import src.utils.config"` exits 0 (AC 11).
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst2105SkippedGroupRules -q
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -q
+python3 -c "import src.utils.config"
+```
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2102/AST-2105-skipped-group-rules:docs/test-bible/utils/config.md | shasum`
+
+### AST-2096 · AST-2011 (pointer)
+
+**`TestAst2096AllXFailStates`** — `{fail_state}_ALL_X` rows (`all_x_of`, `ALL_X_FAIL_STATES`, base priors, Skipped). Primary manifest: **`docs/test-bible/core/consult.md`** § AST-2096.
+
 ### AST-1348 · AST-1346
 
 **`PHASE_SCORE_HEADER_TITLE_TEMPLATE`** + `build_state_ui_manifest()["jobs"]["recommended"]["phase_score_header_title_template"]`. Base `report_phase_tabs` `nav_label`s unchanged. Breakdown persist: **AST-1347**. Chrome: **`docs/test-bible/frontend/`**.
@@ -2551,12 +2629,12 @@ UAT: `TASK_CONFIG["parse_meteorite_email"].response_schema.jobs.items_schema.met
 
 **Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.
 
-Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload_instructions` (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`); not on `grades_encoded_vet_meta` / `grades_json`. Seven graded `agent_task` `cache_prompt`s carry the same AST-1154 marker + VALIDATE/Rules tighteners; AST-756 fixture stays byte-identical. Retry/Skipped Retry remain AST-1155 / AST-1156.
+Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload_instructions` (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`); not on `grades_encoded_vet_meta` / `grades_json`. Seven graded `agent_task` `cache_prompt`s carry a `## GRADE SET COMPLETENESS` section (ticket-free since `c06eaefdf`; the AST-756 fixture rows still carry the `(AST-1154)` sentinel) + VALIDATE/Rules tighteners. AST-2120 adds, on `qualify_job_listings`, the illustrative-code-count sentence (7-code examples are not a segment-count template) and scopes the "omit unstated" rule to metadata only; the shared constant gains one closing line ("their code count is not a template") on the same four types. Retry/Skipped Retry remain AST-1155 / AST-1156.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Shared encoded completeness clause | `src/utils/config.py` | **`TestAst1154EncodedGradeSetCompleteness`** |
-| Graded task prompts + fixture lock | `data/admin/agent_task.json` | **`TestAst1154GradedTaskCompletenessPrompts`**; existing **`TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`** |
+| Shared encoded completeness clause | `src/utils/config.py` | **`TestAst1154EncodedGradeSetCompleteness`** (incl. **`::test_grade_count_not_template_on_multi_vector_types`**, AST-2121 bug-repro) |
+| Graded task prompts + fixture marker | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1154GradedTaskCompletenessPrompts`** (incl. **`::test_qualify_cache_prompt_grade_count_and_metadata_omit_scope`**, AST-2121 bug-repro); existing **`TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`** |
 
 **Broken / obsolete:** none — additive prompt/contract text; catalog count unchanged.
 
@@ -2569,6 +2647,29 @@ Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload
   tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte \
   -q
 ```
+
+### AST-2121 · AST-2108 (qualify grade-set repro — test gap for AST-2120)
+
+**Publish:** `origin/sub/AST-2108/AST-2121-qualify-grade-set-tests`. Test tree + bible only; product fix is AST-2120 (on ftr @ `6ad17bcbb`).
+
+**Revised:** `TestAst1154GradedTaskCompletenessPrompts::test_marker_and_tighten_lines_on_graded_cache_prompts` — catalog check now `_CATALOG_MARKER = "## GRADE SET COMPLETENESS"` (stale `(AST-1154)` sentinel stripped from catalog by `c06eaefdf`; red before this pass). Every other assertion unchanged. Fixture-side `test_fixture_graded_keys_carry_completeness_marker` untouched (still `_MARKER`).
+
+**Broken / obsolete:** none new. AST-756 whole-file twins (`TestAst1494…::test_fixture_byte_identical_to_catalog`, `TestAst1773…::test_fixture_catalog_byte_lockstep`) stay red — out of scope.
+
+**Integration:** none.
+
+**Repro-first (gap-child — AST-2120 already on ftr):** with `27cd7cbcf`'s `data/admin/agent_task.json` + `src/utils/config.py` swapped in → **2 failed, 4 passed**: both new nodes red for the root-cause reason (qualify prompt lacks the illustrative-count sentence; constant lacks "their code count is not a template"); revised marker test green. Restored sub tip → **6 passed**. Whole-file baseline (`test_repo_admin_json.py` + `test_config.py`): 62 → 61 failed, the only delta being the marker test fixed; no new failures.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness \
+  -q
+```
+
+Repro node ids (`[bug-repro]`): `test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts::test_qualify_cache_prompt_grade_count_and_metadata_omit_scope`, `test_config.py::TestAst1154EncodedGradeSetCompleteness::test_grade_count_not_template_on_multi_vector_types`. `docs/test-bible/core/repo_admin_json.md` manifests already list the class-level node — no edit.
 
 ### AST-1155 · AST-1150
 
@@ -4330,7 +4431,7 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 
 **Parent:** [AST-1766 — Dispatch Validation](https://linear.app/astralcareermatch/issue/AST-1766). **Publish:** `origin/sub/AST-1766/AST-1779-empty-token-predicate-helper`.
 
-`empty_render_for_prompts` — candidate-scoped empty-render predicate over prompt texts via `TOKEN_SOURCES` / `resolve_tokens`; ignores `source: chain`; does not fail on empty job tokens unless `entity_contexts` supplies that source; returns `{"empty_render": bool, "empty_tokens": list[str]}` (field name frozen for sibling #2 list enrichment). `resolve_tokens(..., warn_on_empty=False)` suppresses empty/unresolved WARNINGs for the helper’s quiet probe. Config-only — no API / version hooks / React (siblings #2–#4).
+`empty_render_for_prompts` — empty-render predicate over prompt texts via `TOKEN_SOURCES` / `resolve_tokens`; scores `source: candidate` **and `source: rubric`** by default (rubric rows are candidate-keyed — **AST-2092**), other sources only via `entity_contexts`; ignores `source: chain`; does not fail on empty job tokens unless `entity_contexts` supplies that source; returns `{"empty_render": bool, "empty_tokens": list[str]}` (field name frozen for sibling #2 list enrichment). `resolve_tokens(..., warn_on_empty=False)` suppresses empty/unresolved WARNINGs for the helper’s quiet probe. Config-only — no API / version hooks / React (siblings #2–#4).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -4340,9 +4441,11 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 | Job seam via `entity_contexts` | same | **`…::test_job_seam_via_entity_contexts`** |
 | `warn_on_empty=False` quiet + default still warns | same | **`…::test_warn_on_empty_false_suppresses_empty_warning`** |
 | None/empty/non-str texts; first-seen order | same | **`…::test_none_empty_and_non_str_texts_and_order`** |
-| Rubric scored only via `entity_contexts` | same | **`…::test_rubric_scored_only_via_entity_contexts`** |
+| Rubric scored by default (and via `entity_contexts`) | same | **`…::test_rubric_scored_by_default_and_via_entity_contexts`** |
+| Empty `RUBRIC_VECTORS` → `empty_render` **[bug-repro]** (AST-2092) | same | **`…::test_empty_rubric_vectors_sets_empty_render`** |
+| Filled `RUBRIC_VECTORS` → valid (AST-2092 AC 3) | same | **`…::test_filled_rubric_vectors_validates`** |
 
-**Broken / obsolete:** none — existing `TestResolveTokens` empty-WARNING asserts keep default `warn_on_empty=True`.
+**Broken / obsolete:** none — existing `TestResolveTokens` empty-WARNING asserts keep default `warn_on_empty=True`. **AST-2094:** AST-2092 reversed the rubric rule — former line-7 node `test_rubric_scored_only_via_entity_contexts` renamed to `test_rubric_scored_by_default_and_via_entity_contexts`, default-call assertion inverted (False → True / `["GET_RUBRIC"]`).
 
 **Integration:** none — no existing scenario asserts `empty_render_for_prompts` / `warn_on_empty`; do not invent new integration coverage.
 
@@ -4354,7 +4457,9 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 4. Job entity_contexts seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_job_seam_via_entity_contexts`
 5. warn_on_empty quiet: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_warn_on_empty_false_suppresses_empty_warning`
 6. Text tolerance + order: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_none_empty_and_non_str_texts_and_order`
-7. Rubric seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_rubric_scored_only_via_entity_contexts`
+7. Rubric default + seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_rubric_scored_by_default_and_via_entity_contexts`
+8. **[bug-repro]** empty rubric (AST-2092 / AST-2094 — red on `823d37605`, green on `origin/ftr/AST-2019-rubric-empty-render-gate`): `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_empty_rubric_vectors_sets_empty_render`
+9. Filled rubric control: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_filled_rubric_vectors_validates`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -4818,7 +4923,9 @@ All 8 new/revised nodes red on pre-AST-2024 `config.py` / `agent_task.json`, gre
 
 **Broken / obsolete:** none — no `test_config.py` test pins the `CONTACT_CONFIG` key set. **Manifest:** [`../core/contact.md`](../core/contact.md) § AST-2035.
 
-**AST-2047 (pointer):** `UI_CONFIG["themes"]` / `default_theme` (+ import-time assert that the default is a selectable id), profile `theme` select generated from selectable entries, Tools `/admin/theme_examples`, and every registry id having an `App.css` `[data-theme]` block — **`TestAst2047ThemeRegistry`** (4). Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2047.
+**AST-2047 (pointer):** `UI_CONFIG["themes"]` / `default_theme` (+ import-time assert that the default is a selectable id), profile `theme` select generated from selectable entries, and every registry id having an `App.css` `[data-theme]` block — **`TestAst2047ThemeRegistry`**. Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2047.
+
+**AST-2122 (pointer):** registry is exactly `dark` + `light`; Tools is admin-only with six items (no Theme Examples); no `*_grade_sets` key in `UI_CONFIG`. **`TestAst2047ThemeRegistry`** (5, revised + one new), **`TestAst1386ThreeSegmentAdminNav`** (`/admin/telescope` added to Tools paths). `TestAst2064ThemeExampleGradeSets` is deleted. Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2122.
 
 ### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
 
@@ -4877,6 +4984,7 @@ Registration only: company states `GET_UPSHOT` / `UPSHOT_READY` (retry) / `ERROR
 | AC | Source | Component tests |
 | --- | --- | --- |
 | 1 states; 2 only the upshot hop enters WATCH; 4 dispatch registrable; 3 agent_task rows | `src/utils/config.py`, `data/admin/agent_task.json` | new **`TestAst2069UpshotRegistration`** (4) |
+| AST-2088 (bug): optional `company_name` in `company_upshot` items_schema + prompt output shape | same | **`TestAst2069UpshotRegistration::test_upshot_contract_carries_optional_company_name`** — repro; manifest in [`../core/roster.md`](../core/roster.md) § AST-2088 |
 | Revised: locate/parse transitions now land in `GET_UPSHOT` | `src/utils/config.py` | **`TestAst508InflowLocateConfig::test_prefilter_passed_locate_transitions`**, **`TestAst721ParseJobListConfig::test_parse_states_and_transitions`**, **`TestAst721ParseJobListConfig::test_parse_job_list_roster_config`** (`pass_state` line) |
 | Revised: AST-1806 pinned snapshot gains the six upshot targets (bases unrestricted, `_RETRY` → own pair) | same | **`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned`** |
 | Revised: roster batch counting mocks return the new pass state | `src/core/roster.py` (counting vs config) | see [`../core/roster.md`](../core/roster.md) § AST-2069 (10 tests) |
@@ -4908,3 +5016,15 @@ Registration only: company states `GET_UPSHOT` / `UPSHOT_READY` (retry) / `ERROR
 **Pass criterion:** 17 passed. Not the zero-arg harness.
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2054/AST-2069-upshot-states-registration:docs/test-bible/utils/config.md | shasum`; same for `docs/test-bible/core/roster.md`.
+
+### AST-2081 · AST-2046 (Line format, format details, Hidden label, job structure key, thumbnail flag)
+
+Config only, no branches. `line` is appended to `RESUME_STRUCTURE_BODY_FORMATS`. `RESUME_STRUCTURE_BODY_FORMAT_DETAILS` holds the label, description, and `font_stack` for each format (word cloud and dual column use `list_stack`, every other format uses `body_stack`). `RESUME_STRUCTURE_HIDDEN_FLOW_LABEL = "Hidden"`. New `ARTIFACT_CONFIG["job.artifacts.job_resume_structure"]` (job / candidate-scoped / `resume_structure` / tracker). `preview_thumbnail` is set on the three recommended-job artifact tabs (resume True, cover True, application False).
+
+| Area | Component tests |
+| --- | --- |
+| New literals (AC13, AC14 data half) | new **`TestAst2081FormatCatalogAndJobStructureKey`** (4) |
+| Revised: exact body-format tuple gains `line` | **`TestAst1303ResumeStructureCatalog::test_body_formats_defaults_emphasis_and_extra_id_rules`** |
+| Revised: exact catalog key set gains `job.artifacts.job_resume_structure` | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+
+Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2081.

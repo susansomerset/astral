@@ -10,6 +10,10 @@
 
 ---
 
+### AST-2086 · AST-2073 (pointer)
+
+**`TestAst2086GazerBotWallSplit`** — AC4 bot split: fetch_website (`_fetch_website_fail_destination` bot-first), fetch_job_pages (walled PJL dropped like a failed scrape; prior capture survives), fetch_culture_pages (fresh + cached, all-walled only; `_website_content_bot_walled` shapes). **`TestAst1195BotBlockedErrorState`** — per-task `classified_states`; `_JD_ERROR_STATES` removed. fetch_relative_jd short text → `ERROR_FETCH_RELATIVE_JD_UNREADABLE`. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2086.
+
 ### AST-622 · AST-544
 
 **AST-544 (parent):** Backfill **AST-538** §1.5.1 contract across **`src/core/gazer.py`** — company gaze (`process_gazer_batch`), job-list dedupe trace (`raw_job_listing_is_duplicate` read-only), JD scrape / title-validation batches (`fetch_jd_batch`, `validate_title_batch`); retire hand-rolled **`[DEBUG]`** / noise **`_log.debug`** in touched blocks. **No Betty log-string tests** (parent + child explicit); Radia enforces instrumentation on review. **`debug=False`** must stay unchanged — existing gazer behavior tests + branch lock are the gate.
@@ -521,7 +525,7 @@ Regression guards unchanged: **`TestAst1197ChallengeBotSignals`**, **`TestAst119
 | Miss = one WARNING, no traceback; other Telescope error = one ERROR with `exc_info`; both → `RELATIVE_LINK_FAIL` | `…::test_click_miss_warns_other_error_logs_exception` |
 | Non-http `final_url` → `RELATIVE_LINK_FAIL`, nothing persisted | `…::test_non_http_final_url_fails_without_persist` |
 | Missing `job_site` / `job_link` → `RELATIVE_LINK_FAIL`, no click | `…::test_missing_job_site_or_link_fails_without_click` |
-| Empty / short text after a reached destination → `JD_SCRAPE_FAIL`, link resolved | `…::test_short_text_after_click_is_jd_scrape_fail_with_link_resolved` |
+| Empty / short text after a reached destination → `ERROR_FETCH_RELATIVE_JD_UNREADABLE` (**AST-2086**; was fetch_jd's `JD_SCRAPE_FAIL`), link resolved | `…::test_short_text_after_click_is_relative_unreadable_with_link_resolved` |
 | No connectivity → `ConnectionError` | `…::test_aborts_without_connectivity` |
 | AC5 both runners call `_apply_jd_gates` (`short_state` / `pass_state`) | `…::test_ac5_both_runners_call_shared_gate_helper` |
 | `fetch_jd_batch` behavior after the lift (regression) | `TestFetchJdBatch` (minus two pre-existing reds below) |

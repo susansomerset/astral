@@ -894,7 +894,7 @@ class TestAst1453SkippedEditMetaAndPut:
         monkeypatch.setattr(
             jobs_mod,
             "legal_job_successor_states",
-            lambda state: list(successors or ["NEW", "FAILED_TECHNICAL"]),
+            lambda state: list(successors or ["NEW", "ERROR_GRADE_DO"]),
         )
         monkeypatch.setattr(
             jobs_mod,
@@ -1162,8 +1162,9 @@ class TestAst1974JobsPartitionRealDb:
             "j-ready": "CANDIDATE_REVIEW",
             "j-review": "RECOMMENDED",
             "j-applied": "CANDIDATE_APPLIED",
-            "j-err-build": "ERROR_BUILD_ARTIFACTS",
-            "j-build-failed": "BUILD_FAILED",
+            # AST-2086: build-chain terminals are per hop (ERROR_<HOP>); BUILD_FAILED is retired.
+            "j-err-build": "ERROR_ANTICIPATE_SCAN",
+            "j-err-cover": "ERROR_DRAFT_COVER_LETTER",
             "j-skipped": "CANDIDATE_SKIPPED",
             **{f"j-proc-{i}": s for i, s in enumerate(self._PROCESSING)},
         }
@@ -1192,7 +1193,7 @@ class TestAst1974JobsPartitionRealDb:
         assert views["ready"] == ["j-ready"]
         assert views["review"] == ["j-review"]
         assert views["applied"] == ["j-applied"]
-        assert set(views["skipped"]) == {"j-err-build", "j-build-failed", "j-skipped", "j-below"}
+        assert set(views["skipped"]) == {"j-err-build", "j-err-cover", "j-skipped", "j-below"}
         assert set(views["processing"]) == {f"j-proc-{i}" for i in range(len(self._PROCESSING))}
         union = [jid for v in self._VIEWS for jid in views[v]]
         assert len(union) == len(set(union))
@@ -1338,6 +1339,141 @@ class TestAst2067JobVersionRoutes:
         monkeypatch.setattr(jobs_mod, patch, _boom)
         caplog.set_level("ERROR")
         res = getattr(jobs_client, method)(f"{self._BASE}/{suffix}", json=body, headers=auth_headers)
+        assert res.status_code == 500
+        assert res.get_json()["exception_type"] == "RuntimeError"
+        errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR" and "failed" in r.getMessage()]
+        assert len(errors) == 1 and errors[0].startswith(f"{job_cid or '-'} | api")
+
+
+# Branches: GET /api/jobs/<id>/resume_structure — missing job 404 / 200 / unexpected 500 (cid set / "-").
+# PUT /api/jobs/<id>/artifacts/job_resume_structure — missing job 404 / body not dict (json not dict,
+# key missing, value not dict) 400 / ValueError 400 (no log) / unexpected 500 / 200 + INFO.
+class TestAst2081JobResumeStructureRoutes:
+    _GET = "/api/jobs/{}/resume_structure"
+    _PUT = "/api/jobs/{}/artifacts/job_resume_structure"
+
+    @staticmethod
+    def _cd() -> dict:
+        from src.core import candidate as core_candidate
+
+        raw = core_candidate.default_resume_structure()
+        raw["sections"]["professional_summary"]["title"] = "Candidate Summary"
+        return {"artifacts": {"resume_structure": raw, "base_resume": {"awards": "Prize"}}}
+
+    @pytest.fixture
+    def db(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch):
+        from src.core import tracker as tracker_mod
+
+        monkeypatch.setattr(
+            jobs_mod, "get_job", lambda jid: {"astral_job_id": jid, "candidate_id": "cand-1"} if jid in ("job-a", "job-b") else None
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-1")
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: self._cd())
+        return sqlite_in_memory
+
+    def _inherited_payload(self) -> dict:
+        from src.core import candidate as core_candidate
+
+        cd = self._cd()
+        resolved = core_candidate.hydrate_resume_structure_from_base_resume(
+            core_candidate.resolve_resume_structure(cd), cd["artifacts"]["base_resume"]
+        )
+        return core_candidate.resume_structure_editor_payload(resolved)
+
+    @pytest.mark.parametrize("method,url", [("get", _GET), ("put", _PUT)])
+    def test_missing_job_404(self, jobs_client: FlaskClient, auth_headers, db, method, url) -> None:
+        res = getattr(jobs_client, method)(url.format("nope"), json={"job_resume_structure": {}}, headers=auth_headers)
+        assert res.status_code == 404
+        assert res.get_json() == {"error": "Not found"}
+
+    def test_get_inherits_candidate_and_writes_nothing(self, jobs_client: FlaskClient, auth_headers, db) -> None:
+        # AC16: unedited job → candidate's all_sections (hydrated like the candidate GET); no row written.
+        res = jobs_client.get(self._GET.format("job-a"), headers=auth_headers)
+        assert res.status_code == 200
+        body = res.get_json()
+        assert body == self._inherited_payload()
+        assert "awards" in {r["id"] for r in body["all_sections"]}
+        assert body["catalog"]["body_format_details"]["line"]["label"] == "Line"
+        assert db.list_artifacts("job", "job-a", "job_resume_structure") == []
+
+    def test_put_then_get_isolated_per_job(
+        self, jobs_client: FlaskClient, auth_headers, db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # AC15 + AC18: job A edits (rename / format / reorder / accent) show on A only; B still inherits.
+        from src.core import candidate as core_candidate
+
+        raw = self._cd()["artifacts"]["resume_structure"]
+        secs = raw["sections"]
+        secs["professional_summary"]["title"] = "Profile"
+        secs["highlights"]["format"] = "line"
+        secs["core_competencies"]["order"], secs["technical_skills"]["order"] = 10, 5
+        accent = cfg.BUILD_CONFIG["accent_palette"][2].upper()
+        caplog.set_level("INFO")
+        put = jobs_client.put(
+            self._PUT.format("job-a"),
+            json={"job_resume_structure": {"sections": secs, "accent_color": accent}},
+            headers=auth_headers,
+        )
+        assert put.status_code == 200 and put.get_json() == {"ok": True}
+        info = [r.getMessage() for r in caplog.records if r.levelname == "INFO" and "completed: PUT 200" in r.getMessage()]
+        assert info == ["cand-1 | api /api/jobs/job-a/artifacts/job_resume_structure completed: PUT 200"]
+        a = jobs_client.get(self._GET.format("job-a"), headers=auth_headers).get_json()
+        rows = {r["id"]: r for r in a["all_sections"]}
+        assert rows["professional_summary"]["title"] == "Profile"
+        assert rows["highlights"]["format"] == "line"
+        assert rows["technical_skills"]["order"] < rows["core_competencies"]["order"]
+        assert a["accent_color"] == accent
+        assert jobs_client.get(self._GET.format("job-b"), headers=auth_headers).get_json() == self._inherited_payload()
+        assert db.list_artifacts("candidate", "cand-1", "resume_structure") == []
+        assert core_candidate.resolve_resume_structure(self._cd())["sections"]["professional_summary"]["title"] == (
+            "Candidate Summary"
+        )
+
+    @pytest.mark.parametrize(
+        "body", [["not", "a", "dict"], {}, {"job_resume_structure": "x"}, {"job_resume_structure": ["x"]}]
+    )
+    def test_put_body_not_dict_400(self, jobs_client: FlaskClient, auth_headers, db, body) -> None:
+        res = jobs_client.put(self._PUT.format("job-a"), json=body, headers=auth_headers)
+        assert res.status_code == 400
+        assert res.get_json() == {"error": "job_resume_structure must be a dict"}
+
+    def test_put_invalid_structure_400_no_log(
+        self, jobs_client: FlaskClient, auth_headers, db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("INFO")
+        res = jobs_client.put(
+            self._PUT.format("job-a"), json={"job_resume_structure": {"accent_color": "#123456"}}, headers=auth_headers
+        )
+        assert res.status_code == 400
+        assert "accent_palette" in res.get_json()["error"]
+        assert not [r for r in caplog.records if r.name == jobs_mod.logger.name]
+        assert db.list_artifacts("job", "job-a", "job_resume_structure") == []
+
+    @pytest.mark.parametrize(
+        "patch,method,url",
+        [("get_job_effective_resume_structure", "get", _GET), ("save_job_artifact", "put", _PUT)],
+    )
+    @pytest.mark.parametrize("job_cid", ["cand-1", None])
+    def test_unexpected_error_logged_once_500(
+        self,
+        jobs_client: FlaskClient,
+        auth_headers,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        patch,
+        method,
+        url,
+        job_cid,
+    ) -> None:
+        def _boom(*a, **k):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(jobs_mod, "get_job", lambda jid: {"astral_job_id": jid, "candidate_id": job_cid})
+        monkeypatch.setattr(jobs_mod, patch, _boom)
+        caplog.set_level("ERROR")
+        res = getattr(jobs_client, method)(
+            url.format("job-a"), json={"job_resume_structure": {"sections": {}}}, headers=auth_headers
+        )
         assert res.status_code == 500
         assert res.get_json()["exception_type"] == "RuntimeError"
         errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR" and "failed" in r.getMessage()]

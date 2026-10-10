@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
 
@@ -143,7 +144,7 @@ class TestAst1221RuntimeAliasConsult:
         )
         assert orch["pass_state"] == "METEORITE_PASSED_DO"
         assert orch["fail_state"] == "METEORITE_FAILED_DO"
-        assert orch["error_state"] == "METEORITE_FAILED_TECHNICAL_DO"
+        assert orch["error_state"] == "ERROR_METEORITE_GRADE_DO"
         gaze = consult_mod._consult_orchestration_for_entity("grade_do", "PASSED_JD")
         assert gaze["pass_state"] == "PASSED_DO"
         assert consult_mod._GRADE_DISPATCH_TO_HEADER.get("meteorite_grade_do") is None
@@ -182,7 +183,7 @@ class TestEvaluateMeteoriteStandaloneTwin:
             cfg_m = consult_mod._consult_orchestration_for_entity("evaluate_meteorite", entity_state)
             assert cfg_m["pass_state"] == "METEORITE_PASSED_JD"
             assert cfg_m["fail_state"] == "METEORITE_FAILED_JD"
-            assert cfg_m["error_state"] == "METEORITE_ERROR_EVALUATE_JD"
+            assert cfg_m["error_state"] == "ERROR_EVALUATE_METEORITE"
 
     def test_render_pass_fail_uses_own_states(self) -> None:
         assert (
@@ -484,9 +485,15 @@ class TestPrepLiveContent:
         monkeypatch.setattr(consult_mod.tracker, "get_job_data", AsyncMock(return_value="jd text"))
         monkeypatch.setattr(roster_mod, "get_company_data", AsyncMock(return_value=None))
         monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
-        out = await consult_mod._prep_live_content({"astral_job_id": "job-1"}, company={"short_name": "co"})
+        task_trans = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", task_trans)
+        # AST-2086: every production caller passes scoring_task_key; the missing-content error is that task's.
+        out = await consult_mod._prep_live_content(
+            {"astral_job_id": "job-1"}, company={"short_name": "co"}, scoring_task_key="grade_like",
+        )
         assert out is False
-        transition.assert_called_once_with(["job-1"], "NEED_WEBSITE_CONTENT")
+        task_trans.assert_called_once_with("grade_like", ["job-1"], "ERROR_GRADE_LIKE_NO_WEBSITE_CONTENT")
+        transition.assert_not_called()
 
 
 class TestRunConsultTask:
@@ -1081,7 +1088,7 @@ class TestRenderVerdict:
         monkeypatch.setattr(consult_mod.tracker, "get_company", lambda short_name: {"short_name": "co"})
         monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value=False))
         out = await consult_mod.render_verdict("grade_like", "job-1")
-        assert out["to_state"] == "NEED_WEBSITE_CONTENT"
+        assert out["to_state"] == "ERROR_GRADE_LIKE_NO_WEBSITE_CONTENT"
 
     @pytest.mark.asyncio
     async def test_fails_when_live_content_prep_fails_without_company(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1613,9 +1620,9 @@ class TestAnalysisUpshotPrepAndBatch480ExtraBranches:
     @pytest.mark.parametrize(
         ("state", "dest", "errors"),
         [
-            # AST-1839: no state → PASSED_LIKE_RETRY holding (uncounted); out of the holding → FAILED_TECHNICAL (counted).
+            # AST-1839: no state → PASSED_LIKE_RETRY holding (uncounted); out of the holding → ERROR_ANALYSIS_UPSHOT (counted).
             (None, TASK_CONFIG["analysis_upshot"]["error_state"], 0),
-            ("PASSED_LIKE_RETRY", "FAILED_TECHNICAL", 1),
+            ("PASSED_LIKE_RETRY", "ERROR_ANALYSIS_UPSHOT", 1),
         ],
     )
     async def test_batch_missing_company_transitions_and_counts_error(
@@ -1702,7 +1709,7 @@ class TestAnalysisUpshotPrepAndBatch480ExtraBranches:
             lambda _aid: {
                 "astral_job_id": "j1",
                 "company": "co",
-                "state": "NEED_WEBSITE_CONTENT",
+                "state": "ERROR_ANALYSIS_UPSHOT_NO_WEBSITE_CONTENT",
             },
         )
         monkeypatch.setattr(consult_mod.tracker, "get_company", lambda _sn: {"short_name": "co"})
@@ -1746,9 +1753,9 @@ class TestAnalysisUpshotPrepAndBatch480ExtraBranches:
     @pytest.mark.parametrize(
         ("state", "dest", "errors"),
         [
-            # AST-1839: primary → holding (uncounted); from holding → FAILED_TECHNICAL (counted).
+            # AST-1839: primary → holding (uncounted); from holding → ERROR_ANALYSIS_UPSHOT (counted).
             (None, TASK_CONFIG["analysis_upshot"]["error_state"], 0),
-            ("PASSED_LIKE_RETRY", "FAILED_TECHNICAL", 1),
+            ("PASSED_LIKE_RETRY", "ERROR_ANALYSIS_UPSHOT", 1),
         ],
     )
     async def test_batch_do_task_failure_transitions_error(
@@ -2263,7 +2270,7 @@ class TestAnalysisUpshotPrepAndBatch480:
     async def test_prep_false_need_website_skips_secondary_error_transition(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        job = {"astral_job_id": "jw", "company": "co", "job_data": {}, "state": "NEED_WEBSITE_CONTENT"}
+        job = {"astral_job_id": "jw", "company": "co", "job_data": {}, "state": "ERROR_ANALYSIS_UPSHOT_NO_WEBSITE_CONTENT"}
         monkeypatch.setattr(consult_mod.tracker, "get_company", MagicMock(return_value={"short_name": "co"}))
         monkeypatch.setattr(consult_mod.tracker, "get_job", MagicMock(return_value=job))
         monkeypatch.setattr(consult_mod, "_prep_analysis_upshot_live_content", AsyncMock(return_value=False))
@@ -2408,7 +2415,7 @@ class TestEncodedDecodeIsolation:
         calls = [(c.args[1], c.args[2]) for c in transition.call_args_list]
         # First strike → retry holding; already-in-holding → terminal error (patt.task.dispatch-retry).
         assert calls.count((["J0"], "METEORITE_QUALIFIED_RETRY")) == 1
-        assert calls.count((["J1"], "METEORITE_ERROR_EVALUATE_JD")) == 1
+        assert calls.count((["J1"], "ERROR_EVALUATE_METEORITE")) == 1
         assert out["success"] is False
         assert out["passed"] == 1
         assert out["retried"] == 1
@@ -2423,12 +2430,227 @@ class TestEncodedDecodeIsolation:
             "jobs": [{"astral_job_id": j, "grades": []} for j in ("J0", "J1", "J2")],
             "decode_failures": [{"astral_job_id": "J0", "pos": 0, "reason": "r0"}],
         })
-        fail_dests = {"METEORITE_QUALIFIED_RETRY", "METEORITE_ERROR_EVALUATE_JD"}
+        fail_dests = {"METEORITE_QUALIFIED_RETRY", "ERROR_EVALUATE_METEORITE"}
         assert not [c for c in transition.call_args_list if c.args[2] in fail_dests]
         assert out["success"] is True
         assert out["passed"] == 3
         assert out["decode_failed"] is None
         assert out["error"] is None
+
+
+class TestAst2089SalvagedBatchSplit:
+    """AST-2089 bug-repro (AST-2090): envelope failure + salvaged_response → clean lines process, only gaps fail."""
+
+    ERR = "Agent failure: Unable to determine a company job ID for listing 002; required for payload."
+
+    async def _run(
+        self, monkeypatch: pytest.MonkeyPatch, salvaged: Any, gap_state: str = "NEW",
+    ) -> tuple:
+        transition = MagicMock()
+        logged: list = []
+        processed: list = []
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "_log_fail_dest", lambda aid, dest, reason: logged.append((aid, dest, reason)))
+        # Stub hydrate: unstubbed it raises on empty rubric criteria (same as TestEncodedDecodeIsolation).
+        monkeypatch.setattr(consult_mod, "_hydrate_response_jobs_grade_reasons", MagicMock())
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(return_value={
+                "success": False, "agent_failure": True, "parsed_response": None,
+                "error": self.ERR, "salvaged_response": salvaged, "timesheet": {},
+            }),
+        )
+
+        def process(input_job, response_job, cfg):
+            processed.append(response_job["astral_job_id"])
+            return cfg["pass_state"] if response_job["grades"][0]["grade"] == "A" else cfg["fail_state"]
+
+        jobs = [
+            {"astral_job_id": "job-0", "state": "NEW"},
+            {"astral_job_id": "job-1", "state": "NEW"},
+            {"astral_job_id": "job-2", "state": gap_state},
+        ]
+        out = await consult_mod._run_batch_consult(
+            "qualify_job_listings", "batch-2089", jobs, lambda rows: "content", process, {}, False,
+        )
+        return out, transition, logged, processed
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("gap_state", "gap_dest", "retried"),
+        [("NEW", "NEW_RETRY", 1), ("NEW_RETRY", "ERROR_QUALIFY_JOB_LISTINGS", 0)],
+    )
+    async def test_salvaged_lines_process_and_only_the_gap_fails(
+        self, monkeypatch: pytest.MonkeyPatch, gap_state: str, gap_dest: str, retried: int,
+    ) -> None:
+        salvaged = {"jobs": [
+            {
+                "astral_job_id": "job-0",
+                "grades": [{"vector": "CR", "grade": "A", "confidence": 4}],
+                "company_job_id": None,
+                "job_title": "Staff Engineer",
+                "job_link": "https://x.example/jobs/1",
+            },
+            {"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "F", "confidence": 5}]},
+        ]}
+        out, transition, logged, processed = await self._run(monkeypatch, salvaged, gap_state)
+        assert processed == ["job-0", "job-1"]
+        # Only the omitted listing takes a fail dest, first strike → holding, second → terminal.
+        transition.assert_called_once_with("qualify_job_listings", ["job-2"], gap_dest)
+        assert logged == [("job-2", gap_dest, self.ERR)]
+        assert (out["passed"], out["failed"], out["retried"], out["missing"]) == (1, 1, retried, ["job-2"])
+        assert out["success"] is False
+        assert out["agent_failure"] is True
+        assert out["error"] == self.ERR
+
+    @pytest.mark.asyncio
+    async def test_no_salvage_fails_whole_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Real AST-2089 agent shape with nothing usable: salvaged_response key present but None.
+        out, transition, logged, processed = await self._run(monkeypatch, None)
+        assert processed == []
+        transition.assert_called_once_with("qualify_job_listings", ["job-0", "job-1", "job-2"], "NEW_RETRY")
+        assert [aid for aid, _, _ in logged] == ["job-0", "job-1", "job-2"]
+        assert (out["success"], out["retried"], out["error"]) == (False, 3, self.ERR)
+        assert "agent_failure" not in out
+
+
+class TestAst2093EncodedDispatchIndex:
+    """AST-2093: grade rows carry one batch-unique [index=NNN] label, and decode gets the index → entity map.
+
+    Branches (consult): _consult_scored_dispatch_batch_encoded idx = offset + claimed pos (skipped rows leave
+    gaps; row_indexes parallel to eligible; assemble has no positional prefix); _run_batch_consult
+    row_indexes supplied vs None; render_verdict batch_index → position + one-entry map; run_consult_task
+    forwards batch_index_offset on N==1 / N>1 / alias; grade_*_batch + meteorite_like_batch forward it.
+    """
+
+    @staticmethod
+    def _jobs(n: int) -> List[Dict[str, Any]]:
+        return [{"astral_job_id": f"job-{i}", "state": "PASSED_JD"} for i in range(n)]
+
+    def _patch_encoded(
+        self, monkeypatch: pytest.MonkeyPatch, prep_fails: tuple = ()
+    ) -> tuple:
+        """Stub prep + batch runner around _consult_scored_dispatch_batch_encoded; returns (positions, runner)."""
+        positions: List[int] = []
+
+        async def prep(row, company, scoring_task_key=None, position=0):
+            positions.append(position)
+            return False if row["astral_job_id"] in prep_fails else f"[index={position:03d}]: jd"
+
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda aid: None)
+        monkeypatch.setattr(
+            consult_mod, "_consult_orchestration_for_entity", lambda tk, st: {"agent_task": "grade_get"},
+        )
+        monkeypatch.setattr(consult_mod, "_prep_live_content", prep)
+        runner = AsyncMock(return_value={"success": True, "passed": 0, "failed": 0})
+        monkeypatch.setattr(consult_mod, "_run_batch_consult", runner)
+        return positions, runner
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_rows_carry_one_global_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] pre-fix: assemble prefixed "000: " onto "[index=000]: …" and no row_indexes reached decode.
+        hdr = consult_mod._GRADE_DISPATCH_TO_HEADER["grade_get"]
+        jobs = self._jobs(3)
+        positions, runner = self._patch_encoded(monkeypatch)
+        await consult_mod._consult_scored_dispatch_batch_encoded("grade_get", "b1", jobs, ctx={})
+        body = runner.await_args.args[3](jobs)
+        assert body == f"CONSULT {hdr} ROWS:\n[index=000]: jd\n[index=001]: jd\n[index=002]: jd"
+        assert runner.await_args.kwargs["row_indexes"] == [0, 1, 2]
+
+        # Chunk 1 of the claim starts at its claimed position, not 000.
+        positions.clear()
+        await consult_mod._consult_scored_dispatch_batch_encoded(
+            "grade_get", "b1", jobs, ctx={}, batch_index_offset=20,
+        )
+        assert positions == [20, 21, 22]
+        body = runner.await_args.args[3](jobs)
+        assert body == f"CONSULT {hdr} ROWS:\n[index=020]: jd\n[index=021]: jd\n[index=022]: jd"
+        assert not re.search(r"^\d{3}: \[index=", body, re.MULTILINE)
+        assert runner.await_args.kwargs["row_indexes"] == [20, 21, 22]
+
+    @pytest.mark.asyncio
+    async def test_skipped_row_keeps_its_index_gap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        jobs = self._jobs(3)
+        _positions, runner = self._patch_encoded(monkeypatch, prep_fails=("job-1",))
+        out = await consult_mod._consult_scored_dispatch_batch_encoded("grade_get", "b1", jobs, ctx={})
+        assert runner.await_args.kwargs["row_indexes"] == [0, 2]
+        body = runner.await_args.args[3](jobs)
+        assert re.findall(r"\[index=\d{3}\]", body) == ["[index=000]", "[index=002]"]
+        assert out["skipped"] == 1
+
+    @pytest.mark.asyncio
+    async def test_run_batch_consult_puts_index_map_in_do_task_ctx(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        do = AsyncMock(return_value={"success": False, "error": "stop after ctx capture"})
+        monkeypatch.setattr(consult_mod, "do_task", do)
+        jobs = [{"astral_job_id": "J0", "state": "METEORITE_QUALIFIED"}, {"astral_job_id": "J1", "state": "METEORITE_QUALIFIED"}]
+
+        async def _run(**kw: Any) -> Dict[str, Any]:
+            await consult_mod._run_batch_consult(
+                "evaluate_meteorite", "b1", jobs, lambda rows: "content",
+                lambda input_job, response_job, cfg: cfg["pass_state"], {}, False, **kw,
+            )
+            return do.await_args.kwargs["ctx"]
+
+        assert (await _run(row_indexes=[20, 21]))["batch_index_map"] == {20: jobs[0], 21: jobs[1]}
+        # evaluate_jd / qualify assemblers pass no row_indexes → positional decode as before.
+        assert "batch_index_map" not in await _run()
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_stamps_and_maps_batch_index(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}, "state": "PASSED_JD"}
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        prep = AsyncMock(return_value="live")
+        do = AsyncMock(return_value={"success": False, "error": "stop after ctx capture"})
+        monkeypatch.setattr(consult_mod, "_prep_live_content", prep)
+        monkeypatch.setattr(consult_mod, "do_task", do)
+
+        await consult_mod.render_verdict("grade_get", "job-1", ctx={}, batch_index=24)
+        assert prep.await_args.kwargs["position"] == 24
+        assert do.await_args.kwargs["ctx"]["batch_index_map"] == {24: job}
+
+        await consult_mod.render_verdict("grade_get", "job-1", ctx={})
+        assert prep.await_args.kwargs["position"] == 0
+        assert do.await_args.kwargs["ctx"]["batch_index_map"] == {0: job}
+
+    @pytest.mark.asyncio
+    async def test_run_consult_task_forwards_batch_index_offset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ok = {"success": True, "passed": 2, "failed": 0, "total": 2}
+        batch = AsyncMock(return_value=ok)
+        encoded = AsyncMock(return_value=ok)
+        rv = AsyncMock(return_value={"success": True, "to_state": TASK_CONFIG["grade_get"]["pass_state"]})
+        monkeypatch.setattr(consult_mod, "grade_do_batch", batch)
+        monkeypatch.setattr(consult_mod, "_consult_scored_dispatch_batch_encoded", encoded)
+        monkeypatch.setattr(consult_mod, "render_verdict", rv)
+        two = self._jobs(2)
+
+        await consult_mod.run_consult_task(
+            "job", "PASSED_JD", two, "b1", {}, dispatch_task_key="grade_do", batch_index_offset=40,
+        )
+        assert batch.await_args.kwargs["batch_index_offset"] == 40
+
+        await consult_mod.run_consult_task(
+            "job", "PASSED_JD", two[:1], "b1", {}, dispatch_task_key="grade_get", batch_index_offset=7,
+        )
+        assert rv.await_args.kwargs["batch_index"] == 7
+
+        await consult_mod.run_consult_task(
+            "job", "PASSED_JD", two, "b1", {}, dispatch_task_key="meteorite_grade_get", batch_index_offset=40,
+        )
+        assert encoded.await_args.args[0] == "meteorite_grade_get"
+        assert encoded.await_args.kwargs["batch_index_offset"] == 40
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("task_key", ["grade_do", "grade_get", "grade_like", "meteorite_like"])
+    async def test_batch_wrappers_forward_offset(self, monkeypatch: pytest.MonkeyPatch, task_key: str) -> None:
+        encoded = AsyncMock(return_value={"success": True})
+        monkeypatch.setattr(consult_mod, "_consult_scored_dispatch_batch_encoded", encoded)
+        jobs = self._jobs(2)
+        await getattr(consult_mod, f"{task_key}_batch")("b1", jobs, ctx={}, batch_index_offset=5)
+        assert encoded.await_args.args[:3] == (task_key, "b1", jobs)
+        assert encoded.await_args.kwargs["batch_index_offset"] == 5
 
 
 class TestRunBatchConsultBranches:
@@ -2552,34 +2774,39 @@ class TestConsultBatchFailDest:
     def test_primary_state_routes_to_retry_holding(self) -> None:
         err = TASK_CONFIG["qualify_job_listings"]["error_state"]
         # AST-898: VALID_TITLE.retry_state → NEW_RETRY (not VALID_TITLE_RETRY)
-        assert consult_mod._consult_batch_fail_dest("VALID_TITLE", err) == "NEW_RETRY"
-        assert consult_mod._consult_batch_fail_dest("JD_READY", TASK_CONFIG["evaluate_jd"]["error_state"]) == "JD_READY_RETRY"
+        assert consult_mod._consult_batch_fail_dest("VALID_TITLE", err, "qualify_job_listings") == "NEW_RETRY"
+        assert consult_mod._consult_batch_fail_dest(
+            "JD_READY", TASK_CONFIG["evaluate_jd"]["error_state"], "evaluate_jd"
+        ) == "JD_READY_RETRY"
         # [bug-repro] AST-1339 — meteorite qualify first strike → METEORITE_NEW_RETRY
         m_err = TASK_CONFIG["qualify_meteorite"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW", m_err) == "METEORITE_NEW_RETRY"
+        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW", m_err, "qualify_meteorite") == "METEORITE_NEW_RETRY"
 
     def test_retry_holding_routes_to_terminal_error(self) -> None:
         err = TASK_CONFIG["qualify_job_listings"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest("NEW_RETRY", err) == err
+        assert consult_mod._consult_batch_fail_dest("NEW_RETRY", err, "qualify_job_listings") == err
         # Drain path: legacy VALID_TITLE_RETRY still terminals (no nested retry)
-        assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err) == err
+        assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err, "qualify_job_listings") == err
         assert (
-            consult_mod._consult_batch_fail_dest("JD_READY_RETRY", TASK_CONFIG["evaluate_jd"]["error_state"])
+            consult_mod._consult_batch_fail_dest("JD_READY_RETRY", TASK_CONFIG["evaluate_jd"]["error_state"], "evaluate_jd")
             == TASK_CONFIG["evaluate_jd"]["error_state"]
         )
-        # [bug-repro] AST-1339 — second strike from holding → METEORITE_ERROR_QUALIFY
+        # [bug-repro] AST-1339 — second strike from holding → ERROR_QUALIFY_METEORITE
         m_err = TASK_CONFIG["qualify_meteorite"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW_RETRY", m_err) == m_err
+        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW_RETRY", m_err, "qualify_meteorite") == m_err
 
-    def test_analysis_upshot_retry_holding_to_failed_technical(self) -> None:
+    def test_analysis_upshot_retry_holding_to_bare_task_error(self) -> None:
+        # AST-2086: out of the holding lands on the writing task's bare ERROR_<TASK_KEY>, not FAILED_TECHNICAL.
         err = TASK_CONFIG["analysis_upshot"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest("PASSED_LIKE", err) == err
-        assert consult_mod._consult_batch_fail_dest("PASSED_LIKE_RETRY", err) == "FAILED_TECHNICAL"
+        assert consult_mod._consult_batch_fail_dest("PASSED_LIKE", err, "analysis_upshot") == err
+        assert consult_mod._consult_batch_fail_dest("PASSED_LIKE_RETRY", err, "analysis_upshot") == "ERROR_ANALYSIS_UPSHOT"
+        m_err = TASK_CONFIG["meteorite_upshot"]["error_state"]
+        assert consult_mod._consult_batch_fail_dest(m_err, m_err, "meteorite_upshot") == "ERROR_METEORITE_UPSHOT"
 
     def test_empty_state_falls_back_to_error_state(self) -> None:
         err = TASK_CONFIG["qualify_job_listings"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest(None, err) == err
-        assert consult_mod._consult_batch_fail_dest("", err) == err
+        assert consult_mod._consult_batch_fail_dest(None, err, "qualify_job_listings") == err
+        assert consult_mod._consult_batch_fail_dest("", err, "qualify_job_listings") == err
 
 
 class TestAst642PerEntityBatchRetry:
@@ -2805,7 +3032,7 @@ class TestAst642PerEntityBatchRetry:
         transition.assert_called_once_with(
             "analysis_upshot",
             ["j1"],
-            "FAILED_TECHNICAL",
+            "ERROR_ANALYSIS_UPSHOT",
         )
 
     @pytest.mark.asyncio
@@ -3073,7 +3300,7 @@ class TestAst1895InvalidJobLinkError:
         assert out["bad_grades"] == ["job-e"]
         calls = {c.args[0]: c.args for c in fail_log.call_args_list}
         dest = consult_mod._consult_batch_fail_dest(
-            "VALID_TITLE", consult_mod.TASK_CONFIG["qualify_job_listings"].get("error_state")
+            "VALID_TITLE", consult_mod.TASK_CONFIG["qualify_job_listings"].get("error_state"), "qualify_job_listings"
         )
         assert calls["job-e"][1] == dest
         # Exact match (trailing space on empty) also rules out "no signature found".
@@ -3981,7 +4208,7 @@ class TestAst2008RenderVerdictTimeoutRetry:
     async def test_primary_timeout_goes_to_retry_holding(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        # Repro 4 — today lands METEORITE_FAILED_TECHNICAL_DO via _fail.
+        # Repro 4 — today lands ERROR_METEORITE_GRADE_DO via _fail.
         caplog.set_level("WARNING")
         transition = self._wire(monkeypatch, "METEORITE_PASSED_JD")
         out = await consult_mod.render_verdict("meteorite_grade_do", "job-1")
@@ -4002,7 +4229,7 @@ class TestAst2008RenderVerdictTimeoutRetry:
         transition = self._wire(monkeypatch, "METEORITE_PASSED_JD_RETRY")
         out = await consult_mod.render_verdict("meteorite_grade_do", "job-1")
         err = TASK_CONFIG["meteorite_grade_do"]["error_state"]
-        assert err == "METEORITE_FAILED_TECHNICAL_DO"
+        assert err == "ERROR_METEORITE_GRADE_DO"
         assert out["to_state"] == err
         assert out["failure_class"] == "provider_call_timeout"
         assert transition.call_args.args[1:] == (["job-1"], err)
@@ -4229,6 +4456,105 @@ class TestAst2010RateLimitForwarding:
         out = await consult_mod._run_analysis_upshot_batch("b2010", [job], {}, False)
         assert out["failure_class"] == self.FC
         assert out["total_passed"] == 0
+
+
+# AST-2098 — a failed host probe holds job state (no error / _RETRY transition) and is counted held, not
+# errored; the class + total_held ride up to the dispatcher. Balance refusal on job paths is unchanged
+# (Decision D3). Literals only (no AST-2098 imports) so these fail by assertion on the pre-fix tree.
+class TestAst2098ProbeFailureHold:
+    _FC = "provider_probe_failure"
+    _ERR = "Host probe failed: Probe response named no provider: {'message': 'No endpoints found'}"
+
+    def _tagged(self, fc: str = _FC) -> Dict[str, Any]:
+        return {"success": False, "error": self._ERR, "failure_class": fc}
+
+    @staticmethod
+    def _single_entity(monkeypatch: pytest.MonkeyPatch, rv: Dict[str, Any]) -> None:
+        monkeypatch.setattr(
+            consult_mod, "_consult_orchestration_for_entity",
+            lambda task_key, entity_state=None: {"pass_state": "METEORITE_PASSED_GET"},
+        )
+        monkeypatch.setattr(consult_mod, "render_verdict", AsyncMock(return_value=rv))
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_holds_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}, "state": "VALID_TITLE"}
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        out = await consult_mod.render_verdict("grade_do", "job-1")
+        assert out["success"] is False
+        assert out["state_held"] is True
+        assert out["to_state"] == "VALID_TITLE"
+        assert out["failure_class"] == self._FC
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_consult_task_single_entity_counts_held(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2016 incident path: meteorite_grade_get, one job → render_verdict held.
+        rv = {"success": False, "to_state": "METEORITE_PASSED_DO", "state_held": True, "error": self._ERR,
+              "failure_class": self._FC}
+        self._single_entity(monkeypatch, rv)
+        out = await consult_mod.run_consult_task(
+            "job", "METEORITE_PASSED_DO", [{"astral_job_id": "j1", "state": "METEORITE_PASSED_DO"}], "b2098",
+            dispatch_task_key="meteorite_grade_get",
+        )
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0,
+                       "total_held": 1, "failure_class": self._FC}
+
+    @pytest.mark.asyncio
+    async def test_batch_consult_envelope_holds_and_counts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        jobs = [{"astral_job_id": f"job-{i}", "state": "VALID_TITLE"} for i in range(3)]
+        out = await consult_mod._run_batch_consult(
+            "qualify_job_listings", "batch-2098", jobs,
+            lambda rows: "content",
+            lambda input_job, response_job, cfg: cfg["pass_state"],
+            None, False,
+        )
+        assert out["state_held"] is True
+        assert out["total_held"] == 3
+        transition.assert_not_called()
+        # Through the batch normalizer: held jobs are not run errors; the class reaches the dispatcher.
+        monkeypatch.setattr(consult_mod, "meteorite_like_batch", AsyncMock(return_value=out))
+        summary = await consult_mod.run_consult_task("job", "LIKE_READY", jobs, "b2098", dispatch_task_key="meteorite_like")
+        assert summary["total_errors"] == 0
+        assert summary["total_held"] == 3
+        assert summary["failure_class"] == self._FC
+
+    @pytest.mark.asyncio
+    async def test_analysis_upshot_batch_counts_held(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        jobs = [{"astral_job_id": f"j{i}", "company": "co", "job_data": {}, "state": "PASSED_LIKE"} for i in range(2)]
+        by_id = {j["astral_job_id"]: j for j in jobs}
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda aid: by_id[aid])
+        monkeypatch.setattr(consult_mod.tracker, "get_company", MagicMock(return_value={"short_name": "co"}))
+        monkeypatch.setattr(consult_mod, "_prep_analysis_upshot_live_content", AsyncMock(return_value="x"))
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        trans, warn = MagicMock(), MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
+        monkeypatch.setattr(consult_mod, "_warn_job", warn)
+        out = await consult_mod._run_analysis_upshot_batch("b2098", jobs, {}, False)
+        assert out["total_errors"] == 0
+        assert out["total_held"] == 2
+        assert out["failure_class"] == self._FC
+        trans.assert_not_called()
+        assert [c.args[2] for c in warn.call_args_list] == ["host probe failed — state held"] * 2
+
+    @pytest.mark.asyncio
+    async def test_balance_hold_on_job_path_still_counts_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Guard (green before and after AST-2098): balance on job paths keeps its AST-897 error count, no new keys.
+        rv = {"success": False, "to_state": "METEORITE_PASSED_DO", "state_held": True, "error": "Insufficient Balance",
+              "failure_class": "provider_balance_refusal"}
+        self._single_entity(monkeypatch, rv)
+        out = await consult_mod.run_consult_task(
+            "job", "METEORITE_PASSED_DO", [{"astral_job_id": "j1", "state": "METEORITE_PASSED_DO"}], "b2098",
+            dispatch_task_key="meteorite_grade_get",
+        )
+        assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
 
 
 class TestAst898QualifyNewRetry:
@@ -6186,28 +6512,28 @@ class TestAst1155IncompleteGradeRetry:
         like_err = TASK_CONFIG["grade_like"]["error_state"]
         jd_err = TASK_CONFIG["evaluate_jd"]["error_state"]
         met_err = TASK_CONFIG["evaluate_meteorite"]["error_state"]
-        assert consult_mod._consult_batch_fail_dest("PASSED_JD", do_err) == "PASSED_JD_RETRY"
-        assert consult_mod._consult_batch_fail_dest("PASSED_JD_RETRY", do_err) == do_err
-        assert consult_mod._consult_batch_fail_dest("PASSED_DO", get_err) == "PASSED_DO_RETRY"
-        assert consult_mod._consult_batch_fail_dest("CULTURE_READY", like_err) == "CULTURE_READY_RETRY"
+        assert consult_mod._consult_batch_fail_dest("PASSED_JD", do_err, "grade_do") == "PASSED_JD_RETRY"
+        assert consult_mod._consult_batch_fail_dest("PASSED_JD_RETRY", do_err, "grade_do") == do_err
+        assert consult_mod._consult_batch_fail_dest("PASSED_DO", get_err, "grade_get") == "PASSED_DO_RETRY"
+        assert consult_mod._consult_batch_fail_dest("CULTURE_READY", like_err, "grade_like") == "CULTURE_READY_RETRY"
         assert consult_mod._consult_batch_fail_dest(
-            "METEORITE_PASSED_JD", do_err
+            "METEORITE_PASSED_JD", do_err, "grade_do"
         ) == "METEORITE_PASSED_JD_RETRY"
         assert consult_mod._consult_batch_fail_dest(
-            "METEORITE_PASSED_JD_RETRY", "METEORITE_FAILED_TECHNICAL_DO"
-        ) == "METEORITE_FAILED_TECHNICAL_DO"
+            "METEORITE_PASSED_JD_RETRY", "ERROR_METEORITE_GRADE_DO", "grade_do"
+        ) == "ERROR_METEORITE_GRADE_DO"
         # Twin evaluate hop: incomplete → METEORITE_QUALIFIED_RETRY; second strike → twin error.
         assert consult_mod._consult_batch_fail_dest(
-            "METEORITE_QUALIFIED", met_err
+            "METEORITE_QUALIFIED", met_err, "evaluate_meteorite"
         ) == "METEORITE_QUALIFIED_RETRY"
         assert consult_mod._consult_batch_fail_dest(
-            "METEORITE_QUALIFIED_RETRY", met_err
+            "METEORITE_QUALIFIED_RETRY", met_err, "evaluate_meteorite"
         ) == met_err
-        assert met_err == "METEORITE_ERROR_EVALUATE_JD"
+        assert met_err == "ERROR_EVALUATE_METEORITE"
         assert met_err != jd_err
         # Classic evaluate_jd incomplete still holds on JD_READY_RETRY (unchanged).
-        assert consult_mod._consult_batch_fail_dest("JD_READY", jd_err) == "JD_READY_RETRY"
-        assert consult_mod._consult_batch_fail_dest("JD_READY_RETRY", jd_err) == jd_err
+        assert consult_mod._consult_batch_fail_dest("JD_READY", jd_err, "evaluate_jd") == "JD_READY_RETRY"
+        assert consult_mod._consult_batch_fail_dest("JD_READY_RETRY", jd_err, "evaluate_jd") == jd_err
         # Legacy map companions for holdings already in the map.
         assert consult_mod._INPUT_STATE_TO_TASK["PASSED_JD_RETRY"] == "grade_do"
         assert consult_mod._INPUT_STATE_TO_TASK["PASSED_DO_RETRY"] == "grade_get"
@@ -6466,12 +6792,12 @@ class TestAst1760AllLiteralXRetry:
 
     def test_fail_dest_meteorite_like_matrix(self) -> None:
         err = TASK_CONFIG["meteorite_like"]["error_state"]
-        assert err == "METEORITE_FAILED_TECHNICAL_LIKE"
+        assert err == "ERROR_METEORITE_LIKE"
         assert (
-            consult_mod._consult_batch_fail_dest("METEORITE_PASSED_GET", err)
+            consult_mod._consult_batch_fail_dest("METEORITE_PASSED_GET", err, "meteorite_like")
             == "METEORITE_PASSED_GET_RETRY"
         )
-        assert consult_mod._consult_batch_fail_dest("METEORITE_PASSED_GET_RETRY", err) == err
+        assert consult_mod._consult_batch_fail_dest("METEORITE_PASSED_GET_RETRY", err, "meteorite_like") == err
 
     def test_apply_scored_all_x_never_pass_at_floor_zero(
         self, monkeypatch: pytest.MonkeyPatch
@@ -6610,7 +6936,8 @@ class TestAst1760AllLiteralXRetry:
     async def test_render_verdict_meteorite_like_all_x_second_strike(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """AC2: holding + all-X → METEORITE_FAILED_TECHNICAL_LIKE."""
+        """AST-2096 (supersedes AC2): holding + all-X → METEORITE_FAILED_LIKE_ALL_X, a fail verdict
+        (success=True so single-entity dispatch tallies it failed), never error_state."""
         job = {
             "astral_job_id": "job-x",
             "company": "meteorite-co",
@@ -6619,7 +6946,6 @@ class TestAst1760AllLiteralXRetry:
             "astral_candidate_id": "c1",
         }
         transition = MagicMock()
-        err = TASK_CONFIG["meteorite_like"]["error_state"]
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
         monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
         monkeypatch.setattr(
@@ -6648,9 +6974,10 @@ class TestAst1760AllLiteralXRetry:
                 "candidate_data": {"artifacts": {"like_rubric": self._like_rubric()}},
             },
         )
-        assert out["success"] is False
-        assert out["to_state"] == err
-        transition.assert_called_once_with("meteorite_like", ["job-x"], err)
+        assert out["success"] is True
+        assert out["to_state"] == "METEORITE_FAILED_LIKE_ALL_X"
+        assert out["to_state"] != TASK_CONFIG["meteorite_like"]["error_state"]
+        transition.assert_called_once_with("meteorite_like", ["job-x"], "METEORITE_FAILED_LIKE_ALL_X")
 
     @pytest.mark.asyncio
     async def test_batch_mixed_all_x_sibling_still_passes(
@@ -6744,6 +7071,88 @@ class TestAst1760AllLiteralXRetry:
             ("job-ok",),
             "METEORITE_PASSED_LIKE",
         ) in triples
+
+    @pytest.mark.asyncio
+    async def test_batch_all_x_second_strike_counts_failed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-2096 [bug-repro] (batch): *_RETRY + all-X → fail_state_ALL_X, counted failed, not bad_grades.
+        Same batch keeps first-strike all-X → retry holding (bad_grades) and a real-letter sibling → pass."""
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
+        # job-x2: second strike; job-x1: first strike; job-ok: retry row that grades normally.
+        states = {
+            "job-x2": "METEORITE_PASSED_GET_RETRY",
+            "job-x1": "METEORITE_PASSED_GET",
+            "job-ok": "METEORITE_PASSED_GET_RETRY",
+        }
+        jobs_by_id = {
+            aid: {"astral_job_id": aid, "state": st, "astral_candidate_id": "c1", "job_title": aid}
+            for aid, st in states.items()
+        }
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda aid: dict(jobs_by_id[aid]))
+        _patch_scored_render_verdict_fixtures(
+            monkeypatch,
+            rubric=self._like_rubric(),
+            score_floor=0.0,
+            task_key="meteorite_like",
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {"astral_job_id": "job-x2", "grades": self._all_x_grades()},
+                            {"astral_job_id": "job-x1", "grades": self._all_x_grades()},
+                            {"astral_job_id": "job-ok", "grades": self._partial_x_grades()},
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+
+        def process(input_job, response_job, cfg):
+            to_state, _, _ = consult_mod._apply_render_verdict_decoded_job(
+                "meteorite_like",
+                response_job["astral_job_id"],
+                response_job,
+                cfg,
+                {"astral_candidate_id": "c1"},
+            )
+            return to_state
+
+        out = await consult_mod._run_batch_consult(
+            "meteorite_like",
+            "batch-2096-second-strike",
+            list(jobs_by_id.values()),
+            lambda rows: "content",
+            process,
+            {
+                "astral_candidate_id": "c1",
+                "candidate_data": {"artifacts": {"like_rubric": self._like_rubric()}},
+            },
+            False,
+        )
+        # Terminal all-X is a fail verdict: in failed, out of bad_grades and the error string.
+        assert out["failed"] == 1
+        assert out["passed"] == 1
+        assert out["retried"] == 1
+        assert out["bad_grades"] == ["job-x1"]
+        assert "job-x2" not in (out["error"] or "")
+        triples = sorted(
+            (c.args[0], tuple(sorted(c.args[1])), c.args[2])
+            for c in transition.call_args_list
+        )
+        assert ("meteorite_like", ("job-x2",), "METEORITE_FAILED_LIKE_ALL_X") in triples
+        assert ("meteorite_like", ("job-x1",), "METEORITE_PASSED_GET_RETRY") in triples
+        assert ("meteorite_like", ("job-ok",), "METEORITE_PASSED_LIKE") in triples
+        err = TASK_CONFIG["meteorite_like"]["error_state"]
+        assert all(t[2] != err for t in triples), triples
 
 
 # Branches: meteorite title-screen proof locks after AST-1152 peel (AST-1153 P1/P5).
@@ -7648,8 +8057,8 @@ class TestAst1846ConsultRetryWarnThenError:
     @pytest.mark.parametrize(
         ("state", "error_state", "dest"),
         [
-            # Out of the holding → FAILED_TECHNICAL (terminal, counted).
-            ("PASSED_LIKE_RETRY", "PASSED_LIKE_RETRY", "FAILED_TECHNICAL"),
+            # Out of the holding → ERROR_ANALYSIS_UPSHOT (terminal, counted).
+            ("PASSED_LIKE_RETRY", "PASSED_LIKE_RETRY", "ERROR_ANALYSIS_UPSHOT"),
             # No destination at all (no state, no error_state) → no transition, still counted.
             (None, None, None),
         ],
@@ -7690,17 +8099,17 @@ class TestAst2006EmptyTokenRouting:
     _EMPTY = {"success": False, "error": "Empty tokens: VISIBLE_JD (task=grade_do)", "empty_tokens": ["VISIBLE_JD"], "empty_token_task": "grade_do"}
 
     @pytest.mark.parametrize(
-        ("states", "want"),
+        ("args", "want"),
         [
-            (("ERROR_A", "ERROR_B"), "ERROR_A"),  # hop before entry: first configured wins
-            (("PASSED_LIKE_RETRY", "ERROR_B"), "ERROR_B"),  # a retry holding is skipped
-            (("PASSED_LIKE_RETRY",), "FAILED_TECHNICAL"),
-            ((None, "  "), "FAILED_TECHNICAL"),
+            (("grade_do", "ERROR_GRADE_DO"), "ERROR_GRADE_DO"),  # configured non-retry error_state wins
+            (("analysis_upshot", "PASSED_LIKE_RETRY"), "ERROR_ANALYSIS_UPSHOT"),  # retry holding → bare task error
+            (("draft_cover_letter", None), "ERROR_DRAFT_COVER_LETTER"),
+            (("grade_do", "  "), "ERROR_GRADE_DO"),
         ],
-        ids=["first_wins", "skip_retry", "retry_only", "unset"],
+        ids=["configured", "retry_to_bare", "unset", "blank"],
     )
-    def test_empty_token_fail_dest(self, states: tuple, want: str) -> None:
-        assert consult_mod._empty_token_fail_dest(*states) == want
+    def test_empty_token_fail_dest(self, args: tuple, want: str) -> None:
+        assert consult_mod._empty_token_fail_dest(*args) == want
 
     async def _batch(self, monkeypatch: pytest.MonkeyPatch, result: Dict[str, Any]) -> tuple:
         trans = MagicMock()
@@ -7717,7 +8126,7 @@ class TestAst2006EmptyTokenRouting:
     async def test_run_batch_consult_goes_to_error_state_not_retry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # AST-2000 Repro 3: PASSED_JD has retry_state PASSED_JD_RETRY; empty tokens skip it.
         out, dests = await self._batch(monkeypatch, dict(self._EMPTY))
-        assert dests == ["FAILED_TECHNICAL_DO"]
+        assert dests == ["ERROR_GRADE_DO"]
         assert out["retried"] == 0 and out["failed"] == 0 and out["total"] == 1
         assert out["success"] is False
 
@@ -7728,7 +8137,7 @@ class TestAst2006EmptyTokenRouting:
         assert dests == ["PASSED_JD_RETRY"]
 
     @pytest.mark.asyncio
-    async def test_analysis_upshot_retry_error_state_falls_to_failed_technical(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_analysis_upshot_retry_error_state_falls_to_bare_task_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {"astral_job_id": "j1", "company": "co", "job_data": {}, "state": "PASSED_LIKE"}
         monkeypatch.setattr(consult_mod.tracker, "get_job", MagicMock(return_value=job))
         monkeypatch.setattr(consult_mod.tracker, "get_company", MagicMock(return_value={"short_name": "co"}))
@@ -7737,8 +8146,8 @@ class TestAst2006EmptyTokenRouting:
         trans = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
         out = await consult_mod._run_analysis_upshot_batch("b-2006", [job], {}, False)
-        # analysis_upshot error_state is PASSED_LIKE_RETRY (a retry holding) → FAILED_TECHNICAL.
-        assert [c.args[1:] for c in trans.call_args_list] == [(["j1"], "FAILED_TECHNICAL")]
+        # analysis_upshot error_state is PASSED_LIKE_RETRY (a retry holding) → bare ERROR_ANALYSIS_UPSHOT.
+        assert [c.args[1:] for c in trans.call_args_list] == [(["j1"], "ERROR_ANALYSIS_UPSHOT")]
         assert out["total_errors"] == 1 and out["total_passed"] == 0
 
     @pytest.mark.asyncio
@@ -7751,8 +8160,8 @@ class TestAst2006EmptyTokenRouting:
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
         out = await consult_mod.render_verdict("grade_do", "job-1")
         assert out["success"] is False
-        assert out["to_state"] == "FAILED_TECHNICAL_DO"
-        assert [c.args[1:] for c in trans.call_args_list] == [(["job-1"], "FAILED_TECHNICAL_DO")]
+        assert out["to_state"] == "ERROR_GRADE_DO"
+        assert [c.args[1:] for c in trans.call_args_list] == [(["job-1"], "ERROR_GRADE_DO")]
 
     async def _chain(
         self, monkeypatch: pytest.MonkeyPatch, *, hop: str, dispatch_key: str, state: str, transition: MagicMock,
@@ -7773,21 +8182,192 @@ class TestAst2006EmptyTokenRouting:
         hop_label = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
         trans = MagicMock()
         out, released = await self._chain(monkeypatch, hop="contemplate_job", dispatch_key="contemplate_job", state=hop_label, transition=trans)
-        assert [c.args for c in trans.call_args_list] == [(["job-1"], "ERROR_BUILD_ARTIFACTS")]
+        assert [c.args for c in trans.call_args_list] == [(["job-1"], "ERROR_CONTEMPLATE_JOB")]
         assert released == ["job-1"]
         assert out["total_errors"] == 1 and out["total_passed"] == 0
 
     @pytest.mark.asyncio
-    async def test_dispatch_chain_hop_without_error_state_uses_entry(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # draft_cover_letter has no error_state → the entry dispatch task's (anticipate_scan → ERROR_BUILD_ARTIFACTS).
-        assert TASK_CONFIG["draft_cover_letter"].get("error_state") is None
+    async def test_dispatch_chain_failing_hop_error_wins_over_entry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2086: every chain hop owns ERROR_<HOP>; the entry dispatch task's error never stands in for it.
+        assert TASK_CONFIG["draft_cover_letter"]["error_state"] == "ERROR_DRAFT_COVER_LETTER"
         trans = MagicMock()
         await self._chain(monkeypatch, hop="draft_cover_letter", dispatch_key="anticipate_scan", state=cfg.BUILD_ARTIFACTS_BASE_STATE, transition=trans)
-        assert [c.args for c in trans.call_args_list] == [(["job-1"], "ERROR_BUILD_ARTIFACTS")]
+        assert [c.args for c in trans.call_args_list] == [(["job-1"], "ERROR_DRAFT_COVER_LETTER")]
 
     @pytest.mark.asyncio
-    async def test_dispatch_chain_invalid_edge_falls_to_failed_technical(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        trans = MagicMock(side_effect=[ValueError("bad edge"), None])
+    async def test_dispatch_chain_invalid_edge_warns_without_fallback(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # AST-2086: a refused empty-token edge is a config bug — warn and keep the label, no FAILED_TECHNICAL write.
+        trans = MagicMock(side_effect=[ValueError("bad edge")])
         out, released = await self._chain(monkeypatch, hop="anticipate_scan", dispatch_key="anticipate_scan", state=cfg.BUILD_ARTIFACTS_BASE_STATE, transition=trans)
-        assert [c.args for c in trans.call_args_list] == [(["job-1"], "ERROR_BUILD_ARTIFACTS"), (["job-1"], "FAILED_TECHNICAL")]
+        assert [c.args for c in trans.call_args_list] == [(["job-1"], "ERROR_ANTICIPATE_SCAN")]
         assert released == ["job-1"] and out["total_errors"] == 1
+        assert any(
+            r.levelname == "WARNING" and "empty_tokens dest ERROR_ANTICIPATE_SCAN refused" in r.getMessage()
+            for r in caplog.records
+        )
+
+
+class TestAst2125MissingRubricDescription:
+    """AST-2124: a letter grade with no rubric description fails only that entity (fail_state, WARNING);
+    X never fails hydrate. Bug-repro: AST-2116 Somerset meteorite_grade_do (PS graded F, no F row)."""
+
+    _PS = "Process & Systems Design"
+    _CF = "Culture Fit"
+    _MISS = "No rubric description for vector 'Process & Systems Design' grade F"
+
+    @classmethod
+    def _rubric(cls) -> List[Dict[str, Any]]:
+        # Production shape: PS has no F row; neither vector has an X row.
+        return [
+            {"code": "PS", "label": cls._PS, "importance": 5,
+             "grade_descriptions": [{"grade": g, "description": f"PS {g}"} for g in "ABCD"]},
+            {"code": "CF", "label": cls._CF, "importance": 3,
+             "grade_descriptions": [{"grade": g, "description": f"CF {g}"} for g in "ABCDF"]},
+        ]
+
+    @classmethod
+    def _miss_grades(cls) -> List[Dict[str, Any]]:
+        return [{"vector": cls._PS, "grade": "F", "confidence": 3}, {"vector": cls._CF, "grade": "B", "confidence": 4}]
+
+    @classmethod
+    def _clean_grades(cls) -> List[Dict[str, Any]]:
+        return [{"vector": cls._PS, "grade": "B", "confidence": 4}, {"vector": cls._CF, "grade": "X", "confidence": 0}]
+
+    def test_x_without_x_row_is_no_signal(self) -> None:
+        assert consult_mod._X_NO_SIGNAL_REASON == "No signal"
+        assert consult_mod._lookup_rubric_reason_for_grade(self._rubric(), self._CF, "X") == "No signal"
+        # X never fails hydrate — not even on a vector the rubric doesn't know.
+        assert consult_mod._lookup_rubric_reason_for_grade(self._rubric(), "Nope", "X") == "No signal"
+
+    def test_x_with_x_row_uses_rubric_text(self) -> None:
+        rubric = self._rubric()
+        rubric[1]["grade_descriptions"].append({"grade": "X", "description": "CF unknown"})
+        assert consult_mod._lookup_rubric_reason_for_grade(rubric, self._CF, "X") == "CF unknown"
+
+    def test_blank_row_falls_through_to_trailing_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Re-indented AST-2124 arcs: blank matching row continues; non-matching table row continues.
+        criteria = [{"label": "Fit", "content": "body", "grade_descriptions": [{"grade": "A", "description": "  "}]}]
+        monkeypatch.setattr(
+            rubric_text, "parse_trailing_grade_table_lines",
+            lambda content: [{"grade": "B", "description": "table B"}, {"grade": "A", "description": "table A"}],
+        )
+        assert consult_mod._lookup_rubric_reason_for_grade(criteria, "Fit", "A") == "table A"
+
+    def test_missing_letter_vs_unknown_vector(self) -> None:
+        with pytest.raises(consult_mod.MissingRubricDescriptionError, match="No rubric description") as miss:
+            consult_mod._lookup_rubric_reason_for_grade(self._rubric(), self._PS, "F")
+        assert isinstance(miss.value, ValueError)
+        with pytest.raises(ValueError, match="No rubric criterion matching vector") as unknown:
+            consult_mod._lookup_rubric_reason_for_grade(self._rubric(), "Nope", "A")
+        assert not isinstance(unknown.value, consult_mod.MissingRubricDescriptionError)
+
+    def test_batch_hydrate_returns_misses_structural_still_raises(self) -> None:
+        jobs = [{"astral_job_id": "J0", "grades": self._miss_grades()},
+                {"astral_job_id": "J1", "grades": self._clean_grades()}, "junk"]
+        assert consult_mod._hydrate_response_jobs_grade_reasons(jobs, self._rubric()) == {"J0": self._MISS}
+        assert [g["reason"] for g in jobs[1]["grades"]] == ["PS B", "No signal"]
+        with pytest.raises(ValueError, match="rubric criteria missing or empty"):
+            consult_mod._hydrate_response_jobs_grade_reasons([{"astral_job_id": "J1", "grades": self._clean_grades()}], [])
+
+    @pytest.mark.asyncio
+    async def test_batch_miss_fails_only_that_job(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # [bug-repro] AST-2116: pre-fix both jobs went to METEORITE_PASSED_JD_RETRY.
+        caplog.set_level("DEBUG")
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: self._rubric())
+        monkeypatch.setattr(consult_mod, "ensure_batch_response_entity_ids", MagicMock())
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value={
+            "success": True, "timesheet": {},
+            "parsed_response": {"jobs": [{"astral_job_id": "J0", "grades": self._miss_grades()},
+                                         {"astral_job_id": "J1", "grades": self._clean_grades()}]},
+        }))
+        process = MagicMock(side_effect=lambda _i, _r, cfg: cfg["pass_state"])
+        jobs = [{"astral_job_id": a, "state": "METEORITE_PASSED_JD"} for a in ("J0", "J1")]
+        out = await consult_mod._run_batch_consult(
+            "meteorite_grade_do", "b-2116", jobs, lambda rows: "content", process, {}, False,
+        )
+        transition.assert_called_once_with("meteorite_grade_do", ["J0"], "METEORITE_FAILED_DO")
+        assert [c.args[1]["astral_job_id"] for c in process.call_args_list] == ["J1"]
+        assert [g["reason"] for g in process.call_args.args[1]["grades"]] == ["PS B", "No signal"]
+        assert (out["success"], out["passed"], out["failed"], out["retried"]) == (True, 1, 1, 0)
+        assert [(r.levelname, r.getMessage()) for r in caplog.records if "J0 -> " in r.getMessage()] == [
+            ("WARNING", f"J0 -> METEORITE_FAILED_DO [hydrate: {self._MISS}]"),
+        ]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+    def test_single_row_miss_fails_without_save(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod.tracker, "get_job",
+                            lambda aid: {"astral_job_id": aid, "state": "METEORITE_PASSED_JD"})
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=self._rubric(), task_key="meteorite_grade_do")
+        cfg = consult_mod._consult_orchestration("meteorite_grade_do")
+        grades = self._miss_grades()
+        out = consult_mod._apply_render_verdict_decoded_job(
+            "meteorite_grade_do", "J0", {"grades": grades, "notes": ""}, cfg, {"astral_candidate_id": "c1"},
+        )
+        assert out == ("METEORITE_FAILED_DO", None, grades)
+        transition.assert_called_once_with("meteorite_grade_do", ["J0"], "METEORITE_FAILED_DO")
+        save.assert_not_called()
+
+
+# AST-2126 [bug-repro] (AST-2127): a grades_encoded_notes reply with no _GRADE_SEG match (V01-style codes or
+# prose) falls to the letter-pipe path. Pre-fix it returned a silent {"grades": []} row that later failed
+# _require_complete_grade_set with every label missing; now every batch entity is a decode failure carrying
+# the raw reply (AST-1996 route). Branches: job task + zero grades → decode_failures (1 and 2 entities);
+# letter-pipe with grades → row unchanged; company task with zero grades → companies row, no decode_failures.
+class TestAst2126ZeroGradeRepliesAreDecodeFailures:
+    _RUBRIC = [
+        {"code": "V01", "label": "Vector 1", "content": "x", "importance": 5},
+        {"code": "V02", "label": "Vector 2", "content": "x", "importance": 5},
+    ]
+
+    def _normalize(self, monkeypatch: pytest.MonkeyPatch, task_key: str, payload: str, entities: list) -> dict:
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda cid, cfg: self._RUBRIC)
+        return consult_mod._normalize_rubric_task_response(
+            task_key, TASK_CONFIG[task_key], {"agent_payload": payload}, {"batch_entities": entities}
+        )
+
+    @pytest.mark.parametrize("payload", ["000|V01A3|V02B4", "This candidate is a strong fit."])
+    def test_bug_repro_one_job_zero_grades_is_decode_failure(
+        self, monkeypatch: pytest.MonkeyPatch, payload: str
+    ) -> None:
+        out = self._normalize(monkeypatch, "grade_do", payload, [{"astral_job_id": "J0", "state": "PASSED_JD"}])
+        assert out == {
+            "jobs": [],
+            "decode_failures": [
+                {"astral_job_id": "J0", "pos": 0, "reason": f"[grade_do] no grade segments in reply: {payload!r}"}
+            ],
+        }
+
+    def test_every_entity_gets_one_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out = self._normalize(monkeypatch, "grade_do", "prose reply", [{"astral_job_id": "J0"}, {"astral_job_id": "J1"}])
+        assert out["jobs"] == []
+        assert [(f["astral_job_id"], f["pos"]) for f in out["decode_failures"]] == [("J0", 0), ("J1", 1)]
+        assert all("no grade segments in reply: 'prose reply'" in f["reason"] for f in out["decode_failures"])
+
+    def test_letter_pipe_with_grades_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out = self._normalize(monkeypatch, "grade_do", "A|B", [{"astral_job_id": "J0"}])
+        assert "decode_failures" not in out
+        assert out["jobs"][0]["astral_job_id"] == "J0"
+        assert [(g["vector"], g["grade"]) for g in out["jobs"][0]["grades"]] == [("Vector 1", "A"), ("Vector 2", "B")]
+
+    def test_company_task_zero_grades_keeps_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        out = self._normalize(monkeypatch, "prefilter_company", "prose reply", [{"company_id": "C0"}])
+        assert "decode_failures" not in out
+        assert out["companies"][0]["company_id"] == "C0"
+        assert out["companies"][0]["grades"] == []
+
+    def test_require_complete_grade_set_reports_missing_and_unknown(self) -> None:
+        # Wrong-but-valid-shape codes must not read the same as an empty reply.
+        rubric = [{"label": "A"}, {"label": "B"}]
+        with pytest.raises(consult_mod.IncompleteGradeSetError) as exc:
+            consult_mod._require_complete_grade_set(rubric, [{"vector": "ZZ", "grade": "A", "confidence": 3}])
+        assert str(exc.value) == "_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']"

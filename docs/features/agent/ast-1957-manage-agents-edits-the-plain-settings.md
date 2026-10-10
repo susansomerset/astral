@@ -1,3 +1,80 @@
+<!-- linear-archive: AST-1957 archived 2026-10-08 -->
+
+## Linear archive (AST-1957)
+
+**Archived:** 2026-10-08  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1957/manage-agents-edits-the-plain-settings-refactor-agent-settings-and  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1953 — Refactor agent settings and ingest per-endpoint model options  
+**Blocked by / blocks / related:** parent: AST-1953
+
+### Description
+
+## What this implements
+
+The admin routes take and return the settings, and the models list drops brain sizes. The Manage Agents form gets plain inputs for each setting, and brain size and mode are removed. After #1. Does **not** touch the call path (#2).
+
+## Citations
+
+`stat.logging.info.api`.
+
+## Scope
+
+* `src/ui/api/api_admin.py` (**modified**):
+  * **Modified agent create/update:** take and return the settings (type checks only) and no longer require or accept `brain_setting` / `mode`.
+  * **Modified** `GET /agents/models`**:** returns model id, label, server and default output budget, with no brain sizes.
+  * **Modified adhoc/workbench resolvers:** use the new resolver.
+* `src/ui/frontend/src/pages/AdminAgentPrompts.tsx` (**modified**):
+  * **Modified form:** the Functional scope 7 inputs, sent as the settings keys.
+  * **Removed:** brain-size and mode controls, the `AGENT_MODES` constant and the size pre-fill.
+  * **Modified list columns:** show the settings.
+  * **Modified model types:** drop brain sizes.
+* Tests and bibles (Betty in `qa-child`):
+  * `tests/component/ui/api/test_api_admin.py`
+  * `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx`
+  * `docs/test-bible/ui/api/api_admin.md`
+  * `docs/test-bible/frontend/pages.md`
+
+## Acceptance criteria
+
+"Stubbed client" means the component-test stubs of the Anthropic SDK client used by `test_llm_compat.py`, `test_anthropic.py` and `test_agent.py`.
+
+10. **Manage Agents edits the settings.**
+    * **Check (frontend component test):** the edit form renders the seven settings inputs and saves them under the settings keys, with no `brain_setting` or `mode` in the body.
+    * **Check:** `rg -n "brain_setting|AGENT_MODES|Deterministic|Creative" src/ui/frontend/src/pages/AdminAgentPrompts.tsx` returns nothing.
+    * **Fails if:** any input is missing or a retired control remains.
+
+## Boundaries
+
+Does not touch the call path (#2) or config/database (#1). Uses #1's resolver.
+
+## Notes for planning
+
+Parent AST-1953 Description is the authority (Functional scope, Technical scope, Susan's 2026-10-03 answers). Code it loosely — no vocabulary lists, no pre-send gating (Susan).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1953-agent-settings`, child `sub/AST-1953/AST-1957-manage-agents-settings`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-03T23:19:49.006Z
+[code-rubric] PROCEED (Commit: 9a514b89) Admin settings UI+API clean
+
+#### betty — 2026-10-03T23:18:07.877Z
+`origin/sub/AST-1953/AST-1957-manage-agents-settings` @ `9a514b899` · manifest in pages.md bible
+
+#### joan — 2026-10-03T23:09:18.227Z
+[plan-rubric] PROCEED (Commit: fb90852e7) Admin settings wired
+
+#### ada — 2026-10-03T23:08:01.671Z
+`origin/sub/AST-1953/AST-1957-manage-agents-settings` @ `fb90852e7` · plan ready
+
+---
+
 # AST-1957 — Manage Agents edits the plain settings
 
 - **Ticket:** [AST-1957](https://linear.app/astralcareermatch/issue/AST-1957) · **Parent:** [AST-1953](https://linear.app/astralcareermatch/issue/AST-1953) Refactor agent settings and ingest per-endpoint model options

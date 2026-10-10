@@ -13,23 +13,23 @@ source_docs:
 supersedes: null
 superseded_by: null
 approved_by: Archie
-approved_at: "2026-07-23"
+approved_at: "2026-10-08"
 ---
 
 # Statement
 
-Flow is `dev→ftr→sub`, `tests→sub`, `sub→ftr→dev`, `dev→main`. `tests` never merges into `dev` or `main`; `dev` never merges into `tests`.
+Flow is `dev→ftr→sub`, `sub→ftr→dev`, `dev→main`. Tests and the test bible travel with product code on that same path: Betty commits them on the sub. Nothing merges into or out of the retired `tests` branch.
 
 ## Rationale
 
-One-way flow keeps production, integration, and test corpus from contaminating each other.
+One-way flow keeps production and integration from contaminating each other; one path per test means one copy per test.
 
 ## Examples
 
 ### Conforming
 
-- Betty delivers tests via `merge-tests` onto `sub`, not onto `dev`.
+- Betty commits `test(AST-NNN): …` on the child's `sub`; it reaches `dev` only through `merge-child` and `finish-up`.
 
 ### Violating
 
-- Someone merges `origin/tests` into `origin/dev`.
+- Someone merges `origin/tests` into a sub, an ftr, or `dev`.

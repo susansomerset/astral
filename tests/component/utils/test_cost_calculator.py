@@ -84,3 +84,10 @@ class TestAst1877CatalogPricing:
         usage = SimpleNamespace(input_tokens=1, output_tokens=1, cache_read_input_tokens=0, cache_creation_input_tokens=0)
         with pytest.raises(ValueError, match="Unknown SKU"):
             fn(usage, "__no_sku__")
+
+
+class TestAst2098UsageNone:
+    """AST-2098: a hollow response (no usage object) reads as zero tokens, never an exception."""
+
+    def test_usage_none_reads_zero_tokens(self) -> None:
+        assert usage_to_token_counts(None) == {"cache_read": 0, "cache_miss": 0, "output": 0, "cache_write": 0}

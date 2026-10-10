@@ -3,20 +3,19 @@ import AgentAnalysisHeader from "./AgentAnalysisHeader"
 import { type AgentStoryEntry } from "./AgentStoryTab"
 import ArtifactEditor from "./ArtifactEditor"
 import JobDiscussionPane from "./JobDiscussionPane"
+import JobArtifactEditModal, { type JobArtifactTab } from "./JobArtifactEditModal"
 import JobMeteoritePane, { type RelatedMeteorite } from "./JobMeteoritePane"
 import Modal from "./Modal"
+import PrintPreview from "./PrintPreview"
 import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
-import {
-  type Catalog,
-  type SectionRow,
-} from "./ResumeStructureEditor"
 import { TabBar } from "./TabbedTextArea"
 import Toast, { type ToastMessage } from "./Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
 import { postSkipJob } from "../lib/candidateJobActions"
+import { fetchPrintHtml, openHtmlInNewTab } from "../lib/printHtml"
 import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
 import { parseAnalysisUpshot, type AnalysisUpshot } from "../lib/analysisUpshot"
 import {
@@ -35,14 +34,6 @@ import {
   printResumeVisible,
   type ReportPrimaryAction,
 } from "../lib/recommendedJobReport"
-
-function catalogFromPayload(data: { catalog?: unknown }): Catalog | null {
-  const raw = data.catalog
-  if (!raw || typeof raw !== "object") return null
-  const c = raw as Catalog
-  if (!Array.isArray(c.body_formats)) return null
-  return c
-}
 
 /** Navigable listing URL only — mirrors AST-1694 http(s) rule; non-http → null. */
 function httpListingHref(raw: string | null | undefined): string | null {
@@ -86,7 +77,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const { selectedId, candidates } = useCandidate()
   const [job, setJob] = useState<JobDetail | null>(null)
   const [companyWebsite, setCompanyWebsite] = useState<string | null>(null)
-  const [companyNotes, setCompanyNotes] = useState<string | null>(null)
+  const [companyUpshot, setCompanyUpshot] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [primaryBusy, setPrimaryBusy] = useState(false)
@@ -97,12 +88,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [skipBusy, setSkipBusy] = useState(false)
   // Empty until the manifest tabs resolve — the effect below picks topTabs[0] (config order, AST-1874).
   const [activeTopTab, setActiveTopTab] = useState("")
-  const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
-  const [structureError, setStructureError] = useState(false)
-  const [allSections, setAllSections] = useState<SectionRow[]>([])
-  const [catalog, setCatalog] = useState<Catalog | null>(null)
-  const [structureSaving, setStructureSaving] = useState(false)
-  const [structureSaveError, setStructureSaveError] = useState<string | null>(null)
+  // AST-2084: artifact tab open in the stacked edit modal (null = closed).
+  const [editTab, setEditTab] = useState<JobArtifactTab | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
@@ -116,7 +103,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setLoading(true)
     setError(null)
     setCompanyWebsite(null)
-    setCompanyNotes(null)
+    setCompanyUpshot(null)
     try {
       const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`)
       if (!res.ok) {
@@ -136,12 +123,14 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           .then(co => {
             const site = co?.company_website
             setCompanyWebsite(typeof site === "string" && site.trim() ? site.trim() : null)
-            const notes = co?.prefilter_company_notes
-            setCompanyNotes(typeof notes === "string" && notes.trim() ? notes.trim() : null)
+            const companyUpshotText = co?.company_upshot
+            setCompanyUpshot(
+              typeof companyUpshotText === "string" && companyUpshotText.trim() ? companyUpshotText.trim() : null,
+            )
           })
           .catch(() => {
             setCompanyWebsite(null)
-            setCompanyNotes(null)
+            setCompanyUpshot(null)
           })
       }
     } catch (e) {
@@ -154,134 +143,15 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
 
   useEffect(() => { load() }, [load])
 
-  // Resume section labels + structure authoring (candidate resume_structure as shared defaults).
-  useEffect(() => {
-    if (!selectedId) {
-      setStructureSections(null)
-      setStructureError(false)
-      setAllSections([])
-      setCatalog(null)
-      return
-    }
-    setStructureSections(null)
-    setStructureError(false)
-    setAllSections([])
-    setCatalog(null)
-    api(`/api/candidates/${selectedId}/resume_structure`)
-      .then(r => r.json())
-      .then(data => {
-        const sections = Array.isArray(data.sections) ? data.sections : []
-        setStructureSections(sections.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
-        setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
-        setCatalog(catalogFromPayload(data))
-      })
-      .catch(() => {
-        setStructureSections(null)
-        setStructureError(true)
-        setAllSections([])
-        setCatalog(null)
-      })
-  }, [selectedId])
 
-  function handleStructureRowsChange(rows: SectionRow[]) {
-    setAllSections(rows)
-    setStructureSections(rows.map(r => ({ id: r.id, label: r.title })))
-  }
 
-  async function persistStructureRows(rows: SectionRow[]): Promise<void> {
-    if (!selectedId) throw new Error("No candidate selected")
-    const sections: Record<string, Record<string, unknown>> = {}
-    rows.forEach((row, index) => {
-      const spec: Record<string, unknown> = {
-        id: row.id,
-        title: row.title,
-        enabled: row.enabled,
-        order: index,
-        job_agent_editable: row.job_agent_editable,
-        page_break_policy: row.page_break_policy,
-      }
-      if (row.format) spec.format = row.format
-      sections[row.id] = spec
-    })
-    setStructureSaving(true)
-    setStructureSaveError(null)
-    try {
-      const r = await api(`/api/candidates/${selectedId}/data`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artifacts: { resume_structure: { sections } } }),
-      })
-      if (!r.ok) {
-        const e = await r.json().catch(() => ({})) as { error?: string }
-        throw new Error(e.error || "Save failed")
-      }
-      await r.json()
-      const data = await api(`/api/candidates/${selectedId}/resume_structure`).then(res => res.json())
-      const sectionsList = Array.isArray(data.sections) ? data.sections : []
-      setStructureSections(sectionsList.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
-      setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
-      setCatalog(catalogFromPayload(data))
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Save failed"
-      setStructureSaveError(msg)
-      throw e instanceof Error ? e : new Error(msg)
-    } finally {
-      setStructureSaving(false)
-    }
-  }
-
-  function saveStructure(rows: SectionRow[]) {
-    void persistStructureRows(rows)
-      .then(() => setToast({ text: "Resume sections saved", variant: "success" }))
-      .catch(e => {
-        const msg = e instanceof Error ? e.message : "Save failed"
-        setToast({ text: msg, variant: "error" })
-      })
-  }
-
-  // AST-1350: fetch-then-blob; AST-1489: auto-persist structure rows before resume GET.
+  // AST-2084: shared print helper; the job's structure is saved by the resume editor, so nothing persists first.
   const handlePrintResume = useCallback(async () => {
     if (!jobId) return
-    try {
-      if (selectedId) {
-        await persistStructureRows(allSections)
-      }
-      const r = await api(`/candidate/resume/${encodeURIComponent(jobId)}`)
-      if (!r.ok) {
-        let msg = `HTTP ${r.status}`
-        try {
-          const data = await r.json()
-          if (typeof data.error === "string" && data.error) msg = data.error
-        } catch { /* non-JSON error body */ }
-        setToast({ text: msg, variant: "error" })
-        return
-      }
-      const html = await r.text()
-      if (!html.trim()) {
-        setToast({ text: "HTML response was empty", variant: "error" })
-        return
-      }
-      const blobUrl = URL.createObjectURL(
-        new Blob([html], { type: "text/html;charset=utf-8" }),
-      )
-      // No noopener/noreferrer features — those force a null return even on success.
-      const win = window.open(blobUrl, "_blank")
-      if (win) {
-        win.opener = null
-      } else {
-        setToast({
-          text: "Popup blocked — allow popups to open the HTML tab.",
-          variant: "error",
-        })
-      }
-      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
-    } catch (e) {
-      setToast({
-        text: e instanceof Error ? e.message : "Print failed",
-        variant: "error",
-      })
-    }
-  }, [jobId, selectedId, allSections])
+    const r = await fetchPrintHtml({ kind: "job_resume", id: jobId })
+    const err = r.ok ? openHtmlInNewTab(r.html) : r.error
+    if (err) setToast({ text: err, variant: "error" })
+  }, [jobId])
 
   // Reset top tab when opening a different job; the fallback effect re-picks the first manifest tab.
   useEffect(() => {
@@ -318,7 +188,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     return (manifest?.jobs.recommended.report_summary_sections ?? []).map(s => {
       let default_expanded = s.default_expanded
       if (s.section_id === "job_summary") default_expanded = true
-      else if (s.section_id === "company_upshot") default_expanded = !!companyNotes
+      else if (s.section_id === "company_upshot") default_expanded = !!companyUpshot
       else if (s.section_id === "caveats") default_expanded = hasCaveats
       else if (s.section_id === "questions") default_expanded = hasQuestions
       else if (s.section_id === "raw_jd") default_expanded = false
@@ -328,7 +198,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
         default_expanded,
       }
     })
-  }, [manifest, companyNotes, hasCaveats, hasQuestions])
+  }, [manifest, companyUpshot, hasCaveats, hasQuestions])
 
   const analysisSections = useMemo((): ReportSectionDef[] => {
     const template = manifest?.jobs.recommended.phase_score_header_title_template ?? ""
@@ -381,7 +251,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }))
   }, [manifest])
 
-  const artifactTabs = manifest?.jobs.recommended.report_artifact_tabs
+  const artifactTabs: JobArtifactTab[] | undefined = manifest?.jobs.recommended.report_artifact_tabs
   const artifacts = job?.job_data?.artifacts
   const buildInProgress = !!(job && isArtifactsBuildInProgress(job.state))
   const hasArtifactContent = anyReportArtifactContent(artifacts, artifactTabs)
@@ -447,7 +317,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }
 
     if (sectionId === "company_upshot") {
-      if (companyNotes) return <p className="job-analysis-upshot-body">{companyNotes}</p>
+      if (companyUpshot) return <p className="job-analysis-upshot-body">{companyUpshot}</p>
       return <p className="recommended-report-empty">No company upshot on file.</p>
     }
 
@@ -529,26 +399,21 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     if (!jobId || !artifactTabs) return null
     const artTab = artifactTabs.find(a => a.tab_id === sectionId)
     if (!artTab) return null
-    if (artTab.use_resume_structure) {
-      if (structureError) return <p className="entity-error">Failed to load resume structure.</p>
-      if (!structureSections?.length) {
-        return <p className="recommended-report-empty">Loading resume structure…</p>
-      }
+    // AST-2084: config-flagged tabs show the print preview; a click (or Edit, resume only) opens the stacked edit modal.
+    if (artTab.preview_thumbnail) {
       return (
-        <ArtifactEditor
-          title={artTab.nav_label}
-          artifactKey={artTab.artifact_key}
-          taskKey="craft_resume_base"
-          useCandidateResumeStructure
-          structureSections={structureSections}
-          structureCatalog={catalog}
-          structureRows={allSections}
-          onStructureRowsChange={handleStructureRowsChange}
-          onStructureSave={saveStructure}
-          structureSaving={structureSaving}
-          structureError={structureSaveError}
-          jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
-        />
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <PrintPreview
+            target={{ kind: artTab.use_resume_structure ? "job_resume" : "cover", id: jobId }}
+            thumbnail
+            onClick={() => setEditTab(artTab)}
+          />
+          {artTab.use_resume_structure && (
+            <button type="button" className="btn secondary" onClick={() => setEditTab(artTab)}>
+              Edit
+            </button>
+          )}
+        </div>
       )
     }
     const taskKey =
@@ -794,6 +659,10 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
             </div>
           )}
         </div>
+      )}
+      {/* Outside the job shell so the reload on close cannot unmount it mid-flush; close reloads the report (thumbnails refetch on remount). */}
+      {jobId && (
+        <JobArtifactEditModal jobId={jobId} tab={editTab} onClose={() => { setEditTab(null); void load() }} />
       )}
       <Toast message={toast} onDone={clearToast} />
     </Modal>

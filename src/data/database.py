@@ -59,6 +59,7 @@ via return values (duplicate -> False, no records -> False / count).
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import time
 import uuid
@@ -96,6 +97,12 @@ from src.utils.config import (
     validate_job_source,
     validate_source_entity_type,
     ENTITY_TYPES,
+    JOB_STATES,
+    METEORITE_INGRESS_DISPATCH_CONFIG,
+    RETIRED_TERMINAL_STATE_MAP,
+    error_state_for,
+    parse_dispatch_hop_label,
+    retry_base,
     INFLOW_CONFIG,
     ROSTER_CONFIG,
     TASK_CONFIG,
@@ -3542,6 +3549,173 @@ def migrate_legacy_candidate_states(
     return _run_with_retry(_with_conn)
 
 
+# AST-2087: entity -> (registry, primary key, candidate_id column) for the retired terminal-state remap.
+_TERMINAL_REMAP_ENTITIES: Dict[str, Tuple[Dict[str, Any], str, str]] = {
+    "job": (JOB_STATES, "astral_job_id", "candidate_id"),
+    "company": (COMPANY_STATES, "short_name", "candidate_id"),
+    "candidate": (CANDIDATE_STATES, "astral_candidate_id", "astral_candidate_id"),
+    "meteorite": (METEORITE_STATES, "id", "candidate_id"),
+}
+assert set(_TERMINAL_REMAP_ENTITIES) == set(RETIRED_TERMINAL_STATE_MAP)
+
+
+def _terminal_predecessor(raw_history: Optional[str], state: str) -> Optional[str]:
+    """State the row left to land on `state`: the last such entry's from_state, else the prior to_state."""
+    try:
+        hist = json.loads(raw_history or "[]")
+    except (TypeError, ValueError):
+        return None
+    for i in range(len(hist) - 1, -1, -1):
+        entry = hist[i] if isinstance(hist[i], dict) else {}
+        if entry.get("to_state") != state:
+            continue
+        # job/meteorite entries carry no from_state; company/candidate do
+        prev = hist[i - 1] if i and isinstance(hist[i - 1], dict) else {}
+        return entry.get("from_state") or prev.get("to_state")
+    return None
+
+
+def _resolve_retired_terminal_state(
+    old: str,
+    by_key: Dict[str, str],
+    registry: Dict[str, Any],
+    row: sqlite3.Row,
+    cid: Optional[str],
+    triggers: Dict[str, Optional[str]],
+    run_next: Dict[str, str],
+    dispatch: Dict[Tuple[Optional[str], str], set],
+) -> Optional[str]:
+    """New name for a row on retired `old`, or None when its data can't decide (row left as-is)."""
+    if len(by_key) == 1:
+        return next(iter(by_key.values()))
+    # Keys are scrape page statuses (meteorite expired link): run_scrape_meteorite wrote
+    # error = "scrape_<status> signal=… text_len=… final_url=…".
+    if set(by_key) <= set(METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"]):
+        head = (row["error"] or "").split(" ", 1)[0]
+        return next((new for status, new in by_key.items() if head == f"scrape_{status}"), None)
+    targets = dict(by_key)
+    # Bare per-task family (every value is error_state_for(key)): any task whose bare error
+    # is registered on this entity resolves to it (config RETIRED_TERMINAL_STATE_MAP comment).
+    if all(new == error_state_for(k) for k, new in by_key.items()):
+        for k in TASK_CONFIG:
+            if k not in targets and error_state_for(k) in registry:
+                targets[k] = error_state_for(k)
+    pred = _terminal_predecessor(row["state_history"], old)
+    if not pred:
+        return None
+    pred = retry_base(pred) or pred
+    hop = parse_dispatch_hop_label(pred)
+    if hop is not None:
+        # <TRIGGER>.<hop> names the completed hop; the one that failed is its live run_next.
+        return targets.get(run_next.get(hop[1], ""))
+    matches = {k for k in targets if triggers.get(k) == pred}
+    if len(matches) > 1:
+        # Shared trigger (artifact chain on bare BUILD_ARTIFACTS): the row's own dispatch rows name the claimant.
+        matches &= dispatch.get((cid, pred), set()) | dispatch.get((None, pred), set())
+    return targets[matches.pop()] if len(matches) == 1 else None
+
+
+def _terminal_state_remap_conn(conn: sqlite3.Connection, *, dry_run: bool) -> Dict[str, Any]:
+    """Conn-bound retired terminal-state remap (AST-2087).
+
+    Writes only entity `state` and dispatch_task.trigger_state — never state_history,
+    state_changed_at, or updated_at. Explicit op: never called from schema-ensure.
+    """
+    out: Dict[str, Any] = {
+        "dry_run": dry_run,
+        "remapped": {},      # entity -> old -> new -> count
+        "skipped": {},       # entity -> old -> count (retired rows left as-is)
+        "unregistered": {},  # entity -> state -> count (dead / unknown states, untouched)
+        "dispatch_task": {"remapped": {}, "skipped": {}},
+    }
+
+    def _catalog_trigger(k: str) -> Optional[str]:
+        try:
+            return dispatch_task_admin_defaults(k)["trigger_state"]
+        except KeyError:
+            return None
+
+    task_keys = set(TASK_CONFIG) | {k for olds in RETIRED_TERMINAL_STATE_MAP.values() for m in olds.values() for k in m}
+    triggers = {k: _catalog_trigger(k) for k in task_keys}
+    # Live chain order (agent_task.run_next) — the config chain tuples are not run_next order.
+    run_next = {
+        r["task_key"]: (r["run_next"] or "").strip()
+        for r in conn.execute("SELECT task_key, run_next FROM agent_task WHERE current = 1")
+    }
+    # (candidate_id, trigger_state) -> task_keys; NULL candidate_id rows apply to every candidate.
+    dispatch: Dict[Tuple[Optional[str], str], set] = {}
+    for r in conn.execute("SELECT candidate_id, task_key, trigger_state FROM dispatch_task"):
+        dispatch.setdefault((r["candidate_id"], r["trigger_state"] or ""), set()).add(r["task_key"])
+
+    for entity, olds in RETIRED_TERMINAL_STATE_MAP.items():
+        registry, pk, cid_col = _TERMINAL_REMAP_ENTITIES[entity]
+        remapped = out["remapped"].setdefault(entity, {})
+        skipped = out["skipped"].setdefault(entity, {})
+        error_col = ", error" if entity == "meteorite" else ""
+        marks = ",".join("?" * len(olds))
+        rows = conn.execute(
+            f"SELECT {pk}, {cid_col}, state, state_history{error_col} FROM {entity} WHERE state IN ({marks})",
+            tuple(olds),
+        ).fetchall()
+        for row in rows:
+            old = row["state"]
+            new = _resolve_retired_terminal_state(
+                old, olds[old], registry, row, row[cid_col], triggers, run_next, dispatch,
+            )
+            if new is None:
+                skipped[old] = skipped.get(old, 0) + 1
+                continue
+            by_new = remapped.setdefault(old, {})
+            by_new[new] = by_new.get(new, 0) + 1
+            if not dry_run:
+                conn.execute(f"UPDATE {entity} SET state = ? WHERE {pk} = ? AND state = ?", (new, row[pk], old))
+        # Dead / unknown states: not registered, not a hop label, not retired — counted, never written.
+        unregistered = out["unregistered"].setdefault(entity, {})
+        for r in conn.execute(f"SELECT state, COUNT(*) AS n FROM {entity} GROUP BY state"):
+            s = r["state"] or ""
+            if s not in olds and registered_base(registry, s) is None and parse_dispatch_hop_label(retry_base(s) or s) is None:
+                unregistered[s] = r["n"]
+
+    # dispatch_task: catalog trigger wins, and must be one of the retired name's map targets
+    # (stat.dispatch.entity-state-bound).
+    targets_of: Dict[str, set] = {}
+    for olds in RETIRED_TERMINAL_STATE_MAP.values():
+        for old, by_key in olds.items():
+            targets_of.setdefault(old, set()).update(by_key.values())
+    marks = ",".join("?" * len(targets_of))
+    for r in conn.execute(
+        f"SELECT id, task_key, trigger_state FROM dispatch_task WHERE trigger_state IN ({marks})",
+        tuple(targets_of),
+    ).fetchall():
+        old = r["trigger_state"]
+        new = triggers.get(r["task_key"]) or _catalog_trigger(r["task_key"])
+        if new not in targets_of[old]:
+            d_skipped = out["dispatch_task"]["skipped"]
+            d_skipped[old] = d_skipped.get(old, 0) + 1
+            continue
+        by_new = out["dispatch_task"]["remapped"].setdefault(old, {})
+        by_new[new] = by_new.get(new, 0) + 1
+        if not dry_run:
+            conn.execute("UPDATE dispatch_task SET trigger_state = ? WHERE id = ?", (new, r["id"]))
+
+    if not dry_run:
+        conn.commit()
+    return out
+
+
+def migrate_terminal_state_names(*, dry_run: bool = True) -> Dict[str, Any]:
+    """Retired terminal-state remap (AST-2087) — operator CLI only; dry run unless dry_run=False."""
+
+    def _with_conn() -> Dict[str, Any]:
+        conn = _get_connection()
+        try:
+            return _terminal_state_remap_conn(conn, dry_run=dry_run)
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def _ensure_company_candidate_fk(conn: sqlite3.Connection) -> None:
     """Add candidate_id column to company table if missing. Idempotent."""
     global _company_candidate_fk_ensured
@@ -4161,8 +4335,8 @@ def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
                 source_kind = row["source_kind"]
                 source_id = row["source_id"]
                 _ec_col = METEORITE_CONFIG["electronic_contact_column"]
-                # state defaults to NEW when omitted, but a caller-supplied state (e.g.
-                # NEW_EMAIL_ERROR from _new_email_error_row) is respected, not overridden.
+                # state defaults to NEW when omitted, but a caller-supplied state (e.g. the
+                # stage_error_state from _new_email_error_row) is respected, not overridden.
                 row_state = row.get("state") or "NEW"
                 history = json.dumps([{"to_state": row_state, "timestamp": now}])
                 cur = conn.execute(
@@ -5803,7 +5977,10 @@ def sync_rubric_vectors_from_criteria(
             for idx, item in enumerate(criteria_list):
                 if not isinstance(item, dict):
                     raise ValueError(f"criterion {idx + 1} must be an object")
-                code = (item.get("code") or "").strip() or f"V{idx + 1:02d}"
+                code = (item.get("code") or "").strip().upper()
+                # Must match agent._GRADE_SEG's [A-Z]{2}; candidate save fills/repairs codes before sync (AST-2126).
+                if not re.fullmatch(r"[A-Z]{2}", code):
+                    raise ValueError(f"criterion {idx + 1} code {item.get('code')!r} is not two letters A-Z")
                 label = (item.get("label") or "").strip() or code
                 content = item.get("content") or ""
                 if not str(content).strip():

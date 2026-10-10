@@ -287,7 +287,7 @@ class TestCandidateRoutes:
         save = MagicMock()
         monkeypatch.setattr(core_candidate.database, "save_candidate", save)
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
-        for bad in ("neon", "light_parchment"):
+        for bad in ("neon", "Light"):
             resp = candidate_client.put("/api/candidates/cand-1/data", json={"theme": bad}, headers=auth_headers)
             assert resp.status_code == 400, bad
             assert "Invalid theme value" in resp.get_json()["error"]
@@ -1147,6 +1147,27 @@ class TestAst1306ResumeStructureAuthorApi:
         assert by_id["experience"]["format_locked"] is True
         assert by_id["candidate_name"]["required"] is True
         assert {s["id"] for s in body["sections"]}.isdisjoint({"technical_skills"})
+
+    def test_get_delegates_to_shared_editor_payload(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AST-2081: route body == resume_structure_editor_payload(resolved); catalog gains format details.
+        from src.core.candidate import (
+            hydrate_resume_structure_from_base_resume,
+            resolve_resume_structure,
+            resume_structure_editor_payload,
+        )
+
+        cd = self._cd()
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: cd)
+        body = candidate_client.get("/api/candidates/c1/resume_structure", headers=auth_headers).get_json()
+        inner = cd["candidate_data"]
+        resolved = hydrate_resume_structure_from_base_resume(
+            resolve_resume_structure(inner), (inner.get("artifacts") or {}).get("base_resume")
+        )
+        assert body == resume_structure_editor_payload(resolved)
+        assert body["catalog"]["hidden_flow_label"] == "Hidden"
+        assert body["catalog"]["body_format_details"]["word_cloud"]["label"] == "Word Cloud"
 
     def test_put_replace_drops_omitted_optional_and_keeps_required_title(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
@@ -3082,22 +3103,22 @@ class TestAst1768CandidateByEmailApi:
 # unchanged); unexpected Exception → logged once + 500 payload; 200 (PUT logs one completion line).
 class TestAst2067CandidateVersionRoutes:
     _ART = "/api/candidates/cand-1/artifacts/candidate.artifacts.base_resume"
-    _RUB = "/api/candidates/cand-1/rubric/do_rubric/V01"
+    _RUB = "/api/candidates/cand-1/rubric/do_rubric/VA"
 
     def _seed_artifacts(self, db) -> list:
         return [db.save_artifact("candidate", "cand-1", "base_resume", {"v": i}) for i in (1, 2, 3)]
 
     def _seed_rubric(self, db) -> dict:
-        # V01: A then B (fingerprint retire+insert); V02 separate code.
+        # VA: A then B (fingerprint retire+insert); VB separate code.
         db.save_agent_task("grade_do", agent_id="a1", user_prompt="p")
-        v02 = {"code": "V02", "label": "O", "content": "keep", "importance": 3}
+        v02 = {"code": "VB", "label": "O", "content": "keep", "importance": 3}
         for content in ("A", "B"):
             db.sync_rubric_vectors_from_criteria(
-                "cand-1", "grade_do", [{"code": "V01", "label": "L", "content": content, "importance": 5}, v02]
+                "cand-1", "grade_do", [{"code": "VA", "label": "L", "content": content, "importance": 5}, v02]
             )
-        hist = db.list_rubric_vectors("cand-1", "grade_do", current_only=False, code="V01")
+        hist = db.list_rubric_vectors("cand-1", "grade_do", current_only=False, code="VA")
         cur = {r["code"]: r["rubric_vector_uuid"] for r in db.list_rubric_vectors("cand-1", "grade_do")}
-        return {"a": hist[0]["rubric_vector_uuid"], "b": hist[1]["rubric_vector_uuid"], "v02": cur["V02"]}
+        return {"a": hist[0]["rubric_vector_uuid"], "b": hist[1]["rubric_vector_uuid"], "v02": cur["VB"]}
 
     def test_artifact_list_and_set_current_200(
         self, candidate_client: FlaskClient, auth_headers, seeded_db, caplog: pytest.LogCaptureFixture
@@ -3145,28 +3166,28 @@ class TestAst2067CandidateVersionRoutes:
         assert put.status_code == 200
         assert put.get_json()["current"] == ids["a"]
         cur = {r["code"]: r["rubric_vector_uuid"] for r in seeded_db.list_rubric_vectors("cand-1", "grade_do")}
-        assert cur == {"V01": ids["a"], "V02": ids["v02"]}
+        assert cur == {"VA": ids["a"], "VB": ids["v02"]}
         assert any("completed: PUT 200" in r.getMessage() for r in caplog.records)
 
     def test_rubric_cross_code_uuid_400_current_unchanged(
         self, candidate_client: FlaskClient, auth_headers, seeded_db
     ) -> None:
-        # AC7: V02's uuid on the V01 route → 400; V01 stays on B.
+        # AC7: VB's uuid on the VA route → 400; VA stays on B.
         ids = self._seed_rubric(seeded_db)
         res = candidate_client.put(
             f"{self._RUB}/current", json={"rubric_vector_uuid": ids["v02"]}, headers=auth_headers
         )
         assert res.status_code == 400
         cur = {r["code"]: r["rubric_vector_uuid"] for r in seeded_db.list_rubric_vectors("cand-1", "grade_do")}
-        assert cur == {"V01": ids["b"], "V02": ids["v02"]}
+        assert cur == {"VA": ids["b"], "VB": ids["v02"]}
 
     @pytest.mark.parametrize(
         "method,path,body",
         [
             ("get", "/api/candidates/nope/artifacts/candidate.artifacts.base_resume/versions", None),
             ("put", "/api/candidates/nope/artifacts/candidate.artifacts.base_resume/current", {"artifact_uuid": "u"}),
-            ("get", "/api/candidates/nope/rubric/do_rubric/V01/versions", None),
-            ("put", "/api/candidates/nope/rubric/do_rubric/V01/current", {"rubric_vector_uuid": "u"}),
+            ("get", "/api/candidates/nope/rubric/do_rubric/VA/versions", None),
+            ("put", "/api/candidates/nope/rubric/do_rubric/VA/current", {"rubric_vector_uuid": "u"}),
         ],
     )
     def test_missing_candidate_404(
@@ -3194,8 +3215,8 @@ class TestAst2067CandidateVersionRoutes:
         [
             ("get", "/api/candidates/cand-1/artifacts/job.artifacts.cover_letter/versions", None),
             ("put", "/api/candidates/cand-1/artifacts/not.a.key/current", {"artifact_uuid": "u"}),
-            ("get", "/api/candidates/cand-1/rubric/base_resume/V01/versions", None),
-            ("put", "/api/candidates/cand-1/rubric/nope/V01/current", {"rubric_vector_uuid": "u"}),
+            ("get", "/api/candidates/cand-1/rubric/base_resume/VA/versions", None),
+            ("put", "/api/candidates/cand-1/rubric/nope/VA/current", {"rubric_vector_uuid": "u"}),
         ],
     )
     def test_bad_key_400(

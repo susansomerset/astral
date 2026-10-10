@@ -277,3 +277,253 @@ context_tokens≈42000
 (none — artifact complete; Chuckles may advance to Review Posted)
 
 ---
+
+## Bug: AST-2096 — All-X second strike → fail_state _ALL_X
+
+**Linear:** [AST-2096](https://linear.app/astralcareermatch/issue/AST-2096) (`fix` child of orphaned mini-parent [AST-2011](https://linear.app/astralcareermatch/issue/AST-2011))  
+**Publish ref:** `sub/AST-2011/AST-2096-all-x-fail-state` · parent ftr `ftr/AST-2011-meteorite-grade-do-all-x` (off `origin/dev`)  
+**Explicit scope:** AST-2096 `## Scope` — `src/utils/config.py` (suffix/name helper beside `retry_of`; `{fail_state}_ALL_X` job states for scored tasks) and `src/core/consult.py` (new all-X fail-destination function; `render_verdict` + `_run_batch_consult` all-X branches; count as fail). Nothing else.  
+**Canon Scope:** none cited on AST-2096 / AST-2011. This block changes only the second-strike branch of Stage 1 above. The first-strike route, binary all-X, and partial-X decisions stay as they are.
+
+### As-is
+
+A scored all-literal-`X` grade set raises `AllLiteralXGradeSetError`, which rides the `IncompleteGradeSetError` fail-dest family (Stage 1). First strike → `retry_state` holding. Second strike (entity already on `{trigger}_RETRY`) → `error_state` (`METEORITE_FAILED_TECHNICAL_DO` for `meteorite_grade_do`). It is logged at ERROR by `_log_fail_dest` and reported as an error: `pass:27 fail:0 error:2` in somerset batch `meteorite_grade_do-87d96303`, where jobs `877c162e` and `7dace48c` hit this route.
+
+### To-be
+
+First strike is unchanged (→ `retry_state` holding, WARNING, counted `retried`). Second all-`X` strike → the task's `fail_state` + `_ALL_X` (`METEORITE_FAILED_DO_ALL_X`). It is logged at WARNING like any fail verdict and counted as `failed`, not as an error, so the same batch would report `pass:27 fail:2 error:0`. Plain incomplete/extra grade sets (`IncompleteGradeSetError` that is not all-X) keep today's retry → `error_state` route. `_ALL_X` jobs list under Skipped, not Processing.
+
+### Repro
+
+Fixture (no DB — job row + decoded response), task `meteorite_grade_do`, candidate rubric with 12 Do vectors:
+
+```python
+job = {"astral_job_id": "job-x", "state": "METEORITE_PASSED_JD_RETRY", "astral_candidate_id": "c1"}
+response_job = {"astral_job_id": "job-x", "grades": [{"vector": v, "grade": "X", "confidence": 1} for v in rubric_labels]}  # all 12 vectors
+```
+
+- Batch: `_run_batch_consult("meteorite_grade_do", …, [job], …)` with a `process_fn` that calls `_apply_render_verdict_decoded_job`. Today the job transitions to `METEORITE_FAILED_TECHNICAL_DO`, the result has `bad_grades == ["job-x"]` and `failed == 0`, and the dispatcher's normalizer reports `total_errors == 1`.
+- Single entity: `render_verdict("meteorite_grade_do", "job-x", …)` with `do_task` returning the same row. Today it returns `{"success": False, "to_state": "METEORITE_FAILED_TECHNICAL_DO"}`, and the single-entity dispatch branch reports `total_errors == 1`.
+- Same fixture with `state: "METEORITE_PASSED_JD"` (first strike) → `METEORITE_PASSED_JD_RETRY` today. This must stay that way.
+
+### Root cause
+
+Stage 1 deliberately made all-X a subclass of `IncompleteGradeSetError` so it reused `_consult_batch_fail_dest(entity_state, error_state)`. That function has only one terminal, `error_state`, so there is no way to land a verdict-level fail state on the second strike. Both catch sites (`render_verdict`'s `except IncompleteGradeSetError` and `_run_batch_consult`'s `process_fn` except → `bad_grades` → `_transition_batch_consult_failures(..., error_state)`) also treat every outcome as an error: `_log_fail_dest` logs ERROR for non-retry destinations, the batch never increments `failed`, and the single-entity path returns `success: False`. No `{fail_state}_ALL_X` state exists in `JOB_STATES`, so the transition validator would reject it anyway.
+
+### Proposed change
+
+**1. `src/utils/config.py` — suffix + name helper, directly after `retry_of` (before `retry_base`):**
+
+```python
+ALL_X_SUFFIX = "_ALL_X"
+
+
+def all_x_of(base: str) -> str:
+    """Second-strike all-literal-X terminal for a scored task's fail_state (AST-2096)."""
+    return f"{base}{ALL_X_SUFFIX}"
+```
+
+**2. `src/utils/config.py` — explicit `JOB_STATES` rows, immediately after the `JOB_STATES = {…}` literal closes (before the `SOURCE_ENTITY_TYPES` block):**
+
+```python
+# AST-2096: second-strike all-literal-X terminal per scored grading task — explicit rows (no validator
+# changes); priors copied from the base fail_state so {trigger}_RETRY is admitted via state_prior_states.
+_ALL_X_BASES = list(dict.fromkeys(
+    tc["fail_state"] for tc in TASK_CONFIG.values() if tc.get("grading_mode") == "scored"
+))
+JOB_STATES.update({all_x_of(b): {"prior_states": list(JOB_STATES[b]["prior_states"])} for b in _ALL_X_BASES})
+ALL_X_FAIL_STATES = [all_x_of(b) for b in _ALL_X_BASES]
+```
+
+This yields exactly six rows today: `FAILED_DO_ALL_X`, `FAILED_GET_ALL_X`, `FAILED_LIKE_ALL_X`, `METEORITE_FAILED_DO_ALL_X`, `METEORITE_FAILED_GET_ALL_X`, `METEORITE_FAILED_LIKE_ALL_X`. Those are the six `grading_mode == "scored"` rows, the only tasks whose apply path reaches `_require_not_all_literal_x`. Each row's `prior_states` is its base row's, e.g. `["METEORITE_PASSED_JD"]`. `state_prior_states` then also admits `retry_of(p)`, so `METEORITE_PASSED_JD_RETRY → METEORITE_FAILED_DO_ALL_X` validates with no tracker/roster/database/admin change.
+
+⚠️ **Decision — explicit rows, not an implicit suffix.** The ticket offered both. An implicit `_ALL_X` suffix like AST-1804's `_RETRY` would need `is_registered_state`/`state_prior_states`/`registered_base` and every consumer to learn a second suffix. Explicit rows keep the validator untouched.
+
+⚠️ **Decision — derived from `TASK_CONFIG`, not typed out.** Consult builds the destination as `all_x_of(cfg["fail_state"])`. Deriving the rows from the same `fail_state` values means the state is registered by construction, so a new scored task cannot hit "not in allowed list" at runtime. `dict.fromkeys` keeps it duplicate-free, so `SKIPPED_STATES`' "Jobs lists overlap" assert stays safe if two alias rows ever share a `fail_state`.
+
+**3. `src/utils/config.py` — `SKIPPED_STATES`: add `*ALL_X_FAIL_STATES,` after the `"METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE",` line.**
+
+⚠️ **Decision — in scope as part of "register the `{fail_state}_ALL_X` job states".** AST-1974 defines Processing as every job state not on the Ready/Review/Applied/Skipped lists. Without this line, terminal `_ALL_X` jobs would count and list as Processing (in flight), which contradicts "it's a fail". It also makes them Skipped-editable like their base fail states (`api_jobs` `editable = state in SKIPPED_STATES`) and excludes them from `CANDIDATE_SKIPPED.prior_states`, the same as the base fail states. **Not** added: `JOBS_SKIPPED_SECTION_ORDER`, `JOBS_SKIPPED_SECTION_LABELS`, `JOBS_SKIPPED_BULK_RETRY_TO_STATE`, and `JOBS_SKIPPED_GRADE_FIELD`. Those are UI polish outside declared scope, and the section-order/bulk-retry assert pair would force all of them at once. `JobsSkipped.tsx` already renders unmapped skipped states as their own section (`unmappedJobStates` / `legacyStateSectionLabel`). They get no bulk-Retry button until a follow-up maps them.
+
+**4. `src/core/consult.py` — import `all_x_of` in the `from src.utils.config import (…)` block, beside `retry_base` / `retry_of`.**
+
+**5. `src/core/consult.py` — new function directly after `_consult_batch_fail_dest`:**
+
+```python
+def _all_x_fail_dest(entity_state: Optional[str], fail_state: str) -> str:
+    """AST-2096: all-literal-X — primary → retry holding (unchanged); *_RETRY → {fail_state}_ALL_X, a fail, not error_state."""
+    return JOB_STATES.get((entity_state or "").strip(), {}).get("retry_state") or all_x_of(fail_state)
+```
+
+⚠️ **Decision — standalone, not a wrapper around `_consult_batch_fail_dest`.** In-flight AST-2086 (`sub/AST-2073/AST-2086-terminal-state-rename`) adds a required `task_key` parameter to `_consult_batch_fail_dest`. A new call to it here would merge cleanly as text and then raise `TypeError` at runtime. Reading `retry_state` directly is the same one-line rule with no coupling. All six scored trigger states (`PASSED_JD`, `PASSED_DO`, `CULTURE_READY`, `METEORITE_PASSED_JD`, `METEORITE_PASSED_DO`, `METEORITE_PASSED_GET`) have a `retry_state`. A `_RETRY` state has no `JOB_STATES` row, so it resolves to `{fail_state}_ALL_X`.
+
+**6. `src/core/consult.py` — `render_verdict`, `except IncompleteGradeSetError as e:` block.** Replace the first line (`dest = _consult_batch_fail_dest(job.get("state"), error_state)`) with:
+
+```python
+        all_x = isinstance(e, AllLiteralXGradeSetError)
+        dest = (_all_x_fail_dest(job.get("state"), cfg["fail_state"]) if all_x
+                else _consult_batch_fail_dest(job.get("state"), error_state))
+```
+
+Change the existing `if isinstance(e, AllLiteralXGradeSetError):` debug test to `if all_x:`, leaving the debug line itself and the `else` `_debug_incomplete_grade_set` branch untouched. Then insert this **before** `_log_fail_dest(astral_job_id, dest, str(e))`:
+
+```python
+        if all_x and not retry_base(dest):
+            # Second all-X strike is a fail verdict: WARNING, and success=True so the single-entity
+            # dispatch tally counts it failed (to_state != pass_state), not an error (AST-2096).
+            _warn_job(astral_job_id, dest, str(e))
+            _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+            return {"success": True, "to_state": dest, "score": None, "grades": grades_dbg}
+```
+
+The remainder (`_log_fail_dest` → transition → `{"success": False, …}`) is unchanged and still serves first-strike all-X and every plain incomplete set. The only `render_verdict` caller (`run_dispatch_task` single-entity branch, `len(entities) == 1`) already maps `success: True` with a non-pass `to_state` to `total_failed: 1`, so it needs no edit.
+
+**7. `src/core/consult.py` — `_run_batch_consult`, `except Exception as e:` around `process_fn`.** Move `bad_grades.add(aid)` from the first line of the except to just after the `if/elif` debug block, and add the terminal branch inside the existing `if isinstance(e, AllLiteralXGradeSetError):` arm, replacing its `dest = _consult_batch_fail_dest(...)` line:
+
+```python
+            if isinstance(e, AllLiteralXGradeSetError):
+                dest = _all_x_fail_dest(input_job.get("state"), cfg["fail_state"])
+                logger.debug(  # existing "all literal X grade set …" line, unchanged
+                    ...
+                )
+                if not retry_base(dest):
+                    # Second all-X strike is a fail verdict, not bad grades (AST-2096).
+                    _warn_job(aid, dest, f"process_fn {type(e).__name__}: {e}")
+                    _transition_job_state_for_task(task_key, [aid], dest)
+                    failed += 1
+                    continue
+            elif isinstance(e, IncompleteGradeSetError):
+                _debug_incomplete_grade_set(...)  # unchanged
+            bad_grades.add(aid)
+            _log_fail_dest(...)  # unchanged, as is the debug traceback line + continue
+```
+
+First-strike all-X still goes into `bad_grades` → `_transition_batch_consult_failures(task_key, bad_rows, error_state)` → the same `retry_state` holding, counted in `retried`. That keeps the result's `bad_grades`/`error`/`success` fields identical to today for first strike. Terminal all-X is excluded from `bad_grades`, so it counts in `failed`; the dispatcher's `errors = total − passed − failed − retried` drops it from the error count; and it is no longer listed in the result's `bad grades on N IDs` error string. `cfg` here is the orchestration row for `task_key`, which `_consult_scored_dispatch_batch_encoded` passes as `agent_tk`: `meteorite_grade_do` itself (no `agent_task`), so `cfg["fail_state"] == "METEORITE_FAILED_DO"`.
+
+⚠️ **Decision — no grade save on terminal all-X.** `_require_not_all_literal_x` raises before `tracker.save_job_data`, the same as Stage 1. The all-X grade blob is not persisted to `{prefix}_grades`, which the declared scope does not ask for. A terminal all-X entity is now in `processed_ids`, so its RESPONSE row gets its entity tag (AST-984), the same as any other fail verdict.
+
+**8. Smoke-check on the epic worktree** (one-off snippet; never commit spikes):
+
+- `all_x_of("METEORITE_FAILED_DO") == "METEORITE_FAILED_DO_ALL_X"`, and `set(ALL_X_FAIL_STATES)` equals the six names above.
+- `tracker.job_state_admits_transition("METEORITE_PASSED_JD_RETRY", "METEORITE_FAILED_DO_ALL_X")` and `("METEORITE_PASSED_JD", "METEORITE_FAILED_DO_ALL_X")` are both `True`.
+- `_all_x_fail_dest("METEORITE_PASSED_JD", "METEORITE_FAILED_DO") == "METEORITE_PASSED_JD_RETRY"`; `_all_x_fail_dest("METEORITE_PASSED_JD_RETRY", "METEORITE_FAILED_DO") == "METEORITE_FAILED_DO_ALL_X"`.
+- `"METEORITE_FAILED_DO_ALL_X" in SKIPPED_STATES` and `not in JOBS_PROCESSING_UI_SECTIONS` states; `import src.utils.config` passes all module asserts.
+- `python -m py_compile src/utils/config.py src/core/consult.py` + repo lint before commit.
+
+**Commit:** `code(AST-2096): all-X second strike → fail_state _ALL_X`
+
+### Blast radius
+
+- **AST-1760 tests that assert today's broken behavior** (Betty's, not ours): `TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike` asserts `success is False` and `to_state == METEORITE_FAILED_TECHNICAL_LIKE`. It must change to `True` / `METEORITE_FAILED_LIKE_ALL_X`. `test_fail_dest_meteorite_like_matrix` tests `_consult_batch_fail_dest`, which is unchanged, so it still passes. `test_batch_mixed_all_x_sibling_still_passes` is first strike, where `bad_grades == ["job-x"]` and the holding are unchanged, so it still passes. A batch second-strike case does not exist yet.
+- **AST-1155 incomplete-grade family:** it shares both catch sites. Non-all-X `IncompleteGradeSetError` keeps `_consult_batch_fail_dest` → `error_state` and `_log_fail_dest`. Only the `all_x` arms change.
+- **AST-2073 / AST-2086 (in flight, terminal-state rename):** expect textual conflicts in `config.py`, since it adds helpers beside `retry_of` and touches `JOB_STATES`/`SKIPPED_STATES`, and in `consult.py` around `_consult_batch_fail_dest`. It keeps verdict names like `METEORITE_FAILED_DO`, so `_ALL_X` derivation is unaffected. The resolver adds `task_key` only to the pre-existing `_consult_batch_fail_dest` calls; `_all_x_fail_dest` takes none. Whichever lands second resolves.
+- **Consumers of `JOB_STATES` keys** gain six terminal states with no UI label: `tracker._JOB_STATE_LIST`, `legal_job_successor_states` (Skipped edit targets), `api_admin` state list (`list(JOB_STATES.keys())`), and the Skipped page legacy-section fallback. No DB enum or CHECK constraint exists.
+- **Dispatch report / Linear run titles:** terminal all-X moves from `error:` to `fail:` in the "task completed" line.
+
+### What must still hold
+
+- AC1 (AST-1760): primary-state all-X → `retry_state` holding (e.g. `METEORITE_PASSED_GET_RETRY`, `METEORITE_PASSED_JD_RETRY`), never `pass_state` or `fail_state`/`_ALL_X` on first strike; siblings in the batch still pass or fail on their own grades.
+- AC3: scored all-X at floor `0.0` never returns or transitions to `pass_state`.
+- AC4: a complete set with any non-`X` letter still scores under the existing floor rules (partial-X math untouched).
+- AC5 / Boundary: `_render_pass_fail` binary all-X → bare `fail_state` (no `_ALL_X`, no retry) is unchanged.
+- AST-1155: plain incomplete/extra grade sets keep primary → retry → `error_state`, logged at ERROR when terminal.
+- AC2 is **superseded** by this bug: the second strike now lands `{fail_state}_ALL_X`, not `error_state`.
+- `patt.task.dispatch-retry`: exactly one retry before terminal, with no new holding states.
+- Module-load asserts in `config.py`: "Jobs lists overlap", Processing-sections exclusion, and skipped bulk-retry/section-order equality all still pass.
+
+
+## Radia review — AST-2096 (review-fix)
+
+[code-rubric]
+**Ticket:** AST-2096
+**Publish ref:** `a135a38e31c838f8d862bdaa89fe08fd355d1fbb` (`origin/sub/AST-2011/AST-2096-all-x-fail-state`)
+**Corpus:** `2d1b73da19` (`canon/canon_clerk.py index`; `docs/canon-index.md` absent on publish ref)
+**Overall:** CLEAN
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK — Betty F4 + manifest `docs/test-bible/core/consult.md` § AST-2096 pin **To-be** (not tautologies):
+
+| # | Test | Pin |
+|---|------|-----|
+| 1 | `TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike` | `success True`, `to_state == METEORITE_FAILED_LIKE_ALL_X`, transition not `error_state` |
+| 2 | `…::test_batch_all_x_second_strike_counts_failed` | `failed==1`, `retried==1`, `passed==1`, `bad_grades==["job-x1"]`, `job-x2` → `METEORITE_FAILED_LIKE_ALL_X`, no `error_state` transition |
+| 3–5 | `TestAst2096AllXFailStates` (3) | six rows, priors = base, `all_x_of` / `ALL_X_FAIL_STATES` derived from scored `fail_state`s, `SKIPPED` + processing excluded |
+
+`TestAst1808RetryRegistryPurge::test_prior_snapshot_pinned` AST-2096 block matches Hedy’s qa-handoff values (post–Betty merge-tests). Pre-fix failure mode matches **Root cause** / **As-is** (`success False`, `error_state`, `failed==0`, missing `_ALL_X` rows).
+
+**`## What must still hold`:** OK — traced against `origin/ftr/AST-2011-meteorite-grade-do-all-x...origin/sub/...` product diff (`src/utils/config.py`, `src/core/consult.py` only):
+
+- **AC1:** First-strike all-X still routes via `retry_state` / `bad_grades` (`test_batch_all_x_second_strike_counts_failed` job-x1; existing first-strike + mixed-batch tests untouched).
+- **AC3 / AC4 / AC5:** No change to floor scoring, partial-X math, or `_render_pass_fail` binary all-X path (`test_render_pass_fail_all_x_still_fail_state` not in product diff).
+- **AST-1155:** Non–`AllLiteralXGradeSetError` still uses `_consult_batch_fail_dest` + `_log_fail_dest` in both catch sites.
+- **`patt.task.dispatch-retry` (plan contract):** `_all_x_fail_dest` = primary `retry_state` or terminal `all_x_of(fail_state)`; no extra holding states.
+- **Config asserts:** `ALL_X_FAIL_STATES` on `SKIPPED_STATES`; rows derived with `dict.fromkeys` from scored `fail_state`s.
+
+## Canon scores
+
+(no frozen canon list on Linear Description or plan-fix **Canon Scope: none cited** — fix-lane empty scored set; not §5.3 ESCALATE because scope was explicitly declared empty on AST-2096 / AST-2011)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan `[board-joan] CANON: OK` at F2 only; no F3 `validate-plan` per-id column)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen directive ids; plan **What must still hold** cites `patt.task.dispatch-retry` as behavioral contract only.  
+  **Recommendation:** No scope amendment unless Archie wants explicit ids on every fix bug.  
+  **Default:** Proceed on empty scored set; dispatch-retry behavior verified in fix-specific §5.2.
+
+### advisory
+
+- **Location:** `git diff origin/ftr/AST-2011-meteorite-grade-do-all-x...origin/sub/AST-2011/AST-2096-all-x-fail-state`  
+  **Finding:** Full three-dot diff is 72 files (+6792 lines), mostly `docs/features/**` (66 paths) from `merge-tests(AST-2096)` / `origin/tests` carry — expected per `review-child` §5.4 sibling test/bible carry. **Product scope:** 2 `src/**` files only; tests `test_consult.py`, `test_config.py`.
+
+- **Location:** Plan **Repro** vs tests  
+  **Finding:** Repro narrative uses `meteorite_grade_do`; `[bug-repro]` uses `meteorite_like` (same scored `_all_x_fail_dest` / `cfg["fail_state"]` path).  
+  **Recommendation:** No product gap; optional follow-up test on `meteorite_grade_do` only if Susan wants somerset task name parity in tests.
+
+- **Location:** `test_render_verdict_meteorite_like_all_x_second_strike`  
+  **Finding:** Manifest item 1 is `[bug-repro]` by bible § AST-2096; first-line `[bug-repro]` tag is on the batch test / `TestAst2096AllXFailStates` class, not that method’s docstring.  
+  **Recommendation:** Cosmetic tag alignment only; assertions are substantive.
+
+## Plan fidelity (§5.4)
+
+Isolated fix diff matches plan-fix **Proposed change** items 1–7: `all_x_of` + six explicit `JOB_STATES` rows + `SKIPPED_STATES`; standalone `_all_x_fail_dest` (no `_consult_batch_fail_dest` call — correct for AST-2086 signature overlap); `render_verdict` terminal branch (`success True`, `_warn_job`); `_run_batch_consult` `failed += 1` / exclude from `bad_grades`. Estimate **3** fits footprint.
+
+## What's solid
+
+- AST-2086 merge hazard explicitly avoided on `_consult_batch_fail_dest`.
+- Board bar (Betty TESTS: REVISE) cleared: second-strike batch + config registration + rewritten AC2 single-entity test + AST-1808 snapshot block.
+
+## Chuckles — post-review branching
+
+**PROCEED** + C7 complete + **normal parent** (AST-2011 live; base `origin/ftr/AST-2011-meteorite-grade-do-all-x`) → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing**; **resolve-child** skipped.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/43025b8c4a19e7411f07250508c2eca8/d8a76966-63be-4ee2-875d-68b53de494ea/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/49c697b1-a701-46cf-b24a-ec979fec4f42/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/43025b8c4a19e7411f07250508c2eca8/fe318551-58e6-4d91-8cff-dff825bf1a52/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2011 (parent) | ftr/AST-2011-meteorite-grade-do-all-x |
+| AST-2096 | sub/AST-2011/AST-2096-all-x-fail-state |
+
+**Epic worktree:** `astral-AST-2011/` — one active sub checked out at a time.

@@ -29,8 +29,10 @@ from src.utils.config import (
     TASK_CONFIG,
     TRACKER_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
+    error_state_for,
     retry_base,
     retry_of,
+    all_x_of,
     JOB_STATES,
     PROVIDER_CALL_BUDGET,
     ASTRAL_CONFIG,
@@ -55,14 +57,17 @@ from src.utils.config import (
 )
 from src.utils.formatting import enumerate_array, normalize_link
 from src.utils.logging import get_logger, log_batch_id, log_debug
-from src.utils.llm_external import is_provider_balance_refusal, is_provider_rate_limit
+from src.utils.llm_external import is_provider_probe_failure, is_provider_rate_limit, is_provider_state_hold
 
 logger = get_logger(__name__)
 
 
-def _rate_limit_tag(r: Dict[str, Any]) -> Dict[str, Any]:
-    """AST-2010: carry an exhausted-429 failure_class up to the dispatcher (routing unchanged)."""
-    return {"failure_class": r["failure_class"]} if is_provider_rate_limit(r) else {}
+def _outage_tag(r: Dict[str, Any]) -> Dict[str, Any]:
+    """AST-2010 / AST-2098: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's
+    total_held) up to the dispatcher; routing unchanged. Empty for every other result."""
+    if not (is_provider_rate_limit(r) or is_provider_probe_failure(r)):
+        return {}
+    return {k: r[k] for k in ("failure_class", "total_held") if k in r}
 
 
 def _with_log_debug(fn):
@@ -290,27 +295,41 @@ def _vector_labels_map(rubric_criteria: list, *, debug: bool = False) -> Dict[st
     return out
 
 
+# Fixed reason for X when the vector's rubric has no X row (AST-2124: X is always no signal).
+_X_NO_SIGNAL_REASON = "No signal"
+
+
+class MissingRubricDescriptionError(ValueError):
+    """Letter grade (confidence > 0) with no description in its vector's rubric — fails that entity, not the batch (AST-2124)."""
+
+
 def _lookup_rubric_reason_for_grade(rubric_criteria: list, vector_label: str, letter: str) -> str:
-    """Rubric line description for this vector + grade letter (AST-351). Raises ValueError if missing."""
+    """Rubric line description for this vector + grade letter (AST-351).
+    X falls back to a fixed no-signal reason; a letter with no description raises MissingRubricDescriptionError;
+    an unknown vector raises ValueError."""
     item = _find_rubric_criterion(rubric_criteria, vector_label)
+    lt = (letter or "").upper()
+    if item is not None:
+        gd = item.get("grade_descriptions")
+        if isinstance(gd, list):
+            for row in gd:
+                if str(row.get("grade", "")).upper() == lt:
+                    desc = row.get("description")
+                    if desc is not None and str(desc).strip():
+                        return str(desc).strip()
+        try:
+            rows = rubric_text.parse_trailing_grade_table_lines(item.get("content") or "")
+        except ValueError:
+            rows = []
+        for row in rows:
+            if row["grade"].upper() == lt:
+                return row["description"]
+    # X never fails hydrate — even with no X row (or no matching criterion at all).
+    if lt == "X":
+        return _X_NO_SIGNAL_REASON
     if item is None:
         raise ValueError(f"No rubric criterion matching vector {vector_label!r}")
-    lt = (letter or "").upper()
-    gd = item.get("grade_descriptions")
-    if isinstance(gd, list):
-        for row in gd:
-            if str(row.get("grade", "")).upper() == lt:
-                desc = row.get("description")
-                if desc is not None and str(desc).strip():
-                    return str(desc).strip()
-    try:
-        rows = rubric_text.parse_trailing_grade_table_lines(item.get("content") or "")
-    except ValueError:
-        rows = []
-    for row in rows:
-        if row["grade"].upper() == lt:
-            return row["description"]
-    raise ValueError(f"No rubric description for vector {vector_label!r} grade {letter}")
+    raise MissingRubricDescriptionError(f"No rubric description for vector {vector_label!r} grade {letter}")
 
 def _hydrate_grade_reasons_from_rubric(grades: list, rubric_criteria: list) -> None:
     if not rubric_criteria:
@@ -348,13 +367,20 @@ def _rubric_snapshot_for_job_data(rubric_criteria: list) -> list:
     return out
 
 
-def _hydrate_response_jobs_grade_reasons(jobs: list, rubric_criteria: list) -> None:
+def _hydrate_response_jobs_grade_reasons(jobs: list, rubric_criteria: list) -> Dict[str, str]:
+    """Hydrate each row; return {astral_job_id: reason} for rows with a missing letter description (AST-2124).
+    Structural ValueErrors (empty rubric, unknown vector) still raise for the whole batch."""
+    missing: Dict[str, str] = {}
     for job in jobs:
         if not isinstance(job, dict):
             continue
         glist = job.get("grades")
         if isinstance(glist, list):
-            _hydrate_grade_reasons_from_rubric(glist, rubric_criteria)
+            try:
+                _hydrate_grade_reasons_from_rubric(glist, rubric_criteria)
+            except MissingRubricDescriptionError as e:
+                missing[str(job.get("astral_job_id") or "")] = str(e)
+    return missing
 
 
 # AST-603: shared rubric response normalization (prefilter + future consult reuse).
@@ -772,6 +798,13 @@ def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: An
                 _ensure_jobs_astral_ids(decoded.get("jobs") or [], batch_entities)
             return decoded
         row = _job_from_letter_pipe(text, task_config, ctx)
+        if not company_entity and task_config.get("output_type") == "grades_encoded_notes" and not row.get("grades"):
+            # No decodable grades anywhere in the reply — every entity retries with the raw reply (AST-2126).
+            return {"jobs": [], "decode_failures": [
+                {"astral_job_id": e.get("astral_job_id"), "pos": i,
+                 "reason": f"[{task_key}] no grade segments in reply: {text!r}"}
+                for i, e in enumerate(batch_entities)
+            ]}
         if company_entity:
             if len(batch_entities) == 1:
                 row["company_id"] = batch_entities[0].get("company_id")
@@ -834,10 +867,14 @@ def _grade_set_vector_diff(
 def _require_complete_grade_set(rubric_criteria: list, grades: list) -> None:
     """Raise IncompleteGradeSetError when grades are not an exact match to live rubric labels."""
     missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
+    # Both halves in one reason — wrong codes must not read the same as an empty reply (AST-2126).
+    parts = []
     if missing:
-        raise IncompleteGradeSetError(f"_render_score: missing vectors {sorted(missing)}")
+        parts.append(f"missing vectors {sorted(missing)}")
     if extra:
-        raise IncompleteGradeSetError(f"_render_score: unknown vectors {sorted(extra)}")
+        parts.append(f"unknown vectors {sorted(extra)}")
+    if parts:
+        raise IncompleteGradeSetError("_render_score: " + "; ".join(parts))
 
 
 def _require_not_all_literal_x(grades: list) -> None:
@@ -982,7 +1019,8 @@ async def _prep_live_content(
 ) -> Any:
     """Assemble live_content for an agent call. JD via tracker coat-check.
     If company provided, appends website_content via roster coat-check.
-    Row label is [index=NNN]: … (same keyed style as evaluate_jd enumerate_array); decode maps pos via batch_entities, not IDs in the prompt.
+    Row label is [index=NNN]: … (same keyed style as evaluate_jd enumerate_array). position is the entity's
+    batch-unique index (AST-2093); decode binds it back via ctx batch_index_map, not IDs in the prompt.
     Returns live_content string, or False if website_content fetch failed."""
     jd_text = await tracker.get_job_data(job, "job_description")
     if not jd_text:
@@ -996,10 +1034,11 @@ async def _prep_live_content(
     website_content = await roster.get_company_data(company, "website_content")
     if website_content is None:
         # Website content unavailable — set retryable state, signal failure to caller
+        dest = error_state_for(scoring_task_key, "NO_WEBSITE_CONTENT")
         if scoring_task_key:
-            _transition_job_state_for_task(scoring_task_key, [job["astral_job_id"]], "NEED_WEBSITE_CONTENT")
+            _transition_job_state_for_task(scoring_task_key, [job["astral_job_id"]], dest)
         else:
-            tracker.transition_job_state([job["astral_job_id"]], "NEED_WEBSITE_CONTENT")
+            tracker.transition_job_state([job["astral_job_id"]], dest)
         return False
     if isinstance(website_content, list):
         vibes = "\n\n".join(
@@ -1221,7 +1260,7 @@ async def _run_analysis_upshot_batch(
 ) -> Dict[str, int]:
     """AST-480 / AST-1055: synthesis upshot; persist job_data.analysis_upshot → pass_state."""
     task_cfg = TASK_CONFIG[task_key]
-    processed = passed = failed = errors = 0
+    processed = passed = failed = errors = held = 0
     rl: Dict[str, Any] = {}  # AST-2010: first exhausted-429 tag seen in this loop
     base_ctx = dict(ctx or {})
     logger.debug("Beginning %s loop on %s items", task_key, len(entities))
@@ -1233,7 +1272,7 @@ async def _run_analysis_upshot_batch(
         if task_cfg.get("requires_company"):
             company = tracker.get_company(row["company"])
             if not company:
-                dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
+                dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"), task_key)
                 if dest:
                     _transition_job_state_for_task(task_key, [aid], dest)
                 _log_fail_dest(aid, dest, "no company")
@@ -1246,15 +1285,16 @@ async def _run_analysis_upshot_batch(
         )
         if not live_content:
             fresh = tracker.get_job(aid) or row
-            if fresh.get("state") != "NEED_WEBSITE_CONTENT":
-                dest = _consult_batch_fail_dest(fresh.get("state"), task_cfg.get("error_state"))
+            no_web = error_state_for(task_key, "NO_WEBSITE_CONTENT")
+            if fresh.get("state") != no_web:
+                dest = _consult_batch_fail_dest(fresh.get("state"), task_cfg.get("error_state"), task_key)
                 if dest:
                     _transition_job_state_for_task(task_key, [aid], dest)
                 _log_fail_dest(aid, dest, "no live content")
                 if not retry_base(dest):
                     errors += 1
             else:
-                _warn_job(aid, "NEED_WEBSITE_CONTENT", "no live content")
+                _warn_job(aid, no_web, "no live content")
                 errors += 1
             continue
         task_ctx = {**base_ctx, "batch_entities": [row], "job": row, "batch_size": 1}
@@ -1268,22 +1308,27 @@ async def _run_analysis_upshot_batch(
         )
         logger.debug("Response from agent.do_task: %s", result)
         if not result.get("success"):
-            rl = rl or _rate_limit_tag(result)
-            if is_provider_balance_refusal(result):
+            rl = rl or _outage_tag(result)
+            if is_provider_state_hold(result):
                 logger.debug(
-                    "provider_balance_refusal aid=%s error=%r current_state=%r",
-                    aid, result.get("error"), row.get("state"),
+                    "provider state hold failure_class=%r aid=%s error=%r current_state=%r",
+                    result.get("failure_class"), aid, result.get("error"), row.get("state"),
                 )
-                _warn_job(aid, row.get("state") or "-", "provider balance refusal — state held")
-                errors += 1
+                # AST-2098: a failed probe is held, not errored; balance keeps its AST-897 error count.
+                if is_provider_probe_failure(result):
+                    _warn_job(aid, row.get("state") or "-", "host probe failed — state held")
+                    held += 1
+                else:
+                    _warn_job(aid, row.get("state") or "-", "provider balance refusal — state held")
+                    errors += 1
                 continue
             if result.get("empty_tokens"):
-                dest = _empty_token_fail_dest(task_cfg.get("error_state"))
+                dest = _empty_token_fail_dest(task_key, task_cfg.get("error_state"))
                 logger.debug("empty_tokens route aid=%s dest=%s", aid, dest)
                 _transition_job_state_for_task(task_key, [aid], dest)
                 errors += 1
                 continue
-            dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
+            dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"), task_key)
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest)
             _log_fail_dest(aid, dest, result.get("error") or "do_task failed")
@@ -1292,7 +1337,7 @@ async def _run_analysis_upshot_batch(
             continue
         parsed = result.get("parsed_response")
         if not isinstance(parsed, dict):
-            dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
+            dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"), task_key)
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest)
             _log_fail_dest(aid, dest, "parsed_response is not a dict")
@@ -1315,6 +1360,7 @@ async def _run_analysis_upshot_batch(
         "total_failed": failed,
         "total_errors": errors,
         **rl,
+        **({"total_held": held} if held else {}),
     }
 
 
@@ -1335,7 +1381,14 @@ def _apply_render_verdict_decoded_job(
         raise ValueError("agent response missing grades")
     rk = cfg.get("rubric_artifact")
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
-    _hydrate_grade_reasons_from_rubric(grades, rubric_criteria)
+    try:
+        _hydrate_grade_reasons_from_rubric(grades, rubric_criteria)
+    except MissingRubricDescriptionError as e:
+        # Fail verdict for this row only — no grade save, no score (AST-2124).
+        fail_state = cfg["fail_state"]
+        _warn_job(astral_job_id, fail_state, f"hydrate: {e}")
+        _transition_job_state_for_task(agent_task, [astral_job_id], fail_state)
+        return fail_state, None, grades
 
     agent_cfg = TASK_CONFIG[agent_task]
     mode = agent_cfg.get("grading_mode", "binary")
@@ -1409,11 +1462,18 @@ def _apply_render_verdict_decoded_job(
 
 
 @_with_log_debug
-async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[str, Any]] = None, debug: bool = False) -> Dict[str, Any]:
+async def render_verdict(
+    task_type: str,
+    astral_job_id: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+    batch_index: int = 0,
+) -> Dict[str, Any]:
     """Full pipeline for one job through one agent task.
     Fetches job/company internally, preps live content, calls agent, audits,
     derives verdict, saves grades+score, transitions state.
     ctx: full candidate raft, forwarded to do_task for token resolution + API key override.
+    batch_index: the job's batch-unique row index from the dispatcher claim (AST-2093); 0 for lone callers.
     Returns result dict for CLI logging."""
     job = tracker.get_job(astral_job_id)
     cfg = _consult_orchestration_for_entity(
@@ -1444,12 +1504,12 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
         if not company:
             return _fail(f"Company not found: {job['company']}")
 
-    live_content = await _prep_live_content(job, company, scoring_task_key=agent_task)
+    live_content = await _prep_live_content(job, company, scoring_task_key=agent_task, position=batch_index)
     if not live_content:
-        # _prep_live_content may have already transitioned to NEED_WEBSITE_CONTENT
+        # _prep_live_content may have already transitioned to ERROR_<TASK_KEY>_NO_WEBSITE_CONTENT
         # for the LIKE case — don't clobber with error_state
         if company is not None:
-            return {"success": False, "to_state": "NEED_WEBSITE_CONTENT",
+            return {"success": False, "to_state": error_state_for(agent_task, "NO_WEBSITE_CONTENT"),
                     "error": f"website_content unavailable for {astral_job_id}"}
         return _fail(f"live_content prep failed for {astral_job_id}")
 
@@ -1458,20 +1518,30 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
     vector_labels = _vector_labels_map(rubric_criteria, debug=debug)
     job_row = dict(job)
-    task_ctx: Dict[str, Any] = {**(ctx or {}), "batch_entities": [job_row], "vector_labels": vector_labels, "batch_size": 1}
+    task_ctx: Dict[str, Any] = {
+        **(ctx or {}),
+        "batch_entities": [job_row],
+        "batch_index_map": {batch_index: job_row},
+        "vector_labels": vector_labels,
+        "batch_size": 1,
+    }
 
     logger.debug("Calling agent.do_task: [task_key=%s, index=%s]", agent_task, astral_job_id)
     result = await do_task(task_key=agent_task, live_content=live_content, index=astral_job_id, ctx=task_ctx, debug=debug)
     logger.debug("Response from agent.do_task: %s", result)
 
     if not result.get("success"):
-        if is_provider_balance_refusal(result):
+        if is_provider_state_hold(result):
             current_state = (job.get("state") or (tracker.get_job(astral_job_id) or {}).get("state"))
             logger.debug(
-                "provider_balance_refusal aid=%s error=%r current_state=%r",
-                astral_job_id, result.get("error"), current_state,
+                "provider state hold failure_class=%r aid=%s error=%r current_state=%r",
+                result.get("failure_class"), astral_job_id, result.get("error"), current_state,
             )
-            _warn_job(astral_job_id, current_state or "-", "provider balance refusal — state held")
+            _warn_job(
+                astral_job_id, current_state or "-",
+                "host probe failed — state held" if is_provider_probe_failure(result)
+                else "provider balance refusal — state held",
+            )
             return {
                 "success": False,
                 "to_state": current_state,
@@ -1480,19 +1550,19 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
                 "state_held": True,
             }
         if result.get("empty_tokens"):
-            dest = _empty_token_fail_dest(error_state)
+            dest = _empty_token_fail_dest(agent_task, error_state)
             logger.debug("empty_tokens route aid=%s dest=%s", astral_job_id, dest)
             _transition_job_state_for_task(agent_task, [astral_job_id], dest)
             return {"success": False, "to_state": dest, "error": result.get("error")}
         if result.get("failure_class") == PROVIDER_CALL_BUDGET["failure_class"]:
             # AST-2008 / AST-642 routing: primary → retry holding, *_RETRY → error_state (one hop).
-            dest = _consult_batch_fail_dest(job.get("state"), error_state)
+            dest = _consult_batch_fail_dest(job.get("state"), error_state, agent_task)
             _log_fail_dest(astral_job_id, dest, result.get("error") or "provider call timeout")
             if dest:
                 _transition_job_state_for_task(agent_task, [astral_job_id], dest)
             return {"success": False, "to_state": dest, "error": result.get("error"),
                     "failure_class": result.get("failure_class")}
-        return {**_fail(result.get("error", "do_task failed")), **_rate_limit_tag(result)}
+        return {**_fail(result.get("error", "do_task failed")), **_outage_tag(result)}
 
     parsed = result["parsed_response"]
     jobs_parse = parsed.get("jobs") if isinstance(parsed, dict) else None
@@ -1518,7 +1588,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
                     mine = fail
                     break
         if mine:
-            dest = _consult_batch_fail_dest(job.get("state"), error_state)
+            dest = _consult_batch_fail_dest(job.get("state"), error_state, agent_task)
             reason = mine.get("reason") or "decode failure"
             _log_fail_dest(astral_job_id, dest, reason)
             if dest:
@@ -1537,9 +1607,11 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
         )
     except IncompleteGradeSetError as e:
         # Incomplete/extra or all-literal-X → retry holding (AST-1155 / AST-1760).
-        dest = _consult_batch_fail_dest(job.get("state"), error_state)
+        all_x = isinstance(e, AllLiteralXGradeSetError)
+        dest = (_all_x_fail_dest(job.get("state"), cfg["fail_state"]) if all_x
+                else _consult_batch_fail_dest(job.get("state"), error_state, agent_task))
         grades_dbg = row_for_apply.get("grades") if isinstance(row_for_apply.get("grades"), list) else []
-        if isinstance(e, AllLiteralXGradeSetError):
+        if all_x:
             logger.debug(
                 "all literal X grade set %s %s -> %s n_grades=%s",
                 "consult.render_verdict", astral_job_id, dest or "?", len(grades_dbg),
@@ -1552,6 +1624,12 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
                 grades=grades_dbg,
                 dest=dest,
             )
+        if all_x and not retry_base(dest):
+            # Second all-X strike is a fail verdict: WARNING, and success=True so the single-entity
+            # dispatch tally counts it failed (to_state != pass_state), not an error (AST-2096).
+            _warn_job(astral_job_id, dest, str(e))
+            _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+            return {"success": True, "to_state": dest, "score": None, "grades": grades_dbg}
         _log_fail_dest(astral_job_id, dest, str(e))
         if dest:
             _transition_job_state_for_task(agent_task, [astral_job_id], dest)
@@ -1570,8 +1648,9 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     return {"success": True, "to_state": to_state, "score": score, "grades": grades_out, "timesheet": result.get("timesheet", {})}
 
 
-def _consult_batch_fail_dest(entity_state: Optional[str], error_state: Optional[str]) -> Optional[str]:
-    """AST-642: route batch consult failure per entity — primary → retry holding, *_RETRY → terminal."""
+def _consult_batch_fail_dest(entity_state: Optional[str], error_state: Optional[str], task_key: str) -> Optional[str]:
+    """AST-642: route batch consult failure per entity — primary → retry holding, *_RETRY → terminal.
+    A failure from error_state itself (the retry holding) lands on the task's bare ERROR_<TASK_KEY>."""
     st = (entity_state or "").strip()
     if not st:
         return error_state
@@ -1580,18 +1659,23 @@ def _consult_batch_fail_dest(entity_state: Optional[str], error_state: Optional[
         return retry
     if st == error_state:
         # analysis_upshot: TASK_CONFIG error_state IS the retry holding (PASSED_LIKE_RETRY)
-        return "FAILED_TECHNICAL"
+        return error_state_for(task_key)
     return error_state
 
 
-def _empty_token_fail_dest(*error_states: Optional[str]) -> str:
-    """AST-2000: empty-token do_task → first configured non-retry error_state, else FAILED_TECHNICAL.
-    Never a _RETRY holding — a retry renders the same blank (data defect, not an agent goof)."""
-    for es in error_states:
-        es = (es or "").strip()
-        if es and not retry_base(es):
-            return es
-    return "FAILED_TECHNICAL"
+def _all_x_fail_dest(entity_state: Optional[str], fail_state: str) -> str:
+    """AST-2096: all-literal-X — primary → retry holding (unchanged); *_RETRY → {fail_state}_ALL_X, a fail, not error_state."""
+    return JOB_STATES.get((entity_state or "").strip(), {}).get("retry_state") or all_x_of(fail_state)
+
+
+def _empty_token_fail_dest(task_key: str, error_state: Optional[str]) -> str:
+    """AST-2000: empty-token do_task → the configured error_state when it is not a retry holding,
+    else the task's bare ERROR_<TASK_KEY>. Never a _RETRY holding — a retry renders the same blank
+    (data defect, not an agent goof)."""
+    es = (error_state or "").strip()
+    if es and not retry_base(es):
+        return es
+    return error_state_for(task_key)
 
 
 def _transition_batch_consult_failures(
@@ -1607,7 +1691,7 @@ def _transition_batch_consult_failures(
         aid = row.get("astral_job_id")
         if not aid:
             continue
-        dest = _consult_batch_fail_dest(row.get("state"), error_state)
+        dest = _consult_batch_fail_dest(row.get("state"), error_state, task_key)
         if reason is not None:
             _log_fail_dest(aid, dest, reason)
         if dest:
@@ -1631,6 +1715,7 @@ async def _run_batch_consult(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    row_indexes: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """Shared scaffolding for batch Pattern-A consult tasks (ast-326).
     Handles: live_content assembly, single do_task call, ID reconciliation,
@@ -1638,6 +1723,7 @@ async def _run_batch_consult(
     Missing IDs and bad_grades route per entity's current state via `_consult_batch_fail_dest`.
     Fabricated IDs are silently dropped.
     batch_chunk_index: parallel dispatcher chunks append suffix for agent_data RESPONSE dedupe (AST-502).
+    row_indexes: batch-unique row index per job (parallel to jobs) stamped by assemble_fn; decode binds by it (AST-2093).
     Returns unified summary dict."""
     entity_state = jobs[0].get("state") if jobs else None
     cfg = _consult_orchestration_for_entity(task_key, entity_state)
@@ -1662,6 +1748,8 @@ async def _run_batch_consult(
     # batch_entities + vector_labels passed so do_task/_decode_payload can map pos→id and code→label
     cid = _candidate_id_from_ctx(ctx)
     task_ctx = {**(ctx or {}), "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
+    if row_indexes is not None:
+        task_ctx["batch_index_map"] = dict(zip(row_indexes, jobs))
     if cid:
         task_ctx["astral_candidate_id"] = cid
     if ctx and ctx.get("candidate_data") is not None:
@@ -1676,18 +1764,21 @@ async def _run_batch_consult(
     result = await do_task(task_key=task_key, live_content=live_content, index=do_index, ctx=task_ctx, debug=debug)
     logger.debug("Response from agent.do_task: %s", result)
 
-    if not result.get("success"):
-        # Envelope failure — whole batch to error_state (unless provider balance refusal — hold)
-        if is_provider_balance_refusal(result):
+    # AST-2089: envelope failure with cleanly decoded lines — process those, fail only the gaps.
+    salvaged = None if result.get("success") else result.get("salvaged_response")
+    if not result.get("success") and not salvaged:
+        # Envelope failure — whole batch to error_state (unless balance refusal or failed host probe — hold)
+        if is_provider_state_hold(result):
             logger.debug(
-                "provider_balance_refusal task=%s error=%r",
-                task_key, result.get("error"),
+                "provider state hold failure_class=%r task=%s error=%r",
+                result.get("failure_class"), task_key, result.get("error"),
             )
+            why = "host probe failed" if is_provider_probe_failure(result) else "provider balance refusal"
             for job in jobs:
                 _warn_job(
                     job.get("astral_job_id"),
                     job.get("state") or "-",
-                    "provider balance refusal — state held",
+                    f"{why} — state held",
                 )
             return {
                 "success": False,
@@ -1697,9 +1788,10 @@ async def _run_batch_consult(
                 "total": len(jobs),
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
+                **({"total_held": len(jobs)} if is_provider_probe_failure(result) else {}),
             }
         if result.get("empty_tokens"):
-            dest = _empty_token_fail_dest(error_state)
+            dest = _empty_token_fail_dest(task_key, error_state)
             logger.debug("empty_tokens route task=%s ids=%s dest=%s", task_key, astral_ids, dest)
             _transition_job_state_for_task(task_key, astral_ids, dest)
             return {
@@ -1716,14 +1808,26 @@ async def _run_batch_consult(
         return {
             "success": False, "error": result.get("error"),
             "passed": 0, "failed": 0, "total": len(jobs), "retried": retried,
-            **_rate_limit_tag(result),
+            **_outage_tag(result),
         }
 
-    parsed = result["parsed_response"]
+    parsed = result["parsed_response"] if result.get("success") else salvaged
     response_jobs = parsed["jobs"]
 
+    _bind_response_jobs_to_claimed(response_jobs, jobs)
+    if task_key == "qualify_meteorite":
+        _bind_response_jobs_by_job_link(response_jobs, jobs)
+        _bind_unmatched_empty_link_jobs_by_order(response_jobs, jobs)
+        bound_ids = [
+            (rj.get("astral_job_id") or "").strip()
+            for rj in response_jobs
+            if isinstance(rj, dict)
+        ]
+        logger.debug("qualify_meteorite bound astral_job_ids=%s", bound_ids)
+
+    # After binding so missing-description misses key by the claimed id (AST-2124).
     try:
-        _hydrate_response_jobs_grade_reasons(response_jobs, rubric_criteria)
+        hydrate_missing = _hydrate_response_jobs_grade_reasons(response_jobs, rubric_criteria)
     except ValueError as e:
         # Per-job severity is logged by _transition_batch_consult_failures (AST-1839)
         logger.debug(
@@ -1742,17 +1846,6 @@ async def _run_batch_consult(
             "total": len(jobs),
             "retried": retried,
         }
-
-    _bind_response_jobs_to_claimed(response_jobs, jobs)
-    if task_key == "qualify_meteorite":
-        _bind_response_jobs_by_job_link(response_jobs, jobs)
-        _bind_unmatched_empty_link_jobs_by_order(response_jobs, jobs)
-        bound_ids = [
-            (rj.get("astral_job_id") or "").strip()
-            for rj in response_jobs
-            if isinstance(rj, dict)
-        ]
-        logger.debug("qualify_meteorite bound astral_job_ids=%s", bound_ids)
 
     ts = result.get("timesheet", {})
     logger.debug(
@@ -1784,11 +1877,13 @@ async def _run_batch_consult(
     if missing:
         missing_rows = [input_by_id[mid] for mid in missing if mid in input_by_id]
         for row in missing_rows:
-            d = _consult_batch_fail_dest(row.get("state"), error_state)
+            d = _consult_batch_fail_dest(row.get("state"), error_state, task_key)
             if d:
                 missing_dest_counts[d] = missing_dest_counts.get(d, 0) + 1
         retried += _transition_batch_consult_failures(
-            task_key, missing_rows, error_state, reason="omitted from response",
+            task_key, missing_rows, error_state,
+            # Salvaged batch: the model's failure note says why these lines are absent.
+            reason=result.get("error") if salvaged else "omitted from response",
         )
     if missing:
         logger.debug("MISSING %s IDs: %s", len(missing), sorted(missing))
@@ -1813,34 +1908,46 @@ async def _run_batch_consult(
         aid = response_job["astral_job_id"]
         if aid in fabricated:
             continue
+        if aid in hydrate_missing:
+            # Missing rubric text is data, not an agent slip — fail this entity only, no retry (AST-2124).
+            _warn_job(aid, cfg["fail_state"], f"hydrate: {hydrate_missing[aid]}")
+            _transition_job_state_for_task(task_key, [aid], cfg["fail_state"])
+            failed += 1
+            continue
         input_job = input_by_id[aid]
         try:
             to_state = process_fn(input_job, response_job, cfg)
         except Exception as e:
-            bad_grades.add(aid)
             if isinstance(e, AllLiteralXGradeSetError):
-                dest = _consult_batch_fail_dest(input_job.get("state"), error_state)
+                dest = _all_x_fail_dest(input_job.get("state"), cfg["fail_state"])
                 logger.debug(
                     "all literal X grade set %s %s/%s %s -> %s",
                     f"consult._run_batch_consult({task_key})",
                     job_idx, len(response_jobs),
                     _consult_job_identifier(input_job), dest or "?",
                 )
+                if not retry_base(dest):
+                    # Second all-X strike is a fail verdict, not bad grades (AST-2096).
+                    _warn_job(aid, dest, f"process_fn {type(e).__name__}: {e}")
+                    _transition_job_state_for_task(task_key, [aid], dest)
+                    failed += 1
+                    continue
             elif isinstance(e, IncompleteGradeSetError):
                 _debug_incomplete_grade_set(
                     func=f"consult._run_batch_consult({task_key})",
                     identifier=_consult_job_identifier(input_job),
                     rubric_criteria=rubric_criteria,
                     grades=response_job.get("grades") or [],
-                    dest=_consult_batch_fail_dest(input_job.get("state"), error_state),
+                    dest=_consult_batch_fail_dest(input_job.get("state"), error_state, task_key),
                     index=job_idx,
                     total=len(response_jobs),
                 )
+            bad_grades.add(aid)
             # One fail-destination line per job (WARNING on retry, ERROR if terminal) —
             # covers InvalidJobLinkError too; the traceback is debug-only.
             _log_fail_dest(
                 aid,
-                _consult_batch_fail_dest(input_job.get("state"), error_state),
+                _consult_batch_fail_dest(input_job.get("state"), error_state, task_key),
                 f"process_fn {type(e).__name__}: {e}",
             )
             logger.debug(
@@ -1879,7 +1986,7 @@ async def _run_batch_consult(
         bad_rows = [input_by_id[aid] for aid in error_ids if aid in input_by_id]
         retried += _transition_batch_consult_failures(task_key, bad_rows, error_state)
 
-    errors = []
+    errors = [result.get("error")] if salvaged and result.get("error") else []
     if fabricated:
         errors.append(f"fabricated {len(fabricated)} IDs: {sorted(fabricated)}")
     if bad_grades:
@@ -1889,7 +1996,7 @@ async def _run_batch_consult(
     truncated_note = None
     if missing:
         missing_dests_set = {
-            _consult_batch_fail_dest(r.get("state"), error_state) for r in missing_rows
+            _consult_batch_fail_dest(r.get("state"), error_state, task_key) for r in missing_rows
         } - {None}
         if len(missing_dests_set) == 1:
             sole = next(iter(missing_dests_set))
@@ -1904,8 +2011,8 @@ async def _run_batch_consult(
         task_key, len(jobs), passed, failed, len(bad_grades), len(missing), len(fabricated),
     )
 
-    return {
-        "success": not fabricated and not bad_grades and not decode_failed,
+    out = {
+        "success": not fabricated and not bad_grades and not decode_failed and not salvaged,
         "passed": passed,
         "failed": failed,
         "total": len(jobs),
@@ -1917,6 +2024,9 @@ async def _run_batch_consult(
         "error": "; ".join(errors) if errors else None,
         "truncated_note": truncated_note,
     }
+    if salvaged:
+        out["agent_failure"] = True
+    return out
 
 
 @_with_log_debug
@@ -2041,7 +2151,7 @@ async def qualify_job_listings(
         raw_title = (response_job.get("job_title") or "").strip()
         min_len = cfg.get("min_job_title_length", 5)
         if len(raw_title) < min_len:
-            dest = _consult_batch_fail_dest(input_job.get("state"), cfg.get("error_state"))
+            dest = _consult_batch_fail_dest(input_job.get("state"), cfg.get("error_state"), task_key)
             logger.debug(
                 "title too short aid=%s from_state=%r title=%r min_len=%s",
                 aid, input_job.get("state"), raw_title, min_len,
@@ -2383,8 +2493,10 @@ async def _consult_scored_dispatch_batch_encoded(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
-    """One encoded grade_* Pattern-A call across N sequentially pre-prepped JD rows (AST-503); mirrors evaluate_jd exclusions."""
+    """One encoded grade_* Pattern-A call across N sequentially pre-prepped JD rows (AST-503); mirrors evaluate_jd exclusions.
+    batch_index_offset: this call's first claimed position in the dispatcher batch, so row indexes stay unique across chunks (AST-2093)."""
     hdr = _GRADE_DISPATCH_TO_HEADER.get(dispatch_task_key)
     if hdr is None:
         hdr = _GRADE_DISPATCH_TO_HEADER[resolve_task_key_for_content(dispatch_task_key)]
@@ -2401,10 +2513,13 @@ async def _consult_scored_dispatch_batch_encoded(
 
     eligible: List[Dict[str, Any]] = []
     live_rows: List[str] = []
+    # Parallel to eligible: each row's batch-unique index (claimed position; skipped rows leave gaps).
+    row_indexes: List[int] = []
 
     logger.debug("Beginning %s prep loop on %s items", dispatch_task_key, len(jobs))
-    for job in jobs:
+    for pos, job in enumerate(jobs):
         aid = job["astral_job_id"]
+        idx = batch_index_offset + pos
         row = tracker.get_job(aid) or job
 
         company = None
@@ -2417,20 +2532,22 @@ async def _consult_scored_dispatch_batch_encoded(
                 skipped += 1
                 continue
 
-        lc = await _prep_live_content(row, company, scoring_task_key=agent_tk, position=len(eligible))
+        lc = await _prep_live_content(row, company, scoring_task_key=agent_tk, position=idx)
         if not lc:
             fresh = tracker.get_job(aid) or row
-            if fresh.get("state") != "NEED_WEBSITE_CONTENT":
+            no_web = error_state_for(agent_tk, "NO_WEBSITE_CONTENT")
+            if fresh.get("state") != no_web:
                 if error_state:
                     _transition_job_state_for_task(agent_tk, [aid], error_state)
                 _warn_job(aid, error_state or (fresh.get("state") or "-"), "no live content")
             else:
-                _warn_job(aid, "NEED_WEBSITE_CONTENT", "no live content")
+                _warn_job(aid, no_web, "no live content")
             skipped += 1
             continue
 
         eligible.append(row)
         live_rows.append(lc)
+        row_indexes.append(idx)
 
     logger.debug(
         "End %s prep loop after %s items eligible=%s skipped=%s",
@@ -2442,7 +2559,8 @@ async def _consult_scored_dispatch_batch_encoded(
         return {"success": True, "passed": 0, "failed": 0, "total": len(jobs), "skipped": skipped}
 
     def assemble(rows: List[Dict[str, Any]]) -> str:
-        body = "\n".join(f"{i:03d}: {live_rows[i]}" for i in range(len(rows)))
+        # Each live row already carries its one [index=NNN] label — no positional prefix.
+        body = "\n".join(live_rows)
         return f"CONSULT {hdr} ROWS:\n{body}"
 
     def process(input_job, response_job, _orch_cfg):
@@ -2462,6 +2580,7 @@ async def _consult_scored_dispatch_batch_encoded(
         ctx,
         debug,
         batch_chunk_index=batch_chunk_index,
+        row_indexes=row_indexes,
     )
     if skipped:
         result = {**result, "skipped": skipped, "total": len(jobs)}
@@ -2474,9 +2593,11 @@ async def grade_do_batch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
         "grade_do", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        batch_index_offset=batch_index_offset,
     )
 
 
@@ -2486,9 +2607,11 @@ async def grade_get_batch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
         "grade_get", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        batch_index_offset=batch_index_offset,
     )
 
 
@@ -2498,9 +2621,11 @@ async def grade_like_batch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
     return await _consult_scored_dispatch_batch_encoded(
         "grade_like", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        batch_index_offset=batch_index_offset,
     )
 
 
@@ -2510,10 +2635,12 @@ async def meteorite_like_batch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
     # AST-1055: same encoded LIKE path; TASK_CONFIG.meteorite_like drives states + agent_task.
     return await _consult_scored_dispatch_batch_encoded(
         "meteorite_like", batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        batch_index_offset=batch_index_offset,
     )
 
 
@@ -2612,17 +2739,15 @@ async def _run_dispatch_chain_job_batch(
             raise
         if not result.get("success"):
             if result.get("empty_tokens"):
-                # Failing hop's error_state first (mid-chain included), then the entry task's.
-                dest = _empty_token_fail_dest(
-                    TASK_CONFIG.get(result.get("empty_token_task") or "", {}).get("error_state"),
-                    TASK_CONFIG.get(dispatch_task_key, {}).get("error_state"),
-                )
+                # The failing hop (mid-chain included) names its own terminal.
+                failing = result.get("empty_token_task") or dispatch_task_key
+                dest = _empty_token_fail_dest(failing, TASK_CONFIG.get(failing, {}).get("error_state"))
                 logger.debug("empty_tokens route aid=%s dest=%s", aid, dest)
                 try:
                     tracker.transition_job_state([aid], dest)
-                except ValueError:
-                    # FAILED_TECHNICAL has no prior_states — the job never stays on its hop label.
-                    tracker.transition_job_state([aid], "FAILED_TECHNICAL")
+                except ValueError as exc:
+                    # No generic always-legal landing: a refusal is a config bug — surface it, keep the label.
+                    _warn_job(aid, row.get("state") or "-", f"empty_tokens dest {dest} refused: {exc}")
                 tracker.release_job_dispatch_claim(aid)
                 errors += 1
                 continue
@@ -2657,11 +2782,14 @@ async def run_consult_task(
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
     dispatch_task_key: Optional[str] = None,
+    batch_index_offset: int = 0,
 ) -> Dict[str, Any]:
     """Unified dispatcher entry point. Routes on entity_type + input_state.
 
     batch_chunk_index: dispatcher sets for parallel chunked qualify / evaluate_jd / consult DO·GET·LIKE (AST-502)
     so `do_task` RESPONSE rows stay dedupe-distinct across chunks sharing one dispatch batch_id.
+    batch_index_offset: claimed position of entities[0] in the dispatcher batch; grade DO·GET·LIKE stamp
+    batch-unique row indexes from it (AST-2093). Other branches ignore it.
 
     Returns _SUMMARY_ZERO-shaped dict: {total_processed, total_passed, total_failed, total_errors}."""
     zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
@@ -2706,9 +2834,27 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
+        if task_key == "fetch_company_culture_pages":
+            from src.core.gazer import fetch_company_culture_pages_batch
+            r = await _debug_await(
+                "gazer.fetch_company_culture_pages_batch",
+                f"batch_id={batch_id}, n={len(entities)}",
+                fetch_company_culture_pages_batch(batch_id, entities, debug=debug),
+            )
+            total = r.get("total", len(entities))
+            passed = r.get("passed", 0)
+            failed = r.get("failed", 0)
+            errors = max(0, total - passed - failed)
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+            }
+
         from src.utils.config import INFLOW_CONFIG
         if task_key == INFLOW_CONFIG["resolve"]["task_key"]:
-            # Align with run_company_task terminal_ok: NO_WEBSITE is a completed terminal.
+            # Align with run_company_task terminal_ok: the resolve not-found terminal is a completed terminal.
             resolve_terminal_ok = (
                 INFLOW_CONFIG["resolve"]["pass_state"],
                 INFLOW_CONFIG["resolve"]["fail_state"],
@@ -2776,14 +2922,33 @@ async def run_consult_task(
             failed = r.get("failed", 0)
             skipped = r.get("skipped", 0)
             # AST-1839: retry-routed companies are not run errors
-            errors = max(0, total - passed - failed - skipped - r.get("retried", 0))
+            errors = max(0, total - passed - failed - skipped - r.get("retried", 0) - r.get("total_held", 0))
             return {
                 "total_processed": total,
                 "total_passed": passed,
                 "total_failed": failed,
                 "total_errors": errors,
-                **_rate_limit_tag(r),
+                **_outage_tag(r),
             }
+        if task_key == "company_upshot":
+            r = await _debug_await(
+                "roster.company_upshot_batch",
+                f"batch_id={batch_id}, n={len(entities)}",
+                roster.company_upshot_batch(batch_id, entities, ctx=ctx, debug=debug),
+            )
+            total = r.get("total", len(entities))
+            passed = r.get("passed", 0)
+            failed = r.get("failed", 0)
+            # Retry-routed companies are not run errors (same accounting as prefilter_company).
+            errors = max(0, total - passed - failed - r.get("retried", 0) - r.get("total_held", 0))
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+                **_outage_tag(r),
+            }
+
         if task_key == "vet_inflow_discovery":
             r = await _debug_await(
                 "roster.vet_inflow_discovery_company_batch",
@@ -2958,15 +3123,19 @@ async def run_consult_task(
             rv = await _debug_await(
                 "render_verdict",
                 f"task_key={task_key}, astral_job_id={aid}",
-                render_verdict(task_key, aid, ctx=ctx, debug=debug),
+                render_verdict(task_key, aid, ctx=ctx, debug=debug, batch_index=batch_index_offset),
             )
             if rv.get("success"):
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
                 return {"total_processed": 1, "total_passed": passed, "total_failed": 1 - passed, "total_errors": 0}
+            if is_provider_probe_failure(rv):
+                # AST-2098: failed host probe — held, not a run error; the class stops the run upstream.
+                return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0,
+                        "total_held": 1, **_outage_tag(rv)}
             # AST-1839: incomplete grades routed to a retry holding are not a run error
             retried = not rv.get("state_held") and retry_base(rv.get("to_state"))
             return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0 if retried else 1,
-                    **_rate_limit_tag(rv)}
+                    **_outage_tag(rv)}
         if task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
             _batch = {
                 "grade_do": grade_do_batch,
@@ -2977,7 +3146,10 @@ async def run_consult_task(
             r = await _debug_await(
                 task_key,
                 f"batch_id={batch_id}, n={len(entities)}",
-                _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index),
+                _batch(
+                    batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+                    batch_index_offset=batch_index_offset,
+                ),
             )
         else:
             # Alias Do/Get — same encoded path; dispatch_task_key is the alias identity.
@@ -2986,6 +3158,7 @@ async def run_consult_task(
                 f"task_key={task_key}, batch_id={batch_id}, n={len(entities)}",
                 _consult_scored_dispatch_batch_encoded(
                     task_key, batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+                    batch_index_offset=batch_index_offset,
                 ),
             )
     elif task_key in ("analysis_upshot", "meteorite_upshot"):
@@ -3015,9 +3188,9 @@ async def run_consult_task(
     total = r.get("total", len(entities))
     passed = r.get("passed", 0)
     failed = r.get("failed", 0)
-    errors = max(0, total - passed - failed - r.get("retried", 0))
+    errors = max(0, total - passed - failed - r.get("retried", 0) - r.get("total_held", 0))
     return {"total_processed": total, "total_passed": passed, "total_failed": failed, "total_errors": errors,
-            **_rate_limit_tag(r)}
+            **_outage_tag(r)}
 
 
 # ---- Timesheets (read side) ----

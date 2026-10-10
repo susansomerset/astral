@@ -19,6 +19,7 @@ from src.utils.config import (
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_STAGE_DISPATCH,
     CANDIDATE_STATES,
+    RESUME_STRUCTURE_BODY_FORMAT_DETAILS,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
@@ -245,10 +246,10 @@ class TestAst1808RetryResolvesViaBase:
     def test_requested_stage_failure_target_retry_only_row(self, base: str) -> None:
         cfg_b = candidate_mod.CANDIDATE_STATES[base]
         retry = f"{base}_RETRY"
-        # Retry-only dispatch row: failing while on retry → error_state (no KeyError, no retry loop).
-        assert candidate_mod._requested_stage_failure_target(retry, retry) == cfg_b["error_state"]
+        # Retry-only dispatch row: failing while on retry → the failing hop's ERROR_<HOP> (AST-2086; no retry loop).
+        assert candidate_mod._requested_stage_failure_target(retry, retry, "craft_get_rubric") == "ERROR_CRAFT_GET_RUBRIC"
         # Primary row on its base still routes to the retry holding.
-        assert candidate_mod._requested_stage_failure_target(base, base) == cfg_b["retry_state"]
+        assert candidate_mod._requested_stage_failure_target(base, base, "craft_get_rubric") == cfg_b["retry_state"]
 
     def test_check_context_complete_retry_matches_base(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def _run(state: str) -> bool:
@@ -347,8 +348,8 @@ class TestAst2048ThemeAllowlist:
         save.assert_called_once()
         assert theme in repr(save.call_args)
 
-    # Unknown id, examples-only alternates, blank, null, unhashable.
-    @pytest.mark.parametrize("theme", ["neon", "light_parchment", "light_slate", "", None, ["light"]])
+    # Unknown id, wrong-case near-miss, blank, null, unhashable.
+    @pytest.mark.parametrize("theme", ["neon", "Light", "", None, ["light"]])
     def test_unselectable_theme_rejected_and_not_saved(self, monkeypatch: pytest.MonkeyPatch, theme: Any) -> None:
         save = MagicMock()
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
@@ -400,7 +401,7 @@ class TestNormalizeRubricArtifactsOnSaveExtended:
 
 # AST-2008 (reverses AST-1513's save-time raise): duplicate codes self-heal by re-lettering the later
 # code's last char (X, Y, Z, A … W) before every rubric save. Branches (_uptick_duplicate_rubric_codes):
-# non-dict / blank code pass through; first occurrence kept; later duplicate → first unreserved letter
+# non-dict passes through (blank/invalid codes are filled — AST-2126, TestAst2126RubricCodeFill); first occurrence kept; later duplicate → first unreserved letter
 # (reserved = every original code, so a later original is never stolen); all 26 taken → kept + warning.
 class TestAst2008RubricCodeUptick:
     _HT_LABEL = "Hands-On Technical Partnership With Engineers"
@@ -430,14 +431,16 @@ class TestAst2008RubricCodeUptick:
         out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
         assert [c["code"] for c in out] == ["TP", "TY", "TX"]
 
-    def test_uptick_is_pure_and_passes_non_dict_and_blank_codes(self) -> None:
-        raw, blank = "raw", _criterion(code="  ")
+    def test_uptick_is_pure_passes_non_dict_and_fills_blank_codes(self) -> None:
+        # AST-2126: a blank code is filled from the label (was passed through for sync's V{idx} fallback).
+        raw, blank = "raw", _criterion(code="  ", label="Hands On")
         first, dup = _criterion(code="TP"), _criterion(code="TP")
         crit = [raw, blank, first, dup]
         out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
         assert out is not crit
-        assert out[0] is raw and out[1] is blank and out[2] is first
-        # Shallow copy for the re-lettered item; the input dict (may be an EMBEDDED_* ref) is untouched.
+        assert out[0] is raw and out[2] is first
+        # Shallow copies for the filled and re-lettered items; input dicts (may be EMBEDDED_* refs) untouched.
+        assert out[1] is not blank and out[1]["code"] == "HO"
         assert out[3] is not dup and out[3]["code"] == "TX" and dup["code"] == "TP"
         assert [c.get("code") for c in crit[1:]] == ["  ", "TP", "TP"]
 
@@ -473,6 +476,53 @@ class TestAst2008RubricCodeUptick:
         arts: Dict[str, Any] = {"jobdesc_rubric": [_criterion(code="JD"), _criterion(code="JD")]}
         candidate_mod.apply_rubric_vectors_save("c2008", arts)
         assert [c["code"] for c in synced[0][2]] == ["JD", "JX", "QC", "GC"]
+
+
+# AST-2126 (AST-2127 tests): every code leaves the save helper as [A-Z]{2} (agent._GRADE_SEG). Branches
+# (_uptick_duplicate_rubric_codes + _derive_rubric_code): blank / V01 / lowercase / whitespace normalised;
+# label base = two word initials, first two letters of one word, else none → AA…ZZ scan; derived collision
+# → base[0] + uptick letter; one WARNING per fill; every AA–ZZ reserved → ValueError.
+class TestAst2126RubricCodeFill:
+    def test_plan_probe_codes(self) -> None:
+        crit = [
+            _criterion(code="", label="Hands-On Technical Partnership"),
+            _criterion(code="V02", label="Speaking Truth"),
+            _criterion(code=" tp", label="Tee"),
+            _criterion(code="TP", label="Dup"),
+        ]
+        out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
+        assert [c["code"] for c in out] == ["HO", "ST", "TP", "TX"]
+        # " tp" normalised in a copy; an already-exact code keeps the input object.
+        assert out[2] is not crit[2] and crit[2]["code"] == " tp"
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [("Leadership", "LE"), ("123", "AA"), ("", "AA"), ("Q", "AA")],
+    )
+    def test_label_base(self, label: str, code: str) -> None:
+        out = candidate_mod._uptick_duplicate_rubric_codes([_criterion(code="", label=label)], "do_rubric")
+        assert out[0]["code"] == code
+
+    def test_derived_collision_upticks_and_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level("WARNING")
+        crit = [_criterion(code="", label="Hands On"), _criterion(code=None, label="Hands On")]
+        out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
+        assert [c["code"] for c in out] == ["HO", "HX"]
+        msgs = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert sum("invalid code" in m and "do_rubric" in m for m in msgs) == 2
+        assert any(m.endswith("-> HO") for m in msgs) and any(m.endswith("-> HX") for m in msgs)
+
+    def test_derived_skips_reserved_original(self) -> None:
+        # HO is a later item's own valid code, so the blank "Hands On" takes HX.
+        crit = [_criterion(code="", label="Hands On"), _criterion(code="HO", label="Other")]
+        out = candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
+        assert [c["code"] for c in out] == ["HX", "HO"]
+
+    def test_no_free_code_raises(self) -> None:
+        letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        crit = [_criterion(code=a + b) for a in letters for b in letters] + [_criterion(code="", label="Late")]
+        with pytest.raises(ValueError, match="no free two-letter code for 'Late'"):
+            candidate_mod._uptick_duplicate_rubric_codes(crit, "do_rubric")
 
 
 class TestNormalizeImportanceValue:
@@ -1895,7 +1945,7 @@ class TestAst970CandidateStateMachine:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda _cid: {"state": "REQUESTED_RESUME_ERROR", "state_history": []},
+            lambda _cid: {"state": "ERROR_CRAFT_GET_RUBRIC", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         candidate_mod.transition_candidate_state("somerset", "INACTIVE")
@@ -1906,7 +1956,7 @@ class TestAst970CandidateStateMachine:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda _cid: {"state": "REQUESTED_RESUME_ERROR", "state_history": []},
+            lambda _cid: {"state": "ERROR_CRAFT_GET_RUBRIC", "state_history": []},
         )
         with pytest.raises(candidate_mod.IllegalCandidateTransition, match="Invalid candidate state transition"):
             candidate_mod.transition_candidate_state("somerset", "RESUME_READY")
@@ -2129,9 +2179,10 @@ class TestAst972RequestedStageDispatch:
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
         out = await candidate_mod.run_requested_artifacts_dispatch("c1")
         # AST-1839: out of the holding → error_state counts as an error, not a failure.
+        # AST-2086: the entry hop (craft_get_rubric) names the error, not the stage.
         assert out["total_errors"] == 1
         assert out["total_failed"] == 0
-        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_ERROR")
+        trans.assert_called_once_with("c1", "ERROR_CRAFT_GET_RUBRIC")
 
     def test_resume_wrapper_worker_removed(self) -> None:
         assert not hasattr(candidate_mod, "run_requested_resume_dispatch")
@@ -7372,32 +7423,35 @@ class TestAst1781ArtifactRotateRevalidateHook:
 class TestAst2006RequestedArtifactsEmptyTokens:
     """AST-2006 / AST-2000: empty_tokens on a requested-stage run → stage error_state, counted as an error, no retry."""
 
-    _EMPTY = {"success": False, "error": "Empty tokens: X (task=t)", "empty_tokens": ["X"], "empty_token_task": "t"}
+    _EMPTY = {"success": False, "error": "Empty tokens: X (task=t)", "empty_tokens": ["X"]}
 
-    def _patch(self, monkeypatch: pytest.MonkeyPatch, state: str, trans: MagicMock) -> None:
+    def _patch(self, monkeypatch: pytest.MonkeyPatch, state: str, trans: MagicMock, empty_task: Any = "craft_get_rubric") -> None:
         monkeypatch.setattr(
             candidate_mod.database, "get_candidate",
             lambda cid: {"astral_candidate_id": cid, "state": state, "candidate_data": {}},
         )
-        monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value=dict(self._EMPTY)))
+        result = {**self._EMPTY, **({"empty_token_task": empty_task} if empty_task else {})}
+        monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value=result))
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        ("trigger", "want"),
+        ("trigger", "empty_task", "want"),
         [
-            ("REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_ERROR"),
-            ("REQUESTED_ARTIFACTS_RETRY", "REQUESTED_ARTIFACTS_ERROR"),
-            (dispatch_hop_label("REQUESTED_ARTIFACTS", "craft_do_rubric"), "REQUESTED_ARTIFACTS_ERROR"),  # mid-chain
-            ("REQUESTED_RESUME", "REQUESTED_RESUME_ERROR"),
+            ("REQUESTED_ARTIFACTS", "craft_get_rubric", "ERROR_CRAFT_GET_RUBRIC"),
+            ("REQUESTED_ARTIFACTS_RETRY", "craft_get_rubric", "ERROR_CRAFT_GET_RUBRIC"),
+            # mid-chain: the failing hop names its own error, not the stage
+            (dispatch_hop_label("REQUESTED_ARTIFACTS", "craft_do_rubric"), "craft_like_rubric", "ERROR_CRAFT_LIKE_RUBRIC"),
+            # no empty_token_task on the result → the entry hop's error
+            ("REQUESTED_RESUME", None, "ERROR_CRAFT_GET_RUBRIC"),
         ],
-        ids=["trigger", "retry_holding", "hop_label", "resume_stage"],
+        ids=["trigger", "retry_holding", "hop_label", "entry_fallback"],
     )
-    async def test_goes_straight_to_stage_error_state(
-        self, monkeypatch: pytest.MonkeyPatch, trigger: str, want: str,
+    async def test_goes_straight_to_hop_error_state(
+        self, monkeypatch: pytest.MonkeyPatch, trigger: str, empty_task: Any, want: str,
     ) -> None:
         trans = MagicMock()
-        self._patch(monkeypatch, trigger, trans)
+        self._patch(monkeypatch, trigger, trans, empty_task)
         out = await candidate_mod.run_requested_artifacts_dispatch("c1", trigger_state=trigger)
         trans.assert_called_once_with("c1", want)
         assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
@@ -7413,10 +7467,10 @@ class TestAst2006RequestedArtifactsEmptyTokens:
         self._patch(monkeypatch, "REQUESTED_ARTIFACTS", trans)
         with caplog.at_level(logging.WARNING):
             out = await candidate_mod.run_requested_artifacts_dispatch("c1")
-        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_ERROR")
+        trans.assert_called_once_with("c1", "ERROR_CRAFT_GET_RUBRIC")
         assert out["total_errors"] == 1 and out["total_failed"] == 0
         warns = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-        assert len([m for m in warns if "skipped error_state REQUESTED_ARTIFACTS_ERROR" in m]) == 1
+        assert len([m for m in warns if "skipped error_state ERROR_CRAFT_GET_RUBRIC" in m]) == 1
 
 
 # AST-2066 Branches: artifact_versions_by_uuid empty/rows; _candidate_catalog_entry blank key /
@@ -7519,3 +7573,136 @@ class TestAst2066CandidateVersions:
             ("set", "cand-1", "grade_do", "v01", "r1"),
         ]
         assert any("rubric criterion current set" in r.getMessage() and "V01" in r.getMessage() for r in caplog.records)
+
+
+# Branches: resume_structure_editor_payload — accent str / non-str; spec dict / non-dict (skipped);
+# order int / non-int (sort + row); format str / non-str; page_break_policy valid / invalid → default.
+class TestAst2081ResumeStructureEditorPayload:
+    def test_payload_rows_and_coercions(self) -> None:
+        resolved = candidate_mod.default_resume_structure()
+        resolved["accent_color"] = "#0F3460"
+        resolved["sections"]["highlights"]["page_break_policy"] = "bogus"
+        resolved["sections"]["volunteer"] = {"id": "volunteer", "title": "", "enabled": False, "order": "x", "format": 7}
+        resolved["sections"]["junk"] = "not-a-dict"
+        out = candidate_mod.resume_structure_editor_payload(resolved)
+        assert set(out) == {"sections", "all_sections", "accent_color", "catalog"}
+        assert out["accent_color"] == "#0F3460"
+        rows = {r["id"]: r for r in out["all_sections"]}
+        assert "junk" not in rows
+        # Non-int order sorts as 0 and is reported as 0; non-str format → None; empty title stays "".
+        assert out["all_sections"][0]["id"] == "candidate_name"
+        assert rows["volunteer"] == {
+            "id": "volunteer", "title": "", "enabled": False, "order": 0, "format": None,
+            "job_agent_editable": False, "required": False, "format_locked": False,
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+        }
+        assert rows["highlights"]["page_break_policy"] == RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+        assert rows["experience"]["format_locked"] is True and rows["experience"]["required"] is True
+        assert rows["candidate_name"]["format_locked"] is True
+        assert "volunteer" not in {s["id"] for s in out["sections"]}
+
+    def test_catalog_carries_format_details_and_hidden_label(self) -> None:
+        resolved = candidate_mod.default_resume_structure()
+        resolved["accent_color"] = 123
+        out = candidate_mod.resume_structure_editor_payload(resolved)
+        assert out["accent_color"] is None
+        cat = out["catalog"]
+        assert cat["body_formats"] == list(RESUME_STRUCTURE_BODY_FORMATS)
+        assert "line" in cat["body_formats"]
+        assert cat["hidden_flow_label"] == "Hidden"
+        fonts = BUILD_CONFIG["default_style"]["fonts"]
+        assert cat["body_format_details"] == {
+            fmt: {"label": d["label"], "description": d["description"], "font_family": fonts[d["font_stack"]]}
+            for fmt, d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.items()
+        }
+        # Pre-AST-2081 catalog keys still present (response is a superset).
+        assert {
+            "required_ids", "contact_ids", "extra_id_pattern", "reserved_extra_ids", "new_extra_default_format",
+            "page_break_policies", "page_break_policy_labels", "page_break_policy_default",
+            "page_break_policy_defaults",
+        } <= set(cat)
+
+    def test_non_dict_sections_yields_empty_rows(self) -> None:
+        out = candidate_mod.resume_structure_editor_payload({"sections": None})
+        assert out["all_sections"] == [] and out["sections"] == []
+
+
+class TestAst2091RubricDispatchError:
+    """AST-2091 [bug-repro]: dispatch gate reason for a rubric-backed task — duplicate codes, invalid codes (AST-2126), or empty rubric."""
+
+    @staticmethod
+    def _vec(code: str, label: str = "L") -> dict[str, Any]:
+        return {"code": code, "label": label, "content": "…", "importance": 8}
+
+    def _stub(self, monkeypatch: pytest.MonkeyPatch, rubrics: dict[tuple, list]) -> list[tuple]:
+        # Records (candidate_id, owner_task_key) reads so alias resolution is pinned.
+        calls: list[tuple] = []
+
+        def _fake(candidate_id, owner_task_key, current_only=False):
+            calls.append((candidate_id, owner_task_key))
+            return rubrics.get((candidate_id, owner_task_key), [])
+
+        monkeypatch.setattr(candidate_mod.database, "list_rubric_vectors", _fake)
+        return calls
+
+    def test_duplicate_tp_codes_name_artifact_and_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Plan Repro fixture: somerset's do_rubric has two current TP rows (AST-2013 all-X job).
+        tp = "Hands-On Technical Partnership With Engineers"
+        calls = self._stub(monkeypatch, {("somerset", "grade_do"): [self._vec("TP", tp), self._vec("TP", tp), self._vec("SA")]})
+        err = candidate_mod.rubric_dispatch_error("somerset", "meteorite_grade_do")
+        assert err == "Rubric 'do_rubric' has duplicate vector codes: TP"
+        assert calls == [("somerset", "grade_do")]
+
+    def test_duplicates_strip_and_sorted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # strip() keys the count over valid stored codes.
+        rows = [self._vec(" TP"), self._vec("TP"), self._vec("SA"), self._vec("SA ")]
+        self._stub(monkeypatch, {("somerset", "grade_do"): rows})
+        assert candidate_mod.rubric_dispatch_error("somerset", "grade_do") == (
+            "Rubric 'do_rubric' has duplicate vector codes: SA, TP"
+        )
+
+    def test_invalid_codes_win_over_duplicates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2126: strict on the stored value — lowercase and blank are undecodable; sorted, blank as (blank).
+        rows = [self._vec(" tp"), self._vec("TP"), self._vec("sa"), self._vec("SA "), self._vec(""), self._vec("")]
+        self._stub(monkeypatch, {("somerset", "grade_do"): rows})
+        assert candidate_mod.rubric_dispatch_error("somerset", "grade_do") == (
+            "Rubric 'do_rubric' has invalid vector codes: (blank), sa, tp — re-save the rubric"
+        )
+
+    def test_v01_code_is_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2126 repro: sync's old V{idx} fallback code can never match _GRADE_SEG.
+        self._stub(monkeypatch, {("somerset", "grade_do"): [self._vec("V01", "One"), self._vec("AB", "Two")]})
+        assert candidate_mod.rubric_dispatch_error("somerset", "meteorite_grade_do") == (
+            "Rubric 'do_rubric' has invalid vector codes: V01 — re-save the rubric"
+        )
+
+    def test_non_dict_criteria_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Plan counts codes over dict items only; keeps candidate.py's branch lock whole.
+        monkeypatch.setattr(candidate_mod, "rubric_criteria_for_task", lambda cid, owner: ["TP", self._vec("TP"), self._vec("TP")])
+        assert candidate_mod.rubric_dispatch_error("somerset", "grade_do") == (
+            "Rubric 'do_rubric' has duplicate vector codes: TP"
+        )
+
+    def test_empty_rubric_is_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._stub(monkeypatch, {})
+        assert candidate_mod.rubric_dispatch_error("empty_cand", "meteorite_grade_do") == (
+            "Rubric 'do_rubric' is empty for this candidate."
+        )
+
+    def test_unique_codes_valid_and_alias_resolves_owner(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls = self._stub(monkeypatch, {("somerset", "grade_like"): [self._vec("TP"), self._vec("SA")]})
+        assert candidate_mod.rubric_dispatch_error("somerset", "meteorite_like") is None
+        assert calls == [("somerset", "grade_like")]
+
+    @pytest.mark.parametrize("task_key", ["craft_do_rubric", "select_job_page", "", "not_a_task"])
+    def test_craft_and_non_rubric_tasks_never_read_rubric(self, monkeypatch: pytest.MonkeyPatch, task_key: str) -> None:
+        # Craft tasks create the rubric — gating them on empty would block their own fix.
+        calls = self._stub(monkeypatch, {})
+        assert candidate_mod.rubric_dispatch_error("somerset", task_key) is None
+        assert calls == []
+
+    @pytest.mark.parametrize("cid", [None, "", "   "])
+    def test_blank_candidate_defers_to_key_gate(self, monkeypatch: pytest.MonkeyPatch, cid: Any) -> None:
+        calls = self._stub(monkeypatch, {})
+        assert candidate_mod.rubric_dispatch_error(cid, "meteorite_grade_do") is None
+        assert calls == []

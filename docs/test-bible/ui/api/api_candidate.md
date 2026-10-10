@@ -499,3 +499,13 @@ New route lines are fully branch-covered for `LOCKED_AT_100`. **Fixture fix:** `
 ```
 
 **Pass criterion:** 69 passed (40 AST-2067 + 29 AST-2066). Narrowed run, not the zero-arg harness / branch-lock gate.
+
+### AST-2081 · AST-2046 (candidate resume_structure GET → shared payload)
+
+`get_candidate_resume_structure` now returns `resume_structure_editor_payload(resolved)` ([`../../core/candidate.md`](../../core/candidate.md) § AST-2081), and the ten `RESUME_STRUCTURE_*` imports are gone from the route module. The response is a superset of the old one: `catalog` gains `body_format_details` and `hidden_flow_label`.
+
+**New:** **`TestAst1306ResumeStructureAuthorApi::test_get_delegates_to_shared_editor_payload`** (the route body equals the helper's output). The existing AST-1306 GET/PUT tests stay green without edits. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2081.
+
+### AST-2127 · AST-2112 (AST-2067 fixture codes — AST-2126)
+
+`TestAst2067CandidateVersionRoutes::_seed_rubric` seeded `V01`/`V02` through `sync_rubric_vectors_from_criteria`, which now rejects codes that aren't `[A-Z]{2}`. Renamed to `VA`/`VB` across the class (`_RUB` route path `/rubric/do_rubric/VA`, `code=` history filter, current-map assertions, 404 / bad-key route params). Unblocks **`…::test_rubric_list_and_set_current_200`** and **`…::test_rubric_cross_code_uuid_400_current_unchanged`**; § AST-2067 manifest and pass count unchanged. Primary manifest: [`../../core/consult.md`](../../core/consult.md) § AST-2127.

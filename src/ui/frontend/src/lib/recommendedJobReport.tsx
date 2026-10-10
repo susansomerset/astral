@@ -27,7 +27,7 @@ export function primaryActionsForState(
   return manifest?.jobs.recommended.primary_actions_by_state?.[state] ?? []
 }
 
-/** True for BUILD_ARTIFACTS and legacy daisy-chain BUILD_ARTIFACTS.<hop> (not ERROR_BUILD_ARTIFACTS). */
+/** True for BUILD_ARTIFACTS and legacy daisy-chain BUILD_ARTIFACTS.<hop> (not the per-hop artifact-chain error states). */
 export function isArtifactsBuildInProgress(jobState: string): boolean {
   return jobState === "BUILD_ARTIFACTS" || jobState.startsWith("BUILD_ARTIFACTS.")
 }
