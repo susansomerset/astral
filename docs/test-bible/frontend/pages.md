@@ -3851,3 +3851,53 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/comp
 - **Source gates:** no `Save sections` and no `useCandidateResumeStructure|structureCatalog|onStructureSave` anywhere in `src/ui/frontend/src` (AC2/AC5). The page has no `craft_resume_base` and no `ArtifactEditor` (AC3). Both resume surfaces use `ResumeContentEditor`. The AST-1577 ui-consistency directive check is kept.
 
 Manifest: [`components.md`](components.md) § AST-2084.
+
+### AST-2106 · AST-2102 (grouped, collapsible Skipped page)
+
+**Publish:** `origin/sub/AST-2102/AST-2106-grouped-skipped-page`. Plan: `docs/features/interface/ast-2106-grouped-collapsible-skipped-page.md`. Rules come from manifest `jobs.skipped.groups` (AST-2105 — [`../utils/config.md`](../utils/config.md) § AST-2105).
+
+`JobsSkipped.tsx` buckets every built section (below-floor, normal, legacy) by manifest rules — member, then first matching prefix, then the catch-all — and renders one collapsible heading `<label> (<total jobs>)` per non-empty group, in manifest order. Group collapse is a second `useSectionExpandPolicy` (`expandAll`) holding *collapsed* group keys, so groups start open and section Expand One is untouched. `StateUiContext.tsx` types `groups`.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 4 Error / Bot block / Fail order + counts; each section inside its own group; no Other | `pages/JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** › **`JobsSkipped — AST-2106 grouped, collapsible Skipped page`** › **`AC4: …`** |
+| 5 `INVALID_TITLE` → Other (1) last; legacy `ERROR_SOMETHING_OLD` → Error, `MYSTERY_STATE` → Other after Fail | same | **`AC5: INVALID_TITLE adds Other (1) last`** · **`AC5: unmapped legacy …`** |
+| 6 `virtual_skip` floor section under Fail, below Error | same | **`AC6: …`** |
+| 7 group heading hides / restores its sections; open section stays open, closed stays closed; other groups untouched | same | **`AC7: …`** |
+| 8 lone `FAILED_JD` → only Fail heading; empty → "No skipped jobs", no heading | same | **`AC8: …`** (×2) |
+| 9 mixed `ERROR_EVALUATE_JD` + `FAILED_DO` Retry → exactly one `bulk_state` POST per target (`JD_READY`, `PASSED_JD`) | same (`handleRetry` unchanged) | **`AC9: …`**; sort / Resurrect / hop-correct Retry stay pinned by the existing AST-893 / AST-1064 / AST-1156 / AST-1410 / AST-1979 / AST-1982 cases |
+| 10 no state / prefix literals in the page | source | grep below |
+| 11 build / lint | source | commands below |
+
+Group headings are located by exact text `▼<label> (<n>)`. Section membership is checked by DOM containment, and each group's button count equals 1 + its sections, which pins "nothing else in this group".
+
+**Broken / obsolete (revised this pass):** `tests/component/frontend/fixtures/stateUiManifestFixture.ts`: `skipped` gains `groups`, mirroring AST-2105's manifest exactly. Without it, all 16 existing `test_JobsSkipped` cases throw on `sk.groups.find` and time out. No existing case needed a selector change: groups start open, and no section label collides with a group heading.
+
+**Baseline red (not this ticket):** `test_JobDetailModal` › **`AST-1695 listing_href > read-only: null listing_href → no Link <a> …`** is red with and without this pass's test changes. It is already listed under § AST-1975's baseline reds.
+
+**Integration:** none — frontend-only; do not invent.
+
+## QA test manifest
+
+1. **Skipped page suite (required, all green):** expect 24 passed (16 existing + 8 AST-2106).
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx
+```
+
+2. **Fixture consumers (regression):** only the baseline red above.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/contexts/test_StateUiContext.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx
+```
+
+3. **AC 10:** `rg -n '"[A-Z]+(_[A-Z]+)*_"|"[A-Z]+(_[A-Z]+)+"' src/ui/frontend/src/pages/JobsSkipped.tsx` returns nothing.
+
+4. **AC 11:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev` (plan baseline `✖ 29 problems (25 errors, 4 warnings)`).
+
+**Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2102/AST-2106-grouped-skipped-page:docs/test-bible/frontend/pages.md | shasum`

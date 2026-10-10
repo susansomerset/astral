@@ -6956,6 +6956,74 @@ class TestAst1846PrefilterRetryWarnThenError:
 # AST-2004 · AST-1998: decomposed select ERROR_SELECT_JOB_PAGE_NO_JOBLIST fall-through → BOT_BLOCKED_SELECT_JOB_PAGE when a shown page is a bot wall.
 # Branches: _first_bot_walled_page hit / miss (full loop); _check_parse_results walled_url true / false;
 # decomposed=False never runs the check (legacy locate path unchanged).
+
+
+class TestAst2125PrefilterMissingDescription:
+    """AST-2124: prefilter letter grade with no rubric description → that company alone to PREFILTER_FAILED (WARNING)."""
+
+    _MISS = "No rubric description for vector 'fit' grade B"
+
+    @staticmethod
+    def _env(monkeypatch: pytest.MonkeyPatch) -> tuple:
+        # fit has A/F rows only, so B is a missing description.
+        rubric = [{"label": "fit", "code": "fit", "importance": 5, "content": "body",
+                   "grade_descriptions": [{"grade": "A", "description": "one"}, {"grade": "F", "description": "fail"}]}]
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"state_history": []}))
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_task", lambda *_a, **_k: rubric)
+        monkeypatch.setattr("src.core.consult._dispatch_score_floor_for_task", lambda *_a, **_k: 0.0)
+        return transition, save
+
+    def test_apply_outcome_miss_to_prefilter_failed(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from src.utils.config import ROSTER_CONFIG
+
+        caplog.set_level("DEBUG")
+        transition, save = self._env(monkeypatch)
+        out = roster_mod._apply_prefilter_decoded_company_outcome(
+            "acme_com",
+            {"grades": [{"vector": "fit", "grade": "B", "confidence": 3}], "possible_job_links": []},
+            {**ROSTER_CONFIG["prefilter"]},
+            {"astral_candidate_id": "c1"},
+        )
+        assert out == "PREFILTER_FAILED"
+        transition.assert_called_once_with("acme_com", "PREFILTER_FAILED")
+        save.assert_not_called()
+        assert [(r.levelname, r.getMessage()) for r in caplog.records if "acme_com -> " in r.getMessage()] == [
+            ("WARNING", f"acme_com -> PREFILTER_FAILED [hydrate: {self._MISS}]"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_batch_miss_fails_only_that_company(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        transition, save = self._env(monkeypatch)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={
+            "success": True,
+            "parsed_response": {"companies": [
+                {"company_id": "acme_com", "grades": [{"vector": "fit", "grade": "B", "confidence": 3}]},
+                {"company_id": "beta_com", "grades": [{"vector": "fit", "grade": "F", "confidence": 5}]},
+            ]},
+        }))
+        companies = [{"short_name": s, "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "x"}}
+                     for s in ("acme_com", "beta_com")]
+        out = await roster_mod._run_batch_company_prefilter("b-2116", companies, ctx={"astral_candidate_id": "c1"})
+        # Pre-fix: both companies → HOMEPAGE_READY_RETRY (retried 2). Now: no retry, sibling applies its own verdict.
+        assert out == {"passed": 0, "failed": 2, "total": 2, "retried": 0}
+        assert [c.args for c in transition.call_args_list] == [
+            ("acme_com", "PREFILTER_FAILED"), ("beta_com", "PREFILTER_FAILED"),
+        ]
+        # The sibling went through the normal verdict path (F5 dealbreaker → saved with reason); the miss saved nothing.
+        assert [c.args[0] for c in save.call_args_list] == ["beta_com"]
+        assert save.call_args.args[1]["prefilter_grades"][0]["reason"] == "fail"
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+
 class TestAst2004BotWalledSelect:
     _HOME = ("https://acme.com", "Welcome to Acme. We build widgets. About us. Contact.")
     # Two jd_classifier bot signals ("New to LinkedIn? Join now" + "Sign in with Email") = threshold 2.

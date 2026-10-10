@@ -1722,6 +1722,7 @@ def _apply_prefilter_decoded_company_outcome(
         _hydrate_grade_reasons_from_rubric,
         _require_complete_grade_set,
         _debug_incomplete_grade_set,
+        MissingRubricDescriptionError,
     )
     from src.core.candidate import rubric_criteria_for_task
 
@@ -1729,7 +1730,13 @@ def _apply_prefilter_decoded_company_outcome(
     candidate_id = str((ctx or {}).get("astral_candidate_id") or "")
     rubric_list = rubric_criteria_for_task(candidate_id, "prefilter_company") if candidate_id else []
     if grades and rubric_list:
-        _hydrate_grade_reasons_from_rubric(grades, rubric_list)
+        try:
+            _hydrate_grade_reasons_from_rubric(grades, rubric_list)
+        except MissingRubricDescriptionError as e:
+            # Fail this company only — no retry, no grade save (AST-2124).
+            _warn_company(short_name, cfg["fail_state"], f"hydrate: {e}")
+            transition_company_state(short_name, cfg["fail_state"])
+            return cfg["fail_state"]
         # Incomplete/extra → re-raise for caller `_prefilter_fail` retry path (AST-1155).
         try:
             _require_complete_grade_set(rubric_list, grades)
