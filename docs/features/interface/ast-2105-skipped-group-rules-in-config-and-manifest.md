@@ -136,3 +136,38 @@ Ticket `## Scope`: `src/utils/config.py` only — group rule registry, guard, ma
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2105
+**Overall:** APPROVED
+**Corpus:** c04b07deda8f5a750afd473ec847d06ed2207065
+**Publish ref:** `origin/sub/AST-2102/AST-2105-skipped-group-rules` @ `a1d2e90ea`
+
+## Canon scores
+
+(explicit Canon Scope **none**, locked at parent Discussion — no directive ids on the ticket list; R3 has zero rows; Radia’s canon column for this child is likewise empty by design)
+
+## Traceability
+
+AC **1, 2, 3, 11** → Stage 1 (registry + guards + manifest `groups`, import/AC scripts, ephemeral AC3 guard check); parent AC **4–10** → N/A (AST-2106 / out of child `## Scope`).
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan doc structure
+- **Finding:** No self-assessment section (common on small config-only plans).
+- **Recommendation:** Optional for build parity; not blocking at this footprint.
+
+### discuss — Optional future canon (not scored)
+
+- **Location:** Parent Architectural definition / child Citations
+- **Finding:** `astral.config.config-source-of-truth` and draft `stat.layers.ui-config-driven-business-logic` spirit plainly describe “rules in config, manifest to UI,” but parent locked **Canon Scope: none** with rationale.
+- **Recommendation:** No plan change; if Archie later wants enforceable law for manifest registries, amend Canon Scope at Discussion — do not widen the frozen list in build.
+
+**R6 (adversarial):** Identity OK (`Plan Ready`, assignee Joan). Child scope is `config.py` only; plan’s Explicit scope gate, Files Changed, and stages align. AST-2073 build-base merge is documented with `merge-base --is-ancestor` check (verified on epic worktree). Registry placement after `JOBS_SKIPPED_SECTION_LABELS` matches live file (~L4330); `build_state_ui_manifest()` skipped block lacks `groups` today — additive change matches AC 1. Grouping semantics (members before prefixes, catch-all last) match parent functional scope #1. No React/sibling creep. DRY: reuses `ERROR_STATE_PREFIX` / `BOT_BLOCKED_STATE_PREFIX`; Fail literals once. Plan-time AC 2 note (55 skipped states, Other = `INVALID_TITLE`, below-dispatch key excluded from `SKIPPED_STATES`) matches merged-tree facts.
+
+context_tokens≈42000
+
+Slim upshot: `[plan-rubric] PROCEED (Commit: a1d2e90ea) Config groups manifest ready`
