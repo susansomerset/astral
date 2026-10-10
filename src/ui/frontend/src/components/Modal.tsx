@@ -10,8 +10,9 @@ export interface ModalProps {
   children: ReactNode
   onSave?: () => void
   dirty?: boolean
-  /** "fullscreen": card fills the viewport, body unpadded (split-pane modals). */
-  size?: "wide" | "fullscreen"
+  /** "fullscreen": card fills the viewport, body unpadded (split-pane modals).
+   *  "overlay": 80vw card over the dimmed page, body unpadded (split-pane modals that must read as over the page). */
+  size?: "wide" | "fullscreen" | "overlay"
   stacked?: boolean
   /** When false, omit Cancel/Save footer strip (default true). */
   showFooter?: boolean
@@ -26,6 +27,8 @@ const FULLSCREEN_CARD: CSSProperties = {
   border: "none",
   borderRadius: 0,
 }
+// No border/radius override: .modal-card's chrome is what makes it read as "over" the page.
+const OVERLAY_CARD: CSSProperties = { width: "80vw", height: "90vh", maxWidth: "80vw", maxHeight: "90vh" }
 const FULLSCREEN_BODY: CSSProperties = { padding: 0, minHeight: 0, overflow: "hidden" }
 
 export default function Modal({ open, onClose, title, children, onSave, dirty, size, stacked, showFooter = true }: ModalProps) {
@@ -58,12 +61,12 @@ export default function Modal({ open, onClose, title, children, onSave, dirty, s
 
   return createPortal(
     <div className={`modal-overlay${stacked ? " modal-overlay--stacked" : ""}`}>
-      <div className={`modal-card${size === "wide" ? " modal-card--wide" : ""}`} style={fullscreen ? FULLSCREEN_CARD : undefined}>
+      <div className={`modal-card${size === "wide" ? " modal-card--wide" : ""}`} style={fullscreen ? FULLSCREEN_CARD : size === "overlay" ? OVERLAY_CARD : undefined}>
         <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
           <button type="button" className="icon-control" onClick={guardedClose} title="Close" aria-label="Close">×</button>
         </div>
-        <div className="modal-body" style={fullscreen ? FULLSCREEN_BODY : undefined} onInput={onBodyInput} onChange={onBodyInput}>
+        <div className="modal-body" style={fullscreen || size === "overlay" ? FULLSCREEN_BODY : undefined} onInput={onBodyInput} onChange={onBodyInput}>
           {children}
         </div>
         {showFooter && (

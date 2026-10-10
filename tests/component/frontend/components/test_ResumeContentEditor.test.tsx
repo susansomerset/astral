@@ -475,6 +475,55 @@ describe("AST-2083 ResumeContentEditor — experience body", () => {
   })
 })
 
+describe("AST-2114 ResumeContentEditor — search filters Experience jobs", () => {
+  const ACME = { company: "Acme", title: "Lead", accomplishments: ["Scaled search"] }
+  const GLOBEX = { company: "Globex", title: "Engineer", accomplishments: ["Built billing"] }
+  const twoJobs = () =>
+    setRoutes({ "GET /api/candidates/c1": ok({ candidate_data: { artifacts: { base_resume: { ...BASE_BODY, experience: [ACME, GLOBEX] } } } }) })
+  const jobLabels = () => [...rowEl("experience").querySelectorAll(".experience-jobs-editor-role-label")].map(e => e.textContent)
+  const addRole = () => within(rowEl("experience")).queryByRole("button", { name: "Add role" })
+
+  it("[bug-repro] a job-text match shows only matching jobs; title match or empty query shows all", async () => {
+    twoJobs()
+    await renderEditor()
+    expand("experience")
+    expect(jobLabels()).toEqual(["Acme, Lead", "Globex, Engineer"])
+    const search = screen.getByLabelText("Search sections")
+    fireEvent.change(search, { target: { value: "acme" } })
+    expect(rowIds()).toEqual(["experience"])
+    expect(jobLabels()).toEqual(["Acme, Lead"])
+    // Decision 1: a blank new role would match nothing, so Add role hides while filtering.
+    expect(addRole()).toBeNull()
+    // Accomplishment text counts (same haystack as the section match).
+    fireEvent.change(search, { target: { value: "BILLING" } })
+    expect(jobLabels()).toEqual(["Globex, Engineer"])
+    // Decision 2: a section-title hit shows the whole section.
+    fireEvent.change(search, { target: { value: "exper" } })
+    expect(jobLabels()).toEqual(["Acme, Lead", "Globex, Engineer"])
+    expect(addRole()).not.toBeNull()
+    fireEvent.change(search, { target: { value: "" } })
+    expect(jobLabels()).toEqual(["Acme, Lead", "Globex, Engineer"])
+    expect(puts()).toHaveLength(0)
+  })
+
+  it("editing a filtered job saves the full array, hidden jobs included; filtering alone sends nothing", async () => {
+    twoJobs()
+    const { onSaved } = await renderEditor()
+    expand("experience")
+    fireEvent.change(screen.getByLabelText("Search sections"), { target: { value: "globex" } })
+    await act(async () => {})
+    expect(puts()).toHaveLength(0)
+    expect(onSaved).not.toHaveBeenCalled()
+    fireEvent.click(within(rowEl("experience")).getByText("Globex, Engineer"))
+    const title = within(rowEl("experience")).getByDisplayValue("Engineer")
+    fireEvent.change(title, { target: { value: "Staff" } })
+    leave(title)
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
+    const arts = (puts()[0].body as { artifacts: { base_resume: Record<string, unknown> } }).artifacts
+    expect(arts.base_resume.experience).toEqual([ACME, { ...GLOBEX, title: "Staff" }])
+  })
+})
+
 describe("AST-2083 ResumeContentEditor — job target and Compare to Base (AC14)", () => {
   it("job body edit sends only the job_resume PUT", async () => {
     const { onSaved } = await renderEditor("job")

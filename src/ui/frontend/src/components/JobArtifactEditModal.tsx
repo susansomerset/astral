@@ -22,14 +22,14 @@ interface Props {
   onClose: () => void
 }
 
-/** AST-2084: stacked full-screen split pane over the Job Analysis Report — the artifact's editor left, its live print preview right. */
+/** AST-2084 / AST-2115: stacked 80%-width split pane over the Job Analysis Report — the artifact's editor left, its live print preview right. */
 export default function JobArtifactEditModal({ jobId, tab, onClose }: Props) {
   // Bumped after each save so the preview refetches once.
   const [refreshKey, setRefreshKey] = useState(0)
   const bump = () => setRefreshKey(k => k + 1)
 
   return (
-    <Modal open={!!tab} onClose={onClose} title={tab?.nav_label ?? ""} size="fullscreen" stacked showFooter={false}>
+    <Modal open={!!tab} onClose={onClose} title={tab?.nav_label ?? ""} size="overlay" stacked showFooter={false}>
       {tab && (
         <SplitPanePage
           left={tab.use_resume_structure
