@@ -114,3 +114,45 @@ Betty and Chuckles need to decide whether these files join the test scope. The e
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate — round 1
+
+[plan-rubric]
+**Ticket:** AST-2122
+**Overall:** REVISE
+**Corpus:** c04b07deda8f5a750afd473ec847d06ed2207065
+**Publish ref:** `origin/sub/AST-2100/AST-2122-retire-theme-examples` @ `033044a705c05ca051ad9d11f552dae0b59b8793`
+
+## Canon scores
+
+_(empty — parent and child Canon Scope locked **none** at Discussion; no directive ids to score.)_
+
+## Traceability
+
+AC8→Stage 1 (steps 1–7, 9) + Betty in-scope tests/bible; AC9→Stage 1 (config/ui_config) + Betty `test_config.py` only — **four other test files still violate AC9 grep and `test_api_system.py` fails runtime** (not in Scope); AC10→Stage 1 step 8.
+
+## Findings
+
+### fix-now
+
+- **Location:** Child AC 9; plan `## Notes for qa-child (Betty)`; ticket `## Scope` (tests)
+- **Finding:** AC 9 requires `git grep -n -e light_parchment -e light_slate -- src tests` with **no** hits (App.css carve-out applies only under `src`, not `tests`). After engineer Stage 1, grep still hits `tests/component/ui/api/test_api_system.py`, `tests/component/core/test_candidate.py`, `tests/component/ui/api/test_api_candidate.py`, and `tests/component/frontend/components/test_NavigationShell.test.tsx`. `test_api_system.py` also **fails** asserting the four-theme registry. Ticket Scope names only `test_AdminThemeExamples.test.tsx` (delete) and `test_config.py` (modify); the plan flags the gap but leaves Betty/Chuckles to “decide” without adding those files to Scope or Betty stages—so the frozen child AC cannot be met at User Testing.
+- **Recommendation:** Before Plan Approved, extend this child’s `## Scope` and the plan (Files Changed + explicit Betty/`qa-child` steps) to cover all four files—or repartition with a sibling ticket that lands **before** UT on AST-2122. Do not approve a plan whose stated AC 9 grep is known to fail outside `App.css`.
+
+### discuss
+
+- **Location:** Plan `## Notes for qa-child` vs workflow
+- **Finding:** Honest gap documentation is good; approval still needs a **committed** test footprint, not an open decision.
+- **Recommendation:** Chuckles closes the decision in the plan doc (same publish ref) when Scope is amended.
+
+### acceptable
+
+- **Location:** Boundaries (`App.css` → AST-2123); engineer-only four product files; `test_every_registry_id_has_an_app_css_block` interim green
+- **Finding:** Matches parent partition and ticket boundaries; interim CSS/registry mismatch is documented in parent/child notes.
+- **Recommendation:** None.
+
+- **Location:** Canon Scope none
+- **Finding:** Aligns with parent Architectural definition (“Applicable statutes: none”); not a missing Canon Scope escalate case.
+- **Recommendation:** None.
+
+context_tokens≈18500
