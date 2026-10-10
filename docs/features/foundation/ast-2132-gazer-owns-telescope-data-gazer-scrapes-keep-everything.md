@@ -337,3 +337,67 @@ context_tokens≈52000
 - **Verify:** `py_compile` OK; ruff 66 (baseline 67). Scratch checks (temp `ASTRAL_DB_DIR`, stubbed Telescope / transitions — under `/tmp`, `debug/` is cursorignored): Stage 1 keep / blank / resolve shapes incl. missing row; Stage 2 ok / closed / bot / short — 4 VISIBLE_TEXT rows with job `candidate_id`, refs on ok + classified only, `job_description` preamble untouched, states unchanged; Stage 3 homepage / nav ids resolve to rows with company `candidate_id`, bot-walled homepage + PJL kept, derived PJL fields `None`; Stage 4 bot-walled ids → bot state (cached), readable ids + legacy pass cached. AC 4: both commands empty.
 - **Existing tests (Betty):** across every test file referencing gazer, 11 new failures vs untouched ftr (145 pre-existing reds there), all in `tests/component/core/test_gazer.py` and all asserting the pre-AST-2130 contract: `TestFetchWebsiteBatch` ×2 (`homepage_text` text, not id), `TestAst882HomepageReadyWfrSkip::test_scrapes_wfr_even_when_homepage_text_present` (same), `TestFetchJobPagesBatch` ×5 (`pjl_assembled_content` / `pjl_nav_links` strings), `TestFetchJdBatch::test_routes_classified_failures_and_passes` and `TestAst2025FetchRelativeJdBatch` ×2 (`get_visible_text` mocked as a bare string — wrapper now asks `return_final_url=True`; `job_description` key; gate kwargs without `telescope_data_id`).
 - **No new tests** — coverage is Betty's (qa-child).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2132
+**Publish ref:** `94906c494b3f83a9e43d8c3161bf7497397b5cee` (`origin/sub/AST-2130/AST-2132-gazer-telescope-owner`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+| stat.logging.info.entity | X | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: debug / warning / error **A**, `stat.logging.info.entity` **X**; code review matches.
+
+## Frame diff
+
+- [ ] **Acceptance criteria (Linear) AC3:** Every entity-scoped pipeline scrape kept in `telescope_data` with correct `candidate_id` (homepage, nav, PJL pages, JD including bot-walled / classified) — verify via `TestAst2132TelescopeApi` + revised batch tests / scratch SQL.
+- [ ] **AC4:** Only `gazer.py` calls `save_telescope_data` / `get_telescope_data_for_ids`; no `src/external/telescope.py` or `service/telescope` diff — builder re-ran both greps (empty outside gazer; client stat empty).
+- [ ] **AC5 (child slice):** Gazer-written keys: `homepage_text` / `nav_links` are uuid ids resolving to rows; `pjl_assembled_content` / `pjl_nav_links` are `NULL` on new writes — **not** full parent AC5 (`website_content`, `{url,id}` on `pjl_scrape_pages` → AST-2134).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **@susan — `contact_task_gazer_scrape` not kept** (plan §Flags): Parent epic language suggests every visible-text / link-list scrape is stored; Estelle contact-task path still does not call `keep_*`. **Default:** Ship AST-2132 as scoped; treat contact-task as a separate parent/UAT decision (no drive-by keep in `resolve-child`).
+
+### advisory
+
+- **Sibling diff carry:** Three-dot diff vs `origin/dev` still includes AST-2131 product + tests (`database.py`, `config.py`, `test_telescope_data.py`, …) because this sub stacks on #1 — expected; score AST-2132 product on `gazer.py` (+ its tests), not as cross-ticket scope creep.
+- **Plan §Boundaries vs qa-child:** Plan said “No tests or bible edits”; tip has `test_gazer.py` revisions, `TestAst2132TelescopeApi`, `docs/test-bible/core/gazer.md` § AST-2132 — treat Betty manifest as authoritative (same pattern as AST-2131).
+- **Issue doc build narrative:** `## Review` “11 new failures / no new tests” is stale relative to publish tip; bible § AST-2132 documents revised tests and manifest — Chuckles may trim that paragraph when appending this review.
+- **Interim reader shape:** Blobs may hold ids until AST-2133/2134; plan documents blockedBy — no defect on this tip.
+- **JD empty / too-short:** `_apply_jd_gates` still transitions without writing `jd_telescope_data_id`; raw row may exist when capture was non-blank before prune — consistent with “keep before gates” for classified/bot; empty-only path may omit a row (parent AC3 targets bot-walled / classified, not empty).
+
+## Notes (Canon Scope — not scored)
+
+- Config/registry statute ids remain off the frozen list (Joan plan discuss); do not widen in flight.
+- `stat.logging.info.entity` **X**: `applies_when.paths` excludes `gazer.py`; new `_log.info` pipe lines are intentional operator grep, not a territorial miss.
+
+## What’s solid
+
+- Single-file **product** change for #2: telescope API, keep-before-route on `fetch_website` / PJL / JD paths, `jd_telescope_data_id` on pass and classified, culture caches use `resolve_telescope_value`.
+- Logging contract: ungated `Calling` / `Response` `logger.debug` around Telescope + data calls; missing-row `logger.warning` in resolve; no new `logger.error` / `logger.exception` on the added paths (scrape failures keep existing warning + transition).
+- AC4 verified on tip: no `telescope_data` string matches in `src/core` / `src/ui` except `gazer.py`; only `gazer.py` imports `save_telescope_data` / `get_telescope_data_for_ids` among consumers.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-2132): Radia review — clean`, post slim upshot, **Review Posted** → datt **PROCEED** to **User Testing** (blockedBy AST-2131 is parent merge order, not a code-rubric block).
+- UAT: exercise AC3–5 using child **Boundaries** slice (not full parent AC5 script alone).
+- Optional parent follow-up: `contact_task_gazer_scrape` keep policy (discuss default above).
+
+context_tokens≈32000
