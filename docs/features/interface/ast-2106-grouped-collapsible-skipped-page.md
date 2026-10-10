@@ -159,3 +159,46 @@ The ticket's `## Scope` covers `src/ui/frontend/src/contexts/StateUiContext.tsx`
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2106
+**Overall:** APPROVED
+**Corpus:** c04b07deda8f5a750afd473ec847d06ed2207065
+**Publish ref:** `origin/sub/AST-2102/AST-2106-grouped-skipped-page` @ `089abbe2d`
+
+## Canon scores
+
+(explicit Canon Scope **none**, locked at parent Discussion — no directive ids on the ticket list; R3 has zero rows)
+
+## Traceability
+
+AC **4–8** → Stage 1 steps 2–4 (grouped memo, dual expand-policy, collapsible headings); AC **9** → Stage 1 step 5 (`handleRetry` unchanged); AC **10** → Stage 1 step 6 `rg`; AC **11** → Stage 1 steps 0/6 build+lint baseline; parent AC **1–3** → N/A (AST-2105).
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan doc structure
+- **Finding:** No self-assessment section.
+- **Recommendation:** Optional; not blocking for this two-file UI change.
+
+### acceptable — Component tests / fixture out of builder scope
+
+- **Location:** Notes for QA; ticket `## Scope` excludes `tests/`
+- **Finding:** `stateUiManifestFixture.ts` lacks `groups`; `test_JobsSkipped.test.tsx` will fail on `sk.groups` until Betty mirrors AST-2105 manifest shape.
+- **Recommendation:** Correct partition (engineer ships product; Betty owns bible/tests). Plan documents the fixture shape and query anchoring (`/^Fail \(/`). Not a plan defect.
+
+### discuss — Optional future canon (not scored)
+
+- **Location:** Parent Architectural definition / child Citations
+- **Finding:** `astral.ui.frontend-file-placement` and draft UI-config-driven spirit apply in spirit; parent locked **Canon Scope: none** for React.
+- **Recommendation:** No plan change; amend Canon Scope only via Discussion if Archie wants enforceable placement law later.
+
+**R6 (adversarial):** Identity OK (`Plan Ready`, assignee Joan). Scope gate limits changes to `StateUiContext.tsx` and `JobsSkipped.tsx`; plan matches ticket technical scope (manifest type, grouped memo, group headings, no literals). Build base documents `sync-child.sh --ftr AST-2102-group-skipped-jobs` and `merge-base --is-ancestor 6913fcd98` (verified on epic worktree; manifest `groups` length 4). Live `JobsSkipped.tsx` structure (lines 154–194 memo, 273+ flat `sections.map`) matches plan splice points. Second `useSectionExpandPolicy({ expandAll: true })` with collapsed-key inversion is consistent with hook semantics (`useSectionExpandPolicy.ts` expandAll branch) and preserves Expand One for sections — addresses AC 7 and parent functional scope #6 without modifying the hook file (in scope). Grouping algorithm matches parent #1 (member → prefix → catch-all) and AST-2105 manifest order. Empty-group filter and `skipGroups.length === 0` preserve AC 8 empty state. Per-section render body (including inner rubric `groups` variable) stays inside unchanged block per step 4 / `git diff -w` gate. Lint baseline pinned (29 problems); no new `eslint-disable`. AC 10 `rg` already clean on current file.
+
+context_tokens≈52000
+
+```
+[plan-rubric] PROCEED (Commit: 089abbe2d) Grouped Skipped page ready
+```
+
