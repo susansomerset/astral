@@ -681,18 +681,18 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/44df6ed17f933d3a939581634566a7fc/266932a9-ef4b-4b88-9df8-355722246ab5/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/3e21e535-8623-47ca-bb6e-707d27404871/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/44df6ed17f933d3a939581634566a7fc/e8749e93-07fa-4f0d-a856-0d00e57a4b83/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/c09ef93331882a7375376d0a6349d142/3c823846-3d8c-4c32-a5ff-5264cff2a9e8/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/dbfade24-93b0-4932-9c98-c9c58943de8f/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/c09ef93331882a7375376d0a6349d142/61687e80-1df3-4a29-b2a9-ef3821ca4958/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-2020 (parent) | ftr/AST-2020-rubric-gate-call-site |
-| AST-2103 | sub/AST-2020/AST-2103-rubric-gate-call-site |
+| AST-2013 (parent) | ftr/AST-2013-rubric-dup-dispatch-gate |
+| AST-2091 | sub/AST-2013/AST-2091-rubric-dup-dispatch-gate |
 
-**Epic worktree:** `astral-AST-2020/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2013/` — one active sub checked out at a time.
 
 ## Bug: AST-1794 — Silence no-agent empty_render warning
 
@@ -1731,3 +1731,14 @@ context_tokens≈12000
 ### AST-2103 — test routing
 
 docs-acceptance: fix-board `[board-betty] TESTS: OK` — no qa-fix, no new tests. Existing AST-2092 / AST-2094 `TestAst1779EmptyRenderForPrompts` coverage (including the `entity_contexts={"rubric": {}}` case) already pins this behavior; the call-site change is a verified no-op on the current tip.
+
+### AST-2020 — epic registry Threads (mirror)
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/44df6ed17f933d3a939581634566a7fc/266932a9-ef4b-4b88-9df8-355722246ab5/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/3e21e535-8623-47ca-bb6e-707d27404871/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/44df6ed17f933d3a939581634566a7fc/e8749e93-07fa-4f0d-a856-0d00e57a4b83/store.db` |
+| Joan | validate | `f9f2c4dd-c376-47b8-bbb3-37859aa99d63` |
+
+Git (deleted at finish-up): parent `ftr/AST-2020-rubric-gate-call-site`, AST-2103 `sub/AST-2020/AST-2103-rubric-gate-call-site`, epic worktree `astral-AST-2020/`.
