@@ -4329,6 +4329,31 @@ JOBS_SKIPPED_SECTION_LABELS = {
     bot_blocked_state_for("qualify_meteorite"): "Bot Blocked",
 }
 
+# AST-2105: Skipped page groups, in display order, keyed by group id. A row's group is the
+# first whose members list its state, else the first whose prefixes match it, else the last
+# group — the catch-all, with neither prefixes nor members. Prefixes and members live here only;
+# the React page reads them from build_state_ui_manifest()["jobs"]["skipped"]["groups"].
+JOBS_SKIPPED_GROUPS = {
+    "error": {"label": "Error", "prefixes": [ERROR_STATE_PREFIX], "members": []},
+    "bot_block": {"label": "Bot block", "prefixes": [BOT_BLOCKED_STATE_PREFIX], "members": []},
+    "fail": {
+        "label": "Fail",
+        "prefixes": ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"],
+        # Resurrect-only manual skip + the below-floor virtual section (not a JOB_STATES key).
+        "members": ["CANDIDATE_SKIPPED", JOBS_SKIPPED_BELOW_DISPATCH_KEY],
+    },
+    "other": {"label": "Other", "prefixes": [], "members": []},
+}
+# Explicit members must be real Skipped states (or the below-floor key), so a rename can't orphan one.
+assert all(
+    m in SKIPPED_STATES or m == JOBS_SKIPPED_BELOW_DISPATCH_KEY
+    for g in JOBS_SKIPPED_GROUPS.values() for m in g["members"]
+), "JOBS_SKIPPED_GROUPS: member is not a Skipped state"
+# Exactly one catch-all, and it is last — anything after it would be unreachable.
+assert [not (g["prefixes"] or g["members"]) for g in JOBS_SKIPPED_GROUPS.values()] == (
+    [False] * (len(JOBS_SKIPPED_GROUPS) - 1) + [True]
+), "JOBS_SKIPPED_GROUPS: only the last group may be the catch-all"
+
 # Which `job[...]` grade blob to read for rubric columns (keys ⊆ JOB_STATES).
 JOBS_IN_REVIEW_GRADE_FIELD = {
     retry_of("VALID_TITLE"): "joblist_grades",
@@ -4595,6 +4620,11 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "section_order": skipped_order,
                 "section_labels": skipped_labels,
                 "bulk_retry_to_state_by_from_state": dict(JOBS_SKIPPED_BULK_RETRY_TO_STATE),
+                # AST-2105: ordered group rules (key, label, prefixes, members) — catch-all last.
+                "groups": [
+                    {"key": k, "label": g["label"], "prefixes": list(g["prefixes"]), "members": list(g["members"])}
+                    for k, g in JOBS_SKIPPED_GROUPS.items()
+                ],
             },
             "detail": {"already_skipped_state": "CANDIDATE_SKIPPED"},
             "recommended": {

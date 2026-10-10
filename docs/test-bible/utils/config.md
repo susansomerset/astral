@@ -56,6 +56,34 @@ Notes (no action required): `fetch_job_pages` with one walled + one errored PJL 
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2073/AST-2086-terminal-state-rename:docs/test-bible/utils/config.md | shasum`
 
+### AST-2105 · AST-2102 (Skipped group rules — `JOBS_SKIPPED_GROUPS` + manifest `jobs.skipped.groups`)
+
+**Publish:** `origin/sub/AST-2102/AST-2105-skipped-group-rules` (carries AST-2073's ftr until it lands on dev). Plan: `docs/features/interface/ast-2105-skipped-group-rules-in-config-and-manifest.md`.
+
+`JOBS_SKIPPED_GROUPS` (dict keyed by group id, insertion order = display order): Error (`ERROR_STATE_PREFIX`), Bot block (`BOT_BLOCKED_STATE_PREFIX`), Fail (`FAILED_` / `METEORITE_FAILED_` / `JD_SCRAPE_FAIL_` + members `CANDIDATE_SKIPPED`, `JOBS_SKIPPED_BELOW_DISPATCH_KEY`), Other (catch-all, last). Two import-time asserts: every member is a `SKIPPED_STATES` key or the below-dispatch key; exactly one catch-all, last. `build_state_ui_manifest()["jobs"]["skipped"]["groups"]` emits an ordered list of `{key, label, prefixes, members}` copies. Other `jobs.skipped` keys unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AC1 exact groups; AC2 Other = `INVALID_TITLE` only; manifest lists are copies; AC3 member guard + catch-all-last guard (source splice, same pattern as AST-2061 / AST-1974) | `src/utils/config.py` | **`TestAst2105SkippedGroupRules`** (5) |
+
+**Broken / revised:** none — no existing node pins the `jobs.skipped` key set. `tests/component/frontend/fixtures/stateUiManifestFixture.ts` stays a partial snapshot without `groups` (page consumer is sibling **AST-2106**).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. `tests/component/utils/test_config.py::TestAst2105SkippedGroupRules` (5 — all must pass).
+2. Whole module `tests/component/utils/test_config.py` — no new failures vs `origin/dev` (+ AST-2073 merged base).
+3. `python3 -c "import src.utils.config"` exits 0 (AC 11).
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst2105SkippedGroupRules -q
+./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py -q
+python3 -c "import src.utils.config"
+```
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2102/AST-2105-skipped-group-rules:docs/test-bible/utils/config.md | shasum`
+
 ### AST-2096 · AST-2011 (pointer)
 
 **`TestAst2096AllXFailStates`** — `{fail_state}_ALL_X` rows (`all_x_of`, `ALL_X_FAIL_STATES`, base priors, Skipped). Primary manifest: **`docs/test-bible/core/consult.md`** § AST-2096.
