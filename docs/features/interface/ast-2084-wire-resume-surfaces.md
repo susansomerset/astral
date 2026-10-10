@@ -465,3 +465,72 @@ No `App.css` change: inline styles match the existing `FULLSCREEN_CARD` approach
 - The modal stays **stacked** (`modal-overlay--stacked`, z-index 2000) above the JAR modal, with no footer.
 - The split-pane body stays unpadded and non-scrolling at the body level, so `SplitPanePage` controls its own scrolling and preview `refreshKey` bumps on each editor `onSaved`.
 - AST-2082's `fullscreen` contract (`100vw`, borderless, unpadded body) and the base resume page's edge-to-edge layout (parent AC1) are unchanged.
+
+### Radia review — AST-2115
+
+[code-rubric]
+**Ticket:** AST-2115
+**Publish ref:** `9358e516b8200b42a37c0239743f637a43fa5bd5` (`origin/sub/AST-2046/AST-2115-job-modal-80-width`)
+**Corpus:** `2d1b73da19cf1d14276e5c26f52b37aa8047d159` (no frozen canon ids on ticket; fix-board Joan **CANON: OK**)
+**Overall:** CLEAN
+
+## Canon scores
+
+(no frozen directive ids on AST-2115 description — fix-lane board cleared canon; no statute rollup)
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (bug `plan-fix` patch only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `851301086`: `test_Modal` `size="overlay"` asserts `80vw`/`90vh`, default card chrome (`borderStyle`/`borderRadius` empty), unpadded/hidden-overflow body; `test_JobArtifactEditModal` pins stacked modal card `80vw`×`90vh` (not `100vw`) and keeps split-pane + `job_resume` preview / `onSaved` bump. Would fail pre-fix (`100vw` fullscreen).
+
+**## What must still hold — OK**
+
+- Stacked modal over JAR (`stacked`, `showFooter={false}`) unchanged; only `size` → `"overlay"`.
+- Resume/cover branches, `SplitPanePage`, editors, and previews unchanged in behavior.
+- Overlay body uses same `FULLSCREEN_BODY` (unpadded, `overflow: hidden`) for split-pane fill.
+- `fullscreen` size path untouched (`100vw`, borderless); no `size="fullscreen"` callers on publish ref (`git grep` empty).
+- Base resume page (`ArtifactsBaseResumeContent`) not modified by fix commit.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Cover letter tab also 80vw** — Single `JobArtifactEditModal` uses `overlay` for both resume and cover (plan-fix Decision; Susan asked width for job resume edit).
+  - **@susan:** Per-tab size (cover fullscreen vs resume overlay)?
+  - **Default:** Ship shared `overlay` for both unless UAT objects.
+
+- **Height 90vh** — Plan chose `90vh` so the card is not flush top/bottom; Susan specified width only.
+  - **Default:** Keep `90vh`; one-token change if UAT wants full height.
+
+### advisory
+
+- **Diff isolation:** `origin/ftr/AST-2046-resume-edit-overhaul...origin/sub/AST-2046/AST-2115-job-modal-80-width` includes large **sync(dev)** carry (unrelated epics) on the sub tip; **product fix** is `9358e516b` (2 files) + **tests** `851301086`. Score and merge decisions should treat those commits as the bug, not the whole three-dot stat.
+- **Board context:** Betty **TESTS: REVISE** at F2; qa-fix landed repro; engineer reports repro green post-fix.
+
+## What’s solid
+
+- Option B implemented as planned: new `Modal` `size="overlay"` (`OVERLAY_CARD` 80vw×90vh, keeps `.modal-card` chrome); `JobArtifactEditModal` switched from `fullscreen`.
+- Blast radius contained: only `overlay` branch is new; `wide` / default / `fullscreen` paths unchanged.
+
+## Recommended actions (for Chuckles — not Radia)
+
+- Append this artifact under `## Bug: AST-2115` in `docs/features/interface/ast-2084-wire-resume-surfaces.md` (or issue doc path on publish ref); commit `docs(AST-2115): Radia review — clean`; push publish ref.
+- Post slim upshot via `linear_proxy.py --as radia save-comment`.
+- **Parent shape:** normal (AST-2046 not Done) → **Review Posted** → fix-lane **PROCEED** shortcut → **User Testing** (skip `resolve-child`).
+
+```
+[code-rubric] PROCEED (Commit: 9358e516b) 80vw overlay modal
+```
+
+context_tokens≈22000
