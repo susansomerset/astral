@@ -2232,6 +2232,32 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** item 1 is 47 passed (the two `test_AdminThemeExamples` reds turn green once the App.css token fix lands), and items 2–3 hold. This is a narrowed run, not the zero-arg harness.
 
+### AST-2114 · AST-2046 (bug: search shows every Experience job, not just the matches)
+
+**Publish:** `origin/sub/AST-2046/AST-2114-search-experience-subelements`. Fix lane: a qa-fix repro after fix-board said TESTS: REVISE. In the plan-fix (`docs/features/interface/ast-2083-resume-editor.md` § Bug: AST-2114), `ResumeContentEditor` computes a per-job match set (`visibleJobs`) and passes it through `ResumeSectionRow` to a new `ExperienceJobsEditor` `visible` prop. This is view-only: the body array, the indexes and the saves are untouched. Add role hides while the filter is on. A section-title match or an empty query shows every job. `ArtifactEditor` passes no `visible`, so it's unchanged.
+
+| Behavior | Test |
+| --- | --- |
+| Two-job base: `acme` → only "Acme, Lead"; `BILLING` (accomplishment) → only Globex; `exper` (title hit) and empty → both; Add role hidden only while filtered; no PUT | **`test_ResumeContentEditor.test.tsx`** `AST-2114 … [bug-repro] a job-text match shows only matching jobs…` (new) |
+| Editing a filtered job saves the full array, the hidden job included; filtering alone sends nothing (AC4 still holds) | same file, `editing a filtered job saves the full array…` (new guard; green before and after) |
+| `visible={new Set([1])}`: only index 1 renders; edit / Move up / Remove act on the original index 1 in the full list; no Add role | **`test_ExperienceJobsEditor.test.tsx`** `AST-2114 … [bug-repro] renders only visible indexes…` (new; props cast so it compiles before the fix) |
+
+**Repro status:** on the pre-fix sub, exactly the 2 `[bug-repro]` cases are red. One fails with `expected ['Acme, Lead', 'Globex, Engineer'] to deeply equal ['Acme, Lead']`, the other because First still renders. The other 40 are green. With the plan's change temporarily applied to the three product files, then reverted (not committed), all 42 pass. `test-fix` must confirm the same flip on Katherine's real fix. The existing AST-2083 search case checks rows only, with a one-job fixture, and is unaffected.
+
+## QA test manifest — AST-2114
+
+1. **Repro + neighbors (Vitest, 42 tests):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ResumeContentEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx
+```
+
+2. **Build gates:** `cd src/ui/frontend && npx tsc -b --noEmit` and `npm run lint` are clean on the three product files.
+
+**Pass criterion:** item 1 is 42 passed, including both `AST-2114 [bug-repro]` cases, and item 2 holds.
+
 ### AST-2084 · AST-2046 (wire resume surfaces — base page, job edit modal, thumbnails; ArtifactEditor resume mode retired)
 
 **Publish:** `origin/sub/AST-2046/AST-2084-wire-resume-surfaces`. Base Resume Content is now `SplitPanePage` with `ResumeContentEditor` (base) on the left and `PrintPreview` (base) on the right. The preview refreshes on the editor's `onSaved`. New `JobArtifactEditModal` is a stacked full-screen `Modal` holding a split pane: the job resume uses `ResumeContentEditor` (job) + the `job_resume` preview, and the cover letter uses `ArtifactEditor` (shapes + job persistence, `craft_cover_letter`) + the `cover` preview. JAR's Artifacts tab shows a `PrintPreview` thumbnail for each `preview_thumbnail` tab that has content (click → modal), plus Edit on the job resume. Closing the modal reloads the report. Print Resume goes through `printHtml` with no structure persist. `ArtifactEditor`'s resume structure mode is removed.

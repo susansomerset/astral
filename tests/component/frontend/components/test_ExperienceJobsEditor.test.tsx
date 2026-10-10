@@ -116,3 +116,29 @@ describe("ExperienceJobsEditor — AST-1351 / AST-1382", () => {
     expect(onChange).toHaveBeenLastCalledWith([])
   })
 })
+
+describe("ExperienceJobsEditor — AST-2114 search filter (visible)", () => {
+  const jobs = [
+    { company: "First", title: "A", dates: "1", location: "", accomplishments: ["x"] },
+    { company: "Second", title: "B", dates: "2", location: "", accomplishments: ["y"] },
+  ]
+
+  it("[bug-repro] renders only visible indexes; edits/moves/removes keep original indexes; Add role hidden", () => {
+    const onChange = vi.fn()
+    // `visible` is the AST-2114 prop; cast keeps this file compiling against the pre-fix props.
+    const props = { fields: FIELDS, value: jobs, onChange, visible: new Set([1]) } as Parameters<typeof ExperienceJobsEditor>[0]
+    render(<ExperienceJobsEditor {...props} />)
+    expect(screen.queryByText("First, A / 1")).toBeNull()
+    expect(screen.getByText("Second, B / 2")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Add role" })).toBeNull()
+    // Only Second renders, but it is still index 1: an edit rewrites index 1 and keeps First.
+    expandRole("Second, B / 2")
+    fireEvent.change(screen.getByDisplayValue("Second"), { target: { value: "Second2" } })
+    expect(onChange).toHaveBeenLastCalledWith([jobs[0], { ...jobs[1], company: "Second2" }])
+    // Move up swaps with the hidden job above it (moves stay within the full list).
+    fireEvent.click(screen.getByTitle("Move up"))
+    expect(onChange).toHaveBeenLastCalledWith([jobs[1], jobs[0]])
+    fireEvent.click(screen.getByTitle("Remove"))
+    expect(onChange).toHaveBeenLastCalledWith([jobs[0]])
+  })
+})
