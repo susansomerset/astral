@@ -2484,3 +2484,74 @@ context_tokens≈14500
 ```
 
 **Chuckles routing:** Betty `TESTS: REVISE` (three AST-2053 decode tests break, and there is no repro coverage) goes to a sibling gap child under AST-2116 (orphaned branch). Joan `CANON: REVISE` stays on AST-2124. Both `astral.agent.confidence-bounds` copies are already inside AST-2124's declared scope, and §9 above is the wording Joan validated, so make-fix lands §9 verbatim. A separate canon child would duplicate that scope (AST-2053 precedent). AST-2124 proceeds to make-fix.
+
+
+## Radia review — AST-2124
+
+[code-rubric]
+
+**Ticket:** AST-2124  
+**Publish ref:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768` (`origin/sub/AST-2116/AST-2124-missing-grade-fail`)  
+**Review base:** `origin/ftr/AST-2116-missing-grade-fail` @ `27cd7cbcf10523e4c2b25039ec2b64d4be162ef1` (merge-base = ftr tip)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — ids resolved from `canon/directives/**` at tip; canon tree @ tip `26c4e86a4d`)  
+**Overall:** FIX-NOW  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+| patt.task.dispatch-retry | A | | |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** only (`CANON: REVISE` pre-make-fix); post-tip both statute copies + `_decode_payload` / hydrate paths match plan-fix **Proposed change** §1–§9. No `validate-plan` fix-mode per-id column on the issue doc.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — Betty **TESTS: REVISE** routed to sibling **AST-2125** (spawn brief); qa-fix did not run on this ticket.  
+- **## What must still hold — OK** (verified on isolated `code(AST-2124)` slice `0d01e20d2` vs ftr tip):  
+  - Structural hydrate `ValueError` still batch-routes via unchanged `except ValueError` in `_run_batch_consult` / prefilter batch (only `MissingRubricDescriptionError` is entity-scoped).  
+  - Missing-description routes to `cfg["fail_state"]` with `_warn_job` / `_warn_company`, not `_consult_batch_fail_dest` / `_prefilter_fail` retry.  
+  - `X` + nonzero conf → `decode_failures` branch unchanged in `agent.py`; vet `grades_encoded_vet_meta` conf-0 raise unchanged; `_GRADE_SEG` unchanged.  
+  - `{letter}0` → `X0` (not `{letter}1`).  
+  - `No rubric description for vector … grade …` message preserved via `MissingRubricDescriptionError` subclass.  
+  - Plan boundary for this ticket: no `agent_task.json` / `config.py` edits in `code(AST-2124)` (sibling carry is separate finding below).
+
+## Findings
+
+### fix-now
+
+- **Cross-ticket scope in mandated review diff** (`review-child` §5.4): `git diff origin/ftr/AST-2116-missing-grade-fail...origin/sub/AST-2116/AST-2124-missing-grade-fail` is **19 files / ~1k insertions**, not the five-file AST-2124 fix. Merge-base equals ftr tip, but the publish ref stacks **28 commits** after ftr, including **`code(AST-2120)`** and **`test(AST-2121)`** / **`code(AST-2121)`** docs, plus `sync(dev)`, CI, and epic-registry doc mirrors. Sibling **product** in the mandated diff: `data/admin/agent_task.json`, `src/utils/config.py` (qualify metadata / grade-count prompt scope — AST-2120). Sibling **tests**: `tests/component/core/test_repo_admin_json.py`, `tests/component/utils/test_config.py`. This ticket cannot be certified on the skill-mandated three-dot diff until Chuckles **`merge-child`** lands sibling product into **`origin/ftr/AST-2116-missing-grade-fail`** (or otherwise absorbs AST-2120/2121) and re-syncs **`origin/sub/AST-2116/AST-2124-missing-grade-fail`** so `ftr...sub` isolates AST-2124 (AST-2053 round-1 precedent). **Default:** do not use the §3h clean-review shortcut to **User Testing** on this publish ref until the review base is corrected; treat **`0d01e20d2`** (`code(AST-2124)`) as the known-good product slice meanwhile.
+
+### discuss
+
+- **F3 (`validate-plan` fix mode) not recorded** — Joan fix-board §F3 asked for validate-plan before make-fix; Chuckles routing proceeded to make-fix with §9 verbatim on-ticket. Implementation matches Joan’s §9 wording on tip. **Default:** no recall; optional retro F3 doc-only if process hygiene matters; do not block on this once cross-ticket base is fixed.
+
+### advisory
+
+- **Isolated AST-2124 product slice** (`0d01e20d2`): matches plan-fix — `MissingRubricDescriptionError`, batch hydrate after binding, per-entity `fail_state`, X no-signal hydrate, `{letter}0`→`X0`, both `astral.agent.confidence-bounds` copies byte-aligned per §9.  
+- **Sibling test carry** in mandated diff: AST-2120/2121 test + bible rows; AST-2053 decode tests still expect `{letter}1` — **AST-2125** per spawn brief (not scored as missing repro here).  
+- **Doc diff bulk:** feature doc AST-2124 block + Joan fix-board + prior sibling Radia artifacts; expected on a stacked sub.  
+- **sibling test carry:** paths above in mandated diff.
+
+## What's solid
+
+- Entity-scoped missing rubric text vs batch technical-fail matches Susan’s rule and `patt.task.dispatch-retry` intent (data defect → terminal fail, not retry).  
+- Canon and decode/hydrate move together; dual-copy drift from AST-2053 is closed on this slice.  
+- Hydrate ordering after ID binding fixes miss map keyed by claimed `astral_job_id`.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (fix-now: cross-ticket / review base) | Normal mini-parent (live ftr) | **Review Posted** → `merge-child` / rebase publish ref so `ftr...sub` is AST-2124-only → re-run Radia or accept round-2 on isolated tip → then **resolve-child** if needed → **User Testing**; §3h shortcut **not** until clean. |
+| **REVIEW** | Blocks **AST-2125** (tests) | Expect red component decode tests on composite tip until AST-2125 lands; not AST-2124 fix-now. |
+
+**Recommended actions (downstream only — not executed here):** Land AST-2120 (and any other sibling product) on ftr via `merge-child`; re-cut/rebase `sub/AST-2116/AST-2124-missing-grade-fail`; append this artifact; `docs(AST-2124): Radia review — findings`; push sub; post slim upshot `--as radia`.
+
+**Chuckles routing:** the cross-ticket commits Radia flagged (AST-2120/AST-2121, CI, registry mirrors) are all already on `origin/dev` and arrived via `sync(dev)`; the only commits unique to the sub are AST-2124's own. Remedy is `refresh-ftr` (dev → ftr) so `ftr...sub` isolates AST-2124, then a round-2 review on the corrected base — no product change.
