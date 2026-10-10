@@ -1591,3 +1591,31 @@ AC3 is an `rg` check in the manifest. Primary manifest: **`docs/test-bible/core/
 | Wrappers forward offset (4 params) | **`test_batch_wrappers_forward_offset[grade_do/grade_get/grade_like/meteorite_like]`** |
 
 **Kept:** `TestPrepLiveContentBranches::test_returns_jd_when_website_pages_have_no_content` (`[index=000]: jd text`, default position) — green unchanged.
+
+### AST-2125 · AST-2116 (bug-repro — missing rubric grade description fails only that job; X never fails hydrate)
+
+**AST-2124** (`0d01e20d2`): `_lookup_rubric_reason_for_grade` returns the rubric's X text or the fixed `_X_NO_SIGNAL_REASON` (`"No signal"`) for `X`, never raising. A letter grade with no description raises `MissingRubricDescriptionError` (a `ValueError` subclass, same message). An unknown vector or an empty rubric stays a plain `ValueError`, so the batch-wide AST-1839 route still applies. `_hydrate_response_jobs_grade_reasons` returns `{astral_job_id: reason}` for misses and runs after id binding. `_run_batch_consult` sends each miss to `cfg["fail_state"]` with one WARNING `<id> -> <fail_state> [hydrate: …]`, with no retry and no `bad_grades`; siblings go through `process_fn`. `_apply_render_verdict_decoded_job` does the same for a single row, with no grade save. Roster side: **`core/roster.md`** (AST-2125). Decode side: **`core/agent.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch: J0 (PS F3, no F row) → `METEORITE_FAILED_DO` WARNING only; J1 applies, its CF `X0` reason `"No signal"`; passed 1 / failed 1 / retried 0 | `src/core/consult.py` (`_run_batch_consult`) | **`TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job`** (**bug-repro**) |
+| Single row: miss → `("METEORITE_FAILED_DO", None, grades)`, transition once, no `save_job_data` | `_apply_render_verdict_decoded_job` | **`…::test_single_row_miss_fails_without_save`** |
+| `X` → `"No signal"` with no X row and on an unknown vector; X row text when present | `_lookup_rubric_reason_for_grade` | **`…::test_x_without_x_row_is_no_signal`**, **`…::test_x_with_x_row_uses_rubric_text`** |
+| Letter miss → `MissingRubricDescriptionError` (is a `ValueError`); unknown vector → plain `ValueError` | same | **`…::test_missing_letter_vs_unknown_vector`** |
+| Blank matching row falls through to trailing table past a non-matching row | same | **`…::test_blank_row_falls_through_to_trailing_table`** |
+| Batch helper returns `{J0: reason}`, hydrates J1; empty rubric still raises | `_hydrate_response_jobs_grade_reasons` | **`…::test_batch_hydrate_returns_misses_structural_still_raises`** |
+
+**Integration:** none.
+
+**QA test manifest (test-fix):**
+
+1. **[bug-repro]** `tests/component/core/test_consult.py::TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job`.
+2. `pytest tests/component/core/test_consult.py::TestAst2125MissingRubricDescription tests/component/core/test_roster.py::TestAst2125PrefilterMissingDescription` → **9 passed**.
+3. `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` → **0 failed**.
+4. Hunk coverage: #2, #3, `test_consult.py::TestRubricLookup`, `test_consult.py::TestAst1076QualifyMeteoritePlaceholderId` with `--cov=src/core --cov-branch` → no missing line / partial branch inside `git diff -U0 0d01e20d2^ 0d01e20d2 -- src/core/` hunks.
+5. `git diff origin/ftr/AST-2116-missing-grade-fail -- src/ canon/` empty (test-tree only).
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):**
+
+- **Red** — `src/core/{consult,roster,agent}.py` from pre-fix `01606b791` swapped into a `/tmp` `git archive` copy: 10 of 12 fail (9 new + 3 decode rewrites). Repro: `Actual: mock('meteorite_grade_do', ['J0', 'J1'], 'METEORITE_PASSED_JD_RETRY')` (whole batch to retry); roster batch `retried 2, failed 0`. Guards `test_x_with_x_row_uses_rubric_text` / `test_blank_row_falls_through_to_trailing_table` pass on both trees.
+- **Green** — sub tip (src identical to `0d01e20d2` / ftr `8726a8be0`): 9 new + 12 decode-class passed; `TestRubricLookup`, `TestAst1846*` (consult + roster), `TestEncodedDecodeIsolation`, `TestAst1076QualifyMeteoritePlaceholderId` green; hunk coverage (#4) clean in agent / consult / roster.

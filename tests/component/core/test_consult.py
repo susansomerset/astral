@@ -8207,3 +8207,112 @@ class TestAst2006EmptyTokenRouting:
             r.levelname == "WARNING" and "empty_tokens dest ERROR_ANTICIPATE_SCAN refused" in r.getMessage()
             for r in caplog.records
         )
+
+
+class TestAst2125MissingRubricDescription:
+    """AST-2124: a letter grade with no rubric description fails only that entity (fail_state, WARNING);
+    X never fails hydrate. Bug-repro: AST-2116 Somerset meteorite_grade_do (PS graded F, no F row)."""
+
+    _PS = "Process & Systems Design"
+    _CF = "Culture Fit"
+    _MISS = "No rubric description for vector 'Process & Systems Design' grade F"
+
+    @classmethod
+    def _rubric(cls) -> List[Dict[str, Any]]:
+        # Production shape: PS has no F row; neither vector has an X row.
+        return [
+            {"code": "PS", "label": cls._PS, "importance": 5,
+             "grade_descriptions": [{"grade": g, "description": f"PS {g}"} for g in "ABCD"]},
+            {"code": "CF", "label": cls._CF, "importance": 3,
+             "grade_descriptions": [{"grade": g, "description": f"CF {g}"} for g in "ABCDF"]},
+        ]
+
+    @classmethod
+    def _miss_grades(cls) -> List[Dict[str, Any]]:
+        return [{"vector": cls._PS, "grade": "F", "confidence": 3}, {"vector": cls._CF, "grade": "B", "confidence": 4}]
+
+    @classmethod
+    def _clean_grades(cls) -> List[Dict[str, Any]]:
+        return [{"vector": cls._PS, "grade": "B", "confidence": 4}, {"vector": cls._CF, "grade": "X", "confidence": 0}]
+
+    def test_x_without_x_row_is_no_signal(self) -> None:
+        assert consult_mod._X_NO_SIGNAL_REASON == "No signal"
+        assert consult_mod._lookup_rubric_reason_for_grade(self._rubric(), self._CF, "X") == "No signal"
+        # X never fails hydrate — not even on a vector the rubric doesn't know.
+        assert consult_mod._lookup_rubric_reason_for_grade(self._rubric(), "Nope", "X") == "No signal"
+
+    def test_x_with_x_row_uses_rubric_text(self) -> None:
+        rubric = self._rubric()
+        rubric[1]["grade_descriptions"].append({"grade": "X", "description": "CF unknown"})
+        assert consult_mod._lookup_rubric_reason_for_grade(rubric, self._CF, "X") == "CF unknown"
+
+    def test_blank_row_falls_through_to_trailing_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Re-indented AST-2124 arcs: blank matching row continues; non-matching table row continues.
+        criteria = [{"label": "Fit", "content": "body", "grade_descriptions": [{"grade": "A", "description": "  "}]}]
+        monkeypatch.setattr(
+            rubric_text, "parse_trailing_grade_table_lines",
+            lambda content: [{"grade": "B", "description": "table B"}, {"grade": "A", "description": "table A"}],
+        )
+        assert consult_mod._lookup_rubric_reason_for_grade(criteria, "Fit", "A") == "table A"
+
+    def test_missing_letter_vs_unknown_vector(self) -> None:
+        with pytest.raises(consult_mod.MissingRubricDescriptionError, match="No rubric description") as miss:
+            consult_mod._lookup_rubric_reason_for_grade(self._rubric(), self._PS, "F")
+        assert isinstance(miss.value, ValueError)
+        with pytest.raises(ValueError, match="No rubric criterion matching vector") as unknown:
+            consult_mod._lookup_rubric_reason_for_grade(self._rubric(), "Nope", "A")
+        assert not isinstance(unknown.value, consult_mod.MissingRubricDescriptionError)
+
+    def test_batch_hydrate_returns_misses_structural_still_raises(self) -> None:
+        jobs = [{"astral_job_id": "J0", "grades": self._miss_grades()},
+                {"astral_job_id": "J1", "grades": self._clean_grades()}, "junk"]
+        assert consult_mod._hydrate_response_jobs_grade_reasons(jobs, self._rubric()) == {"J0": self._MISS}
+        assert [g["reason"] for g in jobs[1]["grades"]] == ["PS B", "No signal"]
+        with pytest.raises(ValueError, match="rubric criteria missing or empty"):
+            consult_mod._hydrate_response_jobs_grade_reasons([{"astral_job_id": "J1", "grades": self._clean_grades()}], [])
+
+    @pytest.mark.asyncio
+    async def test_batch_miss_fails_only_that_job(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # [bug-repro] AST-2116: pre-fix both jobs went to METEORITE_PASSED_JD_RETRY.
+        caplog.set_level("DEBUG")
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: self._rubric())
+        monkeypatch.setattr(consult_mod, "ensure_batch_response_entity_ids", MagicMock())
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value={
+            "success": True, "timesheet": {},
+            "parsed_response": {"jobs": [{"astral_job_id": "J0", "grades": self._miss_grades()},
+                                         {"astral_job_id": "J1", "grades": self._clean_grades()}]},
+        }))
+        process = MagicMock(side_effect=lambda _i, _r, cfg: cfg["pass_state"])
+        jobs = [{"astral_job_id": a, "state": "METEORITE_PASSED_JD"} for a in ("J0", "J1")]
+        out = await consult_mod._run_batch_consult(
+            "meteorite_grade_do", "b-2116", jobs, lambda rows: "content", process, {}, False,
+        )
+        transition.assert_called_once_with("meteorite_grade_do", ["J0"], "METEORITE_FAILED_DO")
+        assert [c.args[1]["astral_job_id"] for c in process.call_args_list] == ["J1"]
+        assert [g["reason"] for g in process.call_args.args[1]["grades"]] == ["PS B", "No signal"]
+        assert (out["success"], out["passed"], out["failed"], out["retried"]) == (True, 1, 1, 0)
+        assert [(r.levelname, r.getMessage()) for r in caplog.records if "J0 -> " in r.getMessage()] == [
+            ("WARNING", f"J0 -> METEORITE_FAILED_DO [hydrate: {self._MISS}]"),
+        ]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+    def test_single_row_miss_fails_without_save(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod.tracker, "get_job",
+                            lambda aid: {"astral_job_id": aid, "state": "METEORITE_PASSED_JD"})
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=self._rubric(), task_key="meteorite_grade_do")
+        cfg = consult_mod._consult_orchestration("meteorite_grade_do")
+        grades = self._miss_grades()
+        out = consult_mod._apply_render_verdict_decoded_job(
+            "meteorite_grade_do", "J0", {"grades": grades, "notes": ""}, cfg, {"astral_candidate_id": "c1"},
+        )
+        assert out == ("METEORITE_FAILED_DO", None, grades)
+        transition.assert_called_once_with("meteorite_grade_do", ["J0"], "METEORITE_FAILED_DO")
+        save.assert_not_called()
