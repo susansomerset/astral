@@ -2450,3 +2450,102 @@ no plan-stage scores attached (Joan **fix-board** CANON: OK @ plan tip `cfd59ab6
 ### Test routing — AST-2126
 
 fix-board `[board-betty] TESTS: REVISE` → the repro, the two broken candidate tests, and the 27 sync fixtures that pass codes that are not two letters go to gap sibling [AST-2127](https://linear.app/astralcareermatch/issue/AST-2127) (`sub/AST-2112/AST-2127-do-rubric-code-tests`). This sub ships product and docs only, so it is docs-acceptance for the test tree.
+
+## Bug: AST-2127 — Do rubric code + zero-grade decode tests + bible (test gap for AST-2126)
+
+- **Linear:** [AST-2127](https://linear.app/astralcareermatch/issue/AST-2127) (test-gap child of mini-parent [AST-2112](https://linear.app/astralcareermatch/issue/AST-2112); sibling of [AST-2126](https://linear.app/astralcareermatch/issue/AST-2126), merged on `origin/ftr/AST-2112-do-rubric-undecodable-codes` @ `f83f8d71f`)
+- **Publish ref:** `sub/AST-2112/AST-2127-do-rubric-code-tests` · **ftr:** `ftr/AST-2112-do-rubric-undecodable-codes` · **pre-fix base:** `54e186b79`
+- **Canon:** none cited (AST-2127 `## Citations`: test tree + bible only).
+- **Explicit scope (AST-2127 `## Scope`):** `tests/component/core/test_consult.py`, `tests/component/core/test_agent.py`, `tests/component/core/test_candidate.py`, `tests/component/data/database/test_rubric_vectors.py`, `docs/test-bible/core/{consult,agent,candidate}.md`, `docs/test-bible/data/database/rubric_vectors.md`. The Technical scope says "new and revised component tests only", which covers revising the 27 sync fixtures. **Betty lands all of it in qa-fix**; this block sets the bar. **No `src/**` or `data/**` change.**
+- **Binding input:** Betty's `[board-betty] TESTS: REVISE` on AST-2126 (verbatim in AST-2127's Description), the AST-2126 block above (`### Proposed change` steps 1–5, `### What must still hold`), and Hedy's AST-2126 make-fix test note (29 new failures).
+
+### As-is
+
+On the ftr tip `f83f8d71f`, nothing pins AST-2126's five product changes. Every one of them behaves differently on the base, yet no test fails there for the right reason. Running the five touched files under `/home/susan/astral/.venv/bin/python` (`test_agent.py`, `test_candidate.py`, `test_consult.py`, `test_rubric_vectors.py`, `tests/component/scripts/test_backfill_rubric_vectors.py`) gives **122 failed / 1196 passed / 7 skipped**. Of those, 93 failures are a pre-existing environment baseline (e.g. `no such table: job`, host probes) and are identical before AST-2126. The other **29 are new with AST-2126**:
+
+- **2 candidate tests whose assertions are now stale:**
+  - `TestAst2008RubricCodeUptick::test_uptick_is_pure_and_passes_non_dict_and_blank_codes`: blank codes are now filled, not passed through.
+  - `TestAst2091RubricDispatchError::test_duplicates_case_insensitive_sorted_and_blank_codes_ignored`: the invalid-code reason now fires before the duplicate reason on ` tp` / `sa` / blank rows.
+- **27 fixture failures:** these tests seed `rubric_vector` by calling `db.sync_rubric_vectors_from_criteria(...)` with codes that aren't two uppercase letters (`G1` ×20, `V01` ×4, `CLR` ×2, `A` ×1). AST-2126 step 2 now raises `ValueError: criterion N code '…' is not two letters A-Z`.
+  - `test_agent.py` (13): `TestAst1486FeedbackEntityIdStamp` (2), `TestAst724VectorFeedbackCapture` (3), `TestAst809VectorFeedbackBatchMetadata` (2), `TestAst816VectorFeedbackCapture` (2), `TestAst820VectorFeedbackDebugTrace` (2), `TestAst862CleanParseFeedbackBlock` (2). Sync call sites are around lines 5760–6009 and 6289–6423.
+  - `test_rubric_vectors.py` (14): `TestAst723SyncRubricVectors::{test_fingerprint_change_retires_and_inserts_new_row, test_removed_code_retires_row}`, `TestAst724VectorFeedbackRows` (2), `TestAst725ListVectorFeedback` (2), `TestAst725AggregateVectorFeedback` (1), `TestAst808ListVectorFeedbackContent` (1), `TestAst809VectorFeedbackBatchMetadata` (2), `TestAst2066RubricCriterionVersions` (4). Sync call sites are around lines 221–527.
+
+### To-be
+
+- A `[bug-repro]` on `_normalize_rubric_task_response` is red on `54e186b79` and green on the tip.
+- Steps 1–4 of AST-2126 each have a node that is red on the base and green on the tip.
+- The 2 candidate tests assert the new contract.
+- The 27 fixtures seed valid two-letter codes and keep asserting what they asserted before.
+- The bible names every new and revised node.
+- On the tip, the five-file run drops to the 93-failure environment baseline, with no failure from AST-2126.
+
+### Repro
+
+Verified read-only by running one probe script on both trees. The base was a `git archive 54e186b79` export with `ASTRAL_DB_DIR` pointed at an empty temp dir. The probe monkeypatches `consult._rubric_criteria_for_cfg` and `candidate.rubric_criteria_for_task`, with no DB writes. Run with `/home/susan/astral/.venv/bin/python`:
+
+| Probe | `54e186b79` (pre-fix) | tip `f83f8d71f` |
+| --- | --- | --- |
+| `_normalize_rubric_task_response("grade_do", cfg, {"agent_payload": "000\|V01A3\|V02B4"}, {"batch_entities": [J0]})` | `{'jobs': [{'grades': [], 'possible_job_links': [], 'astral_job_id': 'J0'}]}` | `{'jobs': [], 'decode_failures': [{'astral_job_id': 'J0', 'pos': 0, 'reason': "[grade_do] no grade segments in reply: '000\|V01A3\|V02B4'"}]}` |
+| same, payload `"prose reply"` | same silent `grades: []` row | same shape, reason `… no grade segments in reply: 'prose reply'` |
+| `_decode_payload("grade_do", "grades_encoded_notes", "000\|AAA3\|ok\n001\|just notes", {J0, J1})` | J1 row `{'grades': [], 'notes': 'just notes'}`, no `decode_failures` | J0 row unchanged; J1 absent from `jobs`; `decode_failures` = `[{'astral_job_id': 'J1', 'pos': 1, 'reason': "[grade_do] no grade segments in encoded line: '001\|just notes'"}]` |
+| `_require_complete_grade_set([{label A}, {label B}], [{vector ZZ}])` | `_render_score: missing vectors ['A', 'B']` | `_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']` |
+| `_uptick_duplicate_rubric_codes([("", "Hands-On Technical Partnership"), ("V02", "Speaking Truth"), (" tp", "Tee"), ("TP", "Dup")], "do_rubric")` codes | `['', 'V02', ' tp', 'TX']` | `['HO', 'ST', 'TP', 'TX']` |
+| `rubric_dispatch_error("somerset", "grade_do")` over `[V01 "One", AB "Two"]` | `None` | `"Rubric 'do_rubric' has invalid vector codes: V01 — re-save the rubric"` |
+
+Sync rejection (step 2) needs the DB fixture, so it was proven by the 27 failures above (`ValueError: criterion 1 code 'G1' is not two letters A-Z`), not by the probe.
+
+### Root cause
+
+Fix-board routed AST-2126's test delta here, so the product landed with no repro or step coverage. The 29 reds are stale test contracts, not regressions:
+- The 2 candidate tests pin AST-2008/AST-2091's "blank code passes through / ignored" behaviour, which AST-2126 deliberately ended.
+- The 27 fixtures relied on sync accepting any string as a code. That is the `V{idx}` / free-form leniency AST-2126 removed. Production saves can't hit this, because they go through `_uptick_duplicate_rubric_codes` first.
+
+### Proposed change
+
+All of it is Betty's (qa-fix). Exact test names are her call; the assertions below are the bar. Run with `/home/susan/astral/.venv/bin/python` (the system interpreter lacks `nh3`, so `test_consult.py` won't collect without the venv).
+
+**1. `[bug-repro]` (`test_consult.py`): zero-grade letter-pipe becomes `decode_failures`.** Use `TASK_CONFIG["grade_do"]` and monkeypatch `consult._rubric_criteria_for_cfg` to a 2-criterion `V01`/`V02` rubric. For both a `"000|V01A3|V02B4"` payload and a prose payload, with a 1-job `batch_entities`, assert:
+- the result is `{"jobs": [], "decode_failures": [...]}` with exactly one entry;
+- the entry has `astral_job_id == "J0"` and `pos == 0`;
+- the entry's `reason` contains `"no grade segments in reply"` and the raw payload text.
+
+Add a 2-entity prose case asserting one entry per entity, `pos` 0 and 1. Add guards: a `grades_encoded_notes` letter-pipe reply that *does* yield grades is unchanged, and a company-entity task (`prefilter_company`) with zero grades still returns `{"companies": [row]}` with no `decode_failures`. **Red on `54e186b79`, green on the tip.** Tag the qa-fix handoff `[bug-repro]` with this node id.
+
+**2. Combined reason (`test_consult.py`).** `_require_complete_grade_set` with both missing and unknown vectors raises `IncompleteGradeSetError` with the message exactly `"_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']"`. The existing single-side message tests stay byte-identical and untouched.
+
+**3. Zero-segment notes line (`test_agent.py`).** Call `_decode_payload("grade_do", "grades_encoded_notes", "000|AAA3|ok\n001|just notes", ctx)` with a 2-entity `batch_entities`. Assert:
+- J0's row is unchanged, keeping `notes == "ok"`;
+- no J1 row is in `jobs`;
+- `decode_failures == [{"astral_job_id": "J1", "pos": 1, "reason": "[grade_do] no grade segments in encoded line: '001|just notes'"}]`.
+
+`test_ast1996_notes_type_tail_is_not_a_decode_failure` must stay green, untouched.
+
+**4. Candidate (`test_candidate.py`).**
+- **Revise `test_uptick_is_pure_and_passes_non_dict_and_blank_codes`.** Purity and non-dict pass-through stay. A blank code is now **filled**, and the filled item is a shallow copy with the input untouched. Expected codes for the probe list are `['HO', 'ST', 'TP', 'TX']`: a blank code derives from the label initials, `V02` is replaced, ` tp` is normalized to `TP`, and the duplicate `TP` is re-lettered to `TX`. A rename to `…_fills_blank_codes` is fine.
+- **Add fill edge cases.** A single-word label gives its first two letters, e.g. `"Leadership"` → `LE`. A label with no letters falls to the first free `AA…ZZ` code. A derived code collision moves to `base[0]` + the uptick letters, e.g. two `"Hands On"` blanks → `HO`, `HX`. Two WARNING lines are logged on fill (`invalid code … -> XX`).
+- **Revise `test_duplicates_case_insensitive_sorted_and_blank_codes_ignored`.** Split it in two:
+  - Duplicates over **valid** stored codes (e.g. `TP`, `TP`, `SA`, `SA`) still return the existing `"duplicate vector codes: SA, TP"` message.
+  - Rows with ` tp` / `sa` / blank now return `"Rubric '<rk>' has invalid vector codes: (blank), sa, tp — re-save the rubric"`: sorted, raw stripped values, blank shown as `(blank)`. Invalid wins over duplicate.
+- **New:** `rubric_dispatch_error` on `[V01, AB]` returns the invalid-codes message above. An empty rubric still returns the `is empty` message, and craft_* tasks are still `None` (AST-2091 guards unchanged).
+
+**5. Sync (`test_rubric_vectors.py`).**
+- **New:** `sync_rubric_vectors_from_criteria` raises `ValueError` matching `"code 'V01' is not two letters A-Z"` for `V01`, `""` (blank, no fallback), `"A"`, `"G1"` and `"CLR"`, and writes **no** `current = 1` row for that owner. A lowercase `"tp"` is stored as `TP`.
+- **Fixture revision (27 nodes in this file and `test_agent.py`, listed in As-is):** replace each invalid seed code with a two-letter code, applied consistently to every assertion, vector-review payload, `vector_code` filter and `list_rubric_vector_uuid_by_code` key that references it in the same test. Suggested mapping: `G1`→`GA`, `V01`→`VA`, `CLR`→`CL`, `A`→`AA`, `B`→`BB`. Test intent is otherwise unchanged; do not weaken or skip any assertion.
+
+**6. Bible.**
+- `docs/test-bible/core/consult.md`, `core/agent.md`, `core/candidate.md` and `data/database/rubric_vectors.md`: add an `AST-2126 · AST-2112` section, or rows in the existing AST-1996 / AST-2008 / AST-2091 / AST-723 sections, naming every new and revised node.
+- `candidate.md` rows ~1780–1783 (AST-2008 uptick) and the AST-2091 rows: update the "blank code pass through" / "blank codes ignored" wording to the fill / invalid-code contract.
+- `rubric_vectors.md` § AST-723: replace any "`V{idx}` fallback" wording with "codes not matching `[A-Z]{2}` raise".
+
+**7. Engineer side (Hedy).** No product commit on this ticket. `test-fix` runs Betty's manifest on the tip: the `[bug-repro]` node green (and red on `54e186b79`, per Betty's handoff), and items 2–5 green. It then re-runs the five-file baseline above, expecting **93 failed** (environment only, identical node set to the pre-AST-2126 run), the 29 AST-2126 reds gone, and no new failures.
+
+### Blast radius
+
+- Test tree and bible only; no product behaviour changes.
+- `test_api_candidate.py` V01 rubric-route tests (Betty's guard note) store explicit codes and don't go through sync. If any path there reaches sync, it fails the same way and the same two-letter fixture rule applies; flag it in the qa-fix handoff rather than widening scope silently.
+- `tests/component/scripts/test_backfill_rubric_vectors.py`: green on the tip. The script's own `V{idx}` fallback (AST-2126 Blast radius) is not exercised through sync by these tests. Out of scope.
+
+### What must still hold
+
+- AST-1996 notes-tail guard, AST-1155 single-side `missing` / `unknown` messages, AST-2008 duplicate re-letter (including Decision C exhaustion), and AST-2091 empty / duplicate messages: all asserted unchanged.
+- No test is skipped, xfailed, or loosened to absorb AST-2126; fixture code renames only.
