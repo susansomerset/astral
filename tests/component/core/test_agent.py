@@ -290,15 +290,15 @@ class TestDecodePayload:
             "reason": "[grade_do] no grade segments in encoded line: '001|just notes'",
         }]
 
-    def test_ast2053_letter_conf0_normalised_to_conf1(self) -> None:
-        # AST-2053 repro (AST-2045 production shape): {letter}0 decodes as {letter}1; no decode failure.
+    def test_ast2124_letter_conf0_decodes_as_x0(self) -> None:
+        # AST-2124 (replaces AST-2053's {letter}1): {letter}0 decodes as X0; no decode failure.
         ctx = {"batch_entities": _batch_entities("job-0", "job-1")}
         out = agent_mod._decode_payload(
             "task", "grades", "000|CFC0|ECD5|SSC0|TCC0|QCA5\n001|CFC3|ECD5|ORX0", ctx,
         )
         assert [j["astral_job_id"] for j in out["jobs"]] == ["job-0", "job-1"]
         assert [(g["vector"], g["grade"], g["confidence"]) for g in out["jobs"][0]["grades"]] == [
-            ("CF", "C", 1), ("EC", "D", 5), ("SS", "C", 1), ("TC", "C", 1), ("QC", "A", 5),
+            ("CF", "X", 0), ("EC", "D", 5), ("SS", "X", 0), ("TC", "X", 0), ("QC", "A", 5),
         ]
         assert "decode_failures" not in out
 
@@ -308,11 +308,11 @@ class TestDecodePayload:
         out = agent_mod._decode_payload("task", "grades", "0|CRA7", ctx)
         assert out["jobs"] == []
         assert out["decode_failures"][0]["reason"] == "[task] unexpected trailing content in grades-only line: '0|CRA7'"
-        # Normalisation applies on every non-vet encoded type (shared loop); notes tail still kept.
+        # Letter0 → X0 applies on every non-vet encoded type (shared loop, AST-2124); notes tail still kept.
         notes = agent_mod._decode_payload("task", "grades_encoded_notes", "0|CRF0|note text", ctx)
-        assert notes["jobs"][0]["grades"] == [{"vector": "CR", "grade": "F", "confidence": 1}]
+        assert notes["jobs"][0]["grades"] == [{"vector": "CR", "grade": "X", "confidence": 0}]
         assert notes["jobs"][0]["notes"] == "note text"
-        # Vet path is out of AST-2053 scope: LT{letter}0 still raises for the whole payload.
+        # Vet path is out of AST-2053/AST-2124 scope: LT{letter}0 still raises for the whole payload.
         with pytest.raises(ValueError, match="non-X grade requires confidence 1-5, got 0"):
             agent_mod._decode_payload("task", "grades_encoded_vet_meta", "0|LTA0|https://x.com", ctx)
 
@@ -2681,9 +2681,9 @@ class TestDecodeAndAuditBranches:
         payload = {"jobs": ["bad", {"grades": [{"grade": "A", "confidence": 2, "vector": "fit"}]}]}
         assert agent_mod._validate_grade_confidence_in_payload(payload, "task") is None
         ctx = {"batch_entities": _batch_entities("job-1")}
-        # AST-2053: letter confidence 0 is normalised to 1, not rejected.
+        # AST-2124: letter confidence 0 decodes as X0, not rejected and not {letter}1.
         assert agent_mod._decode_payload("task", "grades", "0|CRA0", ctx) == {
-            "jobs": [{"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "A", "confidence": 1}]}],
+            "jobs": [{"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "X", "confidence": 0}]}],
         }
 
     def test_audit_and_failure_block_helpers(self) -> None:
