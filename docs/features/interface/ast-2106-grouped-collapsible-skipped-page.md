@@ -202,3 +202,15 @@ context_tokens≈52000
 [plan-rubric] PROCEED (Commit: 089abbe2d) Grouped Skipped page ready
 ```
 
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-2102/AST-2106-grouped-skipped-page` @ `7673e3216`.
+
+**Stages delivered:**
+- Stage 1: `groups` on `StateUiManifest.jobs.skipped`. The section memo (now `skipGroups`) assigns floor/normal/legacy sections to manifest groups (member → prefix → catch-all) and drops empty groups. A second `useSectionExpandPolicy` instance (`expandAll`) holds collapsed group keys, reset with section keys on candidate change. The render wraps the unchanged per-section body in collapsible group headings. Code is verbatim from the plan: `7673e3216`.
+
+**Notes:**
+- Build base: synced with `--ftr AST-2102-group-skipped-jobs`; AST-2105's `6913fcd98` is an ancestor of HEAD.
+- `npx tsc -b --noEmit` exit 0; `npm run build` exit 0; `npm run lint` 29 problems (25 errors, 4 warnings) before and after; AC 10 `rg` returns nothing; `git diff -w` shows no change inside the per-section body.
+- For Betty: `tests/component/frontend/fixtures/stateUiManifestFixture.ts` still lacks `skipped.groups`, so `test_JobsSkipped.test.tsx` cases that render rows will throw until the fixture gains it (see Notes for QA above).
