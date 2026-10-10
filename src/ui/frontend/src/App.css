@@ -59,15 +59,54 @@
   --grade-d: #dc3545;
   --grade-f: #8b0000;
   --grade-x: #a78bfa;
+  /* AST-2123: grade base settings — ring colour + compact ring width (Dark: width 0, no ring; colour = fill) */
+  --grade-a-ring: #28a745;
+  --grade-b-ring: #ffc107;
+  --grade-c-ring: #fd7e14;
+  --grade-d-ring: #dc3545;
+  --grade-f-ring: #8b0000;
+  --grade-x-ring: #a78bfa;
+  --grade-a-ring-width: 0;
+  --grade-b-ring-width: 0;
+  --grade-c-ring-width: 0;
+  --grade-d-ring-width: 0;
+  --grade-f-ring-width: 0;
+  --grade-x-ring-width: 0;
+  /* AST-2123: lettered settings — a lettered dot takes its grade base and adds these */
+  --grade-a-ink: #1a1424;
+  --grade-b-ink: #1a1424;
+  --grade-c-ink: #1a1424;
+  --grade-d-ink: #1a1424;
+  --grade-f-ink: #e8e4f0;
+  --grade-x-ink: #1a1424;
+  --grade-a-letter-size: 12px;
+  --grade-b-letter-size: 12px;
+  --grade-c-letter-size: 12px;
+  --grade-d-letter-size: 12px;
+  --grade-f-letter-size: 12px;
+  --grade-x-letter-size: 12px;
+  --grade-a-letter-weight: 700;
+  --grade-b-letter-weight: 700;
+  --grade-c-letter-weight: 700;
+  --grade-d-letter-weight: 700;
+  --grade-f-letter-weight: 700;
+  --grade-x-letter-weight: 700;
+  --grade-a-ring-width-lettered: 0;
+  --grade-b-ring-width-lettered: 0;
+  --grade-c-ring-width-lettered: 0;
+  --grade-d-ring-width-lettered: 0;
+  --grade-f-ring-width-lettered: 0;
+  --grade-x-ring-width-lettered: 0;
   /* Confidence bullets (AST-357) — map to nav link colors; tune without changing global palette */
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
+  --confidence-bullet-inactive-opacity: 0.55;
+  --confidence-bullet-size: 4px;
+  --confidence-bullet-gap: 3px;
   /* AST-2042: semantic tokens for former literals / undefined refs (values = the literals they replaced) */
   --nav-group-label: #f0d690;
   --accent-contrast-dim: rgba(212, 168, 67, 0.15);
   --paper-bg: #ffffff;
-  --text-on-grade: #1a1424;
-  --text-on-grade-f: #e8e4f0;
   --text-on-color: #ffffff;
   --status-interrupted-bg: #7a5c1e;
   --status-interrupted-text: #f5d98b;
@@ -98,19 +137,58 @@
   --cta-green-hover: #23913c;
   --danger: #c82333;
   --danger-hover: #a71d2a;
-  --grade-a: #1e7b34;
-  --grade-b: #a06500;
-  --grade-c: #c05621;
-  --grade-d: #c53030;
-  --grade-f: #742a2a;
-  --grade-x: #6b46c1;
+  /* AST-2123: Bright + ring — grade base settings: fill, ring colour, compact ring width */
+  --grade-a: #2f9e44;
+  --grade-b: #f5b700;
+  --grade-c: #f76707;
+  --grade-d: #c92a3a;
+  --grade-f: #5c1414;
+  --grade-x: #7048e8;
+  --grade-a-ring: #006200;
+  --grade-b-ring: #b57700;
+  --grade-c-ring: #b41400;
+  --grade-d-ring: #850000;
+  --grade-f-ring: #210000;
+  --grade-x-ring: #4100a8;
+  --grade-a-ring-width: 1.5px;
+  --grade-b-ring-width: 1.5px;
+  --grade-c-ring-width: 1.5px;
+  --grade-d-ring-width: 1.5px;
+  --grade-f-ring-width: 1.5px;
+  --grade-x-ring-width: 1.5px;
+  /* AST-2123: lettered settings — a lettered dot takes its grade base and adds these */
+  --grade-a-ink: #ffffff;
+  --grade-b-ink: #2b2000;
+  --grade-c-ink: #1f0d00;
+  --grade-d-ink: #ffffff;
+  --grade-f-ink: #ffffff;
+  --grade-x-ink: #ffffff;
+  --grade-a-letter-size: 12px;
+  --grade-b-letter-size: 12px;
+  --grade-c-letter-size: 12px;
+  --grade-d-letter-size: 12px;
+  --grade-f-letter-size: 12px;
+  --grade-x-letter-size: 12px;
+  --grade-a-letter-weight: 700;
+  --grade-b-letter-weight: 700;
+  --grade-c-letter-weight: 700;
+  --grade-d-letter-weight: 700;
+  --grade-f-letter-weight: 700;
+  --grade-x-letter-weight: 700;
+  --grade-a-ring-width-lettered: 2px;
+  --grade-b-ring-width-lettered: 2px;
+  --grade-c-ring-width-lettered: 2px;
+  --grade-d-ring-width-lettered: 2px;
+  --grade-f-ring-width-lettered: 2px;
+  --grade-x-ring-width-lettered: 2px;
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
+  --confidence-bullet-inactive-opacity: 0.55;
+  --confidence-bullet-size: 4px;
+  --confidence-bullet-gap: 3px;
   --nav-group-label: var(--accent-contrast);
   --accent-contrast-dim: rgba(36, 27, 51, 0.15);
   --paper-bg: #ffffff;
-  --text-on-grade: #ffffff;
-  --text-on-grade-f: #ffffff;
   --text-on-color: #ffffff;
   --status-interrupted-bg: #f3e3b5;
   --status-interrupted-text: #6b4e12;
@@ -1200,7 +1278,7 @@ body {
 
 /* === 9b. Analysis Header & Grade Dots === */
 
-/* Grade dot badge — circular, colored background, dark centered letter */
+/* Grade dot badge — circular. Fill, ring and letter all come from the per-grade theme settings (AST-2123). */
 .grade-dot {
   display: inline-flex;
   align-items: center;
@@ -1208,18 +1286,61 @@ body {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-on-grade);
   flex-shrink: 0;
 }
 
-.dot-a { background: var(--grade-a); }
-.dot-b { background: var(--grade-b); }
-.dot-c { background: var(--grade-c); }
-.dot-d { background: var(--grade-d); }
-.dot-f { background: var(--grade-f); color: var(--text-on-grade-f); }
-.dot-x { background: var(--grade-x); }
+/* Lettered (default): grade base fill + ring colour, plus the grade's lettered settings.
+   Specificity 0,1,0 on purpose: the report-context .grade-dot rules (0,2,0) keep their 11px letter size. */
+.dot-a {
+  background: var(--grade-a);
+  color: var(--grade-a-ink);
+  font-size: var(--grade-a-letter-size);
+  font-weight: var(--grade-a-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-a-ring-width-lettered) var(--grade-a-ring);
+}
+.dot-b {
+  background: var(--grade-b);
+  color: var(--grade-b-ink);
+  font-size: var(--grade-b-letter-size);
+  font-weight: var(--grade-b-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-b-ring-width-lettered) var(--grade-b-ring);
+}
+.dot-c {
+  background: var(--grade-c);
+  color: var(--grade-c-ink);
+  font-size: var(--grade-c-letter-size);
+  font-weight: var(--grade-c-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-c-ring-width-lettered) var(--grade-c-ring);
+}
+.dot-d {
+  background: var(--grade-d);
+  color: var(--grade-d-ink);
+  font-size: var(--grade-d-letter-size);
+  font-weight: var(--grade-d-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-d-ring-width-lettered) var(--grade-d-ring);
+}
+.dot-f {
+  background: var(--grade-f);
+  color: var(--grade-f-ink);
+  font-size: var(--grade-f-letter-size);
+  font-weight: var(--grade-f-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-f-ring-width-lettered) var(--grade-f-ring);
+}
+.dot-x {
+  background: var(--grade-x);
+  color: var(--grade-x-ink);
+  font-size: var(--grade-x-letter-size);
+  font-weight: var(--grade-x-letter-weight);
+  box-shadow: inset 0 0 0 var(--grade-x-ring-width-lettered) var(--grade-x-ring);
+}
+
+/* Compact (letterless): same fill + ring colour, compact ring width */
+.grade-dot-letterless.dot-a { box-shadow: inset 0 0 0 var(--grade-a-ring-width) var(--grade-a-ring); }
+.grade-dot-letterless.dot-b { box-shadow: inset 0 0 0 var(--grade-b-ring-width) var(--grade-b-ring); }
+.grade-dot-letterless.dot-c { box-shadow: inset 0 0 0 var(--grade-c-ring-width) var(--grade-c-ring); }
+.grade-dot-letterless.dot-d { box-shadow: inset 0 0 0 var(--grade-d-ring-width) var(--grade-d-ring); }
+.grade-dot-letterless.dot-f { box-shadow: inset 0 0 0 var(--grade-f-ring-width) var(--grade-f-ring); }
+.grade-dot-letterless.dot-x { box-shadow: inset 0 0 0 var(--grade-x-ring-width) var(--grade-x-ring); }
 
 /* AST-1968: colour-only grade circle for Recommended list analysis lines */
 .grade-dot-letterless {
@@ -1264,17 +1385,17 @@ body {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: var(--confidence-bullet-gap);
   line-height: 1;
   min-height: 6px;
 }
 
 .confidence-bullet {
-  width: 4px;
-  height: 4px;
+  width: var(--confidence-bullet-size);
+  height: var(--confidence-bullet-size);
   border-radius: 50%;
   background: var(--confidence-bullet-inactive);
-  opacity: 0.55;
+  opacity: var(--confidence-bullet-inactive-opacity);
 }
 
 .confidence-bullet--on {
