@@ -3534,3 +3534,69 @@ Add a 2-entity prose case asserting one entry per entity, `pos` 0 and 1. Add gua
 
 **Relation to AST-2126:** Betty **REVISE** on AST-2126 routed the 29-test delta here; Joan **OK** on AST-2126 did not reserve a canon follow-up. AST-2127 closes the test gap without canon work.
 
+
+### Radia review — AST-2127 (F7)
+
+[code-rubric] PROCEED (Commit: ad3f0054a) Test gap locks AST-2126
+
+**Ticket:** AST-2127  
+**Publish ref:** `ad3f0054a377c475d96bf9ca75d638888e39b6a4` (`origin/sub/AST-2112/AST-2127-do-rubric-code-tests`)  
+**Diff base (lane):** `origin/ftr/AST-2112-do-rubric-undecodable-codes`  
+**Scored slice:** `7e32d7bfa` (`test(AST-2127): bug-repro…`), `c3d8b0956` (marker), `ad3f0054a` (post–`sync(dev)` restore); **excluded** from scoring: `4c2645474` / dev landing product + unrelated dev test carry (AST-2114/2115/2105/2106, AST-2124/2125 already on `origin/dev`)  
+**Corpus:** (none — `## Citations`: test tree + bible only; Joan fix-board CANON: OK, no frozen roster)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+(no frozen canon list on ticket — test/bible-only scope per plan-fix and Joan F2; canon pass not applicable)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan **fix-board** CANON: OK @ plan tip `7caaae194`; no `validate-plan` fix-mode column)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `TestAst2126ZeroGradeRepliesAreDecodeFailures::test_bug_repro_one_job_zero_grades_is_decode_failure` (2 params) calls `_normalize_rubric_task_response("grade_do", …)` with monkeypatched rubric and 1-job `batch_entities`. It asserts **`jobs == []`**, exactly **one** `decode_failures` entry with `astral_job_id == "J0"`, `pos == 0`, and `reason == f"[grade_do] no grade segments in reply: {payload!r}"` for both `000|V01A3|V02B4` and prose — concrete AST-2126 To-be, not a tautology; would fail on pre-fix silent `grades: []` (Betty/Hedy red→green at `54e186b79` vs ftr tip). Sibling methods in the same class cover plan steps 2–3 guards (2-entity prose, letter-pipe with grades, company task, combined missing+unknown).
+
+**`sync(dev)` merge integrity (ad3f0054a) OK** — `git diff origin/dev...ad3f0054a` on conflict files: `test_consult.py` adds **only** the AST-2126/2127 block after `TestAst2125MissingRubricDescription` (class count 1 on dev and tip). `test_agent.py` adds **`test_ast2126_notes_line_without_segments_is_decode_failure`**; **`test_ast2124_letter_conf0_decodes_as_x0`** present on both dev and tip (AST-2053 conf0→1 test correctly dropped per dev). Betty’s restore commit re-aligns AST-2124 expectations (X0) with dev — no dev test class dropped.
+
+**## What must still hold — OK**
+
+- **AST-1996:** `test_ast1996_notes_type_tail_is_not_a_decode_failure` untouched; zero-segment test is a separate node with J0 row + J1 `decode_failures`.
+- **AST-1155:** Combined-reason test is additive; bible states single-side `TestRenderScore` nodes byte-identical.
+- **AST-2008 / AST-2091:** Candidate rewrites (`test_uptick_is_pure_passes_non_dict_and_fills_blank_codes`, split duplicate vs invalid-code cases, `rubric_dispatch_error` on `V01`) match plan §4 probes.
+- **AST-2126 sync step 2:** `TestAst2126SyncRejectsUndecodableCodes` parametrizes `V01`, `""`, `A`, `G1`, `CLR` with `ValueError` + `not two letters A-Z`.
+- **Scope-amended API fixtures:** `TestAst2067CandidateVersionRoutes` seeds `VA`/`VB` (not `V01`/`V02`); routes/filters updated, assertions not loosened.
+- **No skip/xfail** introduced on scored AST-2127 nodes.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Dev sync carry on sub:** `origin/ftr...origin/sub` still includes non–AST-2127 test/bible deltas (resume/skipped UI tests, roster, config bible, large AST-1155 doc append from dev merges). Treat as **environment/stacking**, not AST-2127 product or test authorship; Hedy scope-gate: `ad3f0054a` touches no `src/`/`data/`; ftr…sub `src/` delta is dev auto-merge only.
+- **Bible scope-gate line:** `docs/test-bible/core/consult.md` § AST-2127 item 4 still claims `git diff ftr…sub -- src/ data/` is **empty**; post–`sync(dev)` that three-dot diff is **not** empty (dev product). Prefer Hedy’s Tests Passed comment + commits `c3d8b0956`/`ad3f0054a` for gate truth; optional bible wording fix is docs-only, not merge-blocking.
+- **Plan §7 vs manifest:** Six-file no-regression run (incl. `test_api_candidate.py`) matches scope-amended ticket Description; plan-fix §7 “five-file” prose is slightly stale — manifest § QA is authoritative.
+
+## What’s solid
+
+- AST-2127-owned delta vs ftr (`7e32d7bfa` + `ad3f0054a` on tests/bible): repro, agent notes-line, candidate, sync rejection, fixture renames, `api_candidate` § AST-2067, bible § AST-2127 + manifest bash block align with Betty’s AST-2126 board bar.
+- `test-fix` evidence on tip: bug-repro red at `54e186b79` product overlay, green at `ad3f0054a`; manifest 42 passed; 94-id environment baseline unchanged set.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-2112, live `ftr`) | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Mini-parent merge rules when AST-2112 siblings allow. |
+
