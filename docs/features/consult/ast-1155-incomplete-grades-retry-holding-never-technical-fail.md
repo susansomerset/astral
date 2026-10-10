@@ -2626,3 +2626,371 @@ context_tokens≈14500
 ---
 
 **Docs-acceptance (AST-2124):** no test-tree change on this ticket. Betty's `[board-betty] TESTS: REVISE` coverage, including the `[bug-repro]` and the AST-2053 decode-test update (letter0 → X0), lands on gap child AST-2125.
+
+## Bug: AST-2125 — Missing-grade per-entity fail + letter0 → X0 tests and bible (test gap for AST-2124)
+
+**Linear:** [AST-2125](https://linear.app/astralcareermatch/issue/AST-2125) · **Mini-parent:** [AST-2116](https://linear.app/astralcareermatch/issue/AST-2116) · **Publish ref:** `sub/AST-2116/AST-2125-missing-grade-fail-tests` · **Project:** Astral Dispatcher · **Fixes gap from:** `[board-betty] TESTS: REVISE` on AST-2124 · **Precedent:** `## Bug: AST-2057` block above (test gap for AST-2053).
+
+**Canon:** none beyond AST-2124's (`astral.agent.confidence-bounds`, already landed on both copies). Test tree and bible only; no `src/`.
+
+**Lane note:** every edit below is under `tests/` or `docs/test-bible/`, so Betty lands it (qa-fix). This block specifies the delta; the engineer does not edit the test tree. Every test below was **dry-run** from a throwaway file outside the repo against both trees (red/green record at the end of this block), so the asserts are known-good, not guesses.
+
+### As-is
+
+AST-2124 (`0d01e20d2`) is on `origin/ftr/AST-2116-missing-grade-fail` (`8726a8be0`). The test tree still has two problems:
+
+- **Three tests assert AST-2053's `{letter}0 → {letter}1`** and are red on the ftr tip. All three are in `tests/component/core/test_agent.py`:
+  - `TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1`
+  - `TestDecodePayload::test_ast2053_normalisation_boundaries` (the `_notes` `CRF0` → `F/1` assert)
+  - `TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` (the `0|CRA0` → `A/1` assert)
+- **No coverage for AST-2124's new branches** in the `LOCKED_AT_100` modules:
+  - the per-entity hydrate miss (consult batch loop, `_apply_render_verdict_decoded_job`, `_apply_prefilter_decoded_company_outcome`);
+  - the X no-signal fallback and the `MissingRubricDescriptionError` / unknown-vector split in `_lookup_rubric_reason_for_grade`;
+  - `_hydrate_response_jobs_grade_reasons` returning misses.
+- **Bible:** `docs/test-bible/core/agent.md` (the AST-2001 prose plus the AST-2057 block) still says letter0 → letter1. `core/consult.md` and `core/roster.md` say nothing about the per-entity miss.
+
+The existing hydrate-stub tests stay green (`TestAst1846*` in both files, `TestEncodedDecodeIsolation`, `TestRubricLookup::test_treats_parse_errors_as_empty_rows`), as Betty's board comment confirmed.
+
+### To-be
+
+- The three decode tests assert the X0 contract.
+- New tests pin all of the following:
+  - the production repro (one job's missing F description sends **only that job** to `METEORITE_FAILED_DO` with one WARNING, while its batch sibling applies);
+  - the single-row consult miss, and both prefilter paths, to `PREFILTER_FAILED`;
+  - X with no X row → `"No signal"`;
+  - the lookup error split.
+- Together with existing suites, the new tests cover every added line and branch of AST-2124's three `src/` hunks.
+- The bible matches.
+
+### Repro
+
+**[bug-repro]** is `test_consult.py::TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job` (code in Proposed change #4). It feeds `_run_batch_consult("meteorite_grade_do", …)` a stubbed `do_task` with two jobs in `METEORITE_PASSED_JD`, against the real hydrate and a rubric whose `Process & Systems Design` vector has no F row:
+
+- `J0`: `Process & Systems Design` F3 (no description), `Culture Fit` B4.
+- `J1`: `Process & Systems Design` B4, `Culture Fit` X0 (no X row on that vector).
+
+| Tree | Result |
+| --- | --- |
+| Pre-fix `src/core/{consult,roster,agent}.py` from `01606b791` | **Red**: `Expected: mock('meteorite_grade_do', ['J0'], 'METEORITE_FAILED_DO')` / `Actual: mock('meteorite_grade_do', ['J0', 'J1'], 'METEORITE_PASSED_JD_RETRY')`. This is the production shape: the whole batch goes to retry. |
+| ftr tip `8726a8be0` (AST-2124 merged) | **Green** |
+
+### Root cause
+
+AST-2124 changed the decode contract and added new hydrate branches. The test-tree updates were split off to this gap child by fix-board, per the AST-2057 precedent. The product is correct; the tests are stale or missing.
+
+### Proposed change
+
+One `test(AST-2125)` commit by Betty covering `tests/component/core/test_agent.py`, `test_consult.py`, `test_roster.py`, and `docs/test-bible/core/{agent,consult,roster}.md`.
+
+**1. `test_agent.py` — `TestDecodePayload::test_ast2053_letter_conf0_normalised_to_conf1` → rename to `test_ast2124_letter_conf0_decodes_as_x0`. Body:**
+
+```python
+    def test_ast2124_letter_conf0_decodes_as_x0(self) -> None:
+        # AST-2124 (replaces AST-2053's {letter}1): {letter}0 decodes as X0; no decode failure.
+        ctx = {"batch_entities": _batch_entities("job-0", "job-1")}
+        out = agent_mod._decode_payload(
+            "task", "grades", "000|CFC0|ECD5|SSC0|TCC0|QCA5\n001|CFC3|ECD5|ORX0", ctx,
+        )
+        assert [j["astral_job_id"] for j in out["jobs"]] == ["job-0", "job-1"]
+        assert [(g["vector"], g["grade"], g["confidence"]) for g in out["jobs"][0]["grades"]] == [
+            ("CF", "X", 0), ("EC", "D", 5), ("SS", "X", 0), ("TC", "X", 0), ("QC", "A", 5),
+        ]
+        assert "decode_failures" not in out
+```
+
+**2. `test_agent.py` — `TestDecodePayload::test_ast2053_normalisation_boundaries` (name kept).** Replace the two `_notes` lines and their comment with:
+
+```python
+        # Letter0 → X0 applies on every non-vet encoded type (shared loop, AST-2124); notes tail still kept.
+        notes = agent_mod._decode_payload("task", "grades_encoded_notes", "0|CRF0|note text", ctx)
+        assert notes["jobs"][0]["grades"] == [{"vector": "CR", "grade": "X", "confidence": 0}]
+```
+
+The `0|CRA7` trailing-failure assert, the `notes == "note text"` assert, and the vet `LTA0` raise stay as they are. Change the vet comment to "Vet path is out of AST-2053/AST-2124 scope: …".
+
+**3. `test_agent.py` — `TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence` (name kept).** Replace the last assert and its comment with:
+
+```python
+        # AST-2124: letter confidence 0 decodes as X0, not rejected and not {letter}1.
+        assert agent_mod._decode_payload("task", "grades", "0|CRA0", ctx) == {
+            "jobs": [{"astral_job_id": "job-1", "grades": [{"vector": "CR", "grade": "X", "confidence": 0}]}],
+        }
+```
+
+**4. `test_consult.py` — new class `TestAst2125MissingRubricDescription`, appended at end of file.** Uses the file's existing `consult_mod`, `_patch_scored_render_verdict_fixtures`, `AsyncMock`, `MagicMock`, `List`, `Dict`, `Any`.
+
+```python
+class TestAst2125MissingRubricDescription:
+    """AST-2124: a letter grade with no rubric description fails only that entity (fail_state, WARNING);
+    X never fails hydrate. Bug-repro: AST-2116 Somerset meteorite_grade_do (PS graded F, no F row)."""
+
+    _PS = "Process & Systems Design"
+    _CF = "Culture Fit"
+    _MISS = "No rubric description for vector 'Process & Systems Design' grade F"
+
+    @classmethod
+    def _rubric(cls) -> List[Dict[str, Any]]:
+        # Production shape: PS has no F row; neither vector has an X row.
+        return [
+            {"code": "PS", "label": cls._PS, "importance": 5,
+             "grade_descriptions": [{"grade": g, "description": f"PS {g}"} for g in "ABCD"]},
+            {"code": "CF", "label": cls._CF, "importance": 3,
+             "grade_descriptions": [{"grade": g, "description": f"CF {g}"} for g in "ABCDF"]},
+        ]
+
+    @classmethod
+    def _miss_grades(cls) -> List[Dict[str, Any]]:
+        return [{"vector": cls._PS, "grade": "F", "confidence": 3}, {"vector": cls._CF, "grade": "B", "confidence": 4}]
+
+    @classmethod
+    def _clean_grades(cls) -> List[Dict[str, Any]]:
+        return [{"vector": cls._PS, "grade": "B", "confidence": 4}, {"vector": cls._CF, "grade": "X", "confidence": 0}]
+
+    def test_x_without_x_row_is_no_signal(self) -> None:
+        assert consult_mod._X_NO_SIGNAL_REASON == "No signal"
+        assert consult_mod._lookup_rubric_reason_for_grade(self._rubric(), self._CF, "X") == "No signal"
+        # X never fails hydrate — not even on a vector the rubric doesn't know.
+        assert consult_mod._lookup_rubric_reason_for_grade(self._rubric(), "Nope", "X") == "No signal"
+
+    def test_x_with_x_row_uses_rubric_text(self) -> None:
+        rubric = self._rubric()
+        rubric[1]["grade_descriptions"].append({"grade": "X", "description": "CF unknown"})
+        assert consult_mod._lookup_rubric_reason_for_grade(rubric, self._CF, "X") == "CF unknown"
+
+    def test_blank_row_falls_through_to_trailing_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Re-indented AST-2124 arcs: blank matching row continues; non-matching table row continues.
+        criteria = [{"label": "Fit", "content": "body", "grade_descriptions": [{"grade": "A", "description": "  "}]}]
+        monkeypatch.setattr(
+            rubric_text, "parse_trailing_grade_table_lines",
+            lambda content: [{"grade": "B", "description": "table B"}, {"grade": "A", "description": "table A"}],
+        )
+        assert consult_mod._lookup_rubric_reason_for_grade(criteria, "Fit", "A") == "table A"
+
+    def test_missing_letter_vs_unknown_vector(self) -> None:
+        with pytest.raises(consult_mod.MissingRubricDescriptionError, match="No rubric description") as miss:
+            consult_mod._lookup_rubric_reason_for_grade(self._rubric(), self._PS, "F")
+        assert isinstance(miss.value, ValueError)
+        with pytest.raises(ValueError, match="No rubric criterion matching vector") as unknown:
+            consult_mod._lookup_rubric_reason_for_grade(self._rubric(), "Nope", "A")
+        assert not isinstance(unknown.value, consult_mod.MissingRubricDescriptionError)
+
+    def test_batch_hydrate_returns_misses_structural_still_raises(self) -> None:
+        jobs = [{"astral_job_id": "J0", "grades": self._miss_grades()},
+                {"astral_job_id": "J1", "grades": self._clean_grades()}, "junk"]
+        assert consult_mod._hydrate_response_jobs_grade_reasons(jobs, self._rubric()) == {"J0": self._MISS}
+        assert [g["reason"] for g in jobs[1]["grades"]] == ["PS B", "No signal"]
+        with pytest.raises(ValueError, match="rubric criteria missing or empty"):
+            consult_mod._hydrate_response_jobs_grade_reasons([{"astral_job_id": "J1", "grades": self._clean_grades()}], [])
+
+    @pytest.mark.asyncio
+    async def test_batch_miss_fails_only_that_job(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # [bug-repro] AST-2116: pre-fix both jobs went to METEORITE_PASSED_JD_RETRY.
+        caplog.set_level("DEBUG")
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: self._rubric())
+        monkeypatch.setattr(consult_mod, "ensure_batch_response_entity_ids", MagicMock())
+        monkeypatch.setattr(consult_mod, "do_task", AsyncMock(return_value={
+            "success": True, "timesheet": {},
+            "parsed_response": {"jobs": [{"astral_job_id": "J0", "grades": self._miss_grades()},
+                                         {"astral_job_id": "J1", "grades": self._clean_grades()}]},
+        }))
+        process = MagicMock(side_effect=lambda _i, _r, cfg: cfg["pass_state"])
+        jobs = [{"astral_job_id": a, "state": "METEORITE_PASSED_JD"} for a in ("J0", "J1")]
+        out = await consult_mod._run_batch_consult(
+            "meteorite_grade_do", "b-2116", jobs, lambda rows: "content", process, {}, False,
+        )
+        transition.assert_called_once_with("meteorite_grade_do", ["J0"], "METEORITE_FAILED_DO")
+        assert [c.args[1]["astral_job_id"] for c in process.call_args_list] == ["J1"]
+        assert [g["reason"] for g in process.call_args.args[1]["grades"]] == ["PS B", "No signal"]
+        assert (out["success"], out["passed"], out["failed"], out["retried"]) == (True, 1, 1, 0)
+        assert [(r.levelname, r.getMessage()) for r in caplog.records if "J0 -> " in r.getMessage()] == [
+            ("WARNING", f"J0 -> METEORITE_FAILED_DO [hydrate: {self._MISS}]"),
+        ]
+        assert not [r for r in caplog.records if r.levelno >= 40]
+
+    def test_single_row_miss_fails_without_save(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod.tracker, "get_job",
+                            lambda aid: {"astral_job_id": aid, "state": "METEORITE_PASSED_JD"})
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=self._rubric(), task_key="meteorite_grade_do")
+        cfg = consult_mod._consult_orchestration("meteorite_grade_do")
+        grades = self._miss_grades()
+        out = consult_mod._apply_render_verdict_decoded_job(
+            "meteorite_grade_do", "J0", {"grades": grades, "notes": ""}, cfg, {"astral_candidate_id": "c1"},
+        )
+        assert out == ("METEORITE_FAILED_DO", None, grades)
+        transition.assert_called_once_with("meteorite_grade_do", ["J0"], "METEORITE_FAILED_DO")
+        save.assert_not_called()
+```
+
+`rubric_text` is already imported in `test_consult.py` (used by `TestRubricLookup`).
+
+**5. `test_roster.py` — new class `TestAst2125PrefilterMissingDescription`, directly after `TestAst1846PrefilterRetryWarnThenError`.**
+
+```python
+class TestAst2125PrefilterMissingDescription:
+    """AST-2124: prefilter letter grade with no rubric description → that company alone to PREFILTER_FAILED (WARNING)."""
+
+    _MISS = "No rubric description for vector 'fit' grade B"
+
+    @staticmethod
+    def _env(monkeypatch: pytest.MonkeyPatch) -> tuple:
+        # fit has A/F rows only, so B is a missing description.
+        rubric = [{"label": "fit", "code": "fit", "importance": 5, "content": "body",
+                   "grade_descriptions": [{"grade": "A", "description": "one"}, {"grade": "F", "description": "fail"}]}]
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value={"state_history": []}))
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_task", lambda *_a, **_k: rubric)
+        monkeypatch.setattr("src.core.consult._dispatch_score_floor_for_task", lambda *_a, **_k: 0.0)
+        return transition, save
+
+    def test_apply_outcome_miss_to_prefilter_failed(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from src.utils.config import ROSTER_CONFIG
+
+        caplog.set_level("DEBUG")
+        transition, save = self._env(monkeypatch)
+        out = roster_mod._apply_prefilter_decoded_company_outcome(
+            "acme_com",
+            {"grades": [{"vector": "fit", "grade": "B", "confidence": 3}], "possible_job_links": []},
+            {**ROSTER_CONFIG["prefilter"]},
+            {"astral_candidate_id": "c1"},
+        )
+        assert out == "PREFILTER_FAILED"
+        transition.assert_called_once_with("acme_com", "PREFILTER_FAILED")
+        save.assert_not_called()
+        assert [(r.levelname, r.getMessage()) for r in caplog.records if "acme_com -> " in r.getMessage()] == [
+            ("WARNING", f"acme_com -> PREFILTER_FAILED [hydrate: {self._MISS}]"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_batch_miss_fails_only_that_company(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        caplog.set_level("DEBUG")
+        transition, save = self._env(monkeypatch)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={
+            "success": True,
+            "parsed_response": {"companies": [
+                {"company_id": "acme_com", "grades": [{"vector": "fit", "grade": "B", "confidence": 3}]},
+                {"company_id": "beta_com", "grades": [{"vector": "fit", "grade": "F", "confidence": 5}]},
+            ]},
+        }))
+        companies = [{"short_name": s, "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "x"}}
+                     for s in ("acme_com", "beta_com")]
+        out = await roster_mod._run_batch_company_prefilter("b-2116", companies, ctx={"astral_candidate_id": "c1"})
+        # Pre-fix: both companies → HOMEPAGE_READY_RETRY (retried 2). Now: no retry, sibling applies its own verdict.
+        assert out == {"passed": 0, "failed": 2, "total": 2, "retried": 0}
+        assert [c.args for c in transition.call_args_list] == [
+            ("acme_com", "PREFILTER_FAILED"), ("beta_com", "PREFILTER_FAILED"),
+        ]
+        # The sibling went through the normal verdict path (F5 dealbreaker → saved with reason); the miss saved nothing.
+        assert [c.args[0] for c in save.call_args_list] == ["beta_com"]
+        assert save.call_args.args[1]["prefilter_grades"][0]["reason"] == "fail"
+        assert not [r for r in caplog.records if r.levelno >= 40]
+```
+
+**6. `docs/test-bible/core/agent.md`.**
+
+- **AST-2001 block prose (~L1925):** replace "a letter with confidence 0 is normalised to 1 (**AST-2053**, see AST-2057)" with "a letter with confidence 0 decodes as `X0` (**AST-2124**, see AST-2125; was `{letter}1` under AST-2053)".
+- **AST-2057 block:** after its first paragraph, insert the line "**Superseded by AST-2124 / AST-2125:** letter0 now decodes as `X0`, not `{letter}1`. The rows below cite the current asserts." Then make these row edits:
+  - Row 1: change "decodes as conf 1" to "decodes as `X0`", and change the node to **`TestDecodePayload::test_ast2124_letter_conf0_decodes_as_x0`**.
+  - Row 2: change "`_notes` `CRF0` → `F/1`" to "`_notes` `CRF0` → `X/0`".
+  - Row 3: change "`0\|CRA0` → `A/1` grade row" to "`0\|CRA0` → `X/0` grade row".
+  - Row 4 and the AST-2057 manifest / red-green record are historical; leave them unchanged.
+- **New block directly after the AST-2057 block**, before the next `###`:
+
+  ```markdown
+  ### AST-2125 · AST-2116 (letter0 → X0 decode — AST-2124)
+
+  **AST-2124** (`0d01e20d2`) changes `_decode_payload`'s non-vet encoded loop: a letter segment with confidence `0` (`{A-F}0`) is stored as `X0`, replacing AST-2053's `{letter}1`. `X0` is always no signal. Unchanged: X with nonzero confidence → `decode_failures`; letter confidence 6–9 → trailing-content `decode_failures`; vet (`grades_encoded_vet_meta`) still raises on `LT{letter}0`. Statute: `astral.agent.confidence-bounds`. Hydrate side: **`core/consult.md`** (AST-2125).
+
+  | Area | Source | Component tests |
+  | --- | --- | --- |
+  | `CFC0`/`SSC0`/`TCC0` → `X/0`, both entities in `jobs`, no `decode_failures` key | `src/core/agent.py` (`_decode_payload`) | **`TestDecodePayload::test_ast2124_letter_conf0_decodes_as_x0`** |
+  | `_notes` `CRF0` → `X/0`, notes kept; `0\|CRA7` trailing failure; vet `LTA0` raises | same | **`…::test_ast2053_normalisation_boundaries`** |
+  | `0\|CRA0` → `X/0` grade row | same | **`TestDecodeAndAuditBranches::test_skips_non_dict_payload_rows_and_invalid_confidence`** |
+
+  **Integration:** none.
+  ```
+
+**7. `docs/test-bible/core/consult.md` — new block at end of file:**
+
+```markdown
+### AST-2125 · AST-2116 (bug-repro — missing rubric grade description fails only that job; X never fails hydrate)
+
+**AST-2124** (`0d01e20d2`): `_lookup_rubric_reason_for_grade` returns the rubric's X text or the fixed `_X_NO_SIGNAL_REASON` (`"No signal"`) for `X`, never raising. A letter grade with no description raises `MissingRubricDescriptionError` (a `ValueError` subclass, same message). An unknown vector or an empty rubric stays a plain `ValueError`, so the batch-wide AST-1839 route still applies. `_hydrate_response_jobs_grade_reasons` returns `{astral_job_id: reason}` for misses and runs after id binding. `_run_batch_consult` sends each miss to `cfg["fail_state"]` with one WARNING `<id> -> <fail_state> [hydrate: …]`, with no retry and no `bad_grades`; siblings go through `process_fn`. `_apply_render_verdict_decoded_job` does the same for a single row, with no grade save. Roster side: **`core/roster.md`** (AST-2125). Decode side: **`core/agent.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch: J0 (PS F3, no F row) → `METEORITE_FAILED_DO` WARNING only; J1 applies, its CF `X0` reason `"No signal"`; passed 1 / failed 1 / retried 0 | `src/core/consult.py` (`_run_batch_consult`) | **`TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job`** (**bug-repro**) |
+| Single row: miss → `("METEORITE_FAILED_DO", None, grades)`, transition once, no `save_job_data` | `_apply_render_verdict_decoded_job` | **`…::test_single_row_miss_fails_without_save`** |
+| `X` → `"No signal"` with no X row and on an unknown vector; X row text when present | `_lookup_rubric_reason_for_grade` | **`…::test_x_without_x_row_is_no_signal`**, **`…::test_x_with_x_row_uses_rubric_text`** |
+| Letter miss → `MissingRubricDescriptionError` (is a `ValueError`); unknown vector → plain `ValueError` | same | **`…::test_missing_letter_vs_unknown_vector`** |
+| Blank matching row falls through to trailing table past a non-matching row | same | **`…::test_blank_row_falls_through_to_trailing_table`** |
+| Batch helper returns `{J0: reason}`, hydrates J1; empty rubric still raises | `_hydrate_response_jobs_grade_reasons` | **`…::test_batch_hydrate_returns_misses_structural_still_raises`** |
+
+**Integration:** none.
+```
+
+**8. `docs/test-bible/core/roster.md` — new block at end of file:**
+
+```markdown
+### AST-2125 · AST-2116 (missing rubric grade description → that company alone to PREFILTER_FAILED)
+
+**AST-2124** (`0d01e20d2`): `_apply_prefilter_decoded_company_outcome` catches `MissingRubricDescriptionError` from hydrate. It logs one WARNING `<short_name> -> PREFILTER_FAILED [hydrate: …]`, transitions to `cfg["fail_state"]`, and returns it, with no grade save and no retry. The batch path (`_run_batch_company_prefilter`) gets this through the same helper; structural hydrate errors keep the AST-1846 batch route. Consult side: **`core/consult.md`** (AST-2125).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single company: `fit` B (no B row) → `PREFILTER_FAILED`, one WARNING, no `save_company_data` | `src/core/roster.py` (`_apply_prefilter_decoded_company_outcome`) | **`TestAst2125PrefilterMissingDescription::test_apply_outcome_miss_to_prefilter_failed`** |
+| Batch: miss → `PREFILTER_FAILED` unsaved; sibling F5 applies its own verdict (saved with reason); retried 0, no ERROR | `_run_batch_company_prefilter` | **`…::test_batch_miss_fails_only_that_company`** |
+
+**Integration:** none.
+```
+
+⚠️ **Decision: rename only the one test whose name states the old contract.** `…_normalised_to_conf1` would be false after the edit, so it becomes `test_ast2124_letter_conf0_decodes_as_x0`, and the AST-2057 bible row moves with it (#6). `test_ast2053_normalisation_boundaries` and `…_invalid_confidence` stay neutral enough to keep their node ids (AST-2057's own decision).
+
+⚠️ **Decision: the decode tests are not the `[bug-repro]`.** They are red pre-fix too, but the AST-2116 production defect is the batch-wide hydrate failure, so the `[bug-repro]` tag is the consult batch test (#4) only.
+
+⚠️ **Decision: the roster batch sibling grades F5, not a pass.** A prefilter pass needs PJL URL hydration from nav links (plus the score floor), which adds fixture weight unrelated to this fix. An F5 dealbreaker still runs the full normal verdict path (save with hydrated reason, transition), which is what "sibling applies normally" means. The test tells it apart from the miss by the save call: the sibling is saved, the miss is not.
+
+⚠️ **Decision: coverage relies on two existing suites for re-indented lines.** AST-2124 re-indented the lookup's row loops and moved the `qualify_meteorite` binding block. With the new tests plus `TestRubricLookup` and `TestAst1076QualifyMeteoritePlaceholderId`, every added line and branch arc of the AST-2124 hunks is covered (measured, see the record below).
+
+### Blast radius
+
+- Test tree and bible only; no `src/` or canon.
+- Touches three existing `test_agent.py` functions (assert-only, plus one rename). Everything else is new classes.
+- The pre-existing reds in the three component files are not in scope: 129 failures, identical on the pre-fix and fix trees per AST-2124 test-fix, including `TestAst707EmbeddedRcBatchHydration`, `TestAst718PrefilterPjlRouting`, `TestAst1133QualifyMeteoriteListCreated::test_debug_detail_includes_link_source_input`, and the `TestDoTask*` set.
+- Bible: one prose sentence and three rows in the AST-2057 block, plus three new blocks.
+
+### What must still hold
+
+- The AST-1846 consult/roster hydrate-stub tests, `TestEncodedDecodeIsolation`, and `TestRubricLookup` stay green and unchanged.
+- In the edited decode tests, the `0|CRA7` trailing-failure assert and the vet `LTA0` raise are kept as they are.
+- No `src/` change: `git diff origin/ftr/AST-2116-missing-grade-fail -- src/ canon/` must be empty.
+
+### QA test manifest (proposed for test-fix)
+
+1. **[bug-repro]** `tests/component/core/test_consult.py::TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job`.
+2. `pytest tests/component/core/test_consult.py::TestAst2125MissingRubricDescription tests/component/core/test_roster.py::TestAst2125PrefilterMissingDescription` → **9 passed**.
+3. `pytest tests/component/core/test_agent.py -k "TestDecodePayload or TestDecodeAndAuditBranches"` → **0 failed**.
+4. Hunk coverage: run #2, #3, `test_consult.py::TestRubricLookup`, and `test_consult.py::TestAst1076QualifyMeteoritePlaceholderId` with `--cov=src/core --cov-branch`. There should be no missing line or partial branch inside `git diff -U0 0d01e20d2^ 0d01e20d2 -- src/core/` hunks.
+5. `git diff origin/ftr/AST-2116-missing-grade-fail -- src/ canon/` empty.
+
+### Dry-run record (plan-fix, throwaway file outside the repo — not committed)
+
+The same test bodies as #1–#5 were run from `/tmp` with `PYTHONPATH=.` and a local `.venv` (repo `requirements.txt`).
+
+- **Green:** ftr tip `8726a8be0` gives 12 passed (the 9 new tests plus the 3 decode rewrites, run as a probe copy).
+- **Red:** with `src/core/{consult,roster,agent}.py` from `01606b791` swapped in, 10 of 12 fail. The two that pass are guards that were already true pre-fix: `test_x_with_x_row_uses_rubric_text` and `test_blank_row_falls_through_to_trailing_table`. The bug-repro failure is `Actual: mock('meteorite_grade_do', ['J0', 'J1'], 'METEORITE_PASSED_JD_RETRY')`. The roster batch test fails with `retried 2`, `failed 0`.
+- **Coverage (step 4):** consult, roster and agent all report no missing line and no partial branch inside the AST-2124 hunks.
