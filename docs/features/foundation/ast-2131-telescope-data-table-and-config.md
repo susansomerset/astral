@@ -196,3 +196,48 @@ AC1 → Stage 1 (schema-ensure, registry, inventory, `.schema telescope_data`); 
 Revision 1 — 2026-10-10
 Driven by: Ada's build-child Stage 2 stop on AST-2130 (`created_at` "column default" vs live `agent_data.created_at TIMESTAMP NOT NULL` with no DEFAULT); Chuckles decision: option 1.
 Changes: Stage 1 step 2 — `created_at TIMESTAMP NOT NULL` written out (mirrors `agent_data`; no DEFAULT). Stage 2 step 2 — `save_telescope_data` INSERT now lists `created_at` and passes `_utc_now()`, same timestamp source as `save_agent_data`; removed "take the column default".
+
+## Joan validate (Revision 1)
+
+[plan-rubric]
+**Ticket:** AST-2131
+**Overall:** APPROVED
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (canon tree at `1f7bae1`; `docs/canon-index.md` absent on ref)
+**Publish ref:** `origin/sub/AST-2130/AST-2131-telescope-data-table` @ `1f7bae1c4afe4e3016576bc7640ed2f9109a1f06`
+
+## Canon scores
+
+stat.logging.debug | A |
+stat.logging.warning | A |
+stat.logging.error | A |
+
+## Traceability
+
+AC1 → Stage 1 (`created_at TIMESTAMP NOT NULL` in DDL, registry, inventory, `.schema telescope_data`); AC2 → Stage 2 (`save_telescope_data` + `_utc_now()` on INSERT, manual scratch verify); ticket Scope config slice → Stage 3; parent epic AC3–11 N/A (Boundaries).
+
+### acceptable — Revision 1 closes `created_at` drift
+
+- **Location:** `## Revisions` Revision 1; Stage 1 step 2; Stage 2 step 2.
+- **Finding:** Prior plan text implied column default on `created_at`; live `agent_data` uses `TIMESTAMP NOT NULL` with no DEFAULT and `save_agent_data` sets `ts = created_at or _utc_now()`. Revision 1 aligns telescope DDL and INSERT with that pattern.
+- **Recommendation:** None; builder may proceed past the reported Stage 2 stop.
+
+### acceptable — Stage 0 mirror wording vs `get_agent_data_for_ids`
+
+- **Location:** Stage 0 item 5.
+- **Finding:** Checklist is about symbol presence; return shape is row dicts, not plain content — Stage 2 still correctly specifies plain content for telescope reads.
+- **Recommendation:** Use Stage 0 for mirror patterns only.
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan structure.
+- **Finding:** Complexity is implicit (`agent_data` mirror + Stage 0 drift gate); not blocking.
+
+### discuss — Canon Scope vs config/registry statutes
+
+- **Location:** Citations vs Stage 3.
+- **Finding:** `TELESCOPE_DATA_CONFIG` / `jd_telescope_data_id` match parent Technical scope; frozen list is logging-only — no config/registry directive ids to score.
+- **Recommendation:** Parent Canon Scope amendment only if Archie wants those scored on a later child; do not widen AST-2131’s list in flight.
+
+**R6 (summary):** Revision 1 is definition-faithful and fixes the only substantive plan/code mismatch raised at build. Scope, Boundaries, and DRY mirror unchanged. No `fix-now` gaps.
+
+context_tokens≈38000
