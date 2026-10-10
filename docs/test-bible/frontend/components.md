@@ -2323,3 +2323,49 @@ cd src/ui/frontend && npm run test:component -- \
 3. **Build gates:** `cd src/ui/frontend && npx tsc -b --noEmit` and `npm run lint` are clean.
 
 **Pass criterion:** item 1 is 15 passed, including both `AST-2115 [bug-repro]` cases, and items 2–3 hold.
+
+### AST-2128 · AST-2101 (shared GradeMark — one grade mark, hidden shape SVG)
+
+**Publish:** `origin/sub/AST-2101/AST-2128-shared-grade-mark`. A new `components/GradeMark.tsx` replaces the three local `gradeDot` helpers (`lib/recommendedJobReport.tsx`, `pages/JobsProcessing.tsx`, `pages/JobsSkipped.tsx`) and the inline span in `AgentAnalysisHeader.tsx`. The mark is `span.grade-dot.dot-<g>[.grade-dot-letterless][role=img][aria-label=<grade>]`. It holds an `svg[viewBox="0 0 100 100"][aria-hidden][display=none] > path[d]` with the brief's shape for its grade, followed by the bare letter text, which is omitted when letterless. No CSS changes in this ticket, so there's no visual change. Sibling **AST-2129** reveals the SVG in the Shapes themes.
+
+| Behavior | Test |
+| --- | --- |
+| A/B/C/D/F/X × lettered/letterless: `getByRole("img", { name: <g> })` finds the mark; the SVG is `aria-hidden="true"` and has `display="none"`; its one path `d` equals the **brief literal** (pinned in the test, not imported) (AC 6) | **`test_GradeMark.test.tsx`** `GradeMark — AST-2128` `… img role named by the grade …` (new, 12 cases) |
+| `textContent` is the single letter (lettered) or `""` (letterless) (AC 7) | **`test_GradeMark.test.tsx`** `… textContent is the single letter …` (new, 12 cases) |
+| `grade-dot dot-<g>` classes kept; `grade-dot-letterless` only when letterless | **`test_GradeMark.test.tsx`** `… keeps the grade-dot classes …` (new, 12 cases) |
+| Tooltip becomes `title`; an empty or missing tooltip leaves no `title`; lowercase grade looks up the shape case-insensitively; an unknown grade renders with no SVG | **`test_GradeMark.test.tsx`** (new, 3 cases) |
+| Call sites are unchanged for markup readers (AC 7) | Existing, **unedited**: `lib/test_recommendedJobReport`, `pages/test_JobsProcessing`, `pages/test_JobsSkipped`, `pages/test_JobsRecommended`, `components/test_JobAnalysisReportModal`, `components/test_JobDetailModal`, `components/test_AgentAnalysisHeader` |
+
+jsdom ignores the SVG `display` presentation attribute, so the test pins the attribute, not visibility. Computed `display: none` on Light/Dark is parent AC 9, owned by **AST-2129**.
+
+**Routed pages (§6c):** `JobsProcessing.tsx` and `JobsSkipped.tsx` changed render only. Their existing page Vitests render the page with first-paint mocks and stay in the manifest. There are no filter or date changes.
+
+**Broken / obsolete this pass:** none caused by this diff. **Pre-existing red, not this ticket** (identical on pre-change tip `9a267a790` and on `origin/dev`), excluded by name below and **not revised here**:
+- `test_AppCss` `no hex or non-black rgba outside token blocks… (AC5, App.css half)` and `AST-2049: no hex in .ts/.tsx source… (AC9, epic-wide)` both fail on `--tp-lvl`. That property came from `origin/dev` `5f4850a20` (Task Performance page). It's declared on `.tp-*` classes with `hsla()` tints, not in a token block. The `test_AppCss` revision is sibling **AST-2129**'s scope ("selector-list blocks and twin exemptions"), and the product fix would be an `App.css` change, which this child's Boundaries forbid. **Child AC 9's `test_AppCss` clause is held open on this** until Susan picks one: a test exemption for locally declared properties, or tints moved into the token blocks.
+- `test_JobDetailModal` `AST-1695 listing_href > read-only: null listing_href → no Link <a>…`: this is the same obsolete AST-1695 expectation already logged at **AST-1865**. It's superseded by **AST-1704** (http(s) `job_link` is a link) and the `origin/dev` `82fcbd6c` fix.
+
+**Integration:** none. No scenario reads grade-mark markup.
+
+## QA test manifest — AST-2128
+
+1. **New + AC 7 call-site suites (Vitest, 220 tests: 217 run, 3 excluded by name):**
+
+```bash
+cd src/ui/frontend && T=../../../tests/component/frontend && npx vitest run --config vite.config.ts \
+  $T/components/test_GradeMark.test.tsx \
+  $T/lib/test_recommendedJobReport.test.tsx \
+  $T/pages/test_JobsProcessing.test.tsx \
+  $T/pages/test_JobsSkipped.test.tsx \
+  $T/pages/test_JobsRecommended.test.tsx \
+  $T/components/test_JobAnalysisReportModal.test.tsx \
+  $T/components/test_JobDetailModal.test.tsx \
+  $T/components/test_AgentAnalysisHeader.test.tsx \
+  $T/test_AppCss.test.tsx \
+  -t '^(?!.*(null listing_href → no Link|no hex or non-black rgba outside token blocks|AST-2049: no hex in \.ts/\.tsx source)).*$'
+```
+
+2. **Pytest (AC 9):** `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst2047ThemeRegistry` (5 passed) and `python -c "import src.utils.config"`.
+3. **One mark (AC 8):** `git grep -n 'grade-dot dot-' -- src/ui/frontend/src` hits only `components/GradeMark.tsx`, and `git grep -n 'gradeDot(' -- src/ui/frontend/src` is empty.
+4. **Build (AC 9):** `cd src/ui/frontend && npx tsc -b --noEmit` exits 0.
+
+**Pass criterion:** item 1 shows 217 passed and 3 skipped, with all 39 `GradeMark — AST-2128` cases green, and items 2–4 hold. Run without `-t`, item 1 shows exactly the 3 pre-existing failures named above and no others.
