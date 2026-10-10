@@ -173,6 +173,18 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         ERROR_GRADE_LIKE_NO_WEBSITE_CONTENT: "CULTURE_READY",
         ERROR_ANALYSIS_UPSHOT_NO_WEBSITE_CONTENT: "CULTURE_READY",
       },
+      // AST-2105: mirrors build_state_ui_manifest()["jobs"]["skipped"]["groups"] exactly (catch-all last).
+      groups: [
+        { key: "error", label: "Error", prefixes: ["ERROR_"], members: [] },
+        { key: "bot_block", label: "Bot block", prefixes: ["BOT_BLOCKED_"], members: [] },
+        {
+          key: "fail",
+          label: "Fail",
+          prefixes: ["FAILED_", "METEORITE_FAILED_", "JD_SCRAPE_FAIL_"],
+          members: ["CANDIDATE_SKIPPED", "__BELOW_DISPATCH_FLOOR__"],
+        },
+        { key: "other", label: "Other", prefixes: [], members: [] },
+      ],
     },
     detail: { already_skipped_state: "CANDIDATE_SKIPPED" },
     recommended: {
