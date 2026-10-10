@@ -171,3 +171,15 @@ AC **1, 2, 3, 11** → Stage 1 (registry + guards + manifest `groups`, import/AC
 context_tokens≈42000
 
 Slim upshot: `[plan-rubric] PROCEED (Commit: a1d2e90ea) Config groups manifest ready`
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-2102/AST-2105-skipped-group-rules` @ `6913fcd98`.
+
+**Stages delivered:**
+- Stage 1: `JOBS_SKIPPED_GROUPS` registry + two import-time guard asserts after `JOBS_SKIPPED_SECTION_LABELS`; `"groups"` list on `build_state_ui_manifest()["jobs"]["skipped"]`. Code is verbatim from the plan — `6913fcd98`
+
+**Notes:**
+- Build base: AST-2073's ftr is still merged on this sub (no new commits on it since plan); `sync-child.sh` also brought in a newer `origin/dev` (`68782e475`).
+- Compile + import clean. Ruff on `config.py`: 102 before, 102 after.
+- AC 1 script prints `AC1 ok`; AC 2 prints `['INVALID_TITLE']`; AC 3 temporary `"NOT_A_STATE"` member raised `AssertionError: JOBS_SKIPPED_GROUPS: member is not a Skipped state`, reverted (no `NOT_A_STATE` in the diff).
