@@ -2181,3 +2181,170 @@ Agent repro exercises the **real** decode/validate bar (not a mock of salvage lo
 |------|--------------|-------------|
 | **PROCEED** (C7 complete) | **Orphaned** AST-2015 | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). After Susan UAT, merge sub straight to **`origin/dev`** (with AST-2089 product already on ftr). Stack **AST-2089** + **AST-2090** for any merge that needs salvage coverage before relying on component consult/agent suites. |
 
+## Bug: AST-2126 — Do rubric codes always decodable; name the empty-grade case
+
+**Linear:** [AST-2126](https://linear.app/astralcareermatch/issue/AST-2126) · **Mini-parent:** [AST-2112](https://linear.app/astralcareermatch/issue/AST-2112) (dupes AST-2113 / AST-2118 / AST-2119) · **Publish ref:** `sub/AST-2112/AST-2126-do-rubric-undecodable-codes` · **Project:** Astral Dispatcher
+
+**Canon:** `docs/canon-index.md` is not present on this tree — carried from the AST-1996 block above: `patt.task.dispatch-retry` (read — invalid response for an entity → retry or error by *current* state), `patt.entity.batch-processing` (read). Id-only for make-fix: `stat.logging.warning`, `stat.logging.debug`.
+
+### As-is
+
+Every Somerset Do run since 2026-10-09 (`grade_do` and `meteorite_grade_do`, 1-job batches, two hosts, 73–83 output tokens) raises `IncompleteGradeSetError: _render_score: missing vectors [...]` naming **all 11** Do labels and lands `FAILED_TECHNICAL_DO` / `METEORITE_FAILED_TECHNICAL_DO`. The failure text says nothing about what the model actually returned.
+
+### To-be
+
+Every saved rubric criterion carries a code the encoded-grade decoder can match (`[A-Z]{2}`), so a well-formed reply scores. A rubric with an undecodable code is repaired at save and shown Invalid on Scheduled Actions until it is. A reply that yields no grade segments is a per-entity decode failure whose reason carries the raw reply (AST-1996 route), not a silent `grades: []` row. AST-1155 retry-then-error is unchanged.
+
+### Repro
+
+No DB — monkeypatch the rubric the letter-pipe fallback reads (run 2026-10-10 on `01606b791`):
+
+```python
+from src.core import consult as c
+from src.utils.config import TASK_CONFIG
+rubric = [{"code": f"V{i:02d}", "label": f"Vector {i}", "content": "x", "importance": 5} for i in range(1, 12)]
+c._rubric_criteria_for_cfg = lambda cid, cfg: rubric
+cfg = TASK_CONFIG["grade_do"]            # output_type grades_encoded_notes
+ctx = {"batch_entities": [{"astral_job_id": "J0", "state": "PASSED_JD"}],
+       "vector_labels": c._vector_labels_map(rubric)}
+c._normalize_rubric_task_response("grade_do", cfg,
+    {"agent_payload": "000|" + "|".join(f"V{i:02d}A3" for i in range(1, 12)) + "|Solid fit"}, ctx)
+# today: {'jobs': [{'grades': [], 'possible_job_links': [], 'astral_job_id': 'J0'}]}
+c._normalize_rubric_task_response("grade_do", cfg,
+    {"agent_payload": "This candidate is a strong fit."}, ctx)
+# today: identical — {'jobs': [{'grades': [], 'possible_job_links': [], 'astral_job_id': 'J0'}]}
+```
+
+Either row then fails `_require_complete_grade_set` with every label missing — the production symptom exactly.
+
+Save side: `candidate._uptick_duplicate_rubric_codes([{"code": "", "label": "Hands-On Technical Partnership", …}], "do_rubric")` passes the blank code through, and `database.sync_rubric_vectors_from_criteria` stores it as `V01` (`f"V{idx + 1:02d}"`).
+
+### Root cause
+
+**Staging evidence unreachable from this environment.** The worktree's `data/astral.db` (symlink to `~/astral/data/astral.db`) has zero `rubric_vector` and zero `job` rows; no staging DB / Railway access here. So Somerset's live `grade_do` codes and the raw reply for job `cfcccdcb-1c07-4b23-9a46-834382f2ef42` (batch `meteorite_grade_do-3f837cd7-…`) are **not** confirmed. The plan closes both hypotheses.
+
+1. **Save path can mint undecodable codes.** `sync_rubric_vectors_from_criteria` (`src/data/database.py`) gives a blank code `V{idx+1:02d}`; the pre-save helper `_uptick_duplicate_rubric_codes` (`src/core/candidate.py`) deliberately skips blank codes ("sync assigns V{idx}") and never checks shape. `_GRADE_SEG` (`src/core/agent.py`) is `^[A-Z]{2}[grade][0-5]$`, so the prompt teaches the model codes the decoder can never match. `rubric_dispatch_error` checks only empty rubric + duplicate codes, so nothing flags it.
+2. **Zero-segment replies are silently empty (correction to the bug's "notes fold" wording).** On a 1-job batch neither `V01A3`-style segments nor prose ever reach `_decode_payload`: `_should_decode_as_encoded_line` finds no `_GRADE_SEG` match, so `_normalize_rubric_task_response` falls to `_job_from_letter_pipe`, which returns `grades: []` (proved by Repro). The notes fold in `_decode_payload` only applies when *some* line has a valid segment. No `decode_failure`, no raw reply in any log line.
+3. **`_require_complete_grade_set` reports half the diff.** It raises on `missing` before ever reporting `unknown`, so a reply with wrong-but-valid-shape codes looks identical to an empty reply.
+
+Why technical, not the retry holding: consistent with a second strike from `*_RETRY` (AST-1155), unconfirmed against state history — no change; retry-then-error is the contract.
+
+### Proposed change
+
+One `code(AST-2126)` commit; steps 1–4 are inside AST-2126 `## Scope`; **step 5 is pending a scope amendment** (`[scope-gate]` on AST-2126) — if declined, drop step 5 and nothing else changes.
+
+**1. `src/core/candidate.py` — pre-save helper fills/repairs codes.**
+
+- Module constant above `_RUBRIC_CODE_UPTICK_LETTERS`:
+
+  ```python
+  # Encoded-grade decode (agent._GRADE_SEG) only matches two uppercase letters.
+  _RUBRIC_CODE_RE = re.compile(r"^[A-Z]{2}$")
+  ```
+
+- New private `_derive_rubric_code(label: str, reserved: set) -> Optional[str]` directly above `_uptick_duplicate_rubric_codes`: `words = re.findall(r"[A-Z]+", label.upper())`; base = first letters of the first two words, or the first two letters of a single word of ≥2 letters, else `""`. Candidate order: `base`, then `base[0] + ch` for `ch in _RUBRIC_CODE_UPTICK_LETTERS` (only when base is non-empty), then every `a + b` over `A–Z × A–Z`. Return the first not in `reserved`, else `None`. Full enumeration — no cap.
+- `_uptick_duplicate_rubric_codes` (keep the name — Betty's tests reference it): docstring → "Make every code a decodable two-letter code (fill blank/invalid from the label), then re-letter later duplicates; first occurrence keeps its code (AST-2008, AST-2126)." Loop per item:
+  - Non-dict → append unchanged (sync still raises on it).
+  - `code = str(item.get("code") or "").strip().upper()`; `reserved` = uppercase originals that match `_RUBRIC_CODE_RE` (built up front, as today).
+  - Code fails `_RUBRIC_CODE_RE` → `new_code = _derive_rubric_code(label, reserved)`; `None` → `raise ValueError(f"Rubric {artifact_key!r}: no free two-letter code for {label!r}")` (caller → HTTP 400; unlike Decision C an invalid code is never decodable, so it can't be kept). Else add to `reserved` and `seen`, `logger.warning("Rubric %r: invalid code %r on %r -> %s", artifact_key, item.get("code"), label, new_code)`, append `{**item, "code": new_code}`, continue.
+  - Valid code not yet seen → append (shallow copy with the uppercased code only when the raw value differs, e.g. `" tp"`), continue.
+  - Valid duplicate → existing uptick branch unchanged.
+- `rubric_dispatch_error`: after the empty check and **before** the duplicate check:
+
+  ```python
+  bad = sorted({
+      str(c.get("code") or "").strip() or "(blank)"
+      for c in criteria
+      if isinstance(c, dict) and not _RUBRIC_CODE_RE.match(str(c.get("code") or "").strip())
+  })
+  if bad:
+      return f"Rubric '{rk}' has invalid vector codes: {', '.join(bad)} — re-save the rubric"
+  ```
+
+  Update the docstring ("duplicate codes, invalid codes, or empty rubric") and replace the "blank codes skipped (sync assigns V{idx})" comments here and in the helper.
+
+**2. `src/data/database.py::sync_rubric_vectors_from_criteria` — no fallback, reject bad codes.** Add `import re` to the stdlib imports. Replace the `or f"V{idx + 1:02d}"` line with:
+
+```python
+code = (item.get("code") or "").strip().upper()
+# Must match agent._GRADE_SEG's [A-Z]{2}; candidate save fills/repairs codes before sync (AST-2126).
+if not re.fullmatch(r"[A-Z]{2}", code):
+    raise ValueError(f"criterion {idx + 1} code {item.get('code')!r} is not two letters A-Z")
+```
+
+Same raise semantics as the existing "content is empty" raise in the same loop.
+
+**3. `src/core/consult.py::_require_complete_grade_set` — one reason, both halves.**
+
+```python
+missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
+parts = []
+if missing:
+    parts.append(f"missing vectors {sorted(missing)}")
+if extra:
+    parts.append(f"unknown vectors {sorted(extra)}")
+if parts:
+    raise IncompleteGradeSetError("_render_score: " + "; ".join(parts))
+```
+
+Single-side messages stay byte-identical; same class, same routing.
+
+**4. `src/core/agent.py::_decode_payload` — zero-segment notes line → decode failure.** Right after the existing trailing-content `if meta and not with_meta and not with_notes:` block:
+
+```python
+if with_notes and not grade_segs:
+    # A notes-only line has no grades to score — retry the entity, keep the raw line (AST-2126).
+    decode_failures.append({
+        id_key: ent[id_key],
+        "pos": pos,
+        "reason": f"[{task_key}] no grade segments in encoded line: {line!r}",
+    })
+    continue
+```
+
+Add to the docstring's decode_failures sentence: "…and a `grades_encoded_notes` line with no grade segments". Reachable when another line in the payload carries a valid segment (multi-entity batches).
+
+**5. (Pending scope amendment) `src/core/consult.py::_normalize_rubric_task_response` — letter-pipe zero-grade → decode failures.** In the `isinstance(payload, str)` branch, after `row = _job_from_letter_pipe(text, task_config, ctx)` and before the company/job returns:
+
+```python
+if not company_entity and task_config.get("output_type") == "grades_encoded_notes" and not row.get("grades"):
+    # No decodable grades anywhere in the reply — every entity retries with the raw reply (AST-2126).
+    return {"jobs": [], "decode_failures": [
+        {"astral_job_id": e.get("astral_job_id"), "pos": i,
+         "reason": f"[{task_key}] no grade segments in reply: {text!r}"}
+        for i, e in enumerate(batch_entities)
+    ]}
+```
+
+This is the step that covers the production case (1-job batch, `V01A3` or prose). `_run_batch_consult` already routes `decode_failures` per entity (AST-1996); `_validate_response_schema` accepts an empty `jobs` list (AST-1996 Proposed change §2). Raw reply untruncated in the reason.
+
+**6. Operator step (staging, no repo change — after deploy):**
+
+1. Read-only first: Somerset `rubric_vector` rows for owner `grade_do` (`current = 1` — codes + labels), the stored raw reply for job `cfcccdcb-1c07-4b23-9a46-834382f2ef42`, and its state history. Post them on AST-2112 — this settles which hypothesis held.
+2. Confirm Scheduled Actions shows the Somerset Do tasks **Invalid** ("invalid vector codes") if codes are `V01`-style.
+3. Open Somerset's Do rubric in Artifacts and Save unchanged — step 1 assigns derived two-letter codes; sync retires the `V*` rows and inserts the new ones. Confirm the tasks flip valid.
+4. If step 1 shows proper 2-letter codes already, the defect is the model replying without segments: steps 4–5 make the next failure log carry the raw reply; that diagnosis is a follow-up, not this ticket.
+
+⚠️ **Decision — keep the helper name.** `_uptick_duplicate_rubric_codes` now also fills codes; renaming would break AST-2008 tests and bible rows for no behavioral gain.
+
+⚠️ **Decision — dispatch gate is strict on the stored value.** A stored `tp` is Invalid (prompt shows it as-is; `_GRADE_SEG` won't match a lowercase echo). Save uppercases, so a re-save repairs it.
+
+⚠️ **Decision — no `_GRADE_SEG` change.** Widening the decoder to `V01` would change the AST-357 wire contract for every encoded task; the fix is on the code supply side.
+
+### Blast radius
+
+- **`_uptick_duplicate_rubric_codes` / `apply_rubric_vectors_save`:** shared by UI rubric save and craft persist (all rubric artifacts, not just Do). Any rubric with blank/invalid codes gets new codes on its next save; `rubric_vector` history (AST-2066) is keyed by code, so a re-coded criterion starts a fresh version chain. Embedded QC/GC/RC are already valid.
+- **`sync_rubric_vectors_from_criteria`:** also called by `scripts/migrations/backfill_rubric_vectors.py`, which has its **own** `V{idx}` fallback (line 75, out of scope) — a re-run with blank-coded legacy criteria now raises in sync instead of writing `V01`. One-shot AST-723 migration; flag only.
+- **`rubric_dispatch_error`:** callers `dispatcher` (Auto gate), `task_performance` cache, four `api_admin` sites — any candidate with stored invalid codes turns Invalid / blocks Auto until re-saved (intended).
+- **`_require_complete_grade_set`:** message changes only when both halves are non-empty; routing is by exception class.
+- **`_decode_payload` / `_normalize_rubric_task_response`:** reachable only for `grades_encoded_notes` (grade_do/get/like, meteorite twins); other output types unchanged. Admin ad-hoc test on such a reply now shows `decode_failures` instead of an empty grade row.
+- **Tests assuming today's behavior (Betty — make-fix does not edit):** `test_uptick_is_pure_and_passes_non_dict_and_blank_codes` (blank now filled — flips); any rubric-vector sync test relying on `V01` for a blank code; any consult test asserting the exact message when both missing and unknown are present; letter-pipe tests for `grade_*` with zero grades.
+
+### What must still hold
+
+- **AST-1155:** incomplete/extra sets raise `IncompleteGradeSetError`; first strike → `*_RETRY`, second → `error_state`; complete sets incl. `X`/`0` score unchanged.
+- **AST-1996:** `decode_failures` shape (id, pos, reason), clean row wins, no key on clean payloads.
+- **AST-2008:** first occurrence keeps its code; later duplicates re-lettered via `_RUBRIC_CODE_UPTICK_LETTERS`; exhausted duplicate kept + WARNING (Decision C).
+- **AST-2091:** empty and duplicate rubric messages unchanged; craft_* tasks still runnable on an empty rubric.
+- **`_GRADE_SEG`** unchanged; no code coercion at decode.
+
