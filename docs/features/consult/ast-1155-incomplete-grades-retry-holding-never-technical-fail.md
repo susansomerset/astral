@@ -2555,3 +2555,74 @@ context_tokens≈14500
 **Recommended actions (downstream only — not executed here):** Land AST-2120 (and any other sibling product) on ftr via `merge-child`; re-cut/rebase `sub/AST-2116/AST-2124-missing-grade-fail`; append this artifact; `docs(AST-2124): Radia review — findings`; push sub; post slim upshot `--as radia`.
 
 **Chuckles routing:** the cross-ticket commits Radia flagged (AST-2120/AST-2121, CI, registry mirrors) are all already on `origin/dev` and arrived via `sync(dev)`; the only commits unique to the sub are AST-2124's own. Remedy is `refresh-ftr` (dev → ftr) so `ftr...sub` isolates AST-2124, then a round-2 review on the corrected base — no product change.
+
+
+## Radia review — AST-2124 (round 2)
+
+
+**Ticket:** AST-2124  
+**Publish ref:** `350dd6ca0490b7bbe66bf777e1d847dcf7bcf93c` (`origin/sub/AST-2116/AST-2124-missing-grade-fail`)  
+**Review base:** `origin/ftr/AST-2116-missing-grade-fail` @ `01606b7913aed27aac8ff312c0432f24d8ed9b05` (post **refresh-ftr**; round-1 cross-ticket base issue cleared)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — ids resolved from `canon/directives/**` at tip)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+| patt.task.dispatch-retry | A | | |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** only (`CANON: REVISE` pre-make-fix); implemented diff matches plan-fix **Proposed change** §1–§9 (both statute copies + product). No `validate-plan` fix-mode per-id column.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — Betty **TESTS: REVISE** routed to sibling **AST-2125**; qa-fix did not run on this ticket.  
+- **## What must still hold — OK** (mandated `ftr...sub` product/canon diff):  
+  - Structural hydrate `ValueError` → unchanged batch retry/error routing; only `MissingRubricDescriptionError` is entity-scoped.  
+  - Missing description → `cfg["fail_state"]` + WARNING, not `_consult_batch_fail_dest` / prefilter retry.  
+  - AST-1996 decode-failure / salvage / all-X surfaces untouched except `{letter}0` → `X0`.  
+  - `X` + nonzero conf → `decode_failures`; vet conf-0 raise; `_GRADE_SEG` unchanged.  
+  - Error message text for missing letter descriptions preserved (subclass of `ValueError`).  
+  - No `agent_task.json`, `config.py`, or prompt edits in this diff (plan boundary respected).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Round 1 remediation confirmed:** `git diff origin/ftr/AST-2116-missing-grade-fail...origin/sub/AST-2116/AST-2124-missing-grade-fail` is **6 files** (both confidence-bounds copies, plan doc, `agent.py`, `consult.py`, `roster.py`) — no sibling product carry.  
+- **F3 (`validate-plan` fix mode)** not recorded before make-fix; implementation matches Joan fix-board §9. Process note only; not gating after isolated diff.  
+- **Tests:** AST-2053 decode tests expecting `{letter}1` remain red until **AST-2125**; expected per spawn brief, not this ticket’s repro gate.  
+- **Doc diff bulk:** feature doc includes plan-fix, Joan fix-board, and round-1 Radia artifact — doc-only on tip after `code(AST-2124)`.
+
+## What's solid
+
+- Susan’s rule is implemented end-to-end: entity-scoped missing rubric text, X always hydrates, letter0 → X0, dual statute copies aligned.  
+- Hydrate after ID binding keys `hydrate_missing` by claimed `astral_job_id`.  
+- `patt.task.dispatch-retry`: rubric-data defects exit via `fail_state`, not retry holding.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal mini-parent (live ftr) | Already **Review Posted** → **§3h clean-review shortcut** → **User Testing** (skip `resolve-child`). Then `merge-child` when rollup-ready; **AST-2125** still owns test/bible gap. |
+
+**Recommended actions (downstream only — not executed here):** Append this round-2 artifact; `docs(AST-2124): Radia review — clean`; push sub; post slim upshot `--as radia`; move to **User Testing** per §3h if not already there.
+
+---
+
+**Docs-acceptance (AST-2124):** no test-tree change on this ticket. Betty's `[board-betty] TESTS: REVISE` coverage, including the `[bug-repro]` and the AST-2053 decode-test update (letter0 → X0), lands on gap child AST-2125.
