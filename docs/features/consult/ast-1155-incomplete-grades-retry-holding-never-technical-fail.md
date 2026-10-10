@@ -2482,5 +2482,6 @@ AST-2124 board-joan done — CANON: REVISE — confidence-bounds X0 both copies.
 
 ```text
 context_tokens≈14500
+```
 
 **Chuckles routing:** Betty `TESTS: REVISE` (three AST-2053 decode tests break, and there is no repro coverage) goes to a sibling gap child under AST-2116 (orphaned branch). Joan `CANON: REVISE` stays on AST-2124. Both `astral.agent.confidence-bounds` copies are already inside AST-2124's declared scope, and §9 above is the wording Joan validated, so make-fix lands §9 verbatim. A separate canon child would duplicate that scope (AST-2053 precedent). AST-2124 proceeds to make-fix.
