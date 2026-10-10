@@ -10,8 +10,25 @@ There is **no** per-source-file branch-lock table (**§6b**). Prefer adding or e
 
 | Ticket | Behavior | Sources | Manifest |
 | --- | --- | --- | --- |
+| **AST-2122** | `App.css` theme token-block contract + AST-2049 epic-wide hex / `var()` guard (moved from the retired Theme Examples page test) | `src/ui/frontend/src/App.css`, all non-test `src/ui/frontend/src/**/*.{ts,tsx,css}` | **`tests/component/frontend/test_AppCss.test.tsx`** (5) — § AST-2122 below |
 | **AST-1317** | Amend `pattern.ui.shared-button-roles` with optional `in-row` size; unused `.btn.in-row` in `App.css` | `src/ui/frontend/src/App.css`, `canon/patterns/ui/pattern.ui.shared-button-roles.md`, `canon/patterns/HARVEST.md` | docs-acceptance (grep/read) — no pytest; call-site apply is **AST-1318** |
 | **AST-1300** | Approved `pattern.ui.shared-button-roles` + `pattern.ui.icon-control`; unused `.btn` / `.icon-control` in `App.css` | `src/ui/frontend/src/App.css`, `canon/patterns/ui/pattern.ui.shared-button-roles.md`, `canon/patterns/ui/pattern.ui.icon-control.md`, `canon/patterns/README.md`, `canon/patterns/HARVEST.md` | docs-acceptance (grep/read) — no pytest; call-site remediations are **AST-1301** / **AST-1302** |
+
+---
+
+### AST-2122 · AST-2100 (App.css token tests rehomed)
+
+**Publish:** `origin/sub/AST-2100/AST-2122-retire-theme-examples`. The Theme Examples page and its test file are retired (manifest: [`pages.md`](pages.md) § AST-2122). That file also held the `App.css` token-block tests, which guard the whole SPA rather than the page, so they moved here unchanged except for the retired ids.
+
+| Case | Guards | Change in the move |
+| --- | --- | --- |
+| `Dark is :root and [data-theme=dark]; every registry id has a block` | Dark block selector; registry ⊆ blocks | was exact "one block per registry id". The unregistered alternate blocks stay in `App.css` until **AST-2123** deletes them, so AST-2123's qa pass restores exact equality |
+| `every Light block declares exactly the Dark token names, and the Lights pairwise differ (AC4)` | token-name parity across blocks (AST-2047) | none |
+| `[bug-repro] AST-2076: in light, the accent and nav group label resolve to the header colour` | AST-2076 | `light` only (parchment id retired) |
+| `no hex or non-black rgba outside token blocks; every var(--x) is defined…` | AST-2047 AC5, `App.css` half | none |
+| `AST-2049: no hex in .ts/.tsx source and every var(--x) in source is defined…` | AST-2049 AC9, epic-wide | none |
+
+**Known red, not AST-2122:** the last two cases fail on `App.css: --tp-lvl` from dev commit `5f4850a20` (Task Performance page: `--tp-lvl` with `hsla()` values in `.tp-*` rule bodies). They failed the same way in the old file. Manifest: [`pages.md`](pages.md) § AST-2122.
 
 ---
 

@@ -5421,6 +5421,7 @@ class TestAst1386ThreeSegmentAdminNav:
     _TOOLS_PATHS = [
         "/admin/data_management",
         "/admin/anthropic_ad_hoc",
+        "/admin/telescope",
         "/admin/cost_reconciliation",
         "/admin/session_resume_paste",
         "/admin/session_cover_letter",
@@ -7905,11 +7906,12 @@ class TestAst2024RelativeJobLinkRegistry:
 
 
 class TestAst2047ThemeRegistry:
-    """AST-2047: UI_CONFIG theme registry drives the profile Theme select, Tools nav item, and App.css blocks."""
+    """AST-2047: UI_CONFIG theme registry drives the profile Theme select and App.css blocks.
+    AST-2122: the examples-only alternates, grade-color sets and Tools examples item are retired."""
 
     def test_registry_ids_selectable_and_default(self) -> None:
         themes = cfg.UI_CONFIG["themes"]
-        assert list(themes) == ["dark", "light", "light_parchment", "light_slate"]
+        assert list(themes) == ["dark", "light"]
         assert [tid for tid, t in themes.items() if t["profile_selectable"]] == ["dark", "light"]
         assert cfg.UI_CONFIG["default_theme"] == "dark"
 
@@ -7925,10 +7927,18 @@ class TestAst2047ThemeRegistry:
         ]
         assert [o["label"] for o in theme["options"]] == ["Dark", "Light"]
 
-    def test_tools_nav_theme_examples_admin_only(self) -> None:
+    def test_tools_nav_admin_only_six_items(self) -> None:
+        # AST-2122 AC8: the examples item is gone; the other six Tools items stay, in order.
         tools = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Tools")
         assert tools.get("admin_only") is True
-        assert {"label": "Theme Examples", "path": "/admin/theme_examples"} in tools["items"]
+        assert [i["label"] for i in tools["items"]] == [
+            "Data Management", "Agent Ad Hoc", "Telescope", "Cost Reconciliation", "Resume Paste", "Cover Letter Paste",
+        ]
+
+    def test_no_grade_set_candidates_key(self) -> None:
+        # AST-2122 AC9: the examples-only grade-color candidates left UI_CONFIG with their page.
+        # Suffix match, not the literal key: AC8 requires the retired key name to be absent from tests/.
+        assert [k for k in cfg.UI_CONFIG if k.endswith("_grade_sets")] == []
 
     def test_every_registry_id_has_an_app_css_block(self) -> None:
         # Adding a palette = one registry entry + one [data-theme] block; a missing block would render unthemed.
@@ -7937,35 +7947,6 @@ class TestAst2047ThemeRegistry:
         css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()
         for tid in cfg.UI_CONFIG["themes"]:
             assert f'[data-theme="{tid}"]' in css, tid
-
-
-class TestAst2064ThemeExampleGradeSets:
-    """AST-2064: examples-only grade-color candidates; each set overrides exactly the grade tokens App.css declares."""
-
-    GRADE_TOKENS = frozenset({
-        "--grade-a", "--grade-b", "--grade-c", "--grade-d", "--grade-f", "--grade-x",
-        "--text-on-grade", "--text-on-grade-f",
-    })
-
-    def test_grade_sets_deep_soft_classic_labeled(self) -> None:
-        sets = cfg.UI_CONFIG.get("theme_example_grade_sets")
-        assert sets is not None, "UI_CONFIG has no theme_example_grade_sets"
-        assert {gid: s["label"] for gid, s in sets.items()} == {"deep": "Deep", "soft": "Soft", "classic": "Classic"}
-
-    def test_grade_set_tokens_are_real_app_css_grade_tokens(self) -> None:
-        # A misspelled key would set an unused custom property and silently show the panel's own colors.
-        import re
-        from pathlib import Path
-
-        css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()
-        dark = css.split(':root, [data-theme="dark"] {', 1)[1].split("}", 1)[0]
-        declared = set(re.findall(r"(--[\w-]+)\s*:", dark))
-        assert self.GRADE_TOKENS <= declared
-        sets = cfg.UI_CONFIG.get("theme_example_grade_sets")
-        assert sets is not None, "UI_CONFIG has no theme_example_grade_sets"
-        for gid, s in sets.items():
-            assert set(s["tokens"]) == self.GRADE_TOKENS, gid
-            assert all(re.fullmatch(r"#[0-9a-fA-F]{6}", v) for v in s["tokens"].values()), gid
 
 
 # AST-2069 (parent AST-2054): upshot states, transitions, dispatch registration, agent_task rows.

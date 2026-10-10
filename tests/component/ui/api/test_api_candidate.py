@@ -287,7 +287,7 @@ class TestCandidateRoutes:
         save = MagicMock()
         monkeypatch.setattr(core_candidate.database, "save_candidate", save)
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
-        for bad in ("neon", "light_parchment"):
+        for bad in ("neon", "Light"):
             resp = candidate_client.put("/api/candidates/cand-1/data", json={"theme": bad}, headers=auth_headers)
             assert resp.status_code == 400, bad
             assert "Invalid theme value" in resp.get_json()["error"]

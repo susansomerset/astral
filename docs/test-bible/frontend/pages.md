@@ -3577,6 +3577,8 @@ Expect 54 passed and 1 failed (the baseline red above), with all six **`AST-1979
 
 ### AST-2047 · AST-2042 (theme registry, palettes, Theme Examples page)
 
+> **AST-2122:** Frozen record. The page, its route and Tools item, and the `light_parchment` / `light_slate` ids are retired; the registry is `dark` + `light`. The page case is deleted. The `App.css theme token blocks` cases moved to **`tests/component/frontend/test_AppCss.test.tsx`** ([`root.md`](root.md) § AST-2122), with "one block per registry id" relaxed to a superset check until AST-2123. `TestAst2047ThemeRegistry` now pins two ids and six Tools items. Live manifest: § AST-2122 below.
+
 **Publish:** `origin/sub/AST-2042/AST-2047-theme-registry-palettes`. `UI_CONFIG["themes"]` (four palette ids: `dark`, `light`, examples-only `light_parchment` / `light_slate`) + `default_theme` drive the profile **Theme** select (selectable entries only), a Tools nav item `/admin/theme_examples`, and one `[data-theme="<id>"]` block per id in `App.css` (Dark = `:root, [data-theme="dark"]`). New admin page `AdminThemeExamples.tsx` renders the same shared-class sample once per registry id.
 
 | Area | Source | Component tests |
@@ -3684,6 +3686,8 @@ Expect `test_CandidateProfile` 19 passed / 1 skipped; `test_CandidateContext` al
 
 ### AST-2049 · AST-2042 (component/page inline colors onto tokens)
 
+> **AST-2122:** the AC9 epic-wide guard is unchanged and now lives in **`tests/component/frontend/test_AppCss.test.tsx`** ([`root.md`](root.md) § AST-2122). Use that path wherever this block names `pages/test_AdminThemeExamples.test.tsx`.
+
 **Publish:** `origin/sub/AST-2042/AST-2049-inline-color-tokens`. 49 inline literal colors / `var(--x, #…)` fallbacks / undefined custom-property refs in 7 components + 12 pages moved onto `App.css` token-block names. No layout or logic change; does not touch `App.css` (AST-2047) or `CandidateProfile.tsx` (AST-2048).
 
 | Area | Source | Component tests |
@@ -3722,6 +3726,8 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts \
 **Bible shasums (after publish):** `git show origin/sub/AST-2042/AST-2049-inline-color-tokens:docs/test-bible/frontend/pages.md | shasum` (also `frontend/components.md`)
 
 ### AST-2065 · AST-2042 (UI config URL; UAT-batch bug)
+
+> **AST-2122:** `test_AdminThemeExamples` is deleted with its page; drop it from the manifest item 2 brace list when re-running.
 
 **Publish:** `origin/sub/AST-2042/AST-2065-ui-config-url`. **Scope from** `[board-betty] TESTS: REVISE`. Plan: `docs/features/interface/ast-2047-theme-registry-palettes-and-theme-examples-page-user-theme.md` § Bug: AST-2065.
 
@@ -3766,6 +3772,8 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts \
 
 ### AST-2064 · AST-2042 (bug — Light grade-color set + Theme Examples grade options)
 
+> **AST-2122:** Retired. `UI_CONFIG["theme_example_grade_sets"]`, the page's grade options block, its `[bug-repro]` page case and `TestAst2064ThemeExampleGradeSets` are all deleted. Nothing here is runnable; see § AST-2122.
+
 **Publish:** `origin/sub/AST-2042/AST-2064-light-grade-colors`. Fix (plan doc § Bug: AST-2064): shared "Deep" grade values in the three Light blocks; `UI_CONFIG["theme_example_grade_sets"]` (deep / soft / classic, examples-only) rendered as a **Grade color options** block in every Theme Examples panel, each row overriding the panel's `--grade-*` / `--text-on-grade*` via inline custom properties.
 
 | Area | Source | Component tests |
@@ -3787,6 +3795,8 @@ cd ../../.. && ./scripts/testing/run_component_tests.sh tests/component/utils/te
 ---
 
 ### AST-2077 · AST-2042 (bug — compact letterless grade-dot sample beside each grade-color option)
+
+> **AST-2122:** Retired with the page. The `[bug-repro]` page case is deleted; nothing here is runnable. Letterless Recommended-list dots stay with `test_recommendedJobReport` (AST-1968).
 
 **Publish:** `origin/sub/AST-2042/AST-2077-compact-grade-dots`. **Scope from** `[board-betty] TESTS: REVISE`. Fix (plan doc § Bug: AST-2077): each Theme Examples grade-color option gets a sibling `.recommended-list-phase-grade-row` of letterless A–X dots in the Recommended Job List's markup (`buildPhaseListGradeRow`), carrying the same inline set tokens as its lettered row.
 
@@ -3816,6 +3826,8 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/comp
 
 ### AST-2076 · AST-2042 (bug — Light accent → header purple; `--accent-gold*` renamed `--accent-contrast*`)
 
+> **AST-2122:** the `[bug-repro]` now checks `light` only (the parchment id is retired) and lives in **`tests/component/frontend/test_AppCss.test.tsx`** ([`root.md`](root.md) § AST-2122).
+
 **Publish:** `origin/sub/AST-2042/AST-2076-light-accent-contrast`. **Scope from** `[board-betty] TESTS: REVISE` (stale AC4 key + bible renames), plus the red-first repro qa-fix requires. Fix (plan doc § Bug: AST-2076): six-file `--accent-gold` → `--accent-contrast` rename; in `light` / `light_parchment`, accent family = header purple, `--heading` / `--nav-group-label` → `var(--accent-contrast)`.
 
 | Area | Source | Component tests |
@@ -3836,7 +3848,53 @@ cd src/ui/frontend && npx vitest run --config vite.config.ts ../../../tests/comp
 
 **Pass criterion (test-fix):** the AST-2076 `[bug-repro]` flips red → green; the other 7 cases stay green.
 
+### AST-2122 · AST-2100 (retire Theme Examples and the Light alternates)
+
+**Publish:** `origin/sub/AST-2100/AST-2122-retire-theme-examples`. Product (`code(AST-2122)`): `UI_CONFIG["themes"]` loses `light_parchment` / `light_slate` (now `dark` + `light`), `UI_CONFIG["theme_example_grade_sets"]` is deleted, the Theme Examples item leaves `NAV_CONFIG` Tools, and the `admin/theme_examples` route, `AdminThemeExamples.tsx` and the `GradeSetEntry` / grade-set `UiConfig` field are deleted. `App.css` is untouched; its alternate blocks and §16 rules go in sibling **AST-2123**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry is exactly `dark`, `light`; both selectable; default `dark` (AC9) | `src/utils/config.py` | **`test_config.py::TestAst2047ThemeRegistry::test_registry_ids_selectable_and_default`** (revised) |
+| Tools is admin-only with exactly Data Management, Agent Ad Hoc, Telescope, Cost Reconciliation, Resume Paste, Cover Letter Paste (AC8) | `src/utils/config.py` | **`…::TestAst2047ThemeRegistry::test_tools_nav_admin_only_six_items`** (replaces the Theme Examples item test); **`…::TestAst1386ThreeSegmentAdminNav`** (Tools paths, revised) |
+| No `*_grade_sets` key in `UI_CONFIG` (AC9) | `src/utils/config.py` | **`…::TestAst2047ThemeRegistry::test_no_grade_set_candidates_key`** (new; suffix match keeps the retired key name out of `tests/`) |
+| `/api/ui_config` serves exactly `dark` + `light`, no `*_grade_sets` key (AC9) | `src/ui/api/api_system.py` (unchanged) | **`test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry`** (revised) |
+| Theme allowlist still rejects non-selectable values | `src/core/candidate.py`, `src/ui/api/api_candidate.py` (unchanged) | **`test_candidate.py::TestAst2048ThemeAllowlist`**, **`test_api_candidate.py::…::test_update_rejects_unselectable_theme`** (retired ids swapped for `"Light"`, a wrong-case near-miss) |
+| Light wordmark only for `theme === "light"` | `components/NavigationShell.tsx` (unchanged) | **`test_NavigationShell.test.tsx`** — **`uses the light wordmark only when the selected profile theme is light`** (second candidate now `dark`) |
+| `App.css` token-block contract + AST-2049 epic-wide guard | `App.css`, SPA source | moved to **`test_AppCss.test.tsx`** — [`root.md`](root.md) § AST-2122 |
+| `/admin/theme_examples` falls to the catch-all (AC8) | `routes.tsx` | not pinned by a test — browser/UAT; `test_routes.test.tsx` stays green |
+
+**Broken / obsolete (revised this pass):** `pages/test_AdminThemeExamples.test.tsx` deleted. Its 3 page cases (AST-2047 panel render, AST-2064 grade options, AST-2077 compact dots) go with the page. Its 5 `App.css` cases moved, not dropped (see [`root.md`](root.md) § AST-2122). `TestAst2064ThemeExampleGradeSets` deleted. The edits in `test_api_system.py`, `test_candidate.py`, `test_api_candidate.py` and `test_NavigationShell.test.tsx` drop the retired ids. `TestAst1386ThreeSegmentAdminNav._TOOLS_PATHS` gains the missing `/admin/telescope` (stale since Telescope joined Tools; red before this ticket). No `tests/integration/` scenario reads themes, Tools items or Theme Examples.
+
+#### QA test manifest (AST-2122)
+
+1. **Revised / new tests (required, all green):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst2047ThemeRegistry \
+  tests/component/utils/test_config.py::TestAst1386ThreeSegmentAdminNav \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes \
+  tests/component/core/test_candidate.py::TestAst2048ThemeAllowlist \
+  "tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_rejects_unselectable_theme"
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx \
+  ../../../tests/component/frontend/test_AppCss.test.tsx
+```
+
+2. **Known red, not this ticket:** in `test_AppCss.test.tsx`, `no hex or non-black rgba outside token blocks…` and `AST-2049: no hex in .ts/.tsx source…` fail on `App.css: --tp-lvl`. Dev commit `5f4850a20` (Task Performance page) declares `--tp-lvl` in `.tp-*` rule bodies with `hsla()` values, outside the token blocks. `App.css` is byte-identical to `origin/dev` on this sub, and the same two cases were red in the old file. The other 3 `test_AppCss` cases must pass.
+
+3. **Regression:** `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py tests/component/ui/api/test_api_system.py tests/component/ui/api/test_api_candidate.py`. The failure set may only shrink vs the sub without this commit. Pre-existing reds: 22 in `test_config.py` (none name themes or nav), `TestAst1375InflightHideStatesManifest`, `TestCandidateRoutes::test_list_candidates_and_states`.
+
+4. **AC8 / AC9 greps:** `git grep -n -i -e theme_examples -e ThemeExamples -e theme-examples -e 'Theme Examples' -e theme_example_grade_sets -- src tests` and `git grep -n -e light_parchment -e light_slate -- src tests` hit only `src/ui/frontend/src/App.css` (AST-2123's carve-out).
+
+5. **AC10:** `cd src/ui/frontend && npx tsc -b --noEmit && npx tsc --noEmit` exit 0; `python -c "import src.utils.config"` exits 0.
+
+**Pass criterion:** items 1, 3, 4 and 5 hold, with only item 2's two known reds. Narrowed runs, not the zero-arg harness.
+
 ### AST-2083 · AST-2046 (theme gate on resume editor CSS)
+
+> **AST-2122:** the token gates named below now live in **`tests/component/frontend/test_AppCss.test.tsx`** (5 cases); the page file is deleted.
 
 **Unchanged test, product red:** `test_AdminThemeExamples.test.tsx` (8). Its AST-2047/AST-2049 token gates catch `var(--accent-gold)` (retired on dev, now `--accent-contrast`) and a literal `#fff` in AST-2083's App.css §10e2. That's 2 red until the product fix lands. Manifest and detail: [`components.md`](components.md) § AST-2083.
 
