@@ -99,15 +99,18 @@ function parseBodies(raw: unknown, rows: SectionRow[]): Record<string, SectionBo
   return out
 }
 
+/** Plain text of one experience job: head fields joined " · ", then "• " accomplishments. */
+function jobText(job: ExperienceJob, fields: ExperienceJobField[]): string {
+  const head = fields.filter(f => f.key !== "accomplishments").map(f => String(job[f.key] ?? "").trim()).filter(Boolean)
+  const acc = Array.isArray(job.accomplishments) ? job.accomplishments.map(a => `• ${a}`) : []
+  return [head.join(" · "), ...acc].filter(Boolean).join("\n")
+}
+
 /** Plain text of a body: search haystack, compare display, and (whitespace-collapsed) row preview. */
 function bodyText(body: SectionBody | undefined, fields: ExperienceJobField[]): string {
   if (body === undefined) return ""
   if (typeof body === "string") return body
-  return body.map(job => {
-    const head = fields.filter(f => f.key !== "accomplishments").map(f => String(job[f.key] ?? "").trim()).filter(Boolean)
-    const acc = Array.isArray(job.accomplishments) ? job.accomplishments.map(a => `• ${a}`) : []
-    return [head.join(" · "), ...acc].filter(Boolean).join("\n")
-  }).join("\n\n")
+  return body.map(job => jobText(job, fields)).join("\n\n")
 }
 
 /** Compare equality: trimmed text, or the job array as JSON; empty array equals empty text. */
@@ -390,6 +393,11 @@ function Editor({ target, onSaved }: ResumeContentEditorProps) {
   const q = search.trim().toLowerCase()
   const matches = (title: string, body: SectionBody | undefined) =>
     !q || title.toLowerCase().includes(q) || bodyText(body, experienceFields).toLowerCase().includes(q)
+  // AST-2114: a query that matches inside Experience jobs (not the section title) shows only those jobs.
+  const visibleJobs = (title: string, body: SectionBody | undefined): ReadonlySet<number> | undefined =>
+    !q || title.toLowerCase().includes(q) || !Array.isArray(body)
+      ? undefined
+      : new Set(body.flatMap((job, i) => (jobText(job, experienceFields).toLowerCase().includes(q) ? [i] : [])))
   const preview = (body: SectionBody | undefined) => bodyText(body, experienceFields).replace(/\s+/g, " ").trim()
 
   // Compare to Base (job only): differs / NEW SECTION per job row by id; base-only rows become SECTION REMOVED.
@@ -483,6 +491,7 @@ function Editor({ target, onSaved }: ResumeContentEditorProps) {
               preview={preview(bodies[row.id])}
               catalog={catalog}
               experienceFields={experienceFields}
+              visibleJobs={visibleJobs(row.title, bodies[row.id])}
               unsupportedMessage={unsupportedMessage}
               expanded={expanded.has(row.id)}
               isFirst={index === 0}

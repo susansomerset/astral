@@ -16,6 +16,8 @@ interface ExperienceJobsEditorProps {
   value: ExperienceJob[]
   onChange: (next: ExperienceJob[]) => void
   disabled?: boolean
+  /** Search filter: only these job indexes render; undefined renders every job. */
+  visible?: ReadonlySet<number>
 }
 
 function emptyJob(fields: ExperienceJobField[]): ExperienceJob {
@@ -93,6 +95,7 @@ export default function ExperienceJobsEditor({
   value,
   onChange,
   disabled = false,
+  visible,
 }: ExperienceJobsEditorProps) {
   function patchJob(index: number, key: string, nextVal: string | string[]) {
     const next = value.map((job, i) => (i === index ? { ...job, [key]: nextVal } : job))
@@ -119,7 +122,7 @@ export default function ExperienceJobsEditor({
 
   return (
     <div className="experience-jobs-editor">
-      {value.map((job, index) => (
+      {value.map((job, index) => visible && !visible.has(index) ? null : (
         <CollapsiblePanel
           key={index}
           label={<span className="experience-jobs-editor-role-label resume-section-title">{roleCollapsedLabel(job)}</span>}
@@ -177,14 +180,17 @@ export default function ExperienceJobsEditor({
           </div>
         </CollapsiblePanel>
       ))}
-      <button
-        type="button"
-        className="btn secondary experience-jobs-editor-add"
-        disabled={disabled}
-        onClick={addJob}
-      >
-        Add role
-      </button>
+      {/* A blank new role matches no query, so adding is only offered unfiltered. */}
+      {!visible && (
+        <button
+          type="button"
+          className="btn secondary experience-jobs-editor-add"
+          disabled={disabled}
+          onClick={addJob}
+        >
+          Add role
+        </button>
+      )}
     </div>
   )
 }

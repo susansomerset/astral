@@ -31,6 +31,8 @@ export interface ResumeSectionRowProps {
   preview: string
   catalog: EditorCatalog
   experienceFields: ExperienceJobField[]
+  /** Experience only: job indexes the search leaves visible; undefined shows every job. */
+  visibleJobs?: ReadonlySet<number>
   /** Shown instead of the experience editor when the stored body is not a job array. */
   unsupportedMessage: string
   expanded: boolean
@@ -57,6 +59,7 @@ export default function ResumeSectionRow({
   preview,
   catalog,
   experienceFields,
+  visibleJobs,
   unsupportedMessage,
   expanded,
   isFirst,
@@ -105,7 +108,7 @@ export default function ResumeSectionRow({
         )
       }
       return (
-        <ExperienceJobsEditor fields={experienceFields} value={body} onChange={onBodyChange} disabled={contentLocked} />
+        <ExperienceJobsEditor fields={experienceFields} value={body} visible={visibleJobs} onChange={onBodyChange} disabled={contentLocked} />
       )
     }
     const text = typeof body === "string" ? body : ""
