@@ -1752,20 +1752,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Hedy | engineer | `/home/susan/.cursor/chats/764489cc5790684bd14a57ff2d29f405/5754654a-d352-4d7c-9e94-3baf74b61295/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/a778d6a0-76e9-477f-b0b6-e91b715f8cfe/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/764489cc5790684bd14a57ff2d29f405/79ed6eff-f2bc-4920-912f-4fe82547cd04/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/4a0368cc04790ac4546effba22c44eed/49ce5f28-c807-4edf-a633-d4ad6f908d13/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/d7642f75-4307-41c1-ae5a-88c3bd6d2b81/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/4a0368cc04790ac4546effba22c44eed/c097e119-ba47-488f-8e51-02af7a811e97/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-2045 (parent) | ftr/AST-2045-letter-conf0-normalize |
-| AST-2053 | sub/AST-2045/AST-2053-letter-conf0-normalize |
-| AST-2057 | sub/AST-2045/AST-2057-letter-conf0-tests |
+| AST-2015 (parent) | ftr/AST-2015-qualify-listing-isolation |
+| AST-2089 | sub/AST-2015/AST-2089-qualify-listing-isolation |
+| AST-2090 | sub/AST-2015/AST-2090-qualify-listing-isolation-tests |
 
-**Epic worktree:** `astral-AST-2045/` — one active sub checked out at a time.
-
+**Epic worktree:** `astral-AST-2015/` — one active sub checked out at a time.
 
 ## Joan fix-board — AST-2089
 
