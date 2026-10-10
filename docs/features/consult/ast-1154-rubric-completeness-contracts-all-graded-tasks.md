@@ -812,3 +812,31 @@ Red on `27cd7cbcf` (the constant lacks the sentence), green on the tip. This is 
 - The constant stays absent from `grades_encoded_vet_meta` / `grades_json`.
 - No ticket id re-enters `agent_task.json` prompt text.
 - The fixture-side AST-1154 marker test keeps checking the fixture's own (ticket-id) marker. It is not weakened.
+
+### Fix board — Joan (F2) — AST-2121
+
+[board-joan] CANON: OK
+
+**Ticket:** AST-2121 (Plan Ready, Ada) · test-gap sibling of AST-2120 · parent AST-2108  
+**Diff judged:** `origin/ftr/AST-2108-qualify-missing-grade-vectors...origin/sub/AST-2108/AST-2121-qualify-grade-set-tests` — only the plan-fix appendix (+102 lines) in `docs/features/consult/ast-1154-rubric-completeness-contracts-all-graded-tasks.md`; no test, bible, or product commits on the sub yet. Triage follows **Proposed change** / **Blast radius** / **What must still hold** and AST-2121 **Scope** (tests + bible only).
+
+**Question:** Does this fix require touching canon (statutes/patterns)?
+
+**Answer:** No. F3 (`validate-plan` fix mode) is not required for canon on this ticket.
+
+**Why OK**
+
+1. **Scope is outside canon layers.** The plan binds Betty’s **qa-fix** to `tests/component/core/test_repo_admin_json.py`, `tests/component/utils/test_config.py`, and two `docs/test-bible/**` files. **What must still hold** forbids any `src/**` or `data/**` change; product text stays at the AST-2120 merge on ftr (`6ad17bcbb`). Joan’s board question is whether **implementing this plan** conflicts with or **requires amending** an active statute or pattern — not whether tests should exist (Betty’s lane).
+
+2. **Explicit canon citation: none.** The patch states **Canon: none cited** and aligns test expectations with the already-merged AST-2120 prompt contract (feature doc), not with a new statutory rule.
+
+3. **`astral.standards.names-not-ticket-ids` — conforming, not revising.** The proposed marker fix moves the **catalog** assertion to ticket-free `## GRADE SET COMPLETENESS` and **rejects** re-inserting `(AST-1154)` into `agent_task.json` prompts. That implements the statute’s intent for prompt text (identifiers / durable copy), consistent with Susan’s `c06eaefdf` and AST-2120 **What must still hold**. Leaving the AST-756 **fixture** test on the legacy ticket-id marker is a deliberate split (fixture out of scope); it does not require a statute carve-out — the statute’s Notes already exclude fixtures as a second source of truth and do not mandate ticket ids in prompts.
+
+4. **No overlap with graded-task / seed / config statutes at the change layer.** `astral.agent.grade-vector-validation`, `astral.seed.agent-tables-in-repo-json`, and `astral.config.config-source-of-truth` apply to product paths this ticket explicitly does not touch. Tests **read** catalog JSON and `config.py` to assert text; they do not change seed or config source-of-truth.
+
+5. **Patterns / active directives.** Nothing in the proposed test or bible edits introduces a new behavioral precedent (retry routing, consult orchestration, artifact read paths, etc.). This is regression documentation for AST-2120’s prompt clarifications.
+
+**ESCALATE check:** No architectural fork (no new validation layer, no canon ambiguity about whether completeness is prompt- vs code-enforced — Susan already chose prompt-only on AST-2120). Splitting catalog vs fixture marker strings is a test-design choice inside Betty’s bar, not an Archie statute decision.
+
+**Chuckles routing (with Betty):** For a test-only gap ticket, Betty’s fix-board line on **AST-2121** itself should be **REVISE** (by definition — qa-fix lands the tree). Joan **OK** means: proceed to **Plan Discuss** only if Betty’s AST-2121 triage says REVISE; spawn **qa-fix** (F4) without F3. Joan **OK** + Betty **OK** on AST-2121 would be unusual for a dedicated test-gap child but would still skip F3.
+
