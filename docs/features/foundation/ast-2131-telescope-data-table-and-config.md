@@ -241,3 +241,14 @@ AC1 → Stage 1 (`created_at TIMESTAMP NOT NULL` in DDL, registry, inventory, `.
 **R6 (summary):** Revision 1 is definition-faithful and fixes the only substantive plan/code mismatch raised at build. Scope, Boundaries, and DRY mirror unchanged. No `fix-now` gaps.
 
 context_tokens≈38000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2130/AST-2131-telescope-data-table`
+- **Stage 0:** drift check clean — `_get_connection`, `_compress_payload` / `_decompress_payload`, `_ensure_agent_data_schema` + `_agent_data_schema_ensured`, `_UPSERT_LAZY_SCHEMA_HANDLERS` + `_UPSERT_SCHEMA_ENSURE_FLAGS`, `get_agent_data_for_ids`, header inventory; `uuid` already imported.
+- **Stage 1:** `5ce56c474` — `telescope_data` table + `idx_telescope_data_candidate_created`, `_ensure_telescope_data_schema` + flag, registered in both upsert maps, header inventory bullet.
+- **Stage 2:** `439390654` — `save_telescope_data` (returns uuid; `created_at=_utc_now()` per Revision 1), `get_telescope_data_for_ids`, `get_telescope_data`.
+- **Stage 3:** `00d19a08f` — `TELESCOPE_DATA_CONFIG` (`data_types`, `company_data_id_keys` + assert), `TRACKER_CONFIG["job_data_keys"]["jd_telescope_data_id"]`, docstring section line.
+- **Verify:** `py_compile` both files OK; ruff `database.py` 707 / `config.py` 102 (= `origin/dev` baseline). Scratch check (in `/tmp`, since `debug/` is cursorignored) on a fresh DB and a backup copy of local `astral.db`: startup ensure ×2 no-op, `.schema` shows all six columns + index (AC 1); `save_telescope_data("cand","https://x","JSON",'{"a":1}')` → 36-char uuid, `data_type='JSON'` (AC 2); reads return plain content, missing id → `None` / omitted, `[]` → `{}`. One INSERT for the table: 6 columns / 6 `?` / 6-tuple.
+- **Pre-existing reds (same set on `origin/ftr/AST-2130-telescope-data`, not caused here):** `test_database.py::TestAst846JobSchemaEnsureDedupeBeforeUniqueIndex` (5 cases — `job` has no column `company`), `test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key` and `::test_ensure_batch_response_entity_ids_tags_copies`. `test_agent_data.py`, `test_bootstrap.py`, `test_terminal_state_remap.py` green.
+- **No new tests** — telescope_data coverage is Betty's (qa-child).
