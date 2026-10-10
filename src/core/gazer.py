@@ -593,7 +593,7 @@ async def fetch_culture_pages_batch(
             cd = {}
             company["company_data"] = cd
 
-        recorded = cd.get("website_content")
+        recorded = resolve_telescope_value(cd.get("website_content"))
         if _website_content_is_recorded(recorded):
             if _website_content_bot_walled(recorded):
                 transition_job_state([aid], bot_state)
@@ -643,7 +643,7 @@ async def fetch_culture_pages_batch(
         content = await get_company_data(company, "website_content")
         if content:
             company.setdefault("company_data", {})["website_content"] = content
-            if _website_content_bot_walled(content):
+            if _website_content_bot_walled(resolve_telescope_value(content)):
                 transition_job_state([aid], bot_state)
                 if debug:
                     _log.debug_index(
@@ -720,13 +720,13 @@ async def fetch_company_culture_pages_batch(
     for company_index, company in enumerate(companies, start=1):
         short_name = company.get("short_name") or ""
         cd = company.get("company_data") if isinstance(company.get("company_data"), dict) else {}
-        found = cd.get("website_content")
+        found = resolve_telescope_value(cd.get("website_content"))
         if _website_content_is_recorded(found):
             outcome = "cached"
         else:
             try:
                 # Coat-check scrapes culture_links_to_explore and saves website_content itself.
-                found = await get_company_data(company, "website_content")
+                found = resolve_telescope_value(await get_company_data(company, "website_content"))
             except ValueError as e:
                 # Only a missing short_name/company_website escapes the coat-check; the hop still advances.
                 _log.exception(
