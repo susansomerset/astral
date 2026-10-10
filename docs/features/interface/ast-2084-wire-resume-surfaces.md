@@ -410,3 +410,58 @@ context_tokens≈30000
 - **Discuss — modal close vs in-flight autosave:** no direction from Susan in the thread, so took the review's **Default:** accept for overhaul UAT. The next report reload or re-open of the modal picks up the save. Susan can reverse this by routing close-blocking / await-flush to AST-2083.
 - **Discuss — `preview_thumbnail` not on `StateUiContext`:** took the **Default:** ship as-is on the local `JobArtifactTab` type, and extend `StateUiContext` in a hygiene pass the next time that file is touched.
 - **Advisory:** no action needed. Sibling carry is expected, and the dependencies and test drift were already handled on this ref.
+
+## Bug: AST-2115 — Job resume edit modal is edge-to-edge; should be 80% width
+
+### As-is
+`JobArtifactEditModal` (AST-2084 Stage 2) opens with `Modal size="fullscreen"`. The card is `100vw × 100vh` with no border or radius (`Modal.tsx` `FULLSCREEN_CARD`), so it covers the nav and the Job Analysis Report completely. It reads as navigating away from the report, not as a dialog over it.
+
+### To-be
+The job artifact edit modal opens as a card **80% of the viewport wide**. The dimmed overlay, nav and report stay visible around it, so it clearly sits over the page. It keeps the stacked z-index, the unpadded split-pane body, and the hidden footer. The base resume page (`ArtifactsBaseResumeContent`, a page rather than a modal) stays edge-to-edge.
+
+### Repro
+1. Open a job whose `job_resume` artifact has content → **Job Analysis Report** → **Artifacts** tab.
+2. Click the job resume thumbnail (or **Edit**).
+3. Observe: the modal fills the whole viewport edge to edge, with no visible overlay margin.
+
+Component-level fixture: `render(<JobArtifactEditModal jobId="j1" tab={{ tab_id: "artifact_resume", nav_label: "Resume", artifact_key: "job_resume", shapes_key: null, use_resume_structure: true, preview_thumbnail: true }} onClose={() => {}} />)`. Then `document.querySelector(".modal-card").style.width` is `"100vw"`; it should be `"80vw"`.
+
+### Root cause
+AST-2084 picked `size="fullscreen"` for the modal, following the parent's Technical scope ("stacked, full-screen `Modal`"). `Modal` has no size between `wide` (`min(1100px, 92vw)`, padded body, class-based) and `fullscreen` (`100vw`, borderless). Neither is an 80%-wide card with an unpadded split-pane body, so the only split-pane-capable size was edge to edge.
+
+### Proposed change
+**Options considered:**
+- **A.** Change `FULLSCREEN_CARD` to `80vw`. One line, but `fullscreen` would no longer mean full screen. It also breaks AST-2082's `test_Modal` contract (`100vw`, borderless), which exists for parent AC1.
+- **B (chosen).** Add an `"overlay"` size to `Modal`: an 80vw card that keeps the normal card chrome and shares the unpadded split-pane body. Switch `JobArtifactEditModal` to it. `fullscreen` stays intact for any future edge-to-edge modal.
+- **C.** Use `size="wide"`. This is `min(1100px, 92vw)`, not 80%, and its padded/scroll body fights `SplitPanePage`'s fill. Rejected.
+
+**Changes (option B):**
+1. `src/ui/frontend/src/components/Modal.tsx`
+   - `size?: "wide" | "fullscreen" | "overlay"`. Doc comment: `"overlay": 80vw card over the dimmed page, body unpadded (split-pane modals that must read as over the page).`
+   - Add a const next to `FULLSCREEN_CARD`: `const OVERLAY_CARD: CSSProperties = { width: "80vw", height: "90vh", maxWidth: "80vw", maxHeight: "90vh" }`. There is no `border`/`borderRadius` override, so `.modal-card`'s 1px border, 10px radius and shadow stay. That chrome is what makes it read as "over".
+   - Card `style`: `fullscreen ? FULLSCREEN_CARD : size === "overlay" ? OVERLAY_CARD : undefined`.
+   - Body `style`: `fullscreen || size === "overlay" ? FULLSCREEN_BODY : undefined`, so `SplitPanePage` (modal mode) still fills the body and owns its own scroll.
+2. `src/ui/frontend/src/components/JobArtifactEditModal.tsx`
+   - `size="fullscreen"` → `size="overlay"`.
+   - Update the component doc comment from "stacked full-screen split pane" to "stacked 80%-width split pane".
+   - `stacked` and `showFooter={false}` are unchanged.
+
+⚠️ **Decision — height `90vh`:** Susan specified width only. Keeping `100vh` would leave the card flush with the top and bottom edges, which undercuts "over the page". `90vh` matches the existing `.modal-card--wide` height convention (App.css L2578–2579). If Susan wants full height, this is a one-token change.
+
+⚠️ **Decision — cover letter tab too:** the job resume and the cover letter share this single modal component (AST-2084 Stage 2), so the cover letter edit also opens at 80vw. Keeping the cover letter edge to edge would need a per-tab size switch that Susan didn't ask for.
+
+No `App.css` change: inline styles match the existing `FULLSCREEN_CARD` approach. Both files are in parent AST-2046's Component scope (`Modal.tsx`: size option for split-pane modals; `JobArtifactEditModal.tsx`).
+
+**Gates:** `cd src/ui/frontend && npx tsc -b --noEmit` exit 0; `npx eslint src/components/Modal.tsx src/components/JobArtifactEditModal.tsx` 0 problems; `git grep -n 'size="fullscreen"' -- src/ui/frontend/src` empty.
+
+### Blast radius
+- `Modal.tsx` is shared by every modal. The new branch only triggers on `size === "overlay"`. `wide`, `fullscreen` and the default size render identically to before, and `JobArtifactEditModal` is the only `fullscreen` caller today.
+- `JobArtifactEditModal` is opened only by `JobAnalysisReportModal` (thumbnail click and Edit). Its props and close/reload behavior are unchanged.
+- `SplitPanePage` (modal mode) fills its container. The container shrinks from `100vw` to `80vw`, and the divider drag is still bounded by the container.
+- **Tests:** `tests/component/frontend/components/test_JobArtifactEditModal.test.tsx` L37 asserts `.modal-card` `style.width === "100vw"`. That becomes `"80vw"`, so it is test-tree work for Betty and not something make-fix touches. `test_Modal.test.tsx` AST-2082 `fullscreen` case is unaffected (option B). A new `overlay` case in `test_Modal` would be Betty's call.
+
+### What must still hold
+- AST-2084 AC4: thumbnail click or Edit opens the stacked modal over the report; resume → `ResumeContentEditor` (job) + `job_resume` preview; cover → `ArtifactEditor` (shapes + job persistence) + `cover` preview; close reloads the report.
+- The modal stays **stacked** (`modal-overlay--stacked`, z-index 2000) above the JAR modal, with no footer.
+- The split-pane body stays unpadded and non-scrolling at the body level, so `SplitPanePage` controls its own scrolling and preview `refreshKey` bumps on each editor `onSaved`.
+- AST-2082's `fullscreen` contract (`100vw`, borderless, unpadded body) and the base resume page's edge-to-edge layout (parent AC1) are unchanged.
