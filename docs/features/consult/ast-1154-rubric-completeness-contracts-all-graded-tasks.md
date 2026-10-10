@@ -484,3 +484,426 @@ Full active statute set (65) scored in-session — 0 fix-now. Stage 1 / Stage 2 
 **2026-08-03** — Radia **0 fix-now**. Discuss on `astral.standards.names-not-ticket-ids` (ticket-id in `GRADE SET COMPLETENESS (AST-1154)` sentinel): **kept as shipped**. Renaming would churn Betty’s marker assertions and Manage Tasks copy for a non-blocking, already-precedented pattern; no product code change this pass.
 
 **Publish tip after resolve:** see `resolve(AST-1154): — clean` commit on `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.
+
+---
+
+## Bug: AST-2120 — qualify grade lines omit `Full-Time W2 Employment` / `Minimum Base Salary`
+
+**Linear:** [AST-2120](https://linear.app/astralcareermatch/issue/AST-2120) (fix child of orphaned bug [AST-2108](https://linear.app/astralcareermatch/issue/AST-2108); recurrences [AST-2109](https://linear.app/astralcareermatch/issue/AST-2109), [AST-2111](https://linear.app/astralcareermatch/issue/AST-2111))  
+**Publish ref:** `sub/AST-2108/AST-2120-qualify-missing-grade-vectors` · **ftr:** `ftr/AST-2108-qualify-missing-grade-vectors`  
+**Scope:** AST-2120 `## Scope` — prompt copy only (Susan: no code-side guard).
+
+### As-is
+
+Johnson `qualify_job_listings` batch `qualify_job_listings-11d238b6…` (2026-10-09): 9 of 21 encoded lines omit rubric codes — 8 drop both `Full-Time W2 Employment` and `Minimum Base Salary`, 1 drops only `Full-Time W2 Employment`. `_require_complete_grade_set` (`src/core/consult.py`) raises `IncompleteGradeSetError: _render_score: missing vectors […]`; AST-1155 routing correctly sends first strikes to `NEW_RETRY` and second strikes to `ERROR_QUALIFY_JOB_LISTINGS` (5 jobs). The Stage 1 + Stage 2 completeness contract from this doc is present in the prompt three times and the model still omits the same two codes.
+
+### To-be
+
+Every `qualify_job_listings` line carries exactly one grade segment per live-rubric code, however many codes the rubric has. A listing that does not state salary or employment type grades those vectors `{code}X0`; it never omits them.
+
+### Repro
+
+No DB fixture is possible from the planning environment (see Root cause). Prompt-level repro against the repo catalog:
+
+```bash
+python3 -c "
+import json
+r = {x['task_key']: x for x in json.load(open('data/admin/agent_task.json')) if x.get('current') == 1}['qualify_job_listings']
+c = r['cache_prompt']
+print('7-code example anchors:', c.count('ERA4|MEA4|PG'))          # 2 (STEP 4 + COMPANY JOB IDENTIFIER)
+print('unscoped omit rule:', 'Omit any data whose value is not stated' in c)   # True
+print('variable-length rule:', 'illustrative only' in c)          # False
+"
+```
+
+Live repro: any candidate whose joblist rubric has more than 7 vectors, including salary / employment-type vectors, run through `qualify_job_listings` against job-board listings that state neither salary nor W2 status.
+
+### Root cause
+
+**Evidence unreachable from this environment.** `data/astral.db` here is a dev copy: `rubric_vector` has 0 rows, and `agent_data` / `app_log` hold nothing for batch `11d238b6`. Johnson's production `rubric_vector` rows and the stored RESPONSE block (`_store_response_block`, index `qualify_job_listings_batch_qualify_job_listings-11d238b6…`) live only on the Railway host. So neither bug-find hypothesis can be confirmed or ruled out, and this fix closes **both**:
+
+1. **Tail truncation at the example length.** Every grade example the qualify model sees has exactly 7 segments: STEP 4 (`ERA4|MEA4|PGF4|WAA3|MWA3|KOA4|QCA5`), `## COMPANY JOB IDENTIFIER` (`003|ERA4|…|QCA5||…`), and three 7-code lines in `grades_encoded_meta` `payload_instructions` (`src/utils/config.py`, injected via `{$OUTPUT_INSTRUCTIONS}`). Nothing says the count is illustrative. If Johnson's rubric has more than 7 codes, ending with `Minimum Base Salary` then `Full-Time W2 Employment`, a length-copying model drops exactly these two, or only the last one (the 1-of-9 line).
+2. **The metadata "omit" rule leaks into grading.** `## EXTRACT METADATA` ends with the unscoped sentence "Omit any data whose value is not stated — do NOT guess or infer." Its own example is `salary_range`. Salary and W2 status are exactly what job-board listings usually leave unstated, so the model plausibly applies "omit" to those two grade vectors instead of `{code}X0`.
+
+The contract wording itself (Stage 1 constant, Stage 2 section and STEP 4 line) is correct. It just doesn't override these two competing signals. Grading validation is set-based (`_grade_set_vector_diff`), so segment order never affects pass/fail; "in rubric order" below is a model-side checklist aid only.
+
+**Options considered:** (a) qualify-row copy only, which closes hypothesis 2 and half of hypothesis 1 but leaves the three 7-code `grades_encoded_meta` examples unqualified; (b) **(a) plus one sentence in `_ENCODED_GRADE_SET_COMPLETENESS`** — chosen, because with the evidence unreachable both anchors must be neutralized, and the conditional `config.py` line in Scope covers exactly this; (c) rewrite examples to a different length, rejected because it just moves the anchor; (d) code-side expected-code-list token, ruled out by Susan; (e) delete the examples, rejected because they carry format information the model needs.
+
+### Proposed change
+
+All copy is plain text with **no Linear ticket ids** (`astral.standards.names-not-ticket-ids`; Susan stripped ticket numbers from `agent_task.json` in `c06eaefdf`). Edit `data/admin/agent_task.json` by **exact in-place string replacement on the raw file** (literal `—` and `\n` escapes, as the file already uses). Do **not** `json.load`/`json.dump` the file, because re-serializing reformats all 61 current rows.
+
+**1. `data/admin/agent_task.json` — `qualify_job_listings` (`"current": 1`) `cache_prompt` only.** Leave `user_prompt`, uuids, `updated_at`, and every other row unchanged.
+
+a. **STEP 4 (hypothesis 1).** Directly after the existing line `Every rubric vector code must appear exactly once per job line; use X0 when silent — never omit a code.` (keep that line byte-identical, because a test pins it), insert one new line:
+
+```text
+Every grade example in these instructions shows 7 codes for illustration only — the code count is not a template. Emit one segment per code in the rubric, in the order the rubric lists them, as many segments as the rubric has codes.
+```
+
+Raw-file edit: replace `never omit a code.\n\nSTEP 5 - AUGMENT DATA:` with `never omit a code.\nEvery grade example in these instructions shows 7 codes for illustration only — the code count is not a template. Emit one segment per code in the rubric, in the order the rubric lists them, as many segments as the rubric has codes.\n\nSTEP 5 - AUGMENT DATA:`. That substring is unique in the file: the other `never omit a code.\n\nSTEP` occurrence is followed by `STEP 4 - PACKAGE RESPONSE`.
+
+b. **`## EXTRACT METADATA` (hypothesis 2).** Replace the sentence (unique in the file, 1 occurrence)
+
+`Omit any data whose value is not stated — do NOT guess or infer.`
+
+with
+
+```text
+Omit any metadata key/value pair whose value is not stated — do NOT guess or infer. This applies to metadata only, never to grade segments: a rubric vector about salary, compensation, or employment type is still graded on every line, as {code}X0 when the listing does not state it.
+```
+
+c. Do **not** change the STEP 4 example string, the `## COMPANY JOB IDENTIFIER` example, the `## GRADE SET COMPLETENESS` section, or STEP 5.
+
+**2. `src/utils/config.py` — `_ENCODED_GRADE_SET_COMPLETENESS` (hypothesis 1, shared anchor).** Append one sentence as a new final line of the constant. Keep the existing `GRADE SET COMPLETENESS (AST-1154)` header and the four existing lines byte-identical, because tests pin the marker, `{code}X0`, and `never skip that segment`:
+
+```python
+    "use X with confidence 0 when the source is silent.\n"
+    "Example lines are illustrative — their code count is not a template. Each line carries "
+    "exactly as many grade segments as the rubric has codes; check every line against the "
+    "rubric code list before moving on."
+```
+
+That is: add `\n` to the end of the current last literal, then the new literal(s). No other `config.py` change: no example edits, no new constant, and the four `payload_instructions` concatenations stay as they are.
+
+**3. `src/core/consult.py` — unchanged.** Confirm with `git diff origin/ftr/AST-2108-qualify-missing-grade-vectors -- src/core/consult.py` → empty.
+
+**4. Verify (make-fix):**
+
+```bash
+python3 -c "
+import json
+from src.utils import config as c
+rows = json.load(open('data/admin/agent_task.json'))
+r = {x['task_key']: x for x in rows if x.get('current') == 1}['qualify_job_listings']['cache_prompt']
+assert 'Every rubric vector code must appear exactly once per job line' in r
+assert 'shows 7 codes for illustration only' in r
+assert 'Omit any metadata key/value pair whose value is not stated' in r
+assert 'Omit any data whose value is not stated' not in r
+assert 'never to grade segments' in r
+assert 'AST-' not in r
+k = c._ENCODED_GRADE_SET_COMPLETENESS
+assert 'GRADE SET COMPLETENESS (AST-1154)' in k and 'their code count is not a template' in k
+ots = c.ASTRAL_CONFIG['output_types']
+for t in ('grades_encoded','grades_encoded_notes','grades_encoded_meta','grades_encoded_prefilter_links'):
+    assert 'their code count is not a template' in ots[t]['payload_instructions'], t
+for t in ('grades_encoded_vet_meta','grades_json'):
+    assert 'their code count is not a template' not in ots[t]['payload_instructions'], t
+print('ok')
+"
+git diff --stat origin/ftr/AST-2108-qualify-missing-grade-vectors -- data/admin/agent_task.json   # 1 file, small +/-; no whole-file reformat
+python3 -m pytest -q tests/component/core/test_repo_admin_json.py tests/component/utils/test_config.py
+```
+
+Expected pytest: no new failures relative to the baseline on the ftr tip (`27cd7cbcf`): **61 failed, 668 passed, 18 skipped** across those two files. All 61 are pre-existing catalog/fixture/config drift unrelated to this bug. Compare by failing-test id list, not by count alone.
+
+**5. Post-merge operator step (Susan; not make-fix).** Boot-time repo-JSON apply is disabled (`astral.seed.agent-tables-in-repo-json`, AST-1492 kill-switch), so the catalog edit does not reach production on deploy. Apply it with either Manage Tasks (paste the new `qualify_job_listings` `cache_prompt` on the live row) or **Revert to file** on `agent_task`. Revert to file is table-wide (`revert_repo_admin_json_table`) and overwrites any live-only edits on every other row, so only use it if the divergence banner shows no other drift. The `config.py` sentence ships with the deploy. Optional one-off: reset the 5 errored jobs (`d1a4ad6c…`, `2595edb2…`, `02b00d9b…`, `3b3efc56…`, `a995bac1…`) to `NEW`.
+
+### Blast radius
+
+- **`_ENCODED_GRADE_SET_COMPLETENESS` consumers:** every task whose output type is `grades_encoded`, `grades_encoded_notes`, `grades_encoded_meta`, or `grades_encoded_prefilter_links` (`prefilter_company`, `qualify_job_listings`, `evaluate_jd`, `grade_do`, `grade_get`, `grade_like`, and meteorite twins). The new sentence states a rule that is already true for all of them, so behavior can only get more complete. Token cost is about 40 tokens per call.
+- **AST-1760 all-X guard (`_require_not_all_literal_x`):** more `X0` on salary/W2 only trips it if *every* vector is X. That outcome is unchanged and correctly routed.
+- **Tests:** `TestAst1154EncodedGradeSetCompleteness` (`tests/component/utils/test_config.py`) pins the marker, `{code}X0`, and `never skip that segment`, all preserved. `TestAst1154GradedTaskCompletenessPrompts::test_marker_and_tighten_lines_on_graded_cache_prompts` (`tests/component/core/test_repo_admin_json.py`) is **already red on the ftr tip** (`27cd7cbcf`), before this fix: it asserts `GRADE SET COMPLETENESS (AST-1154)` in the catalog `cache_prompt`s, and `c06eaefdf` ("Removed … linear ticket numbers") stripped that marker from all seven rows. This fix neither causes nor repairs that failure. Betty owns the test question; do not re-add a ticket id to the prompt. Its qualify-specific phrase `Every rubric vector code must appear exactly once per job line` is preserved. No test pins the STEP 4 example or the old "Omit any data…" sentence.
+- **`docs/uat-fixtures/AST-756/expected-agent_task.json`:** not edited (out of scope). It already diverges from the catalog on dev. Tests that still assert whole-file catalog↔fixture identity (`TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`, `TestAst1773…::test_fixture_catalog_byte_lockstep`) are **already red** on the ftr tip and stay red. This fix adds no new identity failure, because no test pins qualify-row lockstep. The fixture-side AST-1154 test checks only the fixture's own marker and stays green.
+- **Production rows:** see Proposed change step 5. No DB schema, migration, or `database.py` change.
+
+### What must still hold
+
+- Stage 1: the constant stays on exactly the four multi-vector encoded types and stays absent from `grades_encoded_vet_meta` / `grades_json`; the existing constant text is byte-identical except for the appended line.
+- Stage 2: the qualify row keeps its `## GRADE SET COMPLETENESS` section and the STEP 4 line `Every rubric vector code must appear exactly once per job line; use X0 when silent — never omit a code.`
+- "`X0` when silent, never omit, never invent codes or letter grades" remains the rule. The new copy only removes the two competing signals (example length; unscoped "omit").
+- The metadata no-guess rule still holds for key/value pairs (no inferred `salary_range` / `location`).
+- No change to `_require_complete_grade_set`, `_render_score`, `_validate_grades`, or AST-1155 retry/error routing.
+- No Linear ticket ids in `agent_task.json` prompt text.
+
+### Fix board — Joan (F2)
+
+[board-joan] CANON: OK
+
+**Ticket:** AST-2120 (Plan Ready, Ada) · parent AST-2108 · **Diff judged:** `origin/ftr/AST-2108-qualify-missing-grade-vectors...origin/sub/AST-2108/AST-2120-qualify-missing-grade-vectors` — only the plan-fix appendix in `docs/features/consult/ast-1154-rubric-completeness-contracts-all-graded-tasks.md` (131 lines); no product delta on the sub yet. Triage is against **Proposed change** / **Blast radius** / **What must still hold**, not an implementation review.
+
+**Question:** Does this fix require touching canon (statutes/patterns)?
+
+**Answer:** No. F3 (`validate-plan` fix mode) is not needed for canon.
+
+**Roster skim** (`canon/statutes/README.md` harvest table + paths touched in the plan):
+
+| Overlap | Assessment |
+|--------|------------|
+| `astral.seed.agent-tables-in-repo-json` | **Conforms.** `qualify_job_listings` `cache_prompt` edits in `data/admin/agent_task.json` are exactly what this statute expects; operator sync after deploy matches the AST-1492 kill-switch already in the statute’s Notes. |
+| `astral.config.config-source-of-truth` | **Conforms.** Appending clarifying text to `_ENCODED_GRADE_SET_COMPLETENESS` in `src/utils/config.py` is behavior-driving copy in the right module; no env split or scatter. |
+| `astral.standards.names-not-ticket-ids` | **Conforms.** Plan keeps new `agent_task.json` text free of `AST-*`; leaves the existing `GRADE SET COMPLETENESS (AST-1154)` sentinel in `config.py` byte-identical — same non-blocking precedent already recorded in the AST-1154 feature doc (comments/carve-outs; not a rename mandate). |
+| `astral.agent.grade-vector-validation` | **N/A / unchanged.** Applies to `src/core/**`; plan keeps `consult.py` and `_require_complete_grade_set` untouched. Prompt tightening supports existing set-based validation, does not relax it. |
+
+No active statute or pattern in `canon/directives/active` defines the seven-segment examples, the unscoped “Omit any data whose value is not stated” line, or a rule that would **forbid** scoping that sentence to metadata or stating that example line length is illustrative. The behavioral law (“every rubric code on the line; `X0` when silent; never omit”) lives in the AST-1154 **feature** contract and shipped prompts; this fix removes competing prompt signals, it does not invent a new product rule that needs a statute amendment.
+
+**ESCALATE check:** Susan already closed the architectural fork (no code-side expected-code-list guard; prompt-only). That is intake/plan scope, not an ambiguous statute or new precedent that only Archie can encode in canon.
+
+**Chuckles routing (with Betty’s line TBD):** Joan **OK** pairs with Betty **OK** → **Plan Approved** and `make-fix` without F3; Joan **OK** with Betty **REVISE** → **qa-fix** only, still no F3.
+
+
+### Radia review — AST-2120 (F7)
+
+[code-rubric] PROCEED (Commit: f47d996b2) Prompt copy closes both hypotheses
+
+**Ticket:** AST-2120  
+**Publish ref:** `origin/sub/AST-2108/AST-2120-qualify-missing-grade-vectors` @ `f47d996b26125c7f15be4e2b8f9f9702b07d7de1`  
+**Corpus:** (no `docs/canon-index.md` or `canon/docs/corpus_sha.txt` on publish ref — Joan overlap ids resolved from `canon/statutes/**` at tip `f47d996b2`)  
+**Overall:** CLEAN  
+
+**Diff base:** `origin/ftr/AST-2108-qualify-missing-grade-vectors...origin/sub/AST-2108/AST-2120-qualify-missing-grade-vectors` (3 files: `data/admin/agent_task.json`, `src/utils/config.py`, plan-fix appendix in `docs/features/consult/ast-1154-rubric-completeness-contracts-all-graded-tasks.md`). `src/core/consult.py` unchanged (empty diff vs ftr).
+
+## Canon scores
+
+*(Frozen list: Linear `## Citations` → none; scored Joan fix-board overlap from plan-fix § Fix board — Joan (F2), same fix-lane precedent as AST-1821 / AST-1995.)*
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | astral.seed.agent-tables-in-repo-json | A | | In-place `qualify_job_listings` `cache_prompt` edit in `data/admin/agent_task.json` only; no re-serialize churn. |
+| 2 | astral.config.config-source-of-truth | A | | Clarifying copy appended to `_ENCODED_GRADE_SET_COMPLETENESS`; propagates to the four multi-vector `payload_instructions` concatenations only. |
+| 3 | astral.standards.names-not-ticket-ids | A | | New `agent_task.json` text has no `AST-*`; existing `GRADE SET COMPLETENESS (AST-1154)` sentinel in `config.py` left as planned precedent. |
+| 4 | astral.agent.grade-vector-validation | X | | `consult.py` / `_require_complete_grade_set` untouched by design. |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan F2 `[board-joan] CANON: OK` + roster skim only; no `validate-plan` per-id column on ticket)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro]** not applicable — split to AST-2121 (Betty `TESTS: REVISE`; repro coverage lands on sibling gap child; no `[bug-repro]` on this sub by design).
+- **## What must still hold — OK** — Stage-1 constant scope (four encoded types get appended sentence; `grades_encoded_vet_meta` / `grades_json` do not); qualify row keeps `## GRADE SET COMPLETENESS` + pinned STEP 4 line; metadata-only omit + `never to grade segments`; `consult.py` validation/routing unchanged; no ticket ids in catalog prompt (verified at tip).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** AST-2121 owns qa-fix repro for illustrative-count + metadata-only omit assertions; this sub deliberately ships product/docs only.
+- **plan metadata:** Bug appendix still says AST-2108 is an “orphaned” parent; intake/spawn uses live `ftr/AST-2108-qualify-missing-grade-vectors` (normal mini-parent). Cosmetic doc drift only.
+
+## What's solid
+
+- Diff matches plan-fix **Proposed change** (both hypotheses): STEP 4 illustrative-count line, scoped metadata omit, shared `_ENCODED_GRADE_SET_COMPLETENESS` append, qualify-only catalog touch.
+- Plan fidelity vs **To-be** is tight; estimate **2** fits the footprint.
+- No cross-ticket product smuggle; no `tests/**` on this sub.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next |
+|------|--------------|------|
+| **PROCEED** (C7 complete) | Normal (AST-2108 + live ftr) | **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+
+Append this artifact to the AST-2120 issue doc, commit `docs(AST-2120): Radia review — clean`, push publish ref, post slim upshot `--as radia`.
+
+
+### Test routing — AST-2120
+
+fix-board `[board-betty] TESTS: REVISE` → the repro and the AST-1154 marker-test decision go to gap sibling [AST-2121](https://linear.app/astralcareermatch/issue/AST-2121) (`sub/AST-2108/AST-2121-qualify-grade-set-tests`). This sub ships product and docs only, so it is docs-acceptance for the test tree.
+
+---
+
+## Bug: AST-2121 — qualify grade-set prompt tests + bible (test gap for AST-2120)
+
+- **Linear:** [AST-2121](https://linear.app/astralcareermatch/issue/AST-2121) (test-gap child of mini-parent [AST-2108](https://linear.app/astralcareermatch/issue/AST-2108); sibling of [AST-2120](https://linear.app/astralcareermatch/issue/AST-2120), merged on `origin/ftr/AST-2108-qualify-missing-grade-vectors` @ `6ad17bcbb`)
+- **Publish ref:** `sub/AST-2108/AST-2121-qualify-grade-set-tests` · **ftr:** `ftr/AST-2108-qualify-missing-grade-vectors`
+- **Canon:** none cited (AST-2121 `## Citations`: test tree + bible only). The one constraint carried in is `astral.standards.names-not-ticket-ids`: no ticket id goes back into prompt text (AST-2120 § What must still hold).
+- **Explicit scope (AST-2121 `## Scope`):** `tests/component/core/test_repo_admin_json.py` (`TestAst1154GradedTaskCompletenessPrompts`), `tests/component/utils/test_config.py` (`TestAst1154EncodedGradeSetCompleteness`), `docs/test-bible/core/repo_admin_json.md`, `docs/test-bible/utils/config.md`. **Betty lands all of them in qa-fix**; this block plans the bar. **No `src/**` or `data/**` change.**
+- **Binding input:** Betty's `[board-betty] TESTS: REVISE` on AST-2120 (verbatim in AST-2121's Description), plus the AST-2120 block above (`### Proposed change` steps 1–2, `### Blast radius` → Tests).
+
+### As-is
+
+On the ftr tip `6ad17bcbb` (AST-2120 merged), every green AST-1154 test passes on both the pre-fix base `27cd7cbcf` and the tip, so nothing pins AST-2120's three prompt changes. `TestAst1154GradedTaskCompletenessPrompts::test_marker_and_tighten_lines_on_graded_cache_prompts` is **red on both trees**: `_MARKER = "GRADE SET COMPLETENESS (AST-1154)"` is asserted in the catalog `cache_prompt`s, and Susan's `c06eaefdf` deliberately stripped ticket ids from them (first failure: `AssertionError: prefilter_company`). The bible's `### AST-1154 · AST-1150` section (`docs/test-bible/utils/config.md`) still says "Seven graded `agent_task` `cache_prompt`s carry the same AST-1154 marker".
+
+### To-be
+
+The AST-1154 classes pin AST-2120's contract:
+- a `[bug-repro]` on the `qualify_job_listings` catalog row is red on `27cd7cbcf` and green on the ftr tip;
+- a shared-constant assertion in `test_config.py` is red on `27cd7cbcf` and green on the tip;
+- the catalog marker test is green on both trees, checking a ticket-free marker;
+- the bible names all of these nodes.
+
+Both AST-1154 classes are fully green on the tip.
+
+### Repro
+
+Verified read-only against both trees via `git show <ref>:data/admin/agent_task.json` / `src/utils/config.py` (AST-2121 plan-fix run):
+
+| Check on current `qualify_job_listings` `cache_prompt` / config | `27cd7cbcf` | tip `6ad17bcbb` |
+| --- | --- | --- |
+| `"shows 7 codes for illustration only"` in prompt | False | True |
+| `"never to grade segments"` in prompt | False | True |
+| `"Omit any data whose value is not stated"` **absent** from prompt | False | True |
+| `"AST-"` absent from prompt | True | True |
+| `"their code count is not a template"` in `src/utils/config.py` | 0 hits | 1 hit |
+| `"## GRADE SET COMPLETENESS"` in all 7 graded catalog rows | True | True |
+| Every other assertion of `test_marker_and_tighten_lines_on_graded_cache_prompts` (omit/never-omit, `evaluate_jd`, `qualify_job_listings`, `{code}X0` ×4, `prefilter_company` phrases) | True | True |
+
+```bash
+/home/susan/astral/.venv/bin/python -m pytest -q \
+  "tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts" \
+  "tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness"
+# tip today → 1 failed (marker test, AssertionError: prefilter_company), 3 passed
+```
+
+### Root cause
+
+Fix-board routed AST-2120's test delta here, so the product landed without a repro. The marker test's red is a stale pin: it asserts a ticket-id sentinel that the catalog intentionally no longer carries. That is a test-contract drift, not a product regression.
+
+### Proposed change
+
+All of it is Betty's (qa-fix). Exact names are her call; the assertions below are the bar. Use the system interpreter or `/home/susan/astral/.venv/bin/python` (the venv is needed for `test_consult.py`, not for these two files). Catalog rows load as in the existing class: `json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))`, current rows keyed by `task_key`. `cfg` = `src.utils.config`.
+
+**1. `[bug-repro]` — new `test_qualify_cache_prompt_grade_count_and_metadata_omit_scope`** (`test_repo_admin_json.py`, `TestAst1154GradedTaskCompletenessPrompts`). On the current `qualify_job_listings` `cache_prompt`, assert:
+- `"shows 7 codes for illustration only — the code count is not a template"` in prompt;
+- `"as many segments as the rubric has codes"` in prompt;
+- `"Omit any metadata key/value pair whose value is not stated"` in prompt;
+- `"never to grade segments"` in prompt and `"{code}X0 when the listing does not state it"` in prompt;
+- `"Omit any data whose value is not stated"` **not** in prompt;
+- `"AST-"` **not** in prompt (names-not-ticket-ids guard; true on both trees, so it is a regression guard, not the repro signal).
+
+**Red on `27cd7cbcf`, green on the ftr tip.** Tag the qa-fix handoff `[bug-repro]` with this node id.
+
+**2. Shared constant — new `test_grade_count_not_template_on_multi_vector_types`** (`test_config.py`, `TestAst1154EncodedGradeSetCompleteness`). Assert:
+- `"their code count is not a template"` in `cfg._ENCODED_GRADE_SET_COMPLETENESS`;
+- the same phrase in `payload_instructions` for exactly the four `self._MULTI` types;
+- the phrase is **not** in `grades_encoded_vet_meta` / `grades_json`.
+
+Red on `27cd7cbcf` (the constant lacks the sentence), green on the tip. This is a second repro node and may share the `[bug-repro]` tag with item 1.
+
+**3. Resolve the red marker test** (`test_marker_and_tighten_lines_on_graded_cache_prompts`). Recommended: change only the **catalog** check to a ticket-free marker, `"## GRADE SET COMPLETENESS"`; that heading is present on all seven rows on both trees. Keep every other assertion in the test byte-identical.
+- Do **not** change `test_fixture_graded_keys_carry_completeness_marker`. The AST-756 fixture still carries `GRADE SET COMPLETENESS (AST-1154)` on all seven rows and is out of scope.
+- Splitting the class constant (e.g. `_CATALOG_MARKER` vs the existing `_MARKER` for the fixture) is fine.
+- Rejected alternatives:
+  - re-adding `(AST-1154)` to the prompts, which violates names-not-ticket-ids and Susan's `c06eaefdf`;
+  - skip/xfail, which loses the only completeness pin on the seven rows.
+
+**4. Bible.**
+- `docs/test-bible/utils/config.md`, `### AST-1154 · AST-1150`:
+  - **Prose:** "carry the same AST-1154 marker" becomes "carry a `## GRADE SET COMPLETENESS` section (ticket-free since `c06eaefdf`) + VALIDATE/Rules tighteners".
+  - **Same paragraph:** add that AST-2120 adds the illustrative-code-count sentence and the metadata-only omit rule on `qualify_job_listings`, plus one sentence on the shared constant.
+  - **Table:** list the new node ids.
+  - **Manifest:** add both new node ids next to the existing class lines.
+- `docs/test-bible/core/repo_admin_json.md`: add the new `TestAst1154…` node to the manifests that already list `TestAst1154GradedTaskCompletenessPrompts` (~lines 274 / 750), or confirm the class-level node already covers it. Betty's call.
+- Leave the `TestAst786…::test_repo_json_matches_uat_fixture_byte_for_byte` manifest line as she finds it (fixture identity is out of scope).
+
+**5. Engineer side (Ada).** No product commit on this ticket. `test-fix` runs Betty's manifest on the tip: the `[bug-repro]` node(s) green, both AST-1154 classes fully green. It also re-runs the whole-file baseline (`test_config.py`, `test_repo_admin_json.py`, `test_consult.py` under the venv), expecting no new failures. At `f47d996b2` that baseline was 84 failed / 975 passed / 25 skipped; Betty's fix should drop it by exactly 1.
+
+### Blast radius
+
+- Test tree and bible only; no product behavior changes.
+- AST-756 fixture byte-identity tests (`TestAst1494…`, `TestAst1773…`) stay red. They're out of scope and untouched.
+- Other `TestAst1154*` users: `tests/component/core/test_candidate.py:4041` only mentions the section in a comment. It doesn't depend on the marker string.
+
+### What must still hold
+
+- No `src/**` or `data/**` change on this ticket. AST-2120's product text stays exactly as merged at `6ad17bcbb`.
+- The existing pinned phrases stay asserted: `{code}X0`, `never skip that segment`, `Every rubric vector code must appear exactly once per job line`, `never omit a code`, the `evaluate_jd` / `grade_*` / `prefilter_company` tighteners.
+- The constant stays absent from `grades_encoded_vet_meta` / `grades_json`.
+- No ticket id re-enters `agent_task.json` prompt text.
+- The fixture-side AST-1154 marker test keeps checking the fixture's own (ticket-id) marker. It is not weakened.
+
+### Fix board — Joan (F2) — AST-2121
+
+[board-joan] CANON: OK
+
+**Ticket:** AST-2121 (Plan Ready, Ada) · test-gap sibling of AST-2120 · parent AST-2108  
+**Diff judged:** `origin/ftr/AST-2108-qualify-missing-grade-vectors...origin/sub/AST-2108/AST-2121-qualify-grade-set-tests` — only the plan-fix appendix (+102 lines) in `docs/features/consult/ast-1154-rubric-completeness-contracts-all-graded-tasks.md`; no test, bible, or product commits on the sub yet. Triage follows **Proposed change** / **Blast radius** / **What must still hold** and AST-2121 **Scope** (tests + bible only).
+
+**Question:** Does this fix require touching canon (statutes/patterns)?
+
+**Answer:** No. F3 (`validate-plan` fix mode) is not required for canon on this ticket.
+
+**Why OK**
+
+1. **Scope is outside canon layers.** The plan binds Betty’s **qa-fix** to `tests/component/core/test_repo_admin_json.py`, `tests/component/utils/test_config.py`, and two `docs/test-bible/**` files. **What must still hold** forbids any `src/**` or `data/**` change; product text stays at the AST-2120 merge on ftr (`6ad17bcbb`). Joan’s board question is whether **implementing this plan** conflicts with or **requires amending** an active statute or pattern — not whether tests should exist (Betty’s lane).
+
+2. **Explicit canon citation: none.** The patch states **Canon: none cited** and aligns test expectations with the already-merged AST-2120 prompt contract (feature doc), not with a new statutory rule.
+
+3. **`astral.standards.names-not-ticket-ids` — conforming, not revising.** The proposed marker fix moves the **catalog** assertion to ticket-free `## GRADE SET COMPLETENESS` and **rejects** re-inserting `(AST-1154)` into `agent_task.json` prompts. That implements the statute’s intent for prompt text (identifiers / durable copy), consistent with Susan’s `c06eaefdf` and AST-2120 **What must still hold**. Leaving the AST-756 **fixture** test on the legacy ticket-id marker is a deliberate split (fixture out of scope); it does not require a statute carve-out — the statute’s Notes already exclude fixtures as a second source of truth and do not mandate ticket ids in prompts.
+
+4. **No overlap with graded-task / seed / config statutes at the change layer.** `astral.agent.grade-vector-validation`, `astral.seed.agent-tables-in-repo-json`, and `astral.config.config-source-of-truth` apply to product paths this ticket explicitly does not touch. Tests **read** catalog JSON and `config.py` to assert text; they do not change seed or config source-of-truth.
+
+5. **Patterns / active directives.** Nothing in the proposed test or bible edits introduces a new behavioral precedent (retry routing, consult orchestration, artifact read paths, etc.). This is regression documentation for AST-2120’s prompt clarifications.
+
+**ESCALATE check:** No architectural fork (no new validation layer, no canon ambiguity about whether completeness is prompt- vs code-enforced — Susan already chose prompt-only on AST-2120). Splitting catalog vs fixture marker strings is a test-design choice inside Betty’s bar, not an Archie statute decision.
+
+**Chuckles routing (with Betty):** For a test-only gap ticket, Betty’s fix-board line on **AST-2121** itself should be **REVISE** (by definition — qa-fix lands the tree). Joan **OK** means: proceed to **Plan Discuss** only if Betty’s AST-2121 triage says REVISE; spawn **qa-fix** (F4) without F3. Joan **OK** + Betty **OK** on AST-2121 would be unusual for a dedicated test-gap child but would still skip F3.
+
+
+### Radia review — AST-2121 (F7)
+
+[code-rubric] PROCEED (Commit: 9de72e3eb) Repro pins AST-2120 prompt bar
+
+**Ticket:** AST-2121  
+**Publish ref:** `origin/sub/AST-2108/AST-2121-qualify-grade-set-tests` @ `9de72e3eb0d1fb305c06b6acb8ccd12077b7b15f`  
+**Corpus:** (no `docs/canon-index.md` / `corpus_sha.txt` on publish ref — Joan overlap resolved from `canon/statutes/**` at tip `9de72e3eb`)  
+**Overall:** CLEAN  
+
+**Diff base:** `origin/ftr/AST-2108-qualify-missing-grade-vectors...origin/sub/AST-2108/AST-2121-qualify-grade-set-tests` (4 files: `tests/component/core/test_repo_admin_json.py`, `tests/component/utils/test_config.py`, `docs/test-bible/utils/config.md`, plan-fix appendix). **Zero bytes** under `src/**` or `data/**` vs ftr.
+
+## Canon scores
+
+*(Frozen list: Linear `## Citations` → none; scored Joan fix-board carry-in from plan-fix § Fix board — Joan (F2) — AST-2121.)*
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | astral.standards.names-not-ticket-ids | A | | Catalog marker test uses `_CATALOG_MARKER = "## GRADE SET COMPLETENESS"`; fixture keeps `_MARKER`; repro asserts `"AST-"` absent from qualify prompt. |
+
+*(Joan F2: `astral.agent.grade-vector-validation`, `astral.seed.agent-tables-in-repo-json`, `astral.config.config-source-of-truth` — **N/A** on this diff; no product paths touched.)*
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan F2 `[board-joan] CANON: OK` only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — Two nodes match Betty’s bar and AST-2120 **To-be** (not tautology):
+  - `test_qualify_cache_prompt_grade_count_and_metadata_omit_scope` pins illustrative-count + metadata-only omit + removal of unscoped `"Omit any data whose value is not stated"` on live `qualify_job_listings` `cache_prompt` (all substrings present on ftr @ `6ad17bcbb` / merged AST-2120 product; absent on pre-fix base per plan table).
+  - `test_grade_count_not_template_on_multi_vector_types` pins `"their code count is not a template"` on `_ENCODED_GRADE_SET_COMPLETENESS` and exactly `self._MULTI` four types, absent from `grades_encoded_vet_meta` / `grades_json`.
+  - `"AST-" not in cache` is explicitly a regression guard (green both trees); repro signal is the add/remove prompt phrases and constant line — correct split.
+- **## What must still hold — OK** — No `src/**` / `data/**` delta; marker test’s non-catalog assertions unchanged; `test_fixture_graded_keys_carry_completeness_marker` untouched; existing AST-1154 pins (`never omit`, `{code}X0`, qualify STEP 4 line, etc.) preserved in `test_marker_and_tighten_lines_on_graded_cache_prompts`.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Bible scope:** `docs/test-bible/core/repo_admin_json.md` not edited; plan allowed class-level manifest coverage — Betty’s comment + `config.md` § AST-2121 manifest record the node ids.
+- **Stacking:** Repro tests read on-disk catalog/config at pytest time; tip assumes ftr already carries AST-2120 (`6ad17bcbb`) — matches stated parent shape.
+
+## What's solid
+
+- Diff is test + bible + plan appendix only; aligns with fix-board AST-2120 gap and AST-2121 **Scope** / **Boundaries**.
+- Marker test fix resolves stale `(AST-1154)` catalog pin without weakening fixture contract.
+- Estimate **1** matches footprint.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next |
+|------|--------------|------|
+| **PROCEED** (C7 complete) | Normal (AST-2108 + live ftr) | **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+Append artifact to AST-2121 issue doc, `docs(AST-2121): Radia review — clean`, push publish ref, post slim upshot `--as radia`.
+
