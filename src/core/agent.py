@@ -248,8 +248,8 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     raw 2-char code when the map is absent or incomplete. _render_pass_fail ignores vector names;
     _render_score requires rubric criteria with labels — callers guard with `if rubric_list` before scoring (AST-429).
     "_meta" in output_type determines whether metadata fields after grades are accepted;
-    trailing non-grade content on a grades-only line, and an X segment with nonzero
-    confidence, are recorded in "decode_failures" (id, pos, reason) and the line is skipped so the caller can
+    trailing non-grade content on a grades-only line, an X segment with nonzero
+    confidence, and a "grades_encoded_notes" line with no grade segments (AST-2126) are recorded in "decode_failures" (id, pos, reason) and the line is skipped so the caller can
     retry that entity; other per-line errors still raise (AST-1996).
     A letter segment with confidence 0 is normalised to confidence 1 (AST-2053).
     "grades_encoded_notes" (do/get/like): non-segment tail rejoins to job["notes"] only (optional).
@@ -382,6 +382,14 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
                 id_key: ent[id_key],
                 "pos": pos,
                 "reason": f"[{task_key}] unexpected trailing content in grades-only line: {line!r}",
+            })
+            continue
+        if with_notes and not grade_segs:
+            # A notes-only line has no grades to score — retry the entity, keep the raw line (AST-2126).
+            decode_failures.append({
+                id_key: ent[id_key],
+                "pos": pos,
+                "reason": f"[{task_key}] no grade segments in encoded line: {line!r}",
             })
             continue
 
