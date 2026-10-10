@@ -348,8 +348,8 @@ class TestAst2048ThemeAllowlist:
         save.assert_called_once()
         assert theme in repr(save.call_args)
 
-    # Unknown id, examples-only alternates, blank, null, unhashable.
-    @pytest.mark.parametrize("theme", ["neon", "light_parchment", "light_slate", "", None, ["light"]])
+    # Unknown id, wrong-case near-miss, blank, null, unhashable.
+    @pytest.mark.parametrize("theme", ["neon", "Light", "", None, ["light"]])
     def test_unselectable_theme_rejected_and_not_saved(self, monkeypatch: pytest.MonkeyPatch, theme: Any) -> None:
         save = MagicMock()
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)

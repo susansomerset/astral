@@ -2026,7 +2026,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** item 1 all green (105 pass, 3 name-skipped). `npx tsc -b --noEmit` clean. Not the zero-arg harness.
 
-**AST-2049 (pointer):** inline colors in `ArtifactEditor`, `ContextTextPage`, `NavigationShell`, `ProfileTextPage`, `RepoJsonDivergenceBanner`, `StateTimeline`, `TabbedTextArea` moved onto `App.css` tokens — no color asserted by their tests; AC9 source-wide guard lives in `test_AdminThemeExamples.test.tsx`. Manifest: [`pages.md`](pages.md) § AST-2049.
+**AST-2049 (pointer):** inline colors in `ArtifactEditor`, `ContextTextPage`, `NavigationShell`, `ProfileTextPage`, `RepoJsonDivergenceBanner`, `StateTimeline`, `TabbedTextArea` moved onto `App.css` tokens — no color asserted by their tests; AC9 source-wide guard lives in `tests/component/frontend/test_AppCss.test.tsx` (moved from the retired `pages/test_AdminThemeExamples.test.tsx` by AST-2122; [`root.md`](root.md) § AST-2122). Manifest: [`pages.md`](pages.md) § AST-2049.
 
 ---
 
@@ -2198,6 +2198,8 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** item 1 is 31 passed, and items 2–3 hold. This is a narrowed run, not the zero-arg harness.
 
 ### AST-2083 · AST-2046 (resume content editor — rows, autosave, compare, print)
+
+> **AST-2122:** the theme-token gate moved to **`tests/component/frontend/test_AppCss.test.tsx`** (5 cases; page cases deleted). Use that path in place of `pages/test_AdminThemeExamples.test.tsx` below.
 
 **Publish:** `origin/sub/AST-2046/AST-2083-resume-editor`. New `ResumeContentEditor.tsx` (base or job target) and `ResumeSectionRow.tsx`; App.css §10e2; the experience job header gets `resume-section-title`. Nothing mounts the editor yet (that's **AST-2084**), so tests render it directly. Structure comes from the `resume_structure` GET and bodies from the entity GET hydrate. Saves send only the half that changed. Base saves are one `PUT /api/candidates/<id>/data`. Job saves are a `job_resume_structure` PUT, then a `job_resume` PUT. Saves are serialized, and a failed save stays dirty and retries on the next field exit.
 

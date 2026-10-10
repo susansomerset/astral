@@ -4923,7 +4923,9 @@ All 8 new/revised nodes red on pre-AST-2024 `config.py` / `agent_task.json`, gre
 
 **Broken / obsolete:** none — no `test_config.py` test pins the `CONTACT_CONFIG` key set. **Manifest:** [`../core/contact.md`](../core/contact.md) § AST-2035.
 
-**AST-2047 (pointer):** `UI_CONFIG["themes"]` / `default_theme` (+ import-time assert that the default is a selectable id), profile `theme` select generated from selectable entries, Tools `/admin/theme_examples`, and every registry id having an `App.css` `[data-theme]` block — **`TestAst2047ThemeRegistry`** (4). Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2047.
+**AST-2047 (pointer):** `UI_CONFIG["themes"]` / `default_theme` (+ import-time assert that the default is a selectable id), profile `theme` select generated from selectable entries, and every registry id having an `App.css` `[data-theme]` block — **`TestAst2047ThemeRegistry`**. Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2047.
+
+**AST-2122 (pointer):** registry is exactly `dark` + `light`; Tools is admin-only with six items (no Theme Examples); no `*_grade_sets` key in `UI_CONFIG`. **`TestAst2047ThemeRegistry`** (5, revised + one new), **`TestAst1386ThreeSegmentAdminNav`** (`/admin/telescope` added to Tools paths). `TestAst2064ThemeExampleGradeSets` is deleted. Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2122.
 
 ### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
 
