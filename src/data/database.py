@@ -1692,6 +1692,50 @@ def get_agent_data_for_ids(ids: List[str]) -> Dict[str, Any]:
     return _run_with_retry(_with_conn)
 
 
+
+def save_telescope_data(candidate_id, url, data_type, content):
+    """Insert one telescope_data row and return its new telescope_data_id.
+
+    data_type is free text — deliberately no allow-list (new content types
+    need no code gate). content is plain text; compressed at rest."""
+    conn = _get_connection()
+    try:
+        _ensure_telescope_data_schema(conn)
+        new_id = str(uuid.uuid4())
+        # created_at has no column DEFAULT (mirrors agent_data) — always pass _utc_now().
+        conn.execute(
+            """INSERT INTO telescope_data
+               (telescope_data_id, candidate_id, url, data_type, content, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (new_id, candidate_id, url, data_type, _compress_payload(content), _utc_now()),
+        )
+        conn.commit()
+        return new_id
+    finally:
+        conn.close()
+
+
+def get_telescope_data_for_ids(telescope_data_ids):
+    """Return {telescope_data_id: plain content} for the ids that exist; missing ids are omitted."""
+    if not telescope_data_ids:
+        return {}
+    conn = _get_connection()
+    try:
+        _ensure_telescope_data_schema(conn)
+        placeholders = ",".join("?" for _ in telescope_data_ids)
+        rows = conn.execute(
+            f"SELECT telescope_data_id, content FROM telescope_data WHERE telescope_data_id IN ({placeholders})",
+            list(telescope_data_ids),
+        ).fetchall()
+        return {row[0]: _decompress_payload(row[1]) for row in rows}
+    finally:
+        conn.close()
+
+
+def get_telescope_data(telescope_data_id):
+    """Return plain content for one row, or None if the row does not exist."""
+    return get_telescope_data_for_ids([telescope_data_id]).get(telescope_data_id)
+
 def get_company_job_ids(company: str) -> List[str]:
     """Return list of company_job_id for company (excludes NULL). For dedup / inverted match."""
     def _do(c: sqlite3.Connection) -> List[str]:
