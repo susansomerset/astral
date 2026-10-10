@@ -274,3 +274,54 @@ No `database.py` / `config.py` changes (AST-2131 shipped them). No composed-JD r
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2132
+**Overall:** APPROVED
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (canon tree at publish tip; `docs/canon-index.md` absent on ref)
+**Publish ref:** `origin/sub/AST-2130/AST-2132-gazer-telescope-owner` @ `f9f18dcc0265cc3999e0c516cd3744ddc3c70bed`
+
+## Canon scores
+
+stat.logging.debug | A |
+stat.logging.warning | A |
+stat.logging.error | A |
+stat.logging.info.entity | X |
+
+## Traceability
+
+AC3 → Stage 1 (`keep_*` / `scrape_*_and_keep`), Stage 2 (`fetch_jd_batch` + `fetch_relative_jd_batch` keep before gates), Stage 3 (`fetch_website_batch` / `fetch_job_pages_batch` keep every capture with `candidate_id`); AC4 → Scope + Stages 1–4 (only `gazer.py` imports `save_telescope_data` / `get_telescope_data_for_ids`; no telescope client/service edits; builder runs grep commands per plan); AC5 → Stage 3 (`homepage_text` / `nav_links` ids, `pjl_assembled_content` / `pjl_nav_links` NULL) plus ticket Boundaries for gazer-written keys — `website_content` write and `pjl_scrape_pages` `{url,id}` ledger shape deferred to AST-2134 (Stage 4 resolves ids for culture-cache reads only).
+
+### acceptable — AC 5 wording vs child Boundaries
+
+- **Location:** Ticket AC 5 (full parent quote) vs `## Boundaries` / plan `## AC traceability`.
+- **Finding:** Observable AC 5 for this child is the gazer-writer subset (`homepage_text`, `nav_links`, derived PJL fields cleared); `website_content` and `{url,id}` on `pjl_scrape_pages` are explicitly AST-2134, with ids carried on scrape records here.
+- **Recommendation:** UAT for AST-2132 should use the Boundaries slice, not the full parent AC 5 script alone.
+
+### discuss — `contact_task_gazer_scrape` not kept
+
+- **Location:** `## Flags for Chuckles / Archie`.
+- **Finding:** Parent Purpose says every pipeline visible-text / link-list scrape is stored; plan excludes Estelle contact-task scrapes (no entity `candidate_id`). Flag is honest; product call is Archie's if that path counts as pipeline.
+- **Recommendation:** No plan block; resolve at parent/UAT if Susan cares.
+
+### acceptable — `stat.logging.info.entity` on frozen list
+
+- **Location:** Canon scores X; plan `## Canon` pipe-shaped `_log.info` on modified writers.
+- **Finding:** Directive `applies_when.paths` lists roster/consult/candidate/meteorite only — not `gazer.py`. Plan still adopts the pipe family for new success lines (good operator grep); compliance with this id is not territorially applicable.
+- **Recommendation:** Optional parent Canon Scope tweak later; do not widen AST-2132's list in flight.
+
+### acceptable — Interim ftr reader mismatch
+
+- **Location:** `## Integration notes`.
+- **Finding:** Between this child and AST-2133/2134, blobs may hold row ids while readers still expect text; plan documents blockedBy merge order — consistent with epic workflow.
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan structure (`## Estimate` confirm only).
+- **Finding:** Stages 0–4 + scratch checks carry complexity; not blocking.
+
+**R6 (summary):** Single-file scope holds. Stage 0 gates on AST-2131 symbols present on the sub (`save_telescope_data` at `database.py`). Ownership model (core→data only via gazer), keep-before-route for bot walls, raw capture + `jd_telescope_data_id`, enumerated PAGE_LINKS, and resolve tolerance match parent functional items 2–3 for the gazer slice. No `fix-now` gaps.
+
+context_tokens≈52000
