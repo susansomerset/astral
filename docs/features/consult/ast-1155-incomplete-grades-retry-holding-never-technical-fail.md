@@ -2994,3 +2994,82 @@ The same test bodies as #1–#5 were run from `/tmp` with `PYTHONPATH=.` and a l
 - **Green:** ftr tip `8726a8be0` gives 12 passed (the 9 new tests plus the 3 decode rewrites, run as a probe copy).
 - **Red:** with `src/core/{consult,roster,agent}.py` from `01606b791` swapped in, 10 of 12 fail. The two that pass are guards that were already true pre-fix: `test_x_with_x_row_uses_rubric_text` and `test_blank_row_falls_through_to_trailing_table`. The bug-repro failure is `Actual: mock('meteorite_grade_do', ['J0', 'J1'], 'METEORITE_PASSED_JD_RETRY')`. The roster batch test fails with `retried 2`, `failed 0`.
 - **Coverage (step 4):** consult, roster and agent all report no missing line and no partial branch inside the AST-2124 hunks.
+
+
+## Joan fix-board — AST-2125
+
+
+**Corpus read:** `origin/sub/AST-2116/AST-2125-missing-grade-fail-tests` — `## Bug: AST-2125` in `docs/features/consult/ast-1155-incomplete-grades-retry-holding-never-technical-fail.md` (full plan-fix block including QA manifest and dry-run record).
+
+**Context from this thread:** AST-2124 Joan pass was **CANON: REVISE** (`astral.agent.confidence-bounds`, both copies). On `origin/ftr/AST-2116-missing-grade-fail`, that statute now records letter0→`X0`, “X is always no signal” at hydrate, and the `CFC0`→`X/0` conforming example — aligned with AST-2124 product (`0d01e20d2`).
+
+---
+
+### The one question
+
+Does this **Proposed change** conflict with or **require updating** any directive **in force**?
+
+**No.** This ticket does not touch `canon/` or `src/`. It only updates component tests and `docs/test-bible/` to match **already-landed** AST-2124 behavior and statute text.
+
+---
+
+### Scope (plan-fix)
+
+- **Canon line on ticket:** “none beyond AST-2124's (`astral.agent.confidence-bounds`, already landed on both copies). Test tree and bible only; no `src/`.”
+- **Blast radius / What must still hold:** `git diff origin/ftr/AST-2116-missing-grade-fail -- src/ canon/` must stay **empty**.
+- **Precedent:** Same lane as **AST-2057** (test gap for AST-2053) and **AST-2090** (test gap for AST-2089); fix-board Joan on those was **CANON: OK**.
+
+---
+
+### `astral.agent.confidence-bounds` (reference only — no edit)
+
+Proposed work **asserts** the ftr statute contract:
+
+| Plan area | Statute / product alignment |
+|-----------|-----------------------------|
+| Three `test_agent.py` rewrites | `X0` decode, no `decode_failures` for `{letter}0` — matches Statement + Conforming on ftr |
+| `TestAst2125MissingRubricDescription` | `MissingRubricDescriptionError`, X→`"No signal"`, entity-scoped batch fail — matches hydrate / violating clauses on ftr |
+| Bible blocks in `agent.md` / `consult.md` / `roster.md` | **Coverage documentation**; cite `astral.agent.confidence-bounds` and AST-2124 commit; supersede AST-2057 **bible** rows, not statute files |
+
+Nothing in the patch asks for a new carve-out, contradicts letter0→`X0`, or reopens AST-2053 `{letter}1` in canon. Stale AST-2053 **test** names/asserts are what this ticket fixes.
+
+---
+
+### `patt.task.dispatch-retry` and other roster rows
+
+- Bible/consult tests document **per-entity** `fail_state` + WARNING for missing descriptions, **no** batch retry — same product contract AST-2124 already validated; **dispatch-retry** is not amended and does not need a fix-lane canon pass here.
+- **`stat.logging.warning`:** Tests expect per-item WARNING shapes for entity-scoped hydrate misses; no new logging statute language.
+- **`canon/docs/DIRECTIVES-DIRECTORY.md` L224:** Still a short index summary; out of scope for AST-2125 (and AST-2124 plan). Not a blocker for **OK**.
+
+---
+
+### ESCALATE check
+
+No product diff, no statute draft, no architectural fork. **Not ESCALATE.**
+
+---
+
+### Chuckles routing (documentation)
+
+Joan **CANON: OK** → with Betty **REVISE** (expected for this gap child), branch per skill: **Plan Discuss**, spawn **qa-fix (F4)** alone once Betty’s line is REVISE; **F3 (`validate-plan` fix mode) not indicated** from this board pass.
+
+---
+
+### Machine-readable verdict (for Linear comment)
+
+```text
+[board-joan]  CANON: OK
+```
+
+### Stdout (skill one-liner)
+
+```text
+AST-2125 board-joan done — CANON: OK.
+```
+
+```text
+context_tokens≈18500
+```
+[AST-2116 | AST-2125] Joan/validate fix-board - complete 4bb16b66 model=composer-2.5 - (22s) > OK
+
+**Chuckles routing:** Joan CANON: OK; Betty TESTS: REVISE = land this plan via qa-fix (#1–#8, nothing missing). AST-2125 is the gap child, so qa-fix (F4) runs on it directly; no further gap child.
