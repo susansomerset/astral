@@ -840,3 +840,70 @@ Red on `27cd7cbcf` (the constant lacks the sentence), green on the tip. This is 
 
 **Chuckles routing (with Betty):** For a test-only gap ticket, Betty’s fix-board line on **AST-2121** itself should be **REVISE** (by definition — qa-fix lands the tree). Joan **OK** means: proceed to **Plan Discuss** only if Betty’s AST-2121 triage says REVISE; spawn **qa-fix** (F4) without F3. Joan **OK** + Betty **OK** on AST-2121 would be unusual for a dedicated test-gap child but would still skip F3.
 
+
+### Radia review — AST-2121 (F7)
+
+[code-rubric] PROCEED (Commit: 9de72e3eb) Repro pins AST-2120 prompt bar
+
+**Ticket:** AST-2121  
+**Publish ref:** `origin/sub/AST-2108/AST-2121-qualify-grade-set-tests` @ `9de72e3eb0d1fb305c06b6acb8ccd12077b7b15f`  
+**Corpus:** (no `docs/canon-index.md` / `corpus_sha.txt` on publish ref — Joan overlap resolved from `canon/statutes/**` at tip `9de72e3eb`)  
+**Overall:** CLEAN  
+
+**Diff base:** `origin/ftr/AST-2108-qualify-missing-grade-vectors...origin/sub/AST-2108/AST-2121-qualify-grade-set-tests` (4 files: `tests/component/core/test_repo_admin_json.py`, `tests/component/utils/test_config.py`, `docs/test-bible/utils/config.md`, plan-fix appendix). **Zero bytes** under `src/**` or `data/**` vs ftr.
+
+## Canon scores
+
+*(Frozen list: Linear `## Citations` → none; scored Joan fix-board carry-in from plan-fix § Fix board — Joan (F2) — AST-2121.)*
+
+| # | slug | grade | effort | one-line |
+|---|------|-------|--------|----------|
+| 1 | astral.standards.names-not-ticket-ids | A | | Catalog marker test uses `_CATALOG_MARKER = "## GRADE SET COMPLETENESS"`; fixture keeps `_MARKER`; repro asserts `"AST-"` absent from qualify prompt. |
+
+*(Joan F2: `astral.agent.grade-vector-validation`, `astral.seed.agent-tables-in-repo-json`, `astral.config.config-source-of-truth` — **N/A** on this diff; no product paths touched.)*
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan F2 `[board-joan] CANON: OK` only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — Two nodes match Betty’s bar and AST-2120 **To-be** (not tautology):
+  - `test_qualify_cache_prompt_grade_count_and_metadata_omit_scope` pins illustrative-count + metadata-only omit + removal of unscoped `"Omit any data whose value is not stated"` on live `qualify_job_listings` `cache_prompt` (all substrings present on ftr @ `6ad17bcbb` / merged AST-2120 product; absent on pre-fix base per plan table).
+  - `test_grade_count_not_template_on_multi_vector_types` pins `"their code count is not a template"` on `_ENCODED_GRADE_SET_COMPLETENESS` and exactly `self._MULTI` four types, absent from `grades_encoded_vet_meta` / `grades_json`.
+  - `"AST-" not in cache` is explicitly a regression guard (green both trees); repro signal is the add/remove prompt phrases and constant line — correct split.
+- **## What must still hold — OK** — No `src/**` / `data/**` delta; marker test’s non-catalog assertions unchanged; `test_fixture_graded_keys_carry_completeness_marker` untouched; existing AST-1154 pins (`never omit`, `{code}X0`, qualify STEP 4 line, etc.) preserved in `test_marker_and_tighten_lines_on_graded_cache_prompts`.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Bible scope:** `docs/test-bible/core/repo_admin_json.md` not edited; plan allowed class-level manifest coverage — Betty’s comment + `config.md` § AST-2121 manifest record the node ids.
+- **Stacking:** Repro tests read on-disk catalog/config at pytest time; tip assumes ftr already carries AST-2120 (`6ad17bcbb`) — matches stated parent shape.
+
+## What's solid
+
+- Diff is test + bible + plan appendix only; aligns with fix-board AST-2120 gap and AST-2121 **Scope** / **Boundaries**.
+- Marker test fix resolves stale `(AST-1154)` catalog pin without weakening fixture contract.
+- Estimate **1** matches footprint.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next |
+|------|--------------|------|
+| **PROCEED** (C7 complete) | Normal (AST-2108 + live ftr) | **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+
+Append artifact to AST-2121 issue doc, `docs(AST-2121): Radia review — clean`, push publish ref, post slim upshot `--as radia`.
+
