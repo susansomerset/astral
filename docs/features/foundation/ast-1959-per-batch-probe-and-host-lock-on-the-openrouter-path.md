@@ -1229,3 +1229,25 @@ context_tokens≈38000
 ```
 
 **Chuckles on the discuss item:** keep. The extra `src/**` in `ftr...sub` comes from `sync(dev)` `aeb67b06b`, whose second parent is already on `origin/dev`, so those commits are no-ops when ftr lands to dev. AST-2099's own delta stays canon only, plus the `consult.py` conflict resolution Radia confirmed. No resolve-child (§3h clean shortcut).
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/badd708719692dc23f40f060c0e63b9f/27a978d7-3563-4c14-9c2a-ea87844cfc86/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/d2d05230-1a21-4682-82ca-e0092a794e5c/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/badd708719692dc23f40f060c0e63b9f/dddfdfc2-5d9b-47dc-b939-02571acd0033/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2016 (parent) | ftr/AST-2016-probe-fail-hold |
+| AST-2098 | sub/AST-2016/AST-2098-probe-fail-hold |
+| AST-2099 | sub/AST-2016/AST-2099-probe-fail-hold-gaps |
+
+**Epic worktree:** `astral-AST-2016/` — one active sub checked out at a time.
