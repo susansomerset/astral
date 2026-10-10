@@ -22,12 +22,10 @@ describe("App.css theme token blocks — AST-2047", () => {
     ]),
   )
 
-  it("Dark is :root and [data-theme=dark]; every registry id has a block", () => {
+  it("Dark is :root and [data-theme=dark]; one block per registry id", () => {
     expect(css).toMatch(/(?:^|\n):root,\s*\[data-theme="dark"\]\s*\{/)
-    // AST-2122 retired the two alternates from the registry; their unregistered blocks stay in App.css
-    // until AST-2123 deletes them, so this is a superset check — AST-2123 restores exact equality.
-    expect([...blocks.keys()]).toEqual(expect.arrayContaining(Object.keys(THEMES)))
-    expect([...blocks.keys()][0]).toBe("dark")
+    // AST-2123 deleted the unregistered alternate blocks, so blocks and registry match exactly again.
+    expect([...blocks.keys()]).toEqual(Object.keys(THEMES))
   })
 
   it("every Light block declares exactly the Dark token names, and the Lights pairwise differ (AC4)", () => {
