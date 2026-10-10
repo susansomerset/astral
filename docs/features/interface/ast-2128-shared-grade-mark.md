@@ -121,3 +121,60 @@ No `App.css`, `config.py`, registry, context, or `uiConfig.ts` change (Boundarie
 ## Estimate
 
 Confirm Chuckles estimate: 3 — revise to 2 because it is one component slice on a known pattern (one ~40-line display component plus four mechanical call-site swaps, no CSS/registry/API change), and the test work is a straightforward per-grade table.
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2128
+**Overall:** APPROVED
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (canon tree at publish tip; `docs/canon-index.md` absent on ref)
+**Publish ref:** `origin/sub/AST-2101/AST-2128-shared-grade-mark` @ `6c8984b73e9e5cf7709fea2444fe606511abfb13`
+
+## Canon scores
+
+_(empty — child **Citations:** none; parent **Canon Scope:** none — locked at Discussion. No directive ids to score; not §4a ESCALATE — explicit empty scope, same as AST-2123 Joan validate.)_
+
+## Traceability
+
+AC6→Stage 1 (`GradeMark` `role="img"` / `aria-label` / `aria-hidden` SVG) + Betty `test_GradeMark` (Scope, not Files Changed); AC7→Stage 2 (four call-site swaps + listed Vitest suites, unedited); AC8→Stage 2 (`git grep` gates); AC9→Stage 1–2 (`tsc`, scoped `eslint`, `import src.utils.config`; `test_AppCss` / `test_config` untouched — pass implied at tip, not named in Stage 2 verify).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Canon Scope vs `GradeMark.tsx` in `components/`
+- **Finding:** `astral.ui.frontend-file-placement` plainly governs the new file; it is not on the frozen list (explicit **none**). Plan placement matches the statute (flat `components/`).
+- **Recommendation:** Archie may leave **none** as-is; no plan change required for approval.
+
+- **Location:** Stage 2 verify vs child AC 9
+- **Finding:** AC 9 names `test_AppCss.test.tsx` and `test_config.py::TestAst2047ThemeRegistry`; engineer stages verify `tsc`, `eslint`, six AC-7 Vitest files, and `python -c "import src.utils.config"` only.
+- **Recommendation:** Optional one-liner in Stage 2 step 5 for regression sanity on unmodified tests; Betty’s manifest still owns formal proof.
+
+- **Location:** `display="none"` SVG presentation attribute (Stage 1 decision block)
+- **Finding:** Correct for zero CSS this ticket and AST-2129 override path; jsdom visibility caveat is documented for Betty.
+- **Recommendation:** None.
+
+### acceptable
+
+- **Location:** Scope gate; Files Changed vs `## Scope` test/bible rows
+- **Finding:** Engineer/Betty split matches parent partition and `plan-child` boundary (no `tests/` or bible in Files Changed).
+- **Recommendation:** None.
+
+- **Location:** DRY — three `gradeDot` helpers → one `GradeMark`
+- **Finding:** Matches child Technical scope; `astral.standards.dry-and-focused-functions` not on list (scope-gap note only if Archie widens canon later).
+- **Recommendation:** None.
+
+- **Location:** `test_AgentAnalysisHeader` in Stage 2 Vitest list vs AC 7’s six named suites
+- **Finding:** Extra regression coverage for a modified file; not scope creep.
+- **Recommendation:** None.
+
+- **Location:** Estimate / complexity
+- **Finding:** No formal `!!-CONF` self-assessment block; staged work matches estimate 2 (single component + mechanical swaps).
+- **Recommendation:** None.
+
+context_tokens≈28000
