@@ -2379,3 +2379,74 @@ This is the step that covers the production case (1-job batch, `V01A3` or prose)
 
 **ESCALATE:** not indicated — bounded blast radius, scope-gate on `_normalize_rubric_task_response` already answered without widening epic scope.
 
+
+### Radia review — AST-2126 (F7)
+
+[code-rubric] PROCEED (Commit: 4e9731267) Rubric decode + diagnostics
+
+**Ticket:** AST-2126  
+**Publish ref:** `4e97312678aa170ff44f597d47fdc81fa0f8fcc2` (`origin/sub/AST-2112/AST-2126-do-rubric-undecodable-codes`)  
+**Diff base:** `origin/ftr/AST-2112-do-rubric-undecodable-codes`  
+**Corpus:** `c04b07deda8f5a750afd473ec847d06ed2207065`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.dispatch-retry | A | | Zero-segment / letter-pipe-empty → `decode_failures` → existing `_consult_batch_fail_dest`; `IncompleteGradeSetError` path unchanged for true incomplete sets |
+| patt.entity.batch-processing | A | | No claim/release, `batch_size`, or batch-id processing changes |
+| stat.logging.warning | A | | Code-repair and duplicate-resolution warnings on rubric save use `logger.warning` with artifact, code, label context |
+| stat.logging.debug | X | | No new or altered `logger.debug` in the product diff |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan **fix-board** CANON: OK @ plan tip `cfd59ab62`; no `validate-plan` fix-mode column)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — split to AST-2127 (fix-board TESTS: REVISE; repro and bible holes assigned to sibling; no `[bug-repro]` on this sub by design).
+
+**## What must still hold — OK**
+
+- **AST-1155:** `_require_complete_grade_set` still raises `IncompleteGradeSetError`; single-sided messages unchanged; combined missing+unknown only when both halves non-empty; batch/single-entity routing via `_consult_batch_fail_dest` / `_all_x_fail_dest` untouched in the diff.
+- **AST-1996:** `decode_failures` entries carry `astral_job_id`, `pos`, `reason`; `_run_batch_consult` still subtracts decode-failed ids from `missing` and transitions per entity; new paths return `jobs: []` plus failures (no silent `grades: []` row for `grades_encoded_notes` letter-pipe fallback).
+- **AST-2008:** First valid occurrence keeps code; duplicate branch + Decision C (exhausted uptick → keep + WARNING) preserved after fill/normalize pass.
+- **AST-2091:** Empty-rubric and duplicate-code strings unchanged; invalid-code gate runs before duplicate aggregation; `craft_*` still short-circuits on empty criteria before invalid-code scan.
+- **`_GRADE_SEG`:** Unchanged in `agent.py`; fix is code supply + diagnostics only.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **sibling test carry:** `scripts/ci/ftr-merge-ready.sh` and several `docs/features/**` registry mirror edits ride the sub via ftr/dev sync — not AST-2126 product scope; no test-bible or pytest changes on this tip.
+- **test debt (AST-2127):** Hedy’s Tests Passed note — 2 expected candidate test breaks + 27 fixture failures from non–`[A-Z]{2}` codes in `sync_rubric_vectors_from_criteria` callers — tracked on AST-2127, not scored as product defects on this diff.
+- **operator step 6:** Somerset staging read / rubric re-save remains post-deploy operator work per plan; not a code gap on tip `4e9731267`.
+
+## What’s solid
+
+- Product diff matches plan-fix steps 1–5: `_derive_rubric_code` + strict sync, `rubric_dispatch_error` invalid-code gate, combined incomplete reason, `_decode_payload` zero-segment notes line, `_normalize_rubric_task_response` production letter-pipe path.
+- Production 1-job `V01`/prose case now surfaces raw reply on the AST-1996 retry route instead of masking as empty grades → technical fail with all labels “missing.”
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-2112, live `ftr`) | **Review Posted** → fix-lane clean-review shortcut → **User Testing** (`resolve-child` skipped). Merge path stays mini-parent / `merge-child` rules when siblings allow. |
+
+
+### Test routing — AST-2126
+
+fix-board `[board-betty] TESTS: REVISE` → the repro, the two broken candidate tests, and the 27 sync fixtures that pass codes that are not two letters go to gap sibling [AST-2127](https://linear.app/astralcareermatch/issue/AST-2127) (`sub/AST-2112/AST-2127-do-rubric-code-tests`). This sub ships product and docs only, so it is docs-acceptance for the test tree.
