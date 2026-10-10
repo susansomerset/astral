@@ -186,3 +186,57 @@ context_tokens≈28000
 - **Stage 2:** `a31045b7b` — four call sites on `GradeMark`; trailing blank line dropped from `GradeMark.tsx` (plan code block extraction artifact)
 - **Verify:** `grade-dot dot-` hits only `GradeMark.tsx`; no `gradeDot(` left; `tsc -b --noEmit` OK; scoped eslint = the 1 baseline `JobsSkipped.tsx` `set-state-in-effect` error; `import src.utils.config` OK; `TestAst2047ThemeRegistry` 5 passed.
 - **Vitest:** 197/200 across the AC 7 suites + `test_AgentAnalysisHeader` + `test_AppCss`. The 3 failures fail identically on the pre-change tip `9a267a790` (baseline, not this ticket): `test_AppCss` "no hex or non-black rgba outside token blocks… (AC5)" and "AST-2049: no hex in .ts/.tsx source… (AC9)", and `test_JobDetailModal` "AST-1695 … null listing_href → no Link <a>". Flag for Betty: child AC 9 names `test_AppCss.test.tsx` as passing.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2128
+**Publish ref:** `e9b55072d5a9f366412d26e1f39be1a5396b0317` (`origin/sub/AST-2101/AST-2128-shared-grade-mark`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+_(empty — **Citations:** none; explicit empty frozen list at Plan Approved. No directive ids to score; not §5.3 ESCALATE — same posture as Joan validate on AST-2123 / this plan.)_
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Child **AC 9** vs Betty **QA test manifest** (`docs/test-bible/frontend/components.md`)
+- **Finding:** AC 9 requires `test_AppCss.test.tsx` to pass without qualification. Betty’s manifest runs Vitest with a `-t` negative filter excluding two `test_AppCss` cases and one `test_JobDetailModal` case; those three fail identically on pre-change tip and on `origin/dev` (documented in bible + issue doc **Review**). Ticket is **Tests Passed** on the filtered manifest, not on a literal full AC 9 run.
+- **Question @susan:** Should child AC 9 text be amended to match the manifest (pre-existing reds + exclusions), or should AST-2129 / a follow-up own closing the `test_AppCss` gap before AC 9 is read literally?
+- **Default:** Treat Betty’s manifest as the pipeline bar for this child; do not block **User Testing** on the three pre-existing failures; log AC 9 wording cleanup for Archie when the `test_AppCss` / TP tint story is picked up (AST-2129 or separate).
+
+### advisory
+
+- **Canon Scope observation:** `astral.ui.frontend-file-placement` (or equivalent frontend placement statute) would govern `components/GradeMark.tsx` but is **not** on the frozen list (**Citations:** none). Placement matches the plan (flat `components/` next to `ConfidenceBullets.tsx`). No plan change required for this review.
+- **sibling test carry:** `tests/component/frontend/components/test_GradeMark.test.tsx` and `docs/test-bible/frontend/components.md` appear in the three-dot diff; they belong to this ticket’s **Scope** (Betty / `qa-child`), not sibling product scope.
+- **Pre-existing reds:** `test_AppCss` (AC5/AC9 hex rules on `--tp-lvl`) and `test_JobDetailModal` AST-1695 null `listing_href` — unchanged by product diff; bible names them explicitly.
+
+## What's solid
+
+- **`GradeMark.tsx`** matches the staged plan: `GRADE_SHAPE_PATHS`, `role="img"` + `aria-label={grade}`, hidden SVG with `display="none"` presentation attribute, letter as direct text node, `letterless` / tooltip behavior.
+- **Call sites:** All four planned files use `<GradeMark>`; `git grep 'grade-dot dot-'` under `src/ui/frontend/src` hits only `GradeMark.tsx`; no remaining `gradeDot(` helpers.
+- **Boundaries:** No `App.css`, config, or registry changes in the product diff.
+- **`test_GradeMark.test.tsx`:** Covers AC 6 grid (img name, `aria-hidden`, brief paths, `display="none"`), AC 7 textContent, classes, tooltip, case-insensitive lookup, unknown grade — aligned with plan integration notes for jsdom.
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append this artifact to `docs/features/interface/ast-2128-shared-grade-mark.md`, commit `docs(AST-2128): Radia review — clean`, push publish ref, post slim upshot `--as radia`, move **Review Posted**; datt **PROCEED** → **User Testing** (no resolve-child unless Susan answers AC 9 discuss).
+- Optional: Susan/Archie reconcile AC 9 wording with Betty’s manifest exclusions when convenient.
+
+context_tokens≈18000
