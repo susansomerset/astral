@@ -34,9 +34,10 @@
 /* === 1. Design Tokens === */
 
 /* Dark is the default palette (:root) and also [data-theme="dark"] so a Dark panel can sit inside a Light page.
+   Shapes - Dark (AST-2129) shares this block: same colours, one declaration, no drift.
    Each [data-theme] block must declare the SAME custom-property names as this one — aliases like
    --confidence-bullet-* included, since var() inside a custom property resolves where it is declared. */
-:root, [data-theme="dark"] {
+:root, [data-theme="dark"], [data-theme="shapes_dark"] {
   --bg-deep: #0f0b18;
   --bg-card: #1a1424;
   --bg-elevated: #241b33;
@@ -97,6 +98,19 @@
   --grade-d-ring-width-lettered: 0;
   --grade-f-ring-width-lettered: 0;
   --grade-x-ring-width-lettered: 0;
+  /* AST-2129: Shapes ring — SVG stroke width per grade, compact then lettered (Dark: no ring) */
+  --grade-a-shape-ring-width: 0px;
+  --grade-b-shape-ring-width: 0px;
+  --grade-c-shape-ring-width: 0px;
+  --grade-d-shape-ring-width: 0px;
+  --grade-f-shape-ring-width: 0px;
+  --grade-x-shape-ring-width: 0px;
+  --grade-a-shape-ring-width-lettered: 0px;
+  --grade-b-shape-ring-width-lettered: 0px;
+  --grade-c-shape-ring-width-lettered: 0px;
+  --grade-d-shape-ring-width-lettered: 0px;
+  --grade-f-shape-ring-width-lettered: 0px;
+  --grade-x-shape-ring-width-lettered: 0px;
   /* Confidence bullets (AST-357) — map to nav link colors; tune without changing global palette */
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
@@ -120,8 +134,9 @@
   --error: #f87171;
 }
 
-/* AST-2042: Light palette — what the profile's Light applies (UI_CONFIG themes). */
-[data-theme="light"] {
+/* AST-2042: Light palette — what the profile's Light applies (UI_CONFIG themes).
+   Shapes - Light (AST-2129) shares this block: same colours, one declaration, no drift. */
+[data-theme="light"], [data-theme="shapes_light"] {
   --bg-deep: #f5f3fa;
   --bg-card: #ffffff;
   --bg-elevated: #ece8f4;
@@ -181,6 +196,19 @@
   --grade-d-ring-width-lettered: 2px;
   --grade-f-ring-width-lettered: 2px;
   --grade-x-ring-width-lettered: 2px;
+  /* AST-2129: Shapes ring — SVG stroke width per grade, compact then lettered */
+  --grade-a-shape-ring-width: 1.5px;
+  --grade-b-shape-ring-width: 1.5px;
+  --grade-c-shape-ring-width: 1.5px;
+  --grade-d-shape-ring-width: 1.5px;
+  --grade-f-shape-ring-width: 1.5px;
+  --grade-x-shape-ring-width: 1.5px;
+  --grade-a-shape-ring-width-lettered: 2.5px;
+  --grade-b-shape-ring-width-lettered: 2.5px;
+  --grade-c-shape-ring-width-lettered: 2.5px;
+  --grade-d-shape-ring-width-lettered: 2.5px;
+  --grade-f-shape-ring-width-lettered: 2.5px;
+  --grade-x-shape-ring-width-lettered: 2.5px;
   --confidence-bullet-active: var(--text-secondary);
   --confidence-bullet-inactive: var(--text-muted);
   --confidence-bullet-inactive-opacity: 0.55;
@@ -1346,6 +1374,98 @@ body {
 .grade-dot-letterless {
   width: 12px;
   height: 12px;
+  font-size: 0;
+}
+
+/* AST-2129: Shapes themes — each grade is drawn as GradeMark's SVG shape instead of the circle.
+   Light and Dark keep the circle: the SVG is never displayed outside the two Shapes themes. */
+.grade-dot > svg {
+  display: none;
+}
+
+/* Drop the circle (fill + inset ring) and lay the shape under the letter. Must follow the letterless
+   rules above: background/box-shadow here tie their 0,2,0 specificity and win on source order.
+   isolation keeps the z-index -1 SVG in front of the page but behind the mark's own letter. */
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot {
+  position: relative;
+  isolation: isolate;
+  background: none;
+  box-shadow: none;
+}
+
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot > svg {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible; /* the ring stroke straddles the shape edge — never clip it at the box */
+  z-index: -1;
+}
+
+/* Fill = grade fill; ring = stroke in the grade ring colour at the shape ring width, in screen px
+   (non-scaling, so 1.5px stays 1.5px at 12px and 22px); round joins soften diamond/triangle corners. */
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot path {
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .dot-a path { fill: var(--grade-a); stroke: var(--grade-a-ring); stroke-width: var(--grade-a-shape-ring-width-lettered); }
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .dot-b path { fill: var(--grade-b); stroke: var(--grade-b-ring); stroke-width: var(--grade-b-shape-ring-width-lettered); }
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .dot-c path { fill: var(--grade-c); stroke: var(--grade-c-ring); stroke-width: var(--grade-c-shape-ring-width-lettered); }
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .dot-d path { fill: var(--grade-d); stroke: var(--grade-d-ring); stroke-width: var(--grade-d-shape-ring-width-lettered); }
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .dot-f path { fill: var(--grade-f); stroke: var(--grade-f-ring); stroke-width: var(--grade-f-shape-ring-width-lettered); }
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot-letterless.dot-a path { stroke-width: var(--grade-a-shape-ring-width); }
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot-letterless.dot-b path { stroke-width: var(--grade-b-shape-ring-width); }
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot-letterless.dot-c path { stroke-width: var(--grade-c-shape-ring-width); }
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot-letterless.dot-d path { stroke-width: var(--grade-d-shape-ring-width); }
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot-letterless.dot-f path { stroke-width: var(--grade-f-shape-ring-width); }
+
+/* X: the cross is a stroke in the X fill — 20 viewBox units lettered, 24 compact, so it scales with the
+   box — round caps, no fill. Its ring (Susan's option a: a wider under-stroke in --grade-x-ring) is four
+   diagonal drop-shadows offset ring-width × 1/√2: both arms run at 45°, so the shadow pair across each
+   arm widens it by exactly the ring width on each side, painted under the cross. Dark's 0px draws nothing. */
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .dot-x path {
+  fill: none;
+  stroke: var(--grade-x);
+  stroke-width: 20;
+  stroke-linecap: round;
+  vector-effect: none;
+}
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot-letterless.dot-x path {
+  stroke-width: 24;
+}
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .dot-x > svg {
+  filter:
+    drop-shadow(calc(var(--grade-x-shape-ring-width-lettered) * 0.7071) calc(var(--grade-x-shape-ring-width-lettered) * 0.7071) 0 var(--grade-x-ring))
+    drop-shadow(calc(var(--grade-x-shape-ring-width-lettered) * -0.7071) calc(var(--grade-x-shape-ring-width-lettered) * -0.7071) 0 var(--grade-x-ring))
+    drop-shadow(calc(var(--grade-x-shape-ring-width-lettered) * 0.7071) calc(var(--grade-x-shape-ring-width-lettered) * -0.7071) 0 var(--grade-x-ring))
+    drop-shadow(calc(var(--grade-x-shape-ring-width-lettered) * -0.7071) calc(var(--grade-x-shape-ring-width-lettered) * 0.7071) 0 var(--grade-x-ring));
+}
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot-letterless.dot-x > svg {
+  filter:
+    drop-shadow(calc(var(--grade-x-shape-ring-width) * 0.7071) calc(var(--grade-x-shape-ring-width) * 0.7071) 0 var(--grade-x-ring))
+    drop-shadow(calc(var(--grade-x-shape-ring-width) * -0.7071) calc(var(--grade-x-shape-ring-width) * -0.7071) 0 var(--grade-x-ring))
+    drop-shadow(calc(var(--grade-x-shape-ring-width) * 0.7071) calc(var(--grade-x-shape-ring-width) * -0.7071) 0 var(--grade-x-ring))
+    drop-shadow(calc(var(--grade-x-shape-ring-width) * -0.7071) calc(var(--grade-x-shape-ring-width) * 0.7071) 0 var(--grade-x-ring));
+}
+
+/* Lettered: the letter sits at the shape's centroid, at the brief's sizes on the 22px box (46/100; 38/100 in
+   triangles). The letter is the span's own text node, so size and offset go on the span: padding moves the
+   flex-centred letter while border-box keeps the mark 22px. 0,3,0 beats the report-context 11px rules. */
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot:is(.dot-a, .dot-b, .dot-c) {
+  font-size: calc(22px * 0.46);
+}
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot:is(.dot-d, .dot-f) {
+  font-size: calc(22px * 0.38);
+}
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot.dot-d {
+  padding-top: calc(22px * 0.26); /* up triangle: centre 63/100 = 50 + 26/2 */
+}
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot.dot-f {
+  padding-bottom: calc(22px * 0.22); /* down triangle: centre 39/100 = 50 − 22/2 */
+}
+/* X: the cross is the letter, so no glyph. font-size 0, not visibility, so the mark keeps its image role and name. */
+:is([data-theme="shapes_light"], [data-theme="shapes_dark"]) .grade-dot.dot-x {
   font-size: 0;
 }
 

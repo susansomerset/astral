@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import api from "../lib/api"
 import { useCandidate } from "../contexts/CandidateContext"
 import { ConfidenceBullets } from "./ConfidenceBullets"
+import { GradeMark } from "./GradeMark"
 import RubricModal from "./RubricModal"
 import { formatRubricVectorHeader, normalizeRubricVectorKey, rubricItemImportance, sortGradesByRubricDisplayOrder } from "../lib/rubricDisplay"
 
@@ -112,7 +113,7 @@ export default function AgentAnalysisHeader({ grades, rubricItems, rubricArtifac
         <div key={g.vector} className="analysis-row">
           <div className="analysis-heading">
             <div className="analysis-grade-block">
-              <span className={`grade-dot dot-${g.grade.toLowerCase()}`}>{g.grade}</span>
+              <GradeMark grade={g.grade} />
               <ConfidenceBullets confidence={g.confidence} />
             </div>
             <span className="analysis-vector">{vectorLabel}</span>

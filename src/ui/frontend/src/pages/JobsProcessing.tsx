@@ -3,6 +3,7 @@ import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import { legacyStateSectionLabel, unmappedJobStates } from "../lib/stateUiSections"
 import { ConfidenceBullets } from "../components/ConfidenceBullets"
+import { GradeMark } from "../components/GradeMark"
 import JobDetailModal from "../components/JobDetailModal"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
@@ -33,10 +34,6 @@ interface SortState { col: string; asc: boolean }
 
 // A=0 sorts first ascending, missing/unknown sorts last
 const GRADE_ORDER: Record<string, number> = { A: 0, B: 1, C: 2, D: 3, F: 4, X: 5 }
-
-function gradeDot(grade: string, tooltip: string) {
-  return <span className={`grade-dot dot-${grade.toLowerCase()}`} title={tooltip || undefined}>{grade}</span>
-}
 
 function normalizeVectorName(value: string): string {
   return value.replace(/\s*\([A-Z]{2}\)\s*$/, "").trim().toLowerCase()
@@ -265,7 +262,7 @@ export default function Processing() {
                               <td key={c.code} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
                                 {cell.grade ? (
                                   <div className="analysis-grade-block">
-                                    {gradeDot(cell.grade, cell.gradeTooltip)}
+                                    <GradeMark grade={cell.grade} tooltip={cell.gradeTooltip} />
                                     <ConfidenceBullets confidence={cell.confidence} />
                                   </div>
                                 ) : (

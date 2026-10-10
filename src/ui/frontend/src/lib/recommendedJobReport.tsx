@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { ConfidenceBullets } from "../components/ConfidenceBullets"
+import { GradeMark } from "../components/GradeMark"
 import {
   buildJobListRubricColumnsForGroup,
   buildJobListRubricColumnsFromArtifact,
@@ -160,18 +161,6 @@ export function gradesForHeader(
   return []
 }
 
-// letterless: list rows show colour only (AST-1968); modal keeps the letter.
-function gradeDot(grade: string, tooltip: string, letterless = false) {
-  return (
-    <span
-      className={`grade-dot dot-${grade.toLowerCase()}${letterless ? " grade-dot-letterless" : ""}`}
-      title={tooltip || undefined}
-    >
-      {letterless ? null : grade}
-    </span>
-  )
-}
-
 export function buildPhaseTabGradeDots(
   gradesRaw: unknown,
   rubricArtifactKey: string | undefined,
@@ -189,7 +178,7 @@ export function buildPhaseTabGradeDots(
     .map(col => {
       const { grade, gradeTooltip } = gradeAndConfidenceForCol(gradesRaw, col)
       if (!grade) return null
-      return gradeDot(grade, gradeTooltip)
+      return <GradeMark grade={grade} tooltip={gradeTooltip} />
     })
     .filter(Boolean)
   if (!dots.length) return null
@@ -233,7 +222,7 @@ export function buildPhaseSectionGradeConfidenceRow(
     <div className="recommended-report-phase-grade-row">
       {cells.map(c => (
         <span key={c.key} className="recommended-report-phase-grade-cell">
-          {gradeDot(c.grade, c.tooltip)}
+          <GradeMark grade={c.grade} tooltip={c.tooltip} />
           <ConfidenceBullets confidence={c.confidence} />
         </span>
       ))}
@@ -247,7 +236,7 @@ export function buildPhaseListGradeRow(job: Record<string, unknown>, gradesField
   if (!cells.length) return null
   return (
     <div className="recommended-list-phase-grade-row">
-      {cells.map(c => <span key={c.key}>{gradeDot(c.grade, c.tooltip, true)}</span>)}
+      {cells.map(c => <span key={c.key}><GradeMark grade={c.grade} tooltip={c.tooltip} letterless /></span>)}
     </div>
   )
 }
