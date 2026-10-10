@@ -506,3 +506,24 @@ Isolated fix diff matches plan-fix **Proposed change** items 1–7: `all_x_of` +
 ## Chuckles — post-review branching
 
 **PROCEED** + C7 complete + **normal parent** (AST-2011 live; base `origin/ftr/AST-2011-meteorite-grade-do-all-x`) → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing**; **resolve-child** skipped.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/43025b8c4a19e7411f07250508c2eca8/d8a76966-63be-4ee2-875d-68b53de494ea/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/49c697b1-a701-46cf-b24a-ec979fec4f42/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/43025b8c4a19e7411f07250508c2eca8/fe318551-58e6-4d91-8cff-dff825bf1a52/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2011 (parent) | ftr/AST-2011-meteorite-grade-do-all-x |
+| AST-2096 | sub/AST-2011/AST-2096-all-x-fail-state |
+
+**Epic worktree:** `astral-AST-2011/` — one active sub checked out at a time.
