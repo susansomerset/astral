@@ -151,7 +151,7 @@ export default function Skipped() {
     if (actions.error) setToast({ text: actions.error, variant: "error" })
   }, [actions.error])
 
-  const sections = useMemo(() => {
+  const skipGroups = useMemo(() => {
     if (!manifest) return []
     const sk = manifest.jobs.skipped
     const belowKey = sk.below_dispatch_key
@@ -179,19 +179,39 @@ export default function Skipped() {
       jobs: byState[s],
       gradeKey: gradeMap[s] || "",
     }))
-    const withLegacy = [...normal, ...legacy]
-    if (!floorJobs.length) return withLegacy
-    return [{
-      state: belowKey,
-      label: sk.below_dispatch_label,
-      jobs: floorJobs,
-      gradeKey: "",
-    }, ...withLegacy]
+    const floor = floorJobs.length
+      ? [{ state: belowKey, label: sk.below_dispatch_label, jobs: floorJobs, gradeKey: "" }]
+      : []
+    const built = [...floor, ...normal, ...legacy]
+    // Manifest group rules: explicit member, then first matching prefix, then the catch-all (always last).
+    const groupKeyOf = (state: string) => (
+      sk.groups.find(g => g.members.includes(state))
+      ?? sk.groups.find(g => g.prefixes.some(p => state.startsWith(p)))
+      ?? sk.groups[sk.groups.length - 1]
+    ).key
+    // Manifest order; empty groups dropped; sections keep their built order (floor, normal, legacy) within a group.
+    return sk.groups
+      .map(g => {
+        const secs = built.filter(s => groupKeyOf(s.state) === g.key)
+        return { key: g.key, label: g.label, sections: secs, count: secs.reduce((n, s) => n + s.jobs.length, 0) }
+      })
+      .filter(g => g.sections.length > 0)
   }, [rows, manifest])
 
-  const sectionKeys = useMemo(() => sections.map(s => s.state), [sections])
+  const sectionKeys = useMemo(() => skipGroups.flatMap(g => g.sections.map(s => s.state)), [skipGroups])
   const { isExpanded, onExpandedChange, setExpandedKeys } = useSectionExpandPolicy({ sectionKeys })
-  useEffect(() => { setExpandedKeys(new Set()) }, [selectedId, setExpandedKeys])
+  // Second, expand-all instance for group headings that holds the *collapsed* group keys: groups start
+  // open with no seeding effect, and group clicks never touch the sections' Expand One state.
+  const groupKeys = useMemo(() => skipGroups.map(g => g.key), [skipGroups])
+  const {
+    isExpanded: isGroupCollapsed,
+    onExpandedChange: setGroupCollapsed,
+    setExpandedKeys: setCollapsedGroupKeys,
+  } = useSectionExpandPolicy({ expandAll: true, sectionKeys: groupKeys })
+  useEffect(() => {
+    setExpandedKeys(new Set())
+    setCollapsedGroupKeys(new Set())
+  }, [selectedId, setExpandedKeys, setCollapsedGroupKeys])
 
   const toggleSelect = (id: string) => setSelected(prev => {
     const next = new Set(prev)
@@ -267,151 +287,174 @@ export default function Skipped() {
         <div className="list-page-status">Loading...</div>
       ) : loadState === "error" || !manifest ? (
         <div className="list-page-status">State UI manifest unavailable.</div>
-      ) : sections.length === 0 ? (
+      ) : skipGroups.length === 0 ? (
         <div className="list-page-status">No skipped jobs</div>
       ) : (
-        sections.map(sec => {
-          const sectionOpen = isExpanded(sec.state)
-          const isFloor = sec.state === manifest.jobs.skipped.below_dispatch_key
-          // Floor: single table, no rubric grouping. Grade sections: one table per aligned rubric.
-          const groups = (!isFloor && sec.gradeKey)
-            ? groupJobsByAlignedRubric(sec.jobs as Array<Record<string, unknown>>, sec.gradeKey)
-            : [{ fingerprint: sec.state, jobs: sec.jobs as Array<Record<string, unknown>>, columnSourceJob: (sec.jobs[0] ?? {}) as Record<string, unknown> }]
+        skipGroups.map(grp => {
+          const groupOpen = !isGroupCollapsed(grp.key)
           return (
-            <div key={sec.state} style={{ marginBottom: 24 }}>
+            <div key={grp.key} style={{ marginBottom: 24 }}>
               <button
                 type="button"
-                title={isFloor ? "DB state stays PASSED_*; not claimable until latest_score clears the dispatch task score floor." : undefined}
-                onClick={() => onExpandedChange(sec.state, !sectionOpen)}
+                onClick={() => setGroupCollapsed(grp.key, groupOpen)}
                 style={{
-                  background: "none", border: "none", cursor: "pointer", width: "100%",
-                  display: "flex", alignItems: "center", gap: 8, padding: "8px 0",
-                  color: "var(--text-primary)", fontSize: 15, fontWeight: 600, fontFamily: "inherit",
+                  background: "none", border: "none", borderBottom: "1px solid var(--border)", cursor: "pointer", width: "100%",
+                  display: "flex", alignItems: "center", gap: 8, padding: "10px 0", marginBottom: 8,
+                  color: "var(--text-primary)", fontSize: 18, fontWeight: 700, fontFamily: "inherit",
                 }}
               >
-                <span style={{ transform: sectionOpen ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", fontSize: 12 }}>&#9660;</span>
-                {sec.label} ({sec.jobs.length})
+                <span style={{ transform: groupOpen ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", fontSize: 12 }}>&#9660;</span>
+                {grp.label} ({grp.count})
               </button>
-              {sectionOpen && groups.map(group => {
-                const sortKey = `${sec.state}::${group.fingerprint}`
-                const cols = (!isFloor && sec.gradeKey)
-                  ? buildJobListRubricColumnsForGroup({ gradeKey: sec.gradeKey, columnSourceJob: group.columnSourceJob })
-                  : []
-                const sort = sorts[sortKey] ?? { col: "state_changed_at", asc: false }
-                const sorted = sortJobs(group.jobs as Job[], sort.col, sort.asc, sec.gradeKey, cols)
-                const showScore = isFloor
-                  || group.jobs.some(j => analysisTimeScoreForJob(j, sec.gradeKey) != null)
-                return (
-                <div key={sortKey} className="list-page-table-wrap" style={{ marginBottom: groups.length > 1 ? 12 : 0 }}>
-                  <table className="list-page-table">
-                    <thead>
-                      <tr>
-                        {!isFloor && <th style={{ width: 1, whiteSpace: "nowrap" }}>Actions</th>}
-                        {!isFloor && <th style={{ width: 32 }}></th>}
-                        {isFloor && <th style={{ width: 32 }} aria-hidden />}
-                        <th className="sortable" onClick={() => handleSort(sortKey, "job_title")}>
-                          Job Title{sortIndicator(sortKey, "job_title")}
-                        </th>
-                        <th className="sortable" onClick={() => handleSort(sortKey, "company")}>
-                          Company{sortIndicator(sortKey, "company")}
-                        </th>
-                        {isFloor && (
-                          <>
-                            <th className="sortable" style={{ textAlign: "center", minWidth: 88 }} onClick={() => handleSort(sortKey, "state")}>
-                              State{sortIndicator(sortKey, "state")}
-                            </th>
-                            <th className="sortable" style={{ textAlign: "center", minWidth: 56 }} onClick={() => handleSort(sortKey, "latest_score")}>
-                              Score{sortIndicator(sortKey, "latest_score")}
-                            </th>
-                            <th style={{ textAlign: "center", minWidth: 56 }}>Floor</th>
-                          </>
-                        )}
-                        {!isFloor && cols.map(c => (
-                          <th key={c.code} className="sortable" title={c.headerTooltip}
-                            style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}
-                            onClick={() => handleSort(sortKey, c.code)}>
-                            {c.headerCode}{sortIndicator(sortKey, c.code)}
-                          </th>
-                        ))}
-                        {!isFloor && showScore && (
-                          <th className="sortable" style={{ textAlign: "center", minWidth: 60 }}
-                            onClick={() => handleSort(sortKey, "latest_score")}>
-                            Score{sortIndicator(sortKey, "latest_score")}
-                          </th>
-                        )}
-                        <th className="sortable" onClick={() => handleSort(sortKey, "created_at")}>
-                          Created{sortIndicator(sortKey, "created_at")}
-                        </th>
-                        <th className="sortable" onClick={() => handleSort(sortKey, "state_changed_at")}>
-                          {isFloor ? "Updated" : "Failed At"}{sortIndicator(sortKey, "state_changed_at")}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sorted.map(job => {
-                        const rowScore = analysisTimeScoreForJob(job as Record<string, unknown>, isFloor ? "" : sec.gradeKey)
-                        return (
-                        <tr key={job.astral_job_id} className="clickable">
-                          {!isFloor && (
-                            <td>
-                              <CandidateJobRowActions
-                                state={job.state}
-                                onResurrect={() => actions.requestAction(job.astral_job_id, "review")}
-                                onAction={a => actions.requestAction(job.astral_job_id, a)}
-                              />
-                            </td>
-                          )}
-                          {!isFloor && (
-                            <td onClick={e => e.stopPropagation()}>
-                              <input type="checkbox" checked={selected.has(job.astral_job_id)} onChange={() => toggleSelect(job.astral_job_id)} />
-                            </td>
-                          )}
-                          {isFloor && <td aria-hidden />}
-                          <td onClick={() => setViewingId(job.astral_job_id)}><JobTitleText title={job.job_title} fallback={"\u2014"} /></td>
-                          <td onClick={() => setViewingId(job.astral_job_id)}>{job.company}</td>
-                          {isFloor && (
-                            <>
-                              <td style={{ textAlign: "center", whiteSpace: "nowrap" }} onClick={() => setViewingId(job.astral_job_id)}>{job.state}</td>
-                              <td style={{ textAlign: "center" }} onClick={() => setViewingId(job.astral_job_id)}>
-                                {rowScore != null ? rowScore.toFixed(2) : "\u2014"}
-                              </td>
-                              <td style={{ textAlign: "center" }} onClick={() => setViewingId(job.astral_job_id)}>
-                                {job.dispatch_score_floor != null && job.dispatch_score_floor !== undefined
-                                  ? (job.dispatch_score_floor as number).toFixed(2)
-                                  : "\u2014"}
-                              </td>
-                            </>
-                          )}
-                          {!isFloor && cols.map(c => {
-                            const cell = gradeAndConfidenceForCol(job, sec.gradeKey, c)
-                            return (
-                              <td key={c.code} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }} onClick={() => setViewingId(job.astral_job_id)}>
-                                {cell.grade ? (
-                                  <div className="analysis-grade-block">
-                                    {gradeDot(cell.grade, cell.gradeTooltip)}
-                                    <ConfidenceBullets confidence={cell.confidence} />
-                                  </div>
-                                ) : (
-                                  "\u2014"
-                                )}
-                              </td>
-                            )
-                          })}
-                          {!isFloor && showScore && (
-                            <td style={{ textAlign: "center" }} onClick={() => setViewingId(job.astral_job_id)}>
-                              {rowScore != null ? rowScore.toFixed(2) : "\u2014"}
-                            </td>
-                          )}
-                          <td onClick={() => setViewingId(job.astral_job_id)}><Time value={job.created_at} /></td>
-                          <td onClick={() => setViewingId(job.astral_job_id)}><Time value={job.state_changed_at} /></td>
-                        </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+              {groupOpen && (
+                <div style={{ paddingLeft: 16 }}>
+                  {grp.sections.map(sec => {
+                    const sectionOpen = isExpanded(sec.state)
+                    const isFloor = sec.state === manifest.jobs.skipped.below_dispatch_key
+                    // Floor: single table, no rubric grouping. Grade sections: one table per aligned rubric.
+                    const groups = (!isFloor && sec.gradeKey)
+                      ? groupJobsByAlignedRubric(sec.jobs as Array<Record<string, unknown>>, sec.gradeKey)
+                      : [{ fingerprint: sec.state, jobs: sec.jobs as Array<Record<string, unknown>>, columnSourceJob: (sec.jobs[0] ?? {}) as Record<string, unknown> }]
+                    return (
+                      <div key={sec.state} style={{ marginBottom: 24 }}>
+                        <button
+                          type="button"
+                          title={isFloor ? "DB state stays PASSED_*; not claimable until latest_score clears the dispatch task score floor." : undefined}
+                          onClick={() => onExpandedChange(sec.state, !sectionOpen)}
+                          style={{
+                            background: "none", border: "none", cursor: "pointer", width: "100%",
+                            display: "flex", alignItems: "center", gap: 8, padding: "8px 0",
+                            color: "var(--text-primary)", fontSize: 15, fontWeight: 600, fontFamily: "inherit",
+                          }}
+                        >
+                          <span style={{ transform: sectionOpen ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", fontSize: 12 }}>&#9660;</span>
+                          {sec.label} ({sec.jobs.length})
+                        </button>
+                        {sectionOpen && groups.map(group => {
+                          const sortKey = `${sec.state}::${group.fingerprint}`
+                          const cols = (!isFloor && sec.gradeKey)
+                            ? buildJobListRubricColumnsForGroup({ gradeKey: sec.gradeKey, columnSourceJob: group.columnSourceJob })
+                            : []
+                          const sort = sorts[sortKey] ?? { col: "state_changed_at", asc: false }
+                          const sorted = sortJobs(group.jobs as Job[], sort.col, sort.asc, sec.gradeKey, cols)
+                          const showScore = isFloor
+                            || group.jobs.some(j => analysisTimeScoreForJob(j, sec.gradeKey) != null)
+                          return (
+                          <div key={sortKey} className="list-page-table-wrap" style={{ marginBottom: groups.length > 1 ? 12 : 0 }}>
+                            <table className="list-page-table">
+                              <thead>
+                                <tr>
+                                  {!isFloor && <th style={{ width: 1, whiteSpace: "nowrap" }}>Actions</th>}
+                                  {!isFloor && <th style={{ width: 32 }}></th>}
+                                  {isFloor && <th style={{ width: 32 }} aria-hidden />}
+                                  <th className="sortable" onClick={() => handleSort(sortKey, "job_title")}>
+                                    Job Title{sortIndicator(sortKey, "job_title")}
+                                  </th>
+                                  <th className="sortable" onClick={() => handleSort(sortKey, "company")}>
+                                    Company{sortIndicator(sortKey, "company")}
+                                  </th>
+                                  {isFloor && (
+                                    <>
+                                      <th className="sortable" style={{ textAlign: "center", minWidth: 88 }} onClick={() => handleSort(sortKey, "state")}>
+                                        State{sortIndicator(sortKey, "state")}
+                                      </th>
+                                      <th className="sortable" style={{ textAlign: "center", minWidth: 56 }} onClick={() => handleSort(sortKey, "latest_score")}>
+                                        Score{sortIndicator(sortKey, "latest_score")}
+                                      </th>
+                                      <th style={{ textAlign: "center", minWidth: 56 }}>Floor</th>
+                                    </>
+                                  )}
+                                  {!isFloor && cols.map(c => (
+                                    <th key={c.code} className="sortable" title={c.headerTooltip}
+                                      style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}
+                                      onClick={() => handleSort(sortKey, c.code)}>
+                                      {c.headerCode}{sortIndicator(sortKey, c.code)}
+                                    </th>
+                                  ))}
+                                  {!isFloor && showScore && (
+                                    <th className="sortable" style={{ textAlign: "center", minWidth: 60 }}
+                                      onClick={() => handleSort(sortKey, "latest_score")}>
+                                      Score{sortIndicator(sortKey, "latest_score")}
+                                    </th>
+                                  )}
+                                  <th className="sortable" onClick={() => handleSort(sortKey, "created_at")}>
+                                    Created{sortIndicator(sortKey, "created_at")}
+                                  </th>
+                                  <th className="sortable" onClick={() => handleSort(sortKey, "state_changed_at")}>
+                                    {isFloor ? "Updated" : "Failed At"}{sortIndicator(sortKey, "state_changed_at")}
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {sorted.map(job => {
+                                  const rowScore = analysisTimeScoreForJob(job as Record<string, unknown>, isFloor ? "" : sec.gradeKey)
+                                  return (
+                                  <tr key={job.astral_job_id} className="clickable">
+                                    {!isFloor && (
+                                      <td>
+                                        <CandidateJobRowActions
+                                          state={job.state}
+                                          onResurrect={() => actions.requestAction(job.astral_job_id, "review")}
+                                          onAction={a => actions.requestAction(job.astral_job_id, a)}
+                                        />
+                                      </td>
+                                    )}
+                                    {!isFloor && (
+                                      <td onClick={e => e.stopPropagation()}>
+                                        <input type="checkbox" checked={selected.has(job.astral_job_id)} onChange={() => toggleSelect(job.astral_job_id)} />
+                                      </td>
+                                    )}
+                                    {isFloor && <td aria-hidden />}
+                                    <td onClick={() => setViewingId(job.astral_job_id)}><JobTitleText title={job.job_title} fallback={"\u2014"} /></td>
+                                    <td onClick={() => setViewingId(job.astral_job_id)}>{job.company}</td>
+                                    {isFloor && (
+                                      <>
+                                        <td style={{ textAlign: "center", whiteSpace: "nowrap" }} onClick={() => setViewingId(job.astral_job_id)}>{job.state}</td>
+                                        <td style={{ textAlign: "center" }} onClick={() => setViewingId(job.astral_job_id)}>
+                                          {rowScore != null ? rowScore.toFixed(2) : "\u2014"}
+                                        </td>
+                                        <td style={{ textAlign: "center" }} onClick={() => setViewingId(job.astral_job_id)}>
+                                          {job.dispatch_score_floor != null && job.dispatch_score_floor !== undefined
+                                            ? (job.dispatch_score_floor as number).toFixed(2)
+                                            : "\u2014"}
+                                        </td>
+                                      </>
+                                    )}
+                                    {!isFloor && cols.map(c => {
+                                      const cell = gradeAndConfidenceForCol(job, sec.gradeKey, c)
+                                      return (
+                                        <td key={c.code} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }} onClick={() => setViewingId(job.astral_job_id)}>
+                                          {cell.grade ? (
+                                            <div className="analysis-grade-block">
+                                              {gradeDot(cell.grade, cell.gradeTooltip)}
+                                              <ConfidenceBullets confidence={cell.confidence} />
+                                            </div>
+                                          ) : (
+                                            "\u2014"
+                                          )}
+                                        </td>
+                                      )
+                                    })}
+                                    {!isFloor && showScore && (
+                                      <td style={{ textAlign: "center" }} onClick={() => setViewingId(job.astral_job_id)}>
+                                        {rowScore != null ? rowScore.toFixed(2) : "\u2014"}
+                                      </td>
+                                    )}
+                                    <td onClick={() => setViewingId(job.astral_job_id)}><Time value={job.created_at} /></td>
+                                    <td onClick={() => setViewingId(job.astral_job_id)}><Time value={job.state_changed_at} /></td>
+                                  </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
                 </div>
-                )
-              })}
+              )}
             </div>
           )
         })

@@ -14,6 +14,9 @@ export interface StateUiManifest {
       section_order: string[]
       section_labels: Record<string, string>
       bulk_retry_to_state_by_from_state: Record<string, string>
+      /** Ordered group rules, catch-all last: a state joins the first group listing it in `members`,
+       *  else the first group with a matching prefix, else the last group. */
+      groups: Array<{ key: string; label: string; prefixes: string[]; members: string[] }>
     }
     detail: { already_skipped_state: string }
     recommended: {
