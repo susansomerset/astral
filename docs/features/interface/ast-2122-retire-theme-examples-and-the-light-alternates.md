@@ -223,3 +223,65 @@ context_tokens≈24000
 - **Build commit:** `c52758bbc` on `origin/sub/AST-2100/AST-2122-retire-theme-examples` (Stage 1).
 - **Checks:** `py_compile`, `import src.utils.config`, `tsc -b --noEmit`, `tsc --noEmit`, `eslint` on `routes.tsx` / `uiConfig.ts`: all exit 0. The AC 8 / AC 9 greps over `src` hit only `App.css`.
 - **Pending (Betty, qa-child steps 1–8):** `test_AdminThemeExamples.test.tsx` and `test_api_system.py` stay red until qa-child lands.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2122
+**Publish ref:** `ae5150f83dcc202b306a9476b536d9db6385ddff` (`origin/sub/AST-2100/AST-2122-retire-theme-examples`)
+**Corpus:** `26c4e86a4d08addcefdbc3be68116703fedf6762` (canon tree at publish tip; `docs/canon-index.md` absent on ref — tree SHA from `git rev-parse ae5150f83^{tree}:canon`)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; **Canon Scope:** none — locked at Discussion). No directive rows to score; not §5.3 ESCALATE (explicit empty scope, same pattern as AST-2047 / Joan round 2).
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded empty canon with no rows; implementation matches round-2 traceability (Stage 1 + qa-child 1–8).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `src/ui/frontend/src/routes.tsx` (import block → `const routes`)
+- **Finding:** Plan Stage 1 step 6 asked to keep a blank line after removing the `AdminThemeExamples` import; the diff removes that blank line (imports run directly into `const routes`). Behavior unchanged.
+- **Recommendation:** Optional cosmetic restore in `resolve-child` if you care about matching the plan verbatim.
+
+- **Location:** `tests/component/frontend/test_AppCss.test.tsx`; manifest in `docs/test-bible/frontend/pages.md` § AST-2122 item 2
+- **Finding:** Two `test_AppCss` cases (`--tp-lvl` / Task Performance `hsla()` outside token blocks) are documented as known red on this sub with `App.css` byte-identical to `origin/dev` — same as before the page test was deleted. Not AST-2122 product scope.
+- **Recommendation:** No action on this ticket; AST-2123 or a separate hygiene pass owns `App.css` / those gates.
+
+- **Location:** `tests/component/utils/test_config.py::TestAst1386ThreeSegmentAdminNav`
+- **Finding:** Betty added `/admin/telescope` to `_TOOLS_PATHS` (stale since Telescope joined Tools). In scope for AC 8 six-item Tools list; not sibling product creep.
+- **Recommendation:** None.
+
+- **Location:** `tests/component/ui/api/test_api_system.py`, `test_config.py::test_no_grade_set_candidates_key`
+- **Finding:** AC 9 “no `theme_example_grade_sets`” in tests is satisfied via `k.endswith("_grade_sets")` suffix assertions instead of spelling the retired key in `tests/` — deliberate grep hygiene; still pins runtime absence of grade-set keys.
+- **Recommendation:** None.
+
+## What's solid
+
+- **Product:** `config.py` drops alternates and `theme_example_grade_sets`, removes Theme Examples from Tools; `uiConfig.ts`, `routes.tsx`, and `AdminThemeExamples.tsx` removal match Scope and boundaries (no `App.css`).
+- **AC greps (tip):** `git grep` over `src tests` for AC 8/9 terms hits only `src/ui/frontend/src/App.css`, per AST-2123 carve-out.
+- **Tests/bible:** Deleted page test; repointed api/core/nav tests; rehomed five `App.css` contract cases to `test_AppCss.test.tsx` with documented superset registry check until AST-2123; bible updates in `pages.md`, `components.md`, `config.md`, and new `root.md` § AST-2122 match manifest intent.
+- **Estimate:** Confirmed **2** — footprint (four product files + test/bible retirement/rehome) still fits.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append this artifact to `docs/features/interface/ast-2122-retire-theme-examples-and-the-light-alternates.md`, commit `docs(AST-2122): Radia review — clean`, push sub, post slim upshot `--as radia`, move **Review Posted**; datt **PROCEED** → **User Testing** (no fix-now).
+- Optional: `resolve-child` may restore the blank line in `routes.tsx` (advisory only).
+
+context_tokens≈42000
