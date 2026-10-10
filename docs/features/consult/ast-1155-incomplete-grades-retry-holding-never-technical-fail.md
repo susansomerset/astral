@@ -1752,19 +1752,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Hedy | engineer | `/home/susan/.cursor/chats/4a0368cc04790ac4546effba22c44eed/49ce5f28-c807-4edf-a633-d4ad6f908d13/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/d7642f75-4307-41c1-ae5a-88c3bd6d2b81/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/4a0368cc04790ac4546effba22c44eed/c097e119-ba47-488f-8e51-02af7a811e97/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/4eaeab051343ea0f36ee897b3311beac/3243ca1c-f682-4a1e-ae55-93a87d832f4e/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/4eaeab051343ea0f36ee897b3311beac/a4888efb-2303-4b65-8bd1-80571030782e/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/4eaeab051343ea0f36ee897b3311beac/86e4e46e-ceee-4b82-b1e7-9c91c80cb878/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-2015 (parent) | ftr/AST-2015-qualify-listing-isolation |
-| AST-2089 | sub/AST-2015/AST-2089-qualify-listing-isolation |
-| AST-2090 | sub/AST-2015/AST-2090-qualify-listing-isolation-tests |
+| AST-2116 (parent) | ftr/AST-2116-missing-grade-fail |
+| AST-2124 | sub/AST-2116/AST-2124-missing-grade-fail |
+| AST-2125 | sub/AST-2116/AST-2125-missing-grade-fail-tests |
 
-**Epic worktree:** `astral-AST-2015/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-2116/` — one active sub checked out at a time.
 
 ## Joan fix-board — AST-2089
 
