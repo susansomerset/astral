@@ -3073,3 +3073,67 @@ context_tokens≈18500
 [AST-2116 | AST-2125] Joan/validate fix-board - complete 4bb16b66 model=composer-2.5 - (22s) > OK
 
 **Chuckles routing:** Joan CANON: OK; Betty TESTS: REVISE = land this plan via qa-fix (#1–#8, nothing missing). AST-2125 is the gap child, so qa-fix (F4) runs on it directly; no further gap child.
+
+
+## Radia review — AST-2125
+
+[code-rubric]
+
+**Ticket:** AST-2125  
+**Publish ref:** `96375e3214b9edb635004c2e9ecb6a0bcc20e06b` (`origin/sub/AST-2116/AST-2125-missing-grade-fail-tests`)  
+**Review base:** `origin/ftr/AST-2116-missing-grade-fail` @ `8726a8be083ff94302385c5b3a46c19cd9e50276` (AST-2124 product + canon merged)  
+**Corpus:** (no `docs/canon-index.md` on publish tip — id resolved from `canon/directives/**` at ftr tip)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.agent.confidence-bounds | A | | |
+
+*(Ticket canon line: test/bible only — asserts ftr statute + AST-2124 product; no `canon/` edits.)*
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` — Joan **fix-board** `CANON: OK` only; implemented test/bible delta matches plan-fix **Proposed change** items 1–8 and QA manifest.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+- **[bug-repro] OK** — `TestAst2125MissingRubricDescription::test_batch_miss_fails_only_that_job` pins concrete AST-2124 **To-be**: `transition.assert_called_once_with("meteorite_grade_do", ["J0"], "METEORITE_FAILED_DO")` (not `["J0","J1"]` → `METEORITE_PASSED_JD_RETRY`); sibling `J1` alone through `process_fn` with hydrated `["PS B", "No signal"]`; `(passed, failed, retried) == (1, 1, 0)`; single WARNING on `J0` with hydrate reason. Would fail on pre-AST-2124 product (plan dry-run / spawn brief). Not tautological.  
+- **## What must still hold — OK** — `git diff origin/ftr/AST-2116-missing-grade-fail...origin/sub/AST-2116/AST-2125-missing-grade-fail-tests` has **no** `src/` or `canon/`; mandated seven-file scope only. Decode edits keep `0|CRA7` trailing-failure and vet `LTA0` raise in `test_ast2053_normalisation_boundaries`. No edits to AST-1846 hydrate-stub / `TestEncodedDecodeIsolation` / `TestRubricLookup` in this diff.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **`[bug-repro]` tag placement:** comment is inside `test_batch_miss_fails_only_that_job` (after `caplog.set_level`), not the function’s first line; manifest + `docs/test-bible/core/consult.md` name the node — same optional hygiene class as AST-2057 / AST-2090 Radia notes, not a gate.  
+- **Doc diff bulk:** feature doc adds full `## Bug: AST-2125` + Joan fix-board block; product scope remains tests + bible only (`code(AST-2125)` empty-src marker per AST-2121 precedent).  
+- **Pre-existing component reds** called out in plan **Blast radius** (129 failures off-epic) — out of scope for this gap child.
+
+## What's solid
+
+- Three stale AST-2053 decode asserts rewritten to **X0**; bible rows supersede AST-2057 decode prose without touching statute files.  
+- Consult + roster classes cover lookup split, batch hydrate map, single-row miss, and prefilter batch sibling behavior aligned with AST-2124.  
+- Four commits on sub (`plan-fix` → Joan → `test(AST-2125)` → `code(AST-2125)`); no cross-ticket product carry in mandated diff.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal mini-parent | **Review Posted** → §3h clean-review shortcut → **User Testing** (skip `resolve-child`). |
+
+**Recommended actions (downstream only — not executed here):** Append artifact; `docs(AST-2125): Radia review — clean`; push sub; post slim upshot `--as radia`; advance per §3h.
+
+---
