@@ -330,3 +330,65 @@ context_tokens≈32000
 - **Checks:** `npm run build` exits 0. All 47 settings labels count 2 in `App.css`. The `text-on-grade`, old Light hex, confidence-literal, and AC 8 / AC 9 greps are all clean. `test_AppCss` fails only on the pre-existing `--tp-lvl`. `npm run lint` reports 29 problems (25 errors, 4 warnings), identical on the pre-build tree; no `.ts`/`.tsx` changed, so none are this ticket's.
 - **Browser check (headless Chromium, real `App.css`, app markup classes):** Light compact dots compute `inset 0 0 0 1.5px <ring>` and lettered, tab and header-cell dots compute `2px`, all A–X with the table fills and inks. Tab and header-cell dots stay 11px, plain lettered 12px, weight 700. Dark keeps today's fills and inks with a `0px` spread. Bullets are 4px, 3px gap, 0.55 off / 1 on in both themes. Light `.modal-card` is `rgb(255, 255, 255)`.
 - **For Betty:** `test_AppCss.test.tsx` lines 27–29 still carry the superset check that this ticket was meant to restore to exact equality (two blocks now: `dark`, `light`).
+
+
+## Radia review
+
+**Ticket:** AST-2123
+**Publish ref:** `067c9ee3687a93437c3d3b6d533af6b19a67e80d` (`origin/sub/AST-2100/AST-2123-grade-settings-sets`)
+**Corpus:** `26c4e86a4d08addcefdbc3be68116703fedf6762` (canon tree at publish tip; `docs/canon-index.md` absent on ref)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; **Canon Scope:** none — locked at Discussion). No directive rows to score; not §5.3 ESCALATE (explicit empty scope, same as Joan validate).
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded empty canon; incremental product delta for this ticket is `App.css` only (`8563c103a` + `b2439231d` on top of AST-2122 ftr carry), matching approved Stage 1–2 and traceability.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `origin/dev...067c9ee36` three-dot diff (file list)
+- **Finding:** The publish ref diff vs `origin/dev` still includes the full **AST-2122** retirement stack (`config.py`, `routes.tsx`, page deletion, tests/bible) plus **AST-2123** `App.css` work. That is expected epic stacking until `ftr` lands on `dev`; engineer commits `ae5150f83..b2439231d` touch **only** `src/ui/frontend/src/App.css` for product code.
+- **Recommendation:** No action on 2123; `merge-child` / parent PR reviewers treat 2122+2123 as ordered siblings on the epic branch.
+
+- **Location:** Linear AC 2–7, 11; issue doc `## Review` browser paragraph
+- **Finding:** Computed-style, OKLab separation (AC 3), and modal background (AC 11) are not re-provable from the diff or vitest alone; the plan and Joan gate them to Stage 2 step 13 / parent UAT. Engineer doc records a headless Chromium pass at build time; this review did not re-run that harness.
+- **Recommendation:** Susan keeps parent UAT spot-checks for rings, inks, and Dark unchanged; default if skipped: trust grep + `test_AppCss` structural gates already green under Betty’s manifest.
+
+- **Location:** `tests/component/frontend/test_AppCss.test.tsx`; `docs/test-bible/frontend/root.md` § AST-2123 manifest item 1
+- **Finding:** Two `test_AppCss` cases may still fail only on `--tp-lvl` (§12b Task Performance on `origin/dev`); documented carve-out, not introduced by 2123.
+- **Recommendation:** None on this ticket.
+
+- **Location:** `test_AppCss.test.tsx` lines 25–28 (`067c9ee36`)
+- **Finding:** Betty restored exact block ↔ registry equality (`dark`, `light` only), as flagged in the plan for post–2123 qa-child.
+- **Recommendation:** None.
+
+## What's solid
+
+- **Stage 1:** TOC §16 line gone; `light_parchment` / `light_slate` blocks and all `.theme-examples*` CSS removed; Light header comment updated; file ends after icon-control rules.
+- **Stage 2:** All 47 settings labels appear twice in `App.css` (verified via `git grep -c`; each line `…:2`). Dark fills unchanged; Light Bright + ring values match the plan literals (e.g. `--grade-c: #f76707`). `--text-on-grade*` retired; §9b `.dot-<g>` + `.grade-dot-letterless.dot-<g>` read token settings; confidence rules use `var(--confidence-bullet-*)` with no `4px` / `3px` / `0.55` literals in those rules.
+- **AC greps (tip):** No `text-on-grade` in `src/ui/frontend/src` or `src/utils`; no `theme_examples` / alternate-id hits in `src` + `tests`; old Light grade hexes `#a06500` / `#c05621` / `#c53030` absent from `App.css`.
+- **Boundaries:** No `config.py`, routes, or markup changes in 2123 engineer commits; report-context `.grade-dot` 11px rules unchanged.
+- **Estimate:** Confirmed **3** — large but single-file stylesheet refactor with two staged commits fits.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append artifact to `docs/features/interface/ast-2123-grade-settings-sets-light-bright-ring-dark-as-is.md`, `docs(AST-2123): Radia review — clean`, push sub, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** to **User Testing** (blockedBy 2122 is already UT on ftr; no resolve-child code fixes required from this review).
+
+context_tokens≈48000
