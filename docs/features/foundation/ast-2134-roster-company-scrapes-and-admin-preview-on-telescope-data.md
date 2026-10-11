@@ -387,3 +387,21 @@ AC5 (roster-written keys per Boundaries) → Stage 2 (`pjl_scrape_pages` `{url, 
 **R6 (summary):** Two-file scope matches ticket. Central resolve path, writer→gazer keep, PJL merge ids, `get_company_data` AC11 behavior, and admin preview parity are definition-faithful for the roster/admin slice. Lazy gazer imports respect ownership (no direct `database` telescope calls from roster/admin). DRY via one `_resolve_company_value` / `_resolved_company_data`. No `fix-now` gaps.
 
 context_tokens≈72000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2130/AST-2134-roster-telescope-data`
+- **Stage 0:** drift check clean for items 1–4. Item 5 (`tracker.compose_job_description`) was absent on the first pass, so Stages 1–4 were published and the build stopped (🛑 on AST-2130). After AST-2133 merged to ftr (`c27d6f159`), it is present, and Stage 5 was built after `sync-child`.
+- **Stage 1:** `eca3d2560`. `TELESCOPE_DATA_CONFIG` import; helpers `_company_candidate_id`, `_resolve_company_value`, `_resolved_pjl_pages`, `_rebuilt_pjl_nav_links`, `_resolved_company_data` (and `_keep_job_list_visible`, which Stage 3 uses); the readers `_company_homepage_ready`, batch prefilter normalize, `company_upshot_batch`, `run_select_job_page_dispatch`, TRY_LINKS `cdata`; `get_company_data` resolves id keys and treats a gone row as fetch-on-missing. Three other `company_data` reads (vet discovery, parse dispatch, parse batch) touch only non-telescope keys and are unchanged.
+- **Stage 2:** `1b926c531`. `_merge_pjl_scrape_record` stores `{url, id, links_id?}`. Its only caller is gazer's `fetch_job_pages_batch`.
+- **Stage 3:** `6d6e8b3a1`. `_fetch_nav_links`, `_fetch_prefilter_notes`, `_fetch_website_content` (`[{url, id}]` saved, `[{url, content}]` returned), `prefilter_company` (`keep_page_scrape` before the error check; `nav_links_id` → `_apply_prefilter_decoded_company_outcome`); the three `job_list_visible` writers use `_keep_job_list_visible`. `get_visible_text` / `extract_site_page_list` imports are still used elsewhere and were kept.
+- **Stage 4:** `a25c7d188`. Admin company branch resolves id keys via gazer; culture pages are stripped on read; `requires_company` website_content is resolved.
+- **Stage 5:** `10e8fa422`. Admin `qualify_meteorite` and the single-entity JD read `compose_job_description`; `jd_key` and the unused `TRACKER_CONFIG` import are removed. The AC 8 grep returns nothing.
+- **Canon self-correction:** `5bceff4a7` adds `Calling` / `Response` debug lines on the composed-JD calls, the admin `requires_company` resolve and the PJL `links_id` resolve (`stat.logging.debug`).
+- **Verify:** `py_compile` OK on both files; ruff `roster.py` 324 / `api_admin.py` 46 (= ftr baseline). New `Optional`/`Dict` and lazy-import ordering findings on touched lines were fixed in place. Scratch checks ran in `/tmp/AST-2134/` on a temp DB copy (`ASTRAL_DB_DIR` set before imports; the harness asserts `DB_PATH` is under `/tmp`), with Telescope stubbed. The live DB has no company rows, so synthetic companies were seeded into the copy only.
+  - Stage 1: legacy blob unchanged; id blob resolves to the same text; `pjl_nav_links` rebuilt equal; AC 11 (deleted `website_content` row → coat-check handler called, `company_data` unchanged).
+  - Stage 2: merge shape, error/empty keep prior, same-URL replace in place.
+  - Stage 3 (AC 5): `nav_links`, `website_content`, `job_list_visible`, prefilter-notes `nav_links` and `prefilter_company` `nav_links` are uuid-shaped and resolve to rows carrying the company's `candidate_id`; handler returns are unchanged.
+  - Stage 4 (AC 6): admin `prefilter_company` / `select_job_page` / `gaze` and roster select-job-page live content are byte-identical before and after the id swap.
+  - Stage 5: no reference → exactly the stored `job_description`; a reference → the composed JD; `raw_job_listing` fallback; `qualify_meteorite` block.
+- **No new tests**. Coverage is Betty's (qa-child).
