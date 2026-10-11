@@ -404,7 +404,7 @@ context_tokens≈72000
   - Stage 3 (AC 5): `nav_links`, `website_content`, `job_list_visible`, prefilter-notes `nav_links` and `prefilter_company` `nav_links` are uuid-shaped and resolve to rows carrying the company's `candidate_id`; handler returns are unchanged.
   - Stage 4 (AC 6): admin `prefilter_company` / `select_job_page` / `gaze` and roster select-job-page live content are byte-identical before and after the id swap.
   - Stage 5: no reference → exactly the stored `job_description`; a reference → the composed JD; `raw_job_listing` fallback; `qualify_meteorite` block.
-- **No new tests**. Coverage is Betty's (qa-child).
+- **Tests:** none added in build. Betty's qa-child coverage landed afterwards at `08691b036` (`TestAst2134RosterTelescope`, `TestAst2134AdhocPreviewTelescope`, revised ledger/coat-check tests); manifest green at test-child.
 
 
 ## Radia review
@@ -430,9 +430,9 @@ context_tokens≈72000
 
 ## Frame diff
 
-- [ ] **AC5 (roster-written keys):** `nav_links`, `website_content` (`[{url,id}]`), `job_list_visible`, prefilter `nav_links` are uuid ids resolving to rows with company `candidate_id`; derived `pjl_assembled_content` / `pjl_nav_links` not rebuilt on write (`NULL` / rebuild-on-read) — Boundaries slice, not full parent AC5 (`homepage_text` = gazer AST-2132).
-- [ ] **AC6:** Admin `prefilter_company` / `select_job_page` / `gaze` + roster select-job-page live content byte-identical text blob vs id blob (scratch / `TestAst2134*`).
-- [ ] **AC7 (parent AC11 — delete row):** Deleted `telescope_data` behind `website_content` → `company_data` unchanged; `get_company_data` falls through to coat-check (no raise).
+- [x] **AC5 (roster-written keys):** `nav_links`, `website_content` (`[{url,id}]`), `job_list_visible`, prefilter `nav_links` are uuid ids resolving to rows with company `candidate_id`; derived `pjl_assembled_content` / `pjl_nav_links` not rebuilt on write (`NULL` / rebuild-on-read) — Boundaries slice, not full parent AC5 (`homepage_text` = gazer AST-2132).
+- [x] **AC6:** Admin `prefilter_company` / `select_job_page` / `gaze` + roster select-job-page live content byte-identical text blob vs id blob (scratch / `TestAst2134*`).
+- [x] **AC7 (parent AC11 — delete row):** Deleted `telescope_data` behind `website_content` → `company_data` unchanged; `get_company_data` falls through to coat-check (no raise).
 
 ## Findings
 
@@ -477,3 +477,15 @@ context_tokens≈36000
 ---
 
 `[code-rubric] PROCEED (Commit: 08691b0) roster admin telescope resolve`
+
+## Resolution
+
+2026-10-11, resolve-child (Ada), against Radia review `9844bde83` (CLEAN, no fix-now). No product changes.
+
+- **Frame diff AC5 / AC6 / AC7:** ticked. Validated on tip by the Stage 1–4 scratch checks (`/tmp` DB) and Betty's manifest (36 targeted passes; no-regression failure set identical to ftr; live DB `telescope_data` count unchanged).
+- **discuss: Pipeline scrapes not in Scope:** took the **Default**. AST-2134 ships as scoped (two files). `_fetch_job_links_content`, `jobs_found_process_job_site` and `_scrape_list_page_dom_for_parse` stay un-kept; a follow-up child or parent amendment is Susan's call. Reversible: say the word and the paths go to a new child.
+- **discuss: Child AC5 wording vs Boundaries:** took the **Default**. UAT uses the Boundaries slice plus the Verification matrix (`homepage_text` after `fetch_website` is AST-2132's gazer write).
+- **advisory: stale `## Review` test line:** fixed above (points at Betty's `08691b036`).
+- **advisory: sibling diff carry / plan Boundaries vs qa-child:** informational, no action. Test-tree work is Betty's by design.
+- **advisory: `_fetch_prefilter_notes` discards the VISIBLE_TEXT row id:** no action. The plan stores only `nav_links` from that handler (the homepage text key belongs to gazer's `fetch_website`), so the kept row is unreferenced by the blob. Parent storage policy, flagged for Susan.
+- **advisory: admin `requires_company` reads `company.get("data")`:** unchanged pre-existing behavior (plan Flags); not fixed here.
