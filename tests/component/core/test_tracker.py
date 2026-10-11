@@ -122,6 +122,78 @@ class TestGetJobData:
         assert isinstance(job["job_data"], dict)
 
 
+# AST-2133: composed JD = preamble + referenced telescope capture (collapsed + pruned); real tmp DB rows.
+class TestAst2133ComposeJobDescription:
+    # Collapse keeps one blank line; head-prune at the title drops "Nav junk"; tail-prune drops the apply footer.
+    _RAW = "Nav junk\n\nEngineer\n\n\n\nBuild things.\nApply for this job\nfooter"
+    _SCRAPED = "Engineer\n\nBuild things."
+
+    @pytest.fixture(autouse=True)
+    def _db(self, sqlite_in_memory):
+        return sqlite_in_memory
+
+    def _ref(self, content: str | None = None) -> str:
+        from src.core import gazer
+        return gazer.keep_telescope_data(None, "https://jobs.example/1", "VISIBLE_TEXT", content or self._RAW)
+
+    def _job(self, **jd: Any) -> dict[str, Any]:
+        return {"astral_job_id": "job-2133", "job_title": "Engineer", "job_data": dict(jd)}
+
+    def test_no_reference_returns_exact_preamble(self) -> None:
+        pre = "Pasted\n\n\n\nkept verbatim  "
+        assert tracker_mod.compose_job_description(self._job(job_description=pre)) == pre
+        assert tracker_mod.compose_job_description(self._job()) == ""
+        assert tracker_mod.compose_job_description({"job_data": None}) == ""
+        assert tracker_mod.compose_job_description({"job_data": "not a dict"}) == ""
+
+    def test_preamble_then_pruned_capture(self) -> None:
+        job = self._job(job_description="Email preamble", jd_telescope_data_id=self._ref())
+        assert tracker_mod.compose_job_description(job) == "Email preamble\n\n" + self._SCRAPED
+        # Read-only: the stored preamble is not overwritten with the composed text
+        assert job["job_data"]["job_description"] == "Email preamble"
+
+    def test_reference_only_is_just_capture(self) -> None:
+        job = self._job(jd_telescope_data_id=self._ref())
+        assert tracker_mod.compose_job_description(job) == self._SCRAPED
+        job = self._job(job_description="   ", jd_telescope_data_id=self._ref())
+        assert tracker_mod.compose_job_description(job) == self._SCRAPED
+
+    def test_missing_row_returns_preamble_alone(self) -> None:
+        gone = "00000000-0000-4000-8000-000000000000"
+        assert tracker_mod.compose_job_description(
+            self._job(job_description="Pre", jd_telescope_data_id=gone)
+        ) == "Pre"
+        assert tracker_mod.compose_job_description(self._job(jd_telescope_data_id=gone)) == ""
+
+    @pytest.mark.asyncio
+    async def test_get_job_data_returns_long_composed_without_self_heal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = "Engineer\n" + "y" * 250
+        scrape = AsyncMock()
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", scrape)
+        job = self._job(job_description="short pre", jd_telescope_data_id=self._ref(body))
+        assert await tracker_mod.get_job_data(job, "job_description") == "short pre\n\n" + body
+        scrape.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_self_heal_writes_reference_then_returns_composed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ref = self._ref()
+
+        async def _fetch(batch_id: str, jobs: list[dict[str, Any]]) -> None:
+            jobs[0]["job_data"]["jd_telescope_data_id"] = ref
+
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", _fetch)
+        job = self._job(job_description="pre")
+        assert await tracker_mod.get_job_data(job, "job_description") == "pre\n\n" + self._SCRAPED
+
+    @pytest.mark.asyncio
+    async def test_non_jd_key_falsy_is_none(self) -> None:
+        assert await tracker_mod.get_job_data(self._job(note=""), "note") is None
+
+
 # Branches: missing required parsed fields; nested job_data flatten; column vs metadata split.
 class TestInitializeJob:
     def test_requires_title_and_link(self) -> None:
@@ -1961,7 +2033,8 @@ class TestAst1453LegalJobSuccessorStates:
 
 
 class TestAst1453PersistSkippedJobEdits:
-    """AST-1453: skipped-only field writes; transition after columns/JD; empty JD ok."""
+    """AST-1453: skipped-only field writes; transition after columns. AST-2133: JD is read-only —
+    a job_description field is ignored (never save_job_data)."""
 
     _SKIP = "CANDIDATE_SKIPPED"
     _JD_KEY = "job_description"
@@ -1997,6 +2070,7 @@ class TestAst1453PersistSkippedJobEdits:
     def test_writes_title_link_jd_then_transition(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-2133 revision: name kept; the JD in the payload is now ignored, not written.
         order: List[str] = []
         jobs = {"job-1453": self._job()}
 
@@ -2010,7 +2084,6 @@ class TestAst1453PersistSkippedJobEdits:
 
         def _save_data(jid: str, patch: Dict[str, Any]) -> None:
             order.append("save_job_data")
-            assert patch == {self._JD_KEY: "pasted JD"}
 
         def _transition(
             ids: List[str], to_state: str, *, enforce_prior_states: bool = True
@@ -2034,8 +2107,8 @@ class TestAst1453PersistSkippedJobEdits:
                 "state": "NEW",
             },
         )
-        # JD write then column save, then hop (plan: fields before transition).
-        assert order == ["save_job_data", "save_job", "transition"]
+        # Column save then hop (plan: fields before transition); no JD write (AST-2133 AC9).
+        assert order == ["save_job", "transition"]
         assert out["job_title"] == "New Title"
         assert out["job_link"] == "https://new.example"
         assert out["state"] == "NEW"
@@ -2043,18 +2116,24 @@ class TestAst1453PersistSkippedJobEdits:
     def test_empty_jd_persists_without_strip_whole_blob(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-2133 revision: name kept; JD-only payloads (any value) write nothing at all.
         patches: List[Dict[str, Any]] = []
+        save = MagicMock()
+        transition = MagicMock()
         monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
         monkeypatch.setattr(
             tracker_mod,
             "save_job_data",
             lambda jid, patch: patches.append(patch),
         )
-        monkeypatch.setattr(tracker_mod, "save_job", MagicMock())
-        monkeypatch.setattr(tracker_mod, "transition_job_state", MagicMock())
-        tracker_mod.persist_skipped_job_edits("job-1453", {"job_description": ""})
-        tracker_mod.persist_skipped_job_edits("job-1453", {"job_description": None})
-        assert patches == [{self._JD_KEY: ""}, {self._JD_KEY: ""}]
+        monkeypatch.setattr(tracker_mod, "save_job", save)
+        monkeypatch.setattr(tracker_mod, "transition_job_state", transition)
+        for jd in ("", None, "pasted JD"):
+            out = tracker_mod.persist_skipped_job_edits("job-1453", {self._JD_KEY: jd})
+            assert out["astral_job_id"] == "job-1453"
+        assert patches == []
+        save.assert_not_called()
+        transition.assert_not_called()
 
     def test_same_state_skips_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()

@@ -115,7 +115,8 @@ class TestJobsRoutes:
         monkeypatch.setattr(jobs_mod, "score_floor_by_trigger_for_candidate", lambda candidate_id: {"NEW": 5.0})
         monkeypatch.setattr(jobs_mod, "job_misses_dispatch_score_floor", lambda row, floors: row["astral_job_id"] == "job-2")
         resp = jobs_client.get("/api/jobs?view=processing&candidate_id=cand-1", headers=auth_headers)
-        assert resp.get_json() == [{"astral_job_id": "job-1", "job_data": {}}]
+        # AST-2133 revision: every list row carries the composed JD (empty when nothing stored).
+        assert resp.get_json() == [{"astral_job_id": "job-1", "job_data": {"job_description": ""}}]
         # AC 7: Processing = exclusion of the four explicit lists, never an include-list.
         assert captured.get("exclude_states") == list(cfg.JOBS_PROCESSING_EXCLUDED_STATES)
         assert captured.get("states") is None
@@ -1075,6 +1076,120 @@ class TestAst1453SkippedEditMetaAndPut:
         persist.assert_called_once_with(
             "job-1453", {"job_title": "Saved", "state": "NEW"}
         )
+
+# AST-2133: responses carry the composed JD (preamble + telescope capture); PUT never writes the JD.
+class TestAst2133ComposedJdResponses:
+    _RAW = "Nav\n\nEngineer\nBuild things.\nApply for this job\nfooter"
+
+    @pytest.fixture(autouse=True)
+    def _db(self, sqlite_in_memory):
+        return sqlite_in_memory
+
+    def _ref(self) -> str:
+        from src.core import gazer
+        return gazer.keep_telescope_data(None, "https://jobs.example/1", "VISIBLE_TEXT", self._RAW)
+
+    def _wire_detail(self, monkeypatch: pytest.MonkeyPatch, job: dict) -> None:
+        TestAst1453SkippedEditMetaAndPut()._detail_wire(monkeypatch, job=job, successors=[])
+
+    def test_ac7_detail_composes_referenced_capture_without_writing_back(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        stored = {"job_description": "Email pre", "jd_telescope_data_id": self._ref(), "note": "n"}
+        job = {"astral_job_id": "job-2133", "state": "NEW", "job_title": "Engineer", "job_data": stored}
+        self._wire_detail(monkeypatch, job)
+        resp = jobs_client.get("/api/jobs/job-2133", headers=auth_headers)
+        assert resp.status_code == 200
+        jd = resp.get_json()["job_data"]
+        assert jd["job_description"] == "Email pre\n\nEngineer\nBuild things."
+        assert jd["note"] == "n"
+        # Response-only: the stored job_data dict (shared via the shallow get_job copy) is untouched
+        assert stored["job_description"] == "Email pre"
+
+    def test_ac7_detail_no_reference_returns_stored_text_exactly(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pre = "Pasted JD\n\n\n\nverbatim  "
+        self._wire_detail(monkeypatch, {"astral_job_id": "j", "state": "NEW", "job_data": {"job_description": pre}})
+        assert jobs_client.get("/api/jobs/j", headers=auth_headers).get_json()["job_data"]["job_description"] == pre
+
+    @pytest.mark.parametrize("view", ["ready", "review", "applied", "skipped"])
+    def test_ac7_list_rows_compose_referenced_capture(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, view: str
+    ) -> None:
+        rows = [{"astral_job_id": "j", "job_title": "Engineer", "job_data": {"jd_telescope_data_id": self._ref()}}]
+        monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kw: [dict(r) for r in rows])
+        resp = jobs_client.get(f"/api/jobs?view={view}", headers=auth_headers)
+        assert resp.get_json()[0]["job_data"]["job_description"] == "Engineer\nBuild things."
+
+    def test_ac7_virtual_skip_rows_compose(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        virt = {"astral_job_id": "v", "state": "NEW", "job_title": "Engineer",
+                "job_data": {"job_description": "pre", "jd_telescope_data_id": self._ref()}}
+        monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kw: [])
+        monkeypatch.setattr(jobs_mod, "list_jobs_below_dispatch_score_floor", lambda cid: [virt])
+        monkeypatch.setattr(jobs_mod, "score_floor_by_trigger_for_candidate", lambda cid: {"NEW": 5.0})
+        out = jobs_client.get("/api/jobs?view=skipped&candidate_id=cand-1", headers=auth_headers).get_json()
+        assert [r["job_data"]["job_description"] for r in out] == ["pre\n\nEngineer\nBuild things."]
+
+    def test_ac9_put_jd_only_400_without_persist(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        persist = MagicMock()
+        monkeypatch.setattr(jobs_mod, "persist_skipped_job_edits", persist)
+        resp = jobs_client.put("/api/jobs/j", json={"job_description": "pasted"}, headers=auth_headers)
+        assert resp.status_code == 400
+        assert "No valid fields" in resp.get_json()["error"]
+        persist.assert_not_called()
+
+    def test_ac9_put_title_and_jd_persists_title_only(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        persist = MagicMock(return_value={"astral_job_id": "j", "state": "CANDIDATE_SKIPPED"})
+        monkeypatch.setattr(jobs_mod, "persist_skipped_job_edits", persist)
+        self._wire_detail(monkeypatch, {"astral_job_id": "j", "state": "CANDIDATE_SKIPPED", "job_data": {}})
+        resp = jobs_client.put(
+            "/api/jobs/j", json={"job_title": "T", "job_description": "pasted"}, headers=auth_headers
+        )
+        assert resp.status_code == 200
+        persist.assert_called_once_with("j", {"job_title": "T"})
+
+
+# AST-2133 AC9 end-to-end: real tmp DB — PUT never changes the stored job_data.
+class TestAst2133PutJdReadOnlyE2E:
+    @pytest.fixture
+    def app_client(self, seeded_db) -> FlaskClient:
+        from flask import Flask
+
+        from ui.api.api_jobs import jobs_bp
+
+        seeded_db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
+        seeded_db.save_job("j-2133", company="acme", state="CANDIDATE_SKIPPED", candidate_id="cand-1",
+                           job_title="Old", job_link="https://old.example",
+                           job_data={"job_description": "stored pre"})
+        app = Flask(__name__)
+        app.register_blueprint(jobs_bp)
+        app.config["TESTING"] = True
+        with app.test_client() as client:
+            yield client
+
+    def test_ac9_jd_only_400_and_title_plus_jd_saves_title_only(
+        self, app_client: FlaskClient, auth_headers: dict[str, str], seeded_db
+    ) -> None:
+        resp = app_client.put("/api/jobs/j-2133", json={"job_description": "x"}, headers=auth_headers)
+        assert resp.status_code == 400
+        assert seeded_db.get_job("j-2133")["job_data"] == {"job_description": "stored pre"}
+
+        resp = app_client.put(
+            "/api/jobs/j-2133", json={"job_title": "New", "job_description": "x"}, headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["job_data"]["job_description"] == "stored pre"
+        row = seeded_db.get_job("j-2133")
+        assert row["job_title"] == "New"
+        assert row["job_data"] == {"job_description": "stored pre"}
+
 
 # Branches: detail exposes parent/track fields + inherited job_link (AST-1704).
 class TestAst1704JobsDetailParentFields:

@@ -76,6 +76,7 @@ _DB_SCHEMA_FLAGS = (
     "_surfer_batch_schema_ensured",  # AST-1229
     "_artifact_schema_ensured",  # AST-1352 / AST-1364 / singular+cid AST-1597
     "_rubric_vector_schema_ensured",  # AST-2067: rubric version routes on fresh DBs
+    "_telescope_data_schema_ensured",  # AST-2133: composed JD resolves telescope_data on fresh DBs
     "_agent_responses_table_sunset_applied",
     "_entity_agent_responses_column_sunset_applied",
     "_agent_schema_ensured",
