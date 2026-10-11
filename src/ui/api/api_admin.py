@@ -65,6 +65,7 @@ from src.utils.config import (
     resolve_tokens,
     empty_render_for_prompts,
     TASK_CONFIG,
+    TELESCOPE_DATA_CONFIG,
     TRACKER_CONFIG,
     UI_CONFIG,
     JOB_STATES,
@@ -1433,6 +1434,8 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
     entity_ids: for batch-mode tasks (qualify_job_listings), pass a list of IDs.
     entity_id: for single-entity tasks, pass one ID.
     Returns empty string if entity not found or task doesn't use live_content."""
+    # telescope_data reads go through gazer (AST-2134)
+    from src.core.gazer import resolve_telescope_value
     from src.utils.formatting import enumerate_array
 
     cfg = get_dispatch_task_by_key(task_key) or {}
@@ -1443,6 +1446,13 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         if not company:
             return ""
         cdata = company.get("company_data", {}) or {}
+        # Telescope row ids resolve via gazer; legacy text passes through unchanged (AST-2134).
+        logger.debug("Calling resolve_telescope_value: [company=%s company_data=%s]", entity_id, cdata)
+        cdata = {
+            k: (resolve_telescope_value(v) if k in TELESCOPE_DATA_CONFIG["company_data_id_keys"] else v)
+            for k, v in cdata.items()
+        }
+        logger.debug("Response from resolve_telescope_value: %s", cdata)
         if task_key == "prefilter_company":
             homepage = cdata.get("homepage_text") or cdata.get("website_content") or ""
             nav_links = cdata.get("nav_links") or []
@@ -1463,7 +1473,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         # gaze / other company tasks
         wc = cdata.get("website_content") or ""
         if isinstance(wc, list):
-            return "\n\n".join(f"=== {p.get('url','')} ===\n{p.get('content','')}" for p in wc if p.get("content"))
+            return "\n\n".join(f"=== {p.get('url','')} ===\n{str(p.get('content') or '').strip()}" for p in wc if p.get("content"))
         return str(wc)
 
     if entity_type == "job":
@@ -1510,9 +1520,9 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         if task_cfg.get("requires_company"):
             company = database.get_company(job.get("company", ""))
             if company:
-                wc = (company.get("data") or {}).get("website_content") or ""
+                wc = resolve_telescope_value((company.get("data") or {}).get("website_content")) or ""
                 if isinstance(wc, list):
-                    vibes = "\n\n".join(f"=== {p.get('url','')} ===\n{p.get('content','')}" for p in wc if p.get("content"))
+                    vibes = "\n\n".join(f"=== {p.get('url','')} ===\n{str(p.get('content') or '').strip()}" for p in wc if p.get("content"))
                 else:
                     vibes = str(wc)
                 if vibes:
