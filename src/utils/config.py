@@ -5276,7 +5276,11 @@ def importance_multiplier(n: int) -> float:
 # Single worker required — the in-process scheduler thread runs per-worker.
 # ---------------------------------------------------------------------------
 RAILWAY_CONFIG = {
+    # One process: the dispatcher/scheduler runs in-process, so more workers would
+    # start duplicate schedulers. Threads let requests run concurrently instead of
+    # queueing behind each other on a single sync worker (gthread worker class).
     "workers": 1,
+    "threads": 8,
     "timeout": 300,
     # Exact request paths (gunicorn atom `U`, no query string) whose gunicorn.access
     # lines are dropped — background polls (AST-2078). Read by src/utils/logging.py.

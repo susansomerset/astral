@@ -356,3 +356,7 @@ context_tokens≈34000
 - **Discuss — AC 7 separator:** Radia's default taken. `compose_job_description` keeps the `"\n\n"` join (plan Decision); revisit only if UAT finds a consumer that needs byte-adjacent text.
 - **Advisory — stale `## Review` test bullet:** trimmed to point at Betty's `ef7cfc974` tests and the green test-child run.
 - **Advisories — list-view cost, other API surfaces, sibling diff carry, test-ownership override:** no action; already flagged in the plan and out of this ticket's Scope.
+
+## Post-merge amendment — skipped view exception (2026-10-11)
+
+`GET /api/jobs?view=skipped` no longer carries `job_data` (so no composed JD) or `state_history` on its rows; `api_jobs._slim_list_row` drops both after `_flatten_grades`. The skipped page never reads the JD (the detail modal composes it per job via `GET /api/jobs/<id>`), the response had reached ~22 MB for one candidate, and composing would add one `telescope_data` read per scraped skipped row (the "List-view N× resolve" flag above). Every other list view and the detail route still carry the composed JD. Agreed with Susan on PR #301 (`claude/streamline-ui-load`).
