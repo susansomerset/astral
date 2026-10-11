@@ -70,6 +70,7 @@ from src.utils.config import (
     PROVIDER_CALL_BUDGET,
     ROSTER_CONFIG,
     TASK_CONFIG,
+    TELESCOPE_DATA_CONFIG,
     is_registered_state,
     registered_base,
     retry_base,
@@ -1043,7 +1044,7 @@ async def run_select_job_page_dispatch(
     short_name = entity.get("short_name", "")
     company_website = entity.get("company_website", "")
     company = get_company(short_name)
-    cdata = (company.get("company_data") or {}) if company else {}
+    cdata = _resolved_company_data(company.get("company_data") or {}) if company else {}
     row_state = (company or {}).get("state") or ""
     entity_state = entity.get("state") or row_state
     if entity_state != "PJL_READY" and row_state != "PJL_READY":
@@ -1923,9 +1924,89 @@ async def prefilter_company(
     return result
 
 
+def _company_candidate_id(company: dict[str, Any]) -> str | None:
+    """candidate_id for telescope_data rows; coat-check callers may pass a partial company dict."""
+    return company.get("candidate_id") or (get_company(company.get("short_name") or "") or {}).get("candidate_id")
+
+
+def _resolve_company_value(key: str, value: Any) -> Any:
+    """Stored company_data value -> the shape readers used before AST-2130 (AST-2134).
+    Row ids resolve via gazer; legacy text passes through; a gone capture resolves to None."""
+    from src.core.gazer import resolve_telescope_value  # lazy: gazer imports roster
+    if key == "pjl_scrape_pages":
+        return _resolved_pjl_pages(value)
+    logger.debug("Calling resolve_telescope_value: [key=%s value=%s]", key, value)
+    resolved = resolve_telescope_value(value)
+    logger.debug("Response from resolve_telescope_value: %s", resolved)
+    if key == "website_content" and isinstance(resolved, list):
+        # Kept captures are raw; the pre-AST-2130 blob stored each page stripped.
+        resolved = [
+            {**p, "content": str(p.get("content") or "").strip()} if isinstance(p, dict) else p
+            for p in resolved
+        ]
+    return resolved
+
+
+def _resolved_pjl_pages(pages: Any) -> list | None:
+    """pjl_scrape_pages -> [{url, visible_text, enumerated_nav_links?}] (today's row shape).
+    {url, id, links_id} rows resolve via gazer; legacy text rows pass through; gone captures drop."""
+    from src.core.gazer import resolve_telescope_value  # lazy: gazer imports roster
+    logger.debug("Calling resolve_telescope_value: [key=pjl_scrape_pages value=%s]", pages)
+    out: list[dict[str, Any]] = []
+    for row in resolve_telescope_value(pages) or []:
+        if not isinstance(row, dict) or "content" not in row:
+            out.append(row)  # legacy text row
+            continue
+        page: dict[str, Any] = {"url": row.get("url") or "", "visible_text": str(row["content"] or "").strip()}
+        links = resolve_telescope_value(row["links_id"]) if row.get("links_id") else ""
+        if str(links or "").strip():
+            page["enumerated_nav_links"] = str(links).strip()
+        out.append(page)
+    logger.debug("Response from resolve_telescope_value: %s", out)
+    return out or None
+
+
+def _rebuilt_pjl_nav_links(cdata: dict) -> str:
+    """pjl_nav_links as fetch_job_pages built it before AST-2130: each current candidate URL's ledger
+    page links, candidate order, deduped. A ledger row only changes on a successful scrape, so this
+    equals the run-built value (fresh links on success, last-known links on a failed re-scrape)."""
+    by_key = {
+        normalize_link(p.get("url") or ""): p
+        for p in (cdata.get("pjl_scrape_pages") or []) if isinstance(p, dict)
+    }
+    urls: list[str] = []
+    for u in cdata.get(ROSTER_CONFIG["select_job_page"]["pjl_url_data_key"]) or []:
+        page = by_key.get(normalize_link(u))
+        if page:
+            link_map = parse_enumerate_array(page.get("enumerated_nav_links") or "")
+            urls.extend(link_map[k] for k in sorted(link_map))
+    return _merge_pjl_nav_links("", urls)
+
+
+def _resolved_company_data(cdata: dict) -> dict:
+    """Copy of company_data with telescope row ids resolved and pjl_nav_links rebuilt when not stored (AST-2134)."""
+    out = dict(cdata or {})
+    for key in TELESCOPE_DATA_CONFIG["company_data_id_keys"]:
+        if out.get(key) is not None:
+            out[key] = _resolve_company_value(key, out[key])
+    if out.get("pjl_nav_links") is None and out.get("pjl_scrape_pages"):
+        out["pjl_nav_links"] = _rebuilt_pjl_nav_links(out)
+    return out
+
+
+def _keep_job_list_visible(short_name: str, url: str, text: str) -> str | None:
+    """Keep the selected job-list page text in telescope_data; return the row id job_list_visible stores (AST-2134)."""
+    from src.core.gazer import keep_telescope_data  # lazy: gazer imports roster
+    candidate_id = _company_candidate_id({"short_name": short_name})
+    logger.debug("Calling keep_telescope_data: [candidate_id=%s url=%s text=%s]", candidate_id, url, text)
+    row_id = keep_telescope_data(candidate_id, url, TELESCOPE_DATA_CONFIG["data_types"]["VISIBLE_TEXT"], text)
+    logger.debug("Response from keep_telescope_data: %s", row_id)
+    return row_id
+
+
 def _company_homepage_ready(company: Dict[str, Any]) -> bool:
     cd = company.get("company_data") or {}
-    return len((cd.get("homepage_text") or "").strip()) > 0
+    return len((_resolve_company_value("homepage_text", cd.get("homepage_text")) or "").strip()) > 0
 
 
 def _prefilter_batch_fail_dest(
@@ -2002,7 +2083,7 @@ async def _run_batch_company_prefilter(
             "company_id": short_name,
             "short_name": short_name,
             "state": company.get("state"),
-            "company_data": company.get("company_data") or {},
+            "company_data": _resolved_company_data(company.get("company_data") or {}),
         })
     companies = normalized
     input_by_id = {c["short_name"]: c for c in companies}
@@ -2282,7 +2363,7 @@ async def company_upshot_batch(
             "short_name": c["short_name"],
             "state": c.get("state"),
             "company_name": c.get("company_name") or "",
-            "company_data": c.get("company_data") or {},
+            "company_data": _resolved_company_data(c.get("company_data") or {}),
         }
         for c in companies
     ]
@@ -2514,7 +2595,7 @@ async def _find_job_page_from_assembled(
                     "response_type": response_type,
                 }
             company_row = get_company(short_name)
-            cdata = (company_row.get("company_data") or {}) if company_row else {}
+            cdata = _resolved_company_data(company_row.get("company_data") or {}) if company_row else {}
             pjl_url_key = sel_cfg["pjl_url_data_key"]
             ledger = list(cdata.get(pjl_url_key) or [])
             updated = _merge_try_links_into_pjl_ledger(
@@ -3548,7 +3629,7 @@ _COATCHECK_HANDLERS = {
 }
 
 async def get_company_data(company: Dict[str, Any], key: str) -> Any:
-    """Return company_data[key], fetching on-demand if missing (coat-check pattern).
+    """Return company_data[key] (telescope row ids resolved to content), fetching on-demand if missing (coat-check pattern).
     Registered keys in ROSTER_CONFIG['company_data_keys'] have fetch-on-missing handlers.
     Unregistered keys return None if absent. Never stores empty/failed data.
     """
@@ -3556,7 +3637,12 @@ async def get_company_data(company: Dict[str, Any], key: str) -> Any:
     if not isinstance(company_data, dict):
         company_data = {}
     if key in company_data and company_data[key] is not None:
-        return company_data[key]
+        value = company_data[key]
+        if key in TELESCOPE_DATA_CONFIG["company_data_id_keys"]:
+            # Row ids resolve via gazer; a deleted capture (None) falls through to fetch-on-missing (AC 11).
+            value = _resolve_company_value(key, value)
+        if value is not None:
+            return value
     registered = ROSTER_CONFIG.get("company_data_keys", {})
     if key not in registered:
         return None
