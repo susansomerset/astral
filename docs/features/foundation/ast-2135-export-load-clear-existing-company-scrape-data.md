@@ -135,3 +135,60 @@ No writer / reader changes; jobs untouched; no `database.py` / `roster.py` / `co
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2135
+**Overall:** APPROVED
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (canon tree at `5045098ec`; `docs/canon-index.md` absent on ref)
+**Publish ref:** `origin/sub/AST-2130/AST-2135-company-scrape-migration` @ `5045098ec0fd56e56688526c87267d6891c9a2f2`
+
+## Canon scores
+
+stat.logging.debug | A |
+stat.logging.warning | A |
+stat.logging.info.entity | A |
+
+## Traceability
+
+AC10 → Stage 1 export (no `company`/`telescope_data` payload writes; refuse existing `--file`); Verification §3–5, §7 (export dump unchanged; load idempotent; clear on empty `telescope_data` exit 1); Stage 2 load (`INSERT OR IGNORE`); Stage 3 clear (missing-row refuse before `update_company`). AC11 → Verification §6 (`_resolved_company_data` + `_build_adhoc_live_content` for `prefilter_company` / `select_job_page` / `gaze` byte-identical before vs after clear); Boundaries “AC 6 across all companies” covered by same snap for every seeded company.
+
+### discuss — Digest guard and `updated_at` preservation
+
+- **Location:** Stage 1 `was` digest; Stage 3 clear skip-on-mismatch; Stage 3 `updated_at` pass-through; `## Flags` 1 and 3.
+- **Finding:** Plan trades strict “always swap exported ids” for safety when blobs drift between export and clear, and avoids bumping `updated_at` on every company.
+- **Recommendation:** Susan confirms flags before production run; strike digest in plan if she wants blind clear — not a validate blocker.
+
+### discuss — Derived PJL fields (AC 5 vs AC 6)
+
+- **Location:** Stage 1 derived-field rules; Flag 2; seed company (d).
+- **Finding:** NULL `pjl_assembled_content` / `pjl_nav_links` only when rebuild matches stored text; mismatch keeps stored string with warning (AC 6 over AC 5 for that row).
+- **Recommendation:** Expect zero warnings on real data per AST-2134; seed (d) exercises the warn path.
+
+### acceptable — Private `database.py` helpers + fixed uuids on load
+
+- **Location:** Stage 2; **Background**; precedent `backfill_collapse_blank_lines.py`.
+- **Finding:** `INSERT OR IGNORE` with file uuids is required for idempotent load and matches existing migration style; no `database.py` edit in scope.
+- **Recommendation:** Builder follows Stage 2 as written.
+
+### acceptable — Live DB guard and zero-company worktree
+
+- **Location:** `## ⛔ Live DB guard`; **Background**; **Verification**.
+- **Finding:** Synthetic seed on `/tmp/AST-2135` copy is appropriate; production run is explicitly out of plan scope.
+- **Recommendation:** None.
+
+### acceptable — No `stat.logging.error` on frozen list
+
+- **Location:** Citations vs plan Canon.
+- **Finding:** Script propagates/prints failures; no new exception logging statute required on this child list.
+- **Recommendation:** N/A.
+
+### acceptable — No `## Self-assessment` block
+
+- **Location:** Plan structure (`## Estimate` confirm only).
+- **Finding:** Three stages + verification matrix + drift gate carry complexity; not blocking.
+
+**R6 (summary):** Single-file scope matches ticket. Export → load → clear ordering, refuse paths, legacy-shape mapping aligned with AST-2134 resolve behavior, and dependency on AST-2133/2134 via Stage 0 (read-only calls into roster/admin helpers) are faithful. No writer/reader edits; jobs untouched. No `fix-now` gaps.
+
+context_tokens≈78000
