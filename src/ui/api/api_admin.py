@@ -66,7 +66,6 @@ from src.utils.config import (
     empty_render_for_prompts,
     TASK_CONFIG,
     TELESCOPE_DATA_CONFIG,
-    TRACKER_CONFIG,
     UI_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
@@ -1477,6 +1476,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         return str(wc)
 
     if entity_type == "job":
+        from src.core.tracker import compose_job_description
         # batch mode: qualify_job_listings assembles raw listings in one block
         if task_key == "qualify_job_listings":
             ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
@@ -1496,7 +1496,6 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         # batch mode: qualify_meteorite — lockstep with consult.qualify_meteorite assemble
         if task_key == "qualify_meteorite":
             ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
-            jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
             lines = []
             for jid in ids:
                 job = database.get_job(jid)
@@ -1504,7 +1503,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
                     continue
                 lines.append(
                     f"{len(lines):03d}: job_link: {job.get('job_link') or ''}\n"
-                    f"CONTENT:\n{(job.get('job_data') or {}).get(jd_key, '') or ''}"
+                    f"CONTENT:\n{compose_job_description(job)}"
                 )
             return ("METEORITE JOBS:\n" + "\n".join(lines)) if lines else ""
         # single-entity tasks
@@ -1513,7 +1512,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
             return ""
         job_data = job.get("job_data") or {}
         # evaluate_jd, grade_do/get/like — job description + optional company context
-        jd = job_data.get("job_description") or job_data.get("raw_job_listing") or ""
+        jd = compose_job_description(job) or job_data.get("raw_job_listing") or ""
         content = f"[astral_job_id={entity_id}]\n{jd}" if jd else ""
         # Append company website_content for LIKE (requires_company)
         task_cfg = TASK_CONFIG.get(task_key, {})
