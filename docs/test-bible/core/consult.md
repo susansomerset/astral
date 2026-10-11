@@ -1658,3 +1658,7 @@ Single-side `missing vectors` / `unknown vectors` tests (`TestRenderScore::test_
 
 3. **No-regression (required):** `/home/susan/astral/.venv/bin/python -m pytest tests/component/core/test_agent.py tests/component/core/test_candidate.py tests/component/core/test_consult.py tests/component/data/database/test_rubric_vectors.py tests/component/scripts/test_backfill_rubric_vectors.py tests/component/ui/api/test_api_candidate.py -q`. Recorded: pre-fix product (`54e186b79` src) **94 failed / 1393 passed**; tip before this pass **125 failed** (94 + 31 AST-2126); tip with this pass **94 failed / 1416 passed / 7 skipped** — failing-id set identical to the pre-fix environment baseline (`no such table: job`, seed state `NEW`, host probes, etc.). Pass = same 94 ids, no `TestAst2126*` / renamed node failing.
 4. **Scope gate:** `git diff origin/ftr/AST-2112-do-rubric-undecodable-codes...origin/sub/AST-2112/AST-2127-do-rubric-code-tests -- src/ data/` is empty.
+
+### AST-2133 · AST-2130 (consult reads the composed JD)
+
+`build_job_token_context` (VISIBLE_JD), `qualify_meteorite` (length / CONTENT / input JD), `_jd_ready_for_evaluate`, and `evaluate_jd_batch` (not-ready skip + assemble) read `tracker.compose_job_description(job)` instead of `job_data.job_description`. **New:** **`TestAst2133ConsultReadsComposedJd`** (2; reference-only job on core `sqlite_in_memory` → composed VISIBLE_JD; readiness counts the capture). No-reference paths stay covered by existing tests. Manifest: [`tracker.md`](tracker.md) § AST-2133.

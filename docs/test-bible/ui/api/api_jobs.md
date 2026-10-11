@@ -456,3 +456,9 @@ python -c "import src.utils.config"                                             
 `GET /api/jobs/<jid>/resume_structure` returns the shared editor payload for the job's effective structure (hydrated, read-only). `PUT /api/jobs/<jid>/artifacts/job_resume_structure` with body `{"job_resume_structure": {...}}` writes it through `save_job_artifact`. Both return 404 `{"error": "Not found"}` for a missing job. PUT returns 400 when the body is not a dict, and returns 400 with the `ValueError` text and no log for an invalid structure. An unexpected error logs one ERROR line (prefixed by the job's `candidate_id`, or `-`) and returns the 500 payload. Only the PUT logs a completion INFO line (Joan revision: no GET info).
 
 **New:** **`TestAst2081JobResumeStructureRoutes`** (13; real tracker/data on `sqlite_in_memory`; `get_job`, `_candidate_id_for_job`, and `_candidate_data_for_job` stubbed). Covers AC16 (GET equals the candidate payload and writes no row) and AC15/AC18 (PUT on job A shows on A; job B and the candidate are unchanged). New route lines are fully branch-covered. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2081.
+
+### AST-2133 · AST-2130 (composed read-only JD)
+
+Every list row (`ready` / `review` / `applied` / `processing` / `skipped` incl. virtual skips) and `GET /api/jobs/<id>` return `job_data.job_description` = `tracker.compose_job_description(job)` on a new dict (stored `job_data` never written). `PUT /api/jobs/<id>` drops `job_description` from the accepted fields: JD-only body → 400 "No valid fields"; title + JD → title persists, `job_data` unchanged.
+
+**New:** **`TestAst2133ComposedJdResponses`** (9; real `telescope_data` rows on ui `sqlite_in_memory`), **`TestAst2133PutJdReadOnlyE2E`** (1; `seeded_db`, real tracker / data). **Revised:** `TestJobsRoutes::test_list_processing_filters_score_floor`. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2133.
