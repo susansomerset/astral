@@ -167,6 +167,39 @@ def _export(file_path: Path) -> int:
     return 0
 
 
+def _load(file_path: Path) -> int:
+    from src.data.database import (
+        _compress_payload,
+        _ensure_telescope_data_schema,
+        _get_connection,
+    )
+    from src.utils.logging import get_logger
+
+    log = get_logger(__name__)
+    rows = json.loads(file_path.read_text())["rows"]
+    # Raw INSERT, not save_telescope_data: that mints its own uuid, and the file's ids must be the
+    # stored ids — that is what makes a re-run add nothing.
+    conn = _get_connection()
+    try:
+        _ensure_telescope_data_schema(conn)
+        log.debug("Calling INSERT OR IGNORE telescope_data: %s", list(rows))
+        inserted = 0
+        for rid, r in rows.items():
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO telescope_data"
+                " (telescope_data_id, candidate_id, url, data_type, content, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (rid, r["candidate_id"], r["url"], r["data_type"], _compress_payload(r["content"]), r["created_at"]),
+            )
+            inserted += cur.rowcount
+        conn.commit()
+        log.debug("Response from INSERT OR IGNORE telescope_data: inserted=%d", inserted)
+    finally:
+        conn.close()
+    print(f"Rows in file: {len(rows)}  inserted: {inserted}  already present: {len(rows) - inserted}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Move company scrape text into telescope_data (AST-2135).")
     parser.add_argument("mode", choices=("export", "load", "clear"))
@@ -182,7 +215,7 @@ def main() -> int:
 
     print(f"DB: {DB_PATH}")
     file_path = Path(args.file)
-    return {"export": _export}[args.mode](file_path)
+    return {"export": _export, "load": _load}[args.mode](file_path)
 
 
 if __name__ == "__main__":
