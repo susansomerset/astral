@@ -107,6 +107,20 @@ def _flatten_grades(job: dict) -> dict:
     return job
 
 
+# Raw blobs the list pages never read; the detail modal fetches them per job.
+# Skipped rows skip the composed JD too (AST-2133 exception): it is never shown
+# there, and composing it costs a telescope_data read per scraped row.
+_LIST_ROW_DROP_KEYS = ("job_data", "state_history")
+
+
+def _slim_list_row(job: dict) -> dict:
+    """Flatten grades, then drop raw blobs so large list views stay small."""
+    job = _flatten_grades(job)
+    for key in _LIST_ROW_DROP_KEYS:
+        job.pop(key, None)
+    return job
+
+
 def _attach_skipped_edit_meta(job: dict) -> dict:
     state = job.get("state") or ""
     editable = state in SKIPPED_STATES
@@ -160,7 +174,7 @@ def list_view():
         return jsonify([_compose_jd_for_response(_flatten_grades(r)) for r in rows])
     elif view == "skipped":
         rows = list_jobs(states=list(SKIPPED_STATES), candidate_id=candidate_id, order_by="state_changed_at")
-        out = [_compose_jd_for_response(_flatten_grades(r)) for r in rows]
+        out = [_slim_list_row(r) for r in rows]
         if candidate_id:
             floors = score_floor_by_trigger_for_candidate(candidate_id)
             for r in list_jobs_below_dispatch_score_floor(candidate_id):
@@ -169,7 +183,7 @@ def list_view():
                 ann = dict(r)
                 ann["virtual_skip"] = True
                 ann["dispatch_score_floor"] = float(fl) if fl is not None else None
-                out.append(_compose_jd_for_response(_flatten_grades(ann)))
+                out.append(_slim_list_row(ann))
         out.sort(key=lambda j: (j.get("state_changed_at") or ""), reverse=True)
         return jsonify(out)
     else:

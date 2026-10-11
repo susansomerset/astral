@@ -377,7 +377,10 @@ export default function ScheduledActions() {
 
   useEffect(() => {
     loadThreadStatus()
-    pollRef.current = setInterval(() => { void loadThreadStatus(true) }, 5_000)
+    // Skip polls while the tab is hidden; each poll ties up a server worker.
+    pollRef.current = setInterval(() => {
+      if (!document.hidden) void loadThreadStatus(true)
+    }, 5_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [loadThreadStatus])
 
@@ -645,14 +648,9 @@ export default function ScheduledActions() {
         },
       }))
     }
-    const watch = async () => {
-      const res = await api("/api/admin/scheduler/thread_status", { silent: true })
-      if (!res.ok) return
-      const next = await res.json() as Record<number, ThreadEntry>
-      setThreadStatus(next)
-      if (next[row.id]?.running) setTimeout(watch, 500)
-    }
-    setTimeout(watch, 500)
+    // One quick confirm; the 5s poll tracks the run from here (a 500ms loop flooded the
+    // single-process server with ~1 req/s for the whole run).
+    setTimeout(() => { void loadThreadStatus(true) }, 1_500)
   }
 
   const handleStop = async (e: React.MouseEvent, row: DispatchTask) => {

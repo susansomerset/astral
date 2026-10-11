@@ -1113,7 +1113,8 @@ class TestAst2133ComposedJdResponses:
         self._wire_detail(monkeypatch, {"astral_job_id": "j", "state": "NEW", "job_data": {"job_description": pre}})
         assert jobs_client.get("/api/jobs/j", headers=auth_headers).get_json()["job_data"]["job_description"] == pre
 
-    @pytest.mark.parametrize("view", ["ready", "review", "applied", "skipped"])
+    # Skipped is excluded: its rows drop job_data entirely (PR #301 amendment below).
+    @pytest.mark.parametrize("view", ["ready", "review", "applied"])
     def test_ac7_list_rows_compose_referenced_capture(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, view: str
     ) -> None:
@@ -1122,16 +1123,27 @@ class TestAst2133ComposedJdResponses:
         resp = jobs_client.get(f"/api/jobs?view={view}", headers=auth_headers)
         assert resp.get_json()[0]["job_data"]["job_description"] == "Engineer\nBuild things."
 
-    def test_ac7_virtual_skip_rows_compose(
+    def test_skipped_rows_drop_job_data_and_skip_compose(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        virt = {"astral_job_id": "v", "state": "NEW", "job_title": "Engineer",
-                "job_data": {"job_description": "pre", "jd_telescope_data_id": self._ref()}}
-        monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kw: [])
-        monkeypatch.setattr(jobs_mod, "list_jobs_below_dispatch_score_floor", lambda cid: [virt])
+        # PR #301 amendment: skipped rows (real and virtual) carry no job_data / state_history,
+        # so no composed JD and no telescope_data read; lifted grades and scores stay.
+        real = {"astral_job_id": "r", "state": "CANDIDATE_SKIPPED", "state_history": [{"s": 1}],
+                "job_data": {"jd_telescope_data_id": "t-1", "jd_score": 4.2}}
+        virt = {"astral_job_id": "v", "state": "NEW", "state_history": [],
+                "job_data": {"job_description": "pre", "jd_telescope_data_id": "t-2"}}
+        compose = MagicMock()
+        monkeypatch.setattr(jobs_mod, "compose_job_description", compose)
+        monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kw: [dict(real)])
+        monkeypatch.setattr(jobs_mod, "list_jobs_below_dispatch_score_floor", lambda cid: [dict(virt)])
         monkeypatch.setattr(jobs_mod, "score_floor_by_trigger_for_candidate", lambda cid: {"NEW": 5.0})
         out = jobs_client.get("/api/jobs?view=skipped&candidate_id=cand-1", headers=auth_headers).get_json()
-        assert [r["job_data"]["job_description"] for r in out] == ["pre\n\nEngineer\nBuild things."]
+        assert {r["astral_job_id"] for r in out} == {"r", "v"}
+        for r in out:
+            assert "job_data" not in r and "state_history" not in r
+        assert next(r for r in out if r["astral_job_id"] == "r")["jd_score"] == 4.2
+        assert next(r for r in out if r["astral_job_id"] == "v")["virtual_skip"] is True
+        compose.assert_not_called()
 
     def test_ac9_put_jd_only_400_without_persist(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch

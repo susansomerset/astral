@@ -459,6 +459,8 @@ python -c "import src.utils.config"                                             
 
 ### AST-2133 · AST-2130 (composed read-only JD)
 
-Every list row (`ready` / `review` / `applied` / `processing` / `skipped` incl. virtual skips) and `GET /api/jobs/<id>` return `job_data.job_description` = `tracker.compose_job_description(job)` on a new dict (stored `job_data` never written). `PUT /api/jobs/<id>` drops `job_description` from the accepted fields: JD-only body → 400 "No valid fields"; title + JD → title persists, `job_data` unchanged.
+Every list row (`ready` / `review` / `applied` / `processing`) and `GET /api/jobs/<id>` return `job_data.job_description` = `tracker.compose_job_description(job)` on a new dict (stored `job_data` never written). `PUT /api/jobs/<id>` drops `job_description` from the accepted fields: JD-only body → 400 "No valid fields"; title + JD → title persists, `job_data` unchanged.
 
 **New:** **`TestAst2133ComposedJdResponses`** (9; real `telescope_data` rows on ui `sqlite_in_memory`), **`TestAst2133PutJdReadOnlyE2E`** (1; `seeded_db`, real tracker / data). **Revised:** `TestJobsRoutes::test_list_processing_filters_score_floor`. Manifest: [`../../core/tracker.md`](../../core/tracker.md) § AST-2133.
+
+**Amendment (PR #301, skipped view):** `skipped` rows, real and virtual, drop `job_data` and `state_history` after `_flatten_grades` (`_slim_list_row`), so they carry no composed JD and make no `telescope_data` read; lifted grades, scores and `virtual_skip` stay. **Revised:** `test_ac7_list_rows_compose_referenced_capture` drops the `skipped` param; `test_ac7_virtual_skip_rows_compose` → `test_skipped_rows_drop_job_data_and_skip_compose` (count unchanged at 9; parametrized cases 4 → 3).
