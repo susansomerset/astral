@@ -200,6 +200,69 @@ def _load(file_path: Path) -> int:
     return 0
 
 
+def _clear(file_path: Path) -> int:
+    from src.data.database import (
+        get_company,
+        get_telescope_data_for_ids,
+        update_company,
+    )
+    from src.utils.logging import get_logger
+
+    log = get_logger(__name__)
+    companies = json.loads(file_path.read_text())["companies"]
+
+    def _ids(value: Any) -> list[str]:
+        # Row ids a new value points at: an id string, or list entries' id / links_id.
+        if isinstance(value, str):
+            return [value]
+        return [e[k] for e in value or [] if isinstance(e, dict) for k in ("id", "links_id") if e.get(k)]
+
+    wanted = {sn: [i for e in c["keys"].values() for i in _ids(e["value"])] for sn, c in companies.items()}
+    all_ids = sorted({i for ids in wanted.values() for i in ids})
+    log.debug("Calling get_telescope_data_for_ids: %s", all_ids)
+    present = get_telescope_data_for_ids(all_ids)
+    log.debug("Response from get_telescope_data_for_ids: %s", present)
+    missing = {sn: [i for i in ids if i not in present] for sn, ids in wanted.items()}
+    missing = {sn: ids for sn, ids in missing.items() if ids}
+    if missing:
+        # Refuse before any company write — a swapped key whose row is gone would lose its text.
+        for sn, ids in missing.items():
+            log.warning("%s clear refused: telescope_data rows missing %s", sn, ids)
+        print(f"Refused: {sum(map(len, missing.values()))} rows missing for {len(missing)} companies — run load first")
+        return 1
+
+    updated = swapped = left = 0
+    for sn, c in companies.items():
+        log.debug("Calling get_company: %s", sn)
+        company = get_company(sn)
+        log.debug("Response from get_company: %s", company)
+        if not company:
+            left += len(c["keys"])
+            log.warning("%s clear skipped: company no longer exists", sn)
+            continue
+        cd = dict(company.get("company_data") or {})
+        done = []
+        for key, entry in c["keys"].items():
+            # Swap only a key still holding what export saw — a re-scrape since then wins.
+            if _digest(cd.get(key)) == entry["was"]:
+                cd[key] = entry["value"]
+                done.append(key)
+            else:
+                left += 1
+                log.warning("%s %s: changed since export — left as is", sn, key)
+        if not done:
+            continue
+        # Original updated_at: the move isn't company activity.
+        log.debug("Calling update_company: [%s company_data=%s updated_at=%s]", sn, cd, company.get("updated_at"))
+        rc = update_company(sn, company_data=cd, updated_at=company.get("updated_at"))
+        log.debug("Response from update_company: %s", rc)
+        updated += 1
+        swapped += len(done)
+        log.info("%s | company scrape cleared: keys %s (batch: -)", sn, ",".join(done))
+    print(f"Companies updated: {updated}/{len(companies)}  keys swapped: {swapped}  left as is: {left}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Move company scrape text into telescope_data (AST-2135).")
     parser.add_argument("mode", choices=("export", "load", "clear"))
@@ -215,7 +278,7 @@ def main() -> int:
 
     print(f"DB: {DB_PATH}")
     file_path = Path(args.file)
-    return {"export": _export, "load": _load}[args.mode](file_path)
+    return {"export": _export, "load": _load, "clear": _clear}[args.mode](file_path)
 
 
 if __name__ == "__main__":
