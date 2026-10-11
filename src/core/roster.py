@@ -2781,15 +2781,15 @@ async def _scrape_pjl_page(
 
 
 def _merge_pjl_scrape_record(existing_pages: list, new_record: dict) -> list:
-    """Upsert a PJL capture by normalize_link (AST-1995): replace in place, else append.
+    """Upsert a PJL capture {url, id, links_id?} by normalize_link (AST-1995 / AST-2134): replace in place, else append.
     Errored or empty captures never overwrite — the prior row survives a transient failure."""
     text = (new_record.get("visible_text") or "").strip()
     if new_record.get("error") or not text:
         return existing_pages
-    row: Dict[str, Any] = {"url": new_record["url"], "visible_text": text}
-    enum_nav = (new_record.get("enumerated_nav_links") or "").strip()
-    if enum_nav:
-        row["enumerated_nav_links"] = enum_nav
+    # Page text and links live in telescope_data; the ledger keeps the row ids gazer kept them under (AST-2134).
+    row: Dict[str, Any] = {"url": new_record["url"], "id": new_record.get("visible_text_id")}
+    if new_record.get("page_links_id"):
+        row["links_id"] = new_record["page_links_id"]
     key = normalize_link(new_record.get("url") or "")
     pages = list(existing_pages or [])
     for i, prior in enumerate(pages):
