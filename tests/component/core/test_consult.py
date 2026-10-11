@@ -8371,3 +8371,28 @@ class TestAst2126ZeroGradeRepliesAreDecodeFailures:
         with pytest.raises(consult_mod.IncompleteGradeSetError) as exc:
             consult_mod._require_complete_grade_set(rubric, [{"vector": "ZZ", "grade": "A", "confidence": 3}])
         assert str(exc.value) == "_render_score: missing vectors ['A', 'B']; unknown vectors ['ZZ']"
+
+
+# AST-2133: consult JD readers go through tracker.compose_job_description — a reference-only job reads its capture.
+class TestAst2133ConsultReadsComposedJd:
+    _RAW = "Nav\n\nEngineer\nBuild things.\nApply for this job\nfooter"
+
+    @pytest.fixture(autouse=True)
+    def _db(self, sqlite_in_memory):
+        return sqlite_in_memory
+
+    def _job(self, **jd: Any) -> dict[str, Any]:
+        from src.core import gazer
+        ref = gazer.keep_telescope_data(None, "https://jobs.example/1", "VISIBLE_TEXT", self._RAW)
+        return {"astral_job_id": "job-2133", "job_title": "Engineer",
+                "job_data": {"jd_telescope_data_id": ref, **jd}}
+
+    def test_visible_jd_token_is_composed(self) -> None:
+        cd = TestAst513JobTokenContext()._candidate_data()
+        ctx = consult_mod.build_job_token_context(self._job(job_description="Pre"), cd)
+        assert ctx["VISIBLE_JD"] == "Pre\n\nEngineer\nBuild things."
+
+    def test_jd_ready_counts_referenced_capture(self) -> None:
+        job = self._job()
+        assert consult_mod._jd_ready_for_evaluate(job, len("Engineer\nBuild things.")) is True
+        assert consult_mod._jd_ready_for_evaluate(job, len("Engineer\nBuild things.") + 1) is False

@@ -11,8 +11,16 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
+from src.core import gazer as gazer_mod
 from src.core import roster as roster_mod
 from src.utils.config import COMPANY_STATES, PROVIDER_CALL_BUDGET, ROSTER_CONFIG, TASK_CONFIG
+
+
+@pytest.fixture(autouse=True)
+def _telescope_tmp_db(sqlite_in_memory):
+    """AST-2134: roster writers keep scrapes via gazer -> database.save_telescope_data. Pin the DB to tmp
+    so an unpatched keep never reaches the default ASTRAL_DB_DIR (data/astral.db may be a live symlink)."""
+    return sqlite_in_memory
 
 
 def _prefilter_rubric_ctx(*, multi_vector: bool = False) -> Dict[str, Any]:
@@ -734,37 +742,37 @@ class TestAst719PjlRosterHelpers:
     """AST-719: additive PJL scrape ledger helpers."""
 
     def test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty(self) -> None:
-        existing = [{"url": "https://acme.com/careers", "visible_text": "keep"}]
+        # AST-2134 revision: ledger rows hold the telescope row id gazer kept the page under.
+        existing = [{"url": "https://acme.com/careers", "id": "t-keep"}]
         # AST-1995: same URL is an upsert (refresh), not a skip.
         assert roster_mod._merge_pjl_scrape_record(
             existing,
-            {"url": "https://acme.com/careers", "visible_text": "dup"},
-        ) == [{"url": "https://acme.com/careers", "visible_text": "dup"}]
+            {"url": "https://acme.com/careers", "visible_text": "dup", "visible_text_id": "t-dup"},
+        ) == [{"url": "https://acme.com/careers", "id": "t-dup"}]
         assert roster_mod._merge_pjl_scrape_record(
             existing,
-            {"url": "https://acme.com/jobs", "visible_text": "  "},
+            {"url": "https://acme.com/jobs", "visible_text": "  ", "visible_text_id": None},
         ) == existing
         merged = roster_mod._merge_pjl_scrape_record(
             existing,
-            {"url": "https://acme.com/jobs", "visible_text": "new page"},
+            {"url": "https://acme.com/jobs", "visible_text": "new page", "visible_text_id": "t-new"},
         )
-        assert len(merged) == 2
-        assert merged[1]["visible_text"] == "new page"
+        assert merged == [existing[0], {"url": "https://acme.com/jobs", "id": "t-new"}]
 
     def test_ast1995_upsert_replaces_matching_row_in_place(self) -> None:
         existing = [
-            {"url": "https://acme.com/careers", "visible_text": "a"},
-            {"url": "https://acme.com/jobs", "visible_text": "b"},
-            {"url": "https://acme.com/team", "visible_text": "c"},
+            {"url": "https://acme.com/careers", "id": "t-a"},
+            {"url": "https://acme.com/jobs", "id": "t-b"},
+            {"url": "https://acme.com/team", "id": "t-c"},
         ]
         snapshot = [dict(r) for r in existing]
         # Scheme / case / trailing slash differ — still the same normalize_link key.
         merged = roster_mod._merge_pjl_scrape_record(
-            existing, {"url": "http://ACME.com/jobs/", "visible_text": " fresh "},
+            existing, {"url": "http://ACME.com/jobs/", "visible_text": " fresh ", "visible_text_id": "t-fresh"},
         )
         assert merged == [
             snapshot[0],
-            {"url": "http://ACME.com/jobs/", "visible_text": "fresh"},
+            {"url": "http://ACME.com/jobs/", "id": "t-fresh"},
             snapshot[2],
         ]
         assert existing == snapshot  # caller's list not mutated
@@ -777,23 +785,26 @@ class TestAst719PjlRosterHelpers:
             ) == existing
 
     def test_ast1995_whole_row_replace_drops_enumerated_nav_links(self) -> None:
-        existing = [{"url": "https://acme.com/careers", "visible_text": "old",
-                     "enumerated_nav_links": "1: https://acme.com/jobs/a"}]
+        # AST-2134 revision: a re-scrape without links drops the prior row's links_id with the row.
+        existing = [{"url": "https://acme.com/careers", "id": "t-old", "links_id": "l-old"}]
         merged = roster_mod._merge_pjl_scrape_record(
-            existing, {"url": "https://acme.com/careers", "visible_text": "new"},
+            existing, {"url": "https://acme.com/careers", "visible_text": "new", "visible_text_id": "t-new"},
         )
-        assert merged == [{"url": "https://acme.com/careers", "visible_text": "new"}]
+        assert merged == [{"url": "https://acme.com/careers", "id": "t-new"}]
 
     def test_merge_pjl_scrape_record_persists_enumerated_nav_links(self) -> None:
+        # AST-2134 revision: links ride as links_id; page text / links never land in the ledger.
         merged = roster_mod._merge_pjl_scrape_record(
             [],
             {
                 "url": "https://acme.com/careers",
                 "visible_text": "roles",
                 "enumerated_nav_links": "1: /jobs",
+                "visible_text_id": "t-1",
+                "page_links_id": "l-1",
             },
         )
-        assert merged[0]["enumerated_nav_links"] == "1: /jobs"
+        assert merged == [{"url": "https://acme.com/careers", "id": "t-1", "links_id": "l-1"}]
 
     def test_assemble_pjl_content_sections(self) -> None:
         pages = [
@@ -3167,14 +3178,18 @@ class TestCoatCheckHandlers:
         async def _browser():
             yield AsyncMock()
 
+        # AST-2134 revision: scrape + keep via gazer; blob gets the row id, caller gets the enumerated links.
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
-        monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
         save = MagicMock()
         monkeypatch.setattr(roster_mod, "save_company_data", save)
         out = await roster_mod._fetch_nav_links(_company())
-        assert out == "1. /about"
+        assert out == roster_mod.enumerate_array("", ["https://acme.com/about"])
         save.assert_called_once()
+        name, patch = save.call_args.args
+        assert name == "acme" and set(patch) == {"nav_links"}
+        assert gazer_mod.is_telescope_id(patch["nav_links"])
+        assert gazer_mod.resolve_telescope_value(patch["nav_links"]) == out
 
     @pytest.mark.asyncio
     async def test_nav_links_returns_none_on_empty_or_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3183,18 +3198,18 @@ class TestCoatCheckHandlers:
             yield AsyncMock()
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=[]))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=[]))
         assert await roster_mod._fetch_nav_links(_company()) is None
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(side_effect=RuntimeError("boom")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(side_effect=RuntimeError("boom")))
         assert await roster_mod._fetch_nav_links(_company()) is None
 
     @pytest.mark.asyncio
     async def test_prefilter_notes_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
         assert await roster_mod._fetch_prefilter_notes({"short_name": "", "company_website": ""}) is None
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value=""))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("", "")))
         assert await roster_mod._fetch_prefilter_notes(_company()) is None
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="hello"))
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(side_effect=RuntimeError("nav")))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("hello", "")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(side_effect=RuntimeError("nav")))
         monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": False}))
         assert await roster_mod._fetch_prefilter_notes(_company()) is None
         monkeypatch.setattr(
@@ -3231,13 +3246,19 @@ class TestCoatCheckHandlers:
         async def _browser():
             yield AsyncMock()
 
+        # AST-2134 revision: blob gets [{url, id}] of the raw capture; caller still gets stripped [{url, content}].
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="culture text"))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("  culture text \n", "")))
         save = MagicMock()
         monkeypatch.setattr(roster_mod, "save_company_data", save)
         out = await roster_mod._fetch_website_content(company)
         assert out == [{"url": "https://acme.com/culture", "content": "culture text"}]
         save.assert_called_once()
+        refs = save.call_args.args[1]["website_content"]
+        assert [r["url"] for r in refs] == ["https://acme.com/culture"] and set(refs[0]) == {"url", "id"}
+        assert gazer_mod.resolve_telescope_value(refs[0]["id"]) == "  culture text \n"
+        # Reader parity: resolving the stored refs gives exactly what the handler returned
+        assert roster_mod._resolve_company_value("website_content", refs) == out
 
 
 class TestGetCompanyData:
@@ -3498,8 +3519,8 @@ class TestSaveCompanyBranches:
 class TestFetchPrefilterNotesBranches:
     @pytest.mark.asyncio
     async def test_persists_optional_fields_and_handles_failures(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="hello"))
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("hello", "")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
         monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
         _patch_prefilter_candidate_rubric(monkeypatch)
         monkeypatch.setattr(
@@ -3530,7 +3551,7 @@ class TestFetchPrefilterNotesBranches:
         )
         save.assert_called_once()
 
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("boom")))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("boom")))
         assert await roster_mod._fetch_prefilter_notes(_company()) is None
 
 
@@ -3554,10 +3575,10 @@ class TestWebsiteContentBranches:
 
         monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
         monkeypatch.setattr(roster_mod, "parse_enumerate_array", MagicMock(return_value={1: "https://acme.com/culture"}))
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("blocked")))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("blocked")))
         assert await roster_mod._fetch_website_content(company) is None
 
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="   "))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("   ", "")))
         assert await roster_mod._fetch_website_content(company) is None
 
     @pytest.mark.asyncio
@@ -3782,8 +3803,8 @@ class TestDeriveShortnameBranches:
 class TestFetchPrefilterNotesMoreBranches:
     @pytest.mark.asyncio
     async def test_returns_none_without_reasons_or_nav_links(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="hello"))
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=[]))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("hello", "")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=[]))
         monkeypatch.setattr(
             roster_mod,
             "do_task",
@@ -3883,9 +3904,9 @@ class TestRosterCoverageGaps:
 
     @pytest.mark.asyncio
     async def test_prefilter_notes_returns_saved_notes_with_nav_links(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="homepage"))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("homepage", "")))
         monkeypatch.setattr(
-            roster_mod,
+            gazer_mod,
             "extract_site_page_list",
             AsyncMock(return_value=["https://Acme.com/careers/"]),
         )
@@ -3985,8 +4006,8 @@ class TestRosterCoverageGaps:
 
     @pytest.mark.asyncio
     async def test_prefilter_notes_returns_none_without_reasons(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(roster_mod, "get_visible_text", AsyncMock(return_value="homepage"))
-        monkeypatch.setattr(roster_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("homepage", "")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
         monkeypatch.setattr(roster_mod, "enumerate_array", MagicMock(return_value="1. /about"))
         monkeypatch.setattr(
             roster_mod,
@@ -7338,3 +7359,212 @@ class TestAst2088UpshotReadableCompanyName:
         # Missing/blank name is not a failure: all three still pass to WATCH
         assert TestAst2070CompanyUpshotBatch._dests(m["transition_company_state"]) == {"a": "WATCH", "b": "WATCH", "c": "WATCH"}
         assert out == {"passed": 3, "failed": 0, "total": 3, "retried": 0}
+
+
+# AST-2134: roster company writers keep scrapes via gazer (blob holds row ids); readers resolve via gazer.
+# Real telescope_data rows in the autouse tmp DB; only scrapers / agent calls are stubbed.
+class TestAst2134RosterTelescope:
+    def _keep(self, text: str, url: str = "https://acme.com/p", data_type: str = "VISIBLE_TEXT") -> str:
+        return gazer_mod.keep_telescope_data(None, url, data_type, text)
+
+    def _drop(self, db, row_id: str) -> None:
+        conn = db._get_connection()
+        try:
+            conn.execute("DELETE FROM telescope_data WHERE telescope_data_id = ?", (row_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_resolve_company_value_shapes(self, sqlite_in_memory) -> None:
+        rid = self._keep("Homepage body")
+        assert roster_mod._resolve_company_value("homepage_text", rid) == "Homepage body"
+        assert roster_mod._resolve_company_value("homepage_text", "legacy text") == "legacy text"
+        assert roster_mod._resolve_company_value("nav_links", None) is None
+        # website_content: raw captures resolve stripped, like the pre-AST-2130 blob stored them
+        refs = [{"url": "https://a/1", "id": self._keep("  one \n")}, {"url": "https://a/2", "id": self._keep("two")}]
+        assert roster_mod._resolve_company_value("website_content", refs) == [
+            {"url": "https://a/1", "content": "one"}, {"url": "https://a/2", "content": "two"},
+        ]
+        legacy = [{"url": "https://a/1", "content": "kept"}]
+        assert roster_mod._resolve_company_value("website_content", legacy) == legacy
+        # Gone capture -> None so get_company_data falls through to fetch-on-missing
+        self._drop(sqlite_in_memory, rid)
+        assert roster_mod._resolve_company_value("homepage_text", rid) is None
+
+    def test_resolved_pjl_pages_row_shapes(self, sqlite_in_memory) -> None:
+        gone = self._keep("will be deleted")
+        gone_links = self._keep("1: https://x", data_type="PAGE_LINKS")
+        rows = [
+            {"url": "https://a/careers", "id": self._keep("  roles \n"),
+             "links_id": self._keep(" 1: https://a/jobs/1 ", data_type="PAGE_LINKS")},
+            {"url": "https://a/team", "id": self._keep("team")},
+            {"url": "https://a/old", "visible_text": "legacy row"},
+            {"url": "https://a/gone", "id": gone},
+            {"url": "https://a/nolinks", "id": self._keep("body"), "links_id": gone_links},
+        ]
+        self._drop(sqlite_in_memory, gone)
+        self._drop(sqlite_in_memory, gone_links)
+        assert roster_mod._resolved_pjl_pages(rows) == [
+            {"url": "https://a/careers", "visible_text": "roles", "enumerated_nav_links": "1: https://a/jobs/1"},
+            {"url": "https://a/team", "visible_text": "team"},
+            {"url": "https://a/old", "visible_text": "legacy row"},
+            {"url": "https://a/nolinks", "visible_text": "body"},
+        ]
+        assert roster_mod._resolved_pjl_pages([{"url": "https://a/x", "id": gone}]) is None
+        assert roster_mod._resolved_pjl_pages(None) is None
+
+    def test_resolved_company_data_rebuilds_pjl_nav_links_in_candidate_order(self) -> None:
+        key = ROSTER_CONFIG["select_job_page"]["pjl_url_data_key"]
+        cdata = {
+            "pjl_scrape_pages": [
+                {"url": "https://acme.com/careers", "id": self._keep("c"),
+                 "links_id": self._keep("1: https://acme.com/a\n2: https://acme.com/b", data_type="PAGE_LINKS")},
+                {"url": "https://acme.com/jobs", "id": self._keep("j"),
+                 "links_id": self._keep("1: https://acme.com/b\n2: https://acme.com/c", data_type="PAGE_LINKS")},
+                {"url": "https://acme.com/stale", "id": self._keep("s"),
+                 "links_id": self._keep("1: https://acme.com/zzz", data_type="PAGE_LINKS")},
+            ],
+            # Candidate order (jobs before careers); stale ledger row is not a current candidate; /none has no row
+            key: ["http://ACME.com/jobs/", "https://acme.com/careers", "https://acme.com/none"],
+            "pjl_nav_links": None,
+            "other": {"k": 1},
+        }
+        snapshot = json.dumps(cdata, sort_keys=True)
+        out = roster_mod._resolved_company_data(cdata)
+        assert out["pjl_nav_links"] == roster_mod._merge_pjl_nav_links(
+            "", ["https://acme.com/b", "https://acme.com/c", "https://acme.com/a", "https://acme.com/b"]
+        )
+        assert out["pjl_scrape_pages"][0] == {
+            "url": "https://acme.com/careers", "visible_text": "c",
+            "enumerated_nav_links": "1: https://acme.com/a\n2: https://acme.com/b",
+        }
+        assert out["other"] == {"k": 1}
+        assert json.dumps(cdata, sort_keys=True) == snapshot  # stored blob copy untouched
+        # A stored pjl_nav_links (pre-AST-2130 company) is kept, not rebuilt
+        assert roster_mod._resolved_company_data({**cdata, "pjl_nav_links": "1: kept"})["pjl_nav_links"] == "1: kept"
+
+    def test_company_homepage_ready_resolves_id(self, sqlite_in_memory) -> None:
+        rid = self._keep("Homepage")
+        assert roster_mod._company_homepage_ready({"company_data": {"homepage_text": rid}}) is True
+        assert roster_mod._company_homepage_ready({"company_data": {"homepage_text": "legacy"}}) is True
+        assert roster_mod._company_homepage_ready({"company_data": {}}) is False
+        self._drop(sqlite_in_memory, rid)
+        assert roster_mod._company_homepage_ready({"company_data": {"homepage_text": rid}}) is False
+
+    @pytest.mark.asyncio
+    async def test_get_company_data_resolves_id_without_fetch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        handler = AsyncMock()
+        monkeypatch.setitem(roster_mod._COATCHECK_HANDLERS, "nav_links", handler)
+        rid = self._keep("1: https://acme.com/about", data_type="PAGE_LINKS")
+        company = _company(company_data={"nav_links": rid, "parse_instructions": {"c": 1}})
+        assert await roster_mod.get_company_data(company, "nav_links") == "1: https://acme.com/about"
+        # Non-id keys are returned as stored
+        assert await roster_mod.get_company_data(company, "parse_instructions") == {"c": 1}
+        handler.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ac5_ac7_website_content_ids_then_deleted_row_refetches(
+        self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"name": "T"})
+        nav_id = self._keep("1: https://acme.com/culture", data_type="PAGE_LINKS")
+        db.save_company("acme", "WEBSITE_FOUND", company_website="https://acme.com", candidate_id="cand-1",
+                        company_data={"nav_links": nav_id, "culture_links_to_explore": [1]})
+
+        @asynccontextmanager
+        async def _browser():
+            yield AsyncMock()
+
+        monkeypatch.setattr(roster_mod, "create_browser_context", _browser)
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("Culture page", "")))
+        out = await roster_mod._fetch_website_content(db.get_company("acme"))
+        assert out == [{"url": "https://acme.com/culture", "content": "Culture page"}]
+
+        def _blob() -> str:
+            conn = db._get_connection()
+            try:
+                return conn.execute("SELECT company_data FROM company WHERE short_name='acme'").fetchone()[0]
+            finally:
+                conn.close()
+
+        # AC5: blob entries are {url, id}; the id resolves to a kept row with the company's candidate_id
+        wc = db.get_company("acme")["company_data"]["website_content"]
+        assert [set(e) for e in wc] == [{"url", "id"}] and gazer_mod.is_telescope_id(wc[0]["id"])
+        conn = db._get_connection()
+        try:
+            row = conn.execute("SELECT candidate_id, url, data_type FROM telescope_data WHERE telescope_data_id=?",
+                               (wc[0]["id"],)).fetchone()
+        finally:
+            conn.close()
+        assert tuple(row) == ("cand-1", "https://acme.com/culture", "VISIBLE_TEXT")
+
+        # AC7: deleting the referenced row needs no blob surgery; next read re-runs the coat-check fetch
+        before = _blob()
+        self._drop(db, wc[0]["id"])
+        assert _blob() == before
+        refetch = AsyncMock(return_value=[{"url": "https://acme.com/culture", "content": "again"}])
+        monkeypatch.setitem(roster_mod._COATCHECK_HANDLERS, "website_content", refetch)
+        company = db.get_company("acme")
+        assert await roster_mod.get_company_data(company, "website_content") == refetch.return_value
+        refetch.assert_awaited_once_with(company)
+
+    def test_keep_job_list_visible_stores_row_for_company_candidate(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"name": "T"})
+        db.save_company("acme", "WEBSITE_FOUND", candidate_id="cand-1")
+        rid = roster_mod._keep_job_list_visible("acme", "https://acme.com/jobs", "Job list text")
+        assert gazer_mod.resolve_telescope_value(rid) == "Job list text"
+        conn = db._get_connection()
+        try:
+            row = conn.execute("SELECT candidate_id, url, data_type FROM telescope_data WHERE telescope_data_id=?",
+                               (rid,)).fetchone()
+        finally:
+            conn.close()
+        assert tuple(row) == ("cand-1", "https://acme.com/jobs", "VISIBLE_TEXT")
+        assert roster_mod._keep_job_list_visible("acme", "https://acme.com/jobs", "   ") is None
+
+    @pytest.mark.asyncio
+    async def test_prefilter_company_saves_nav_links_row_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        nav = roster_mod.enumerate_array("", _prefilter_nav_urls())
+        monkeypatch.setattr(roster_mod, "scrape_company_homepage_content", AsyncMock(return_value={
+            "company_website": "https://acme.com", "visible_text": "hello", "enumerated_nav_links": nav, "error": None,
+        }))
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state_history=[])))
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={
+            "success": True,
+            "parsed_response": _encoded_prefilter_response(
+                _prefilter_grades({"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"}),
+                possible_job_links=[1],
+            ),
+        }))
+        out = await roster_mod.prefilter_company("acme", "https://acme.com", ctx=_prefilter_rubric_ctx())
+        assert out["state"] == "PREFILTER_PASSED"
+        navs = [c.args[1]["nav_links"] for c in save.call_args_list if "nav_links" in c.args[1]]
+        assert len(navs) == 1 and gazer_mod.is_telescope_id(navs[0])
+        assert gazer_mod.resolve_telescope_value(navs[0]) == nav
+
+    @pytest.mark.asyncio
+    async def test_fetch_prefilter_notes_saves_nav_links_row_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=("homepage", "")))
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=["https://acme.com/about"]))
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": "x"}))
+        # Isolate from the prefilter decode fixtures (pre-existing reds): feed the flat shape directly
+        monkeypatch.setattr(roster_mod, "_flatten_prefilter_parsed", lambda parsed: {
+            "grades": [{"vector": "fit", "grade": "A", "reason": "ok"}], "possible_job_links": [],
+        })
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        assert await roster_mod._fetch_prefilter_notes(_company()) == "fit=A: ok"
+        nav = save.call_args.args[1]["nav_links"]
+        assert gazer_mod.is_telescope_id(nav)
+        assert gazer_mod.resolve_telescope_value(nav) == roster_mod.enumerate_array("", ["https://acme.com/about"])
+        # Homepage capture kept too (never in the blob here — the notes path only stores nav_links)
+        assert "homepage" not in json.dumps(save.call_args.args[1])
+        # No links scraped -> nothing kept for them, so no nav_links key is written
+        monkeypatch.setattr(gazer_mod, "extract_site_page_list", AsyncMock(return_value=[]))
+        assert await roster_mod._fetch_prefilter_notes(_company()) == "fit=A: ok"
+        assert "nav_links" not in save.call_args.args[1]

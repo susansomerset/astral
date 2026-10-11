@@ -16,5 +16,6 @@ os.execvp("gunicorn", [
     "--bind", f"0.0.0.0:{os.environ['PORT']}",
     "--timeout", str(RAILWAY_CONFIG["timeout"]),
     "--workers", str(RAILWAY_CONFIG["workers"]),
+    "--threads", str(RAILWAY_CONFIG["threads"]),
     "--config", str(root / "scripts" / "gunicorn_conf.py"),
 ])
