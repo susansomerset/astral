@@ -29,6 +29,7 @@ Config sections:
   SURFER_CONSENT_CONFIG — Surfer install disclosure version + copy + consent status vocabulary (AST-1235; UI = AST-1237/1238)
   PREAMBLE_VALIDATION_CONFIG — Ruth Valid/Try Again/Escalate task_key + outcomes (AST-1015)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
+  TELESCOPE_DATA_CONFIG — telescope_data content-type keys + company_data keys that hold telescope row ids (AST-2131)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
   JOB_STATES      — job state list + prior_states / retry_state per state
   TRACKER_CONFIG  — tracker-specific (ingest, jd processing)
@@ -2325,6 +2326,29 @@ def roster_scrape_readiness_config() -> Dict[str, Any]:
         if raw.isdigit():
             cfg[key] = int(raw)
     return cfg
+
+
+# AST-2131: scraped Telescope content lives in telescope_data (owned by gazer); entity blobs hold row ids.
+TELESCOPE_DATA_CONFIG = {
+    # data_type values written to telescope_data.data_type — free text, not validated in code.
+    "data_types": {
+        "VISIBLE_TEXT": "VISIBLE_TEXT",
+        "PAGE_LINKS": "PAGE_LINKS",
+        "DOM_CONTENT": "DOM_CONTENT",  # reserved name only — DOM is not stored
+    },
+    # company_data keys whose values are telescope row ids (or [{url, id}] for multi-page keys).
+    "company_data_id_keys": (
+        "homepage_text",
+        "nav_links",
+        "website_content",
+        "job_list_visible",
+        "pjl_scrape_pages",
+    ),
+}
+# Each id-holding key must still be a declared company_data key.
+assert all(
+    k in ROSTER_CONFIG["company_data_keys"] for k in TELESCOPE_DATA_CONFIG["company_data_id_keys"]
+), TELESCOPE_DATA_CONFIG["company_data_id_keys"]
 
 
 # Phase 1 roster inflow discovery (AST-505): CSE search limits, vet task keys, weekly cadence.
@@ -4661,6 +4685,7 @@ TRACKER_CONFIG = {
     },
     "job_data_keys": {
         "job_description": "job_description",  # coat-check: fetch via playwright if missing
+        "jd_telescope_data_id": "jd_telescope_data_id",  # AST-2130: telescope_data row id of the scraped JD; no coat-check handler
     },
     "jd_min_chars": 200,  # scraped JDs shorter than this are discarded (not saved) as junk
     # AST-1120: full path-segment match for UUID-shaped external job ids in job_link.

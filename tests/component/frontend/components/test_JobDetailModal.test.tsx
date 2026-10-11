@@ -179,10 +179,7 @@ describe("JobDetailModal — AST-1454 skipped-field editors", () => {
           json: async () => ({
             ...detail,
             ...body,
-            job_data: {
-              ...((detail.job_data as Record<string, unknown>) || {}),
-              job_description: body.job_description ?? "",
-            },
+            job_data: (detail.job_data as Record<string, unknown>) || {},
             fields_editable: body.state && body.state !== detail.state ? false : true,
             legal_next_states: body.state && body.state !== detail.state ? [] : detail.legal_next_states,
             state: (body.state as string) || detail.state,
@@ -196,7 +193,7 @@ describe("JobDetailModal — AST-1454 skipped-field editors", () => {
     })
   }
 
-  it("editable: title/link inputs, state select, empty JD tab, Save PUT + onRefresh", async () => {
+  it("editable: title/link inputs, state select, no JD tab or JD editor (AST-2133), Save PUT + onRefresh", async () => {
     mockEditable()
     const onRefresh = vi.fn()
     renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} onRefresh={onRefresh} />)
@@ -213,12 +210,9 @@ describe("JobDetailModal — AST-1454 skipped-field editors", () => {
     expect(screen.getByRole("option", { name: "ERROR_GRADE_DO" })).toBeInTheDocument()
     expect(screen.getByRole("option", { name: "NEW" })).toBeInTheDocument()
 
-    await userEvent.click(screen.getByText("Job Description"))
-    const jd = screen.getByRole("textbox")
-    expect(jd).toHaveValue("")
-    await userEvent.type(jd, "pasted JD")
+    // AST-2133: JD is read-only composed text — empty job_data means no JD tab at all.
+    expect(screen.queryByText("Job Description")).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByText("Info"))
     expect(screen.getByRole("button", { name: /^Copy$/ })).toHaveClass("btn", "secondary")
     expect(screen.getByRole("button", { name: "Already Skipped" })).toBeDisabled()
 
@@ -231,13 +225,34 @@ describe("JobDetailModal — AST-1454 skipped-field editors", () => {
           body: JSON.stringify({
             job_title: "Patched Title",
             job_link: "https://example.com",
-            job_description: "pasted JD",
           }),
         }),
       ),
     )
     await waitFor(() => expect(onRefresh).toHaveBeenCalled())
     await waitFor(() => expect(screen.getByRole("heading", { name: "Patched Title" })).toBeInTheDocument())
+  })
+
+  it("AST-2133 AC9: editable job with a composed JD shows it read-only — no JD textarea, Save PUT omits job_description", async () => {
+    mockEditable({ ...editablePayload, job_data: { job_description: "Preamble\n\nScraped body" } })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Engineer" })).toBeInTheDocument())
+    await userEvent.click(screen.getByText("Job Description"))
+    // Info-tab inputs unmount with the tab switch, so any textbox here would be a JD editor.
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+    expect(screen.getByText(/Scraped body/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText("Info"))
+    await userEvent.clear(screen.getByDisplayValue("Engineer"))
+    await userEvent.type(screen.getByDisplayValue(""), "T2")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith("/api/jobs/j1", expect.objectContaining({ method: "PUT" })),
+    )
+    const put = mockedApi.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!
+    const body = JSON.parse(String((put[1] as RequestInit).body)) as Record<string, unknown>
+    expect(body).not.toHaveProperty("job_description")
+    expect(body.job_title).toBe("T2")
   })
 
   it("non-editable: display-only Info, no Save, no empty JD tab", async () => {
