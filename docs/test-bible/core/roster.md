@@ -1267,3 +1267,36 @@ git diff origin/dev -- src/core/roster.py | grep -n '_apply_prefilter_decoded_co
 | Batch: miss → `PREFILTER_FAILED` unsaved; sibling F5 applies its own verdict (saved with reason); retried 0, no ERROR | `_run_batch_company_prefilter` | **`…::test_batch_miss_fails_only_that_company`** |
 
 **Integration:** none.
+
+### AST-2134 · AST-2130 (roster company scrapes + admin preview on telescope_data)
+
+**Parent:** [AST-2130](https://linear.app/astralcareermatch/issue/AST-2130). **Publish:** `origin/sub/AST-2130/AST-2134-roster-telescope-data`. Plan: `docs/features/foundation/ast-2134-roster-company-scrapes-and-admin-preview-on-telescope-data.md`. Gazer API: [`gazer.md`](gazer.md) § AST-2132. Admin preview: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2134.
+
+Writers keep via gazer and store row ids: `_fetch_nav_links` / `_fetch_prefilter_notes` / `prefilter_company` → `nav_links` id; `_fetch_website_content` → `website_content` `[{url, id}]` (caller still gets stripped `[{url, content}]`); `_merge_pjl_scrape_record` → ledger rows `{url, id, links_id?}`; `_keep_job_list_visible` → `job_list_visible` id. Readers resolve via gazer: `_resolve_company_value` (id → content; legacy text passthrough; `website_content` stripped; gone → `None`), `_resolved_pjl_pages` (→ `{url, visible_text, enumerated_nav_links?}`; legacy rows pass; gone rows drop; all gone → `None`), `_resolved_company_data` (copy; rebuilds `pjl_nav_links` in candidate order when not stored), `_company_homepage_ready`, `get_company_data` (id keys resolve; gone capture → fetch-on-missing).
+
+| AC | Component tests |
+| --- | --- |
+| AC5 roster-written keys hold ids (nav_links, website_content `{url, id}` + candidate_id on the row, PJL `{url, id, links_id}`, job_list_visible) | new **`TestAst2134RosterTelescope`** (`test_ac5_ac7_…`, `test_prefilter_company_saves_nav_links_row_id`, `test_fetch_prefilter_notes_saves_nav_links_row_id`, `test_keep_job_list_visible_…`); revised **`TestCoatCheckHandlers::{test_nav_links_saves_enumerated_links, test_website_content_scrapes_selected_pages}`**, **`TestAst719PjlRosterHelpers`** ×4; `test_gazer.py` **`TestFetchJobPagesBatch`** via `_pjl_ledger` |
+| AC6 readers unchanged (resolve shapes, PJL rebuild, homepage presence, admin preview text vs ids byte-identical) | `TestAst2134RosterTelescope::{test_resolve_company_value_shapes, test_resolved_pjl_pages_row_shapes, test_resolved_company_data_rebuilds_pjl_nav_links_in_candidate_order, test_company_homepage_ready_resolves_id, test_get_company_data_resolves_id_without_fetch}`; `test_api_admin.py` **`TestAst2134AdhocPreviewTelescope`** |
+| AC7 deleting the `website_content` row leaves the blob byte-identical; next `get_company_data` re-runs the coat-check handler | `TestAst2134RosterTelescope::test_ac5_ac7_website_content_ids_then_deleted_row_refetches` (real company row, tmp DB) |
+
+**Broken / obsolete (revised, names kept):** `TestAst719PjlRosterHelpers::{test_merge_pjl_scrape_record_replaces_duplicate_and_skips_empty, test_ast1995_upsert_replaces_matching_row_in_place, test_ast1995_whole_row_replace_drops_enumerated_nav_links, test_merge_pjl_scrape_record_persists_enumerated_nav_links}` (ledger rows → ids); `TestCoatCheckHandlers::{test_nav_links_saves_enumerated_links, test_website_content_scrapes_selected_pages}` (blob ids; real keep). **Stale since the gazer swap** (patched `roster_mod.get_visible_text` / `extract_site_page_list`, which the coat-check handlers no longer call — reached the real telescope client): retargeted to `gazer_mod` in `test_nav_links_returns_none_on_empty_or_failure`, `test_handles_missing_culture_links_and_scrape_failures`, `test_returns_none_without_reasons_or_nav_links`, `test_prefilter_notes_returns_none_without_reasons`, and the pre-existing reds `test_prefilter_notes_paths`, `test_persists_optional_fields_and_handles_failures`, `test_prefilter_notes_returns_saved_notes_with_nav_links`. `test_gazer.py` PJL ledger asserts (8) now go through **`_pjl_ledger`** (asserts `{url, id, links_id?}` uuid shape, returns roster's resolved view — expected rows unchanged).
+
+**Isolation (required):** `test_roster.py` gains an autouse **`_telescope_tmp_db`** (core `sqlite_in_memory`). Without it a default run kept 10 rows in `ASTRAL_DB_DIR=data/` — the live DB symlink in epic worktrees.
+
+**Coverage:** every added `roster.py` / `api_admin.py` line and branch is covered (`test_roster.py` + `test_api_admin.py`).
+
+**Pre-existing (not this ticket; equal on `origin/ftr/AST-2130-telescope-data`):** `test_roster.py` 50 (incl. `TestPrefilterCompany*` — `_patch_prefilter_scrape_with_nav` patches `get_visible_text` but `scrape_company_homepage_content` uses `scrape_page`; and the three `_fetch_prefilter_notes` reds above); `test_api_admin.py` 5; `test_gazer.py` 3 (§ AST-2132); `test_consult.py` 27; `test_dispatcher.py` 13; `test_api_system.py` 1.
+
+**Integration:** none.
+
+## QA test manifest — AST-2134
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py tests/component/core/test_gazer.py tests/component/ui/api/test_api_admin.py -q -k "Ast2134 or TestAst719 or nav_links_saves or website_content_scrapes or TestFetchJobPagesBatch"` — 36 passed.
+2. No-regression: the same three files plus `tests/component/core/{test_gazer_scrape_failure,test_bootstrap,test_consult,test_dispatcher}.py`, `tests/component/utils/test_debug_logging.py`, `tests/component/ui/api/test_api_system.py` — failure set equals the ftr baseline (98 nodes, counts above).
+3. AC8 (AST-2133, closed here): `git grep -n -E "\.get\((jd_key|[\"']job_description[\"'])" -- src/core src/ui/api ':!src/core/tracker.py'` → empty.
+4. Live DB untouched: run with `ASTRAL_DB_DIR=<empty tmp dir>`; `telescope_data` row count in `~/astral/data/astral.db` is the same before and after items 1–2, and the tmp dir gains no `telescope_data` table from item 2's roster run.
+
+**Pass criterion:** items 1–4 — narrowed run, not the zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2130/AST-2134-roster-telescope-data:docs/test-bible/core/roster.md | shasum`

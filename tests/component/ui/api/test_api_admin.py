@@ -4678,3 +4678,90 @@ class TestAst2006EnrichTasksProbeSilent:
             agent_mod.preview_prompt("anticipate_scan", {"first": "Ann", "_astral_candidate_id": "cand-1"})
         msgs = [r.getMessage() for r in caplog.records if "resolved to empty (job_context, task=anticipate_scan)" in r.getMessage()]
         assert len(msgs) == 2  # VISIBLE_JD + ANALYSIS_JD
+
+
+# AST-2134: admin ad-hoc preview resolves company telescope ids via gazer; job previews read the composed JD.
+class TestAst2134AdhocPreviewTelescope:
+    @pytest.fixture(autouse=True)
+    def _db(self, sqlite_in_memory):
+        return sqlite_in_memory
+
+    def _keep(self, text: str, data_type: str = "VISIBLE_TEXT") -> str:
+        from src.core import gazer
+        return gazer.keep_telescope_data(None, "https://acme.com/p", data_type, text)
+
+    def _company(self, monkeypatch: pytest.MonkeyPatch, cdata: dict) -> None:
+        monkeypatch.setattr(admin_mod, "get_dispatch_task_by_key", lambda task_key: {"entity_type": "company"})
+        monkeypatch.setattr(admin_mod.database, "get_company", lambda short_name: {"company_data": dict(cdata)})
+
+    def _previews(self, monkeypatch: pytest.MonkeyPatch, cdata: dict) -> dict:
+        self._company(monkeypatch, cdata)
+        return {t: admin_mod._build_adhoc_live_content(t, "acme") for t in ("prefilter_company", "select_job_page", "gaze")}
+
+    def test_ac6_company_previews_byte_identical_text_vs_ids(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        nav = "1: https://acme.com/about\n2: https://acme.com/careers"
+        legacy = {
+            "homepage_text": "Acme homepage body",
+            "nav_links": nav,
+            "website_content": [{"url": "https://acme.com/c1", "content": "Culture one"},
+                                {"url": "https://acme.com/c2", "content": "Culture two"}],
+        }
+        ids = {
+            "homepage_text": self._keep("Acme homepage body"),
+            "nav_links": self._keep(nav, "PAGE_LINKS"),
+            # Fresh captures are raw (unstripped); the preview strips like the pre-AST-2130 blob
+            "website_content": [{"url": "https://acme.com/c1", "id": self._keep("  Culture one\n")},
+                                {"url": "https://acme.com/c2", "id": self._keep("Culture two")}],
+        }
+        before = self._previews(monkeypatch, legacy)
+        after = self._previews(monkeypatch, ids)
+        assert after == before
+        assert all(before.values())  # non-vacuous: every preview has content
+        assert "Acme homepage body" in before["prefilter_company"]
+
+    def test_ac6_prefilter_falls_back_to_website_content_ids(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        legacy = {"website_content": "Plain culture text"}
+        ids = {"website_content": self._keep("Plain culture text")}
+        assert self._previews(monkeypatch, ids) == self._previews(monkeypatch, legacy)
+
+    def test_gone_capture_previews_empty(self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory) -> None:
+        rid = self._keep("Culture")
+        conn = sqlite_in_memory._get_connection()
+        try:
+            conn.execute("DELETE FROM telescope_data WHERE telescope_data_id = ?", (rid,))
+            conn.commit()
+        finally:
+            conn.close()
+        assert self._previews(monkeypatch, {"website_content": [{"url": "u", "id": rid}]})["gaze"] == ""
+
+    def _jobs(self, monkeypatch: pytest.MonkeyPatch, job_data: dict, company_data: dict | None = None) -> None:
+        monkeypatch.setattr(admin_mod, "get_dispatch_task_by_key", lambda task_key: {"entity_type": "job"})
+        monkeypatch.setattr(admin_mod.database, "get_job", lambda jid: {
+            "astral_job_id": jid, "job_title": "Engineer", "job_link": f"https://jobs.example/{jid}",
+            "company": "acme", "job_data": dict(job_data),
+        })
+        monkeypatch.setattr(admin_mod.database, "get_company", lambda short_name: {"data": dict(company_data or {})})
+
+    def test_job_previews_read_composed_jd(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ref = self._keep("Nav\n\nEngineer\nBuild things.\nApply for this job\nfooter")
+        self._jobs(monkeypatch, {"job_description": "Email pre", "jd_telescope_data_id": ref,
+                                 "raw_job_listing": "raw"})
+        composed = "Email pre\n\nEngineer\nBuild things."
+        assert admin_mod._build_adhoc_live_content("evaluate_jd", "j1").startswith(f"[astral_job_id=j1]\n{composed}")
+        batch = admin_mod._build_adhoc_live_content("qualify_meteorite", "", ["j1"])
+        assert batch == f"METEORITE JOBS:\n000: job_link: https://jobs.example/j1\nCONTENT:\n{composed}"
+
+    def test_job_preview_raw_listing_fallback_when_no_jd(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._jobs(monkeypatch, {"raw_job_listing": "raw listing"})
+        assert admin_mod._build_adhoc_live_content("evaluate_jd", "j1") == "[astral_job_id=j1]\nraw listing"
+
+    def test_like_company_context_resolves_website_content_ids(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(admin_mod.TASK_CONFIG, "evaluate_jd",
+                            {**admin_mod.TASK_CONFIG["evaluate_jd"], "requires_company": True})
+        legacy = {"website_content": [{"url": "https://acme.com/c", "content": "Vibes"}]}
+        ids = {"website_content": [{"url": "https://acme.com/c", "id": self._keep(" Vibes \n")}]}
+        self._jobs(monkeypatch, {"job_description": "JD"}, legacy)
+        before = admin_mod._build_adhoc_live_content("evaluate_jd", "j1")
+        self._jobs(monkeypatch, {"job_description": "JD"}, ids)
+        assert admin_mod._build_adhoc_live_content("evaluate_jd", "j1") == before
+        assert "COMPANY CONTEXT" in before and "Vibes" in before

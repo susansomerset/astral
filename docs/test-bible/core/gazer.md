@@ -618,3 +618,7 @@ Gazer API: `is_telescope_id`, `keep_telescope_data` (blank → `None`, nothing s
 **Pass criterion:** items 1–5 — not zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2130/AST-2132-gazer-telescope-owner:docs/test-bible/core/gazer.md | shasum`
+
+### AST-2134 · AST-2130 (PJL ledger rows hold row ids)
+
+`fetch_job_pages` passes `visible_text_id` / `page_links_id` to roster's `_merge_pjl_scrape_record`, so `pjl_scrape_pages` rows are `{url, id, links_id?}`. **Revised:** every `saved["pjl_scrape_pages"]` assert in `TestFetchJobPagesBatch` / `TestAst2086GazerBotWallSplit` (8) goes through **`_pjl_ledger`** — asserts the uuid row shape (legacy text rows pass) and compares roster's resolved view to the original expected rows. Manifest: [`roster.md`](roster.md) § AST-2134.

@@ -24,6 +24,19 @@ def _telescope_tmp_db(sqlite_in_memory):
     return sqlite_in_memory
 
 
+def _pjl_ledger(rows: list) -> list | None:
+    """AST-2134: pjl_scrape_pages rows are {url, id, links_id?} (legacy text rows pass through).
+    Assert that shape, then return roster's resolved view — today's {url, visible_text, enumerated_nav_links?}."""
+    from src.core import roster as roster_mod
+    if not rows:
+        return rows  # empty ledger stays [] (the resolver maps empty to None for fetch-on-missing)
+    for r in rows:
+        if "visible_text" not in r:
+            assert set(r) <= {"url", "id", "links_id"} and gazer_mod.is_telescope_id(r["id"]), r
+            assert "links_id" not in r or gazer_mod.is_telescope_id(r["links_id"]), r
+    return roster_mod._resolved_pjl_pages(rows)
+
+
 def _kept(db) -> list[tuple]:
     """telescope_data rows in insert order: (id, candidate_id, url, data_type)."""
     conn = db._get_connection()
@@ -653,7 +666,7 @@ class TestFetchJobPagesBatch:
         assert out == {"passed": 1, "failed": 0, "total": 1}
         transition.assert_called_once_with("acme", "PJL_READY")
         saved = save.call_args[0][1]
-        assert saved["pjl_scrape_pages"] == [
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [
             {
                 "url": "https://acme.com/careers",
                 "visible_text": "open roles",
@@ -711,7 +724,7 @@ class TestFetchJobPagesBatch:
         # Both URLs scraped, in candidate order — the stored careers row no longer short-circuits.
         assert [c.args[0] for c in scrape.await_args_list] == ["acme.com/careers", "acme.com/jobs"]
         # Replaced row keeps index 0; the new URL appends.
-        assert saved["pjl_scrape_pages"] == [
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [
             {"url": "https://acme.com/careers", "visible_text": "fresh"},
             {"url": "https://acme.com/jobs", "visible_text": "more roles"},
         ]
@@ -743,7 +756,7 @@ class TestFetchJobPagesBatch:
             },
         )
         scrape.assert_awaited_once()
-        assert saved["pjl_scrape_pages"] == [
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [
             {"url": "https://acme.com/careers", "visible_text": "NEW BOARD: Role B",
              "enumerated_nav_links": "1: https://acme.com/jobs/b"},
         ]
@@ -775,7 +788,7 @@ class TestFetchJobPagesBatch:
         outcomes = [c.kwargs.get("outcome") or "" for c in log.debug_index.call_args_list]
         assert any("'acme.com/careers' error=" in o for o in outcomes)
         # Transient failure never deletes stored content.
-        assert saved["pjl_scrape_pages"] == [prior]
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [prior]
         # AST-2132: nav carry-forward retired with the derived fields — both cleared.
         assert saved["pjl_assembled_content"] is None
         assert saved["pjl_nav_links"] is None
@@ -797,7 +810,7 @@ class TestFetchJobPagesBatch:
                                   "page_links": ["https://acme.com/jobs/z"]},
             },
         )
-        assert saved["pjl_scrape_pages"] == [{"url": "https://acme.com/careers", "visible_text": "roles"}]
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [{"url": "https://acme.com/careers", "visible_text": "roles"}]
         # AST-2132: derived nav no longer written from this run's links.
         assert saved["pjl_nav_links"] is None
 
@@ -821,7 +834,7 @@ class TestFetchJobPagesBatch:
             {"acme.com/careers": {"url": "https://acme.com/careers", "visible_text": "NEW", "page_links": []}},
         )
         # Non-candidate row stays at index 0 (no pruning); careers replaced whole-row at index 1.
-        assert saved["pjl_scrape_pages"] == [
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [
             orphan,
             {"url": "https://acme.com/careers", "visible_text": "NEW"},
         ]
@@ -2239,7 +2252,7 @@ class TestAst2086GazerBotWallSplit:
         assert out == {"passed": 0, "failed": 1, "total": 1}
         transition.assert_called_once_with("acme", "BOT_BLOCKED_FETCH_JOB_PAGES")
         # A wall is not page content: nothing merged into the capture.
-        assert saved["pjl_scrape_pages"] == []
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == []
         # AST-2132 AC3: ...but both wall captures are kept.
         assert [r[2:] for r in _kept(sqlite_in_memory)] == [
             ("https://acme.com/careers", "VISIBLE_TEXT"), ("https://acme.com/jobs", "VISIBLE_TEXT"),
@@ -2255,7 +2268,7 @@ class TestAst2086GazerBotWallSplit:
         )
         assert out == {"passed": 1, "failed": 0, "total": 1}
         transition.assert_called_once_with("acme", "PJL_READY")
-        assert saved["pjl_scrape_pages"] == [prior]
+        assert _pjl_ledger(saved["pjl_scrape_pages"]) == [prior]
 
     @staticmethod
     def _culture_env(monkeypatch: pytest.MonkeyPatch, company: Dict[str, Any], fetched: Any) -> MagicMock:
