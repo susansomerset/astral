@@ -192,3 +192,19 @@ AC10 → Stage 1 export (no `company`/`telescope_data` payload writes; refuse ex
 **R6 (summary):** Single-file scope matches ticket. Export → load → clear ordering, refuse paths, legacy-shape mapping aligned with AST-2134 resolve behavior, and dependency on AST-2133/2134 via Stage 0 (read-only calls into roster/admin helpers) are faithful. No writer/reader edits; jobs untouched. No `fix-now` gaps.
 
 context_tokens≈78000
+
+## Review
+
+- **Branch:** `origin/sub/AST-2130/AST-2135-company-scrape-migration`
+- **Stage 0:** drift check clean — every `database.py` / `roster.py` / `gazer.py` / config / `api_admin.py` name in Stage 0 present on HEAD after `sync-child.sh` (tip `68adcbede`).
+- **Stage 1:** `03ed903a9` — script skeleton; `--db-dir` pins `ASTRAL_DB_DIR` before any `src` import; `DB:` printed first; export per plan (verbatim content, `{url, id[, links_id]}` entries, `was` digest per key, derived PJL fields nulled only when rebuild matches stored; refuses an existing `--file`). Script is executable like the other shebang migrations.
+- **Stage 2:** `d46505388` — load: `INSERT OR IGNORE` by file uuid with `_compress_payload`, one commit.
+- **Stage 3:** `90aa140bd` — clear: refuses (exit 1, no company writes) on any missing row, one warning per company; swaps keys whose digest still matches; `update_company(..., updated_at=<original>)`.
+- **Verify:** `py_compile` + `ruff check` clean on the script. Every run against `/tmp/AST-2135/astral.db` (fresh `cp -L` of the worktree DB, 0 companies) with `ASTRAL_DB_DIR=/tmp/AST-2135` and `--db-dir`; scratch under `/tmp/AST-2135/` (`seed.py`, `snap.py`, `compare.py`, `run.sh`). Seeded acme (homepage / nav / job_list_visible / 2 culture pages + one extra-key page), beta (legacy string `website_content`, blank homepage), gamma (2 PJL pages, derived fields = rebuild), delta (stale `pjl_nav_links`).
+  - **AC 10 export:** company dump + `telescope_data` count unchanged; 12 rows (VISIBLE_TEXT 9, PAGE_LINKS 3); 2 expected warnings (acme extra-key page left as text; delta `pjl_nav_links` left stored).
+  - **AC 10 load ×2:** inserted 12, then 0; all 12 read back equal via `get_telescope_data_for_ids`.
+  - **AC 10 refuse:** copy with `telescope_data` emptied → `clear` exit 1, 4 per-company warnings, company dump unchanged.
+  - **AC 5 / AC 6 / AC 11 after clear:** 4/4 companies updated, 10 keys swapped. Admin previews (`prefilter_company`, `select_job_page`, `gaze`) byte-identical for every company; select-job-page live content (`_build_select_job_page_live_content` from `_pjl_maps_from_company_data(_resolved_company_data(...))`) byte-identical — the admin `select_job_page` preview reads `nav_links`, so this is the reader that exercises PJL; `updated_at` unchanged. `_resolved_company_data` identical except `pjl_assembled_content` stored → `None` on gamma/delta (AC 5; its only reader rebuilds it, per the identical live content). Raw blobs: ids / `{url, id[, links_id]}` everywhere text moved; gamma derived fields NULL; delta `pjl_nav_links` still stored.
+  - **Second clear:** 0 updates, 10 "changed since export" warnings, dump unchanged.
+- **Live DB:** never opened — no run used `data/` or `~/astral/data/`.
+- **No new tests** — coverage is Betty's (qa-child).
