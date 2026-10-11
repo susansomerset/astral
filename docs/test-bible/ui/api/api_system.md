@@ -237,3 +237,5 @@ Open `GET /api/auth_session_policy` returns non-secret session duration + extend
 Manifest: [`api_jobs.md`](api_jobs.md) § AST-1974 items 3 + 5.
 
 **AST-2047 (pointer):** `TestSystemAuthRoutes::test_ui_config_serves_theme_registry` — `ui_config` serves `themes` + `default_theme` via the `UI_CONFIG` spread (keys compared as a set: Flask sorts JSON keys). Manifest: [`../../frontend/pages.md`](../../frontend/pages.md) § AST-2047.
+
+**AST-2129 (pointer):** `test_ui_config_serves_theme_registry` revised to pin the exact four-entry `themes` dict (Dark, Light, Shapes - Light, Shapes - Dark, all selectable). Manifest: [`../../frontend/root.md`](../../frontend/root.md) § AST-2129.

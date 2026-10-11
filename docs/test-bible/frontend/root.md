@@ -10,12 +10,56 @@ There is **no** per-source-file branch-lock table (**§6b**). Prefer adding or e
 
 | Ticket | Behavior | Sources | Manifest |
 | --- | --- | --- | --- |
+| **AST-2129** | Shapes - Light / Shapes - Dark: twins on the Light / Dark token-block selector lists; per-grade shape ring width tokens; Shapes-only §9b shape, ring and centroid-letter rules | `src/ui/frontend/src/App.css`, `src/utils/config.py` | **`test_AppCss.test.tsx`** (revised parser + 9 new cases), **`TestAst2047ThemeRegistry`**, **`test_api_system`** theme registry — § AST-2129 below |
 | **AST-2123** | Grade base / lettered / confidence settings tokens in Dark + Light; §9b and confidence rules read them; alternate blocks, §16 and `--text-on-grade*` deleted | `src/ui/frontend/src/App.css` | **`test_AppCss.test.tsx`** (exact block ↔ registry restored) + AC greps — § AST-2123 below |
 | **AST-2122** | `App.css` theme token-block contract + AST-2049 epic-wide hex / `var()` guard (moved from the retired Theme Examples page test) | `src/ui/frontend/src/App.css`, all non-test `src/ui/frontend/src/**/*.{ts,tsx,css}` | **`tests/component/frontend/test_AppCss.test.tsx`** (5) — § AST-2122 below |
 | **AST-1317** | Amend `pattern.ui.shared-button-roles` with optional `in-row` size; unused `.btn.in-row` in `App.css` | `src/ui/frontend/src/App.css`, `canon/patterns/ui/pattern.ui.shared-button-roles.md`, `canon/patterns/HARVEST.md` | docs-acceptance (grep/read) — no pytest; call-site apply is **AST-1318** |
 | **AST-1300** | Approved `pattern.ui.shared-button-roles` + `pattern.ui.icon-control`; unused `.btn` / `.icon-control` in `App.css` | `src/ui/frontend/src/App.css`, `canon/patterns/ui/pattern.ui.shared-button-roles.md`, `canon/patterns/ui/pattern.ui.icon-control.md`, `canon/patterns/README.md`, `canon/patterns/HARVEST.md` | docs-acceptance (grep/read) — no pytest; call-site remediations are **AST-1301** / **AST-1302** |
 
 ---
+
+### AST-2129 · AST-2101 (Shapes - Light and Shapes - Dark themes)
+
+**Publish:** `origin/sub/AST-2101/AST-2129-shapes-themes`. `UI_CONFIG["themes"]` gains `shapes_light` and `shapes_dark`, both profile-selectable, and the default stays `dark`. There is no new token block. The Dark block opens `:root, [data-theme="dark"], [data-theme="shapes_dark"]` and the Light block opens `[data-theme="light"], [data-theme="shapes_light"]`. Each block declares 12 shape ring width tokens (`--grade-<g>-shape-ring-width[-lettered]`): Light 1.5px / 2.5px, Dark 0px. New §9b rules apply only under `:is([data-theme="shapes_light"], [data-theme="shapes_dark"])`. They drop the circle, show `GradeMark`'s SVG (AST-2128), fill the path with the grade fill, and stroke the ring as a non-scaling stroke. X is a stroke-only cross with a four-`drop-shadow` ring. Letters are sized and padded to the triangle centroids, and X gets `font-size: 0`. One unscoped rule, `.grade-dot > svg { display: none }`, keeps Light and Dark on the circle.
+
+| Behavior | Test |
+| --- | --- |
+| Token-block parser reads selector lists; blocks keyed by first `[data-theme]` id; Shapes twins have no block of their own | **`test_AppCss.test.tsx`** › **`Dark is :root and [data-theme=dark]; one block per registry id`** (revised: `blockRe` + twin exemption) |
+| AC 2: the two exact selector lists; every registry id on exactly one block; twin on its sibling's block; `--grade-a:` declared twice | › **`AST-2129 AC2: each Shapes twin sits on its sibling's block…`** (new) |
+| Light names = Dark names; AST-2076 accent equality | existing cases, unchanged (now parse the selector-list blocks) |
+| AC 4, token half: shape ring widths per grade (Light 1.5/2.5px, Dark 0px) | › **`AST-2129 AC4 (token half)…`** (new) |
+| AC 6, static half: unscoped `.grade-dot > svg { display: none }` is the only unscoped SVG/path grade rule | **`App.css Shapes grade marks — AST-2129`** › **`AC6…`** (new) |
+| AC 3: circle dropped (`background`/`box-shadow: none`); SVG `display: block`, `overflow: visible`, 100% box; non-scaling stroke + round joins | › **`AC3: the circle is dropped…`** (new) |
+| AC 3/4 A–F: path `fill: var(--grade-<g>)`, `stroke: var(--grade-<g>-ring)`, lettered/compact `stroke-width` tokens | › **`AC3/AC4 <g>…`** (new, 5 cases) |
+| AC 3/4 X: `fill: none`, `stroke: var(--grade-x)`, 20 / 24 units, round caps; ring = 4 `drop-shadow`s in `--grade-x-ring` on `.dot-x > svg` at the matching width token | › **`AC3/AC4 X…`** (new) |
+| AC 5: font-size ratios 0.46 / 0.38; D/F centre = 50 ± padding/2 within ±3 of 63 / 39; X `font-size: 0` (keeps the img role, per the plan's Stage 3 decision, not `visibility`) | › **`AC5…`** (new) |
+| AC 1: registry exactly four ids, labels, selectable, default `dark`; profile Theme select options = selectable entries | **`test_config.py::TestAst2047ThemeRegistry`** (2 revised) |
+| AC 1: `GET /api/ui_config` serves exactly the four entries | **`test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry`** (revised) |
+
+**Repro check:** against the pre-change ftr `App.css`, 13 of 16 `test_AppCss` cases are red: all 9 new AST-2129 cases, the 2 `--tp-lvl` cases, plus the AC2 selector and AC4 token cases that need the twins. Against the product, 14 pass and only the 2 `--tp-lvl` cases are red.
+
+**Not covered by component tests (jsdom has no cascade, `:is()` or `var()` resolution):** computed `fill`, `stroke`, `stroke-width`, `background-color`, `box-shadow`, `display`, letter box centre, and the pixel ring width at 12px and 22px (AC 3–6, computed half). These go to browser / parent UAT, as with AST-2123. The static cases above pin the declarations that produce them.
+
+**Broken / obsolete (revised this pass):** `test_AppCss` (selector-list `blockRe`, four-id `THEMES` mirror), `TestAst2047ThemeRegistry::test_registry_ids_selectable_and_default` and `::test_profile_theme_select_options_are_the_selectable_entries` (two → four ids), and `test_api_system` `test_ui_config_serves_theme_registry` (two → four; not named in the plan, but it pins AC 1's API half). **Pre-existing red, not this ticket:** `test_AppCss` AC5 and AST-2049 cases on `--tp-lvl` (dev `5f4850a20`), the same named exclusion as **AST-2128** (`components.md` § AST-2128). AC 7's "`test_AppCss` passes" holds with that exclusion, per the plan's Out-of-scope note. **Integration:** none; no scenario reads themes or `App.css`.
+
+#### QA test manifest (AST-2129)
+
+1. **Vitest:**
+
+```bash
+cd src/ui/frontend && npx vitest run --config vite.config.ts \
+  ../../../tests/component/frontend/test_AppCss.test.tsx \
+  ../../../tests/component/frontend/components/test_GradeMark.test.tsx \
+  -t '^(?!.*(no hex or non-black rgba outside token blocks|AST-2049: no hex in \.ts/\.tsx source)).*$'
+```
+
+Expect 53 passed and 2 skipped. Without `-t`, exactly those 2 fail, and they name only `--tp-lvl`.
+
+2. **Pytest (6):** `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst2047ThemeRegistry tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_serves_theme_registry`. Set `ASTRAL_PYTHON` if the worktree has no `.venv`.
+3. **AC 2:** `git grep -c -e '--grade-a:' -- src/ui/frontend/src/App.css` → `2`.
+4. **AC 7:** `cd src/ui/frontend && npx tsc -b --noEmit` exits 0; `python -c "import src.utils.config"` exits 0.
+
+**Pass criterion:** items 1–4 hold.
 
 ### AST-2123 · AST-2100 (grade settings sets — Light Bright + ring, Dark as-is)
 

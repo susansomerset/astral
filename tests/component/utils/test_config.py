@@ -7911,8 +7911,10 @@ class TestAst2047ThemeRegistry:
 
     def test_registry_ids_selectable_and_default(self) -> None:
         themes = cfg.UI_CONFIG["themes"]
-        assert list(themes) == ["dark", "light"]
-        assert [tid for tid, t in themes.items() if t["profile_selectable"]] == ["dark", "light"]
+        # AST-2129 AC1: the two Shapes twins join Dark/Light, all four profile-selectable; default unchanged.
+        ids = ["dark", "light", "shapes_light", "shapes_dark"]
+        assert list(themes) == ids
+        assert [tid for tid, t in themes.items() if t["profile_selectable"]] == ids
         assert cfg.UI_CONFIG["default_theme"] == "dark"
 
     def test_profile_theme_select_options_are_the_selectable_entries(self) -> None:
@@ -7925,7 +7927,7 @@ class TestAst2047ThemeRegistry:
         assert theme["options"] == [
             {"value": tid, "label": t["label"]} for tid, t in cfg.UI_CONFIG["themes"].items() if t["profile_selectable"]
         ]
-        assert [o["label"] for o in theme["options"]] == ["Dark", "Light"]
+        assert [o["label"] for o in theme["options"]] == ["Dark", "Light", "Shapes - Light", "Shapes - Dark"]
 
     def test_tools_nav_admin_only_six_items(self) -> None:
         # AST-2122 AC8: the examples item is gone; the other six Tools items stay, in order.
@@ -7941,7 +7943,8 @@ class TestAst2047ThemeRegistry:
         assert [k for k in cfg.UI_CONFIG if k.endswith("_grade_sets")] == []
 
     def test_every_registry_id_has_an_app_css_block(self) -> None:
-        # Adding a palette = one registry entry + one [data-theme] block; a missing block would render unthemed.
+        # Adding a palette = one registry entry + one [data-theme] selector on a token block (AST-2129: a Shapes
+        # twin rides its sibling's block); a missing selector would render unthemed. Block shape: test_AppCss.
         from pathlib import Path
 
         css = (Path(__file__).resolve().parents[3] / "src/ui/frontend/src/App.css").read_text()

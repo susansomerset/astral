@@ -4927,6 +4927,8 @@ All 8 new/revised nodes red on pre-AST-2024 `config.py` / `agent_task.json`, gre
 
 **AST-2122 (pointer):** registry is exactly `dark` + `light`; Tools is admin-only with six items (no Theme Examples); no `*_grade_sets` key in `UI_CONFIG`. **`TestAst2047ThemeRegistry`** (5, revised + one new), **`TestAst1386ThreeSegmentAdminNav`** (`/admin/telescope` added to Tools paths). `TestAst2064ThemeExampleGradeSets` is deleted. Manifest: [`../frontend/pages.md`](../frontend/pages.md) § AST-2122.
 
+**AST-2129 (pointer):** registry is exactly `dark`, `light`, `shapes_light`, `shapes_dark` (labels Dark, Light, Shapes - Light, Shapes - Dark, all selectable, default `dark`); profile Theme select lists all four. **`TestAst2047ThemeRegistry`** (2 revised; `test_every_registry_id_has_an_app_css_block` unchanged and green, because a twin's `[data-theme]` sits on its sibling's selector list). Manifest: [`../frontend/root.md`](../frontend/root.md) § AST-2129.
+
 ### AST-2062 · AST-2055 (Estelle pinhole — tests for AST-2061)
 
 **Parent:** [AST-2055](https://linear.app/astralcareermatch/issue/AST-2055) (fix child [AST-2061](https://linear.app/astralcareermatch/issue/AST-2061)). **Publish:** `origin/sub/AST-2055/AST-2062-estelle-pinhole-tests`.
