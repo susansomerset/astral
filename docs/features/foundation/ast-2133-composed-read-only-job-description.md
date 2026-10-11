@@ -281,3 +281,70 @@ context_tokens≈62000
 - **Verify:** `py_compile` OK; ruff tracker 156 (baseline 157), consult 224, api_jobs 14; tsc clean, eslint 0; AC 8 grep → only `api_admin.py` 1497 / 1506 (AST-2134); AC 9 modal grep empty. Scratch checks (temp `ASTRAL_DB_DIR` under `/tmp`, DB path asserted): Stage 1 compose cases (no ref exact, ref + preamble, ref only, missing row → preamble + one warning) and `get_job_data` no self-heal on long composed; Stage 2 JD-only PUT → 400, title + JD → title saved, JD unchanged; Stage 3 token context / readiness / evaluate + qualify assembled content carry the composed JD; Stage 4 detail + skipped list return the composed JD, stored `job_data` byte-identical.
 - **Existing tests (Betty):** over the 12 test files that reference the touched functions, 3 new failures vs untouched ftr (pre-existing reds there unchanged), all asserting the pre-AST-2133 contract: `test_tracker.py::TestAst1453PersistSkippedJobEdits::test_writes_title_link_jd_then_transition` and `::test_empty_jd_persists_without_strip_whole_blob` (expect the JD write), `test_api_jobs.py::TestJobsRoutes::test_list_processing_filters_score_floor` (expects `job_data == {}`; now carries the composed `job_description`). `test_page_intake.py` fails collection on both trees (missing module) — not this ticket's.
 - **No new tests** — coverage is Betty's (qa-child).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2133
+**Publish ref:** `ef7cfc97498a8957151b59f6c500ff7fc56e0c1a` (`origin/sub/AST-2130/AST-2133-composed-jd`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored all three logging directives **A**; code review matches.
+
+## Frame diff
+
+- [ ] **AC7:** `GET /api/jobs/<id>` (and list views) return composed `job_data.job_description` (preamble + pruned capture when `jd_telescope_data_id` set); no-reference jobs return stored preamble only — `TestAst2133ComposeJobDescription`, `TestAst2133ComposedJdResponses`, E2E PUT tests.
+- [ ] **AC8:** Consult paths use `tracker.compose_job_description` / `get_job_data(..., "job_description")`; **not** literal zero-hit grep until AST-2134 — `api_admin.py` lines 1497 / 1506 remain (documented sibling).
+- [ ] **AC9:** JD-only `PUT` → 400 / unchanged blob; title + JD → title only; modal grep empty; skipped persist ignores `job_description`.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **AC8 vs Linear wording @susan:** Ticket AC8 requires zero grep hits; tip still has two `api_admin.py` reads (plan + Joan: AST-2134). **Default:** Treat AC8 as satisfied for **AST-2133** scope (`tracker` + consult + `api_jobs` rewired); run the strict grep as a **parent UAT** gate after AST-2134 lands on `ftr` — do not widen this child to edit `api_admin.py` in `resolve-child`.
+- **AC7 separator @susan:** `compose_job_description` joins preamble and pruned capture with `"\n\n"` (plan Decision); parent AC text says “P followed by” without mandating a blank line. **Default:** Keep `"\n\n"` unless UAT shows a consumer that requires byte-adjacent concat.
+
+### advisory
+
+- **Sibling diff carry:** Three-dot diff vs `origin/dev` includes full AST-2131 / AST-2132 stack (`gazer.py`, `database.py`, …) — expected on stacked subs; score AST-2133 on the four scoped files (+ their tests).
+- **Plan §Boundaries vs qa-child:** Betty landed `TestAst2133*`, revised `TestAst1453PersistSkippedJobEdits`, `test_api_jobs` processing-list expectation, bible sections — overrides “No tests or bible edits.”
+- **Issue doc `## Review`:** “3 failures / no new tests” is stale vs tip `ef7cfc974` (tests revised on branch).
+- **List-view cost:** Each referenced row in list views calls `compose_job_description` → one resolve/read per job (plan flag); bulk compose deferred — not a canon defect.
+- **Other API surfaces:** Routes outside `api_jobs` `list_view` / `detail` may still expose raw stored `job_data` (plan Flags) — out of scope until a future ticket.
+
+## Notes (Canon Scope — not scored)
+
+- `consult.qualify_meteorite` correctly **keeps** `jd_key` for the meteorite `parsed_job` preamble write (`jd_key: jd_text`); reads go through `compose_job_description`.
+- `get_job_data` self-heal unchanged in spirit: short composed JD still triggers `fetch_jd_batch`; success returns `compose_job_description(job)` (reference path), not raw blob text.
+
+## What’s solid
+
+- **Single reader:** `compose_job_description` in `tracker.py` — preamble, `resolve_telescope_value` on `jd_telescope_data_id`, `collapse_consecutive_blank_lines` + lazy `_prune_jd`, `"\n\n"` join; never writes composed text back.
+- **Consumers:** consult token context, meteorite qualify/evaluate, `_jd_ready_for_evaluate`; `api_jobs` `_compose_jd_for_response` on all list branches + `detail`; `persist_skipped_edits` / `persist_skipped_job_edits` drop JD writes.
+- **UI:** `JobDetailModal` JD read-only; AC9 frontend grep empty.
+- **Logging:** `compose_job_description` uses ungated `Calling` / `Response` `logger.debug` around resolve; no new exception swallowing in added paths.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-2133): Radia review — clean`, post slim upshot, **Review Posted** → datt **PROCEED** to **User Testing**.
+- UAT AC7–9 on this sub; defer strict AC8 grep to post–AST-2134 on `ftr` (discuss defaults above).
+- Optional: trim stale build `## Review` paragraph when appending.
+
+context_tokens≈34000
+
+---
