@@ -8,6 +8,8 @@
 | --- | --- | --- |
 | `src/data/database.py` (`telescope_data` schema / save / read by id(s)) | `tests/component/data/database/test_telescope_data.py` | no |
 
+**Migration script (AST-2135):** existing company scrape text → `telescope_data` rows; see [`../../dev/migrate_company_scrape_to_telescope_data.md`](../../dev/migrate_company_scrape_to_telescope_data.md).
+
 ---
 
 ### AST-2131 · AST-2130 (telescope_data table and config)
