@@ -208,3 +208,69 @@ context_tokens≈78000
   - **Second clear:** 0 updates, 10 "changed since export" warnings, dump unchanged.
 - **Live DB:** never opened — no run used `data/` or `~/astral/data/`.
 - **No new tests** — coverage is Betty's (qa-child).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2135
+**Publish ref:** `2268ab7816613a4b3a2c9e4112a8151fdd1f2e24` (`origin/sub/AST-2130/AST-2135-company-scrape-migration`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.info.entity | X | | `scripts/migrations/` outside `applies_when.paths` (core roster/consult/candidate/meteorite only) |
+
+## Column diff vs plan stage
+
+| slug | Joan | Radia | note |
+|------|------|-------|------|
+| stat.logging.info.entity | A | X | Joan treated pipe-shaped `log.info` as compliant; statute territory is `src/core/{roster,consult,candidate,meteorite}.py` only — migration script is voluntary pipe style, not scored as entity statute |
+
+## Frame diff
+
+- [ ] **AC10:** `export` → JSON only (refuse existing `--file`); DB company/`telescope_data` counts unchanged on export; `load` idempotent (`INSERT OR IGNORE`); `clear` exit 1 with no company writes when rows missing; after `load` + `clear`, reader parity (seeded verification / Betty manifest).
+- [ ] **AC11:** Admin previews + `_resolved_company_data` byte-identical before vs after `clear` for seeded companies (Verification §6).
+- [ ] **Production:** Real migration on Railway with host `ASTRAL_DB_DIR` — Susan-run, out of builder verify (plan §Run on Railway).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Digest guard @susan:** `clear` only swaps keys whose `_digest` still matches export-time `was`; drift between export and clear leaves text (warned). **Default:** Keep digest guard for production; if you want blind swap from export file regardless of drift, that is a plan/product change, not `resolve-child` on this tip.
+- **Derived PJL mismatch @susan:** Export nulls `pjl_assembled_content` / `pjl_nav_links` only when rebuild matches stored; mismatch keeps stored string (AC6 over AC5 for that row). **Default:** Expect zero production warnings if AST-2134 rebuild rules match data; investigate any warn before `clear`.
+
+### advisory
+
+- **Sibling diff carry:** Three-dot diff vs `origin/dev` includes full AST-2131–2134 stack; AST-2135 **product** is only `scripts/migrations/migrate_company_scrape_to_telescope_data.py` (+ Betty tests/bible).
+- **Plan §Boundaries vs qa-child:** `tests/component/scripts/test_migrate_company_scrape_to_telescope_data.py` (+337) and bible cluster — overrides “No tests or bible.”
+- **Issue doc `## Review`:** “No new tests” stale vs tip.
+- **Load path:** Raw `INSERT OR IGNORE` via `_compress_payload` / `_ensure_telescope_data_schema` (not `save_telescope_data`) — required for file-fixed uuids; plan precedent `backfill_collapse_blank_lines.py`; runtime gazer ownership unchanged.
+- **`--db-dir`:** Must be set before `src` import when not targeting default `ASTRAL_DB_DIR`; builder verify used `/tmp` only — production operators must not point at live symlink by mistake (plan Live DB guard).
+
+## Notes (Canon Scope)
+
+- Frozen list has no `stat.logging.error`; script uses `print` for refuse/summary and `log.warning` for per-company issues — consistent with Joan plan note.
+- `log.info` lines use `short_name | company …` pipe shape for operator grep; **X** on `info.entity` is territory, not a style defect.
+
+## What’s solid
+
+- Single-file scope: **export** (no DB payload writes, pre-assigned uuids + `was` digests), **load** (6-column INSERT, idempotent), **clear** (missing-row refuse before any `update_company`, digest match, `updated_at` preserved).
+- Legacy shapes: string `website_content`, `[{url,content}]`, PJL text rows → `{url,id[,links_id]}`; skips already-id values via `is_telescope_id`.
+- Logging: ungated `Calling` / `Response` `logger.debug` around list/read/insert/update; per-item `logger.warning` with company + reason; no swallowed failures without operator signal.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-2135): Radia review — clean`, post slim upshot, **Review Posted** → datt **PROCEED** to **User Testing**.
+- Susan: production **export → load → clear** on Railway per plan; keep export file until `clear` succeeds; confirm digest / derived-field flags before run (discuss defaults above).
+- Epic merge: ensure AST-2133/2134 on `ftr` before shipping migration in production (Relations).
+
+context_tokens≈30000
