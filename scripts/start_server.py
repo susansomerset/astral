@@ -17,4 +17,5 @@ os.execvp("gunicorn", [
     "--timeout", str(RAILWAY_CONFIG["timeout"]),
     "--workers", str(RAILWAY_CONFIG["workers"]),
     "--threads", str(RAILWAY_CONFIG["threads"]),
+    "--config", str(root / "scripts" / "gunicorn_conf.py"),
 ])
