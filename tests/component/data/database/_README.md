@@ -12,6 +12,7 @@ Public API lives on `src.data.database`. Cluster files under this directory map 
 | `test_agents.py` | `agent` |
 | `test_agent_tasks.py` | `agent_task` |
 | `test_agent_data.py` | `agent_data` |
+| `test_telescope_data.py` | `telescope_data` (AST-2131) |
 | `test_agent_responses.py` | `agent_responses` |
 | `test_company_job_scans.py` | `company_job_scan` |
 | `test_timesheets.py` | `timesheets` |

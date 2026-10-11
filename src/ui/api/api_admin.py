@@ -65,7 +65,7 @@ from src.utils.config import (
     resolve_tokens,
     empty_render_for_prompts,
     TASK_CONFIG,
-    TRACKER_CONFIG,
+    TELESCOPE_DATA_CONFIG,
     UI_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
@@ -1433,6 +1433,8 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
     entity_ids: for batch-mode tasks (qualify_job_listings), pass a list of IDs.
     entity_id: for single-entity tasks, pass one ID.
     Returns empty string if entity not found or task doesn't use live_content."""
+    # telescope_data reads go through gazer (AST-2134)
+    from src.core.gazer import resolve_telescope_value
     from src.utils.formatting import enumerate_array
 
     cfg = get_dispatch_task_by_key(task_key) or {}
@@ -1443,6 +1445,13 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         if not company:
             return ""
         cdata = company.get("company_data", {}) or {}
+        # Telescope row ids resolve via gazer; legacy text passes through unchanged (AST-2134).
+        logger.debug("Calling resolve_telescope_value: [company=%s company_data=%s]", entity_id, cdata)
+        cdata = {
+            k: (resolve_telescope_value(v) if k in TELESCOPE_DATA_CONFIG["company_data_id_keys"] else v)
+            for k, v in cdata.items()
+        }
+        logger.debug("Response from resolve_telescope_value: %s", cdata)
         if task_key == "prefilter_company":
             homepage = cdata.get("homepage_text") or cdata.get("website_content") or ""
             nav_links = cdata.get("nav_links") or []
@@ -1463,10 +1472,11 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         # gaze / other company tasks
         wc = cdata.get("website_content") or ""
         if isinstance(wc, list):
-            return "\n\n".join(f"=== {p.get('url','')} ===\n{p.get('content','')}" for p in wc if p.get("content"))
+            return "\n\n".join(f"=== {p.get('url','')} ===\n{str(p.get('content') or '').strip()}" for p in wc if p.get("content"))
         return str(wc)
 
     if entity_type == "job":
+        from src.core.tracker import compose_job_description
         # batch mode: qualify_job_listings assembles raw listings in one block
         if task_key == "qualify_job_listings":
             ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
@@ -1486,15 +1496,17 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         # batch mode: qualify_meteorite — lockstep with consult.qualify_meteorite assemble
         if task_key == "qualify_meteorite":
             ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
-            jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
             lines = []
             for jid in ids:
                 job = database.get_job(jid)
                 if not job:
                     continue
+                logger.debug("Calling compose_job_description: [job=%s]", jid)
+                jd = compose_job_description(job)
+                logger.debug("Response from compose_job_description: %s", jd)
                 lines.append(
                     f"{len(lines):03d}: job_link: {job.get('job_link') or ''}\n"
-                    f"CONTENT:\n{(job.get('job_data') or {}).get(jd_key, '') or ''}"
+                    f"CONTENT:\n{jd}"
                 )
             return ("METEORITE JOBS:\n" + "\n".join(lines)) if lines else ""
         # single-entity tasks
@@ -1503,16 +1515,22 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
             return ""
         job_data = job.get("job_data") or {}
         # evaluate_jd, grade_do/get/like — job description + optional company context
-        jd = job_data.get("job_description") or job_data.get("raw_job_listing") or ""
+        logger.debug("Calling compose_job_description: [job=%s]", entity_id)
+        jd = compose_job_description(job)
+        logger.debug("Response from compose_job_description: %s", jd)
+        jd = jd or job_data.get("raw_job_listing") or ""
         content = f"[astral_job_id={entity_id}]\n{jd}" if jd else ""
         # Append company website_content for LIKE (requires_company)
         task_cfg = TASK_CONFIG.get(task_key, {})
         if task_cfg.get("requires_company"):
             company = database.get_company(job.get("company", ""))
             if company:
-                wc = (company.get("data") or {}).get("website_content") or ""
+                wc = (company.get("data") or {}).get("website_content")
+                logger.debug("Calling resolve_telescope_value: [website_content=%s]", wc)
+                wc = resolve_telescope_value(wc) or ""
+                logger.debug("Response from resolve_telescope_value: %s", wc)
                 if isinstance(wc, list):
-                    vibes = "\n\n".join(f"=== {p.get('url','')} ===\n{p.get('content','')}" for p in wc if p.get("content"))
+                    vibes = "\n\n".join(f"=== {p.get('url','')} ===\n{str(p.get('content') or '').strip()}" for p in wc if p.get("content"))
                 else:
                     vibes = str(wc)
                 if vibes:

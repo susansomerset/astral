@@ -16,6 +16,7 @@ Tables used (inventory):
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets, plus nullable platform columns (AST-1965: platform_cost — NULL = not reconciled, native_tokens_prompt/_completion/_cached/_reasoning, host, platform_reconciled_at) set by update_timesheet_platform; sum_cost_by_batch prefers platform_cost per row.
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, list_agent_data_batches, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984); nullable self-ref ref_agent_data_id points at earliest identical content row when set (AST-974 / AST-977).
+- telescope_data — scraped Telescope content, one row per capture (telescope_data_id uuid PK, candidate_id, url, data_type free text e.g. VISIBLE_TEXT / PAGE_LINKS, content zlib-compressed like agent_data.block_data, created_at); index (candidate_id, created_at). Owned by gazer (AST-2130).
 - scheduled_query — Admin Scheduled Queries (AST-1122): named SQL rows with active flag, interval_hours cadence, last_run_at / last_rows_affected; tick runner in dispatcher.
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, list_dispatch_tasks_for_task_key, revalidate_dispatch_tasks_for_task_key, revalidate_dispatch_tasks_for_artifact, get_due_tasks). candidate_id required on save (AST-1134); meteorite_email live Avail is core (AST-1135 / AST-1466), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
@@ -244,6 +245,7 @@ _intake_session_schema_ensured = False
 _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
 _agent_data_schema_ensured = False
+_telescope_data_schema_ensured = False
 _scheduled_query_schema_ensured = False
 _meteorite_schema_ensured = False
 
@@ -1689,6 +1691,50 @@ def get_agent_data_for_ids(ids: List[str]) -> Dict[str, Any]:
             conn.close()
     return _run_with_retry(_with_conn)
 
+
+
+def save_telescope_data(candidate_id, url, data_type, content):
+    """Insert one telescope_data row and return its new telescope_data_id.
+
+    data_type is free text — deliberately no allow-list (new content types
+    need no code gate). content is plain text; compressed at rest."""
+    conn = _get_connection()
+    try:
+        _ensure_telescope_data_schema(conn)
+        new_id = str(uuid.uuid4())
+        # created_at has no column DEFAULT (mirrors agent_data) — always pass _utc_now().
+        conn.execute(
+            """INSERT INTO telescope_data
+               (telescope_data_id, candidate_id, url, data_type, content, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (new_id, candidate_id, url, data_type, _compress_payload(content), _utc_now()),
+        )
+        conn.commit()
+        return new_id
+    finally:
+        conn.close()
+
+
+def get_telescope_data_for_ids(telescope_data_ids):
+    """Return {telescope_data_id: plain content} for the ids that exist; missing ids are omitted."""
+    if not telescope_data_ids:
+        return {}
+    conn = _get_connection()
+    try:
+        _ensure_telescope_data_schema(conn)
+        placeholders = ",".join("?" for _ in telescope_data_ids)
+        rows = conn.execute(
+            f"SELECT telescope_data_id, content FROM telescope_data WHERE telescope_data_id IN ({placeholders})",
+            list(telescope_data_ids),
+        ).fetchall()
+        return {row[0]: _decompress_payload(row[1]) for row in rows}
+    finally:
+        conn.close()
+
+
+def get_telescope_data(telescope_data_id):
+    """Return plain content for one row, or None if the row does not exist."""
+    return get_telescope_data_for_ids([telescope_data_id]).get(telescope_data_id)
 
 def get_company_job_ids(company: str) -> List[str]:
     """Return list of company_job_id for company (excludes NULL). For dedup / inverted match."""
@@ -7409,6 +7455,30 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
     _agent_data_schema_ensured = True
 
 
+def _ensure_telescope_data_schema(conn: sqlite3.Connection) -> None:
+    """Create telescope_data table + index if not present. Idempotent."""
+    global _telescope_data_schema_ensured
+    if _telescope_data_schema_ensured:
+        return
+    # New table (AST-2131) — no legacy ALTER block; IF NOT EXISTS keeps re-runs no-ops.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS telescope_data (
+            telescope_data_id TEXT PRIMARY KEY,
+            candidate_id      TEXT,
+            url               TEXT,
+            data_type         TEXT NOT NULL,
+            content           BLOB NOT NULL,
+            created_at        TIMESTAMP NOT NULL
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_telescope_data_candidate_created "
+        "ON telescope_data (candidate_id, created_at)"
+    )
+    conn.commit()
+    _telescope_data_schema_ensured = True
+
+
 def _find_earliest_agent_data_content_match(
     conn: sqlite3.Connection,
     plain_text: str,
@@ -8712,6 +8782,7 @@ _UPSERT_SCHEMA_ENSURE_FLAGS: dict[str, tuple[str, ...]] = {
     "dispatch_ledger": ("_dispatch_ledger_schema_ensured",),
     "dispatch_task": ("_dispatch_task_schema_ensured",),
     "job": ("_job_schema_ensured",),
+    "telescope_data": ("_telescope_data_schema_ensured",),
 }
 
 _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = {
@@ -8727,6 +8798,7 @@ _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = 
     "dispatch_ledger": _ensure_dispatch_ledger_schema,
     "dispatch_task": _ensure_dispatch_task_schema,
     "job": _ensure_job_schema,
+    "telescope_data": _ensure_telescope_data_schema,
 }
 
 

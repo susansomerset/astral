@@ -8396,3 +8396,29 @@ class TestAst2105SkippedGroupRules:
                 line + '\n    "extra": {"label": "Extra", "prefixes": ["X_"], "members": []},',
                 "cfg_ast2105_catchall_probe",
             )
+
+
+class TestAst2131TelescopeDataConfig:
+    """AST-2131: TELESCOPE_DATA_CONFIG names + id-key guard; jd_telescope_data_id job key."""
+
+    def test_data_types_and_id_keys(self) -> None:
+        dt = cfg.TELESCOPE_DATA_CONFIG["data_types"]
+        # id → value shape, same as company_data_keys.
+        assert dt == {k: k for k in ("VISIBLE_TEXT", "PAGE_LINKS", "DOM_CONTENT")}
+        keys = cfg.TELESCOPE_DATA_CONFIG["company_data_id_keys"]
+        assert keys == ("homepage_text", "nav_links", "website_content", "job_list_visible", "pjl_scrape_pages")
+        assert set(keys) <= set(cfg.ROSTER_CONFIG["company_data_keys"])
+
+    def test_job_data_keys_gain_jd_telescope_data_id(self) -> None:
+        jk = cfg.TRACKER_CONFIG["job_data_keys"]
+        assert jk["jd_telescope_data_id"] == "jd_telescope_data_id"
+        assert jk["job_description"] == "job_description"
+
+    def test_guard_rejects_id_key_missing_from_company_data_keys(self) -> None:
+        # Drop homepage_text from ROSTER_CONFIG; the shipped module assert must fire on import.
+        with pytest.raises(AssertionError, match="homepage_text"):
+            TestAst2105SkippedGroupRules._splice_exec(
+                '        "homepage_text": "homepage_text",\n',
+                "",
+                "cfg_ast2131_id_key_probe",
+            )

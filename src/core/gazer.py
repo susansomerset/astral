@@ -5,6 +5,7 @@ In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_relative_jd_bat
 fetch_website_batch, fetch_job_pages_batch, validate_title_batch,
 contact_task_gazer_scrape (AST-1516 contact-task scrape),
 ingest_meteorite_jobs_from_email_html (AST-1061 gazer-reads-email).
+telescope_data owner (AST-2132): keep_telescope_data, keep_page_scrape, scrape_visible_text_and_keep, scrape_page_links_and_keep, resolve_telescope_value — the only core caller of the telescope_data data functions.
 Re-exports get_new_company_batch and clear_company_batch from roster for callers
 that want a single import from core.
 Orchestration for job list scraping and scan lifecycle (scrape -> tracker ingest -> record);
@@ -24,8 +25,6 @@ from src.core.roster import (
     save_company_data,
     scrape_company_homepage_content,
     transition_company_state,
-    _assemble_pjl_content,
-    _merge_pjl_nav_links,
     _merge_pjl_scrape_record,
     _scrape_pjl_page,
 )
@@ -34,15 +33,18 @@ from src.utils.config import (
     METEORITE_EMAIL_INGEST_CONFIG,
     ROSTER_CONFIG,
     SOURCE_ENTITY_TYPE_METEORITE,
+    TELESCOPE_DATA_CONFIG,
     TRACKER_CONFIG,
 )
 from src.core.tracker import ingest_jobs, persist_http_job_link, save_job_data, transition_job_state
 from src.core.meteorite import create_meteorite_job
 from src.data.database import (
     get_company,
+    get_telescope_data_for_ids,
     job_link_exists_for_candidate,
     record_to_company_job_scan,
     raw_job_listing_is_duplicate,
+    save_telescope_data,
     text_matches_known_company_job_id_for_candidate,
     update_company_last_scan_at,
 )
@@ -54,6 +56,7 @@ from src.external.telescope import (
     load_all_jobs,
     extract_page_dom,
     extract_page_scrape_contract,
+    extract_site_page_list,
     get_visible_text,
     check_connectivity,
     extract_raw_job_listings,
@@ -64,13 +67,17 @@ from src.external.telescope import (
 )
 from src.utils.formatting import (
     collapse_consecutive_blank_lines,
-    normalize_link,
+    enumerate_array,
     normalize_pasted_list_email_html,
-    parse_enumerate_array,
 )
 from src.utils.logging import get_logger, truncate_debug_content
 
 _log = get_logger(__name__)
+
+# AST-2132: gazer owns telescope_data. Row ids are uuid4 strings (database.save_telescope_data).
+_TELESCOPE_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_VISIBLE_TEXT = TELESCOPE_DATA_CONFIG["data_types"]["VISIBLE_TEXT"]
+_PAGE_LINKS = TELESCOPE_DATA_CONFIG["data_types"]["PAGE_LINKS"]
 
 
 def _is_fetch_website_infra_error(error: str) -> bool:
@@ -145,6 +152,101 @@ def is_bot_wall(text: str) -> bool:
     return hits >= cfg.get("bot_threshold", 2)
 
 
+# ---- telescope_data (AST-2132) ----
+
+def is_telescope_id(value: Any) -> bool:
+    """True when value is a telescope_data row id (uuid-shaped str), not legacy scraped text."""
+    return isinstance(value, str) and bool(_TELESCOPE_ID_RE.match(value))
+
+
+def keep_telescope_data(
+    candidate_id: str | None, url: str, data_type: str, content: str,
+) -> str | None:
+    """Store one scrape result in telescope_data and return its row id; None when content is blank.
+
+    data_type is passed through unchecked (free text by design). Links are stored as the
+    enumerated string readers use today, so resolving an id never needs the type.
+    DB errors propagate to the caller's existing failure path."""
+    if not (content or "").strip():
+        return None
+    _log.debug(
+        "Calling save_telescope_data: [candidate_id=%s url=%s data_type=%s content=%s]",
+        candidate_id, url, data_type, content,
+    )
+    row_id = save_telescope_data(candidate_id, url, data_type, content)
+    _log.debug("Response from save_telescope_data: %s", row_id)
+    return row_id
+
+
+def keep_page_scrape(
+    candidate_id: str | None, url: str, scrape: dict[str, Any],
+) -> tuple[str | None, str | None]:
+    """Keep a page-contract scrape (roster scrape_company_homepage_content / _scrape_pjl_page result):
+    visible_text as VISIBLE_TEXT, enumerated_nav_links as PAGE_LINKS. Returns (text_id, links_id)."""
+    return (
+        keep_telescope_data(candidate_id, url, _VISIBLE_TEXT, scrape.get("visible_text") or ""),
+        keep_telescope_data(candidate_id, url, _PAGE_LINKS, scrape.get("enumerated_nav_links") or ""),
+    )
+
+
+async def scrape_visible_text_and_keep(
+    candidate_id: str | None, url: str, *, context: Any = None,
+) -> tuple[str, str, str | None]:
+    """Telescope visible text for url, kept in telescope_data. Returns (text, final_url, row_id).
+    Scrape errors propagate — callers already route them."""
+    _log.debug("Calling get_visible_text: [url=%s]", url)
+    text, final_url = await get_visible_text(url=url, context=context, return_final_url=True)
+    _log.debug("Response from get_visible_text: final_url=%s text=%s", final_url, text)
+    text = text or ""
+    return text, final_url or url, keep_telescope_data(candidate_id, url, _VISIBLE_TEXT, text)
+
+
+async def scrape_page_links_and_keep(
+    candidate_id: str | None, url: str, *, context: Any = None,
+) -> tuple[list[str], str | None]:
+    """Telescope link list for url (depth 1, unverified — roster's nav_links fetch shape), kept in
+    telescope_data as the enumerated list. Returns (urls, row_id). Scrape errors propagate."""
+    _log.debug("Calling extract_site_page_list: [url=%s]", url)
+    urls = await extract_site_page_list(url, max_depth=1, verify=False, context=context) or []
+    _log.debug("Response from extract_site_page_list: %s", urls)
+    enumerated = enumerate_array("", urls) if urls else ""
+    return urls, keep_telescope_data(candidate_id, url, _PAGE_LINKS, enumerated)
+
+
+def resolve_telescope_value(value: Any) -> Any:
+    """Stored blob value -> content in today's shape; legacy text tolerant.
+
+    Row id -> that row's content (text, or enumerated links), None when the row is gone.
+    List -> each {url, id, ...} entry becomes {url, content, ...} (other keys kept); entries
+    without a row id (legacy {url, content}) pass through; entries whose row is gone drop;
+    an empty result is None so fetch-on-missing callers re-scrape.
+    Anything else (legacy text, None, dict) is returned unchanged."""
+    if is_telescope_id(value):
+        ids = [value]
+    elif isinstance(value, list):
+        ids = [e["id"] for e in value if isinstance(e, dict) and is_telescope_id(e.get("id"))]
+    else:
+        return value
+    _log.debug("Calling get_telescope_data_for_ids: %s", ids)
+    rows = get_telescope_data_for_ids(ids)
+    _log.debug("Response from get_telescope_data_for_ids: %s", rows)
+    missing = [i for i in ids if i not in rows]
+    if missing:
+        _log.warning(
+            "telescope_data %s missing — resolving without them; fetch-on-missing callers re-scrape",
+            missing,
+        )
+    if isinstance(value, str):
+        return rows.get(value)
+    out = []
+    for e in value:
+        if not (isinstance(e, dict) and is_telescope_id(e.get("id"))):
+            out.append(e)
+        elif e["id"] in rows:
+            out.append({**{k: v for k, v in e.items() if k != "id"}, "content": rows[e["id"]]})
+    return out or None
+
+
 def _classify_jd(text: str) -> str:
     """Classify scraped page content. Returns 'ok', 'cookie', 'bot', 'missing', or 'closed'.
     Check order matters: closed → bot → cookie → missing → ok.
@@ -185,15 +287,17 @@ def _classify_jd(text: str) -> str:
 
 def _apply_jd_gates(
     job: dict[str, Any], text: str, *, short_state: str, pass_state: str, classified_states: Dict[str, str],
+    telescope_data_id: str | None,
 ) -> bool:
     """Shared JD gates for fetch_jd_batch and fetch_relative_jd_batch (AST-2025).
 
-    collapse blank lines -> empty check -> prune -> min_chars -> classify. Saves the JD and
-    transitions the job. Empty / too-short -> short_state; classified -> the calling task's
+    collapse blank lines -> empty check -> prune -> min_chars -> classify. Stores the scraped-JD
+    reference (telescope_data row id of the raw capture) — never JD text; job_description stays
+    the preamble (AST-2130) — and transitions the job. Empty / too-short -> short_state; classified -> the calling task's
     GAZER_CONFIG classified_states (cookie / bot / missing / closed); ok -> pass_state.
     Returns True only when the job reached pass_state.
     """
-    jd_key = TRACKER_CONFIG.get("job_data_keys", {}).get("job_description", "job_description")
+    ref_key = TRACKER_CONFIG["job_data_keys"]["jd_telescope_data_id"]
     min_chars = TRACKER_CONFIG.get("jd_min_chars", 200)
     aid = job.get("astral_job_id", "")
     text = collapse_consecutive_blank_lines(text)
@@ -209,16 +313,16 @@ def _apply_jd_gates(
     classification = _classify_jd(text)
     if classification != "ok":
         error_state = classified_states[classification]
-        # Save the text so the bad capture is inspectable in the DB
-        save_job_data(aid, {jd_key: text})
+        # Reference the kept capture so the bad page stays inspectable; job_description (preamble) is untouched
+        save_job_data(aid, {ref_key: telescope_data_id})
         _log.warning("%s -> %s [JD classified %r]", aid, error_state, classification)
         transition_job_state([aid], error_state)
         return False
-    save_job_data(aid, {jd_key: text})
+    save_job_data(aid, {ref_key: telescope_data_id})
     # Write back into in-memory dict so coat-check is a true no-op if called after this
     if not isinstance(job.get("job_data"), dict):
         job["job_data"] = {}
-    job["job_data"][jd_key] = text
+    job["job_data"][ref_key] = telescope_data_id
     transition_job_state([aid], pass_state)
     return True
 
@@ -268,7 +372,7 @@ async def fetch_jd_batch(
             failed += 1
             return
         try:
-            text = await get_visible_text(url=job_link)
+            text, _, row_id = await scrape_visible_text_and_keep(job.get("candidate_id"), job_link)
         except Exception as e:
             if debug:
                 _log.debug_index(
@@ -290,9 +394,11 @@ async def fetch_jd_batch(
         gated = _apply_jd_gates(
             job, text, short_state=fail_state, pass_state=pass_state,
             classified_states=GAZER_CONFIG["fetch_jd"]["classified_states"],
+            telescope_data_id=row_id,
         )
         _log.debug("Response from JD gates: %s", gated)
         if gated:
+            _log.info("%s | job %s: %s (batch: %s)", aid, "JD kept", pass_state, batch_id)
             passed += 1
         else:
             failed += 1
@@ -352,6 +458,7 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
             transition_job_state([aid], fail_state)
             failed += 1
             return
+        row_id = keep_telescope_data(job.get("candidate_id"), final_url, _VISIBLE_TEXT, text)
         if not final_url.startswith(("http://", "https://")):
             _log.warning("%s -> %s [click-through returned non-http final_url %r]", aid, fail_state, final_url)
             transition_job_state([aid], fail_state)
@@ -365,6 +472,7 @@ async def fetch_relative_jd_batch(batch_id: str, jobs: list[dict[str, Any]]) -> 
         )
         gated = _apply_jd_gates(
             job, text, short_state=short_state, pass_state=pass_state, classified_states=cfg["classified_states"],
+            telescope_data_id=row_id,
         )
         _log.debug("Response from JD gates: %s", gated)
         if gated:
@@ -485,7 +593,7 @@ async def fetch_culture_pages_batch(
             cd = {}
             company["company_data"] = cd
 
-        recorded = cd.get("website_content")
+        recorded = resolve_telescope_value(cd.get("website_content"))
         if _website_content_is_recorded(recorded):
             if _website_content_bot_walled(recorded):
                 transition_job_state([aid], bot_state)
@@ -535,7 +643,7 @@ async def fetch_culture_pages_batch(
         content = await get_company_data(company, "website_content")
         if content:
             company.setdefault("company_data", {})["website_content"] = content
-            if _website_content_bot_walled(content):
+            if _website_content_bot_walled(resolve_telescope_value(content)):
                 transition_job_state([aid], bot_state)
                 if debug:
                     _log.debug_index(
@@ -612,13 +720,13 @@ async def fetch_company_culture_pages_batch(
     for company_index, company in enumerate(companies, start=1):
         short_name = company.get("short_name") or ""
         cd = company.get("company_data") if isinstance(company.get("company_data"), dict) else {}
-        found = cd.get("website_content")
+        found = resolve_telescope_value(cd.get("website_content"))
         if _website_content_is_recorded(found):
             outcome = "cached"
         else:
             try:
                 # Coat-check scrapes culture_links_to_explore and saves website_content itself.
-                found = await get_company_data(company, "website_content")
+                found = resolve_telescope_value(await get_company_data(company, "website_content"))
             except ValueError as e:
                 # Only a missing short_name/company_website escapes the coat-check; the hop still advances.
                 _log.exception(
@@ -701,6 +809,8 @@ async def fetch_website_batch(
             scrape = await scrape_company_homepage_content(
                 short_name, original_website, batch_session=batch_session
             )
+            # Keep every capture — bot walls included — before routing (AST-2132).
+            text_id, links_id = keep_page_scrape(company.get("candidate_id"), scrape["company_website"], scrape)
             dest = _fetch_website_fail_destination(
                 company_state, scrape.get("error") or "", cfg, scrape.get("visible_text") or "",
             )
@@ -724,11 +834,12 @@ async def fetch_website_batch(
             nav_links = scrape.get("enumerated_nav_links") or ""
             nav_count = len([ln for ln in nav_links.splitlines() if ln.strip()]) if nav_links else 0
             redirect = "yes" if canonical != original_website else "no"
-            data_to_save: Dict[str, Any] = {"homepage_text": visible_text}
-            if nav_links:
-                data_to_save["nav_links"] = nav_links
+            data_to_save: Dict[str, Any] = {"homepage_text": text_id}
+            if links_id:
+                data_to_save["nav_links"] = links_id
             save_company_data(short_name, data_to_save)
             transition_company_state(short_name, pass_state)
+            _log.info("%s | company %s: %s (batch: %s)", short_name, "homepage kept", pass_state, batch_id)
             passed += 1
             if debug:
                 _log.debug_index(
@@ -814,6 +925,7 @@ async def fetch_job_pages_batch(
             nonlocal passed, failed
             short_name = company.get("short_name") or ""
             cd = company.get("company_data") or {}
+            candidate_id = company.get("candidate_id")
             candidate_urls = cd.get("possible_joblist_links") or []
             if not candidate_urls:
                 _log.warning("[%s] fetch_job_pages: no possible_joblist_links", short_name)
@@ -830,14 +942,14 @@ async def fetch_job_pages_batch(
                 return
 
             pjl_pages = list(cd.get("pjl_scrape_pages") or [])
-            # Pre-run snapshot: a failed re-scrape carries that URL's last-known nav links forward.
-            prior_by_key = {normalize_link(r["url"]): r for r in pjl_pages if r.get("url")}
-            run_nav_urls: List[str] = []
 
             walled = False
             # AST-1995: every candidate is re-scraped each run — no already-scraped skip.
             for url_idx, url in enumerate(candidate_urls, start=1):
                 record = await _scrape_pjl_page(url, browser_context, debug=debug)
+                text_id, links_id = keep_page_scrape(candidate_id, record["url"], record)
+                # Row ids ride on the record for the PJL merge (AST-2134 reshapes pjl_scrape_pages to {url, id}).
+                record = {**record, "visible_text_id": text_id, "page_links_id": links_id}
                 # A bot wall is not page content: drop it like a failed scrape so the prior capture survives.
                 if not record.get("error") and is_bot_wall(record.get("visible_text") or ""):
                     record = {**record, "error": "bot wall"}
@@ -863,30 +975,24 @@ async def fetch_job_pages_batch(
                             f"enumerated_nav_chars={len(enum_nav)} collapsed_visible_chars={chars}"
                         )
                 pjl_pages = _merge_pjl_scrape_record(pjl_pages, record)
-                # Same success test as _merge_pjl_scrape_record: no error and non-empty text.
-                if not record.get("error") and (record.get("visible_text") or "").strip():
-                    run_nav_urls.extend(record.get("page_links") or [])
-                else:
-                    prior = prior_by_key.get(normalize_link(url))
-                    if prior:
-                        prior_map = parse_enumerate_array(prior.get("enumerated_nav_links") or "")
-                        run_nav_urls.extend(prior_map[k] for k in sorted(prior_map))
 
-            assembled = _assemble_pjl_content(pjl_pages)
-            # Rebuilt from this run only (empty base) so vanished links drop off; always written,
-            # even "" — readers fall back to homepage nav_links when empty.
             save_company_data(
                 short_name,
                 {
                     "pjl_scrape_pages": pjl_pages,
-                    "pjl_assembled_content": assembled,
-                    "pjl_nav_links": _merge_pjl_nav_links("", run_nav_urls),
+                    # Derived on read from pjl_scrape_pages (AST-2134); None clears copies written before AST-2130.
+                    "pjl_assembled_content": None,
+                    "pjl_nav_links": None,
                 },
             )
 
             if pjl_pages:
                 transition_company_state(short_name, pass_state)
                 passed += 1
+                _log.info(
+                    "%s | company %s: %s (batch: %s)",
+                    short_name, "job pages kept", f"{len(pjl_pages)} page(s) -> {pass_state}", batch_id,
+                )
                 if debug:
                     _log.debug_index(
                         func="gazer.fetch_job_pages_batch",

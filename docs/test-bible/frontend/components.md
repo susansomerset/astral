@@ -2369,3 +2369,9 @@ cd src/ui/frontend && T=../../../tests/component/frontend && npx vitest run --co
 4. **Build (AC 9):** `cd src/ui/frontend && npx tsc -b --noEmit` exits 0.
 
 **Pass criterion:** item 1 shows 217 passed and 3 skipped, with all 39 `GradeMark — AST-2128` cases green, and items 2–4 hold. Run without `-t`, item 1 shows exactly the 3 pre-existing failures named above and no others.
+
+### AST-2133 · AST-2130 (JobDetailModal JD read-only)
+
+JD is display-only: no JD textarea, not in the draft / dirty check / Save payload; the JD tab shows only when the composed JD is non-empty (`showJdTab = hasJD`), editable or not.
+
+**Revised:** `AST-1454 skipped-field editors > editable: title/link inputs, state select, no JD tab or JD editor (AST-2133), Save PUT + onRefresh` (was: empty JD tab + typed JD in the PUT body). **New:** `AST-1454 skipped-field editors > AST-2133 AC9: editable job with a composed JD shows it read-only …` (JD text shown, no textbox on the JD tab, PUT body has no `job_description`). Both fail on the ftr component, pass on HEAD. Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2133 item 3.

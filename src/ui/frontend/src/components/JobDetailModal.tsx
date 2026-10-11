@@ -40,7 +40,6 @@ interface JobDetail {
 type FieldDraft = {
   job_title: string
   job_link: string
-  job_description: string
   state: string
 }
 
@@ -48,9 +47,6 @@ function draftFromJob(j: JobDetail): FieldDraft {
   return {
     job_title: j.job_title ?? "",
     job_link: j.job_link ?? "",
-    job_description: String(
-      ((j.job_data as Record<string, unknown> | undefined)?.job_description) ?? ""
-    ),
     state: j.state,
   }
 }
@@ -103,7 +99,6 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
     && (
       draft.job_title !== baseline.job_title
       || draft.job_link !== baseline.job_link
-      || draft.job_description !== baseline.job_description
       || draft.state !== baseline.state
     )
   )
@@ -116,7 +111,6 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
       const payload: Record<string, string> = {
         job_title: draft.job_title,
         job_link: draft.job_link,
-        job_description: draft.job_description,
       }
       if (draft.state !== (job?.state ?? "")) {
         payload.state = draft.state
@@ -177,7 +171,7 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
 
   const agentStory = job?.agent_story ?? []
   const hasJD = Boolean((job?.job_data as Record<string, unknown>)?.job_description)
-  const showJdTab = fieldsEditable || hasJD
+  const showJdTab = hasJD
   const sideTabs: SideTab[] = [
     { id: "__info__", label: "Info", content: "" },
     ...(showJdTab ? [{ id: "__jd__", label: "Job Description", content: "" }] : []),
@@ -210,21 +204,7 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
       )
     }
     if (tabId === "__jd__") {
-      if (fieldsEditable && draft) {
-        return (
-          <textarea
-            className="dep-input dep-textarea"
-            value={draft.job_description}
-            onChange={(e) =>
-              setDraft((prev) =>
-                prev ? { ...prev, job_description: e.target.value } : prev
-              )
-            }
-            rows={16}
-            style={{ width: "100%", minHeight: 240 }}
-          />
-        )
-      }
+      // Read-only: composed JD (preamble + scraped text) from the API — not editable (AST-2133)
       const jd = ((job?.job_data as Record<string, unknown>)?.job_description as string) ?? ""
       // Collapse runs of 3+ newlines to 2, trim leading/trailing whitespace
       const normalized = jd.trim().replace(/\n{3,}/g, "\n\n")

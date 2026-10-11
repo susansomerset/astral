@@ -1222,3 +1222,9 @@ Tests run the **real** `rubric_dispatch_error` behind a stubbed `src.data.databa
   tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success \
   tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success
 ```
+
+### AST-2134 · AST-2130 (ad-hoc preview on telescope_data)
+
+`_build_adhoc_live_content` company branch resolves `TELESCOPE_DATA_CONFIG["company_data_id_keys"]` via `gazer.resolve_telescope_value` (legacy text passes through); `website_content` page text is stripped in the join. Job branch reads `tracker.compose_job_description` (single-entity falls back to `raw_job_listing`; `qualify_meteorite` CONTENT lines); LIKE's company context resolves `website_content` ids.
+
+**New:** **`TestAst2134AdhocPreviewTelescope`** (6; real `telescope_data` rows on ui `sqlite_in_memory`): AC6 `prefilter_company` / `select_job_page` / `gaze` byte-identical for a legacy text blob vs the same content as ids (incl. a raw unstripped fresh capture), website_content fallback, gone capture → empty, composed JD in job previews, LIKE context. Manifest: [`../../core/roster.md`](../../core/roster.md) § AST-2134.
