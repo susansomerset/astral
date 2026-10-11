@@ -405,3 +405,75 @@ context_tokens≈72000
   - Stage 4 (AC 6): admin `prefilter_company` / `select_job_page` / `gaze` and roster select-job-page live content are byte-identical before and after the id swap.
   - Stage 5: no reference → exactly the stored `job_description`; a reference → the composed JD; `raw_job_listing` fallback; `qualify_meteorite` block.
 - **No new tests**. Coverage is Betty's (qa-child).
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2134
+**Publish ref:** `08691b03651bfdb65218b97a2cd4c4008967043a` (`origin/sub/AST-2130/AST-2134-roster-telescope-data`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+| stat.logging.info.entity | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: debug / warning / error / **info.entity** all **A**; code review matches (including post-review `5bceff4a7` debug on compose/resolve paths).
+
+## Frame diff
+
+- [ ] **AC5 (roster-written keys):** `nav_links`, `website_content` (`[{url,id}]`), `job_list_visible`, prefilter `nav_links` are uuid ids resolving to rows with company `candidate_id`; derived `pjl_assembled_content` / `pjl_nav_links` not rebuilt on write (`NULL` / rebuild-on-read) — Boundaries slice, not full parent AC5 (`homepage_text` = gazer AST-2132).
+- [ ] **AC6:** Admin `prefilter_company` / `select_job_page` / `gaze` + roster select-job-page live content byte-identical text blob vs id blob (scratch / `TestAst2134*`).
+- [ ] **AC7 (parent AC11 — delete row):** Deleted `telescope_data` behind `website_content` → `company_data` unchanged; `get_company_data` falls through to coat-check (no raise).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Pipeline scrapes not in Scope @susan:** Plan Flags list `_fetch_job_links_content`, `jobs_found_process_job_site`, `_scrape_list_page_dom_for_parse` still scrape without keep — parent functional “every pipeline scrape kept” vs this ticket’s two-file Scope. **Default:** Ship AST-2134 as scoped; open a follow-up child or parent amendment only if product wants those paths kept — not `resolve-child` scope creep.
+- **Child AC5 wording vs Boundaries:** Ticket AC5 quotes `homepage_text` / `fetch_website`; roster Boundaries limit AC5 to roster writers. **Default:** UAT scripts use Boundaries + Verification matrix, not the full parent AC5 script alone.
+
+### advisory
+
+- **Sibling diff carry:** Three-dot diff vs `origin/dev` includes AST-2131–2133 stack (`gazer.py`, `tracker.py`, `consult.py`, …) — expected on stacked subs; AST-2134 product is `roster.py` + `api_admin.py` (+ Betty tests).
+- **Plan §Boundaries vs qa-child:** `test_roster.py` (+304 lines), `test_api_admin.py` (+87), bible § AST-2134 — overrides “No tests or bible.”
+- **Issue doc `## Review`:** “No new tests” is stale vs tip (Betty manifest on branch).
+- **`_fetch_prefilter_notes`:** `scrape_visible_text_and_keep` keeps VISIBLE_TEXT in DB but only `nav_links_id` is stored in `company_data` (visible row id discarded) — satisfies roster key AC5; may leave unreferenced telescope rows (parent storage policy, not a Boundaries defect).
+- **`requires_company` / `company.get("data")`:** Pre-existing empty `website_content` path in admin LIKE branch; this ticket wraps resolve on that field without fixing the key — unchanged behavior, plan Flags.
+
+## Notes (Canon Scope — not scored)
+
+- **Ownership:** No `save_telescope_data` / `get_telescope_data` in `roster.py` or `api_admin.py`; writers use gazer `keep_*` / `scrape_*_and_keep`; readers use `resolve_telescope_value` / `compose_job_description` (lazy imports).
+- **AC8 closure:** JD grep outside `tracker` is **empty** on tip (Stage 5).
+- **Stage 5 dependency:** Built after AST-2133 on `ftr` per issue doc stop/resume — appropriate.
+
+## What’s solid
+
+- Central resolve: `_resolve_company_value`, `_resolved_pjl_pages`, `_resolved_company_data`, `get_company_data` resolve + AC11 fall-through when resolve returns `None`.
+- Writers: coat-check handlers and prefilter use gazer keep/scrape wrappers; `job_list_visible` via `_keep_job_list_visible`; PJL ledger `{url, id, links_id?}` from gazer record ids.
+- Admin: company branch resolves `TELESCOPE_DATA_CONFIG["company_data_id_keys"]`; job branch uses `compose_job_description`; culture list strip aligned with roster.
+- Logging: `Calling` / `Response` `logger.debug` on keep/resolve/compose paths; `_entity_info` on save paths; culture per-page failures still `logger.exception` with company pipe + continue.
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append artifact, `docs(AST-2134): Radia review — clean`, post slim upshot, **Review Posted** → datt **PROCEED** to **User Testing**.
+- UAT: AC5/6/7 per Boundaries; defer un-kept scrape paths to product follow-up (discuss default).
+- Optional: refresh stale build `## Review` test line when appending.
+
+context_tokens≈36000
+
+---
+
+`[code-rubric] PROCEED (Commit: 08691b0) roster admin telescope resolve`
