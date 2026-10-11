@@ -1966,7 +1966,9 @@ def _resolved_pjl_pages(pages: Any) -> list | None:
             out.append(row)  # legacy text row
             continue
         page: dict[str, Any] = {"url": row.get("url") or "", "visible_text": str(row["content"] or "").strip()}
+        logger.debug("Calling resolve_telescope_value: [links_id=%s]", row.get("links_id"))
         links = resolve_telescope_value(row["links_id"]) if row.get("links_id") else ""
+        logger.debug("Response from resolve_telescope_value: %s", links)
         if str(links or "").strip():
             page["enumerated_nav_links"] = str(links).strip()
         out.append(page)

@@ -1501,9 +1501,12 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
                 job = database.get_job(jid)
                 if not job:
                     continue
+                logger.debug("Calling compose_job_description: [job=%s]", jid)
+                jd = compose_job_description(job)
+                logger.debug("Response from compose_job_description: %s", jd)
                 lines.append(
                     f"{len(lines):03d}: job_link: {job.get('job_link') or ''}\n"
-                    f"CONTENT:\n{compose_job_description(job)}"
+                    f"CONTENT:\n{jd}"
                 )
             return ("METEORITE JOBS:\n" + "\n".join(lines)) if lines else ""
         # single-entity tasks
@@ -1512,14 +1515,20 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
             return ""
         job_data = job.get("job_data") or {}
         # evaluate_jd, grade_do/get/like — job description + optional company context
-        jd = compose_job_description(job) or job_data.get("raw_job_listing") or ""
+        logger.debug("Calling compose_job_description: [job=%s]", entity_id)
+        jd = compose_job_description(job)
+        logger.debug("Response from compose_job_description: %s", jd)
+        jd = jd or job_data.get("raw_job_listing") or ""
         content = f"[astral_job_id={entity_id}]\n{jd}" if jd else ""
         # Append company website_content for LIKE (requires_company)
         task_cfg = TASK_CONFIG.get(task_key, {})
         if task_cfg.get("requires_company"):
             company = database.get_company(job.get("company", ""))
             if company:
-                wc = resolve_telescope_value((company.get("data") or {}).get("website_content")) or ""
+                wc = (company.get("data") or {}).get("website_content")
+                logger.debug("Calling resolve_telescope_value: [website_content=%s]", wc)
+                wc = resolve_telescope_value(wc) or ""
+                logger.debug("Response from resolve_telescope_value: %s", wc)
                 if isinstance(wc, list):
                     vibes = "\n\n".join(f"=== {p.get('url','')} ===\n{str(p.get('content') or '').strip()}" for p in wc if p.get("content"))
                 else:
