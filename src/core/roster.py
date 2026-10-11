@@ -1711,6 +1711,7 @@ def _apply_prefilter_decoded_company_outcome(
     ctx: Optional[Dict[str, Any]],
     *,
     nav_links_from_data: str = "",
+    nav_links_id: str | None = None,
     debug: bool = False,
     debug_index: int = 1,
     debug_total: int = 1,
@@ -1795,8 +1796,9 @@ def _apply_prefilter_decoded_company_outcome(
         "prefilter_company_notes": notes or "",
         "prefilter_score": prefilter_score,
     }
-    if nav_links_from_data:
-        data_to_save["nav_links"] = nav_links_from_data
+    # Blob holds the telescope row id; nav_links_from_data is the resolved text for PJL hydration (AST-2134).
+    if nav_links_id:
+        data_to_save["nav_links"] = nav_links_id
     data_to_save["possible_job_links"] = link_indices
     if new_state == cfg["pass_state"] and pjl_urls:
         data_to_save[cfg["pjl_url_data_key"]] = pjl_urls
@@ -1835,6 +1837,11 @@ async def prefilter_company(
         scrape = await scrape_company_homepage_content(
             short_name, company_website, browser_context=browser_context
         )
+        from src.core.gazer import keep_page_scrape  # lazy: gazer imports roster
+        candidate_id = _company_candidate_id({"short_name": short_name})
+        logger.debug("Calling keep_page_scrape: [candidate_id=%s url=%s scrape=%s]", candidate_id, scrape["company_website"], scrape)
+        _, nav_links_id = keep_page_scrape(candidate_id, scrape["company_website"], scrape)
+        logger.debug("Response from keep_page_scrape: nav_links_id=%s", nav_links_id)
         if scrape.get("error"):
             unreadable = ROSTER_CONFIG["prefilter"]["unreadable_state"]
             transition_company_state(short_name, unreadable)
@@ -1896,6 +1903,7 @@ async def prefilter_company(
                 cfg,
                 ctx,
                 nav_links_from_data=enumerated_nav_links,
+                nav_links_id=nav_links_id,
                 debug=debug,
             )
         except ValueError as outcome_err:
@@ -3020,7 +3028,7 @@ async def _finalize_joblist_identified(
         except (TypeError, ValueError):
             vis_save = ""
     if vis_save:
-        save_company_data(short_name, {"job_list_visible": vis_save})
+        save_company_data(short_name, {"job_list_visible": _keep_job_list_visible(short_name, job_site_url, vis_save)})
     _save_company(
         short_name=short_name, company_website=company_website,
         state=sel_cfg["identified_state"], page_option_url=job_site_url,
@@ -3096,7 +3104,7 @@ async def _finalize_joblist_titles_after_chain(
         vis_save = ""
     extra_cd: Dict[str, Any] = {"parse_instructions": parse_instructions}
     if vis_save:
-        extra_cd["job_list_visible"] = vis_save
+        extra_cd["job_list_visible"] = _keep_job_list_visible(short_name, job_site_url, vis_save)
     save_company_data(short_name, extra_cd)
     pass_state = ROSTER_CONFIG["locate_job_page"]["pass_states"][0]
     _save_company(short_name=short_name, company_website=company_website,
@@ -3167,7 +3175,7 @@ async def _finalize_joblist_titles_select_only(
         vis_save = ""
     extra: Dict[str, Any] = {"parse_instructions": parse_instructions}
     if vis_save:
-        extra["job_list_visible"] = vis_save
+        extra["job_list_visible"] = _keep_job_list_visible(short_name, job_site_url, vis_save)
     save_company_data(short_name, extra)
     pass_state = ROSTER_CONFIG["locate_job_page"]["pass_states"][0]
     _save_company(short_name=short_name, company_website=company_website,
@@ -3410,26 +3418,26 @@ def _save_company(
 
 
 async def _fetch_nav_links(company: Dict[str, Any]) -> Optional[str]:
-    """Coat-check handler for nav_links. Scrapes homepage link list, saves, returns."""
+    """Coat-check handler for nav_links. Scrapes + keeps the homepage link list, saves its row id, returns the enumerated links."""
     short_name = (company.get("short_name") or "").strip()
     company_website = (company.get("company_website") or company.get("job_site") or "").strip()
     if not short_name or not company_website:
         raise ValueError(
             "get_company_data: short_name and company_website (or job_site) required for fetch-on-missing nav_links"
         )
+    from src.core.gazer import scrape_page_links_and_keep  # lazy: gazer imports roster
     try:
-        logger.debug("Calling extract_site_page_list: url=%s", company_website)
+        logger.debug("Calling scrape_page_links_and_keep: url=%s", company_website)
         async with create_browser_context() as context:
-            url_list = await extract_site_page_list(
-                company_website, max_depth=1, verify=False, context=context
+            url_list, row_id = await scrape_page_links_and_keep(
+                _company_candidate_id(company), company_website, context=context
             )
-        logger.debug("Response from extract_site_page_list: %s", url_list)
+        logger.debug("Response from scrape_page_links_and_keep: urls=%s row_id=%s", url_list, row_id)
         if not url_list:
             return None
-        nav_links = enumerate_array("", url_list)
-        save_company_data(short_name, {"nav_links": nav_links})
+        save_company_data(short_name, {"nav_links": row_id})
         _entity_info(short_name, "company", "nav_links saved", len(url_list))
-        return nav_links
+        return enumerate_array("", url_list)
     except ValueError:
         raise
     except Exception as e:
@@ -3451,19 +3459,23 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
     company_website = (company.get("company_website") or company.get("job_site") or "").strip()
     if not short_name or not company_website:
         return None
+    # lazy: gazer imports roster
+    from src.core.gazer import scrape_page_links_and_keep, scrape_visible_text_and_keep
+    candidate_id = _company_candidate_id(company)
     try:
-        logger.debug("Calling get_visible_text: url=%s", company_website)
-        visible_text = await get_visible_text(company_website)
-        logger.debug("Response from get_visible_text: %s", visible_text)
+        logger.debug("Calling scrape_visible_text_and_keep: url=%s", company_website)
+        visible_text, _, _ = await scrape_visible_text_and_keep(candidate_id, company_website)
+        logger.debug("Response from scrape_visible_text_and_keep: %s", visible_text)
         if not visible_text or not visible_text.strip():
             return None
 
         # Extract nav_links for combined prefilter prompt
         enumerated_nav_links = ""
+        nav_links_id = None
         try:
-            url_list = await extract_site_page_list(
-                company_website, max_depth=1, verify=False
-            )
+            logger.debug("Calling scrape_page_links_and_keep: url=%s", company_website)
+            url_list, nav_links_id = await scrape_page_links_and_keep(candidate_id, company_website)
+            logger.debug("Response from scrape_page_links_and_keep: urls=%s row_id=%s", url_list, nav_links_id)
             if url_list:
                 enumerated_nav_links = enumerate_array("", url_list)
         except Exception as nav_err:
@@ -3526,8 +3538,8 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
             "prefilter_company_notes": notes,
             "prefilter_grades": grades,
         }
-        if enumerated_nav_links:
-            data_to_save["nav_links"] = enumerated_nav_links
+        if nav_links_id:
+            data_to_save["nav_links"] = nav_links_id
         data_to_save["possible_job_links"] = flat.get("possible_job_links") or []
         hydrated = _hydrate_prefilter_pjl_urls(
             flat.get("possible_job_links") or [], enumerated_nav_links
@@ -3553,7 +3565,7 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
 async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
     """Coat-check handler for website_content.
     Uses culture_links_to_explore from prefilter to select pages to scrape.
-    Scrapes selected pages, saves [{url, content}] array.
+    Scrapes + keeps selected pages, saves [{url, id}], returns [{url, content}].
     """
     short_name = (company.get("short_name") or "").strip()
     if not short_name:
@@ -3582,15 +3594,21 @@ async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
 
         # Step 4: scrape each selected page
         max_pages = ROSTER_CONFIG.get("culture_pages", {}).get("max_pages", 6)
+        # lazy: gazer imports roster
+        from src.core.gazer import scrape_visible_text_and_keep
+        candidate_id = _company_candidate_id(company)
         logger.debug("Beginning culture page scrape loop on %s items", len(selected_urls))
         pages = []
+        refs = []
         async with create_browser_context() as context:
             for url in selected_urls[:max_pages]:
                 try:
-                    text = await get_visible_text(url=url, context=context)
-                    logger.debug("Response from get_visible_text: url=%s text=%s", url, text)
+                    logger.debug("Calling scrape_visible_text_and_keep: url=%s", url)
+                    text, _, row_id = await scrape_visible_text_and_keep(candidate_id, url, context=context)
+                    logger.debug("Response from scrape_visible_text_and_keep: url=%s text=%s row_id=%s", url, text, row_id)
                     if text and text.strip():
                         pages.append({"url": url, "content": text.strip()})
+                        refs.append({"url": url, "id": row_id})
                 except Exception as e:
                     logger.exception(
                         "%s | company culture page scrape\n  %s: %s\n  Continuing to the next page",
@@ -3606,7 +3624,7 @@ async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
             return None
 
         # Step 5: save and return
-        save_company_data(short_name, {"website_content": pages})
+        save_company_data(short_name, {"website_content": refs})
         _entity_info(short_name, "company", "website_content saved", len(pages))
         return pages
     except ValueError:
