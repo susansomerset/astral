@@ -279,8 +279,7 @@ context_tokens≈62000
 - **Stage 4:** `83b19402c` — `_compose_jd_for_response` on every `list_view` row and in `detail`. Call-site count is **6** (5 `r` + 1 `ann`), not the "7" in the plan text; the plan's own list names those 6 — all were converted.
 - **Stage 5:** `a010c737d` — modal JD read-only, out of draft / dirty check / payload; JD tab shows only when there is a JD.
 - **Verify:** `py_compile` OK; ruff tracker 156 (baseline 157), consult 224, api_jobs 14; tsc clean, eslint 0; AC 8 grep → only `api_admin.py` 1497 / 1506 (AST-2134); AC 9 modal grep empty. Scratch checks (temp `ASTRAL_DB_DIR` under `/tmp`, DB path asserted): Stage 1 compose cases (no ref exact, ref + preamble, ref only, missing row → preamble + one warning) and `get_job_data` no self-heal on long composed; Stage 2 JD-only PUT → 400, title + JD → title saved, JD unchanged; Stage 3 token context / readiness / evaluate + qualify assembled content carry the composed JD; Stage 4 detail + skipped list return the composed JD, stored `job_data` byte-identical.
-- **Existing tests (Betty):** over the 12 test files that reference the touched functions, 3 new failures vs untouched ftr (pre-existing reds there unchanged), all asserting the pre-AST-2133 contract: `test_tracker.py::TestAst1453PersistSkippedJobEdits::test_writes_title_link_jd_then_transition` and `::test_empty_jd_persists_without_strip_whole_blob` (expect the JD write), `test_api_jobs.py::TestJobsRoutes::test_list_processing_filters_score_floor` (expects `job_data == {}`; now carries the composed `job_description`). `test_page_intake.py` fails collection on both trees (missing module) — not this ticket's.
-- **No new tests** — coverage is Betty's (qa-child).
+- **Tests:** at build time three existing tests asserted the pre-AST-2133 contract; Betty revised them and added `TestAst2133*` coverage in `ef7cfc974` (bible: `docs/test-bible/core/tracker.md` § AST-2133). test-child ran her manifest green on that tip — failure sets equal to `origin/ftr/AST-2130-telescope-data` in every group, modal Vitest 23 passed + 1 pre-existing.
 
 ## Radia review
 
@@ -348,3 +347,12 @@ context_tokens≈62000
 context_tokens≈34000
 
 ---
+
+## Resolution
+
+2026-10-11 — Radia review CLEAN (`580626f76`); no fix-now, no product change.
+
+- **Discuss — AC 8 strict grep:** Radia's default taken. AST-2133's readers (tracker, consult, `api_jobs`) are rewired; the two remaining `api_admin.py` reads (1497 / 1506) are AST-2134's Scope. The strict zero-hit grep runs as a parent UAT gate once AST-2134 is on `ftr`. `api_admin.py` not edited here.
+- **Discuss — AC 7 separator:** Radia's default taken. `compose_job_description` keeps the `"\n\n"` join (plan Decision); revisit only if UAT finds a consumer that needs byte-adjacent text.
+- **Advisory — stale `## Review` test bullet:** trimmed to point at Betty's `ef7cfc974` tests and the green test-child run.
+- **Advisories — list-view cost, other API surfaces, sibling diff carry, test-ownership override:** no action; already flagged in the plan and out of this ticket's Scope.
