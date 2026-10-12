@@ -735,3 +735,25 @@ no plan-stage scores attached — fix-board `[board-joan] CANON: OK` only; no `v
 ```
 
 context_tokens≈24000
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/f94383f0a7b979c61eea914e3753d724/72128420-b979-4a60-b8e6-f9793619cf74/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/f94383f0a7b979c61eea914e3753d724/198c912e-ba8a-4816-8a24-62d522c244f6/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/f94383f0a7b979c61eea914e3753d724/fb1363f3-8e76-4be9-8268-0565e88348c4/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2167 (parent) | ftr/AST-2167-check-status-ownership-candidate-id |
+| AST-2169 | sub/AST-2167/AST-2169-check-status-ownership-candidate-id |
+| AST-2171 | sub/AST-2167/AST-2171-check-status-ownership-candidate-id-tests |
+
+**Epic worktree:** `astral-AST-2167/` — one active sub checked out at a time.
