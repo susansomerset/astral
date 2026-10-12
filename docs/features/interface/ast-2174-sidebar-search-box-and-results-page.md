@@ -343,3 +343,19 @@ AC8→S1; AC9→S1; AC10→S2 (box/Enter) + S1 (URL `q`, reload fetch); AC11→S
 - **Recommendation:** Susan confirms that is acceptable UX vs. a distinct error state.
 
 context_tokens≈34000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-2168/AST-2174-search-results-page` @ `2824c5b02`.
+
+**Stages delivered:**
+- Stage 0: `npm ci` + lint baseline (`debug/spikes/AST-2174/lint-baseline.txt`, 29 problems — 25 errors, 4 warnings), not committed.
+- Stage 1: `pages/SearchResults.tsx` (verbatim from plan), `search` route + header comment + import in `routes.tsx`, `.search-results-section-title` in `App.css` — `bc8152b3d`
+- Stage 2: sidebar search `<form>` at top of `.sidebar-scroll` + `submitSearch` in `NavigationShell.tsx`, `.sidebar-search*` in `App.css` — `2824c5b02`
+- Stage 3 gate: `npx tsc -b --noEmit` 0; `npm run build` 0; `PYTHONPATH=.:src python -c "import src.utils.config, src.core.search, ui.api.api_search"` 0; `npm run lint` 29 problems, identical set to baseline (two pre-existing `NavigationShell.tsx` findings shifted +2 lines by the new state/navigate lines). `SearchResults.tsx` / `routes.tsx` lint clean.
+
+**Deviations from plan text:** none.
+
+**Notes:**
+- Not browser-smoked (no running Flask + Vite + Stytch session in the epic worktree); AC 8–13 UI behaviour is verified by build/typecheck only — Betty's manifest owns the runtime checks.
+- Joan's two discuss items (raw `state` strings; failed request reads as "No results") are built as planned, pending Susan.
