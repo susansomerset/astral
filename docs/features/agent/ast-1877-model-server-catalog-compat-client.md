@@ -1523,3 +1523,70 @@ Same qualitative outcome as AST-2010 / AST-2140 fix-board in this plan doc: prod
 
 ---
 
+
+### Radia review-fix — AST-2149
+
+[code-rubric]
+
+**Ticket:** AST-2149  
+**Publish ref:** `952c670834b58366f62b94cd302006fbdc3e2646` (`origin/sub/AST-2142/AST-2149-gather-call-stagger`)  
+**Corpus:** unavailable on publish ref (`docs/canon-index.md` absent; Joan fix-board used `canon/docs/DIRECTIVES-DIRECTORY.md` overlap skim)  
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-2142-gather-call-stagger` @ `01fff627c` … `origin/sub/AST-2142/AST-2149-gather-call-stagger` — 4 files; **product delta:** `src/utils/config.py` (+1 `ASTRAL_CONFIG` key), `src/core/dispatcher.py` (`_warm_then_gather` only, +11/−2 lines). Plan patch + Joan fix-board in `docs/features/agent/ast-1877-model-server-catalog-compat-client.md`. Doc-only carry: `docs/features/gazer/ast-326-batch-scrape-jds-plan.md` (epic-registry Threads mirror from `docs(AST-2143)` commit on sub; no `src/`).
+
+## Canon scores
+
+*(No frozen Canon Scope on AST-2149 or mini-parent AST-2142 — `review-child` §5 applies to an empty list; no per-directive grades. Joan fix-board overlap: **CANON: OK**.)*
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| *(none frozen)* | — | — | Statute sweep deferred; board overlap clean |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan fix-board **CANON: OK** narrative, not A/B/X column)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** not applicable — clean board opt-out; no `qa-fix` on AST-2149; Betty `[board-betty]` **TESTS: REVISE** routed to sibling **AST-2153** (repro + timing tests per plan `### Repro`).
+
+**`## What must still hold`:** OK — traced against tip diff:
+
+- **`gather_stagger_seconds = 0`:** `if stagger > 0 and i` skips all stagger sleeps; single `asyncio.gather` with `return_exceptions=True` and the same `cleaned` loop — behaviorally today’s instant-start gather (wrapper coroutines only).
+- **Warm-first + warm delay:** Entity 0 still awaited alone; `cache_warm_delay_seconds` still uses existing `delay > 0` gate before stagger read — unchanged.
+- **Order / errors:** `enumerate(entities[1:])` preserves entity order; exceptions still map to `{**zero, "total_processed": 1, "total_errors": 1}` with the same ident `logger.exception` path.
+- **Overlap, no cap:** Offset sleeps inside one gather only — no semaphore, no sequential batching, no new `max_concurrent` / server concurrency edits; `batch_size` on `dispatch_task` untouched.
+- **AST-2010:** No edits to `llm_compat`, `_one`, or batch-stop / exhausted-429 paths — policy preserved by omission.
+- **`batch_call_mode = 1`:** Chunk gather (~L883) not in diff; only `_warm_then_gather` changed.
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Empty canon list:** Documented on ticket/plan; full graded canon pass N/A. Joan’s overlap skim already cleared touchpoints (`stat.config.single-home`, `patt.config.logical-scope`, batch-processing/criteria, `patt.task.dispatch-retry`); implementation matches board narrative (config home for `gather_stagger_seconds`, direct `ASTRAL_CONFIG["gather_stagger_seconds"]` in dispatcher, no shadow default for stagger).
+- **Plan fidelity:** Shipped code matches `## Proposed change` (0-based index within `entities[1:]`, `float(...)`, docstring) and Susan’s direction (config-driven stagger, default 1.0s, not an in-flight cap).
+- **Tests:** Product green on ftr baseline per spawn; stagger repro/timing coverage intentionally deferred to **AST-2153**. Existing `TestWarmThenGather` 2-entity cases remain valid (`i=0` → no stagger sleep); 3+ entity paths that zero only `cache_warm_delay_seconds` may run real stagger sleeps at default 1.0s — slower but correct until Betty zeros stagger there (plan blast radius).
+- **Sub-branch doc carry:** `ast-326-batch-scrape-jds-plan.md` Threads block is unrelated gazer epic mirror — not AST-2149 scope; harmless doc noise on publish ref.
+- **Parent shape:** AST-2142 orphaned **mini-parent** with **live** `ftr/AST-2142-gather-call-stagger`; fix correctly isolated ftr→sub. Sibling **AST-2153** owns test gap; do not block UT on missing repro on this tip.
+
+## What’s solid
+
+- Minimal, focused diff: one config knob + staggered wrappers inside the existing gather — exactly the operational tuning described in root cause / to-be.
+- Config single-home for the new interval; stagger default lives only in `config.py` as planned.
+- Preserves concurrent overlap and AST-2010 / chunk-mode boundaries.
+
+## Recommended actions (Chuckles)
+
+- Append artifact → `docs(AST-2149): Radia review — clean` → **Review Posted** → fix-lane clean shortcut → **User Testing** (skip `resolve-child`).
+- Keep **AST-2153** on the test manifest path; merge/stack per AST-2142 epic rules (live ftr), not a dev-only orphan without ftr.
+
+context_tokens≈11000
