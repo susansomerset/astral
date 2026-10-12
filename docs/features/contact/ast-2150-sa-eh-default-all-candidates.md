@@ -108,3 +108,45 @@ The 2 `!!` errors in Scheduled Actions are **not** fixed here, because they are 
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+
+**Ticket:** AST-2150
+**Overall:** APPROVED
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (`canon/` tree at publish tip; no `docs/canon-index.md` on ref)
+**Publish ref:** `origin/sub/AST-2148/AST-2150-sa-eh-default-all-candidates` @ `e2af6d87bb09805284f13a0152d5de05c52a769a`
+
+## Canon scores
+
+Frozen list empty (child **Citations:** none; parent **Canon Scope:** none — locked at Discussion with rationale). No directive rows to score; not a §4a list-missing **ESCALATE** because the parent explicitly declared empty scope.
+
+## Traceability
+
+AC1→S1.5–6,S2.11,cross-stage·1 · AC2→cross-stage·2 · AC3→S1 · AC4→S1 · AC5→S2 · AC6→S2 · AC7→S2.2,6 · AC8→S1.4,S2.9 · AC9→S1.4 · AC10→Lint baseline,S1.6,S2.12,build; page Vitest→cross-stage Vitest note/`qa-child` · Parent Purpose/Functional scope 1–3→Stages 1–2; no orphan stages.
+
+### Findings
+
+**acceptable** | `## Scope gate` / Files Changed · Two page files only; matches child `## Scope` and parent Component/Technical scope; hook, control, other admin pages, and API explicitly out of bounds.
+
+**acceptable** | Stage 1 / Stage 2 decisions · Page-local `useState("")` and URL-only filter reject hook flags and new helpers — consistent with AC1 wrong-shape guard and Boundaries.
+
+**acceptable** | `## Lint baseline (AC10)` · Honest reconciliation of whole-tree lint red on `origin/dev` vs AC2-forbidden files; per-file gates and “no new findings” are executable; build must stay green.
+
+**discuss** | Child AC10 vs plan gates · Ticket text still says whole-tree `npm run lint` and Vitest pass; plan substitutes lint-baseline + Betty-owned page test rewrites. Workflow-consistent for this repo; optional future AC wording tweak so Radia/UAT do not read AC10 literally before `qa-child`.
+
+**discuss** | Lint baseline SHA `c4f0d3a59` · Baseline counts are pinned to a cited dev tip; engineer should re-snapshot error/warning totals at implementation time if `origin/dev` moved materially (plan already says stop-and-comment if totals worsen).
+
+**acceptable** | Canon Scope gap skim (`astral.standards.in-scope-only`, `astral.ui.frontend-file-placement`) · Plan stays inside two existing page files and reuses `sortCandidatesForSelect`; parent locked **none** at Discussion — §4b observation only, not scored.
+
+### R6 (summary)
+
+Definition fidelity: implements parent Purpose and all functional bullets without hook or sibling creep. DRY: mirrors hook’s sort path via shared `candidateLabel` helper instead of duplicating sort logic. Stages cite concrete line anchors verified against current tree (`AdminScheduledActions.tsx` 335–336, `AdminPerformanceMonitor.tsx` 101–120 / 161–167). Self-assessment: Estimate confirm 2 is proportionate; ⚠️ Decision blocks are specific. No `!!-NONE` conf gap.
+
+**Identity:** Plan Ready · assignee Joan Clarke · 0 completed `[plan-discuss]` rounds.
+
+context_tokens≈18500
+
+**Upshot:** `[plan-rubric] PROCEED (Commit: e2af6d87) two pages, All default`
