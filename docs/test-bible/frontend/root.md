@@ -10,6 +10,7 @@ There is **no** per-source-file branch-lock table (**§6b**). Prefer adding or e
 
 | Ticket | Behavior | Sources | Manifest |
 | --- | --- | --- | --- |
+| **AST-2174** | `search` shell route (deeplink-only — no `NAV_CONFIG` item) → `SearchResults`, ahead of the catch-all | `src/ui/frontend/src/routes.tsx` | **`test_routes.test.tsx`** › **`AST-2174: search is a shell child ahead of the catch-all`** — manifest [`pages.md`](pages.md) § AST-2174 |
 | **AST-2129** | Shapes - Light / Shapes - Dark: twins on the Light / Dark token-block selector lists; per-grade shape ring width tokens; Shapes-only §9b shape, ring and centroid-letter rules | `src/ui/frontend/src/App.css`, `src/utils/config.py` | **`test_AppCss.test.tsx`** (revised parser + 9 new cases), **`TestAst2047ThemeRegistry`**, **`test_api_system`** theme registry — § AST-2129 below |
 | **AST-2123** | Grade base / lettered / confidence settings tokens in Dark + Light; §9b and confidence rules read them; alternate blocks, §16 and `--text-on-grade*` deleted | `src/ui/frontend/src/App.css` | **`test_AppCss.test.tsx`** (exact block ↔ registry restored) + AC greps — § AST-2123 below |
 | **AST-2122** | `App.css` theme token-block contract + AST-2049 epic-wide hex / `var()` guard (moved from the retired Theme Examples page test) | `src/ui/frontend/src/App.css`, all non-test `src/ui/frontend/src/**/*.{ts,tsx,css}` | **`tests/component/frontend/test_AppCss.test.tsx`** (5) — § AST-2122 below |

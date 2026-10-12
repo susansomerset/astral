@@ -4249,6 +4249,56 @@ SKIPPED_STATES = [
 JOBS_PROCESSING_EXCLUDED_STATES = [*READY_JOB_STATES, *REVIEW_JOB_STATES, *APPLIED_JOB_STATES, *SKIPPED_STATES]
 assert len(JOBS_PROCESSING_EXCLUDED_STATES) == len(set(JOBS_PROCESSING_EXCLUDED_STATES)), "Jobs lists overlap"
 
+# AST-2173: Universal search — per entity type (keys double as table names), the columns searched
+# by case-insensitive literal substring. A hit on any base field ranks the entity in the base tier;
+# payload-only hits rank after. id_field keys the result; name_fields join (non-empty, " — ") into
+# its display name. Field names live here only — database/core read them from this registry.
+SEARCH_ENTITY_CONFIG = {
+    "job": {
+        "label": "Jobs",
+        "id_field": "astral_job_id",
+        "name_fields": ["job_title", "company_id"],
+        "base_fields": [
+            "astral_job_id", "company_job_id", "job_title", "job_link",
+            "company_id", "source_entity_id", "state", "batch_id",
+        ],
+        "payload_fields": ["job_data"],
+    },
+    "company": {
+        "label": "Companies",
+        "id_field": "short_name",
+        "name_fields": ["company_name"],
+        "base_fields": [
+            "short_name", "company_name", "company_website", "job_site",
+            "originating_search_term", "state", "batch_id",
+        ],
+        "payload_fields": ["company_data"],
+    },
+    "meteorite": {
+        "label": "Meteorites",
+        "id_field": "id",
+        "name_fields": ["job_title", "employer_name"],
+        "base_fields": [
+            "id", "astral_job_id", "job_title", "employer_name", "link",
+            METEORITE_CONFIG["electronic_contact_column"], "source_id", "source_ref", "state", "batch_id",
+        ],
+        "payload_fields": ["content", "classify_outcome", "error"],
+    },
+}
+
+# AST-2173: which modal a job search result opens, by the Jobs list it sits on (list rules = the
+# Jobs pages': READY/REVIEW/APPLIED/SKIPPED_STATES, Processing = complement, below-floor = Skipped).
+SEARCH_JOB_MODAL_BY_LIST = {
+    "ready": "report",
+    "review": "report",
+    "applied": "report",
+    "processing": "detail",
+    "skipped": "detail",
+}
+assert set(SEARCH_JOB_MODAL_BY_LIST) == {"ready", "review", "applied", "processing", "skipped"} and set(
+    SEARCH_JOB_MODAL_BY_LIST.values()
+) <= {"report", "detail"}, "every Jobs list needs exactly one search modal kind (report|detail)"
+
 # AST-1974: Skip is legal from every job state not already Applied or Skipped (hop labels / _RETRY
 # resolve through their base in _job_state_matches_prior / state_prior_states).
 JOB_STATES["CANDIDATE_SKIPPED"]["prior_states"] = [

@@ -4027,3 +4027,50 @@ cd src/ui/frontend && npm run test:component -- ../../../tests/component/fronten
 **Pass criterion:** items 1–2 hold. Narrowed runs, not the zero-arg harness.
 
 **Bible shasums (after publish):** `git show origin/sub/AST-2166/AST-2170-select-all:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-2174 · AST-2168 (sidebar search box + `/search` results page)
+
+**Parent:** [AST-2168](https://linear.app/astralcareermatch/issue/AST-2168) (Add Universal Entity Search). **Publish:** `origin/sub/AST-2168/AST-2174-search-results-page`. Plan: `docs/features/interface/ast-2174-sidebar-search-box-and-results-page.md`. Backend half (`GET /api/search`, matching / order / `modal_kind`): [`../core/search.md`](../core/search.md) § AST-2173.
+
+`SearchResults.tsx` reads `q` from the URL + `selectedId` from `CandidateContext`; no candidate or blank `q` → no request. Results are stamped with the `candidate\nq` key they answer, so a switch shows "Loading..." (never the old rows) until the new response lands. Sections only for non-empty types in Jobs → Companies → Meteorites order, titled `<Label> (<n>)`, rows in API order (own table markup with `list-page-*` classes — not `ListPage`, whose default sort would reorder). Row click opens `JobAnalysisReportModal` (`modal_kind: report`) / `JobDetailModal` (`detail`) / `CompanyDetailModal` (`shortName`) / `MeteoriteDetailModal` (`Number(id)`); close / save re-fetches in place. All-empty or failed request → "No results".
+
+| AC (child) | Source | Component tests |
+| --- | --- | --- |
+| 8 (UI half) job `report` → JobAnalysisReportModal, `detail` → JobDetailModal · 9 company → CompanyDetailModal(short_name), meteorite → MeteoriteDetailModal(numeric id), no navigation | `pages/SearchResults.tsx` | new **`test_SearchResults.test.tsx`** › **`clicking %s opens %s and stays on /search`** (4) — modals replaced by `vi.mock` stand-ins that print name / id / id type (each modal has its own suite) |
+| 10 (page half) URL `q` + selected candidate → one encoded request (reload = same request); blank / absent `q` → no request | same | **`requests /api/search with the URL's q …`**, **`blank q (%s) → no request …`** (3) |
+| 11 (UI half) Jobs (2) then Meteorites (1), no Companies heading, API row order kept (payload row stays after base); all empty → "No results", no headings; failed request → "No results" | same | **`renders Jobs (2) then Meteorites (1) …`**, **`all three lists empty …`**, **`failed request reads as 'No results'`** |
+| 12 switch A → B re-fetches, A's rows gone while B is in flight; no candidate → "Select a candidate", no request | same | **`candidate switch re-fetches …`** (deferred B response), **`no candidate selected …`** |
+| 13 modal close re-fetches; State cell updates without reload / "Loading..." flash | same | **`closing a modal re-fetches and updates the row's State`** |
+| 10 (box half) input first in `.sidebar-scroll`, before the Jobs `.nav-group`, not in `.sidebar-chrome` — wide + narrow; Enter `acme` → `/search?q=acme`; trims + encodes; blank / whitespace Enter and plain typing do nothing; narrow submit from `/search` closes the drawer | `components/NavigationShell.tsx` | **`test_NavigationShell.test.tsx`** › new **`AST-2174 sidebar search box`** (6) — [`components.md`](components.md) § AST-2174 |
+| `search` route registered before the catch-all | `routes.tsx` | **`test_routes.test.tsx`** › **`AST-2174: search is a shell child ahead of the catch-all`** — [`root.md`](root.md) § AST-2174 |
+| 14 build / lint | source | manifest item 3 |
+
+§6c routed page: satisfied — the page renders under `renderWithProviders` with every first-paint API mocked (`/api/me`, `/api/candidates`, `/api/state_ui_manifest`, `/api/ui_config`, `/api/search`). §6c filter / date UX: n/a (no filter or date inputs; the box is submit-only).
+
+**Not covered by Vitest (manual UAT):** AC 10 "scrolling the nav panel scrolls it under the candidate picker" is layout (jsdom has none) — the DOM placement case pins the structure that gives it; real modal content after a click (the stand-ins assert only which modal and which id).
+
+**Red check:** n/a for the page (new file — import fails on `origin/dev`). The 6 sidebar cases and the routes case fail on `origin/dev` (no `searchbox`, no `search` route).
+
+**Broken / obsolete:** none. All 16 existing `test_NavigationShell` cases pass unchanged (the search input's role is `searchbox`, so `getByRole("combobox")` still finds only the candidate picker); `test_routes` / `test_App` unchanged and green.
+
+**Pre-existing (not this ticket):** `test_AppCss.test.tsx` 2 failures — undefined `--tp-lvl` from the Task Performance page commit `5f4850a20` already on `origin/dev`. Every variable AST-2174 adds to `App.css` is defined in both token blocks.
+
+**Integration:** none — frontend-only; do not invent.
+
+## QA test manifest — AST-2174
+
+1. **New + touched suites (required, all green):** expect **39 passed** (14 page + 22 NavigationShell + 3 routes).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_SearchResults.test.tsx \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx
+```
+
+2. **Neighbours unchanged:** `npm run test:component -- ../../../tests/component/frontend/test_App.test.tsx` green; `test_AppCss.test.tsx` shows only the 2 pre-existing `--tp-lvl` failures above.
+3. **AC 14:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev` (plan baseline 29 problems). Python half: `PYTHONPATH=.:src $ASTRAL_PYTHON -c "import src.utils.config, src.core.search, ui.api.api_search"` exits 0.
+
+**Pass criterion:** items 1–3. Narrowed runs, not the zero-arg harness.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2168/AST-2174-search-results-page:docs/test-bible/frontend/pages.md | shasum`

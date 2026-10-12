@@ -25,6 +25,14 @@ describe("routes", () => {
     expect(navShell?.children?.some(child => child.path === "admin/data_management")).toBe(true)
   })
 
+  it("AST-2174: search is a shell child ahead of the catch-all", () => {
+    const children = routes[1].children?.[0]?.children ?? []
+    const search = children.findIndex(child => child.path === "search")
+    expect(search).toBeGreaterThanOrEqual(0)
+    expect(children[search].element).toBeTruthy()
+    expect(search).toBeLessThan(children.findIndex(child => child.path === "*"))
+  })
+
   it("exports route elements compatible with useRoutes", () => {
     expect(typeof useRoutes).toBe("function")
     expect(routes[1].element).toBeTruthy()

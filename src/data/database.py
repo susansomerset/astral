@@ -53,6 +53,7 @@ Company: save_company, get_company, update_company; batch: set_company_batch, ge
 Job: save_job (upsert), get_job; batch: claim_job_batch, get_job_batch, clear_job_batch.
 Candidate: save_candidate (upsert), get_candidate, list_candidates; claim_candidate_batch / get_candidate_batch / clear_candidate_batch (AST-1258); last_email_check (nullable; AST-1134 column / AST-1136 stamp call site).
 Agent: save_agent (upsert), get_agent, list_agents, update_agent, delete_agent, count_agent_task_refs.
+Search (AST-2173): search_entity_rows(entity_type, candidate_id, needle) — candidate-scoped case-insensitive literal LIKE over SEARCH_ENTITY_CONFIG base+payload fields of job / company / meteorite; rows carry matched_fields; newest state_changed_at first; no LIMIT.
 Retry/log/crash on transient DB errors; domain outcomes
 via return values (duplicate -> False, no records -> False / count).
 """
@@ -118,6 +119,7 @@ from src.utils.config import (
     is_valid_candidate_batch_claim_state,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_FEEDBACK_CONFIG,
+    SEARCH_ENTITY_CONFIG,
     REPO_ADMIN_JSON_CONFIG,
     task_keys_for_rubric_owner,
     TOKEN_SOURCES,
@@ -2509,6 +2511,51 @@ def list_jobs_below_dispatch_score_floor(candidate_id: str) -> List[Dict[str, An
         return []
     rows = list_jobs(states=states, candidate_id=candidate_id, order_by="state_changed_at")
     return [r for r in rows if job_misses_dispatch_score_floor(r, floors)]
+
+
+def search_entity_rows(entity_type: str, candidate_id: str, needle: str) -> list[dict[str, Any]]:
+    """AST-2173: one candidate's rows of one SEARCH_ENTITY_CONFIG type (key = table) whose base or payload
+    fields contain needle — case-insensitive, with % _ and \\ matched literally (ESCAPE '\\').
+    Each row dict gains matched_fields (names in config order). Newest state_changed_at first; no LIMIT.
+    Raises ValueError on blank candidate_id or needle; KeyError on an unknown entity_type."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    if not (needle or "").strip():
+        raise ValueError("needle required")
+    entry = SEARCH_ENTITY_CONFIG[entity_type]
+    fields = [*entry["base_fields"], *entry["payload_fields"]]
+    # Escape char first, then the two LIKE wildcards, so the needle is matched as typed.
+    pattern = "%" + needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    hits = [f"({f} LIKE ? ESCAPE '\\')" for f in fields]
+    # company.candidate_id comes from _ensure_company_candidate_fk (it also ensures the company table).
+    ensure = {
+        "job": _ensure_job_schema,
+        "company": _ensure_company_candidate_fk,
+        "meteorite": _ensure_meteorite_schema,
+    }[entity_type]
+
+    def _with_conn() -> list[dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            ensure(conn)
+            # One 0/1 flag column per searched field tells the caller which fields matched.
+            flags = ", ".join(f"{h} AS __hit_{i}" for i, h in enumerate(hits))
+            rows = conn.execute(
+                f"SELECT *, {flags} FROM {entity_type} WHERE candidate_id = ? AND ({' OR '.join(hits)}) "
+                "ORDER BY state_changed_at DESC NULLS LAST",
+                [*([pattern] * len(fields)), cid, *([pattern] * len(fields))],
+            ).fetchall()
+            out: list[dict[str, Any]] = []
+            for r in rows:
+                d = _row_to_dict(r)
+                d["matched_fields"] = [f for i, f in enumerate(fields) if d.pop(f"__hit_{i}")]
+                out.append(d)
+            return out
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
 
 
 # ---- Timesheets ----

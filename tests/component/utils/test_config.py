@@ -8487,3 +8487,48 @@ class TestAst2131TelescopeDataConfig:
                 "",
                 "cfg_ast2131_id_key_probe",
             )
+
+
+# Branches: SEARCH_ENTITY_CONFIG field lists (Susan-confirmed, define round 1); SEARCH_JOB_MODAL_BY_LIST + its assert.
+class TestAst2173SearchConfig:
+    def test_registry_types_and_field_lists_exact(self) -> None:
+        reg = cfg.SEARCH_ENTITY_CONFIG
+        assert list(reg) == ["job", "company", "meteorite"]
+        assert reg["job"]["base_fields"] == [
+            "astral_job_id", "company_job_id", "job_title", "job_link",
+            "company_id", "source_entity_id", "state", "batch_id",
+        ]
+        assert reg["job"]["payload_fields"] == ["job_data"]
+        assert reg["company"]["base_fields"] == [
+            "short_name", "company_name", "company_website", "job_site",
+            "originating_search_term", "state", "batch_id",
+        ]
+        assert reg["company"]["payload_fields"] == ["company_data"]
+        assert reg["meteorite"]["base_fields"] == [
+            "id", "astral_job_id", "job_title", "employer_name", "link",
+            "electronic_contact", "source_id", "source_ref", "state", "batch_id",
+        ]
+        assert reg["meteorite"]["payload_fields"] == ["content", "classify_outcome", "error"]
+
+    def test_id_field_is_a_base_field_and_entries_complete(self) -> None:
+        for entry in cfg.SEARCH_ENTITY_CONFIG.values():
+            assert set(entry) == {"label", "id_field", "name_fields", "base_fields", "payload_fields"}
+            assert entry["id_field"] in entry["base_fields"]
+            # A column is in one tier only, or tier assignment would be ambiguous.
+            assert not set(entry["base_fields"]) & set(entry["payload_fields"])
+
+    def test_job_modal_by_list(self) -> None:
+        assert cfg.SEARCH_JOB_MODAL_BY_LIST == {
+            "ready": "report", "review": "report", "applied": "report",
+            "processing": "detail", "skipped": "detail",
+        }
+
+    def test_assert_fires_when_a_jobs_list_has_no_modal_kind(self) -> None:
+        with pytest.raises(AssertionError, match="search modal kind"):
+            TestAst2105SkippedGroupRules._splice_exec('    "skipped": "detail",\n', "", "cfg_ast2173_modal_probe")
+
+    def test_assert_fires_on_unknown_modal_kind(self) -> None:
+        with pytest.raises(AssertionError, match="search modal kind"):
+            TestAst2105SkippedGroupRules._splice_exec(
+                '    "skipped": "detail",\n', '    "skipped": "drawer",\n', "cfg_ast2173_kind_probe"
+            )

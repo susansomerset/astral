@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react"
-import { NavLink, Outlet, useLocation } from "react-router-dom"
+import { useEffect, useState, type FormEvent } from "react"
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { UserPromptProvider } from "./UserPrompt"
 import { useAuth } from "../contexts/AuthContext"
 import { useCandidate, type CandidateInfo } from "../contexts/CandidateContext"
@@ -43,12 +43,14 @@ export default function NavigationShell() {
   const [logoBackground, setLogoBackground] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [candidateMenuOpen, setCandidateMenuOpen] = useState(false)
+  const [searchText, setSearchText] = useState("")
   const [isWide, setIsWide] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia(`(min-width: ${NAV_WIDE_MIN_PX}px)`).matches
       : true
   )
   const location = useLocation()
+  const navigate = useNavigate()
   const { isAdmin, loading: authLoading } = useAuth()
   const { candidates, selectedId, setSelectedId } = useCandidate()
 
@@ -117,6 +119,16 @@ export default function NavigationShell() {
       saveExpanded(next)
       return next
     })
+  }
+
+  // AST-2174: Enter only (no search-as-you-type); blank / whitespace-only does nothing.
+  function submitSearch(e: FormEvent) {
+    e.preventDefault()
+    const q = searchText.trim()
+    if (!q) return
+    // Pathname-change auto-close misses /search → /search?q=other, so close the drawer here.
+    setDrawerOpen(false)
+    navigate(`/search?q=${encodeURIComponent(q)}`)
   }
 
   const selectedCandidate = candidates.find(c => c.astral_candidate_id === selectedId)
@@ -218,6 +230,16 @@ export default function NavigationShell() {
           )}
         </div>
         <div className="sidebar-scroll">
+          <form className="sidebar-search" role="search" onSubmit={submitSearch}>
+            <input
+              type="search"
+              className="sidebar-search-input"
+              placeholder="Search"
+              aria-label="Search"
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+            />
+          </form>
           {loading ? (
             <p className="sidebar-loading">Loading...</p>
           ) : error ? (
