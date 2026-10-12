@@ -162,3 +162,64 @@ context_tokens≈14500
 - **Build tip:** `origin/sub/AST-2166/AST-2170-select-all` @ `4ba6be820` — `code(AST-2170): select-all header checkbox on Recommended list`
 - **Compile/lint:** `npx tsc -b --noEmit` 0; `npm run build` 0; `npm run lint` problem list identical to pre-edit baseline (29 pre-existing, 0 new). Lint before/after kept local under `debug/spikes/ast-2170-lint/` (gitignored, uncommitted).
 - **Canon Scope:** empty — nothing to verify.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2170  
+**Publish ref:** `a58e4c8e2ae570a487cd4b3e4bc59afc263a1a36` (`origin/sub/AST-2166/AST-2170-select-all`)  
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen list empty (`## Citations`: none — parent Architectural definition). No directive rows to score; worst-grade roll-up N/A.
+
+## Column diff vs plan stage
+
+(aligned) — Joan’s plan-stage canon table was likewise empty; no id-level column to diff.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `tests/component/frontend/pages/test_JobsRecommended.test.tsx`, `docs/test-bible/frontend/pages.md`  
+- **Finding:** Plan **Files Changed** / **Execution contract** describe product-only work in `JobsRecommended.tsx`; the publish tip also carries Betty’s `test(AST-2170)` + bible block (`a58e4c8e2`, `a23c7ab81`). Expected pipeline ownership (`orch.git.betty-tests-on-sub`), not engineer scope creep on the code commit (`4ba6be820`).
+
+- **Location:** `docs/test-bible/frontend/pages.md` — **Not pinned**  
+- **Finding:** Section-scoped uncheck (plan decision vs `AdminManageEmail`) is intentionally untested because AST-1975 renders one section per view; product code still implements multi-section-safe `setSectionSelected`. Documented gap only.
+
+- **Location:** Issue doc `## Review` stub  
+- **Finding:** Local stub still cites tip `4ba6be820` (code-only); Chuckles should append this pass at `a58e4c8e2` so the doc matches the reviewed tip (tests + bible).
+
+## What’s solid
+
+- **Plan fidelity:** `JobsRecommended.tsx` matches Stage 1 steps 1–3 — `setSectionSelected`, derived `allSectionSelected` from `sec.jobs`, header checkbox with `aria-label={`All jobs in ${sec.label}`}` (does not match `/^Select /`), `onChange` via `!allSectionSelected`. No bulk bar, row handlers, or sort changes.
+- **AC coverage:** Five nested component cases exercise AC1–AC8; AC7 uses `/^Select /` row-only query; Ready/review parametrized for AC8.
+- **Footprint:** Estimate **1** still fits (single focused product edit + standard qa manifest).
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append this artifact to `docs/features/interface/ast-2170-select-all-checkbox-on-recommended-list.md`, commit/push docs on `sub/AST-2166/AST-2170-select-all`, post slim upshot `--as radia`, move to **Review Posted**.
+- **PROCEED** path: datt may route to **User Testing** without `resolve-child` product work unless Susan wants the unpinned multi-section behavior tested later (product call only if epic layout regains multi-section pages).
+
+## Notes
+
+- **Canon Scope:** Intentionally empty; off-list statutes (e.g. `astral.standards.in-scope-only`) were parent-by-design — not a §5.3 ESCALATE (Joan already flagged for Archie precedent only).
+- **Diff baseline:** `origin/dev...origin/sub/AST-2166/AST-2170-select-all` — 4 files, +274/−1; no `src/data/**` or migrations.
+- Did not re-run `npm run test:component` / build locally; **Tests Passed** + manifest in bible treated as gate evidence.
+
+context_tokens≈32000
