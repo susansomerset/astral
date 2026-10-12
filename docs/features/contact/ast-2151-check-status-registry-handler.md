@@ -259,3 +259,56 @@ No other file is touched. `tests/` and `docs/test-bible/**` are Betty's.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2151
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `origin/sub/AST-2144/AST-2151-check-status-registry-handler` @ `5bda36039d471ab68d4ac667540206379cba1abc`
+
+## Canon scores
+
+patt.contact.command-intercept | B | | Registry row + `src.core.tracker` handler, handler-path registry lookup (no command-id literals in core), templates/placement in config; `reply_text` / optional ack / placement defer `_run_contact_command` to sibling #2 per parent change request
+stat.logging.debug | A | |
+stat.logging.warning | A | | Stage 2: one WARNING when origin env unset, names candidate + command + env and product consequence (no warning on composed no-match)
+
+## Traceability
+
+AC1 → Stage 1; AC2 → Stage 1 step 5; AC3 → N/A E2E until #2 — Stage 2 direct handler calls + Test impact; AC4 → Stage 2 several-match branch; AC5 → Stage 2 ownership filter on matcher results; AC6 → N/A posting/hear-ack until #2 — Stage 2 `unmatched_pattern` + `reply_text`; AC7 → Stage 2 unset-origin path + caplog in Done-when.
+
+### discuss — Ticket AC 3–6 vs handler-only verification
+
+- **Location:** Child Description AC 3–6 (`handle_slack_event` / `post_message`); plan Boundaries + Test impact.
+- **Finding:** Linear AC text still reads end-to-end; the plan correctly limits this child to composed `reply_text` and points Betty at direct handler + caplog until Hedy (#2).
+- **Recommendation:** Keep build/tests on the plan; optional ticket-description tidy is Chuckles/Susan, not a plan rewrite.
+
+### discuss — In-force pattern vs epic widening
+
+- **Location:** Parent Architectural definition (Archie change request on `patt.contact.command-intercept`); plan Contract with sibling #2 and Stage 1 commands comment.
+- **Finding:** Corpus arc still describes mandatory `ack_reply_template` and code-mode miss → no post; this child implements the widened contract on the handler/config side only.
+- **Recommendation:** Proceed on plan; pattern amendment stays Archie/epic scope (#2 completes runner side).
+
+### discuss — Canon Scope gap (not scored)
+
+- **Location:** Plan Stage 1 (`JOBS_DETAIL_ORIGIN_DOMAIN_ENV`, registry asserts) and `astral.layers.import-direction` territory.
+- **Finding:** `astral.config.config-source-of-truth` and `astral.layers.import-direction` plainly touch this footprint but are absent from the child Citations list.
+- **Recommendation:** Archie may amend parent Canon Scope at Discussion if those ids should ride on #1; Joan did not grade them.
+
+### acceptable — Interim `KeyError` until #2
+
+- **Location:** Scope gate “Interim behavior until #2 lands”.
+- **Finding:** `/check-status` without `ack_reply_template` can raise under today’s `_run_contact_command`; documented, ftr-only, replaced by sibling.
+- **Recommendation:** None for plan approval.
+
+### acceptable — No formal `## Self-assessment`
+
+- **Location:** Plan ends at Estimate confirm.
+- **Finding:** R6 honesty checklist has no dedicated block; staged literals, `rg` gate, and inherited-ownership note are specific enough.
+- **Recommendation:** Optional; not blocking.
+
+**R6 (summary):** Definition fidelity for child #1: only `config.py` and `tracker.py`; no `contact.py`. Reuses matcher/ownership without new query. Stages cover registry, pinhole, origin contract, and handler branches (one / several / none / no origin). No scope creep into sibling posting. No `fix-now` findings.
+
+context_tokens≈42000
