@@ -669,3 +669,69 @@ AST-2171 board-joan done — CANON: OK.
 **Rationale:** AST-2171 is test-tree only (`tests/component/core/test_tracker.py`, `docs/test-bible/core/tracker.md`). It realigns fixtures and bible prose with AST-2169’s `job.candidate_id` ownership rule; it does not change `src/`, `canon/`, or active patterns/statutes. No in-force directive still mandates company→`get_company` as the job-ownership SoT (that lived in historical plan docs). The bible edits describe behavior Betty’s tests assert—they are manifest documentation, not corpus law—so no statute carve-out, amendment, or Archie precedent call is required for this ticket.
 
 **Chuckles routing:** Betty TESTS: REVISE (this ticket is the test work) + Joan CANON: OK → Plan Discuss → qa-fix (F4).
+
+
+## Radia review — AST-2171
+
+[code-rubric]
+
+**Ticket:** AST-2171  
+**Publish ref:** `01a6178100b1338118d636ffb995ef9c164e4771` (`origin/sub/AST-2167/AST-2171-check-status-ownership-candidate-id-tests`)  
+**Diff base:** `origin/ftr/AST-2167-check-status-ownership-candidate-id`  
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`  
+**Overall:** CLEAN
+
+## Canon scores
+
+*(Frozen Canon Scope on AST-2171 Linear Description: **none cited**. Test-tree + bible only; no directive ids to score; roll-up vacuously clean. Joan fix-board `[board-joan] CANON: OK` — aligned.)*
+
+## Column diff vs plan stage
+
+no plan-stage scores attached — fix-board `[board-joan] CANON: OK` only; no `validate-plan` fix-mode artifact for this gap child.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK**
+
+- **`TestAst1518ContactTaskReads::test_ast2169_meteorite_job_owned_by_candidate_id`** (`345f5957a`): Pins AST-2169 **To-be** on `get_job_data` and `get_job_by_pattern` — `company=None`, owner via `candidate_id="c1"` → `ok is True` / `astral_job_id == "m1"`; rival `candidate_id="c2"` → `refused_cross_candidate` on both paths. `get_company` patched to `AssertionError` so the test cannot pass via the retired company gate. Pre-fix tree would fail (`refused_cross_candidate` / not owned), matching Betty’s red-before note and plan **Repro**.
+- **`TestAst2151ContactCommandCheckStatus::test_ast2169_meteorite_job_ownership_by_candidate_id`**: `[owner]` uses Somerset-shaped Dice link, `CANDIDATE_SKIPPED`, null company, concrete reply assertions (title, state, single `/jobs/detail/6775db61-x`). `[other_candidate]` asserts full `{ok, error, reply_text}` no-match dict — not a tautology. Parametrize `[other_candidate]` stays green pre-fix by design (plan manifest item 2); **`[owner]`** is the repro-first flip (red → green), which Ada documented.
+
+**## What must still hold — OK**
+
+- **AST-2151 AC coverage:** Existing node ids retained; `_stub` write guards and read-only contract kept; `test_ac6` parametrization fixed so `listed_not_owned` uses `candidate_id="c2"` on employer and meteorite rows (no longer false-green on company-less only).
+- **AST-1518 coverage:** ambiguous / unmatched / `no_candidate` / `not_found` / `refused_cross_candidate` / hydration / Style D — `test_style_d_debug_on_job_data` now asserts `out["ok"] is True` on the happy path.
+- **No `src/` or `data/` on this ref:** Diff is `tests/component/core/test_tracker.py`, `docs/test-bible/core/tracker.md`, and plan patch only. `code(AST-2171)` @ `01a617810` is an empty tree marker (same tree as `345f5957a`); product fix comes from AST-2169 on `ftr`, per precedent.
+
+## Findings
+
+### advisory
+
+- **Location:** full `test_tracker.py` + `test_contact.py` on tip  
+  **Finding:** 24 pre-existing failures remain outside the two touched classes; manifest item 3 documents them. In scope per **Boundaries**.  
+  **Recommendation:** None on AST-2171; track separately on parent/epic hygiene if desired.
+
+- **Location:** process / Canon Scope  
+  **Finding:** Gap child has no frozen Citations block (same pattern as AST-2169).  
+  **Recommendation:** Optional Archie hygiene; not blocking.
+
+## What’s solid
+
+- Diff matches plan-fix **Proposed change** (fixture `candidate_id`, `_stub` drops `owners`, `get_company` raise-guard, two `[bug-repro]` nodes, bible § AST-1518 / § AST-2151 + AST-2171 manifest).
+- Clears the 9 AST-2169-induced reds Betty flagged without widening product scope; cross-ticket relation respected (blocked by AST-2169 on `ftr`).
+- Betty **qa-fix** @ `345f5957a` and Ada test-fix report align with manifest **19 passed** in the two classes and no new failures outside them.
+
+## Chuckles branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, artifact complete) | **Normal** (AST-2167; sub on `ftr`) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` **skipped**). |
+
+```
+[code-rubric] PROCEED (Commit: 01a617810) repro + fixtures green
+```
+
+context_tokens≈24000
