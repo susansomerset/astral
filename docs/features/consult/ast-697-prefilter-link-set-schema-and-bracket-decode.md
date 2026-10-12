@@ -329,3 +329,59 @@ No `conf-!!-NONE` conflicts.
 **Advisory (regex duplication):** Left inline `^JOB:`/`^CULT:` checks — distinct from `_LINK_PREFIX_RE` strip path; cosmetic only.
 
 **Product commit:** `fix(AST-697): review feedback — mixed JOB prefix + bracket culture tail`
+
+---
+
+## Bug: AST-2139 — repro tests for single-digit JOB:/CULT: link fields
+
+**Linear:** [AST-2139](https://linear.app/astralcareermatch/issue/AST-2139) · **Mini-parent:** [AST-2136](https://linear.app/astralcareermatch/issue/AST-2136) · **Fix sibling:** [AST-2138](https://linear.app/astralcareermatch/issue/AST-2138) (its `## Bug: AST-2138` section lives on `origin/sub/AST-2136/AST-2138-job-link-prefix-decode` and reaches this doc on ftr via merge-child) · **Publish ref:** `origin/sub/AST-2136/AST-2139-job-link-prefix-tests` · **Origin:** fix-board `[board-betty] TESTS: REVISE` on AST-2138.
+
+Test-tree and bible only. **Betty lands everything below via qa-fix. Engineers do not edit `tests/` or `docs/test-bible/**`.** No `src/` change; AST-2138 owns the product fix.
+
+### As-is
+
+No test exercises a single-digit `JOB:0`–`JOB:5` link field. The existing prefix-tail cases (`TestAst603RubricNormalize::test_lovable_encoded_line_with_job_cult_tails`, `TestAst697PrefilterBracketLinkDecode::test_decode_payload_job_cult_prefix_unchanged`) use `JOB:16`, which never matches `_GRADE_SEG`. So the AST-2136 misparse passes the suite before the fix and after it.
+
+### To-be
+
+Three `[bug-repro]` assertions are red on the pre-fix tree and green once AST-2138 is merged. Both bible pages list them.
+
+### Repro
+
+Verified red on this branch's pre-fix tip (`a1af5cf6a`, identical to `origin/ftr/AST-2136-job-link-prefix-decode` before AST-2138 merges):
+
+```python
+_decode_payload("prefilter_company", "grades_encoded_prefilter_links",
+                "000|RCA5|HEA5|MLA3|PFA5|SOA5|JOB:3|CULT:7,27",
+                {"batch_entities": [{"company_id": "acme"}]})["companies"][0]
+# pre-fix: grades vectors RC,HE,ML,PF,SO,JO (JO grade B conf 3); no possible_job_links; culture [7, 27]
+consult._should_decode_as_encoded_line("000|JOB:3|CULT:7")   # pre-fix: True
+```
+
+### Root cause
+
+This is a coverage gap: link-prefix fixtures only used multi-digit indices. The product root cause is in the AST-2138 section.
+
+### Proposed change (qa-fix: Betty)
+
+1. **Fixture shape (mandatory).** `prefilter_company` decodes as a **company** entity (AST-1723). The ctx must carry `batch_entities: [{"company_id": "acme"}]`, and the row must be read from `result["companies"][0]`. Do **not** copy `TestAst697PrefilterBracketLinkDecode._prefilter_decode_ctx` (`astral_job_id` / `["jobs"]`). That shape is the cause of the existing `KeyError: 'company_id'` / `'jobs'` baseline failures in that class and in `TestAst603RubricNormalize`. Include `vector_labels` for `RC/HE/ML/PF/SO` or assert on raw 2-char codes. Either works, because without a label `vector` falls back to the code.
+2. **New class** in `tests/component/core/test_agent.py`, e.g. `TestAst2138JobLinkPrefixNotGrade`, tagged `[bug-repro]` in the qa-fix handoff:
+   - **(a) Primary repro, parametrized over `n in 0..5`:** `000|RCA5|HEA5|MLA3|PFA5|SOA5|JOB:{n}|CULT:7,27`. Assert grade vectors are exactly `RC, HE, ML, PF, SO` (no `JO`), `possible_job_links == [n]`, and `culture_links_to_explore == [7, 27]`. The `n == 3` case is the literal production payload; it is the one to name in the `[bug-repro]` line.
+   - **(b)** `000|RCF5|HEX0|MLX0|PFX0|SOX0|JOB:1|CULT:[]`: assert `possible_job_links == [1]`, five grades, no `JO`, and no `culture_links_to_explore` key (an empty bracket tail yields no key, per AST-697).
+   - **(c)** `consult._should_decode_as_encoded_line("000|JOB:3|CULT:7") is False`. This could also live beside `TestAst699LetterPipePositionPrefix::test_should_decode_as_encoded_line_routing` as a new method. Betty's call; do not edit the existing method.
+3. **Red/green gate:** (a) for `n` in 0–5, (b) and (c) must fail on `a1af5cf6a` (pre-fix) and pass on a tree with AST-2138's `3ddbcbf7c` merged. Run them with `ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py::<NewClass>`. The system `python3` lacks `nh3`/`asyncpg`, and the script's version check rejects 3.14 without `ASTRAL_PYTHON`.
+4. **Bible:**
+   - `docs/test-bible/core/consult.md`: add an `### AST-2138 · AST-2136` block after the AST-697 / AST-699 entries. Rows: link-prefix guard → `src/core/agent.py` (`_LINK_PREFIX_RE`, `_grade_segment`) → new class (a)/(b); routing guard → `src/core/consult.py` (`_should_decode_as_encoded_line`) → (c). Add the narrowed run command.
+   - `docs/test-bible/core/agent.md`: a matching row for `_decode_payload`'s field classification via `_grade_segment`, pointing at (a)/(b).
+
+### Blast radius
+
+Test tree and bible only. Betty's board verdict found no existing test broken by AST-2138: the AST-483 whitespace test, `test_should_decode_as_encoded_line_routing`, the `JOB:16|CULT:38,3,27` cases, and `test_consult.py` ~L2374 stay as-is. Repairing the stale `astral_job_id`/`jobs` fixtures in `TestAst697PrefilterBracketLinkDecode` / `TestAst603RubricNormalize` is **out of scope** here (pre-existing baseline failures, not caused by AST-2136). That is a separate ticket if Susan wants it.
+
+### What must still hold
+
+- No `src/` edits on this ref.
+- The existing tests named under Blast radius are unchanged.
+- The new assertions encode the AST-2138 **What must still hold** list rather than contradict it: multi-digit/list `JOB:` forms and bracket tails still map as before, and prettified real grades still decode.
+
+**Merge note for Chuckles:** this section and AST-2138's both append at the end of this doc. When both subs reach ftr, expect an end-of-file add/add hunk. Resolve by keeping both sections, AST-2138 first.
