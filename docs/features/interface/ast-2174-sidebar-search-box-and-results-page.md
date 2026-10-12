@@ -309,3 +309,37 @@ export default function SearchResults() {
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2174
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `origin/sub/AST-2168/AST-2174-search-results-page` @ `78fc17e7bc6e3bf53f5540fd764a22a230016894`
+
+## Canon scores
+*(empty — Canon Scope frozen at Discussion: child Citations explicitly “none”; no directive ids to score.)*
+
+## Traceability
+AC8→S1; AC9→S1; AC10→S2 (box/Enter) + S1 (URL `q`, reload fetch); AC11→S1; AC12→S1; AC13→S1 (`close` / `onSaved` / `onRefresh`); AC14→S0+S3 (`npm` + Python import re-check); parent AC1–7, AC14–15 Python half, AC9 API shape→N/A — AST-2173 per Boundaries.
+
+### acceptable
+- **Location:** Stage 1 — `ListPage` vs own tables
+- **Finding:** Skipping `ListPage` in favor of shared CSS classes matches ticket (“look where it fits”) and avoids default multi-column sort that would violate “no client-side reordering of tiers” (`ListPage.tsx` ~L180–226).
+- **Recommendation:** None.
+
+- **Location:** Stage 0 / Stage 3 — `debug/spikes/AST-2174/`
+- **Finding:** Lint baseline lives under `debug/*` (gitignored); not in Files Changed and not committed — within scope gate intent.
+- **Recommendation:** None.
+
+### discuss
+- **Location:** Stage 1 — state column
+- **Finding:** Rows show raw API `state` strings, not `StateUiContext` labels used on some list pages.
+- **Recommendation:** Accept for AC (“state” column) or align with other list pages in a follow-up — not a plan blocker.
+
+- **Location:** Stage 1 — error handling
+- **Finding:** Non-2xx / network failures render the same “No results” copy as a true empty hit set (aligned with AST-2173 route log wording).
+- **Recommendation:** Susan confirms that is acceptable UX vs. a distinct error state.
+
+context_tokens≈34000
