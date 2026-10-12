@@ -1500,3 +1500,26 @@ Same shape as gap siblings (e.g. AST-1848): coverage + bible honesty after a pro
 context_tokens≈14000
 
 **Plan correction (AST-2141 R1 step 2):** the shipped repro asserts `(total_processed, total_errors) == (1, 0)` — the prefilter company is retried, not errored (AST-1839); the `(1, 1)` above is superseded.
+
+### Joan fix-board — AST-2149
+
+**Read:** `## Bug: AST-2149` on `origin/sub/AST-2142/AST-2149-gather-call-stagger` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`, plan commit `fa8d6a863`). No Canon Scope on AST-2149 or orphaned parent AST-2142. `docs/canon-index.md` is not on this ref; overlap skim used `canon/docs/DIRECTIVES-DIRECTORY.md` and in-force directives that plausibly touch `src/utils/config.py` (`ASTRAL_CONFIG`), `src/core/dispatcher.py` (`_warm_then_gather`, each-mode batch execution), batch claim/release, and dispatch retry / provider-outage siblings (AST-2010 left untouched): `stat.config.single-home`, `patt.config.logical-scope`, `patt.entity.batch-processing`, `patt.entity.batch-criteria`, `patt.task.dispatch-retry`, plus dispatcher seed statutes on `config.py` paths (no `dispatch_task` content changes).
+
+**The one question:** Does the proposed change conflict with or require updating any directive in force?
+
+**Analysis:** The fix adds one `ASTRAL_CONFIG` knob (`gather_stagger_seconds`, default `1.0`, `0` = today) beside existing `cache_warm_delay_seconds` and spaces **start times** of coroutines still launched inside a single `asyncio.gather` with `return_exceptions=True`. Entity order, error summaries, warm-first + warm-delay semantics, and “no in-flight cap” (Susan direction: caps stay on the `dispatch_task` record only) are explicit in `## Proposed change` and `## What must still hold`.
+
+That shape **implements** config single-home (`stat.config.single-home` / `patt.config.logical-scope`): the interval lives in `config.py`; the dispatcher reads `ASTRAL_CONFIG["gather_stagger_seconds"]` with direct indexing and no shadow default in `dispatcher.py`. Nothing requires amending those statutes.
+
+`patt.entity.batch-processing` / `patt.entity.batch-criteria` govern claim size, lock/release, and criteria sourcing — not how many overlapping LLM calls run **after** a batch of up to `batch_size` rows is already claimed. Stagger does not widen a claim past `batch_size`; arc 4 is unchanged.
+
+`patt.task.dispatch-retry` is entity `_RETRY` routing and pre-provider exemptions, not HTTP 429 spacing inside `_warm_then_gather`. AST-2010 retry/backoff, host lock, and exhausted-429 batch stop remain out of scope and explicitly preserved. Spacing call starts to reduce upstream burst collisions is operational tuning, not a new retry state or ledger rule; no in-force pattern mandates “all remaining entities must start in the same instant” or forbids config-driven start offsets while calls still overlap.
+
+The 0-based vs 1-based stagger index note in `### Decisions` is an implementation/latency choice within AC wording, not a statute conflict. Large-batch wall-clock cost at `1.0s` is documented blast radius and operator/config tuning, not a canon carve-out.
+
+Same qualitative outcome as AST-2010 / AST-2140 fix-board in this plan doc: product code (+ config field) only; no statute/pattern amendment and no F3 `validate-plan` fix mode unless you later choose to codify gather-timing policy (not required for this bug).
+
+**Verdict:** **CANON: OK**
+
+---
+
