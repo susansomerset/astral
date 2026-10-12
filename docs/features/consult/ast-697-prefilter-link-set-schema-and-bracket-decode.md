@@ -567,3 +567,79 @@ Test tree and bible only. Betty's board verdict found no existing test broken by
 
 ---
 
+
+### Radia review-fix — AST-2139
+
+[code-rubric]
+**Ticket:** AST-2139
+**Publish ref:** `ad3659514` (`origin/sub/AST-2136/AST-2139-job-link-prefix-tests`)
+**Diff base:** `origin/ftr/AST-2136-job-link-prefix-decode` … `origin/sub/AST-2136/AST-2139-job-link-prefix-tests` (ftr already carries AST-2138 product fix per spawn; this sub is test/bible-only)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768` (tree `canon/` at worktree; no `docs/canon-index.md` on this ref)
+**Overall:** CLEAN
+
+**Diff reviewed:** `docs/features/consult/ast-697-prefilter-link-set-schema-and-bracket-decode.md` (AST-2139 plan block), `docs/test-bible/core/agent.md`, `docs/test-bible/core/consult.md`, `tests/component/core/test_agent.py` (+30 lines, additions only). **No `src/**`.**
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none**. Test/bible-only gap; Joan fix-board **CANON: OK** — no directive rows to score; off-list statutes not graded per §5.3.)*
+
+| # | id | grade | effort | one-line |
+|---|-----|-------|--------|----------|
+| — | *(empty list)* | — | — | Gap delivery documents merged AST-2138 behavior only |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **fix-board** `[board-joan] CANON: OK` only).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** **OK**
+
+- **Tag:** Class docstring `TestAst2138JobLinkPrefixNotGrade` carries `[bug-repro]`; Betty’s qa-fix thread names `test_single_digit_job_link_is_meta_not_grade[3]` as the repro node (production payload `JOB:3`).
+- **(a) Primary repro:** Parametrized `n in 0..5` on `000|RCA5|HEA5|MLA3|PFA5|SOA5|JOB:{n}|CULT:7,27` with **company-shaped** ctx (`company_id`, `result["companies"][0]`) per plan — not the stale `astral_job_id` / `jobs` fixture. Asserts concrete **To-be** values from AST-2138: exactly five grade vectors `RC…SO` (no `JO`), `possible_job_links == [n]`, `culture_links_to_explore == [7, 27]`. Not tautological (outcome assertions on decode, not reimplementation of `_grade_segment`). Pre-fix failure is real: extra `JO` grade and missing `possible_job_links` (Betty/Hedy: 8/8 red on `a1af5cf6a`, green on post–AST-2138 tip).
+- **(b)** `JOB:1|CULT:[]` → `[1]`, five grades, no `culture_links_to_explore` key — matches plan AST-697 empty-tail rule.
+- **(c)** `_should_decode_as_encoded_line("000|JOB:3|CULT:7") is False` — pins routing **To-be**; pre-fix was `True`.
+- **Not fix-now:** `culture_links_to_explore == [7, 27]` may already hold pre-fix (CULT tail parsed); red gate still fails on grades / `possible_job_links` (and on (b)/(c)).
+
+**`## What must still hold`:** **OK**
+
+| Item | Verdict |
+|------|---------|
+| No `src/` edits on this ref | OK — diff has zero product files |
+| Blast-radius tests unchanged | OK — only insert after `TestAst699LetterPipePositionPrefix`; no edits to AST-483 routing, `JOB:16`, or `test_consult.py` ~L2374 |
+| New assertions align with AST-2138 contract, not contradict multi-digit/bracket/AST-483 behavior | OK — scope is single-digit `JOB:0`–`5` + link-only routing only |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Sibling product:** AST-2138 is **User Testing** on ftr; this sub completes Betty’s `[board-betty] TESTS: REVISE` from AST-2138 board.
+- **Baseline noise:** Stale `TestAst697PrefilterBracketLinkDecode` / `TestAst603RubricNormalize` fixtures remain failing (documented out of scope); 119 baseline failures identical to ftr — not introduced here.
+- **Doc EOF:** Plan merge note — keep AST-2138 and AST-2139 sections both at end of feature doc when rolling subs to ftr.
+
+## What’s solid
+
+- Plan fidelity: `TestAst2138JobLinkPrefixNotGrade` implements proposed (a)/(b)/(c); bible blocks `### AST-2138 · AST-2136` in `agent.md` and `consult.md` with table rows + narrowed run command.
+- Repro-first bar met per Betty qa-fix comment (red `a1af5cf6a`, green synced ftr with AST-2138).
+- Cross-ticket scope clean: test/bible only; no smuggled product work.
+- Estimate **1** matches footprint.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (C7 complete) | **AST-2136 mini-parent with live ftr** (not `ORPHANED → dev`) | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Merge this sub to ftr when rollup-safe alongside AST-2138 UT closure. |
+| | | Append artifact; post slim upshot `--as radia`. |
+
+`context_tokens≈22000`
+
+---
+
