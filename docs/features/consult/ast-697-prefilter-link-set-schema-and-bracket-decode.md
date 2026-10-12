@@ -498,3 +498,5 @@ AST-483's normalization (strip `' -:'` before `_GRADE_SEG`) runs on **every** pi
 
 ---
 
+
+**Test delivery (docs-acceptance):** AST-2138 carries no test-tree commit. Its [bug-repro] and bible rows land on gap sibling AST-2139 (fix-board [board-betty] TESTS: REVISE).
