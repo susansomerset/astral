@@ -469,7 +469,9 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-634** | Hook + label helpers; three routed admin pages | `src/ui/frontend/src/hooks/useAdminCandidateFilter.ts`, `src/ui/frontend/src/components/AdminCandidateFilterControl.tsx`, `src/ui/frontend/src/lib/candidateLabel.ts`, `AdminScheduledActions.tsx`, `AdminPerformanceMonitor.tsx`, `AdminAgentTimesheets.tsx` | `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx`; `tests/component/frontend/lib/test_candidateLabel.test.ts`; **`AST-634`** describe in `test_AdminScheduledActions.test.tsx`, `test_AdminPerformanceMonitor.test.tsx`, `test_AdminAgentTimesheets.test.tsx` |
 
-**RTL note (Execution History):** page tests seed **`candidate_id`** on the initial route when **`urlPresentDisablesSync`** applies — bare mount without URL param can hang on nav-sync effects.
+> **AST-2150:** Scheduled Actions and Execution History no longer use **`useAdminCandidateFilter`** — both default to **All** and ignore the left nav (see **AST-2150 · AST-2148** below). The nav-default sentence above now applies to **Agent Timesheets** only. The two Scheduled Actions nav-default / nav-sync cases were replaced by the **`AST-2150`** describe; the Execution History **`AST-634`** describe (global option list, URL scoping, direct c1→c2 switch) still holds.
+
+~~**RTL note (Execution History):** page tests seed **`candidate_id`** on the initial route when **`urlPresentDisablesSync`** applies.~~ Retired by **AST-2150** — no nav sync on that page, so **`renderPerformanceMonitor()`** mounts the path as given.
 
 **AST-634** narrowed run:
 
@@ -483,7 +485,37 @@ cd src/ui/frontend && npm run test:component -- \
   -t "AST-634|useAdminCandidateFilter|candidateLabel"
 ```
 
-**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** after **`merge-tests(AST-634)`** — existing cases use **`renderPerformanceMonitor()`** helper (adds **`candidate_id=c1`** when absent).
+**Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** after **`merge-tests(AST-634)`** — existing cases use **`renderPerformanceMonitor()`** helper (~~adds **`candidate_id=c1`** when absent~~ — **AST-2150**: no injection, cases run on the All default).
+
+---
+
+### AST-2150 · AST-2148
+
+**AST-2148 (parent):** Scheduled Actions and Execution History open on **All** candidates and narrow only when the operator picks one; the left-nav candidate no longer seeds or syncs the Candidate filter. Execution History still honors an explicit **`?candidate_id=`** bookmark. Hook, shared control, Agent Timesheets / Vector Feedback / Task Performance, Add Task pre-fill, Execution History timezone, and API untouched.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-2150** | SA: page-local filter state starting at All. EH: filter read/written only via URL **`candidate_id`**; first-visit nav→URL effect removed | `AdminScheduledActions.tsx`, `AdminPerformanceMonitor.tsx` | **`AST-2150 candidate filter defaults to All`** describe in `test_AdminScheduledActions.test.tsx` (3 cases); **`AST-2150 candidate filter is URL-only, defaults to All`** describe in `test_AdminPerformanceMonitor.test.tsx` (4 cases) |
+
+#### QA test manifest
+
+1. **AC3 / AC4 / AC8 (SA):** **`AST-2150 candidate filter defaults to All`** — nav c1 first load shows All + both candidates' sections; nav c1→c2 leaves dropdown and sections unchanged; pick c2 narrows, pick All restores.
+2. **AC5 / AC6 / AC7 / AC8 (EH):** **`AST-2150 candidate filter is URL-only, defaults to All`** — no URL param ⇒ ledger fetch + URL unscoped, dropdown All; nav c1→c2 adds nothing; **`?candidate_id=c2`** with nav c1 scopes to c2; pick c2 writes URL + fetch, pick All clears both.
+3. **AC9 (Add Task pre-fill, existing):** **`AST-1619 editable Entity Type`** › **`Add Task Entity Type is a select (not readOnly text)`** (Candidate input = **c1**) and **`save disabled on add when no candidate selected`** in `test_AdminScheduledActions.test.tsx`.
+4. **Hook unchanged (existing):** full `tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx`.
+5. **Regression (§6c routed page):** full `test_AdminScheduledActions.test.tsx` and `test_AdminPerformanceMonitor.test.tsx` — every EH case now mounts without an injected **`candidate_id`**.
+6. **AC1 / AC2 / AC10:** engineer greps + build + plan's lint-baseline gate (no new findings) — not Vitest.
+
+**Broken / obsolete (revised this pass):** SA **`AST-634 admin candidate filter`** describe (2 nav-default / nav-sync cases) → replaced by the **`AST-2150`** describe. EH **`withCandidateQuery`** helper (forced **`candidate_id=c1`**) → removed. No integration scenario touches these pages.
+
+Red-on-old check: against `origin/dev` pages, SA cases 1–2 and EH cases 1–2 fail; the bookmark and manual-pick cases pass on both (regression guards).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/hooks/test_useAdminCandidateFilter.test.tsx
+```
 
 ---
 

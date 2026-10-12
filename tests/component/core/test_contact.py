@@ -2909,3 +2909,299 @@ class TestAst2072ThreadResponsePlacement:
         # Plan Stage 2 step 7: the helper, the _run_contact_command handler anchor, and the
         # paste-recovery lookup anchor (not a reply site) — no per-site placement copies.
         assert owners == ["_contact_reply_placement", "_run_contact_command", "try_meteorite_apply_paste_from_slack"]
+
+
+# Branches (AST-2152): _contact_reply_placement override (None → thread_response; each mode wins);
+# _run_contact_command — entry reply_placement on usage + code posts; handler reply_text posts on a hit
+# or a miss; no/blank/non-str reply_text → ack on ok (add-job) or nothing → hear-ack (entry without ack).
+# End-to-end /check-status through handle_slack_event on real SQLite rows + the shipped AST-2151 handler,
+# external post_message mocked (AC 3–15).
+class TestAst2152CheckStatusEndToEnd:
+    TS = "1700000000.000300"
+    THREAD = "1699999999.000300"
+    TZ = "America/Los_Angeles"
+    DOMAIN = "astral.example"
+    URL = "http://www.dice.com/jobs/2152"
+
+    # Same harness as AST-2072: real reply path, external post_message mocked, no env prefix.
+    _wire = TestAst2072ThreadResponsePlacement._wire
+
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+        contact_mod._context_cache.clear()
+
+    @staticmethod
+    def _meta() -> dict:
+        return CONTACT_CONFIG["commands"]["check-status"]
+
+    def _seed(self, db) -> None:
+        """c1 owns acme + beta (contact tz LA); c2 owns rival."""
+        db.save_candidate("c1", state="NEW_CANDIDATE", candidate_data={"contact": {"timezone": self.TZ}})
+        db.save_candidate("c2", state="NEW_CANDIDATE", candidate_data={"name": "Rival"})
+        for short, owner in (("acme", "c1"), ("beta", "c1"), ("rival", "c2")):
+            db.save_company(short, state="WATCH", candidate_id=owner)
+
+    @staticmethod
+    def _job(db, jid: str, company: str, owner: str, title: str, state: str = "RECOMMENDED") -> None:
+        db.save_job(
+            jid, company_id=company, state=state, job_title=title, job_link=f"https://x.example/{jid}",
+            state_changed_at="2026-10-10 09:30:00", candidate_id=owner,
+        )
+
+    def _clock(self, raw: str) -> str:
+        from datetime import datetime
+
+        from src.utils.config import format_contact_timezone_clock
+
+        return format_contact_timezone_clock(datetime.fromisoformat(raw), self.TZ)
+
+    def _handle(self, eid: str, text: str, *, thread_ts: str | None = None) -> dict:
+        event = {"type": "app_mention", "user": "U1", "channel": "C1", "ts": self.TS, "text": text}
+        if thread_ts:
+            event["thread_ts"] = thread_ts
+        return contact_mod.handle_slack_event({"event_id": eid, "event": event}, debug=False)
+
+    @staticmethod
+    def _placements(post: MagicMock) -> list:
+        return [(c.kwargs["thread_ts"], c.kwargs["reply_broadcast"]) for c in post.call_args_list]
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("<@UBOT> /check-status Senior Engineer", ("check-status", "Senior Engineer")),
+            ("<@UBOT> /check-status <https://x.com/j/1|x.com/j/1>", ("check-status", "https://x.com/j/1")),
+        ],
+    )
+    def test_ac3_parse(self, text: str, expected: tuple) -> None:
+        assert contact_mod.parse_contact_command(text) == expected
+
+    @pytest.mark.parametrize("glob", ["threads_only", "always_no_share", "always_with_share"])
+    @pytest.mark.parametrize("override", [None, "threads_only", "always_no_share", "always_with_share"])
+    @pytest.mark.parametrize("thread_ts", [None, "7.0"])
+    def test_placement_override_wins_none_keeps_global(
+        self, monkeypatch: pytest.MonkeyPatch, glob: str, override: str | None, thread_ts: str | None
+    ) -> None:
+        # Expected = the 2-arg helper under whichever mode should apply (AST-2072 matrix is the oracle).
+        monkeypatch.setitem(CONTACT_CONFIG, "thread_response", override or glob)
+        expected = contact_mod._contact_reply_placement(thread_ts, "5.0")
+        monkeypatch.setitem(CONTACT_CONFIG, "thread_response", glob)
+        assert contact_mod._contact_reply_placement(thread_ts, "5.0", override) == expected
+
+    def test_ac4_ac5_ac6_one_match_threaded_shared_read_only(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import src.core.agent as agent_mod
+        import src.core.meteorite as meteorite_mod
+
+        db = sqlite_in_memory
+        self._seed(db)
+        self._job(db, "acme:j 1", "acme", "c1", "Staff Platform Engineer", state="PASSED_LIKE")
+        self._job(db, "acme:j2", "acme", "c1", "Analyst")
+        post = self._wire(monkeypatch, "threads_only")
+        monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", self.DOMAIN)
+        do_task = AsyncMock()
+        monkeypatch.setattr(agent_mod, "do_task", do_task)
+        insert = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "insert_slack_meteorite", insert)
+        before = db.get_job("acme:j 1")
+
+        out = self._handle("Ev-2152-ac4", "<@UBOT> /check-status platform")
+
+        # AC 4: exactly one post with title, raw state, both contact clocks, encoded deeplink.
+        post.assert_called_once()
+        text = post.call_args.kwargs["text"]
+        assert "Staff Platform Engineer" in text and "PASSED_LIKE" in text
+        assert self._clock(before["created_at"]) in text
+        assert self._clock(before["state_changed_at"]) in text
+        assert "https://astral.example/jobs/detail/acme%3Aj%201" in text
+        assert "Analyst" not in text
+        # AC 5: threads_only + top-level inbound → under the message ts, broadcast.
+        assert self._placements(post) == [(self.TS, True)]
+        # AC 6: no LLM, no paste recovery, no meteorite insert, job row unchanged.
+        do_task.assert_not_called()
+        contact_mod.try_meteorite_apply_paste_from_slack.assert_not_called()
+        insert.assert_not_called()
+        assert db.get_job("acme:j 1") == before
+        assert out["estelle_turn"]["command"] == {
+            "id": "check-status", "mode": "code", "ok": True, "meteorite_id": None, "error": None,
+        }
+        assert "hear_ack_post" not in out
+
+    def test_ac5_in_thread_reply_uses_that_thread(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        self._job(db, "acme:j1", "acme", "c1", "Staff Engineer")
+        post = self._wire(monkeypatch, "threads_only")
+        monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", self.DOMAIN)
+        self._handle("Ev-2152-ac5-thread", "<@UBOT> /check-status staff", thread_ts=self.THREAD)
+        assert self._placements(post) == [(self.THREAD, True)]
+
+    def test_ac7_several_matches_one_post(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        self._job(db, "acme:j1", "acme", "c1", "Engineer A")
+        self._job(db, "beta:j2", "beta", "c1", "Engineer B")
+        post = self._wire(monkeypatch, "threads_only")
+        monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", self.DOMAIN)
+        self._handle("Ev-2152-ac7", "<@UBOT> /check-status engineer")
+        post.assert_called_once()
+        text = post.call_args.kwargs["text"]
+        assert "Engineer A" in text and "Engineer B" in text
+        assert "/jobs/detail/acme%3Aj1" in text and "/jobs/detail/beta%3Aj2" in text
+
+    def test_ac8_other_candidates_job_absent(self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        # Rival's title equals the pattern exactly; c1's job matches only via company "acme".
+        self._job(db, "rival:x9", "rival", "c2", "Acme")
+        self._job(db, "acme:j1", "acme", "c1", "Data Analyst")
+        post = self._wire(monkeypatch, "threads_only")
+        monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", self.DOMAIN)
+        self._handle("Ev-2152-ac8", "<@UBOT> /check-status Acme")
+        post.assert_called_once()
+        text = post.call_args.kwargs["text"]
+        assert "Data Analyst" in text
+        assert "Acme" not in text and "rival" not in text and "x9" not in text
+
+    def test_ac9_no_match_posts_no_match_text_not_hear_ack(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        self._seed(db)
+        self._job(db, "acme:j1", "acme", "c1", "Engineer")
+        post = self._wire(monkeypatch, "threads_only")
+        monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", self.DOMAIN)
+        out = self._handle("Ev-2152-ac9", "<@UBOT> /check-status zzz-nothing")
+        post.assert_called_once()
+        assert post.call_args.kwargs["text"] == contact_mod.format_contact_reply_text(
+            self._meta()["no_match_reply_text"]
+        )
+        assert post.call_args.kwargs["text"] != CONTACT_CONFIG["hear_ack_reply_text"]
+        assert self._placements(post) == [(self.TS, True)]
+        assert "hear_ack_post" not in out
+        assert out["estelle_turn"]["command"]["error"] == "unmatched_pattern"
+
+    def test_ac10_no_origin_posts_without_links_one_warning(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        db = sqlite_in_memory
+        self._seed(db)
+        self._job(db, "acme:j1", "acme", "c1", "Staff Engineer")
+        post = self._wire(monkeypatch, "threads_only")
+        monkeypatch.delenv("RAILWAY_PUBLIC_DOMAIN", raising=False)
+        row = db.get_job("acme:j1")
+        with caplog.at_level(logging.WARNING):
+            self._handle("Ev-2152-ac10", "<@UBOT> /check-status staff")
+        post.assert_called_once()
+        text = post.call_args.kwargs["text"]
+        assert "Staff Engineer" in text and "RECOMMENDED" in text
+        assert self._clock(row["created_at"]) in text and self._clock(row["state_changed_at"]) in text
+        assert "/jobs/detail/" not in text
+        deeplink = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING and "deeplink missing" in r.getMessage()
+            and "RAILWAY_PUBLIC_DOMAIN" in r.getMessage()
+        ]
+        assert len(deeplink) == 1
+
+    def test_ac11_bare_command_usage_threaded_shared_no_handler(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        post = self._wire(monkeypatch, "threads_only")
+        handler = MagicMock()
+        monkeypatch.setattr(contact_mod, "_resolve_contact_task_handler", MagicMock(return_value=handler))
+        out = self._handle("Ev-2152-ac11", "<@UBOT> /check-status")
+        handler.assert_not_called()
+        post.assert_called_once()
+        assert post.call_args.kwargs["text"] == contact_mod.format_contact_reply_text(
+            self._meta()["usage_reply_text"]
+        )
+        assert self._placements(post) == [(self.TS, True)]
+        assert out["estelle_turn"]["command"]["error"] == "empty_payload"
+
+    @pytest.mark.parametrize("site", ["turn", "add_job_ack"])
+    def test_ac12_placement_unchanged_elsewhere(self, monkeypatch: pytest.MonkeyPatch, site: str) -> None:
+        post = self._wire(monkeypatch, "threads_only")
+        text = "<@UBOT> hi"
+        if site == "add_job_ack":
+            text = f"<@UBOT> /add-job {self.URL}"
+            handler = MagicMock(return_value={"ok": True, "meteorite_id": 42, "error": None})
+            monkeypatch.setattr(contact_mod, "_resolve_contact_task_handler", MagicMock(return_value=handler))
+        self._handle(f"Ev-2152-ac12-{site}", text)
+        assert self._placements(post) == [(None, False)]
+        if site == "add_job_ack":
+            assert "42" in post.call_args.kwargs["text"]
+
+    def test_ac13_one_listen_line_with_command_key(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        db = sqlite_in_memory
+        self._seed(db)
+        self._job(db, "acme:j1", "acme", "c1", "Staff Engineer")
+        self._wire(monkeypatch, "threads_only")
+        monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", self.DOMAIN)
+        with caplog.at_level(logging.INFO):
+            self._handle("Ev-2152-ac13", "<@UBOT> /check-status staff")
+        listen = [
+            r.getMessage() for r in caplog.records
+            if r.levelno == logging.INFO and "| contact listen " in r.getMessage()
+        ]
+        assert len(listen) == 1
+        assert "check-status:code" in listen[0].split("action:", 1)[1]
+
+    def test_ac14_no_command_literals_in_core(self) -> None:
+        import ast
+        import re
+
+        pat = re.compile(r"check-status|jobs/detail|RAILWAY_PUBLIC_DOMAIN|always_with_share")
+        contact_path = Path(contact_mod.__file__).resolve()
+        helper = next(
+            n for n in ast.walk(ast.parse(contact_path.read_text(encoding="utf-8")))
+            if isinstance(n, ast.FunctionDef) and n.name == "_contact_reply_placement"
+        )
+        hits = []
+        for p in Path("src/core").rglob("*.py"):
+            for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+                m = pat.search(line)
+                if not m:
+                    continue
+                # Only allowed hit: pre-existing always_with_share inside the placement helper.
+                in_helper = p.resolve() == contact_path and helper.lineno <= n <= helper.end_lineno
+                if not (in_helper and m.group(0) == "always_with_share" and len(pat.findall(line)) == 1):
+                    hits.append(f"{p}:{n}")
+        assert hits == []
+
+    @pytest.mark.parametrize("reply_text", [None, "", "   ", 7], ids=["none", "empty", "blank", "non_str"])
+    def test_no_usable_reply_text_falls_back_to_ack(self, monkeypatch: pytest.MonkeyPatch, reply_text) -> None:
+        # add-job (has ack): ok + no usable reply_text → the ack posts, unchanged.
+        post = self._wire(monkeypatch, "threads_only")
+        handler = MagicMock(return_value={"ok": True, "meteorite_id": 42, "error": None, "reply_text": reply_text})
+        monkeypatch.setattr(contact_mod, "_resolve_contact_task_handler", MagicMock(return_value=handler))
+        out = self._handle(f"Ev-2152-fallback-{reply_text!r}", f"<@UBOT> /add-job {self.URL}")
+        post.assert_called_once()
+        assert post.call_args.kwargs["text"] == contact_mod.format_contact_reply_text(
+            CONTACT_CONFIG["commands"]["add-job"]["ack_reply_template"].format(meteorite_id=42)
+        )
+        assert "hear_ack_post" not in out
+
+    def test_reply_text_wins_over_ack(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        post = self._wire(monkeypatch, "threads_only")
+        handler = MagicMock(return_value={"ok": True, "meteorite_id": 42, "error": None, "reply_text": "composed"})
+        monkeypatch.setattr(contact_mod, "_resolve_contact_task_handler", MagicMock(return_value=handler))
+        self._handle("Ev-2152-wins", f"<@UBOT> /add-job {self.URL}")
+        post.assert_called_once()
+        assert post.call_args.kwargs["text"] == contact_mod.format_contact_reply_text("composed")
+
+    def test_ok_without_reply_text_or_ack_posts_hear_ack(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # check-status declares no ack: ok with nothing to say → nothing from the command → hear-ack.
+        post = self._wire(monkeypatch, "threads_only")
+        handler = MagicMock(return_value={"ok": True, "meteorite_id": None, "error": None})
+        monkeypatch.setattr(contact_mod, "_resolve_contact_task_handler", MagicMock(return_value=handler))
+        out = self._handle("Ev-2152-noack", "<@UBOT> /check-status staff")
+        handler.assert_called_once()
+        assert out["estelle_turn"]["slack_post"] is None
+        assert out["hear_ack_post"]["ok"] is True
+        post.assert_called_once()
+        assert post.call_args.kwargs["text"] == CONTACT_CONFIG["hear_ack_reply_text"]

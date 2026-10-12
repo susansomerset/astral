@@ -1068,6 +1068,66 @@ context_tokens≈55000
 [code-rubric] PROCEED (Commit: d2d8bd3b2) OpenRouter 429 batch stop
 ```
 
+## Bug: AST-2153 — repro tests for the _warm_then_gather start stagger (AST-2149)
+
+Gap sibling of AST-2149 under orphaned mini-parent AST-2142, filed from AST-2149's fix-board `[board-betty] TESTS: REVISE` (plus Betty's correction dropping TestAst2093). Scope = AST-2153 `## Scope`: `tests/component/core/test_dispatcher.py` and `docs/test-bible/core/dispatcher.md` only. **Betty lands everything here (qa-fix). There are no `src/` changes; AST-2149 owns the product.** The product contract under test is § Bug: AST-2149, Proposed change. That block sits on `sub/AST-2142/AST-2149-gather-call-stagger` until merge-child. This block is placed apart from it so the two docs patches merge cleanly on ftr.
+
+### As-is
+
+- `TestWarmThenGather` (~L191–226) exercises only 0, 1 or 2 entities. With 2 entities, `entities[1:]` holds a single entity at `i = 0`, which never staggers. No node asserts how starts are spaced among 3+ remaining entities, so nothing goes red before AST-2149 and green after.
+- The shared outage helper `TestAst1867ProviderBalanceOutage._edges` (~L1676) zeroes `cache_warm_delay_seconds` (~L1699) and lets `_run_unified` run the real `_warm_then_gather`. It is used by every `TestAst1867` / `TestAst2010` / `TestAst2098` `_run_unified` node. With AST-2149's 1.0s default, the 3-entity nodes now really sleep. AST-2149's test-fix run measured 1.00s each for `TestAst1867::{test_bug_repro_balance_refusal_one_call_interrupted_outage_alert, test_run_unified_ordinary_error_does_not_skip, test_run_unified_per_entity_skips_after_refusal}`, `TestAst2010::{test_run_unified_per_entity_skips_after_rate_limit, test_run_unified_untagged_429_does_not_skip}` and `TestAst2098::test_run_unified_per_entity_skips_after_probe_failure`.
+- No bible row covers the stagger.
+
+### To-be
+
+- One `[bug-repro]` node pins AST-2149's spacing contract. It is red on the pre-fix tree and green with AST-2149.
+- One guard node pins `gather_stagger_seconds = 0` as today's behavior.
+- The outage fixtures no longer sleep for real.
+- `docs/test-bible/core/dispatcher.md` records all three.
+
+### Repro
+
+The `[bug-repro]` node T1 below is AST-2149's Repro 2 (deterministic variant), reduced to a component fixture.
+
+**Red/green proof needs two trees, because AST-2149 isn't on ftr yet** (same mechanics as § Bug: AST-2141). This branch syncs from `origin/ftr/AST-2142-gather-call-stagger` @ `c4f0d3a59`, which is the pre-fix tree. There, T1 fails by assertion: `sleep` is never awaited, because the copied config's `gather_stagger_seconds` key is simply unread. For green, run the same node on a scratch tree with AST-2149 merged in (`git worktree add --detach /tmp/x origin/sub/AST-2142/AST-2153-gather-stagger-tests && git -C /tmp/x merge --no-edit origin/sub/AST-2142/AST-2149-gather-call-stagger`, @ `952c67083` or later). The AST-2153 sub itself goes green only after merge-child rolls AST-2149 into ftr.
+
+### Root cause
+
+This is a coverage gap, not a product defect. The 2-entity cases can't observe a per-index offset because their only gathered entity sits at `i = 0`. The outage fixture predates the stagger knob, so it zeroes only the warm delay.
+
+### Proposed change
+
+Configure through the existing pattern in `TestWarmThenGather::test_skips_delay_when_cache_warm_disabled`: `cfg = dict(dispatcher_mod.ASTRAL_CONFIG)`, set keys, then `monkeypatch.setattr(dispatcher_mod, "ASTRAL_CONFIG", cfg)` and `monkeypatch.setattr(dispatcher_mod.asyncio, "sleep", sleep)` with `sleep = AsyncMock()`. Import nothing from AST-2149, so pre-fix runs fail by assertion, not by `KeyError` or import error.
+
+**`tests/component/core/test_dispatcher.py`**
+
+- T1 **`[bug-repro]` new (red pre-fix):** `TestWarmThenGather::test_bug_repro_stagger_spaces_remaining_starts`. Set `cfg["cache_warm_delay_seconds"] = 0` and `cfg["gather_stagger_seconds"] = 1.0`, use `one = AsyncMock(side_effect=lambda e: {"id": e})`, and call `out = await dispatcher_mod._warm_then_gather(one, ["a", "b", "c", "d"], dispatcher_mod._SUMMARY_ZERO)`. Assert:
+  - `sorted(c.args[0] for c in sleep.await_args_list) == [1.0, 2.0]` (exactly two stagger sleeps, never `0`, no warm-delay sleep);
+  - `out == [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}]` (entity order);
+  - `one.await_count == 4`.
+- T2 **new guard (green both trees):** `TestWarmThenGather::test_zero_stagger_adds_no_sleeps`. Set `cfg["cache_warm_delay_seconds"] = 1.0` and `cfg["gather_stagger_seconds"] = 0`, with the same 4 entities and `one`. Assert `[c.args[0] for c in sleep.await_args_list] == [1.0]` (only the warm delay, so the stagger adds nothing) and the same ordered `out`.
+- T3 **drift, one line:** in `TestAst1867ProviderBalanceOutage._edges`, directly under `monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "cache_warm_delay_seconds", 0)` (~L1699), add `monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "gather_stagger_seconds", 0)`. This covers all three outage classes through the shared helper. `setitem` adds the key harmlessly on the pre-fix tree. **Not `TestAst2093`:** its class fixture already patches `asyncio.sleep` (~L2311).
+- **Unchanged:** the existing 2-entity `TestWarmThenGather` cases, the `_warm_then_gather` monkeypatch sites (~L355, L385, L423, L2717, L2786, L2865), and the `batch_call_mode = 1` chunk-delay tests (~L720, L771).
+
+**`docs/test-bible/core/dispatcher.md`**: new section `### AST-2153 · AST-2149 (qa-fix bug-repro — _warm_then_gather start stagger)` after § AST-2093. It gets a row for T1 (tagged `[bug-repro]`, AST-2149/AST-2142), a row for T2, and a one-line note that the `_edges` helper zeroes `gather_stagger_seconds` beside the warm delay (T3), plus its manifest.
+
+**Manifest for test-fix** (`/home/susan/astral/.venv/bin/python`):
+
+1. `[bug-repro]` T1 alone first: red on this branch pre-merge, green on the AST-2149 scratch tree (or after merge-child).
+2. Then `pytest -q tests/component/core/test_dispatcher.py::TestWarmThenGather tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage tests/component/core/test_dispatcher.py::TestAst2098ProviderProbeOutage --durations=10`. On the green tree, none of the six nodes listed in As-is takes ≈1.00s. `TestAst2098ProviderProbeOutage::test_run_unified_per_entity_skips_after_probe_failure` is already red on the ftr baseline over an unrelated `repeat_processed` key (§ Bug: AST-2141). That failure is pre-existing and not part of this pass bar.
+
+### Blast radius
+
+- Test tree and bible only. No `src/`.
+- T1 and T2 depend on AST-2149's exact contract: the `gather_stagger_seconds` key, 0-based `i × stagger` offsets, no sleep at `i = 0` or stagger `0`, and the warm delay unchanged. If AST-2149's review-fix moves any of those, T1 and T2 move with it.
+- T3 touches a helper shared by every `TestAst1867` / `TestAst2010` / `TestAst2098` `_run_unified` node. It only removes a real sleep, and their outage and skip assertions are unchanged.
+
+### What must still hold
+
+- No existing assertion is edited. T3 adds one config line to a fixture.
+- Pre-fix runs fail only by assertion (no AST-2149 imports or `KeyError`). T1 is red on `c4f0d3a59`, and T2 is green on both trees.
+- The `[bug-repro]` T1 asserts the user-visible contract: starts are spaced `1.0` / `2.0` apart while output order holds, not only that `sleep` was called.
+
 ## Bug: AST-2140 — 429 / probe batch-stop warning carries the provider error, not ()
 
 Fix child of orphaned bug AST-2137 (narrowed per Susan to the empty warning detail; the `JOB:<n>` → `JO` decode failures in the same log are AST-2136 / AST-2138). Scope = AST-2140 `## Scope`: `src/core/roster.py` and `src/core/consult.py`, `_outage_tag` carries the result's error text, no new tables or fields. `src/core/dispatcher.py` is out of bounds (Boundaries), and so is `llm_compat` retry policy. The ticket carries no Canon Scope list. Ancestors: § Bug: AST-2010 above (`_rate_limit_tag`, later renamed `_outage_tag`), and AST-2098 in `docs/features/foundation/ast-1959-per-batch-probe-and-host-lock-on-the-openrouter-path.md` § Bug: AST-2098 (added probe failures and `total_held`).
@@ -1235,6 +1295,80 @@ All literals follow each class's existing `ERR` / `_ERR` / `FC` / `_FC` and `_ta
 - Pre-fix runs fail by assertion only (no AST-2140 imports), and every new node except C3 is red on `a1af5cf6a`.
 - The `[bug-repro]` R1 asserts the user-visible symptom (the WARNING text), not only an intermediate dict.
 
+## Bug: AST-2149 — stagger call starts in _warm_then_gather (AST-2142)
+
+Fix child of orphaned bug AST-2142 (acting as its own mini-parent; target `ftr/AST-2142-gather-call-stagger`). Scope = AST-2149 `## Scope`: `src/utils/config.py` (new `ASTRAL_CONFIG` field beside `cache_warm_delay_seconds`) and `src/core/dispatcher.py` (`_warm_then_gather` only). No ancestor was checked at intake. This block sits beside § Bug: AST-2010 because it works alongside that retry policy and leaves it untouched. The ticket carries no Canon Scope list, and `docs/canon-index.md` is not on this ref (same as AST-2010), so canon overlap is left to fix-board. Susan's direction (AST-2142 round 2): a config-driven stagger, not a cap. Caps live on the `dispatch_task` record only. The gather stays async. Start at 1 second.
+
+### As-is
+
+On a `batch_call_mode = 0` dispatch, `_warm_then_gather` (`dispatcher.py` ~L122) awaits entity 0 and sleeps `cache_warm_delay_seconds`. It then calls `asyncio.gather(*[one_fn(e) for e in entities[1:]], return_exceptions=True)`, so every remaining entity starts in the same instant. In the AST-2142 `prefilter_company` run, 15–20 OpenRouter calls hit Parasail's shared upstream pool together (`limit_source: upstream_provider_shared_pool`), took 429s in a burst, and retried in near-lockstep. One call exhausted AST-2010's 5/5 retries, `exhausted_stops_batch` stopped the batch, and `tbmc_fi` went to `HOMEPAGE_READY_RETRY`.
+
+### To-be
+
+After the warm call and warm delay, the remaining entities still run **concurrently inside one `asyncio.gather`**, but their **starts** are spaced one stagger interval apart. Remaining entity *i* (0-based within `entities[1:]`) starts about *i* × stagger after the warm delay. The interval is one `ASTRAL_CONFIG` setting, `gather_stagger_seconds`, defaulting to `1.0`. `0` reproduces today's behavior exactly. Result order, `return_exceptions` handling and the per-entity error summaries are unchanged. No in-flight cap is added anywhere.
+
+### Repro
+
+Component fixture, no DB row (Betty owns the real test):
+
+1. Record start times with `starts = []` and `async def one(e): starts.append((e, loop.time())); return {"total_processed": 1}`. Patch `dispatcher_mod.ASTRAL_CONFIG` to a copy with `cache_warm_delay_seconds = 0`. Call `await dispatcher_mod._warm_then_gather(one, ["a", "b", "c", "d"], dispatcher_mod._SUMMARY_ZERO)`.
+   - **Today:** `b`, `c` and `d` all start within the same instant.
+   - **After** (with `gather_stagger_seconds = 0.05`): `c` starts ≈0.05s after `b`, and `d` ≈0.10s after `b`. The output is still `[{"total_processed": 1}] * 4` in entity order.
+2. Deterministic variant: patch `dispatcher_mod.asyncio.sleep` with `AsyncMock()`, `cache_warm_delay_seconds = 0` and `gather_stagger_seconds = 1.0`. With 4 entities, `sleep` is awaited with exactly `1.0` and `2.0`, and never with `0`.
+
+### Root cause
+
+`_warm_then_gather` has one spacing control, the single `cache_warm_delay_seconds` sleep between entity 0 and the rest. Nothing spaces the rest from **each other**. A batch of *N* claimed entities therefore becomes *N − 1* simultaneous provider calls. An upstream pool with an unpublished per-model capacity rejects that burst together, and the AST-1959 host lock leaves the rejected calls no fallback provider. AST-2010's exponential backoff spreads the retries, but the calls start in lockstep, so the first retry rounds collide again. One call can exhaust its retries and stop the batch.
+
+### Proposed change
+
+**`src/utils/config.py`**: in `ASTRAL_CONFIG`, directly under `"cache_warm_delay_seconds": 1.0,` (~L4905), add:
+
+```python
+    "gather_stagger_seconds": 1.0,    # seconds between call starts in _warm_then_gather (each mode); calls still overlap; 0 = all at once (AST-2149)
+```
+
+**`src/core/dispatcher.py`** `_warm_then_gather`:
+
+1. After the existing warm-delay `if delay > 0: await asyncio.sleep(delay)`, read `stagger = float(ASTRAL_CONFIG["gather_stagger_seconds"])`. Use direct indexing with **no `.get` default**, so the config file is the only place the number lives (scope: "no number hard-coded in the dispatcher").
+2. Add a nested coroutine and gather through it. Keep the existing single `gather` call:
+
+   ```python
+   async def _staggered(i, e):
+       # AST-2149: space call starts, not calls — once started, they all overlap
+       if stagger > 0 and i:
+           await asyncio.sleep(i * stagger)
+       return await one_fn(e)
+   rest = await asyncio.gather(*[_staggered(i, e) for i, e in enumerate(entities[1:])], return_exceptions=True)
+   ```
+
+   `i` is the index within `entities[1:]`. `entities[1]` (`i = 0`) starts right after the warm delay, which already spaces it from entity 0. The `i` guard keeps offset 0 from awaiting `asyncio.sleep(0)`. An exception from `one_fn` still surfaces through `return_exceptions=True` at index `i`, so the existing `cleaned` loop (`entities[i + 1]` ident, `logger.exception`, error summary) is unchanged.
+3. Docstring: `"""Run the first entity sequentially to warm the cache, wait for cache_warm_delay_seconds, then fire the rest concurrently with starts spaced gather_stagger_seconds apart (AST-2149). Gives Anthropic time to commit the cache entry; the stagger keeps N−1 calls from hitting a provider in the same instant."""`
+
+No other edits. The `batch_call_mode = 1` chunk gather (~L883), `_one`, `llm_compat` and `LLM_SERVER_CONFIG` are untouched.
+
+### Decisions (flag for fix-board / Susan)
+
+1. **Where the stagger counts from.** **Default:** remaining entity *i* (0-based) waits *i* × stagger, so `entities[1]` fires right after the warm delay and every consecutive start is ≈ stagger apart. The alternative is the 1-based index from Scope wording ("its own index × stagger"), which adds one extra stagger before `entities[1]` on top of the warm delay. That alternative adds latency and no spacing benefit. Both satisfy AC 2's "*k*-th remaining entity starts about *k* × stagger later".
+2. **Offsets, not sequential sleeps.** Each wrapper sleeps its own absolute offset, and all wrappers start together inside the one gather. A slow call never delays later starts, and no loop awaits between `create_task`s. This is the literal Technical scope, and it keeps everything inside the single `asyncio.gather`.
+
+### Blast radius
+
+- **Every `each`-mode task**: the stagger applies to companies, `fetch_jd`, and all other non-chunked paths, not only OpenRouter, because `_warm_then_gather` doesn't know the server. At 1.0s, launching a batch takes about (`batch_size` − 2) seconds after the warm delay. A 100-entity batch spends about 98s just starting calls. That is the accepted trade-off on AST-2142.
+- **Interaction with AST-2010 / AST-1867 / AST-2098 batch stops (improvement, no code change)**: `_one` returns `dict(_SUMMARY_ZERO)` when `ctx` carries a balance, rate-limit or probe outage. Entities still waiting on their offset when an outage is noted wake into that guard and skip instead of firing. Fewer calls go out after a batch-stop decision, and claims are still released in `_run_unified`'s `finally`.
+- **AUTO timeout**: `dispatch_timeout_seconds` (3600) bounds the whole task. The stagger adds at most (`batch_size` − 2) × stagger seconds, well under the limit at `batch_size` ≤ a few hundred and 1.0s.
+- **Tests (Betty)**: in `tests/component/core/test_dispatcher.py::TestWarmThenGather` (~L191–226), the 2-entity cases have one remaining entity (`i = 0`, no stagger sleep), so they stay green, including `test_skips_delay_when_cache_warm_disabled` (`sleep.assert_not_awaited()`). Tests that run the real `_warm_then_gather` over 3+ entities without patching `asyncio.sleep` will now really sleep, for up to (N − 2) × 1.0s with N entities. An example is the ~L1699 fixture, which zeroes only `cache_warm_delay_seconds`. Those tests stay correct but get slower. Betty decides whether to zero `gather_stagger_seconds` beside the warm delay there. Tests that monkeypatch `_warm_then_gather` itself (~L355, L385, L423, L2717, L2786, L2865) are unaffected. New coverage is the Repro above.
+- **Sibling work**: AST-2010 retry/backoff (`llm_compat._create`, `PROVIDER_RATE_LIMIT`, `exhausted_stops_batch`) and the AST-1959 host lock are untouched.
+
+### What must still hold
+
+- `gather_stagger_seconds = 0` reproduces today's `_warm_then_gather` exactly: no extra `asyncio.sleep` awaits, the same single gather, and the same output.
+- Entity 0 still runs alone first, and `cache_warm_delay_seconds` still gates the rest (its `> 0` check is unchanged).
+- Results stay in entity order. An exception from any `one_fn` becomes `{**zero, "total_processed": 1, "total_errors": 1}` with the same `logger.exception` ident line, and the rest of the batch continues.
+- The calls still overlap: no semaphore, no sequential awaiting, and no `max_concurrent` or other in-flight cap in `ASTRAL_CONFIG`, `LLM_SERVER_CONFIG` or `llm_compat`. `batch_size` on the `dispatch_task` record stays the only cap.
+- AST-2010: an exhausted OpenRouter 429 still stops the batch, and the ledger finishes `FAILED`.
+- `batch_call_mode = 1` (chunked consult gather ~L883) behaves exactly as today.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
@@ -1243,34 +1377,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/5a94aa7a2e8adb362a74dc722922906a/2a285525-22da-4411-898b-3be6363b2983/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/8ef746de-2715-4978-86a8-7c3d8b8302c3/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/5a94aa7a2e8adb362a74dc722922906a/6fcdfd82-1f6d-46ab-a5b0-7b94d18b776e/store.db` |
+| Ada | engineer | `/home/susan/.cursor/chats/13a6200a1b5a126cc2b7f128e223243a/095858bd-bb53-4de9-b6d9-8de2b4541823/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/13a6200a1b5a126cc2b7f128e223243a/13b17f3b-14cc-4022-be49-99a31d2bb402/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/13a6200a1b5a126cc2b7f128e223243a/4d9e8088-cdcd-4810-bdf8-f89959ca3617/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-2009 (parent) | ftr/AST-2009-openrouter-429-retry |
-| AST-2010 | sub/AST-2009/AST-2010-openrouter-429-retry |
+| AST-2142 (parent) | ftr/AST-2142-gather-call-stagger |
+| AST-2149 | sub/AST-2142/AST-2149-gather-call-stagger |
+| AST-2153 | sub/AST-2142/AST-2153-gather-stagger-tests |
 
-**Epic worktree:** `astral-AST-2009/` — one active sub checked out at a time.
-
-### Joan fix-board — AST-2140
-
-**Read:** `## Bug: AST-2140` on `origin/sub/AST-2137/AST-2140-outage-error-detail` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`, plan commit `0bd88a6e3`). No Canon Scope on AST-2140 or orphaned parent AST-2137. `docs/canon-index.md` is not on this ref; overlap skim used `canon/docs/DIRECTIVES-DIRECTORY.md` and in-force directives that plausibly touch `src/core/roster.py`, `src/core/consult.py`, dispatcher batch-stop logging, provider failures, and batch processing: `patt.task.dispatch-retry`, `patt.entity.batch-processing`, `stat.logging.warning`, `stat.logging.info.dispatcher`, `stat.logging.error` (provider / `log_llm_batch_summary` carve-outs).
-
-**The one question:** Does the proposed change conflict with or require updating any directive in force?
-
-**Analysis:** The fix only extends existing AST-2010 / AST-2098 forwarding: `_outage_tag` also copies `error` (and two hand-built probe-hold returns add `error`). Dispatcher stays out of scope; it already logs `result.get("error") or ""` — the bug is consult/roster dropping the key before the summary reaches the dispatcher. That is implementation wiring, not a new outage policy, retry count, ledger outcome, or routing rule.
-
-`patt.task.dispatch-retry` governs entity `_RETRY` routing and the probe-hold exemption vs exhausted rate limit on the probe; the plan explicitly preserves those behaviors (`## What must still hold`). Option A vs Option B for select/locate is how to forward text without putting `error` on the entity dict (AST-2010 routing invariant); neither option changes statute-level semantics — only whether every path gets non-empty warning detail. Option B’s transient `outage_error` on one entity return is an internal dict convention, not a new persisted field; nothing in force defines allowed summary-tag keys or forbids that hop.
-
-`stat.logging.warning` wants per-failure who/why; filling the batch-stop parentheses with provider text aligns with that intent and does not change level, shape, or rollup ownership (`stat.logging.info.dispatcher`). No active directive requires empty `()` in those outage lines or mandates the current `_outage_tag` key tuple.
-
-Same qualitative outcome as AST-2010 fix-board in this plan doc: product code only; no statute/pattern amendment and no F3 `validate-plan` fix mode for canon unless you later choose to codify internal outage-forwarding shapes (not required for this bug).
-
-**Verdict:** **CANON: OK**
+**Epic worktree:** `astral-AST-2142/` — one active sub checked out at a time.
 
 ---
 
@@ -1426,3 +1545,181 @@ Same shape as gap siblings (e.g. AST-1848): coverage + bible honesty after a pro
 context_tokens≈14000
 
 **Plan correction (AST-2141 R1 step 2):** the shipped repro asserts `(total_processed, total_errors) == (1, 0)` — the prefilter company is retried, not errored (AST-1839); the `(1, 1)` above is superseded.
+
+### Joan fix-board — AST-2149
+
+**Read:** `## Bug: AST-2149` on `origin/sub/AST-2142/AST-2149-gather-call-stagger` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`, plan commit `fa8d6a863`). No Canon Scope on AST-2149 or orphaned parent AST-2142. `docs/canon-index.md` is not on this ref; overlap skim used `canon/docs/DIRECTIVES-DIRECTORY.md` and in-force directives that plausibly touch `src/utils/config.py` (`ASTRAL_CONFIG`), `src/core/dispatcher.py` (`_warm_then_gather`, each-mode batch execution), batch claim/release, and dispatch retry / provider-outage siblings (AST-2010 left untouched): `stat.config.single-home`, `patt.config.logical-scope`, `patt.entity.batch-processing`, `patt.entity.batch-criteria`, `patt.task.dispatch-retry`, plus dispatcher seed statutes on `config.py` paths (no `dispatch_task` content changes).
+
+**The one question:** Does the proposed change conflict with or require updating any directive in force?
+
+**Analysis:** The fix adds one `ASTRAL_CONFIG` knob (`gather_stagger_seconds`, default `1.0`, `0` = today) beside existing `cache_warm_delay_seconds` and spaces **start times** of coroutines still launched inside a single `asyncio.gather` with `return_exceptions=True`. Entity order, error summaries, warm-first + warm-delay semantics, and “no in-flight cap” (Susan direction: caps stay on the `dispatch_task` record only) are explicit in `## Proposed change` and `## What must still hold`.
+
+That shape **implements** config single-home (`stat.config.single-home` / `patt.config.logical-scope`): the interval lives in `config.py`; the dispatcher reads `ASTRAL_CONFIG["gather_stagger_seconds"]` with direct indexing and no shadow default in `dispatcher.py`. Nothing requires amending those statutes.
+
+`patt.entity.batch-processing` / `patt.entity.batch-criteria` govern claim size, lock/release, and criteria sourcing — not how many overlapping LLM calls run **after** a batch of up to `batch_size` rows is already claimed. Stagger does not widen a claim past `batch_size`; arc 4 is unchanged.
+
+`patt.task.dispatch-retry` is entity `_RETRY` routing and pre-provider exemptions, not HTTP 429 spacing inside `_warm_then_gather`. AST-2010 retry/backoff, host lock, and exhausted-429 batch stop remain out of scope and explicitly preserved. Spacing call starts to reduce upstream burst collisions is operational tuning, not a new retry state or ledger rule; no in-force pattern mandates “all remaining entities must start in the same instant” or forbids config-driven start offsets while calls still overlap.
+
+The 0-based vs 1-based stagger index note in `### Decisions` is an implementation/latency choice within AC wording, not a statute conflict. Large-batch wall-clock cost at `1.0s` is documented blast radius and operator/config tuning, not a canon carve-out.
+
+Same qualitative outcome as AST-2010 / AST-2140 fix-board in this plan doc: product code (+ config field) only; no statute/pattern amendment and no F3 `validate-plan` fix mode unless you later choose to codify gather-timing policy (not required for this bug).
+
+**Verdict:** **CANON: OK**
+
+---
+
+
+### Radia review-fix — AST-2149
+
+[code-rubric]
+
+**Ticket:** AST-2149  
+**Publish ref:** `952c670834b58366f62b94cd302006fbdc3e2646` (`origin/sub/AST-2142/AST-2149-gather-call-stagger`)  
+**Corpus:** unavailable on publish ref (`docs/canon-index.md` absent; Joan fix-board used `canon/docs/DIRECTIVES-DIRECTORY.md` overlap skim)  
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-2142-gather-call-stagger` @ `01fff627c` … `origin/sub/AST-2142/AST-2149-gather-call-stagger` — 4 files; **product delta:** `src/utils/config.py` (+1 `ASTRAL_CONFIG` key), `src/core/dispatcher.py` (`_warm_then_gather` only, +11/−2 lines). Plan patch + Joan fix-board in `docs/features/agent/ast-1877-model-server-catalog-compat-client.md`. Doc-only carry: `docs/features/gazer/ast-326-batch-scrape-jds-plan.md` (epic-registry Threads mirror from `docs(AST-2143)` commit on sub; no `src/`).
+
+## Canon scores
+
+*(No frozen Canon Scope on AST-2149 or mini-parent AST-2142 — `review-child` §5 applies to an empty list; no per-directive grades. Joan fix-board overlap: **CANON: OK**.)*
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| *(none frozen)* | — | — | Statute sweep deferred; board overlap clean |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan fix-board **CANON: OK** narrative, not A/B/X column)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** not applicable — clean board opt-out; no `qa-fix` on AST-2149; Betty `[board-betty]` **TESTS: REVISE** routed to sibling **AST-2153** (repro + timing tests per plan `### Repro`).
+
+**`## What must still hold`:** OK — traced against tip diff:
+
+- **`gather_stagger_seconds = 0`:** `if stagger > 0 and i` skips all stagger sleeps; single `asyncio.gather` with `return_exceptions=True` and the same `cleaned` loop — behaviorally today’s instant-start gather (wrapper coroutines only).
+- **Warm-first + warm delay:** Entity 0 still awaited alone; `cache_warm_delay_seconds` still uses existing `delay > 0` gate before stagger read — unchanged.
+- **Order / errors:** `enumerate(entities[1:])` preserves entity order; exceptions still map to `{**zero, "total_processed": 1, "total_errors": 1}` with the same ident `logger.exception` path.
+- **Overlap, no cap:** Offset sleeps inside one gather only — no semaphore, no sequential batching, no new `max_concurrent` / server concurrency edits; `batch_size` on `dispatch_task` untouched.
+- **AST-2010:** No edits to `llm_compat`, `_one`, or batch-stop / exhausted-429 paths — policy preserved by omission.
+- **`batch_call_mode = 1`:** Chunk gather (~L883) not in diff; only `_warm_then_gather` changed.
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Empty canon list:** Documented on ticket/plan; full graded canon pass N/A. Joan’s overlap skim already cleared touchpoints (`stat.config.single-home`, `patt.config.logical-scope`, batch-processing/criteria, `patt.task.dispatch-retry`); implementation matches board narrative (config home for `gather_stagger_seconds`, direct `ASTRAL_CONFIG["gather_stagger_seconds"]` in dispatcher, no shadow default for stagger).
+- **Plan fidelity:** Shipped code matches `## Proposed change` (0-based index within `entities[1:]`, `float(...)`, docstring) and Susan’s direction (config-driven stagger, default 1.0s, not an in-flight cap).
+- **Tests:** Product green on ftr baseline per spawn; stagger repro/timing coverage intentionally deferred to **AST-2153**. Existing `TestWarmThenGather` 2-entity cases remain valid (`i=0` → no stagger sleep); 3+ entity paths that zero only `cache_warm_delay_seconds` may run real stagger sleeps at default 1.0s — slower but correct until Betty zeros stagger there (plan blast radius).
+- **Sub-branch doc carry:** `ast-326-batch-scrape-jds-plan.md` Threads block is unrelated gazer epic mirror — not AST-2149 scope; harmless doc noise on publish ref.
+- **Parent shape:** AST-2142 orphaned **mini-parent** with **live** `ftr/AST-2142-gather-call-stagger`; fix correctly isolated ftr→sub. Sibling **AST-2153** owns test gap; do not block UT on missing repro on this tip.
+
+## What’s solid
+
+- Minimal, focused diff: one config knob + staggered wrappers inside the existing gather — exactly the operational tuning described in root cause / to-be.
+- Config single-home for the new interval; stagger default lives only in `config.py` as planned.
+- Preserves concurrent overlap and AST-2010 / chunk-mode boundaries.
+
+## Recommended actions (Chuckles)
+
+- Append artifact → `docs(AST-2149): Radia review — clean` → **Review Posted** → fix-lane clean shortcut → **User Testing** (skip `resolve-child`).
+- Keep **AST-2153** on the test manifest path; merge/stack per AST-2142 epic rules (live ftr), not a dev-only orphan without ftr.
+
+context_tokens≈11000
+
+**Test delivery (docs-acceptance):** AST-2149 carries no test-tree commit. Its [bug-repro] and bible rows land on gap sibling AST-2153 (fix-board [board-betty] TESTS: REVISE).
+
+
+### Joan fix-board — AST-2153
+
+**Read:** `## Bug: AST-2153` on `origin/sub/AST-2142/AST-2153-gather-stagger-tests` @ `a33d2f695` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`). Scope is **test tree + test-bible only** (`tests/component/core/test_dispatcher.py`; `docs/test-bible/core/dispatcher.md`). **No `src/` changes** — AST-2149 owns product; this gap child lands Betty’s fix-board `[board-betty] TESTS: REVISE` from AST-2149. Product contract under test is § Bug: AST-2149 (now on `origin/ftr/AST-2142-gather-call-stagger` @ `a4120f78c`).
+
+**Corpus skim:** No Canon Scope on AST-2153 / AST-2142. `docs/canon-index.md` is not on this ref; used `canon/docs/DIRECTIVES-DIRECTORY.md`. Overlap check is light because the diff never touches product layers — only whether the **proposed test/bible work** implies amending in-force statutes/patterns.
+
+**The one question:** Does this fix require touching canon?
+
+**Analysis:** Proposed change adds T1 `[bug-repro]` (`test_bug_repro_stagger_spaces_remaining_starts`) and T2 (`test_zero_stagger_adds_no_sleeps`) under `TestWarmThenGather`, one `monkeypatch.setitem` for `gather_stagger_seconds` in `TestAst1867ProviderBalanceOutage._edges` (T3), and a new `docs/test-bible/core/dispatcher.md` § AST-2153 · AST-2149 with manifest rows. Tests configure via the existing `ASTRAL_CONFIG` copy + `monkeypatch` pattern (no AST-2149 imports), assert stagger sleeps `1.0` / `2.0`, entity order, and `gather_stagger_seconds = 0` parity with pre-stagger warm-delay-only behavior.
+
+That **locks the AST-2149 contract** Joan already triaged **CANON: OK** — `gather_stagger_seconds` in `config.py`, 0-based offsets inside one `asyncio.gather`, no in-flight cap, warm-first + `cache_warm_delay_seconds` unchanged. T3 only removes accidental real sleeps in outage `_run_unified` fixtures; it does not change outage policy, retry law, or batch-stop semantics.
+
+Nothing in the patch amends `canon/directives/active/**` or asks for a new carve-out in `stat.config.single-home`, `patt.entity.batch-processing`, `patt.task.dispatch-retry`, or related dispatch/config statutes. Test-bible edits are manifest documentation; active canon does not treat test-bible pages as operative directives needing statute updates. `[bug-repro]` T1 is component harness only; it does not redefine production obligations beyond what AST-2149 already implemented.
+
+Same shape as gap sibling AST-2141 (and AST-2149’s product pass): coverage + bible honesty after a product fix Joan already cleared. No F3 `validate-plan` fix mode for canon.
+
+**Verdict:** **CANON: OK**
+
+### Radia review-fix — AST-2153
+
+[code-rubric]
+
+**Ticket:** AST-2153  
+**Publish ref:** `b965f1102b613e9c0aff1fa58eb7fa8588b6d00e` (`origin/sub/AST-2142/AST-2153-gather-stagger-tests`)  
+**Corpus:** unavailable on publish ref (`docs/canon-index.md` absent; Joan fix-board **CANON: OK**)  
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-2142-gather-call-stagger` @ `a4120f78c` (AST-2149 product on ftr) … `origin/sub/AST-2142/AST-2153-gather-stagger-tests` — 3 files, **no `src/`** (`tests/component/core/test_dispatcher.py` +32 lines, `docs/test-bible/core/dispatcher.md` +16, plan patch in `ast-1877-model-server-catalog-compat-client.md`).
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| *(none frozen)* | — | — | Gap ticket; Joan fix-board **CANON: OK** on test/bible-only diff |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **CANON: OK** narrative; aligned with implementation)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK — `TestWarmThenGather::test_bug_repro_stagger_spaces_remaining_starts` (T1) pins AST-2149 **Repro 2** / **To-be**, not a tautology.
+
+- Calls production `_warm_then_gather` with 4 entities, `cache_warm_delay_seconds = 0`, `gather_stagger_seconds = 1.0`, `asyncio.sleep` mocked — no AST-2149 imports; pre-fix tree fails because stagger sleeps are never awaited (`[]` vs `[1.0, 2.0]`), matching repro-first contract.
+- `sorted(c.args[0] for c in sleep.await_args_list) == [1.0, 2.0]` is the right assertion for concurrent `_staggered` coroutines (await order in the mock list is not guaranteed sequential); it pins **0-based** offsets `i × 1.0` for `i ∈ {1, 2}` among `entities[1:]`, never `0`, with exactly two stagger sleeps and no warm-delay sleep.
+- `out` entity order and `one.await_count == 4` lock gather order and full fan-out — the contract AST-2149 § **What must still hold** calls “user-visible” for this gap (spacing via sleep args + ordered results), not wall-clock `loop.time()` (that was AST-2149 Repro 1; plan explicitly reduced T1 to the deterministic variant).
+- Would fail if stagger were removed, used wrong multipliers, or broke ordering — does not reimplement stagger logic in the test body.
+
+**`## What must still hold`:** OK
+
+- **No existing assertion edited** — only new T1/T2 and one `setitem` in `_edges` (T3).
+- **Pre-fix / post-fix behavior** — T1 red without product read of `gather_stagger_seconds`; T2 green on both trees (warm delay `[1.0]` only when stagger `0`).
+- **T3** — `gather_stagger_seconds` zeroed beside `cache_warm_delay_seconds` in `TestAst1867ProviderBalanceOutage._edges`; shared by Ast1867/2010/2098 `_run_unified` paths; `TestAst2093` untouched per plan.
+- **Bible** — § AST-2153 · AST-2149 rows + manifest match shipped nodes and documents pre-existing `TestAst2098` ftr failure outside pass bar.
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **`[bug-repro]` tag shape:** T1 uses docstring + `test_bug_repro_*` name (consistent with several dispatcher repro nodes); not a first-line `# [bug-repro]` comment. Manifest/bible index by test id — no blocker.
+- **Plan prose drift:** `## Bug: AST-2153` **Repro** still describes two-tree proof “because AST-2149 isn't on ftr yet”; ftr now carries AST-2149 (`gather_stagger` in `_warm_then_gather`). Mechanics note is stale; T1 is green on this publish ref against ftr baseline.
+- **Pass bar:** `TestAst2098ProviderProbeOutage::test_run_unified_per_entity_skips_after_probe_failure` remains pre-existing red on ftr (`repeat_processed`); bible and plan exclude it from this manifest — not a regression from AST-2153.
+- **Sibling:** AST-2149 in **User Testing** on ftr; this gap closes Betty’s AST-2149 **TESTS: REVISE** without smuggling product edits.
+
+## What’s solid
+
+- Implementation matches `## Proposed change` line-for-line (T1/T2/T3 + bible section + manifest).
+- T2 guard cleanly separates warm-delay sleep from stagger-at-zero parity.
+- Scope stays test/bible-only; product contract read from ftr’s AST-2149 implementation.
+
+## Recommended actions (Chuckles)
+
+- Append artifact → `docs(AST-2153): Radia review — clean` → **Review Posted** → fix-lane clean shortcut → **User Testing** (skip `resolve-child`).
+- Epic AST-2142: roll sub into ftr when sibling UT rules say so; no product work expected on this tip.
+
+context_tokens≈10500

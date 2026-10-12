@@ -843,17 +843,18 @@ Real SQLite (`sqlite_in_memory`). Only `_candidate_id_for_job` / `_candidate_dat
 
 **Parent:** [AST-2130](https://linear.app/astralcareermatch/issue/AST-2130). **Publish:** `origin/sub/AST-2130/AST-2133-composed-jd`. Plan: `docs/features/foundation/ast-2133-composed-read-only-job-description.md`. Capture storage / resolve: [`gazer.md`](gazer.md) § AST-2132.
 
-`compose_job_description(job)` = preamble (`job_data.job_description`) + `"\n\n"` + the `jd_telescope_data_id` capture run through `collapse_consecutive_blank_lines` then `_prune_jd(…, job_title)`; blank halves drop; no reference → the stored preamble exactly; reference whose row is gone → preamble alone. Read-only — never saved back. `get_job_data` JD key returns the composed JD (self-heal only when it is under `jd_min_chars`); non-JD falsy → `None`. `persist_skipped_job_edits` ignores `job_description`. Consumers: consult (§ [`consult.md`](consult.md) AST-2133), job APIs ([`../ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-2133), modal ([`../frontend/components.md`](../frontend/components.md) § AST-2133).
+`compose_job_description(job)` = preamble (`job_data.job_description`) + `"\n\n"` + the `jd_telescope_data_id` capture run through `collapse_consecutive_blank_lines` then `_prune_jd(…, job_title)`; blank halves drop; no reference → the stored preamble exactly; reference whose row is gone → preamble alone. Read-only — never saved back. `get_job_data` JD key returns the composed JD (self-heal only when it is under `jd_min_chars` **and** a `job_link` exists (AST-2145: link-less → one warning, `None`); the heal calls `fetch_jd_batch(transition=False)` and never moves state; still short after the heal → `None`); non-JD falsy → `None`. `persist_skipped_job_edits` ignores `job_description`. Consumers: consult (§ [`consult.md`](consult.md) AST-2133), job APIs ([`../ui/api/api_jobs.md`](../ui/api/api_jobs.md) § AST-2133), modal ([`../frontend/components.md`](../frontend/components.md) § AST-2133).
 
 | AC | Component tests |
 | --- | --- |
 | AC7 compose rules (exact preamble, preamble + pruned capture, capture only, missing row, non-dict `job_data`, no write-back) | new **`TestAst2133ComposeJobDescription`** (7; real `telescope_data` rows via `gazer.keep_telescope_data` on core `sqlite_in_memory`) |
-| AC7 `get_job_data` — long composed JD skips self-heal; self-heal writes the reference then returns composed | same class |
+| AC7 `get_job_data` — long composed JD skips self-heal; self-heal writes the reference then returns composed | same class — `test_get_job_data_returns_long_composed_without_self_heal`, `test_self_heal_writes_reference_then_returns_composed`, `test_self_heal_still_short_returns_none`, `test_downstream_state_heal_keeps_state` (**bug-repro (AST-2146)**: real `fetch_jd_batch`, state stays `METEORITE_PASSED_JD`, no `transition_job_state`) |
+| AST-2145 `get_job_data` self-heal guard + delegation | **`TestGetJobData`** — `test_self_heals_short_job_description` (`transition=False`, single-job), `test_self_heal_failure_returns_none` (linked job → exception branch), `test_no_job_link_skips_self_heal_with_one_warning[empty,blank,absent]` (**bug-repro (AST-2146)**: AST-2145 repro job `4d9d1c79`, no fetch, one WARNING) |
 | AC7 API detail / list rows / virtual skips | `test_api_jobs.py` **`TestAst2133ComposedJdResponses`** |
 | AC8 consult reads composed (VISIBLE_JD, JD readiness) | `test_consult.py` **`TestAst2133ConsultReadsComposedJd`** (2) |
 | AC9 PUT ignores JD (unit + real-DB end-to-end); modal has no JD editor | `test_api_jobs.py` **`TestAst2133ComposedJdResponses::test_ac9_*`**, **`TestAst2133PutJdReadOnlyE2E`**; modal Vitest below |
 
-**Broken / obsolete (revised, names kept for node-id stability):** `TestAst1453PersistSkippedJobEdits::test_writes_title_link_jd_then_transition` (order now `["save_job", "transition"]`, no `save_job_data`), `::test_empty_jd_persists_without_strip_whole_blob` (JD-only payloads `""` / `None` / text write nothing); `test_api_jobs.py::TestJobsRoutes::test_list_processing_filters_score_floor` (row now carries `job_data.job_description == ""`); `test_JobDetailModal.test.tsx` AST-1454 editable test (no JD tab / textarea; PUT body has no `job_description`).
+**Broken / obsolete (revised, names kept for node-id stability):** `TestAst1453PersistSkippedJobEdits::test_writes_title_link_jd_then_transition` (order now `["save_job", "transition"]`, no `save_job_data`), `::test_empty_jd_persists_without_strip_whole_blob` (JD-only payloads `""` / `None` / text write nothing); `test_api_jobs.py::TestJobsRoutes::test_list_processing_filters_score_floor` (row now carries `job_data.job_description == ""`); `test_JobDetailModal.test.tsx` AST-1454 editable test (no JD tab / textarea; PUT body has no `job_description`). **AST-2146 (for AST-2145):** `TestGetJobData::test_self_heals_short_job_description` (link-less job now hits the guard → given a `job_link`; asserts `transition=False`, returns `None` with no reference); `TestGetJobData::test_self_heal_failure_returns_none` (passed only via the guard → given a `job_link` + `assert_awaited_once` so the exception branch runs); `TestAst2133ComposeJobDescription::test_self_heal_writes_reference_then_returns_composed` (fake fetch takes `transition=`; 23-char `_SCRAPED` is under `jd_min_chars` after the heal → 250-char body).
 
 **Isolation:** ui `conftest.py` `_DB_SCHEMA_FLAGS` gains **`_telescope_data_schema_ensured`**. Every new reference test stores captures in a tmp DB — never `data/astral.db` (live symlink in epic worktrees).
 
@@ -874,3 +875,64 @@ Real SQLite (`sqlite_in_memory`). Only `_candidate_id_for_job` / `_candidate_dat
 **Pass criterion:** items 1–5 — narrowed run, not the zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2130/AST-2133-composed-jd:docs/test-bible/core/tracker.md | shasum`
+
+## QA test manifest — AST-2146
+
+Test-gap sibling of **AST-2145** (fix already on `origin/ftr/AST-2143-jd-self-heal-no-link` @ `cf5ddb4b5`). Plan: `docs/features/gazer/ast-326-batch-scrape-jds-plan.md` § Bug: AST-2146. Gazer side: [`gazer.md`](gazer.md) § AST-2025 (`TestAst2145FetchJdBatchNoTransition`, AC5 row).
+
+1. `pytest tests/component/core/test_tracker.py tests/component/core/test_gazer.py -q` — **20 failed, 323 passed**; the failure set equals exactly the 20 pre-existing reds on pre-fix `1e11b4f57` (ftr base; `TestFetchJdBatch` `errors`-key ×2 and the `test_tracker.py` set listed under § AST-2133 Pre-existing, among others). Every AST-2146 node is green: `-k "TestGetJobData or TestAst2133ComposeJobDescription or TestAst2145 or test_ac5"` → 23 passed.
+2. **Repro gate (`[bug-repro]`):** `test_tracker.py::TestGetJobData::test_no_job_link_skips_self_heal_with_one_warning` (×3 params) and `test_tracker.py::TestAst2133ComposeJobDescription::test_downstream_state_heal_keeps_state`.
+   - **Red** with `src/core/{gazer,tracker}.py` from `1e11b4f57` (pre-fix): 4 failed — no-link: `Expected mock to not have been awaited. Awaited 1 times.` (self-heal delegates with nothing to scrape); downstream: `Expected 'mock' to not have been called … Calls: [call(['job-2133'], 'JD_READY')]` (illegal fetch-stage transition from `METEORITE_PASSED_JD`).
+   - **Green** with `src/core/{gazer,tracker}.py` from `cf5ddb4b5` (ftr tip, AST-2145 fix): 4 passed.
+   - Re-run: `git checkout 1e11b4f57 -- src/core/gazer.py src/core/tracker.py` → red; `git checkout cf5ddb4b5 -- src/core/gazer.py src/core/tracker.py` → green; restore the tree after.
+3. Isolation: every new reference test keeps captures in the tmp DB (`sqlite_in_memory`), never `data/astral.db`.
+
+**Pass criterion:** items 1–2 on the sub tip. Narrowed run, not the zero-arg harness (pre-existing reds on the ftr tip).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2143/AST-2146-jd-self-heal-tests:docs/test-bible/core/tracker.md | shasum`
+
+### AST-2151 · AST-2144 (`/check-status` handler)
+
+**Parent:** [AST-2144](https://linear.app/astralcareermatch/issue/AST-2144) (Add /check-status to Estelle's functions). **Publish:** `origin/sub/AST-2144/AST-2151-check-status-registry-handler`. Plan: `docs/features/contact/ast-2151-check-status-registry-handler.md`. Config half: [`../utils/config.md`](../utils/config.md) § AST-2151.
+
+`contact_command_check_status(candidate_id, payload, *, source_id, thread_ts, debug)` → `{ok, meteorite_id (None), error, reply_text}`. Reuses `_match_jobs_by_pattern` (`list_jobs(candidate_id=…)`) with `_job_owned_by_candidate` as a filter over every hit; formats the `check-status` registry templates; times via `format_contact_timezone_clock` in `meteorite._candidate_contact_timezone`; deeplink `https://` + `$RAILWAY_PUBLIC_DOMAIN` + `/jobs/detail/` + `quote(id, safe="")`. Read-only.
+
+| AC (child) | Component tests |
+| --- | --- |
+| 3 one match — title, raw state, both contact clocks, encoded deeplink; `list_jobs(candidate_id="c1")`; no warning | **`TestAst2151ContactCommandCheckStatus::test_ac3_one_match_reply_with_clocks_and_encoded_deeplink`** |
+| 4 several — header count, both titles/companies/links | `::test_ac4_several_matches_list_both_titles_and_links` |
+| 5 candidate scope — rival's exact-title job absent (id + title) | `::test_ac5_other_candidates_job_excluded` |
+| 6 no match (none listed / listed but not owned or company-less) — exact `no_match_reply_text`, `unmatched_pattern`, no warning | `::test_ac6_no_match_returns_no_match_text` (2) |
+| 7 origin unset / blank — no link text, exactly one WARNING naming `RAILWAY_PUBLIC_DOMAIN` (also for a several-match reply) | `::test_ac7_no_origin_replies_without_links_one_warning` (2) |
+| Empty candidate → `no_candidate`, `reply_text` None, no lookup; `None` / garbage timestamps → `-` | `::test_no_candidate_returns_no_reply_text`, `::test_unparseable_timestamps_render_dash` (2) |
+
+Every case patches `database.save_job` / `delete_job` / `save_artifact` to raise — no writes. **Coverage:** new range (`_contact_job_clock` + handler) has no missed lines or partial branches from this class alone.
+
+**Not here:** ticket AC 3–6 as written drive `handle_slack_event` → `post_message`, but posting `reply_text` and applying `reply_placement` are sibling **#2** (`src/core/contact.py`). Until #2 lands, `_run_contact_command` reads `ack_reply_template` on `ok` (KeyError on this entry, plan-accepted interim, ftr-only). End-to-end post / thread / share / no-hear-ack assertions belong to #2's manifest.
+
+**Broken / obsolete:** none. `TestAst2035ContactCommandIntercept` (22) and `TestAst1518ContactTaskReads` unchanged and green.
+
+**Integration:** none. No `tests/integration/` scenario reads the command registry. Do not invent one.
+
+## QA test manifest — AST-2151
+
+1. New + neighbors:
+
+```bash
+ASTRAL_DB_DIR=$(mktemp -d) ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst2151ContactCommandCheckStatus \
+  tests/component/utils/test_config.py::TestAst2151CheckStatusRegistry \
+  tests/component/utils/test_config.py::TestAst2061ContactPinholeConfig \
+  tests/component/utils/test_config.py::TestAst2072ThreadResponseConfig \
+  tests/component/core/test_tracker.py::TestAst1518ContactTaskReads \
+  tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept \
+  -q
+```
+
+   Expect **54 passed**.
+2. No-regression: `pytest tests/component/core/test_tracker.py tests/component/utils/test_config.py tests/component/core/test_contact.py -q` → **46 failed, 999 passed, 4 skipped**. The 46 failures are exactly the set on `origin/ftr/AST-2144-check-status` product with pre-AST-2151 tests (46 failed, 981 passed). None are in an `Ast2151` class.
+3. Child AC 1–2 one-liners from the ticket print `code` (and `reply_placement` = `always_with_share`) and `read job`.
+
+**Pass criterion:** items 1–3. Narrowed run, not the zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2144/AST-2151-check-status-registry-handler:docs/test-bible/core/tracker.md | shasum`; same for `docs/test-bible/utils/config.md`.

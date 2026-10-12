@@ -3,13 +3,10 @@ import { useSearchParams } from "react-router-dom"
 import api from "../lib/api"
 import Time from "../components/Time"
 import { useCandidate } from "../contexts/CandidateContext"
+import { sortCandidatesForSelect } from "../lib/candidateLabel"
 import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
 import BatchAgentDataModal from "../components/BatchAgentDataModal"
 import BatchLogViewer, { type LogEntry } from "../components/BatchLogViewer"
-import {
-  type AdminCandidateFilterValue,
-  useAdminCandidateFilter,
-} from "../hooks/useAdminCandidateFilter"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 
 interface LedgerRow {
@@ -32,7 +29,7 @@ const FILTER_KEYS = ["task_key", "candidate_id", "status", "date_from", "date_to
 const STATUSES = ["RUNNING", "COMPLETED", "FAILED", "INTERRUPTED"]
 const LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"] as const
 
-function candidateIdFromParams(sp: URLSearchParams): AdminCandidateFilterValue {
+function candidateIdFromParams(sp: URLSearchParams): string {
   return sp.get("candidate_id") || ""
 }
 
@@ -83,7 +80,7 @@ const COLUMNS = [
 
 
 export default function PerformanceMonitor() {
-  const { selectedId } = useCandidate()
+  const { selectedId, candidates: navCandidates } = useCandidate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<LedgerRow[]>([])
   const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
@@ -98,9 +95,8 @@ export default function PerformanceMonitor() {
   const [agentDataCandidateId, setAgentDataCandidateId] = useState<string | null>(null)
   const userSetDateFrom = useRef(false)
   const userSetDateTo = useRef(false)
-  const initialCandidateDefaultApplied = useRef(false)
 
-  const setCandidateParam = useCallback((next: AdminCandidateFilterValue) => {
+  const setCandidateParam = useCallback((next: string) => {
     setSearchParams(prev => {
       const nextParams = new URLSearchParams(prev)
       if (next) nextParams.set("candidate_id", next)
@@ -109,15 +105,10 @@ export default function PerformanceMonitor() {
     }, { replace: true })
   }, [setSearchParams])
 
-  const urlCandidate = candidateIdFromParams(searchParams)
-  const urlBacked = useMemo(
-    () => ({ value: urlCandidate, setValue: setCandidateParam }),
-    [urlCandidate, setCandidateParam],
-  )
-  const { candidateFilter, setCandidateFilter, syncWithNav, candidates } = useAdminCandidateFilter({
-    urlBacked,
-    urlPresentDisablesSync: true,
-  })
+  // AST-2150: the URL is the only source of the Candidate filter — absent = All; the left nav never writes it.
+  const candidateFilter = candidateIdFromParams(searchParams)
+  const setCandidateFilter = setCandidateParam
+  const candidates = useMemo(() => sortCandidatesForSelect(navCandidates), [navCandidates])
 
   const tz = useMemo(() => {
     const c = candidates.find(x => x.astral_candidate_id === selectedId)
@@ -157,14 +148,6 @@ export default function PerformanceMonitor() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tz])
-
-  useEffect(() => {
-    if (initialCandidateDefaultApplied.current) return
-    if (searchParams.get("candidate_id")) return
-    if (!syncWithNav || !selectedId) return
-    initialCandidateDefaultApplied.current = true
-    setCandidateParam(selectedId)
-  }, [searchParams, syncWithNav, selectedId, setCandidateParam])
 
   // Distinct values for dropdowns (derived from loaded data)
   const taskOptions = useMemo(() => {

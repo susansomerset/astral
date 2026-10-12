@@ -2,7 +2,9 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import "../../../../src/ui/frontend/src/App.css"
+import { useLocation } from "react-router-dom"
 import api from "../../../../src/ui/frontend/src/lib/api"
+import { useCandidate } from "../../../../src/ui/frontend/src/contexts/CandidateContext"
 import PerformanceMonitor from "../../../../src/ui/frontend/src/pages/AdminPerformanceMonitor"
 import { installBaseApiMocks, renderWithProviders } from "../test-utils"
 
@@ -46,17 +48,25 @@ const adminCandidates = [
   { astral_candidate_id: "c2", state: "ACTIVE", first: "Betty", candidate_data: { profile: { timezone: "America/Los_Angeles" } } },
 ]
 
-/** AST-634: urlPresentDisablesSync needs candidate_id on mount or RTL hangs on nav sync. */
-function withCandidateQuery(path: string): string {
-  if (path.includes("candidate_id=")) return path
-  return `${path}${path.includes("?") ? "&" : "?"}candidate_id=c1`
-}
-
+/** AST-2150: path is used as-is — no candidate_id injected, so cases run on the real All default. */
 function renderPerformanceMonitor(path = "/admin/performance", opts?: Parameters<typeof renderWithProviders>[1]) {
   return renderWithProviders(<PerformanceMonitor />, {
     ...opts,
-    router: { initialEntries: [withCandidateQuery(path)], ...opts?.router },
+    router: { initialEntries: [path], ...opts?.router },
   })
+}
+
+function CandidateSelectC2() {
+  const { setSelectedId } = useCandidate()
+  return (
+    <button type="button" onClick={() => setSelectedId("c2")}>
+      Select c2 nav
+    </button>
+  )
+}
+
+function SearchProbe() {
+  return <p data-testid="search">{useLocation().search}</p>
 }
 
 function chainHopRowsForToday() {
@@ -578,6 +588,79 @@ describe("AdminPerformanceMonitor", () => {
       expect(within(screen.getByRole("table")).queryByText("task_c1")).not.toBeInTheDocument()
       expect(candidateSelect.value).toBe("c2")
     }, 20000)
+  })
+
+  describe("AST-2150 candidate filter is URL-only, defaults to All", () => {
+    function mockLedger(calls: string[]) {
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger?")) calls.push(url)
+        if (url.startsWith("/api/admin/dispatch_ledger")) return { json: async () => [ledgerRow] } as Response
+        if (url === "/api/candidates") return { json: async () => adminCandidates } as Response
+      })
+    }
+
+    // Left nav is c1 in every case; the page must never copy it into the URL or the ledger fetch.
+    async function renderWithNavC1(path: string) {
+      localStorage.setItem("astral_selected_candidate", "c1")
+      renderWithProviders(
+        <>
+          <CandidateSelectC2 />
+          <SearchProbe />
+          <PerformanceMonitor />
+        </>,
+        { router: { initialEntries: [path] } },
+      )
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      const candidateSelect = screen.getByLabelText("Candidate", { selector: "select" }) as HTMLSelectElement
+      await waitFor(() => expect(candidateSelect.options.length).toBeGreaterThan(2))
+      return candidateSelect
+    }
+
+    it("no candidate_id in URL: ledger fetch and URL stay unscoped, dropdown shows All", async () => {
+      const calls: string[] = []
+      mockLedger(calls)
+      const candidateSelect = await renderWithNavC1("/admin/performance")
+      await waitFor(() => expect(calls.length).toBeGreaterThan(0))
+      expect(calls.every(u => !u.includes("candidate_id="))).toBe(true)
+      expect(screen.getByTestId("search").textContent).not.toContain("candidate_id")
+      expect(candidateSelect.value).toBe("")
+    }, 15000)
+
+    it("switching left nav c1 to c2 does not add candidate_id to URL or ledger fetch", async () => {
+      const calls: string[] = []
+      mockLedger(calls)
+      const candidateSelect = await renderWithNavC1("/admin/performance")
+      await waitFor(() => expect(calls.length).toBeGreaterThan(0))
+      await userEvent.click(screen.getByRole("button", { name: "Select c2 nav" }))
+      // Give any nav-driven effect a chance to fire before asserting nothing moved.
+      await new Promise(r => setTimeout(r, 50))
+      expect(calls.every(u => !u.includes("candidate_id="))).toBe(true)
+      expect(screen.getByTestId("search").textContent).not.toContain("candidate_id")
+      expect(candidateSelect.value).toBe("")
+    }, 15000)
+
+    it("bookmarked ?candidate_id=c2 with nav c1 scopes fetch and dropdown to c2", async () => {
+      const calls: string[] = []
+      mockLedger(calls)
+      const candidateSelect = await renderWithNavC1("/admin/performance?candidate_id=c2")
+      await waitFor(() => expect(calls.some(u => u.includes("candidate_id=c2"))).toBe(true))
+      expect(calls.some(u => u.includes("candidate_id=c1"))).toBe(false)
+      expect(candidateSelect.value).toBe("c2")
+    }, 15000)
+
+    it("picking c2 scopes fetch and URL; picking All clears both", async () => {
+      const calls: string[] = []
+      mockLedger(calls)
+      const candidateSelect = await renderWithNavC1("/admin/performance")
+      await userEvent.selectOptions(candidateSelect, "c2")
+      await waitFor(() => expect(calls[calls.length - 1]).toContain("candidate_id=c2"))
+      expect(screen.getByTestId("search").textContent).toContain("candidate_id=c2")
+
+      await userEvent.selectOptions(candidateSelect, "")
+      await waitFor(() => expect(calls[calls.length - 1]).not.toContain("candidate_id="))
+      expect(screen.getByTestId("search").textContent).not.toContain("candidate_id")
+      expect(candidateSelect.value).toBe("")
+    }, 15000)
   })
 
   describe("AST-1410 silent refetch", () => {

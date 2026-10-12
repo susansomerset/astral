@@ -4876,7 +4876,7 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 
 ### AST-2010 · AST-2009 (OpenRouter retry block + `PROVIDER_RATE_LIMIT`)
 
-**New:** `TestAst2010OpenRouterRetryConfig`. OpenRouter `concurrency == {"rate_limit_retries": 5, "backoff_base_seconds": 2.0, "exhausted_stops_batch": True}`. The DeepSeek block is unchanged, and only OpenRouter sets `exhausted_stops_batch`. The `PROVIDER_RATE_LIMIT` registry is pinned. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+**New:** `TestAst2010OpenRouterRetryConfig`. OpenRouter `concurrency == {"rate_limit_retries": 5, "backoff_base_seconds": 10.0, "exhausted_stops_batch": True}` (base raised from 2.0 to 10.0 so a 429 waits roughly 2.5–5 min). The DeepSeek block is unchanged, and only OpenRouter sets `exhausted_stops_batch`. The `PROVIDER_RATE_LIMIT` registry is pinned. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
 
 ### AST-2024 · AST-2022 (`RELATIVE_JOB_LINK` / `RELATIVE_LINK_FAIL` + `fetch_relative_jd` registration)
 
@@ -5044,4 +5044,17 @@ Config literals plus one module-level guard: every `TELESCOPE_DATA_CONFIG["compa
 Pre-existing: 22 `test_config.py` failures identical on `origin/ftr/AST-2130-telescope-data` (removed symbols, e.g. `SURFER_BATCH_CONFIG`, `METEORITE_RETENTION_CONFIG`) — not this ticket.
 
 Manifest: [`../data/database/telescope_data.md`](../data/database/telescope_data.md) § AST-2131.
+
+### AST-2151 · AST-2144 (`check-status` registry entry, asserts, pinhole, origin env)
+
+`CONTACT_CONFIG["commands"]["check-status"]`: `code` mode, handler `src.core.tracker.contact_command_check_status`, `reply_placement: "always_with_share"`, five job-lookup templates (`match_reply_template`, `matches_header_template`, `matches_line_template`, `deeplink_template`, `no_match_reply_text`), no `ack_reply_template`. Registry asserts: `ack_reply_template` now **optional** (supersedes § AST-2035's required-ack line) but still needs `{meteorite_id}` when present; each declared text field carries its placeholders; the five job-lookup fields are all-or-none; `reply_placement` ∈ the `thread_response` vocabulary (`_CONTACT_THREAD_RESPONSE_MODES`). Pinhole row `read job`. `JOBS_DETAIL_ORIGIN_DOMAIN_ENV = "RAILWAY_PUBLIC_DOMAIN"` beside `JOBS_DETAIL_ROUTE_PREFIX`.
+
+| Area | Component tests |
+| --- | --- |
+| Child AC 1 (mode, placement, handler, no ack; add-job ack unchanged); AC 2 (pinhole `read job`); env-name contract | new **`TestAst2151CheckStatusRegistry`** — `test_ac1_*`, `test_ac2_*`, `test_origin_env_contract_beside_route_prefix` |
+| Real import-time asserts (spliced re-exec, anchors must appear once): ack absent imports; ack without `{meteorite_id}`, `match_reply_template` without `{deeplink}`, half-declared lookup group, `reply_placement: "sometimes"` each raise | same class (5) |
+| Pinhole covers every command handler (now two) | **`TestAst2061ContactPinholeConfig::test_every_contact_handler_in_pinhole`** (unchanged) |
+| `thread_response` assert still anchored on the dict line | **`TestAst2072ThreadResponseConfig`** (unchanged) |
+
+**Broken / obsolete:** none. Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2151.
 

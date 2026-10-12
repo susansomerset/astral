@@ -6683,6 +6683,71 @@ class TestAst2072ThreadResponseConfig:
         self._exec_with(value)
 
 
+# Branches (AST-2151): check-status entry + pinhole + origin env name; registry asserts — optional
+# ack (absent ok, present needs {meteorite_id}), template placeholders, job-lookup all-or-none group,
+# reply_placement vocabulary. Spliced re-exec so the shipped asserts (not copies) fire.
+class TestAst2151CheckStatusRegistry:
+    """AST-2151: CONTACT_CONFIG["commands"]["check-status"] + relaxed/extended registry asserts."""
+
+    HANDLER = "src.core.tracker.contact_command_check_status"
+
+    @staticmethod
+    def _splice_exec(old: str, new: str) -> None:
+        import types
+        from pathlib import Path
+
+        src = Path(cfg.__file__).read_text(encoding="utf-8")
+        # A moved/renamed anchor must fail loudly, not let the splice pass vacuously.
+        assert src.count(old) == 1, old
+        mod = types.ModuleType("config_ast2151")
+        mod.__file__ = cfg.__file__
+        # Fake filename keeps coverage from attributing probe lines to config.py.
+        exec(compile(src.replace(old, new, 1), "<config_ast2151>", "exec"), mod.__dict__)  # noqa: S102
+
+    def test_ac1_entry_code_mode_with_share_placement(self) -> None:
+        e = cfg.CONTACT_CONFIG["commands"]["check-status"]
+        assert e["mode"] == "code"
+        assert e["reply_placement"] == "always_with_share"
+        assert e["handler"] == self.HANDLER
+        assert "ack_reply_template" not in e
+        # add-job keeps its ack unchanged.
+        assert cfg.CONTACT_CONFIG["commands"]["add-job"]["ack_reply_template"] == (
+            "Got it. Saved as meteorite {meteorite_id}; I'll stage it from here."
+        )
+
+    def test_ac2_pinhole_read_job(self) -> None:
+        handler = cfg.CONTACT_CONFIG["commands"]["check-status"]["handler"]
+        assert cfg._CONTACT_PINHOLE_HANDLERS[handler] == "read job"
+
+    def test_origin_env_contract_beside_route_prefix(self) -> None:
+        assert cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV == "RAILWAY_PUBLIC_DOMAIN"
+        assert cfg.JOBS_DETAIL_ROUTE_PREFIX == "/jobs/detail"
+
+    def test_ack_template_optional(self) -> None:
+        # Dropping add-job's ack entirely still imports.
+        self._splice_exec(
+            '"ack_reply_template": "Got it. Saved as meteorite {meteorite_id}; I\'ll stage it from here.",', ""
+        )
+
+    def test_ack_template_when_present_needs_meteorite_id(self) -> None:
+        with pytest.raises(AssertionError, match="ack_reply_template"):
+            self._splice_exec("Saved as meteorite {meteorite_id};", "Saved;")
+
+    def test_match_template_missing_placeholder_fails_import(self) -> None:
+        with pytest.raises(AssertionError, match="match_reply_template"):
+            self._splice_exec('since {state_changed_at}{deeplink}",', 'since {state_changed_at}",')
+
+    def test_half_declared_job_lookup_group_fails_import(self) -> None:
+        with pytest.raises(AssertionError, match="check-status"):
+            self._splice_exec(
+                '"no_match_reply_text": "Nothing matched that. Try a job link, title, or company.",', ""
+            )
+
+    def test_reply_placement_outside_vocabulary_fails_import(self) -> None:
+        with pytest.raises(AssertionError, match="check-status"):
+            self._splice_exec('"reply_placement": "always_with_share",', '"reply_placement": "sometimes",')
+
+
 # Branches: DISCOVERED land/vet; CSE-only resolve; resolve_website SA + WEBSITE_REVIEW edges (AST-1672).
 class TestAst1672DiscoveredResolveRegistrySsot:
     """AST-1672: DISCOVERED + resolve registry SSOT (config-only; no runners)."""
@@ -7401,7 +7466,7 @@ class TestAst2010OpenRouterRetryConfig:
 
     def test_openrouter_retry_block(self) -> None:
         assert cfg.LLM_SERVER_CONFIG["openrouter"]["concurrency"] == {
-            "rate_limit_retries": 5, "backoff_base_seconds": 2.0, "exhausted_stops_batch": True,
+            "rate_limit_retries": 5, "backoff_base_seconds": 10.0, "exhausted_stops_batch": True,
         }
 
     def test_deepseek_block_unchanged_and_not_opted_in(self) -> None:

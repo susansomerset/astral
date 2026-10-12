@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useCandidate } from "../contexts/CandidateContext"
+import { sortCandidatesForSelect } from "../lib/candidateLabel"
 import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
-import { useAdminCandidateFilter } from "../hooks/useAdminCandidateFilter"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
@@ -332,8 +332,11 @@ function ScheduledPhaseTable({
 }
 
 export default function ScheduledActions() {
-  const { selectedId } = useCandidate()
-  const { candidateFilter, setCandidateFilter, candidates } = useAdminCandidateFilter()
+  const { selectedId, candidates: navCandidates } = useCandidate()
+  // AST-2150: filter is page-local and starts at All — never seeded from or synced to the left nav.
+  const [candidateFilter, setCandidateFilter] = useState("")
+  // Same ordering AdminCandidateFilterControl gets from the shared hook on other admin screens.
+  const candidates = useMemo(() => sortCandidatesForSelect(navCandidates), [navCandidates])
   const [data, setData] = useState<DispatchTask[]>([])
   const [sortCol, setSortCol] = useState<string>("_default")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
