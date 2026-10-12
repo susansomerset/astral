@@ -184,3 +184,9 @@ Adversarial read of the **promoted directive text the plan commits to** (vs pare
 **Archie must decide:** statute cites **module path** vs neutral hydrate naming; **Edit B** keep vs delete; optional **decode vs hydrate** wording in example; **frontmatter approval** moment for reworded text relative to Susan’s wording OK.
 
 context_tokens≈42000
+
+## Review (build)
+
+**Built @ `b7ab22030`** — `origin/sub/AST-2172/AST-2176-promote-grader-statutes`
+
+Stage 1 (`2c57d7ba0`): `git mv` both drafts → `canon/directives/active/` (pure renames). Stage 2 (`b7ab22030`): frontmatter `id:` → `stat.agent.*`, `approved_at: "2026-10-12"` on both, Edits A + B exactly as approved on AST-2182. AC 10b checks (plan Stage 2 step 6) all pass: index lists both `stat.agent.*` ids, zero `astral.agent.*`, zero `_decode_payload` under `active/`, `expand` resolves 2. No product code, no tests.
