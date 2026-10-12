@@ -190,3 +190,72 @@ context_tokens≈42000
 **Built @ `b7ab22030`** — `origin/sub/AST-2172/AST-2176-promote-grader-statutes`
 
 Stage 1 (`2c57d7ba0`): `git mv` both drafts → `canon/directives/active/` (pure renames). Stage 2 (`b7ab22030`): frontmatter `id:` → `stat.agent.*`, `approved_at: "2026-10-12"` on both, Edits A + B exactly as approved on AST-2182. AC 10b checks (plan Stage 2 step 6) all pass: index lists both `stat.agent.*` ids, zero `astral.agent.*`, zero `_decode_payload` under `active/`, `expand` resolves 2. No product code, no tests.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2176  
+**Publish ref:** `673e6cd4e3deaae1a9447524244882d8efbadbb1` (`origin/sub/AST-2172/AST-2176-promote-grader-statutes`)  
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066` (last commit touching `canon/`; worktree `canon/` clean — not DIRTY)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+Frozen list empty (Linear **Citations:** `none` — bootstrap child; AC 10b is the engineering gate, not a frozen Radia directive list). No directive ids to score; not §5.3 ESCALATE (explicit empty scope, same posture as Joan validate).
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded no R3 rows; adversarial plan read graded promoted **text** (`confidence-bounds` B, `grade-vector-validation` A). Tip canon matches Stage 2 Edits A+B, frontmatter `stat.agent.*` ids, and `approved_at: "2026-10-12"` as documented (“exactly as approved on AST-2182”). No plan-stage vs diff divergence on the empty frozen list.
+
+## Frame diff
+
+- [ ] **Scope** (Linear Description): change “one sentence amended” → “`confidence-bounds` Statement + Conforming example reworded (two `_decode_payload` removals); `grade-vector-validation` move + id only” so dispatch text matches AC 10b and the landed diff.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none) — Joan’s plan-stage wording / approval threads are reflected in the built active directives; AST-2182 is recorded as the approval anchor in the build stub. Remaining statute polish (module path vs neutral hydrate, “decode failure” phrasing in Edit B, `TASK_CONFIG`/`do_task` in `grade-vector-validation`) is epic follow-up for siblings #3/#5 or a separate canon pass, not a blocker on this promotion slice.
+
+### advisory
+
+- **Location:** `origin/dev...673e6cd4e` history — commit `673e6cd4e` `sync(dev): origin/dev`  
+  **Finding:** Tip history merges current `origin/dev` (includes AST-2173/2174 search stack). Three-dot diff vs `origin/dev` for this review is still **canon + docs only**; Betty manifest item 5 holds (`git diff origin/dev -- src/ tests/` empty on tip).  
+  **Recommendation:** Treat as epic hygiene; no AST-2176 product scope leak.
+
+- **Location:** `canon/directives/active/stat.agent.confidence-bounds.md` — Edit B bullet  
+  **Finding:** Statement uses “hydrate” / “entity”; conforming example still says “decode failure” (Joan noted mixed metaphor vs future `decode_failures` keys).  
+  **Recommendation:** Optional Archie polish later; default: leave as shipped.
+
+- **Location:** `canon/directives/active/stat.agent.grade-vector-validation.md` — `# Statement`  
+  **Finding:** Still names `TASK_CONFIG` / `do_task` (pre-v2 body unchanged per plan). Siblings must reconcile with structured grader work; out of this child’s boundaries.  
+  **Recommendation:** Note for AST-2178/AST-2180 planning; not fix-now here.
+
+- **Location:** Out-of-scope `astral.agent.*` references (legacy `canon/statutes/`, HARVEST, `src/core/agent.py` comment)  
+  **Finding:** Clerk serves only `directives/active/`; AC 10b satisfied.  
+  **Recommendation:** AST-2180 owns agent comment cleanup per plan.
+
+- **Location:** Commits `2c57d7ba0`, `b7ab22030` — message prefix `code(AST-2176):`  
+  **Finding:** Canon-only touches; some epics use `docs()` for canon.  
+  **Recommendation:** Process variance only.
+
+## What's solid
+
+- **Stage 1** (`2c57d7ba0`): pure `draft/` → `active/` renames for both statutes.  
+- **Stage 2** (`b7ab22030`): `id:` → `stat.agent.*`, `approved_at: "2026-10-12"`, Edits A+B match the approved plan block; no `_decode_payload` under `canon/directives/active/`.  
+- **AC 10b (re-run on worktree @ tip):** index lists both `stat.agent.*` lines; `expand` resolves `2`; draft paths absent; `astral.agent.*` absent from clerk index; `rg` clean on `active/`.  
+- **Boundaries:** no `src/**` or `tests/**` delta vs `origin/dev` on tip; Betty docs-acceptance manifest in `docs/test-bible/README.md` matches executed checks.  
+- **Estimate:** confirmed **1** — footprint fits two-commit canon + docs.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append this artifact to `docs/features/agent/ast-2176-promote-the-two-grader-statutes.md`, `docs(AST-2176): Radia review — clean`, push `sub/AST-2172/AST-2176-promote-grader-statutes`, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** toward **User Testing** (no `resolve-child` code fixes from this review).  
+- Optional: tick **Frame diff** Scope row on Linear after Susan confirms wording gate for AST-2177 is satisfied via AST-2182.
+
+context_tokens≈28000
+
