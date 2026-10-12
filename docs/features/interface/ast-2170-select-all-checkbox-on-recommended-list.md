@@ -156,3 +156,9 @@ AC1–AC9 → Stage 1 (steps 1–5; plan **AC trace** table); no orphan stages; 
 - **Recommendation:** None.
 
 context_tokens≈14500
+
+## Review
+
+- **Build tip:** `origin/sub/AST-2166/AST-2170-select-all` @ `4ba6be820` — `code(AST-2170): select-all header checkbox on Recommended list`
+- **Compile/lint:** `npx tsc -b --noEmit` 0; `npm run build` 0; `npm run lint` problem list identical to pre-edit baseline (29 pre-existing, 0 new). Lint before/after kept local under `debug/spikes/ast-2170-lint/` (gitignored, uncommitted).
+- **Canon Scope:** empty — nothing to verify.
