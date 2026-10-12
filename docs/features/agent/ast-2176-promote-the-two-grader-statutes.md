@@ -105,3 +105,82 @@ Between Stage 1 and Stage 2 the index transiently lists `astral.agent.*`. Stage 
 ## Estimate
 
 Confirm Chuckles estimate: 1 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2176
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `origin/sub/AST-2172/AST-2176-promote-grader-statutes` @ `c2700dfb0`
+
+## Canon scores
+
+Ticket **Citations:** `none` (dispatch-parent: bootstrap child; scored on AC 10b, not a frozen Radia list). No R3 rows — roll-up N/A.
+
+Adversarial read of the **promoted directive text the plan commits to** (vs parent AST-2172 canon Technical scope, Functional scope §4/§8, AC 10b):
+
+| Subject | Grade | Effort | One-line |
+|---------|-------|--------|----------|
+| `stat.agent.confidence-bounds` (Edits A+B + id/frontmatter) | B | — | AC-driven second edit is right; module path + “decode failure” in example need Archie/Susan eyes |
+| `stat.agent.grade-vector-validation` (move + id only) | A | — | |
+
+## Traceability
+
+**10b** → Stage 1 (`git mv` both drafts → `active/`) + Stage 2 (frontmatter `id:` → `stat.agent.*`, Edits A+B, `approved_at`, step 6 clerk/`rg` checks). No orphan stages; parent AC 1–11 / 10a are N/A for this child.
+
+## Findings
+
+### discuss
+
+- **Location:** Plan “Proposed wording” / Edit A — `src/core/grade_schema.py` in Statement  
+  **Finding:** Parent Technical scope names the hydrate module in Component scope (#3) but the statute body will cite a **file path** instead of a function or neutral “structured grade hydrate.” Reasonable anti-drift vs deleted `_decode_payload`, but statutes usually avoid path literals unless Archie wants `code_refs` discipline.  
+  **Recommendation:** Archie chooses: keep module path (plan default), generic hydrate wording only, or frontmatter `code_refs` + shorter Statement.
+
+- **Location:** Edit B — reword vs delete (plan ⚠️ Decision)  
+  **Finding:** AC 10b requires clearing **both** `_decode_payload` hits (draft lines 21 and 32); parent dispatch text still says “one sentence amended” while parent AC 10b is the stricter gate. Plan correctly rewords the conforming bullet; deleting it would drop the only worked example for the sanctioned exception.  
+  **Recommendation:** Susan: reword (plan) vs delete bullet; Chuckles may align child **Scope** text on AST-2176 with “two occurrences” so dispatch doesn’t contradict the plan.
+
+- **Location:** Stage 2 step 5 — `approved_at: "2026-10-12"`, `approved_by: Archie` unchanged  
+  **Finding:** Promotion date tracks Discussion (2026-10-12); **reworded** Statement/example is new normative text. `approved_by: Archie` is present but predates the hydrate wording. Parent requires Archie approval in frontmatter; ticket also requires **Susan** wording approval before #2 plans.  
+  **Recommendation:** Archie signs final sentence text (separate from Joan); Susan signs proposed block in plan; builder uses Susan’s date if it slips past 2026-10-12 (plan already allows).
+
+- **Location:** Edit B after text — “the entity is not a **decode** failure”  
+  **Finding:** Statement moves to “hydrate” / “entity”; example still uses decode vocabulary while downstream may keep `decode_failures` keys (parent AC 5–6). Not necessarily wrong, but mixed metaphor.  
+  **Recommendation:** Archie optional polish: “hydrate/check failure” vs keep “decode failure” for continuity with existing keys/logs.
+
+### acceptable
+
+- **Location:** Files Changed — out-of-scope references  
+  **Finding:** `astral.agent.*` remains in legacy `canon/statutes/`, HARVEST/DIRECTIVE-ANATOMY, test-bible/history, and `src/core/agent.py:429` comment (`astral.agent.confidence-bounds`). Clerk serves only `directives/active/`; plan defers agent comment to AST-2180. No AC 10b violation.  
+  **Recommendation:** None for this child.
+
+- **Location:** Stage 1 → Stage 2 gap  
+  **Finding:** Transient index shows `astral.agent.*` ids after rename-only commit; plan forbids planning against the sub in between. Matches DIRECTIVE-ANATOMY §1 (activate in own commit).  
+  **Recommendation:** Execute as written.
+
+- **Location:** Stage 1/2 commit subjects `code(AST-2176):`  
+  **Finding:** Canon-only touches; some repos use `docs()` for canon. Low process variance.  
+  **Recommendation:** Builder may follow epic convention; not a plan defect.
+
+- **Location:** `grade-vector-validation` body — `TASK_CONFIG` / `do_task`  
+  **Finding:** Pre-v2 wording; parent “No other wording changes.” Parent FS §3–§8 describe structured graders; statute still describes post-schema `do_task` validation — siblings #3/#5 must reconcile in implementation, not in this promotion.  
+  **Recommendation:** Note for later epic pass; out of AST-2176 scope.
+
+### fix-now
+
+(none)
+
+## R5 / R6 (condensed)
+
+- Parent **Functional scope §4** and **AC 10b**: plan delivers `stat.agent.*` in clerk index, zero `_decode_payload` under `canon/directives/active`, expand resolves both ids (step 6).  
+- **Technical scope** “one modified sentence” vs two edits: resolved by child AC 10b and plan Findings §1 — not a plan error.  
+- **Id-line `astral.agent.*` → `stat.agent.*`:** Required for AC; `_read_directive` uses frontmatter `id:` (plan Finding 1 verified against clerk).  
+- **Edit A accuracy:** Matches current non-vet behavior (`agent.py` letter+conf 0 → X0, AST-2124) and parent hydrate direction; `non-vet paths` preserved.  
+- **Edit B accuracy:** `CFC0` ↔ `"CF": {grade C, conf 0}` → `X0` is faithful to AST-2124 semantics on the future structured path.  
+- Self-assessment / estimate 1: honest for two-commit canon work.  
+- Plan Discuss: **0** completed rounds; status **Plan Ready**, assignee Joan — gate satisfied.
+
+**Archie must decide:** statute cites **module path** vs neutral hydrate naming; **Edit B** keep vs delete; optional **decode vs hydrate** wording in example; **frontmatter approval** moment for reworded text relative to Susan’s wording OK.
+
+context_tokens≈42000
