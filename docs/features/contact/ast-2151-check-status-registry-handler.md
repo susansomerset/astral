@@ -478,3 +478,14 @@ def _job_owned_by_candidate(job: Dict[str, Any], cid: str) -> bool:
 - AST-1518 contracts: `get_job_by_pattern` refuses ambiguous and unmatched patterns. `get_job_data` refuses `refused_cross_candidate` for a job owned by another candidate and returns `not_found` for a missing id. Hydration (`agent_story`) is unchanged.
 - An employer-sourced job (company set) owned by the sender behaves exactly as today. Its `candidate_id` was backfilled from that company's owner and set on insert, so both rules agree.
 - No new DB reads per match. The helper stays a pure function of the row it is given.
+
+
+## Joan fix-board — AST-2169
+
+[board-joan]  CANON: OK
+
+AST-2169 board-joan done — CANON: OK.
+
+**Rationale:** The plan-fix change is a one-helper body swap in `src/core/tracker.py` (`_job_owned_by_candidate`): ownership follows `job.candidate_id`, matching how `list_jobs` / `count_jobs` already scope jobs (AST-1598) and how nullable `company_id` meteorite rows behave (AST-1701). No in-force statute or active pattern (`patt.contact.command-intercept`, artifact scope patterns, layer/import rules) encodes the old company→`get_company` gate; that rule lived only in historical plan docs (AST-1518), which the patch explicitly leaves unpatched. Security intent (`refused_cross_candidate` on foreign ids via `get_job`) is preserved. No new carve-out, precedent, or corpus amendment is required for this fix—only product code (and Betty’s tests).
+
+**Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-2169 proceeds to make-fix on product only.
