@@ -2268,9 +2268,17 @@ class TestAst1453PersistSkippedJobEdits:
 class TestAst1518ContactTaskReads:
     """AST-1518: contact_task_* read wrappers + get_job_by_pattern."""
 
-    def _job(self, jid: str = "j1", company: str = "acme", title: str = "Engineer") -> Dict[str, Any]:
+    def _job(
+        self,
+        jid: str = "j1",
+        company: str | None = "acme",
+        title: str = "Engineer",
+        candidate_id: str = "c1",
+    ) -> Dict[str, Any]:
+        # Ownership is the row's own candidate_id (AST-2169); company may be NULL (meteorite rows).
         return {
             "astral_job_id": jid,
+            "candidate_id": candidate_id,
             "company": company,
             "job_title": title,
             "job_link": f"https://jobs.example/{jid}",
@@ -2298,9 +2306,6 @@ class TestAst1518ContactTaskReads:
         self._patch_story(monkeypatch)
         job = self._job()
         monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: [job])
-        monkeypatch.setattr(
-            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "c1"}
-        )
         out = tracker_mod.contact_task_get_job_by_pattern("c1", "Engineer")
         assert out["ok"] is True and out["task_key"] == "get_job_by_pattern"
         assert out["result"]["astral_job_id"] == "j1"
@@ -2324,15 +2329,12 @@ class TestAst1518ContactTaskReads:
         self._patch_story(monkeypatch)
         job = self._job()
         monkeypatch.setattr(tracker_mod, "get_job", lambda jid: job if jid == "j1" else None)
-        monkeypatch.setattr(
-            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "c1"}
-        )
         ok = tracker_mod.contact_task_get_job_data("c1", "j1")
         assert ok["ok"] is True and "agent_story" in ok["result"]
 
-        monkeypatch.setattr(
-            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "other"}
-        )
+        # Same id, row owned by another candidate → refused.
+        foreign = self._job(candidate_id="other")
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: foreign if jid == "j1" else None)
         refused = tracker_mod.contact_task_get_job_data("c1", "j1")
         assert refused["error"] == "refused_cross_candidate"
 
@@ -2379,13 +2381,37 @@ class TestAst1518ContactTaskReads:
         log = MagicMock()
         monkeypatch.setattr(tracker_mod, "get_logger", lambda _n: log)
         monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
-        monkeypatch.setattr(
-            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "c1"}
-        )
-        tracker_mod.contact_task_get_job_data("c1", "j1", debug=True)
+        out = tracker_mod.contact_task_get_job_data("c1", "j1", debug=True)
+        # Refusal emits the same two outcomes — pin this to the happy path.
+        assert out["ok"] is True
         outcomes = [c.kwargs.get("outcome") for c in log.debug_index.call_args_list]
         assert outcomes == ["found", "recorded"]
         assert log.debug_index.call_args_list[0].kwargs["func"] == "tracker.contact_task_get_job_data"
+
+    def test_ast2169_meteorite_job_owned_by_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """[bug-repro] AST-2169: null-company meteorite job is the sender's via job.candidate_id."""
+        self._patch_story(monkeypatch)
+        meteor = self._job("m1", company=None, title="Platform Engineer")
+        rival = self._job("m1", company=None, title="Platform Engineer", candidate_id="c2")
+        # Ownership is a pure function of the row — any company lookup is a failure.
+        monkeypatch.setattr(
+            tracker_mod, "get_company", MagicMock(side_effect=AssertionError("ownership must not read company"))
+        )
+
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: meteor)
+        out = tracker_mod.contact_task_get_job_data("c1", "m1")
+        assert out["ok"] is True and out["result"]["astral_job_id"] == "m1"
+        monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: [meteor])
+        assert tracker_mod.contact_task_get_job_by_pattern("c1", "Platform")["ok"] is True
+
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: rival)
+        assert tracker_mod.contact_task_get_job_data("c1", "m1")["error"] == "refused_cross_candidate"
+        # Stub ignores list_jobs scoping on purpose: exercises the defense-in-depth gate.
+        monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: [rival])
+        assert (
+            tracker_mod.contact_task_get_job_by_pattern("c1", "Platform")["error"]
+            == "refused_cross_candidate"
+        )
 
 
 # Branches (AST-2151 contact_command_check_status): no candidate; no owned match (none listed /
@@ -2402,9 +2428,12 @@ class TestAst2151ContactCommandCheckStatus:
         return cfg.CONTACT_CONFIG["commands"]["check-status"]
 
     @staticmethod
-    def _job(jid: str, title: str, company: str, state: str = "RECOMMENDED") -> Dict[str, Any]:
+    def _job(
+        jid: str, title: str, company: str | None, state: str = "RECOMMENDED", candidate_id: str = "c1"
+    ) -> Dict[str, Any]:
         return {
             "astral_job_id": jid,
+            "candidate_id": candidate_id,
             "job_title": title,
             "company": company,
             "job_link": f"https://jobs.example/{jid}",
@@ -2413,10 +2442,8 @@ class TestAst2151ContactCommandCheckStatus:
             "state_changed_at": "2026-10-10T09:30:00Z",
         }
 
-    def _stub(
-        self, monkeypatch: pytest.MonkeyPatch, jobs: List[Dict[str, Any]], owners: Dict[str, str]
-    ) -> Dict[str, Any]:
-        """list_jobs → jobs; company owner map; contact tz; any job write fails the test."""
+    def _stub(self, monkeypatch: pytest.MonkeyPatch, jobs: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """list_jobs → jobs; ownership from job candidate_id; company never read; contact tz; any job write fails the test."""
         from src.core import meteorite as meteorite_mod
 
         seen: Dict[str, Any] = {}
@@ -2426,10 +2453,9 @@ class TestAst2151ContactCommandCheckStatus:
             return jobs
 
         monkeypatch.setattr(tracker_mod, "list_jobs", _list_jobs)
+        # Ownership is a pure function of the row (AST-2169) — any company lookup is a failure.
         monkeypatch.setattr(
-            tracker_mod,
-            "get_company",
-            lambda sn: {"short_name": sn, "candidate_id": owners[sn]} if sn in owners else None,
+            tracker_mod, "get_company", MagicMock(side_effect=AssertionError("ownership must not read company"))
         )
         monkeypatch.setattr(meteorite_mod, "_candidate_contact_timezone", lambda _cid: self.TZ)
         # Read-only handler: any persistence call is a failure.
@@ -2452,7 +2478,7 @@ class TestAst2151ContactCommandCheckStatus:
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         job = self._job("acme_com:j 1", "Staff Platform Engineer", "acme", state="PASSED_LIKE")
-        seen = self._stub(monkeypatch, [job, self._job("acme_com:j2", "Analyst", "acme")], {"acme": "c1"})
+        seen = self._stub(monkeypatch, [job, self._job("acme_com:j2", "Analyst", "acme")])
         monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
 
         with caplog.at_level(logging.WARNING, logger="src.core.tracker"):
@@ -2473,7 +2499,7 @@ class TestAst2151ContactCommandCheckStatus:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         jobs = [self._job("acme_com:j1", "Engineer A", "acme"), self._job("beta_io:j2", "Engineer B", "beta")]
-        self._stub(monkeypatch, jobs, {"acme": "c1", "beta": "c1"})
+        self._stub(monkeypatch, jobs)
         monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
 
         out = tracker_mod.contact_command_check_status("c1", "engineer", source_id="C1:1.0")
@@ -2487,10 +2513,11 @@ class TestAst2151ContactCommandCheckStatus:
         assert text.count("/jobs/detail/") == 2
 
     def test_ac5_other_candidates_job_excluded(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Rival's job title equals the pattern exactly; the owned job matches only via company.
+        # Rival's job title equals the pattern exactly but its candidate_id is c2 → excluded;
+        # the owned job matches only via company.
         mine = self._job("acme_com:j1", "Data Analyst", "acme")
-        theirs = self._job("rival_com:x9", "Acme", "rival")
-        self._stub(monkeypatch, [theirs, mine], {"acme": "c1", "rival": "c2"})
+        theirs = self._job("rival_com:x9", "Acme", "rival", candidate_id="c2")
+        self._stub(monkeypatch, [theirs, mine])
         monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
 
         out = tracker_mod.contact_command_check_status("c1", "Acme", source_id="C1:1.0")
@@ -2502,17 +2529,14 @@ class TestAst2151ContactCommandCheckStatus:
         assert "rival_com" not in text and "x9" not in text
 
     @pytest.mark.parametrize(
-        ("jobs", "owners"),
+        "jobs",
         [
-            ([], {}),
-            # Matches, but every hit is another candidate's or company-less → still no match.
-            (
-                [
-                    {"astral_job_id": "r:1", "job_title": "Engineer", "company": "rival", "state": "NEW"},
-                    {"astral_job_id": "m:1", "job_title": "Engineer", "company": "", "state": "NEW"},
-                ],
-                {"rival": "c2"},
-            ),
+            [],
+            # Matches, but every hit is another candidate's (employer or company-less) → still no match.
+            [
+                {"astral_job_id": "r:1", "candidate_id": "c2", "job_title": "Engineer", "company": "rival", "state": "NEW"},
+                {"astral_job_id": "m:1", "candidate_id": "c2", "job_title": "Engineer", "company": None, "state": "NEW"},
+            ],
         ],
         ids=["none_listed", "listed_not_owned"],
     )
@@ -2521,9 +2545,8 @@ class TestAst2151ContactCommandCheckStatus:
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
         jobs: List[Dict[str, Any]],
-        owners: Dict[str, str],
     ) -> None:
-        self._stub(monkeypatch, jobs, owners)
+        self._stub(monkeypatch, jobs)
         monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
 
         with caplog.at_level(logging.WARNING, logger="src.core.tracker"):
@@ -2547,7 +2570,7 @@ class TestAst2151ContactCommandCheckStatus:
     ) -> None:
         job = self._job("acme_com:j1", "Staff Engineer", "acme")
         jobs = [job]
-        self._stub(monkeypatch, jobs, {"acme": "c1"})
+        self._stub(monkeypatch, jobs)
         if env is None:
             monkeypatch.delenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, raising=False)
         else:
@@ -2575,7 +2598,7 @@ class TestAst2151ContactCommandCheckStatus:
         assert len(self._warnings(caplog)) == 1
 
     def test_no_candidate_returns_no_reply_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        seen = self._stub(monkeypatch, [self._job("acme_com:j1", "Engineer", "acme")], {"acme": "c1"})
+        seen = self._stub(monkeypatch, [self._job("acme_com:j1", "Engineer", "acme")])
 
         out = tracker_mod.contact_command_check_status("  ", "Engineer", source_id="C1:1.0")
 
@@ -2585,13 +2608,45 @@ class TestAst2151ContactCommandCheckStatus:
     @pytest.mark.parametrize("raw", [None, "not-a-date"], ids=["none", "garbage"])
     def test_unparseable_timestamps_render_dash(self, monkeypatch: pytest.MonkeyPatch, raw: Any) -> None:
         job = {**self._job("acme_com:j1", "Engineer", "acme"), "created_at": raw, "state_changed_at": raw}
-        self._stub(monkeypatch, [job], {"acme": "c1"})
+        self._stub(monkeypatch, [job])
         monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
 
         out = tracker_mod.contact_command_check_status("c1", "Engineer", source_id="C1:1.0")
 
         assert out["ok"] is True
         assert "Received -" in out["reply_text"] and "since -" in out["reply_text"]
+
+    @pytest.mark.parametrize(
+        ("owner", "expect_match"), [("c1", True), ("c2", False)], ids=["owner", "other_candidate"]
+    )
+    def test_ast2169_meteorite_job_ownership_by_candidate_id(
+        self, monkeypatch: pytest.MonkeyPatch, owner: str, expect_match: bool
+    ) -> None:
+        """[bug-repro] AST-2169: null-company meteorite job resolves by its own candidate_id."""
+        link = "https://www.dice.com/job-detail/6889a7c5-d9c5-49e8-9598-ddaf1142df0a"
+        job = {
+            **self._job("6775db61-x", "Platform Engineer", None, state="CANDIDATE_SKIPPED", candidate_id=owner),
+            "job_link": link,
+        }
+        self._stub(monkeypatch, [job])
+        monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
+
+        out = tracker_mod.contact_command_check_status("c1", link, source_id="C1:1.0")
+
+        if expect_match:
+            assert out["ok"] is True and out["error"] is None
+            text = out["reply_text"]
+            assert "Platform Engineer" in text and "CANDIDATE_SKIPPED" in text
+            assert "/jobs/detail/6775db61-x" in text
+            # Exactly one deeplink → single-match template.
+            assert text.count("/jobs/detail/") == 1
+        else:
+            assert out == {
+                "ok": False,
+                "meteorite_id": None,
+                "error": "unmatched_pattern",
+                "reply_text": self._meta()["no_match_reply_text"],
+            }
 
 
 # Branches: save_job_artifact/get_job_current catalog shape; job_resume→base_resume citation;

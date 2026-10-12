@@ -476,7 +476,7 @@ Extract/save per-code **`advice_adherence`** under `job_data.artifacts.advice_ad
 
 **Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads`.
 
-Four `contact_task_*` read handlers + `get_job_by_pattern`: candidate-scoped pattern match; company→`candidate_id` ownership; hydrate via `get_entity_agent_story` (no coat-check/gazer). Markup/dispatch: **`docs/test-bible/core/contact.md`** (AST-1515).
+Four `contact_task_*` read handlers + `get_job_by_pattern`: candidate-scoped pattern match; `job.candidate_id` ownership (AST-2169; was company→`candidate_id`); hydrate via `get_entity_agent_story` (no coat-check/gazer). Markup/dispatch: **`docs/test-bible/core/contact.md`** (AST-1515).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -895,14 +895,14 @@ Test-gap sibling of **AST-2145** (fix already on `origin/ftr/AST-2143-jd-self-he
 
 **Parent:** [AST-2144](https://linear.app/astralcareermatch/issue/AST-2144) (Add /check-status to Estelle's functions). **Publish:** `origin/sub/AST-2144/AST-2151-check-status-registry-handler`. Plan: `docs/features/contact/ast-2151-check-status-registry-handler.md`. Config half: [`../utils/config.md`](../utils/config.md) § AST-2151.
 
-`contact_command_check_status(candidate_id, payload, *, source_id, thread_ts, debug)` → `{ok, meteorite_id (None), error, reply_text}`. Reuses `_match_jobs_by_pattern` (`list_jobs(candidate_id=…)`) with `_job_owned_by_candidate` as a filter over every hit; formats the `check-status` registry templates; times via `format_contact_timezone_clock` in `meteorite._candidate_contact_timezone`; deeplink `https://` + `$RAILWAY_PUBLIC_DOMAIN` + `/jobs/detail/` + `quote(id, safe="")`. Read-only.
+`contact_command_check_status(candidate_id, payload, *, source_id, thread_ts, debug)` → `{ok, meteorite_id (None), error, reply_text}`. Reuses `_match_jobs_by_pattern` (`list_jobs(candidate_id=…)`) with `_job_owned_by_candidate` as a filter over every hit (ownership = the row's own `candidate_id`, AST-2169; `company` may be NULL); formats the `check-status` registry templates; times via `format_contact_timezone_clock` in `meteorite._candidate_contact_timezone`; deeplink `https://` + `$RAILWAY_PUBLIC_DOMAIN` + `/jobs/detail/` + `quote(id, safe="")`. Read-only.
 
 | AC (child) | Component tests |
 | --- | --- |
 | 3 one match — title, raw state, both contact clocks, encoded deeplink; `list_jobs(candidate_id="c1")`; no warning | **`TestAst2151ContactCommandCheckStatus::test_ac3_one_match_reply_with_clocks_and_encoded_deeplink`** |
 | 4 several — header count, both titles/companies/links | `::test_ac4_several_matches_list_both_titles_and_links` |
 | 5 candidate scope — rival's exact-title job absent (id + title) | `::test_ac5_other_candidates_job_excluded` |
-| 6 no match (none listed / listed but not owned or company-less) — exact `no_match_reply_text`, `unmatched_pattern`, no warning | `::test_ac6_no_match_returns_no_match_text` (2) |
+| 6 no match (none listed / listed but every hit is another candidate's (employer or company-less)) — exact `no_match_reply_text`, `unmatched_pattern`, no warning | `::test_ac6_no_match_returns_no_match_text` (2) |
 | 7 origin unset / blank — no link text, exactly one WARNING naming `RAILWAY_PUBLIC_DOMAIN` (also for a several-match reply) | `::test_ac7_no_origin_replies_without_links_one_warning` (2) |
 | Empty candidate → `no_candidate`, `reply_text` None, no lookup; `None` / garbage timestamps → `-` | `::test_no_candidate_returns_no_reply_text`, `::test_unparseable_timestamps_render_dash` (2) |
 
@@ -911,6 +911,7 @@ Every case patches `database.save_job` / `delete_job` / `save_artifact` to raise
 **Not here:** ticket AC 3–6 as written drive `handle_slack_event` → `post_message`, but posting `reply_text` and applying `reply_placement` are sibling **#2** (`src/core/contact.py`). Until #2 lands, `_run_contact_command` reads `ack_reply_template` on `ok` (KeyError on this entry, plan-accepted interim, ftr-only). End-to-end post / thread / share / no-hear-ack assertions belong to #2's manifest.
 
 **Broken / obsolete:** none. `TestAst2035ContactCommandIntercept` (22) and `TestAst1518ContactTaskReads` unchanged and green.
+AST-2171: fixtures moved from `get_company` owner stubs to `job["candidate_id"]`; `_stub` no longer takes `owners` and fails on any `get_company` call.
 
 **Integration:** none. No `tests/integration/` scenario reads the command registry. Do not invent one.
 
@@ -936,3 +937,24 @@ ASTRAL_DB_DIR=$(mktemp -d) ./scripts/testing/run_component_tests.sh \
 **Pass criterion:** items 1–3. Narrowed run, not the zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2144/AST-2151-check-status-registry-handler:docs/test-bible/core/tracker.md | shasum`; same for `docs/test-bible/utils/config.md`.
+
+### AST-2171 · AST-2167 (gap — AST-2169 job ownership by candidate_id)
+
+**Parent:** [AST-2167](https://linear.app/astralcareermatch/issue/AST-2167) (orphaned bug mini-parent; fix child [AST-2169](https://linear.app/astralcareermatch/issue/AST-2169)). **Publish:** `origin/sub/AST-2167/AST-2171-check-status-ownership-candidate-id-tests`. Plan: `docs/features/contact/ast-2151-check-status-registry-handler.md` § Bug: AST-2171.
+
+`_job_owned_by_candidate` reads only the row's own `candidate_id` (AST-2169), so a meteorite job with `company: None` is the sender's on all three Estelle job reads. Fixtures in both classes now set `candidate_id` on every row, and `get_company` raises wherever ownership is exercised.
+
+| `[bug-repro]` node | Proves |
+| --- | --- |
+| `TestAst1518ContactTaskReads::test_ast2169_meteorite_job_owned_by_candidate_id` | null-company job: `get_job_data` / `get_job_by_pattern` ok for owner `c1`; `refused_cross_candidate` for owner `c2` |
+| `TestAst2151ContactCommandCheckStatus::test_ast2169_meteorite_job_ownership_by_candidate_id` (2) | `[owner]` single-match reply (`CANDIDATE_SKIPPED`, one deeplink); `[other_candidate]` exact no-match |
+
+**Integration:** none.
+
+## QA test manifest — AST-2171
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_tracker.py::TestAst1518ContactTaskReads tests/component/core/test_tracker.py::TestAst2151ContactCommandCheckStatus -q` → **19 passed** (7 + 12). Confirmed on the AST-2169 tip.
+2. Red-before: put `src/core/tracker.py` from `origin/dev` (pre-AST-2169) in place, run the two repro nodes, then `git checkout HEAD -- src/core/tracker.py` → **2 failed, 1 passed**. The 1518 repro fails with `refused_cross_candidate` and `[owner]` fails with `unmatched_pattern`. `[other_candidate]` passes on both trees because the old rule also refused a company-less row.
+3. No-regression: `pytest tests/component/core/test_tracker.py tests/component/core/test_contact.py -q` → **24 failed, 389 passed**, the pre-existing set (AST-733, 551, 552, 562, 997, 1523, 1693 in `test_tracker.py`; AST-1073, 1101, 1207, 1515 in `test_contact.py`). None are in these two classes.
+
+Restore `data/contact_estelle_activity.json` (`git checkout --`) after running the suites. Do not commit it.

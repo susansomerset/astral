@@ -1774,14 +1774,8 @@ def _contact_task_hydrate_job(job: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _job_owned_by_candidate(job: Dict[str, Any], cid: str) -> bool:
-    """True when job's company.candidate_id matches cid (not job['candidate_id'])."""
-    company_key = job.get("company")
-    if not isinstance(company_key, str) or not company_key.strip():
-        return False
-    company = get_company(company_key.strip())
-    if not company:
-        return False
-    owner = company.get("candidate_id")
+    """True when the job row's own candidate_id matches cid (AST-1598 scope key; company may be NULL — AST-1701)."""
+    owner = job.get("candidate_id")
     return isinstance(owner, str) and bool(owner.strip()) and owner.strip() == cid
 
 
