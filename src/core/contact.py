@@ -243,15 +243,16 @@ def append_slack_conversation_message(
 
 
 def _contact_reply_placement(
-    thread_ts: Optional[str], message_ts: Optional[str]
+    thread_ts: Optional[str], message_ts: Optional[str], mode: Optional[str] = None
 ) -> Tuple[Optional[str], bool]:
     """Resolve ``(reply thread_ts, reply_broadcast)`` for a reply to one inbound Slack message.
 
     Driven by ``CONTACT_CONFIG["thread_response"]`` (AST-2072); ``None`` thread_ts = top-level post.
+    ``mode`` (same vocabulary) overrides it for this call — a command entry's ``reply_placement`` (AST-2144).
     The single placement rule for every Contact reply site — no per-site ``thread_ts or …`` copies.
     """
     # Read per call (not at import) so a config change applies without a restart path.
-    mode = CONTACT_CONFIG["thread_response"]
+    mode = mode or CONTACT_CONFIG["thread_response"]
     if mode == "threads_only":
         # Thread only when the user was already in one; a top-level message gets a top-level reply.
         return (thread_ts or None, False)
