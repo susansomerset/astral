@@ -414,3 +414,14 @@ AST-483's normalization (strip `' -:'` before `_GRADE_SEG`) runs on **every** pi
 - AST-483: real grade tokens prettified with spaces, hyphens or colons (`RC A3`, `RC-A-3`, `RC:A3`) still decode as grades. `meta` keeps the pipe-stripped original text.
 - AST-1996 / AST-2124 / AST-2126 / AST-2093 decode semantics (decode_failures, X0 storage, notes-only failure, index map) are untouched. Only the grade-vs-meta classification of link-prefixed fields changes.
 - `_should_decode_as_encoded_line` routing examples: `0|A|B|A|[35]|[22,34,39,52,53]` → `False`, `000|RCA3|MPB3|USA3|[59,60]|[51,46,53]` → `True`, `A|B|A|15|13,16,14` → `False`.
+
+### Joan fix-board — AST-2138
+
+**Question:** Does the plan-fix patch require touching canon (statutes/patterns)?
+
+**Read:** AST-2138 section in `docs/features/consult/ast-697-prefilter-link-set-schema-and-bracket-decode.md` on `origin/sub/AST-2136/AST-2138-job-link-prefix-decode` (commit `317409812`). Roster overlap: `astral.standards.dry-and-focused-functions`, `astral.layers.import-direction`, plus skim of agent decode statutes (`astral.agent.confidence-bounds` — classification-only change; X0 / decode-failure semantics explicitly preserved in **What must still hold**).
+
+**Judgment:** **CANON: OK.** The fix is product code that **implements** the cited rules (one `_LINK_PREFIX_RE`, one `_grade_segment` shared by `_decode_payload` and `_should_decode_as_encoded_line`; `consult` → `agent` module import already allowed). It does not contradict an in-force statute or pattern, and it does not need a new statute carve-out: the “link prefix wins” / “no fuzzier prefix” bullets are bounded precedence on the existing AST-697 `JOB:`/`CULT:` contract, not a new architectural precedent. No F3 `validate-plan` fix mode for canon.
+
+---
+
