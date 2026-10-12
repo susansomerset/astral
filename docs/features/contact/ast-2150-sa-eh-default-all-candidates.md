@@ -164,3 +164,51 @@ Build notes:
 - AC1 grep empty; AC2 diff empty; `git diff origin/dev --stat` = the two pages + this doc.
 - **Parent ref name:** the parent is `origin/ftr/AST-2148-sa-eh-default-all-candidates` (at `c4f0d3a59`, already in this sub). `sync-child.sh --ftr AST-2148` reports it "not found" because it looks up the short name; harmless here. `validate-sub-log.sh --stage=build` run with the full ftr name: status=ok.
 - Page Vitest AST-634 cases are expected red until `qa-child` (see Vitest note above); not run as a build gate.
+
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2150  
+**Publish ref:** `1d360ee85f7babe7b6d7fd180fe4a558348b96d9` (`origin/sub/AST-2148/AST-2150-sa-eh-default-all-candidates`)  
+**Corpus:** `26c4e86a4d08addcefdbc3be68116703fedf6762`  
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen list empty (Linear **Citations:** none; parent **Canon Scope:** none — locked at Discussion). No directive rows to score; not a §5.3 **ESCALATE** (explicit empty scope, same as Joan plan stage).
+
+## Column diff vs plan stage
+
+(aligned) — Joan recorded no per-directive rows; code review matches empty frozen list.
+
+## Frame diff
+
+- [ ] **Acceptance criteria AC10:** Consider aligning ticket text with the plan’s **lint-baseline** gate (“no new findings” on the two page files + whole-tree totals ≤ baseline) rather than literal whole-tree `npm run lint` passes — bible manifest § AST-2150 already documents the substitute; optional wording tweak before **User Testing** if UAT reads AC10 literally.
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none requiring `@susan` — Tests Passed + bible manifest already encode AC10/lint and Vitest scope.)
+
+**advisory**
+
+- **Plan fidelity:** Product diff is exactly the two pages (`AdminScheduledActions.tsx`, `AdminPerformanceMonitor.tsx`): hook removed, SA uses `useState("")` + `sortCandidatesForSelect(navCandidates)`, EH uses URL-only `candidate_id` with first-visit nav→URL effect removed; `openAdd` still sets `candidate_id: selectedId ?? ""`. AC1 grep clean; AC2 forbidden-path diff empty (0 bytes).
+- **QA / bible:** `test_AdminScheduledActions.test.tsx` AST-2150 describe (3 cases), `test_AdminPerformanceMonitor.test.tsx` AST-2150 describe (4 cases) + `renderPerformanceMonitor` no longer injects `candidate_id`; retained AST-634 EH cases remain URL-driven. `docs/test-bible/frontend/pages.md` AST-2150 block maps manifest to ACs including AC9 via existing Add Task tests.
+- **Canon Scope observation (off-list, not scored):** `astral.standards.in-scope-only` / `astral.ui.frontend-file-placement` — changes stay in existing page files and reuse `sortCandidatesForSelect`; no hook/sibling/API creep.
+- **Ticket vs plan:** Linear AC10 still says full-tree lint + “Vitest files named in Technical scope”; implementation and Betty manifest correctly use lint-baseline + listed component suites — workflow-consistent; frame-diff row above is optional hygiene only.
+
+## What's solid
+
+- Minimal, plan-faithful detach from `useAdminCandidateFilter` on both screens; EH keeps `setCandidateParam` / `replace: true` and timezone `useMemo` on `selectedId`.
+- Test rewrites target the removed AST-634 nav-default behavior without dropping EH URL-scoping regression cases.
+- Estimate **2** matches footprint (two small page edits + expected test/bible carry).
+
+## Recommended actions (downstream — not for Radia)
+
+- Chuckles: append this artifact, `docs()` commit, post slim upshot `--as radia`, **Review Posted**.
+- **resolve-child:** Only if Susan wants AC10 description wording updated — tick frame-diff row; no product change required for canon/plan compliance on this tip.
+
+**Upshot:** `[code-rubric] PROCEED (Commit: 1d360ee85) SA/EH default All`
