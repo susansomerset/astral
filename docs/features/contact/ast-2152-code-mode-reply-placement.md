@@ -233,3 +233,75 @@ context_tokens≈58000
   - Bare `/check-status`: one post, `usage_reply_text`, same placement.
   - Origin unset: same text without the link, one WARNING.
   - Non-command `@Estelle hi` (turn stubbed to no post): hear-ack top-level, `reply_broadcast=False`.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2152
+**Publish ref:** `68bc813eb8b5d4be8eac32cd6a07e7b0500b6a09` (`origin/sub/AST-2144/AST-2152-code-mode-reply-placement`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.contact.command-intercept | B | | |
+| stat.logging.info.contact | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** In-force `patt.contact.command-intercept` (code posts `ack_reply_template` only on `ok`; miss → no command post / hear-ack) vs Stage 2 tail posting handler `reply_text` on hit and miss with optional `ack_reply_template`.
+- **Finding:** The diff is the Contact runner half of the parent change request; behavior matches the plan and sibling #1 contract (`reply_text`, `reply_placement`). Corpus text is not yet amended.
+- **Decision @susan:** Whether to track an explicit Archie pattern update before epic close.
+- **Default:** Proceed; no `contact.py` rework beyond what landed.
+
+- **Location:** `_handle_slack_event_body` hear-ack (`reply_ts` / `reply_broadcast` from event-level `_contact_reply_placement` without `reply_placement`) vs command posts using `meta.get("reply_placement")`.
+- **Finding:** Fault or empty-post paths (e.g. mocked `ok` with no `reply_text` on an entry without ack) get hear-ack under global `thread_response`, not `always_with_share`. Normal `/check-status` always returns composed text, so this is edge-case only.
+- **Decision @susan:** Should fault-path hear-ack ever inherit per-command placement?
+- **Default:** Keep as implemented; document in parent UAT if needed.
+
+- **Location:** Linear Description AC 3–15 vs three-dot diff vs `origin/dev`.
+- **Finding:** `git diff origin/dev...origin/sub/AST-2144/AST-2152-code-mode-reply-placement` also carries AST-2151 product (`src/utils/config.py`, `src/core/tracker.py`) and Betty tests/bible for both children — expected while #1 is merged into the integration line and not yet on `dev`.
+- **Decision @susan:** None for this child; finish-up lands the epic as a unit.
+- **Default:** Score #2 against `contact.py` + its tests; treat #1 paths as sibling carry (advisory only).
+
+### advisory
+
+- **sibling test carry:** `tests/component/core/test_tracker.py`, `tests/component/utils/test_config.py`, `docs/test-bible/core/tracker.md`, `docs/test-bible/utils/config.md`, and `docs/features/contact/ast-2151-check-status-registry-handler.md` in the three-dot diff belong to AST-2151, not scope creep on #2.
+- **Pre-existing test noise:** Issue doc notes seven failures elsewhere in full `test_contact.py` unchanged by this ticket; manifest narrow run (115) is the Tests Passed bar.
+- **Activity file hygiene:** `data/contact_estelle_activity.json` rewrite when running contact tests — restore after run (documented in bible).
+
+## What’s solid
+
+- **`_contact_reply_placement`:** Optional `mode` defaults to `None`; `mode or thread_response` preserves AST-2072 matrix when override absent; override tests mirror the 2-arg oracle (24 cases).
+- **`_run_contact_command`:** Passes `meta.get("reply_placement")` for usage and all code-mode posts; captures `reply_text`; posts composed text on hit or miss via `format_contact_reply_text`; safe fallback to optional `ack_reply_template` on `ok` when no usable string; `/add-job` path preserved (`test_ac12`, ack fallback parametrized tests).
+- **Intercept / listen / errors:** Command branch still runs before paste/turn; `_emit_listen_info` still leads `action:` with `check-status:code` (AC 13 test); command failures still `logger.exception` at the intercept.
+- **AC 14:** No new command/env/route literals in `src/core` outside the placement helper’s existing `always_with_share` lines.
+- **E2E coverage:** `TestAst2152CheckStatusEndToEnd` exercises parse, placement, one/several/none, origin unset, usage-only, listen line, and regression guards on AST-2035 / AST-2072.
+
+## Recommended actions (for issue doc only — not executed by Radia)
+
+- Chuckles: append artifact, `docs(AST-2152): Radia review — clean`, push, post slim upshot `--as radia`, → **Review Posted**.
+- After both children reviewed: `resolve-child` on any cross-child items only if a future review flags them (none from this pass).
+- Optional: Susan/Archie pattern amendment when epic closes.
+
+context_tokens≈22000
+
+[code-rubric] PROCEED (Commit: 68bc813eb) Contact reply + placement clean
