@@ -711,6 +711,36 @@ class TestAst699LetterPipePositionPrefix:
         assert consult_mod._should_decode_as_encoded_line("A|B|A|15|13,16,14") is False
 
 
+class TestAst2138JobLinkPrefixNotGrade:
+    """AST-2138 [bug-repro] (AST-2139): JOB:<0-5> link fields stayed grades once AST-483 stripped the colon."""
+
+    @staticmethod
+    def _decode(payload: str) -> dict[str, Any]:
+        # prefilter_company decodes as a company entity (AST-1723); no vector_labels, so vector falls back to the code.
+        ctx = {"batch_entities": [{"company_id": "acme"}]}
+        return agent_mod._decode_payload(
+            "prefilter_company", "grades_encoded_prefilter_links", payload, ctx,
+        )["companies"][0]
+
+    @pytest.mark.parametrize("n", range(6))
+    def test_single_digit_job_link_is_meta_not_grade(self, n: int) -> None:
+        # n == 3 is the literal AST-2136 production payload; pre-fix JOB:3 → JOB3 → vector JO, grade B.
+        company = self._decode(f"000|RCA5|HEA5|MLA3|PFA5|SOA5|JOB:{n}|CULT:7,27")
+        assert [g["vector"] for g in company["grades"]] == ["RC", "HE", "ML", "PF", "SO"]
+        assert company["possible_job_links"] == [n]
+        assert company["culture_links_to_explore"] == [7, 27]
+
+    def test_job_link_with_empty_culture_tail(self) -> None:
+        company = self._decode("000|RCF5|HEX0|MLX0|PFX0|SOX0|JOB:1|CULT:[]")
+        assert [g["vector"] for g in company["grades"]] == ["RC", "HE", "ML", "PF", "SO"]
+        assert company["possible_job_links"] == [1]
+        # AST-697: an empty bracket tail yields no culture key.
+        assert "culture_links_to_explore" not in company
+
+    def test_link_only_line_does_not_route_as_encoded(self) -> None:
+        assert consult_mod._should_decode_as_encoded_line("000|JOB:3|CULT:7") is False
+
+
 class TestAst698DoTaskDebugRawResponse:
     @pytest.mark.asyncio
     async def test_short_raw_response_emits_under_debug_contract(
