@@ -229,3 +229,76 @@ No parent **Canon Scope** frozen list was available on this ref (same pattern as
 context_tokens≈18500
 
 **Chuckles routing:** CANON: OK. Betty's `[board-betty] TESTS: REVISE` routes to a test-gap sibling, so qa-fix is skipped on AST-2145.
+
+## Radia review — AST-2145 (review-fix)
+
+```
+[code-rubric]
+**Ticket:** AST-2145
+**Publish ref:** a17290ad3b33a2b28b4e2b671c493e2fe947d0f7 (`origin/sub/AST-2143/AST-2145-jd-self-heal-guard`)
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (`canon/` tree at publish tip; no `docs/canon-index.md` on ref)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen canon list on the Linear description is **empty** (no R1–R7 / directive ids locked at Plan Approved). Per `review-child` §5.1, there are no list rows to grade; roll-up from canon grades is vacuously clean.
+
+**Overlap triage (not scored — off frozen list):** The diff touches `get_job_data` coat-check and `fetch_jd_batch` / `_apply_jd_gates`. Joan’s fix-board skim named `astral.state.job-prior-states-enforced`, `astral.state.core-decides-transitions`, `astral.idioms.coat-check-never-store-empty`, `patt.entity.batch-processing`, and logging statutes. Implementation aligns: coat-check calls `fetch_jd_batch(..., transition=False)` so no `transition_job_state` from the read path; dispatch callers keep default `transition=True`; link-less short JD returns `None` without scrape; classified / fail paths in coat-check mode do not persist `jd_telescope_data_id`; pass path still writes reference + in-memory write-back only. **No Canon Scope ESCALATE** — same empty-list + registry-skim pattern as sibling fix tickets; not a missing frozen id on an otherwise populated list.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan fix-board `[board-joan] CANON: OK` only; no validate-plan R1–R7 column on this bug)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — Betty `[board-betty] TESTS: REVISE` routed test-gap work to **AST-2146**; qa-fix did not run here (spawn brief: score N/A-routed, not missing).
+
+**## What must still hold — OK** (each item traced to diff):
+
+| Item | Verdict |
+|------|---------|
+| AST-326 §5: self-heal in `get_job_data`, reuses batch scrape/prune/gate in one place | OK — still delegates to `fetch_jd_batch`; `_apply_jd_gates` unchanged for `transition=True` callers |
+| `fetch_jd` dispatch + `fetch_relative_jd_batch` flows unchanged | OK — kwarg defaults; no `consult.py` / relative-batch call-site edits |
+| AST-2130/2133: preamble not overwritten; reference-only storage; composed return | OK — pass branch still `save_job_data` + `job_data` ref write-back; return uses `compose_job_description` |
+| Happy path (composed ≥ `jd_min_chars`) immediate return, no scrape | OK — early return unchanged |
+| No usable JD → consult `error_state` / `no live content` | OK — `None` on no-link, failed heal, and sub-threshold composed length |
+| Self-heal never calls `transition_job_state` | OK — `transition=False` on coat-check call; gates and `_scrape_one` wrap all transition calls |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Sibling test carry (expected):** Product diff is `gazer.py` + `tracker.py` + plan doc only. Katherine’s test-fix comment documents **3** tracker/gazer tests newly red on tip vs ftr (`test_self_heals_short_job_description`, `test_self_heal_writes_reference_then_returns_composed`, `test_ac5_both_runners_call_shared_gate_helper`); ownership is **AST-2146**. Not a product defect on this ticket.
+- **Process:** Empty frozen Canon Scope on the bug ticket — Joan fix-board overlap only. Optional downstream: Archie hygiene if bug tickets should always carry explicit directive ids (not blocking this diff).
+
+## What's solid
+
+- Plan option **(a)** implemented as written: `transition` kwarg on `_apply_jd_gates` and `fetch_jd_batch`, link guard before coat-check log, `healed if len(healed) >= min_chars else None` (resolves AST-2143 step-2 vs step-4).
+- Classified coat-check branch correctly skips ref persist when state stays put.
+- Log destinations use `"state kept"` when `transition=False`, matching plan.
+
+## Chuckles routing (read-only)
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | **Mini-parent with live `ftr`** — spawn: **NOT orphaned-to-dev**. Do **not** use fix-lane “straight to `origin/dev`” shortcut. → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** (`resolve-child` skipped). |
+| Relations | **blocks AST-2146** (test-gap); keep sibling sequencing in mind before any ftr rollup Susan expects. |
+
+context_tokens≈42000
+```
+
+```
+[code-rubric] PROCEED (Commit: a17290ad3) transition-free coat-check heal
+```
+
+### Test delivery — AST-2145
+
+No test-tree delivery on this sub (docs-acceptance). Betty's `[board-betty] TESTS: REVISE` coverage (the no-link guard and downstream-state heal repros, `transition=False` gazer branches, the four named stale tests, and the tracker/gazer bible blocks) lands on test-gap sibling AST-2146, which is blocked by this ticket.
