@@ -1068,6 +1068,66 @@ context_tokens≈55000
 [code-rubric] PROCEED (Commit: d2d8bd3b2) OpenRouter 429 batch stop
 ```
 
+## Bug: AST-2153 — repro tests for the _warm_then_gather start stagger (AST-2149)
+
+Gap sibling of AST-2149 under orphaned mini-parent AST-2142, filed from AST-2149's fix-board `[board-betty] TESTS: REVISE` (plus Betty's correction dropping TestAst2093). Scope = AST-2153 `## Scope`: `tests/component/core/test_dispatcher.py` and `docs/test-bible/core/dispatcher.md` only. **Betty lands everything here (qa-fix). There are no `src/` changes; AST-2149 owns the product.** The product contract under test is § Bug: AST-2149, Proposed change. That block sits on `sub/AST-2142/AST-2149-gather-call-stagger` until merge-child. This block is placed apart from it so the two docs patches merge cleanly on ftr.
+
+### As-is
+
+- `TestWarmThenGather` (~L191–226) exercises only 0, 1 or 2 entities. With 2 entities, `entities[1:]` holds a single entity at `i = 0`, which never staggers. No node asserts how starts are spaced among 3+ remaining entities, so nothing goes red before AST-2149 and green after.
+- The shared outage helper `TestAst1867ProviderBalanceOutage._edges` (~L1676) zeroes `cache_warm_delay_seconds` (~L1699) and lets `_run_unified` run the real `_warm_then_gather`. It is used by every `TestAst1867` / `TestAst2010` / `TestAst2098` `_run_unified` node. With AST-2149's 1.0s default, the 3-entity nodes now really sleep. AST-2149's test-fix run measured 1.00s each for `TestAst1867::{test_bug_repro_balance_refusal_one_call_interrupted_outage_alert, test_run_unified_ordinary_error_does_not_skip, test_run_unified_per_entity_skips_after_refusal}`, `TestAst2010::{test_run_unified_per_entity_skips_after_rate_limit, test_run_unified_untagged_429_does_not_skip}` and `TestAst2098::test_run_unified_per_entity_skips_after_probe_failure`.
+- No bible row covers the stagger.
+
+### To-be
+
+- One `[bug-repro]` node pins AST-2149's spacing contract. It is red on the pre-fix tree and green with AST-2149.
+- One guard node pins `gather_stagger_seconds = 0` as today's behavior.
+- The outage fixtures no longer sleep for real.
+- `docs/test-bible/core/dispatcher.md` records all three.
+
+### Repro
+
+The `[bug-repro]` node T1 below is AST-2149's Repro 2 (deterministic variant), reduced to a component fixture.
+
+**Red/green proof needs two trees, because AST-2149 isn't on ftr yet** (same mechanics as § Bug: AST-2141). This branch syncs from `origin/ftr/AST-2142-gather-call-stagger` @ `c4f0d3a59`, which is the pre-fix tree. There, T1 fails by assertion: `sleep` is never awaited, because the copied config's `gather_stagger_seconds` key is simply unread. For green, run the same node on a scratch tree with AST-2149 merged in (`git worktree add --detach /tmp/x origin/sub/AST-2142/AST-2153-gather-stagger-tests && git -C /tmp/x merge --no-edit origin/sub/AST-2142/AST-2149-gather-call-stagger`, @ `952c67083` or later). The AST-2153 sub itself goes green only after merge-child rolls AST-2149 into ftr.
+
+### Root cause
+
+This is a coverage gap, not a product defect. The 2-entity cases can't observe a per-index offset because their only gathered entity sits at `i = 0`. The outage fixture predates the stagger knob, so it zeroes only the warm delay.
+
+### Proposed change
+
+Configure through the existing pattern in `TestWarmThenGather::test_skips_delay_when_cache_warm_disabled`: `cfg = dict(dispatcher_mod.ASTRAL_CONFIG)`, set keys, then `monkeypatch.setattr(dispatcher_mod, "ASTRAL_CONFIG", cfg)` and `monkeypatch.setattr(dispatcher_mod.asyncio, "sleep", sleep)` with `sleep = AsyncMock()`. Import nothing from AST-2149, so pre-fix runs fail by assertion, not by `KeyError` or import error.
+
+**`tests/component/core/test_dispatcher.py`**
+
+- T1 **`[bug-repro]` new (red pre-fix):** `TestWarmThenGather::test_bug_repro_stagger_spaces_remaining_starts`. Set `cfg["cache_warm_delay_seconds"] = 0` and `cfg["gather_stagger_seconds"] = 1.0`, use `one = AsyncMock(side_effect=lambda e: {"id": e})`, and call `out = await dispatcher_mod._warm_then_gather(one, ["a", "b", "c", "d"], dispatcher_mod._SUMMARY_ZERO)`. Assert:
+  - `sorted(c.args[0] for c in sleep.await_args_list) == [1.0, 2.0]` (exactly two stagger sleeps, never `0`, no warm-delay sleep);
+  - `out == [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}]` (entity order);
+  - `one.await_count == 4`.
+- T2 **new guard (green both trees):** `TestWarmThenGather::test_zero_stagger_adds_no_sleeps`. Set `cfg["cache_warm_delay_seconds"] = 1.0` and `cfg["gather_stagger_seconds"] = 0`, with the same 4 entities and `one`. Assert `[c.args[0] for c in sleep.await_args_list] == [1.0]` (only the warm delay, so the stagger adds nothing) and the same ordered `out`.
+- T3 **drift, one line:** in `TestAst1867ProviderBalanceOutage._edges`, directly under `monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "cache_warm_delay_seconds", 0)` (~L1699), add `monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "gather_stagger_seconds", 0)`. This covers all three outage classes through the shared helper. `setitem` adds the key harmlessly on the pre-fix tree. **Not `TestAst2093`:** its class fixture already patches `asyncio.sleep` (~L2311).
+- **Unchanged:** the existing 2-entity `TestWarmThenGather` cases, the `_warm_then_gather` monkeypatch sites (~L355, L385, L423, L2717, L2786, L2865), and the `batch_call_mode = 1` chunk-delay tests (~L720, L771).
+
+**`docs/test-bible/core/dispatcher.md`**: new section `### AST-2153 · AST-2149 (qa-fix bug-repro — _warm_then_gather start stagger)` after § AST-2093. It gets a row for T1 (tagged `[bug-repro]`, AST-2149/AST-2142), a row for T2, and a one-line note that the `_edges` helper zeroes `gather_stagger_seconds` beside the warm delay (T3), plus its manifest.
+
+**Manifest for test-fix** (`/home/susan/astral/.venv/bin/python`):
+
+1. `[bug-repro]` T1 alone first: red on this branch pre-merge, green on the AST-2149 scratch tree (or after merge-child).
+2. Then `pytest -q tests/component/core/test_dispatcher.py::TestWarmThenGather tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage tests/component/core/test_dispatcher.py::TestAst2098ProviderProbeOutage --durations=10`. On the green tree, none of the six nodes listed in As-is takes ≈1.00s. `TestAst2098ProviderProbeOutage::test_run_unified_per_entity_skips_after_probe_failure` is already red on the ftr baseline over an unrelated `repeat_processed` key (§ Bug: AST-2141). That failure is pre-existing and not part of this pass bar.
+
+### Blast radius
+
+- Test tree and bible only. No `src/`.
+- T1 and T2 depend on AST-2149's exact contract: the `gather_stagger_seconds` key, 0-based `i × stagger` offsets, no sleep at `i = 0` or stagger `0`, and the warm delay unchanged. If AST-2149's review-fix moves any of those, T1 and T2 move with it.
+- T3 touches a helper shared by every `TestAst1867` / `TestAst2010` / `TestAst2098` `_run_unified` node. It only removes a real sleep, and their outage and skip assertions are unchanged.
+
+### What must still hold
+
+- No existing assertion is edited. T3 adds one config line to a fixture.
+- Pre-fix runs fail only by assertion (no AST-2149 imports or `KeyError`). T1 is red on `c4f0d3a59`, and T2 is green on both trees.
+- The `[bug-repro]` T1 asserts the user-visible contract: starts are spaced `1.0` / `2.0` apart while output order holds, not only that `sleep` was called.
+
 ## Bug: AST-2140 — 429 / probe batch-stop warning carries the provider error, not ()
 
 Fix child of orphaned bug AST-2137 (narrowed per Susan to the empty warning detail; the `JOB:<n>` → `JO` decode failures in the same log are AST-2136 / AST-2138). Scope = AST-2140 `## Scope`: `src/core/roster.py` and `src/core/consult.py`, `_outage_tag` carries the result's error text, no new tables or fields. `src/core/dispatcher.py` is out of bounds (Boundaries), and so is `llm_compat` retry policy. The ticket carries no Canon Scope list. Ancestors: § Bug: AST-2010 above (`_rate_limit_tag`, later renamed `_outage_tag`), and AST-2098 in `docs/features/foundation/ast-1959-per-batch-probe-and-host-lock-on-the-openrouter-path.md` § Bug: AST-2098 (added probe failures and `total_held`).
