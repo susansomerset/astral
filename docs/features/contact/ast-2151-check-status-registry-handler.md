@@ -489,3 +489,73 @@ AST-2169 board-joan done — CANON: OK.
 **Rationale:** The plan-fix change is a one-helper body swap in `src/core/tracker.py` (`_job_owned_by_candidate`): ownership follows `job.candidate_id`, matching how `list_jobs` / `count_jobs` already scope jobs (AST-1598) and how nullable `company_id` meteorite rows behave (AST-1701). No in-force statute or active pattern (`patt.contact.command-intercept`, artifact scope patterns, layer/import rules) encodes the old company→`get_company` gate; that rule lived only in historical plan docs (AST-1518), which the patch explicitly leaves unpatched. Security intent (`refused_cross_candidate` on foreign ids via `get_job`) is preserved. No new carve-out, precedent, or corpus amendment is required for this fix—only product code (and Betty’s tests).
 
 **Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-2169 proceeds to make-fix on product only.
+
+
+## Radia review — AST-2169
+
+[code-rubric]
+
+**Ticket:** AST-2169  
+**Publish ref:** `74526b8c03a46065d3eebd629c08e416b552acd2` (`origin/sub/AST-2167/AST-2169-check-status-ownership-candidate-id`)  
+**Diff base:** `origin/ftr/AST-2167-check-status-ownership-candidate-id`  
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`  
+**Overall:** CLEAN
+
+## Canon scores
+
+*(Frozen Canon Scope on AST-2169 Linear Description: **none cited**. No directive ids to score; worst-grade roll-up is vacuously clean. Joan fix-board `[board-joan] CANON: OK` — overlap skim only; no per-id plan-stage column to diff.)*
+
+## Column diff vs plan stage
+
+no plan-stage scores attached — fix-board `[board-joan] CANON: OK` only; no `validate-plan` fix-mode artifact for this bug.
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] not applicable — clean board opt-out with routed gap child**  
+`[board-betty] TESTS: REVISE` → **AST-2171** (fixture updates + null-company repro). Chuckles routing and Ada’s test-fix comment confirm **no qa-fix** on this sub; product-only `make-fix`/`test-fix` path. No `[bug-repro]` node expected on AST-2169’s diff (`src/core/tracker.py` + plan patch only).
+
+**## What must still hold — OK**
+
+- **AST-2151 handler ACs:** Callers untouched (`contact_command_check_status`, `contact_task_get_job_by_pattern`, `contact_task_get_job_data`); only `_job_owned_by_candidate` body changes. Matcher, registry lookup, read-only paths, WARNING on missing origin, and reply templates unchanged.
+- **AST-1518 contracts:** `refused_cross_candidate` still emitted when `job["candidate_id"]` ≠ sender; `not_found` / ambiguous / unmatched paths unchanged; `_contact_task_hydrate_job` untouched.
+- **Employer-sourced jobs:** Rows with `candidate_id == cid` still pass ownership whether `company` is set or null (aligns with backfilled AST-1598 data).
+- **No new DB reads:** Helper remains a pure row check; no `get_company` / `get_job` added (matches plan-fix ⚠️ decision vs `_candidate_id_for_job`).
+
+## Findings
+
+### advisory
+
+- **Location:** test-fix / **AST-2171**  
+  **Finding:** Tip adds 9 failures in `TestAst1518ContactTaskReads` and `TestAst2151ContactCommandCheckStatus` (fixtures without `candidate_id`); base 24 unrelated failures unchanged — matches plan-fix **Blast radius** and Betty’s board comment.  
+  **Recommendation:** None on AST-2169 product; gap child owns bible + fixtures + repro.
+
+- **Location:** process / Canon Scope  
+  **Finding:** Bug child carries no frozen Citations block (same pattern as other fix-lane orphans). Joan F2 already skimmed overlap.  
+  **Recommendation:** Optional Archie hygiene on future bug tickets; not blocking this tip.
+
+## What’s solid
+
+- Diff vs `origin/ftr/AST-2167-…` is exactly plan-fix **Proposed change**: `_job_owned_by_candidate` compares stripped `job["candidate_id"]` to `cid`; company lookup removed.
+- Scope stays `src/core/tracker.py` only (+ `## Bug: AST-2169` plan patch); Estimate **1** footprint respected.
+- Security story preserved on `get_job_data`: foreign id refused via row `candidate_id`, not company alias.
+
+## Chuckles branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, artifact complete) | **Normal** (AST-2167 not Done; sub stacked on `ftr`) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` **skipped**). Merge **AST-2171** on its own schedule before expecting green tracker component suite on rolled-up `ftr`. |
+
+```
+[code-rubric] PROCEED (Commit: 74526b8c0) ownership via candidate_id
+```
+
+context_tokens≈22000
+
+
+## Test delivery — AST-2169
+
+Docs-acceptance on this ref: no test-tree delivery on `sub/AST-2167/AST-2169-check-status-ownership-candidate-id`. Betty's fix-board `[board-betty] TESTS: REVISE` routed the fixture updates and the null-company `[bug-repro]` coverage to sibling test-gap [AST-2171](https://linear.app/astralcareermatch/issue/AST-2171), which is blocked by this ticket and lands its own `test(AST-2171)` on `ftr`.
