@@ -1671,3 +1671,70 @@ Nothing in the patch amends `canon/directives/active/**` or asks for a new carve
 Same shape as gap sibling AST-2141 (and AST-2149’s product pass): coverage + bible honesty after a product fix Joan already cleared. No F3 `validate-plan` fix mode for canon.
 
 **Verdict:** **CANON: OK**
+
+### Radia review-fix — AST-2153
+
+[code-rubric]
+
+**Ticket:** AST-2153  
+**Publish ref:** `b965f1102b613e9c0aff1fa58eb7fa8588b6d00e` (`origin/sub/AST-2142/AST-2153-gather-stagger-tests`)  
+**Corpus:** unavailable on publish ref (`docs/canon-index.md` absent; Joan fix-board **CANON: OK**)  
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-2142-gather-call-stagger` @ `a4120f78c` (AST-2149 product on ftr) … `origin/sub/AST-2142/AST-2153-gather-stagger-tests` — 3 files, **no `src/`** (`tests/component/core/test_dispatcher.py` +32 lines, `docs/test-bible/core/dispatcher.md` +16, plan patch in `ast-1877-model-server-catalog-compat-client.md`).
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| *(none frozen)* | — | — | Gap ticket; Joan fix-board **CANON: OK** on test/bible-only diff |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **CANON: OK** narrative; aligned with implementation)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK — `TestWarmThenGather::test_bug_repro_stagger_spaces_remaining_starts` (T1) pins AST-2149 **Repro 2** / **To-be**, not a tautology.
+
+- Calls production `_warm_then_gather` with 4 entities, `cache_warm_delay_seconds = 0`, `gather_stagger_seconds = 1.0`, `asyncio.sleep` mocked — no AST-2149 imports; pre-fix tree fails because stagger sleeps are never awaited (`[]` vs `[1.0, 2.0]`), matching repro-first contract.
+- `sorted(c.args[0] for c in sleep.await_args_list) == [1.0, 2.0]` is the right assertion for concurrent `_staggered` coroutines (await order in the mock list is not guaranteed sequential); it pins **0-based** offsets `i × 1.0` for `i ∈ {1, 2}` among `entities[1:]`, never `0`, with exactly two stagger sleeps and no warm-delay sleep.
+- `out` entity order and `one.await_count == 4` lock gather order and full fan-out — the contract AST-2149 § **What must still hold** calls “user-visible” for this gap (spacing via sleep args + ordered results), not wall-clock `loop.time()` (that was AST-2149 Repro 1; plan explicitly reduced T1 to the deterministic variant).
+- Would fail if stagger were removed, used wrong multipliers, or broke ordering — does not reimplement stagger logic in the test body.
+
+**`## What must still hold`:** OK
+
+- **No existing assertion edited** — only new T1/T2 and one `setitem` in `_edges` (T3).
+- **Pre-fix / post-fix behavior** — T1 red without product read of `gather_stagger_seconds`; T2 green on both trees (warm delay `[1.0]` only when stagger `0`).
+- **T3** — `gather_stagger_seconds` zeroed beside `cache_warm_delay_seconds` in `TestAst1867ProviderBalanceOutage._edges`; shared by Ast1867/2010/2098 `_run_unified` paths; `TestAst2093` untouched per plan.
+- **Bible** — § AST-2153 · AST-2149 rows + manifest match shipped nodes and documents pre-existing `TestAst2098` ftr failure outside pass bar.
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **`[bug-repro]` tag shape:** T1 uses docstring + `test_bug_repro_*` name (consistent with several dispatcher repro nodes); not a first-line `# [bug-repro]` comment. Manifest/bible index by test id — no blocker.
+- **Plan prose drift:** `## Bug: AST-2153` **Repro** still describes two-tree proof “because AST-2149 isn't on ftr yet”; ftr now carries AST-2149 (`gather_stagger` in `_warm_then_gather`). Mechanics note is stale; T1 is green on this publish ref against ftr baseline.
+- **Pass bar:** `TestAst2098ProviderProbeOutage::test_run_unified_per_entity_skips_after_probe_failure` remains pre-existing red on ftr (`repeat_processed`); bible and plan exclude it from this manifest — not a regression from AST-2153.
+- **Sibling:** AST-2149 in **User Testing** on ftr; this gap closes Betty’s AST-2149 **TESTS: REVISE** without smuggling product edits.
+
+## What’s solid
+
+- Implementation matches `## Proposed change` line-for-line (T1/T2/T3 + bible section + manifest).
+- T2 guard cleanly separates warm-delay sleep from stagger-at-zero parity.
+- Scope stays test/bible-only; product contract read from ftr’s AST-2149 implementation.
+
+## Recommended actions (Chuckles)
+
+- Append artifact → `docs(AST-2153): Radia review — clean` → **Review Posted** → fix-lane clean shortcut → **User Testing** (skip `resolve-child`).
+- Epic AST-2142: roll sub into ftr when sibling UT rules say so; no product work expected on this tip.
+
+context_tokens≈10500
