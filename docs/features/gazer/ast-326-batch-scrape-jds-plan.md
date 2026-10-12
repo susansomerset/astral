@@ -108,3 +108,92 @@ async def evaluate_jd_batch(batch_id, jobs, ctx, debug):
 
 - Remove `_prune_jd` (moved to `gazer.py`)
 - Keep coat-check self-heal in `get_job_data` but replace inline fetch+prune with `scrape_jd_batch(str(uuid.uuid4()), [job])` — single-job, same code path, no duplication
+
+---
+
+## Bug: AST-2145 — coat-check JD self-heal skips link-less jobs and never makes an illegal transition
+
+Fix child of orphaned bug [AST-2143](https://linear.app/astralcareermatch/issue/AST-2143) (full production log there). Patches §5 above (`tracker.py` self-heal delegation). Most recent change on this path: AST-2133 (`docs/features/foundation/ast-2133-composed-read-only-job-description.md`), which moved the trigger onto composed length and left the self-heal block as it was.
+
+### As-is
+
+`tracker.get_job_data(job, "job_description")` self-heals whenever `compose_job_description(job)` is shorter than `jd_min_chars`. It always calls `gazer.fetch_jd_batch(uuid, [job])`, which runs the `fetch_jd` dispatch task's transitions: `JD_READY` on pass, `ERROR_FETCH_JD_UNREADABLE` on no `job_link`, scrape error, or short text, and `GAZER_CONFIG["fetch_jd"]["classified_states"]` on a classified page. The only callers are the consult tasks, through `consult._prep_live_content`, and they run from downstream states such as `JD_READY` and `METEORITE_PASSED_JD`. None of those states is a legal prior of the fetch-stage destinations, so `transition_job_state` raises `Invalid transition`. `get_job_data` catches that, logs `fetch_jd_batch self-heal failed`, and returns `None`. Consult then moves the job to its task's `error_state` with the reason `no live content`.
+
+On a successful scrape, `_apply_jd_gates` has already written `jd_telescope_data_id` before the transition raises. So the self-heal currently never heals anything for a real caller: it scrapes, writes the reference, throws, and returns `None`. With no `job_link` (body-mode meteorite ingest, AST-1132), it also logs `no job_link, cannot scrape JD` plus the `Invalid transition` noise.
+
+### To-be
+
+- Short composed JD, no `job_link`: no self-heal attempt. Log one warning, `[<id>] JD short, no job_link — cannot self-heal`, and return `None`.
+- Short composed JD, with a `job_link`: the self-heal scrapes and gates exactly as `fetch_jd` does, but **never transitions state**. On pass, it keeps the capture, writes `jd_telescope_data_id`, and returns the healed composed JD. On any failure, the job's state is left alone and the function returns `None`.
+- A job with no usable JD still lands in its task's `error_state` with `no live content` (the consult prep loop is unchanged). There is no `Invalid transition` and no `self-heal failed` line for a link-less job.
+- `fetch_jd_batch` behaves exactly as before for the `fetch_jd` dispatch task (`consult.py` ~3062), and so does `_apply_jd_gates` for `fetch_relative_jd_batch`.
+
+### Repro
+
+The fixture matches production job `4d9d1c79` (AST-2143). Persistence is DB-backed, so seed the job row (or patch `database.get_job`) with this shape:
+
+```python
+job = {
+    "astral_job_id": "4d9d1c79-fd62-4639-a5d8-885c01d808bd",
+    "state": "METEORITE_PASSED_JD",
+    "job_link": "",
+    "job_title": "Engineer",
+    "job_data": {"job_description": "Short meteorite preamble."},  # < jd_min_chars, no jd_telescope_data_id
+}
+await tracker.get_job_data(job, "job_description")
+```
+
+- **As-is:** logs `coat-check self-heal`, then `no job_link, cannot scrape JD`, then `fetch_jd_batch self-heal failed … Invalid transition: METEORITE_PASSED_JD -> ERROR_FETCH_JD_UNREADABLE`, and returns `None`.
+- **To-be (no link):** logs only `JD short, no job_link — cannot self-heal`, returns `None`, and never calls `fetch_jd_batch`.
+- **Second fixture (with link):** the same job with `"job_link": "https://example.com/jobs/1"`, and `scrape_visible_text_and_keep` patched to return `("Engineer\n" + "y" * 250, None, "<row-id>")`.
+  - As-is: the reference gets saved, then `Invalid transition: METEORITE_PASSED_JD -> JD_READY`, and the function returns `None`.
+  - To-be: returns `"Short meteorite preamble.\n\n" + <pruned capture>`, the state stays `METEORITE_PASSED_JD`, and `jd_telescope_data_id == "<row-id>"`.
+
+### Root cause
+
+AST-326 §5 made the coat-check delegate to the batch fetch ("single-job, same code path, no duplication"). That shared code path includes the `fetch_jd` task's state transitions, which are only legal from that task's own input states (`PASSED_JOBLIST` / `RELATIVE_JOB_LINK` and their retries). The coat-check runs from later tasks' states, so every outcome the delegation can produce is an illegal transition. There is also no `job_link` check ahead of the delegation.
+
+### Proposed change
+
+**Design choice: option (a), a no-transition single-job mode on `fetch_jd_batch`.** Why: option (b) would turn the self-heal off for every current caller, because no consult input state is a legal prior of all fetch-stage destinations. That would quietly delete the feature AST-326 §5 chose to keep.
+
+1. **`src/core/gazer.py` — `_apply_jd_gates`:** add a keyword-only `transition: bool = True`.
+   - Wrap each of the three `transition_job_state([aid], …)` calls (empty, too short, classified) and the pass-branch call in `if transition:`.
+   - **Classified branch:** when `transition` is False, skip `save_job_data(aid, {ref_key: telescope_data_id})` as well, and return `False`. A cookie, bot, missing, or closed page must not become the composed JD of a job that stays in its downstream state. With `transition=True` the order stays save first, then transition.
+   - **Pass branch:** `save_job_data` and the in-memory write-back are unchanged in both modes. Only the transition is gated.
+   - **Warning log lines:** where they print the destination (`"%s -> %s [...]"`), pass `short_state if transition else "state kept"` (or `error_state if transition else "state kept"`) as the destination argument, so a self-heal never logs a move that didn't happen.
+   - `fetch_relative_jd_batch` (~473) passes no kwarg and is unchanged.
+2. **`src/core/gazer.py` — `fetch_jd_batch`:** add a keyword-only `transition: bool = True` after `debug`.
+   - In `_scrape_one`, wrap the no-`job_link` branch's and the scrape-error branch's `transition_job_state([aid], fail_state)` in `if transition:`.
+   - Pass `transition=transition` to `_apply_jd_gates`.
+   - Add one docstring line: `transition=False: coat-check mode — scrape, gate and keep the capture, never move state (AST-2145).`
+   - The connectivity check, counters, and return shape are unchanged. The dispatch caller in `consult.py` passes no kwarg and is unchanged.
+3. **`src/core/tracker.py` — `get_job_data`**, after the `len(composed) >= min_chars` happy path:
+   - Read `astral_job_id`. If `(job.get("job_link") or "").strip()` is empty, call `logger.warning(f"[{astral_job_id}] JD short, no job_link — cannot self-heal")` and `return None`. This goes *before* the existing `coat-check self-heal` warning, so a link-less job logs exactly one line.
+   - Otherwise keep the existing warning and the `try`/`except` (an exception still means a warning plus `return None`, which covers `ConnectionError` from the connectivity check). Change the call to `await fetch_jd_batch(str(uuid.uuid4()), [job], transition=False)`.
+   - After the call: `healed = compose_job_description(job)` and `return healed if len(healed) >= min_chars else None`.
+   - Update the docstring. Short JD: self-heal via `fetch_jd_batch(transition=False)` when a `job_link` exists, never moving state. Returns the composed JD once it is at least `jd_min_chars`, else `None`.
+   - Update the comment above the call so it says the delegation is transition-free.
+
+**Explicit decision, flagged for fix-board:** AST-2143 Proposed step 2 says "return `compose_job_description(job) or None`" after the no-link skip. Proposed step 4 and the To-be ("a link-less, short-JD job should land in `ERROR_METEORITE_GRADE_DO`", and "still lands in its task's `error_state`, as it does today") require `None` whenever the JD is still short. A short but non-empty preamble is truthy and would get graded instead of erroring. This plan returns `None` whenever the composed JD is still under `jd_min_chars`, on both the no-link path and the failed-heal path. That matches today's observed outcome for every real caller and step 4's expected re-run result.
+
+### Blast radius
+
+- **Callers of `get_job_data`:** only `consult._prep_live_content`. That covers the batch prep loop (~2532, which routes falsy to `error_state` with `no live content`), the single-job consult (~1505), the analysis upshot (~1236), and `agent.py` ~1890 (manual agent run). The no-link and failed-heal paths still return `None`, as they do today. The new behavior is a successful heal on a downstream job with a `job_link`: it now returns a usable JD and gets graded, where today it errors.
+- **`fetch_jd_batch`:** the dispatch caller (`consult.py` ~3062) uses the default `transition=True`, so nothing changes for it.
+- **`_apply_jd_gates`:** `fetch_relative_jd_batch` (~473) uses the default, so nothing changes for it.
+- **Tests that assume the current self-heal** (Betty — test tree is off-limits to engineers), all in `tests/component/core/test_tracker.py`:
+  - `TestGetJobData.test_self_heals_short_job_description`: the job has no `job_link`, so the guard now skips the scrape and `assert_awaited_once` fails.
+  - `TestGetJobData.test_self_heal_failure_returns_none`: no `job_link`, so it still returns `None`, but through the guard rather than the exception path. It needs a link to keep covering the exception branch.
+  - `test_self_heal_writes_reference_then_returns_composed` (~180): the fake `_fetch(batch_id, jobs)` doesn't accept `transition`, and the job needs a `job_link`.
+  - gazer `fetch_jd_batch` / `_apply_jd_gates` tests keep passing on the default, but need new coverage for `transition=False`.
+- **Not touched:** `compose_job_description`, `jd_min_chars`, consult's `no live content` routing, `fetch_relative_jd_batch`, the state registry and transitions in `config.py`. The `AllLiteralXGradeSetError` and `ADX4` retries in the same log are covered by AST-2011 and AST-2045.
+
+### What must still hold
+
+- AST-326 §5: the coat-check self-heal still lives in `get_job_data` and reuses the batch fetch's scrape, prune, and gate code. Prune and gate rules still live in one place (`_apply_jd_gates`), with no duplication.
+- `fetch_jd` dispatch: the `PASSED_JOBLIST` / `RELATIVE_JOB_LINK` → `JD_READY` / `ERROR_FETCH_JD_UNREADABLE` / classified-state flow and its logs are unchanged, and so is `fetch_relative_jd_batch`.
+- AST-2130 / AST-2133: `job_description` stays the preamble and is never overwritten. The scraped JD is stored only as the `jd_telescope_data_id` reference, and `get_job_data` still returns the composed JD (preamble plus pruned capture).
+- The happy path (composed JD at least `jd_min_chars`) returns immediately, with no scrape and no log.
+- A job with no usable JD still ends in its consult task's `error_state` with `no live content`, as it does today.
+- The self-heal never calls `transition_job_state`, whatever the job's current state.
