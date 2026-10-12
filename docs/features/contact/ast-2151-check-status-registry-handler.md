@@ -391,3 +391,14 @@ context_tokens≈42000
 - Archie/parent: consider Canon Scope ids for config SSOT / import-direction if those should be explicit on child tickets like this.
 
 context_tokens≈28000
+
+
+## Resolution
+
+2026-10-12, against Radia review `30d0dd808` (CLEAN, no fix-now). No product change.
+
+- **Discuss: AC 3–6 wording.** Took Radia's default: the Linear AC text is left as-is. Verification stays on the handler tests and the config one-liners until sibling #2 lands. Susan can reverse this by having Chuckles tighten the Description.
+- **Discuss: interim ftr behavior / pattern corpus.** Took Radia's default: proceed. `src/core/contact.py` is not in this ticket's scope. The interim `KeyError` on a successful `/check-status` stays documented under the Scope gate and is replaced by #2. The `patt.contact.command-intercept` amendment stays with Archie.
+- **Advisory: off-list Canon Scope ids** (`astral.config.config-source-of-truth`, `astral.layers.import-direction`). These are the parent Canon Scope's lane (Archie). No change here.
+- **Advisory: interim runner, tests/bible ownership.** Already documented; nothing to do.
+- **Re-verified on the resolve tip** (after `sync(dev)` brought in AST-2149's one-line `gather_stagger_seconds` config add): `py_compile` is clean, and Betty's manifest item 1 gives 54 passed.
