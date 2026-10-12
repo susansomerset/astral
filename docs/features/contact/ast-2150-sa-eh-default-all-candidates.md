@@ -150,3 +150,17 @@ Definition fidelity: implements parent Purpose and all functional bullets withou
 context_tokens≈18500
 
 **Upshot:** `[plan-rubric] PROCEED (Commit: e2af6d87) two pages, All default`
+
+## Review
+
+Built on `origin/sub/AST-2148/AST-2150-sa-eh-default-all-candidates`:
+
+- `50a867380` code(AST-2150): Stage 1 — Scheduled Actions Candidate filter is page state starting at All; nav no longer seeds or syncs it
+- `5224779ae` code(AST-2150): Stage 2 — Execution History Candidate filter read/written only via URL `candidate_id`; first-visit nav→URL effect removed
+
+Build notes:
+
+- **Lint baseline held:** `AdminScheduledActions.tsx` shows only the 2 pre-existing `no-extra-boolean-cast` errors (shifted to lines 603/631 by the 3-line import/state edit); `AdminPerformanceMonitor.tsx` clean; whole tree still 25 errors / 4 warnings. `origin/dev` did not move since the `c4f0d3a59` snapshot. `tsc -b --noEmit` and `npm run build` green.
+- AC1 grep empty; AC2 diff empty; `git diff origin/dev --stat` = the two pages + this doc.
+- **Parent ref name:** the parent is `origin/ftr/AST-2148-sa-eh-default-all-candidates` (at `c4f0d3a59`, already in this sub). `sync-child.sh --ftr AST-2148` reports it "not found" because it looks up the short name; harmless here. `validate-sub-log.sh --stage=build` run with the full ftr name: status=ok.
+- Page Vitest AST-634 cases are expected red until `qa-child` (see Vitest note above); not run as a build gate.
