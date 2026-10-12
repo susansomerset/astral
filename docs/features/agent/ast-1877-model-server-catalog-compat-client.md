@@ -1275,6 +1275,71 @@ Same qualitative outcome as AST-2010 fix-board in this plan doc: product code on
 ---
 
 
+### Radia review — AST-2140
+
+
+**Ticket:** AST-2140  
+**Publish ref:** `9c28e9bdc0640627123dc74a0b07f225ec19046d` (`origin/sub/AST-2137/AST-2140-outage-error-detail`)  
+**Corpus:** unavailable on publish ref (`docs/canon-index.md` absent; Joan fix-board used `canon/docs/DIRECTIVES-DIRECTORY.md` overlap skim)  
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-2137-outage-error-detail...origin/sub/AST-2137/AST-2140-outage-error-detail` — 3 files: `src/core/consult.py`, `src/core/roster.py`, plan patch in `docs/features/agent/ast-1877-model-server-catalog-compat-client.md` (product delta: 18 lines across the two core modules).
+
+## Canon scores
+
+*(No frozen Canon Scope on AST-2140 or parent AST-2137 — `review-child` §5 applies to an empty list; no per-directive grades. Joan fix-board overlap: **CANON: OK**.)*
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| *(none frozen)* | — | — | Statute sweep deferred; board overlap clean |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan fix-board **CANON: OK** narrative, not A/B/X column)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** not applicable — clean board opt-out; Betty `[board-betty]` REVISE routed to **AST-2141**; no `[bug-repro]` on tip by design.
+
+**`## What must still hold`:** OK — traced against diff:
+
+- **AST-2010:** `run_company_task` still gates routing on `result.get("error")`, not on `outage_error`. Select/locate exhausted 429 on `_find_job_page_from_assembled` generic `SELECT_FAILED` uses Option B: entity dict has `outage_error` + stripped `error`; `roster._outage_tag` lifts to summary `error` only at the summary hop. Select branch (`PJL_READY`) still treats no-joblist `SELECT_FAILED` as `total_passed` when state is in `terminal_ok` (includes `no_joblist_state`); JOBS_FOUND error path unchanged for real `error` keys.
+- **AST-2098:** Probe holds still use `is_provider_state_hold` branches with explicit `error` on hold returns; prefilter/upshot hand-built hold dicts now include `"error": result.get("error")` for dispatcher text only; `total_held` / hold semantics unchanged.
+- **AST-1867 / AST-897:** `consult._outage_tag` still returns `{}` unless `is_provider_rate_limit` or `is_provider_probe_failure` — balance refusal not forwarded via tag.
+- **Untagged failures:** Early guard on `_outage_tag` unchanged.
+- **Dispatcher / llm_compat:** No edits in diff; wiring-only fix matches plan.
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Empty canon list:** Ticket documents no frozen scope; full graded canon pass is N/A. Joan’s overlap skim already cleared in-force touchpoints; no off-list statute scored (per §5.3).
+- **Tests:** Expected whole-dict mismatch at `test_consult.py` ~L4504 until **AST-2141** lands; not a product defect on this tip.
+- **Parent shape:** AST-2137 orphaned mini-parent with live `ftr`; diff base is ftr→sub (correct isolation). Post-clean **PROCEED**, Chuckles should use orphaned fix-lane merge-to-`dev` path (§8), not `merge-child`/`prep-uat`.
+
+## What’s solid
+
+- Implementation matches plan **Option B** exactly: consult `_outage_tag` adds `error` to the key tuple; roster adds probe-hold `error` on prefilter/upshot, `outage_error` hop on select-failure entity return, and roster-only lift in `_outage_tag`.
+- Scope stays inside boundaries (`roster.py`, `consult.py`); no `dispatcher.py`, no AST-2136/`JO` decode work.
+- Plan fidelity: **To-be** behavior (non-empty `()` in batch-stop warnings via summary `error`) is achieved without changing dispatcher strings or retry policy.
+
+## Recommended actions (Chuckles)
+
+- Append artifact → `docs(AST-2140): Radia review — clean` → **Review Posted** → fix-lane clean shortcut → **User Testing** (skip `resolve-child`).
+- Orphaned parent: merge `sub/AST-2137/AST-2140-outage-error-detail` to `origin/dev` finish-up-style once Susan accepts UT.
+
+context_tokens≈12000
+
+**Test delivery (AST-2140):** docs-acceptance on this sub — fix-board [board-betty] TESTS: REVISE was routed to gap sibling AST-2141, which lands the test_consult.py L4504 fix and the outage-error coverage.
+
 ### Joan fix-board — AST-2141
 
 **Read:** `## Bug: AST-2141` on `origin/sub/AST-2137/AST-2141-outage-error-tests` @ `bda2ca88a` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`). Scope is **test tree + test-bible only** (`tests/component/core/test_consult.py`, `test_roster.py`; `docs/test-bible/core/consult.md`, `roster.md`). **No `src/` changes** — AST-2140 owns product; this gap child lands Betty’s fix-board REVISE from AST-2140.
