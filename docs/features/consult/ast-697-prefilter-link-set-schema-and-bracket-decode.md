@@ -385,3 +385,14 @@ Test tree and bible only. Betty's board verdict found no existing test broken by
 - The new assertions encode the AST-2138 **What must still hold** list rather than contradict it: multi-digit/list `JOB:` forms and bracket tails still map as before, and prettified real grades still decode.
 
 **Merge note for Chuckles:** this section and AST-2138's both append at the end of this doc. When both subs reach ftr, expect an end-of-file add/add hunk. Resolve by keeping both sections, AST-2138 first.
+
+### Joan fix-board — AST-2139
+
+**Question:** Does the plan-fix patch require touching canon (statutes/patterns)?
+
+**Read:** `## Bug: AST-2139` in `docs/features/consult/ast-697-prefilter-link-set-schema-and-bracket-decode.md` on `origin/sub/AST-2136/AST-2139-job-link-prefix-tests`. Scope is explicit: **test tree + `docs/test-bible/**` only**, Betty via **qa-fix**, **no `src/`**; product behavior is owned by merged AST-2138 on ftr.
+
+**Judgment:** **CANON: OK.** New `[bug-repro]` rows and bible traceability document already-merged decode/routing behavior (`_grade_segment`, `_LINK_PREFIX_RE`, `_should_decode_as_encoded_line`). That does not contradict, amend, or carve out any in-force statute or pattern; it does not introduce a new architectural precedent. No F3 `validate-plan` fix mode for canon.
+
+---
+
