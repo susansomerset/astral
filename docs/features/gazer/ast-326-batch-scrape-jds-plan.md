@@ -197,3 +197,35 @@ AST-326 §5 made the coat-check delegate to the batch fetch ("single-job, same c
 - The happy path (composed JD at least `jd_min_chars`) returns immediately, with no scrape and no log.
 - A job with no usable JD still ends in its consult task's `error_state` with `no live content`, as it does today.
 - The self-heal never calls `transition_job_state`, whatever the job's current state.
+
+## Joan fix-board — AST-2145
+
+## Verdict (for Chuckles to post)
+
+```
+[board-joan]  CANON: OK
+```
+
+## Stdout
+
+```text
+AST-2145 board-joan done — CANON: OK.
+```
+
+## Reasoning
+
+Reviewed the `## Bug: AST-2145` plan-fix block on `origin/sub/AST-2143/AST-2145-jd-self-heal-guard` (As-is / To-be / Proposed change / Blast radius / What must still hold) and skimmed overlapping in-force directives via `canon/docs/DIRECTIVES-DIRECTORY.md` plus targeted reads: `astral.state.job-prior-states-enforced`, `astral.state.core-decides-transitions`, `astral.idioms.coat-check-never-store-empty`, `patt.entity.batch-processing`, `stat.logging.*` entity lines.
+
+The bug is calling `fetch_jd_batch` (with `fetch_jd` dispatch transitions) from `get_job_data` while the job sits in downstream consult states, which forces illegal `transition_job_state` attempts. Option (a)—`transition=False` on `_apply_jd_gates` / `fetch_jd_batch` for coat-check only—**aligns** with prior-states enforcement by not invoking transitions from that read path, while leaving dispatch (`consult.py` ~3062) and `fetch_relative_jd_batch` on the default `transition=True`. No active statute requires batch JD gating to always move state; core still chooses whether to transition (here: explicitly not on self-heal).
+
+`astral.idioms.coat-check-never-store-empty` stays satisfied: link-less short JD returns `None` without scrape; failed heal returns `None`; classified pages in coat-check mode skip persisting `jd_telescope_data_id` (failure, not caching empty). Pass path still writes the reference and returns composed JD when length clears `jd_min_chars`, matching AST-2130/2133 “preamble + reference” behavior in **What must still hold**.
+
+The AST-2143 step-2 vs step-4 `None` vs truthy-preamble call in the plan is a **product/plan consistency** choice already resolved in Proposed change (always `None` when still under `jd_min_chars`); it does not need a new canon carve-out or Archie gate.
+
+No parent **Canon Scope** frozen list was available on this ref (same pattern as other fix-board passes: registry skim only, not F3 R1–R7).
+
+---
+
+context_tokens≈18500
+
+**Chuckles routing:** CANON: OK. Betty's `[board-betty] TESTS: REVISE` routes to a test-gap sibling, so qa-fix is skipped on AST-2145.
