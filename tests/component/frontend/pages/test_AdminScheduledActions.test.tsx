@@ -471,7 +471,8 @@ describe("AdminScheduledActions", () => {
     await waitFor(() => expect(screen.getByText("99")).toBeInTheDocument())
   }, 20000)
 
-  describe("AST-634 admin candidate filter", () => {
+  // AST-2150 replaced the AST-634 nav-default / nav-sync cases: the filter starts at All and the left nav never moves it.
+  describe("AST-2150 candidate filter defaults to All", () => {
     beforeEach(() => {
       vi.useRealTimers()
     })
@@ -479,62 +480,53 @@ describe("AdminScheduledActions", () => {
       vi.useFakeTimers({ shouldAdvanceTime: true })
     })
 
-    it("defaults to nav candidate, All shows every candidate, manual All blocks nav sync", async () => {
+    // dispatchTask = c1 under D. Job Analysis (AUTO off); sparseRow = c2 under C. Company Roster (AUTO on).
+    // Section headers render only when the section has filtered rows, so they stand in for "c1 / c2 rows visible".
+    const c1Header = /D\. Job Analysis \(0 \/ 1 AUTO\)/
+    const c2Header = /C\. Company Roster \(1 \/ 1 AUTO\)/
+
+    async function renderWithNavC1() {
       localStorage.setItem("astral_selected_candidate", "c1")
-      mockApi(false, {
-        tasks: [dispatchTask, sparseRow],
-        taskKeysPayload: taskKeysConfig,
-        threads: {},
-      })
+      mockApi(false, { tasks: [dispatchTask, sparseRow], taskKeysPayload: taskKeysConfig, threads: {} })
       renderWithProviders(
         <>
           <CandidateSelectC2 />
           <ScheduledActions />
         </>,
       )
-      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByText(c1Header)).toBeInTheDocument())
       const candidateSelect = screen.getByLabelText("Candidate", { selector: "select" }) as HTMLSelectElement
-      await waitFor(() => expect(candidateSelect.value).toBe("c1"))
+      // Wait for nav candidates so "still All" is asserted after a nav default would have had its chance.
+      await waitFor(() => expect(candidateSelect.options.length).toBeGreaterThan(2))
+      return candidateSelect
+    }
 
-      await expandFirstPhaseSection()
-      expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument()
-      expect(within(screen.getByRole("table")).queryByText("watch_cos")).not.toBeInTheDocument()
+    it("first load with nav c1 shows All and rows for both candidates", async () => {
+      const candidateSelect = await renderWithNavC1()
+      expect(candidateSelect.value).toBe("")
+      expect(screen.getByText(c2Header)).toBeInTheDocument()
+    }, 20000)
+
+    it("switching left nav c1 to c2 leaves dropdown and rows unchanged", async () => {
+      const candidateSelect = await renderWithNavC1()
+      await userEvent.click(screen.getByRole("button", { name: "Select c2 nav" }))
+      // Give any nav-driven effect a chance to fire before asserting nothing moved.
+      await new Promise(r => setTimeout(r, 50))
+      expect(candidateSelect.value).toBe("")
+      expect(screen.getByText(c1Header)).toBeInTheDocument()
+      expect(screen.getByText(c2Header)).toBeInTheDocument()
+    }, 20000)
+
+    it("picking c2 narrows to c2 rows; picking All restores every candidate", async () => {
+      const candidateSelect = await renderWithNavC1()
+      await userEvent.selectOptions(candidateSelect, "c2")
+      await waitFor(() => expect(screen.queryByText(c1Header)).not.toBeInTheDocument())
+      expect(screen.getByText(c2Header)).toBeInTheDocument()
 
       await userEvent.selectOptions(candidateSelect, "")
-      await selectAvailAll() // sparseRow avail null — Company Roster only under Avail All
-      const rosterHeading = await waitFor(() =>
-        screen.getByText((_, el) =>
-          !!el?.classList.contains("collapsible-panel-label-wrap") &&
-          /C\. Company Roster \(1 \/ 1 AUTO\)/.test(el.textContent || ""),
-        ),
-      )
-      const rosterPanel = rosterHeading.closest(".collapsible-panel") as HTMLElement
-      await ensureSectionExpanded(rosterPanel)
-      await waitFor(() => expect(within(rosterPanel).getByText("watch_cos")).toBeVisible())
-
-      await userEvent.click(screen.getByRole("button", { name: "Select c2 nav" }))
-      expect(candidateSelect.value).toBe("")
-    }, 25000)
-
-    it("nav sync updates default filter when Susan has not manually changed dropdown", async () => {
-      localStorage.setItem("astral_selected_candidate", "c1")
-      mockApi(false, {
-        tasks: [dispatchTask, sparseRow],
-        taskKeysPayload: taskKeysConfig,
-        threads: {},
-      })
-      renderWithProviders(
-        <>
-          <CandidateSelectC2 />
-          <ScheduledActions />
-        </>,
-      )
-      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
-      const candidateSelect = screen.getByLabelText("Candidate", { selector: "select" }) as HTMLSelectElement
-      await waitFor(() => expect(candidateSelect.value).toBe("c1"))
-      await userEvent.click(screen.getByRole("button", { name: "Select c2 nav" }))
-      await waitFor(() => expect(candidateSelect.value).toBe("c2"))
-    }, 15000)
+      await waitFor(() => expect(screen.getByText(c1Header)).toBeInTheDocument())
+      expect(screen.getByText(c2Header)).toBeInTheDocument()
+    }, 20000)
   })
 
   const scanJobsC1Auto = {
