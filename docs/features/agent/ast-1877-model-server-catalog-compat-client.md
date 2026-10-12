@@ -1486,3 +1486,24 @@ Same shape as gap siblings (e.g. AST-1848): coverage + bible honesty after a pro
 context_tokens≈14000
 
 **Plan correction (AST-2141 R1 step 2):** the shipped repro asserts `(total_processed, total_errors) == (1, 0)` — the prefilter company is retried, not errored (AST-1839); the `(1, 1)` above is superseded.
+
+### Joan fix-board — AST-2153
+
+**Read:** `## Bug: AST-2153` on `origin/sub/AST-2142/AST-2153-gather-stagger-tests` @ `a33d2f695` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`). Scope is **test tree + test-bible only** (`tests/component/core/test_dispatcher.py`; `docs/test-bible/core/dispatcher.md`). **No `src/` changes** — AST-2149 owns product; this gap child lands Betty’s fix-board `[board-betty] TESTS: REVISE` from AST-2149. Product contract under test is § Bug: AST-2149 (now on `origin/ftr/AST-2142-gather-call-stagger` @ `a4120f78c`).
+
+**Corpus skim:** No Canon Scope on AST-2153 / AST-2142. `docs/canon-index.md` is not on this ref; used `canon/docs/DIRECTIVES-DIRECTORY.md`. Overlap check is light because the diff never touches product layers — only whether the **proposed test/bible work** implies amending in-force statutes/patterns.
+
+**The one question:** Does this fix require touching canon?
+
+**Analysis:** Proposed change adds T1 `[bug-repro]` (`test_bug_repro_stagger_spaces_remaining_starts`) and T2 (`test_zero_stagger_adds_no_sleeps`) under `TestWarmThenGather`, one `monkeypatch.setitem` for `gather_stagger_seconds` in `TestAst1867ProviderBalanceOutage._edges` (T3), and a new `docs/test-bible/core/dispatcher.md` § AST-2153 · AST-2149 with manifest rows. Tests configure via the existing `ASTRAL_CONFIG` copy + `monkeypatch` pattern (no AST-2149 imports), assert stagger sleeps `1.0` / `2.0`, entity order, and `gather_stagger_seconds = 0` parity with pre-stagger warm-delay-only behavior.
+
+That **locks the AST-2149 contract** Joan already triaged **CANON: OK** — `gather_stagger_seconds` in `config.py`, 0-based offsets inside one `asyncio.gather`, no in-flight cap, warm-first + `cache_warm_delay_seconds` unchanged. T3 only removes accidental real sleeps in outage `_run_unified` fixtures; it does not change outage policy, retry law, or batch-stop semantics.
+
+Nothing in the patch amends `canon/directives/active/**` or asks for a new carve-out in `stat.config.single-home`, `patt.entity.batch-processing`, `patt.task.dispatch-retry`, or related dispatch/config statutes. Test-bible edits are manifest documentation; active canon does not treat test-bible pages as operative directives needing statute updates. `[bug-repro]` T1 is component harness only; it does not redefine production obligations beyond what AST-2149 already implemented.
+
+Same shape as gap sibling AST-2141 (and AST-2149’s product pass): coverage + bible honesty after a product fix Joan already cleared. No F3 `validate-plan` fix mode for canon.
+
+**Verdict:** **CANON: OK**
+
+---
+
