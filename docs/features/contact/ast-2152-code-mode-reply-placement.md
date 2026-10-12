@@ -164,3 +164,58 @@ No other file is touched. `tests/` and `docs/test-bible/**` are Betty's.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2152
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `origin/sub/AST-2144/AST-2152-code-mode-reply-placement` @ `c54da3712`
+
+## Canon scores
+
+patt.contact.command-intercept | B | | Single placement helper + `_run_contact_command` posts `reply_text` on hit/miss, optional `ack_reply_template`, `reply_placement` on usage and code posts; hear-ack stays global `thread_response` — implements parent pattern change request on Contact runner side
+stat.logging.info.contact | A | | Plan leaves `_emit_listen_info` / listen line unchanged; `command id:mode` still leads `action:`
+stat.logging.error | A | | Intercept `logger.exception` on command failure unchanged; plan adds no new catch paths
+
+## Traceability
+
+AC3 → Scope gate (registry parse, no code); AC4 → Stage 2 Done-when + Betty E2E; AC5 → Stage 1 override + Stage 2 placement on post; AC6 → Scope gate (intercept ordering); AC7 → Stage 2 + Betty; AC8 → Stage 2 + Betty (handler from #1); AC9 → Stage 2 reply-text on miss + `slack_post` hear-ack gate; AC10 → Stage 2 + Betty (#1 warning); AC11 → Stage 1 usage path uses same `reply_ts`/`reply_broadcast`; AC12 → Stage 2 Done-when `/add-job`; AC13 → Scope gate + Betty caplog; AC14 → Scope gate + Stage 2 `rg`; AC15 → Stage 1–2 pytest unmodified `test_contact.py`.
+
+### discuss — AST-2151 merge prerequisite
+
+- **Location:** Plan header (ftr merge); Boundaries; Stage 2 pytest `-k Ast2151`.
+- **Finding:** This plan assumes registry `reply_placement`, optional ack, and `contact_command_check_status` / `reply_text` from sibling #1.
+- **Recommendation:** Build/merge order per epic (#1 before #2 on integration ref); not a plan defect.
+
+### discuss — In-force pattern vs epic widening
+
+- **Location:** Parent Architectural definition; Stage 2 code-mode tail.
+- **Finding:** Corpus `patt.contact.command-intercept` still describes ack-only code replies and miss → no post; this plan is the Contact half of the widened contract.
+- **Recommendation:** Proceed; Archie pattern amendment remains epic-level (paired with #1).
+
+### discuss — Hear-ack placement vs command override
+
+- **Location:** Stage 2 decision bullet on hear-ack in `_handle_slack_event_body`.
+- **Finding:** Fault-path hear-ack keeps event-level `_contact_reply_placement` without `reply_placement` override.
+- **Recommendation:** Accept per plan (#1 handler normally always returns text); note if Susan wants command placement on fault acks later.
+
+### acceptable — No formal `## Self-assessment`
+
+- **Location:** Plan ends at Estimate confirm.
+- **Finding:** AST-2072 `test_ac9` constraints and byte-identical AC 14 lines are explicitly addressed.
+- **Recommendation:** Optional; not blocking.
+
+### acceptable — Betty-owned E2E coverage
+
+- **Location:** Test impact vs Stage Done-when “pytest unmodified”.
+- **Finding:** Done-when guards existing suite; new AC 4–13 assertions land in Betty’s pass, as expected for this child.
+- **Recommendation:** None for plan approval.
+
+**R6 (summary):** One file, two functions, no config/tracker edits. Placement override is centralized; no new `thread_ts or …` copies. `/add-job` and `agent` paths preserved. No scope creep. No `fix-now` findings.
+
+context_tokens≈58000
+
+[plan-rubric] PROCEED (Commit: c54da3712) Contact reply and placement plan
