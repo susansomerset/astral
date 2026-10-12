@@ -899,3 +899,68 @@ Docs-acceptance on this ref: no test-tree delivery on `sub/AST-2158/AST-2159-lon
 **Rationale:** AST-2161 is test-tree only (`test_consult.py` + `docs/test-bible/core/consult.md`); the plan explicitly excludes `src/`, `data/`, and canon. The work pins AST-2159’s already-approved product contract (retry-first via `_consult_batch_fail_dest`, reason `omitted from response`) and does not introduce new behavior, carve-outs, or contradictions for in-force directives (`patt.task.dispatch-retry`, `astral.idioms.render-verdict-orchestrates-consult`, decode coverage deferred to `core/agent.md` § AST-2093). Bible text documents tests; it is not a statute edit. No F3 (`validate-plan` fix mode) trigger.
 
 **Chuckles routing:** Betty TESTS: REVISE (this ticket is the test work) + Joan CANON: OK → Plan Discuss → qa-fix (F4).
+
+
+## Radia review — AST-2161
+
+[code-rubric]
+**Ticket:** AST-2161
+**Publish ref:** `1e9344f955e168aef3dc02293339c7881a69a623` (`origin/sub/AST-2158/AST-2161-lone-grade-unknown-index-retry-tests`)
+**Corpus:** n/a — no frozen Canon Scope / directive ids on AST-2161 or parent AST-2158; `docs/canon-index.md` absent on publish tip; diff touches no `canon/`, `src/`, or `data/`
+**Overall:** CLEAN
+
+## Canon scores
+
+(no frozen Canon Scope / directive ids — **zero ids to score**; `[board-joan] CANON: OK` was test-tree / overlap triage only, not per-directive plan-stage grades)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan F2 fix-board only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — qa-fix landed at `37334f21b` (`test(AST-2161): bug-repro …`); tip `1e9344f95` is empty product marker only.
+
+| Test | Verdict |
+|------|---------|
+| `test_bug_repro_lone_no_row_primary_goes_to_retry_holding` | Pins AST-2159 **To-be**: full `out` dict (`METEORITE_PASSED_DO_RETRY`, `omitted from response`), transition, `_log_fail_dest` capture. **Fails pre-fix** (`ERROR_METEORITE_GRADE_GET`, `decoded payload has no job row…`, `_warn_job` path — no `_log_fail_dest`). Not tautological. |
+| `test_bug_repro_lone_no_row_retry_holding_goes_to_error` | **To-be** one-hop terminal + reason/log. `to_state` alone would not red pre-fix; **`error` + `logged`** do (`decoded payload…` vs `omitted from response`). Acceptable per plan Repro. |
+| `test_lone_no_row_other_id_decode_failure_is_omitted` | Not `[bug-repro]`; asserts non-matching `decode_failures` row does not steal reason — matches plan §3, branch `1587->1586`. |
+
+Stub uses `parsed_response={"jobs": []}` via `do_task` mock (not live `_decode_payload`). Plan § Repro explicitly defers decode half to `core/agent.md` § AST-2093; assertions target **Layer 3** `render_verdict` routing — the AST-2159 product change — not a fake-green tautology.
+
+**## What must still hold — OK**
+
+- AST-2159 contract exercised, not redefined; one-hop retry + own-decode-failure semantics covered by test 3 vs tests 1–2.
+- No `consult.py` change on this diff; coverage intent is additive only.
+- Kept tests untouched per plan (`test_fails_when_job_row_is_missing`, `test_fails_when_grades_are_missing`, `test_render_verdict_bad_confidence_first_strike_to_retry`).
+- `git diff origin/ftr/AST-2158-lone-grade-unknown-index-retry...tip -- src/ data/` empty.
+
+## Findings
+
+**advisory**
+
+- **Pre-existing suite noise:** Hedy’s 69/723/7 parity on `test_consult.py` + `test_agent.py` vs ftr matches plan Blast radius; manifest #2 is the gate (28 passed in bible block for `TestRenderVerdict` + `TestAst1155IncompleteGradeRetry`), not absolute green across the two modules.
+- **Lane hygiene:** Tests+bible landed in `test(AST-2161)` @ `37334f21b`; engineer tip is `code(AST-2161): no product src` — matches empty-marker precedent (AST-2090/AST-2095).
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+## What’s solid
+
+- Diff matches plan **Proposed change**: `_run_no_row` helper, three `TestRenderVerdict` nodes, bible block after AST-2093 with manifest + red/green record.
+- **Plan fidelity** to AST-2159 § Bug (blocked-by product already on ftr).
+- **Cross-ticket scope:** test-tree + feature doc only; no sibling product smuggle.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (artifact complete) | **Normal** (AST-2158): → **Review Posted** → §3h clean-review shortcut → **User Testing**; `resolve-child` **skipped**. |
+
+context_tokens≈22000
