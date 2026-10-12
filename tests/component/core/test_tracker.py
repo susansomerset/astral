@@ -2388,6 +2388,212 @@ class TestAst1518ContactTaskReads:
         assert log.debug_index.call_args_list[0].kwargs["func"] == "tracker.contact_task_get_job_data"
 
 
+# Branches (AST-2151 contact_command_check_status): no candidate; no owned match (none listed /
+# listed but not owned); one match vs several; origin env set vs unset/blank; timestamp parse ok vs
+# None/garbage → "-". Handler side of parent AC 4, 7–10 — Contact posting is sibling #2.
+class TestAst2151ContactCommandCheckStatus:
+    """AST-2151: /check-status handler composes reply_text; read-only."""
+
+    TZ = "America/Los_Angeles"
+    DOMAIN = "astral.example"
+
+    @staticmethod
+    def _meta() -> Dict[str, Any]:
+        return cfg.CONTACT_CONFIG["commands"]["check-status"]
+
+    @staticmethod
+    def _job(jid: str, title: str, company: str, state: str = "RECOMMENDED") -> Dict[str, Any]:
+        return {
+            "astral_job_id": jid,
+            "job_title": title,
+            "company": company,
+            "job_link": f"https://jobs.example/{jid}",
+            "state": state,
+            "created_at": "2026-10-01 15:04:00",
+            "state_changed_at": "2026-10-10T09:30:00Z",
+        }
+
+    def _stub(
+        self, monkeypatch: pytest.MonkeyPatch, jobs: List[Dict[str, Any]], owners: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """list_jobs → jobs; company owner map; contact tz; any job write fails the test."""
+        from src.core import meteorite as meteorite_mod
+
+        seen: Dict[str, Any] = {}
+
+        def _list_jobs(**kwargs: Any) -> List[Dict[str, Any]]:
+            seen.update(kwargs)
+            return jobs
+
+        monkeypatch.setattr(tracker_mod, "list_jobs", _list_jobs)
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_company",
+            lambda sn: {"short_name": sn, "candidate_id": owners[sn]} if sn in owners else None,
+        )
+        monkeypatch.setattr(meteorite_mod, "_candidate_contact_timezone", lambda _cid: self.TZ)
+        # Read-only handler: any persistence call is a failure.
+        for name in ("save_job", "delete_job", "save_artifact"):
+            monkeypatch.setattr(
+                tracker_mod.database, name, MagicMock(side_effect=AssertionError(f"write: {name}"))
+            )
+        return seen
+
+    @staticmethod
+    def _warnings(caplog: pytest.LogCaptureFixture) -> List[logging.LogRecord]:
+        return [r for r in caplog.records if r.name == "src.core.tracker" and r.levelno == logging.WARNING]
+
+    def _clock(self, raw: str) -> str:
+        from datetime import datetime
+
+        return cfg.format_contact_timezone_clock(datetime.fromisoformat(raw.replace("Z", "+00:00")), self.TZ)
+
+    def test_ac3_one_match_reply_with_clocks_and_encoded_deeplink(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        job = self._job("acme_com:j 1", "Staff Platform Engineer", "acme", state="PASSED_LIKE")
+        seen = self._stub(monkeypatch, [job, self._job("acme_com:j2", "Analyst", "acme")], {"acme": "c1"})
+        monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
+
+        with caplog.at_level(logging.WARNING, logger="src.core.tracker"):
+            out = tracker_mod.contact_command_check_status("c1", "  platform  ", source_id="C1:1.0")
+
+        assert seen == {"candidate_id": "c1"}
+        assert (out["ok"], out["error"], out["meteorite_id"]) == (True, None, None)
+        text = out["reply_text"]
+        assert "Staff Platform Engineer" in text and "PASSED_LIKE" in text
+        assert self._clock(job["created_at"]) in text
+        assert self._clock(job["state_changed_at"]) in text
+        # Same shape as the modal Copy Link: https:// + origin + /jobs/detail/ + encodeURIComponent(id).
+        assert "https://astral.example/jobs/detail/acme_com%3Aj%201" in text
+        assert "Analyst" not in text
+        assert not self._warnings(caplog)
+
+    def test_ac4_several_matches_list_both_titles_and_links(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        jobs = [self._job("acme_com:j1", "Engineer A", "acme"), self._job("beta_io:j2", "Engineer B", "beta")]
+        self._stub(monkeypatch, jobs, {"acme": "c1", "beta": "c1"})
+        monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
+
+        out = tracker_mod.contact_command_check_status("c1", "engineer", source_id="C1:1.0")
+
+        assert out["ok"] is True and out["error"] is None
+        text = out["reply_text"]
+        assert text.startswith(self._meta()["matches_header_template"].format(count=2))
+        for title, company, enc in (("Engineer A", "acme", "acme_com%3Aj1"), ("Engineer B", "beta", "beta_io%3Aj2")):
+            assert title in text and company in text
+            assert f"https://astral.example/jobs/detail/{enc}" in text
+        assert text.count("/jobs/detail/") == 2
+
+    def test_ac5_other_candidates_job_excluded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Rival's job title equals the pattern exactly; the owned job matches only via company.
+        mine = self._job("acme_com:j1", "Data Analyst", "acme")
+        theirs = self._job("rival_com:x9", "Acme", "rival")
+        self._stub(monkeypatch, [theirs, mine], {"acme": "c1", "rival": "c2"})
+        monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
+
+        out = tracker_mod.contact_command_check_status("c1", "Acme", source_id="C1:1.0")
+
+        assert out["ok"] is True
+        text = out["reply_text"]
+        assert "Data Analyst" in text
+        assert "Acme" not in text
+        assert "rival_com" not in text and "x9" not in text
+
+    @pytest.mark.parametrize(
+        ("jobs", "owners"),
+        [
+            ([], {}),
+            # Matches, but every hit is another candidate's or company-less → still no match.
+            (
+                [
+                    {"astral_job_id": "r:1", "job_title": "Engineer", "company": "rival", "state": "NEW"},
+                    {"astral_job_id": "m:1", "job_title": "Engineer", "company": "", "state": "NEW"},
+                ],
+                {"rival": "c2"},
+            ),
+        ],
+        ids=["none_listed", "listed_not_owned"],
+    )
+    def test_ac6_no_match_returns_no_match_text(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        jobs: List[Dict[str, Any]],
+        owners: Dict[str, str],
+    ) -> None:
+        self._stub(monkeypatch, jobs, owners)
+        monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
+
+        with caplog.at_level(logging.WARNING, logger="src.core.tracker"):
+            out = tracker_mod.contact_command_check_status("c1", "Engineer", source_id="C1:1.0")
+
+        assert out == {
+            "ok": False,
+            "meteorite_id": None,
+            "error": "unmatched_pattern",
+            "reply_text": self._meta()["no_match_reply_text"],
+        }
+        # The miss is the answer, not a failure — no warning.
+        assert not self._warnings(caplog)
+
+    @pytest.mark.parametrize("env", [None, "   "], ids=["unset", "blank"])
+    def test_ac7_no_origin_replies_without_links_one_warning(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        env: str | None,
+    ) -> None:
+        job = self._job("acme_com:j1", "Staff Engineer", "acme")
+        jobs = [job]
+        self._stub(monkeypatch, jobs, {"acme": "c1"})
+        if env is None:
+            monkeypatch.delenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, raising=False)
+        else:
+            monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, env)
+
+        with caplog.at_level(logging.WARNING, logger="src.core.tracker"):
+            out = tracker_mod.contact_command_check_status("c1", "Staff", source_id="C1:1.0")
+
+        assert out["ok"] is True
+        text = out["reply_text"]
+        assert "Staff Engineer" in text and "RECOMMENDED" in text
+        assert self._clock(job["created_at"]) in text and self._clock(job["state_changed_at"]) in text
+        assert "/jobs/detail/" not in text and "https://" not in text
+        warnings = self._warnings(caplog)
+        assert len(warnings) == 1
+        msg = warnings[0].getMessage()
+        assert "deeplink missing" in msg and "RAILWAY_PUBLIC_DOMAIN" in msg
+
+        # Several matches still cost exactly one warning per reply.
+        caplog.clear()
+        jobs.append(self._job("acme_com:j2", "Staff Analyst", "acme"))
+        with caplog.at_level(logging.WARNING, logger="src.core.tracker"):
+            many = tracker_mod.contact_command_check_status("c1", "Staff", source_id="C1:1.0")
+        assert many["ok"] is True and "/jobs/detail/" not in many["reply_text"]
+        assert len(self._warnings(caplog)) == 1
+
+    def test_no_candidate_returns_no_reply_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen = self._stub(monkeypatch, [self._job("acme_com:j1", "Engineer", "acme")], {"acme": "c1"})
+
+        out = tracker_mod.contact_command_check_status("  ", "Engineer", source_id="C1:1.0")
+
+        assert out == {"ok": False, "meteorite_id": None, "error": "no_candidate", "reply_text": None}
+        assert seen == {}
+
+    @pytest.mark.parametrize("raw", [None, "not-a-date"], ids=["none", "garbage"])
+    def test_unparseable_timestamps_render_dash(self, monkeypatch: pytest.MonkeyPatch, raw: Any) -> None:
+        job = {**self._job("acme_com:j1", "Engineer", "acme"), "created_at": raw, "state_changed_at": raw}
+        self._stub(monkeypatch, [job], {"acme": "c1"})
+        monkeypatch.setenv(cfg.JOBS_DETAIL_ORIGIN_DOMAIN_ENV, self.DOMAIN)
+
+        out = tracker_mod.contact_command_check_status("c1", "Engineer", source_id="C1:1.0")
+
+        assert out["ok"] is True
+        assert "Received -" in out["reply_text"] and "since -" in out["reply_text"]
+
+
 # Branches: save_job_artifact/get_job_current catalog shape; job_resume→base_resume citation;
 # cover sources pass-through; type-specific public saves gone; hydrate via get_job_current.
 class TestAst1592TrackerCatalogWriteReadCitation:

@@ -890,3 +890,49 @@ Test-gap sibling of **AST-2145** (fix already on `origin/ftr/AST-2143-jd-self-he
 **Pass criterion:** items 1–2 on the sub tip. Narrowed run, not the zero-arg harness (pre-existing reds on the ftr tip).
 
 **Bible shasum (after publish):** `git show origin/sub/AST-2143/AST-2146-jd-self-heal-tests:docs/test-bible/core/tracker.md | shasum`
+
+### AST-2151 · AST-2144 (`/check-status` handler)
+
+**Parent:** [AST-2144](https://linear.app/astralcareermatch/issue/AST-2144) (Add /check-status to Estelle's functions). **Publish:** `origin/sub/AST-2144/AST-2151-check-status-registry-handler`. Plan: `docs/features/contact/ast-2151-check-status-registry-handler.md`. Config half: [`../utils/config.md`](../utils/config.md) § AST-2151.
+
+`contact_command_check_status(candidate_id, payload, *, source_id, thread_ts, debug)` → `{ok, meteorite_id (None), error, reply_text}`. Reuses `_match_jobs_by_pattern` (`list_jobs(candidate_id=…)`) with `_job_owned_by_candidate` as a filter over every hit; formats the `check-status` registry templates; times via `format_contact_timezone_clock` in `meteorite._candidate_contact_timezone`; deeplink `https://` + `$RAILWAY_PUBLIC_DOMAIN` + `/jobs/detail/` + `quote(id, safe="")`. Read-only.
+
+| AC (child) | Component tests |
+| --- | --- |
+| 3 one match — title, raw state, both contact clocks, encoded deeplink; `list_jobs(candidate_id="c1")`; no warning | **`TestAst2151ContactCommandCheckStatus::test_ac3_one_match_reply_with_clocks_and_encoded_deeplink`** |
+| 4 several — header count, both titles/companies/links | `::test_ac4_several_matches_list_both_titles_and_links` |
+| 5 candidate scope — rival's exact-title job absent (id + title) | `::test_ac5_other_candidates_job_excluded` |
+| 6 no match (none listed / listed but not owned or company-less) — exact `no_match_reply_text`, `unmatched_pattern`, no warning | `::test_ac6_no_match_returns_no_match_text` (2) |
+| 7 origin unset / blank — no link text, exactly one WARNING naming `RAILWAY_PUBLIC_DOMAIN` (also for a several-match reply) | `::test_ac7_no_origin_replies_without_links_one_warning` (2) |
+| Empty candidate → `no_candidate`, `reply_text` None, no lookup; `None` / garbage timestamps → `-` | `::test_no_candidate_returns_no_reply_text`, `::test_unparseable_timestamps_render_dash` (2) |
+
+Every case patches `database.save_job` / `delete_job` / `save_artifact` to raise — no writes. **Coverage:** new range (`_contact_job_clock` + handler) has no missed lines or partial branches from this class alone.
+
+**Not here:** ticket AC 3–6 as written drive `handle_slack_event` → `post_message`, but posting `reply_text` and applying `reply_placement` are sibling **#2** (`src/core/contact.py`). Until #2 lands, `_run_contact_command` reads `ack_reply_template` on `ok` (KeyError on this entry, plan-accepted interim, ftr-only). End-to-end post / thread / share / no-hear-ack assertions belong to #2's manifest.
+
+**Broken / obsolete:** none. `TestAst2035ContactCommandIntercept` (22) and `TestAst1518ContactTaskReads` unchanged and green.
+
+**Integration:** none. No `tests/integration/` scenario reads the command registry. Do not invent one.
+
+## QA test manifest — AST-2151
+
+1. New + neighbors:
+
+```bash
+ASTRAL_DB_DIR=$(mktemp -d) ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst2151ContactCommandCheckStatus \
+  tests/component/utils/test_config.py::TestAst2151CheckStatusRegistry \
+  tests/component/utils/test_config.py::TestAst2061ContactPinholeConfig \
+  tests/component/utils/test_config.py::TestAst2072ThreadResponseConfig \
+  tests/component/core/test_tracker.py::TestAst1518ContactTaskReads \
+  tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept \
+  -q
+```
+
+   Expect **54 passed**.
+2. No-regression: `pytest tests/component/core/test_tracker.py tests/component/utils/test_config.py tests/component/core/test_contact.py -q` → **46 failed, 999 passed, 4 skipped**. The 46 failures are exactly the set on `origin/ftr/AST-2144-check-status` product with pre-AST-2151 tests (46 failed, 981 passed). None are in an `Ast2151` class.
+3. Child AC 1–2 one-liners from the ticket print `code` (and `reply_placement` = `always_with_share`) and `read job`.
+
+**Pass criterion:** items 1–3. Narrowed run, not the zero-arg harness / branch-lock gate (pre-existing reds on the ftr tip).
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2144/AST-2151-check-status-registry-handler:docs/test-bible/core/tracker.md | shasum`; same for `docs/test-bible/utils/config.md`.
