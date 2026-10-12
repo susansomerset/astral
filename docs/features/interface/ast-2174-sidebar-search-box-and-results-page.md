@@ -427,3 +427,11 @@ no plan-stage canon scores attached (Joan table empty by design) — Radia has n
 ```
 
 context_tokens≈38000
+
+## Resolution
+
+**2026-10-12 — resolve-child (Hedy), on `47c640768`.** Radia: CLEAN / PROCEED — 0 fix-now, 2 discuss, advisory only. No product change.
+
+- **discuss — raw `state` strings:** no Susan answer; took Radia's **Default** — keep raw `state` (plan decision; Betty's tests assert the literals). Reversible: swap the State cell to manifest labels in a follow-up.
+- **discuss — failed request reads as "No results":** no Susan answer; took Radia's **Default** — accept as built, no error copy / toast. Reversible: distinct copy for `!r.ok` / `.catch` in `SearchResults.tsx` (Betty's `failed request reads as 'No results'` case would need revising).
+- **advisory:** AST-2173 carry in the three-dot diff is expected lineage; nothing to do.
