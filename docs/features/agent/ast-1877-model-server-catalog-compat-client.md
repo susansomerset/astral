@@ -1590,3 +1590,5 @@ Same qualitative outcome as AST-2010 / AST-2140 fix-board in this plan doc: prod
 - Keep **AST-2153** on the test manifest path; merge/stack per AST-2142 epic rules (live ftr), not a dev-only orphan without ftr.
 
 context_tokens≈11000
+
+**Test delivery (docs-acceptance):** AST-2149 carries no test-tree commit. Its [bug-repro] and bible rows land on gap sibling AST-2153 (fix-board [board-betty] TESTS: REVISE).
