@@ -357,3 +357,35 @@ Child-ticket numbering: AC 1–7, AC 10, the API half of AC 8 (`jobs_list` + `mo
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2173
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `origin/sub/AST-2168/AST-2173-search-backend` @ `11c0b7ad37926683dfd7f2f331010e5369b048f8`
+
+## Canon scores
+stat.logging.debug | C | 2 | Stage 2: loop begin/end per entity type only; no Calling/Response debug around `database.search_entity_rows` (documented payload-size rationale).
+stat.logging.error | A
+stat.logging.info.api | A
+
+## Traceability
+AC1→S1+S3; AC2→S3; AC3→S1; AC4→S2; AC5→S1; AC6→S1+S2; AC7→S1; AC8 (API `jobs_list`/`modal_kind`)→S2; AC9 (API keys/lists)→S2; AC10→S2+S3; AC11 (Python import)→S3; parent AC8 UI clicks, AC9 company/meteorite modals, AC11 `npm`→N/A — AST-2174 per Boundaries.
+
+### discuss
+- **Location:** Stage 2 (`src/core/search.py` decisions)
+- **Finding:** Plan omits `Calling search_entity_rows` / `Response from search_entity_rows` debug pair required by `stat.logging.debug` Statement, relying on loop counts because full row payloads would be the only honest “response string.”
+- **Recommendation:** Accept loop-only debug for this read (statute Resolution #3 vs. practical log volume), or add callee in/out with an explicit Archie carve-out — not a build blocker if team accepts the documented tradeoff.
+
+### discuss (Canon Scope gap — do not score)
+- **Location:** Parent Canon Scope vs. plan footprint
+- **Finding:** `astral.config.config-source-of-truth` and `astral.layers.import-direction` plainly govern registry placement and `core`→`data` imports but are not on the frozen list.
+- **Recommendation:** Archie may amend parent Canon Scope at Discussion if those should be Radia-comparable columns; this pass scored only the three logging statutes.
+
+### acceptable
+- **Location:** Child Description vs. plan Stage 3
+- **Finding:** Ticket text says exceptions are “logged once” in `server_error_from_exception`; plan correctly follows `api_jobs` + `stat.logging.error` (`logger.exception` at route; helper does not log). Verified against `src/ui/api_errors.py`.
+- **Recommendation:** None — implement the plan, not the stale Description clause.
