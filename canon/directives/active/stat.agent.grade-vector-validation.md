@@ -1,5 +1,5 @@
 ---
-id: astral.agent.grade-vector-validation
+id: stat.agent.grade-vector-validation
 title: Grade vector validation
 tier: scoped
 checkable: judgment
@@ -13,7 +13,7 @@ source_docs:
 supersedes: null
 superseded_by: null
 approved_by: Archie
-approved_at: "2026-07-23"
+approved_at: "2026-10-12"
 ---
 
 # Statement
