@@ -487,3 +487,78 @@ with open(PATH, "w", encoding="utf-8") as f:
     f.write(json.dumps(rows, indent=2, ensure_ascii=False))
 print("edited", sorted(seen))
 ```
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2177
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `origin/sub/AST-2172/AST-2177-capability-registry-grader-marker-prompts` @ `f53f98c78`
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| stat.agent.confidence-bounds | A | | |
+
+## Traceability
+
+**7** → Stage 2 (`_GRADE_SEMANTICS` / vet scale, delete `_ENCODED_GRADE_SET_COMPLETENESS`, grader `structured_output` markers, `stringify_response_schema` grader branch) + Stage 3 (nine `agent_task.json` rows + Appendix A script) + AC7 harness (`n == 11` task keys with `structured_output`, master-key resolution for `meteorite_grade_*`). Stage 1 → parent Functional scope §1 / child scope capability registry (not AC 7 text). Parent AC 1–6, 8–11 / 10a–10b: N/A this child.
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 1 — OpenRouter server `structured_output_capability: None` + per-slug overrides only  
+  **Finding:** Plan explicitly accepts a narrow grader model surface until more slugs are spiked; pairs with AST-2181’s gate. Reasonable vs assuming `advisory` for 93 untested slugs, but it is a product/capacity tradeoff.  
+  **Recommendation:** Susan confirms default `None` is intended; document re-spike steps when adding OpenRouter grader models.
+
+- **Location:** Stage 1 — spike keys via `ASTRAL_SPIKE_KEY_*` env vars  
+  **Finding:** Debug-only exception to production “no keys from env” posture; plan states stop-if-unset and never commit keys.  
+  **Recommendation:** Accept for spike; builder follows blocked-comment contract.
+
+- **Location:** Stage 2 — `prompt_prefix_structured` + AST-2179 contract  
+  **Finding:** New config surface; `prompt_prefix` bytes frozen for current `anthropic.py` until #4 wires the flag.  
+  **Recommendation:** Ensure AST-2179 plan cites `prompt_prefix_structured` (out of this child’s scope).
+
+- **Location:** Stage 3 / `prefilter_company` — delete rule 5 (“Match the output schema exactly…”)  
+  **Finding:** Not one of AC 7’s banned substrings; aligns with parent prompt-simplification intent but removes a deviation warning not literally named in AC 7.  
+  **Recommendation:** Archie/Susan OK with dropping that line vs rephrasing without “shape is wrong” tone.
+
+- **Location:** Citations vs content  
+  **Finding:** Frozen list is only `stat.agent.confidence-bounds`; `_GRADE_SEMANTICS` also states `A–F` / `X` letter rules (parent child #2 dispatch cited confidence scale only). Not scored as `stat.agent.grade-vector-validation`.  
+  **Recommendation:** Scope observation for Archie if she wants grade-vector on sibling lists later; no plan change required here.
+
+### acceptable
+
+- **Location:** `[scope-gate]` vs current Description  
+  **Finding:** Amended Scope (nine grader rows; `REPO_ADMIN_JSON_CONFIG` column on AST-2181) matches Files Changed and Stages; plan published after Chuckles amendment (`f53f98c78`).  
+  **Recommendation:** None.
+
+- **Location:** AC 7 `assert n == 11` vs nine edited rows  
+  **Finding:** Eleven `TASK_CONFIG` keys use grader `output_types`; `meteorite_grade_do` / `meteorite_grade_get` inherit `grade_do` / `grade_get` prompts — consistent with scope-gate note.  
+  **Recommendation:** None.
+
+- **Location:** `vet_inflow_discovery`  
+  **Finding:** Replacing hardcoded `## Response` with `{$OUTPUT_INSTRUCTIONS}` plus Stage 2 vet `payload_instructions` supplies confidence-scale lines AC 7 requires (today’s row lacks them).  
+  **Recommendation:** Execute Stage 2 before Stage 3.
+
+- **Location:** After AST-2176  
+  **Finding:** Active `stat.agent.confidence-bounds` matches plan’s Canon check (hydrate exception not re-litigated in prompts). Child notes “After #1.”  
+  **Recommendation:** Land/build order: #1 before siblings that plan against active canon.
+
+### fix-now
+
+(none)
+
+## R6 (condensed)
+
+- **Definition fidelity:** Matches amended child Scope and parent Component/Technical slice for #2 (capability + marker + prompt text; no DB/UI/transport/core).  
+- **stat.agent.confidence-bounds:** Scale lines preserved; silent vectors → `X` + `0`; vet `1–5` / no `X`; no encoded `{A-F}0` prompt pattern; hydrate exception left to AST-2178.  
+- **Self-assessment:** Estimate 5 — credible (live spike + large `config.py` + nine-row scripted JSON edits).  
+- **Plan Discuss:** 0 completed `[plan-discuss]` rounds; status Plan Ready, assignee Joan.
+
+context_tokens≈58000
+
+---
