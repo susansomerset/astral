@@ -327,3 +327,67 @@ context_tokens≈42000
   - Empty candidate gives `no_candidate` with `reply_text=None`.
   - A `None` or garbage timestamp renders `-`.
 - **Spawn-prompt note:** the prompt's `--ftr AST-2144` doesn't exist on origin. The registry's `parent_ftr` is `ftr/AST-2144-check-status` (at `c4f0d3a59`, already this sub's base). The sync and `validate-sub-log` were re-run with that segment and both returned ok.
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2151
+**Publish ref:** `cac60b36ebcb0d5b32734335df0a76cf5de9f21e` (`origin/sub/AST-2144/AST-2151-check-status-registry-handler`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.contact.command-intercept | B | | |
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Linear Description AC 3–6 (`handle_slack_event` / `post_message`) vs child Boundaries and `TestAst2151ContactCommandCheckStatus`.
+- **Finding:** Ticket AC text still describes end-to-end Slack posting; the diff correctly implements registry + handler `reply_text` only and tests the handler directly (plus config import asserts). E2E posting remains sibling #2.
+- **Decision @susan:** Whether to tighten Linear AC wording on AST-2151 for handler-only verification.
+- **Default:** Leave AC text as-is; keep verification on handler tests and config one-liners until #2 lands.
+
+- **Location:** In-force `patt.contact.command-intercept` corpus (mandatory `ack_reply_template`, `{ok, meteorite_id, error}` only, `code` posts ack on `ok`) vs `check-status` entry (no ack, `reply_text`, `reply_placement`) and unchanged `src/core/contact.py`.
+- **Finding:** Product matches the epic/plan widening and parent change-request note; corpus arc is not yet amended. Interim `KeyError` on successful `/check-status` under today’s `_run_contact_command` is documented on the issue doc.
+- **Decision @susan:** Whether interim ftr behavior needs a user-visible note before #2 merges.
+- **Default:** Proceed; resolve-child does not expand scope into `contact.py`.
+
+### advisory
+
+- **Canon Scope (off-list, not scored):** `JOBS_DETAIL_ORIGIN_DOMAIN_ENV`, extended `CONTACT_CONFIG["commands"]` asserts, and the in-handler `from src.core.meteorite import _candidate_contact_timezone` sit in territory Joan flagged for `astral.config.config-source-of-truth` / `astral.layers.import-direction`. They are absent from this child’s frozen Citations list; parent Canon Scope amendment is Archie’s lane if those ids should ride on #1.
+- **Interim runner:** Until sibling #2, a successful handler result without `ack_reply_template` can raise under current `_run_contact_command`; plan documents ftr-only behavior.
+- **Tests/bible:** `tests/component/core/test_tracker.py`, `tests/component/utils/test_config.py`, and bible § AST-2151 entries belong to this ticket (Betty), not sibling product carry.
+
+## What’s solid
+
+- Registry row, relaxed optional-ack asserts, job-lookup all-or-none group, pinhole `read job`, and origin env contract match Stage 1 and parent AC 1–2.
+- Handler resolves its registry row by handler path (no `/check-status` or placement literals in `src/core/tracker.py`); reuses `_match_jobs_by_pattern` + `_job_owned_by_candidate` read-only; branches for one / several / none / missing origin match plan and parent handler ACs.
+- Debug loop begin/end and Calling/Response pairs on matcher, timezone, and `format_contact_timezone_clock`; single WARNING on missing origin with candidate, command id, env name, and product consequence; no warning on composed no-match.
+- Component tests cover AC-shaped handler behavior and spliced import-time assert probes.
+
+## Recommended actions (for issue doc only — not executed by Radia)
+
+- Chuckles: append this artifact, `docs(AST-2151): Radia review — clean`, push publish ref, post slim upshot `--as radia`, move to **Review Posted**.
+- If Susan wants Linear AC 3–6 clarified, Chuckles can edit Description in a separate pass (optional).
+- Archie/parent: consider Canon Scope ids for config SSOT / import-direction if those should be explicit on child tickets like this.
+
+context_tokens≈28000
