@@ -1,5 +1,6 @@
 // SYNC: Every route here must have a matching nav item in src/utils/config.py NAV_CONFIG.
 //       Deeplink-only routes (e.g. jobs/detail/:jobId) use JOBS_DETAIL_ROUTE_PREFIX — not NAV_CONFIG.
+//       search (AST-2174) is deeplink-only too — reached from the sidebar search box, no NAV_CONFIG item.
 //       If you add/remove/rename a route, update NAV_CONFIG to match.
 import { Outlet, type RouteObject } from "react-router-dom"
 import AdminRoute from "./components/AdminRoute"
@@ -68,6 +69,9 @@ import SessionResumePaste from "./pages/AdminSessionResumePaste"
 import SessionCoverLetter from "./pages/AdminSessionCoverLetter"
 import AdminManageEmail from "./pages/AdminManageEmail"
 import AdminManageSlack from "./pages/AdminManageSlack"
+
+// --- Search ---
+import SearchResults from "./pages/SearchResults"
 const routes: RouteObject[] = [
   { path: "authenticate", element: <Authenticate /> },
   {
@@ -145,6 +149,9 @@ const routes: RouteObject[] = [
           { path: "admin/session_cover_letter", element: <AdminRoute><SessionCoverLetter /></AdminRoute> },
           { path: "admin/manage_email", element: <AdminRoute><AdminManageEmail /></AdminRoute> },
           { path: "admin/manage_slack", element: <AdminRoute><AdminManageSlack /></AdminRoute> },
+          // Search (deeplink-only — no NAV_CONFIG item)
+          { path: "search", element: <SearchResults /> },
+
           // Catch-all
           { path: "*", element: <JobsHomeRedirect /> },
         ],

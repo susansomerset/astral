@@ -868,6 +868,15 @@ body {
   font-size: 15px;
 }
 
+/* AST-2174: /search results — one titled section per entity type */
+.search-results-section-title {
+  margin: 0;
+  padding: 14px 20px 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--heading);
+}
+
 /* === 8b. Job list candidate actions (AST-312) === */
 
 .job-list-actions {
