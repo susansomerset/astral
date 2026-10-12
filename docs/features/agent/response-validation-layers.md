@@ -653,6 +653,63 @@ Tag style: `# [bug-repro]` on the assertion comment (not docstring first line); 
 - **Bible scope-gate row** (`docs/test-bible/core/agent.md` § QA test manifest — AST-2095 row 4): wording is stale post-`sync(dev)` (true only vs dev+ftr, not vs bare ftr). Test-tree owned by Betty — left for her next bible touch; not a merge blocker.
 - **Coverage AC:** accepted on branch-level proof (100% of AST-2093-added lines/branches); module-wide figure belongs to a full-suite run.
 
+## Bug: AST-2159 — lone-job grade reply with an unknown index retries instead of hard ERROR
+
+Parent: AST-2158 (orphaned Bug mini-parent). Affects Layer 3 bind on the lone-job path (`consult.render_verdict`). Context only, not an approved ancestor: § Bug: AST-2093 above introduced the batch-unique lone-call index (`batch_index_map = {batch_index: job_row}`) whose unknown-index skip this bug trips on. Scope: AST-2159 `## Scope` (`src/core/consult.py` → `render_verdict` only). Parent cites no Canon Scope.
+
+### As-is
+
+`run_consult_task` → `render_verdict` sends one job per agent call, labelled with its batch-unique claim index (a lone row can be `024`). When the model echoes a different index (e.g. `000`), `agent._decode_payload` logs `meteorite_grade_get skipped — index 0 not in this batch` and drops the line without a `decode_failures` entry. `render_verdict` then finds no `j0` and no matching decode failure, so it falls to `_fail("decoded payload has no job row for this astral_job_id")` and moves the job straight to terminal `ERROR_METEORITE_GRADE_GET` on the first miss.
+
+### To-be
+
+A lone-job reply that yields no bindable row and no decode failure for the job is routed like a batch "omitted from response": `_consult_batch_fail_dest` picks the destination (primary → retry holding, already-retry → error state), `_log_fail_dest` logs it with reason `omitted from response`, and the job transitions there. A mis-echoed index on a one-job call never lands a job in `ERROR_*` by itself.
+
+### Repro
+
+Fixture, no DB. Job `J24` in state `METEORITE_PASSED_DO`, `render_verdict("meteorite_grade_get", "J24", ctx, batch_index=24)`, with `do_task` stubbed to return `{"success": True, "parsed_response": {"jobs": []}}`. That is exactly what `_decode_payload` yields for payload `000|THA4|QQB3` under `batch_index_map={24: job}`: unknown index, skipped, no `decode_failures`.
+
+- Today: `J24` → `error_state_for("meteorite_grade_get")` (`ERROR_METEORITE_GRADE_GET`) and ERROR log `decoded payload has no job row for this astral_job_id`.
+- After the fix: `J24` → `retry_of("METEORITE_PASSED_DO")` and a WARNING log `J24 -> <retry holding> [omitted from response]`. The return value is `{"success": False, "to_state": <retry holding>, "error": "omitted from response"}`.
+- Same stub, with `J24` already in `retry_of("METEORITE_PASSED_DO")`: → `ERROR_METEORITE_GRADE_GET`, one hop, ERROR log `[omitted from response]`.
+
+### Root cause
+
+AST-2093's decode contract says an unknown-index line is skipped, and the entity it meant "falls out as omitted from response and retries" (comment at `agent._decode_payload`'s skip). `_run_batch_consult` honours that: `missing` ids go through `_consult_batch_fail_dest`. `render_verdict` does not. Its `not isinstance(j0, dict)` branch only retry-routes when a `decode_failures` row names the job. Any other miss falls through to the generic `_fail`, which jumps straight to `error_state` with no retry hop.
+
+### Proposed change
+
+**`src/core/consult.py` — `render_verdict`, the `if not isinstance(j0, dict):` block (currently ends `return _fail("decoded payload has no job row for this astral_job_id")`).**
+
+1. Keep the `mine` lookup over `parsed["decode_failures"]` exactly as it is.
+2. Remove the `if mine:` guard and the trailing `_fail(...)`. In their place, route both cases through one block:
+   - `reason = (mine.get("reason") or "decode failure") if mine else "omitted from response"`
+   - `dest = _consult_batch_fail_dest(job.get("state"), error_state, agent_task)`
+   - `_log_fail_dest(astral_job_id, dest, reason)`
+   - `if dest: _transition_job_state_for_task(agent_task, [astral_job_id], dest)`
+   - `return {"success": False, "to_state": dest, "error": reason}`
+3. Update the block's inline comment so it says a missing row with no decode failure is an omitted entity, retried the same way as the batch path. The comment should also say that this is how AST-2093's unknown-index skip shows up on a lone call.
+
+When `mine` is present, the behaviour is byte-identical to today: same reason, dest, log, transition, and return. Only the no-`mine` case changes, from `_fail` (always `error_state`, `_warn_job` log) to the retry router. No change to `_fail` itself, which other `render_verdict` branches still use. No new states, fields, or helpers.
+
+Out of scope (Susan did not check AST-2158 step 4): binding a lone mis-indexed line to the lone entity. `agent._decode_payload` stays untouched (AST-2158 step 2). Jobs already in `ERROR_METEORITE_GRADE_GET` from the reported batch are not reset.
+
+### Blast radius
+
+- `render_verdict` callers: `run_consult_task` lone/per-job path and the dispatcher single-entity tally. Both read `to_state` and `success` from the return value. A retry-holding `to_state` with `success=False` is already a shape they get from the `decode_failures` / `PROVIDER_CALL_BUDGET` / `IncompleteGradeSetError` branches, so there is no new shape.
+- Every task that runs through `render_verdict` (grade_do/get/like, meteorite aliases, any encoded consult task) gets the same retry-first routing on a no-row reply, not only `meteorite_grade_get`. When `error_state` is unset and the state has no `retry_state`, `dest` is `None`: no transition, same as today's `_fail` with no `error_state`.
+- Log level/text shifts from `_warn_job` WARNING `… -> ERROR_… [decoded payload has no job row …]` to `_log_fail_dest`: WARNING to the retry holding, ERROR to the terminal state. Reason is `omitted from response`.
+- Tests: any component test that asserts the `decoded payload has no job row` string or an immediate `error_state` for a lone no-row reply will flip. That is Betty's call at fix-board (test-tree owned).
+- Multi-row batch path (`_run_batch_consult`) and `_decode_payload` are not touched.
+
+### What must still hold
+
+- AST-2093: unknown-index lines are still skipped (never bound to a guessed entity). Duplicate-index lines still become one `decode_failures` row. Multi-row batches route omitted/decode-failed entities exactly as today.
+- `render_verdict` `decode_failures` branch: same reason string (`mine["reason"]` or `decode failure`), same destination, same log, same return.
+- Single-row fallback (`len(jobs_parse) == 1` binds the lone row) and the top-level `grades` fallback are unchanged. Neither reaches the changed branch.
+- One-hop retry (AST-642/AST-2008): primary → retry holding → error state. A second miss from the retry holding never loops back to retry.
+- `_fail` keeps serving job-not-found, company-not-found, live-content, do_task-failure and `ValueError` config branches unchanged.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
