@@ -1579,20 +1579,20 @@ async def render_verdict(
 
     if not isinstance(j0, dict):
         # Confidence / trailing-content misses are per-entity retries, same as the batch path.
+        # No row and no decode failure = omitted entity (e.g. AST-2093's unknown-index skip when the
+        # model echoes the wrong index on a lone call) — retried like batch "omitted from response".
         mine = None
         if isinstance(parsed, dict):
             for fail in parsed.get("decode_failures") or []:
                 if isinstance(fail, dict) and fail.get("astral_job_id") == astral_job_id:
                     mine = fail
                     break
-        if mine:
-            dest = _consult_batch_fail_dest(job.get("state"), error_state, agent_task)
-            reason = mine.get("reason") or "decode failure"
-            _log_fail_dest(astral_job_id, dest, reason)
-            if dest:
-                _transition_job_state_for_task(agent_task, [astral_job_id], dest)
-            return {"success": False, "to_state": dest, "error": reason}
-        return _fail("decoded payload has no job row for this astral_job_id")
+        reason = (mine.get("reason") or "decode failure") if mine else "omitted from response"
+        dest = _consult_batch_fail_dest(job.get("state"), error_state, agent_task)
+        _log_fail_dest(astral_job_id, dest, reason)
+        if dest:
+            _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+        return {"success": False, "to_state": dest, "error": reason}
 
     row_for_apply = dict(j0)
     row_for_apply["astral_job_id"] = astral_job_id

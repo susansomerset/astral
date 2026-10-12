@@ -1618,6 +1618,32 @@ AC3 is an `rg` check in the manifest. Primary manifest: **`docs/test-bible/core/
 
 **Kept:** `TestPrepLiveContentBranches::test_returns_jd_when_website_pages_have_no_content` (`[index=000]: jd text`, default position) — green unchanged.
 
+### AST-2159 · AST-2158 (bug-repro — lone render_verdict no-row → retry fail-dest; test gap AST-2161)
+
+**AST-2159** (`a18695932`): in `render_verdict`, a reply that binds no row and carries no `decode_failures` entry for this job is an omitted entity. It routes like the batch path: `_consult_batch_fail_dest` (primary → retry holding, holding → `error_state`, one hop) → `_log_fail_dest`, reason `omitted from response`, instead of the hard `_fail` (`decoded payload has no job row …`). The job's own decode failure keeps its reason. This is how AST-2093's unknown-index skip shows up on a lone call (`{"jobs": []}`; decode half pinned in [`agent.md`](agent.md) § AST-2093). Plan: `docs/features/agent/response-validation-layers.md` § Bug: AST-2159.
+
+| Area | Component tests (`tests/component/core/test_consult.py::TestRenderVerdict`) |
+| --- | --- |
+| **[bug-repro]** `meteorite_grade_get` J24 `METEORITE_PASSED_DO`, `{"jobs": []}` → `METEORITE_PASSED_DO_RETRY`, `omitted from response`, one transition + one `_log_fail_dest` | **`test_bug_repro_lone_no_row_primary_goes_to_retry_holding`** |
+| **[bug-repro]** same from `METEORITE_PASSED_DO_RETRY` → `ERROR_METEORITE_GRADE_GET` (one hop), reason + log asserted | **`test_bug_repro_lone_no_row_retry_holding_goes_to_error`** |
+| `decode_failures` for another id (`J99`/`r99`) is not this job's → still `omitted from response` (branch `1587->1586`) | **`test_lone_no_row_other_id_decode_failure_is_omitted`** |
+
+**Kept:** `TestRenderVerdict::test_fails_when_job_row_is_missing`, `TestRenderVerdict::test_fails_when_grades_are_missing` (stateless jobs → `error_state` on either tree), `TestAst1155IncompleteGradeRetry::test_render_verdict_bad_confidence_first_strike_to_retry` — green unchanged.
+
+**Integration:** none.
+
+**QA test manifest (test-fix):**
+
+1. **[bug-repro]** `tests/component/core/test_consult.py::TestRenderVerdict::test_bug_repro_lone_no_row_primary_goes_to_retry_holding`, `tests/component/core/test_consult.py::TestRenderVerdict::test_bug_repro_lone_no_row_retry_holding_goes_to_error`.
+2. `pytest tests/component/core/test_consult.py::TestRenderVerdict tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry` → **28 passed**, 0 new failed vs `origin/ftr/AST-2158-lone-grade-unknown-index-retry`.
+3. Hunk coverage: #2 with `--cov=src.core.consult --cov-branch` → no missing line inside `git diff -U0 66b158c6c a18695932 -- src/core/consult.py`; `1587->1586` not partial. `1585->1590` (non-dict `parsed`) and `1593->1595` (`dest` None) stay partial — both predate AST-2159.
+4. `git diff origin/ftr/AST-2158-lone-grade-unknown-index-retry -- src/ data/` empty (test-tree only).
+
+**Red/green record (qa-fix, test-gap sibling — product fix already on ftr):**
+
+- **Red** — `src/core/consult.py` from pre-fix `66b158c6c` swapped in temporarily (restored after): 3 new fail, 18 existing `TestRenderVerdict` pass. Repro: `{'to_state': 'ERROR_METEORITE_GRADE_GET'} != {'to_state': 'METEORITE_PASSED_DO_RETRY'}`, `{'error': 'decoded payload has no job row for this astral_job_id'} != {'error': 'omitted from response'}`; holding case red on the reason (`'decoded payl…' == 'omitted from response'`).
+- **Green** — sub tip (src identical to ftr `1f71039ed`): 3 new passed; manifest #2 28 passed; hunk coverage (#3) clean.
+
 ### AST-2125 · AST-2116 (bug-repro — missing rubric grade description fails only that job; X never fails hydrate)
 
 **AST-2124** (`0d01e20d2`): `_lookup_rubric_reason_for_grade` returns the rubric's X text or the fixed `_X_NO_SIGNAL_REASON` (`"No signal"`) for `X`, never raising. A letter grade with no description raises `MissingRubricDescriptionError` (a `ValueError` subclass, same message). An unknown vector or an empty rubric stays a plain `ValueError`, so the batch-wide AST-1839 route still applies. `_hydrate_response_jobs_grade_reasons` returns `{astral_job_id: reason}` for misses and runs after id binding. `_run_batch_consult` sends each miss to `cfg["fail_state"]` with one WARNING `<id> -> <fail_state> [hydrate: …]`, with no retry and no `bad_grades`; siblings go through `process_fn`. `_apply_render_verdict_decoded_job` does the same for a single row, with no grade save. Roster side: **`core/roster.md`** (AST-2125). Decode side: **`core/agent.md`** (AST-2125).

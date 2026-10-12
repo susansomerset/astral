@@ -1419,6 +1419,53 @@ class TestRenderVerdict:
         assert out["success"] is True
         assert save.call_args.args[1]["do_score"] == out["score"]
 
+    # AST-2159 (test gap AST-2161): a lone stateful job whose reply binds no row and carries no
+    # decode_failures entry of its own is an omitted entity — one-hop retry via _consult_batch_fail_dest,
+    # never the hard _fail. {"jobs": []} is what _decode_payload yields for `000|…` under {24: job}
+    # (unknown index skipped, AST-2093). Stateless jobs can't tell the two routes apart; these can.
+    async def _run_no_row(self, monkeypatch: pytest.MonkeyPatch, state: str, parsed: dict[str, Any]) -> tuple:
+        job = {"astral_job_id": "J24", "company": "co", "job_data": {}, "state": state}
+        transition = MagicMock()
+        logged: list = []
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "_log_fail_dest", lambda aid, dest, reason: logged.append((aid, dest, reason)))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(return_value={"success": True, "parsed_response": parsed, "timesheet": {}}),
+        )
+        out = await consult_mod.render_verdict("meteorite_grade_get", "J24", batch_index=24)
+        return out, transition, logged
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_lone_no_row_primary_goes_to_retry_holding(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2159: pre-fix → ERROR_METEORITE_GRADE_GET [decoded payload has no job row …].
+        out, transition, logged = await self._run_no_row(monkeypatch, "METEORITE_PASSED_DO", {"jobs": []})
+        assert out == {"success": False, "to_state": "METEORITE_PASSED_DO_RETRY", "error": "omitted from response"}
+        transition.assert_called_once_with("meteorite_grade_get", ["J24"], "METEORITE_PASSED_DO_RETRY")
+        assert logged == [("J24", "METEORITE_PASSED_DO_RETRY", "omitted from response")]
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_lone_no_row_retry_holding_goes_to_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-2159: one hop — second miss from the holding lands terminal. Pre-fix dest is the
+        # same, so the red comes from the reason + _log_fail_dest assertions.
+        out, transition, logged = await self._run_no_row(monkeypatch, "METEORITE_PASSED_DO_RETRY", {"jobs": []})
+        assert out["to_state"] == "ERROR_METEORITE_GRADE_GET"
+        assert out["error"] == "omitted from response"
+        transition.assert_called_once_with("meteorite_grade_get", ["J24"], "ERROR_METEORITE_GRADE_GET")
+        assert logged == [("J24", "ERROR_METEORITE_GRADE_GET", "omitted from response")]
+
+    @pytest.mark.asyncio
+    async def test_lone_no_row_other_id_decode_failure_is_omitted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Another entity's decode failure is not this job's — reason stays "omitted from response", never r99.
+        parsed = {"jobs": [], "decode_failures": [{"astral_job_id": "J99", "pos": 0, "reason": "r99"}]}
+        out, transition, logged = await self._run_no_row(monkeypatch, "METEORITE_PASSED_DO", parsed)
+        assert out == {"success": False, "to_state": "METEORITE_PASSED_DO_RETRY", "error": "omitted from response"}
+        transition.assert_called_once_with("meteorite_grade_get", ["J24"], "METEORITE_PASSED_DO_RETRY")
+        assert logged == [("J24", "METEORITE_PASSED_DO_RETRY", "omitted from response")]
+
 
 class TestRenderPassFailDebug:
     def test_logs_each_fail_and_pass_branch(self, enable_debug_log: None) -> None:
