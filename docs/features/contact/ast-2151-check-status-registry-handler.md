@@ -559,3 +559,100 @@ context_tokens≈22000
 ## Test delivery — AST-2169
 
 Docs-acceptance on this ref: no test-tree delivery on `sub/AST-2167/AST-2169-check-status-ownership-candidate-id`. Betty's fix-board `[board-betty] TESTS: REVISE` routed the fixture updates and the null-company `[bug-repro]` coverage to sibling test-gap [AST-2171](https://linear.app/astralcareermatch/issue/AST-2171), which is blocked by this ticket and lands its own `test(AST-2171)` on `ftr`.
+
+## Bug: AST-2171 — Contact job-read ownership-by-candidate_id tests + bible (test gap for AST-2169)
+
+**Linear:** [AST-2171](https://linear.app/astralcareermatch/issue/AST-2171) (test-gap sibling of [AST-2169](https://linear.app/astralcareermatch/issue/AST-2169), parent [AST-2167](https://linear.app/astralcareermatch/issue/AST-2167))
+**Publish ref:** `origin/sub/AST-2167/AST-2171-check-status-ownership-candidate-id-tests`
+**Who lands it:** Betty (qa-fix). This ticket is test-tree only. Engineers do not edit `tests/` or `docs/test-bible/**`, so this block says *what* to land, and Betty lands it as `test(AST-2171)`.
+
+### As-is
+
+On `origin/ftr/AST-2167-…` @ `376138934` (AST-2169's product fix merged), 9 component nodes are red:
+
+- `TestAst1518ContactTaskReads` (2): `test_contact_task_get_job_by_pattern_happy_and_errors`, `test_contact_task_get_job_data_ownership`.
+- `TestAst2151ContactCommandCheckStatus` (7): `test_ac3_one_match_reply_with_clocks_and_encoded_deeplink`, `test_ac4_several_matches_list_both_titles_and_links`, `test_ac5_other_candidates_job_excluded`, `test_ac7_no_origin_replies_without_links_one_warning[unset]` and `[blank]`, `test_unparseable_timestamps_render_dash[none]` and `[garbage]`.
+
+Two more nodes stay green but now test the wrong thing:
+
+- `TestAst1518ContactTaskReads::test_style_d_debug_on_job_data` only asserts the `found`/`recorded` Style D outcomes. The refused path emits the same two, so the test silently switched from the happy path to the refusal.
+- `TestAst2151ContactCommandCheckStatus::test_ac6_no_match_returns_no_match_text[listed_not_owned]` treats a company-less row (`"company": ""`) as not owned *because* it has no company. That is the old rule. It still passes only because the row also has no `candidate_id`.
+
+No node covers the AST-2169 repro: a meteorite row with `company: None` that is owned by the sender through `candidate_id`. The bible still describes company→`candidate_id` ownership (§ AST-1518, § AST-2151).
+
+### To-be
+
+- Every node in both classes is green on the AST-2169 tip. Ownership in their fixtures comes from `job["candidate_id"]` only, and no fixture stubs `get_company` to make a job owned.
+- Cross-candidate refusal is asserted on all three paths (`contact_command_check_status`, `contact_task_get_job_by_pattern`, `contact_task_get_job_data`) by varying `job["candidate_id"]`.
+- New `[bug-repro]` nodes are green on the tip and red on the pre-fix tree.
+- `docs/test-bible/core/tracker.md` § AST-1518 and § AST-2151 describe `job.candidate_id` ownership, and a new AST-2169/AST-2171 block lists the repro nodes plus a manifest.
+
+### Repro
+
+Pre-fix tree for the red-before proof: `src/core/tracker.py` at `74526b8c0^` (`1a9f2a3c6`, the last commit before AST-2169's `code()`). Swap the file in, run the new nodes, and restore it:
+
+```bash
+git show 74526b8c0^:src/core/tracker.py > src/core/tracker.py
+./scripts/testing/run_component_tests.sh "tests/component/core/test_tracker.py::TestAst1518ContactTaskReads::test_ast2169_meteorite_job_owned_by_candidate_id" "tests/component/core/test_tracker.py::TestAst2151ContactCommandCheckStatus::test_ast2169_meteorite_job_ownership_by_candidate_id" -q   # expect red
+git checkout HEAD -- src/core/tracker.py
+```
+
+Running `test_tracker.py` / `test_contact.py` rewrites `data/contact_estelle_activity.json` in the worktree (seen at AST-2169 test-fix). Restore it with `git checkout -- data/contact_estelle_activity.json` before committing. Do not commit it.
+
+### Root cause
+
+The fixtures were written for AST-1518's rule. Back then job rows had no `candidate_id`, so the tests made a job owned by stubbing `get_company` to return `{"candidate_id": "c1"}` for the job's `company`. AST-2169 moved ownership to `job["candidate_id"]`. That makes every fixture row (none of which carries `candidate_id`) look not-owned: owned-path assertions go red, and refusal assertions pass for the wrong reason.
+
+### Proposed change
+
+All edits are in `tests/component/core/test_tracker.py` and `docs/test-bible/core/tracker.md`, which matches the ticket's Scope. No `src/` or `data/` change.
+
+**1. `TestAst1518ContactTaskReads` (about line 2268)**
+
+- `_job(self, jid="j1", company="acme", title="Engineer", candidate_id="c1")`: add the `candidate_id` parameter and put `"candidate_id": candidate_id` on the returned row. Change `company: str` to `company: str | None` so the repro can pass `None`. The file imports only `Any, Dict, List` from `typing` and already uses `str | None` in `test_ac7`, so don't add an `Optional` import.
+- `test_contact_task_get_job_by_pattern_happy_and_errors`: delete the `get_company` monkeypatch. The default `_job()` is now owned by `c1`. All other assertions stay the same.
+- `test_contact_task_get_job_data_ownership`: delete both `get_company` monkeypatches. For the refusal half, re-patch `get_job` to return `self._job(candidate_id="other")` for `"j1"`, and assert `refused_cross_candidate` as today. Keep the `not_found` and `no_candidate` assertions.
+- `test_style_d_debug_on_job_data`: delete the `get_company` monkeypatch, capture `out = tracker_mod.contact_task_get_job_data("c1", "j1", debug=True)`, and add `assert out["ok"] is True` so the Style D assertion is pinned to the happy path. The existing outcome and `func` assertions stay.
+- `test_contact_task_get_company_data` is **unchanged**. Company ownership is still company→`candidate_id`, and AST-2169 did not touch it.
+- **New `[bug-repro]` `test_ast2169_meteorite_job_owned_by_candidate_id`.** `_patch_story`; `meteor = self._job("m1", company=None, title="Platform Engineer")` (owner `c1`); `rival = self._job("m1", company=None, title="Platform Engineer", candidate_id="c2")`. Patch `tracker_mod.get_company` with `MagicMock(side_effect=AssertionError("ownership must not read company"))`. Then:
+  - `get_job` → `meteor`: `contact_task_get_job_data("c1", "m1")` gives `ok is True` and `result["astral_job_id"] == "m1"`.
+  - `list_jobs` → `[meteor]`: `contact_task_get_job_by_pattern("c1", "Platform")` gives `ok is True`.
+  - `get_job` → `rival`: `contact_task_get_job_data("c1", "m1")["error"] == "refused_cross_candidate"`.
+  - `list_jobs` → `[rival]`: `contact_task_get_job_by_pattern("c1", "Platform")["error"] == "refused_cross_candidate"`. The stub ignores `list_jobs` scoping on purpose, so this exercises the defense-in-depth gate.
+
+**2. `TestAst2151ContactCommandCheckStatus` (about line 2394)**
+
+- `_job(jid, title, company, state="RECOMMENDED", candidate_id="c1")`: add the parameter and put `"candidate_id": candidate_id` on the row. Type `company` as `str | None`.
+- `_stub(self, monkeypatch, jobs)`: **drop the `owners` parameter**. Replace the `get_company` owner-map lambda with `MagicMock(side_effect=AssertionError("ownership must not read company"))`, in the same spirit as the existing write guards in `_stub`. Update the docstring to say `list_jobs → jobs; ownership from job candidate_id; company never read; contact tz; any job write fails the test.`
+- Remove the `owners` argument from every `_stub(...)` call: `test_ac3`, `test_ac4`, `test_ac5`, `test_ac6`, `test_ac7`, `test_no_candidate_returns_no_reply_text`, `test_unparseable_timestamps_render_dash`. Default rows are owned by `c1`, so `ac3`/`ac4`/`ac7`/`unparseable` go green with no other change.
+- `test_ac5_other_candidates_job_excluded`: `theirs = self._job("rival_com:x9", "Acme", "rival", candidate_id="c2")`. The assertions stay the same. Update the leading comment to say the rival's job is excluded by its `candidate_id`.
+- `test_ac6_no_match_returns_no_match_text`: drop `owners` from the parametrize tuple and the signature, so it parametrizes `jobs` only, with the same ids `["none_listed", "listed_not_owned"]`. For `listed_not_owned`, give both rows `"candidate_id": "c2"`: the employer row (`"company": "rival"`) and the company-less row (`"company": None`). Change the comment to `# Matches, but every hit is another candidate's (employer or company-less) → still no match.`
+- **New `[bug-repro]` `test_ast2169_meteorite_job_ownership_by_candidate_id`**, parametrized `("owner", "expect_match")` over `[("c1", True), ("c2", False)]` with ids `["owner", "other_candidate"]`. The row is `self._job("6775db61-x", "Platform Engineer", None, state="CANDIDATE_SKIPPED", candidate_id=owner)` with `job_link = "https://www.dice.com/job-detail/6889a7c5-d9c5-49e8-9598-ddaf1142df0a"` (override the fixture's link). Then `_stub(monkeypatch, [job])`, set the origin env to `self.DOMAIN`, and call `contact_command_check_status("c1", <that job_link>, source_id="C1:1.0")`.
+  - `owner`: `ok is True` and `error is None`; `reply_text` contains `"Platform Engineer"`, `"CANDIDATE_SKIPPED"`, and `"/jobs/detail/6775db61-x"`. Exactly one `/jobs/detail/`, so it's the single-match template.
+  - `other_candidate`: the result equals `{"ok": False, "meteorite_id": None, "error": "unmatched_pattern", "reply_text": self._meta()["no_match_reply_text"]}`.
+
+⚠️ **Decision: `get_company` patched to raise in both repros and in `_stub`.** This is the read-only-guard idiom `_stub` already uses for writes. It pins AST-2169's "What must still hold: the helper stays a pure function of the row" invariant, and it is also what makes the AST-2151 pre-fix run fail loudly instead of returning `False` silently. **Alternative:** omit the guard (no `get_company` patch at all). The repros still go red pre-fix (`company: None` → `False`), but nothing would catch a future company lookup creeping back into ownership. Betty can take either option; the guard costs one line per site.
+
+⚠️ **Decision: repros live in the two existing classes, not a new `TestAst2169…` class.** They reuse `_job` / `_stub` / `_patch_story` instead of duplicating fixtures. The bible block maps them by node id. **Alternative:** a standalone `TestAst2169JobOwnershipByCandidateId` class with its own fixtures, which gives a cleaner bible row but about 30 duplicated lines.
+
+**3. `docs/test-bible/core/tracker.md`**
+
+- § AST-1518 (about line 478): replace `company→\`candidate_id\` ownership` with `` `job.candidate_id` ownership (AST-2169; was company→`candidate_id`) ``.
+- § AST-2151 (about line 898): after "with `_job_owned_by_candidate` as a filter over every hit", add `(ownership = the row's own \`candidate_id\`, AST-2169; \`company\` may be NULL)`. In the AC 6 table row, change "listed but not owned or company-less" to "listed but every hit is another candidate's (employer or company-less)". In **Broken / obsolete**, add one line: `AST-2171: fixtures moved from \`get_company\` owner stubs to \`job["candidate_id"]\`; \`_stub\` no longer takes \`owners\` and fails on any \`get_company\` call.`
+- **New block** after the § AST-2151 manifest: `### AST-2171 · AST-2167 (gap — AST-2169 job ownership by candidate_id)`. Include the parent/publish/plan line, a one-sentence summary, a table mapping `[bug-repro]` nodes to what they prove (`TestAst1518ContactTaskReads::test_ast2169_meteorite_job_owned_by_candidate_id` for `get_job_data` / `get_job_by_pattern` owner ok and other refused; `TestAst2151ContactCommandCheckStatus::test_ast2169_meteorite_job_ownership_by_candidate_id` (2) for check-status single match / no-match), and **Integration:** none. Then add `## QA test manifest — AST-2171`:
+  1. `./scripts/testing/run_component_tests.sh tests/component/core/test_tracker.py::TestAst1518ContactTaskReads tests/component/core/test_tracker.py::TestAst2151ContactCommandCheckStatus -q` should give **19 passed** (7 + 12). Betty confirms the count after landing.
+  2. Red-before: the Repro command above, with the two repro node ids, should give **2 failed, 1 passed** on the pre-fix tracker. The 1518 repro and check-status `[owner]` go red. `[other_candidate]` passes either way, because the old rule also refused a company-less row.
+  3. No-regression: `test_tracker.py` + `test_contact.py` on the tip should give **24 failed**, exactly the pre-existing set recorded at AST-2169 test-fix and none in these two classes.
+
+### Blast radius
+
+- Only the two test classes and the two bible sections named above. `_stub` and `_job` are class-local, so no other class shares them.
+- `TestAst1515*` / `TestAst2035*` in `test_contact.py` mock contact dispatch above the tracker handlers, so they are not affected.
+- `test_contact_task_get_company_data` and `test_get_job_by_pattern_exact_one` are untouched.
+- The 24 pre-existing reds on `ftr` (AST-733, 551, 552, 562, 997, 1523, 1693 in `test_tracker.py`; AST-1073, 1101, 1207, 1515 in `test_contact.py`) are out of scope per Boundaries.
+
+### What must still hold
+
+- AST-2151 AC coverage: one / several / none / rival-excluded / no-origin single WARNING / no-candidate / dash timestamps, plus the read-only write guards in `_stub`. Every existing node id stays, and only the `test_ac6` parametrize signature loses `owners`.
+- AST-1518 coverage: ambiguous / unmatched / `no_candidate` / `not_found` / `refused_cross_candidate` / hydration (`agent_story`) / Style D found+recorded.
+- No `src/` or `data/` edits on this ref.
