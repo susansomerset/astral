@@ -409,3 +409,61 @@ AC1→S1+S3; AC2→S3; AC3→S1; AC4→S2; AC5→S1; AC6→S1+S2; AC7→S1; AC8 
 **Notes:**
 - The only `LIMIT` text in `search_entity_rows` is its docstring ("no LIMIT"); the SQL has none (AC 6).
 - Joan's Canon Scope gap note (`astral.config.config-source-of-truth`, `astral.layers.import-direction`) is for Archie; not acted on here.
+
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2173  
+**Publish ref:** `bb3236f02568a97acf8a3e79745847fe5a85e496` (`origin/sub/AST-2168/AST-2173-search-backend`)  
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`  
+**Overall:** DISCUSS  
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | C | 2 | `src/core/search.py`: per-type loop begin/end only; no `Calling search_entity_rows` / `Response from search_entity_rows` around the data read (plan/build documented omission). |
+| stat.logging.error | A | | |
+| stat.logging.info.api | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `stat.logging.debug` C/2; `stat.logging.error` A; `stat.logging.info.api` A. Implementation matches the plan’s loop-only debug choice; no plan-stage vs diff downgrade.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** `src/core/search.py` (~L47–48), `database.search_entity_rows` call site  
+- **Finding:** `stat.logging.debug` Statement requires callee in/out (`Calling <fn>: …` / `Response from <fn>: <full response string>`) at logic joints. The diff implements only the outer loop begin/end pair per `SEARCH_ENTITY_CONFIG` key; there is no debug around the `database.search_entity_rows` invocation. Resolution §3 (“huge response”) requires logging the whole string, not omitting the pair. `src/data/database.py` correctly has no debug in the new read.  
+- **@susan:** Keep the documented loop-only debug for universal search (avoid serializing full `job_data` / `company_data` rows in `app_log`), or require callee in/out per statute (full row dicts as the response string)?  
+- **Default:** Accept loop-only; no logging change on `resolve-child` (status quo matches plan, build smoke, and Joan plan discuss).
+
+### advisory
+
+- **Canon Scope (off-list, unchanged from Joan plan validate):** `astral.config.config-source-of-truth` and `astral.layers.import-direction` plainly touch `SEARCH_ENTITY_CONFIG` placement and `core`→`data` imports but are not on the frozen list — Archie-only; not scored this pass.  
+- **Plan/build deviations (documented in issue doc):** built-in `list`/`dict` annotations vs plan `typing` types; `api_search.py` I001 import order; `server.py` ruff 28→30 from sibling `E402` pattern; TRY401 on `exc` in `logger.exception` body (matches `api_jobs` idiom). Behavior-neutral per build stub.  
+- **Sibling test carry:** none for product scope — `tests/**` and `docs/test-bible/**` in the diff belong to this child’s Tests Passed manifest, not a sibling product leak.
+
+### fix-now
+
+(none)
+
+## What's solid
+
+- Delivers planned five-file footprint: `SEARCH_ENTITY_CONFIG` / `SEARCH_JOB_MODAL_BY_LIST` (+ assert), `search_entity_rows` (candidate scope, `ESCAPE` literals, `NULLS LAST`, no SQL `LIMIT`), `search_entities` tiering + `_jobs_list` parity with Jobs views, `GET /api/search` + blueprint registration.  
+- `stat.logging.error`: single `logger.exception` at route with live facts and product next step; `server_error_from_exception` does not double-log (`src/ui/api_errors.py`).  
+- `stat.logging.info.api`: idempotent GET — no `logger.info` on success path; docstring states intent.  
+- SQL placeholder count for `search_entity_rows` matches bind tuple (`2 × len(fields) + 1`).
+
+## Recommended actions (Chuckles / downstream — not Radia)
+
+- Append this artifact to `docs/features/interface/ast-2173-search-backend-config-reads-core-route.md`, `docs()` push, post slim upshot `--as radia`, move **Review Posted**.  
+- Route **DISCUSS** on debug: if Susan affirms **Default**, `resolve-child` can clear the discuss without code; if she rejects loop-only, add callee debug in `search.py` only (effort 2).  
+- Do not amend frozen Canon Scope in this pass; parent scope gap is Archie’s channel.
