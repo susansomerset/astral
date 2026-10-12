@@ -105,3 +105,54 @@ Execute steps in order; do not add files, state, CSS, or helpers beyond the abov
 ## Estimate
 
 Confirm Chuckles estimate: 1 — agree
+
+## Joan validate
+
+[plan-rubric]
+
+**Ticket:** AST-2170  
+**Overall:** APPROVED  
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768  
+**Publish ref:** `ff5c157bfc1bc575f8cca4cec6ade9c9d653378e` (`origin/sub/AST-2166/AST-2170-select-all`)
+
+## Canon scores
+
+_(empty list — child **Citations:** none; parent **Architectural definition** explicitly records no in-force directives for frontend list pages, same precedent as AST-1968 on this page. Nothing to score; Radia’s column on this ticket is likewise empty.)_
+
+## Traceability
+
+AC1–AC9 → Stage 1 (steps 1–5; plan **AC trace** table); no orphan stages; no unmapped child AC.
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 1 step 5 vs **Execution contract**  
+- **Finding:** Step 5 directs creating `debug/spikes/ast-2170-lint/{before,after}.txt`, while the execution contract says not to add files beyond the described product change.  
+- **Recommendation:** Treat spike outputs as ephemeral local verification only (do not commit), or reword step 5 to run `npm run lint` and compare to a one-off local baseline without implying repo paths—so build-child does not contradict the contract.
+
+### discuss
+
+- **Location:** Canon Scope (intentional empty)  
+- **Finding:** Directives such as `astral.standards.in-scope-only` would apply to any product edit but are not on this child’s frozen list (by parent design).  
+- **Recommendation:** No list change required for this pass; Archie may keep empty frontend canon as precedent or add a minimal frontend slice at a parent if mechanical comparability is desired later.
+
+### acceptable
+
+- **Location:** Stage 1 step 5 (lint vs `origin/dev`)  
+- **Finding:** AC 9 is satisfied by build + lint delta discipline; the quoted anchor lines (`toggleSelect`, `columnCount`, empty `<th aria-label="Select" />`) still match the epic worktree at review time.  
+- **Recommendation:** None—execute as written once spike-path wording is clarified per discuss item above.
+
+### acceptable
+
+- **Location:** Stage 1 decisions (section-scoped uncheck, `aria-label`, no indeterminate)  
+- **Finding:** Plan matches parent functional scope, child **Scope**, and boundaries; multi-section behaviour (uncheck clears only that section’s ids) is correctly argued vs `AdminManageEmail` single-table precedent.  
+- **Recommendation:** None.
+
+### acceptable
+
+- **Location:** R6 self-assessment  
+- **Finding:** Single-stage plan, estimate confirm 1, scope gate explicit; no scope creep into tests, bulk bar, or sibling tickets.  
+- **Recommendation:** None.
+
+context_tokens≈14500
