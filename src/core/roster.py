@@ -89,11 +89,13 @@ logger = get_logger(__name__)
 
 
 def _outage_tag(r: Dict[str, Any]) -> Dict[str, Any]:
-    """AST-2010 / AST-2098: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's
-    total_held) up to the dispatcher; routing unchanged. Empty for every other result."""
+    """AST-2010 / AST-2098 / AST-2140: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's
+    total_held and the provider's error text) up to the dispatcher; routing unchanged. Empty for every other result."""
     if not (is_provider_rate_limit(r) or is_provider_probe_failure(r)):
         return {}
-    return {k: r[k] for k in ("failure_class", "total_held") if k in r}
+    tag = {k: r[k] for k in ("failure_class", "total_held", "error") if k in r}
+    # AST-2140: an entity result can't hold "error" (run_company_task routes on it) — its text rides as outage_error
+    return {**tag, "error": r["outage_error"]} if "outage_error" in r else tag
 
 
 def _entity_info(entity_id: Any, entity_type: str, event: str, detail: Any) -> None:
@@ -2156,6 +2158,7 @@ async def _run_batch_company_prefilter(
                 "failed": 0,
                 "total": len(companies),
                 "failure_class": result.get("failure_class"),
+                "error": result.get("error"),
                 "state_held": True,
                 **({"total_held": len(companies)} if is_provider_probe_failure(result) else {}),
             }
@@ -2424,6 +2427,7 @@ async def company_upshot_batch(
                 "failed": 0,
                 "total": len(rows),
                 "failure_class": result.get("failure_class"),
+                "error": result.get("error"),
                 "state_held": True,
                 **({"total_held": len(rows)} if is_provider_probe_failure(result) else {}),
             }
@@ -2573,7 +2577,7 @@ async def _find_job_page_from_assembled(
                                state=ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], page_option_url=company_website,
                                raw_response={"response_type": "SELECT_FAILED", "error": res.get("error"), "api": res})
             return {"short_name": short_name, "state": ROSTER_CONFIG["locate_job_page"]["no_joblist_state"], "job_site": company_website, "response_type": "SELECT_FAILED",
-                    **_outage_tag(res)}
+                    **{k: v for k, v in _outage_tag(res).items() if k != "error"}, "outage_error": res.get("error")}
 
         pp = res.get("run_next_parent_parsed")
         parsed_top = pp if pp is not None else res.get("parsed_response")  # type: ignore[assignment]

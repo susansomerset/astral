@@ -6431,6 +6431,68 @@ class TestAst2010RateLimitForwarding:
         out = await roster_mod.prefilter_company_batch("batch-2010", companies, debug=False)
         assert "failure_class" not in out
 
+    @pytest.mark.asyncio
+    async def test_prefilter_429_error_reaches_dispatcher_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # [bug-repro] AST-2140 / AST-2137: exhausted prefilter 429 → roster → consult → dispatcher batch-stop
+        # WARNING must print the provider text, not "()". Local imports keep the module header untouched.
+        from src.core import consult as consult_mod
+        from src.core import dispatcher as dispatcher_mod
+
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        companies = [{"short_name": "acme", "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}}]
+        out = await roster_mod.prefilter_company_batch("batch-2140", companies, debug=False)
+        assert out.get("error") == self.ERR  # roster hop
+        monkeypatch.setattr(roster_mod, "prefilter_company_batch", AsyncMock(return_value=out))
+        summary = await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", companies, "b2140", dispatch_task_key="prefilter_company",
+        )
+        assert summary.get("error") == self.ERR  # consult hop
+        # real chain: the company lands on HOMEPAGE_READY_RETRY (retried, not a run error) — same counts pre-fix
+        assert (summary["total_processed"], summary["total_errors"]) == (1, 0)
+        ctx: Dict[str, Any] = {}
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            dispatcher_mod._note_provider_rate_limit_outage(
+                ctx, {"entity_type": "company", "task_key": "prefilter_company"}, summary,
+            )
+        assert ctx["provider_rate_limit_outage"]["error"] == self.ERR
+        msgs = [r.getMessage() for r in caplog.records]
+        assert any(f"still 429 after retries ({self.ERR})" in m for m in msgs)
+        assert not any("still 429 after retries ()" in m for m in msgs)
+
+    @pytest.mark.asyncio
+    async def test_find_job_page_select_failure_carries_outage_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2140 Option B: run_company_task routes on "error", so the entity result carries the text as outage_error
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
+        out = await roster_mod._find_job_page_from_assembled(
+            short_name="acme", company_website="https://cw", assembled_content="asm",
+            page_url_map={1: "https://jobs"}, page_dom_map={1: "<motion/>"}, visible_map={1: ""},
+            nav_links="", browser_context=MagicMock(), debug=False, ctx=None,
+        )
+        assert (out["state"], out["response_type"]) == ("ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "SELECT_FAILED")
+        assert "error" not in out
+        assert out.get("outage_error") == self.ERR
+        assert out["failure_class"] == self.FC
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_select_job_page_forwards_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2140 Option B: outage_error is lifted back to "error" on the summary; routing/counts unchanged
+        inner = {"short_name": "acme", "state": "ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "response_type": "SELECT_FAILED",
+                 "failure_class": self.FC, "outage_error": self.ERR}
+        monkeypatch.setattr(roster_mod, "run_select_job_page_dispatch", AsyncMock(return_value=inner))
+        warn = MagicMock()
+        monkeypatch.setattr(roster_mod, "_warn_company", warn)
+        out = await roster_mod.run_company_task(
+            "PJL_READY", {"short_name": "acme", "state": "PJL_READY"}, "b2140", dispatch_task_key="select_job_page",
+        )
+        assert (out["total_processed"], out["total_passed"], out["total_errors"]) == (1, 1, 0)
+        assert out.get("error") == self.ERR
+        assert out["failure_class"] == self.FC
+        warn.assert_not_called()
+
 
 # Branches: select_job_page balance hold → held (no _warn_company); AST-1189 call-budget
 # state_held (no balance failure_class) still an error on select_job_page + JOBS_FOUND.
@@ -6585,6 +6647,34 @@ class TestAst2098ProbeFailureHold:
         assert summary["total_errors"] == 0
         assert summary["total_held"] == 2
         assert summary["failure_class"] == self._FC
+
+    async def _hold_error_hops(
+        self, monkeypatch: pytest.MonkeyPatch, batch_fn: str, state: str, task_key: str, companies: list,
+    ) -> None:
+        # AST-2140: the hand-built hold dict carries the probe text; consult's normalizer forwards it to the summary
+        from src.core import consult as consult_mod
+
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        monkeypatch.setattr(roster_mod, "do_task", AsyncMock(return_value=self._tagged()))
+        # real batch fn first (both take batch_id, companies), then stubbed with its own output for the consult hop
+        out = await getattr(roster_mod, batch_fn)("b2140", companies)
+        assert out.get("error") == self._ERR  # roster hop
+        monkeypatch.setattr(roster_mod, batch_fn, AsyncMock(return_value=out))
+        summary = await consult_mod.run_consult_task("company", state, companies, "b2140", dispatch_task_key=task_key)
+        assert summary.get("error") == self._ERR  # consult hop
+        assert summary["total_held"] == 2
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_probe_hold_forwards_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        companies = [
+            {"short_name": n, "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}} for n in ("acme", "beta")
+        ]
+        await self._hold_error_hops(monkeypatch, "prefilter_company_batch", "HOMEPAGE_READY", "prefilter_company", companies)
+
+    @pytest.mark.asyncio
+    async def test_company_upshot_probe_hold_forwards_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        companies = [{"short_name": n, "state": "UPSHOT_READY"} for n in ("acme", "beta")]
+        await self._hold_error_hops(monkeypatch, "company_upshot_batch", "UPSHOT_READY", "company_upshot", companies)
 
     @pytest.mark.asyncio
     async def test_find_job_page_probe_hold_keeps_state(self, monkeypatch: pytest.MonkeyPatch) -> None:

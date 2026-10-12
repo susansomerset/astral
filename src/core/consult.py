@@ -63,11 +63,11 @@ logger = get_logger(__name__)
 
 
 def _outage_tag(r: Dict[str, Any]) -> Dict[str, Any]:
-    """AST-2010 / AST-2098: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's
-    total_held) up to the dispatcher; routing unchanged. Empty for every other result."""
+    """AST-2010 / AST-2098 / AST-2140: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's
+    total_held and the provider's error text) up to the dispatcher; routing unchanged. Empty for every other result."""
     if not (is_provider_rate_limit(r) or is_provider_probe_failure(r)):
         return {}
-    return {k: r[k] for k in ("failure_class", "total_held") if k in r}
+    return {k: r[k] for k in ("failure_class", "total_held", "error") if k in r}
 
 
 def _with_log_debug(fn):
