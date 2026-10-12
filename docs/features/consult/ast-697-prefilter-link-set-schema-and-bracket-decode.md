@@ -643,3 +643,24 @@ Test tree and bible only. Betty's board verdict found no existing test broken by
 
 ---
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/7f678ae3e742906d86b46cbaabc2d943/249e00bf-23fc-4226-a279-4f42d7385629/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/7f678ae3e742906d86b46cbaabc2d943/2d0294de-cc0a-481b-ac29-3d0f10b47e14/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/7f678ae3e742906d86b46cbaabc2d943/7cfbe4bf-bb71-49ff-a9b3-6c5d6f48b19d/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2136 (parent) | ftr/AST-2136-job-link-prefix-decode |
+| AST-2138 | sub/AST-2136/AST-2138-job-link-prefix-decode |
+| AST-2139 | sub/AST-2136/AST-2139-job-link-prefix-tests |
+
+**Epic worktree:** `astral-AST-2136/` — one active sub checked out at a time.
