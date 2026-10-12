@@ -225,6 +225,36 @@ class TestWarmThenGather:
         assert out == [{"total_processed": 1}, {"total_processed": 2}]
         sleep.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_bug_repro_stagger_spaces_remaining_starts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """[bug-repro] AST-2149: remaining starts sit i × gather_stagger_seconds apart (0-based), still one gather."""
+        cfg = dict(dispatcher_mod.ASTRAL_CONFIG)
+        cfg["cache_warm_delay_seconds"] = 0
+        cfg["gather_stagger_seconds"] = 1.0
+        monkeypatch.setattr(dispatcher_mod, "ASTRAL_CONFIG", cfg)
+        sleep = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod.asyncio, "sleep", sleep)
+        one = AsyncMock(side_effect=lambda e: {"id": e})
+        out = await dispatcher_mod._warm_then_gather(one, ["a", "b", "c", "d"], dispatcher_mod._SUMMARY_ZERO)
+        # b (i=0) fires right after the warm delay; c and d wait their own offsets — never sleep(0), no warm sleep
+        assert sorted(c.args[0] for c in sleep.await_args_list) == [1.0, 2.0]
+        assert out == [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}]
+        assert one.await_count == 4
+
+    @pytest.mark.asyncio
+    async def test_zero_stagger_adds_no_sleeps(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """AST-2149 guard: gather_stagger_seconds=0 is today's behavior — only the warm-delay sleep."""
+        cfg = dict(dispatcher_mod.ASTRAL_CONFIG)
+        cfg["cache_warm_delay_seconds"] = 1.0
+        cfg["gather_stagger_seconds"] = 0
+        monkeypatch.setattr(dispatcher_mod, "ASTRAL_CONFIG", cfg)
+        sleep = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod.asyncio, "sleep", sleep)
+        one = AsyncMock(side_effect=lambda e: {"id": e})
+        out = await dispatcher_mod._warm_then_gather(one, ["a", "b", "c", "d"], dispatcher_mod._SUMMARY_ZERO)
+        assert [c.args[0] for c in sleep.await_args_list] == [1.0]
+        assert out == [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}]
+
 
 @pytest.fixture
 def batch_id() -> str:
@@ -1697,6 +1727,8 @@ class TestAst1867ProviderBalanceOutage:
         monkeypatch.setattr(dispatcher_mod, "_check_circuit_breaker", mocks["breaker"])
         monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
         monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "cache_warm_delay_seconds", 0)
+        # AST-2149: 3-entity claims would otherwise really sleep the stagger
+        monkeypatch.setitem(dispatcher_mod.ASTRAL_CONFIG, "gather_stagger_seconds", 0)
         monkeypatch.setattr(dispatcher_mod.monitor, "auto_run_error", mocks["auto_run_error"])
         # raising=False: pre-fix monitor has no such attribute — repro must fail on asserts, not setup
         monkeypatch.setattr(

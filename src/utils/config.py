@@ -4943,6 +4943,7 @@ ASTRAL_CONFIG = {
     "dispatch_network_check_url": "https://www.anthropic.com/",
     "dispatch_network_check_timeout_seconds": 30,
     "cache_warm_delay_seconds": 1.0,  # seconds to wait after first concurrent call before firing the rest, allowing cache to commit
+    "gather_stagger_seconds": 1.0,    # seconds between call starts in _warm_then_gather (each mode); calls still overlap; 0 = all at once (AST-2149)
     # Candidate whose live dispatch_task rows are the default schedule template
     # for Manage Candidates "Set dispatch tasks" (AST-873 / AST-875).
     "template_candidate_id": "somerset",

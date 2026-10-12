@@ -121,7 +121,9 @@ def _trigger_state_scored(trigger_state: Optional[str], task_key: str) -> bool:
 
 async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
     """Run the first entity sequentially to warm the cache, wait for cache_warm_delay_seconds,
-    then fire the rest concurrently. Gives Anthropic time to commit the cache entry."""
+    then fire the rest concurrently with starts spaced gather_stagger_seconds apart (AST-2149).
+    Gives Anthropic time to commit the cache entry; the stagger keeps N-1 calls from hitting a
+    provider in the same instant."""
     n = len(entities)
     logger.debug("Beginning gather loop on %s items", n)
     if not entities:
@@ -134,7 +136,14 @@ async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
     delay = ASTRAL_CONFIG.get("cache_warm_delay_seconds", 1.0)
     if delay > 0:
         await asyncio.sleep(delay)
-    rest = await asyncio.gather(*[one_fn(e) for e in entities[1:]], return_exceptions=True)
+    stagger = float(ASTRAL_CONFIG["gather_stagger_seconds"])
+
+    async def _staggered(i, e):
+        # AST-2149: space call starts, not calls — once started, they all overlap
+        if stagger > 0 and i:
+            await asyncio.sleep(i * stagger)
+        return await one_fn(e)
+    rest = await asyncio.gather(*[_staggered(i, e) for i, e in enumerate(entities[1:])], return_exceptions=True)
     cleaned = [first]
     for i, r in enumerate(rest):
         if isinstance(r, BaseException):
