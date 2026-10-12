@@ -1260,3 +1260,5 @@ Same qualitative outcome as AST-2010 fix-board in this plan doc: product code on
 - Orphaned parent: merge `sub/AST-2137/AST-2140-outage-error-detail` to `origin/dev` finish-up-style once Susan accepts UT.
 
 context_tokens≈12000
+
+**Test delivery (AST-2140):** docs-acceptance on this sub — fix-board [board-betty] TESTS: REVISE was routed to gap sibling AST-2141, which lands the test_consult.py L4504 fix and the outage-error coverage.
