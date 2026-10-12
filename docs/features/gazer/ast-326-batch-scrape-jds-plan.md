@@ -527,3 +527,25 @@ context_tokens≈38000
 ```
 [code-rubric] PROCEED (Commit: d1aa98b68) bug-repro guard tests green
 ```
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/7eb811c2150e6bfa79f5da51c5a3a8d7/3bc00949-1163-4a94-83ce-da0496c14bae/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/7eb811c2150e6bfa79f5da51c5a3a8d7/684d14a6-f3c2-44ae-95a3-bd843f2fde31/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/7eb811c2150e6bfa79f5da51c5a3a8d7/c2be6906-a072-4203-96d8-9f24af165a3d/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-2143 (parent) | ftr/AST-2143-jd-self-heal-no-link |
+| AST-2145 | sub/AST-2143/AST-2145-jd-self-heal-guard |
+| AST-2146 | sub/AST-2143/AST-2146-jd-self-heal-tests |
+
+**Epic worktree:** `astral-AST-2143/` — one active sub checked out at a time.
