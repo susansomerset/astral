@@ -1274,3 +1274,22 @@ Same qualitative outcome as AST-2010 fix-board in this plan doc: product code on
 
 ---
 
+
+### Joan fix-board — AST-2141
+
+**Read:** `## Bug: AST-2141` on `origin/sub/AST-2137/AST-2141-outage-error-tests` @ `bda2ca88a` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`). Scope is **test tree + test-bible only** (`tests/component/core/test_consult.py`, `test_roster.py`; `docs/test-bible/core/consult.md`, `roster.md`). **No `src/` changes** — AST-2140 owns product; this gap child lands Betty’s fix-board REVISE from AST-2140.
+
+**Corpus skim:** No Canon Scope on AST-2141 / AST-2137. `docs/canon-index.md` absent on ref; used `canon/docs/DIRECTIVES-DIRECTORY.md`. Overlap check is light because the diff never touches product layers — only whether the **proposed test/bible work** implies amending in-force statutes/patterns.
+
+**The one question:** Does this fix require touching canon?
+
+**Analysis:** Proposed change fixes one whole-dict assert (C1), adds consult/roster nodes for `error` on `_outage_tag` summaries, Option B (`outage_error` on select failure, `error` on select summary), untagged guard (C3), and R1 `[bug-repro]` through `_note_provider_rate_limit_outage` to the WARNING text. Bible rows index those nodes under existing § AST-2010 / AST-2098 blocks. That **locks the AST-2140 contract** Joan already triaged **CANON: OK** — wiring and internal dict keys, not new outage policy, routing rules, or logging-level law.
+
+Nothing in the patch amends `canon/directives/active/**` or asks for a new carve-out in `patt.task.dispatch-retry`, `stat.logging.warning`, or related dispatch/logging statutes. Test-bible edits are manifest documentation; active canon does not treat test-bible pages as operative directives needing statute updates. R1’s direct call to `_note_provider_rate_limit_outage` is test harness only; it does not change production logging obligations.
+
+Same shape as gap siblings (e.g. AST-1848): coverage + bible honesty after a product fix Joan already cleared. No F3 `validate-plan` fix mode for canon.
+
+**Verdict:** **CANON: OK**
+
+---
+
