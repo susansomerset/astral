@@ -3991,3 +3991,39 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** items 1–4 hold. Narrowed runs, not the zero-arg harness.
 
 **Bible shasums (after publish):** `git show origin/sub/AST-2102/AST-2106-grouped-skipped-page:docs/test-bible/frontend/pages.md | shasum`
+
+### AST-2170 · AST-2166 (Select All checkbox on Recommended list)
+
+**Publish:** `origin/sub/AST-2166/AST-2170-select-all`. Plan: `docs/features/interface/ast-2170-select-all-checkbox-on-recommended-list.md`.
+
+`JobsRecommended.tsx` (Jobs → Review and Jobs → Ready) puts a checkbox named **`All jobs in <section label>`** in each section's select `<th>`. Its checked state is derived from the page `selected` set (every row in the section selected). Clicking it when unchecked adds the section's ids; clicking it when checked removes only that section's ids (`setSectionSelected`). The bulk bar, `selectedIds` and `handleBulkDone` are unchanged.
+
+| AC | Source | Component tests |
+| --- | --- | --- |
+| 1 one checkbox in the select header · 7 `/^Select /` still counts rows only | `pages/JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** › **`JobsRecommended — AST-1968 triage upgrades > AST-2170 Select All > AC1/AC7: …`** |
+| 2 Select All → all rows checked, `Skip (n)` / `Applied (n)` · 3 click again → none, no bulk buttons · 8 same on Ready | same | **`… > AC2/AC3/AC8 review: …`**, **`… > AC2/AC3/AC8 ready: …`** |
+| 4 one row ticked → header unchecked → click selects all · 5 header follows manual untick / re-tick | same | **`… > AC4/AC5: …`** |
+| 6 bulk Skip after Select All → header and rows unchecked | same (`handleBulkDone`) | **`… > AC6: …`** (static `jobsViewHandler`, so rows survive the refresh and the cleared state is visible) |
+| 9 build / lint | source | commands below |
+
+The block is nested in the AST-1968 describe to reuse its `renderPage` / `select` / `section` helpers. All 5 new cases are red with `JobsRecommended.tsx` reverted to `origin/dev` and green on the publish tip, so they guard the change.
+
+**Not pinned:** that unchecking clears only its own section's ids. Since AST-1975 each view renders one section, so no page state has two sections to tell the two behaviors apart.
+
+**Broken / obsolete:** none. All 28 existing cases pass on the tip unchanged: the header name does not match `/^Select /`, the `th` keeps `aria-label="Select"`, and column lookups go by header text or `children[2]`.
+
+**Integration:** none — frontend-only; do not invent.
+
+## QA test manifest
+
+1. **Recommended page suite (required, all green):** expect 33 passed (28 existing + 5 AST-2170).
+
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+2. **AC 9:** in `src/ui/frontend`, `npx tsc -b --noEmit` and `npm run build` exit 0; `npm run lint` adds no problem absent on `origin/dev` (plan baseline 29 problems).
+
+**Pass criterion:** items 1–2 hold. Narrowed runs, not the zero-arg harness.
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2166/AST-2170-select-all:docs/test-bible/frontend/pages.md | shasum`

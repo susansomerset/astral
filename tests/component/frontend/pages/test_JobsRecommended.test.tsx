@@ -466,6 +466,62 @@ describe("JobsRecommended — AST-1968 triage upgrades", () => {
     await userEvent.click(likeHeader)
     expect(jobTitles(rec)[0]).toBe("Rec Role")
   })
+
+  // AST-2170: header checkbox per section; nested here to reuse renderPage / select / section.
+  describe("AST-2170 Select All", () => {
+    const header = (label: string) => screen.getByRole("checkbox", { name: `All jobs in ${label}` })
+    const rowBoxes = () => screen.getAllByRole("checkbox", { name: /^Select / })
+
+    it("AC1/AC7: one checkbox in the select header; row-checkbox query still counts rows only", async () => {
+      await renderPage(jobsViewHandler("review", reviewJobs))
+      const firstTh = within(section(/^Review \(/)).getAllByRole("columnheader")[0]
+      expect(within(firstTh).getAllByRole("checkbox")).toHaveLength(1)
+      expect(within(firstTh).getByRole("checkbox")).toBe(header("Review"))
+      expect(rowBoxes()).toHaveLength(reviewJobs.length)
+    })
+
+    // AC8: same component serves Ready, so AC2/AC3 run on both views.
+    it.each([
+      ["review", "Review", reviewJobs, renderReview],
+      ["ready", "Ready", readyJobs, renderReady],
+    ] as const)("AC2/AC3/AC8 %s: header selects all, then none", async (view, label, jobs, render) => {
+      await renderPage(jobsViewHandler(view, jobs), render)
+      await userEvent.click(header(label))
+      expect(header(label)).toBeChecked()
+      for (const box of rowBoxes()) expect(box).toBeChecked()
+      expect(screen.getByRole("button", { name: `Skip (${jobs.length})` })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: `Applied (${jobs.length})` })).toBeInTheDocument()
+      await userEvent.click(header(label))
+      expect(header(label)).not.toBeChecked()
+      for (const box of rowBoxes()) expect(box).not.toBeChecked()
+      for (const name of [/^Skip \(/, /^Applied \(/, /^Generate Artifacts \(/]) {
+        expect(screen.queryByRole("button", { name })).toBeNull()
+      }
+    })
+
+    it("AC4/AC5: partial → header selects all; header follows manual row ticks", async () => {
+      await renderPage(jobsViewHandler("review", reviewJobs))
+      await select("Rec Role")
+      expect(header("Review")).not.toBeChecked()
+      await userEvent.click(header("Review"))
+      for (const box of rowBoxes()) expect(box).toBeChecked()
+      // Untick one → header unchecked; re-tick → header checked again.
+      await select("Rec Role B")
+      expect(header("Review")).not.toBeChecked()
+      await select("Rec Role B")
+      expect(header("Review")).toBeChecked()
+    })
+
+    it("AC6: bulk Skip after Select All leaves header and rows unchecked", async () => {
+      // Static list: rows survive the refresh, so the cleared state is observable.
+      await renderPage(jobsViewHandler("review", reviewJobs))
+      await userEvent.click(header("Review"))
+      await userEvent.click(screen.getByRole("button", { name: `Skip (${reviewJobs.length})` }))
+      expect(await screen.findByText(`Skip: ${reviewJobs.length} succeeded, 0 failed`)).toBeInTheDocument()
+      await waitFor(() => expect(header("Review")).not.toBeChecked())
+      for (const box of rowBoxes()) expect(box).not.toBeChecked()
+    })
+  })
 })
 
 describe("JobsRecommended — AST-1979 Created column", () => {
