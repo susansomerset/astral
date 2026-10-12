@@ -422,3 +422,31 @@ Below, "mock fetch" means `monkeypatch.setattr("src.core.gazer.fetch_jd_batch", 
 - AST-2133 AC7: the long composed JD still skips the self-heal (`test_get_job_data_returns_long_composed_without_self_heal` unchanged and green).
 - AST-2025 AC5 still pins both runners through `_apply_jd_gates` with their own `short_state` / `classified_states`.
 - No `src/` edit on this sub. Test files remain Betty's (`test(AST-2146)` commits).
+
+## Joan fix-board — AST-2146
+
+## Verdict (for Chuckles to post)
+
+```
+[board-joan]  CANON: OK
+```
+
+## Stdout
+
+```text
+AST-2146 board-joan done — CANON: OK.
+```
+
+## Reasoning
+
+AST-2146 is **test tree + test-bible only** (`tests/component/core/test_tracker.py`, `test_gazer.py`, `docs/test-bible/core/tracker.md`, `gazer.md`); **no `src/`** on this sub. The plan-fix patch only revises mocks/assertions and bible rows to match behavior already landed on `ftr` from AST-2145 (`transition=False` coat-check, link-less guard, no illegal transitions, classified-without-ref in no-transition mode).
+
+Joan’s one fix-board question is whether that **proposed work** conflicts with or **requires updating** in-force directives. It does not: tests and bible manifests do not amend `canon/directives/active/` or `canon/statutes/`. The behaviors under test are the same ones already triaged as conforming to `astral.state.job-prior-states-enforced`, `astral.idioms.coat-check-never-store-empty`, and related state/logging idioms on AST-2145. Tracker bible prose (#9) **documents** AST-2145 product rules for Betty/Radia; it is not a canon edit. The single WARNING assertion in #3 exercises product logging already specified in the AST-2145 To-be; gazer explicitly avoids new log-string tests (#8), consistent with existing gazer bible convention.
+
+No new precedent, ambiguous statute intent, or unbounded blast radius — nothing for F3 (`validate-plan` fix mode) or an Archie gate.
+
+---
+
+context_tokens≈24000
+
+**Chuckles routing:** CANON: OK and TESTS: OK. This is a test-gap sibling (test tree only), so Betty lands the planned delta via qa-fix (AST-2057 precedent).
