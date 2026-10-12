@@ -1397,8 +1397,14 @@ def _run_contact_command(
     # Handler anchor stays the inbound thread (or message) so later nags find this thread,
     # independent of where thread_response puts our replies (AST-2072 AC 10).
     anchor_ts = thread_ts or message_ts
-    reply_ts, reply_broadcast = _contact_reply_placement(thread_ts, message_ts)
+    # Every reply this command posts (usage, handler reply, ack) uses the entry's reply_placement
+    # when declared, else thread_response (AST-2144); the hear-ack fallback keeps thread_response.
+    reply_ts, reply_broadcast = _contact_reply_placement(
+        thread_ts, message_ts, meta.get("reply_placement")
+    )
     summary = {"id": command_id, "mode": meta["mode"], "ok": False, "meteorite_id": None, "error": None}
+    # Handler-composed reply (AST-2144); code mode posts it on a hit or a miss. Agent mode ignores it.
+    reply_text = None
 
     # Empty payload: usage reply only, either mode — no handler, no turn.
     if not payload:
@@ -1432,6 +1438,7 @@ def _run_contact_command(
         logger.debug("Response from %s: %s", meta["handler"], out)
         if isinstance(out, dict):
             summary.update(ok=bool(out.get("ok")), meteorite_id=out.get("meteorite_id"), error=out.get("error"))
+            reply_text = out.get("reply_text")
 
     # agent: one Estelle turn sees the result and replies conversationally.
     if meta["mode"] == "agent":
@@ -1448,14 +1455,19 @@ def _run_contact_command(
         turn_out["command"] = summary
         return turn_out
 
-    # code: fixed ack only on success; a miss posts nothing so the hear-ack fallback fires.
+    # code: the handler's reply_text posts on a hit or a miss (AST-2144). Without one, the fixed
+    # ack posts only on success; a miss (or an entry with no ack) posts nothing → hear-ack fallback.
+    if not (isinstance(reply_text, str) and reply_text.strip()):
+        reply_text = (
+            meta["ack_reply_template"].format(meteorite_id=summary["meteorite_id"])
+            if summary["ok"] and "ack_reply_template" in meta
+            else None
+        )
     post = None
-    if summary["ok"]:
+    if reply_text:
         post = contact_post_message(
             channel=channel,
-            text=format_contact_reply_text(
-                meta["ack_reply_template"].format(meteorite_id=summary["meteorite_id"])
-            ),
+            text=format_contact_reply_text(reply_text),
             thread_ts=reply_ts,
             reply_broadcast=reply_broadcast,
             debug=debug,
