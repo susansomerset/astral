@@ -312,3 +312,18 @@ AC1 → Stage 1; AC2 → Stage 1 step 5; AC3 → N/A E2E until #2 — Stage 2 di
 **R6 (summary):** Definition fidelity for child #1: only `config.py` and `tracker.py`; no `contact.py`. Reuses matcher/ownership without new query. Stages cover registry, pinhole, origin contract, and handler branches (one / several / none / no origin). No scope creep into sibling posting. No `fix-now` findings.
 
 context_tokens≈42000
+
+
+## Review
+
+- **Branch:** `origin/sub/AST-2144/AST-2151-check-status-registry-handler`
+- **Stage 1:** `f01360949` — `check-status` registry entry, optional-text/placement asserts, pinhole row, `JOBS_DETAIL_ORIGIN_DOMAIN_ENV`
+- **Stage 2:** `3c80c683d` — `contact_command_check_status` handler + `_contact_job_clock`
+- **Build notes:** Two files (`src/utils/config.py`, `src/core/tracker.py`), as planned. `py_compile` is clean on both. Ruff on `config.py` is unchanged (102 before and after). On `tracker.py` there are 3 new UP006/UP045 hits (`Dict[...]` ×2, `Optional[str]`). They match the module's annotation style and the plan's exact code, so they were left as written. There are no F-class (real error) hits. Parent AC 1 prints `code always_with_share` and AC 2 prints `read job`. Removing `{deeplink}` from `match_reply_template` fails the import with `AssertionError: ('check-status', 'match_reply_template')`. `TestAst2035ContactCommandIntercept` passes (22 tests; run from the `astral/.venv` interpreter, because system python lacks `asyncpg`). The AC 14 `rg` over `src/core` returns only the existing `always_with_share` lines in `_contact_reply_placement`. Smoke run with the matcher, ownership, and timezone stubbed (`America/Los_Angeles`), job id `acme_com:j 1`:
+  - One match gives title, `Received 10/1 08:04 Pacific`, `State PASSED_LIKE since 10/10 02:30 Pacific`, and `https://astral.example/jobs/detail/acme_com%3Aj%201`.
+  - Two matches give `2 jobs matched:` plus two lines, each with its own link. The other candidate's same-title job is absent.
+  - No match gives `ok=False`, `unmatched_pattern`, and the no-match text, with 0 warnings.
+  - Origin unset gives the same one-match text without the link, plus exactly 1 WARNING (`cand1 | /check-status deeplink missing — RAILWAY_PUBLIC_DOMAIN is unset`).
+  - Empty candidate gives `no_candidate` with `reply_text=None`.
+  - A `None` or garbage timestamp renders `-`.
+- **Spawn-prompt note:** the prompt's `--ftr AST-2144` doesn't exist on origin. The registry's `parent_ftr` is `ftr/AST-2144-check-status` (at `c4f0d3a59`, already this sub's base). The sync and `validate-sub-log` were re-run with that segment and both returned ok.
