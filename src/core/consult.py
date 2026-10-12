@@ -22,7 +22,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core import tracker
-from src.core.agent import do_task
+from src.core.agent import _LINK_PREFIX_RE, _grade_segment, do_task
 from src.data.database import ensure_batch_response_entity_ids
 from src.utils import rubric_text
 from src.utils.config import (
@@ -63,11 +63,11 @@ logger = get_logger(__name__)
 
 
 def _outage_tag(r: Dict[str, Any]) -> Dict[str, Any]:
-    """AST-2010 / AST-2098: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's
-    total_held) up to the dispatcher; routing unchanged. Empty for every other result."""
+    """AST-2010 / AST-2098 / AST-2140: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's
+    total_held and the provider's error text) up to the dispatcher; routing unchanged. Empty for every other result."""
     if not (is_provider_rate_limit(r) or is_provider_probe_failure(r)):
         return {}
-    return {k: r[k] for k in ("failure_class", "total_held") if k in r}
+    return {k: r[k] for k in ("failure_class", "total_held", "error") if k in r}
 
 
 def _with_log_debug(fn):
@@ -384,22 +384,20 @@ def _hydrate_response_jobs_grade_reasons(jobs: list, rubric_criteria: list) -> D
 
 
 # AST-603: shared rubric response normalization (prefilter + future consult reuse).
-_LINK_PREFIX_RE = re.compile(r"^(?:JOB|CULT):(.+)$", re.I)
+# _LINK_PREFIX_RE lives in agent beside _GRADE_SEG so decode and routing share one link guard (AST-2138).
 _ENCODED_LINE_RE = re.compile(r"^\d{1,3}\|")
 
 
 def _should_decode_as_encoded_line(text: str) -> bool:
     """True when a pipe line has AST-357 encoded grade segments (e.g. RCA3), not letter-pipe grades."""
-    from src.core.agent import _GRADE_SEG
-
     # Any line, not just the first — a fully malformed first line must not misroute the batch (AST-1996).
     for line in (ln.strip() for ln in text.splitlines() if ln.strip()):
         fields = [f.strip() for f in line.split("|")]
         if fields and re.match(r"^\d{1,3}$", fields[0]):
             fields = fields[1:]
         for f in fields:
-            norm = "".join(ch for ch in f if ch not in " -:")
-            if _GRADE_SEG.match(norm):
+            # Same classifier as _decode_payload, so a JOB:/CULT: field can't make a line look encoded (AST-2138).
+            if _grade_segment(f):
                 return True
     return False
 

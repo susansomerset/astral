@@ -174,6 +174,20 @@ def _strict_encoded_batch_consult_envelope_err(task_key: str, parsed: Any) -> Op
 _valid_grade_letters = "".join(ASTRAL_CONFIG.get("valid_grades", []))
 # Each segment: 2-char vector code + 1 grade letter + 1 confidence digit (0 for X, 1–5 otherwise).
 _GRADE_SEG = re.compile(rf"^[A-Z]{{2}}[{_valid_grade_letters}][0-5]$")
+# AST-697 link-tail prefix: a field matching it is link meta, never a grade (AST-2138).
+_LINK_PREFIX_RE = re.compile(r"^(?:JOB|CULT):(.+)$", re.I)
+
+
+def _grade_segment(field: str) -> Optional[str]:
+    """Normalized grade token when field is a grade segment, else None.
+
+    Strips ASCII space, hyphen, colon before the _GRADE_SEG match (AST-483); meta keeps the original.
+    A JOB:/CULT: link field is never a grade — stripping turns JOB:3 into JOB3, which would read as vector JO (AST-2138).
+    """
+    if _LINK_PREFIX_RE.match(field):
+        return None
+    norm = "".join(ch for ch in field if ch not in " -:")
+    return norm if _GRADE_SEG.match(norm) else None
 
 
 def _validate_grade_confidence_list(grades: list, label: str) -> Optional[str]:
@@ -368,10 +382,10 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
 
         grade_segs, meta = [], []
         for f in fields[1:]:
-            # Strip ASCII space, hyphen, colon for grade match only; meta keeps pipe-stripped original (AST-483).
-            norm = "".join(ch for ch in f if ch not in " -:")
-            if _GRADE_SEG.match(norm):
-                grade_segs.append(norm)
+            # Meta keeps the pipe-stripped original; link fields always land here (AST-483, AST-2138).
+            seg = _grade_segment(f)
+            if seg:
+                grade_segs.append(seg)
             else:
                 meta.append(f)
 

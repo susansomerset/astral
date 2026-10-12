@@ -4445,6 +4445,31 @@ class TestAst2010RateLimitForwarding:
         assert (out["total_processed"], out["total_errors"]) == (1, 1)
         assert out["failure_class"] == self.FC
 
+    @staticmethod
+    async def _prefilter_summary(monkeypatch: pytest.MonkeyPatch, batch_rv: Dict[str, Any]) -> Dict[str, Any]:
+        from src.core import roster as roster_mod
+
+        monkeypatch.setattr(roster_mod, "prefilter_company_batch", AsyncMock(return_value=batch_rv))
+        return await consult_mod.run_consult_task(
+            "company", "HOMEPAGE_READY", [{"short_name": "acme", "state": "HOMEPAGE_READY"}], "b2140",
+            dispatch_task_key="prefilter_company",
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_consult_task_prefilter_company_forwards_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-2140: the provider text rides the tag so the dispatcher's batch-stop WARNING isn't "()"
+        out = await self._prefilter_summary(monkeypatch, {"passed": 0, "failed": 0, "total": 1, "retried": 0,
+                                                          "failure_class": self.FC, "error": self.ERR})
+        assert out.get("error") == self.ERR
+        assert (out["total_processed"], out["total_errors"]) == (1, 1)
+
+    @pytest.mark.asyncio
+    async def test_run_consult_task_untagged_failure_forwards_no_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Guard (green before and after AST-2140): no outage class → _outage_tag stays {}, so no error either
+        out = await self._prefilter_summary(monkeypatch, {"passed": 0, "failed": 0, "total": 1, "retried": 0,
+                                                          "error": self.ERR})
+        assert "error" not in out and "failure_class" not in out
+
     @pytest.mark.asyncio
     async def test_analysis_upshot_batch_forwards_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {"astral_job_id": "j1", "company": "co", "job_data": {}, "state": "PASSED_LIKE"}
@@ -4502,7 +4527,7 @@ class TestAst2098ProbeFailureHold:
             dispatch_task_key="meteorite_grade_get",
         )
         assert out == {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0,
-                       "total_held": 1, "failure_class": self._FC}
+                       "total_held": 1, "failure_class": self._FC, "error": self._ERR}
 
     @pytest.mark.asyncio
     async def test_batch_consult_envelope_holds_and_counts(self, monkeypatch: pytest.MonkeyPatch) -> None:

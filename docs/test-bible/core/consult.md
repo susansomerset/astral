@@ -141,6 +141,25 @@ Manifest default ( **`test-astral`** on publish tip — consult/config scope): `
 
 ---
 
+### AST-2138 · AST-2136 (bug-repro — JOB:/CULT: link fields never decode as grades; tests via gap AST-2139)
+
+AST-483's colon strip turned a single-digit link field into a grade token (`JOB:3` → `JOB3` → vector **`JO`**, grade `B`), so **`possible_job_links`** was lost and hydrate raised on the unknown **`JO`** vector. Fix: **`_LINK_PREFIX_RE`** moves into `agent.py` and **`_grade_segment`** returns `None` for any **`JOB:`** / **`CULT:`** field; **`_decode_payload`** and **`_should_decode_as_encoded_line`** share that classifier. Prior **`JOB:`** fixtures used **`JOB:16`** only (never matched **`_GRADE_SEG`**). Fixture is company-shaped (`company_id`, `["companies"]`, **AST-1723**), not **`TestAst697PrefilterBracketLinkDecode._prefilter_decode_ctx`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Link-prefix guard: `JOB:0`–`JOB:5` stay meta, no **`JO`** grade (**[bug-repro]** `n=3`) | `src/core/agent.py` (`_LINK_PREFIX_RE`, `_grade_segment`, `_decode_payload`) | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_single_digit_job_link_is_meta_not_grade` |
+| `JOB:1\|CULT:[]` → `[1]`, no culture key | `src/core/agent.py`, `src/core/consult.py` (`_apply_prefilter_encoded_link_meta`) | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_job_link_with_empty_culture_tail` |
+| Routing guard: link-only line is not encoded | `src/core/consult.py` (`_should_decode_as_encoded_line`) | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_link_only_line_does_not_route_as_encoded` |
+
+**AST-2138** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade
+```
+
+---
+
 ### AST-719 · AST-716
 
 **AST-719:** Company **`entity_type`** dispatch with **`dispatch_task_key=fetch_job_pages`** routes to **`fetch_job_pages_batch`** (not **`run_company_task`**). Returns normalized summary counts like **`fetch_website`**.
@@ -1541,6 +1560,13 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 
 **New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` reaches the caller on `render_verdict`'s generic failure, the `run_consult_task` single-entity grade/LIKE path (the AST-2009 `meteorite_like` repro), the `_run_batch_consult` envelope failure, the batch normalizer (`meteorite_like_batch`), the `prefilter_company` normalizer, and the `_run_analysis_upshot_batch` summary. Routing and counts are unchanged (no hold). An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
 
+**AST-2140 · AST-2141 (outage tag carries the provider `error`):** `_outage_tag` now forwards `error` with `failure_class`, so the dispatcher's batch-stop WARNING prints the provider text instead of `()`. Repro and manifest: [`roster.md`](roster.md) § AST-2010 (`[bug-repro]`). Plan: `docs/features/agent/ast-1877-model-server-catalog-compat-client.md` § Bug: AST-2141.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New (AST-2141) — `prefilter_company` normalizer: tagged batch with `error` → summary `error` = provider text; `(processed, errors)` `(1, 1)` unchanged | consult `_outage_tag` | `TestAst2010RateLimitForwarding::test_run_consult_task_prefilter_company_forwards_error` |
+| Guard (AST-2141, green both) — untagged batch with `error` → no `error`, no `failure_class` on the summary (`_outage_tag` stays `{}`) | consult `_outage_tag` | `…::test_run_consult_task_untagged_failure_forwards_no_error` |
+
 ### AST-2098 · AST-2099 (failed host probe holds job state, counted held)
 
 **Primary manifest:** [`dispatcher.md`](dispatcher.md) § AST-2098. Contract: a `provider_probe_failure` result goes through the shared `is_provider_state_hold` branches (no `error_state` / `_RETRY` transition) and is counted `total_held`, not `total_errors`; `_outage_tag` carries `failure_class` + `total_held` up. Balance refusal on job paths is unchanged (AST-2098 Decision D3: still `total_errors`, no new keys).
@@ -1548,7 +1574,7 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 | Area | Source | Component tests |
 | --- | --- | --- |
 | New — `render_verdict` probe failure → `state_held`, `to_state` = current state, class kept, no transition | `render_verdict` | `TestAst2098ProbeFailureHold::test_render_verdict_holds_state` |
-| New — AST-2016 incident path: one-job `meteorite_grade_get` → exactly `{processed 1, passed 0, failed 0, errors 0, held 1, failure_class}` | `run_consult_task` single-entity | `…::test_run_consult_task_single_entity_counts_held` |
+| New — AST-2016 incident path: one-job `meteorite_grade_get` → exactly `{processed 1, passed 0, failed 0, errors 0, held 1, failure_class, error}` (`error` added by AST-2141 for AST-2140; this node also covers AST-2140 Repro 3) | `run_consult_task` single-entity | `…::test_run_consult_task_single_entity_counts_held` |
 | New — `_run_batch_consult` envelope probe failure on 3 jobs → held, `total_held 3`, no transition; batch normalizer → `errors 0`, `held 3`, class | `_run_batch_consult` + normalizer | `…::test_batch_consult_envelope_holds_and_counts` |
 | New — `_run_analysis_upshot_batch` 2 jobs → `errors 0`, `held 2`, class, no transition, `_warn_job` "host probe failed — state held" | `_run_analysis_upshot_batch` | `…::test_analysis_upshot_batch_counts_held` |
 | Guard (green both) — balance hold on the single-entity job path still `total_errors 1`, no `total_held` / `failure_class` | `run_consult_task` | `…::test_balance_hold_on_job_path_still_counts_error` |

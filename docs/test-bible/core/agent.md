@@ -80,6 +80,16 @@ See **`docs/test-bible/core/consult.md`** (**AST-697**) for decode-path manifest
 
 ---
 
+### AST-2138 · AST-2136 (bug-repro — link-prefix fields never classify as grades; tests via gap AST-2139)
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **`_decode_payload`** field classification via **`_grade_segment`** (`JOB:`/`CULT:` → meta before AST-483 strip) | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_single_digit_job_link_is_meta_not_grade`; `TestAst2138JobLinkPrefixNotGrade::test_job_link_with_empty_culture_tail` |
+
+See **`docs/test-bible/core/consult.md`** (**AST-2138**) for the routing row and narrowed run.
+
+---
+
 ### AST-698 · AST-696
 
 **UAT fix:** **`do_task`** emits **`raw_response`** contract lines for any non-empty API body when **`debug=True`** (retired **>50 lines** gate); encoded tasks log **`encoded_payload`** via **`debug_detail`** / **`debug_detail_block`** instead of **`[DEBUG] logger.info`**. Roster **`prefilter_company`** accepts **`debug`** and forwards it from **`run_company_task`** on **`WEBSITE_FOUND`** / **`WEBSITE_FOUND_RETRY`**.

@@ -1156,6 +1156,23 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 
 **New:** `TestAst2010RateLimitForwarding`. `provider_rate_limit` rides `_find_job_page_from_assembled`'s generic select failure (still NO_JOBLIST + saved), `run_company_task` select_job_page (still counted passed via NO_JOBLIST) and JOBS_FOUND (still `error_state` + `total_errors`), and the `prefilter_company_batch` generic failure (still retried). There is no `total_held` and no `state_held`. An untagged failure stays untagged. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
 
+**AST-2140 · AST-2141 (outage tag carries the provider `error`; Option B select path):** `_outage_tag` forwards `error`. Probe-hold dicts on prefilter and upshot carry `error`. `_find_job_page_from_assembled`'s select failure carries the text as `outage_error`, never `error`, because `run_company_task` routes on `error`; `_outage_tag` lifts `outage_error` back to `error` on the summary. Routing and counts are unchanged. Parent [AST-2137](https://linear.app/astralcareermatch/issue/AST-2137) (orphaned-bug mini-parent). Product **AST-2140** (`9c28e9bdc`); tests on gap sibling **AST-2141**. Plan: `docs/features/agent/ast-1877-model-server-catalog-compat-client.md` § Bug: AST-2141.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** AST-2137 log path: exhausted prefilter 429 → `prefilter_company_batch` `error` → consult summary `error` (counts `(1, 0)`: the company is retried, same as pre-fix) → `_note_provider_rate_limit_outage` WARNING `still 429 after retries (<provider text>)`, never `()` | roster + consult `_outage_tag`, dispatcher | `TestAst2010RateLimitForwarding::test_prefilter_429_error_reaches_dispatcher_warning` |
+| New — select failure entity result: no `error`, `outage_error` = provider text, class kept, still NO_JOBLIST / `SELECT_FAILED` | `_find_job_page_from_assembled` | `…::test_find_job_page_select_failure_carries_outage_error` |
+| New — select_job_page summary lifts `outage_error` → `error`; `(1, 1, 0)` unchanged, no `_warn_company` | `run_company_task` + roster `_outage_tag` | `…::test_run_company_task_select_job_page_forwards_error` |
+
+**Red/green (AST-2141):** red on pre-fix `a1af5cf6a`: 7 nodes across both pages fail by assertion only, while the consult untagged guard passes. Green on the sub synced from ftr `f0c1f167c` (AST-2140 merged).
+
+**Manifest (test-fix, `../astral/.venv`):**
+
+1. `pytest -q tests/component/core/test_roster.py::TestAst2010RateLimitForwarding::test_prefilter_429_error_reaches_dispatcher_warning` (**[bug-repro]** alone first)
+2. `pytest -q tests/component/core/test_consult.py::TestAst2010RateLimitForwarding tests/component/core/test_consult.py::TestAst2098ProbeFailureHold tests/component/core/test_roster.py::TestAst2010RateLimitForwarding tests/component/core/test_roster.py::TestAst2098ProbeFailureHold tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting`. Expect **33 passed**.
+
+**Pre-existing drift (not AST-2141):** both full files carry 72 baseline failures on this tip (e.g. `TestJobSiteDistinct674`). This pass adds zero and fixes one (C1).
+
 ### AST-2098 · AST-2099 (failed host probe holds company state, counted held)
 
 **Primary manifest:** [`dispatcher.md`](dispatcher.md) § AST-2098. Contract: every roster hold branch widened from `is_provider_balance_refusal` to `is_provider_state_hold`, so a `provider_probe_failure` result keeps the company's current state (no transition, no save) and is counted `total_held`; the batch functions add `total_held` (probe only) and `run_consult_task` subtracts it from errors.
@@ -1168,6 +1185,8 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 | New — `company_upshot_batch` 2 rows → held, `total_held 2`, no transition; via `run_consult_task` `company_upshot` → `errors 0`, `held 2`, class | `company_upshot_batch` + consult normalizer | `…::test_company_upshot_probe_hold_counts_held` |
 | New — `_find_job_page_from_assembled` probe failure → `state_held`, current state, class, no `_save_company` | `_find_job_page_from_assembled` | `…::test_find_job_page_probe_hold_keeps_state` |
 | New (board E6) — single-company `prefilter_company` → `_prefilter_fail` HOLD, current state, `state_held`, class, no transition | `prefilter_company` / `_prefilter_fail` | `…::test_prefilter_company_probe_hold_keeps_state` |
+| New (AST-2141) — `prefilter_company_batch` probe hold carries `error`; via `run_consult_task` `prefilter_company` → summary `error`, `held 2` | `_run_batch_company_prefilter` hold + consult `_outage_tag` | `…::test_prefilter_batch_probe_hold_forwards_error` |
+| New (AST-2141) — `company_upshot_batch` probe hold carries `error`; via `run_consult_task` `company_upshot` → summary `error`, `held 2` | `company_upshot_batch` hold + consult `_outage_tag` | `…::test_company_upshot_probe_hold_forwards_error` |
 
 **Kept:** `TestAst1867BalanceHeldCounting`, `TestAst897HoldStateOnBalanceRefusal`, `TestAst2010RateLimitForwarding` (unchanged, green).
 

@@ -1068,6 +1068,173 @@ context_tokens≈55000
 [code-rubric] PROCEED (Commit: d2d8bd3b2) OpenRouter 429 batch stop
 ```
 
+## Bug: AST-2140 — 429 / probe batch-stop warning carries the provider error, not ()
+
+Fix child of orphaned bug AST-2137 (narrowed per Susan to the empty warning detail; the `JOB:<n>` → `JO` decode failures in the same log are AST-2136 / AST-2138). Scope = AST-2140 `## Scope`: `src/core/roster.py` and `src/core/consult.py`, `_outage_tag` carries the result's error text, no new tables or fields. `src/core/dispatcher.py` is out of bounds (Boundaries), and so is `llm_compat` retry policy. The ticket carries no Canon Scope list. Ancestors: § Bug: AST-2010 above (`_rate_limit_tag`, later renamed `_outage_tag`), and AST-2098 in `docs/features/foundation/ast-1959-per-batch-probe-and-host-lock-on-the-openrouter-path.md` § Bug: AST-2098 (added probe failures and `total_held`).
+
+### As-is
+
+When an OpenRouter call exhausts its 5 retries (AST-2010) or a host probe fails (AST-2098), the dispatcher logs its one batch-stop WARNING with an empty detail:
+
+```
+WARNING src.core.dispatcher: somerset | dispatch company prefilter_company
+  LLM provider rate limit: still 429 after retries ()
+  The batch is stopping
+```
+
+The real provider text, which `llm_compat` already logged at WARNING for that call (`qwen/qwen3-235b-a22b-2507 is temporarily rate-limited upstream…`, host Parasail), never reaches the warning.
+
+### To-be
+
+The 429 batch-stop warning prints the provider error text inside the parentheses: `LLM provider rate limit: still 429 after retries (Error code: 429 - {…})`. That is the same `error` string the entity's `do_task` result carried. The failed-probe warning `LLM host probe failed (…)` prints its probe error the same way. Routing, retry counts, held tallies, summary counters and the dispatcher's warning text are unchanged.
+
+### Repro
+
+Component fixture, no DB row (Betty owns the real test):
+
+1. Prefilter 429 (the reported path). Patch `roster.do_task` to return `{"success": False, "failure_class": "provider_rate_limit", "error": ERR}` with `ERR = "Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error'}}"`. Patch `transition_company_state`. Call `consult.run_consult_task("company", "HOMEPAGE_READY", [ready_company], "b2140", ctx, False, dispatch_task_key="prefilter_company")`. **Today:** the summary has `failure_class == "provider_rate_limit"` and no `"error"` key. Feed it to `dispatcher._note_provider_rate_limit_outage({}, task, summary)`: `ctx["provider_rate_limit_outage"] == {"error": ""}` and the WARNING ends `()`. **After:** `summary["error"] == ERR`, and the outage's `error == ERR`.
+2. Prefilter probe. Same as 1, but `do_task` returns `{"success": False, "failure_class": "provider_probe_failure", "error": PERR}` with `PERR = "Host probe failed: Probe response named no provider: {'message': 'No endpoints found'}"`. **Today:** the summary has `failure_class` and `total_held == 1` but no `error`, and `_note_provider_probe_outage` logs `()`. **After:** `summary["error"] == PERR`.
+3. Consult single-entity grade probe. `render_verdict` is patched to return the AST-2098 hold dict `{"success": False, "error": PERR, "failure_class": "provider_probe_failure", "state_held": True}`. Call `run_consult_task` for one `grade_do` entity. **Today:** `{…, "total_held": 1, "failure_class": …}` with no `error`. **After:** `error == PERR`.
+
+### Root cause
+
+Chuckles' reading is **confirmed**, with two refinements found in the code.
+
+1. **Confirmed.** `_note_provider_rate_limit_outage` / `_note_provider_probe_outage` (`dispatcher.py`) read `result.get("error")`. What they receive is a consult/roster **summary**, and every summary builds its outage keys with `**_outage_tag(…)`. Both `_outage_tag` helpers (`roster.py` and `consult.py`) return only `{k: r[k] for k in ("failure_class", "total_held") if k in r}`, so `error` is dropped. This covers the reported 429 path: `_run_batch_company_prefilter` generic failure → `roster._outage_tag` → consult's `prefilter_company` normalizer → `consult._outage_tag` → dispatcher. Error is lost at both hops.
+2. **Refinement: prefilter / upshot probe holds bypass the helper.** In `_run_batch_company_prefilter` and `company_upshot_batch`, the `if is_provider_state_hold(result):` branch builds its return dict by hand: `failure_class`, `state_held` and `total_held`, but **no `error`**. Consult's normalizer then tags that dict, and there is no text left to forward. So fixing `_outage_tag` alone would leave the prefilter and upshot probe warnings at `()`. Every other hold dict on both sides already carries `error`: `run_company_task`'s two hold returns, `_find_job_page_from_assembled`'s hold, `_prefilter_fail`, `render_verdict`'s hold, and `_run_batch_consult`'s hold.
+3. **Refinement: one `_outage_tag` site is an entity result, not a summary.** `_find_job_page_from_assembled`'s generic `SELECT_FAILED` return spreads `**_outage_tag(res)` into the **entity** result. That result is consumed by `run_company_task`, whose locate (`JOBS_FOUND`) and `select_job_page` branches both test `if result.get("error"):` to mean "this entity errored". The locate branch then logs `_warn_company`, transitions to `locate_job_page.error_state` and counts `total_errors`. AST-2010 kept `error` out of that dict on purpose, which is why an exhausted 429 there is still routed as an ordinary no-joblist outcome. If the helper simply added `error`, this site would route an exhausted locate 429 to the error state and count select 429s as errors. That is a routing change, and AC 3 forbids it. A guard in `run_company_task` would not help: `TestAst2010RateLimitForwarding::test_run_company_task_jobs_found_error_forwards_tag` pins that an inner result carrying both `error` and the rate-limit class still takes the error route.
+
+The dispatcher's summing loops (`for k in s: s[k] += piece.get(k, 0)`) only iterate `_SUMMARY_ZERO`'s counter keys, so an extra string key in a summary never touches counter arithmetic.
+
+### Proposed change
+
+**`src/core/consult.py`**
+
+- `_outage_tag`: the key tuple becomes `("failure_class", "total_held", "error")`. The docstring becomes: `"""AST-2010 / AST-2098 / AST-2140: carry an exhausted-429 or failed-probe failure_class (plus a probe hold's total_held and the provider's error text) up to the dispatcher; routing unchanged. Empty for every other result."""`
+- No other consult edits. Every consult site merges the tag into a summary dict (`rl` in `_run_analysis_upshot_batch`, the `prefilter_company` / `company_upshot` normalizers, the single-entity grade returns, the final batch normalizer). The other merge sites are failure dicts that already hold the **same** `error` value (`render_verdict`'s `{**_fail(result.get("error", …)), **_outage_tag(result)}`, `_run_batch_consult`'s generic return). For those, the tag's value is identical, or absent when the result has no `error` key.
+
+**`src/core/roster.py`**
+
+1. `_outage_tag`: same key tuple and docstring as consult.
+2. `_run_batch_company_prefilter`, the `if is_provider_state_hold(result):` return: add `"error": result.get("error"),` after `"failure_class"`.
+3. `company_upshot_batch`, the `if is_provider_state_hold(result):` return: same one-line addition.
+4. `_find_job_page_from_assembled`, the generic `SELECT_FAILED` return (the one ending `**_outage_tag(res)}`): the entity dict must **not** gain an `error` key (see Root cause 3). How the text still reaches the select/locate tag is **Decision 1** below. Default (option B): the return's tail becomes
+
+   ```python
+   **{k: v for k, v in _outage_tag(res).items() if k != "error"}, "outage_error": res.get("error")}
+   ```
+
+   and `_outage_tag` (roster only) forwards it upward under `error`:
+
+   ```python
+   tag = {k: r[k] for k in ("failure_class", "total_held", "error") if k in r}
+   # AST-2140: an entity result can't hold "error" (run_company_task routes on it) — its text rides as outage_error
+   return {**tag, "error": r["outage_error"]} if "outage_error" in r else tag
+   ```
+
+   `run_company_task` is **unchanged**. Its `tag = _outage_tag(result)` now carries `error` into the `{**zero, …, **tag}` summary, while `result.get("error")` stays falsy for this dict, so routing and counts are exactly as today.
+
+**`src/core/dispatcher.py`**: no change. The existing `result.get("error") or ""` reads now get a value.
+
+### Decisions (flag for fix-board / Susan)
+
+1. **Select / locate exhausted-429 text (`_find_job_page_from_assembled`).**
+   - **B (default, meets AC 1 on every path):** carry the text as a transient `outage_error` key on that one entity result. `roster._outage_tag` lifts it back to `error` at the summary hop. This is a return-dict key, not a table or persisted field; `_save_company`'s `raw_response` is untouched. It costs 2 lines in `_outage_tag` and 1 changed line at the return.
+   - **A (smallest):** strip `error` at that return and add no `outage_error`. The prefilter, upshot and all consult paths are fixed, but a select/locate exhausted 429 still logs `()`, so AC 1 is met only on those paths. It is a 1-line change.
+   - Neither touches routing. `run_company_task`'s error checks are deliberately not guarded, because that would contradict `TestAst2010RateLimitForwarding::test_run_company_task_jobs_found_error_forwards_tag`.
+
+### Blast radius
+
+- **Dispatcher**: `_note_provider_rate_limit_outage`, `_note_provider_probe_outage` and `_note_provider_balance_outage` get a non-empty `error`. Text and stop behavior are unchanged. Summary counter arithmetic only iterates `_SUMMARY_ZERO` keys, so it is unaffected.
+- **Balance refusal on prefilter / upshot**: the hold dicts in Proposed change roster 2 and 3 now also carry `error` for balance refusals. Consult's normalizer `_outage_tag` returns `{}` for balance, so nothing new reaches the dispatcher. That pre-existing balance-forwarding gap on these two paths is out of scope and not touched.
+- **Tests (Betty)**: equality assertions on whole summary / tag dicts would now see an extra `error` key. Key-by-key assertions in `TestAst2010RateLimitForwarding` / `TestAst2098ProbeFailureHold` (`test_roster.py`, `test_consult.py`) are unaffected. The `test_consult.py` upshot-normalizer case (~L2096–2107) stubs the batch dict without `error`, so its expected dict still matches. Option B adds `outage_error` to `_find_job_page_from_assembled`'s select-failure return; `test_find_job_page_select_failure_forwards_tag` asserts only `state`, `response_type`, `failure_class` and `state_held`, so it is unaffected. New coverage is the Repro above, plus the select path (`run_company_task` select summary carries `error`, counts `(1, 1, 0)` unchanged) under option B.
+- **Sibling bugs**: AST-2136 / AST-2138 (`JO` decode) touch neither helper.
+
+### What must still hold
+
+- AST-2010: an exhausted OpenRouter 429 stops the batch, the ledger finishes `FAILED`, entity routing has no hold, select failure is still `ERROR_SELECT_JOB_PAGE_NO_JOBLIST` counted passed, a JOBS_FOUND error is still `error_state` + `total_errors`, and the prefilter batch still uses the ordinary failure ladder.
+- AST-2098: a failed probe holds entity state on every roster/consult hold branch and counts `total_held`, not errors. The run stops and the next round probes again.
+- AST-1867 / AST-897: balance refusal still holds state, stops the batch, finishes `INTERRUPTED`, and gets no second per-company WARNING.
+- Untagged failures (DeepSeek / Kimi 429, generic errors) produce no `failure_class` and no `error` from `_outage_tag`. It still returns `{}` for anything that is not a rate limit or probe failure.
+- Dispatcher warning text, `llm_compat` retry policy and `PROVIDER_RATE_LIMIT` config are unchanged.
+
+## Bug: AST-2141 — tests for outage error forwarding (AST-2140)
+
+Gap child of AST-2137, filed from AST-2140's fix-board verdict `[board-betty] TESTS: REVISE`. Scope = AST-2141 `## Scope`, which covers only the test tree and bible. The bible pages are `docs/test-bible/core/consult.md` and `docs/test-bible/core/roster.md` (§ AST-2010 · AST-2009, § AST-2098 · AST-2099). The test files are `tests/component/core/test_consult.py` and `tests/component/core/test_roster.py`. **Betty lands everything here (qa-fix). There are no `src/` changes; AST-2140 owns the product.** The product contract under test is § Bug: AST-2140 above, Proposed change with Option B (Decision 1 resolved at fix-board: Joan OK, Betty accepted).
+
+### As-is
+
+- `test_consult.py::TestAst2098ProbeFailureHold::test_run_consult_task_single_entity_counts_held` (~L4504) compares the whole summary dict. Its stubbed `rv` carries `error`, so AST-2140's `**_outage_tag(rv)` adds `"error"` and the assertion goes red. AST-2140's test-fix run confirmed this as the only new failure across `test_consult.py`, `test_roster.py` and `test_dispatcher.py`.
+- No node asserts `error` on any `_outage_tag` summary. AST-2140's Repro 1–3, the `company_upshot_batch` probe-hold branch and the Option B select path are all uncovered.
+
+### To-be
+
+- L4504 expects the forwarded `error`.
+- The new nodes below pin AST-2140's contract: the provider error text reaches the summary at every hop, the select/locate entity result carries `outage_error` and never `error`, and routing and counts stay unchanged.
+- One `[bug-repro]` node proves the reported symptom end-to-end through to the dispatcher's batch-stop WARNING. It is red on the pre-AST-2140 tree and green with AST-2140.
+
+### Repro
+
+The `[bug-repro]` node `test_roster.py::TestAst2010RateLimitForwarding::test_prefilter_429_error_reaches_dispatcher_warning` (item R1 below) is the reported AST-2137 log path, reduced to a fixture.
+
+**Red/green proof needs two trees, because AST-2140 isn't on ftr yet.** This branch (`sub/AST-2137/AST-2141-outage-error-tests`) syncs from `origin/ftr/AST-2137-outage-error-detail` @ `a1af5cf6a`, which is the pre-fix tree. Run there, R1 and every node marked *red pre-fix* fail by assertion. For green, run the same nodes on a scratch tree with AST-2140's tip merged in (`git worktree add --detach /tmp/x origin/sub/AST-2137/AST-2141-outage-error-tests && git -C /tmp/x merge --no-edit origin/sub/AST-2137/AST-2140-outage-error-detail`, @ `9c28e9bdc` or later). The AST-2141 sub itself goes green only after merge-child rolls AST-2140 into ftr; that is the ticket's "Blocked by AST-2140".
+
+### Root cause
+
+This is a coverage gap, not a product defect. The AST-2010 and AST-2098 nodes assert `failure_class` and `total_held` on `_outage_tag` summaries but never `error`, because before AST-2140 the tag never carried it. One AST-2098 node pinned the whole dict, so it now breaks.
+
+### Proposed change
+
+All literals follow each class's existing `ERR` / `_ERR` / `FC` / `_FC` and `_tagged()` helpers. Use no AST-2140 imports, so pre-fix runs fail by assertion, not import error (same convention as the AST-2098 class docstring). Patch `_warn_company` / `transition_company_state` / `_save_company` / `get_company` exactly as the neighbouring nodes do.
+
+**`tests/component/core/test_consult.py`**
+
+- C1 **fix (red pre-fix):** `TestAst2098ProbeFailureHold::test_run_consult_task_single_entity_counts_held`. The expected dict becomes `{"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0, "total_held": 1, "failure_class": self._FC, "error": self._ERR}`. This node covers AST-2140 Repro 3 (single-entity grade probe), so no separate node is needed.
+- C2 **new (red pre-fix):** `TestAst2010RateLimitForwarding::test_run_consult_task_prefilter_company_forwards_error`. It mirrors `test_run_consult_task_prefilter_company_forwards_tag`, but the stubbed `roster.prefilter_company_batch` returns `{"passed": 0, "failed": 0, "total": 1, "retried": 0, "failure_class": self.FC, "error": self.ERR}`. Assert `out["error"] == self.ERR`, with `(total_processed, total_errors) == (1, 1)` unchanged.
+- C3 **new guard (green both trees):** `TestAst2010RateLimitForwarding::test_run_consult_task_untagged_failure_forwards_no_error`. Same as C2, but the stub has `"error": self.ERR` and **no** `failure_class`. Assert `"error" not in out` and `"failure_class" not in out`: `_outage_tag` still returns `{}` for anything other than a rate limit or probe failure.
+- **Unchanged and still green:** whole-dict asserts at ~L2104 (stub batch has no `error`) and ~L4557 (balance, so `_outage_tag` is `{}`).
+
+**`tests/component/core/test_roster.py`**
+
+- R1 **`[bug-repro]` new (red pre-fix):** `TestAst2010RateLimitForwarding::test_prefilter_429_error_reaches_dispatcher_warning`. This is AST-2140 Repro 1.
+  1. Patch `roster_mod.do_task` → `self._tagged()` and `transition_company_state` → `MagicMock()`. Call `out = await roster_mod.prefilter_company_batch("batch-2140", [{"short_name": "acme", "state": "HOMEPAGE_READY", "company_data": {"homepage_text": "hello"}}], debug=False)`. Assert `out["error"] == self.ERR` (roster hop).
+  2. Patch `roster_mod.prefilter_company_batch` → `AsyncMock(return_value=out)`. Call `summary = await consult_mod.run_consult_task("company", "HOMEPAGE_READY", companies, "b2140", dispatch_task_key="prefilter_company")`. Assert `summary["error"] == self.ERR` (consult hop) and `(summary["total_processed"], summary["total_errors"]) == (1, 1)` unchanged.
+  3. Use `ctx = {}` and `from src.core import dispatcher as dispatcher_mod`. Under `caplog.at_level(logging.WARNING, logger="src.core.dispatcher")`, call `dispatcher_mod._note_provider_rate_limit_outage(ctx, {"entity_type": "company", "task_key": "prefilter_company"}, summary)`. Assert `ctx["provider_rate_limit_outage"]["error"] == self.ERR`, and that some captured message contains `f"still 429 after retries ({self.ERR})"` and does **not** contain `"still 429 after retries ()"`.
+- R2 **new (red pre-fix):** `TestAst2098ProbeFailureHold::test_prefilter_batch_probe_hold_forwards_error`. Same setup as `test_prefilter_batch_probe_hold_counts_held` (two companies). Assert `out["error"] == self._ERR`, then through `run_consult_task(..., dispatch_task_key="prefilter_company")` assert `summary["error"] == self._ERR` and `summary["total_held"] == 2`. This is AST-2140 Repro 2.
+- R3 **new (red pre-fix):** `TestAst2098ProbeFailureHold::test_company_upshot_probe_hold_forwards_error`. Same setup as `test_company_upshot_probe_hold_counts_held`. Assert `out["error"] == self._ERR` and, through `run_consult_task(..., dispatch_task_key="company_upshot")`, `summary["error"] == self._ERR`, `summary["total_held"] == 2`.
+- R4 **new (red pre-fix), Option B entity result:** `TestAst2010RateLimitForwarding::test_find_job_page_select_failure_carries_outage_error`. Same setup as `test_find_job_page_select_failure_forwards_tag`. Assert `"error" not in out`, `out["outage_error"] == self.ERR`, `out["failure_class"] == self.FC`, and `(out["state"], out["response_type"]) == ("ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "SELECT_FAILED")`.
+- R5 **new (red pre-fix), Option B select summary:** `TestAst2010RateLimitForwarding::test_run_company_task_select_job_page_forwards_error`. Use `inner = {"short_name": "acme", "state": "ERROR_SELECT_JOB_PAGE_NO_JOBLIST", "response_type": "SELECT_FAILED", "failure_class": self.FC, "outage_error": self.ERR}` via `run_select_job_page_dispatch`, with `_warn_company` → `MagicMock()`. Assert `(total_processed, total_passed, total_errors) == (1, 1, 0)`, `out["error"] == self.ERR`, `out["failure_class"] == self.FC`, and that `warn` was not called.
+- **Unchanged and still green (guards, in the manifest):**
+  - `TestAst2010RateLimitForwarding::test_run_company_task_jobs_found_error_forwards_tag` (AST-2010 JOBS_FOUND error route).
+  - `::test_run_company_task_select_job_page_forwards_tag`.
+  - `::test_find_job_page_select_failure_forwards_tag`.
+  - `::test_untagged_failure_has_no_failure_class`.
+  - All of `TestAst2098ProbeFailureHold` and `TestAst1867BalanceHeldCounting`.
+
+**`tests/component/core/test_dispatcher.py`**: no change. The whole-dict asserts at ~L1952 and ~L2110 compare summary keys only. ~L2110 (`TestAst2098ProviderProbeOutage::test_run_unified_per_entity_skips_after_probe_failure`) is already red on the ftr baseline over an unrelated `repeat_processed` key. That is pre-existing, out of scope, and not part of this manifest's pass bar.
+
+**Bible**
+
+- `docs/test-bible/core/consult.md`: § AST-2010 gets a row for C2 and C3. § AST-2098 notes that C1 now pins `error` (AST-2140).
+- `docs/test-bible/core/roster.md`: § AST-2010 gets R1 (tagged `[bug-repro]`, AST-2140/AST-2137), R4 and R5. § AST-2098 gets R2 and R3.
+
+**Manifest for test-fix** (`../astral/.venv`):
+
+1. `[bug-repro]` R1 alone first.
+2. Then `pytest -q tests/component/core/test_consult.py::TestAst2010RateLimitForwarding tests/component/core/test_consult.py::TestAst2098ProbeFailureHold tests/component/core/test_roster.py::TestAst2010RateLimitForwarding tests/component/core/test_roster.py::TestAst2098ProbeFailureHold tests/component/core/test_roster.py::TestAst1867BalanceHeldCounting`.
+
+### Blast radius
+
+- Test tree and bible only. No `src/`, no dispatcher tests.
+- The new nodes depend on AST-2140's exact contract: the `error` key on summaries, the `outage_error` key on the `_find_job_page_from_assembled` select failure, and `_outage_tag` returning `{}` for untagged results. If AST-2140's review-fix changes any of those, R4, R5 and C3 move with it.
+- AST-2136 / AST-2138 (`JO` decode) tests are untouched.
+
+### What must still hold
+
+- AST-2010 and AST-2098 assertions on routing, counts, holds and `failure_class` are unchanged. The only edit to an existing node is C1's expected dict gaining `"error"`.
+- Pre-fix runs fail by assertion only (no AST-2140 imports), and every new node except C3 is red on `a1af5cf6a`.
+- The `[bug-repro]` R1 asserts the user-visible symptom (the WARNING text), not only an intermediate dict.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
@@ -1088,3 +1255,174 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-2010 | sub/AST-2009/AST-2010-openrouter-429-retry |
 
 **Epic worktree:** `astral-AST-2009/` — one active sub checked out at a time.
+
+### Joan fix-board — AST-2140
+
+**Read:** `## Bug: AST-2140` on `origin/sub/AST-2137/AST-2140-outage-error-detail` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`, plan commit `0bd88a6e3`). No Canon Scope on AST-2140 or orphaned parent AST-2137. `docs/canon-index.md` is not on this ref; overlap skim used `canon/docs/DIRECTIVES-DIRECTORY.md` and in-force directives that plausibly touch `src/core/roster.py`, `src/core/consult.py`, dispatcher batch-stop logging, provider failures, and batch processing: `patt.task.dispatch-retry`, `patt.entity.batch-processing`, `stat.logging.warning`, `stat.logging.info.dispatcher`, `stat.logging.error` (provider / `log_llm_batch_summary` carve-outs).
+
+**The one question:** Does the proposed change conflict with or require updating any directive in force?
+
+**Analysis:** The fix only extends existing AST-2010 / AST-2098 forwarding: `_outage_tag` also copies `error` (and two hand-built probe-hold returns add `error`). Dispatcher stays out of scope; it already logs `result.get("error") or ""` — the bug is consult/roster dropping the key before the summary reaches the dispatcher. That is implementation wiring, not a new outage policy, retry count, ledger outcome, or routing rule.
+
+`patt.task.dispatch-retry` governs entity `_RETRY` routing and the probe-hold exemption vs exhausted rate limit on the probe; the plan explicitly preserves those behaviors (`## What must still hold`). Option A vs Option B for select/locate is how to forward text without putting `error` on the entity dict (AST-2010 routing invariant); neither option changes statute-level semantics — only whether every path gets non-empty warning detail. Option B’s transient `outage_error` on one entity return is an internal dict convention, not a new persisted field; nothing in force defines allowed summary-tag keys or forbids that hop.
+
+`stat.logging.warning` wants per-failure who/why; filling the batch-stop parentheses with provider text aligns with that intent and does not change level, shape, or rollup ownership (`stat.logging.info.dispatcher`). No active directive requires empty `()` in those outage lines or mandates the current `_outage_tag` key tuple.
+
+Same qualitative outcome as AST-2010 fix-board in this plan doc: product code only; no statute/pattern amendment and no F3 `validate-plan` fix mode for canon unless you later choose to codify internal outage-forwarding shapes (not required for this bug).
+
+**Verdict:** **CANON: OK**
+
+---
+
+
+### Radia review — AST-2140
+
+
+**Ticket:** AST-2140  
+**Publish ref:** `9c28e9bdc0640627123dc74a0b07f225ec19046d` (`origin/sub/AST-2137/AST-2140-outage-error-detail`)  
+**Corpus:** unavailable on publish ref (`docs/canon-index.md` absent; Joan fix-board used `canon/docs/DIRECTIVES-DIRECTORY.md` overlap skim)  
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-2137-outage-error-detail...origin/sub/AST-2137/AST-2140-outage-error-detail` — 3 files: `src/core/consult.py`, `src/core/roster.py`, plan patch in `docs/features/agent/ast-1877-model-server-catalog-compat-client.md` (product delta: 18 lines across the two core modules).
+
+## Canon scores
+
+*(No frozen Canon Scope on AST-2140 or parent AST-2137 — `review-child` §5 applies to an empty list; no per-directive grades. Joan fix-board overlap: **CANON: OK**.)*
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| *(none frozen)* | — | — | Statute sweep deferred; board overlap clean |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan fix-board **CANON: OK** narrative, not A/B/X column)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** not applicable — clean board opt-out; Betty `[board-betty]` REVISE routed to **AST-2141**; no `[bug-repro]` on tip by design.
+
+**`## What must still hold`:** OK — traced against diff:
+
+- **AST-2010:** `run_company_task` still gates routing on `result.get("error")`, not on `outage_error`. Select/locate exhausted 429 on `_find_job_page_from_assembled` generic `SELECT_FAILED` uses Option B: entity dict has `outage_error` + stripped `error`; `roster._outage_tag` lifts to summary `error` only at the summary hop. Select branch (`PJL_READY`) still treats no-joblist `SELECT_FAILED` as `total_passed` when state is in `terminal_ok` (includes `no_joblist_state`); JOBS_FOUND error path unchanged for real `error` keys.
+- **AST-2098:** Probe holds still use `is_provider_state_hold` branches with explicit `error` on hold returns; prefilter/upshot hand-built hold dicts now include `"error": result.get("error")` for dispatcher text only; `total_held` / hold semantics unchanged.
+- **AST-1867 / AST-897:** `consult._outage_tag` still returns `{}` unless `is_provider_rate_limit` or `is_provider_probe_failure` — balance refusal not forwarded via tag.
+- **Untagged failures:** Early guard on `_outage_tag` unchanged.
+- **Dispatcher / llm_compat:** No edits in diff; wiring-only fix matches plan.
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Empty canon list:** Ticket documents no frozen scope; full graded canon pass is N/A. Joan’s overlap skim already cleared in-force touchpoints; no off-list statute scored (per §5.3).
+- **Tests:** Expected whole-dict mismatch at `test_consult.py` ~L4504 until **AST-2141** lands; not a product defect on this tip.
+- **Parent shape:** AST-2137 orphaned mini-parent with live `ftr`; diff base is ftr→sub (correct isolation). Post-clean **PROCEED**, Chuckles should use orphaned fix-lane merge-to-`dev` path (§8), not `merge-child`/`prep-uat`.
+
+## What’s solid
+
+- Implementation matches plan **Option B** exactly: consult `_outage_tag` adds `error` to the key tuple; roster adds probe-hold `error` on prefilter/upshot, `outage_error` hop on select-failure entity return, and roster-only lift in `_outage_tag`.
+- Scope stays inside boundaries (`roster.py`, `consult.py`); no `dispatcher.py`, no AST-2136/`JO` decode work.
+- Plan fidelity: **To-be** behavior (non-empty `()` in batch-stop warnings via summary `error`) is achieved without changing dispatcher strings or retry policy.
+
+## Recommended actions (Chuckles)
+
+- Append artifact → `docs(AST-2140): Radia review — clean` → **Review Posted** → fix-lane clean shortcut → **User Testing** (skip `resolve-child`).
+- Orphaned parent: merge `sub/AST-2137/AST-2140-outage-error-detail` to `origin/dev` finish-up-style once Susan accepts UT.
+
+context_tokens≈12000
+
+**Test delivery (AST-2140):** docs-acceptance on this sub — fix-board [board-betty] TESTS: REVISE was routed to gap sibling AST-2141, which lands the test_consult.py L4504 fix and the outage-error coverage.
+
+### Joan fix-board — AST-2141
+
+**Read:** `## Bug: AST-2141` on `origin/sub/AST-2137/AST-2141-outage-error-tests` @ `bda2ca88a` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`). Scope is **test tree + test-bible only** (`tests/component/core/test_consult.py`, `test_roster.py`; `docs/test-bible/core/consult.md`, `roster.md`). **No `src/` changes** — AST-2140 owns product; this gap child lands Betty’s fix-board REVISE from AST-2140.
+
+**Corpus skim:** No Canon Scope on AST-2141 / AST-2137. `docs/canon-index.md` absent on ref; used `canon/docs/DIRECTIVES-DIRECTORY.md`. Overlap check is light because the diff never touches product layers — only whether the **proposed test/bible work** implies amending in-force statutes/patterns.
+
+**The one question:** Does this fix require touching canon?
+
+**Analysis:** Proposed change fixes one whole-dict assert (C1), adds consult/roster nodes for `error` on `_outage_tag` summaries, Option B (`outage_error` on select failure, `error` on select summary), untagged guard (C3), and R1 `[bug-repro]` through `_note_provider_rate_limit_outage` to the WARNING text. Bible rows index those nodes under existing § AST-2010 / AST-2098 blocks. That **locks the AST-2140 contract** Joan already triaged **CANON: OK** — wiring and internal dict keys, not new outage policy, routing rules, or logging-level law.
+
+Nothing in the patch amends `canon/directives/active/**` or asks for a new carve-out in `patt.task.dispatch-retry`, `stat.logging.warning`, or related dispatch/logging statutes. Test-bible edits are manifest documentation; active canon does not treat test-bible pages as operative directives needing statute updates. R1’s direct call to `_note_provider_rate_limit_outage` is test harness only; it does not change production logging obligations.
+
+Same shape as gap siblings (e.g. AST-1848): coverage + bible honesty after a product fix Joan already cleared. No F3 `validate-plan` fix mode for canon.
+
+**Verdict:** **CANON: OK**
+
+---
+
+
+### Radia review — AST-2141
+
+
+**Ticket:** AST-2141  
+**Publish ref:** `67745222d4b7fbd8dae69aad7abb89df5fa51f10` (`origin/sub/AST-2137/AST-2141-outage-error-tests`)  
+**Corpus:** unavailable on publish ref (`docs/canon-index.md` absent; Joan fix-board overlap **CANON: OK**)  
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-2137-outage-error-detail` @ `f0c1f167c` (AST-2140 merged) … `origin/sub/AST-2137/AST-2141-outage-error-tests` — 5 files, **no `src/`** (tests + test-bible + plan patch only).
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| *(none frozen)* | — | — | Gap ticket; Joan fix-board **CANON: OK** on test/bible-only diff |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **CANON: OK** narrative; aligned with implementation)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK — `test_prefilter_429_error_reaches_dispatcher_warning` is a real repro, not a tautology.
+
+- Step 1 runs **live** `prefilter_company_batch` with `do_task` stubbed to `_tagged()` → would fail pre-fix on `out.get("error") == self.ERR`.
+- Step 2 forwards that batch dict through `run_consult_task` → pins consult summary `error`.
+- Step 3 calls production `_note_provider_rate_limit_outage` under `caplog` → asserts `ctx["provider_rate_limit_outage"]["error"] == self.ERR` **and** a WARNING containing `still 429 after retries ({ERR})` while rejecting `still 429 after retries ()` — matches `dispatcher.py` format and AST-2140 **To-be** (user-visible symptom, not only dict keys).
+- `(summary["total_processed"], summary["total_errors"]) == (1, 0)` matches real prefilter accounting (`retried` from `_transition_prefilter_batch_failures`, AST-1839 “retry ≠ run error”); bible documents Betty’s intentional deviation from plan prose `(1, 1)` for this hop.
+
+**`## What must still hold`:** OK
+
+- C1 only extends the L4504 expected dict with `"error": self._ERR`; hold/count keys unchanged.
+- C3 guard pins untagged `error` without `failure_class` → no summary `error`/`failure_class` (AST-2140 `_outage_tag` guard).
+- R2/R3 mirror existing probe-hold count tests; add `error` on roster + consult hops only.
+- R4/R5 match Option B: entity has `outage_error` not `error`; summary lifts `error` with `(1, 1, 0)` and no `_warn_company` — consistent with `test_run_company_task_select_job_page_forwards_tag`.
+- Manifest scope excludes `test_dispatcher.py`; plan’s pre-existing drift called out in bible.
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Plan-doc drift:** `## Bug: AST-2141` R1 step 2 still says `(total_processed, total_errors) == (1, 1)`; implementation + `roster.md` correctly use `(1, 0)`. Chuckles may append a one-line plan fix on doc commit, not blocking UT.
+- **Assertion style:** `.get("error")` on new nodes (Betty-noted) is appropriate for red-on-pre-fix; not weaker than plan’s `summary["error"]` where the key must exist post-2140.
+- **Assignee:** Tests landed on Ada’s test-fix pass (gap child); scope matches Betty’s qa-fix plan — no product ownership conflict.
+
+## What’s solid
+
+- Full plan coverage: C1–C3, R1–R5, bible rows in `consult.md` / `roster.md`, manifest ordering with `[bug-repro]` first.
+- Repro-first contract: 7 assertion failures pre-fix @ `a1af5cf6a`, green on ftr with AST-2140 (per spawn); no AST-2140 imports in tests.
+- Stacked correctly on ftr with product fix; does not smuggle AST-2136/`JO` scope.
+
+## Recommended actions (Chuckles)
+
+- Append artifact → `docs(AST-2141): Radia review — clean` → **Review Posted** → clean-review shortcut → **User Testing** (skip `resolve-child`).
+- Orphaned mini-parent AST-2137: same finish-up-to-`dev` path as AST-2140 once siblings are UT-clear.
+
+context_tokens≈14000
+
+**Plan correction (AST-2141 R1 step 2):** the shipped repro asserts `(total_processed, total_errors) == (1, 0)` — the prefilter company is retried, not errored (AST-1839); the `(1, 1)` above is superseded.
