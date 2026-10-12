@@ -643,3 +643,58 @@ A bound sender no longer gets the canned AST-1668 "I know who that is" post — 
 The three `--deselect`s fail identically on `origin/tests` with pre-AST-2072 product (same as the § AST-2035 deselects). Not this ticket's to fix. Needs `nh3` in the venv (AST-2061 product on dev) — `pip install -r requirements.txt`.
 
 **Pass criterion:** pytest green on the manifest (78 passed) — not zero-arg harness / branch-lock gate. Across `test_contact.py` + `test_config.py` + `test_slack.py`, the remaining 33 failures equal the pre-existing set on `origin/tests` @ `39a11978c` (dev incl. AST-2055); AST-2072 adds none.
+
+### AST-2152 · AST-2144 (code-mode handler reply + per-command placement)
+
+**Parent:** [AST-2144](https://linear.app/astralcareermatch/issue/AST-2144) (Add /check-status to Estelle's functions). **Publish:** `origin/sub/AST-2144/AST-2152-code-mode-reply-placement`. Plan: `docs/features/contact/ast-2152-code-mode-reply-placement.md`. Sibling (handler + registry): [`tracker.md`](tracker.md) § AST-2151, [`../utils/config.md`](../utils/config.md) § AST-2151.
+
+`_contact_reply_placement(thread_ts, message_ts, mode=None)`: `mode` (same vocabulary) overrides `thread_response` for that call; `None` keeps today's matrix. `_run_contact_command` passes the entry's `reply_placement` for usage + every code-mode post. Code mode posts the handler's `reply_text` on a hit **or** a miss; no / blank / non-`str` `reply_text` → `ack_reply_template` on `ok` (when declared) else nothing → hear-ack (hear-ack keeps global `thread_response`). `agent` mode and `anchor_ts` unchanged.
+
+| AC (child) | Component tests (`test_contact.py`) |
+| --- | --- |
+| 3 parse (plain + `<url\|label>`) | new **`TestAst2152CheckStatusEndToEnd::test_ac3_parse`** (2) |
+| Override wins / `None` keeps global (3 globals × 4 overrides × top-level/in-thread; 2-arg AST-2072 matrix is the oracle) | `::test_placement_override_wins_none_keeps_global` (24) |
+| 4 one match (title, raw state, both contact clocks, encoded link, one post) + 5 top-level → `(ts, True)` + 6 no `do_task` / paste / `insert_slack_meteorite`, job row equal before/after | `::test_ac4_ac5_ac6_one_match_threaded_shared_read_only` |
+| 5 in-thread → `(T, True)` | `::test_ac5_in_thread_reply_uses_that_thread` |
+| 7 several; 8 candidate scope (rival exact-title job absent) | `::test_ac7_several_matches_one_post`, `::test_ac8_other_candidates_job_absent` |
+| 9 no match → exact `format_contact_reply_text(no_match_reply_text)`, `(ts, True)`, no hear-ack | `::test_ac9_no_match_posts_no_match_text_not_hear_ack` |
+| 10 origin unset → no link, one deeplink WARNING | `::test_ac10_no_origin_posts_without_links_one_warning` |
+| 11 bare → usage text, `(ts, True)`, handler never called | `::test_ac11_bare_command_usage_threaded_shared_no_handler` |
+| 12 `hi` turn + `/add-job` ack under `threads_only` → `(None, False)` | `::test_ac12_placement_unchanged_elsewhere` (2) |
+| 13 one `contact listen` INFO line, `action:` has `check-status:code` | `::test_ac13_one_listen_line_with_command_key` |
+| 14 no command id / route / env / `always_with_share` literals in `src/core` outside the placement helper | `::test_ac14_no_command_literals_in_core` |
+| Plan decisions: no usable `reply_text` → ack (4); `reply_text` beats ack; `ok` with no text + no ack → hear-ack | `::test_no_usable_reply_text_falls_back_to_ack`, `::test_reply_text_wins_over_ack`, `::test_ok_without_reply_text_or_ack_posts_hear_ack` |
+| 15 `/add-job` unchanged | **`TestAst2035ContactCommandIntercept`**, **`TestAst2072ThreadResponsePlacement`** — unmodified, green |
+
+End-to-end cases seed real rows on core `sqlite_in_memory` (candidates `c1`/`c2`, companies, jobs) and run the shipped AST-2151 handler; harness is AST-2072's `_wire` (external `post_message` mocked, production deploy = no env prefix). **Red check:** with `src/core/contact.py` from `origin/ftr/AST-2144-check-status` (pre-AST-2152) 34 of 43 cases fail; the 9 that pass are parse, AC 12, AC 14, and the four ack-fallback cases (unchanged behavior by design).
+
+**Broken / obsolete:** none.
+
+**Pre-existing (not this ticket):** `test_contact.py` 7 (`TestAst1073ContactEstelleTurnLoop` ×2, `TestAst1101ChannelHearEvidence::test_background_wrapper_logs_exception`, `TestAst1207DurableDebugSot` ×3, `TestAst1515ContactTaskMarkup::test_dispatch_debug_style_d`), identical without this change. **Order pollution:** `test_config.py::TestAst1206ContactDebugConfig::test_debug_config_defaults` fails only when it runs after `test_contact.py` (an older contact test leaves `CONTACT_CONFIG["debug_enabled"]` on); green alone, green after `TestAst2152…` alone, and still red with `TestAst2152…` deselected.
+
+**Hygiene:** running `test_contact.py` rewrites tracked `data/contact_estelle_activity.json` — `git checkout HEAD -- data/contact_estelle_activity.json` after; never commit it.
+
+**Integration:** none. No `tests/integration/` scenario reads the command registry or placement. Do not invent one.
+
+## QA test manifest — AST-2152
+
+1. New + neighbors:
+
+```bash
+ASTRAL_DB_DIR=$(mktemp -d) ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst2152CheckStatusEndToEnd \
+  tests/component/core/test_contact.py::TestAst2035ContactCommandIntercept \
+  tests/component/core/test_contact.py::TestAst2072ThreadResponsePlacement \
+  tests/component/core/test_tracker.py::TestAst2151ContactCommandCheckStatus \
+  tests/component/utils/test_config.py::TestAst2151CheckStatusRegistry \
+  -q
+git checkout HEAD -- data/contact_estelle_activity.json
+```
+
+   Expect **115 passed**.
+2. No-regression: `pytest tests/component/core/test_contact.py -q` → exactly the 7 pre-existing failures above, none in `TestAst2152…` / `TestAst2035…` / `TestAst2072…`.
+3. AC 14 by hand: `rg -n "check-status|jobs/detail|RAILWAY_PUBLIC_DOMAIN|always_with_share" src/core` → only the `always_with_share` lines inside `_contact_reply_placement`.
+
+**Pass criterion:** items 1–3. Narrowed run, not the zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-2144/AST-2152-code-mode-reply-placement:docs/test-bible/core/contact.md | shasum`
