@@ -12,10 +12,12 @@ AST-1518: contact-task read wrappers + get_job_by_pattern (candidate-scoped; no 
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from urllib.parse import quote
 
 from src.core import candidate as candidate_mod
 from src.data import database
@@ -24,10 +26,13 @@ from src.utils.config import (
     BLOCK_TYPES,
     BUILD_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
+    CONTACT_CONFIG,
     JOB_BUILD_ARTIFACT_CLEAR_KEYS,
     JOB_ARTIFACT_ENTITY_TYPE,
     JOB_EDITABLE_ARTIFACT_TYPES,
     JOB_STATES,
+    JOBS_DETAIL_ORIGIN_DOMAIN_ENV,
+    JOBS_DETAIL_ROUTE_PREFIX,
     METEORITE_CONFIG,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     SKIPPED_STATES,
@@ -37,6 +42,7 @@ from src.utils.config import (
     TRACKER_CONFIG,
     dispatch_chain_graduation_target,
     dispatch_hop_label,
+    format_contact_timezone_clock,
     parse_dispatch_hop_label,
     is_build_artifacts_in_progress,
     is_registered_state,
@@ -1913,6 +1919,89 @@ def contact_task_get_job_by_pattern(
         debug=debug,
     )
     return row
+
+
+def _contact_job_clock(raw: Any, timezone_key: str) -> str:
+    """Job TEXT timestamp (UTC ``YYYY-MM-DD HH:MM:SS`` or ISO) → contact clock; ``-`` when absent/unparseable."""
+    log = get_logger(__name__)
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return "-"
+    log.debug("Calling format_contact_timezone_clock: [dt=%s, timezone_key=%s]", dt.isoformat(), timezone_key)
+    clock = format_contact_timezone_clock(dt, timezone_key)
+    log.debug("Response from format_contact_timezone_clock: %s", clock)
+    return clock
+
+
+def contact_command_check_status(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """CONTACT_CONFIG["commands"] code handler: terse status + deeplink for the sender's matching job(s) (AST-2144).
+
+    Read-only. Returns {ok, meteorite_id (always None), error, reply_text}; Contact posts reply_text.
+    """
+    log = get_logger(__name__)
+    # Own registry row, found by handler path: no command-id literal in src/core (AST-2144 AC 14).
+    cmd_id, meta = next(
+        (k, m) for k, m in CONTACT_CONFIG["commands"].items()
+        if m["handler"] == f"{__name__}.contact_command_check_status"
+    )
+    cid = (candidate_id or "").strip()
+    pat = (payload or "").strip()
+    if not cid:
+        # Contact only runs commands for bound senders; no reply_text → Contact's hear-ack path.
+        return {"ok": False, "meteorite_id": None, "error": "no_candidate", "reply_text": None}
+
+    # Same candidate-scoped matcher + ownership check as contact_task_get_job_by_pattern; no hydration.
+    log.debug("Calling _match_jobs_by_pattern: [candidate_id=%s, pattern=%s]", cid, pat)
+    jobs = [j for j in _match_jobs_by_pattern(cid, pat) if _job_owned_by_candidate(j, cid)]
+    log.debug("Response from _match_jobs_by_pattern: %s", [j.get("astral_job_id") for j in jobs])
+    if not jobs:
+        return {
+            "ok": False, "meteorite_id": None, "error": "unmatched_pattern",
+            "reply_text": meta["no_match_reply_text"],
+        }
+
+    # Unset/empty origin → reply still goes out, just without links (one warning per reply).
+    domain = (os.environ.get(JOBS_DETAIL_ORIGIN_DOMAIN_ENV) or "").strip()
+    if not domain:
+        log.warning(
+            "%s | /%s deeplink missing — %s is unset\n  This reply goes out without job links",
+            cid, cmd_id, JOBS_DETAIL_ORIGIN_DOMAIN_ENV,
+        )
+    # Local import: meteorite imports tracker at module level.
+    from src.core.meteorite import _candidate_contact_timezone
+
+    log.debug("Calling _candidate_contact_timezone: [candidate_id=%s]", cid)
+    tz_key = _candidate_contact_timezone(cid)
+    log.debug("Response from _candidate_contact_timezone: %s", tz_key)
+
+    def _fields(job: Dict[str, Any]) -> Dict[str, str]:
+        # Same path as the job report modal's Copy Link: origin + route prefix + "/" + encoded id.
+        url = f"https://{domain}{JOBS_DETAIL_ROUTE_PREFIX}/{quote(str(job['astral_job_id']), safe='')}"
+        return {
+            "job_title": job.get("job_title") or "-",
+            "company": job.get("company") or "-",
+            "state": job.get("state") or "-",
+            "created_at": _contact_job_clock(job.get("created_at"), tz_key),
+            "state_changed_at": _contact_job_clock(job.get("state_changed_at"), tz_key),
+            "deeplink": meta["deeplink_template"].format(url=url) if domain else "",
+        }
+
+    if len(jobs) == 1:
+        reply = meta["match_reply_template"].format(**_fields(jobs[0]))
+    else:
+        log.debug("Beginning job status line loop on %s items", len(jobs))
+        lines = [meta["matches_line_template"].format(**_fields(j)) for j in jobs]
+        log.debug("End job status line loop after %s items", len(lines))
+        reply = "\n".join([meta["matches_header_template"].format(count=len(jobs)), *lines])
+    return {"ok": True, "meteorite_id": None, "error": None, "reply_text": reply}
 
 
 def contact_task_get_job_data(
