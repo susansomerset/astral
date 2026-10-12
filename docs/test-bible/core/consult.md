@@ -141,6 +141,25 @@ Manifest default ( **`test-astral`** on publish tip — consult/config scope): `
 
 ---
 
+### AST-2138 · AST-2136 (bug-repro — JOB:/CULT: link fields never decode as grades; tests via gap AST-2139)
+
+AST-483's colon strip turned a single-digit link field into a grade token (`JOB:3` → `JOB3` → vector **`JO`**, grade `B`), so **`possible_job_links`** was lost and hydrate raised on the unknown **`JO`** vector. Fix: **`_LINK_PREFIX_RE`** moves into `agent.py` and **`_grade_segment`** returns `None` for any **`JOB:`** / **`CULT:`** field; **`_decode_payload`** and **`_should_decode_as_encoded_line`** share that classifier. Prior **`JOB:`** fixtures used **`JOB:16`** only (never matched **`_GRADE_SEG`**). Fixture is company-shaped (`company_id`, `["companies"]`, **AST-1723**), not **`TestAst697PrefilterBracketLinkDecode._prefilter_decode_ctx`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Link-prefix guard: `JOB:0`–`JOB:5` stay meta, no **`JO`** grade (**[bug-repro]** `n=3`) | `src/core/agent.py` (`_LINK_PREFIX_RE`, `_grade_segment`, `_decode_payload`) | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_single_digit_job_link_is_meta_not_grade` |
+| `JOB:1\|CULT:[]` → `[1]`, no culture key | `src/core/agent.py`, `src/core/consult.py` (`_apply_prefilter_encoded_link_meta`) | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_job_link_with_empty_culture_tail` |
+| Routing guard: link-only line is not encoded | `src/core/consult.py` (`_should_decode_as_encoded_line`) | `tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade::test_link_only_line_does_not_route_as_encoded` |
+
+**AST-2138** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst2138JobLinkPrefixNotGrade
+```
+
+---
+
 ### AST-719 · AST-716
 
 **AST-719:** Company **`entity_type`** dispatch with **`dispatch_task_key=fetch_job_pages`** routes to **`fetch_job_pages_batch`** (not **`run_company_task`**). Returns normalized summary counts like **`fetch_website`**.
