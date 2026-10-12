@@ -799,3 +799,8 @@ no plan-stage scores attached (Joan F2 fix-board only; no `validate-plan` per-di
 | **PROCEED** (artifact complete) | **Normal** (AST-2158 not Done): → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing**; `resolve-child` **skipped**. |
 
 context_tokens≈28000
+
+
+## Test delivery — AST-2159
+
+Docs-acceptance on this ref: no test-tree delivery on `sub/AST-2158/AST-2159-lone-grade-unknown-index-retry`. Betty's fix-board `[board-betty] TESTS: REVISE` routed the new coverage (stateful lone no-row → retry holding → error) to sibling test-gap [AST-2161](https://linear.app/astralcareermatch/issue/AST-2161), which is blocked by this ticket and lands its own `test(AST-2161)` on `ftr`.
