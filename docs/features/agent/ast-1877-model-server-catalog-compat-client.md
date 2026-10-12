@@ -1178,3 +1178,22 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-2010 | sub/AST-2009/AST-2010-openrouter-429-retry |
 
 **Epic worktree:** `astral-AST-2009/` — one active sub checked out at a time.
+
+### Joan fix-board — AST-2140
+
+**Read:** `## Bug: AST-2140` on `origin/sub/AST-2137/AST-2140-outage-error-detail` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`, plan commit `0bd88a6e3`). No Canon Scope on AST-2140 or orphaned parent AST-2137. `docs/canon-index.md` is not on this ref; overlap skim used `canon/docs/DIRECTIVES-DIRECTORY.md` and in-force directives that plausibly touch `src/core/roster.py`, `src/core/consult.py`, dispatcher batch-stop logging, provider failures, and batch processing: `patt.task.dispatch-retry`, `patt.entity.batch-processing`, `stat.logging.warning`, `stat.logging.info.dispatcher`, `stat.logging.error` (provider / `log_llm_batch_summary` carve-outs).
+
+**The one question:** Does the proposed change conflict with or require updating any directive in force?
+
+**Analysis:** The fix only extends existing AST-2010 / AST-2098 forwarding: `_outage_tag` also copies `error` (and two hand-built probe-hold returns add `error`). Dispatcher stays out of scope; it already logs `result.get("error") or ""` — the bug is consult/roster dropping the key before the summary reaches the dispatcher. That is implementation wiring, not a new outage policy, retry count, ledger outcome, or routing rule.
+
+`patt.task.dispatch-retry` governs entity `_RETRY` routing and the probe-hold exemption vs exhausted rate limit on the probe; the plan explicitly preserves those behaviors (`## What must still hold`). Option A vs Option B for select/locate is how to forward text without putting `error` on the entity dict (AST-2010 routing invariant); neither option changes statute-level semantics — only whether every path gets non-empty warning detail. Option B’s transient `outage_error` on one entity return is an internal dict convention, not a new persisted field; nothing in force defines allowed summary-tag keys or forbids that hop.
+
+`stat.logging.warning` wants per-failure who/why; filling the batch-stop parentheses with provider text aligns with that intent and does not change level, shape, or rollup ownership (`stat.logging.info.dispatcher`). No active directive requires empty `()` in those outage lines or mandates the current `_outage_tag` key tuple.
+
+Same qualitative outcome as AST-2010 fix-board in this plan doc: product code only; no statute/pattern amendment and no F3 `validate-plan` fix mode for canon unless you later choose to codify internal outage-forwarding shapes (not required for this bug).
+
+**Verdict:** **CANON: OK**
+
+---
+
