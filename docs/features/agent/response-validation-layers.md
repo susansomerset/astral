@@ -710,6 +710,92 @@ Out of scope (Susan did not check AST-2158 step 4): binding a lone mis-indexed l
 - One-hop retry (AST-642/AST-2008): primary → retry holding → error state. A second miss from the retry holding never loops back to retry.
 - `_fail` keeps serving job-not-found, company-not-found, live-content, do_task-failure and `ValueError` config branches unchanged.
 
+## Bug: AST-2161 — lone render_verdict no-row retry routing tests + bible (test gap for AST-2159)
+
+Parent: AST-2158 (orphaned Bug mini-parent). Test-tree only. Betty's fix-board `[board-betty] TESTS: REVISE` on AST-2159 routed it here (same shape as AST-2095 for AST-2093). The product fix is AST-2159 (`a18695932`), already merged on `origin/ftr/AST-2158-lone-grade-unknown-index-retry` @ `1f71039ed`. Pre-fix product base: `66b158c6c`. Scope: AST-2161 `## Scope`, which covers only `tests/component/core/test_consult.py` and `docs/test-bible/core/consult.md`. No `src/` or `data/` change. Engineers never edit the test tree, so Betty's qa-fix lands every file named below.
+
+### As-is
+
+No test drives `render_verdict`'s no-row / no-matching-`decode_failures` branch with a **stateful** job. `TestRenderVerdict::test_fails_when_job_row_is_missing` and `::test_fails_when_grades_are_missing` use jobs with no `state`. `_consult_batch_fail_dest(None, …)` returns `error_state` for those, so they get the same destination before and after AST-2159. Both stay green on either tree and can't catch the bug. Neither checks `out["error"]` or `to_state`. The decode-failure branch is covered (`TestAst1155IncompleteGradeRetry::test_render_verdict_bad_confidence_first_strike_to_retry`), but only with the job's own failure present.
+
+### To-be
+
+Component tests in `TestRenderVerdict` pin AST-2159's routing for a lone stateful `meteorite_grade_get` job whose reply binds no row:
+
+- Primary state goes to the retry holding.
+- The retry holding goes to the error state.
+- The reason is `omitted from response`.
+- A `decode_failures` entry for a *different* id doesn't count as this job's failure.
+
+The tests fail on the pre-fix product tree and pass on the AST-2159 tip. `docs/test-bible/core/consult.md` gets a matching `AST-2159 · AST-2158` block.
+
+### Repro
+
+Fixture, no DB. These states were resolved live on `1f71039ed`: `_consult_orchestration_for_entity("meteorite_grade_get", st)` gives `error_state="ERROR_METEORITE_GRADE_GET"`, `agent_task=None` (so `render_verdict` uses `"meteorite_grade_get"`), and no `requires_company`. `retry_of("METEORITE_PASSED_DO") == "METEORITE_PASSED_DO_RETRY"`.
+
+```python
+job = {"astral_job_id": "J24", "company": "co", "job_data": {}, "state": "METEORITE_PASSED_DO"}
+# monkeypatch: tracker.get_job -> job; _prep_live_content -> AsyncMock("live");
+#   _transition_job_state_for_task -> MagicMock(); _log_fail_dest -> capture (aid, dest, reason);
+#   do_task -> AsyncMock({"success": True, "parsed_response": {"jobs": []}, "timesheet": {}})
+out = await consult_mod.render_verdict("meteorite_grade_get", "J24", batch_index=24)
+```
+
+`{"jobs": []}` with no `decode_failures` is exactly what `agent._decode_payload` returns for `000|THA4|QQB3` under `batch_index_map={24: job}`. The unknown index is skipped (AST-2093). The test stubs `do_task`, so the decoder is not re-exercised here; that is already pinned in `core/agent.md` § AST-2093.
+
+- Pre-fix (`66b158c6c`): `to_state == "ERROR_METEORITE_GRADE_GET"`, `error == "decoded payload has no job row for this astral_job_id"`, no `_log_fail_dest` call (`_warn_job` instead).
+- AST-2159 tip: `to_state == "METEORITE_PASSED_DO_RETRY"`, `error == "omitted from response"`, `_log_fail_dest("J24", "METEORITE_PASSED_DO_RETRY", "omitted from response")`.
+
+### Root cause
+
+This is a coverage gap, not a product defect. The existing no-row tests use stateless jobs. For those, the hard `_fail` and the retry router pick the same destination (`error_state`), and neither test checks the reason. So the one input where the two code paths diverge (a primary state with a `retry_state`) was never exercised.
+
+### Proposed change
+
+**`tests/component/core/test_consult.py` — `class TestRenderVerdict`.** Add three `@pytest.mark.asyncio` tests. They share one private `async def _run_no_row(self, monkeypatch, state, parsed)` helper that applies the Repro stubs and returns `(out, transition, logged)`. Follow the stub style of the existing `test_fails_when_job_row_is_missing`: `monkeypatch.setattr(consult_mod, …)`, `MagicMock`, `AsyncMock`. Capture `_log_fail_dest` like `TestAst2089SalvagedBatchSplit` does (`lambda aid, dest, reason: logged.append(...)`). Call `render_verdict("meteorite_grade_get", "J24", batch_index=24)`.
+
+1. **[bug-repro]** `test_bug_repro_lone_no_row_primary_goes_to_retry_holding`: `state="METEORITE_PASSED_DO"`, `parsed={"jobs": []}`. Assert:
+   - `out == {"success": False, "to_state": "METEORITE_PASSED_DO_RETRY", "error": "omitted from response"}`
+   - `transition.assert_called_once_with("meteorite_grade_get", ["J24"], "METEORITE_PASSED_DO_RETRY")`
+   - `logged == [("J24", "METEORITE_PASSED_DO_RETRY", "omitted from response")]`
+2. **[bug-repro]** `test_bug_repro_lone_no_row_retry_holding_goes_to_error`: `state="METEORITE_PASSED_DO_RETRY"`, same `parsed`. Assert:
+   - `out["to_state"] == "ERROR_METEORITE_GRADE_GET"` and `out["error"] == "omitted from response"`
+   - `transition.assert_called_once_with("meteorite_grade_get", ["J24"], "ERROR_METEORITE_GRADE_GET")`
+   - `logged == [("J24", "ERROR_METEORITE_GRADE_GET", "omitted from response")]`
+   - The pre-fix destination is the same (`ERROR_METEORITE_GRADE_GET`), so the red comes from the reason and the log assertions. Keep both.
+3. `test_lone_no_row_other_id_decode_failure_is_omitted`: `state="METEORITE_PASSED_DO"`, `parsed={"jobs": [], "decode_failures": [{"astral_job_id": "J99", "pos": 0, "reason": "r99"}]}`. Assert the same as test 1: retry holding, reason `omitted from response`, never `r99`. This drives the loop's non-matching iteration (branch `1587->1586` on `1f71039ed`, currently partial).
+
+Do not edit, rename or re-assert `test_fails_when_job_row_is_missing`, `test_fails_when_grades_are_missing`, or `TestAst1155IncompleteGradeRetry::test_render_verdict_bad_confidence_first_strike_to_retry`. They stay green as written (AST-2161 AC).
+
+**`docs/test-bible/core/consult.md`.** Add a new `### AST-2159 · AST-2158 (bug-repro — lone render_verdict no-row → retry fail-dest; test gap AST-2161)` block directly after `### AST-2093 · AST-2012 …`, in the same format as that block and AST-2125's:
+
+- A one-paragraph summary of the AST-2159 contract (no row + no matching `decode_failures` → `_consult_batch_fail_dest` → `_log_fail_dest`, reason `omitted from response`; the job's own decode failure keeps its reason), with a pointer to this plan doc § Bug: AST-2159.
+- An Area / Component-tests table with one row per test above. Mark tests 1 and 2 **[bug-repro]**.
+- A **Kept** line naming the three untouched tests.
+- **Integration:** none.
+- **QA test manifest (test-fix):**
+  1. **[bug-repro]** run tests 1 and 2 by node id.
+  2. `pytest tests/component/core/test_consult.py::TestRenderVerdict tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry` → 0 new failed vs `origin/ftr/AST-2158-lone-grade-unknown-index-retry`.
+  3. Hunk coverage: `--cov=src.core.consult --cov-branch` over #2. No missing line inside `git diff -U0 66b158c6c a18695932 -- src/core/consult.py`. Branch `1587->1586` is no longer partial. `1585->1590` (non-dict `parsed`) and `1593->1595` (`dest` None) may stay partial; both predate AST-2159.
+  4. `git diff origin/ftr/AST-2158-lone-grade-unknown-index-retry -- src/ data/` empty.
+- A **Red/green record (qa-fix)** in the AST-2125 style:
+  - Red: `src/core/consult.py` from `66b158c6c` swapped into a `/tmp` copy, where tests 1 and 2 fail.
+  - Green: sub tip.
+
+No changes to the "kept" tests' bible rows elsewhere in the file.
+
+### Blast radius
+
+- Test-tree only: one test class gains three nodes and one private helper; one bible page gains one block. No `src/`, `data/` or canon change.
+- `TestRenderVerdict`'s existing nodes keep their stubs. The new helper must not be a fixture shared with them, so nothing changes in what they exercise.
+- Pre-existing reds: 69 failed / 723 passed / 7 skipped across `test_consult.py` + `test_agent.py`, identical on base and tip (AST-2159 test-fix). These are out of scope. Manifest #2 compares against `ftr`, not an absolute pass count.
+
+### What must still hold
+
+- AST-2159's What must still hold, unchanged. These tests assert it and don't redefine it: one-hop retry, the job's own decode failure keeps its reason, and `_fail` keeps its other branches.
+- `consult.py` branch coverage does not drop below its locked level (AST-2161 AC). The new tests only add coverage.
+- The `core/agent.md` § AST-2093 decoder rows (unknown index skipped, no `decode_failures`) stay the single source for the decode half. This block references them and does not duplicate them.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
