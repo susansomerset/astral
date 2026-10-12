@@ -144,3 +144,15 @@ Registers `surfer_bp` (`GET`/`PUT /api/candidates/<id>/surfer/consent`). Route b
 **Broken / obsolete:** none.
 
 **Integration:** none.
+
+### AST-2173 · AST-2168
+
+**Parent:** [AST-2168](https://linear.app/astralcareermatch/issue/AST-2168) (Add Universal Entity Search). **Publish:** `origin/sub/AST-2168/AST-2173-search-backend`.
+
+Registers `search_bp` (`GET /api/search`) after `meteorite_bp`. Route behavior: **`docs/test-bible/ui/api/api_search.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Blueprint registered on the real app | `src/ui/server.py` | new **`TestAst2173SearchBlueprint::test_search_route_registered`** (`server_client` reload) |
+
+**Broken / obsolete:** none (no new branches in locked `server.py`). **Integration:** none.
