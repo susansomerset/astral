@@ -890,3 +890,12 @@ context_tokens≈28000
 ## Test delivery — AST-2159
 
 Docs-acceptance on this ref: no test-tree delivery on `sub/AST-2158/AST-2159-lone-grade-unknown-index-retry`. Betty's fix-board `[board-betty] TESTS: REVISE` routed the new coverage (stateful lone no-row → retry holding → error) to sibling test-gap [AST-2161](https://linear.app/astralcareermatch/issue/AST-2161), which is blocked by this ticket and lands its own `test(AST-2161)` on `ftr`.
+
+
+## Joan fix-board — AST-2161
+
+[board-joan]  CANON: OK
+
+**Rationale:** AST-2161 is test-tree only (`test_consult.py` + `docs/test-bible/core/consult.md`); the plan explicitly excludes `src/`, `data/`, and canon. The work pins AST-2159’s already-approved product contract (retry-first via `_consult_batch_fail_dest`, reason `omitted from response`) and does not introduce new behavior, carve-outs, or contradictions for in-force directives (`patt.task.dispatch-retry`, `astral.idioms.render-verdict-orchestrates-consult`, decode coverage deferred to `core/agent.md` § AST-2093). Bible text documents tests; it is not a statute edit. No F3 (`validate-plan` fix mode) trigger.
+
+**Chuckles routing:** Betty TESTS: REVISE (this ticket is the test work) + Joan CANON: OK → Plan Discuss → qa-fix (F4).
