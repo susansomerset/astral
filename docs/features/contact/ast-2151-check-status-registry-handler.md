@@ -402,3 +402,79 @@ context_tokens≈28000
 - **Advisory: off-list Canon Scope ids** (`astral.config.config-source-of-truth`, `astral.layers.import-direction`). These are the parent Canon Scope's lane (Archie). No change here.
 - **Advisory: interim runner, tests/bible ownership.** Already documented; nothing to do.
 - **Re-verified on the resolve tip** (after `sync(dev)` brought in AST-2149's one-line `gather_stagger_seconds` config add): `py_compile` is clean, and Betty's manifest item 1 gives 54 passed.
+
+## Bug: AST-2169 — Estelle job reads own meteorite jobs by candidate_id, not null company
+
+**Linear:** [AST-2169](https://linear.app/astralcareermatch/issue/AST-2169) (fix child of orphaned bug [AST-2167](https://linear.app/astralcareermatch/issue/AST-2167))
+**Publish ref:** `origin/sub/AST-2167/AST-2169-check-status-ownership-candidate-id`
+**Reverses:** the **Inherited consequence** under this doc's Stage 2 ⚠️ Decision (null-`company_id` jobs filtered to the no-match text). Nothing else in Stages 1–2 changes.
+
+### As-is
+
+`@Estelle /check-status <job link>` returns `no_match_reply_text` for a job that exists and belongs to the sender when that job has no company. `_match_jobs_by_pattern` finds it (`list_jobs(candidate_id=cid)` returns it, and the link matches `job_link`), and then `_job_owned_by_candidate` drops it. The same helper makes `get_job_by_pattern` return `refused_cross_candidate` and `get_job_data` return `refused_cross_candidate` for the same job.
+
+### To-be
+
+All three Estelle job reads (`contact_command_check_status`, `contact_task_get_job_by_pattern`, `contact_task_get_job_data`) treat a job as the sender's when the job row's own `candidate_id` equals the sender's candidate id. `company` / `company_id` can be NULL or set, and neither affects the result. A job whose `candidate_id` is another candidate stays invisible on all three paths.
+
+### Repro
+
+Live: Somerset sends `@Estelle /check-status https://www.dice.com/job-detail/6889a7c5-d9c5-49e8-9598-ddaf1142df0a`. The target is job `6775db61-…`, state `CANDIDATE_SKIPPED`, meteorite-sourced, `company_id` NULL. Today Somerset gets the no-match reply. After the fix, Somerset gets the single-match reply with state `CANDIDATE_SKIPPED`.
+
+Fixture (component, same stubbing style as `TestAst2151ContactCommandCheckStatus._stub`): `list_jobs` returns
+
+```python
+{"astral_job_id": "m1", "candidate_id": "c1", "company": None,
+ "job_title": "Platform Engineer", "job_link": "https://www.dice.com/job-detail/x1",
+ "state": "CANDIDATE_SKIPPED", "created_at": "2026-10-01 15:04:00",
+ "state_changed_at": "2026-10-10T09:30:00Z"}
+```
+
+`contact_command_check_status("c1", "https://www.dice.com/job-detail/x1", source_id="C1:1.0")` → today `error == "unmatched_pattern"`; to-be `ok is True` with the single-match reply. Do the same with `get_job` returning that row: `contact_task_get_job_data("c1", "m1")` → today `refused_cross_candidate`; to-be `ok is True`. With `"candidate_id": "c2"` on the row, `get_job_data` still refuses.
+
+### Root cause
+
+`_job_owned_by_candidate` (`src/core/tracker.py`, from AST-1518) resolves ownership as `job["company"]` → `get_company(short_name)` → `company.candidate_id`, and returns `False` when `company` is blank. AST-1518 did this deliberately because job rows had no `candidate_id` at the time ("job rows do **not** carry `candidate_id`" in its Stage 1 step 3). Two later changes made that wrong:
+
+- **AST-1598** added `job.candidate_id`. It is backfilled from `company.candidate_id`, required on every `save_job` insert, returned on every row dict (`SELECT *`), and it is the only scope key for `list_jobs` / `count_jobs` / `claim_job_batch`. `_candidate_id_for_job` in the same module already prefers it.
+- **AST-1701** made the job's company link nullable. Meteorite-landed jobs have `company_id = NULL` and set `source_entity_id` instead, so the `company` compat alias on the row is `None`.
+
+The combination means a meteorite job is in the sender's `list_jobs` scope, but the ownership check filters it out because the job has no company.
+
+### Proposed change
+
+**`src/core/tracker.py` only. Function `_job_owned_by_candidate(job, cid)`.** Signature, name, and position stay the same, and no new function is added. Replace the body so ownership comes from the job row alone:
+
+```python
+def _job_owned_by_candidate(job: Dict[str, Any], cid: str) -> bool:
+    """True when the job row's own candidate_id matches cid (AST-1598 scope key; company may be NULL — AST-1701)."""
+    owner = job.get("candidate_id")
+    return isinstance(owner, str) and bool(owner.strip()) and owner.strip() == cid
+```
+
+- Remove the `company` → `get_company` lookup from this helper. `get_company` itself stays, because other callers use it.
+- Do not edit any of the three callers. `contact_command_check_status` keeps it as a filter over every match, and `contact_task_get_job_by_pattern` / `contact_task_get_job_data` keep it as a `refused_cross_candidate` gate. Error keys and reply templates stay the same.
+- Do not edit the AST-2151 handler comment "Same candidate-scoped matcher + ownership check as contact_task_get_job_by_pattern". It stays true.
+
+⚠️ **Decision: no company fallback for a blank `job.candidate_id`.** AST-2167 left this to plan-fix ("if any exist"). It is dropped for three reasons:
+
+1. A row's `candidate_id` can only be blank if the row predates AST-1598 *and* its company had no owner at backfill time. For that row the old company lookup also returns no owner, so a fallback would almost never flip a result.
+2. On the two pattern paths, every row already comes from `list_jobs(candidate_id=cid)`, which filters on `job.candidate_id = cid`. A blank row can never reach them.
+3. A single source of truth is less to reason about than a two-tier one.
+
+**Alternative, if fix-board or Susan prefers it:** mirror `_candidate_id_for_job` inline. Check `candidate_id` first, and fall back to `company` → `get_company` only when `candidate_id` is blank. That is about 6 more lines, and it keeps today's company-only test fixtures green (see Blast radius). Do not *call* `_candidate_id_for_job`: it takes an id and re-reads the row through `database.get_job`, which would add one DB read per match to `/check-status`, and AST-2151 promised "no new query".
+
+### Blast radius
+
+- **Callers (behavior change, no code change):** `contact_command_check_status`, `contact_task_get_job_by_pattern`, `contact_task_get_job_data`. No other caller exists (grep on `_job_owned_by_candidate` finds these three in `src/`).
+- **Security:** `get_job_data` is the only path where the gate is not redundant, because it loads by arbitrary id through `get_job`. A foreign id is still refused, since its row's `candidate_id` is the foreign candidate. AST-1518's warning ("a foreign `astral_job_id` would otherwise succeed") was about the column being *absent*, and comparing it to `cid` does not reopen that hole.
+- **Tests (Betty's call at fix-board; noted here, not touched):** `tests/component/core/test_tracker.py`. The AST-1518 job-read tests in `TestAst1518ContactTaskReads` (`_job()` fixture, about line 2271, used by `test_contact_task_get_job_by_pattern_happy_and_errors` and `test_contact_task_get_job_data_ownership`) and the AST-2151 `/check-status` tests in `TestAst2151ContactCommandCheckStatus` (`_job()` / `_stub(..., owners)`, about line 2405) build job rows **without** `candidate_id` and drive ownership by stubbing `get_company`. Under the Proposed change, their happy paths turn red, and the cross-candidate case needs to vary `job["candidate_id"]` instead of the company owner. `docs/test-bible/core/tracker.md` (about line 898) describes the handler as using `_job_owned_by_candidate`, and the name stays the same. Expect **TESTS: REVISE** with fixture updates plus a null-company repro case.
+- **Docs:** AST-1518 (`docs/features/contact/ast-1518-…md` Stage 1 step 3) and AST-1563 (`docs/features/tracker/ast-1563-audit-of-get-job-data.md`) describe the old company-based rule. They are historical plan docs and are not patched. This block records the change.
+- **Not touched:** `_match_jobs_by_pattern`, `list_jobs` scoping, `_candidate_id_for_job`, reply templates, `CONTACT_CONFIG`, `src/core/contact.py`, schema, backfill.
+
+### What must still hold
+
+- AST-2151 handler ACs: one / several / none / no-origin branches. Registry row found by handler path. Read-only (no `save_job` / `delete_job` / `save_artifact`). Single WARNING on a missing origin. `reply_text` contract with sibling #2.
+- AST-1518 contracts: `get_job_by_pattern` refuses ambiguous and unmatched patterns. `get_job_data` refuses `refused_cross_candidate` for a job owned by another candidate and returns `not_found` for a missing id. Hydration (`agent_story`) is unchanged.
+- An employer-sourced job (company set) owned by the sender behaves exactly as today. Its `candidate_id` was backfilled from that company's owner and set on insert, so both rules agree.
+- No new DB reads per match. The helper stays a pure function of the row it is given.
