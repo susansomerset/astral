@@ -2009,8 +2009,10 @@ CONTACT_CONFIG = {
     "skills": {},
     # AST-2035: Slack commands — `@Estelle /<command id> <payload>`, recognized only as the
     # first token after leading @mentions. handler: sync src.core.* callable
-    # (candidate_id, payload, *, source_id, thread_ts, debug) -> {ok, meteorite_id, error}.
-    # mode "code": fixed ack/usage post, no LLM turn. mode "agent": one Estelle turn sees the result.
+    # (candidate_id, payload, *, source_id, thread_ts, debug) -> {ok, meteorite_id, error[, reply_text]}.
+    # mode "code": fixed usage post, no LLM turn; the handler's reply_text when it returns one, else
+    # ack_reply_template on ok (AST-2144). mode "agent": one Estelle turn sees the result.
+    # Optional reply_placement overrides thread_response for this command's replies (AST-2144).
     "commands": {
         "add-job": {
             "handler": "src.core.meteorite.insert_slack_meteorite",
@@ -2019,6 +2021,23 @@ CONTACT_CONFIG = {
             "usage_reply_text": "Usage: @Estelle /add-job <job link or pasted job description>",
             # Format with meteorite_id=.
             "ack_reply_template": "Got it. Saved as meteorite {meteorite_id}; I'll stage it from here.",
+        },
+        # AST-2151: read-only status lookup over the sender's own jobs (no LLM turn, no writes).
+        "check-status": {
+            "handler": "src.core.tracker.contact_command_check_status",
+            "mode": "code",
+            "description": "Look up your own job by link, title, company, or job id: its state, dates, and a link to the job page.",
+            "usage_reply_text": "Usage: @Estelle /check-status <job link, title, company, or job id>",
+            # Every reply to this command threads under the sender's message and shares to channel.
+            "reply_placement": "always_with_share",
+            # One match. Format with job_title=, created_at=, state=, state_changed_at= (contact clock), deeplink=.
+            "match_reply_template": "{job_title}\nReceived {created_at}\nState {state} since {state_changed_at}{deeplink}",
+            # Several matches: header (count=) then one line per job (job_title=, company=, state=, deeplink=).
+            "matches_header_template": "{count} jobs matched:",
+            "matches_line_template": "• {job_title} — {company} — {state}{deeplink}",
+            # Appended as {deeplink} only when the origin env is set; "" otherwise. Format with url=.
+            "deeplink_template": "\n{url}",
+            "no_match_reply_text": "Nothing matched that. Try a job link, title, or company.",
         },
     },
     # AST-1069: Events API Request URL path (Flask route under /api).
@@ -2050,7 +2069,9 @@ assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CO
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["unknown_recognition_reply_text"], str) and CONTACT_CONFIG["unknown_recognition_reply_text"].strip()
-assert CONTACT_CONFIG["thread_response"] in ("threads_only", "always_no_share", "always_with_share"), CONTACT_CONFIG["thread_response"]
+# AST-2072 / AST-2144: reply-placement vocabulary — global thread_response and per-command reply_placement.
+_CONTACT_THREAD_RESPONSE_MODES = ("threads_only", "always_no_share", "always_with_share")
+assert CONTACT_CONFIG["thread_response"] in _CONTACT_THREAD_RESPONSE_MODES, CONTACT_CONFIG["thread_response"]
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
@@ -2087,16 +2108,35 @@ for _skill_key, _skill_meta in CONTACT_CONFIG["skills"].items():
         if _p in _name_cols:
             continue
         assert "." in _p, (_skill_key, _p)
+# AST-2144: optional reply-text fields → placeholders each must carry when an entry declares it.
+_CONTACT_COMMAND_TEXT_FIELDS = {
+    "ack_reply_template": ("{meteorite_id}",),
+    "match_reply_template": ("{job_title}", "{created_at}", "{state}", "{state_changed_at}", "{deeplink}"),
+    "matches_header_template": ("{count}",),
+    "matches_line_template": ("{job_title}", "{company}", "{state}", "{deeplink}"),
+    "deeplink_template": ("{url}",),
+    "no_match_reply_text": (),
+}
+# Job-lookup reply fields travel together: a handler that formats one formats them all.
+_CONTACT_COMMAND_JOB_LOOKUP_FIELDS = frozenset(_CONTACT_COMMAND_TEXT_FIELDS) - {"ack_reply_template"}
 # AST-2035: command registry shape; ids are the bare token after "/" (no whitespace).
 assert isinstance(CONTACT_CONFIG["commands"], dict)
 for _cmd_id, _cmd_meta in CONTACT_CONFIG["commands"].items():
     assert isinstance(_cmd_id, str) and _cmd_id.split() == [_cmd_id] and not _cmd_id.startswith("/"), _cmd_id
     assert isinstance(_cmd_meta, dict), _cmd_id
     assert _cmd_meta.get("mode") in ("code", "agent"), _cmd_id
-    for _field in ("handler", "description", "usage_reply_text", "ack_reply_template"):
+    for _field in ("handler", "description", "usage_reply_text"):
         assert isinstance(_cmd_meta.get(_field), str) and _cmd_meta[_field].strip(), (_cmd_id, _field)
     assert _cmd_meta["handler"].startswith("src.core.") and _cmd_meta["handler"].count(".") >= 3, _cmd_id
-    assert "{meteorite_id}" in _cmd_meta["ack_reply_template"], _cmd_id
+    # AST-2144: ack_reply_template is optional; any declared text field is non-empty and carries its placeholders.
+    for _field, _needs in _CONTACT_COMMAND_TEXT_FIELDS.items():
+        if _field in _cmd_meta:
+            assert isinstance(_cmd_meta[_field], str) and _cmd_meta[_field].strip(), (_cmd_id, _field)
+            assert all(_ph in _cmd_meta[_field] for _ph in _needs), (_cmd_id, _field)
+    _lookup = _CONTACT_COMMAND_JOB_LOOKUP_FIELDS & _cmd_meta.keys()
+    assert not _lookup or _lookup == _CONTACT_COMMAND_JOB_LOOKUP_FIELDS, (_cmd_id, sorted(_lookup))
+    if "reply_placement" in _cmd_meta:
+        assert _cmd_meta["reply_placement"] in _CONTACT_THREAD_RESPONSE_MODES, _cmd_id
     assert _cmd_id not in CONTACT_CONFIG["skills"], _cmd_id
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
@@ -5451,6 +5491,7 @@ _CONTACT_PINHOLE_HANDLERS = {
     "src.core.meteorite.insert_slack_meteorite": "write meteorite (NEW)",
     "src.core.gazer.contact_task_gazer_scrape": "read (external fetch, no platform write)",
     "src.core.tracker.contact_task_get_job_by_pattern": "read job",
+    "src.core.tracker.contact_command_check_status": "read job",
     "src.core.tracker.contact_task_get_job_data": "read job",
     "src.core.tracker.contact_task_get_company_data": "read company",
     "src.core.tracker.contact_task_get_candidate_data": "read candidate",
@@ -6098,6 +6139,10 @@ assert UI_CONFIG["themes"].get(UI_CONFIG["default_theme"], {}).get("profile_sele
 # Deeplink-only — not in NAV_CONFIG (no sidebar item).
 # SYNC: src/ui/frontend/src/routes.tsx path "jobs/detail/:jobId"
 JOBS_DETAIL_ROUTE_PREFIX = "/jobs/detail"
+# AST-2144: backend deeplink origin — https:// + os.environ.get(<this name>) + JOBS_DETAIL_ROUTE_PREFIX
+# + "/" + URL-encoded job id (same path as the job report modal's Copy Link). Unset/empty → no links.
+JOBS_DETAIL_ORIGIN_DOMAIN_ENV = "RAILWAY_PUBLIC_DOMAIN"
+assert isinstance(JOBS_DETAIL_ORIGIN_DOMAIN_ENV, str) and JOBS_DETAIL_ORIGIN_DOMAIN_ENV.strip()
 
 NAV_CONFIG = [
     {
