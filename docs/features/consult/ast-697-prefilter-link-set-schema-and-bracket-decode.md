@@ -329,3 +329,88 @@ No `conf-!!-NONE` conflicts.
 **Advisory (regex duplication):** Left inline `^JOB:`/`^CULT:` checks — distinct from `_LINK_PREFIX_RE` strip path; cosmetic only.
 
 **Product commit:** `fix(AST-697): review feedback — mixed JOB prefix + bracket culture tail`
+
+---
+
+## Bug: AST-2138 — JOB:/CULT: link fields never decode as grade segments
+
+**Linear:** [AST-2138](https://linear.app/astralcareermatch/issue/AST-2138) · **Mini-parent:** [AST-2136](https://linear.app/astralcareermatch/issue/AST-2136) (Prefilter errors) · **Publish ref:** `origin/sub/AST-2136/AST-2138-job-link-prefix-decode` · **Target:** `origin/ftr/AST-2136-job-link-prefix-decode`
+
+**Canon (id-only; resolved by fix-board / make-fix):** ASTRAL_CODE_RULES §1.3 DRY (one link-prefix pattern, one grade-field classifier), §3.3 Imports (`consult` → `agent` at module level already exists; `agent` → `consult` stays lazy-only). `docs/canon-index.md` is not present in this worktree; neither ticket carries a Canon Scope list.
+
+### As-is
+
+The prefilter model emits the documented AST-603/AST-697 prefixed link tail, e.g. `000|RCA5|HEA5|MLA3|PFA5|SOA5|JOB:3|CULT:7,27`. In `_decode_payload` (`src/core/agent.py`, the `for f in fields[1:]` grade/meta split), every field has space, hyphen and colon stripped before the `_GRADE_SEG` test (AST-483). `JOB:3` becomes `JOB3`, which matches `^[A-Z]{2}[ABCDFX][0-5]$` as vector `JO`, grade `B`, confidence `3`. It lands in `grade_segs`, not `meta`. So `possible_job_links` is lost, and `_hydrate_response_jobs_grade_reasons` → `_lookup_rubric_reason_for_grade` raises `ValueError: No rubric criterion matching vector 'JO'`. Under AST-1828 routing the company goes to `ERROR_PREFILTER_COMPANY` (13 of 15 errors in Somerset batch `prefilter_company-1cdeac6e-…`). This hits every `JOB:0`–`JOB:5`. `JOB:6`+ and multi-digit/list forms fail `_GRADE_SEG` and decode correctly. `CULT:…` never matches because `L` is not a grade letter, but it is guarded the same way for symmetry. `_should_decode_as_encoded_line` (`src/core/consult.py`) has the same strip-then-match test, so a line whose only "grade-looking" field is `JOB:3` routes as encoded.
+
+### To-be
+
+A pipe field that starts with `JOB:` or `CULT:` (case-insensitive, exactly the AST-697 `_LINK_PREFIX_RE` contract) is always link meta and never a grade segment, whatever `n` is. `000|RCA5|HEA5|MLA3|PFA5|SOA5|JOB:3|CULT:7,27` decodes to the five rubric grades plus `possible_job_links == [3]` and `culture_links_to_explore == [7, 27]`. No `JO` vector reaches hydrate. Routing detection (`_should_decode_as_encoded_line`) and decoding (`_decode_payload`) use one shared classifier, so they agree on what a grade segment is.
+
+### Repro
+
+No DB needed. Fixture is a one-entity ctx on the current ftr tip (verified 2026-10-12 @ `a1af5cf6a`):
+
+```python
+from src.core.agent import _decode_payload
+from src.core import consult
+ctx = {"batch_entities": [{"company_id": "acme", "astral_job_id": "acme"}]}
+ot = "grades_encoded_prefilter_links"
+
+r = _decode_payload("prefilter_company", ot, "000|RCA5|HEA5|MLA3|PFA5|SOA5|JOB:3|CULT:7,27", ctx)
+row = (r.get("companies") or r.get("jobs"))[0]
+# As-is: grade vectors end [..., 'SO', 'JO']; possible_job_links None; culture [7, 27]
+r = _decode_payload("prefilter_company", ot, "000|RCF5|HEX0|MLX0|PFX0|SOX0|JOB:1|CULT:[]", ctx)
+# As-is: 'JO' grade; possible_job_links None
+consult._should_decode_as_encoded_line("000|JOB:3|CULT:7")
+# As-is: True (should be False — no real grade segment on the line)
+```
+
+Controls that already decode correctly and must stay so: `…|JOB:17|CULT:20,19,21` → `[17]` / `[20, 19, 21]`; `…|JOB:6|CULT:1` → `[6]` / `[1]`.
+
+### Root cause
+
+AST-483's normalization (strip `' -:'` before `_GRADE_SEG`) runs on **every** pipe field, link fields included. Once the colon is removed, a `JOB:<0-5>` link field is indistinguishable from a 4-char grade token. The link-prefix check only happens later, in `_apply_prefilter_encoded_link_meta`, and only on fields that already landed in `meta`. A field misclassified as a grade never gets there. `_should_decode_as_encoded_line` copies the same strip-then-match logic, so the two sites share the defect.
+
+### Proposed change
+
+1. **`src/core/agent.py`: shared pattern and classifier, placed directly below `_GRADE_SEG` (~L176).**
+   - Move `_LINK_PREFIX_RE = re.compile(r"^(?:JOB|CULT):(.+)$", re.I)` here from `consult.py`, same pattern and same flags. Comment: AST-697 link-tail prefix; a field matching it is link meta, never a grade (AST-2138).
+   - Add `_grade_segment(field: str) -> Optional[str]`:
+     - If `_LINK_PREFIX_RE.match(field)` → return `None`.
+     - Otherwise `norm = "".join(ch for ch in field if ch not in " -:")` (the AST-483 normalization, unchanged) and return `norm` if `_GRADE_SEG.match(norm)`, else `None`.
+     - Docstring: normalized grade token or `None`; JOB:/CULT: link fields never count as grades (AST-2138); strip of space/hyphen/colon is AST-483.
+2. **`src/core/agent.py`, `_decode_payload`: field-classification loop (current L370–376).** Replace the inline `norm` + `_GRADE_SEG.match(norm)` with:
+   ```python
+   for f in fields[1:]:
+       seg = _grade_segment(f)
+       if seg:
+           grade_segs.append(seg)
+       else:
+           meta.append(f)
+   ```
+   Keep the existing AST-483 comment, moved onto `_grade_segment`. `meta` still receives the pipe-stripped original `f`, so `_apply_prefilter_encoded_link_meta` sees `JOB:3` exactly as before. Do **not** touch the `grades_encoded_vet_meta` branch (L286–287, single `LT` segment, no link fields).
+3. **`src/core/consult.py`: share instead of redefine.**
+   - Delete the module-level `_LINK_PREFIX_RE = re.compile(...)` line (L387). Keep `_ENCODED_LINE_RE` and the AST-603 comment.
+   - Extend the existing module-level import `from src.core.agent import do_task` to `from src.core.agent import _LINK_PREFIX_RE, _grade_segment, do_task`. That makes `_parse_link_index_field` keep using the same name, now one definition. No cycle: `consult` → `agent` at module level already exists, and `agent` never imports `consult` at module level.
+4. **`src/core/consult.py`, `_should_decode_as_encoded_line`.** Drop the lazy `from src.core.agent import _GRADE_SEG` and the inline `norm` strip. Inner test becomes `if _grade_segment(f): return True`. The AST-1996 "any line" loop and the leading-index skip stay unchanged.
+5. **Manual verification (no test-tree edits):** the Repro block must give `possible_job_links == [3]`, `culture_links_to_explore == [7, 27]`, grade vectors `RC/HE/ML/PF/SO` only, for each of `JOB:0`…`JOB:5`. `JOB:1|CULT:[]` must give `[1]` with no `JO`. `_should_decode_as_encoded_line("000|JOB:3|CULT:7")` must be `False`, and `_should_decode_as_encoded_line("000|RCA3|MPB3|USA3|[59,60]|[51,46,53]")` must still be `True`. Then run `./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py tests/component/core/test_consult.py tests/component/core/test_roster.py` to confirm it stays green.
+
+⚠️ **Decision (link prefix wins):** the guard uses the exact `_LINK_PREFIX_RE` contract: literal `JOB:`/`CULT:` followed by at least one character. Suppose a candidate rubric ever had vector code `JO` (or `CU`) **and** the model prettified that grade with a colon as `JOB:3`. It would now go to meta, and the batch would take the existing `IncompleteGradeSetError` retry → error path instead of scoring. An unprettified `JOB3` is still a grade. The alternative, letting a rubric code `JO` override the prefix, would need `vector_labels` inside the classifier and is not justified by any observed payload.
+
+⚠️ **Decision (no fuzzier prefix):** `JOB :3` and `JOB-3` are **not** treated as link prefixes. `_apply_prefilter_encoded_link_meta` would not parse them as links either, and widening the contract is a heuristic not approved here. Only the observed `JOB:<n>` / `CULT:<n>` shapes are in scope.
+
+### Blast radius
+
+- **`_decode_payload` callers:** every encoded task goes through the shared loop. For `with_meta` types, a `JOB:`/`CULT:` field now always reaches `meta` (the intended change). For grades-only types, such a field now becomes "unexpected trailing content" (`decode_failures`, AST-1996 retry) instead of a bogus 2-char grade. For `grades_encoded_notes`, it rejoins `notes` instead of becoming a grade. None of those tasks' prompts emit link prefixes, so no behavior change is expected in practice.
+- **`_should_decode_as_encoded_line` → `_normalize_rubric_task_response` (consult L790):** lines whose only "grade" was `JOB:<0-5>` now fall through to the letter-pipe / other AST-603 normalizers. Real encoded lines are unaffected.
+- **`_parse_link_index_field` / `_apply_prefilter_encoded_link_meta`:** same `_LINK_PREFIX_RE` object, now imported from `agent`. Behavior unchanged. Radia's AST-697 advisory (inline `^JOB:`/`^CULT:` in `_apply_prefilter_encoded_link_meta`) stays out of scope.
+- **Tests that pin current behavior:** `test_agent.py` AST-483 normalization case (~L335), `TestAst603RubricNormalize::test_lovable_encoded_line_with_job_cult_tails`, `test_should_decode_as_encoded_line_routing` (~L708), `TestAst697PrefilterBracketLinkDecode`, `test_consult.py` ~L2374. These should stay green, but none reference `consult._LINK_PREFIX_RE` directly (grep 2026-10-12). Regression rows for `JOB:0`–`JOB:5` and `JOB:1|CULT:[]` are Betty's call (qa-fix).
+- **Out of scope (per AST-2138 Boundaries):** the `SOFA5` malformed-segment errors (2 of 15), AST-1828 retry/error routing, and the rubric hydrate `ValueError`.
+
+### What must still hold
+
+- AST-697 AC #2/#3/#6: bracket tails `[13]|[3,6,19]` and `[59,60]|[51,46,53]` map positionally, and grades-only lines omit link keys.
+- AST-603 / AST-697 AC #4: `JOB:16|CULT:38,3,27`, multi-digit `JOB:17`/`JOB:106`, and lists `JOB:2,13,17,21,28` decode exactly as today. The mixed `JOB:16|[51,46]` → culture rule (AST-697 resolution) is unchanged.
+- AST-483: real grade tokens prettified with spaces, hyphens or colons (`RC A3`, `RC-A-3`, `RC:A3`) still decode as grades. `meta` keeps the pipe-stripped original text.
+- AST-1996 / AST-2124 / AST-2126 / AST-2093 decode semantics (decode_failures, X0 storage, notes-only failure, index map) are untouched. Only the grade-vs-meta classification of link-prefixed fields changes.
+- `_should_decode_as_encoded_line` routing examples: `0|A|B|A|[35]|[22,34,39,52,53]` → `False`, `000|RCA3|MPB3|USA3|[59,60]|[51,46,53]` → `True`, `A|B|A|15|13,16,14` → `False`.
