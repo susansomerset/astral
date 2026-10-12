@@ -302,3 +302,123 @@ context_tokens≈42000
 ### Test delivery — AST-2145
 
 No test-tree delivery on this sub (docs-acceptance). Betty's `[board-betty] TESTS: REVISE` coverage (the no-link guard and downstream-state heal repros, `transition=False` gazer branches, the four named stale tests, and the tracker/gazer bible blocks) lands on test-gap sibling AST-2146, which is blocked by this ticket.
+
+---
+
+## Bug: AST-2146 — coat-check JD self-heal guard tests + bible (test gap for AST-2145)
+
+Test-gap sibling of AST-2145. Betty's fix-board `[board-betty] TESTS: REVISE` on AST-2145 was routed here, the same shape as AST-2057 for AST-2053. The product fix is already on `ftr` (`cf5ddb4b5`), and this ticket changes no `src/`. Betty's qa-fix lands every file below; engineers don't edit the test tree.
+
+### As-is
+
+On the AST-2145 tip, `test_tracker.py` / `test_gazer.py` have three newly red nodes (test-fix delta vs `origin/ftr` pre-fix: 20 → 23 failed):
+- `TestGetJobData::test_self_heals_short_job_description`
+- `TestAst2133ComposeJobDescription::test_self_heal_writes_reference_then_returns_composed`
+- `TestAst2025FetchRelativeJdBatch::test_ac5_both_runners_call_shared_gate_helper`
+
+`TestGetJobData::test_self_heal_failure_returns_none` still passes, but only through the new no-link guard, so the exception branch is no longer exercised. Nothing covers the no-link guard, the `transition=False` branches in `fetch_jd_batch` / `_apply_jd_gates`, the "healed but still short → `None`" branch, or a heal from a downstream state. The bible's tracker § AST-2133 and gazer § AST-2025 blocks still describe the pre-AST-2145 self-heal.
+
+### To-be
+
+The four named nodes assert the AST-2145 behavior and pass. New nodes cover each AST-2145 branch. The two repro nodes (marked **bug-repro** below) are red on the pre-fix tree and green on the tip. Both bible blocks list the new and revised nodes. The 20 pre-existing reds stay unchanged.
+
+### Repro
+
+The AST-2145 `## Repro` fixture (production job `4d9d1c79`, `METEORITE_PASSED_JD`, `job_link: ""`, short preamble) becomes test #3 below. The downstream heal fixture (same job with a link and a real-looking capture) becomes test #6. Run both on `origin/ftr` with `src/core/{gazer,tracker}.py` checked out from `08912b114` (pre-fix) to see them red.
+
+### Root cause
+
+AST-2145 changed `get_job_data` and `fetch_jd_batch` / `_apply_jd_gates` contracts the existing tests pinned:
+- a link guard placed before the self-heal;
+- `transition=False` passed into `fetch_jd_batch`;
+- `None` whenever the composed JD is still under `jd_min_chars` after a heal;
+- a `transition` kwarg forwarded to `_apply_jd_gates`, which shows up in exact-dict spies.
+
+The AST-2145 plan's blast radius missed the AC5 spy (Betty caught it). It also missed that `test_self_heal_writes_reference_then_returns_composed` uses the 23-char `_SCRAPED` capture, which is now under `jd_min_chars` after the heal, so it returns `None` even once the fake `_fetch` accepts `transition=`.
+
+### Proposed change
+
+Below, "mock fetch" means `monkeypatch.setattr("src.core.gazer.fetch_jd_batch", …)`, as the existing tests do. Names are suggestions; Betty owns final node names.
+
+**`tests/component/core/test_tracker.py`**
+
+1. **`TestGetJobData::test_self_heals_short_job_description` (revise; keep the name for node-id stability).**
+   - Give the job `"job_link": "https://example.com/j"`.
+   - Assert the `AsyncMock` fetch was awaited once, with `await_args.args[1] == [job]` and `await_args.kwargs == {"transition": False}`.
+   - Assert the return value is `None`: the mock writes no reference, so the composed JD stays short.
+2. **`TestGetJobData::test_self_heal_failure_returns_none` (revise).** Add a `job_link`. Keep `side_effect=RuntimeError("boom")`, and add `assert_awaited_once()` so the node proves the exception branch ran, not the guard.
+3. **New `TestGetJobData::test_no_job_link_skips_self_heal_with_one_warning` (bug-repro).**
+   - Fixture is the AST-2145 repro job: `astral_job_id` `4d9d1c79-fd62-4639-a5d8-885c01d808bd`, `state` `METEORITE_PASSED_JD`, `job_data: {"job_description": "Short meteorite preamble."}`.
+   - Parametrize `job_link` over `""`, `"   "`, and absent.
+   - With `caplog` at WARNING, assert:
+     - the return value is `None`;
+     - the mock fetch is `assert_not_awaited()`;
+     - exactly one WARNING record comes from logger `src.core.tracker`, and it contains `JD short, no job_link — cannot self-heal`.
+   - Pre-fix it is red: fetch is awaited.
+4. **`TestAst2133ComposeJobDescription::test_self_heal_writes_reference_then_returns_composed` (revise).**
+   - The fake becomes `async def _fetch(batch_id, jobs, *, transition=True)`. It records `transition` and writes `jobs[0]["job_data"]["jd_telescope_data_id"] = self._ref(body)` with `body = "Engineer\n" + "y" * 250`, the same long body `test_get_job_data_returns_long_composed_without_self_heal` uses, which prune keeps verbatim.
+   - The job is `self._job(job_description="pre")` plus `"job_link": "https://jobs.example/1"`.
+   - Assert the result equals `"pre\n\n" + body`, and the recorded `transition is False`.
+5. **New `TestAst2133ComposeJobDescription::test_self_heal_still_short_returns_none`.** Same fake shape, but it writes `self._ref()` (the short `_RAW` → `_SCRAPED`). The job has a link. Assert the result is `None`, which covers `healed if len(healed) >= min_chars else None`.
+6. **New `TestAst2133ComposeJobDescription::test_downstream_state_heal_keeps_state` (bug-repro). This one runs the real `fetch_jd_batch`; don't mock it.**
+   - Patch:
+     - `src.core.gazer.check_connectivity` → `AsyncMock(return_value=True)`;
+     - `src.core.gazer.scrape_visible_text_and_keep` → an `AsyncMock` returning `(text, None, ref)`, where `ref = self._ref(text)` and `text` is a real-looking JD of at least 500 meaningful characters that passes `_classify_jd` (mirror `test_gazer._OK_JD`, which is `"role summary " + "detail " * 120`, with the job title `Engineer` as its first line so head-prune keeps it);
+     - `src.core.gazer.transition_job_state` → `MagicMock()`;
+     - `src.core.gazer.save_job_data` → `MagicMock()`, because there is no job row in the tmp DB.
+   - The job is `self._job(job_description="Short meteorite preamble.")` plus `"state": "METEORITE_PASSED_JD"` and `"job_link": "https://jobs.example/1"`.
+   - Assert:
+     - the result starts with `"Short meteorite preamble.\n\n"` and is at least `jd_min_chars` long;
+     - `transition_job_state.assert_not_called()`;
+     - `save_job_data` was called once with `(job_id, {"jd_telescope_data_id": ref})`;
+     - `job["job_data"]["jd_telescope_data_id"] == ref`;
+     - `job["state"] == "METEORITE_PASSED_JD"`.
+   - Pre-fix it is red: `transition_job_state` gets called with `JD_READY`.
+   - `test_initializes_non_dict_job_data` needs no change: its link-less job hits the guard after the `job_data` coercion, so its assertion still holds.
+
+**`tests/component/core/test_gazer.py`**
+
+7. **`TestAst2025FetchRelativeJdBatch::test_ac5_both_runners_call_shared_gate_helper` (revise).** Add `"transition": True` to the `j-abs` (`fetch_jd_batch`) entry only. The `j-rel` entry stays without the key, because `fetch_relative_jd_batch` passes no kwarg. Pinning its absence proves the relative runner is untouched.
+8. **New class `TestAst2145FetchJdBatchNoTransition`**, using the existing module helpers `_OK_JD` / `_vt` / `_kept` and the `sqlite_in_memory` fixture, with the same patch style as `TestFetchJdBatch`: `check_connectivity` True; `transition_job_state` and `save_job_data` as `MagicMock`; `get_visible_text` as `AsyncMock`.
+   - **a. `test_no_link_and_scrape_error_skip_transition`:** the `test_handles_missing_link_and_scrape_failures` shape (one link-less job, one job whose `get_visible_text` raises) with `transition=False`. Expect `{"passed": 0, "failed": 2, "total": 2}` and `transition.assert_not_called()`.
+   - **b. `test_empty_short_classified_skip_transition_and_ref`:**
+     - three linked jobs; `get_visible_text` side_effect `[_vt("   "), _vt("short text"), _vt(_OK_JD)]`;
+     - `_classify_jd` patched to `MagicMock(return_value="cookie")`;
+     - run with `transition=False`.
+     - Expect `failed == 3`, `transition.assert_not_called()`, and `save.assert_not_called()`: the classified capture is not referenced in coat-check mode.
+   - **c. `test_pass_keeps_reference_without_transition`:** one linked job with `job_data: None` and `get_visible_text` → `_vt(_OK_JD)`, using the real `_classify_jd`. Expect:
+     - `passed == 1`;
+     - `save` called once with `("job-x", {"jd_telescope_data_id": kept[0][0]})`, where `kept = _kept(sqlite_in_memory)`;
+     - `job["job_data"] == {"jd_telescope_data_id": kept[0][0]}`;
+     - `transition.assert_not_called()`.
+   - **d. `test_apply_jd_gates_classified_default_still_saves_then_transitions`:** a direct `_apply_jd_gates` call with the default `transition`, using a parent `MagicMock` attached to both `save_job_data` and `transition_job_state`. Assert the classified path calls save before transition and returns `False`. This is the regression lock for the AST-2145 reorder of the classified branch (the log line moved above the save; save is still before the transition).
+   - No log-string assertions on gazer, matching the gazer bible's AST-544 "no Betty log-string tests" convention. The tracker one-warning assertion in #3 is from the AST-2143/2145 To-be ("single warning") and stays.
+
+**`docs/test-bible/core/tracker.md` § AST-2133**
+
+9. In the prose line, change `self-heal only when it is under jd_min_chars` to: `self-heal only when it is under jd_min_chars **and** a job_link exists (AST-2145: link-less → one warning, None); the heal calls fetch_jd_batch(transition=False) and never moves state; still short after the heal → None.`
+10. AC7 `get_job_data` row: list nodes #4, #5, and #6. Add a `TestGetJobData` row for nodes #1, #2, and #3, with #3 and #6 tagged **bug-repro (AST-2146)**.
+11. Add to **Broken / obsolete (revised)**: #1, #2, and #4 with a one-line reason each (see As-is). Leave the pre-existing list unchanged.
+12. Add `## QA test manifest — AST-2146`:
+    - `pytest tests/component/core/test_tracker.py tests/component/core/test_gazer.py -q`. The failure set must equal the 20 pre-existing on `origin/ftr` pre-fix (AST-2145 test-fix comment), and all nodes #1–#8 must be green.
+    - Repro gate: #3 and #6 are red with `src/core/{gazer,tracker}.py` from `08912b114`, and green on tip.
+
+**`docs/test-bible/core/gazer.md` § AST-2025**
+
+13. Change the AC5 row to `AC5 both runners call _apply_jd_gates (short_state / pass_state; fetch_jd_batch also forwards transition=True, relative runner passes none — AST-2145)`.
+14. Add a row for `TestAst2145FetchJdBatchNoTransition` (#8a–d): `fetch_jd_batch(transition=False)` / `_apply_jd_gates(transition=False)` coat-check mode means no transition on any outcome, no reference on classified, and the reference is kept on pass. The default classified path is still save → transition. Cross-link tracker § AST-2133 for the caller.
+15. Add the AC5 node to that block's **Broken / obsolete (revised)** line.
+
+### Blast radius
+
+- Test tree and bible only: four files, all in AST-2146 `## Scope`. No `src/`.
+- Other self-heal mocks: `test_consult.py` / `test_agent.py` monkeypatch `tracker.get_job_data` or `_prep_live_content` directly, so they don't depend on the guard. The gazer bible lines 179 and consult bible line 386 ("coat-check tests monkeypatch `fetch_jd_batch`") stay true and need no edit.
+- `TestFetchJdBatch` / `TestFetchJdBatchDebug*` keep the default `transition=True` and stay as they are, including the two pre-existing `errors`-key reds.
+- Every new reference test stores captures in the tmp DB (`sqlite_in_memory`), never `data/astral.db`, matching the AST-2133 isolation note.
+
+### What must still hold
+
+- The 20 pre-existing reds on `origin/ftr` (AST-2145 test-fix comment) are unchanged. No new red outside #1–#8.
+- AST-2133 AC7: the long composed JD still skips the self-heal (`test_get_job_data_returns_long_composed_without_self_heal` unchanged and green).
+- AST-2025 AC5 still pins both runners through `_apply_jd_gates` with their own `short_state` / `classified_states`.
+- No `src/` edit on this sub. Test files remain Betty's (`test(AST-2146)` commits).
