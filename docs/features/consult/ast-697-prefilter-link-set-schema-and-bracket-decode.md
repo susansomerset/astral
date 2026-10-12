@@ -425,3 +425,76 @@ AST-483's normalization (strip `' -:'` before `_GRADE_SEG`) runs on **every** pi
 
 ---
 
+
+### Radia review-fix — AST-2138
+
+[code-rubric]
+**Ticket:** AST-2138
+**Publish ref:** `3ddbcbf7c` (`origin/sub/AST-2136/AST-2138-job-link-prefix-decode`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768` (tree `canon/` at worktree; no `docs/canon-index.md` on this ref)
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-2136-job-link-prefix-decode...origin/sub/AST-2136/AST-2138-job-link-prefix-decode` — `src/core/agent.py`, `src/core/consult.py`, plan-fix block in `docs/features/consult/ast-697-prefilter-link-set-schema-and-bracket-decode.md` (product delta only in the two core modules).
+
+## Canon scores
+
+*(Frozen Canon Scope on Linear description: **none** — `## Citations: none at intake`. Scored Joan fix-board **overlap skim** ids from the plan-fix patch § Joan fix-board — AST-2138; off-list statutes not graded per §5.3.)*
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| astral.standards.dry-and-focused-functions | A | | Single `_LINK_PREFIX_RE` + `_grade_segment` shared by `_decode_payload` and `_should_decode_as_encoded_line`; duplicate strip/match removed from consult |
+| astral.layers.import-direction | A | | `consult` → `agent` module import extended; `agent` → `consult` remains lazy-only (`_apply_prefilter_encoded_link_meta`, `_normalize_rubric_task_response`) |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **fix-board** `[board-joan] CANON: OK` only; no `validate-plan` fix-mode score table in the issue doc).
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`** — **not applicable — board REVISE with sibling ownership.** Betty `[board-betty] TESTS: REVISE` on AST-2138; spawn prompt and Relations name sibling **AST-2139** for the gap manifest / `[bug-repro]` rows. No `qa-fix` on this tip; no `[bug-repro]` in the diff — expected, not fix-now.
+
+**`## What must still hold`** — **OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-697 AC #2/#3/#6: bracket tails positional; grades-only omit link keys | OK — `_grade_segment` only short-circuits `JOB:`/`CULT:`; bracket/meta fields unchanged |
+| AST-603/697 AC #4: `JOB:16`, multi-digit, lists, mixed `JOB:16\|[51,46]` culture rule | OK — prefixed fields route to `meta` with original `f`; downstream `_apply_prefilter_encoded_link_meta` / `_parse_link_index_field` unchanged |
+| AST-483: prettified grade tokens (`RC A3`, `RC-A-3`, `RC:A3`) still grades; meta keeps pipe-stripped original | OK — guard runs before colon strip; `meta.append(f)` unchanged |
+| AST-1996 / AST-2124 / AST-2126 / AST-2093 decode semantics | OK — classification-only delta in the shared loop; no edits to failure storage, X0, notes-only, or index-map branches |
+| `_should_decode_as_encoded_line` routing examples in plan | OK — `test_should_decode_as_encoded_line_routing` cases still satisfied; `000\|JOB:3\|CULT:7` correctly becomes non-encoded per **To-be** |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Sibling test carry:** Product fix on AST-2138; Betty’s JOB:0–5 / `CULT:[]` / routing repro coverage belongs on **AST-2139** — do not expect test-tree changes on this sub.
+- **Canon Scope process gap:** Fix bug has no frozen Canon Scope block on Linear (same pattern as other fix children); Archie may add explicit frozen lists later for comparability — not product **ESCALATE**.
+- **Test baseline noise:** Hedy’s Tests Passed note — `TestAst697PrefilterBracketLinkDecode` / fixture `KeyError` failures identical pre/post fix; 119 baseline failures match ftr; not introduced by this diff.
+- **AST-697 cosmetic carry:** Inline `^JOB:`/`^CULT:` in `_apply_prefilter_encoded_link_meta` remains (plan explicitly out of scope); unchanged by this tip.
+
+## What’s solid
+
+- Diff matches plan-fix **Proposed change** steps 1–4: pattern relocation, `_grade_segment`, loop swap, consult import share, routing classifier alignment.
+- **To-be** behavior for `JOB:3` / `CULT:7,27` and link-only encoded-line detection is implemented at the only two sites that shared the defect.
+- Scope stays within **Component scope** / **Technical scope** on the ticket; no dispatcher/roster/UI; estimate **1** fits the footprint.
+- Boundaries honored: no AST-1828 / hydrate / `SOFA5` work in diff.
+
+## Recommended actions (Chuckles)
+
+| Gate | Parent shape | Next action |
+|------|----------------|-------------|
+| **PROCEED** (C7 complete) | **AST-2136 mini-parent with live `origin/ftr/AST-2136-job-link-prefix-decode`** (spawn did **not** flag `ORPHANED — target dev`) | **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Land via parent **ftr** / sibling merge story — **not** finish-up straight-to-`dev` for this bug alone. |
+| | | Append this artifact to the issue doc; post slim upshot `--as radia`. Keep **AST-2139** on its branch for tests. |
+
+`context_tokens≈28000`
+
+---
+
