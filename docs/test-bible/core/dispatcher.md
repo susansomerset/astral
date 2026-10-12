@@ -840,3 +840,19 @@ grep -n '^_auto_thread_cap_override: Optional\[int\] = None' src/core/dispatcher
 | All-repeat run (`3` processed, `3` repeat) does not trip the `0 processed` stop (guard) | **`test_all_repeat_run_does_not_trip_zero_processed_stop`** |
 
 **Kept:** the five AST-2093 qa-handoff nodes (`test_ast505…`, `test_ast502_chunked…`, the two per-entity outage nodes, `test_run_unified_candidate_claim_gate`) — not touched. Every test builds its own `ctx`; no module-level `dispatch_seen_ids`.
+
+### AST-2153 · AST-2149 (qa-fix bug-repro — `_warm_then_gather` start stagger, AST-2142)
+
+`_warm_then_gather` runs entity 0 alone, sleeps `cache_warm_delay_seconds` (when `> 0`), then gathers the rest in one `asyncio.gather` with each remaining entity *i* (0-based within `entities[1:]`) waiting `i × ASTRAL_CONFIG["gather_stagger_seconds"]` before its call — no sleep at `i = 0` or when the stagger is `0`. Calls still overlap; no in-flight cap. Primary block: `docs/features/agent/ast-1877-model-server-catalog-compat-client.md` § Bug: AST-2149 / § Bug: AST-2153.
+
+| Area | Component tests (`tests/component/core/test_dispatcher.py::TestWarmThenGather`) |
+| --- | --- |
+| **[bug-repro]** 4 entities, warm delay 0, stagger `1.0` → `sleep` awaited with exactly `[1.0, 2.0]` (never `0`), output in entity order, 4 calls | **`test_bug_repro_stagger_spaces_remaining_starts`** |
+| Guard: 4 entities, warm delay `1.0`, stagger `0` → only the warm-delay sleep `[1.0]`, same ordered output (today's behavior) | **`test_zero_stagger_adds_no_sleeps`** |
+
+**Fixture drift:** `TestAst1867ProviderBalanceOutage._edges` (shared by every `TestAst1867` / `TestAst2010` / `TestAst2098` `_run_unified` node) zeroes `gather_stagger_seconds` beside `cache_warm_delay_seconds`, so their 3-entity claims no longer really sleep. `TestAst2093BatchIndexDispatch` already patches `asyncio.sleep` and is untouched. Existing 2-entity `TestWarmThenGather` nodes and `_warm_then_gather` monkeypatch sites are unchanged.
+
+**Manifest (AST-2153):**
+
+1. `[bug-repro]` `pytest -q tests/component/core/test_dispatcher.py::TestWarmThenGather::test_bug_repro_stagger_spaces_remaining_starts` — red pre-AST-2149 (`sleep` never awaited: `[] == [1.0, 2.0]`), green with AST-2149.
+2. `pytest -q tests/component/core/test_dispatcher.py::TestWarmThenGather tests/component/core/test_dispatcher.py::TestAst1867ProviderBalanceOutage tests/component/core/test_dispatcher.py::TestAst2010ProviderRateLimitOutage tests/component/core/test_dispatcher.py::TestAst2098ProviderProbeOutage --durations=10` — no node ≈1.00s. `TestAst2098ProviderProbeOutage::test_run_unified_per_entity_skips_after_probe_failure` is pre-existing red on ftr (`repeat_processed`, § AST-2093 / AST-2141) and outside this pass bar.
