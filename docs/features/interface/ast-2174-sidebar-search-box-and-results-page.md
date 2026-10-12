@@ -359,3 +359,71 @@ context_tokens≈34000
 **Notes:**
 - Not browser-smoked (no running Flask + Vite + Stytch session in the epic worktree); AC 8–13 UI behaviour is verified by build/typecheck only — Betty's manifest owns the runtime checks.
 - Joan's two discuss items (raw `state` strings; failed request reads as "No results") are built as planned, pending Susan.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2174  
+**Publish ref:** `e026730b5f088dccb7a11d8b4f61eb52a3874bbe` (`origin/sub/AST-2168/AST-2174-search-results-page`)  
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`  
+**Overall:** CLEAN  
+
+## Canon scores
+
+*(none — frozen Canon Scope at Discussion: Citations “no in-force directive governs React pages or routes”; no directive ids on the list.)*
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (Joan table empty by design) — Radia has no canon column to diff; plan-stage **Overall APPROVED** and implementation matches the plan text (build stub: no deviations).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** `src/ui/frontend/src/pages/SearchResults.tsx` — State column (`hit.state ?? "—"`)  
+- **Finding:** Rows show raw API `state` strings, not `StateUiContext` / manifest labels used on some list pages (Joan plan discuss).  
+- **@susan:** Keep raw `state` for AC 11 “state” column, or align display with other list pages in a follow-up?  
+- **Default:** Keep raw strings; no `resolve-child` change (plan decision, tests assert `"NEW"` / `"IMPORTED"` / `"WATCHING"` literally).
+
+- **Location:** `SearchResults.tsx` fetch effect (`!r.ok` / `.catch` → `toResults(null)` → empty lists)  
+- **Finding:** Network / 5xx / error JSON renders the same “No results” copy as a true empty hit set; test `failed request reads as 'No results'` locks this in. Matches AST-2173 route log wording and plan.  
+- **@susan:** Accept silent failure UX vs. distinct error copy or toast?  
+- **Default:** Accept as built (no error UI); smaller change surface for AST-2174.
+
+### advisory
+
+- **Sibling product carry (expected):** Three-dot diff vs `origin/dev` includes AST-2173 backend (`src/core/search.py`, `src/data/database.py`, `src/ui/api/api_search.py`, `src/utils/config.py`, `src/ui/server.py`) plus AST-2173 tests/bible/docs — merged sub/ftr lineage (`blockedBy` AST-2173), not AST-2174 scope smuggling. AST-2174 product footprint is only the four scoped frontend files (+ this child’s tests/bible).  
+- **AST-2173 canon on merged tip:** Prior Radia pass graded `stat.logging.debug` **C** on AST-2173; not on AST-2174’s empty frozen list — no re-score here.  
+- **Build stub:** No browser E2E in epic worktree; Betty’s component tests cover AC 8–13 behaviour (modals, placement wide/narrow, candidate switch, reload, route registration).
+
+### fix-now
+
+(none)
+
+## What's solid
+
+- Plan-delivered four-file UI: `SearchResults.tsx` (API order preserved, three sections, four modal hosts, `requestKey` stamp for AC 12, in-place re-fetch on close AC 13), deeplink-only `search` route + comment in `routes.tsx`, sidebar form first in `.sidebar-scroll` with trim/encode navigate and drawer close on re-search, CSS blocks per plan.  
+- No `navigate` from result modals; job `modal_kind` splits `JobAnalysisReportModal` vs `JobDetailModal`; company/meteorite ids match API contract.  
+- `NavigationShell` uses `navigate` only for sidebar submit (in-scope); tests distinguish from page navigation.  
+- Plan fidelity and estimate **3** align; explicit scope gate honoured for product files.
+
+## Recommended actions (Chuckles / downstream — not Radia)
+
+- Append artifact, `docs()` push, post slim upshot `--as radia`, **Review Posted**.  
+- **PROCEED** path: optional Susan answers on the two discuss items; **Default** needs no code.  
+- On merge to ftr: continue using `sync-child.sh --ftr AST-2168-universal-entity-search` per known workaround.
+
+---
+
+**Slim Linear upshot (Chuckles posts):**
+
+```
+[code-rubric] PROCEED (Commit: e026730b5) UI plan delivered clean
+```
+
+context_tokens≈38000
