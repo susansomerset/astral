@@ -804,20 +804,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Hedy | engineer | `/home/susan/.cursor/chats/bf4b83fa530486fab353322f3f5a4fe7/48aa5ff5-a216-4d51-9e41-7bc047a9ff1d/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/c2b2e1ad-e66c-42ed-91c0-6d13536d4a33/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/bf4b83fa530486fab353322f3f5a4fe7/6fdfe3fe-1a6f-4e4a-9383-5537896ab59f/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/98d1476643312517e6d734bc77a0919f/35741d35-1e60-4c4c-bebe-01d1d876f0ee/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/98d1476643312517e6d734bc77a0919f/2e2c95f4-e8d1-4cac-8e77-e3ed8541eaf4/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/98d1476643312517e6d734bc77a0919f/ecde3e03-1879-45fa-8d5d-2dfc93632efc/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-2012 (parent) | ftr/AST-2012-grade-batch-unique-index |
-| AST-2093 | sub/AST-2012/AST-2093-grade-batch-unique-index |
-| AST-2095 | sub/AST-2012/AST-2095-grade-batch-unique-index-tests |
+| AST-2158 (parent) | ftr/AST-2158-lone-grade-unknown-index-retry |
+| AST-2159 | sub/AST-2158/AST-2159-lone-grade-unknown-index-retry |
+| AST-2161 | sub/AST-2158/AST-2161-lone-grade-unknown-index-retry-tests |
 
-**Epic worktree:** `astral-AST-2012/` — one active sub checked out at a time.
-
+**Epic worktree:** `astral-AST-2158/` — one active sub checked out at a time.
 
 ## Joan fix-board — AST-2159
 
