@@ -1377,34 +1377,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/5a94aa7a2e8adb362a74dc722922906a/2a285525-22da-4411-898b-3be6363b2983/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/8ef746de-2715-4978-86a8-7c3d8b8302c3/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/5a94aa7a2e8adb362a74dc722922906a/6fcdfd82-1f6d-46ab-a5b0-7b94d18b776e/store.db` |
+| Ada | engineer | `/home/susan/.cursor/chats/13a6200a1b5a126cc2b7f128e223243a/095858bd-bb53-4de9-b6d9-8de2b4541823/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/13a6200a1b5a126cc2b7f128e223243a/13b17f3b-14cc-4022-be49-99a31d2bb402/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/13a6200a1b5a126cc2b7f128e223243a/4d9e8088-cdcd-4810-bdf8-f89959ca3617/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-2009 (parent) | ftr/AST-2009-openrouter-429-retry |
-| AST-2010 | sub/AST-2009/AST-2010-openrouter-429-retry |
+| AST-2142 (parent) | ftr/AST-2142-gather-call-stagger |
+| AST-2149 | sub/AST-2142/AST-2149-gather-call-stagger |
+| AST-2153 | sub/AST-2142/AST-2153-gather-stagger-tests |
 
-**Epic worktree:** `astral-AST-2009/` — one active sub checked out at a time.
-
-### Joan fix-board — AST-2140
-
-**Read:** `## Bug: AST-2140` on `origin/sub/AST-2137/AST-2140-outage-error-detail` (`docs/features/agent/ast-1877-model-server-catalog-compat-client.md`, plan commit `0bd88a6e3`). No Canon Scope on AST-2140 or orphaned parent AST-2137. `docs/canon-index.md` is not on this ref; overlap skim used `canon/docs/DIRECTIVES-DIRECTORY.md` and in-force directives that plausibly touch `src/core/roster.py`, `src/core/consult.py`, dispatcher batch-stop logging, provider failures, and batch processing: `patt.task.dispatch-retry`, `patt.entity.batch-processing`, `stat.logging.warning`, `stat.logging.info.dispatcher`, `stat.logging.error` (provider / `log_llm_batch_summary` carve-outs).
-
-**The one question:** Does the proposed change conflict with or require updating any directive in force?
-
-**Analysis:** The fix only extends existing AST-2010 / AST-2098 forwarding: `_outage_tag` also copies `error` (and two hand-built probe-hold returns add `error`). Dispatcher stays out of scope; it already logs `result.get("error") or ""` — the bug is consult/roster dropping the key before the summary reaches the dispatcher. That is implementation wiring, not a new outage policy, retry count, ledger outcome, or routing rule.
-
-`patt.task.dispatch-retry` governs entity `_RETRY` routing and the probe-hold exemption vs exhausted rate limit on the probe; the plan explicitly preserves those behaviors (`## What must still hold`). Option A vs Option B for select/locate is how to forward text without putting `error` on the entity dict (AST-2010 routing invariant); neither option changes statute-level semantics — only whether every path gets non-empty warning detail. Option B’s transient `outage_error` on one entity return is an internal dict convention, not a new persisted field; nothing in force defines allowed summary-tag keys or forbids that hop.
-
-`stat.logging.warning` wants per-failure who/why; filling the batch-stop parentheses with provider text aligns with that intent and does not change level, shape, or rollup ownership (`stat.logging.info.dispatcher`). No active directive requires empty `()` in those outage lines or mandates the current `_outage_tag` key tuple.
-
-Same qualitative outcome as AST-2010 fix-board in this plan doc: product code only; no statute/pattern amendment and no F3 `validate-plan` fix mode for canon unless you later choose to codify internal outage-forwarding shapes (not required for this bug).
-
-**Verdict:** **CANON: OK**
+**Epic worktree:** `astral-AST-2142/` — one active sub checked out at a time.
 
 ---
 
