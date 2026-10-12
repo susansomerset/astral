@@ -467,3 +467,13 @@ AC1→S1+S3; AC2→S3; AC3→S1; AC4→S2; AC5→S1; AC6→S1+S2; AC7→S1; AC8 
 - Append this artifact to `docs/features/interface/ast-2173-search-backend-config-reads-core-route.md`, `docs()` push, post slim upshot `--as radia`, move **Review Posted**.  
 - Route **DISCUSS** on debug: if Susan affirms **Default**, `resolve-child` can clear the discuss without code; if she rejects loop-only, add callee debug in `search.py` only (effort 2).  
 - Do not amend frozen Canon Scope in this pass; parent scope gap is Archie’s channel.
+
+## Resolution
+
+**2026-10-12 — resolve-child (Ada)** against Radia review `a3676ce07` (reviewed tip `bb3236f02`).
+
+- **fix-now:** none.
+- **discuss — `stat.logging.debug` callee pair around `database.search_entity_rows`:** no Susan direction in the Linear thread, so took Radia's **Default** — accept loop-only debug, no code change. Matches the plan's Stage 2 decision and Joan's plan discuss. To reverse: add `Calling search_entity_rows: [entity_type, candidate_id, query]` / `Response from search_entity_rows: <rows>` debug lines in `src/core/search.py` only (Radia effort 2).
+- **advisory — Canon Scope gap** (`astral.config.config-source-of-truth`, `astral.layers.import-direction`): Archie's channel; not acted on.
+- **advisory — build deviations** (built-in generics, I001 order, `server.py` 28→30, TRY401): already recorded in the build stub; behavior-neutral; no change.
+- **Product diff this pass:** none.
