@@ -450,3 +450,80 @@ No new precedent, ambiguous statute intent, or unbounded blast radius — nothin
 context_tokens≈24000
 
 **Chuckles routing:** CANON: OK and TESTS: OK. This is a test-gap sibling (test tree only), so Betty lands the planned delta via qa-fix (AST-2057 precedent).
+
+## Radia review — AST-2146 (review-fix)
+
+```
+[code-rubric]
+**Ticket:** AST-2146
+**Publish ref:** d1aa98b68e8323f60cc4e3728b8cec9d97742606 (`origin/sub/AST-2143/AST-2146-jd-self-heal-tests`)
+**Corpus:** 26c4e86a4d08addcefdbc3be68116703fedf6762 (`canon/` tree at publish tip; no `docs/canon-index.md` on ref)
+**Overall:** CLEAN
+
+## Canon scores
+
+Frozen canon list on the Linear description is **empty**. No directive rows to grade; roll-up is vacuously clean.
+
+**Overlap triage (not scored):** Test-tree + bible only; Joan fix-board confirmed proposed work does not amend canon and documents AST-2145 behaviors already triaged on the product ticket. **No Canon Scope ESCALATE.**
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan fix-board `[board-joan] CANON: OK` only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+### [bug-repro] — OK
+
+Repro nodes are **`TestGetJobData::test_no_job_link_skips_self_heal_with_one_warning`** (param empty / blank / absent) and **`TestAst2133ComposeJobDescription::test_downstream_state_heal_keeps_state`**.
+
+| Node | Asserts (concrete, tied to AST-2145 To-be) | Pre-fix plausibility |
+|------|---------------------------------------------|----------------------|
+| **No-link guard** | `out is None`; `fetch_jd_batch` mock **`assert_not_awaited()`**; exactly **one** WARNING on `src.core.tracker` containing `JD short, no job_link — cannot self-heal`; fixture uses repro id `4d9d1c79…`, `METEORITE_PASSED_JD`, short preamble | Pre-fix delegated scrape → mock **would** be awaited (Katherine: 4 param failures on `1e11b4f57` product tree) |
+| **Downstream heal** | Real path through **`get_job_data`** (patches connectivity + `scrape_visible_text_and_keep` + spies on `transition_job_state` / `save_job_data`); composed output starts with preamble + `len >= jd_min_chars`; **`transition_job_state.assert_not_called()`**; `job["state"] == "METEORITE_PASSED_JD"`; ref written via `save_job_data` + in-memory `jd_telescope_data_id` | Pre-fix called transition to `JD_READY` (Katherine repro gate documents red/green flip vs `cf5ddb4b5`) |
+
+Not tautological: they pin observable outcomes (None vs composed length, await counts, transition spy, state field), not the implementation’s own branching logic in isolation.
+
+**Note:** Test file comments use `# AST-2146 bug-repro …` rather than a first-line `[bug-repro]` tag inside the module; Betty’s Linear `[bug-repro]` comment and bible manifest § item 2 name the same nodes. **Advisory** only — intent and repro-first gate are satisfied.
+
+### ## What must still hold — OK
+
+| Item | Verdict |
+|------|---------|
+| 20 pre-existing reds on ftr unchanged; no new red outside plan nodes #1–#8 | OK — manifest item 1: 20 failed / 323 passed, same set as pre-fix baseline; AST-2146 `-k` → 23 passed |
+| AST-2133 AC7 long composed skips self-heal (`test_get_job_data_returns_long_composed_without_self_heal`) | OK — unchanged in diff |
+| AST-2025 AC5 both runners through `_apply_jd_gates` with task-specific states | OK — `test_ac5_…` revised with `transition: True` on j-abs only; j-rel entry omits kwarg |
+| No `src/` on this sub | OK — diff is plan doc + `tests/**` + `docs/test-bible/**` only; tip commit `d1aa98b68` is explicit empty product marker |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Betty merge path:** `merge-tests(AST-2146): … direct-to-sub — tests-branch merge deferred, unrelated config conflicts` — process note per spawn brief; not a defect in this diff.
+- **qa-fix machinery tag:** Repro coverage is documented in bible + Betty’s `[bug-repro]` Linear comment; in-file first-line `[bug-repro]` tag omitted (see fix-specific note above).
+
+## What's solid
+
+- Plan items #1–#8 and bible rows #9–#15 match the diff (revised three tracker nodes, four gazer nodes in `TestAst2145FetchJdBatchNoTransition`, AC5 spy, manifest + repro gate in `tracker.md`).
+- `test_self_heal_writes_reference_then_returns_composed` uses 250-char body and records `transition is False` — fixes the blast-radius miss on short `_SCRAPED`.
+- Gazer tests follow existing `get_visible_text` patch convention (flows through `scrape_visible_text_and_keep`).
+
+## Chuckles routing (read-only)
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (C7 complete) | **AST-2143** with live `ftr`; AST-2145 product fix on ftr (`cf5ddb4b5`). → **Review Posted** → clean-review shortcut → **User Testing** (`resolve-child` skipped). Test-gap only — no product edits on this sub. |
+
+context_tokens≈38000
+```
+
+```
+[code-rubric] PROCEED (Commit: d1aa98b68) bug-repro guard tests green
+```
