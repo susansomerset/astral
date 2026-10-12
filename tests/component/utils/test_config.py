@@ -7466,7 +7466,7 @@ class TestAst2010OpenRouterRetryConfig:
 
     def test_openrouter_retry_block(self) -> None:
         assert cfg.LLM_SERVER_CONFIG["openrouter"]["concurrency"] == {
-            "rate_limit_retries": 5, "backoff_base_seconds": 2.0, "exhausted_stops_batch": True,
+            "rate_limit_retries": 5, "backoff_base_seconds": 10.0, "exhausted_stops_batch": True,
         }
 
     def test_deepseek_block_unchanged_and_not_opted_in(self) -> None:
