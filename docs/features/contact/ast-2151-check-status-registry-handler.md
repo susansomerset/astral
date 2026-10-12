@@ -656,3 +656,16 @@ All edits are in `tests/component/core/test_tracker.py` and `docs/test-bible/cor
 - AST-2151 AC coverage: one / several / none / rival-excluded / no-origin single WARNING / no-candidate / dash timestamps, plus the read-only write guards in `_stub`. Every existing node id stays, and only the `test_ac6` parametrize signature loses `owners`.
 - AST-1518 coverage: ambiguous / unmatched / `no_candidate` / `not_found` / `refused_cross_candidate` / hydration (`agent_story`) / Style D found+recorded.
 - No `src/` or `data/` edits on this ref.
+
+
+## Joan fix-board — AST-2171
+
+[board-joan]  CANON: OK
+
+**Stdout:**
+
+AST-2171 board-joan done — CANON: OK.
+
+**Rationale:** AST-2171 is test-tree only (`tests/component/core/test_tracker.py`, `docs/test-bible/core/tracker.md`). It realigns fixtures and bible prose with AST-2169’s `job.candidate_id` ownership rule; it does not change `src/`, `canon/`, or active patterns/statutes. No in-force directive still mandates company→`get_company` as the job-ownership SoT (that lived in historical plan docs). The bible edits describe behavior Betty’s tests assert—they are manifest documentation, not corpus law—so no statute carve-out, amendment, or Archie precedent call is required for this ticket.
+
+**Chuckles routing:** Betty TESTS: REVISE (this ticket is the test work) + Joan CANON: OK → Plan Discuss → qa-fix (F4).
