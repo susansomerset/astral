@@ -731,3 +731,12 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-2095 | sub/AST-2012/AST-2095-grade-batch-unique-index-tests |
 
 **Epic worktree:** `astral-AST-2012/` — one active sub checked out at a time.
+
+
+## Joan fix-board — AST-2159
+
+[board-joan]  CANON: OK
+
+**Rationale:** AST-2159 only changes `render_verdict` in `consult.py` so a lone job with no bindable row and no `decode_failures` entry uses the same `_consult_batch_fail_dest` / `omitted from response` path as `_run_batch_consult`—closing a gap vs AST-2093’s stated decode contract (feature doc), not vs in-force canon. Parent cites no Canon Scope; roster overlap (`astral.idioms.render-verdict-orchestrates-consult`, `astral.state.core-decides-transitions`, `patt.task.dispatch-retry`, `patt.entity.batch-processing`, `astral.agent.grade-vector-validation`) stays satisfied: transitions remain core-chosen inside `render_verdict`, decode/agent tables untouched, retry-before-terminal matches `patt.task.dispatch-retry` (today’s immediate `_fail` → `error_state` is the outlier). No statute or active pattern needs a new exception or text change; F3 (`validate-plan` fix mode) not indicated.
+
+**Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-2159 proceeds to make-fix on product only.
