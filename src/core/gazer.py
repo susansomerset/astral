@@ -287,7 +287,7 @@ def _classify_jd(text: str) -> str:
 
 def _apply_jd_gates(
     job: dict[str, Any], text: str, *, short_state: str, pass_state: str, classified_states: Dict[str, str],
-    telescope_data_id: str | None,
+    telescope_data_id: str | None, transition: bool = True,
 ) -> bool:
     """Shared JD gates for fetch_jd_batch and fetch_relative_jd_batch (AST-2025).
 
@@ -295,27 +295,35 @@ def _apply_jd_gates(
     reference (telescope_data row id of the raw capture) — never JD text; job_description stays
     the preamble (AST-2130) — and transitions the job. Empty / too-short -> short_state; classified -> the calling task's
     GAZER_CONFIG classified_states (cookie / bot / missing / closed); ok -> pass_state.
-    Returns True only when the job reached pass_state.
+    transition=False (coat-check, AST-2145): same gates, state never moves, classified capture not referenced.
+    Returns True only when the gates passed (job reached pass_state when transition=True).
     """
     ref_key = TRACKER_CONFIG["job_data_keys"]["jd_telescope_data_id"]
     min_chars = TRACKER_CONFIG.get("jd_min_chars", 200)
     aid = job.get("astral_job_id", "")
+    # Log label: coat-check mode must never claim a move it didn't make
+    short_dest = short_state if transition else "state kept"
     text = collapse_consecutive_blank_lines(text)
     if not text or not text.strip():
-        _log.warning("%s -> %s [empty visible text]", aid, short_state)
-        transition_job_state([aid], short_state)
+        _log.warning("%s -> %s [empty visible text]", aid, short_dest)
+        if transition:
+            transition_job_state([aid], short_state)
         return False
     text = _prune_jd(text, job.get("job_title", ""))
     if len(text) < min_chars:
-        _log.warning("%s -> %s [JD too short: %d < %d chars]", aid, short_state, len(text), min_chars)
-        transition_job_state([aid], short_state)
+        _log.warning("%s -> %s [JD too short: %d < %d chars]", aid, short_dest, len(text), min_chars)
+        if transition:
+            transition_job_state([aid], short_state)
         return False
     classification = _classify_jd(text)
     if classification != "ok":
         error_state = classified_states[classification]
+        _log.warning("%s -> %s [JD classified %r]", aid, error_state if transition else "state kept", classification)
+        # Coat-check: a bad page must not become the composed JD of a job that stays put
+        if not transition:
+            return False
         # Reference the kept capture so the bad page stays inspectable; job_description (preamble) is untouched
         save_job_data(aid, {ref_key: telescope_data_id})
-        _log.warning("%s -> %s [JD classified %r]", aid, error_state, classification)
         transition_job_state([aid], error_state)
         return False
     save_job_data(aid, {ref_key: telescope_data_id})
@@ -323,7 +331,8 @@ def _apply_jd_gates(
     if not isinstance(job.get("job_data"), dict):
         job["job_data"] = {}
     job["job_data"][ref_key] = telescope_data_id
-    transition_job_state([aid], pass_state)
+    if transition:
+        transition_job_state([aid], pass_state)
     return True
 
 
@@ -331,9 +340,12 @@ async def fetch_jd_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
     debug: bool = False,
+    *,
+    transition: bool = True,
     ) -> Dict[str, int]:
     """Scrape, prune, and gate JDs for a batch of jobs (ast-326).
     Transitions each job to JD_READY (pass) or ERROR_FETCH_JD_UNREADABLE (fail/short).
+    transition=False: coat-check mode — scrape, gate and keep the capture, never move state (AST-2145).
     Returns {"passed": N, "failed": N, "total": N}."""
     if not await check_connectivity():
         raise ConnectionError(f"fetch_jd_batch: no internet connectivity, aborting batch {batch_id} ({len(jobs)} jobs)")
@@ -368,7 +380,8 @@ async def fetch_jd_batch(
                     outcome=f"failed — no job_link -> {fail_state}",
                 )
             _log.warning("[%s] no job_link, cannot scrape JD", aid)
-            transition_job_state([aid], fail_state)
+            if transition:
+                transition_job_state([aid], fail_state)
             failed += 1
             return
         try:
@@ -384,7 +397,8 @@ async def fetch_jd_batch(
                 )
                 _log.debug_detail(f"job_link={job_link!r}")
             _log.warning("[%s] get_visible_text failed: %s", aid, e)
-            transition_job_state([aid], fail_state)
+            if transition:
+                transition_job_state([aid], fail_state)
             failed += 1
             return
         _log.debug(
@@ -394,11 +408,11 @@ async def fetch_jd_batch(
         gated = _apply_jd_gates(
             job, text, short_state=fail_state, pass_state=pass_state,
             classified_states=GAZER_CONFIG["fetch_jd"]["classified_states"],
-            telescope_data_id=row_id,
+            telescope_data_id=row_id, transition=transition,
         )
         _log.debug("Response from JD gates: %s", gated)
         if gated:
-            _log.info("%s | job %s: %s (batch: %s)", aid, "JD kept", pass_state, batch_id)
+            _log.info("%s | job %s: %s (batch: %s)", aid, "JD kept", pass_state if transition else "state kept", batch_id)
             passed += 1
         else:
             failed += 1

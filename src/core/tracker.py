@@ -1212,8 +1212,9 @@ def compose_job_description(job: Dict[str, Any]) -> str:
 
 async def get_job_data(job: Dict[str, Any], key: str) -> Any:
     """Return job_data[key]; for the job_description key (from config) return the composed JD
-    (compose_job_description). If that is missing or short: self-heal via fetch_jd_batch, then return
-    the composed JD. Caller gets value either way (coat-check pattern). Returns None if key not present and not a self-healable key."""
+    (compose_job_description). If that is short and a job_link exists: self-heal via
+    fetch_jd_batch(transition=False) — never moves state (AST-2145). Returns the composed JD once it is
+    >= jd_min_chars, else None. Returns None if key not present and not a self-healable key."""
     # Always read directly from job["job_data"] so Phase 1 write-backs are visible here
     if not isinstance(job.get("job_data"), dict):
         job["job_data"] = {}
@@ -1226,18 +1227,24 @@ async def get_job_data(job: Dict[str, Any], key: str) -> Any:
     composed = compose_job_description(job)
     if len(composed) >= min_chars:
         return composed
-    # Self-heal: belt-and-suspenders before any agent call sees a missing JD.
-    # Delegates to fetch_jd_batch (single job) so prune rules live in one place.
     astral_job_id = job.get("astral_job_id", "")
+    # Nothing to scrape (e.g. body-mode meteorite ingest): one warning, caller routes to its error_state
+    if not (job.get("job_link") or "").strip():
+        logger.warning(f"[{astral_job_id}] JD short, no job_link — cannot self-heal")
+        return None
+    # Self-heal: belt-and-suspenders before any agent call sees a missing JD.
+    # Delegates to fetch_jd_batch (single job) so prune rules live in one place; transition=False because
+    # callers sit in downstream task states where fetch-stage transitions are illegal.
     logger.warning(f"[{astral_job_id}] coat-check self-heal: JD missing, invoking fetch_jd_batch")
     try:
         from src.core.gazer import fetch_jd_batch
-        await fetch_jd_batch(str(uuid.uuid4()), [job])
+        await fetch_jd_batch(str(uuid.uuid4()), [job], transition=False)
     except Exception as e:
         logger.warning(f"get_job_data: fetch_jd_batch self-heal failed for {astral_job_id}: {e}")
         return None
     # fetch_jd_batch wrote the jd_telescope_data_id reference back into job["job_data"] on pass
-    return compose_job_description(job) or None
+    healed = compose_job_description(job)
+    return healed if len(healed) >= min_chars else None
 
 
 def get_job(astral_job_id: str) -> Optional[Dict[str, Any]]:
