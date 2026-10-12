@@ -219,3 +219,17 @@ AC3 → Scope gate (registry parse, no code); AC4 → Stage 2 Done-when + Betty 
 context_tokens≈58000
 
 [plan-rubric] PROCEED (Commit: c54da3712) Contact reply and placement plan
+
+
+## Review
+
+- **Branch:** `origin/sub/AST-2144/AST-2152-code-mode-reply-placement`
+- **Stage 1:** `023eaee3f` — `_contact_reply_placement` optional `mode` override
+- **Stage 2:** `a32a49ca8` — `_run_contact_command` per-command placement + handler `reply_text` posting
+- **Build notes:** One file (`src/core/contact.py`), code as written in the plan. `py_compile` is clean. Ruff went 85 → 86: the one new hit is UP045 on the new `mode: Optional[str]` param, matching the two `Optional[str]` params on the same line; no F-class hits. The AC 14 `rg` over `src/core` returns only the two existing lines in `_contact_reply_placement` (now 259–260, shifted by the added docstring line). No new `thread_ts or message_ts` copies. `TestAst2035…`, `TestAst2072…`, `TestAst2151…`: 64 passed (run with `~/astral/.venv/bin/python`). Full `test_contact.py` has 7 failures (`TestAst1073…`, `TestAst1101…::test_background_wrapper_logs_exception`, `TestAst1207…` ×3, `TestAst1515…::test_dispatch_debug_style_d`), identical with and without this ticket's change, so they predate it. Running `test_contact.py` rewrites the tracked `data/contact_estelle_activity.json`; restored to HEAD after each run.
+- **Smoke** (`handle_slack_event`, `thread_response=threads_only`, `contact_post_message` / matcher / ownership / timezone stubbed, `channel_type` set so no Slack call):
+  - Hit: one post, handler text with `https://astral.example/jobs/detail/acme%3Aj%201`, `thread_ts=` inbound ts, `reply_broadcast=True`. In thread `50.5`: `thread_ts=50.5`.
+  - Miss: one post, `no_match_reply_text`, same placement, no hear-ack.
+  - Bare `/check-status`: one post, `usage_reply_text`, same placement.
+  - Origin unset: same text without the link, one WARNING.
+  - Non-command `@Estelle hi` (turn stubbed to no post): hear-ack top-level, `reply_broadcast=False`.
