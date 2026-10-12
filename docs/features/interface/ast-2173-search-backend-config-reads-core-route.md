@@ -389,3 +389,23 @@ AC1→S1+S3; AC2→S3; AC3→S1; AC4→S2; AC5→S1; AC6→S1+S2; AC7→S1; AC8 
 - **Location:** Child Description vs. plan Stage 3
 - **Finding:** Ticket text says exceptions are “logged once” in `server_error_from_exception`; plan correctly follows `api_jobs` + `stat.logging.error` (`logger.exception` at route; helper does not log). Verified against `src/ui/api_errors.py`.
 - **Recommendation:** None — implement the plan, not the stale Description clause.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-2168/AST-2173-search-backend` @ `6bef3f1e2`.
+
+**Stages delivered:**
+- Stage 1: `SEARCH_ENTITY_CONFIG` + `SEARCH_JOB_MODAL_BY_LIST` (+ assert) in `config.py`; `search_entity_rows()` + import + header inventory line in `database.py` — `8e4ecfbfd`
+- Stage 2: `src/core/search.py` (`search_entities`, `_jobs_list`) — `618fe8f63`
+- Stage 3: `src/ui/api/api_search.py` (`search_bp`, `GET /api/search`) + registration in `server.py` after `meteorite_bp` — `6bef3f1e2`
+
+**Deviations from plan text (lint gate vs verbatim code — plan contradicted itself; asked Susan in chat, no answer, took the behavior-neutral option):**
+- `database.py` / `core/search.py`: annotations are built-in `list[...]` / `dict[...]` instead of `typing.List` / `Dict` (ruff UP006). Keeps `database.py` at its 707 baseline and `search.py` at `All checks passed!`. No behavior change.
+- `api_search.py`: imports ordered by `ruff --select I001 --fix` (`src.*` before `ui.*`). 1 remaining finding, TRY401 (`exc` inside `logger.exception`) — that message body is `stat.logging.error`'s prescribed live-facts line, the same idiom flagged 23× across `src/ui/api/`; kept per canon.
+- `server.py`: 28 → 30. The new `# noqa: E402` line reproduces every sibling registration (RUF100 + split I001 block); kept for consistency with the eleven neighbours.
+
+**Smoke-verified (throwaway seeded SQLite, not committed):** candidate scope (B's row never returned to A); `astral_job_id` substring / `company_job_id` / meteorite integer `id` substring → `base`; `QUOKKA` = `quokka`; `%` and `_` literal only; base hit listed before a newer payload-only hit; Ready/Review/Applied/Skipped/Processing → `ready`/`review`/`applied`/`skipped`/`processing` with `report`/`report`/`report`/`detail`/`detail`; below-floor Processing → `skipped`; no match → three empty lists; route 400s (`q=%20`, no candidate), 200 keys exactly `job`/`company`/`meteorite`, forced exception → one `logger.exception` at the route + 500 JSON.
+
+**Notes:**
+- The only `LIMIT` text in `search_entity_rows` is its docstring ("no LIMIT"); the SQL has none (AC 6).
+- Joan's Canon Scope gap note (`astral.config.config-source-of-truth`, `astral.layers.import-direction`) is for Archie; not acted on here.
