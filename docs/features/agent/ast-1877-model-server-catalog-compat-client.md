@@ -1358,3 +1358,71 @@ Same shape as gap siblings (e.g. AST-1848): coverage + bible honesty after a pro
 
 ---
 
+
+### Radia review — AST-2141
+
+
+**Ticket:** AST-2141  
+**Publish ref:** `67745222d4b7fbd8dae69aad7abb89df5fa51f10` (`origin/sub/AST-2137/AST-2141-outage-error-tests`)  
+**Corpus:** unavailable on publish ref (`docs/canon-index.md` absent; Joan fix-board overlap **CANON: OK**)  
+**Overall:** CLEAN
+
+**Diff reviewed:** `origin/ftr/AST-2137-outage-error-detail` @ `f0c1f167c` (AST-2140 merged) … `origin/sub/AST-2137/AST-2141-outage-error-tests` — 5 files, **no `src/`** (tests + test-bible + plan patch only).
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| *(none frozen)* | — | — | Gap ticket; Joan fix-board **CANON: OK** on test/bible-only diff |
+
+## Column diff vs plan stage
+
+`no plan-stage scores attached` (Joan **CANON: OK** narrative; aligned with implementation)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK — `test_prefilter_429_error_reaches_dispatcher_warning` is a real repro, not a tautology.
+
+- Step 1 runs **live** `prefilter_company_batch` with `do_task` stubbed to `_tagged()` → would fail pre-fix on `out.get("error") == self.ERR`.
+- Step 2 forwards that batch dict through `run_consult_task` → pins consult summary `error`.
+- Step 3 calls production `_note_provider_rate_limit_outage` under `caplog` → asserts `ctx["provider_rate_limit_outage"]["error"] == self.ERR` **and** a WARNING containing `still 429 after retries ({ERR})` while rejecting `still 429 after retries ()` — matches `dispatcher.py` format and AST-2140 **To-be** (user-visible symptom, not only dict keys).
+- `(summary["total_processed"], summary["total_errors"]) == (1, 0)` matches real prefilter accounting (`retried` from `_transition_prefilter_batch_failures`, AST-1839 “retry ≠ run error”); bible documents Betty’s intentional deviation from plan prose `(1, 1)` for this hop.
+
+**`## What must still hold`:** OK
+
+- C1 only extends the L4504 expected dict with `"error": self._ERR`; hold/count keys unchanged.
+- C3 guard pins untagged `error` without `failure_class` → no summary `error`/`failure_class` (AST-2140 `_outage_tag` guard).
+- R2/R3 mirror existing probe-hold count tests; add `error` on roster + consult hops only.
+- R4/R5 match Option B: entity has `outage_error` not `error`; summary lifts `error` with `(1, 1, 0)` and no `_warn_company` — consistent with `test_run_company_task_select_job_page_forwards_tag`.
+- Manifest scope excludes `test_dispatcher.py`; plan’s pre-existing drift called out in bible.
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+
+- **Plan-doc drift:** `## Bug: AST-2141` R1 step 2 still says `(total_processed, total_errors) == (1, 1)`; implementation + `roster.md` correctly use `(1, 0)`. Chuckles may append a one-line plan fix on doc commit, not blocking UT.
+- **Assertion style:** `.get("error")` on new nodes (Betty-noted) is appropriate for red-on-pre-fix; not weaker than plan’s `summary["error"]` where the key must exist post-2140.
+- **Assignee:** Tests landed on Ada’s test-fix pass (gap child); scope matches Betty’s qa-fix plan — no product ownership conflict.
+
+## What’s solid
+
+- Full plan coverage: C1–C3, R1–R5, bible rows in `consult.md` / `roster.md`, manifest ordering with `[bug-repro]` first.
+- Repro-first contract: 7 assertion failures pre-fix @ `a1af5cf6a`, green on ftr with AST-2140 (per spawn); no AST-2140 imports in tests.
+- Stacked correctly on ftr with product fix; does not smuggle AST-2136/`JO` scope.
+
+## Recommended actions (Chuckles)
+
+- Append artifact → `docs(AST-2141): Radia review — clean` → **Review Posted** → clean-review shortcut → **User Testing** (skip `resolve-child`).
+- Orphaned mini-parent AST-2137: same finish-up-to-`dev` path as AST-2140 once siblings are UT-clear.
+
+context_tokens≈14000
+
+**Plan correction (AST-2141 R1 step 2):** the shipped repro asserts `(total_processed, total_errors) == (1, 0)` — the prefilter company is retried, not errored (AST-1839); the `(1, 1)` above is superseded.
