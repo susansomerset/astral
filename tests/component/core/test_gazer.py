@@ -1123,12 +1123,80 @@ class TestAst2025FetchRelativeJdBatch:
         # AST-2132: both runners hand the gate the kept capture's row id.
         assert all(gazer_mod.is_telescope_id(s.pop("telescope_data_id")) for s in seen)
         # AST-2086: each runner passes its own task's unreadable terminal and classified_states map.
+        # AST-2145: fetch_jd_batch forwards transition (default True); the relative runner passes none.
         assert seen == [
             {"aid": "j-abs", "short_state": "ERROR_FETCH_JD_UNREADABLE", "pass_state": "JD_READY",
-             "classified_states": gazer_mod.GAZER_CONFIG["fetch_jd"]["classified_states"]},
+             "classified_states": gazer_mod.GAZER_CONFIG["fetch_jd"]["classified_states"], "transition": True},
             {"aid": "j-rel", "short_state": "ERROR_FETCH_RELATIVE_JD_UNREADABLE", "pass_state": "JD_READY",
              "classified_states": gazer_mod.GAZER_CONFIG["fetch_relative_jd"]["classified_states"]},
         ]
+
+
+# AST-2145: fetch_jd_batch(transition=False) / _apply_jd_gates(transition=False) = coat-check mode.
+# Branches: no link + scrape error; empty / short / classified (no ref); pass keeps ref; default classified order.
+class TestAst2145FetchJdBatchNoTransition:
+    @pytest.fixture
+    def env(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        env = SimpleNamespace(transition=MagicMock(), save=MagicMock())
+        monkeypatch.setattr(gazer_mod, "transition_job_state", env.transition)
+        monkeypatch.setattr(gazer_mod, "save_job_data", env.save)
+        return env
+
+    @pytest.mark.asyncio
+    async def test_no_link_and_scrape_error_skip_transition(self, env, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(side_effect=RuntimeError("boom")))
+        jobs = [
+            {"astral_job_id": "job-1", "job_link": ""},
+            {"astral_job_id": "job-2", "job_link": "https://example.com/j", "job_title": "Role"},
+        ]
+        out = await gazer_mod.fetch_jd_batch("batch-1", jobs, transition=False)
+        assert out == {"passed": 0, "failed": 2, "total": 2}
+        env.transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_short_classified_skip_transition_and_ref(self, env, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            gazer_mod, "get_visible_text", AsyncMock(side_effect=[_vt("   "), _vt("short text"), _vt(_OK_JD)])
+        )
+        monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="cookie"))
+        jobs = [{"astral_job_id": f"job-{i}", "job_link": f"https://example.com/{i}"} for i in range(3)]
+        out = await gazer_mod.fetch_jd_batch("batch-1", jobs, transition=False)
+        assert out["failed"] == 3
+        env.transition.assert_not_called()
+        # A classified page must not become the composed JD of a job that keeps its state
+        env.save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_pass_keeps_reference_without_transition(
+        self, env, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory,
+    ) -> None:
+        monkeypatch.setattr(gazer_mod, "get_visible_text", AsyncMock(return_value=_vt(_OK_JD)))
+        job = {"astral_job_id": "job-x", "job_link": "https://example.com/x", "job_data": None}
+        out = await gazer_mod.fetch_jd_batch("batch-1", [job], transition=False)
+        assert out["passed"] == 1
+        kept = _kept(sqlite_in_memory)
+        env.save.assert_called_once_with("job-x", {"jd_telescope_data_id": kept[0][0]})
+        assert job["job_data"] == {"jd_telescope_data_id": kept[0][0]}
+        env.transition.assert_not_called()
+
+    def test_apply_jd_gates_classified_default_still_saves_then_transitions(
+        self, env, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Regression lock: AST-2145 reordered the classified branch; default mode is still save -> transition
+        order = MagicMock()
+        order.attach_mock(env.save, "save")
+        order.attach_mock(env.transition, "transition")
+        monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value="cookie"))
+        classified = gazer_mod.GAZER_CONFIG["fetch_jd"]["classified_states"]
+        gated = gazer_mod._apply_jd_gates(
+            {"astral_job_id": "job-c"}, _OK_JD, short_state="ERROR_FETCH_JD_UNREADABLE", pass_state="JD_READY",
+            classified_states=classified, telescope_data_id="ref-1",
+        )
+        assert gated is False
+        assert [c[0] for c in order.mock_calls] == ["save", "transition"]
+        env.save.assert_called_once_with("job-c", {"jd_telescope_data_id": "ref-1"})
+        env.transition.assert_called_once_with(["job-c"], classified["cookie"])
 
 
 

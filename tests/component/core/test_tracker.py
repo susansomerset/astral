@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
@@ -97,20 +98,55 @@ class TestGetJobData:
 
     @pytest.mark.asyncio
     async def test_self_heals_short_job_description(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        job: Dict[str, Any] = {"astral_job_id": "job-1", "job_data": {"job_description": "short"}}
+        job: Dict[str, Any] = {
+            "astral_job_id": "job-1", "job_link": "https://example.com/j", "job_data": {"job_description": "short"},
+        }
         scrape = AsyncMock()
         monkeypatch.setattr("src.core.gazer.fetch_jd_batch", scrape)
 
-        await tracker_mod.get_job_data(job, "job_description")
+        # AST-2145: the mock writes no reference, so the composed JD stays short -> None
+        assert await tracker_mod.get_job_data(job, "job_description") is None
 
+        # AST-2145: coat-check delegates single-job and never moves state
         scrape.assert_awaited_once()
+        assert scrape.await_args.args[1] == [job]
+        assert scrape.await_args.kwargs == {"transition": False}
 
     @pytest.mark.asyncio
     async def test_self_heal_failure_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        job: Dict[str, Any] = {"astral_job_id": "job-2", "job_data": {}}
-        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", AsyncMock(side_effect=RuntimeError("boom")))
+        # Linked job: reaches the try/except, not the AST-2145 no-link guard
+        job: Dict[str, Any] = {"astral_job_id": "job-2", "job_link": "https://example.com/j", "job_data": {}}
+        scrape = AsyncMock(side_effect=RuntimeError("boom"))
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", scrape)
 
         assert await tracker_mod.get_job_data(job, "job_description") is None
+        scrape.assert_awaited_once()
+
+    # AST-2146 bug-repro (AST-2145 repro job 4d9d1c79): link-less short JD -> one warning, no scrape.
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("link", ["", "   ", None], ids=["empty", "blank", "absent"])
+    async def test_no_job_link_skips_self_heal_with_one_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, link: str | None,
+    ) -> None:
+        aid = "4d9d1c79-fd62-4639-a5d8-885c01d808bd"
+        job: dict[str, Any] = {
+            "astral_job_id": aid, "state": "METEORITE_PASSED_JD", "job_title": "Engineer",
+            "job_data": {"job_description": "Short meteorite preamble."},
+        }
+        if link is not None:
+            job["job_link"] = link
+        scrape = AsyncMock()
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", scrape)
+
+        with caplog.at_level(logging.WARNING, logger="src.core.tracker"):
+            out = await tracker_mod.get_job_data(job, "job_description")
+
+        # Pre-fix: the self-heal delegates with nothing to scrape (root cause), so this is the first red
+        scrape.assert_not_awaited()
+        assert out is None
+        warnings = [r for r in caplog.records if r.name == "src.core.tracker" and r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "JD short, no job_link — cannot self-heal" in warnings[0].getMessage()
 
     @pytest.mark.asyncio
     async def test_initializes_non_dict_job_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,18 +212,61 @@ class TestAst2133ComposeJobDescription:
         assert await tracker_mod.get_job_data(job, "job_description") == "short pre\n\n" + body
         scrape.assert_not_awaited()
 
+    def _fake_fetch(self, ref: str, seen: list[bool]):
+        """fetch_jd_batch stand-in: records the transition kwarg, writes the reference back like _apply_jd_gates."""
+        async def _fetch(batch_id: str, jobs: list[dict[str, Any]], *, transition: bool = True) -> None:
+            seen.append(transition)
+            jobs[0]["job_data"]["jd_telescope_data_id"] = ref
+        return _fetch
+
     @pytest.mark.asyncio
     async def test_self_heal_writes_reference_then_returns_composed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        ref = self._ref()
+        # Capture must clear jd_min_chars after the heal (AST-2145); prune keeps this body verbatim
+        body = "Engineer\n" + "y" * 250
+        seen: list[bool] = []
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", self._fake_fetch(self._ref(body), seen))
+        job = {**self._job(job_description="pre"), "job_link": "https://jobs.example/1"}
+        assert await tracker_mod.get_job_data(job, "job_description") == "pre\n\n" + body
+        assert seen == [False]
 
-        async def _fetch(batch_id: str, jobs: list[dict[str, Any]]) -> None:
-            jobs[0]["job_data"]["jd_telescope_data_id"] = ref
+    @pytest.mark.asyncio
+    async def test_self_heal_still_short_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Healed capture (_SCRAPED, 23 chars) leaves the composed JD under jd_min_chars -> None
+        seen: list[bool] = []
+        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", self._fake_fetch(self._ref(), seen))
+        job = {**self._job(job_description="pre"), "job_link": "https://jobs.example/1"}
+        assert await tracker_mod.get_job_data(job, "job_description") is None
+        assert seen == [False]
 
-        monkeypatch.setattr("src.core.gazer.fetch_jd_batch", _fetch)
-        job = self._job(job_description="pre")
-        assert await tracker_mod.get_job_data(job, "job_description") == "pre\n\n" + self._SCRAPED
+    # AST-2146 bug-repro (AST-2145 second fixture): downstream-state heal through the real fetch_jd_batch.
+    @pytest.mark.asyncio
+    async def test_downstream_state_heal_keeps_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import gazer
+
+        text = "Engineer\nrole summary " + "detail " * 120
+        ref = self._ref(text)
+        transition = MagicMock()
+        save = MagicMock()  # no job row in the tmp DB
+        monkeypatch.setattr(gazer, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(gazer, "scrape_visible_text_and_keep", AsyncMock(return_value=(text, None, ref)))
+        monkeypatch.setattr(gazer, "transition_job_state", transition)
+        monkeypatch.setattr(gazer, "save_job_data", save)
+        job = {
+            **self._job(job_description="Short meteorite preamble."),
+            "state": "METEORITE_PASSED_JD", "job_link": "https://jobs.example/1",
+        }
+
+        out = await tracker_mod.get_job_data(job, "job_description")
+
+        assert out.startswith("Short meteorite preamble.\n\n")
+        assert len(out) >= cfg.TRACKER_CONFIG["jd_min_chars"]
+        # Pre-fix: transition_job_state(["job-2133"], "JD_READY") — illegal from METEORITE_PASSED_JD
+        transition.assert_not_called()
+        save.assert_called_once_with("job-2133", {"jd_telescope_data_id": ref})
+        assert job["job_data"]["jd_telescope_data_id"] == ref
+        assert job["state"] == "METEORITE_PASSED_JD"
 
     @pytest.mark.asyncio
     async def test_non_jd_key_falsy_is_none(self) -> None:
