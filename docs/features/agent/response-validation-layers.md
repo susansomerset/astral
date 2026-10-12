@@ -740,3 +740,62 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 **Rationale:** AST-2159 only changes `render_verdict` in `consult.py` so a lone job with no bindable row and no `decode_failures` entry uses the same `_consult_batch_fail_dest` / `omitted from response` path as `_run_batch_consult`—closing a gap vs AST-2093’s stated decode contract (feature doc), not vs in-force canon. Parent cites no Canon Scope; roster overlap (`astral.idioms.render-verdict-orchestrates-consult`, `astral.state.core-decides-transitions`, `patt.task.dispatch-retry`, `patt.entity.batch-processing`, `astral.agent.grade-vector-validation`) stays satisfied: transitions remain core-chosen inside `render_verdict`, decode/agent tables untouched, retry-before-terminal matches `patt.task.dispatch-retry` (today’s immediate `_fail` → `error_state` is the outlier). No statute or active pattern needs a new exception or text change; F3 (`validate-plan` fix mode) not indicated.
 
 **Chuckles routing (orphaned bug-fix):** Betty TESTS: REVISE → sibling test gap child; Joan CANON: OK. AST-2159 proceeds to make-fix on product only.
+
+
+## Radia review — AST-2159
+
+[code-rubric]
+**Ticket:** AST-2159
+**Publish ref:** `a18695932576c4587b73b4f3712d823fe5172ad0` (`origin/sub/AST-2158/AST-2159-lone-grade-unknown-index-retry`)
+**Corpus:** n/a — no frozen directive ids on AST-2159 or parent AST-2158; `docs/canon-index.md` absent on publish tip; `canon/` tree unchanged vs `origin/ftr/AST-2158-lone-grade-unknown-index-retry` (`26c4e86a4d08addcefdbc3be68116703fedf6762`)
+**Overall:** CLEAN
+
+## Canon scores
+
+(no frozen Canon Scope / directive ids — **zero ids to score**; `[board-joan] CANON: OK` was roster overlap triage only, not per-directive plan-stage grades)
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (Joan F2 fix-board only; no `validate-plan` per-directive column on this bug)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out: `[board-betty] TESTS: REVISE` at F2; coverage lands on **AST-2161** (`blocks`); no `qa-fix` / no `[bug-repro]` in `origin/ftr/AST-2158-lone-grade-unknown-index-retry...origin/sub/AST-2158/AST-2159-lone-grade-unknown-index-retry`.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-2093: unknown-index skip; duplicate-index → `decode_failures`; multi-row batch routing | `agent._decode_payload` and `_run_batch_consult` untouched in diff. |
+| `decode_failures` branch byte-identical when `mine` is set | Same `reason` / `_consult_batch_fail_dest` / `_log_fail_dest` / transition / return; only the former `else: _fail(...)` path merged into the shared block. |
+| Single-row fallback + `grades` fallback | Binding logic above the changed branch unchanged. |
+| One-hop retry (primary → holding → error) | No-row path now uses `_consult_batch_fail_dest` like batch omitted entities; `_fail` shortcut removed for that case only. |
+| Other `_fail` branches | Job/company/live-content/do_task/`ValueError` paths unchanged. |
+
+## Findings
+
+**advisory**
+
+- **Test proof deferred (by design):** Betty’s gap (stateful `METEORITE_PASSED_DO` → retry holding, already-retry → `ERROR_METEORITE_GRADE_GET`) is explicitly routed to **AST-2161**; this diff is product-only (`consult.py` + plan doc). Hedy’s parity note (69/723/7, ruff unchanged vs base) is consistent with existing stateless `test_fails_when_job_row_is_missing` still exercising `dest=error_state` when `job` has no `state`.
+- **Roster overlap (Joan F2):** `astral.idioms.render-verdict-orchestrates-consult`, `astral.state.core-decides-transitions`, `patt.task.dispatch-retry`, `patt.entity.batch-processing`, `astral.agent.grade-vector-validation` — not on a frozen list; diff aligns with Joan’s overlap read (transitions stay in `render_verdict`; retry-before-terminal on lone no-row).
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+## What’s solid
+
+- Diff matches **Proposed change** in `docs/features/agent/response-validation-layers.md` § Bug: AST-2159: unified no-row routing through `_consult_batch_fail_dest` with `reason = "omitted from response"` when no `mine`; comment documents AST-2093 lone-call shape.
+- Scope stays `render_verdict` only; no `tests/**` smuggle; **Estimate 1** footprint fits.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape |
+|------|----------------|
+| **PROCEED** (artifact complete) | **Normal** (AST-2158 not Done): → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing**; `resolve-child` **skipped**. |
+
+context_tokens≈28000
