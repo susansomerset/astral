@@ -2375,3 +2375,9 @@ cd src/ui/frontend && T=../../../tests/component/frontend && npx vitest run --co
 JD is display-only: no JD textarea, not in the draft / dirty check / Save payload; the JD tab shows only when the composed JD is non-empty (`showJdTab = hasJD`), editable or not.
 
 **Revised:** `AST-1454 skipped-field editors > editable: title/link inputs, state select, no JD tab or JD editor (AST-2133), Save PUT + onRefresh` (was: empty JD tab + typed JD in the PUT body). **New:** `AST-1454 skipped-field editors > AST-2133 AC9: editable job with a composed JD shows it read-only …` (JD text shown, no textbox on the JD tab, PUT body has no `job_description`). Both fail on the ftr component, pass on HEAD. Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2133 item 3.
+
+### AST-2174 · AST-2168 (NavigationShell sidebar search box)
+
+`<form role="search">` with a `type="search"` input (`aria-label="Search"`) is the first child of `.sidebar-scroll` — above the Jobs group, outside `.sidebar-chrome`, same element in wide and drawer layouts. Submit only: trimmed non-blank value → `navigate("/search?q=<encoded>")` and closes the drawer (pathname auto-close misses `/search` → `/search?q=other`).
+
+**New:** `test_NavigationShell.test.tsx` › **`AST-2174 sidebar search box`** — placement wide + narrow (2), Enter `acme` → `/search?q=acme`, trims + encodes `R&D 50%`, blank / whitespace Enter and plain typing stay on `/jobs`, narrow submit from `/search` closes the drawer. **Broken / obsolete:** none (16 existing cases unchanged; input role `searchbox` ≠ the candidate `combobox`). Manifest: [`pages.md`](pages.md) § AST-2174.
