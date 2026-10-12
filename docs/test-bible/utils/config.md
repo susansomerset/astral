@@ -4876,7 +4876,7 @@ Manifest: **`docs/test-bible/core/agent.md`** § AST-2006.
 
 ### AST-2010 · AST-2009 (OpenRouter retry block + `PROVIDER_RATE_LIMIT`)
 
-**New:** `TestAst2010OpenRouterRetryConfig`. OpenRouter `concurrency == {"rate_limit_retries": 5, "backoff_base_seconds": 2.0, "exhausted_stops_batch": True}`. The DeepSeek block is unchanged, and only OpenRouter sets `exhausted_stops_batch`. The `PROVIDER_RATE_LIMIT` registry is pinned. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
+**New:** `TestAst2010OpenRouterRetryConfig`. OpenRouter `concurrency == {"rate_limit_retries": 5, "backoff_base_seconds": 10.0, "exhausted_stops_batch": True}` (base raised from 2.0 to 10.0 so a 429 waits roughly 2.5–5 min). The DeepSeek block is unchanged, and only OpenRouter sets `exhausted_stops_batch`. The `PROVIDER_RATE_LIMIT` registry is pinned. Primary manifest: **`docs/test-bible/external/llm_compat.md`** § AST-2010.
 
 ### AST-2024 · AST-2022 (`RELATIVE_JOB_LINK` / `RELATIVE_LINK_FAIL` + `fetch_relative_jd` registration)
 

@@ -5511,7 +5511,8 @@ LLM_SERVER_CONFIG = {
         "thinking_off_params": {"thinking": {"type": "disabled"}},
         "request_extras": {},
         # AST-2010 (Susan): 5 retries, doubling; no in-flight cap and no delay ceiling.
-        "concurrency": {"rate_limit_retries": 5, "backoff_base_seconds": 2.0, "exhausted_stops_batch": True},
+        # 10s base: sleeps 10/20/40/80/160s nominal, jittered 0.5-1.0x → roughly 2.5-5 min before the batch stops.
+        "concurrency": {"rate_limit_retries": 5, "backoff_base_seconds": 10.0, "exhausted_stops_batch": True},
         "probe": True,
     },
     "deepseek": {
