@@ -161,6 +161,13 @@ export default function Recommended({ view, title }: RecommendedProps) {
     return next
   }), [])
 
+  // Header Select All (AST-2170): add or remove a whole section's ids; other sections' picks are untouched.
+  const setSectionSelected = useCallback((ids: string[], on: boolean) => setSelected(prev => {
+    const next = new Set(prev)
+    for (const id of ids) { if (on) next.add(id); else next.delete(id) }
+    return next
+  }), [])
+
   const sections = useMemo(() => {
     if (!manifest) return []
     const byState: Record<string, Job[]> = {}
@@ -231,6 +238,9 @@ export default function Recommended({ view, title }: RecommendedProps) {
           const sorted = sortRecommendedJobs(sec.jobs, sort.col, sort.asc, phaseFields)
           // checkbox + actions + title + company + source + state + phase cols + total + created + updated
           const columnCount = 9 + manifest.jobs.recommended.phase_score_columns.length
+          const sectionIds = sec.jobs.map(j => j.astral_job_id)
+          // Derived, never stored: checked only when every row in this section is selected (sections are never empty).
+          const allSectionSelected = sectionIds.every(id => selected.has(id))
           return (
             <div key={sec.state} style={{ marginBottom: 24 }}>
               <h2 style={{
@@ -245,7 +255,14 @@ export default function Recommended({ view, title }: RecommendedProps) {
                 <table className="list-page-table">
                   <thead>
                     <tr>
-                      <th style={{ width: 1 }} aria-label="Select" />
+                      <th style={{ width: 1 }} aria-label="Select">
+                        <input
+                          type="checkbox"
+                          aria-label={`All jobs in ${sec.label}`}
+                          checked={allSectionSelected}
+                          onChange={() => setSectionSelected(sectionIds, !allSectionSelected)}
+                        />
+                      </th>
                       <th style={{ width: 1, whiteSpace: "nowrap" }}>Actions</th>
                       <th className="sortable" onClick={() => handleSort(sec.state, "job_title")}>
                         Job Title{sortIndicator(sec.state, "job_title")}
