@@ -651,17 +651,22 @@ def save_job_artifact_resume_content(astral_job_id: str, resume_content: Dict[st
 
 
 def normalize_cover_letter_artifact(cover_letter: Any) -> Dict[str, str]:
-    """AST-309/518: stored cover_letter uses Subject, Letter, signature (legacy read aliases)."""
+    """AST-309/518: stored cover_letter uses Subject, Letter, signature (legacy read aliases)
+    plus optional Salutation — kept only when non-blank so existing bodies keep their shape."""
     if not isinstance(cover_letter, dict):
         return {"Subject": "", "Letter": "", "signature": ""}
-    return {
+    out = {
         "Subject": str(cover_letter.get("Subject") or cover_letter.get("re_line") or ""),
         "Letter": str(cover_letter.get("Letter") or cover_letter.get("body") or ""),
         "signature": str(cover_letter.get("signature") or ""),
     }
+    salutation = str(cover_letter.get("Salutation") or "")
+    if salutation.strip():
+        out["Salutation"] = salutation
+    return out
 
 
-_COVER_LETTER_FIELD_KEYS = frozenset({"Subject", "re_line", "Letter", "body", "signature"})
+_COVER_LETTER_FIELD_KEYS = frozenset({"Subject", "re_line", "Salutation", "Letter", "body", "signature"})
 
 
 def _cover_letter_display_nonempty(normalized: Dict[str, str]) -> bool:
@@ -1035,7 +1040,7 @@ def parsed_matches_artifact_shape(parsed: Any, shape_name: str) -> bool:
 def slice_parsed_for_artifact_shape(parsed: Dict[str, Any], shape_name: str) -> Dict[str, Any]:
     if shape_name == "cover_letter":
         out: Dict[str, Any] = {}
-        for k in ("Subject", "Letter", "signature", "re_line", "body"):
+        for k in ("Subject", "Salutation", "Letter", "signature", "re_line", "body"):
             if k in parsed:
                 out[k] = parsed[k]
         return out

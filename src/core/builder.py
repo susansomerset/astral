@@ -17,6 +17,8 @@ import copy
 import html
 import json
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -378,10 +380,14 @@ def build_cover_letter_from_job(
         cover_sig, {"contact": contact}
     )
     fields = _job_cover_somerset_fields(cover, from_res["text"])
+    fields["letter_date"] = _cover_letter_date(contact)  # job artifacts store no date → print day
     job_cfg = BUILD_CONFIG["job_cover_somerset"]
     doc_title = BUILD_CONFIG[job_cfg["document_title_key"]]["document_title"]
     html_out = _emit_somerset_cover_html_document(
-        fields, signature_image_src=sig_src, document_title=doc_title
+        fields,
+        signature_image_src=sig_src,
+        document_title=doc_title,
+        candidate_name=_cover_candidate_name(cd),
     )
     if debug:
         cover_src = _cover_letter_source_label(job_data, cd, astral_job_id=jid)
@@ -674,7 +680,11 @@ def build_session_cover_letter(
         normalized.get("signature") or "", candidate_root
     )
 
-    html_out = _emit_somerset_cover_html_document(normalized, signature_image_src=sig_src)
+    html_out = _emit_somerset_cover_html_document(
+        normalized,
+        signature_image_src=sig_src,
+        candidate_name=_cover_candidate_name(candidate_root),
+    )
     if debug:
         _log.debug_index(
             func="builder.build_session_cover_letter",
@@ -756,6 +766,24 @@ def _cover_letter_body_html(letter: str) -> str:
     return "\n".join(out)
 
 
+def _cover_letter_date(contact: dict) -> str:
+    """Print-day date like ``April 12, 2026`` in the candidate's ``contact.timezone`` (blank/bad → UTC)."""
+    key = str((contact or {}).get("timezone") or "").strip()
+    try:
+        zone = ZoneInfo(key or "UTC")
+    except Exception:  # unknown IANA key → same UTC fallback as format_contact_timezone_clock
+        zone = ZoneInfo("UTC")
+    now = datetime.now(zone)
+    return f"{now:%B} {now.day}, {now.year}"
+
+
+def _cover_candidate_name(cd: dict) -> str:
+    """Full name for the cover header: ``full`` column, else first + last."""
+    return (
+        cd.get("_full") or candidate_mod.recompute_full_name(cd.get("_first") or "", cd.get("_last") or "")
+    ).strip()
+
+
 def _candidate_for_cover_from_block(cd: dict) -> dict:
     """Shape coerced builder candidate blob for ``resolve_cover_from_block``."""
     out: Dict[str, Any] = {
@@ -788,8 +816,11 @@ def _emit_somerset_cover_html_document(
     *,
     signature_image_src: Optional[str] = None,
     document_title: Optional[str] = None,
+    candidate_name: str = "",
 ) -> str:
-    """Standalone SomersetCover DOM/CSS (session + job cover-only Print Cover Letter)."""
+    """Standalone SomersetCover DOM/CSS (session + job cover-only Print Cover Letter).
+
+    Header = ``candidate_name`` (resume-style name line, omitted when blank) + rule + From block."""
     style = BUILD_CONFIG["default_style"]
     fonts = style.get("fonts") or {}
     colors = style.get("colors") or {}
@@ -808,7 +839,15 @@ def _emit_somerset_cover_html_document(
     body_lh = layout["body_line_height"]
     signoff_lh = layout["signoff_line_height"]
     para_indent = layout["paragraph_indent_em"]
+    para_gap = layout["paragraph_gap_pt"]
     list_indent = layout["list_indent_em"]
+    name_px = layout["name_font_size_px"]
+    name_ls = layout["name_letter_spacing_px"]
+    name_lh = layout["name_line_height"]
+    from_px = layout["from_font_size_px"]
+    from_lh = layout["from_line_height"]
+    name_gap = layout["name_rule_gap_px"]
+    from_gap = layout["from_gap_px"]
     doc_title = (
         document_title
         if document_title is not None
@@ -821,9 +860,11 @@ def _emit_somerset_cover_html_document(
     from_lines = (fields.get("from_block") or "").replace("\r\n", "\n").split("\n")
     from_html = "<br>\n        ".join(html.escape(line) for line in from_lines)
 
-    blocks: List[str] = [
-        f'      <div class="fromBlock">\n        {from_html}\n      </div>'
-    ]
+    # Header: name (resume-style) + rule, then the From block text. No name → From block only.
+    blocks: List[str] = []
+    if candidate_name.strip():
+        blocks.append(f'      <div class="coverName">{html.escape(candidate_name.strip())}</div>')
+    blocks.append(f'      <div class="fromBlock">\n        {from_html}\n      </div>')
     to_block = (fields.get("to_block") or "").strip()
     if to_block:
         to_lines = to_block.replace("\r\n", "\n").split("\n")
@@ -837,6 +878,10 @@ def _emit_somerset_cover_html_document(
         blocks.append(
             f'      <div class="lettersubject">{html.escape(subject)}</div>'
         )
+    salutation = (fields.get("salutation") or "").strip()
+    if salutation:
+        sal_html = html.escape(salutation).replace(chr(10), "<br>")
+        blocks.append(f'      <div class="lettersalutation">{sal_html}</div>')
     p_html = _cover_letter_body_html(fields.get("letter") or "")
     blocks.append(f'      <div class="lettercontent">\n{p_html}\n      </div>')
 
@@ -902,15 +947,28 @@ body {{
   color: var(--text-primary);
   line-height: {body_lh};
 }}
-.fromBlock {{
-  margin: 0 0 32px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid var(--accent-color);
-  font-size: 17px;
-  color: var(--accent-color);
-  text-align: left;
-  line-height: 1.5;
+/* Name = resume <h1> look (heading font, header color); rule sits under it. */
+.coverName {{
+  margin: 0;
+  padding-bottom: {name_gap}px;
+  border-bottom: 1px solid var(--header-color); /* same weight/color as resume h2 rules */
+  font-family: var(--header-font-family);
+  font-size: {name_px}px;
   font-weight: 700;
+  letter-spacing: {name_ls}px;
+  line-height: {name_lh};
+  color: var(--header-color);
+  text-align: center;
+}}
+/* From block = resume .contact line look (list font, secondary color). */
+.fromBlock {{
+  margin: {from_gap}px 0 0;
+  font-family: var(--list-font-family);
+  font-size: {from_px}px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: {from_lh};
 }}
 .toBlock {{
   margin: 16px 0 16px;
@@ -937,9 +995,18 @@ body {{
   margin: 0 0 24px;
   text-align: left;
 }}
-/* Indent each paragraph's first line instead of a blank line between paragraphs. */
+/* Salutation: own line above the letter, never indented. */
+.lettersalutation {{
+  margin: 0 0 {para_gap}pt;
+  text-indent: 0;
+  text-align: left;
+  font-size: 15px;
+  line-height: {body_lh};
+  color: var(--text-primary);
+}}
+/* Indent each paragraph's first line; small gap after each paragraph. */
 .lettercontent p {{
-  margin: 0;
+  margin: 0 0 {para_gap}pt;
   text-indent: {para_indent}em;
   font-size: 15px;
   line-height: {body_lh};
@@ -947,7 +1014,7 @@ body {{
 }}
 /* Bullets / numbered lists: no paragraph indent, nested a bit deeper than it. */
 .lettercontent ul, .lettercontent ol {{
-  margin: 0;
+  margin: 0 0 {para_gap}pt;
   padding-left: {list_indent}em;
   font-size: 15px;
   line-height: {body_lh};
@@ -1054,11 +1121,15 @@ def _is_nonempty_resume_dict(val: Any) -> bool:
 
 def _cover_letter_fields_for_read(cl: dict) -> dict:
     """Map Subject/Letter or legacy re_line/body to emit-friendly re_line/body/signature."""
-    return {
+    out = {
         "re_line": str(cl.get("Subject") or cl.get("re_line") or ""),
         "body": str(cl.get("Letter") or cl.get("body") or ""),
         "signature": str(cl.get("signature") or ""),
     }
+    # Optional field: only present when set (missing key reads as "" in _job_cover_somerset_fields).
+    if str(cl.get("Salutation") or "").strip():
+        out["salutation"] = str(cl["Salutation"])
+    return out
 
 
 def _resolve_cover_letter(

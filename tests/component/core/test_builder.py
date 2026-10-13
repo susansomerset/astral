@@ -3416,7 +3416,11 @@ class TestAst1139SessionCoverEmptyFromBlock:
         assert "<title>SomersetCover</title>" in html
         assert 'class="fromBlock"' in html
         from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
-        assert "Ada Lovelace" in from_html and "London, UK" in from_html
+        # Name now prints in its own header line; the default From block is location + contact only.
+        cover_name = html.split('class="coverName">', 1)[1].split("</div>", 1)[0]
+        assert cover_name == "Ada Lovelace"
+        assert "Ada Lovelace" not in from_html
+        assert "London, UK" in from_html
         assert "ada@example.com" in from_html
         assert "Susan Somerset" not in from_html
         style = html.split("<style>", 1)[1].split("</style>", 1)[0]
@@ -3613,7 +3617,8 @@ class TestAst1138JobCoverSomersetFromBlock:
         # Default composition: Name • City / email (br between identity lines).
         assert "Ada Lovelace" in html and "London, UK" in html
         assert "ada@example.com" in html
-        assert "<br>" in html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        # Default template is a single bulleted line (no <br>).
+        assert "London, UK • ada@example.com" in html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
         assert 'class="lettersubject"' in html and "Re: Role" in html
         assert "Dear team," in html and "Thanks." in html
         assert 'class="letterSignoff"' in html and "Ada" in html
@@ -3969,6 +3974,65 @@ class TestCoverLetterBodyListsAndIndent:
         signoff2 = html2.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
         assert signoff2.index("Best,") < signoff2.index("<br>") < signoff2.index("Susan")
 
+    def test_salutation_block_between_subject_and_letter_not_indented(self) -> None:
+        fields = {
+            "from_block": "S",
+            "letter_date": "April 12, 2026",
+            "subject": "Re: Role",
+            "salutation": "Dear <Team>,",
+            "letter": "Hello.",
+            "signoff_closing": "",
+            "signature": "S",
+        }
+        html = builder_mod._emit_somerset_cover_html_document(fields)
+        assert html.index('class="letterdate"') < html.index('class="lettersubject"')
+        assert html.index('class="lettersubject"') < html.index('class="lettersalutation">Dear &lt;Team&gt;,</div>')
+        assert html.index('class="lettersalutation"') < html.index('class="lettercontent"')
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        assert "text-indent: 0" in style.split(".lettersalutation {", 1)[1].split("}", 1)[0]
+        # Optional: blank salutation emits no block.
+        bare = builder_mod._emit_somerset_cover_html_document({**fields, "salutation": "  "})
+        assert 'class="lettersalutation"' not in bare
+
+    def test_cover_letter_date_format_and_timezone(self) -> None:
+        import re as _re
+
+        assert _re.fullmatch(r"[A-Z][a-z]+ \d{1,2}, \d{4}", builder_mod._cover_letter_date({}))
+        # Bad / blank timezone falls back to UTC instead of raising.
+        assert builder_mod._cover_letter_date({"timezone": "Not/AZone"})
+        assert builder_mod._cover_letter_date({"timezone": "America/Los_Angeles"})
+
+    def test_job_cover_gets_print_day_date_and_salutation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod, "_cover_letter_date", lambda contact: "April 12, 2026")
+        cover = {"re_line": "Re", "body": "Hi.", "signature": "S", "salutation": "Dear Team,"}
+        fields = builder_mod._job_cover_somerset_fields(cover, "Oakland")
+        assert fields["salutation"] == "Dear Team,"
+        assert fields["letter_date"] == ""  # filled by build_cover_letter_from_job, not the map
+        # Optional key only appears in the read map when set.
+        assert "salutation" not in builder_mod._cover_letter_fields_for_read({"Subject": "S", "Letter": "L"})
+        assert builder_mod._cover_letter_fields_for_read({"Salutation": "Hi,"})["salutation"] == "Hi,"
+
+    def test_header_name_then_rule_then_from_block(self) -> None:
+        fields = {
+            "from_block": "Oakland, CA\nhire@example.com",
+            "letter_date": "d",
+            "letter": "Hi.",
+            "signoff_closing": "",
+            "signature": "S",
+        }
+        html = builder_mod._emit_somerset_cover_html_document(fields, candidate_name="Ada <Lovelace>")
+        # Name block precedes the From block, text is escaped.
+        assert html.index('class="coverName">Ada &lt;Lovelace&gt;</div>') < html.index('class="fromBlock"')
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        name_css = style.split(".coverName {", 1)[1].split("}", 1)[0]
+        assert "font-family: var(--header-font-family)" in name_css
+        assert "font-size: 33px" in name_css and "border-bottom: 1px solid" in name_css
+        from_css = style.split(".fromBlock {", 1)[1].split("}", 1)[0]
+        assert "font-family: var(--list-font-family)" in from_css and "font-size: 13px" in from_css
+        # No name → no name block / rule; From block still renders.
+        bare = builder_mod._emit_somerset_cover_html_document(fields)
+        assert 'class="coverName"' not in bare and 'class="fromBlock"' in bare
+
     def test_css_indent_and_line_height(self) -> None:
         html = builder_mod.build_session_cover_letter(
             {
@@ -3982,8 +4046,9 @@ class TestCoverLetterBodyListsAndIndent:
             }
         )
         style = html.split("<style>", 1)[1].split("</style>", 1)[0]
-        assert "text-indent: 2em" in style
-        assert "line-height: 1.15" in style
+        assert "text-indent: 1em" in style
+        assert "margin: 0 0 3pt" in style
+        assert "line-height: 1.2" in style
         assert "line-height: 1.65" not in style
         assert "<ul><li>a</li></ul>" in html
 
@@ -3993,13 +4058,15 @@ class TestCoverLetterBodyListsAndIndent:
         monkeypatch.setitem(layout, "signoff_line_height", 1.7)
         monkeypatch.setitem(layout, "paragraph_indent_em", 3)
         monkeypatch.setitem(layout, "list_indent_em", 5)
+        monkeypatch.setitem(layout, "paragraph_gap_pt", 7)
         html = builder_mod._emit_somerset_cover_html_document(
             {"from_block": "S", "letter_date": "d", "letter": "Hi.", "signoff_closing": "", "signature": "S"}
         )
         style = html.split("<style>", 1)[1].split("</style>", 1)[0]
         assert "line-height: 1.3" in style and "line-height: 1.7" in style
         assert "text-indent: 3em" in style and "padding-left: 5em" in style
-        assert "line-height: 1.15" not in style
+        assert "margin: 0 0 7pt" in style
+        assert "line-height: 1.2;" not in style
 
 
 _AST1304_JOB = {
