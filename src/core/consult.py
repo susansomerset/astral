@@ -115,13 +115,23 @@ def _job_consult_info(job_id: Any, to_state: Any) -> None:
     _entity_info(job_id, "job", "consult completed", to_state)
 
 
+def _job_consult_pass(job_id: Any, to_state: Any) -> None:
+    """Rubric verdict PASS at INFO (rubric tasks only; non-rubric hops keep _job_consult_info)."""
+    _entity_info(job_id, "job", "PASS", to_state)
+
+
+def _job_consult_fail(job_id: Any, to_state: Any, reason: str) -> None:
+    """Rubric verdict FAIL at INFO; could-not-process cases stay on _warn_job (WARNING)."""
+    _entity_info(job_id, "job", "FAIL", f"{to_state} [{reason}]")
+
+
 def _warn_job(aid: Any, dest: Any, reason: str) -> None:
     logger.warning("%s -> %s [%s]", aid, dest, reason)
 
 
 def _log_fail_dest(entity: Any, dest: Any, reason: str) -> None:
-    """Retry holding → WARNING; error/terminal → ERROR (AST-1839)."""
-    (logger.warning if retry_base(dest) else logger.error)("%s -> %s [%s]", entity, dest or "-", reason)
+    """Could-not-process routing (retry holding or error state) → WARNING; ERROR is reserved for our own code/infra."""
+    logger.warning("%s -> %s [%s]", entity, dest or "-", reason)
 
 
 async def _debug_await(fn_name: str, call_args: str, coro):
@@ -1449,13 +1459,13 @@ def _apply_render_verdict_decoded_job(
     tracker.save_job_data(astral_job_id, save_data)
     _transition_job_state_for_task(agent_task, [astral_job_id], to_state, score)
     if to_state == cfg.get("pass_state"):
-        _job_consult_info(astral_job_id, to_state)
+        _job_consult_pass(astral_job_id, to_state)
     else:
         failed_vecs = [
             g["vector"] for g in grades
             if isinstance(g, dict) and g.get("grade") == "F" and g.get("vector")
         ]
-        _warn_job(astral_job_id, to_state, ", ".join(failed_vecs) if failed_vecs else "consult fail")
+        _job_consult_fail(astral_job_id, to_state, ", ".join(failed_vecs) if failed_vecs else "consult fail")
     return to_state, score, grades
 
 
@@ -1623,9 +1633,9 @@ async def render_verdict(
                 dest=dest,
             )
         if all_x and not retry_base(dest):
-            # Second all-X strike is a fail verdict: WARNING, and success=True so the single-entity
+            # Second all-X strike is a fail verdict: INFO FAIL, and success=True so the single-entity
             # dispatch tally counts it failed (to_state != pass_state), not an error (AST-2096).
-            _warn_job(astral_job_id, dest, str(e))
+            _job_consult_fail(astral_job_id, dest, str(e))
             _transition_job_state_for_task(agent_task, [astral_job_id], dest)
             return {"success": True, "to_state": dest, "score": None, "grades": grades_dbg}
         _log_fail_dest(astral_job_id, dest, str(e))
@@ -1926,7 +1936,7 @@ async def _run_batch_consult(
                 )
                 if not retry_base(dest):
                     # Second all-X strike is a fail verdict, not bad grades (AST-2096).
-                    _warn_job(aid, dest, f"process_fn {type(e).__name__}: {e}")
+                    _job_consult_fail(aid, dest, f"process_fn {type(e).__name__}: {e}")
                     _transition_job_state_for_task(task_key, [aid], dest)
                     failed += 1
                     continue
@@ -1941,7 +1951,7 @@ async def _run_batch_consult(
                     total=len(response_jobs),
                 )
             bad_grades.add(aid)
-            # One fail-destination line per job (WARNING on retry, ERROR if terminal) —
+            # One fail-destination WARNING per job —
             # covers InvalidJobLinkError too; the traceback is debug-only.
             _log_fail_dest(
                 aid,
@@ -1973,7 +1983,7 @@ async def _run_batch_consult(
         try:
             ensure_batch_response_entity_ids(entity_type, list(processed_ids), agent_ref)
         except Exception as exc:
-            logger.exception(
+            logger.error_exc(
                 "%s | ensure_batch_response_entity_ids\n  %s: %s\n  Continuing without RESPONSE entity tags",
                 task_key, type(exc).__name__, exc,
             )
@@ -2142,7 +2152,7 @@ async def qualify_job_listings(
             _save_joblist_result()
             _transition_job_state_for_task(task_key, [aid], to_state, score)
             failed_vecs = [g["vector"] for g in grades if isinstance(grades, list) and g.get("grade") == "F"]
-            _warn_job(aid, to_state, ", ".join(failed_vecs) if failed_vecs else "joblist fail")
+            _job_consult_fail(aid, to_state, ", ".join(failed_vecs) if failed_vecs else "joblist fail")
             return to_state
 
         # Passing job — validate title and URL before initializing
@@ -2170,7 +2180,7 @@ async def qualify_job_listings(
             # Relative link kept as-is; fetch_relative_jd clicks it on the company job_site.
             to_state = cfg["relative_link_state"]
         _transition_job_state_for_task(task_key, [aid], to_state, score)
-        _job_consult_info(aid, to_state)
+        _job_consult_pass(aid, to_state)
         return to_state
 
     result = await _run_batch_consult(
@@ -2443,10 +2453,10 @@ async def evaluate_jd_batch(
         tracker.save_job_data(aid, save_data)
         _transition_job_state_for_task(task_key, [aid], to_state, score)
         if to_state == cfg["pass_state"]:
-            _job_consult_info(aid, to_state)
+            _job_consult_pass(aid, to_state)
         else:
             failed_vecs = [g["vector"] for g in grades if isinstance(grades, list) and g.get("grade") == "F"]
-            _warn_job(aid, to_state, ", ".join(failed_vecs) if failed_vecs else "evaluate fail")
+            _job_consult_fail(aid, to_state, ", ".join(failed_vecs) if failed_vecs else "evaluate fail")
         return to_state
 
     result = await _run_batch_consult(

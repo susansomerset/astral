@@ -106,18 +106,22 @@ def _with_log_debug(fn):
     return wrapper
 
 
-def _warn_hop_no_success(task_key: str, why: str) -> None:
+def _warn_hop_no_success(task_key: str, why: str, envelope: Any = None) -> None:
     logger.warning(
         "%s skipped — %s\n  This hop is not persisting a success RESPONSE",
         task_key,
         why,
     )
+    # A failed/malformed agent_performance envelope: full detail at DEBUG only.
+    if envelope is not None:
+        perf = envelope.get("agent_performance", envelope) if isinstance(envelope, dict) else envelope
+        logger.debug("%s failed envelope: agent_performance=%s", task_key, perf)
 
 
 def _log_swallowed_agent_data(who: Any, what: str, exc: Optional[BaseException] = None) -> None:
     if exc is None:
         exc = sys.exc_info()[1]
-    logger.exception(
+    logger.error_exc(
         "%s | %s\n  %s: %s\n  Continuing without that agent_data row",
         who or "-",
         what,
@@ -1580,7 +1584,7 @@ def _capture_rubric_vector_feedback(
             completed_at=completed_at,
         )
     except Exception as exc:
-        logger.exception(
+        logger.error_exc(
             "%s | %s\n  %s: %s\n  This hop is still success; vector feedback was not saved",
             index or "-",
             task_key,
@@ -2250,7 +2254,7 @@ async def do_task(
     # dict.fromkeys = ordered-unique across segments (segment order above).
     empty_names = list(dict.fromkeys(n for names in _empties.values() for n in names))
     if empty_names:
-        # AST-2000: an incomplete prompt is never sent — one ERROR, no per-token WARNINGs.
+        # AST-2000: an incomplete prompt is never sent — one ERROR (we control the token content), no per-token WARNINGs.
         logger.error(
             "%s | %s skipped — empty tokens %s\n  This call is not going out",
             index or candidate_id or "-",
@@ -2402,7 +2406,7 @@ async def do_task(
             await asyncio.to_thread(database.update_dispatch_ledger, ledger_batch_id, **cols)
         except Exception:
             # A ledger hiccup must never change the call's own outcome.
-            logger.exception(
+            logger.error_exc(
                 "%s | %s\n  Ledger call outcome write failed for batch %s\n  Continuing without it on that ledger row",
                 index or "-",
                 task_key,
@@ -2489,7 +2493,7 @@ async def do_task(
         envelope_snapshot = copy.deepcopy(parsed)
 
     if envelope_err:
-        _warn_hop_no_success(task_key, envelope_err)
+        _warn_hop_no_success(task_key, envelope_err, parsed)
         if _should_store:
             try:
                 await asyncio.to_thread(_store_response_block,
@@ -2519,7 +2523,7 @@ async def do_task(
             _coerce_schema_str_fields_from_list(parsed, schema, debug=debug)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
-            _warn_hop_no_success(task_key, err)
+            _warn_hop_no_success(task_key, err, parsed)
             if log_batch_id.get():
                 flush_log_buffer()
             if _should_store:
@@ -2612,7 +2616,7 @@ async def do_task(
         if rubric_encoded and _agent_performance_status(_perf) == "failure":
             _note = (_perf.get("failure_note") if isinstance(_perf, dict) else None) or parsed.get("failure_note")
             agent_err = f"Agent failure: {_note or 'Agent returned status=failure with no note'}"
-            _warn_hop_no_success(task_key, agent_err)
+            _warn_hop_no_success(task_key, agent_err, parsed)
             # Keep cleanly decoded lines so a batch caller fails only the gaps, not the batch (AST-2089).
             # Same validation bar as the success path; any error → None → caller fails the whole batch.
             salvaged = None
@@ -2672,7 +2676,7 @@ async def do_task(
             result["parsed_response"] = parsed
             post_rubric_decode = True
         except Exception as exc:
-            logger.exception(
+            logger.warn_exc(
                 "%s | %s\n  %s: %s\n  Returning this hop as failed",
                 index or "-",
                 task_key,
@@ -2703,7 +2707,7 @@ async def do_task(
             result["parsed_response"] = parsed
             post_rubric_decode = True
         except Exception as exc:
-            logger.exception(
+            logger.warn_exc(
                 "%s | %s\n  %s: %s\n  Returning this hop as failed",
                 index or "-",
                 task_key,
@@ -2737,7 +2741,7 @@ async def do_task(
             _coerce_schema_str_fields_from_list(parsed, schema, debug=debug)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
-            _warn_hop_no_success(task_key, err)
+            _warn_hop_no_success(task_key, err, parsed)
             if log_batch_id.get():
                 flush_log_buffer()
             if _should_store:
@@ -2884,7 +2888,7 @@ async def do_task(
                             catalog_key,
                         )
             except Exception as persist_err:
-                logger.exception(
+                logger.error_exc(
                     "%s | %s\n  %s: %s\n  The hop is still success; the replica was not saved",
                     index,
                     task_key,
@@ -2904,7 +2908,7 @@ async def do_task(
 
             persist_draft_job_resume_notes(index, parsed)
         except Exception as persist_err:
-            logger.exception(
+            logger.error_exc(
                 "%s | %s\n  %s: %s\n  The hop is still success; the notes were not saved",
                 index,
                 task_key,
@@ -2952,7 +2956,7 @@ async def do_task(
                 )
             candidate_craft_persisted = True
         except Exception as persist_err:
-            logger.exception(
+            logger.error_exc(
                 "%s | %s\n  %s: %s\n  This hop is failing closed",
                 index,
                 task_key,
@@ -3021,7 +3025,7 @@ async def do_task(
         try:
             raw = ctx["resolve_run_next_live"](parsed)
         except Exception as exc:
-            logger.exception(
+            logger.error_exc(
                 "%s | %s\n  %s: %s\n  Continuing with live_content as-is",
                 index or "-",
                 task_key,
@@ -3379,7 +3383,7 @@ async def run_adhoc_workbench_test(
                 total_failed=0,
                 total_errors=1,
             )
-            logger.exception(
+            logger.error_exc(
                 "%s | adhoc %s\n  %s: %s\n  This test is recorded FAILED",
                 candidate_id or "-",
                 ledger_task_key,
@@ -3577,7 +3581,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     try:
         entries = database.list_entity_latest_agent_refs(entity_type, entity_id)
     except Exception as exc:
-        logger.exception(
+        logger.error_exc(
             "%s | %s story\n  %s: %s\n  Returning an empty story",
             entity_id,
             entity_type,
@@ -3604,7 +3608,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
             if row:
                 data_map[bid] = row
         except Exception as exc:
-            logger.exception(
+            logger.error_exc(
                 "%s | %s story block %s\n  %s: %s\n  Continuing with a partial story",
                 entity_id,
                 entity_type,
