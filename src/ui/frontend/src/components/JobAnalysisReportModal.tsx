@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import AgentAnalysisHeader from "./AgentAnalysisHeader"
 import { type AgentStoryEntry } from "./AgentStoryTab"
-import ArtifactEditor from "./ArtifactEditor"
 import JobDiscussionPane from "./JobDiscussionPane"
 import JobArtifactEditModal, { type JobArtifactTab } from "./JobArtifactEditModal"
 import JobMeteoritePane, { type RelatedMeteorite } from "./JobMeteoritePane"
@@ -256,16 +255,11 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const buildInProgress = !!(job && isArtifactsBuildInProgress(job.state))
   const hasArtifactContent = anyReportArtifactContent(artifacts, artifactTabs)
 
-  const populatedArtifactSections = useMemo((): ReportSectionDef[] => {
-    if (!artifactTabs) return []
-    return artifactTabs
-      .filter(a => artifactHasContent(artifacts, a.artifact_key))
-      .map(a => ({
-        section_id: a.tab_id,
-        nav_label: a.nav_label,
-        default_expanded: false,
-      }))
-  }, [artifactTabs, artifacts])
+  // Thumbnail tabs (resume + cover) that have content; non-thumbnail tabs (Application Questions) are not shown here.
+  const populatedArtifactThumbs = useMemo(
+    () => (artifactTabs ?? []).filter(a => a.preview_thumbnail && artifactHasContent(artifacts, a.artifact_key)),
+    [artifactTabs, artifacts],
+  )
 
   const artifactActions = useMemo((): ReportPrimaryAction[] => {
     if (!job) return []
@@ -395,39 +389,25 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     )
   }
 
-  function renderArtifactSection(sectionId: string): ReactNode {
-    if (!jobId || !artifactTabs) return null
-    const artTab = artifactTabs.find(a => a.tab_id === sectionId)
-    if (!artTab) return null
-    // AST-2084: config-flagged tabs show the print preview; a click (or Edit, resume only) opens the stacked edit modal.
-    if (artTab.preview_thumbnail) {
-      return (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-          <PrintPreview
-            target={{ kind: artTab.use_resume_structure ? "job_resume" : "cover", id: jobId }}
-            thumbnail
-            onClick={() => setEditTab(artTab)}
-          />
+  // AST-2084: thumbnail + caption; a click (or Edit, resume only) opens the stacked edit modal.
+  function renderArtifactThumb(artTab: JobArtifactTab): ReactNode {
+    if (!jobId) return null
+    return (
+      <div key={artTab.tab_id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <PrintPreview
+          target={{ kind: artTab.use_resume_structure ? "job_resume" : "cover", id: jobId }}
+          thumbnail
+          onClick={() => setEditTab(artTab)}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span>{artTab.nav_label}</span>
           {artTab.use_resume_structure && (
             <button type="button" className="btn secondary" onClick={() => setEditTab(artTab)}>
               Edit
             </button>
           )}
         </div>
-      )
-    }
-    const taskKey =
-      artTab.artifact_key === "cover_letter"
-        ? "craft_cover_letter"
-        : "propose_application_responses"
-    return (
-      <ArtifactEditor
-        title={artTab.nav_label}
-        artifactKey={artTab.artifact_key}
-        taskKey={taskKey}
-        shapesKey={artTab.shapes_key ?? undefined}
-        jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
-      />
+      </div>
     )
   }
 
@@ -475,12 +455,11 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       )
     }
 
-    // C — populated: collapsible editors; no Generate/Cancel strip
+    // C — populated: resume + cover thumbnails side by side (no collapsible chrome); no Generate/Cancel strip
     return (
-      <ReportSectionList
-        sections={populatedArtifactSections}
-        renderSection={renderArtifactSection}
-      />
+      <div className="recommended-report-artifact-thumbs" style={{ display: "flex", alignItems: "flex-start", gap: 24 }}>
+        {populatedArtifactThumbs.map(renderArtifactThumb)}
+      </div>
     )
   }
 
