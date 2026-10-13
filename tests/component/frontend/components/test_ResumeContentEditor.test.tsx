@@ -14,6 +14,8 @@ vi.mock("../../../../src/ui/frontend/src/lib/uiConfig", () => ({
   getUiConfig: () => ({
     column_types: {},
     base_resume_accent_palette: ["#1F4E79", "#7A1F1F"],
+    // Lowercase key: lookup is case-insensitive. #7A1F1F has no name → tooltip falls back to the hex alone.
+    base_resume_accent_names: { "#1f4e79": "FX Blue" },
     experience_job_ui_fields: [
       { key: "company", label: "Company" },
       { key: "title", label: "Title" },
@@ -383,7 +385,11 @@ describe("AST-2083 ResumeContentEditor — header controls (AC9/AC12/AC13)", () 
   it("accent swatch saves the uppercased color and marks itself pressed", async () => {
     await renderEditor()
     const group = screen.getByRole("group", { name: "Resume accent color" })
-    expect(within(group).getByLabelText("#1F4E79").getAttribute("aria-pressed")).toBe("true")
+    // Tooltip + label read "Name (#hex)"; an unnamed color shows the hex alone.
+    const blue = within(group).getByLabelText("FX Blue (#1F4E79)")
+    expect(blue.getAttribute("title")).toBe("FX Blue (#1F4E79)")
+    expect(blue.getAttribute("aria-pressed")).toBe("true")
+    expect(within(group).getByLabelText("#7A1F1F").getAttribute("title")).toBe("#7A1F1F")
     fireEvent.click(within(group).getByLabelText("#7A1F1F"))
     await waitFor(() => expect(puts()).toHaveLength(1))
     expect((puts()[0].body as { artifacts: { resume_structure: { accent_color: string } } }).artifacts.resume_structure.accent_color).toBe("#7A1F1F")

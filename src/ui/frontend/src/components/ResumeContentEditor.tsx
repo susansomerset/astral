@@ -23,6 +23,8 @@ export interface ResumeContentEditorProps {
 /** ui_config keys this editor reads (served by /api/ui_config; not on the shared UiConfig type). */
 type ResumeUiConfig = UiConfig & {
   base_resume_accent_palette?: string[]
+  /** hex → display name; swatch tooltips read "Name (#hex)" (hex alone when a color has no name). */
+  base_resume_accent_names?: Record<string, string>
   experience_job_ui_fields?: { key: string; label?: string }[]
   unsupported_resume_structure_message?: string
 }
@@ -163,6 +165,11 @@ function Editor({ target, onSaved }: ResumeContentEditorProps) {
     : EXPERIENCE_FIELD_FALLBACK
   const unsupportedMessage = ui?.unsupported_resume_structure_message || UNSUPPORTED_FALLBACK
   const palette = ui?.base_resume_accent_palette ?? []
+  // Case-insensitive hex → name lookup for the swatch tooltips.
+  const accentNames = Object.fromEntries(
+    Object.entries(ui?.base_resume_accent_names ?? {}).map(([hex, name]) => [hex.toUpperCase(), name]),
+  )
+  const accentLabel = (hex: string) => (accentNames[hex.toUpperCase()] ? `${accentNames[hex.toUpperCase()]} (${hex})` : hex)
 
   useEffect(() => {
     let live = true
@@ -453,8 +460,8 @@ function Editor({ target, onSaved }: ResumeContentEditorProps) {
                 type="button"
                 className={`base-resume-accent-swatch${accent === hex.toUpperCase() ? " selected" : ""}`}
                 style={{ backgroundColor: hex }}
-                title={hex}
-                aria-label={hex}
+                title={accentLabel(hex)}
+                aria-label={accentLabel(hex)}
                 aria-pressed={accent === hex.toUpperCase()}
                 onClick={() => pickAccent(hex)}
               />

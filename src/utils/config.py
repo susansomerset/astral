@@ -6650,6 +6650,19 @@ BUILD_CONFIG = {
         "#2b2b2b",
         "#111111",
     ],
+    # Display names for the swatch tooltips ("Name (#hex)"); keyed by the palette hex, same case.
+    "accent_palette_names": {
+        "#1a1a2e": "Midnight",
+        "#16213e": "Navy Ink",
+        "#0f3460": "Deep Cobalt",
+        "#1e3a5f": "Denim",
+        "#2d4a3e": "Pine",
+        "#3c2c6e": "Indigo",
+        "#4a3728": "Espresso",
+        "#3d2b3d": "Aubergine",
+        "#2b2b2b": "Charcoal",
+        "#111111": "Onyx",
+    },
     # Keys align to DATA_SHAPES["candidates"]["detail"]["base_resume_structure"]
     # keys and TASK_CONFIG["craft_resume_base"] field names (professional_summary
     # not "summary"; core_competencies not "competencies"). Cover keys mirror
