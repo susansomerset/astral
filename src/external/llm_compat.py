@@ -152,7 +152,7 @@ async def send_to_llm_compat(
             try:
                 counts = usage_to_token_counts(response.usage)
             except Exception as exc:
-                logger.exception(
+                logger.error_exc(
                     "%s | timesheet token counts on %s %s\n  %s: %s\n  Recording the row with zero tokens",
                     getattr(response, "id", None) or "-", server_id, sku, type(exc).__name__, exc,
                 )
@@ -168,7 +168,7 @@ async def send_to_llm_compat(
                         server_id=server_id,
                     )
                 except Exception as exc:
-                    logger.exception(
+                    logger.error_exc(
                         "%s | timesheet catalog price on %s %s\n  %s: %s\n  Recording the row with zero calculated cost",
                         getattr(response, "id", None) or "-", server_id, sku, type(exc).__name__, exc,
                     )
