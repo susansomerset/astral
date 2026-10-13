@@ -28,6 +28,7 @@ from src.data import database
 from src.utils.config import (
     BUILD_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
+    PAGE_TITLE_CONFIG,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
@@ -280,6 +281,7 @@ def build_resume_from_job(
         body_section_ids=ordered_body,
         body_section_titles=titles,
         resume_structure=structure,
+        document_title=_job_page_title("resume", cd, job),
         debug=debug,
         debug_func="builder.build_resume_from_job",
     )
@@ -383,12 +385,10 @@ def build_cover_letter_from_job(
     )
     fields = _job_cover_somerset_fields(cover, from_res["text"])
     fields["letter_date"] = _cover_letter_date(contact)  # job artifacts store no date → print day
-    job_cfg = BUILD_CONFIG["job_cover_somerset"]
-    doc_title = BUILD_CONFIG[job_cfg["document_title_key"]]["document_title"]
     html_out = _emit_somerset_cover_html_document(
         fields,
         signature_image_src=sig_src,
-        document_title=doc_title,
+        document_title=_job_page_title("cover", cd, job),
         candidate_name=_cover_candidate_name(cd),
     )
     if debug:
@@ -755,14 +755,14 @@ def _cover_letter_body_html(letter: str) -> str:
             m = _COVER_LIST_ITEM_RE.match(line)
             if not m:
                 flush_list()
-                text.append(html.escape(line.strip()))
+                text.append(_escape_link(line.strip()))
                 continue
             flush_text()
             kind = "ul" if m.group(1) else "ol"
             if kind != tag:
                 flush_list()
                 tag = kind
-            items.append(html.escape(m.group(2).strip()))
+            items.append(_escape_link(m.group(2).strip()))
         flush_text()  # paragraph boundary ends text; a pending list may continue
     flush_list()
     return "\n".join(out)
@@ -777,6 +777,21 @@ def _cover_letter_date(contact: dict) -> str:
         zone = ZoneInfo("UTC")
     now = datetime.now(zone)
     return f"{now:%B} {now.day}, {now.year}"
+
+
+def _job_page_title(kind: str, cd: dict, job: dict) -> str:
+    """Printed-page <title> (the browser's default PDF file name) for a job document.
+
+    ``kind`` is ``resume`` or ``cover``. Candidate template (contact.<key>) wins, else the config default;
+    ``{$FULL_NAME}`` / ``{$JOB_ID}`` are filled in. JOB_ID = company_job_id, else the first N non-hyphen
+    characters of astral_job_id."""
+    spec = PAGE_TITLE_CONFIG[kind]
+    template = str((cd.get("contact") or {}).get(spec["contact_key"]) or "").strip() or spec["default"]
+    job_id = str(job.get("company_job_id") or "").strip() or str(
+        job.get("astral_job_id") or ""
+    ).replace("-", "")[: PAGE_TITLE_CONFIG["job_id_fallback_chars"]]
+    out = template.replace("{$FULL_NAME}", _cover_candidate_name(cd)).replace("{$JOB_ID}", job_id)
+    return " ".join(out.split())  # collapse the gaps an empty token leaves
 
 
 def _cover_candidate_name(cd: dict) -> str:
@@ -860,7 +875,7 @@ def _emit_somerset_cover_html_document(
     meta_tag = f'\n  <meta name="description" content="{html.escape(meta_content)}" />'
 
     from_lines = (fields.get("from_block") or "").replace("\r\n", "\n").split("\n")
-    from_html = "<br>\n        ".join(html.escape(line) for line in from_lines)
+    from_html = "<br>\n        ".join(_escape_link(line) for line in from_lines)
 
     # Header: name (resume-style) + rule, then the From block text. No name → From block only.
     blocks: List[str] = []
@@ -870,7 +885,7 @@ def _emit_somerset_cover_html_document(
     to_block = (fields.get("to_block") or "").strip()
     if to_block:
         to_lines = to_block.replace("\r\n", "\n").split("\n")
-        to_html = "<br>\n        ".join(html.escape(line) for line in to_lines)
+        to_html = "<br>\n        ".join(_escape_link(line) for line in to_lines)
         blocks.append(f'      <div class="toBlock">\n        {to_html}\n      </div>')
     blocks.append(
         f'      <div class="letterdate">{html.escape((fields.get("letter_date") or "").strip())}</div>'
@@ -972,6 +987,8 @@ body {{
   text-align: center;
   line-height: {from_lh};
 }}
+/* Links stay clickable in the PDF but keep the surrounding text look. */
+a {{ color: inherit; text-decoration: none; }}
 .toBlock {{
   margin: 16px 0 16px;
   font-size: 15px;
@@ -1285,15 +1302,38 @@ def _glue_word_cloud_bullet_separators(text: str) -> str:
     return t
 
 
+# Bare URLs in free text: http(s)://… or www.… (not mid-word, not an email's domain).
+_URL_RE = re.compile(r"(?<![\w@])(?:https?://|www\.)[^\s<>\"]+", re.I)
+_URL_TRAIL = ".,;:!?)]}'"  # sentence punctuation that belongs to the prose, not the link
+
+
+def _escape_link(text: str) -> str:
+    """``html.escape`` plus an ``<a href>`` around each URL, so links survive print / Save as PDF."""
+    if not text:
+        return ""
+    out: List[str] = []
+    pos = 0
+    for m in _URL_RE.finditer(text):
+        url = m.group(0).rstrip(_URL_TRAIL)
+        if url.lower() in ("http://", "https://", "www."):
+            continue  # a bare scheme is not a link
+        href = url if url.lower().startswith("http") else f"https://{url}"
+        out.append(html.escape(text[pos:m.start()]))
+        out.append(f'<a href="{html.escape(href, quote=True)}">{html.escape(url)}</a>')
+        pos = m.start() + len(url)
+    out.append(html.escape(text[pos:]))
+    return "".join(out)
+
+
 def _emit_inline_emphasis_html(text: str) -> str:
-    """Escape HTML, then restore paired italic/bold tags from the config allowlist."""
+    """Escape HTML (URLs become links), then restore paired italic/bold tags from the config allowlist."""
     if not text:
         return ""
     parts: List[str] = []
     pos = 0
     open_counts: Dict[str, int] = {}
     for match in _EMPHASIS_TAG_RE.finditer(text):
-        parts.append(html.escape(text[pos:match.start()]))
+        parts.append(_escape_link(text[pos:match.start()]))
         raw = match.group(0)
         name = raw.strip("</>").lower()
         if raw.startswith("</"):
@@ -1306,7 +1346,7 @@ def _emit_inline_emphasis_html(text: str) -> str:
             open_counts[name] = open_counts.get(name, 0) + 1
             parts.append(f"<{name}>")
         pos = match.end()
-    parts.append(html.escape(text[pos:]))
+    parts.append(_escape_link(text[pos:]))
     return "".join(parts)
 
 
@@ -1357,6 +1397,7 @@ def _emit_html_document(
     body_section_ids: Optional[List[str]] = None,
     body_section_titles: Optional[Dict[str, str]] = None,
     resume_structure: Optional[dict] = None,
+    document_title: Optional[str] = None,
     debug: bool = False,
     debug_func: str = "",
 ) -> str:
@@ -1381,7 +1422,7 @@ def _emit_html_document(
     tagline_raw = str(render.get("candidate_tagline") or "").strip()
     name = html.escape(name_raw)
     title = html.escape(title_raw)
-    contact = html.escape(str(render.get("candidate_contact_detail") or ""))
+    contact = _escape_link(str(render.get("candidate_contact_detail") or ""))
 
     # Header layout is stored on the contact sections' `format` (editor keeps all four in sync); candidate_name is the reader.
     name_spec = ((resume_structure or {}).get("sections") or {}).get("candidate_name") or {}
@@ -1512,6 +1553,8 @@ h1 {{
   color: var(--text-tertiary);
   font-weight: 500;
 }}
+/* Links stay clickable in the PDF but keep the surrounding text look. */
+a {{ color: inherit; text-decoration: none; }}
 .contact {{
   margin: 6px 0 0;
   font-size: 14px;
@@ -1657,7 +1700,8 @@ section li:last-child, .role li:last-child {{ margin-bottom: 0; }}
 }}
 """
     # AST-1021: `{name} Resume` (space, no em/en dash); empty name → `Resume`.
-    title_esc = html.escape(f"{name_raw} Resume" if name_raw else "Resume")
+    # Job builds pass the candidate-templated title; base/session resumes keep `{name} Resume`.
+    title_esc = html.escape(document_title or (f"{name_raw} Resume" if name_raw else "Resume"))
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -2046,7 +2090,7 @@ def _html_with_signature_image_token(
 
     # AST-1165: authored newlines → <br> after escape (same as letter body).
     def _esc_br(segment: str) -> str:
-        return html.escape((segment or "").replace("\r\n", "\n")).replace(
+        return _escape_link((segment or "").replace("\r\n", "\n")).replace(
             chr(10), "<br>"
         )
 

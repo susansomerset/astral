@@ -2343,7 +2343,8 @@ class TestAst1021DocumentTitleChrome:
             },
         }
         html = _build_resume_from_job(monkeypatch, job, cd)
-        self._assert_title_meta(html, expect_title="Susan Somerset Resume", expect_meta=True)
+        # Job resumes use the page-title template; no company_job_id → first six non-hyphen chars of "job-1".
+        self._assert_title_meta(html, expect_title="Susan Somerset Resume (job1)", expect_meta=True)
 
 
 class TestAst1027UatMarkerExpand:
@@ -3612,7 +3613,8 @@ class TestAst1138JobCoverSomersetFromBlock:
             self._job({"Subject": "Re: Role", "Letter": "Dear team,\n\nThanks.", "signature": "Ada"}),
             cd,
         )
-        assert "<title>SomersetCover</title>" in html
+        # Job cover title = page-title template (name + first six non-hyphen chars of "job-1138"); shell is still Somerset.
+        assert "<title>Ada Lovelace Cover Letter job113</title>" in html
         assert 'class="fromBlock"' in html
         # Default composition: Name • City / email (br between identity lines).
         assert "Ada Lovelace" in html and "London, UK" in html
@@ -3926,6 +3928,122 @@ class TestAst1165SignoffNewlineToBr:
         assert "Susan Somerset<br>Senior Product Manager" in signoff
         assert "{$SIGNATURE_IMAGE}" not in signoff
 
+class TestUrlLinks:
+    """URLs in resume / cover text become <a href> so they stay clickable after Save as PDF."""
+
+    def test_links_http_https_and_www(self) -> None:
+        out = builder_mod._escape_link("See https://a.com/x and http://b.org and www.c.io today")
+        assert '<a href="https://a.com/x">https://a.com/x</a>' in out
+        assert '<a href="http://b.org">http://b.org</a>' in out
+        # www. shows as typed but links to https.
+        assert '<a href="https://www.c.io">www.c.io</a> today' in out
+
+    def test_trailing_punctuation_stays_outside_the_link(self) -> None:
+        assert builder_mod._escape_link("(https://a.com/x).") == '(<a href="https://a.com/x">https://a.com/x</a>).'
+        assert builder_mod._escape_link("go to www.a.com, then") == 'go to <a href="https://www.a.com">www.a.com</a>, then'
+
+    def test_query_ampersands_are_escaped_in_href_and_text(self) -> None:
+        out = builder_mod._escape_link("https://a.com/p?x=1&y=2")
+        assert out == '<a href="https://a.com/p?x=1&amp;y=2">https://a.com/p?x=1&amp;y=2</a>'
+
+    def test_non_urls_are_only_escaped(self) -> None:
+        # Emails, bare domains, version-ish text, a lone scheme, and markup are not links.
+        for text in ("me@www.example.com", "linkedin.com/in/ada", "Node.js v1.2 e.g. ok", "https://", "a <b> & c"):
+            out = builder_mod._escape_link(text)
+            assert "<a " not in out
+            assert out == __import__("html").escape(text)
+
+    def test_nbsp_separator_ends_the_url(self) -> None:
+        # Contact line parts are joined with NBSP + bullet; the link must not swallow the next part.
+        out = builder_mod._escape_link("https://a.com/x\u00a0• 555-1212")
+        assert out == '<a href="https://a.com/x">https://a.com/x</a>\u00a0• 555-1212'
+
+    def test_resume_contact_line_and_experience_bullet_are_linked(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        render = {
+            "candidate_name": "Ada Lovelace",
+            "candidate_contact_detail": "ada@example.com\u00a0• https://www.linkedin.com/in/ada",
+            "professional_summary": "Portfolio at www.ada.dev.",
+        }
+        html = builder_mod._emit_html_document(
+            render, builder_mod.BUILD_CONFIG["default_style"], include_cover=False, cover_letter={},
+            critical_keywords=None, emit_prior_experience=False,
+            body_section_ids=["professional_summary"], body_section_titles={"professional_summary": "Summary"},
+        )
+        head = html.split('<header class="header">', 1)[1].split("</header>", 1)[0]
+        assert '<a href="https://www.linkedin.com/in/ada">https://www.linkedin.com/in/ada</a>' in head
+        assert "mailto" not in head  # email stays plain text
+        assert '<a href="https://www.ada.dev">www.ada.dev</a>.' in html
+        assert "a { color: inherit; text-decoration: none; }" in html
+
+    def test_cover_letter_body_from_block_and_signature_are_linked(self) -> None:
+        html = builder_mod._emit_somerset_cover_html_document(
+            {
+                "from_block": "Oakland\nhttps://github.com/ada",
+                "letter_date": "d",
+                "letter": "Portfolio: https://ada.dev/work.\n\n- see www.ada.dev/list",
+                "signoff_closing": "Best,",
+                "signature": "Ada\nhttps://ada.dev",
+            }
+        )
+        assert '<a href="https://github.com/ada">https://github.com/ada</a>' in html.split('class="fromBlock"', 1)[1]
+        assert '<a href="https://ada.dev/work">https://ada.dev/work</a>.' in html
+        assert '<li>see <a href="https://www.ada.dev/list">www.ada.dev/list</a></li>' in html
+        assert 'Ada<br><a href="https://ada.dev">https://ada.dev</a>' in html.split('class="letterSignoff"', 1)[1]
+        assert "a { color: inherit; text-decoration: none; }" in html
+
+
+class TestJobPageTitle:
+    """Printed-page <title> (= default PDF file name) for job resume / cover letter, candidate-templatable."""
+
+    _JOB_DATA = {
+        "artifacts": {
+            "resume_content": _resume_blob(professional_summary="Summary"),
+            "cover_letter": {"Subject": "Re", "Letter": "Body", "signature": ""},
+        }
+    }
+
+    def _job(self, **cols: Any) -> Dict[str, Any]:
+        return {"astral_job_id": "ab12-cd34-ef56-7890", "job_data": self._JOB_DATA, **cols}
+
+    def _title(self, html: str) -> str:
+        return html.split("<title>", 1)[1].split("</title>", 1)[0]
+
+    def test_defaults_use_company_job_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = self._job(company_job_id="REQ-77")
+        cd = _candidate_row(base_resume=_resume_blob())
+        assert self._title(_build_resume_from_job(monkeypatch, job, cd)) == "Ada Lovelace Resume (REQ-77)"
+        assert self._title(_build_cover_letter_from_job(monkeypatch, job, cd)) == "Ada Lovelace Cover Letter REQ-77"
+
+    def test_blank_company_job_id_uses_first_six_non_hyphen_astral_chars(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        for cols in ({}, {"company_job_id": "  "}, {"company_job_id": None}):
+            job = self._job(**cols)
+            assert self._title(_build_resume_from_job(monkeypatch, job, cd)) == "Ada Lovelace Resume (ab12cd)"
+            assert self._title(_build_cover_letter_from_job(monkeypatch, job, cd)) == "Ada Lovelace Cover Letter ab12cd"
+
+    def test_candidate_template_overrides_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["resume_title_template"] = "{$JOB_ID} - {$FULL_NAME} <CV>"
+        cd["candidate_data"]["contact"]["cover_letter_title_template"] = "Letter {$FULL_NAME}"
+        job = self._job(company_job_id="X9")
+        # Escaped like any title text; each document reads its own template.
+        assert self._title(_build_resume_from_job(monkeypatch, job, cd)) == "X9 - Ada Lovelace &lt;CV&gt;"
+        assert self._title(_build_cover_letter_from_job(monkeypatch, job, cd)) == "Letter Ada Lovelace"
+
+    def test_empty_tokens_collapse_whitespace(self) -> None:
+        cd = {"contact": {"resume_title_template": "{$FULL_NAME}   Resume   {$JOB_ID}"}}
+        assert builder_mod._job_page_title("resume", cd, {}) == "Resume"
+        assert builder_mod._job_page_title("resume", cd, {"astral_job_id": "a-b-c-d-e-f-g"}) == "Resume abcdef"
+
+    def test_base_and_session_resume_titles_unchanged(self) -> None:
+        # No job → no template: the AST-1021 `{name} Resume` title stays.
+        html = builder_mod._emit_html_document(
+            {"candidate_name": "Ada Lovelace"}, builder_mod.BUILD_CONFIG["default_style"],
+            include_cover=False, cover_letter={}, critical_keywords=None, emit_prior_experience=False,
+        )
+        assert html.split("<title>", 1)[1].split("</title>", 1)[0] == "Ada Lovelace Resume"
+
+
 class TestResumeHeaderLayout:
     """One-line (Name • Title in the h1) vs two-line (name h1, title on its own line) resume header."""
 
@@ -4047,7 +4165,9 @@ class TestCoverLetterBodyListsAndIndent:
         assert html.index('class="lettersubject"') < html.index('class="lettersalutation">Dear &lt;Team&gt;,</div>')
         assert html.index('class="lettersalutation"') < html.index('class="lettercontent"')
         style = html.split("<style>", 1)[1].split("</style>", 1)[0]
-        assert "text-indent: 0" in style.split(".lettersalutation {", 1)[1].split("}", 1)[0]
+        sal_css = style.split(".lettersalutation {", 1)[1].split("}", 1)[0]
+        # Never indented; same blank-line gap below it as between paragraphs.
+        assert "text-indent: 0" in sal_css and "margin: 0 0 15.75pt" in sal_css
         # Optional: blank salutation emits no block.
         bare = builder_mod._emit_somerset_cover_html_document({**fields, "salutation": "  "})
         assert 'class="lettersalutation"' not in bare
@@ -4104,9 +4224,10 @@ class TestCoverLetterBodyListsAndIndent:
             }
         )
         style = html.split("<style>", 1)[1].split("</style>", 1)[0]
-        assert "text-indent: 1em" in style
-        assert "margin: 0 0 3pt" in style
-        assert "line-height: 1.2" in style
+        # Blank line between paragraphs (15.75pt = one 15px x 1.4 line), no indent, 1.4 spacing.
+        assert "text-indent: 0em" in style
+        assert "margin: 0 0 15.75pt" in style
+        assert "line-height: 1.4" in style
         assert "line-height: 1.65" not in style
         assert "<ul><li>a</li></ul>" in html
 
