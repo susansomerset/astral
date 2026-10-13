@@ -61,6 +61,8 @@ export default function Profile() {
   const [fetched, setFetched] = useState<{ id: string; data: Record<string, unknown> } | null>(null)
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [sigLimits, setSigLimits] = useState<SigImageLimits | null>(null)
+  // Per-field `{$` lookup lists served by ui_config (key = profile field path).
+  const [fieldTokens, setFieldTokens] = useState<Record<string, string[]>>({})
   // AST-2042: served UI_CONFIG.default_theme — what a candidate with no stored theme shows/saves.
   const [defaultTheme, setDefaultTheme] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -74,6 +76,7 @@ export default function Profile() {
     })
     api("/api/ui_config").then(r => r.json()).then(cfg => {
       setSigLimits(cfg.cover_letter_signature_image ?? null)
+      setFieldTokens(cfg.field_tokens ?? {})
       setDefaultTheme(typeof cfg.default_theme === "string" ? cfg.default_theme : null)
     }).catch(() => setSigLimits(null))
   }, [])
@@ -235,6 +238,7 @@ export default function Profile() {
       key: f.key,
       placeholder: f.placeholder,
       help: typeof f.help === "string" && f.help.trim() ? f.help : undefined,
+      tokens: fieldTokens[f.key],
     }
   })
 

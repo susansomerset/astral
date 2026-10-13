@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import Toast, { type ToastMessage } from "../components/Toast"
+import TokenTextarea from "../components/TokenTextarea"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
 import { useLocalStorage } from "../lib/useLocalStorage"
@@ -41,9 +42,9 @@ const SESSION_INTRO_FALLBACK =
   "Letter fields come from this form. When a candidate is selected, leave " +
   "From block empty to use that candidate’s cover from-block text or the " +
   "contact default (Name • City, ST / email • phone). Without a candidate, " +
-  "From block is required. If a candidate is selected and has a profile " +
-  "signature image, the server may include it in the sign-off; otherwise " +
-  "name-only. This tool does not save to the database."
+  "From block is required. The profile signature image prints where " +
+  "{$SIGNATURE_IMAGE} sits in the Signature field; without that token there " +
+  "is no image. This tool does not save to the database."
 
 const EMPTY_FIELDS: SessionCoverFields = {
   from_block: "",
@@ -69,12 +70,15 @@ export default function SessionCoverLetter() {
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [coverFrom, setCoverFrom] = useState<CoverFromBlockUi>(EMPTY_COVER_FROM)
+  // Per-field `{$` lookup lists from ui_config (key = "session_cover_letter.<field>").
+  const [fieldTokens, setFieldTokens] = useState<Record<string, string[]>>({})
   const clearToast = useCallback(() => setToast(null), [])
 
   useEffect(() => {
     api("/api/ui_config")
       .then(r => r.json())
       .then(cfg => {
+        setFieldTokens(cfg?.field_tokens ?? {})
         const block = cfg?.cover_from_block
         if (!block || typeof block !== "object") return
         setCoverFrom({
@@ -175,7 +179,24 @@ export default function SessionCoverLetter() {
           <span style={{ display: "block", marginBottom: 4 }}>
             {f.label}{f.required ? "" : " (optional)"}
           </span>
-          {f.rows === 1 ? (
+          {fieldTokens[`session_cover_letter.${f.key}`]?.length ? (
+            // `{$` lookup; one-line fields get 2 rows so a token can sit on its own line.
+            <TokenTextarea
+              className="dep-input"
+              value={fields[f.key] ?? ""}
+              onChange={v => setField(f.key, v)}
+              tokens={fieldTokens[`session_cover_letter.${f.key}`]}
+              rows={Math.max(f.rows, 2)}
+              disabled={opening}
+              placeholder={f.key === "from_block" ? fromPlaceholder : undefined}
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                fontFamily: "inherit",
+                fontSize: "inherit",
+              }}
+            />
+          ) : f.rows === 1 ? (
             <input
               className="dep-input"
               type="text"

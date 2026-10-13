@@ -4614,12 +4614,12 @@ class TestAst1148ExpandCoverFromBlock:
 
     def test_expand_leaves_unknown_and_brief_aliases(self) -> None:
         text = candidate_mod.expand_cover_from_block_text(
-            "{$FULL_NAME} | {$RESUME_LOCATION} | {$GITHUB}",
+            "{$FULL_NAME} | {$RESUME_LOCATION} | {$FIRST_NAME}",
             self._cand(),
             source="session",
         )
-        # RESUME_LOCATION / GITHUB not allowlisted → left as-is; empty segments not applicable.
-        assert text == "Ada Lovelace • {$RESUME_LOCATION} • {$GITHUB}"
+        # RESUME_LOCATION / FIRST_NAME not allowlisted → left as-is; empty segments not applicable.
+        assert text == "Ada Lovelace • {$RESUME_LOCATION} • {$FIRST_NAME}"
 
     def test_resolve_custom_tokens_and_pipe(self) -> None:
         out = candidate_mod.resolve_cover_from_block(

@@ -1549,6 +1549,15 @@ assert len(CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]) == len(
 for _ck in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]:
     assert _ck in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ck
 
+# From-block token allowlist: FULL_NAME + every candidate ``contact.*`` data-field token in
+# TOKEN_SOURCES (a test keeps this in sync). Help copy below is generated from it.
+_FROM_BLOCK_TOKEN_IDS = (
+    "FULL_NAME", "LOCATION", "CONTACT_EMAIL", "PHONE",
+    "REPLY_EMAIL", "GITHUB", "LINKEDIN_URL",
+    "TITLE_PATTERNS", "REASON_CODES", "COVER_LETTER_SIGNATURE",
+)
+_FROM_BLOCK_TOKEN_LIST = ", ".join("{$" + t + "}" for t in _FROM_BLOCK_TOKEN_IDS)
+
 # AST-1137 / AST-1147 / AST-1149: from-block field + token template/rewrite + authoring chrome.
 COVER_FROM_BLOCK_CONFIG = {
     "contact_key": "cover_letter_from_block",
@@ -1563,24 +1572,24 @@ COVER_FROM_BLOCK_CONFIG = {
         "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
     ),
     # Keep authoring_help token prose in sync when this allowlist changes (AST-1149).
-    "allowed_token_ids": ("FULL_NAME", "LOCATION", "CONTACT_EMAIL", "PHONE"),
+    "allowed_token_ids": _FROM_BLOCK_TOKEN_IDS,
     "authoring_separator": "|",
     "emit_separator": " • ",
     "empty_segment_policy": "drop_with_adjacent_separator",
     # AST-1149: user-facing authoring chrome (UI renders; no resolve math).
     "authoring_help": (
-        "Allowed tokens: {$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}. "
+        f"Allowed tokens (type {{$ for a list): {_FROM_BLOCK_TOKEN_LIST}. "
         "Type | between segments; cover print shows •. "
         "Leave empty to use the default template (see placeholder)."
     ),
     "session_authoring_help": (
         "Enter cover-letter field values, then Open HTML to Print → PDF. "
-        "Letter fields come from this form. From block supports "
-        "{$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}; type | for • in print. "
+        f"Letter fields come from this form. From block supports {_FROM_BLOCK_TOKEN_LIST}; "
+        "type | for • in print. "
         "When a candidate is selected, leave From empty to use that candidate’s saved "
         "from-block or the default token template. Without a candidate, From is required. "
-        "If a candidate is selected and has a profile signature image, the server may "
-        "include it in the sign-off; otherwise name-only. This tool does not save to the database."
+        "The profile signature image prints where {$SIGNATURE_IMAGE} sits in the Signature "
+        "field; without that token there is no image. This tool does not save to the database."
     ),
 }
 
@@ -6385,7 +6394,13 @@ DATA_SHAPES = {
                 {
                     "label": "Cover Letter Signature",
                     "fields": [
-                        {"key": "contact.cover_letter_signature", "label": "Signature text", "type": "textarea"},
+                        {
+                            "key": "contact.cover_letter_signature",
+                            "label": "Signature text",
+                            "type": "textarea",
+                            "help": "Put {$SIGNATURE_IMAGE} on its own line where the signature image should print "
+                                    "(type {$ for a list). Without it, no image appears.",
+                        },
                     ],
                 },
                 {
@@ -6821,6 +6836,18 @@ BUILD_CONFIG = {
     },
 }
 
+
+# Per-field `{$` lookup lists for the profile / artifact / session edit screens (served on /api/ui_config).
+# Key = field id the UI derives: profile field path, "<shapes_key>.<field key>", or "session_cover_letter.<field>".
+# Only tokens that actually resolve in that field belong here (prompt tokens do NOT resolve on these screens).
+_COVER_RENDER_TOKEN_IDS = tuple(BUILD_CONFIG["cover_letter_render_tokens"])
+FIELD_TOKEN_LOOKUP = {
+    "contact.cover_letter_from_block": COVER_FROM_BLOCK_CONFIG["allowed_token_ids"],
+    "contact.cover_letter_signature": _COVER_RENDER_TOKEN_IDS,
+    "cover_letter.signature": _COVER_RENDER_TOKEN_IDS,
+    "session_cover_letter.from_block": COVER_FROM_BLOCK_CONFIG["allowed_token_ids"],
+    "session_cover_letter.signature": _COVER_RENDER_TOKEN_IDS,
+}
 
 # AST-1573 / AST-1575 / AST-1590: authoritative artifact registry (patt.artifact.manage-catalog register half).
 # Key = entity._data path. Pilot + job editable keys.
