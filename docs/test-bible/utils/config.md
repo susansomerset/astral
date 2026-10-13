@@ -5058,3 +5058,15 @@ Manifest: [`../data/database/telescope_data.md`](../data/database/telescope_data
 
 **Broken / obsolete:** none. Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2151.
 
+### AST-2173 · AST-2168 (`SEARCH_ENTITY_CONFIG`, `SEARCH_JOB_MODAL_BY_LIST` + assert)
+
+`SEARCH_ENTITY_CONFIG` — `job` / `company` / `meteorite` (keys = table names), each `label`, `id_field`, `name_fields`, `base_fields`, `payload_fields` (field lists confirmed by Susan, define round 1; meteorite contact column via `METEORITE_CONFIG["electronic_contact_column"]`). `SEARCH_JOB_MODAL_BY_LIST` — `ready`/`review`/`applied` → `report`, `processing`/`skipped` → `detail`; module assert: exactly the five Jobs lists, kinds ⊆ {`report`, `detail`}.
+
+| Area | Component tests |
+| --- | --- |
+| Type order + exact base/payload lists; entry keys complete; `id_field` is a base field; no field in both tiers; modal map exact | new **`TestAst2173SearchConfig`** (3) |
+| Real import-time assert (spliced re-exec via `TestAst2105SkippedGroupRules._splice_exec`): missing `skipped` list, unknown kind `drawer` | same class (2) |
+| Every configured field is a real column | [`../data/database/search.md`](../data/database/search.md) **`TestAst2173RegistryMatchesSchema`** |
+
+**Broken / obsolete:** none (additions only; no new branches in locked `config.py`). Manifest: [`../core/search.md`](../core/search.md) § AST-2173.
+

@@ -3911,6 +3911,97 @@ class TestAst1165SignoffNewlineToBr:
         assert "Susan Somerset<br>Senior Product Manager" in signoff
         assert "{$SIGNATURE_IMAGE}" not in signoff
 
+class TestCoverLetterBodyListsAndIndent:
+    """Cover body: indented paragraphs (no blank-line gap), bullets, numbered lists, 1.15 spacing."""
+
+    def test_paragraphs_and_line_breaks(self) -> None:
+        out = builder_mod._cover_letter_body_html("Dear team,\n\nOne.\nstill one.\n\nTwo.")
+        assert out.count("<p>") == 3
+        assert "<p>One.<br>still one.</p>" in out
+
+    def test_single_chunk_newlines_stay_separate_paragraphs(self) -> None:
+        out = builder_mod._cover_letter_body_html("Dear team,\nThanks.")
+        assert out.count("<p>") == 2
+
+    def test_bullets_group_into_one_ul_with_marker_variants(self) -> None:
+        out = builder_mod._cover_letter_body_html(
+            "I did:\n- Alpha\n* Beta\n• Gamma\n\nThanks."
+        )
+        assert "<p>I did:</p>" in out
+        assert "<ul><li>Alpha</li><li>Beta</li><li>Gamma</li></ul>" in out
+        assert out.index("</ul>") < out.index("<p>Thanks.</p>")
+
+    def test_numbered_list_and_kind_switch(self) -> None:
+        out = builder_mod._cover_letter_body_html("1. One\n2) Two\n- Dot")
+        assert "<ol><li>One</li><li>Two</li></ol>" in out
+        assert "<ul><li>Dot</li></ul>" in out
+
+    def test_list_items_separated_by_blank_lines_stay_one_list(self) -> None:
+        out = builder_mod._cover_letter_body_html("- A\n\n- B")
+        assert out.count("<ul>") == 1 and "<li>A</li><li>B</li>" in out
+
+    def test_list_text_is_escaped(self) -> None:
+        out = builder_mod._cover_letter_body_html("- <b>x</b> & y")
+        assert "<li>&lt;b&gt;x&lt;/b&gt; &amp; y</li>" in out
+
+    def test_hyphen_without_space_is_not_a_bullet(self) -> None:
+        out = builder_mod._cover_letter_body_html("-5 degrees\n3.5 million")
+        assert "<ul>" not in out and "<ol>" not in out
+
+    def test_blank_closing_has_no_leading_br_in_signoff(self) -> None:
+        # Job letters pass signoff_closing="" straight to the shared emitter.
+        fields = {
+            "from_block": "Susan",
+            "letter_date": "July 27, 2026",
+            "to_block": "",
+            "subject": "",
+            "letter": "Hi.",
+            "signoff_closing": "",
+            "signature": "Best,\nSusan",
+        }
+        html = builder_mod._emit_somerset_cover_html_document(fields)
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert signoff.split(">", 1)[1].lstrip().startswith("Best,<br>Susan")
+        # Non-blank closing keeps its <br> before the signature.
+        html2 = builder_mod._emit_somerset_cover_html_document(
+            {**fields, "signoff_closing": "Best,", "signature": "Susan"}
+        )
+        signoff2 = html2.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert signoff2.index("Best,") < signoff2.index("<br>") < signoff2.index("Susan")
+
+    def test_css_indent_and_line_height(self) -> None:
+        html = builder_mod.build_session_cover_letter(
+            {
+                "from_block": "Susan",
+                "letter_date": "July 27, 2026",
+                "to_block": "",
+                "subject": "",
+                "letter": "Hi.\n\n- a",
+                "signoff_closing": "Best,",
+                "signature": "Susan",
+            }
+        )
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        assert "text-indent: 2em" in style
+        assert "line-height: 1.15" in style
+        assert "line-height: 1.65" not in style
+        assert "<ul><li>a</li></ul>" in html
+
+    def test_css_layout_values_come_from_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        layout = builder_mod.BUILD_CONFIG["cover_letter_layout"]
+        monkeypatch.setitem(layout, "body_line_height", 1.3)
+        monkeypatch.setitem(layout, "signoff_line_height", 1.7)
+        monkeypatch.setitem(layout, "paragraph_indent_em", 3)
+        monkeypatch.setitem(layout, "list_indent_em", 5)
+        html = builder_mod._emit_somerset_cover_html_document(
+            {"from_block": "S", "letter_date": "d", "letter": "Hi.", "signoff_closing": "", "signature": "S"}
+        )
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        assert "line-height: 1.3" in style and "line-height: 1.7" in style
+        assert "text-indent: 3em" in style and "padding-left: 5em" in style
+        assert "line-height: 1.15" not in style
+
+
 _AST1304_JOB = {
     "company": "Acme Corp",
     "title": "Engineer",

@@ -713,6 +713,49 @@ def _session_cover_letter_paragraphs(letter: str) -> List[str]:
     return chunks
 
 
+# Bullet ("- ", "* ", "• ") or number ("1. ", "1) ") list-item line in the cover letter body.
+_COVER_LIST_ITEM_RE = re.compile(r"^\s*(?:([-*•])|\d+[.)])\s+(.*)$")
+
+
+def _cover_letter_body_html(letter: str) -> str:
+    """Cover body → ``<p>`` / ``<ul>`` / ``<ol>`` HTML. Reuses the shared paragraph split;
+    consecutive list-item lines group into one list (even across blank lines)."""
+    out: List[str] = []
+    text: List[str] = []  # pending paragraph lines
+    items: List[str] = []  # pending list items
+    tag = ""  # "ul" | "ol" for the pending list
+
+    def flush_text() -> None:
+        if text:
+            out.append(f"        <p>{'<br>'.join(text)}</p>")
+            text.clear()
+
+    def flush_list() -> None:
+        nonlocal tag
+        if items:
+            lis = "".join(f"<li>{i}</li>" for i in items)
+            out.append(f"        <{tag}>{lis}</{tag}>")
+            items.clear()
+        tag = ""
+
+    for para in _session_cover_letter_paragraphs(letter):
+        for line in para.split("\n"):
+            m = _COVER_LIST_ITEM_RE.match(line)
+            if not m:
+                flush_list()
+                text.append(html.escape(line.strip()))
+                continue
+            flush_text()
+            kind = "ul" if m.group(1) else "ol"
+            if kind != tag:
+                flush_list()
+                tag = kind
+            items.append(html.escape(m.group(2).strip()))
+        flush_text()  # paragraph boundary ends text; a pending list may continue
+    flush_list()
+    return "\n".join(out)
+
+
 def _candidate_for_cover_from_block(cd: dict) -> dict:
     """Shape coerced builder candidate blob for ``resolve_cover_from_block``."""
     out: Dict[str, Any] = {
@@ -761,6 +804,11 @@ def _emit_somerset_cover_html_document(
     text_tertiary = colors.get("text_tertiary", "#666")
     border_light = colors.get("border_light", "#e0e0e0")
     border_medium = colors.get("border_medium", "#ccc")
+    layout = BUILD_CONFIG["cover_letter_layout"]
+    body_lh = layout["body_line_height"]
+    signoff_lh = layout["signoff_line_height"]
+    para_indent = layout["paragraph_indent_em"]
+    list_indent = layout["list_indent_em"]
     doc_title = (
         document_title
         if document_title is not None
@@ -789,10 +837,7 @@ def _emit_somerset_cover_html_document(
         blocks.append(
             f'      <div class="lettersubject">{html.escape(subject)}</div>'
         )
-    paras = _session_cover_letter_paragraphs(fields.get("letter") or "")
-    p_html = "\n".join(
-        f"        <p>{html.escape(p).replace(chr(10), '<br>')}</p>" for p in paras
-    )
+    p_html = _cover_letter_body_html(fields.get("letter") or "")
     blocks.append(f'      <div class="lettercontent">\n{p_html}\n      </div>')
 
     # AST-1126: image only where {$SIGNATURE_IMAGE} resolves — no auto-inject above name.
@@ -813,7 +858,9 @@ def _emit_somerset_cover_html_document(
         token_status=token_status,
         img_html=img_html,
     )
-    signoff_parts = [html.escape((fields.get("signoff_closing") or "").strip()), "<br>"]
+    # Blank closing (job letters) → no leading <br>, which rendered as an empty first line.
+    closing = (fields.get("signoff_closing") or "").strip()
+    signoff_parts = [html.escape(closing), "<br>"] if closing else []
     if sig_fragment:
         signoff_parts.append(sig_fragment)
     blocks.append(
@@ -843,7 +890,7 @@ body {{
   background: {page_bg};
   font-family: var(--body-font-family);
   color: var(--text-primary);
-  line-height: 1.65;
+  line-height: {body_lh};
   font-size: 15px;
 }}
 .cover-letter {{
@@ -853,7 +900,7 @@ body {{
   background: white;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   color: var(--text-primary);
-  line-height: 1.65;
+  line-height: {body_lh};
 }}
 .fromBlock {{
   margin: 0 0 32px;
@@ -890,20 +937,29 @@ body {{
   margin: 0 0 24px;
   text-align: left;
 }}
+/* Indent each paragraph's first line instead of a blank line between paragraphs. */
 .lettercontent p {{
-  margin: 0 0 16px;
+  margin: 0;
+  text-indent: {para_indent}em;
   font-size: 15px;
-  line-height: 1.65;
+  line-height: {body_lh};
   color: var(--text-primary);
 }}
-.lettercontent p:last-child {{
-  margin-bottom: 0;
+/* Bullets / numbered lists: no paragraph indent, nested a bit deeper than it. */
+.lettercontent ul, .lettercontent ol {{
+  margin: 0;
+  padding-left: {list_indent}em;
+  font-size: 15px;
+  line-height: {body_lh};
+}}
+.lettercontent li {{
+  margin: 0;
 }}
 .letterSignoff {{
   margin: 24px 0 0;
   font-size: 15px;
   text-align: left;
-  line-height: 1.5;
+  line-height: {signoff_lh};
 }}
 .signature-img {{
   display: block;

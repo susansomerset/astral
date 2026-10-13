@@ -28,6 +28,7 @@ from src.utils.config import (
     PREAMBLE_CONFIG,
     TOPIC_MENU_GEN_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
+    FIELD_TOKEN_LOOKUP,
     JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS,
     build_artifacts_discussion_hop_task_keys,
     registered_base,
@@ -218,6 +219,8 @@ def ui_config():
             "authoring_help": COVER_FROM_BLOCK_CONFIG["authoring_help"],
             "session_authoring_help": COVER_FROM_BLOCK_CONFIG["session_authoring_help"],
         },
+        # Per-field `{$` lookup lists (profile / artifact / session edit screens).
+        "field_tokens": {k: list(v) for k, v in FIELD_TOKEN_LOOKUP.items()},
         # AST-2040: sidebar logo background for ASTRAL_DEPLOY_ENV; null keeps the stylesheet color.
         "logo_background": logo_background(),
     })

@@ -22,5 +22,6 @@ Public API lives on `src.data.database`. Cluster files under this directory map 
 | `test_state_helpers.py` | batch helpers, score floors, legacy wrappers |
 | `test_artifacts.py` | `artifacts` (AST-1352; rename AST-1364) |
 | `test_terminal_state_remap.py` | retired terminal-state remap across `job` / `company` / `candidate` / `meteorite` + `dispatch_task` (AST-2087) |
+| `test_search.py` | `search_entity_rows` — candidate-scoped search read across `job` / `company` / `meteorite` (AST-2173) |
 
 Adjust boundaries only with a Linear note and this file.

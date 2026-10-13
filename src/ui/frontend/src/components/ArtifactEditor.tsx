@@ -188,10 +188,13 @@ export default function ArtifactEditor({
   const [unsupportedExperienceMessage, setUnsupportedExperienceMessage] = useState(
     "unsupported resume structure, please regenerate",
   )
+  // Per-field `{$` lookup lists from ui_config; key = "<shapesKey>.<field key>".
+  const [fieldTokens, setFieldTokens] = useState<Record<string, string[]>>({})
   useEffect(() => {
     api("/api/ui_config")
       .then(r => r.json())
       .then(cfg => {
+        setFieldTokens(cfg.field_tokens ?? {})
         const fields = cfg.experience_job_ui_fields
         if (Array.isArray(fields) && fields.length > 0) {
           setExperienceJobFields(
@@ -1093,6 +1096,7 @@ export default function ArtifactEditor({
                       onImportanceBlur={tabChromeEditable && rubricMode ? () => setRailOrderFreeze(null) : undefined}
                       disabled={!bodiesEditable}
                       hideTitle
+                      tokens={shapesKey ? fieldTokens[`${shapesKey}.${tab.id}`] : undefined}
                     />
                   )
                 })()}

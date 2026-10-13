@@ -408,4 +408,86 @@ describe("NavigationShell", () => {
       expect(document.querySelector(".sidebar-candidate-state")).toBeNull()
     })
   })
+
+  describe("AST-2174 sidebar search box", () => {
+    function LocationProbe() {
+      const loc = useLocation()
+      return <div data-testid="location">{loc.pathname + loc.search}</div>
+    }
+
+    function renderShell() {
+      return renderWithProviders(
+        <Routes>
+          <Route path="/" element={<NavigationShell />}>
+            <Route path="jobs" element={<LocationProbe />} />
+            <Route path="search" element={<LocationProbe />} />
+          </Route>
+        </Routes>,
+        { router: { initialEntries: ["/jobs"] } },
+      )
+    }
+
+    // AC 10 placement: first thing in .sidebar-scroll (scrolls with the menu), before the Jobs group, never in chrome.
+    it.each([["wide", true], ["narrow", false]])("%s: box is first in sidebar-scroll, above Jobs, not in chrome", async (_l, wide) => {
+      stubNavViewport(wide)
+      mockShellApis({ isAdmin: true })
+      renderShell()
+      await waitFor(() => expect(screen.getByText("Jobs")).toBeInTheDocument())
+      const sidebar = document.getElementById("app-sidebar") as HTMLElement
+      const chrome = sidebar.querySelector(":scope > .sidebar-chrome") as HTMLElement
+      const scroll = sidebar.querySelector(":scope > .sidebar-scroll") as HTMLElement
+      const box = screen.getByRole("searchbox", { name: "Search" })
+      expect(chrome.contains(box)).toBe(false)
+      expect(scroll.firstElementChild).toBe(box.closest("form"))
+      const jobsGroup = within(scroll).getByText("Jobs").closest(".nav-group")
+      expect(jobsGroup).not.toBeNull()
+      expect(box.compareDocumentPosition(jobsGroup!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it("Enter on 'acme' navigates to /search?q=acme", async () => {
+      mockShellApis({ isAdmin: true })
+      renderShell()
+      await userEvent.type(await screen.findByRole("searchbox", { name: "Search" }), "acme{Enter}")
+      await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/search?q=acme"))
+    })
+
+    it("trims and URL-encodes the query", async () => {
+      mockShellApis({ isAdmin: true })
+      renderShell()
+      await userEvent.type(await screen.findByRole("searchbox", { name: "Search" }), "  R&D 50%  {Enter}")
+      await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/search?q=R%26D%2050%25"))
+    })
+
+    // AC 10: blank Enter does nothing; no search-as-you-type.
+    it("Enter on a blank / whitespace box and plain typing do not navigate", async () => {
+      mockShellApis({ isAdmin: true })
+      renderShell()
+      const box = await screen.findByRole("searchbox", { name: "Search" })
+      await userEvent.type(box, "{Enter}")
+      await userEvent.type(box, "   {Enter}")
+      await userEvent.clear(box)
+      await userEvent.type(box, "acm")
+      expect(screen.getByTestId("location")).toHaveTextContent(/^\/jobs$/)
+    })
+
+    // Drawer auto-close keys on pathname; /search → /search?q=other keeps the pathname, so submit closes it.
+    it("narrow: submit from /search closes the open drawer", async () => {
+      stubNavViewport(false)
+      mockShellApis({ isAdmin: true })
+      renderWithProviders(
+        <Routes>
+          <Route path="/" element={<NavigationShell />}>
+            <Route path="search" element={<LocationProbe />} />
+          </Route>
+        </Routes>,
+        { router: { initialEntries: ["/search?q=first"] } },
+      )
+      await userEvent.click(await screen.findByRole("button", { name: "Open navigation" }))
+      expect(document.getElementById("app-sidebar")).toHaveClass("sidebar--open")
+      await userEvent.type(screen.getByRole("searchbox", { name: "Search" }), "second{Enter}")
+      await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/search?q=second"))
+      expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-expanded", "false")
+      expect(document.getElementById("app-sidebar")).not.toHaveClass("sidebar--open")
+    })
+  })
 })

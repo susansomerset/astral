@@ -346,6 +346,33 @@ body {
 .sidebar-loading { color: var(--text-secondary); }
 .sidebar-error   { color: var(--danger); }
 
+/* AST-2174: search box — top of the scrolling nav, above Jobs (not in .sidebar-chrome) */
+.sidebar-search {
+  padding: 8px 12px 4px;
+}
+
+.sidebar-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+}
+
+.sidebar-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.sidebar-search-input:focus {
+  outline: none;
+  border-color: var(--accent-contrast);
+  box-shadow: 0 0 0 2px var(--accent-contrast-dim);
+}
+
 /* === 4b. Responsive nav shell (AST-1286) === */
 /* Breakpoint pairs with NAV_WIDE_MIN_PX = 1024 in NavigationShell.tsx */
 
@@ -866,6 +893,15 @@ body {
   text-align: center;
   color: var(--text-muted);
   font-size: 15px;
+}
+
+/* AST-2174: /search results — one titled section per entity type */
+.search-results-section-title {
+  margin: 0;
+  padding: 14px 20px 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--heading);
 }
 
 /* === 8b. Job list candidate actions (AST-312) === */

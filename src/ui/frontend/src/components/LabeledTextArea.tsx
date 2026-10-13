@@ -1,4 +1,5 @@
 import { RUBRIC_DEFAULT_IMPORTANCE } from "../lib/rubricDisplay"
+import TokenTextarea from "./TokenTextarea"
 
 interface LabeledTextAreaProps {
   label: string
@@ -18,12 +19,14 @@ interface LabeledTextAreaProps {
   className?: string
   /** Omit title row when an outer shell (e.g. CollapsiblePanel) already shows the label. */
   hideTitle?: boolean
+  /** Token ids valid in this field; when non-empty, typing `{$` opens the lookup list. */
+  tokens?: string[]
 }
 
 export default function LabeledTextArea({
   label, value, onChange, onLabelChange, code, onCodeChange,
   importance, onImportanceChange, onImportanceFocus, onImportanceBlur,
-  placeholder, disabled, className, hideTitle,
+  placeholder, disabled, className, hideTitle, tokens,
 }: LabeledTextAreaProps) {
   const impVal =
     typeof importance === "number" && importance >= 1 && importance <= 10
@@ -77,13 +80,27 @@ export default function LabeledTextArea({
       ) : !hideTitle ? (
         <h3 className="side-tab-heading">{code ? `${label} (${code})` : label}</h3>
       ) : null}
-      <textarea
-        className={className ?? "dep-input dep-textarea side-tab-textarea"}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder ?? `Enter ${label.toLowerCase()}…`}
-        disabled={disabled}
-      />
+      {tokens && tokens.length > 0 ? (
+        // Wrapper keeps the textarea stretching like the plain one; fonts inherit (TokenTextarea defaults to monospace).
+        <TokenTextarea
+          className={className ?? "dep-input dep-textarea side-tab-textarea"}
+          value={value}
+          onChange={onChange}
+          tokens={tokens}
+          placeholder={placeholder ?? `Enter ${label.toLowerCase()}…`}
+          disabled={disabled}
+          wrapperStyle={{ flex: 1, display: "flex", flexDirection: "column" }}
+          style={{ flex: 1, fontFamily: "inherit", fontSize: "inherit" }}
+        />
+      ) : (
+        <textarea
+          className={className ?? "dep-input dep-textarea side-tab-textarea"}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder ?? `Enter ${label.toLowerCase()}…`}
+          disabled={disabled}
+        />
+      )}
     </>
   )
 }
