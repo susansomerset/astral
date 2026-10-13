@@ -7554,6 +7554,23 @@ assert all(
     d["font_stack"] in BUILD_CONFIG["default_style"]["fonts"]
     for d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.values()
 )
+# Resume header layout: stored as the `format` of the four contact sections (the editor keeps them in
+# sync; the builder reads candidate_name). Unset reads as the default. Separate from the body formats above.
+RESUME_STRUCTURE_HEADER_FORMATS = ("one_line", "two_line")
+RESUME_STRUCTURE_HEADER_FORMAT_DEFAULT = "one_line"
+RESUME_STRUCTURE_HEADER_FORMAT_DETAILS = {
+    "one_line": {
+        "label": "One line",
+        "description": "Name and title share the first line (Name • Title); long titles wrap.",
+        "font_stack": "heading_stack",
+    },
+    "two_line": {
+        "label": "Two line",
+        "description": "Name on the first line; the job title on its own second line in the section-header style.",
+        "font_stack": "heading_stack",
+    },
+}
+assert set(RESUME_STRUCTURE_HEADER_FORMAT_DETAILS) == set(RESUME_STRUCTURE_HEADER_FORMATS)
 # AST-1474: operator page-break policies on structure sections (print CSS is AST-1475).
 RESUME_STRUCTURE_PAGE_BREAK_POLICIES = (
     "normal",

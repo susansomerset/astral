@@ -306,6 +306,36 @@ describe("AST-2083 ResumeContentEditor — header controls (AC9/AC12/AC13)", () 
     expect(arts.resume_structure.sections.awards.format).toBe("free_prose")
   })
 
+  it("header rows pick one/two line; changing one updates every header row in a single save", async () => {
+    const hdr = (id: string, title: string, order: number) => row(id, title, order, "one_line", { format_locked: false })
+    const label = (l: string) => ({ label: l, description: `${l} desc`, font_family: "FxSans, sans-serif" })
+    setRoutes({
+      "GET /api/candidates/c1/resume_structure": ok({
+        all_sections: [hdr("candidate_name", "Name", 0), hdr("candidate_title", "Title", 1), ...BASE_ROWS.slice(1)],
+        accent_color: null,
+        catalog: {
+          ...CATALOG,
+          contact_ids: ["candidate_name", "candidate_title"],
+          header_formats: ["one_line", "two_line"],
+          body_format_details: { ...CATALOG.body_format_details, one_line: label("FX One line"), two_line: label("FX Two line") },
+        },
+      }),
+    })
+    await renderEditor()
+    expand("candidate_name")
+    const fmt = within(rowEl("candidate_name")).getByLabelText("Format") as HTMLSelectElement
+    // Header rows offer header layouts only, not body formats.
+    expect([...fmt.options].map(o => o.text)).toEqual(["FX One line", "FX Two line"])
+    fireEvent.change(fmt, { target: { value: "two_line" } })
+    await waitFor(() => expect(puts()).toHaveLength(1))
+    const sections = (puts()[0].body as { artifacts: { resume_structure: { sections: Record<string, { format: string }> } } })
+      .artifacts.resume_structure.sections
+    expect(sections.candidate_name.format).toBe("two_line")
+    expect(sections.candidate_title.format).toBe("two_line")
+    expect(sections.professional_summary.format).toBe("free_prose") // body rows untouched
+    expect(rowEl("candidate_title").querySelector(".resume-section-format")?.textContent).toBe("FX Two line")
+  })
+
   it("flow select: Hidden sets enabled=false, a policy re-enables with that policy; required rows have no Hidden", async () => {
     await renderEditor()
     expand("awards")

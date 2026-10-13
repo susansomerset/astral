@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -3925,6 +3925,54 @@ class TestAst1165SignoffNewlineToBr:
         assert "<img" not in signoff
         assert "Susan Somerset<br>Senior Product Manager" in signoff
         assert "{$SIGNATURE_IMAGE}" not in signoff
+
+class TestResumeHeaderLayout:
+    """One-line (Name • Title in the h1) vs two-line (name h1, title on its own line) resume header."""
+
+    _RENDER = {
+        "candidate_name": "Susan Somerset",
+        "candidate_title": "Senior Director of Product Management",
+        "candidate_tagline": "",
+        "candidate_contact_detail": "Oakland, CA",
+    }
+
+    def _doc(self, fmt: Optional[str]) -> str:
+        sections = {"candidate_name": {"format": fmt}} if fmt else {}
+        return builder_mod._emit_html_document(
+            dict(self._RENDER),
+            builder_mod.BUILD_CONFIG["default_style"],
+            include_cover=False,
+            cover_letter={},
+            critical_keywords=None,
+            emit_prior_experience=False,
+            resume_structure={"sections": sections},
+        )
+
+    def _header(self, html: str) -> str:
+        return html.split('<header class="header">', 1)[1].split("</header>", 1)[0]
+
+    def test_unset_and_one_line_keep_name_bullet_title_in_h1(self) -> None:
+        for fmt in (None, "one_line"):
+            head = self._header(self._doc(fmt))
+            assert "Susan Somerset\u00a0• Senior Director of Product Management</h1>" in head
+            assert 'class="title"' not in head
+
+    def test_two_line_puts_title_on_its_own_line_after_h1(self) -> None:
+        head = self._header(self._doc("two_line"))
+        assert "<h1>Susan Somerset</h1>" in head
+        assert '<p class="title">Senior Director of Product Management</p>' in head
+        assert head.index("</h1>") < head.index('class="title"') < head.index('class="contact"')
+
+    def test_two_line_without_title_falls_back_to_name_only(self) -> None:
+        render = {**self._RENDER, "candidate_title": ""}
+        html = builder_mod._emit_html_document(
+            render, builder_mod.BUILD_CONFIG["default_style"], include_cover=False, cover_letter={},
+            critical_keywords=None, emit_prior_experience=False,
+            resume_structure={"sections": {"candidate_name": {"format": "two_line"}}},
+        )
+        head = self._header(html)
+        assert "<h1>Susan Somerset</h1>" in head and 'class="title"' not in head
+
 
 class TestCoverLetterBodyListsAndIndent:
     """Cover body: indented paragraphs (no blank-line gap), bullets, numbered lists, 1.15 spacing."""

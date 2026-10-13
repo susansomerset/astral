@@ -323,8 +323,17 @@ function Editor({ target, onSaved }: ResumeContentEditorProps) {
   if (!data) return <p className="list-page-status">Loading...</p>
   const { rows, bodies, catalog, accent } = data
 
+  // Header layout (one/two line) is one setting: a format change on any header row applies to all of them.
   const patchRow = (rid: string, patch: Partial<SectionRow>, save: boolean) =>
-    apply(c => ({ rows: c.rows.map(r => (r.id === rid ? { ...r, ...patch } : r)) }), { struct: true }, save)
+    apply(c => {
+      const header = new Set(c.catalog.contact_ids)
+      const syncFormat = patch.format !== undefined && header.has(rid)
+      return {
+        rows: c.rows.map(r =>
+          r.id === rid ? { ...r, ...patch } : syncFormat && header.has(r.id) ? { ...r, format: patch.format ?? null } : r,
+        ),
+      }
+    }, { struct: true }, save)
 
   const moveRow = (fromId: string | null, toIndex: number) => apply(c => {
     const from = c.rows.findIndex(r => r.id === fromId)

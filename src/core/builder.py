@@ -1383,7 +1383,14 @@ def _emit_html_document(
     title = html.escape(title_raw)
     contact = html.escape(str(render.get("candidate_contact_detail") or ""))
 
-    if name and title:
+    # Header layout is stored on the contact sections' `format` (editor keeps all four in sync); candidate_name is the reader.
+    name_spec = ((resume_structure or {}).get("sections") or {}).get("candidate_name") or {}
+    two_line = name_spec.get("format") == "two_line"
+    title_line_html = ""
+    if name and title and two_line:
+        h1_inner = name  # title drops to its own line under the name
+        title_line_html = f'\n    <p class="title">{title}</p>'
+    elif name and title:
         h1_inner = f"{name}\u00a0• {title}"
     elif name:
         h1_inner = name
@@ -1487,12 +1494,18 @@ h1 {{
   letter-spacing: -0.5px;
   color: var(--header-color);
 }}
+/* Two-line header: the title line mirrors the h2 section-header look (header font, accent, uppercase). */
 .title {{
-  margin: 0;
+  margin: 2px 0 0;
+  font-family: var(--header-font-family);
   font-size: 17px;
   font-weight: 600;
-  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  line-height: 1.2;
+  color: var(--accent-color);
 }}
+.title + .contact {{ margin-top: 2px; }}
 .specialties {{
   margin: 0;
   font-size: 14px;
@@ -1657,7 +1670,7 @@ section li:last-child, .role li:last-child {{ margin-bottom: 0; }}
 </head>
 <body>
   <header class="header">
-    <h1>{h1_inner}</h1>
+    <h1>{h1_inner}</h1>{title_line_html}
     <div class="contact"><span>{contact}</span></div>
   </header>
   <main class="content">
