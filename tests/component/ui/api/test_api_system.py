@@ -57,6 +57,10 @@ class TestSystemAuthRoutes:
         assert isinstance(palette, list)
         assert palette
         assert all(isinstance(hex, str) and hex.startswith("#") for hex in palette)
+        # Every palette color has a display name for the swatch tooltip.
+        names = payload.get("base_resume_accent_names")
+        assert isinstance(names, dict) and set(names) == set(palette)
+        assert all(isinstance(n, str) and n.strip() for n in names.values())
 
     def test_ui_config_includes_list_table_layout_defaults(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()

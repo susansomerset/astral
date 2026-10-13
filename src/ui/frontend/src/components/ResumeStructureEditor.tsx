@@ -1,5 +1,7 @@
 export type Catalog = {
   body_formats: string[]
+  /** Layout options for the header (contact) rows: one_line / two_line. */
+  header_formats: string[]
   required_ids: string[]
   contact_ids: string[]
   extra_id_pattern: string

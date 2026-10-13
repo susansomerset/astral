@@ -82,6 +82,9 @@ from src.utils.config import (
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
     RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT,
+    RESUME_STRUCTURE_HEADER_FORMAT_DEFAULT,
+    RESUME_STRUCTURE_HEADER_FORMAT_DETAILS,
+    RESUME_STRUCTURE_HEADER_FORMATS,
     RESUME_STRUCTURE_EXTRA_ID_PATTERN,
     RESUME_STRUCTURE_HIDDEN_FLOW_LABEL,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
@@ -2826,7 +2829,14 @@ def normalize_resume_structure(raw: dict) -> dict:
             "job_agent_editable": job_ed,
         }
         if sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
-            pass
+            # Header layout (one_line / two_line); blank → omitted, which reads as the default.
+            hfmt = spec.get("format")
+            if isinstance(hfmt, str) and hfmt.strip():
+                if hfmt not in RESUME_STRUCTURE_HEADER_FORMATS:
+                    raise ValueError(
+                        f"section {sid} format must be one of {list(RESUME_STRUCTURE_HEADER_FORMATS)}"
+                    )
+                row["format"] = hfmt
         elif sid == "experience":
             fmt = spec.get("format")
             if fmt is None or (isinstance(fmt, str) and not fmt.strip()):
@@ -3060,10 +3070,15 @@ def resume_structure_editor_payload(resolved: dict) -> dict:
             "title": spec.get("title") or "",
             "enabled": bool(spec.get("enabled")),
             "order": spec.get("order") if isinstance(spec.get("order"), int) else 0,
-            "format": spec.get("format") if isinstance(spec.get("format"), str) else None,
+            # Header (contact) rows carry the header layout; unset reads as the default.
+            "format": (
+                spec["format"] if isinstance(spec.get("format"), str)
+                else RESUME_STRUCTURE_HEADER_FORMAT_DEFAULT if sid in contact
+                else None
+            ),
             "job_agent_editable": bool(spec.get("job_agent_editable")),
             "required": sid in required,
-            "format_locked": sid == "experience" or sid in contact,
+            "format_locked": sid == "experience",
             "page_break_policy": (
                 spec["page_break_policy"]
                 if isinstance(spec.get("page_break_policy"), str)
@@ -3090,8 +3105,13 @@ def resume_structure_editor_payload(resolved: dict) -> dict:
                 "description": d["description"],
                 "font_family": fonts[d["font_stack"]],
             }
-            for fmt, d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.items()
+            # Header layouts share the map (ids don't collide); body_formats / header_formats pick the options.
+            for fmt, d in {
+                **RESUME_STRUCTURE_BODY_FORMAT_DETAILS,
+                **RESUME_STRUCTURE_HEADER_FORMAT_DETAILS,
+            }.items()
         },
+        "header_formats": list(RESUME_STRUCTURE_HEADER_FORMATS),
         "hidden_flow_label": RESUME_STRUCTURE_HIDDEN_FLOW_LABEL,
     }
     return {

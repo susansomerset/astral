@@ -4689,6 +4689,25 @@ class TestAst1147CoverFromBlockTokenTemplateConfig:
 
 
 
+class TestPageTitleConfig:
+    """Printed-page <title> templates: config defaults, profile tabs, and {$ lookup lists stay in step."""
+
+    def test_defaults_contact_keys_and_profile_tabs(self) -> None:
+        pt = cfg.PAGE_TITLE_CONFIG
+        assert pt["resume"]["default"] == "{$FULL_NAME} Resume ({$JOB_ID})"
+        assert pt["cover"]["default"] == "{$FULL_NAME} Cover Letter {$JOB_ID}"
+        assert pt["job_id_fallback_chars"] == 6
+        for kind in ("resume", "cover"):
+            key = f"contact.{pt[kind]['contact_key']}"
+            assert pt[kind]["contact_key"] in cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"]
+            assert cfg.FIELD_TOKEN_LOOKUP[key] == pt["tokens"] == ("FULL_NAME", "JOB_ID")
+            # Each template is its own profile section (tabs read fields[0]) with the default as placeholder.
+            fields = [
+                f for sec in cfg.DATA_SHAPES["candidates"]["detail"]["profile"] for f in sec["fields"] if f["key"] == key
+            ]
+            assert len(fields) == 1 and fields[0]["placeholder"] == pt[kind]["default"]
+
+
 class TestCoverFromBlockAllowlistAndFieldTokenLookup:
     """From-block allowlist = FULL_NAME + every candidate contact.* data-field token; per-field lookup lists."""
 

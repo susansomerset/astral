@@ -201,6 +201,7 @@ def ui_config():
     return jsonify({
         **UI_CONFIG,
         "base_resume_accent_palette": BUILD_CONFIG.get("accent_palette", []),
+        "base_resume_accent_names": BUILD_CONFIG.get("accent_palette_names", {}),
         # AST-1351: experience job-array editor field spine + unsupported notice text.
         "experience_job_ui_fields": BUILD_CONFIG["experience_job_ui_fields"],
         "unsupported_resume_structure_message": BUILD_CONFIG[

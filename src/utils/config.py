@@ -1516,6 +1516,7 @@ CANDIDATE_LIBRARY_CONFIG = {
         "github", "linkedin_url", "websites", "extra_emails", "timezone",
         "cover_letter_signature", "cover_letter_signature_image",
         "cover_letter_from_block",
+        "resume_title_template", "cover_letter_title_template",
         "title_patterns", "reason_codes",
     ),
     "context_keys": (
@@ -1591,6 +1592,28 @@ COVER_FROM_BLOCK_CONFIG = {
         "from-block or the default token template. Without a candidate, From is required. "
         "The profile signature image prints where {$SIGNATURE_IMAGE} sits in the Signature "
         "field; without that token there is no image. This tool does not save to the database."
+    ),
+}
+
+# Printed-page <title> of job documents = the browser's default PDF file name. The candidate may override
+# each template (contact.<contact_key>); blank → the default here. Tokens are substituted at build time.
+PAGE_TITLE_CONFIG = {
+    "tokens": ("FULL_NAME", "JOB_ID"),
+    # {$JOB_ID} = the job's company_job_id; when blank, the first N non-hyphen characters of astral_job_id.
+    "job_id_fallback_chars": 6,
+    "resume": {
+        "contact_key": "resume_title_template",
+        "label": "Resume file name",
+        "default": "{$FULL_NAME} Resume ({$JOB_ID})",
+    },
+    "cover": {
+        "contact_key": "cover_letter_title_template",
+        "label": "Cover letter file name",
+        "default": "{$FULL_NAME} Cover Letter {$JOB_ID}",
+    },
+    "help": (
+        "Default file name when you print to PDF (type {$ for a list). {$JOB_ID} is the job's own ID, "
+        "or the first six characters of the Astral job ID when it has none. Leave empty for the default."
     ),
 }
 
@@ -6418,6 +6441,31 @@ DATA_SHAPES = {
                     ],
                 },
                 {
+                    # Own sections so each shows as a profile tab with the {$ lookup (tabs use fields[0] only).
+                    "label": "Resume File Name",
+                    "fields": [
+                        {
+                            "key": f"contact.{PAGE_TITLE_CONFIG['resume']['contact_key']}",
+                            "label": PAGE_TITLE_CONFIG["resume"]["label"],
+                            "type": "textarea",
+                            "placeholder": PAGE_TITLE_CONFIG["resume"]["default"],
+                            "help": PAGE_TITLE_CONFIG["help"],
+                        },
+                    ],
+                },
+                {
+                    "label": "Cover Letter File Name",
+                    "fields": [
+                        {
+                            "key": f"contact.{PAGE_TITLE_CONFIG['cover']['contact_key']}",
+                            "label": PAGE_TITLE_CONFIG["cover"]["label"],
+                            "type": "textarea",
+                            "placeholder": PAGE_TITLE_CONFIG["cover"]["default"],
+                            "help": PAGE_TITLE_CONFIG["help"],
+                        },
+                    ],
+                },
+                {
                     "label": "Signature Image",
                     "fields": [
                         {
@@ -6650,6 +6698,19 @@ BUILD_CONFIG = {
         "#2b2b2b",
         "#111111",
     ],
+    # Display names for the swatch tooltips ("Name (#hex)"); keyed by the palette hex, same case.
+    "accent_palette_names": {
+        "#1a1a2e": "Midnight",
+        "#16213e": "Navy Ink",
+        "#0f3460": "Deep Cobalt",
+        "#1e3a5f": "Denim",
+        "#2d4a3e": "Pine",
+        "#3c2c6e": "Indigo",
+        "#4a3728": "Espresso",
+        "#3d2b3d": "Aubergine",
+        "#2b2b2b": "Charcoal",
+        "#111111": "Onyx",
+    },
     # Keys align to DATA_SHAPES["candidates"]["detail"]["base_resume_structure"]
     # keys and TASK_CONFIG["craft_resume_base"] field names (professional_summary
     # not "summary"; core_competencies not "competencies"). Cover keys mirror
@@ -6791,10 +6852,11 @@ BUILD_CONFIG = {
     },
     # SomersetCover body layout (session + job cover HTML). Read by builder._emit_somerset_cover_html_document.
     "cover_letter_layout": {
-        "body_line_height": 1.2,  # body, .cover-letter, letter paragraphs, lists
+        "body_line_height": 1.4,  # body, .cover-letter, letter paragraphs, lists
         "signoff_line_height": 1.5,  # closing + signature block
-        "paragraph_indent_em": 1,  # first-line indent
-        "paragraph_gap_pt": 3,  # space after each paragraph / list
+        "paragraph_indent_em": 0,  # first-line indent (0 = none)
+        # Space after each paragraph / list / salutation = one blank line: 15px text x 1.4 line height = 21px.
+        "paragraph_gap_pt": 15.75,
         "list_indent_em": 3.5,  # bullet / numbered list left padding
         # Header = candidate name, rule, From block. Values mirror the resume header (h1 name / .contact line).
         "name_font_size_px": 33,
@@ -6862,6 +6924,8 @@ FIELD_TOKEN_LOOKUP = {
     "cover_letter.signature": _COVER_RENDER_TOKEN_IDS,
     "session_cover_letter.from_block": COVER_FROM_BLOCK_CONFIG["allowed_token_ids"],
     "session_cover_letter.signature": _COVER_RENDER_TOKEN_IDS,
+    "contact.resume_title_template": PAGE_TITLE_CONFIG["tokens"],
+    "contact.cover_letter_title_template": PAGE_TITLE_CONFIG["tokens"],
 }
 
 # AST-1573 / AST-1575 / AST-1590: authoritative artifact registry (patt.artifact.manage-catalog register half).
@@ -7554,6 +7618,23 @@ assert all(
     d["font_stack"] in BUILD_CONFIG["default_style"]["fonts"]
     for d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.values()
 )
+# Resume header layout: stored as the `format` of the four contact sections (the editor keeps them in
+# sync; the builder reads candidate_name). Unset reads as the default. Separate from the body formats above.
+RESUME_STRUCTURE_HEADER_FORMATS = ("one_line", "two_line")
+RESUME_STRUCTURE_HEADER_FORMAT_DEFAULT = "one_line"
+RESUME_STRUCTURE_HEADER_FORMAT_DETAILS = {
+    "one_line": {
+        "label": "One line",
+        "description": "Name and title share the first line (Name • Title); long titles wrap.",
+        "font_stack": "heading_stack",
+    },
+    "two_line": {
+        "label": "Two line",
+        "description": "Name on the first line; the job title on its own second line in the section-header style.",
+        "font_stack": "heading_stack",
+    },
+}
+assert set(RESUME_STRUCTURE_HEADER_FORMAT_DETAILS) == set(RESUME_STRUCTURE_HEADER_FORMATS)
 # AST-1474: operator page-break policies on structure sections (print CSS is AST-1475).
 RESUME_STRUCTURE_PAGE_BREAK_POLICIES = (
     "normal",
