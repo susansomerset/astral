@@ -1568,8 +1568,9 @@ COVER_FROM_BLOCK_CONFIG = {
     "line_2_contact_paths": ("contact_email", "phone"),
     "sources": ("candidate", "default"),
     # AST-1147: token template contract for AST-1148 resolve/emit (path keys stay until then).
+    # No {$FULL_NAME}: the cover header prints the name on its own line above the From block.
     "default_template": (
-        "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+        "{$LOCATION} | {$CONTACT_EMAIL} | {$PHONE}"
     ),
     # Keep authoring_help token prose in sync when this allowlist changes (AST-1149).
     "allowed_token_ids": _FROM_BLOCK_TOKEN_IDS,
@@ -6462,6 +6463,7 @@ DATA_SHAPES = {
             # Keys match BUILD_CONFIG["artifact_shapes"]["cover_letter"] + normalize_cover_letter_artifact.
             "cover_letter": [
                 {"key": "Subject", "label": "Subject", "type": "str"},
+                {"key": "Salutation", "label": "Salutation", "type": "str"},
                 {"key": "Letter", "label": "Letter", "type": "str"},
                 {"key": "signature", "label": "Signature", "type": "str"},
             ],
@@ -6762,6 +6764,7 @@ BUILD_CONFIG = {
         },
         "cover_letter": {
             "Subject": {"type": "str", "required": True},
+            "Salutation": {"type": "str", "required": False},
             "Letter": {"type": "str", "required": True},
             "signature": {"type": "str", "required": False},
         },
@@ -6788,10 +6791,19 @@ BUILD_CONFIG = {
     },
     # SomersetCover body layout (session + job cover HTML). Read by builder._emit_somerset_cover_html_document.
     "cover_letter_layout": {
-        "body_line_height": 1.15,  # body, .cover-letter, letter paragraphs, lists
+        "body_line_height": 1.2,  # body, .cover-letter, letter paragraphs, lists
         "signoff_line_height": 1.5,  # closing + signature block
-        "paragraph_indent_em": 2,  # first-line indent (replaces blank line between paragraphs)
+        "paragraph_indent_em": 1,  # first-line indent
+        "paragraph_gap_pt": 3,  # space after each paragraph / list
         "list_indent_em": 3.5,  # bullet / numbered list left padding
+        # Header = candidate name, rule, From block. Values mirror the resume header (h1 name / .contact line).
+        "name_font_size_px": 33,
+        "name_letter_spacing_px": -0.5,
+        "name_line_height": 1.1,
+        "from_font_size_px": 13,
+        "from_line_height": 1.5,
+        "name_rule_gap_px": 2,  # name text -> rule
+        "from_gap_px": 3,  # rule -> contact line
     },
     # AST-1024: session cover field spine (Admin API + form); not job artifact_shapes.
     "session_cover_letter": {
@@ -6803,6 +6815,7 @@ BUILD_CONFIG = {
             "letter_date": {"required": True},
             "to_block": {"required": False},
             "subject": {"required": False},
+            "salutation": {"required": False},
             "letter": {"required": True},
             "signoff_closing": {"required": True},
             "signature": {"required": True},
@@ -6814,11 +6827,13 @@ BUILD_CONFIG = {
         # Normalized job cover keys → session_cover_letter field keys
         "artifact_to_fields": {
             "re_line": "subject",
+            "salutation": "salutation",
             "body": "letter",
             "signature": "signature",
         },
-        # Session fields job artifacts do not store — always "" for job Print Cover Letter
-        "unset_fields": ("from_block", "letter_date", "to_block", "signoff_closing"),
+        # Session fields job artifacts do not store — always "" for job Print Cover Letter.
+        # (letter_date is not stored either, but the builder fills it with the print-day date.)
+        "unset_fields": ("from_block", "to_block", "signoff_closing"),
     },
     # AST-1125: cover HTML render tokens (NOT TOKEN_SOURCES / resolve_tokens).
     # Emit (AST-1126) reads this contract; resume builders must ignore it.
