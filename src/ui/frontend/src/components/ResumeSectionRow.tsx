@@ -77,7 +77,9 @@ export default function ResumeSectionRow({
 }: ResumeSectionRowProps) {
   const flow = row.enabled ? row.page_break_policy : HIDDEN
   const flowLabel = flow === HIDDEN ? catalog.hidden_flow_label : (catalog.page_break_policy_labels[flow] ?? flow)
-  // Contact sections carry format null: no format label, select, or catalog font.
+  // Header (contact) rows carry the one-line / two-line layout as their format; body rows carry a body format.
+  const isHeader = catalog.contact_ids.includes(row.id)
+  const formatOptions = isHeader ? catalog.header_formats : catalog.body_formats
   const fmt = row.format ? catalog.body_format_details[row.format] : undefined
   const isExperience = row.id === "experience"
 
@@ -161,7 +163,7 @@ export default function ResumeSectionRow({
                 disabled={row.format_locked}
                 onChange={e => onPatch({ format: e.target.value }, true)}
               >
-                {catalog.body_formats.map(f => (
+                {formatOptions.map(f => (
                   <option key={f} value={f}>{catalog.body_format_details[f]?.label ?? f}</option>
                 ))}
               </select>
