@@ -1549,6 +1549,15 @@ assert len(CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]) == len(
 for _ck in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]:
     assert _ck in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ck
 
+# From-block token allowlist: FULL_NAME + every candidate ``contact.*`` data-field token in
+# TOKEN_SOURCES (a test keeps this in sync). Help copy below is generated from it.
+_FROM_BLOCK_TOKEN_IDS = (
+    "FULL_NAME", "LOCATION", "CONTACT_EMAIL", "PHONE",
+    "REPLY_EMAIL", "GITHUB", "LINKEDIN_URL",
+    "TITLE_PATTERNS", "REASON_CODES", "COVER_LETTER_SIGNATURE",
+)
+_FROM_BLOCK_TOKEN_LIST = ", ".join("{$" + t + "}" for t in _FROM_BLOCK_TOKEN_IDS)
+
 # AST-1137 / AST-1147 / AST-1149: from-block field + token template/rewrite + authoring chrome.
 COVER_FROM_BLOCK_CONFIG = {
     "contact_key": "cover_letter_from_block",
@@ -1559,28 +1568,29 @@ COVER_FROM_BLOCK_CONFIG = {
     "line_2_contact_paths": ("contact_email", "phone"),
     "sources": ("candidate", "default"),
     # AST-1147: token template contract for AST-1148 resolve/emit (path keys stay until then).
+    # No {$FULL_NAME}: the cover header prints the name on its own line above the From block.
     "default_template": (
-        "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+        "{$LOCATION} | {$CONTACT_EMAIL} | {$PHONE}"
     ),
     # Keep authoring_help token prose in sync when this allowlist changes (AST-1149).
-    "allowed_token_ids": ("FULL_NAME", "LOCATION", "CONTACT_EMAIL", "PHONE"),
+    "allowed_token_ids": _FROM_BLOCK_TOKEN_IDS,
     "authoring_separator": "|",
     "emit_separator": " • ",
     "empty_segment_policy": "drop_with_adjacent_separator",
     # AST-1149: user-facing authoring chrome (UI renders; no resolve math).
     "authoring_help": (
-        "Allowed tokens: {$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}. "
+        f"Allowed tokens (type {{$ for a list): {_FROM_BLOCK_TOKEN_LIST}. "
         "Type | between segments; cover print shows •. "
         "Leave empty to use the default template (see placeholder)."
     ),
     "session_authoring_help": (
         "Enter cover-letter field values, then Open HTML to Print → PDF. "
-        "Letter fields come from this form. From block supports "
-        "{$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}; type | for • in print. "
+        f"Letter fields come from this form. From block supports {_FROM_BLOCK_TOKEN_LIST}; "
+        "type | for • in print. "
         "When a candidate is selected, leave From empty to use that candidate’s saved "
         "from-block or the default token template. Without a candidate, From is required. "
-        "If a candidate is selected and has a profile signature image, the server may "
-        "include it in the sign-off; otherwise name-only. This tool does not save to the database."
+        "The profile signature image prints where {$SIGNATURE_IMAGE} sits in the Signature "
+        "field; without that token there is no image. This tool does not save to the database."
     ),
 }
 
@@ -6385,7 +6395,13 @@ DATA_SHAPES = {
                 {
                     "label": "Cover Letter Signature",
                     "fields": [
-                        {"key": "contact.cover_letter_signature", "label": "Signature text", "type": "textarea"},
+                        {
+                            "key": "contact.cover_letter_signature",
+                            "label": "Signature text",
+                            "type": "textarea",
+                            "help": "Put {$SIGNATURE_IMAGE} on its own line where the signature image should print "
+                                    "(type {$ for a list). Without it, no image appears.",
+                        },
                     ],
                 },
                 {
@@ -6447,6 +6463,7 @@ DATA_SHAPES = {
             # Keys match BUILD_CONFIG["artifact_shapes"]["cover_letter"] + normalize_cover_letter_artifact.
             "cover_letter": [
                 {"key": "Subject", "label": "Subject", "type": "str"},
+                {"key": "Salutation", "label": "Salutation", "type": "str"},
                 {"key": "Letter", "label": "Letter", "type": "str"},
                 {"key": "signature", "label": "Signature", "type": "str"},
             ],
@@ -6747,6 +6764,7 @@ BUILD_CONFIG = {
         },
         "cover_letter": {
             "Subject": {"type": "str", "required": True},
+            "Salutation": {"type": "str", "required": False},
             "Letter": {"type": "str", "required": True},
             "signature": {"type": "str", "required": False},
         },
@@ -6771,6 +6789,22 @@ BUILD_CONFIG = {
     "cover_letter_artifact_chain": {
         "first_task_key": "draft_cover_letter",
     },
+    # SomersetCover body layout (session + job cover HTML). Read by builder._emit_somerset_cover_html_document.
+    "cover_letter_layout": {
+        "body_line_height": 1.2,  # body, .cover-letter, letter paragraphs, lists
+        "signoff_line_height": 1.5,  # closing + signature block
+        "paragraph_indent_em": 1,  # first-line indent
+        "paragraph_gap_pt": 3,  # space after each paragraph / list
+        "list_indent_em": 3.5,  # bullet / numbered list left padding
+        # Header = candidate name, rule, From block. Values mirror the resume header (h1 name / .contact line).
+        "name_font_size_px": 33,
+        "name_letter_spacing_px": -0.5,
+        "name_line_height": 1.1,
+        "from_font_size_px": 13,
+        "from_line_height": 1.5,
+        "name_rule_gap_px": 2,  # name text -> rule
+        "from_gap_px": 3,  # rule -> contact line
+    },
     # AST-1024: session cover field spine (Admin API + form); not job artifact_shapes.
     "session_cover_letter": {
         "document_title": "SomersetCover",
@@ -6781,6 +6815,7 @@ BUILD_CONFIG = {
             "letter_date": {"required": True},
             "to_block": {"required": False},
             "subject": {"required": False},
+            "salutation": {"required": False},
             "letter": {"required": True},
             "signoff_closing": {"required": True},
             "signature": {"required": True},
@@ -6792,11 +6827,13 @@ BUILD_CONFIG = {
         # Normalized job cover keys → session_cover_letter field keys
         "artifact_to_fields": {
             "re_line": "subject",
+            "salutation": "salutation",
             "body": "letter",
             "signature": "signature",
         },
-        # Session fields job artifacts do not store — always "" for job Print Cover Letter
-        "unset_fields": ("from_block", "letter_date", "to_block", "signoff_closing"),
+        # Session fields job artifacts do not store — always "" for job Print Cover Letter.
+        # (letter_date is not stored either, but the builder fills it with the print-day date.)
+        "unset_fields": ("from_block", "to_block", "signoff_closing"),
     },
     # AST-1125: cover HTML render tokens (NOT TOKEN_SOURCES / resolve_tokens).
     # Emit (AST-1126) reads this contract; resume builders must ignore it.
@@ -6814,6 +6851,18 @@ BUILD_CONFIG = {
     },
 }
 
+
+# Per-field `{$` lookup lists for the profile / artifact / session edit screens (served on /api/ui_config).
+# Key = field id the UI derives: profile field path, "<shapes_key>.<field key>", or "session_cover_letter.<field>".
+# Only tokens that actually resolve in that field belong here (prompt tokens do NOT resolve on these screens).
+_COVER_RENDER_TOKEN_IDS = tuple(BUILD_CONFIG["cover_letter_render_tokens"])
+FIELD_TOKEN_LOOKUP = {
+    "contact.cover_letter_from_block": COVER_FROM_BLOCK_CONFIG["allowed_token_ids"],
+    "contact.cover_letter_signature": _COVER_RENDER_TOKEN_IDS,
+    "cover_letter.signature": _COVER_RENDER_TOKEN_IDS,
+    "session_cover_letter.from_block": COVER_FROM_BLOCK_CONFIG["allowed_token_ids"],
+    "session_cover_letter.signature": _COVER_RENDER_TOKEN_IDS,
+}
 
 # AST-1573 / AST-1575 / AST-1590: authoritative artifact registry (patt.artifact.manage-catalog register half).
 # Key = entity._data path. Pilot + job editable keys.
