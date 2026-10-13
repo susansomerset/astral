@@ -154,7 +154,7 @@ async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
                  or ent.get("id") or "?")
                 if isinstance(ent, dict) else str(ent)
             )
-            logger.exception(
+            logger.error_exc(
                 "%s\n  %s: %s\n  Continuing to the next entity",
                 ident,
                 type(r).__name__,
@@ -1152,7 +1152,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception as exc:
             final_status = "FAILED"
-            logger.exception(
+            logger.error_exc(
                 "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
                 candidate_id or "-",
                 task.get("entity_type") or "-",
@@ -1168,7 +1168,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                         dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                     )
                 except Exception as e:
-                    logger.exception(
+                    logger.error_exc(
                         "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
                         candidate_id or "-",
                         task.get("entity_type") or "-",
@@ -1183,7 +1183,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
-                logger.exception(
+                logger.error_exc(
                     "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The run is over; this task's last-run time was not saved.",
                     candidate_id or "-",
                     task.get("entity_type") or "-",
@@ -1238,7 +1238,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception as exc:
             final_status = "FAILED"
-            logger.exception(
+            logger.error_exc(
                 "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
                 candidate_id or "-",
                 task.get("entity_type") or "-",
@@ -1254,7 +1254,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                         dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                     )
                 except Exception as e:
-                    logger.exception(
+                    logger.error_exc(
                         "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
                         candidate_id or "-",
                         task.get("entity_type") or "-",
@@ -1269,7 +1269,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
-                logger.exception(
+                logger.error_exc(
                     "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The run is over; this task's last-run time was not saved.",
                     candidate_id or "-",
                     task.get("entity_type") or "-",
@@ -1347,7 +1347,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception as exc:
             final_status = "FAILED"
-            logger.exception(
+            logger.error_exc(
                 "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
                 candidate_id or "-",
                 task.get("entity_type") or "-",
@@ -1363,7 +1363,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                         dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                     )
                 except Exception as e:
-                    logger.exception(
+                    logger.error_exc(
                         "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
                         candidate_id or "-",
                         task.get("entity_type") or "-",
@@ -1378,7 +1378,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
-                logger.exception(
+                logger.error_exc(
                     "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The run is over; this task's last-run time was not saved.",
                     candidate_id or "-",
                     task.get("entity_type") or "-",
@@ -1482,7 +1482,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
             accumulated[k] = accumulated.get(k, 0) + v
         # +1 before logging so the log line matches the ledger write in finally.
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
-        logger.exception(
+        logger.error_exc(
             "%s | dispatch %s %s\n  TimeoutError: dispatch timeout after %ss batch=%s"
             " processed=%d passed=%d failed=%d errors=%d\n  Truncating the batch",
             candidate_id or "-",
@@ -1507,7 +1507,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except Exception as exc:
         final_status = "FAILED"
-        logger.exception(
+        logger.error_exc(
             "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
             candidate_id or "-",
             task.get("entity_type") or "-",
@@ -1523,7 +1523,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                     dispatch_ledger_id, final_status, accumulated, candidate_id, task, task_key,
                 )
             except Exception as e:
-                logger.exception(
+                logger.error_exc(
                     "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
                     candidate_id or "-",
                     task.get("entity_type") or "-",
@@ -1546,7 +1546,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         try:
             _db_update_dispatch_task(task_id, last_run_at=_now_iso())
         except Exception as e:
-            logger.exception(
+            logger.error_exc(
                 "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The run is over; this task's last-run time was not saved.",
                 candidate_id or "-",
                 task.get("entity_type") or "-",
@@ -1699,7 +1699,7 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
         loop.run_until_complete(_dispatch_one(task))
     except Exception:
         # Log instead of letting threading print a bare traceback (e.g. transient DB lock).
-        logger.exception(
+        logger.error_exc(
             "%s | dispatch task %s crashed",
             task.get("candidate_id") or "-",
             task.get("task_key", task_id),
@@ -1759,7 +1759,7 @@ def run_task(task_id: int, *, ui_initiated: bool = False, scheduled_sweep: bool 
             from src.core.inbox import count_inbox_messages_bound_to_candidate
             task["available_count"] = count_inbox_messages_bound_to_candidate(str(cid).strip())
         except Exception as exc:
-            logger.exception(
+            logger.error_exc(
                 "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The task is still starting; Avail is 0",
                 cid or "-",
                 et or "-",
@@ -1912,7 +1912,7 @@ def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
     try:
         bound_counts = count_inbox_bound_by_candidate()
     except Exception as exc:
-        logger.exception(
+        logger.error_exc(
             "AUTO mailbox bind counts\n  %s: %s\n  AUTO mailbox will not start this tick",
             type(exc).__name__,
             exc,
@@ -1983,7 +1983,7 @@ def _tick_loop() -> None:
             try:
                 database.run_due_scheduled_queries()
             except Exception as exc:
-                logger.exception(
+                logger.error_exc(
                     "Scheduled query tick\n  %s: %s\n  The tick is continuing; due AUTO tasks will still spawn",
                     type(exc).__name__,
                     exc,
@@ -2019,7 +2019,7 @@ def _tick_loop() -> None:
                         slots -= 1
             logger.debug("End AUTO spawn loop after %s items", spawned)
         except Exception as exc:
-            logger.exception(
+            logger.error_exc(
                 "Tick loop\n  %s: %s\n  The scheduler is still running; the next tick will retry",
                 type(exc).__name__,
                 exc,
@@ -2052,7 +2052,7 @@ def start_scheduler() -> None:
             cstats.get("updated"),
         )
     except Exception as exc:
-        logger.exception(
+        logger.error_exc(
             "meteorite ingress/notify entity_type correction\n  %s: %s\n  Scheduler is still starting",
             type(exc).__name__,
             exc,
@@ -2066,7 +2066,7 @@ def start_scheduler() -> None:
             rstats.get("retired"),
         )
     except Exception as exc:
-        logger.exception(
+        logger.error_exc(
             "candidate_requested_* wrapper retire\n  %s: %s\n  Scheduler is still starting",
             type(exc).__name__,
             exc,

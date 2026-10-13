@@ -3450,7 +3450,10 @@ class TestEvaluateJdBatch:
     _JD_READY_TEXT = "x" * 80
 
     @pytest.mark.asyncio
-    async def test_runs_debug_and_passing_job_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_runs_debug_and_passing_job_path(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("INFO")
         save = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
@@ -3500,9 +3503,13 @@ class TestEvaluateJdBatch:
         key = f"jd_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}"
         assert key in payload
         assert set(payload[key]) == set(PHASE_SCORE_BREAKDOWN_FIELDS)
+        assert [r.levelname for r in caplog.records if "job-1 | job PASS: PASSED_JD" in r.getMessage()] == ["INFO"]
 
     @pytest.mark.asyncio
-    async def test_logs_failed_vectors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_logs_failed_vectors(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("INFO")
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
         monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: [_rubric_item()])
@@ -3532,6 +3539,9 @@ class TestEvaluateJdBatch:
             debug=True,
         )
         assert out["failed"] == 1
+        # Graded F is a verdict: INFO FAIL naming the failed vector, no WARNING/ERROR.
+        assert [r.levelname for r in caplog.records if "job-1 | job FAIL: FAILED_JD [fit]" in r.getMessage()] == ["INFO"]
+        assert not [r for r in caplog.records if r.levelno >= 30]
 
     @pytest.mark.asyncio
     async def test_skips_short_jd_without_agent_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4271,7 +4281,7 @@ class TestAst2008RenderVerdictTimeoutRetry:
     async def test_retry_timeout_goes_terminal(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        # Second strike from _RETRY → error_state (AST-642: no loop); terminal logs ERROR (_log_fail_dest).
+        # Second strike from _RETRY → error_state (AST-642: no loop); still a WARNING (_log_fail_dest) — a provider timeout isn't ours to fix.
         caplog.set_level("WARNING")
         transition = self._wire(monkeypatch, "METEORITE_PASSED_JD_RETRY")
         out = await consult_mod.render_verdict("meteorite_grade_do", "job-1")
@@ -4280,7 +4290,7 @@ class TestAst2008RenderVerdictTimeoutRetry:
         assert out["to_state"] == err
         assert out["failure_class"] == "provider_call_timeout"
         assert transition.call_args.args[1:] == (["job-1"], err)
-        assert self._levels(caplog) == ["ERROR"]
+        assert self._levels(caplog) == ["WARNING"]
 
     @pytest.mark.asyncio
     async def test_timeout_without_dest_does_not_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -7006,8 +7016,9 @@ class TestAst1760AllLiteralXRetry:
 
     @pytest.mark.asyncio
     async def test_render_verdict_meteorite_like_all_x_second_strike(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
+        caplog.set_level("INFO")
         """AST-2096 (supersedes AC2): holding + all-X → METEORITE_FAILED_LIKE_ALL_X, a fail verdict
         (success=True so single-entity dispatch tallies it failed), never error_state."""
         job = {
@@ -7050,6 +7061,9 @@ class TestAst1760AllLiteralXRetry:
         assert out["to_state"] == "METEORITE_FAILED_LIKE_ALL_X"
         assert out["to_state"] != TASK_CONFIG["meteorite_like"]["error_state"]
         transition.assert_called_once_with("meteorite_like", ["job-x"], "METEORITE_FAILED_LIKE_ALL_X")
+        # A fail verdict is INFO FAIL, not a WARNING.
+        assert [r.levelname for r in caplog.records if "job-x | job FAIL: METEORITE_FAILED_LIKE_ALL_X" in r.getMessage()] == ["INFO"]
+        assert not [r for r in caplog.records if r.levelno >= 30]
 
     @pytest.mark.asyncio
     async def test_batch_mixed_all_x_sibling_still_passes(
@@ -7146,8 +7160,9 @@ class TestAst1760AllLiteralXRetry:
 
     @pytest.mark.asyncio
     async def test_batch_all_x_second_strike_counts_failed(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
+        caplog.set_level("INFO")
         """AST-2096 [bug-repro] (batch): *_RETRY + all-X → fail_state_ALL_X, counted failed, not bad_grades.
         Same batch keeps first-strike all-X → retry holding (bad_grades) and a real-letter sibling → pass."""
         transition = MagicMock()
@@ -7225,6 +7240,11 @@ class TestAst1760AllLiteralXRetry:
         assert ("meteorite_like", ("job-ok",), "METEORITE_PASSED_LIKE") in triples
         err = TASK_CONFIG["meteorite_like"]["error_state"]
         assert all(t[2] != err for t in triples), triples
+        levels = lambda needle: [r.levelname for r in caplog.records if needle in r.getMessage()]  # noqa: E731
+        assert levels("job-x2 | job FAIL: METEORITE_FAILED_LIKE_ALL_X") == ["INFO"]
+        assert levels("job-ok | job PASS: METEORITE_PASSED_LIKE") == ["INFO"]
+        # First-strike all-X is could-not-process: WARNING to the retry holding, not a FAIL line.
+        assert levels("job-x1 -> METEORITE_PASSED_GET_RETRY") == ["WARNING"]
 
 
 # Branches: meteorite title-screen proof locks after AST-1152 peel (AST-1153 P1/P5).
@@ -7356,8 +7376,9 @@ class TestAst1277DispatchScoreFloorVerdict:
         assert consult_mod._dispatch_score_floor_for_task("c1", "prefilter") == 1.0
 
     def test_apply_soft_fails_below_floor_and_passes_at_zero_floor(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
+        caplog.set_level("INFO")
         save = MagicMock()
         transition = MagicMock()
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
@@ -7400,6 +7421,11 @@ class TestAst1277DispatchScoreFloorVerdict:
         )
         assert to_state_zero == cfg["pass_state"]
         assert score_zero is not None and score_zero >= 0.0
+        # Rubric verdicts log as INFO PASS/FAIL, never WARNING.
+        levels = lambda needle: [r.levelname for r in caplog.records if needle in r.getMessage()]  # noqa: E731
+        assert levels("job-hi | job FAIL: FAILED_DO") == ["INFO"]
+        assert levels("job-z | job PASS: PASSED_DO") == ["INFO"]
+        assert not [r for r in caplog.records if r.levelno >= 30]
 
 
 class TestAst1347PhaseScoreBreakdown:
@@ -8047,9 +8073,10 @@ class TestAst1704MeteoriteTrackSoT:
 
 
 class TestAst1846ConsultRetryWarnThenError:
-    """AST-1846 bug-repro (AST-1839): consult batch holding → WARNING/uncounted; terminal → ERROR/counted.
+    """AST-1846 bug-repro (AST-1839): consult batch holding → WARNING/uncounted; terminal → WARNING/counted.
 
     Red at ftr base 31846c28 (retries counted in total_errors, logger.exception), green at 2eac54b5.
+    Logging refactor: could-not-process terminals are WARNING too — ERROR is reserved for our own code/infra.
     """
 
     _ERR = TASK_CONFIG["qualify_job_listings"]["error_state"]
@@ -8101,8 +8128,9 @@ class TestAst1846ConsultRetryWarnThenError:
         out, transition = await self._hydrate_fail(monkeypatch, "NEW_RETRY")
         transition.assert_called_once_with("qualify_job_listings", ["job-1", "job-2"], self._ERR)
         assert out["total_errors"] == 2
-        # One per-job who -> dest [why] ERROR line each (the batch traceback moved to debug).
-        assert self._levels(caplog, f"-> {self._ERR} [hydrate:") == ["ERROR", "ERROR"]
+        # One per-job who -> dest [why] WARNING line each (counted as errors, but nothing we can fix → no ERROR log).
+        assert self._levels(caplog, f"-> {self._ERR} [hydrate:") == ["WARNING", "WARNING"]
+        assert not [r for r in caplog.records if r.levelno >= 40]
 
     @pytest.mark.asyncio
     async def test_single_entity_grade_counts_holding_not_held_or_terminal(
@@ -8135,7 +8163,7 @@ class TestAst1846ConsultRetryWarnThenError:
             (None, None, None),
         ],
     )
-    async def test_upshot_terminal_and_no_dest_sites_log_error(
+    async def test_upshot_terminal_and_no_dest_sites_log_warning(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
         site: str, state: Any, error_state: Any, dest: Any,
     ) -> None:
@@ -8161,7 +8189,7 @@ class TestAst1846ConsultRetryWarnThenError:
             transition.assert_called_once_with("analysis_upshot", ["j1"], dest)
         else:
             transition.assert_not_called()
-        assert self._levels(caplog, f"j1 -> {dest or '-'} [") == ["ERROR"]
+        assert self._levels(caplog, f"j1 -> {dest or '-'} [") == ["WARNING"]
 
 
 class TestAst2006EmptyTokenRouting:

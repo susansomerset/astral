@@ -6895,7 +6895,7 @@ _AST1846_ENVELOPE_FAIL = {"success": False, "agent_failure": True, "error": "Age
 
 
 class TestAst1846PrefilterRetryWarnThenError:
-    """AST-1846 bug-repro (AST-1839): prefilter retry holding → WARNING/uncounted; out of holding → ERROR/counted.
+    """AST-1846 bug-repro (AST-1839): prefilter retry holding → WARNING/uncounted; out of holding → WARNING/counted.
 
     Red at ftr base 31846c28 (HR → WFR, retries counted, logger.exception), green at 2eac54b5.
     """
@@ -6931,8 +6931,9 @@ class TestAst1846PrefilterRetryWarnThenError:
         out, transition = await self._run_hydrate_fail(monkeypatch, "HOMEPAGE_READY_RETRY")
         transition.assert_called_once_with("acme_com", "ERROR_PREFILTER_COMPANY")
         assert out["total_errors"] == 1
-        # One per-company who -> dest [why] ERROR line (the batch traceback moved to debug).
-        assert _ast1846_levels(caplog, "acme_com -> ERROR_PREFILTER_COMPANY [hydrate:") == ["ERROR"]
+        # One per-company who -> dest [why] WARNING line (counted as an error, but not ours to fix → no ERROR log).
+        assert _ast1846_levels(caplog, "acme_com -> ERROR_PREFILTER_COMPANY [hydrate:") == ["WARNING"]
+        assert not [r for r in caplog.records if r.levelno >= 40]
 
     @pytest.mark.asyncio
     async def test_envelope_fail_first_strike_warns_into_wfr(
@@ -6965,7 +6966,7 @@ class TestAst1846PrefilterRetryWarnThenError:
         # One re-scrape per company: prior HR → WFR edge means the second envelope failure is terminal.
         transition.assert_called_once_with("acme_com", "ERROR_PREFILTER_COMPANY")
         assert out["total_errors"] == 1
-        assert _ast1846_levels(caplog, "acme_com -> ERROR_PREFILTER_COMPANY [do_task:") == ["ERROR"]
+        assert _ast1846_levels(caplog, "acme_com -> ERROR_PREFILTER_COMPANY [do_task:") == ["WARNING"]
 
     @pytest.mark.asyncio
     async def test_mixed_batch_counts_retried_and_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -7022,7 +7023,7 @@ class TestAst1846PrefilterRetryWarnThenError:
         assert out["errors"] == 1
         assert out["passed"] == 0
         assert _ast1846_levels(caplog, "co-first -> JOBLIST_IDENTIFIED_RETRY [") == ["WARNING"]
-        assert _ast1846_levels(caplog, "co-second -> ERROR_PARSE_JOB_LIST_UNPARSEABLE [") == ["ERROR"]
+        assert _ast1846_levels(caplog, "co-second -> ERROR_PARSE_JOB_LIST_UNPARSEABLE [") == ["WARNING"]
 
     @pytest.mark.asyncio
     async def test_parse_job_list_batch_error_result_and_generic_exception(
@@ -7401,11 +7402,15 @@ class TestAst2070CompanyUpshotBatch:
         m["transition_company_state"].assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_empty_tokens_go_straight_to_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_empty_tokens_go_straight_to_error(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         m = self._patch(monkeypatch, {"success": False, "empty_tokens": ["BIO_SUMMARY"]})
         out = await roster_mod.company_upshot_batch("b5", [{"short_name": "a", "state": "UPSHOT_READY"}])
         assert out == {"passed": 0, "failed": 0, "total": 1, "retried": 0}
         m["transition_company_state"].assert_called_once_with("a", "ERROR_COMPANY_UPSHOT")
+        # We control the prompt token content: empty tokens log ERROR, not WARNING.
+        assert [r.levelname for r in caplog.records if "a -> ERROR_COMPANY_UPSHOT [empty prompt tokens]" in r.getMessage()] == ["ERROR"]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("result", [
