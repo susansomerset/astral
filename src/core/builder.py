@@ -375,7 +375,9 @@ def build_cover_letter_from_job(
         _candidate_for_cover_from_block(cd), debug=debug
     )
     contact = cd.get("contact") or {}
-    cover_sig = cover.get("signature") or ""
+    # Blank artifact signature → profile signature text, read at render time (so {$SIGNATURE_IMAGE} in it works too).
+    cover_sig = (cover.get("signature") or "").strip() or str(contact.get("cover_letter_signature") or "")
+    cover = {**cover, "signature": cover_sig}
     token_status, sig_src, image_status = _signature_image_token_status(
         cover_sig, {"contact": contact}
     )

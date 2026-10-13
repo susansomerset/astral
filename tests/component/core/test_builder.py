@@ -3632,6 +3632,16 @@ class TestAst1138JobCoverSomersetFromBlock:
         for sel in self._GOLDEN_SELECTORS:
             assert sel in style
 
+    def test_blank_job_signature_falls_back_to_profile_signature(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["cover_letter_signature"] = "Profile Sig"
+        blank = _build_cover_letter_from_job(monkeypatch, self._job({"Letter": "Hi", "signature": "  "}), cd)
+        assert "Profile Sig" in blank.split('class="letterSignoff"', 1)[1]
+        # A signature on the job artifact wins over the profile one.
+        own = _build_cover_letter_from_job(monkeypatch, self._job({"Letter": "Hi", "signature": "Job Sig"}), cd)
+        signoff = own.split('class="letterSignoff"', 1)[1]
+        assert "Job Sig" in signoff and "Profile Sig" not in signoff
+
     def test_candidate_from_block_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cd = _candidate_row(base_resume=_resume_blob())
         cd["candidate_data"]["contact"]["cover_letter_from_block"] = (
