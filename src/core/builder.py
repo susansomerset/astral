@@ -804,6 +804,11 @@ def _emit_somerset_cover_html_document(
     text_tertiary = colors.get("text_tertiary", "#666")
     border_light = colors.get("border_light", "#e0e0e0")
     border_medium = colors.get("border_medium", "#ccc")
+    layout = BUILD_CONFIG["cover_letter_layout"]
+    body_lh = layout["body_line_height"]
+    signoff_lh = layout["signoff_line_height"]
+    para_indent = layout["paragraph_indent_em"]
+    list_indent = layout["list_indent_em"]
     doc_title = (
         document_title
         if document_title is not None
@@ -885,7 +890,7 @@ body {{
   background: {page_bg};
   font-family: var(--body-font-family);
   color: var(--text-primary);
-  line-height: 1.15;
+  line-height: {body_lh};
   font-size: 15px;
 }}
 .cover-letter {{
@@ -895,7 +900,7 @@ body {{
   background: white;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   color: var(--text-primary);
-  line-height: 1.15;
+  line-height: {body_lh};
 }}
 .fromBlock {{
   margin: 0 0 32px;
@@ -935,17 +940,17 @@ body {{
 /* Indent each paragraph's first line instead of a blank line between paragraphs. */
 .lettercontent p {{
   margin: 0;
-  text-indent: 2em;
+  text-indent: {para_indent}em;
   font-size: 15px;
-  line-height: 1.15;
+  line-height: {body_lh};
   color: var(--text-primary);
 }}
 /* Bullets / numbered lists: no paragraph indent, nested a bit deeper than it. */
 .lettercontent ul, .lettercontent ol {{
   margin: 0;
-  padding-left: 3.5em;
+  padding-left: {list_indent}em;
   font-size: 15px;
-  line-height: 1.15;
+  line-height: {body_lh};
 }}
 .lettercontent li {{
   margin: 0;
@@ -954,7 +959,7 @@ body {{
   margin: 24px 0 0;
   font-size: 15px;
   text-align: left;
-  line-height: 1.5;
+  line-height: {signoff_lh};
 }}
 .signature-img {{
   display: block;

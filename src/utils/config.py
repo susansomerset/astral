@@ -6771,6 +6771,13 @@ BUILD_CONFIG = {
     "cover_letter_artifact_chain": {
         "first_task_key": "draft_cover_letter",
     },
+    # SomersetCover body layout (session + job cover HTML). Read by builder._emit_somerset_cover_html_document.
+    "cover_letter_layout": {
+        "body_line_height": 1.15,  # body, .cover-letter, letter paragraphs, lists
+        "signoff_line_height": 1.5,  # closing + signature block
+        "paragraph_indent_em": 2,  # first-line indent (replaces blank line between paragraphs)
+        "list_indent_em": 3.5,  # bullet / numbered list left padding
+    },
     # AST-1024: session cover field spine (Admin API + form); not job artifact_shapes.
     "session_cover_letter": {
         "document_title": "SomersetCover",

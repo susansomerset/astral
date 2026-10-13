@@ -3987,6 +3987,20 @@ class TestCoverLetterBodyListsAndIndent:
         assert "line-height: 1.65" not in style
         assert "<ul><li>a</li></ul>" in html
 
+    def test_css_layout_values_come_from_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        layout = builder_mod.BUILD_CONFIG["cover_letter_layout"]
+        monkeypatch.setitem(layout, "body_line_height", 1.3)
+        monkeypatch.setitem(layout, "signoff_line_height", 1.7)
+        monkeypatch.setitem(layout, "paragraph_indent_em", 3)
+        monkeypatch.setitem(layout, "list_indent_em", 5)
+        html = builder_mod._emit_somerset_cover_html_document(
+            {"from_block": "S", "letter_date": "d", "letter": "Hi.", "signoff_closing": "", "signature": "S"}
+        )
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        assert "line-height: 1.3" in style and "line-height: 1.7" in style
+        assert "text-indent: 3em" in style and "padding-left: 5em" in style
+        assert "line-height: 1.15" not in style
+
 
 _AST1304_JOB = {
     "company": "Acme Corp",
