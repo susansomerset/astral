@@ -684,3 +684,42 @@ The file round-trips byte-identically through `json.dumps(rows, indent=2, ensure
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2210
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `origin/sub/AST-2206/AST-2210-registry-estelle-prompts` @ `5a00807408ce5680a82368e666696feb85b8abc8`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.contact.command-intercept | A | | |
+| stat.logging.debug | X | | Import-time config + `agent_task.json` only; no new `src/**` callables or log sites in this child |
+
+## Traceability
+
+AC1→Stage 1 (4,8,14); AC2→Stage 1 (8,14); AC3→Stage 2 (3,7); AC4→Stage 1 (12,14) with pinhole pytest green at qa-child/test-child per plan acceptance table
+
+## Findings
+
+### acceptable
+
+- **Location:** Plan § Scope gate / Canon alignment  
+  **Finding:** Parent-requested `patt.contact.command-intercept` canon text amendments (a–c) are explicitly out of this child’s file scope; the plan carries the config half (`payload_optional`, `artifact_key`, `private_channel_only`) and documents the #3 runner contract.  
+  **Recommendation:** No plan change; Chuckles/Archie track pattern doc updates on the epic, not blocking #1 build.
+
+- **Location:** Child AC 4 vs Stage 1 step 14  
+  **Finding:** AC 4 requires `pytest -k pinhole` to pass at ticket done; Stage 1 may leave `test_every_contact_handler_in_pinhole` red until Betty amends the meteorite-only write assert at qa-child.  
+  **Recommendation:** Keep the documented baseline/`comm` gate and name the pending test in the Code Complete comment as the plan already requires.
+
+### discuss
+
+- **Location:** Plan interim behavior (Stage 1 contract §)  
+  **Finding:** Until AST-2212, `payload_optional` is inert in the runner, so `/show-*` and `/draft-*` still hit usage replies on ftr — intentional but easy to misread as a config bug during #1-only UAT.  
+  **Recommendation:** Optional one-line in implementer notes; not blocking approval.
+
+context_tokens≈42000
