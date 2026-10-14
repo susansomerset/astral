@@ -312,3 +312,62 @@ issue in the `🛑 Stage 1 blocked:` format, then wait.
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2214
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `b7c6ade7faa37f1016b3f9131dc4d0c093eb49a7`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+1→S1:3,5; 2→S1:4–5; 3→S1:4; 4→S1:5; 5→S1:6; 6→parent UAT (manual; no build stage)
+
+## Findings
+
+### acceptable — No `## Self-assessment` block
+
+- **Severity:** acceptable
+- **Location:** Plan doc structure
+- **Finding:** No self-assessment section; Estimate confirm is present.
+- **Recommendation:** Optional; not blocking.
+
+### acceptable — AC 6 not staged
+
+- **Severity:** acceptable
+- **Location:** Stage 1 “Done when” vs ticket AC 6
+- **Finding:** Live deploy check is parent/ticket UAT, not encoded as an engineer stage (same pattern as other foundation children).
+- **Recommendation:** Susan runs UAT after rollup; no plan change required.
+
+### discuss — `CRITICAL` excluded from body filter
+
+- **Severity:** discuss
+- **Location:** Stage 1 step 4 (filter decision)
+- **Finding:** Plan documents excluding `CRITICAL` from the body while parent AC 2 names only WARNING/ERROR; no current `CRITICAL` emitters in `src/`.
+- **Recommendation:** If a future level ever lands in `app_log`, confirm Susan still wants it attachment-only; no plan edit needed for build.
+
+### acceptable — Pre-existing `except Exception` → WARNING in monitor
+
+- **Severity:** acceptable
+- **Location:** Stage 1 steps 5–6 (“leave … WARNING … exactly as they are”)
+- **Finding:** Unchanged swallow paths still log at WARNING, not ERROR; plan explicitly freezes them per Scope/Canon notes.
+- **Recommendation:** Out of this ticket’s plan delta; any statute uplift is a separate fix-lane/architecture item.
+
+## R6 checklist (summary)
+
+- Definition fidelity: matches parent functional scope §§1–3 and §5 (balance outage), technical scope for `monitor.py` only; `gmail.py` and dispatcher untouched.
+- Scope gate: single file; helper split + one shared fetch; `send_email(..., attachments=...)` assumes AST-2213 on `origin/ftr/AST-2207-production-error-report-email` (integration section states this).
+- DRY / creep: removes `_format_log_body` rather than duplicating fetch paths; no sibling monitor-adjacent files.
+- Expected test reds documented for `qa-child`; engineer sanity-run scope is explicit.
+- Plan-discuss: **Plan Ready**; **0** completed `[plan-discuss]` rounds.
+
+context_tokens≈42000
