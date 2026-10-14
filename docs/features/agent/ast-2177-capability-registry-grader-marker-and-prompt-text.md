@@ -353,6 +353,15 @@ Each stage ends in one `code(AST-2177): …` commit on the epic worktree, publis
 
 Confirm Chuckles estimate: 5 — agree
 
+## Revisions
+
+Revision 1 — 2026-10-14
+Driven by: Susan's directive on AST-2172, 2026-10-13 16:47: "do NOT run the Stage 1 spike locally — no provider calls from this host, no new env vars, no gate tickets … the models the three graders actually run on (qwen/qwen3-235b-a22b-2507 for Grace and Lucy, openai/gpt-oss-120b for Kent) must stay selectable as graders on staging. Set them provisionally … Everything else follows plan defaults."
+Changes: Stage 1 steps 1–7 (spike run) skipped. `debug/spikes/AST-2177/spike_tool_choice.py` exists but was never executed and isn't committed. Values as built:
+- Every `LLM_SERVER_CONFIG` entry (`anthropic`, `kimi`, `openrouter`, `deepseek`) has `structured_output_capability: None`. That's the plan's default for anything unchecked; no direct-model overrides.
+- `OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES` sets `openai/gpt-oss-120b` and `qwen/qwen3-235b-a22b-2507` to `"advisory"`. **Unverified — Susan checks on staging.** I chose `advisory` rather than `enforced` so AST-2178's light check runs on every reply until a check proves the schema is enforced.
+- Stage 1 done-when, as built: `get_structured_output_capability` returns `advisory` for the two grader slugs and `None` for every other model.
+
 ## Appendix A — `debug/spikes/AST-2177/apply_prompt_edits.py`
 
 ```python

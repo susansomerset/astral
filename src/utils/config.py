@@ -5606,7 +5606,10 @@ for _h in [m["handler"] for m in CONTACT_TASK_CONFIG.values()] + [
 #                        refused after the retries stops the dispatch batch, ledger FAILED — AST-2010)
 #   probe              — True: one host-discovery probe per batch, then the batch is pinned to the
 #                        probe's host (src.external.openrouter, AST-1959). Only OpenRouter routes per call.
+#   structured_output_capability — "enforced" | "advisory" | None: forced-tool schema support (AST-2172); a model entry's own key overrides it
 # ---------------------------------------------------------------------------
+# structured_output_capability values: AST-2177 provider spike not run (Susan, 2026-10-13: no provider calls from
+# the build host). Every server is None until checked; grader-model overrides below are provisional.
 LLM_SERVER_CONFIG = {
     "anthropic": {
         "label": "Anthropic",
@@ -5617,6 +5620,7 @@ LLM_SERVER_CONFIG = {
         "request_extras": {},
         "concurrency": None,
         "probe": False,
+        "structured_output_capability": None,
     },
     "kimi": {
         "label": "Kimi",
@@ -5627,6 +5631,7 @@ LLM_SERVER_CONFIG = {
         "request_extras": {},
         "concurrency": None,
         "probe": False,
+        "structured_output_capability": None,
     },
     "openrouter": {
         "label": "OpenRouter",
@@ -5639,6 +5644,8 @@ LLM_SERVER_CONFIG = {
         # 10s base: sleeps 10/20/40/80/160s nominal, jittered 0.5-1.0x → roughly 2.5-5 min before the batch stops.
         "concurrency": {"rate_limit_retries": 5, "backoff_base_seconds": 10.0, "exhausted_stops_batch": True},
         "probe": True,
+        # 93 of 95 slugs unchecked → None; checked slugs get OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES.
+        "structured_output_capability": None,
     },
     "deepseek": {
         "label": "DeepSeek",
@@ -5655,10 +5662,13 @@ LLM_SERVER_CONFIG = {
             "backoff_max_seconds": 30.0,
         },
         "probe": False,
+        "structured_output_capability": None,
     },
 }
 LLM_SERVER_PROTOCOLS = ("anthropic", "anthropic_compat")
 LLM_SERVER_AUTH_STYLES = ("x-api-key", "bearer")
+# Allowed structured_output_capability values (AST-2172).
+LLM_STRUCTURED_OUTPUT_CAPABILITIES = ("enforced", "advisory", None)
 # Probe user turn only (AST-1959): tiny text so the host pin is cheap on *input*; max_tokens / effort / thinking
 # match the real hop — do not try to disable reasoning here (that breaks host parity and mandatory-thinking slugs).
 LLM_PROBE_MESSAGE = "Respond with 1."
@@ -5804,6 +5814,7 @@ LLM_MODEL_ROUTING_TYPES = ("direct", "openrouter")
 #   tier.max_tokens     — resolved wire budget (agent row or default, then catalog floor if any)
 #   pricing[<sku>]: model_label, cpm_input, cpm_output, cpm_cache_read, cpm_cache_write,
 #     cache_min_tokens (USD per million tokens; cache_write 0 where the vendor does not bill it)
+#   structured_output_capability — optional; overrides the server's value (AST-2172)
 # ---------------------------------------------------------------------------
 LLM_MODEL_CONFIG = {
     "kimi-k2.6": {
@@ -5893,6 +5904,15 @@ LLM_MODEL_CONFIG = {
 }
 
 
+# Per-slug structured-output capability; slugs not listed inherit the server's None.
+# Provisional — unverified, Susan checks on staging (AST-2177: spike not run). These are the models the
+# three graders run on (Grace / Lucy: qwen, Kent: gpt-oss), kept selectable while "requires structured output" is on.
+OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES: Dict[str, Optional[str]] = {
+    "openai/gpt-oss-120b": "advisory",
+    "qwen/qwen3-235b-a22b-2507": "advisory",
+}
+
+
 def _build_openrouter_models() -> None:
     """Append one LLM_MODEL_CONFIG entry per OPENROUTER_MODEL_TABLE row (AST-1938, AST-1955). Model id,
     label, SKU and pricing key are all the slug; the output default is min(16000, the slug's max output)."""
@@ -5914,6 +5934,7 @@ def _build_openrouter_models() -> None:
                     "cache_min_tokens": 0,
                 },
             },
+            **({"structured_output_capability": OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES[slug]} if slug in OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES else {}),
         }
 
 
@@ -5934,6 +5955,15 @@ def get_llm_model(model_id: str) -> Dict[str, Any]:
     if not m:
         raise ValueError(f"Unknown LLM model {model_id!r}. Valid: {list(LLM_MODEL_CONFIG)}")
     return m
+
+
+def get_structured_output_capability(model_id: str) -> Optional[str]:
+    """Forced-tool schema support for a model: its own override, else its server's (AST-2172).
+    "enforced" | "advisory" | None. Raises ValueError on an unknown model."""
+    m = get_llm_model(model_id)
+    if "structured_output_capability" in m:
+        return m["structured_output_capability"]
+    return get_llm_server(m["server"])["structured_output_capability"]
 
 
 def get_model_routing(server_id: str, sku: str) -> str:
