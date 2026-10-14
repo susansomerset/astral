@@ -193,3 +193,55 @@ context_tokens≈32000
 
 - Stage 1: `send_email(..., attachments: dict[str, str] | None = None)`; truthy → `multipart/mixed` (body part + one `text/plain` attachment per filename); falsy → unchanged `MIMEText(body, "plain")`
 - Pre-existing, unchanged by this diff: 3 `TestGetMessageHtml` failures in `test_gmail.py` and 3 ruff findings (I001, RUF022, BLE001) on `gmail.py` reproduce identically on the plan tip
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2213
+**Publish ref:** `b288e7dc56ba1a3abb49e90dfb479f8d76bde099` (`origin/sub/AST-2207/AST-2213-gmail-plain-text-attachments`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.warning | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Pre-existing lint on `src/external/gmail.py`:** Build review already noted unchanged ruff items (I001, RUF022, BLE001 on the broad `except Exception` in `send_email`). This diff does not widen that handler; no fix-now from review.
+- **`TestGetMessageHtml` `date` key asserts:** Test/bible updates on this ref include aligning expectations with AST-1537’s `date` field on get payloads; bible documents they were red on `origin/dev`. Same ticket file, not sibling product carry.
+- **Plan vs branch tests:** Plan Stage 1 reserved test/bible edits to `qa-child`; the tip includes `TestAst2213Attachments` and bible rows — expected after Betty/Ada test path, not a product-scope leak.
+
+## What's solid
+
+- `send_email` matches Stage 1: optional `attachments: dict[str, str] | None`, truthy → `multipart/mixed` (body + `Content-Disposition: attachment` parts), falsy → same `MIMEText(body, "plain")` branch.
+- `require_controlled_external_io("gmail.send_email")` still first; `try` / `except Exception: return False` unchanged; no new app-level `logger.warning` / `logger.exception` in the send path (Canon Scope intent).
+- **Product scope:** only `src/external/gmail.py` under `src/**`; `src/core/monitor.py` untouched (sibling #2 / AST-2214 consumer).
+- **AC 5:** `test_attachment_builds_multipart_mixed` and parametrized no-attachment single-part tests match acceptance criteria.
+- **Estimate 2:** Footprint (one external helper + focused tests/bible/plan) fits confirmed points.
+
+## Recommended actions
+
+- Chuckles: append artifact, `docs(AST-2213): Radia review — clean`, post slim upshot `--as radia`, move to **Review Posted**; datt **PROCEED** → **User Testing** (no `resolve-child` unless Susan wants optional lint cleanup tracked separately).
+
+context_tokens≈32000
