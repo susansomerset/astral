@@ -379,3 +379,14 @@ Sync note: built after `sync-child.sh … --ftr AST-2172-structured-output-grade
 - AST-2180: wire `forced_tool` + `getTimestampPrefix(structured=True)` for grader tasks to close epic AC **3** end-to-end.
 
 context_tokens≈36000
+
+## Resolution
+
+2026-10-14. Resolved against Radia's review @ `18dd61dec` (artifact commit `7ac2aa6dc`). No product change.
+
+- **Discuss — `stat.logging.debug` (forced-tool `api_kwargs` debug line truncated above 2000 chars):** took Radia's **Default**: proceed to User Testing; no code change, same call as AST-2178's resolution. The cap is the shared `_truncate_debug_args` / `truncate_debug_string` in `src/utils/logging.py`, applied to every dict/string debug argument app-wide. Both call sites (`anthropic.py` and the pre-existing `llm_compat.py` line) already do what the statute asks of a call site: pass the full kwargs, unsliced and ungated. Narrowing or chunking here would work around shared logger policy from one module, and `logging.py` is outside this ticket's Files Changed. **Susan can reverse:** one epic-wide logging change (a `logging.py` exemption/policy aligned with `stat.logging.debug`) fixes this line and AST-2178's schema line together.
+- **Discuss — AC 3 "any grader task" vs Boundaries:** aligned with Joan and Radia: for this child the transport tests are the gate (kwargs present with `forced_tool`, absent without); epic-level AC 3 closes when AST-2180 passes `forced_tool` for grader tasks. No action.
+- **Advisory — three-dot diff carries AST-2176–2178:** expected ftr stacking. No action.
+- **Advisory — encoded coercion removed from `_parse_json_response`:** interim ftr-only gap until AST-2180, as planned. No action.
+- **Advisory — OpenRouter probe volume with per-call schemas:** epic/ops follow-up (`openrouter.py` is in no child's scope). No action.
+- **Advisory — single logging fix for AST-2178 + AST-2179:** agreed; see the first bullet.
