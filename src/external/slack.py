@@ -5,7 +5,7 @@ workspace poster pool (``list_workspace_posters``), workspace members
 (``list_workspace_members`` for Manage Candidates bind), bot-visible channel
 list (``list_bot_channels``), membership check (``is_channel_member``), channel
 type lookup (``fetch_channel_type``), and full ascending channel history
-(``fetch_full_conversation_history``).
+(``fetch_full_conversation_history``; opt-in thread replies for Contact drafts, AST-2206).
 Local/dev only: Socket Mode websocket helper (scripts/slack_socket_mode_dev.py).
 
 Secrets from ``os.environ[CONTACT_CONFIG[…_env]]`` at **call time** (strict) —
@@ -553,17 +553,26 @@ def is_channel_member(*, channel: str, slack_user_id: str) -> bool:
     return False
 
 
-def fetch_full_conversation_history(*, channel: str) -> list[dict]:
+def fetch_full_conversation_history(
+    *, channel: str, include_thread_replies: bool = False
+) -> list[dict]:
     """Paginate conversations.history for one channel; return oldest→newest.
 
     Complements limited ``fetch_conversation_history`` (single page). Hard-fail
     on ok:false / HTTP — no soft-skip for a stored-channel snapshot.
+    ``include_thread_replies`` (AST-2206, off by default so the admin snapshot is
+    unchanged): also pull every thread's replies via ``conversations.replies`` and
+    merge them into the same ascending order. Each message keeps Slack's ``user``
+    (poster) and ``thread_ts`` fields as returned.
     """
     require_controlled_external_io("slack.fetch_full_conversation_history")
     ch = (channel or "").strip()
     if not ch:
         raise ValueError("channel is required")
-    logger.debug("Calling fetch_full_conversation_history: channel=%s", ch)
+    logger.debug(
+        "Calling fetch_full_conversation_history: channel=%s include_thread_replies=%s",
+        ch, include_thread_replies,
+    )
     messages = _paginate_messages(
         "conversations.history",
         {"channel": ch, "limit": _PAGE_LIMIT},
@@ -571,6 +580,25 @@ def fetch_full_conversation_history(*, channel: str) -> list[dict]:
     )
     # soft_skip=False → list or raise; never None
     msgs = messages if isinstance(messages, list) else []
+    if include_thread_replies:
+        # Thread parents carry reply_count > 0 (same test as _collect_poster_ids_for_channel).
+        parents = [
+            m for m in msgs
+            if isinstance(m.get("reply_count"), int) and m["reply_count"] > 0
+            and isinstance(m.get("ts"), str) and m["ts"].strip()
+        ]
+        logger.debug("Beginning thread replies loop on %s items", len(parents))
+        for parent in parents:
+            parent_ts = parent["ts"].strip()
+            # Same hard-fail as history (soft_skip=False → list or raise).
+            replies = _paginate_messages(
+                "conversations.replies",
+                {"channel": ch, "ts": parent_ts, "limit": _PAGE_LIMIT},
+                soft_skip=False,
+            ) or []
+            # conversations.replies echoes the parent as its first message; history already has it.
+            msgs.extend(r for r in replies if r.get("ts") != parent_ts)
+        logger.debug("End thread replies loop after %s items", len(parents))
     logger.debug("Beginning ascending sort loop on %s items", len(msgs))
 
     def _ts_key(m: dict) -> tuple:
