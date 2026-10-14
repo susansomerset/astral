@@ -1,6 +1,7 @@
 """Shared helpers for Anthropic and Anthropic-Messages-compatible external LLM clients (AST-687 / AST-538 / AST-1851)."""
 
 import asyncio
+import json
 from typing import Any, Callable, Dict, List, Optional
 
 from src.utils.config import (
@@ -178,8 +179,22 @@ def extract_api_response_text(api_response: Any) -> str:
         if isinstance(text, str) and text:
             text_parts.append(text)
     if not text_parts:
+        # Forced-tool reply (AST-2172): no text block, so audit/debug text is the tool input as JSON.
+        tool_inputs = [b.input for b in api_response.content if getattr(b, "type", None) == "tool_use"]
+        if tool_inputs:
+            return json.dumps(tool_inputs[-1])
         raise ValueError("API response content block missing text attribute")
     return text_parts[-1]
+
+
+def extract_tool_input(api_response: Any, tool_name: str) -> Dict[str, Any]:
+    """Input dict of the named tool_use block — the payload of a forced-tool call (AST-2172). Raises when absent."""
+    for block in getattr(api_response, "content", None) or []:
+        if getattr(block, "type", None) == "tool_use" and getattr(block, "name", None) == tool_name:
+            if not isinstance(block.input, dict):
+                raise ValueError(f"Tool {tool_name!r} input is not an object")
+            return block.input
+    raise ValueError(f"API response has no {tool_name!r} tool call")
 
 
 def emit_llm_call_debug(
