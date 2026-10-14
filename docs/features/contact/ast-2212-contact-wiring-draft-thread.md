@@ -850,3 +850,14 @@ AC3→Stages 1–3 + smoke grep; AC4→ledger helper in `contact.py` only; AC5�
   **Recommendation:** No change unless mpim/private-channel taxonomy needs a follow-up ticket.
 
 context_tokens≈68000
+
+## Review
+
+**Built:** `origin/sub/AST-2206/AST-2212-contact-wiring-draft-thread` @ `e08752f90` (Stage 1 `9bd96e500`, Stage 2 `120a303bc`, Stage 3 `e08752f90`).
+
+**Implementer notes:**
+- **Built as written:** all three stages match the plan's code blocks verbatim, including Joan's discuss item (Stage 3 revise turn uses the uncapped `fetch_full_conversation_history` filtered to the thread).
+- **Checks per stage:** `py_compile` + import OK; smoke `STAGE 1/2/3 OK`; AC 3 grep over `src/core/` empty; ruff delta exactly as predicted (Stage 1 UP045 +2; Stage 2 UP006 +1, UP045 +2; Stage 3 UP045 +2, TRY401 +1), all matching the file's existing style.
+- **Tests:** no new FAILED/ERROR vs the Stage 0 baseline (36 pre-existing lines across `test_contact.py` + `test_config.py`). Run with `~/astral/.venv/bin/python`.
+- **For Radia (§8):** `_draft_thread_root_command` calls `load_slack_conversation_context` without Calling/Response lines, same as the existing Estelle-turn call site; the callee is `@_with_log_debug` and logs internally. Left as planned.
+- **Coverage gaps for Betty (not added; test tree is hers):** see the plan's **Notes for Betty** under Acceptance trace — refusal (public, mpim, DM), unmapped, mapped-candidate substitution, payload-optional run, `artifact_key=` only when declared, draft packet (thread replies, stale-blob exclusion, ledger COMPLETED/FAILED, batch reset), root detection (refresh, non-draft root, command-in-thread), revise post rule, paste-recovery skip.
