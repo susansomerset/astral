@@ -102,13 +102,13 @@ Manifest default ( **`test-astral`** on publish tip — consult/config scope): `
 | --- | --- | --- |
 | Bracket **link_set** decode + prefix precedence | `src/core/consult.py` (`_apply_prefilter_encoded_link_meta`) | `tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode`; `tests/component/core/test_agent.py::TestAst603RubricNormalize::test_lovable_encoded_line_with_bracket_tails` |
 | **`_decode_payload`** wiring | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode` |
-| **`stringify_response_schema`** bracket example | `src/utils/config.py` | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` |
+| **`stringify_response_schema`** bracket example (retired **AST-2177** — grader envelope is `agent_performance` only) | `src/utils/config.py` | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails` |
 
 **AST-697** narrowed run (includes **AST-603** prefix-tail regression):
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails \
+  tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails \
   tests/component/core/test_agent.py::TestAst697PrefilterBracketLinkDecode \
   tests/component/core/test_agent.py::TestAst603RubricNormalize \
   tests/component/core/test_roster.py::TestAst603ConsultParityHydration \

@@ -791,3 +791,19 @@ Repro node ids: `test_config.py::TestAst1084EvaluateJdCriteria::test_qc_content_
 **New:** `TestAst2024FetchRelativeJdCatalogRow::test_row_shape_and_sequence` — row current; `agent_id` / Job Review group mirror `fetch_jd`; `task_seq` 3.5 sits directly after `fetch_jd`; unique `task_key_uuid`. Red pre-AST-2024 (no row).
 
 **Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (`== 57` rows + `AST786_EXPECTED_TASK_KEYS`) was already red before this ticket (catalog grew past 57 on `origin/dev`). Whoever re-pins it must add `fetch_relative_jd`. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2024.
+
+### AST-2177 · AST-2172 (grader `cache_prompt` rows lose encoded-line text)
+
+**Primary manifest:** [`../utils/config.md`](../utils/config.md) § AST-2177.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New — AC 7: all 11 grader tasks (`meteorite_grade_do/get` via `master_task_key`), resolved catalog prompt has none of `{pos}` / `exactly 4 characters` / `GRADE SET COMPLETENESS` / `agent_payload` / `processing failure`, keeps `5: The source explicitly states it.` | `data/admin/agent_task.json` + `resolve_tokens` | `TestAst2177GraderPromptsSemanticsOnly::test_ac7_resolved_grader_prompts` |
+| New — vet row: `## A-F LINK-TYPE VET`; `## Response` is `{$OUTPUT_INSTRUCTIONS}` | catalog | `TestAst2177GraderPromptsSemanticsOnly::test_vet_row_uses_output_instructions_token` |
+| Revised — `## GRADE SET COMPLETENESS` absent on the seven graded rows; never-omit wording per row (`Silent vectors get grade X with confidence 0.`, qualify `… never omit a vector.`) | catalog | `TestAst1154GradedTaskCompletenessPrompts::test_marker_and_tighten_lines_on_graded_cache_prompts` |
+| Revised — AST-2120 bug-repro retargeted: no `7 codes` / `segment`; metadata-only omit rule; salary/employment still X with confidence 0 | catalog | `TestAst1154GradedTaskCompletenessPrompts::test_qualify_cache_prompt_grade_count_and_metadata_omit_scope` |
+| Revised — QC rule moved to `## QUALITY CHECK (QC)`; STEP 3 `(never X, never confidence 0)`; no `QCX0` | catalog | `TestAst1910EvaluateJdQcNeverXPrompt::test_catalog_evaluate_jd_cache_prompt_qc_exception` (new `_CATALOG_*` constants; fixture constants untouched) |
+
+**Masked, not revised:** `TestAst1154GradedTaskCompletenessPrompts::test_fixture_graded_keys_carry_completeness_marker` stays green but pins the stale `GRADE SET COMPLETENESS (AST-1154)` sentinel in `docs/uat-fixtures/AST-756/expected-agent_task.json`. That fixture already differs from the catalog (`TestAst1910…::test_fixture_evaluate_jd_row_lockstep_with_catalog` and the other AST-756 lockstep tests were red before this ticket). Whoever re-syncs the fixture must drop that assertion.
+
+**Integration:** none.

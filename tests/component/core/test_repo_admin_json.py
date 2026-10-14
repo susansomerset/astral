@@ -1182,37 +1182,38 @@ class TestAst1154GradedTaskCompletenessPrompts:
     )
 
     def test_marker_and_tighten_lines_on_graded_cache_prompts(self) -> None:
+        # AST-2177: the encoded-line GRADE SET COMPLETENESS section is gone from the catalog;
+        # the never-omit-a-vector rule survives in each prompt's own VALIDATE / Rules text.
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         for key in self._KEYS:
-            cache = by[key]["cache_prompt"]
-            assert self._CATALOG_MARKER in cache, key
-            assert "Omitting a code is invalid" in cache or (
-                "never omit a code" in cache
-            ), key
-        # Plan VALIDATE/Rules tighteners (exact phrases).
+            assert self._CATALOG_MARKER not in by[key]["cache_prompt"], key
         assert "Confirm every rubric vector code appears exactly once" in by["evaluate_jd"][
             "cache_prompt"
         ]
-        assert "Every rubric vector code must appear exactly once per job line" in by[
-            "qualify_job_listings"
-        ]["cache_prompt"]
+        assert (
+            "Every rubric vector must be graded once per job; use X with confidence 0 when silent — never omit a vector."
+            in by["qualify_job_listings"]["cache_prompt"]
+        )
         for key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
-            assert "silent vectors must be {code}X0." in by[key]["cache_prompt"], key
+            assert "Silent vectors get grade X with confidence 0." in by[key]["cache_prompt"], key
         assert "silent vectors must be X0." in by["prefilter_company"]["cache_prompt"]
 
     def test_qualify_cache_prompt_grade_count_and_metadata_omit_scope(self) -> None:
-        # Bug-repro: 7-code examples must not cap the segment count, and the metadata
-        # "omit unstated" rule must not leak into salary / employment-type grades.
+        # Bug-repro (AST-2120), retargeted by AST-2177: no segment-count template survives, and the
+        # metadata "omit unstated" rule must not leak into salary / employment-type grades.
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         cache = by["qualify_job_listings"]["cache_prompt"]
-        assert "shows 7 codes for illustration only — the code count is not a template" in cache
-        assert "as many segments as the rubric has codes" in cache
+        assert "7 codes" not in cache
+        assert "segment" not in cache
+        assert "Every rubric vector must be graded once per job" in cache
         assert "Omit any metadata key/value pair whose value is not stated" in cache
-        assert "never to grade segments" in cache
-        assert "{code}X0 when the listing does not state it" in cache
+        assert "never to grades" in cache
+        assert "as X with confidence 0 when the listing does not state it" in cache
         assert "Omit any data whose value is not stated" not in cache
+        # names-not-ticket-ids guard (regression only).
+        assert "AST-" not in cache
         # names-not-ticket-ids guard (regression only; true before and after the fix).
         assert "AST-" not in cache
 
@@ -1247,10 +1248,23 @@ class TestAst1910EvaluateJdQcNeverXPrompt:
         rows = json.loads(Path(path).read_text(encoding="utf-8"))
         return {r["task_key"]: r for r in rows if r.get("current") == 1}
 
+    # AST-2177: catalog STEP 3 drops the encoded QCX0 / QCF0 codes; the QC rule moves to its own section.
+    # The AST-756 fixture still carries the pre-2177 strings above (fixture test below is untouched).
+    _CATALOG_STEP3 = (
+        "use X0 when silent — never omit a code. Exception: QC (Quality Check) is never X — "
+        "if the job description is too thin to analyze, grade QC F with confidence 1–5 "
+        "(never X, never confidence 0)."
+    )
+    _CATALOG_QC = (
+        "## QUALITY CHECK (QC)\n"
+        "QC (Quality Check) is never X — grade it F when there is not enough to analyze."
+    )
+
     def test_catalog_evaluate_jd_cache_prompt_qc_exception(self) -> None:
         cache = self._current_by_key("data/admin/agent_task.json")["evaluate_jd"]["cache_prompt"]
-        assert cache.count(self._STEP3) == 1
-        assert cache.count(self._COMPLETENESS) == 1
+        assert cache.count(self._CATALOG_STEP3) == 1
+        assert cache.count(self._CATALOG_QC) == 1
+        assert "QCX0" not in cache
 
     def test_fixture_evaluate_jd_row_lockstep_with_catalog(self) -> None:
         # Per-key lockstep (AST-1196 / AST-1211 style) — whole-file AST-756 twin is already red on dev, not ours.
@@ -1259,6 +1273,39 @@ class TestAst1910EvaluateJdQcNeverXPrompt:
         assert self._STEP3 in fix["cache_prompt"]
         assert self._COMPLETENESS in fix["cache_prompt"]
         assert fix == cat
+
+
+class TestAst2177GraderPromptsSemanticsOnly:
+    """AST-2177 AC 7: every grader task's resolved catalog prompt drops the encoded-line block, keeps the confidence scale."""
+
+    _BANNED = ("{pos}", "exactly 4 characters", "GRADE SET COMPLETENESS", "agent_payload", "processing failure")
+
+    def test_ac7_resolved_grader_prompts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import ASTRAL_CONFIG, TASK_CONFIG, resolve_tokens
+
+        # {$RUBRIC_VECTORS} reads the DB; the rubric body is not under test here.
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_token", lambda cid, owner: [])
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {r["task_key"]: r for r in rows if r.get("current") == 1}
+        graders = [
+            k for k, c in TASK_CONFIG.items()
+            if ASTRAL_CONFIG["output_types"].get(c.get("output_type", ""), {}).get("structured_output")
+        ]
+        # Nine edited rows + meteorite_grade_do / meteorite_grade_get resolving through grade_do / grade_get.
+        assert len(graders) == 11, graders
+        for key in graders:
+            row = by[TASK_CONFIG[key].get("master_task_key") or key]
+            text = resolve_tokens(row["cache_prompt"], {}, key, warn_on_empty=False)
+            assert [b for b in self._BANNED if b in text] == [], key
+            assert "5: The source explicitly states it." in text, key
+
+    def test_vet_row_uses_output_instructions_token(self) -> None:
+        # vet_inflow_discovery's hand-typed ## Response block becomes the output-type token.
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        cache = next(r for r in rows if r["task_key"] == "vet_inflow_discovery" and r.get("current") == 1)["cache_prompt"]
+        assert cache.endswith("## Response\n\n{$OUTPUT_INSTRUCTIONS}")
+        assert "## A-F LINK-TYPE VET" in cache
+        assert "ENCODED A-F" not in cache
 
 
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)
