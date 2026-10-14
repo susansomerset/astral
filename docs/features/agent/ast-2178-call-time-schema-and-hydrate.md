@@ -536,3 +536,87 @@ Checks:
 Plan-step note: Stage 2 step 4's command `python3 debug/spikes/AST-2178/check.py` needs `PYTHONPATH=.`. Python puts the script's own folder on the import path, not the repo root. The harness is gitignored and its content is unchanged; only the invocation differs.
 
 For qa-child: no existing test imports this module, so nothing is expected to churn. Durable coverage for AC 1–3 and the light-check cases (missing / unexpected code, X with nonzero confidence, illegal grade, out-of-range confidence, missing row, unknown row, vet website / confidence 0) can follow Appendix C.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2178  
+**Publish ref:** `b38940df299f860227d98bb7f0b5b35793ef47d8` (`origin/sub/AST-2172/AST-2178-call-time-schema-hydrate`)  
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066` (unchanged by this child’s commits; not DIRTY)  
+**Overall:** DISCUSS  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| stat.agent.grade-vector-validation | A | | |
+| stat.agent.confidence-bounds | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.debug | C | 2 | `get_logger().debug` JSON-encodes dict args via `truncate_debug_string` in `src/utils/logging.py` — large schemas exceed 2k and are truncated, conflicting with plan/canon “no truncation” |
+
+## Column diff vs plan stage
+
+| id | Joan | Radia | note |
+|----|------|-------|------|
+| stat.logging.debug | A | C | Joan assumed full schema at debug; shared logger truncates serialized dicts >2000 chars (realistic multi-vector rubrics ~33k in spot check) |
+
+(aligned on the other three ids.)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none) — functional AC 1–3 and hydrate/statute behavior are sound; truncation is shared infrastructure + call-site pattern, not a wrong hydrate contract.
+
+### discuss
+
+- **Location:** `src/core/grade_schema.py:88` + `src/utils/logging.py` (`_truncate_debug_args` / `truncate_debug_string`)  
+  **Finding:** Plan Canon check and `stat.logging.debug` require the built schema logged in full with no truncation. `logger.debug("Built grade tool schema for %s: %s", output_type, schema)` passes a `dict`; the wrapper serializes and truncates blobs over 2000 characters. Small rubrics (e.g. CL + one row ≈1518 chars) pass; larger ones (15 codes × 8 rows ≈33k) do not. `test_schema_logged_in_full_at_debug` only exercises the small case.  
+  **Recommendation:** @susan — enforce plan literal before **User Testing**, or accept debug-only gap until logging is fixed?  
+  **Default:** Proceed to UT; treat as **resolve-child optional** (chunked schema logging in `grade_schema.py`, or a targeted logging exception for schema dumps, or global `stat.logging.debug` alignment in a separate change). Do not block on `LOCKED_AT_100`.
+
+- **Location:** Betty qa follow-up vs Joan plan discuss  
+  **Finding:** Joan noted no committed tests at validate-plan; tip now has `tests/component/core/test_grade_schema.py` (50 passed) and `docs/test-bible/core/grade_schema.md` with AC 3 oracle literals from `_decode_payload` @ `9b7f68bd7`.  
+  **Recommendation:** Closes the plan-stage qa gap; no further action.
+
+### advisory
+
+- **Location:** `docs/test-bible/core/grade_schema.md` — branch lock column  
+  **Finding:** Betty noted `grade_schema.py` is not on `LOCKED_AT_100`; bible documents 100% branch at AST-2178 without adding the file to the lock set (same pattern as other new modules, e.g. AST-2173 `api_search.py`).  
+  **Recommendation:** Archie/Chuckles add to `LOCKED_AT_100` only if epic policy requires it for new `src/core/**`; not a Radia blocker.
+
+- **Location:** `origin/dev...b38940df2` three-dot diff  
+  **Finding:** Includes **AST-2176** canon + **AST-2177** config/prompt stack; this child’s product delta is `src/core/grade_schema.py` + tests/bible only (`+550` lines product/tests for 2178).  
+  **Recommendation:** Expected ftr/sub stacking; no cross-ticket product smuggle.
+
+- **Location:** `hydrate_grade_tool_input` vet path / AST-2180  
+  **Finding:** Per-entity `decode_failures` for missing website vs legacy batch `ValueError`; plan defers roster double-warning to #5 — unchanged from Joan discuss.  
+  **Recommendation:** AST-2180 wiring should preserve consult’s single `who -> dest [why]` warning shape.
+
+## What's solid
+
+- **Module contract:** `build_grade_tool_schema`, `grade_row_ids`, `hydrate_grade_tool_input` — closed schema (required codes, `additionalProperties: false`, grade enum, confidence bounds); empty `codes` → `ValueError`; non-structured type guarded.
+- **stat.agent.grade-vector-validation:** Missing/unexpected codes fail per row; illegal letters; never infer X for missing code; schema mirrors light check.
+- **stat.agent.confidence-bounds:** X ⇒ conf 0; non-vet letter + conf 0 → stored X0 (AST-2124); vet `confidence_range` (1, 5) blocks 0 before rewrite; bool excluded from int confidence.
+- **stat.logging.warning:** Unknown row id uses decoder-aligned text (`agent.py:359`); failures in `decode_failures` for handler routing, not `exception`.
+- **AC 3:** `TestHydrateDownstreamShape` parametrized parity with captured `_decode_payload` outputs (five grader shapes); full `test_grade_schema.py` green on tip.
+- **Boundaries:** No provider I/O; no `do_task` / consult / roster wire; `rg '"grades_encoded"'` absent in module (parent AC 9 posture). Estimate **3** fits.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append artifact, `docs(AST-2178): Radia review — discuss`, push sub, post slim upshot `--as radia`, **Review Posted** → datt **REVIEW** → **resolve-child** only if Susan wants the debug-truncation discuss closed before UT; else **PROCEED** shortcut if she accepts **Default**.
+- Engineer (if resolve): either log schema in size-bounded chunks from `grade_schema.py`, or adjust `src/utils/logging.py` truncation policy for debug dict args (wider blast radius — coordinate with `stat.logging.debug` owners).
+- Betty/policy: optional `LOCKED_AT_100` enrollment — separate from this review gate.
+
+context_tokens≈34000
+
+---
+
+```
+[code-rubric] REVIEW (Commit: b38940df2) debug schema truncation
+```
