@@ -591,3 +591,87 @@ Expected test churn for qa-child: I ran the component tests for `test_config.py`
 - `test_config.py`: `TestAst1154EncodedGradeSetCompleteness` (2 tests), `TestAst505InflowDiscoveryConfig::test_vet_grades_encoded_vet_meta_output_type`, `TestResolveTokens::test_output_type_token_uses_task_instructions`, `TestStringifyResponseSchema` (2 tests).
 
 The other 89 failures in those files fail the same way on the pre-build tree.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2177  
+**Publish ref:** `d279e7d4ae86036acdf509cfbbd32c49b3928f56` (`origin/sub/AST-2172/AST-2177-capability-registry-grader-marker-prompts`)  
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066` (canon tree unchanged by this child’s product commits; worktree `canon/` clean)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| stat.agent.confidence-bounds | A | | |
+
+`_GRADE_SEMANTICS` / vet `payload_instructions` preserve the statute’s 1–5 scale (including `5: The source explicitly states it.`), `0` only with `X`, and silent vectors → `X` + `0`; vet uses `confidence_range: (1, 5)` and letter grades without `X`. No prompt text revives encoded `{A-F}0` lines; the hydrate exception remains out of prompt scope per plan (AST-2178).
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `stat.agent.confidence-bounds` **A**; diff delivers the Canon check block (semantics-only grader instructions, vet scale, no encoded-line confidence patterns in resolved grader prompts).
+
+## Frame diff
+
+- [ ] **What this implements** (Linear Description): align with plan **Revision 1** (2026-10-13) — no local Stage 1 spike on the build host; provisional `advisory` on `qwen/qwen3-235b-a22b-2507` and `openai/gpt-oss-120b` only; servers stay `None` until verified — so dispatch text does not promise a live spike on every builder machine.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `origin/dev...d279e7d4` three-dot diff (file list)  
+  **Finding:** Diff includes **AST-2176** canon promotion (`canon/directives/active/stat.agent.*`) and the AST-2176 issue doc — expected epic stack on the child branch (`blockedBy` AST-2176); product delta for 2177 is `src/utils/config.py`, `data/admin/agent_task.json`, and tests/bible only (`git diff origin/dev...d279e7d4 --stat -- src/ data/`).  
+  **Recommendation:** No action on 2177 scope; merge/rollup reviewers treat 2176+2177 ordering as chain law.
+
+- **Location:** `src/utils/config.py` — `grades_json` `payload_instructions`  
+  **Finding:** Unused output type still contains the phrase `processing failure`; AC 7 applies to **grader** tasks with `structured_output` only (`TestAst2177GraderPromptsSemanticsOnly` passes for all 11 keys).  
+  **Recommendation:** Optional cleanup when `grades_json` is adopted; not this ticket.
+
+- **Location:** `prompt_prefix_structured` + `src/external/anthropic.py` (AST-2179)  
+  **Finding:** New config surface is present; transport still uses legacy `prompt_prefix` until sibling #4 wires structured calls.  
+  **Recommendation:** AST-2179 plan should cite `prompt_prefix_structured` (Joan plan discuss; downstream only).
+
+- **Location:** Plan Joan discuss — `prefilter_company` rule 5 removed  
+  **Finding:** Matches prompt-simplification intent; not an AC 7 banned substring.  
+  **Recommendation:** Archie/Susan already had plan-stage visibility; no 2177 blocker.
+
+- **Location:** Frozen list vs `stat.agent.grade-vector-validation`  
+  **Finding:** Letter-grade semantics appear in `_GRADE_SEMANTICS` but that directive is not on the frozen list (Joan scope observation).  
+  **Recommendation:** Archie may add on a later sibling if desired; not §5.3 ESCALATE.
+
+- **Location:** Stage 1 capability values (Susan 2026-10-13 / plan Revision 1)  
+  **Finding:** Spike skipped; OpenRouter grader slugs `advisory` with comment **Provisional — unverified, Susan checks on staging**; all servers `None`. Sanctioned per spawn context — not scored as a defect.  
+  **Recommendation:** Susan staging verification replaces provisional labels when ready; Chuckles/datt should not reopen as Radia fix-now.
+
+## What's solid
+
+- **Stage 1 (built):** `get_structured_output_capability`, `LLM_STRUCTURED_OUTPUT_CAPABILITIES`, per-server `structured_output_capability: None`, `OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES` for Grace/Lucy/Kent slugs at `advisory` with explicit provisional comment; lookup smoke (`qwen` → `advisory`, `gemma` → `None`, `haiku` → server `None`).
+- **Stage 2:** Five grader `output_types` marked `structured_output` with `extra_fields` / vet overrides; `_ENCODED_GRADE_SET_COMPLETENESS` removed (`rg` clean); `stringify_response_schema("grade_do")` includes `agent_performance`, not `agent_payload`; shared `_GRADE_SEMANTICS` + `_CONFIDENCE_SCALE_LINES` cite `stat.agent.confidence-bounds` in comment.
+- **Stage 3:** Nine grader rows edited in `agent_task.json`; `vet_inflow_discovery` ends with `{$OUTPUT_INSTRUCTIONS}` (`TestAst2177GraderPromptsSemanticsOnly::test_vet_row_uses_output_instructions_token`).
+- **AC 7:** `test_ac7_resolved_grader_prompts` — 11 grader keys, banned substrings absent, confidence scale present (pytest green on tip).
+- **Tests:** `TestAst2177StructuredOutputConfig` (9 tests) green; Betty retarget commit `d279e7d4` on publish ref.
+- **Boundaries:** No `src/core/agent.py` decode/transport changes; estimate **5** credible for config + nine-row JSON + registry surface.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append artifact to `docs/features/agent/ast-2177-capability-registry-grader-marker-and-prompt-text.md`, `docs(AST-2177): Radia review — clean`, push sub, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** (no `resolve-child` code fixes from this review).
+- Optional: engineer ticks **Frame diff** Description row when Linear text is amended to Revision 1.
+- Susan: staging check called out in `config.py` / plan Revision 1 — outside Radia gate; track on parent UAT or a follow-on comment, not **REVIEW** for this artifact.
+
+context_tokens≈32000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: d279e7d4) prompts and capability registry
+```
