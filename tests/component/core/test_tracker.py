@@ -170,7 +170,7 @@ class TestAst2133ComposeJobDescription:
 
     def _ref(self, content: str | None = None) -> str:
         from src.core import gazer
-        return gazer.keep_telescope_data(None, "https://jobs.example/1", "VISIBLE_TEXT", content or self._RAW)
+        return gazer.keep_web_data(None, "https://jobs.example/1", "VISIBLE_TEXT", content or self._RAW)
 
     def _job(self, **jd: Any) -> dict[str, Any]:
         return {"astral_job_id": "job-2133", "job_title": "Engineer", "job_data": dict(jd)}
@@ -183,23 +183,23 @@ class TestAst2133ComposeJobDescription:
         assert tracker_mod.compose_job_description({"job_data": "not a dict"}) == ""
 
     def test_preamble_then_pruned_capture(self) -> None:
-        job = self._job(job_description="Email preamble", jd_telescope_data_id=self._ref())
+        job = self._job(job_description="Email preamble", jd_web_data_id=self._ref())
         assert tracker_mod.compose_job_description(job) == "Email preamble\n\n" + self._SCRAPED
         # Read-only: the stored preamble is not overwritten with the composed text
         assert job["job_data"]["job_description"] == "Email preamble"
 
     def test_reference_only_is_just_capture(self) -> None:
-        job = self._job(jd_telescope_data_id=self._ref())
+        job = self._job(jd_web_data_id=self._ref())
         assert tracker_mod.compose_job_description(job) == self._SCRAPED
-        job = self._job(job_description="   ", jd_telescope_data_id=self._ref())
+        job = self._job(job_description="   ", jd_web_data_id=self._ref())
         assert tracker_mod.compose_job_description(job) == self._SCRAPED
 
     def test_missing_row_returns_preamble_alone(self) -> None:
         gone = "00000000-0000-4000-8000-000000000000"
         assert tracker_mod.compose_job_description(
-            self._job(job_description="Pre", jd_telescope_data_id=gone)
+            self._job(job_description="Pre", jd_web_data_id=gone)
         ) == "Pre"
-        assert tracker_mod.compose_job_description(self._job(jd_telescope_data_id=gone)) == ""
+        assert tracker_mod.compose_job_description(self._job(jd_web_data_id=gone)) == ""
 
     @pytest.mark.asyncio
     async def test_get_job_data_returns_long_composed_without_self_heal(
@@ -208,7 +208,7 @@ class TestAst2133ComposeJobDescription:
         body = "Engineer\n" + "y" * 250
         scrape = AsyncMock()
         monkeypatch.setattr("src.core.gazer.fetch_jd_batch", scrape)
-        job = self._job(job_description="short pre", jd_telescope_data_id=self._ref(body))
+        job = self._job(job_description="short pre", jd_web_data_id=self._ref(body))
         assert await tracker_mod.get_job_data(job, "job_description") == "short pre\n\n" + body
         scrape.assert_not_awaited()
 
@@ -216,7 +216,7 @@ class TestAst2133ComposeJobDescription:
         """fetch_jd_batch stand-in: records the transition kwarg, writes the reference back like _apply_jd_gates."""
         async def _fetch(batch_id: str, jobs: list[dict[str, Any]], *, transition: bool = True) -> None:
             seen.append(transition)
-            jobs[0]["job_data"]["jd_telescope_data_id"] = ref
+            jobs[0]["job_data"]["jd_web_data_id"] = ref
         return _fetch
 
     @pytest.mark.asyncio
@@ -264,8 +264,8 @@ class TestAst2133ComposeJobDescription:
         assert len(out) >= cfg.TRACKER_CONFIG["jd_min_chars"]
         # Pre-fix: transition_job_state(["job-2133"], "JD_READY") — illegal from METEORITE_PASSED_JD
         transition.assert_not_called()
-        save.assert_called_once_with("job-2133", {"jd_telescope_data_id": ref})
-        assert job["job_data"]["jd_telescope_data_id"] == ref
+        save.assert_called_once_with("job-2133", {"jd_web_data_id": ref})
+        assert job["job_data"]["jd_web_data_id"] == ref
         assert job["state"] == "METEORITE_PASSED_JD"
 
     @pytest.mark.asyncio

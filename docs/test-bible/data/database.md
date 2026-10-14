@@ -22,7 +22,7 @@ Per-cluster manifest blocks: `data/database/<cluster>.md`.
 
 **AST-2087:** retired terminal-state remap (`_terminal_state_remap_conn`, `migrate_terminal_state_names`, `scripts/migrations/migrate_terminal_state_names.py`) — `tests/component/data/database/test_terminal_state_remap.py` (see `data/database/terminal_state_remap.md`).
 
-**AST-2131:** `telescope_data` table cluster (scraped Telescope content, row ids held by entity blobs) — `tests/component/data/database/test_telescope_data.py` (see `data/database/telescope_data.md`).
+**AST-2131:** `web_data` table cluster (scraped Telescope content, row ids held by entity blobs) — `tests/component/data/database/test_telescope_data.py` (see `data/database/telescope_data.md`).
 
 **AST-2173:** `search_entity_rows` — candidate-scoped universal search read across `job` / `company` / `meteorite` — `tests/component/data/database/test_search.py` (see `data/database/search.md`).
 
