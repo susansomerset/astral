@@ -817,3 +817,111 @@ class TestAst1966UnpricedRowRecorded:
         assert out["success"] is False
         assert [r["agent_performance"] for r in recorded] == ["failure"]
         assert {k: recorded[0][k] for k in self._ZERO_CALC} == self._ZERO_CALC
+
+
+# AST-2179 — forced tool through the compat client. Branches: routing openrouter vs direct (kimi, deepseek) × forced_tool
+# set / None; batch id → probe path; reply carries the named tool / text only; stop_reason max_tokens.
+_TOOL = {"name": "submit_grades", "input_schema": {"type": "object", "properties": {"agent_performance": {"type": "object"}}}}
+_TOOL_INPUT = {"agent_performance": {"status": "success"}, "grades": [{"id": "000", "DTA": 5}]}
+_TOOL_WIRE = {"tools": [{"name": "submit_grades", "input_schema": _TOOL["input_schema"]}],
+              "tool_choice": {"type": "tool", "name": "submit_grades"}}
+
+
+class _ToolClient(_HostClient):
+    """Real calls answer with a tool_use block; the probe keeps the plain text reply."""
+
+    def __init__(self, tool_name: str = "submit_grades", stop_reason: str = "tool_use") -> None:
+        super().__init__()
+        self._tool_name = tool_name
+        self._stop = stop_reason
+
+    def create(self, **kwargs: Any) -> _Msg:
+        msg = super().create(**kwargs)
+        if not _is_probe(kwargs):
+            msg.content = [SimpleNamespace(type="tool_use", id="toolu_1", name=self._tool_name, input=_TOOL_INPUT)]
+        return msg
+
+
+class TestAst2179ForcedToolTransport:
+    @pytest.fixture(autouse=True)
+    def _fresh_host_map(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(openrouter, "_hosts", {})
+
+    @staticmethod
+    def _install(monkeypatch: pytest.MonkeyPatch, c: _ToolClient) -> _ToolClient:
+        monkeypatch.setattr(llm_compat, "_get_client", lambda *_a, **_k: c)
+        return c
+
+    @pytest.mark.asyncio
+    async def test_ac3_openrouter_call_carries_one_tool_choice_and_require_parameters(self, monkeypatch) -> None:
+        c = self._install(monkeypatch, _ToolClient())
+        out = await _send(forced_tool=_TOOL)
+        call = c.calls[0]
+        assert {k: call[k] for k in _TOOL_WIRE} == _TOOL_WIRE
+        # AC 4: the agent's own provider keys survive; require_parameters is added beside them.
+        assert call["extra_body"]["provider"] == {"allow_fallbacks": True, "require_parameters": True}
+        assert out["success"] is True and out["parsed_response"] == _TOOL_INPUT
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("server_id", "model_id"), [("kimi", "kimi-k2.6"), ("deepseek", "deepseek-v4-flash")])
+    async def test_ac4_direct_routed_gets_tool_but_no_require_parameters(self, monkeypatch, server_id, model_id) -> None:
+        c = self._install(monkeypatch, _ToolClient())
+        await _send(server_id=server_id, sku=model_id, tier=_tier(model_id), forced_tool=_TOOL)
+        call = c.calls[0]
+        assert {k: call[k] for k in _TOOL_WIRE} == _TOOL_WIRE
+        assert call["extra_body"] == {}
+
+    @pytest.mark.asyncio
+    async def test_ac4_openrouter_without_forced_tool_is_unchanged(self, client: _RecordingClient) -> None:
+        await _send()
+        call = client.calls[0]
+        assert call["extra_body"] == {"provider": {"allow_fallbacks": True}}
+        assert not {"tools", "tool_choice"} & set(call)
+
+    @pytest.mark.asyncio
+    async def test_ac4_tier_provider_object_is_not_mutated(self, monkeypatch) -> None:
+        self._install(monkeypatch, _ToolClient())
+        tier = _tier(provider_allow_fallbacks=True)
+        before = {**tier, "provider": dict(tier["provider"])}
+        await _send(tier=tier, forced_tool=_TOOL)
+        assert tier == before
+
+    @pytest.mark.asyncio
+    async def test_ac4_probe_and_real_call_both_require_parameters(self, monkeypatch) -> None:
+        c = self._install(monkeypatch, _ToolClient())
+        token = log_batch_id.set("batch-2179")
+        try:
+            out = await _send(tier=_tier(quantization="bf16", provider_allow_fallbacks=True), forced_tool=_TOOL)
+        finally:
+            log_batch_id.reset(token)
+        probe, real = c.calls
+        assert _is_probe(probe) and not _is_probe(real)
+        # The probe is the real call's twin (AST-1959): same tool, same require_parameters, plus zdr.
+        assert {k: probe[k] for k in _TOOL_WIRE} == _TOOL_WIRE
+        assert probe["extra_body"]["provider"]["require_parameters"] is True and probe["extra_body"]["provider"]["zdr"] is True
+        assert real["extra_body"]["provider"]["require_parameters"] is True
+        assert real["extra_body"]["provider"]["only"] == ["DeepInfra"]
+        assert out["success"] is True and out["parsed_response"] == _TOOL_INPUT
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("response_format", [None, "text", "json"])
+    async def test_tool_input_is_parsed_response_whatever_format(self, monkeypatch, response_format) -> None:
+        self._install(monkeypatch, _ToolClient())
+        out = await _send(response_format=response_format, forced_tool=_TOOL)
+        assert out["success"] is True and out["parsed_response"] == _TOOL_INPUT
+
+    @pytest.mark.asyncio
+    async def test_missing_tool_call_is_a_failure(self, monkeypatch) -> None:
+        self._install(monkeypatch, _ToolClient(tool_name="other_tool", stop_reason="end_turn"))
+        recorded: list[dict] = []
+        out = await _send(forced_tool=_TOOL, record_timesheet=lambda **kw: recorded.append(kw))
+        assert out["success"] is False and out["parsed_response"] is None
+        assert "has no 'submit_grades' tool call" in out["error"]
+        assert [r["agent_performance"] for r in recorded] == ["failure"]
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_fails_closed_even_with_text_format(self, monkeypatch) -> None:
+        self._install(monkeypatch, _ToolClient(stop_reason="max_tokens"))
+        out = await _send(forced_tool=_TOOL)
+        assert out["success"] is False and out["failure_class"] == "max_tokens"
+        assert out["parsed_response"] is None
