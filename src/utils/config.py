@@ -4917,6 +4917,7 @@ REPO_ADMIN_JSON_CONFIG = {
                 "provider_only",
                 "provider_ignore",
                 "provider_sort",
+                "requires_structured_output",
                 "updated_at",
             ),
         },

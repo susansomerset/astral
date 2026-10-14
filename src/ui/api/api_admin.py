@@ -57,6 +57,7 @@ from src.utils.config import (
     BUILD_CONFIG,
     LLM_MODEL_CONFIG,
     get_llm_server,
+    get_structured_output_capability,
     resolve_agent_settings,
     get_manage_agents_tokens,
     get_manage_tasks_chain_tokens,
@@ -146,6 +147,18 @@ def _agent_settings_from_body(body: Dict[str, Any]) -> Dict[str, Any]:
     return {k: body[k] for k in AGENT_SETTING_COLUMNS if k in body}
 
 
+def _structured_output_gate(requires: Any, model_id: Any) -> str | None:
+    """400 text when the agent requires structured output and its model can't take a forced tool (AST-2172).
+    Only None capability is refused — "advisory" hosts are allowed, the grade_schema light check covers them.
+    Raises ValueError on an unknown model id (callers turn it into a 400, same as the data layer)."""
+    if requires and model_id and get_structured_output_capability(model_id) is None:
+        return (
+            f"model {model_id!r} does not support structured output — "
+            "pick an enforced or advisory model, or turn off requires_structured_output"
+        )
+    return None
+
+
 @admin_bp.route("/agents")
 @require_admin
 def list_agents():
@@ -212,6 +225,8 @@ def list_models():
             "server_id": m["server"],
             "server_label": get_llm_server(m["server"])["label"],
             "default_max_tokens": m["default_max_tokens"],
+            # "enforced" | "advisory" | None — the Manage Agents picker hides None while the agent requires it (AST-2172).
+            "structured_output_capability": get_structured_output_capability(mid),
         }
         for i, (mid, m) in enumerate(LLM_MODEL_CONFIG.items())
     })
@@ -237,6 +252,9 @@ def create_agent():
     if database.get_agent(agent_id):
         return jsonify({"error": f"Agent '{agent_id}' already exists"}), 409
     try:
+        gate = _structured_output_gate(body.get("requires_structured_output"), model_id)
+        if gate:
+            return jsonify({"error": gate}), 400
         # Data layer checks model_id against the catalog and type-checks the settings (AST-1955).
         database.save_agent(
             agent_id,
@@ -255,7 +273,8 @@ def create_agent():
 @require_admin
 def update_agent(agent_id):
     body = request.get_json(silent=True) or {}
-    if not database.get_agent(agent_id):
+    current = database.get_agent(agent_id)
+    if not current:
         return jsonify({"error": f"Agent not found: {agent_id}"}), 404
 
     kwargs = {
@@ -266,6 +285,13 @@ def update_agent(agent_id):
     if not kwargs:
         return jsonify({"error": "No updatable fields provided"}), 400
     try:
+        # Gate on the row as it would be after this PUT: body values win, absent keys keep the stored ones.
+        gate = _structured_output_gate(
+            kwargs.get("requires_structured_output", current.get("requires_structured_output")),
+            kwargs.get("model_id", current.get("model_id")),
+        )
+        if gate:
+            return jsonify({"error": gate}), 400
         # update_agent checks model_id and type-checks the settings before its UPDATE (AST-1955).
         database.update_agent(agent_id, **kwargs)
     except ValueError as e:
