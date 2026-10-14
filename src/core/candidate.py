@@ -27,6 +27,9 @@ Writing Preferences (candidate.context.writing_preferences) uses the same
 operative save + get_candidate_current hydrate path (AST-1665).
 Resume structure (candidate.artifacts.resume_structure) uses the same
 operative save + get_candidate_current hydrate path (AST-1679).
+Contact context commands (AST-2206): get_candidate_id_for_slack_channel (channel →
+the one candidate naming it in contact.slack_channel_id), contact_command_show_context
+(read-current reply) and contact_command_save_context (nh3 sanitize → operative save).
 All writes go through database.save_candidate (upsert) or save_artifact (operative);
 state transition logic lives here.
 
@@ -62,6 +65,8 @@ from src.utils.config import (
     CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
+    CONTACT_CONFIG,
+    CONTACT_CONTEXT_COMMAND_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
     TOKEN_SOURCES,
     TOPIC_MENU_CONFIG,
@@ -2355,6 +2360,148 @@ def get_candidate_id_for_query(
         if len(hit_ids) >= 2:
             logger.debug_detail(f"candidate_ids={sorted(hit_ids)}")
     return None
+
+
+# AST-2206: Contact context commands. contact.slack_channel_id is not a uniqueness-gated field
+# (CANDIDATE_CONTACT_UNIQUENESS_CONFIG), so two candidates can name one channel — ambiguous → None.
+_SLACK_CHANNEL_ID_PATH = "contact.slack_channel_id"
+# Handler reply texts; {label} is the CONTACT_CONTEXT_COMMAND_CONFIG row label.
+_CONTACT_SHOW_EMPTY_REPLY = "No {label} saved yet for this candidate."
+_CONTACT_SAVE_ACK_REPLY = "Saved. That's now the current {label}."
+
+
+def get_candidate_id_for_slack_channel(
+    channel_id: str,
+    *,
+    debug: bool = False,
+) -> Optional[str]:
+    """The one non-deleted candidate whose contact.slack_channel_id is ``channel_id`` (AST-2206).
+
+    None when the channel is empty, unmapped, or named by more than one candidate.
+    """
+    if debug:
+        logger.set_debug_flag(True)
+    ch = (channel_id or "").strip()
+    if not ch:
+        return None
+    logger.debug("Calling list_candidates: [include_deleted=False]")
+    candidates = list_candidates(include_deleted=False)
+    logger.debug("Response from list_candidates: %s", candidates)
+    logger.debug("Beginning slack channel lookup loop on %s items", len(candidates))
+    hit_ids = sorted(
+        {
+            (c.get("astral_candidate_id") or "").strip()
+            for c in candidates
+            if _lookup_path_value(c, _SLACK_CHANNEL_ID_PATH) == ch
+        }
+        - {""}
+    )
+    logger.debug("End slack channel lookup loop after %s items", len(candidates))
+    if len(hit_ids) > 1:
+        logger.warning(
+            "%s | slack channel %s is named by %s candidates (%s)\n"
+            "  No candidate is mapped to this channel until only one names it",
+            hit_ids[0], ch, len(hit_ids), ", ".join(hit_ids),
+        )
+    return hit_ids[0] if len(hit_ids) == 1 else None
+
+
+def _contact_context_command(artifact_key: Optional[str]) -> Optional[Dict[str, Any]]:
+    """CONTACT_CONTEXT_COMMAND_CONFIG row whose artifact_key matches; None for any other key."""
+    key = (artifact_key or "").strip()
+    return next(
+        (m for m in CONTACT_CONTEXT_COMMAND_CONFIG.values() if m["artifact_key"] == key), None
+    )
+
+
+def contact_command_show_context(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    artifact_key: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """CONTACT_CONFIG["commands"] code handler for /show-<context> (AST-2206).
+
+    Read-only (patt.artifact.read-current); payload is ignored (payload_optional entry).
+    Returns {ok, meteorite_id (always None), error, reply_text}; Contact posts reply_text.
+    """
+    cid = (candidate_id or "").strip()
+    ctx = _contact_context_command(artifact_key)
+    if not cid:
+        # No reply_text → Contact's hear-ack path.
+        return {"ok": False, "meteorite_id": None, "error": "no_candidate", "reply_text": None}
+    if ctx is None:
+        logger.warning(
+            "%s | contact show handler got artifact_key %r, not a context command key\n"
+            "  Nothing was shown",
+            cid, artifact_key,
+        )
+        return {"ok": False, "meteorite_id": None, "error": "unknown_artifact_key", "reply_text": None}
+    logger.debug(
+        "Calling get_candidate_current: [candidate_id=%s, artifact_key=%s]", cid, ctx["artifact_key"]
+    )
+    body = get_candidate_current(cid, ctx["artifact_key"])
+    logger.debug("Response from get_candidate_current: %r", body)
+    reply = body if isinstance(body, str) and body.strip() else _CONTACT_SHOW_EMPTY_REPLY.format(label=ctx["label"])
+    return {"ok": True, "meteorite_id": None, "error": None, "reply_text": reply}
+
+
+def contact_command_save_context(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    artifact_key: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """CONTACT_CONFIG["commands"] code handler for /save-<context> <text> (AST-2206).
+
+    nh3-sanitizes payload (Contact's one sanitize helper), then write-operative through
+    save_candidate_data — identical-to-current is a no-op there. Contact's only artifact
+    write ("write artifact" pinhole kind). Returns {ok, meteorite_id (always None), error,
+    reply_text}; Contact posts reply_text.
+    """
+    cid = (candidate_id or "").strip()
+    ctx = _contact_context_command(artifact_key)
+    if not cid:
+        # No reply_text → Contact's hear-ack path.
+        return {"ok": False, "meteorite_id": None, "error": "no_candidate", "reply_text": None}
+    if ctx is None:
+        logger.warning(
+            "%s | contact save handler got artifact_key %r, not a context command key\n"
+            "  Nothing was saved",
+            cid, artifact_key,
+        )
+        return {"ok": False, "meteorite_id": None, "error": "unknown_artifact_key", "reply_text": None}
+    key = ctx["artifact_key"]
+    # Late import: meteorite imports candidate at module level.
+    from src.core.meteorite import sanitize_contact_text
+
+    logger.debug("Calling sanitize_contact_text: [payload=%r]", payload)
+    body = sanitize_contact_text(payload)
+    logger.debug("Response from sanitize_contact_text: %r", body)
+    if not body:
+        logger.warning(
+            "%s | contact save of %s rejected — the text is empty after sanitize\n  Nothing was saved",
+            cid, key,
+        )
+        # Same usage line the runner posts for an empty payload; own entry found by handler + key.
+        usage = next(
+            m["usage_reply_text"] for m in CONTACT_CONFIG["commands"].values()
+            if m["handler"] == f"{__name__}.contact_command_save_context" and m.get("artifact_key") == key
+        )
+        return {"ok": False, "meteorite_id": None, "error": "empty_after_sanitize", "reply_text": usage}
+    logger.debug("Calling save_candidate_data: [candidate_id=%s, artifact_key=%s]", cid, key)
+    artifact_uuid = save_candidate_data(cid, key, body, debug=debug)
+    logger.debug("Response from save_candidate_data: %s", artifact_uuid)
+    return {
+        "ok": True, "meteorite_id": None, "error": None,
+        "reply_text": _CONTACT_SAVE_ACK_REPLY.format(label=ctx["label"]),
+    }
 
 
 def preview_task_prompt(
