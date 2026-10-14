@@ -723,3 +723,14 @@ AC1→Stage 1 (4,8,14); AC2→Stage 1 (8,14); AC3→Stage 2 (3,7); AC4→Stage 1
   **Recommendation:** Optional one-line in implementer notes; not blocking approval.
 
 context_tokens≈42000
+
+## Review
+
+**Built:** `origin/sub/AST-2206/AST-2210-registry-estelle-prompts` @ `fb7588e7d` (Stage 1 `53b61e3db`, Stage 2 `fb7588e7d`).
+
+**Implementer notes:**
+- **Expected red test:** `TestAst2061ContactPinholeConfig::test_every_contact_handler_in_pinhole` still asserts every `write` kind is under `src.core.meteorite.`; the amended rule adds `write artifact`. Betty updates it at qa-child (AC 4). It is the only new failure vs baseline.
+- **Interim on ftr (Joan's discuss note):** until AST-2212, `payload_optional` is inert in the runner, so `/show-*` and `/draft-*` with no payload post the usage reply. That is expected, not a config bug.
+- **Baseline run per file:** `tests/component/core/test_contact.py` fails collection locally (`ModuleNotFoundError: asyncpg`, environment, pre-existing), which aborts a combined pytest run; Stage 0–2 comparisons ran each file separately. Baseline: 26 `test_config.py` failures + that collection error, unchanged.
+- **Row script location:** the editor refuses writes under gitignored `debug/`, so the throwaway append script ran from `/tmp` (never committed). Output verified by the plan's AC3/ROWS checks; JSON diff is additions only.
+- **Lint:** `ruff` delta is one finding, UP006 on `_CONTACT_DRAFT_RESPONSE_SCHEMA: Dict[str, Any]`, written as the plan specifies and matching the file's 39 existing `Dict` annotations.
