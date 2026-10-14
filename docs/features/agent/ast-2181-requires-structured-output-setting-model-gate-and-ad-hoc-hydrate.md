@@ -561,3 +561,28 @@ index 2f6115fb8..f9cf36b68 100644
 - Plan Discuss: **0** rounds; **Plan Ready**, assignee Joan.
 
 context_tokens≈115000
+
+---
+
+## Review
+
+Build on `origin/sub/AST-2172/AST-2181-structured-output-setting-model-gate`:
+
+- `267cc83e2` Stage 1: Appendix A applied verbatim to `config.py`, `database.py`, `agent.json` and `api_admin.py`.
+- `caafda77c` Stage 2: Appendix B applied verbatim to `AdminAgentPrompts.tsx`.
+
+Checks:
+- `py_compile` passes on the three Python files.
+- `ruff` total is unchanged (858 before, 858 after).
+- The Stage 1 step 4 check prints `stage1 ok`.
+- `npx tsc -b --noEmit` exits 0.
+- `validate-sub-log.sh --stage=build` is ok.
+- No provider calls.
+
+Schema audit (build-child §8): every `agent` INSERT/UPDATE builds its column list dynamically — seed apply, `save_agent`, `update_agent` — so the new column needs no fixed-count edit. The Stage 1 check exercised `save_agent`, `update_agent` and `list_agents`.
+
+Not run here: the Stage 2 in-browser check (picker filter, 400 toast). There's no browser session on this host, so that's for Susan at UAT.
+
+Seed decision (Finding 4): Susan hasn't said "drop them", so the default is built. `brain_setting`, `mode` and `provider_allow_fallbacks: 1` are untouched, and Revert to file for agents still fails as it does on dev. AC 10's Lucy `true` comes from the checkbox at UAT.
+
+For qa-child: expect the 3 contract updates from Finding 6: the exact `list_models` dict, and two seed fixtures missing `requires_structured_output`. Coverage for AC 10 / 10a can follow the plan's scratch smoke test: models capability, create and update gate (400, row unchanged), unknown model → 400, bool round-trip, and the seed keys.
