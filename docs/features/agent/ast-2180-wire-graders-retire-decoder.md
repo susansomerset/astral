@@ -425,6 +425,18 @@ Indented for `do_task`'s body (4 spaces).
                     "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})})
 ```
 
+## Review (build)
+
+**Built @ `c751ce352`** — `origin/sub/AST-2172/AST-2180-wire-graders-retire-decoder`
+
+Stage 1 (`285485704`): `GRADE_TOOL_NAME` / `grade_call_codes` / `grade_forced_tool` (with `vector_reviews` on feedback tasks), forced tool built before send in `do_task`, `structured` timestamp prefix, `forced_tool` through `_send_to_server` / `run_adhoc` / `run_adhoc_workbench_test`, hydrate replaces coerce / strict-envelope / normalize / decode, AST-1839 agent failure + AST-2089 salvage from the tool input. Stage 2 (`9168919b5`): `api_admin.adhoc_test` builds the forced tool from the candidate's rubric codes (company tasks key `company_id`), hydrates via `grade_schema`, drops `_decode_payload`. Stage 3 (`00c311b7e`): consult normalize cluster deleted (Joan: full delete), three comments reworded; roster vet single row `000`, vet + prefilter single/batch route light-check failures with the hydrate's reason, `_fetch_prefilter_notes` sends real codes. Stage 4 (`c751ce352`): `_decode_payload`, `_GRADE_SEG` / `_grade_segment` / `_LINK_PREFIX_RE`, strict encoded-batch helpers, `formatting` encoded-string helpers deleted; `typing.Any` dropped from `formatting.py` (newly unused, Stage 4 step 6 lint rule). Stage 1 check prints `stage1 ok`; all Done-when greps green; `ruff --select F,E9` stays at the plan-time 21 findings across the five files. No live provider calls.
+
+**No-codes hop (Joan's question):** intentional retry, commented at the call site. A candidate with no rubric renders an empty rubric prompt token (`RUBRIC_VECTORS` / `*_RUBRIC`), so the AST-2000 empty-tokens guard already sends it straight to error before the forced tool is built. The no-codes `ValueError` is reached only when a caller omits `vector_labels` from ctx; `success: False` without `empty_tokens` takes the `_RETRY` sibling then the error state, and the retry never reaches the provider.
+
+**AC 6 (narrowed on Linear to `in encoded line`):** one hit remains, `src/utils/config.py:2457` — the comment `# fixed 2-char segment code in encoded lines` on `INFLOW_CONFIG["vet"]["grade_vector_code"]`. Stale, but `config.py` is outside this ticket's Boundaries, so it is untouched. Needs either a one-line comment reword (Boundary exception) or a further AC narrowing (e.g. `duplicate vector code .* in encoded line`).
+
+Check notes: `import src.ui.api.api_admin` needs `PYTHONPATH=.:src` (the module imports `ui.auth`); the other module imports run from the repo root as written.
+
 ## Joan validate
 
 [plan-rubric]
