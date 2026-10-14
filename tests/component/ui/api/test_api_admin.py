@@ -47,6 +47,8 @@ class TestAdminConfigAndAgents:
                 "server_id": m["server"],
                 "server_label": cfg.LLM_SERVER_CONFIG[m["server"]]["label"],
                 "default_max_tokens": m["default_max_tokens"],
+                # AST-2181: forced-tool capability on every model ("enforced" | "advisory" | None).
+                "structured_output_capability": cfg.get_structured_output_capability(mid),
             }
 
     def test_brain_settings_route_and_admin_view_retired(
@@ -4750,3 +4752,101 @@ class TestAst2180AdhocForcedTool:
         )
         assert runs[0]["forced_tool"] is None
         assert resp.get_json()["hydrated"] is None
+
+
+class TestAst2181StructuredOutputModelGate:
+    """AST-2181 AC 10: an agent that requires structured output may only be saved on a model whose capability is
+    "enforced" or "advisory"; a None-capability model → 400, row unchanged. Real data layer (sqlite_in_memory)."""
+
+    _CAPABLE = "qwen/qwen3-235b-a22b-2507"  # advisory
+    _INCAPABLE = "qwen/qwen3-32b"  # None
+
+    @pytest.fixture(autouse=True)
+    def _capabilities(self) -> None:
+        # The two picks must stay on either side of the gate, or every assertion below is vacuous.
+        assert cfg.get_structured_output_capability(self._CAPABLE) == "advisory"
+        assert cfg.get_structured_output_capability(self._INCAPABLE) is None
+
+    def _create(self, client: FlaskClient, headers: dict[str, str], agent_id: str, model_id: str, requires: Any) -> Any:
+        body = {"agent_id": agent_id, "content": "sys", "model_id": model_id}
+        if requires is not None:
+            body["requires_structured_output"] = requires
+        return client.post("/api/admin/agents", json=body, headers=headers)
+
+    def test_models_report_capability_for_every_model(self, admin_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        body = admin_client.get("/api/admin/agents/models", headers=auth_headers).get_json()
+        assert all("structured_output_capability" in m for m in body.values())
+        assert {m["structured_output_capability"] for m in body.values()} <= {"enforced", "advisory", None}
+        assert body[self._CAPABLE]["structured_output_capability"] == "advisory"
+        assert body[self._INCAPABLE]["structured_output_capability"] is None
+
+    def test_get_agent_returns_the_setting(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory,
+    ) -> None:
+        sqlite_in_memory.save_agent("job_filter_lucy", "sys", model_id=self._CAPABLE, requires_structured_output=True)
+        got = admin_client.get("/api/admin/agents/job_filter_lucy", headers=auth_headers).get_json()
+        assert got["requires_structured_output"] is True
+        assert admin_client.get("/api/admin/agents", headers=auth_headers).get_json()[0]["requires_structured_output"] is True
+
+    def test_create_refuses_incapable_model_when_required(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory,
+    ) -> None:
+        bad = self._create(admin_client, auth_headers, "a1", self._INCAPABLE, True)
+        assert bad.status_code == 400
+        assert self._INCAPABLE in bad.get_json()["error"] and "structured output" in bad.get_json()["error"]
+        assert sqlite_in_memory.get_agent("a1") is None
+        # Advisory is allowed; an incapable model is fine while the setting is off or absent.
+        assert self._create(admin_client, auth_headers, "a2", self._CAPABLE, True).status_code == 201
+        assert self._create(admin_client, auth_headers, "a3", self._INCAPABLE, False).status_code == 201
+        assert self._create(admin_client, auth_headers, "a4", self._INCAPABLE, None).status_code == 201
+        assert sqlite_in_memory.get_agent("a4")["requires_structured_output"] is False
+
+    @pytest.mark.parametrize(
+        ("stored", "body"),
+        [
+            # AC 10: switch a requiring agent onto an incapable model.
+            ((_CAPABLE, True), {"model_id": _INCAPABLE}),
+            # Turn the setting on while the stored model is incapable.
+            ((_INCAPABLE, False), {"requires_structured_output": True}),
+            # Both in one PUT.
+            ((_CAPABLE, False), {"model_id": _INCAPABLE, "requires_structured_output": True}),
+        ],
+        ids=["model_change", "flag_on", "both"],
+    )
+    def test_update_gates_on_post_put_values_row_unchanged(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory, stored: tuple, body: dict,
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_agent("lucy", "sys", model_id=stored[0], requires_structured_output=stored[1])
+        before = db.get_agent("lucy")
+        bad = admin_client.put("/api/admin/agents/lucy", json=body, headers=auth_headers)
+        assert bad.status_code == 400 and "structured output" in bad.get_json()["error"]
+        assert db.get_agent("lucy") == before
+
+    def test_update_allowed_when_flag_turned_off_or_model_capable(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory,
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_agent("lucy", "sys", model_id=self._CAPABLE, requires_structured_output=True)
+        off = admin_client.put(
+            "/api/admin/agents/lucy",
+            json={"model_id": self._INCAPABLE, "requires_structured_output": False},
+            headers=auth_headers,
+        )
+        assert off.status_code == 200
+        assert (db.get_agent("lucy")["model_id"], db.get_agent("lucy")["requires_structured_output"]) == (self._INCAPABLE, False)
+        db.save_agent("kent", "sys", model_id=self._INCAPABLE)
+        on = admin_client.put(
+            "/api/admin/agents/kent",
+            json={"model_id": self._CAPABLE, "requires_structured_output": True},
+            headers=auth_headers,
+        )
+        assert on.status_code == 200 and db.get_agent("kent")["requires_structured_output"] is True
+
+    def test_unknown_model_with_flag_is_400_not_500(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], sqlite_in_memory,
+    ) -> None:
+        sqlite_in_memory.save_agent("lucy", "sys", model_id=self._CAPABLE, requires_structured_output=True)
+        put = admin_client.put("/api/admin/agents/lucy", json={"model_id": "no-such-model"}, headers=auth_headers)
+        assert put.status_code == 400 and put.get_json()["error"]
+        assert self._create(admin_client, auth_headers, "x", "no-such-model", True).status_code == 400

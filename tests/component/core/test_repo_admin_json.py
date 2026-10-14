@@ -1703,3 +1703,29 @@ class TestAst1878AgentSeedModels:
             conn.close()
         got = {a["agent_id"]: a["model_id"] for a in sqlite_in_memory.list_agents()}
         assert got == self.AC4
+
+
+class TestAst2181RequiresStructuredOutputSeed:
+    """AST-2181 AC 10a: the agent seed carries requires_structured_output (bool) on every row — true for exactly
+    Grace, Lucy and Kent — and the column is in the export / Revert to file tuple."""
+
+    def test_ac10a_seeded_true_for_exactly_the_three_graders(self) -> None:
+        rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        assert rows and all(type(r.get("requires_structured_output")) is bool for r in rows)
+        assert sorted(r["agent_id"] for r in rows if r["requires_structured_output"]) == [
+            "antagonist_kent", "job_analyst_grace", "job_filter_lucy",
+        ]
+
+    def test_column_in_repo_tuple_and_data_layer_settings(self) -> None:
+        from src.data.database import AGENT_SETTING_COLUMNS
+        from src.utils.config import REPO_ADMIN_JSON_CONFIG
+
+        assert "requires_structured_output" in REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]
+        assert "requires_structured_output" in AGENT_SETTING_COLUMNS
+
+    def test_seeded_true_agents_sit_on_capable_models(self) -> None:
+        # Revert to file does not gate (API-only gate), so a seeded true row on a None model would load unguarded.
+        from src.utils.config import get_structured_output_capability
+
+        rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        assert all(get_structured_output_capability(r["model_id"]) is not None for r in rows if r["requires_structured_output"])

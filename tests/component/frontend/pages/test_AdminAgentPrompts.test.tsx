@@ -13,11 +13,15 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 const mockedApi = vi.mocked(api)
 
 // AST-1880 / AST-1957: GET /agents/models — keyed by model id; `order` carries catalog order; each model's own
-// default output budget, no brain sizes.
+// default output budget, no brain sizes. AST-2181: structured_output_capability — Kimi capable, Haiku not.
 const models = {
-  "kimi-k2.6": { order: 1, label: "Kimi K2.6", server_id: "kimi", server_label: "Kimi", default_max_tokens: 16000 },
+  "kimi-k2.6": {
+    order: 1, label: "Kimi K2.6", server_id: "kimi", server_label: "Kimi", default_max_tokens: 16000,
+    structured_output_capability: "advisory",
+  },
   "claude-haiku-4-5": {
     order: 0, label: "Claude Haiku 4.5", server_id: "anthropic", server_label: "Anthropic", default_max_tokens: 8192,
+    structured_output_capability: null,
   },
 }
 
@@ -197,6 +201,7 @@ describe("AdminAgentPrompts", () => {
         agent_id: "kimi_agent", content: "", model_id: "kimi-k2.6",
         quantization: "bf16", temperature: 0.7, reasoning_effort: "high", provider_allow_fallbacks: false,
         provider_only: ["groq", "together"], provider_ignore: null, provider_sort: "price",
+        requires_structured_output: false,
       })
     }, 20000)
 
@@ -227,6 +232,7 @@ describe("AdminAgentPrompts", () => {
         content: "b prompt", max_tokens: 1024, model_id: "kimi-k2.6",
         quantization: null, temperature: 0.3, reasoning_effort: "none", provider_allow_fallbacks: true,
         provider_only: ["groq", "together"], provider_ignore: null, provider_sort: "price",
+        requires_structured_output: false,
       })
     }, 20000)
 
@@ -395,6 +401,86 @@ describe("AdminAgentPrompts", () => {
     expect(deletes[1]).toBeDisabled()
     expect(deletes[0]).not.toHaveClass("dep-btn")
   }, 15000)
+
+  describe("AST-2181 requires structured output", () => {
+    const required = () => screen.getByRole("checkbox", { name: /requires structured output/i }) as HTMLInputElement
+    const modelSelect = () => within(field("Model")).getByRole("combobox") as HTMLSelectElement
+
+    // agent_b as stored with the setting on (kimi = advisory); PUT answers 400 when putStatus says so.
+    function mockRequiringAgent(putStatus = 200) {
+      const row = { ...agents[1], requires_structured_output: true }
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/candidates") return { ok: true, json: async () => [] } as Response
+        if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
+        if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => [row] } as Response
+        if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
+        if (url === "/api/admin/agents/agent_b" && !init?.method) {
+          return { ok: true, json: async () => ({ ...row, content: "b prompt" }) } as Response
+        }
+        if (url === "/api/admin/agents/agent_b" && init?.method === "PUT") {
+          putBodies.push(JSON.parse(String(init.body)))
+          const error = "model 'claude-haiku-4-5' does not support structured output"
+          return putStatus === 200
+            ? ({ ok: true, status: 200, json: async () => row } as Response)
+            : ({ ok: false, status: putStatus, json: async () => ({ error }) } as Response)
+        }
+      })
+    }
+
+    it("Add: unchecked by default; ticking hides incapable models (current one flagged), unticking restores", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
+      expect(required()).not.toBeChecked()
+      expect(optionTexts("Model")).toEqual(["Claude Haiku 4.5", "Kimi K2.6"])
+      await userEvent.click(required())
+      // Haiku is not offered; it stays only as the flagged current value so the select never shows another model.
+      expect(optionTexts("Model")).toEqual(["Claude Haiku 4.5 — no structured output", "Kimi K2.6"])
+      expect(modelSelect()).toHaveValue("claude-haiku-4-5")
+      await userEvent.selectOptions(modelSelect(), "kimi-k2.6")
+      expect(optionTexts("Model")).toEqual(["Kimi K2.6"])
+      await userEvent.click(required())
+      expect(optionTexts("Model")).toEqual(["Claude Haiku 4.5", "Kimi K2.6"])
+    }, 20000)
+
+    it("Add saves the setting in the body", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Agent" }))
+      fireEvent.change(screen.getByPlaceholderText("e.g. job_analyst_grace"), { target: { value: "lucy" } })
+      await userEvent.selectOptions(modelSelect(), "kimi-k2.6")
+      await userEvent.click(required())
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(postBodies).toHaveLength(1))
+      expect(postBodies[0]).toMatchObject({ model_id: "kimi-k2.6", requires_structured_output: true })
+    }, 20000)
+
+    it("Edit: stored true shows checked, picker offers only capable models, Save sends it", async () => {
+      mockRequiringAgent()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_b")).toBeInTheDocument())
+      await userEvent.click(screen.getByText("agent_b"))
+      await waitFor(() => expect(screen.getByDisplayValue("b prompt")).toBeInTheDocument())
+      expect(required()).toBeChecked()
+      expect(optionTexts("Model")).toEqual(["Kimi K2.6"])
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBodies).toHaveLength(1))
+      expect(putBodies[0]).toMatchObject({ model_id: "kimi-k2.6", requires_structured_output: true })
+    }, 20000)
+
+    it("Edit: the API's 400 gate text reaches the error toast and the editor stays open", async () => {
+      mockRequiringAgent(400)
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_b")).toBeInTheDocument())
+      await userEvent.click(screen.getByText("agent_b"))
+      await waitFor(() => expect(screen.getByDisplayValue("b prompt")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(screen.getByText(/does not support structured output/)).toBeInTheDocument())
+      expect(screen.getByDisplayValue("b prompt")).toBeInTheDocument()
+    }, 20000)
+  })
 
   describe("AST-1410 silent refetch", () => {
     it("post-save list refetch keeps the table and skips Loading...", async () => {

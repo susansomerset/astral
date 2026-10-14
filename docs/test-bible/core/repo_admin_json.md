@@ -807,3 +807,12 @@ Repro node ids: `test_config.py::TestAst1084EvaluateJdCriteria::test_qc_content_
 **Masked, not revised:** `TestAst1154GradedTaskCompletenessPrompts::test_fixture_graded_keys_carry_completeness_marker` stays green but pins the stale `GRADE SET COMPLETENESS (AST-1154)` sentinel in `docs/uat-fixtures/AST-756/expected-agent_task.json`. That fixture already differs from the catalog (`TestAst1910…::test_fixture_evaluate_jd_row_lockstep_with_catalog` and the other AST-756 lockstep tests were red before this ticket). Whoever re-syncs the fixture must drop that assertion.
 
 **Integration:** none.
+
+### AST-2181 · AST-2172 (seed: requires_structured_output)
+
+**New:** **`TestAst2181RequiresStructuredOutputSeed`** (3):
+- AC 10a: every `data/admin/agent.json` row has a bool `requires_structured_output`, `true` for exactly `antagonist_kent`, `job_analyst_grace`, `job_filter_lucy`.
+- The column is in `REPO_ADMIN_JSON_CONFIG` agent columns and `AGENT_SETTING_COLUMNS`.
+- Seeded-true rows sit on capable models, since Revert to file does not gate.
+
+These read the JSON directly, independent of the pre-existing seed defects (`brain_setting` / `mode` / int fallbacks) that keep the `TestAst787…` apply tests red. Manifest: [`../ui/api/api_admin.md`](../ui/api/api_admin.md) § AST-2181.
