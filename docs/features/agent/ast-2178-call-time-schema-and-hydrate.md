@@ -434,3 +434,85 @@ out = hydrate_grade_tool_input("vet_inflow_discovery", OT("vet_inflow_discovery"
 assert "missing website" in out["decode_failures"][0]["reason"], out
 print("light check ok")
 ```
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2178
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `origin/sub/AST-2172/AST-2178-call-time-schema-hydrate` @ `0206699d0`
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| `stat.agent.grade-vector-validation` | A | | |
+| `stat.agent.confidence-bounds` | A | | |
+| `stat.logging.warning` | A | | |
+| `stat.logging.debug` | A | | |
+
+## Traceability
+
+**1** → Stage 1 + Appendix A/C (`build_grade_tool_schema`, closed row/code objects, `valid_grades` enum, confidence 0–5). **2** → Stage 1 step 3 / Appendix C empty-`codes` `ValueError`. **3** → Stage 2 + Appendix B/C (`hydrate_grade_tool_input` dict-equal to `_decode_payload` for five grader types). Parent AC 4–11 / 10a–10b N/A (Boundaries: no transport, no `do_task` wire, no admin). Parent AC **5** (missing code → retry, never default X) is not on this child’s AC list but is implemented in `_hydrate_row` for AST-2180 — note only.
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 2 step 4 / Execution contract — `debug/spikes/AST-2178/check.py` only  
+  **Finding:** AC 3 proof lives in a gitignored harness against `_decode_payload`; no committed `tests/**` in this child (Betty’s lane).  
+  **Recommendation:** Accept for #3 scope; ensure `qa-child` lands durable coverage before UT.
+
+- **Location:** Stage 1 — `build_grade_tool_schema(..., row_ids=[])`  
+  **Finding:** AC 2 guards empty `codes` only; empty `row_ids` would yield a schema with only `agent_performance`. Unlikely in production batches; not forbidden by child AC.  
+  **Recommendation:** Optional guard in build if Susan wants fail-fast; not required for plan approval.
+
+- **Location:** Appendix B — vet missing website / bad grade  
+  **Finding:** Per-hit `decode_failures` vs old whole-batch `ValueError` on empty website; plan defers roster double-warning to #5 (`roster.py` 645–649).  
+  **Recommendation:** AST-2180 should align roster with per-entity failures (plan already flags).
+
+- **Location:** Stage 1 — `_grader_output_type` raises on non-structured types  
+  **Finding:** One-line guard beyond minimum AC; helpful for #5 mis-wiring.  
+  **Recommendation:** Keep unless Susan strikes it (plan allows).
+
+### acceptable
+
+- **Location:** Scope / Files Changed  
+  **Finding:** Single new `src/core/grade_schema.py`; no provider I/O; public contract documents siblings #4/#5/#6; parent AC 9 satisfied (no `"grades_encoded"` literal under `src/core` in module — output type passed in).
+
+- **Location:** `stat.agent.confidence-bounds`  
+  **Finding:** X ⇒ conf 0 enforced; non-vet `{letter}` + conf `0` → stored X0 (AST-2124); vet `confidence_range` (1, 5) blocks 0 before rewrite; no other coercion; bool excluded from integer.
+
+- **Location:** `stat.agent.grade-vector-validation`  
+  **Finding:** Every expected code required; unexpected keys rejected; illegal letters fail; missing code → failure reason, never inferred X; schema `required` + `additionalProperties: false` + enums mirror light check.
+
+- **Location:** `stat.logging.warning`  
+  **Finding:** Unknown row id uses same text as `_decode_payload` (`agent.py` 359); per-entity hydrate failures only in `decode_failures` (consult’s single `who -> dest [why]` — Finding 5).
+
+- **Location:** `stat.logging.debug`  
+  **Finding:** Full schema at debug (no truncation); hydrate begin/end loop counts; no `if debug` gating; uses `get_logger(__name__)`.
+
+- **Location:** Dependencies  
+  **Finding:** Hand-written light check avoids undeclared `jsonschema` dependency in product code; AST-2177 `output_types` markers/extras are sole registry inputs.
+
+- **Location:** `grade_row_ids` / `_row_entities`  
+  **Finding:** `{i:03d}` keys align with consult/roster prompts and AST-2093 `batch_index_map` ordering.
+
+### fix-now
+
+(none)
+
+## R6 (condensed)
+
+- Parent Technical scope for `grade_schema.py` (builder + hydrate + light check, nullable extras, agent_performance in schema) matches appendices and contract block.  
+- After #2: reads `structured_output`, `extra_fields`, vet `grade_letters` / `confidence_range` only from config.  
+- Plan Discuss: **0** rounds; **Plan Ready**, assignee Joan.  
+- External dry-run claim (Finding 7): AC 3 parity with decoder is the critical bar; committed tests remain Betty’s follow-up.
+
+context_tokens≈72000
+
+---
+
+[plan-rubric] PROCEED (Commit: 0206699d0) Schema + hydrate plan solid
+
