@@ -19,7 +19,7 @@ _OK_JD = "role summary " + ("detail " * 120)
 
 @pytest.fixture(autouse=True)
 def _telescope_tmp_db(sqlite_in_memory):
-    """AST-2132: gazer writers keep every scrape via database.save_telescope_data. Pin the DB to tmp
+    """AST-2132: gazer writers keep every scrape via database.save_web_data. Pin the DB to tmp
     so an unpatched keep never reaches the default ASTRAL_DB_DIR (data/astral.db may be a live symlink)."""
     return sqlite_in_memory
 
@@ -38,12 +38,12 @@ def _pjl_ledger(rows: list) -> list | None:
 
 
 def _kept(db) -> list[tuple]:
-    """telescope_data rows in insert order: (id, candidate_id, url, data_type)."""
+    """web_data rows in insert order: (id, candidate_id, url, data_type)."""
     conn = db._get_connection()
     try:
-        db._ensure_telescope_data_schema(conn)
+        db._ensure_web_data_schema(conn)
         return [tuple(r) for r in conn.execute(
-            "SELECT telescope_data_id, candidate_id, url, data_type FROM telescope_data ORDER BY rowid"
+            "SELECT web_data_id, candidate_id, url, data_type FROM web_data ORDER BY rowid"
         ).fetchall()]
     finally:
         conn.close()
@@ -919,10 +919,10 @@ class TestFetchJdBatch:
             ("cand-1", "https://example.com/b", "VISIBLE_TEXT"),
         ]
         assert [c.args for c in save.call_args_list] == [
-            ("job-3", {"jd_telescope_data_id": kept[0][0]}),
-            ("job-4", {"jd_telescope_data_id": kept[1][0]}),
+            ("job-3", {"jd_web_data_id": kept[0][0]}),
+            ("job-4", {"jd_web_data_id": kept[1][0]}),
         ]
-        assert jobs[1]["job_data"] == {"jd_telescope_data_id": kept[1][0]}
+        assert jobs[1]["job_data"] == {"jd_web_data_id": kept[1][0]}
         assert gazer_mod.resolve_telescope_value(kept[1][0]) == _OK_JD
 
     @pytest.mark.asyncio
@@ -974,7 +974,7 @@ class TestFetchJdBatch:
         assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
         # AST-2132: collapse feeds the gates only; the reference points at the raw capture as scraped.
         assert "job_description" not in job["job_data"]
-        assert gazer_mod.resolve_telescope_value(job["job_data"]["jd_telescope_data_id"]) == raw_jd
+        assert gazer_mod.resolve_telescope_value(job["job_data"]["jd_web_data_id"]) == raw_jd
 
 
 def _rel_job(aid: str, href: str, site: str = "https://co.example/careers") -> dict[str, Any]:
@@ -1049,8 +1049,8 @@ class TestAst2025FetchRelativeJdBatch:
         assert [r[1:] for r in kept] == [
             ("cand-1", f"https://ats.example/{k}", "VISIBLE_TEXT") for k in ("ok", "bot", "closed")
         ]
-        assert jobs[0]["job_data"] == {"jd_telescope_data_id": kept[0][0]}
-        assert ("j-ok", {"jd_telescope_data_id": kept[0][0]}) in [c.args for c in rel_env.save.call_args_list]
+        assert jobs[0]["job_data"] == {"jd_web_data_id": kept[0][0]}
+        assert ("j-ok", {"jd_web_data_id": kept[0][0]}) in [c.args for c in rel_env.save.call_args_list]
 
     @pytest.mark.asyncio
     async def test_click_miss_warns_other_error_logs_exception(self, rel_env, caplog) -> None:
@@ -1121,7 +1121,7 @@ class TestAst2025FetchRelativeJdBatch:
         await gazer_mod.fetch_jd_batch("b-7", [{"astral_job_id": "j-abs", "job_link": "https://x.example/j"}])
         await gazer_mod.fetch_relative_jd_batch("b-8", [_rel_job("j-rel", "/ok")])
         # AST-2132: both runners hand the gate the kept capture's row id.
-        assert all(gazer_mod.is_telescope_id(s.pop("telescope_data_id")) for s in seen)
+        assert all(gazer_mod.is_telescope_id(s.pop("web_data_id")) for s in seen)
         # AST-2086: each runner passes its own task's unreadable terminal and classified_states map.
         # AST-2145: fetch_jd_batch forwards transition (default True); the relative runner passes none.
         assert seen == [
@@ -1176,8 +1176,8 @@ class TestAst2145FetchJdBatchNoTransition:
         out = await gazer_mod.fetch_jd_batch("batch-1", [job], transition=False)
         assert out["passed"] == 1
         kept = _kept(sqlite_in_memory)
-        env.save.assert_called_once_with("job-x", {"jd_telescope_data_id": kept[0][0]})
-        assert job["job_data"] == {"jd_telescope_data_id": kept[0][0]}
+        env.save.assert_called_once_with("job-x", {"jd_web_data_id": kept[0][0]})
+        assert job["job_data"] == {"jd_web_data_id": kept[0][0]}
         env.transition.assert_not_called()
 
     def test_apply_jd_gates_classified_default_still_saves_then_transitions(
@@ -1191,11 +1191,11 @@ class TestAst2145FetchJdBatchNoTransition:
         classified = gazer_mod.GAZER_CONFIG["fetch_jd"]["classified_states"]
         gated = gazer_mod._apply_jd_gates(
             {"astral_job_id": "job-c"}, _OK_JD, short_state="ERROR_FETCH_JD_UNREADABLE", pass_state="JD_READY",
-            classified_states=classified, telescope_data_id="ref-1",
+            classified_states=classified, web_data_id="ref-1",
         )
         assert gated is False
         assert [c[0] for c in order.mock_calls] == ["save", "transition"]
-        env.save.assert_called_once_with("job-c", {"jd_telescope_data_id": "ref-1"})
+        env.save.assert_called_once_with("job-c", {"jd_web_data_id": "ref-1"})
         env.transition.assert_called_once_with(["job-c"], classified["cookie"])
 
 
@@ -2386,7 +2386,7 @@ class TestAst2086GazerBotWallSplit:
         transition.assert_called_once_with(["j-mixed"], "CULTURE_READY")
 
 
-# AST-2132 · AST-2130: gazer owns telescope_data.
+# AST-2132 · AST-2130: gazer owns web_data.
 # Branches: is_telescope_id (uuid / text / non-str); keep blank vs content; keep_page_scrape with and
 # without links; scrape_visible_text_and_keep (final_url fallback, None text); scrape_page_links_and_keep
 # (urls / None); resolve_telescope_value (id hit / miss, list with id / legacy / missing entries,
@@ -2403,11 +2403,11 @@ class TestAst2132TelescopeApi:
         assert not gazer_mod.is_telescope_id([{"id": "x"}])
 
     def test_keep_blank_stores_nothing_content_returns_id(self, sqlite_in_memory) -> None:
-        assert gazer_mod.keep_telescope_data("cand-1", "https://a.test", "VISIBLE_TEXT", "  \n ") is None
-        assert gazer_mod.keep_telescope_data("cand-1", "https://a.test", "VISIBLE_TEXT", None) is None  # type: ignore[arg-type]
+        assert gazer_mod.keep_web_data("cand-1", "https://a.test", "VISIBLE_TEXT", "  \n ") is None
+        assert gazer_mod.keep_web_data("cand-1", "https://a.test", "VISIBLE_TEXT", None) is None  # type: ignore[arg-type]
         assert _kept(sqlite_in_memory) == []
         # data_type passes through unchecked (free text).
-        rid = gazer_mod.keep_telescope_data("cand-1", "https://a.test", "JSON", '{"a": 1}')
+        rid = gazer_mod.keep_web_data("cand-1", "https://a.test", "JSON", '{"a": 1}')
         assert _kept(sqlite_in_memory) == [(rid, "cand-1", "https://a.test", "JSON")]
         assert gazer_mod.resolve_telescope_value(rid) == '{"a": 1}'
 
@@ -2445,7 +2445,7 @@ class TestAst2132TelescopeApi:
         assert await gazer_mod.scrape_page_links_and_keep("cand-1", "https://b.test") == ([], None)
 
     def test_resolve_shapes_and_missing_rows(self, sqlite_in_memory, caplog) -> None:
-        a = gazer_mod.keep_telescope_data("cand-1", "https://a.test", "VISIBLE_TEXT", "page a")
+        a = gazer_mod.keep_web_data("cand-1", "https://a.test", "VISIBLE_TEXT", "page a")
         gone = "00000000-0000-4000-8000-000000000000"
         resolve = gazer_mod.resolve_telescope_value
         assert resolve(a) == "page a"
@@ -2462,8 +2462,8 @@ class TestAst2132TelescopeApi:
 
     @pytest.mark.asyncio
     async def test_culture_pages_cached_ids_resolve(self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory) -> None:
-        ok = gazer_mod.keep_telescope_data("cand-1", "https://ok.co/c", "VISIBLE_TEXT", "our values")
-        wall = gazer_mod.keep_telescope_data("cand-1", "https://bot.co/c", "VISIBLE_TEXT", self._BOT)
+        ok = gazer_mod.keep_web_data("cand-1", "https://ok.co/c", "VISIBLE_TEXT", "our values")
+        wall = gazer_mod.keep_web_data("cand-1", "https://bot.co/c", "VISIBLE_TEXT", self._BOT)
         companies = {
             "okco": {"short_name": "okco", "company_data": {"website_content": [{"url": "https://ok.co/c", "id": ok}]}},
             "botco": {"short_name": "botco", "company_data": {"website_content": [{"url": "https://bot.co/c", "id": wall}]}},
@@ -2491,7 +2491,7 @@ class TestAst2132TelescopeApi:
 
     @pytest.mark.asyncio
     async def test_company_culture_cached_ids_resolve(self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory) -> None:
-        ok = gazer_mod.keep_telescope_data("cand-1", "https://ok.co/c", "VISIBLE_TEXT", "our values")
+        ok = gazer_mod.keep_web_data("cand-1", "https://ok.co/c", "VISIBLE_TEXT", "our values")
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
         monkeypatch.setattr(gazer_mod, "transition_company_state", MagicMock())
         coat = AsyncMock(return_value=[{"url": "https://ok.co/c", "id": ok}])

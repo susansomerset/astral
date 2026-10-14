@@ -5031,15 +5031,15 @@ Config only, no branches. `line` is appended to `RESUME_STRUCTURE_BODY_FORMATS`.
 
 Manifest: [`../core/tracker.md`](../core/tracker.md) § AST-2081.
 
-### AST-2131 · AST-2130 (TELESCOPE_DATA_CONFIG + jd_telescope_data_id)
+### AST-2131 · AST-2130 (WEB_DATA_CONFIG + jd_web_data_id)
 
-Config literals plus one module-level guard: every `TELESCOPE_DATA_CONFIG["company_data_id_keys"]` entry must be in `ROSTER_CONFIG["company_data_keys"]`. New block is fully line/branch covered.
+Config literals plus one module-level guard: every `WEB_DATA_CONFIG["company_data_id_keys"]` entry must be in `ROSTER_CONFIG["company_data_keys"]`. New block is fully line/branch covered.
 
 | Area | Component tests |
 | --- | --- |
-| `data_types` id→value shape (`VISIBLE_TEXT`, `PAGE_LINKS`, reserved `DOM_CONTENT`); exact id-key tuple ⊆ `company_data_keys` | new **`TestAst2131TelescopeDataConfig::test_data_types_and_id_keys`** |
-| `TRACKER_CONFIG["job_data_keys"]["jd_telescope_data_id"]`; `job_description` unchanged | **`TestAst2131TelescopeDataConfig::test_job_data_keys_gain_jd_telescope_data_id`** |
-| Guard fires when an id key leaves `company_data_keys` (AST-2105 `_splice_exec` re-exec) | **`TestAst2131TelescopeDataConfig::test_guard_rejects_id_key_missing_from_company_data_keys`** |
+| `data_types` id→value shape (`VISIBLE_TEXT`, `PAGE_LINKS`, reserved `DOM_CONTENT`); exact id-key tuple ⊆ `company_data_keys` | new **`TestAst2131WebDataConfig::test_data_types_and_id_keys`** |
+| `TRACKER_CONFIG["job_data_keys"]["jd_web_data_id"]`; `job_description` unchanged | **`TestAst2131WebDataConfig::test_job_data_keys_gain_jd_web_data_id`** |
+| Guard fires when an id key leaves `company_data_keys` (AST-2105 `_splice_exec` re-exec) | **`TestAst2131WebDataConfig::test_guard_rejects_id_key_missing_from_company_data_keys`** |
 
 Pre-existing: 22 `test_config.py` failures identical on `origin/ftr/AST-2130-telescope-data` (removed symbols, e.g. `SURFER_BATCH_CONFIG`, `METEORITE_RETENTION_CONFIG`) — not this ticket.
 

@@ -8483,9 +8483,9 @@ class TestAst2133ConsultReadsComposedJd:
 
     def _job(self, **jd: Any) -> dict[str, Any]:
         from src.core import gazer
-        ref = gazer.keep_telescope_data(None, "https://jobs.example/1", "VISIBLE_TEXT", self._RAW)
+        ref = gazer.keep_web_data(None, "https://jobs.example/1", "VISIBLE_TEXT", self._RAW)
         return {"astral_job_id": "job-2133", "job_title": "Engineer",
-                "job_data": {"jd_telescope_data_id": ref, **jd}}
+                "job_data": {"jd_web_data_id": ref, **jd}}
 
     def test_visible_jd_token_is_composed(self) -> None:
         cd = TestAst513JobTokenContext()._candidate_data()
