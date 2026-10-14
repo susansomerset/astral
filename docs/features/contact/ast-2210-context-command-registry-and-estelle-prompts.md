@@ -734,3 +734,65 @@ context_tokens≈42000
 - **Baseline run per file:** `tests/component/core/test_contact.py` fails collection locally (`ModuleNotFoundError: asyncpg`, environment, pre-existing), which aborts a combined pytest run; Stage 0–2 comparisons ran each file separately. Baseline: 26 `test_config.py` failures + that collection error, unchanged.
 - **Row script location:** the editor refuses writes under gitignored `debug/`, so the throwaway append script ran from `/tmp` (never committed). Output verified by the plan's AC3/ROWS checks; JSON diff is additions only.
 - **Lint:** `ruff` delta is one finding, UP006 on `_CONTACT_DRAFT_RESPONSE_SCHEMA: Dict[str, Any]`, written as the plan specifies and matching the file's 39 existing `Dict` annotations.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2210
+**Publish ref:** `7819a1592b7cf2b2ad533bbe1a6d68d3665828bb` (`origin/sub/AST-2206/AST-2210-registry-estelle-prompts`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768` (no `docs/canon-index.md` on publish tip; ids resolved from `canon/directives/active/` at same tip as Joan)
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.contact.command-intercept | A | | |
+| stat.logging.debug | X | | Config + `agent_task.json` only; no new `src/**` callables or `logger.debug` sites |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `patt.contact.command-intercept` A, `stat.logging.debug` X; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** Plan § interim behavior / child AC 1–4 vs ftr-only UAT  
+  **Finding:** Until **AST-2212**, `_run_contact_command` does not honor `payload_optional`, so `/show-*` and `/draft-*` with an empty payload still get `usage_reply_text`; handlers for the 18 ids remain unresolved (`handler_unavailable`) until **AST-2211** / **AST-2212**. Plan and test-bible § AST-2210 document this; easy to misread as a #1 defect during partial epic testing.
+
+- **Location:** `canon/directives/active/patt.contact.command-intercept.md` vs `src/utils/config.py` (AST-2206 optional fields)  
+  **Finding:** Active pattern text still describes registry shape without `payload_optional` / `artifact_key` / `private_channel_only` and still states empty payload → usage-only in Arc step 4. This child ships the **config** half per plan Scope gate; pattern doc amendments (parent a–c) are explicitly out of this ticket’s file scope. Track on **AST-2206** / Chuckles–Archie, not `resolve-child` for #1.
+
+- **Location:** `tests/component/utils/test_config.py` manifest / environment  
+  **Finding:** Combined runs that include `tests/component/core/test_contact.py` can fail collection (`asyncpg`, etc.) per implementer notes; Betty’s manifest targets isolated nodes. Not a canon or plan defect on this diff.
+
+- **Location:** `TestAst786AgentTaskRepoJsonSeed`  
+  **Finding:** Pre-existing red row-count pin; bible notes seven new keys when someone re-pins. Masked, not introduced by this sub’s product logic.
+
+## What's solid
+
+- Eighteen `draft-` / `save-` / `show-` commands are generated from `CONTACT_CONTEXT_COMMAND_CONFIG` × `_CONTACT_CONTEXT_COMMAND_VERBS` with no hand-listed id literals (AC 2); import-time asserts cover suffix shape, `TASK_CONFIG` / `ARTIFACT_CONFIG` linkage, optional-field types, and unique artifact keys.
+- Pinhole map and amended write-kind assert match AC 4; `TestAst2061ContactPinholeConfig::test_every_contact_handler_in_pinhole` and `TestAst2210ContextCommandRegistry` encode the contract for siblings.
+- Seven `agent_task.json` rows: six principal drafts with `## Good examples` / `## Bad examples` (AC 3) plus `contact_draft_revise`; `draft_task` entries deliberately omit `artifact_key`.
+- `/add-job` and `/check-status` registry blocks are untouched in the three-dot diff.
+
+## Recommended actions (Chuckles — not Radia)
+
+1. Append this artifact to `docs/features/contact/ast-2210-context-command-registry-and-estelle-prompts.md`, commit `docs(AST-2210): Radia review — clean`, push `origin/sub/AST-2206/AST-2210-registry-estelle-prompts`.
+2. Post slim upshot below via `linear_proxy.py --as radia save-comment`.
+3. Move **Tests Passed** → **Review Posted**; datt **PROCEED** → **User Testing** (no `resolve-child` canon work expected on this child).
+
+context_tokens≈32000
