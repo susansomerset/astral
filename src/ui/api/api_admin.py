@@ -22,7 +22,7 @@ from src.data.database import (
     AGENT_SETTING_COLUMNS,
 )
 
-from src.core.consult import list_timesheets
+from src.core.consult import _rubric_criteria_for_cfg, _vector_labels_map, list_timesheets
 from src.core.task_performance import build_task_performance
 from src.core.inbox import count_inbox_bound_by_candidate
 from src.utils.deploy_status import ui_llm_debug
@@ -95,11 +95,12 @@ from src.utils.config import (
     rubric_owner_task_key,
 )
 from src.utils.rubric_feedback import hydrate_vector_review_strings
-# Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, `_decode_payload`) plus public `resolved_task_system`
+# Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, grader forced-tool helpers) plus public `resolved_task_system`
 from src.core.agent import (
     run_adhoc_workbench_test,
     list_agent_data_runs,
-    _decode_payload,
+    grade_call_codes,
+    grade_forced_tool,
     resolved_agent_content,
     resolved_task_system,
     _chain_context,
@@ -107,6 +108,7 @@ from src.core.agent import (
     _resolve_task_prompts,
     task_llm_server_id,
 )
+from src.core.grade_schema import hydrate_grade_tool_input
 from scripts.migrations.backfill_culture_links import run_backfill, EXCLUDE_STATES
 
 
@@ -1707,6 +1709,17 @@ def adhoc_test():
 
     task_cfg = TASK_CONFIG.get(task_key, {})
     task_response_format = task_cfg.get("response_format") or "text"
+    # AST-2172: a grader test sends the forced tool do_task would, from this candidate's rubric codes.
+    ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
+    id_key = "company_id" if task_cfg.get("entity_type") == "company" else "astral_job_id"
+    grade_ctx = {
+        "batch_entities": [{id_key: eid} for eid in ids],
+        "vector_labels": _vector_labels_map(_rubric_criteria_for_cfg(resolved["candidate_id"], task_cfg)),
+    }
+    try:
+        forced_tool = grade_forced_tool(task_key, grade_ctx)
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
     try:
         result = asyncio.run(run_adhoc_workbench_test(
@@ -1730,6 +1743,7 @@ def adhoc_test():
             candidate_api_keys=resolved["candidate_api_keys"],
             task_key_uuid=resolved["task_key_uuid"],
             debug=ui_llm_debug(),
+            forced_tool=forced_tool,
         ))
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -1748,14 +1762,13 @@ def adhoc_test():
     response_text = _caller_response_blob(body)
     timesheet = result.get("timesheet", {})
 
-    # Decode encoded payload if the task uses a compact encoded output_type
+    # Grader reply: hydrate the tool input exactly as do_task does (AST-2172).
     hydrated = None
-    output_type = TASK_CONFIG.get(task_key, {}).get("output_type", "")
-    if "_encoded" in output_type and response_text:
+    if forced_tool and isinstance(parsed, dict):
         try:
-            ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
-            batch_entities = [{"astral_job_id": jid} for jid in ids]
-            hydrated = _decode_payload(task_key, output_type, response_text, {"batch_entities": batch_entities})
+            hydrated = hydrate_grade_tool_input(
+                task_key, task_cfg["output_type"], parsed, grade_call_codes(task_key, grade_ctx), grade_ctx,
+            )
         except Exception as e:
             hydrated = {"error": str(e)}
 
