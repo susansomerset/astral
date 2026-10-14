@@ -500,3 +500,64 @@ index 2f6115fb8..f9cf36b68 100644
        <div style={{ display: "flex", gap: 12 }}>
          <div className="dep-field" style={{ flex: 1 }}>
 ```
+
+## Joan validate
+
+**Ticket:** AST-2181
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `origin/sub/AST-2172/AST-2181-structured-output-setting-model-gate` @ `70018bafb`
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| `stat.logging.error` | A | | |
+
+## Traceability
+
+**10** → Stage 1 (`list_models` + `structured_output_capability`, `_structured_output_gate` on create/update) + Stage 2 (checkbox, `capable` filter, flagged current model). **10a** → Appendix A `agent.json` keys + Stage 1 step 4 assert on three `true` agents. Parent AC 1–9, 11 / 10b N/A. Scope-gate: no `adhoc_test` (AST-2180); `REPO_ADMIN_JSON_CONFIG` agent column lands here with DB + seed (moved from AST-2177).
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 1 — Finding 4 / pre-existing seed defects  
+  **Finding:** `brain_setting`, `mode`, and `provider_allow_fallbacks: 1` keep Revert to file failing (same as dev today). Plan only adds `requires_structured_output` to the repo file; **DB rows are not seeded `true` via Revert** until Susan normalizes or toggles in Manage Agents.  
+  **Recommendation:** **Susan must choose** before UAT closes AC **10**: (a) “drop them” + step 2a normalization so Revert lands 10a in DB, or (b) accept manual checkbox on Grace/Lucy/Kent for `GET …/job_filter_lucy` → `true`. Plan documents both; neither is a plan defect.
+
+- **Location:** Stage 2 — flagged incapable current model  
+  **Finding:** AC **10** “picker does not offer that model” is met for **alternatives**; current incapable model stays visible with “— no structured output” so save hits API 400 instead of silent model swap.  
+  **Recommendation:** Proceed; matches AC intent and the decision block.
+
+- **Location:** Capability registry (AST-2177)  
+  **Finding:** Only spiked OpenRouter slugs are `advisory`; most catalog entries are `null`, so a checked box narrows the picker sharply until more slugs are spiked.  
+  **Recommendation:** Expected epic behavior; not AST-2181 scope creep.
+
+### acceptable
+
+- **Location:** Scope / Boundaries  
+  **Finding:** Matches amended Description: `config.py` column tuple only; `database.py`, `agent.json`, `api_admin` (models + create/update gate), `AdminAgentPrompts.tsx`; no core grading, no `adhoc_test`.  
+  **Recommendation:** None.
+
+- **Location:** `stat.logging.error`  
+  **Finding:** Gate returns JSON 400 without throw; unknown model stays existing `ValueError` → 400; data layer unchanged on logging; no `print` / log-and-re-raise.  
+  **Recommendation:** None.
+
+- **Location:** Setting plumbing  
+  **Finding:** Mirrors `provider_allow_fallbacks` pattern (`_AGENT_SETTING_TYPES`, `_AGENT_BOOL_SETTINGS`, migration, `list_agents`, export bool loop); `resolve_agent_settings` does not read the new key (Finding 3). Gate only rejects `None` capability; `advisory` allowed per parent Discussion.
+
+- **Location:** Verification  
+  **Finding:** Appendix patches + stage checks; Betty churn enumerated (3 contract updates); sync `--ftr AST-2172-structured-output-graders`.
+
+### fix-now
+
+(none)
+
+## R6 (condensed)
+
+- Parent FS §3 (stored setting), §10 model gate, Discussion (stored not derived; only `none` excluded) reflected in API + UI.  
+- Gate in API layer (not DB) is consistent with Scope and seed review.  
+- Plan Discuss: **0** rounds; **Plan Ready**, assignee Joan.
+
+context_tokens≈115000
