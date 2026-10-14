@@ -508,3 +508,79 @@ Check notes: `import src.ui.api.api_admin` needs `PYTHONPATH=.:src` (the module 
 - Plan Discuss: **0** rounds; **Plan Ready**, assignee Joan.
 
 context_tokens≈105000
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2180  
+**Publish ref:** `0c9433a0cb38324535a0f7f91f956cc4e222413e` (`origin/sub/AST-2172/AST-2180-wire-graders-retire-decoder`)  
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066` (not DIRTY)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| patt.task.dispatch-retry | B | | No-codes `success: False` (no `empty_tokens`) routes via `_consult_batch_fail_dest` / `_RETRY`; empty rubric tokens still AST-2000 straight-to-error — documented at `agent.py` call site |
+| stat.agent.grade-vector-validation | A | | |
+| stat.agent.confidence-bounds | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan’s `patt.task.dispatch-retry` **B** and A’s on the rest match the built wiring, hydrate light-check → `decode_failures`, and scope-gate `api_admin.adhoc_test`.
+
+## Frame diff
+
+(none) — Linear AC **6** already narrowed to `duplicate vector code \{`; greps and `TestAst2180DecoderRetiredFromSource` pass on tip.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none) — Joan’s open items (consult normalize delete, `vector_reviews` copy-on-write, no-codes vs `empty_tokens` routing) are implemented or documented in the build stub; no new product call needed for Radia gate.
+
+### advisory
+
+- **Location:** AC **8** (live `meteorite_grade_do` batch)  
+  **Finding:** Not re-runnable in review; plan defers to Susan staging on production grader model.  
+  **Recommendation:** Parent UAT / staging sign-off; default: do not block **Review Posted** on absent live run.
+
+- **Location:** `origin/dev...0c9433a0` three-dot diff  
+  **Finding:** Epic stack (2176–2179 + `grade_schema`, config, transport) precedes this child; product delta for **2180** is `agent.py`, `consult.py`, `roster.py`, `formatting.py`, `api_admin.py` ad-hoc only (~−600 net LOC in those files).  
+  **Recommendation:** Rollup reviewers treat as ordered siblings on ftr.
+
+- **Location:** `src/core/agent.py` — `logger.debug` on `hydrate_grade_tool_input` in/out  
+  **Finding:** Large hydrated dicts hit shared debug arg truncation (same theme as AST-2178/2179); `stat.logging.debug` not on this ticket’s frozen list.  
+  **Recommendation:** Epic logging follow-up if Susan wants full payloads at debug.
+
+- **Location:** `logger.error` on empty-token and no-codes skip-before-send  
+  **Finding:** `stat.logging.error` prefers **warning** for soft-fails without throw; both skips use `logger.error` (AST-2000 pattern for empty tokens; no-codes mirrors it). Pre-existing posture, not introduced for decode retirement alone.  
+  **Recommendation:** Optional canon/logging polish later; not a 2180 blocker.
+
+- **Location:** Radia re-check — subset pytest  
+  **Finding:** `TestAst2180DecoderRetiredFromSource` **2 passed**; some `TestAst2180GraderStructuredPath` cases failed here with `ModuleNotFoundError: asyncpg` (review host venv), not assertion failures on tip.  
+  **Recommendation:** Trust Betty **Tests Passed** manifest on publish ref; no Radia re-run of full harness.
+
+## What's solid
+
+- **Wiring:** `grade_forced_tool` / `GRADE_TOOL_NAME`; schema before send; `structured` → `getTimestampPrefix(structured=True)`; `forced_tool` through `_send_to_server`, `run_adhoc`, workbench; hydrate replaces coerce / strict envelope / `_decode_payload`; AST-1839 / AST-2089 from tool `agent_performance`; vet skips generic JSON validation when structured.
+- **AC 5:** Agent tests (`TestAst2180GraderStructuredPath` missing-code case) + consult `test_ast2180_missing_code_row_retries_entity_sibling_scores` use real `hydrate_grade_tool_input` — missing code → `decode_failures`, sibling scored, no phantom **X**.
+- **AC 6 / 7:** `rg` gates clean on worktree; committed `test_ac6_decoder_symbols_absent_from_src` / `test_ac7_no_grades_encoded_literal_outside_config` green.
+- **Consult / roster:** Encoded normalize cluster removed; `decode_failures` routing with hydrate reasons (`TestAst2180LightCheckReasons` on roster).
+- **Scope-gate:** `api_admin.adhoc_test` builds forced tool, hydrates, no `_decode_payload` import.
+- **Deletions:** `_decode_payload`, segment helpers, formatting encoded-string helpers removed per Stage 4.
+- **Estimate:** **5** credible for multi-file core surgery + test churn.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append artifact, `docs(AST-2180): Radia review — clean`, push sub, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** toward **User Testing** (no `resolve-child` unless Susan reopens no-codes / logging discuss).
+- Susan: AC **8** staging check when epic is on production grader model.
+
+context_tokens≈38000
