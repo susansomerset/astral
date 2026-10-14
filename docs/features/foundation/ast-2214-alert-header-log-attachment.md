@@ -437,3 +437,13 @@ context_tokens≈42000
 - No `resolve-child` for canon; optional Susan answer on `CRITICAL` only if that level is on the roadmap for `app_log`.
 
 context_tokens≈38000
+
+## Resolution
+
+**2026-10-14 — Hedy, `resolve-child` on `bd74d6cc5`.** No product change. Radia's review was CLEAN with 0 fix-now.
+
+- **discuss — `CRITICAL` rows and body filter:** Susan hasn't answered, so this takes Radia's **Default**. The shipped filter stays: only WARNING and ERROR go in the body, and the attachment carries every level. To reverse it, add `"CRITICAL"` to the level tuple in `_format_warning_error_block`.
+- **advisory — sibling carry:** AST-2213 files are in the three-dot diff vs `origin/dev` because this sub stacks on `ftr/AST-2207-production-error-report-email`. Nothing to do.
+- **advisory — `except Exception` → WARNING:** frozen by plan and Canon Scope for this ticket. Nothing to do.
+- **advisory — stale build-review counts:** the `## Review (build)` sanity numbers at `ebf0917f` predate Betty's `36f6211e9`. On the tip, the full manifest passes (29 passed), with `src/core/monitor.py` at 100% statement and branch coverage.
+- **Frame diff AC 6 (live UAT):** left unchecked. It is a live forced AUTO error on the test deploy, which only Susan's parent UAT can verify.
