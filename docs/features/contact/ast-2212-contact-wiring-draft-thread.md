@@ -861,3 +861,78 @@ context_tokens≈68000
 - **Tests:** no new FAILED/ERROR vs the Stage 0 baseline (36 pre-existing lines across `test_contact.py` + `test_config.py`). Run with `~/astral/.venv/bin/python`.
 - **For Radia (§8):** `_draft_thread_root_command` calls `load_slack_conversation_context` without Calling/Response lines, same as the existing Estelle-turn call site; the callee is `@_with_log_debug` and logs internally. Left as planned.
 - **Coverage gaps for Betty (not added; test tree is hers):** see the plan's **Notes for Betty** under Acceptance trace — refusal (public, mpim, DM), unmapped, mapped-candidate substitution, payload-optional run, `artifact_key=` only when declared, draft packet (thread replies, stale-blob exclusion, ledger COMPLETED/FAILED, batch reset), root detection (refresh, non-draft root, command-in-thread), revise post rule, paste-recovery skip.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2212
+**Publish ref:** `7d75c04e20b73a7d68eb57d298356417afcc7862` (`origin/sub/AST-2206/AST-2212-contact-wiring-draft-thread`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768` (directives from `canon/directives/active/` at publish tip)
+**Overall:** CLEAN
+
+**Scoring scope:** Canon and plan fidelity scored on AST-2212-owned product delta: `src/core/contact.py` (+ `tests/component/core/test_contact.py` § AST-2212, `docs/test-bible/core/contact.md` § AST-2212). AST-2210/2211 (and dev merge) on the sub are integration-line carry, not graded as #3 defects.
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.contact.command-intercept | A | | |
+| patt.artifact.read-current | A | | |
+| stat.logging.info.contact | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: all A; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** § Review — implementer “coverage gaps for Betty” / plan **Notes for Betty**  
+  **Finding:** Superseded on tip `7d75c04e2`: `TestAst2212ContactContextWiring` pins refusal (public/mpim/DM), unmapped, mapped-candidate + `artifact_key=`, payload-optional, show/save AC 5–7 (sqlite), draft packet (ZEBRA-7731, stale-blob exclusion, ledger COMPLETED/FAILED, batch reset), draft-thread revise (AC 10–11), paste skip, and related branches. Strike the stale gap list when Chuckles appends this review.
+
+- **Location:** § Review — Hedy §8: `_draft_thread_root_command` → `load_slack_conversation_context` without explicit Calling/Response `logger.debug`  
+  **Finding:** Matches existing Estelle-turn pattern; callee is `@_with_log_debug` and logs internally. **Radia answer:** keep as planned; not `resolve-child` work unless Susan wants uniform outer-wrapper logging on every cache load.
+
+- **Location:** Joan plan discuss — revise turn uses uncapped `fetch_full_conversation_history(..., include_thread_replies=True)` filtered to thread  
+  **Finding:** Built as written (Susan no-cap rule). Cost/latency is an ops tradeoff, not a canon violation on this diff.
+
+- **Location:** `patt.contact.command-intercept.md` vs runtime  
+  **Finding:** Active pattern text still describes pre–AST-2206 empty-payload and registry shape; runtime now honors `payload_optional`, channel-mapped candidate, refusal/unmapped notices, and draft-thread routing. Same epic split as AST-2210/2211 (config/runtime landed; canon doc edits tracked on parent). Not blocking #3.
+
+- **Location:** `_SLACK_PRIVATE_CHANNEL_TYPE = "group"` (Joan discuss)  
+  **Finding:** Mapped-candidate substitution and draft-thread routing require `app_mention` + Slack `group`; DMs hit refusal via `private_channel_only` + `private_channel=False` before usage (AC 13 tests). mpim/public refusal at mention gate. No code change unless Susan opens a channel-taxonomy follow-up.
+
+- **Location:** Branch ancestry  
+  **Finding:** **Sibling test/bible carry** from AST-2210/2211 on this sub is expected after `after AST-2211` merge-child; only `contact.py` (+ #3 tests/bible) are #3 product scope.
+
+## What's solid
+
+- **Command intercept:** `_run_contact_command` honors `payload_optional`, passes `artifact_key=` only when declared, remaps `astral_candidate_id` via `get_candidate_id_for_slack_channel` for `private_channel_only`, and posts config refusal/unmapped via `_post_contact_command_notice` with `_emit_listen_info` on the public-channel refusal path.
+- **read-current / no coat-check:** Draft and revise packets use `get_candidate_current`; draft live_content strips the six context piece fields from the context blob and drops blob `base_resume` from task ctx (component tests assert no `STALE-BLOB` / `base_resume` in packet).
+- **Draft / revise:** Ledgered `do_task` batches (`save_dispatch_ledger` / `update_dispatch_ledger`, `log_batch_id` reset in `finally`) match intake-style agent_data join; `/draft-` posts under command `ts` with `reply_placement`; thread `@Estelle` routes to `contact_draft_revise` when root is a draft handler entry (handler-path check, no command-id literals — AC 3 clean on `src/core/`).
+- **AC 4:** `src/core/intake.py` unchanged in three-dot diff.
+- **Logging:** Per-item warnings on draft/revise/handler misses; routed handler failures use existing `logger.exception` shape; command and refusal paths still populate `command` for `_emit_listen_info`.
+
+## Recommended actions (Chuckles — not Radia)
+
+1. Append this artifact to `docs/features/contact/ast-2212-contact-wiring-draft-thread.md`, commit `docs(AST-2212): Radia review — clean`, push `origin/sub/AST-2206/AST-2212-contact-wiring-draft-thread`.
+2. Post slim upshot via `linear_proxy.py --as radia save-comment`.
+3. **Review Posted** → datt **PROCEED** → **User Testing** (parent epic UAT may still exercise live Slack AC 5–13; component tests already cover wiring).
+
+context_tokens≈42000
