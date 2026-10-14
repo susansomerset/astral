@@ -5,15 +5,13 @@ import base64
 import json
 import re
 from bisect import bisect_left
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import unquote, urlparse
 
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Compact grades_encoded row: 000|DTA5|GCA4|…
-_ENCODED_GRADE_LINE = re.compile(r"^\d{3}\|")
 # Positional batch label at a line start, after a quote, or after a literal "\n" escape
 # (JSON-enveloped agent_payload). Group 1 = [index=NNN] form, group 2 = bare NNN before ':' or '|'.
 _POSITIONAL_LABEL = re.compile(
@@ -53,48 +51,6 @@ def enumerate_array(
     if label:
         return f"{label}:\n{body}"
     return body
-
-
-def clean_encoded_agent_payload(payload: str) -> str:
-    """Drop batch tag lines from agent_payload; keep grade rows for _decode_payload."""
-    lines: List[str] = []
-    for ln in (payload or "").splitlines():
-        s = ln.strip()
-        if not s:
-            continue
-        if s.startswith("[") and "batch" in s.lower():
-            continue
-        lines.append(s)
-    return "\n".join(lines)
-
-
-def looks_like_encoded_grades_text(text: str) -> bool:
-    """True when text contains at least one compact grades_encoded row."""
-    for ln in (text or "").splitlines():
-        if _ENCODED_GRADE_LINE.match(ln.strip()):
-            return True
-    if (text or "").strip() and _ENCODED_GRADE_LINE.match((text or "").strip()):
-        return True
-    return False
-
-
-def coerce_grades_encoded_json_parse(parsed: Any, fallback_text: str = "") -> Any:
-    """Wrap bare encoded string (or top-level JSON string) in agent envelope for do_task."""
-    if isinstance(parsed, str) and looks_like_encoded_grades_text(parsed):
-        return {"agent_payload": clean_encoded_agent_payload(parsed)}
-    if isinstance(parsed, dict):
-        ap = parsed.get("agent_payload")
-        if isinstance(ap, str):
-            out = dict(parsed)
-            out["agent_payload"] = clean_encoded_agent_payload(ap)
-            return out
-        if isinstance(ap, list):
-            out = dict(parsed)
-            out["agent_payload"] = clean_encoded_agent_payload("\n".join(str(x) for x in ap))
-            return out
-    if parsed is None and fallback_text and looks_like_encoded_grades_text(fallback_text):
-        return {"agent_payload": clean_encoded_agent_payload(fallback_text)}
-    return parsed
 
 
 def parse_enumerate_array(text: str) -> Dict[int, str]:
