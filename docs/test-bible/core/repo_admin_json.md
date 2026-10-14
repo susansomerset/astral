@@ -791,3 +791,9 @@ Repro node ids: `test_config.py::TestAst1084EvaluateJdCriteria::test_qc_content_
 **New:** `TestAst2024FetchRelativeJdCatalogRow::test_row_shape_and_sequence` — row current; `agent_id` / Job Review group mirror `fetch_jd`; `task_seq` 3.5 sits directly after `fetch_jd`; unique `task_key_uuid`. Red pre-AST-2024 (no row).
 
 **Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (`== 57` rows + `AST786_EXPECTED_TASK_KEYS`) was already red before this ticket (catalog grew past 57 on `origin/dev`). Whoever re-pins it must add `fetch_relative_jd`. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2024.
+
+### AST-2210 · AST-2206 (Estelle `draft_context_*` + `contact_draft_revise` rows)
+
+**New:** `TestAst2210ContextDraftCatalogRows::test_draft_and_revise_rows` — each of the six `CONTACT_CONTEXT_COMMAND_CONFIG` draft tasks is a current `principal_recruiter_estelle` row in group **Contact Estelle** with `## Good examples` + `## Bad examples` (ticket AC 3), `{$SELECTED_AGENT}`, and no unfilled `<TITLE>`/`<LABEL>`/`<GUIDANCE>`/`<GOOD>`/`<BAD>` skeleton token; the `CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"]` row is `contact_recruiter_estelle` in the same group. Unchanged and green: `TestAst1072ContactEstelleTurnCatalogRow`.
+
+**Masked, not revised:** `TestAst786AgentTaskRepoJsonSeed` (pinned row count / key set) stays pre-existing red; whoever re-pins it must add the seven AST-2210 keys. Primary manifest: **`docs/test-bible/utils/config.md`** § AST-2210.

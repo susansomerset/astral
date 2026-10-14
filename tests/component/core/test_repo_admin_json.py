@@ -796,6 +796,34 @@ class TestAst1072ContactEstelleTurnCatalogRow:
         assert "live_content" in user.lower() or "Slack" in user or "JSON" in user
 
 
+class TestAst2210ContextDraftCatalogRows:
+    """AST-2210: six principal-Estelle draft_context_* rows + contact-Estelle contact_draft_revise row."""
+
+    def test_draft_and_revise_rows(self) -> None:
+        from src.utils.config import (
+            CONTACT_CONTEXT_COMMAND_CONFIG,
+            CONTACT_DRAFT_THREAD_CONFIG,
+        )
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        for ctx in CONTACT_CONTEXT_COMMAND_CONFIG.values():
+            row = by[ctx["draft_task"]]
+            assert row["agent_id"] == "principal_recruiter_estelle"
+            assert row["task_group_name"] == "Contact Estelle"
+            user = row["user_prompt"]
+            # AC 3: both example sections present on every draft row.
+            assert "## Good examples" in user and "## Bad examples" in user
+            assert "{$SELECTED_AGENT}" in user
+            # Skeleton placeholders all filled in.
+            assert not any(f"<{t}>" in user for t in ("TITLE", "LABEL", "GUIDANCE", "GOOD", "BAD"))
+            assert "draft" in row["system_prompt"] and "admin_aside" in row["system_prompt"]
+        revise = by[CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"]]
+        assert revise["agent_id"] == "contact_recruiter_estelle"
+        assert revise["task_group_name"] == "Contact Estelle"
+        assert "revised_draft" in revise["system_prompt"] and "{$SELECTED_AGENT}" in revise["user_prompt"]
+
+
 class TestAst1515ContactEstelleTurnMarkupPrompt:
     """AST-1515: contact_estelle_turn teaches contact-task markup in reply (not skill_calls)."""
 

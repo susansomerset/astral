@@ -3584,9 +3584,13 @@ class TestAst2061ContactPinholeConfig:
         ]
         for handler in handlers:
             assert handler in pinhole, handler
+        # AST-2206 amendment: writes are meteorites (under src.core.meteorite.) or artifact versions.
         for handler, kind in pinhole.items():
             if kind.startswith("write"):
-                assert handler.startswith("src.core.meteorite."), handler
+                assert (
+                    kind.startswith("write meteorite") and handler.startswith("src.core.meteorite.")
+                ) or kind.startswith("write artifact"), (handler, kind)
+        assert pinhole["src.core.candidate.contact_command_save_context"] == "write artifact"
         assert "src.core.meteorite.create_meteorite_job" not in pinhole
         assert "src.core.meteorite.land_meteorite" not in pinhole
 
@@ -6818,6 +6822,104 @@ class TestAst2151CheckStatusRegistry:
     def test_reply_placement_outside_vocabulary_fails_import(self) -> None:
         with pytest.raises(AssertionError, match="check-status"):
             self._splice_exec('"reply_placement": "always_with_share",', '"reply_placement": "sometimes",')
+
+
+# Branches (AST-2210): 18 context commands generated from CONTACT_CONTEXT_COMMAND_CONFIG x verbs;
+# optional fields present/absent per verb; draft/revise tasks + draft-thread config; reply texts;
+# pinhole rows. Spliced re-exec (AST-2151 helper) so the shipped import-time asserts fire.
+_AST2210_VERB_HANDLERS = {
+    "draft": "src.core.contact.contact_command_draft_context",
+    "save": "src.core.candidate.contact_command_save_context",
+    "show": "src.core.candidate.contact_command_show_context",
+}
+
+
+class TestAst2210ContextCommandRegistry:
+    """AST-2210: context command registry, generated /draft- /save- /show- entries, pinhole amendment."""
+
+    SUFFIXES = ("backstory", "bio-summary", "dealbreakers", "ideal-day", "priorities", "strengths")
+    HANDLERS = _AST2210_VERB_HANDLERS
+    _splice_exec = staticmethod(TestAst2151CheckStatusRegistry._splice_exec)
+
+    def test_ac1_exactly_eighteen_context_ids(self) -> None:
+        got = {k for k in cfg.CONTACT_CONFIG["commands"] if k.split("-", 1)[0] in self.HANDLERS}
+        assert got == {f"{v}-{s}" for v in self.HANDLERS for s in self.SUFFIXES}
+        assert set(cfg.CONTACT_CONTEXT_COMMAND_CONFIG) == set(self.SUFFIXES)
+
+    def test_ac2_ids_generated_not_hand_listed(self) -> None:
+        import re
+        from pathlib import Path
+
+        src = Path(cfg.__file__).read_text(encoding="utf-8")
+        assert not re.search(r'"(draft|save|show)-(strengths|dealbreakers|priorities|ideal-day|bio-summary|backstory)"', src)
+
+    def test_entry_fields_per_verb(self) -> None:
+        for suffix, ctx in cfg.CONTACT_CONTEXT_COMMAND_CONFIG.items():
+            for verb, handler in self.HANDLERS.items():
+                e = cfg.CONTACT_CONFIG["commands"][f"{verb}-{suffix}"]
+                assert e["handler"] == handler and e["mode"] == "code"
+                assert e["artifact_key"] == ctx["artifact_key"]
+                assert e["private_channel_only"] is True
+                assert f"/{verb}-{suffix}" in e["usage_reply_text"]
+                assert ctx["label"] in e["description"]
+                # draft-/show- run on an empty payload; save- keeps the usage reply (absent == False).
+                assert e.get("payload_optional", False) is (verb != "save")
+                # Only draft- threads its reply under the command message.
+                assert e.get("reply_placement") == ("always_no_share" if verb == "draft" else None)
+
+    def test_registry_rows_resolve_and_drafts_never_save(self) -> None:
+        for ctx in cfg.CONTACT_CONTEXT_COMMAND_CONFIG.values():
+            assert ctx["artifact_key"] in cfg.ARTIFACT_CONFIG
+            task = cfg.TASK_CONFIG[ctx["draft_task"]]
+            # No artifact_key: agent.do_task's auto-land / craft-persist branches must never fire on a draft.
+            assert "artifact_key" not in task
+            assert task["response_schema"]["draft"]["required"] is True
+        revise = cfg.TASK_CONFIG[cfg.CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"]]
+        assert cfg.CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"] == "contact_draft_revise"
+        assert revise["task_type"] == "CHAT" and "artifact_key" not in revise
+        assert revise["response_schema"]["reply"]["required"] is True
+        assert revise["response_schema"]["revised_draft"]["required"] is False
+
+    def test_reply_texts(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["private_channel_only_reply_text"] == "I can only do that in the candidate's private channel."
+        # Double space is deliberate (matches unknown_recognition_reply_text).
+        assert cc["unmapped_channel_reply_text"] == "This channel isn't linked to a candidate yet.  Let's check with @susan"
+
+    def test_ac4_pinhole_rows(self) -> None:
+        pinhole = cfg._CONTACT_PINHOLE_HANDLERS
+        assert pinhole[self.HANDLERS["show"]] == "read artifact"
+        assert pinhole[self.HANDLERS["save"]] == "write artifact"
+        assert pinhole[self.HANDLERS["draft"]].startswith("read artifact")
+
+    def test_non_bool_payload_optional_fails_import(self) -> None:
+        with pytest.raises(AssertionError, match="payload_optional"):
+            self._splice_exec(
+                '/show-{suffix}",\n        "payload_optional": True,', '/show-{suffix}",\n        "payload_optional": "yes",'
+            )
+
+    def test_unregistered_artifact_key_fails_import(self) -> None:
+        with pytest.raises(AssertionError, match="backstory"):
+            self._splice_exec(
+                '"artifact_key": "candidate.context.backstory",\n        "draft_task"',
+                '"artifact_key": "candidate.context.nope",\n        "draft_task"',
+            )
+
+    def test_duplicate_artifact_key_fails_import(self) -> None:
+        # The draft handler finds its draft_task by artifact_key, so two rows may not share one.
+        with pytest.raises(AssertionError):
+            self._splice_exec(
+                '"artifact_key": "candidate.context.backstory",\n        "draft_task"',
+                '"artifact_key": "candidate.context.bio_summary",\n        "draft_task"',
+            )
+
+    def test_write_kind_outside_meteorite_or_artifact_fails_import(self) -> None:
+        # The amendment opens artifact writes only; any other write kind still fails at import.
+        with pytest.raises(AssertionError):
+            self._splice_exec(
+                '"src.core.tracker.contact_task_get_candidate_data": "read candidate",',
+                '"src.core.tracker.contact_task_get_candidate_data": "write candidate",',
+            )
 
 
 # Branches: DISCOVERED land/vet; CSE-only resolve; resolve_website SA + WEBSITE_REVIEW edges (AST-1672).
