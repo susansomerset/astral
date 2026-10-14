@@ -305,6 +305,7 @@ async def send_to_anthropic(
                 _make_api_call,
                 timeout_seconds=provider_call_wait_timeout_seconds(),
             )
+            logger.debug("Response from messages.create: %s", response)
             duration = (datetime.now() - start_time).total_seconds()
 
             usage = response.usage
