@@ -36,11 +36,14 @@ import os
 import re
 import threading
 import time
+import uuid
 from collections import OrderedDict
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.candidate import (
     get_candidate,
+    get_candidate_current,
     get_candidate_id_for_query,
     get_candidate_id_for_slack_channel,
     get_operative_base_resume,
@@ -70,14 +73,16 @@ from src.external.slack import (
     verify_slack_signature,
 )
 from src.utils.config import (
+    CANDIDATE_LIBRARY_CONFIG,
     CONTACT_CONFIG,
+    CONTACT_CONTEXT_COMMAND_CONFIG,
     CONTACT_ESTELLE_CONFIG,
     CONTACT_TASK_CONFIG,
     METEORITE_CONFIG,
     STAGE_METEORITE_CONFIG,
 )
 from src.utils.deploy_status import get_deploy_label
-from src.utils.logging import get_logger, log_debug
+from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, log_debug
 
 logger = get_logger(__name__)
 
@@ -1413,6 +1418,165 @@ def _post_contact_command_notice(
     )
     summary = {"id": command_id, "mode": outcome, "ok": False, "meteorite_id": None, "error": outcome}
     return {"ok": True, "outcome": command_id, "command": summary, "slack_post": post}
+
+
+def _contact_task_ctx(cid: str, row: dict) -> dict:
+    """do_task ctx on the candidate's key, built like the Estelle turn's (no blob base_resume, AST-1585)."""
+    cd = copy.deepcopy(row.get("candidate_data")) if isinstance(row.get("candidate_data"), dict) else {}
+    arts = cd.get("artifacts")
+    if isinstance(arts, dict) and "base_resume" in arts:
+        cd["artifacts"] = {k: v for k, v in arts.items() if k != "base_resume"}
+    return {
+        "astral_candidate_id": cid,
+        "candidate_data": cd,
+        "candidate_api_keys": dict(row.get("candidate_api_keys") or {}),
+    }
+
+
+def _run_contact_ledgered_task(task_key: str, *, cid: str, row: dict, live_content: str, debug: bool) -> dict:
+    """One do_task under its own dispatch_ledger batch, so the run lands in agent_data for the candidate.
+
+    list_agent_data_runs joins agent_data to dispatch_ledger on batch_id, and do_task stores prompt
+    blocks only under an active batch. Same ledger shape as intake.validate_preamble_answer.
+    Returns the do_task result plus batch_id.
+    """
+    # Late import avoids core→agent cycles at module load.
+    from src.core.agent import compute_batch_cost, do_task
+
+    batch_id = f"contact-{task_key}-{uuid.uuid4()}"
+    started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    logger.debug("Calling save_dispatch_ledger: [batch_id=%s, candidate_id=%s]", batch_id, cid)
+    database.save_dispatch_ledger(
+        batch_id, f"contact-{task_key}", cid, started_at, entity_type="candidate", batch_size=1
+    )
+    token = log_batch_id.set(batch_id)
+    try:
+        logger.debug("Calling agent.do_task: [task_key=%s, index=%s, batch_id=%s]", task_key, cid, batch_id)
+        result = asyncio.run(
+            do_task(
+                task_key,
+                live_content=live_content,
+                index=cid,
+                ctx=_contact_task_ctx(cid, row),
+                debug=debug,
+                store_agent_data=True,
+            )
+        )
+        logger.debug("Response from agent.do_task: %s", result)
+        ok = isinstance(result, dict) and bool(result.get("success"))
+        logger.debug("Calling update_dispatch_ledger: [batch_id=%s, ok=%s]", batch_id, ok)
+        database.update_dispatch_ledger(
+            batch_id,
+            status="COMPLETED" if ok else "FAILED",
+            completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            total_processed=1,
+            total_passed=int(ok),
+            total_failed=int(not ok),
+            total_cost=compute_batch_cost(batch_id),
+        )
+        return {**(result if isinstance(result, dict) else {}), "batch_id": batch_id}
+    finally:
+        flush_log_buffer()
+        log_batch_id.reset(token)
+
+
+def _contact_transcript_lines(messages: list) -> List[str]:
+    """`[<poster>] <text>` per Slack message, in the given order; untrimmed (full history / whole thread)."""
+    lines = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        who = m.get("user") or m.get("bot_id") or "unknown"
+        # A reply carries its parent's thread_ts; a parent's thread_ts (when present) equals its own ts.
+        reply = m.get("thread_ts") and m.get("thread_ts") != m.get("ts")
+        lines.append(f"[{who}]{' (thread reply)' if reply else ''} {m.get('text') or ''}")
+    return lines
+
+
+@_with_log_debug
+def contact_command_draft_context(
+    candidate_id: str,
+    payload: str,
+    *,
+    source_id: str,
+    thread_ts: Optional[str] = None,
+    artifact_key: Optional[str] = None,
+    debug: bool = False,
+) -> dict:
+    """CONTACT_CONFIG["commands"] code handler for /draft-<context> (AST-2206).
+
+    Principal Estelle drafts the piece from the mapped channel's full history (thread replies
+    included), the candidate's name / context / contact, and the current saved body (read-current).
+    Never saves. payload is ignored (payload_optional entry); source_id and thread_ts are accepted
+    for the runner's call shape. Returns {ok, meteorite_id (always None), error, reply_text}.
+    """
+    cid = (candidate_id or "").strip()
+    key = (artifact_key or "").strip()
+    ctx_row = next((m for m in CONTACT_CONTEXT_COMMAND_CONFIG.values() if m["artifact_key"] == key), None)
+    row = get_candidate(cid) if cid else None
+    cd = row.get("candidate_data") if isinstance(row, dict) else None
+    cd = cd if isinstance(cd, dict) else {}
+    contact = cd.get("contact") if isinstance(cd.get("contact"), dict) else {}
+    channel = str(contact.get("slack_channel_id") or "").strip()
+    miss = (
+        "unknown_artifact_key" if ctx_row is None
+        else "no_candidate" if not isinstance(row, dict)
+        else "no_slack_channel" if not channel
+        else None
+    )
+    if miss:
+        logger.warning(
+            "%s | contact draft of %r not run — %s\n  Nothing was drafted", cid or "-", artifact_key, miss
+        )
+        return {"ok": False, "meteorite_id": None, "error": miss, "reply_text": None}
+
+    logger.debug("Calling fetch_full_conversation_history: [channel=%s, include_thread_replies=True]", channel)
+    history = fetch_full_conversation_history(channel=channel, include_thread_replies=True)
+    logger.debug("Response from fetch_full_conversation_history: %s", history)
+    logger.debug("Calling get_candidate_current: [candidate_id=%s, artifact_key=%s]", cid, key)
+    current = get_candidate_current(cid, key)
+    logger.debug("Response from get_candidate_current: %r", current)
+
+    # Context blob minus the six context pieces: their current bodies live in artifacts (read-current),
+    # and the one being drafted rides below as its own section.
+    piece_fields = {m["artifact_key"].rsplit(".", 1)[-1] for m in CONTACT_CONTEXT_COMMAND_CONFIG.values()}
+    context = cd.get("context") if isinstance(cd.get("context"), dict) else {}
+    packet = {
+        "name": {k: row.get(k) for k in CANDIDATE_LIBRARY_CONFIG["name_columns"]},
+        "context": {k: v for k, v in context.items() if k not in piece_fields},
+        "contact": contact,
+    }
+    live_content = "\n".join([
+        f"artifact_key={key}",
+        "",
+        "## Candidate",
+        json.dumps(packet, indent=2, ensure_ascii=False, default=str),
+        "",
+        f"## Currently saved {ctx_row['label']}",
+        current if isinstance(current, str) and current.strip() else "(nothing saved yet)",
+        "",
+        "## Slack channel history (oldest first; every top-level post and thread reply)",
+        *_contact_transcript_lines(history),
+    ])
+
+    result = _run_contact_ledgered_task(ctx_row["draft_task"], cid=cid, row=row, live_content=live_content, debug=debug)
+    parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
+    draft = parsed.get("draft") if isinstance(parsed.get("draft"), str) else ""
+    note = parsed.get("note") if isinstance(parsed.get("note"), str) else ""
+    ok = bool(result.get("success")) and bool(draft.strip())
+    if not ok:
+        logger.warning(
+            "%s | contact draft of %s failed — %s\n  No draft was posted unless Estelle returned draft text",
+            cid, key, result.get("error") or "no draft text",
+        )
+    # Estelle's failure status still carries one plain sentence in draft (what is missing) — post it.
+    reply = (draft.strip() + (f"\n\n{note.strip()}" if note.strip() else "")) if draft.strip() else None
+    return {
+        "ok": ok,
+        "meteorite_id": None,
+        "error": None if ok else (result.get("error") or "no_draft"),
+        "reply_text": reply,
+    }
 
 
 def _run_contact_command(
