@@ -214,3 +214,78 @@ No other file. `agent.py`, `consult.py`, `roster.py`, `formatting.py` and `openr
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2179
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `origin/sub/AST-2172/AST-2179-forced-tool-transport` @ `166439748`
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| `stat.logging.error` | A | | |
+| `stat.logging.debug` | A | | |
+
+## Traceability
+
+**3** → Stage 2 (`_forced_tool_body`, `forced_tool` on `send_to_anthropic`, debug `messages.create` kwargs) + Stage 3 (same on `send_to_llm_compat`, mock asserts tools/`tool_choice` when `forced_tool` set, absent when `None`) + **Expected test churn** (Betty: kwargs AC 3 on both clients). Full “any **grader task**” wiring is **not** in this child (Boundaries → #5 passes `forced_tool`); plan proves transport, not task selection. **4** → Stage 3 steps 3–4 (`require_parameters` on OpenRouter `provider_obj` before `extra_body` / `get_batch_host`), plan note on `_probe_request_kwargs` copy-through + Betty probe via `get_batch_host`. Parent AC 1–2, 5–11 / 10a–10b N/A.
+
+## Findings
+
+### discuss
+
+- **Location:** Child AC **3** vs Boundaries  
+  **Finding:** AC text names “any grader task”; this ticket only adds optional `forced_tool` and does not read `structured_output` / task keys (#5). Stage 3 mock and Betty’s planned component tests validate kwargs when `forced_tool` is passed, not that `grade_do` automatically sends a schema.  
+  **Recommendation:** Treat AC **3** as satisfied at epic level only after AST-2180; for AST-2179, Betty’s new kwargs cases are the committed gate (plan already lists them).
+
+- **Location:** Open risk — `openrouter._batch_key` + varying `tools` schemas  
+  **Finding:** Per-schema probe/cache split within one batch; correctness and AC **4** hold; more probes possible. No child scopes `openrouter.py`.  
+  **Recommendation:** Susan/Chuckles track as epic ops follow-up, not a plan blocker.
+
+- **Location:** Stage 2 — `_parse_json_response` coercion removal  
+  **Finding:** On `ftr` only, bare encoded grader text fails JSON parse until #5 uses forced-tool path; plan documents overlap with `agent.py` JSON-string coercion.  
+  **Recommendation:** Accept per Scope partition; keep #5 before grader traffic on ftr.
+
+- **Location:** AC **4** verification  
+  **Finding:** Probe leg is structural (`api_kwargs` before `get_batch_host`); no live OpenRouter in plan (Susan 2026-10-14).  
+  **Recommendation:** Betty asserts probe kwargs mirror real call; acceptable for validate-plan.
+
+### acceptable
+
+- **Location:** Scope / Files Changed  
+  **Finding:** Only `llm_external.py`, `anthropic.py`, `llm_compat.py`; no `agent.py`, `openrouter.py`, schema build.
+
+- **Location:** `stat.logging.debug`  
+  **Finding:** Full `api_kwargs` on `messages.create` at debug on anthropic (parity with compat); schema not logged at error; no truncation; no `if debug` gating at call site.
+
+- **Location:** `stat.logging.error`  
+  **Finding:** Missing/invalid tool input uses existing parse `except` + `log_llm_batch_summary` path; no duplicate exception logs introduced.
+
+- **Location:** `llm_external`  
+  **Finding:** Text block wins over tool fallback; `server_tool_use` excluded; named `extract_tool_input` for `parsed_response`; JSON string for audit when text absent (parent Technical scope).
+
+- **Location:** `getTimestampPrefix(structured=True)`  
+  **Finding:** Uses AST-2177 `prompt_prefix_structured`; default callers unchanged; matches #2 contract for envelope omission on forced-tool calls (#5).
+
+- **Location:** `require_parameters` gating  
+  **Finding:** Only `forced_tool` + `openrouter` routing; non-grader OpenRouter traffic unchanged (plan decision aligns with parent FS §2 “every other task exactly as today”).
+
+- **Location:** Dependencies  
+  **Finding:** Plan assumes `HEAD` includes #6–#8 on sub via `--ftr AST-2172-structured-output-graders`; warns against bare `--ftr AST-2172`.
+
+### fix-now
+
+(none)
+
+## R6 (condensed)
+
+- Parent transport slice (forced tool + `tool_choice`, tool input as payload, OpenRouter `require_parameters`, prefix flag) matches stages.  
+- `forced_tool` vs `enable_web_search` mutual exclusion is reasonable.  
+- Truncation treat `forced_tool` like JSON for max_tokens fail-closed.  
+- Plan Discuss: **0** rounds; **Plan Ready**, assignee Joan (ticket assignee Katherine — Chuckles handoff only).
+
+context_tokens≈88000
