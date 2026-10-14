@@ -571,3 +571,23 @@ print("edited", sorted(seen))
 context_tokens≈58000
 
 ---
+
+## Review
+
+Build on `origin/sub/AST-2172/AST-2177-capability-registry-grader-marker-prompts`:
+
+- `f31b6e05c` Stage 1: capability registry. Spike not run, per Susan's directive (Revision 1); the grader-model values are provisional `advisory`.
+- `9a5d440f0` Stage 2: grader output-type marker and extra fields, semantics-only payload instructions, `stringify_response_schema`, `prompt_prefix` / `prompt_prefix_structured`.
+- `d90b15d1b` Stage 3: nine grader prompt rows in `agent_task.json`. The Appendix A script was run verbatim.
+
+Checks:
+- All Done-when checks pass, including AC 7 (11 grader tasks) and the JSON-level row diff.
+- `prompt_prefix` is byte-identical to before.
+- Non-grader `stringify_response_schema` output is unchanged for every task.
+- Ruff finding count on `config.py` is 105 before and 105 after (repo-wide user-level rules).
+
+Expected test churn for qa-child: I ran the component tests for `test_config.py`, `test_anthropic.py`, `test_candidate.py` and `test_repo_admin_json.py`. 9 of them fail with this branch and pass on the pre-build tree. All 9 assert encoded-line text that this ticket removes on purpose:
+- `test_repo_admin_json.py`: `TestAst1154GradedTaskCompletenessPrompts` (2 tests), `TestAst1910EvaluateJdQcNeverXPrompt::test_catalog_evaluate_jd_cache_prompt_qc_exception`. The QC rule itself survives in `## QUALITY CHECK (QC)`.
+- `test_config.py`: `TestAst1154EncodedGradeSetCompleteness` (2 tests), `TestAst505InflowDiscoveryConfig::test_vet_grades_encoded_vet_meta_output_type`, `TestResolveTokens::test_output_type_token_uses_task_instructions`, `TestStringifyResponseSchema` (2 tests).
+
+The other 89 failures in those files fail the same way on the pre-build tree.
