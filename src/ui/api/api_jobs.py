@@ -109,7 +109,7 @@ def _flatten_grades(job: dict) -> dict:
 
 # Raw blobs the list pages never read; the detail modal fetches them per job.
 # Skipped rows skip the composed JD too (AST-2133 exception): it is never shown
-# there, and composing it costs a telescope_data read per scraped row.
+# there, and composing it costs a web_data read per scraped row.
 _LIST_ROW_DROP_KEYS = ("job_data", "state_history")
 
 
