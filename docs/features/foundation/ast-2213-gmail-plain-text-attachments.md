@@ -186,3 +186,10 @@ Confirm Chuckles estimate: 2 — agree
 - Plan-discuss: status **Plan Ready**; **0** completed `[plan-discuss]` rounds on the thread.
 
 context_tokens≈32000
+
+## Review (build)
+
+**Built @ `a0d5cee4`** — `origin/sub/AST-2207/AST-2213-gmail-plain-text-attachments`
+
+- Stage 1: `send_email(..., attachments: dict[str, str] | None = None)`; truthy → `multipart/mixed` (body part + one `text/plain` attachment per filename); falsy → unchanged `MIMEText(body, "plain")`
+- Pre-existing, unchanged by this diff: 3 `TestGetMessageHtml` failures in `test_gmail.py` and 3 ruff findings (I001, RUF022, BLE001) on `gmail.py` reproduce identically on the plan tip
