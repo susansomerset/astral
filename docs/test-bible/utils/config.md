@@ -401,7 +401,7 @@ Rename craft task key **`craft_company_prefilter`** → **`craft_prefilter_rubri
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Schema example | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` |
+| Schema example (retired **AST-2177** — grader envelope is `agent_performance` only) | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails` |
 | Output type key | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded` |
 
 ---
@@ -5069,4 +5069,39 @@ Manifest: [`../data/database/telescope_data.md`](../data/database/telescope_data
 | Every configured field is a real column | [`../data/database/search.md`](../data/database/search.md) **`TestAst2173RegistryMatchesSchema`** |
 
 **Broken / obsolete:** none (additions only; no new branches in locked `config.py`). Manifest: [`../core/search.md`](../core/search.md) § AST-2173.
+
+### AST-2177 · AST-2172 (structured-output capability registry, grader marker, semantics-only prompts)
+
+`structured_output_capability` on every `LLM_SERVER_CONFIG` entry (all `None` as built) + optional per-model override; `OPENROUTER_STRUCTURED_OUTPUT_OVERRIDES` (`openai/gpt-oss-120b`, `qwen/qwen3-235b-a22b-2507` → provisional `"advisory"`, spike not run per Susan 2026-10-13); `LLM_STRUCTURED_OUTPUT_CAPABILITIES`; `get_structured_output_capability()` (model override → server value; unknown model `ValueError`). The five `grades_encoded*` output types carry `structured_output: True` + `extra_fields` (vet adds `grade_letters` / `confidence_range (1, 5)`); `payload_instructions` are semantics only (`_GRADE_SEMANTICS`, `_CONFIDENCE_SCALE_LINES`); `_ENCODED_GRADE_SET_COMPLETENESS` deleted; `stringify_response_schema` shows `agent_performance` only for grader types; `prompt_prefix` bytes unchanged + new `prompt_prefix_structured` (rules without the envelope sentence). Nine grader `cache_prompt` rows in `data/admin/agent_task.json` lose encoded-line text (catalog side: [`../core/repo_admin_json.md`](../core/repo_admin_json.md) § AST-2177).
+
+| Area | Component tests |
+| --- | --- |
+| Capability values allowed; grader slugs stay selectable; server fallback; model override wins; unknown model raises (both lookup branches) | new **`TestAst2177StructuredOutputConfig`** — `test_capability_values_are_allowed_everywhere`, `test_current_grader_models_stay_selectable`, `test_lookup_falls_back_to_server_value`, `test_model_override_wins_over_server`, `test_unknown_model_raises` |
+| Marker is exactly the five grader types; `extra_fields` per type; scale lines kept + no encoding text (`stat.agent.confidence-bounds`); `prompt_prefix` / `prompt_prefix_structured` split | same class — `test_structured_output_marker_is_exactly_the_grader_types`, `test_extra_field_declarations`, `test_grader_instructions_keep_confidence_scale_without_encoding`, `test_prompt_prefix_split` |
+| Grader envelope = `agent_performance` only | revised **`TestStringifyResponseSchema::test_grader_types_show_agent_performance_only`** (was `test_encoded_meta_notes_and_default_encoded_examples`) · **`::test_prefilter_company_schema_has_no_encoded_link_tails`** (was AST-697 `test_prefilter_company_schema_shows_bracket_link_set_tails`) |
+| `{$OUTPUT_INSTRUCTIONS}` = tool + scale, no grade segments | revised **`TestResolveTokens::test_output_type_token_uses_task_instructions`** |
+| Vet output type: marker, `website` extra field, A–F letters, confidence 1–5 | revised **`TestAst505InflowDiscoveryConfig::test_vet_grades_encoded_vet_meta_output_type`** |
+| AST-1154 completeness: never-omit rule now in `_GRADE_SEMANTICS`; shared constant retired | revised **`TestAst1154EncodedGradeSetCompleteness::test_shared_clause_on_multi_vector_encoded_types`** · **`::test_grade_count_not_template_on_multi_vector_types`** (`test_clause_absent_from_vet_meta_and_grades_json` unchanged) |
+
+**Broken / obsolete (revised this pass):** the 6 `test_config.py` functions above (red on tip before revision, encoded-line assertions). **Masked drift, revised:** `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` asserted `"agent_payload"` for `grade_get` — now `agent_performance` present / `agent_payload` absent; the test stays a pre-existing red at its earlier `"Hi Ada"` line (`{$FIRST_NAME}` resolves empty), not this ticket. Repro check: every revised/new function above is red with `01c1478eb`'s `config.py` + `agent_task.json` swapped in, green on tip.
+
+#### QA test manifest (AST-2177)
+
+1. **Must pass** (revised + new, both files):
+   ```bash
+   ASTRAL_PYTHON=<venv python> scripts/testing/run_component_tests.sh \
+     tests/component/utils/test_config.py::TestAst2177StructuredOutputConfig \
+     tests/component/utils/test_config.py::TestStringifyResponseSchema \
+     tests/component/utils/test_config.py::TestResolveTokens::test_output_type_token_uses_task_instructions \
+     tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_grades_encoded_vet_meta_output_type \
+     tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness \
+     tests/component/core/test_repo_admin_json.py::TestAst2177GraderPromptsSemanticsOnly \
+     tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+     tests/component/core/test_repo_admin_json.py::TestAst1910EvaluateJdQcNeverXPrompt::test_catalog_evaluate_jd_cache_prompt_qc_exception
+   ```
+2. **Pre-existing reds, name-skipped:** `TestResolveTokens::test_resolves_candidate_config_output_and_chain_tokens` (fails at `"Hi Ada"`); `TestAst1910EvaluateJdQcNeverXPrompt::test_fixture_evaluate_jd_row_lockstep_with_catalog` (AST-756 fixture ≠ catalog, red before this ticket).
+3. **No-new-reds gate** over the 15 files that read the touched config / catalog: `test_config.py`, `test_agent.py`, `test_roster.py`, `test_consult.py`, `test_candidate.py`, `test_anthropic.py`, `test_repo_admin_json.py`, `test_llm_compat.py`, `test_cost_calculator.py`, `test_api_candidate.py`, `test_api_admin.py`, `test_remap_agent_settings.py`, `test_meteorite.py`, `test_ast1467_gaze_email_retire.py`, `test_agent_ast1879.py`. Baseline = same run with `git checkout 01c1478eb -- src/utils/config.py data/admin/agent_task.json` (restore after). QA run: 219 failed both sides, identical sets; `test_roster.py::TestJobSiteDistinct674` flips 3↔4 cases by run order (4/4 red in isolation on the pre-build tree too) — not this ticket.
+4. **No integration scenario touched** (`tests/integration/scenarios/test_candidate_nav_api.py` does not read grader config).
+
+**Bible shasums (after publish):** `git show origin/sub/AST-2172/AST-2177-capability-registry-grader-marker-prompts:docs/test-bible/<path> | shasum` for `utils/config.md`, `core/repo_admin_json.md`, `core/consult.md`, `core/agent.md`.
 

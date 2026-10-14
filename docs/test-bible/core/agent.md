@@ -73,7 +73,7 @@ Config registry tests: **`TestAst676CraftRubricSchema`** in **`docs/test-bible/u
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Schema example envelope | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_shows_bracket_link_set_tails` |
+| Schema example envelope (retired **AST-2177** — grader envelope is `agent_performance` only) | `src/utils/config.py` (`stringify_response_schema`) | `tests/component/utils/test_config.py::TestStringifyResponseSchema::test_prefilter_company_schema_has_no_encoded_link_tails` |
 | Output type registry | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_prefilter_company_grades_encoded` |
 
 See **`docs/test-bible/core/consult.md`** (**AST-697**) for decode-path manifest rows.
