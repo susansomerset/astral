@@ -601,6 +601,70 @@ class TestAst1787ChannelListMembershipFullHistory:
             slack_mod.fetch_full_conversation_history(channel="C1")
 
 
+# Branches (AST-2211): include_thread_replies off → no conversations.replies call (snapshot
+# unchanged, AST-2206 AC 4); on → only reply_count>0 parents with a ts are pulled, echoed parent
+# dropped, replies merged into the one ascending sort with user/thread_ts kept; replies ok:false raises.
+_AST2211_REPLIES = {
+    # conversations.replies echoes the parent first.
+    "2.0": (
+        {"ts": "2.0", "text": "parent-a", "user": "U1", "reply_count": 2},
+        {"ts": "5.0", "thread_ts": "2.0", "text": "late-reply", "user": "U2"},
+        {"ts": "3.0", "thread_ts": "2.0", "text": "early-reply", "user": "U3"},
+    ),
+    "4.0": ({"ts": "4.0", "text": "parent-b", "user": "U1", "reply_count": 1},),
+}
+
+
+class TestAst2211FullHistoryThreadReplies:
+    HISTORY = (
+        {"ts": "4.0", "text": "parent-b", "user": "U1", "reply_count": 1},
+        {"ts": "2.0", "text": "parent-a", "user": "U1", "reply_count": 2},
+        {"ts": "1.0", "text": "plain", "user": "U2", "reply_count": 0},
+        {"text": "no-ts", "reply_count": 3},
+    )
+    REPLIES = _AST2211_REPLIES
+
+    def _fake(self, monkeypatch: pytest.MonkeyPatch, replies_ok: bool = True) -> list[str]:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        reply_ts: list[str] = []
+
+        def fake_get(url: str, **kwargs):  # type: ignore[no-untyped-def]
+            method = _method_from_url(url)
+            params = kwargs.get("params") or {}
+            assert params.get("channel") == "C1"
+            if method == "conversations.history":
+                return _slack_get_resp({"ok": True, "messages": [dict(m) for m in self.HISTORY]})
+            assert method == "conversations.replies"
+            reply_ts.append(params["ts"])
+            if not replies_ok:
+                return _slack_get_resp({"ok": False, "error": "thread_not_found"})
+            return _slack_get_resp({"ok": True, "messages": [dict(m) for m in self.REPLIES[params["ts"]]]})
+
+        monkeypatch.setattr(slack_mod.requests, "get", fake_get)
+        return reply_ts
+
+    def test_default_off_never_pulls_replies(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reply_ts = self._fake(monkeypatch)
+        out = slack_mod.fetch_full_conversation_history(channel="C1")
+        assert [m.get("ts") for m in out] == ["1.0", "2.0", "4.0", None]
+        assert reply_ts == []
+
+    def test_on_merges_replies_ascending_without_parent_echo(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        reply_ts = self._fake(monkeypatch)
+        out = slack_mod.fetch_full_conversation_history(channel=" C1 ", include_thread_replies=True)
+        # Only parents with reply_count > 0 and a ts; plain / no-ts rows never trigger a pull.
+        assert sorted(reply_ts) == ["2.0", "4.0"]
+        assert [m.get("ts") for m in out] == ["1.0", "2.0", "3.0", "4.0", "5.0", None]
+        early = out[2]
+        assert early["text"] == "early-reply" and early["user"] == "U3" and early["thread_ts"] == "2.0"
+
+    def test_on_replies_ok_false_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._fake(monkeypatch, replies_ok=False)
+        with pytest.raises(RuntimeError, match="conversations.replies"):
+            slack_mod.fetch_full_conversation_history(channel="C1", include_thread_replies=True)
+
+
 # Branches: conversations.list ok:false message carries Slack needed/provided when
 # present (list_bot_channels + _iter_conversations); plain text unchanged when absent (AST-1815).
 class TestAst1815SlackScopeErrorDetail:

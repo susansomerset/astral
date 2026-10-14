@@ -215,3 +215,22 @@ Full AST-2062 command (all four pages): [`../core/contact.md`](../core/contact.m
 1. `tests/component/external/test_slack.py::TestAst2072PostMessageReplyBroadcast`
 
 Full AST-2072 command: [`../core/contact.md`](../core/contact.md) § AST-2072.
+
+### AST-2211 · AST-2206 (opt-in thread replies on full channel history)
+
+**Parent:** [AST-2206](https://linear.app/astralcareermatch/issue/AST-2206). **Publish:** `origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history`. Plan: `docs/features/contact/ast-2211-show-save-handlers-threaded-history.md`.
+
+`fetch_full_conversation_history(*, channel, include_thread_replies=False)`. Off (default): output unchanged and no `conversations.replies` call, so the admin snapshot (§ AST-1787) is untouched (ticket AC 4). On: every history message with `reply_count > 0` and a `ts` gets `conversations.replies` (hard-fail, no soft-skip); the echoed parent is dropped; replies merge into the one ascending `ts` sort keeping Slack's `user` / `thread_ts`. Caller with the flag on is sibling **AST-2212**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Default off → no replies call, same ascending list | `src/external/slack.py` | new **`TestAst2211FullHistoryThreadReplies::test_default_off_never_pulls_replies`** |
+| On → only `reply_count>0` + ts parents pulled; parent echo dropped; global ascending merge; `user` / `thread_ts` kept | same | **`…::test_on_merges_replies_ascending_without_parent_echo`** |
+| On → `conversations.replies` ok:false raises | same | **`…::test_on_replies_ok_false_raises`** |
+| AC 4 caller half: snapshot calls the fetch with `channel=` only | `src/core/contact.py` (untouched) | **`TestAst1788AdminSlackChannelOrchestration::test_snapshot_happy_path`** (`assert_called_once_with(channel=…)`), API: **`TestAst1788AdminSlackChannelApis`** — unchanged, green |
+
+**Broken / obsolete this pass:** none — `TestAst1787ChannelListMembershipFullHistory` (default path) unchanged and green.
+
+**Integration:** none — do not invent.
+
+Manifest: [`../core/candidate.md`](../core/candidate.md) § AST-2211.
