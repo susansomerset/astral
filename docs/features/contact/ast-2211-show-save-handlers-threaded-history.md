@@ -508,3 +508,14 @@ AC3→Stage 2 (3–5, grep in 6); AC4→Stage 1 (default `include_thread_replies
   **Recommendation:** Fine for ops; optional future tweak only if Susan wants a neutral prefix.
 
 context_tokens≈52000
+
+## Review
+
+**Built:** `origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history` @ `7550babcf` (Stage 1 `c1fca9095`, Stage 2 `7550babcf`).
+
+**Implementer notes:**
+- **§8 self-correction:** `get_candidate_id_for_slack_channel` logs `Response from list_candidates: <full list>` instead of the plan's `%s items` count. `stat.logging.debug` says to log the whole response and never truncate. No contract change.
+- **For Radia:** `get_candidate_id_for_slack_channel` keeps the plan's `debug=` kwarg + `logger.set_debug_flag(True)`, the same shape as `get_candidate_id_for_query`, so #3 can pass `debug=` like it does to the sibling lookup. `stat.logging.debug` prefers callees without a logging-only `debug=`. I left it as planned (Joan graded A) instead of changing #3's call contract mid-epic.
+- **Lint:** the ruff delta is exactly what the plan predicted. `slack.py` has 0 new findings. `candidate.py` has 8 (7 UP045 `Optional`, 1 UP006 `Dict`), which match the file's existing style.
+- **Tests:** no new failures vs the Stage 0 baseline across `test_slack.py`, `test_candidate.py`, and `test_config.py` (53 pre-existing FAILED/ERROR lines, unchanged). Run with `~/astral/.venv/bin/python`, since system `python3` lacks `nh3`.
+- **Coverage gaps for Betty (not added; test tree is hers):** `include_thread_replies=True` (parent echo dropped, replies merged in `ts` order, `conversations.replies` ok:false raises); `get_candidate_id_for_slack_channel` unique, ambiguous, unmapped, and deleted cases; show handler (saved body, empty line, unknown key); save handler (sanitized save, empty-after-sanitize gives the usage reply and no write, unknown key gives no write, identical re-save adds no version via `save_candidate_data`).
