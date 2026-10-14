@@ -516,3 +516,23 @@ context_tokens≈72000
 
 [plan-rubric] PROCEED (Commit: 0206699d0) Schema + hydrate plan solid
 
+
+---
+
+## Review
+
+Build on `origin/sub/AST-2172/AST-2178-call-time-schema-hydrate`:
+
+- `4add8fa3f` Stage 1: `src/core/grade_schema.py` from Appendix A, verbatim. Builds the schema and exposes `grade_row_ids`.
+- `b1c6796c3` Stage 2: import line widened and Appendix B appended, verbatim. Adds the hydrate and light check. The file is byte-identical to the module verified at plan time.
+
+Checks:
+- `py_compile` and `ruff check src/core/grade_schema.py` are clean after each stage.
+- Stage 1's one-liner prints `stage1 ok`.
+- The Appendix C harness prints `AC1 ok`, `AC2 ok`, `AC3 ok` and `light check ok`, plus the one expected `index 007` WARNING. AC 3 is dict-equal to `_decode_payload` for all five grader output types.
+- `rg '"grades_encoded' src/core/grade_schema.py` returns nothing (parent AC 9).
+- No provider calls.
+
+Plan-step note: Stage 2 step 4's command `python3 debug/spikes/AST-2178/check.py` needs `PYTHONPATH=.`. Python puts the script's own folder on the import path, not the repo root. The harness is gitignored and its content is unchanged; only the invocation differs.
+
+For qa-child: no existing test imports this module, so nothing is expected to churn. Durable coverage for AC 1–3 and the light-check cases (missing / unexpected code, X with nonzero confidence, illegal grade, out-of-range confidence, missing row, unknown row, vet website / confidence 0) can follow Appendix C.
