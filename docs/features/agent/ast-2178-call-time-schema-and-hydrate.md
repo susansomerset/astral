@@ -620,3 +620,15 @@ context_tokens≈34000
 ```
 [code-rubric] REVIEW (Commit: b38940df2) debug schema truncation
 ```
+
+---
+
+## Resolution
+
+2026-10-14. Resolved against Radia's review @ `b38940df2` (artifact commit `5e5c76c0e`). No product change.
+
+- **Discuss — `stat.logging.debug` (schema debug log truncated above 2000 chars):** took Radia's **Default**: proceed to User Testing; no code change in this ticket. The cap is `_truncate_debug_args` / `truncate_debug_string` in `src/utils/logging.py`. That shared logger truncates every dict or string debug argument for every caller, so it isn't specific to `grade_schema.py`. The call site already does what the statute asks of call sites: it passes the whole schema, unsliced and ungated. Chunking the log in `grade_schema.py` would work around a shared policy from one module. Changing the logger is outside this ticket's Files Changed (one new module) and touches every debug line in the app. **Susan can reverse:** say the word and the fix goes in as a separate change. Either a logging.py exemption or policy change aligned with `stat.logging.debug`, or chunked schema logging here.
+- **Discuss — qa gap from validate-plan:** closed by Betty's `test(AST-2178)` (`b38940df2`, 50 tests, 100% branch). No action.
+- **Advisory — `LOCKED_AT_100` enrollment:** policy call for Archie / Chuckles / Betty; not engineer scope. No action.
+- **Advisory — three-dot diff carries AST-2176 / AST-2177:** expected ftr stacking. No action.
+- **Advisory — vet per-hit `decode_failures` vs roster warning:** belongs to AST-2180's wiring, as the plan already flags. No action here.
