@@ -76,6 +76,7 @@ from src.utils.config import (
     CANDIDATE_LIBRARY_CONFIG,
     CONTACT_CONFIG,
     CONTACT_CONTEXT_COMMAND_CONFIG,
+    CONTACT_DRAFT_THREAD_CONFIG,
     CONTACT_ESTELLE_CONFIG,
     CONTACT_TASK_CONFIG,
     METEORITE_CONFIG,
@@ -1579,6 +1580,108 @@ def contact_command_draft_context(
     }
 
 
+def _draft_thread_root_command(channel: str, thread_ts: str, *, debug: bool = False) -> Optional[str]:
+    """Command id when the thread's root message is a /draft-<context> command; else None (AST-2206)."""
+    # refresh: a cache entry can be append-built (our draft reply, the inbound) and lack the root.
+    ctx = load_slack_conversation_context(channel=channel, thread_ts=thread_ts, refresh=True, debug=debug)
+    root = next(
+        (m for m in ctx.get("messages") or [] if isinstance(m, dict) and m.get("ts") == thread_ts), None
+    )
+    command = parse_contact_command(root.get("text") or "") if root else None
+    # Draft entries are the ones whose handler is this module's draft handler — no command-id literal.
+    draft_handler = f"{__name__}.contact_command_draft_context"
+    if command is None or CONTACT_CONFIG["commands"][command[0]]["handler"] != draft_handler:
+        return None
+    return command[0]
+
+
+@_with_log_debug
+def run_contact_draft_revise_turn(
+    *,
+    channel: str,
+    text: str,
+    thread_ts: str,
+    message_ts: Optional[str] = None,
+    root_command_id: str,
+    debug: bool = False,
+) -> dict:
+    """Contact Estelle's reply to an @mention in a /draft-<context> thread (AST-2206 Contact draft thread).
+
+    Stateless: the thread is identified by its root command. Acts on the channel's mapped candidate.
+    Live content is the artifact key, the whole thread transcript, and the current saved body.
+    The reply (plus the revised draft when Estelle gives one) posts in-thread. Never saves.
+    """
+    key = CONTACT_CONFIG["commands"][root_command_id]["artifact_key"]
+    label = next(m["label"] for m in CONTACT_CONTEXT_COMMAND_CONFIG.values() if m["artifact_key"] == key)
+    logger.debug("Calling get_candidate_id_for_slack_channel: [channel=%s]", channel)
+    cid = get_candidate_id_for_slack_channel(channel, debug=debug)
+    logger.debug("Response from get_candidate_id_for_slack_channel: %s", cid)
+    if cid is None:
+        return _post_contact_command_notice(
+            command_id=root_command_id, outcome="unmapped",
+            text=CONTACT_CONFIG["unmapped_channel_reply_text"],
+            channel=channel, thread_ts=thread_ts, message_ts=message_ts, debug=debug,
+        )
+    row = get_candidate(cid) or {}
+
+    # Whole thread: full channel history with replies, kept to this thread (no page cap).
+    logger.debug("Calling fetch_full_conversation_history: [channel=%s, include_thread_replies=True]", channel)
+    history = fetch_full_conversation_history(channel=channel, include_thread_replies=True)
+    logger.debug("Response from fetch_full_conversation_history: %s", history)
+    thread = [m for m in history if isinstance(m, dict) and thread_ts in (m.get("ts"), m.get("thread_ts"))]
+    logger.debug("Calling get_candidate_current: [candidate_id=%s, artifact_key=%s]", cid, key)
+    current = get_candidate_current(cid, key)
+    logger.debug("Response from get_candidate_current: %r", current)
+    live_content = "\n".join([
+        f"artifact_key={key}",
+        "",
+        f"## Currently saved {label}",
+        current if isinstance(current, str) and current.strip() else "(nothing saved yet)",
+        "",
+        "## Draft thread (oldest first)",
+        *_contact_transcript_lines(thread),
+    ])
+
+    # Late import avoids core→agent cycles at module load.
+    from src.core.agent import conversational_turn_from_do_task_result
+
+    result = _run_contact_ledgered_task(
+        CONTACT_DRAFT_THREAD_CONFIG["revise_task_key"], cid=cid, row=row, live_content=live_content, debug=debug
+    )
+    turn = conversational_turn_from_do_task_result(result)
+    parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
+    revised = parsed.get("revised_draft") if isinstance(parsed.get("revised_draft"), str) else ""
+    reply = turn.get("reply") if isinstance(turn.get("reply"), str) else ""
+    outcome = turn.get("outcome")
+    slack_post = None
+    # Same post rule as the Estelle turn: success/concern with a non-empty reply.
+    if turn.get("success") and reply.strip() and outcome in ("success", "concern"):
+        reply_ts, reply_broadcast = _contact_reply_placement(thread_ts, message_ts)
+        slack_post = contact_post_message(
+            channel=channel,
+            text=format_contact_reply_text(reply.strip() + (f"\n\n{revised.strip()}" if revised.strip() else "")),
+            thread_ts=reply_ts,
+            reply_broadcast=reply_broadcast,
+            debug=debug,
+        )
+    else:
+        logger.warning(
+            "%s | contact draft revise of %s failed — %s\n  Estelle did not reply in the draft thread",
+            cid, key, result.get("error") or f"outcome {outcome}",
+        )
+    ok = bool(turn.get("success"))
+    return {
+        "ok": ok,
+        "outcome": outcome,
+        "reply": reply or None,
+        "admin_aside": turn.get("admin_aside"),
+        "skill_results": [],
+        "slack_post": slack_post,
+        "error": None if ok else result.get("error"),
+        "command": {"id": root_command_id, "mode": "revise", "ok": ok, "meteorite_id": None, "error": None},
+    }
+
+
 def _run_contact_command(
     *,
     command_id: str,
@@ -1952,7 +2055,16 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
         else:
             # AST-2035: a bound sender's leading /<command> runs the registry handler — never paste recovery.
             command = parse_contact_command(text) if known else None
-            if command is None:
+            # AST-2206 Contact draft thread: a non-command @mention in a private-channel thread whose root
+            # is a /draft-<context> command runs the revise turn. Un-mentioned replies already drop at not_dm.
+            thread_root = event.get("thread_ts")
+            draft_root = (
+                _draft_thread_root_command(channel, thread_root, debug=debug)
+                if known and command is None and private_channel
+                and isinstance(thread_root, str) and thread_root and thread_root != msg_ts
+                else None
+            )
+            if command is None and draft_root is None:
                 # AST-1561: paste recovery before Estelle turn (no re-classify).
                 paste_out = try_meteorite_apply_paste_from_slack(
                     astral_candidate_id=result.get("astral_candidate_id"),
@@ -1981,6 +2093,22 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                     logger.exception(
                         "%s | contact command %s\n  %s: %s\n  The inbound event is accepted; the command did not complete",
                         result.get("astral_candidate_id") or "-", command[0], type(exc).__name__, exc,
+                    )
+                    result["estelle_turn"] = {"ok": False, "error": str(exc)}
+            elif draft_root is not None:
+                try:
+                    result["estelle_turn"] = run_contact_draft_revise_turn(
+                        channel=channel,
+                        text=text,
+                        thread_ts=thread_root,
+                        message_ts=msg_ts if isinstance(msg_ts, str) else None,
+                        root_command_id=draft_root,
+                        debug=debug,
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "%s | contact draft revise turn %s\n  %s: %s\n  The inbound event is accepted; Estelle did not complete this turn",
+                        result.get("astral_candidate_id") or "-", draft_root, type(exc).__name__, exc,
                     )
                     result["estelle_turn"] = {"ok": False, "error": str(exc)}
             elif paste_out.get("applied") and paste_out.get("result", {}).get("ok"):
