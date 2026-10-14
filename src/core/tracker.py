@@ -1198,7 +1198,7 @@ def save_job_data(
 
 def compose_job_description(job: Dict[str, Any]) -> str:
     """The complete JD every consumer reads (AST-2130): preamble (job_data.job_description — email /
-    pasted / agent-parsed text), then the scraped capture referenced by jd_telescope_data_id run
+    pasted / agent-parsed text), then the scraped capture referenced by jd_web_data_id run
     through the same collapse + prune rules fetch_jd gates on. Read-only — never saved back.
 
     No reference -> exactly the stored preamble (pasted / meteorite / pre-AST-2130 jobs).
@@ -1209,7 +1209,7 @@ def compose_job_description(job: Dict[str, Any]) -> str:
     job_data = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     keys = TRACKER_CONFIG["job_data_keys"]
     preamble = job_data.get(keys["job_description"]) or ""
-    ref = job_data.get(keys["jd_telescope_data_id"])
+    ref = job_data.get(keys["jd_web_data_id"])
     if not ref:
         return preamble
     logger.debug("Calling resolve_telescope_value: [%s]", ref)
@@ -1253,7 +1253,7 @@ async def get_job_data(job: Dict[str, Any], key: str) -> Any:
     except Exception as e:
         logger.warning(f"get_job_data: fetch_jd_batch self-heal failed for {astral_job_id}: {e}")
         return None
-    # fetch_jd_batch wrote the jd_telescope_data_id reference back into job["job_data"] on pass
+    # fetch_jd_batch wrote the jd_web_data_id reference back into job["job_data"] on pass
     healed = compose_job_description(job)
     return healed if len(healed) >= min_chars else None
 
