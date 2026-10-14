@@ -289,3 +289,13 @@ Confirm Chuckles estimate: 3 — agree
 - Plan Discuss: **0** rounds; **Plan Ready**, assignee Joan (ticket assignee Katherine — Chuckles handoff only).
 
 context_tokens≈88000
+
+## Review (build)
+
+**Built @ `5c1dbdc08`** — `origin/sub/AST-2172/AST-2179-forced-tool-transport`
+
+Stage 1 (`c6a8c31fa`): `llm_external.extract_tool_input` + tool-input JSON fallback in `extract_api_response_text`. Stage 2 (`ee2c6ecb4`): `anthropic._forced_tool_body`, `forced_tool` on `send_to_anthropic` (web-search guard, Calling debug line, truncation check, tool-input parse), `getTimestampPrefix(structured=False)`, encoded coercion dropped from `_parse_json_response`. Stage 3 (`66a6eacc6`): `forced_tool` on `send_to_llm_compat`, `require_parameters` only for forced-tool + `openrouter` routing, set before the probe. All plan check scripts green, plus `_probe_request_kwargs` confirms the probe carries `tools` / `tool_choice` / `require_parameters` (+ `zdr`). No live provider calls.
+
+**§8 self-correction (`5c1dbdc08`, one line, not in plan):** `stat.logging.debug` requires the Calling/Response pair; Stage 2 added only `Calling messages.create` to `anthropic.py`, so `logger.debug("Response from messages.create: %s", response)` was added after the call — same pair `llm_compat` already emits.
+
+Sync note: built after `sync-child.sh … --ftr AST-2172-structured-output-graders` (the spawn's `--ftr AST-2172` skips the parent merge). Lint: `ruff --select F,E9` adds nothing new; 6 pre-existing findings in `anthropic.py` (unused imports, placeholder-less f-strings) left untouched.
