@@ -767,7 +767,8 @@ class TestAst1966UnpricedRowRecorded:
         assert (row["cache_read_tokens"], row["total_no_cache_input_tokens"], row["total_output_tokens"]) == (50, 100, 25)
         assert (row["model_code"], row["provider"]) == ("kimi-k2.6", "kimi")
         errors = self._errors(caplog)
-        assert len(errors) == 1 and errors[0].exc_info and "timesheet catalog price" in errors[0].getMessage()
+        # error_exc: ERROR one-liner naming the exception; the traceback rides DEBUG, not exc_info.
+        assert len(errors) == 1 and "ValueError" in errors[0].getMessage() and "timesheet catalog price" in errors[0].getMessage()
 
     @pytest.mark.asyncio
     async def test_probe_token_counts_raise_row_recorded_with_zero_tokens(
@@ -801,7 +802,7 @@ class TestAst1966UnpricedRowRecorded:
         assert {k: probe[k] for k in self._ZERO_CALC} == self._ZERO_CALC
         assert call["total_output_tokens"] == 25
         errors = self._errors(caplog)
-        assert len(errors) == 1 and errors[0].exc_info and "timesheet token counts" in errors[0].getMessage()
+        assert len(errors) == 1 and "AttributeError" in errors[0].getMessage() and "timesheet token counts" in errors[0].getMessage()
 
     @pytest.mark.asyncio
     async def test_failure_path_unpriced_row_still_recorded(

@@ -114,8 +114,13 @@ def _warn_company(aid: Any, dest: Any, reason: str) -> None:
 
 
 def _log_fail_dest(entity: Any, dest: Any, reason: str) -> None:
-    """Retry holding → WARNING; error/terminal → ERROR (AST-1839)."""
-    (logger.warning if retry_base(dest) else logger.error)("%s -> %s [%s]", entity, dest or "-", reason)
+    """Could-not-process routing (retry holding or error state) → WARNING; ERROR is reserved for our own code/infra."""
+    logger.warning("%s -> %s [%s]", entity, dest or "-", reason)
+
+
+def _company_outcome(short_name: Any, outcome: str, dest: Any, reason: str = "") -> None:
+    """Clean verdict (PASS/FAIL) on one company at INFO; could-not-process cases use _warn_company."""
+    _entity_info(short_name, "company", outcome, f"{dest}" + (f" [{reason}]" if reason else ""))
 
 
 def _pace_debug(message: str) -> None:
@@ -338,11 +343,12 @@ def _apply_vet_inflow_result_row(
     grade = (row.get("grade") or "").strip().upper()
     website = (row.get("website") or "").strip()
     if not website:
+        _warn_company(short_name, "-", "missing website")
         logger.debug("Response from vet grade row: grade=%r missing website", grade)
         return {"success": False, "state": None, "error": "missing website"}
     if grade in cfg["fail_grades"]:
         transition_company_state(short_name, cfg["fail_state"])
-        _warn_company(short_name, cfg["fail_state"], f"vet grade {grade}")
+        _company_outcome(short_name, "FAIL", cfg["fail_state"], f"vet grade {grade}")
         logger.debug(
             "Response from vet grade row: grade=%r website=%r state=%s",
             grade, website, cfg["fail_state"],
@@ -353,6 +359,7 @@ def _apply_vet_inflow_result_row(
         return {"success": False, "state": None, "error": f"unknown grade {grade!r}"}
     update_company(short_name, company_website=website)
     transition_company_state(short_name, cfg["pass_state"])
+    _company_outcome(short_name, "PASS", cfg["pass_state"], f"vet grade {grade}")
     logger.debug(
         "Response from vet grade row: grade=%r website=%r state=%s",
         grade, website, cfg["pass_state"],
@@ -682,7 +689,7 @@ async def resolve_company_website(
             pace_detail=_pace_debug,
         )
     except (RuntimeError, ValueError) as exc:
-        logger.exception(
+        logger.warn_exc(
             "%s | company CSE search\n  %s: %s\n  Leaving website unresolved",
             short_name,
             type(exc).__name__,
@@ -753,15 +760,12 @@ async def resolve_website_company(
             parsed.get("task_success"), website,
         )
         transition_company_state(short_name, fail_state)
-        _entity_info(short_name, "company", "resolve_website", f"-> {fail_state}")
+        _company_outcome(short_name, "FAIL", fail_state, "resolve_website")
         return {"success": True, "state": fail_state, "error": None}
 
     update_company(short_name, company_website=website)
     transition_company_state(short_name, pass_state)
-    _entity_info(
-        short_name, "company", "resolve_website",
-        f"website={website!r} -> {pass_state}",
-    )
+    _company_outcome(short_name, "PASS", pass_state, f"resolve_website website={website!r}")
     return {"success": True, "state": pass_state, "error": None}
 
 
@@ -797,7 +801,7 @@ async def run_inflow_discovery_batch(
                 pace_detail=_pace_debug,
             )
         except (RuntimeError, ValueError) as exc:
-            logger.exception(
+            logger.warn_exc(
                 "%s | candidate CSE search term %r\n  %s: %s\n  Continuing to the next search term",
                 candidate_id,
                 term,
@@ -1026,7 +1030,7 @@ async def run_company_task(
             return {**zero, "total_errors": 1}
 
     except Exception as e:
-        logger.exception(
+        logger.error_exc(
             "%s | company run_company_task\n  %s: %s\n  Continuing to the next company",
             short_name,
             type(e).__name__,
@@ -1388,7 +1392,7 @@ async def parse_job_list_batch(
         for r in results:
             if isinstance(r, BaseException):
                 errors += 1
-                logger.exception(
+                logger.error_exc(
                     "%s | company parse_job_list_batch\n  %s: %s\n  Continuing to the next company",
                     batch_id,
                     type(r).__name__,
@@ -1435,7 +1439,7 @@ async def process_recheck_no_openings(
                 job_site, context=browser_context, return_final_url=True
             )
     except Exception as ex:
-        logger.exception(
+        logger.warn_exc(
             "%s | company recheck_no_openings\n  %s: %s\n  State unchanged",
             short_name,
             type(ex).__name__,
@@ -1811,6 +1815,12 @@ def _apply_prefilter_decoded_company_outcome(
         data_to_save["culture_links_to_explore"] = flat.get("culture_links_to_explore") or []
     save_company_data(short_name, data_to_save)
     transition_company_state(short_name, new_state)
+    # Rubric verdict at INFO. Same split as the batch tally: pass_states pass, everything else (incl. no joblist links) fails.
+    failed_vecs = ", ".join(str(g.get("vector")) for g in grades if isinstance(g, dict) and g.get("grade") == "F")
+    _company_outcome(
+        short_name, "PASS" if new_state in cfg["pass_states"] else "FAIL", new_state,
+        failed_vecs or ("no joblist links" if new_state == cfg["no_pjl_state"] else ""),
+    )
     logger.debug(
         "Response from _apply_prefilter_decoded_company_outcome: %s -> %s link_indices=%r",
         short_name, new_state, link_indices,
@@ -1920,7 +1930,7 @@ async def prefilter_company(
         result["state"] = new_state
         result["notes"] = notes
     except Exception as e:
-        logger.exception(
+        logger.error_exc(
             "%s | company prefilter_company\n  %s: %s\n  Continuing without a prefilter decision",
             short_name,
             type(e).__name__,
@@ -2263,7 +2273,7 @@ async def _run_batch_company_prefilter(
         try:
             ensure_batch_response_entity_ids(entity_type, list(processed_ids), agent_ref)
         except Exception as stamp_err:
-            logger.exception(
+            logger.error_exc(
                 "%s | company ensure_batch_response_entity_ids\n  %s: %s\n  Continuing without stamping those entity ids",
                 batch_id,
                 type(stamp_err).__name__,
@@ -2435,7 +2445,8 @@ async def company_upshot_batch(
             # Data defect, not an agent miss: straight to the terminal error, never the retry holding.
             for r in rows:
                 transition_company_state(r["short_name"], cfg["error_state"])
-                _log_fail_dest(r["short_name"], cfg["error_state"], "empty prompt tokens")
+                # We control the prompt token content, so this stays ERROR (_log_fail_dest is WARNING-only).
+                logger.error("%s -> %s [%s]", r["short_name"], cfg["error_state"], "empty prompt tokens")
             return {"passed": 0, "failed": 0, "total": len(rows), "retried": 0}
         retried = _transition_upshot_failures(rows, cfg, f"do_task: {result.get('error') or 'do_task failed'}")
         return {"passed": 0, "failed": 0, "total": len(rows), "retried": retried, **_outage_tag(result)}
@@ -2484,7 +2495,7 @@ async def company_upshot_batch(
         try:
             ensure_batch_response_entity_ids(TASK_CONFIG[agent_task_key]["entity_type"], sorted(saved), agent_ref)
         except Exception as stamp_err:
-            logger.exception(
+            logger.error_exc(
                 "%s | company ensure_batch_response_entity_ids\n  %s: %s\n  Continuing without stamping those entity ids",
                 batch_id,
                 type(stamp_err).__name__,
@@ -2706,7 +2717,7 @@ async def jobs_found_process_job_site(
     try:
         visible_text, final_url = await get_visible_text(job_site, return_final_url=True)
     except Exception as ex:
-        logger.exception(
+        logger.warn_exc(
             "%s | company jobs_found scrape\n  %s: %s\n  Leaving job_site unscanned",
             short_name,
             type(ex).__name__,
@@ -2785,7 +2796,7 @@ async def _scrape_pjl_page(
             await close_page(pg)
     except Exception as e:
         out["error"] = str(e)
-        logger.exception(
+        logger.warn_exc(
             "%s | company PJL page scrape\n  %s: %s\n  Continuing to the next page",
             fetch_url,
             type(e).__name__,
@@ -2992,7 +3003,7 @@ async def _fetch_job_links_content(
             )
         except Exception as e:
             sections.append(f"=== PAGE {page_num}: {url} ===\n(scrape failed: {e})")
-            logger.exception(
+            logger.warn_exc(
                 "%s | company PJL page scrape\n  %s: %s\n  Continuing to the next page",
                 url,
                 type(e).__name__,
@@ -3447,7 +3458,7 @@ async def _fetch_nav_links(company: Dict[str, Any]) -> Optional[str]:
     except ValueError:
         raise
     except Exception as e:
-        logger.exception(
+        logger.warn_exc(
             "%s | company nav_links fetch\n  %s: %s\n  Leaving nav_links unset",
             short_name,
             type(e).__name__,
@@ -3485,7 +3496,7 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
             if url_list:
                 enumerated_nav_links = enumerate_array("", url_list)
         except Exception as nav_err:
-            logger.exception(
+            logger.warn_exc(
                 "%s | company prefilter_notes nav_links\n  %s: %s\n  Continuing without nav_links",
                 short_name,
                 type(nav_err).__name__,
@@ -3559,7 +3570,7 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
         _entity_info(short_name, "company", "prefilter_notes saved", "ok")
         return notes
     except Exception as e:
-        logger.exception(
+        logger.warn_exc(
             "%s | company prefilter_notes fetch\n  %s: %s\n  Leaving prefilter_notes unset",
             short_name,
             type(e).__name__,
@@ -3616,7 +3627,7 @@ async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
                         pages.append({"url": url, "content": text.strip()})
                         refs.append({"url": url, "id": row_id})
                 except Exception as e:
-                    logger.exception(
+                    logger.warn_exc(
                         "%s | company culture page scrape\n  %s: %s\n  Continuing to the next page",
                         url,
                         type(e).__name__,
@@ -3636,7 +3647,7 @@ async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
     except ValueError:
         raise
     except Exception as e:
-        logger.exception(
+        logger.warn_exc(
             "%s | company website_content fetch\n  %s: %s\n  Leaving website_content unset",
             short_name,
             type(e).__name__,

@@ -39,6 +39,8 @@ export interface TextTab {
   disabled?: boolean
   placeholder?: string
   help?: string
+  /** Token ids valid in this tab's field (enables the `{$` lookup list). */
+  tokens?: string[]
 }
 
 interface TabbedTextAreaProps {
@@ -72,6 +74,7 @@ export default function TabbedTextArea({ tabs, values, onChange, customPanels }:
           onChange={v => onChange(tab.key, v)}
           disabled={tab.disabled}
           placeholder={tab.placeholder}
+          tokens={tab.tokens}
           className="dep-input dep-textarea tabbed-ta-textarea"
         />
       )}

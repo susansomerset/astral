@@ -57,6 +57,10 @@ class TestSystemAuthRoutes:
         assert isinstance(palette, list)
         assert palette
         assert all(isinstance(hex, str) and hex.startswith("#") for hex in palette)
+        # Every palette color has a display name for the swatch tooltip.
+        names = payload.get("base_resume_accent_names")
+        assert isinstance(names, dict) and set(names) == set(palette)
+        assert all(isinstance(n, str) and n.strip() for n in names.values())
 
     def test_ui_config_includes_list_table_layout_defaults(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
@@ -105,6 +109,15 @@ class TestSystemAuthRoutes:
         assert block["default_template"] == COVER_FROM_BLOCK_CONFIG["default_template"]
         assert block["authoring_help"] == COVER_FROM_BLOCK_CONFIG["authoring_help"]
         assert block["session_authoring_help"] == COVER_FROM_BLOCK_CONFIG["session_authoring_help"]
+
+    def test_ui_config_includes_field_tokens(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # Per-field `{$` lookup lists for the profile / artifact / session edit screens.
+        from src.utils.config import FIELD_TOKEN_LOOKUP
+
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        assert payload["field_tokens"] == {k: list(v) for k, v in FIELD_TOKEN_LOOKUP.items()}
+        assert "LINKEDIN_URL" in payload["field_tokens"]["contact.cover_letter_from_block"]
+        assert payload["field_tokens"]["cover_letter.signature"] == ["SIGNATURE_IMAGE"]
 
     def test_nav_config_without_candidate_id(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = system_client.get("/api/nav_config", headers=auth_headers)

@@ -35,6 +35,8 @@ Usage:
     logger.info("Info message")
     logger.warning("Warning message")
     logger.error("Error message")
+    logger.warn_exc("...")   # in an except block: WARNING one-liner, traceback at DEBUG
+    logger.error_exc("...")  # in an except block: ERROR one-liner, traceback at DEBUG
 """
 
 import atexit
@@ -44,6 +46,7 @@ import logging
 import os
 import sys
 import threading
+import traceback
 from collections.abc import Mapping
 from typing import Any, Optional
 
@@ -429,6 +432,26 @@ class _PrefixedLogger:
 
     def exception(self, message: str, *args, **kwargs):
         self._logger.exception(message, *args, **kwargs)
+
+    def _exc_line(self, level: int, message: str, args: tuple, kwargs: dict) -> None:
+        """One-liner at `level`; the traceback rides DEBUG only (gated by log_debug)."""
+        exc = kwargs.pop("exc_info", None)
+        self._logger.log(level, message, *args, **kwargs)
+        if not log_debug.get():
+            return
+        # exc_info is an exception instance for gather results, else the active except block's.
+        ei = (type(exc), exc, exc.__traceback__) if isinstance(exc, BaseException) else sys.exc_info()
+        if self._logger.getEffectiveLevel() > logging.DEBUG:
+            self._logger.setLevel(logging.DEBUG)
+        self._logger.debug("Traceback:\n%s", "".join(traceback.format_exception(*ei)).rstrip())
+
+    def warn_exc(self, message: str, *args, **kwargs):
+        """Caught exception we can't fix (bad input, scrape/provider failure): WARNING + DEBUG traceback."""
+        self._exc_line(logging.WARNING, message, args, kwargs)
+
+    def error_exc(self, message: str, *args, **kwargs):
+        """Caught exception in our own code or infra (DB, ledger, crash): ERROR + DEBUG traceback."""
+        self._exc_line(logging.ERROR, message, args, kwargs)
 
     def critical(self, message: str, *args, **kwargs):
         self._logger.critical(message, *args, **kwargs)

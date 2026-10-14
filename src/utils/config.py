@@ -1516,6 +1516,7 @@ CANDIDATE_LIBRARY_CONFIG = {
         "github", "linkedin_url", "websites", "extra_emails", "timezone",
         "cover_letter_signature", "cover_letter_signature_image",
         "cover_letter_from_block",
+        "resume_title_template", "cover_letter_title_template",
         "title_patterns", "reason_codes",
     ),
     "context_keys": (
@@ -1549,6 +1550,15 @@ assert len(CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]) == len(
 for _ck in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]:
     assert _ck in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ck
 
+# From-block token allowlist: FULL_NAME + every candidate ``contact.*`` data-field token in
+# TOKEN_SOURCES (a test keeps this in sync). Help copy below is generated from it.
+_FROM_BLOCK_TOKEN_IDS = (
+    "FULL_NAME", "LOCATION", "CONTACT_EMAIL", "PHONE",
+    "REPLY_EMAIL", "GITHUB", "LINKEDIN_URL",
+    "TITLE_PATTERNS", "REASON_CODES", "COVER_LETTER_SIGNATURE",
+)
+_FROM_BLOCK_TOKEN_LIST = ", ".join("{$" + t + "}" for t in _FROM_BLOCK_TOKEN_IDS)
+
 # AST-1137 / AST-1147 / AST-1149: from-block field + token template/rewrite + authoring chrome.
 COVER_FROM_BLOCK_CONFIG = {
     "contact_key": "cover_letter_from_block",
@@ -1559,28 +1569,51 @@ COVER_FROM_BLOCK_CONFIG = {
     "line_2_contact_paths": ("contact_email", "phone"),
     "sources": ("candidate", "default"),
     # AST-1147: token template contract for AST-1148 resolve/emit (path keys stay until then).
+    # No {$FULL_NAME}: the cover header prints the name on its own line above the From block.
     "default_template": (
-        "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+        "{$LOCATION} | {$CONTACT_EMAIL} | {$PHONE}"
     ),
     # Keep authoring_help token prose in sync when this allowlist changes (AST-1149).
-    "allowed_token_ids": ("FULL_NAME", "LOCATION", "CONTACT_EMAIL", "PHONE"),
+    "allowed_token_ids": _FROM_BLOCK_TOKEN_IDS,
     "authoring_separator": "|",
     "emit_separator": " • ",
     "empty_segment_policy": "drop_with_adjacent_separator",
     # AST-1149: user-facing authoring chrome (UI renders; no resolve math).
     "authoring_help": (
-        "Allowed tokens: {$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}. "
+        f"Allowed tokens (type {{$ for a list): {_FROM_BLOCK_TOKEN_LIST}. "
         "Type | between segments; cover print shows •. "
         "Leave empty to use the default template (see placeholder)."
     ),
     "session_authoring_help": (
         "Enter cover-letter field values, then Open HTML to Print → PDF. "
-        "Letter fields come from this form. From block supports "
-        "{$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}; type | for • in print. "
+        f"Letter fields come from this form. From block supports {_FROM_BLOCK_TOKEN_LIST}; "
+        "type | for • in print. "
         "When a candidate is selected, leave From empty to use that candidate’s saved "
         "from-block or the default token template. Without a candidate, From is required. "
-        "If a candidate is selected and has a profile signature image, the server may "
-        "include it in the sign-off; otherwise name-only. This tool does not save to the database."
+        "The profile signature image prints where {$SIGNATURE_IMAGE} sits in the Signature "
+        "field; without that token there is no image. This tool does not save to the database."
+    ),
+}
+
+# Printed-page <title> of job documents = the browser's default PDF file name. The candidate may override
+# each template (contact.<contact_key>); blank → the default here. Tokens are substituted at build time.
+PAGE_TITLE_CONFIG = {
+    "tokens": ("FULL_NAME", "JOB_ID"),
+    # {$JOB_ID} = the job's company_job_id; when blank, the first N non-hyphen characters of astral_job_id.
+    "job_id_fallback_chars": 6,
+    "resume": {
+        "contact_key": "resume_title_template",
+        "label": "Resume file name",
+        "default": "{$FULL_NAME} Resume ({$JOB_ID})",
+    },
+    "cover": {
+        "contact_key": "cover_letter_title_template",
+        "label": "Cover letter file name",
+        "default": "{$FULL_NAME} Cover Letter {$JOB_ID}",
+    },
+    "help": (
+        "Default file name when you print to PDF (type {$ for a list). {$JOB_ID} is the job's own ID, "
+        "or the first six characters of the Astral job ID when it has none. Leave empty for the default."
     ),
 }
 
@@ -6385,7 +6418,13 @@ DATA_SHAPES = {
                 {
                     "label": "Cover Letter Signature",
                     "fields": [
-                        {"key": "contact.cover_letter_signature", "label": "Signature text", "type": "textarea"},
+                        {
+                            "key": "contact.cover_letter_signature",
+                            "label": "Signature text",
+                            "type": "textarea",
+                            "help": "Put {$SIGNATURE_IMAGE} on its own line where the signature image should print "
+                                    "(type {$ for a list). Without it, no image appears.",
+                        },
                     ],
                 },
                 {
@@ -6398,6 +6437,31 @@ DATA_SHAPES = {
                             "type": "textarea",
                             "placeholder": COVER_FROM_BLOCK_CONFIG["default_template"],
                             "help": COVER_FROM_BLOCK_CONFIG["authoring_help"],
+                        },
+                    ],
+                },
+                {
+                    # Own sections so each shows as a profile tab with the {$ lookup (tabs use fields[0] only).
+                    "label": "Resume File Name",
+                    "fields": [
+                        {
+                            "key": f"contact.{PAGE_TITLE_CONFIG['resume']['contact_key']}",
+                            "label": PAGE_TITLE_CONFIG["resume"]["label"],
+                            "type": "textarea",
+                            "placeholder": PAGE_TITLE_CONFIG["resume"]["default"],
+                            "help": PAGE_TITLE_CONFIG["help"],
+                        },
+                    ],
+                },
+                {
+                    "label": "Cover Letter File Name",
+                    "fields": [
+                        {
+                            "key": f"contact.{PAGE_TITLE_CONFIG['cover']['contact_key']}",
+                            "label": PAGE_TITLE_CONFIG["cover"]["label"],
+                            "type": "textarea",
+                            "placeholder": PAGE_TITLE_CONFIG["cover"]["default"],
+                            "help": PAGE_TITLE_CONFIG["help"],
                         },
                     ],
                 },
@@ -6447,6 +6511,7 @@ DATA_SHAPES = {
             # Keys match BUILD_CONFIG["artifact_shapes"]["cover_letter"] + normalize_cover_letter_artifact.
             "cover_letter": [
                 {"key": "Subject", "label": "Subject", "type": "str"},
+                {"key": "Salutation", "label": "Salutation", "type": "str"},
                 {"key": "Letter", "label": "Letter", "type": "str"},
                 {"key": "signature", "label": "Signature", "type": "str"},
             ],
@@ -6633,6 +6698,19 @@ BUILD_CONFIG = {
         "#2b2b2b",
         "#111111",
     ],
+    # Display names for the swatch tooltips ("Name (#hex)"); keyed by the palette hex, same case.
+    "accent_palette_names": {
+        "#1a1a2e": "Midnight",
+        "#16213e": "Navy Ink",
+        "#0f3460": "Deep Cobalt",
+        "#1e3a5f": "Denim",
+        "#2d4a3e": "Pine",
+        "#3c2c6e": "Indigo",
+        "#4a3728": "Espresso",
+        "#3d2b3d": "Aubergine",
+        "#2b2b2b": "Charcoal",
+        "#111111": "Onyx",
+    },
     # Keys align to DATA_SHAPES["candidates"]["detail"]["base_resume_structure"]
     # keys and TASK_CONFIG["craft_resume_base"] field names (professional_summary
     # not "summary"; core_competencies not "competencies"). Cover keys mirror
@@ -6747,6 +6825,7 @@ BUILD_CONFIG = {
         },
         "cover_letter": {
             "Subject": {"type": "str", "required": True},
+            "Salutation": {"type": "str", "required": False},
             "Letter": {"type": "str", "required": True},
             "signature": {"type": "str", "required": False},
         },
@@ -6771,6 +6850,23 @@ BUILD_CONFIG = {
     "cover_letter_artifact_chain": {
         "first_task_key": "draft_cover_letter",
     },
+    # SomersetCover body layout (session + job cover HTML). Read by builder._emit_somerset_cover_html_document.
+    "cover_letter_layout": {
+        "body_line_height": 1.4,  # body, .cover-letter, letter paragraphs, lists
+        "signoff_line_height": 1.5,  # closing + signature block
+        "paragraph_indent_em": 0,  # first-line indent (0 = none)
+        # Space after each paragraph / list / salutation = one blank line: 15px text x 1.4 line height = 21px.
+        "paragraph_gap_pt": 15.75,
+        "list_indent_em": 3.5,  # bullet / numbered list left padding
+        # Header = candidate name, rule, From block. Values mirror the resume header (h1 name / .contact line).
+        "name_font_size_px": 33,
+        "name_letter_spacing_px": -0.5,
+        "name_line_height": 1.1,
+        "from_font_size_px": 13,
+        "from_line_height": 1.5,
+        "name_rule_gap_px": 2,  # name text -> rule
+        "from_gap_px": 3,  # rule -> contact line
+    },
     # AST-1024: session cover field spine (Admin API + form); not job artifact_shapes.
     "session_cover_letter": {
         "document_title": "SomersetCover",
@@ -6781,6 +6877,7 @@ BUILD_CONFIG = {
             "letter_date": {"required": True},
             "to_block": {"required": False},
             "subject": {"required": False},
+            "salutation": {"required": False},
             "letter": {"required": True},
             "signoff_closing": {"required": True},
             "signature": {"required": True},
@@ -6792,11 +6889,13 @@ BUILD_CONFIG = {
         # Normalized job cover keys → session_cover_letter field keys
         "artifact_to_fields": {
             "re_line": "subject",
+            "salutation": "salutation",
             "body": "letter",
             "signature": "signature",
         },
-        # Session fields job artifacts do not store — always "" for job Print Cover Letter
-        "unset_fields": ("from_block", "letter_date", "to_block", "signoff_closing"),
+        # Session fields job artifacts do not store — always "" for job Print Cover Letter.
+        # (letter_date is not stored either, but the builder fills it with the print-day date.)
+        "unset_fields": ("from_block", "to_block", "signoff_closing"),
     },
     # AST-1125: cover HTML render tokens (NOT TOKEN_SOURCES / resolve_tokens).
     # Emit (AST-1126) reads this contract; resume builders must ignore it.
@@ -6814,6 +6913,20 @@ BUILD_CONFIG = {
     },
 }
 
+
+# Per-field `{$` lookup lists for the profile / artifact / session edit screens (served on /api/ui_config).
+# Key = field id the UI derives: profile field path, "<shapes_key>.<field key>", or "session_cover_letter.<field>".
+# Only tokens that actually resolve in that field belong here (prompt tokens do NOT resolve on these screens).
+_COVER_RENDER_TOKEN_IDS = tuple(BUILD_CONFIG["cover_letter_render_tokens"])
+FIELD_TOKEN_LOOKUP = {
+    "contact.cover_letter_from_block": COVER_FROM_BLOCK_CONFIG["allowed_token_ids"],
+    "contact.cover_letter_signature": _COVER_RENDER_TOKEN_IDS,
+    "cover_letter.signature": _COVER_RENDER_TOKEN_IDS,
+    "session_cover_letter.from_block": COVER_FROM_BLOCK_CONFIG["allowed_token_ids"],
+    "session_cover_letter.signature": _COVER_RENDER_TOKEN_IDS,
+    "contact.resume_title_template": PAGE_TITLE_CONFIG["tokens"],
+    "contact.cover_letter_title_template": PAGE_TITLE_CONFIG["tokens"],
+}
 
 # AST-1573 / AST-1575 / AST-1590: authoritative artifact registry (patt.artifact.manage-catalog register half).
 # Key = entity._data path. Pilot + job editable keys.
@@ -7505,6 +7618,23 @@ assert all(
     d["font_stack"] in BUILD_CONFIG["default_style"]["fonts"]
     for d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.values()
 )
+# Resume header layout: stored as the `format` of the four contact sections (the editor keeps them in
+# sync; the builder reads candidate_name). Unset reads as the default. Separate from the body formats above.
+RESUME_STRUCTURE_HEADER_FORMATS = ("one_line", "two_line")
+RESUME_STRUCTURE_HEADER_FORMAT_DEFAULT = "one_line"
+RESUME_STRUCTURE_HEADER_FORMAT_DETAILS = {
+    "one_line": {
+        "label": "One line",
+        "description": "Name and title share the first line (Name • Title); long titles wrap.",
+        "font_stack": "heading_stack",
+    },
+    "two_line": {
+        "label": "Two line",
+        "description": "Name on the first line; the job title on its own second line in the section-header style.",
+        "font_stack": "heading_stack",
+    },
+}
+assert set(RESUME_STRUCTURE_HEADER_FORMAT_DETAILS) == set(RESUME_STRUCTURE_HEADER_FORMATS)
 # AST-1474: operator page-break policies on structure sections (print CSS is AST-1475).
 RESUME_STRUCTURE_PAGE_BREAK_POLICIES = (
     "normal",

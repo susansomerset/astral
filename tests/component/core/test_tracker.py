@@ -679,6 +679,12 @@ class TestAst309CoverLetterArtifact:
         out = tracker_mod.normalize_cover_letter_artifact({"re_line": "Re", "body": 1, "signature": None})
         assert out == {"Subject": "Re", "Letter": "1", "signature": ""}
 
+    def test_normalize_cover_letter_salutation_only_when_set(self) -> None:
+        kept = tracker_mod.normalize_cover_letter_artifact({"Subject": "S", "Letter": "L", "Salutation": "Dear Team,"})
+        assert kept["Salutation"] == "Dear Team,"
+        dropped = tracker_mod.normalize_cover_letter_artifact({"Subject": "S", "Letter": "L", "Salutation": "  "})
+        assert "Salutation" not in dropped
+
     def test_normalize_cover_letter_non_dict(self) -> None:
         assert tracker_mod.normalize_cover_letter_artifact("text") == {"Subject": "", "Letter": "", "signature": ""}
 

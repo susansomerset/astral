@@ -1,3 +1,71 @@
+<!-- linear-archive: AST-2004 archived 2026-10-13 -->
+
+## Linear archive (AST-2004)
+
+**Archived:** 2026-10-13  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-2004/route-bot-walled-job-pages-to-bot-blocked-with-job-site-distinguish  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1998 — Distinguish between BOT_BLOCKED and NO_JOBSITE  
+**Blocked by / blocks / related:** parent: AST-1998; related: AST-1994
+
+### Description
+
+## What this implements
+
+Renames the company bot state to `BOT_BLOCKED`, makes the existing bot-signal check reusable, and reroutes the `select_job_page` `NO_JOBLIST` fall-through to `BOT_BLOCKED` with the blocked URL on `job_site`, counted as a fail. Does not touch prompts, the legacy locate paths' early exits, `NO_PJL_SELECTED`, recovery, or UI.
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.info.entity`.
+
+## Scope
+
+* `src/utils/config.py` — **modified** — rename company state `BOT_BLOCK` → `BOT_BLOCKED` in `COMPANY_STATES` and `company_state_transitions`; add the `PJL_READY → BOT_BLOCKED` transition. Modified `COMPANY_STATES` entry (rename key `BOT_BLOCK` → `BOT_BLOCKED`, still `{}` — terminal); modified `company_state_transitions` (rename the three existing `BOT_BLOCK` tuples; add one tuple for `PJL_READY` → `BOT_BLOCKED`). No new config block — detection reads the existing `TRACKER_CONFIG["jd_classifier"]` bot signals/threshold.
+* `src/core/gazer.py` — **modified** — make the existing bot-signal check reusable by roster (behavior of JD classification unchanged). New public helper (or promoted function) that answers "is this page text a bot wall?" using the same `bot_signals` / `bot_threshold` logic `_classify_jd` uses today; `_classify_jd` delegates to it so the two can never drift.
+* `src/core/roster.py` — **modified** — reroute the select step's `NO_JOBLIST` fall-through to `BOT_BLOCKED` when a shown page is a bot wall; persist `job_site` for `BOT_BLOCKED`. Modified `_find_job_page_from_assembled` / `_check_parse_results` so the final `NO_JOBLIST` fall-through has the shown pages' URL + visible text available and, when the first bot-walled page is found, saves `BOT_BLOCKED` with that page's URL as `page_option_url`; modified `_PERSIST_PAGE_OPTION_URL_STATES` to include `BOT_BLOCKED` so `job_site` is written; modified the `PJL_READY` branch of `run_company_task` so `BOT_BLOCKED` is not in the `terminal_ok` set (reports `total_failed`).
+
+## Acceptance criteria
+
+1. **Rename is complete.** `rg -n '"BOT_BLOCK"' src/` returns nothing, and `python -c "from src.utils.config import COMPANY_STATES as C; assert 'BOT_BLOCKED' in C and 'BOT_BLOCK' not in C"` exits 0. Fail: any hit, or the assert raises.
+2. **Bot wall →** `BOT_BLOCKED` **+ URL.** Component test: company in `PJL_READY` whose `pjl_scrape_pages` holds page 1 = careers-less homepage text and page 2 = `https://www.linkedin.com/company/acme/jobs` with LinkedIn auth-wall text ("New to LinkedIn? Join now" … "Sign in with Email"); `select_job_page` mocked to `{"response_type": "NO_JOBLIST_FOUND", "selected_page": 0}`. After `run_select_job_page_dispatch`: `company.state == "BOT_BLOCKED"` and `company.job_site == "https://www.linkedin.com/company/acme/jobs"`. Fail: state `NO_JOBLIST`, or `job_site` empty / the company website.
+3. **No bot wall → unchanged** `NO_JOBLIST`**.** Same test with no page reaching the bot threshold: `state == "NO_JOBLIST"` and `job_site` equals its pre-run value. Fail: `BOT_BLOCKED`, or `job_site` changed.
+4. **Found job list wins.** Same pages, `select_job_page` mocked to `JOBLIST_TITLES` on page 1: `state == "JOBLIST_IDENTIFIED"`. Fail: `BOT_BLOCKED`.
+5. **First walled page wins.** Two walled pages (2 and 3): `job_site` is page 2's URL. Fail: page 3's URL or empty.
+6. **Rollup counts it as a fail.** `run_company_task` on the AC2 fixture returns `total_failed == 1`, `total_passed == 0`, `total_errors == 0`. Fail: any other split.
+7. **One bot detector, not two.** `_classify_jd` and the roster check both go through the same gazer helper: `rg -n "bot_signals" src/core/` returns exactly one hit (in that helper). Fail: a second copy of the signal loop (e.g. inlined in `roster.py`).
+8. **No host-list shim.** `rg -in "linkedin" src/core/roster.py` returns nothing. Fail: any hit — detection must be content-based, not a hard-coded domain list (Susan chose option (a)).
+
+## Boundaries
+
+Single child — owns all of the parent's scope. No backfill of existing `NO_JOBLIST` rows (Susan: new rows only). No `select_job_page` prompt change, no domain list, no UI, no recovery path for `BOT_BLOCKED` companies. Note: in-flight [AST-1994](https://linear.app/astralcareermatch/issue/AST-1994) touches `gazer.fetch_job_pages_batch` and `roster._merge_pjl_scrape_record` — different functions; merge `origin/dev` if it lands first.
+
+## Notes for planning
+
+Citations: `stat.logging.debug`, `stat.logging.info.entity`. Susan's resolved decisions: detection = existing JD bot-signal check (option a); rename `BOT_BLOCK` → `BOT_BLOCKED`, no data migration; new rows only. Estimate: 2.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1998-bot-blocked-vs-no-joblist`, child `sub/AST-1998/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-10-06T05:36:07.412Z
+[code-rubric] PROCEED (Commit: 0e59c7a7) logging + reroute match plan
+
+#### betty — 2026-10-06T05:33:45.516Z
+`origin/sub/AST-1998/AST-2004-route-bot-walled-job-pages` @ `0e59c7a71` · bot-wall tests + snapshot revised
+
+#### joan — 2026-10-06T05:26:35.283Z
+[plan-rubric] PROCEED (Commit: ecc3bd6c2) logging + reroute plan solid
+
+#### ada — 2026-10-06T05:24:58.681Z
+`origin/sub/AST-1998/AST-2004-route-bot-walled-job-pages` @ `ecc3bd6c2` · plan ready, two stages
+
+---
+
 # AST-2004 — Route bot-walled job pages to BOT_BLOCKED with job_site
 
 - **Parent:** [AST-1998 — Distinguish between BOT_BLOCKED and NO_JOBSITE](https://linear.app/astralcareermatch/issue/AST-1998)
