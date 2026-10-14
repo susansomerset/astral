@@ -20,6 +20,8 @@ AST-1585 / patt.artifact.read-operative — Estelle pin→body for pilot
 base_resume via get_operative_base_resume.
 AST-1788: admin channel-list / membership / snapshot orchestration for
 Manage Candidates (no Estelle turn-loop changes).
+AST-2206: private_channel_only commands act on the channel's mapped candidate (refusal
+elsewhere, unmapped reply); /draft-<context> handler; Contact draft thread revise turn.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.core.candidate import (
     get_candidate,
     get_candidate_id_for_query,
+    get_candidate_id_for_slack_channel,
     get_operative_base_resume,
     save_candidate_data,
 )
@@ -1380,6 +1383,38 @@ def run_contact_estelle_turn(
     return out
 
 
+# AST-2206: Slack channel_type of a private channel (fetch_channel_type vocabulary: im | mpim | group | channel).
+_SLACK_PRIVATE_CHANNEL_TYPE = "group"
+
+
+def _post_contact_command_notice(
+    *,
+    command_id: str,
+    outcome: str,
+    text: str,
+    channel: str,
+    thread_ts: Optional[str],
+    message_ts: Optional[str],
+    debug: bool = False,
+) -> dict:
+    """Post a fixed reply for a command that does not run (refused / unmapped); returns the estelle_turn dict.
+
+    Placed by the entry's reply_placement like every other reply to that command (AST-2144).
+    """
+    reply_ts, reply_broadcast = _contact_reply_placement(
+        thread_ts, message_ts, CONTACT_CONFIG["commands"][command_id].get("reply_placement")
+    )
+    post = contact_post_message(
+        channel=channel,
+        text=format_contact_reply_text(text),
+        thread_ts=reply_ts,
+        reply_broadcast=reply_broadcast,
+        debug=debug,
+    )
+    summary = {"id": command_id, "mode": outcome, "ok": False, "meteorite_id": None, "error": outcome}
+    return {"ok": True, "outcome": command_id, "command": summary, "slack_post": post}
+
+
 def _run_contact_command(
     *,
     command_id: str,
@@ -1390,10 +1425,29 @@ def _run_contact_command(
     message_ts: str | None,
     astral_candidate_id: str,
     candidate_state: str | None,
+    private_channel: bool = False,
     debug: bool = False,
 ) -> dict:
     """Run one registry command and reply per its mode; returns the estelle_turn dict."""
     meta = CONTACT_CONFIG["commands"][command_id]
+    # AST-2206: a private_channel_only entry runs only in a private channel, on the candidate that
+    # channel maps to (not the sender's). Elsewhere, or unmapped, a fixed reply posts and nothing runs.
+    if meta.get("private_channel_only"):
+        notice = {"channel": channel, "thread_ts": thread_ts, "message_ts": message_ts, "debug": debug}
+        if not private_channel:
+            return _post_contact_command_notice(
+                command_id=command_id, outcome="refused",
+                text=CONTACT_CONFIG["private_channel_only_reply_text"], **notice,
+            )
+        logger.debug("Calling get_candidate_id_for_slack_channel: [channel=%s]", channel)
+        mapped = get_candidate_id_for_slack_channel(channel, debug=debug)
+        logger.debug("Response from get_candidate_id_for_slack_channel: %s", mapped)
+        if mapped is None:
+            return _post_contact_command_notice(
+                command_id=command_id, outcome="unmapped",
+                text=CONTACT_CONFIG["unmapped_channel_reply_text"], **notice,
+            )
+        astral_candidate_id = mapped
     # Handler anchor stays the inbound thread (or message) so later nags find this thread,
     # independent of where thread_response puts our replies (AST-2072 AC 10).
     anchor_ts = thread_ts or message_ts
@@ -1406,8 +1460,9 @@ def _run_contact_command(
     # Handler-composed reply (AST-2144); code mode posts it on a hit or a miss. Agent mode ignores it.
     reply_text = None
 
-    # Empty payload: usage reply only, either mode — no handler, no turn.
-    if not payload:
+    # Empty payload: usage reply only, either mode — no handler, no turn. A payload_optional entry
+    # (AST-2206) runs its handler on an empty payload instead.
+    if not payload and not meta.get("payload_optional"):
         summary["error"] = "empty_payload"
         post = contact_post_message(
             channel=channel,
@@ -1427,13 +1482,15 @@ def _run_contact_command(
         )
     else:
         source_id = f"{channel}:{message_ts or ''}"
+        # AST-2206: artifact_key= only for entries that declare one (older handlers don't take it).
+        extra = {"artifact_key": meta["artifact_key"]} if "artifact_key" in meta else {}
         logger.debug(
-            "Calling %s: [candidate_id=%r, source_id=%r, thread_ts=%r, payload=%r]",
-            meta["handler"], astral_candidate_id, source_id, anchor_ts, payload,
+            "Calling %s: [candidate_id=%r, source_id=%r, thread_ts=%r, payload=%r, %s]",
+            meta["handler"], astral_candidate_id, source_id, anchor_ts, payload, extra,
         )
         out = handler(
             astral_candidate_id, payload,
-            source_id=source_id, thread_ts=anchor_ts, debug=debug,
+            source_id=source_id, thread_ts=anchor_ts, debug=debug, **extra,
         )
         logger.debug("Response from %s: %s", meta["handler"], out)
         if isinstance(out, dict):
@@ -1546,6 +1603,7 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
             return {"accepted": False, "reason": "not_dm"}
     # AST-2061: Estelle acts only in DMs / private channels. app_mention carries no
     # channel_type (and private channels use C… ids), so ask Slack; fail closed.
+    ctype = None
     if etype == "app_mention":
         mention_channel = event.get("channel") or ""
         ctype = event.get("channel_type")
@@ -1559,11 +1617,29 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                 )
                 ctype = None
         if ctype not in CONTACT_CONFIG["allowed_channel_types"]:
+            # AST-2206: a private_channel_only command gets the fixed refusal (no resolve, no handler).
+            # Anything else, and a failed type lookup (ctype None), still drops silently.
+            refused = parse_contact_command(event.get("text") or "") if ctype else None
+            if refused is not None and CONTACT_CONFIG["commands"][refused[0]].get("private_channel_only"):
+                turn_out = _post_contact_command_notice(
+                    command_id=refused[0], outcome="refused",
+                    text=CONTACT_CONFIG["private_channel_only_reply_text"],
+                    channel=mention_channel, thread_ts=event.get("thread_ts"),
+                    message_ts=event.get("ts"), debug=debug,
+                )
+                result = {
+                    "accepted": True, "event_id": event_id, "event_type": etype,
+                    "channel": mention_channel, "reason": "private_channel_only", "estelle_turn": turn_out,
+                }
+                _emit_listen_info(result, etype, mention_channel, turn_out)
+                return result
             logger.debug(
                 "Response from handle_slack_event: accepted=False reason=channel_not_private channel_type=%r",
                 ctype,
             )
             return {"accepted": False, "reason": "channel_not_private"}
+    # AST-2206: private_channel_only commands and the draft thread run only on a private-channel @mention.
+    private_channel = etype == "app_mention" and ctype == _SLACK_PRIVATE_CHANNEL_TYPE
 
     text = event.get("text") or ""
     if not isinstance(text, str):
@@ -1734,6 +1810,7 @@ def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
                         message_ts=msg_ts if isinstance(msg_ts, str) else None,
                         astral_candidate_id=result["astral_candidate_id"],
                         candidate_state=result.get("candidate_state"),
+                        private_channel=private_channel,
                         debug=debug,
                     )
                 except Exception as exc:
