@@ -371,3 +371,14 @@ Confirm Chuckles estimate: 3 — agree
 - Plan-discuss: **Plan Ready**; **0** completed `[plan-discuss]` rounds.
 
 context_tokens≈42000
+
+## Review (build)
+
+**Built @ `ebf0917f`** — `origin/sub/AST-2207/AST-2214-alert-header-log-attachment`
+
+- Stage 1 as planned, `src/core/monitor.py` only: `_format_alert_header` + `_ALERT_COUNT_KEYS`; `_format_log_body` replaced by `_format_log_line` / `_format_full_log` / `_format_warning_error_block`; `auto_run_error` does one fetch, sends header + WARNING/ERROR block and `{"<batch_id>.txt": full log}`; `provider_balance_outage` sends to `", ".join(sorted(AUTH_CONFIG["admin_emails"]))`, one WARNING + no send when empty.
+- Lint: the same 4 pre-existing ruff findings as the plan baseline (I001, BLE001 ×2, ISC004), none new.
+- `test_monitor.py` sanity run: 8 failed / 10 passed.
+  - **Expected (plan step 8), for `qa-child`:** `TestAutoRunError::test_sends_alert_with_log_body`; `TestFormatLogBody::{test_returns_placeholder_when_no_entries, test_formats_entries_chronologically, test_fence_outruns_backticks_inside_the_logs}`; `TestAst1867ProviderBalanceOutage::test_subject_names_provider_and_body_is_short`.
+  - **Pre-existing, red on the plan tip `f86bacdcb` without this diff:** `TestAutoRunErrorSubjectPrefix::{test_local_env_with_candidate_last_name, test_eu_west_preserves_case, test_unset_env_with_candidate_last_name}`. Their `get_candidate` stub returns `candidate_data.profile.last`, while `_resolve_candidate_last_name` reads top-level `last`. Stub/product mismatch predates AST-2214; not touched here — Betty's call.
+  - Coverage gap for Betty: the other `TestAst1867ProviderBalanceOutage` tests now pass only because `admin_emails` is empty in the test env (early return), so they no longer exercise the send path.
