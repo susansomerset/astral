@@ -17,6 +17,8 @@ import copy
 import html
 import json
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -26,6 +28,7 @@ from src.data import database
 from src.utils.config import (
     BUILD_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
+    PAGE_TITLE_CONFIG,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
@@ -278,6 +281,7 @@ def build_resume_from_job(
         body_section_ids=ordered_body,
         body_section_titles=titles,
         resume_structure=structure,
+        document_title=_job_page_title("resume", cd, job),
         debug=debug,
         debug_func="builder.build_resume_from_job",
     )
@@ -373,15 +377,19 @@ def build_cover_letter_from_job(
         _candidate_for_cover_from_block(cd), debug=debug
     )
     contact = cd.get("contact") or {}
-    cover_sig = cover.get("signature") or ""
+    # Blank artifact signature → profile signature text, read at render time (so {$SIGNATURE_IMAGE} in it works too).
+    cover_sig = (cover.get("signature") or "").strip() or str(contact.get("cover_letter_signature") or "")
+    cover = {**cover, "signature": cover_sig}
     token_status, sig_src, image_status = _signature_image_token_status(
         cover_sig, {"contact": contact}
     )
     fields = _job_cover_somerset_fields(cover, from_res["text"])
-    job_cfg = BUILD_CONFIG["job_cover_somerset"]
-    doc_title = BUILD_CONFIG[job_cfg["document_title_key"]]["document_title"]
+    fields["letter_date"] = _cover_letter_date(contact)  # job artifacts store no date → print day
     html_out = _emit_somerset_cover_html_document(
-        fields, signature_image_src=sig_src, document_title=doc_title
+        fields,
+        signature_image_src=sig_src,
+        document_title=_job_page_title("cover", cd, job),
+        candidate_name=_cover_candidate_name(cd),
     )
     if debug:
         cover_src = _cover_letter_source_label(job_data, cd, astral_job_id=jid)
@@ -674,7 +682,11 @@ def build_session_cover_letter(
         normalized.get("signature") or "", candidate_root
     )
 
-    html_out = _emit_somerset_cover_html_document(normalized, signature_image_src=sig_src)
+    html_out = _emit_somerset_cover_html_document(
+        normalized,
+        signature_image_src=sig_src,
+        candidate_name=_cover_candidate_name(candidate_root),
+    )
     if debug:
         _log.debug_index(
             func="builder.build_session_cover_letter",
@@ -713,6 +725,82 @@ def _session_cover_letter_paragraphs(letter: str) -> List[str]:
     return chunks
 
 
+# Bullet ("- ", "* ", "• ") or number ("1. ", "1) ") list-item line in the cover letter body.
+_COVER_LIST_ITEM_RE = re.compile(r"^\s*(?:([-*•])|\d+[.)])\s+(.*)$")
+
+
+def _cover_letter_body_html(letter: str) -> str:
+    """Cover body → ``<p>`` / ``<ul>`` / ``<ol>`` HTML. Reuses the shared paragraph split;
+    consecutive list-item lines group into one list (even across blank lines)."""
+    out: List[str] = []
+    text: List[str] = []  # pending paragraph lines
+    items: List[str] = []  # pending list items
+    tag = ""  # "ul" | "ol" for the pending list
+
+    def flush_text() -> None:
+        if text:
+            out.append(f"        <p>{'<br>'.join(text)}</p>")
+            text.clear()
+
+    def flush_list() -> None:
+        nonlocal tag
+        if items:
+            lis = "".join(f"<li>{i}</li>" for i in items)
+            out.append(f"        <{tag}>{lis}</{tag}>")
+            items.clear()
+        tag = ""
+
+    for para in _session_cover_letter_paragraphs(letter):
+        for line in para.split("\n"):
+            m = _COVER_LIST_ITEM_RE.match(line)
+            if not m:
+                flush_list()
+                text.append(_escape_link(line.strip()))
+                continue
+            flush_text()
+            kind = "ul" if m.group(1) else "ol"
+            if kind != tag:
+                flush_list()
+                tag = kind
+            items.append(_escape_link(m.group(2).strip()))
+        flush_text()  # paragraph boundary ends text; a pending list may continue
+    flush_list()
+    return "\n".join(out)
+
+
+def _cover_letter_date(contact: dict) -> str:
+    """Print-day date like ``April 12, 2026`` in the candidate's ``contact.timezone`` (blank/bad → UTC)."""
+    key = str((contact or {}).get("timezone") or "").strip()
+    try:
+        zone = ZoneInfo(key or "UTC")
+    except Exception:  # unknown IANA key → same UTC fallback as format_contact_timezone_clock
+        zone = ZoneInfo("UTC")
+    now = datetime.now(zone)
+    return f"{now:%B} {now.day}, {now.year}"
+
+
+def _job_page_title(kind: str, cd: dict, job: dict) -> str:
+    """Printed-page <title> (the browser's default PDF file name) for a job document.
+
+    ``kind`` is ``resume`` or ``cover``. Candidate template (contact.<key>) wins, else the config default;
+    ``{$FULL_NAME}`` / ``{$JOB_ID}`` are filled in. JOB_ID = company_job_id, else the first N non-hyphen
+    characters of astral_job_id."""
+    spec = PAGE_TITLE_CONFIG[kind]
+    template = str((cd.get("contact") or {}).get(spec["contact_key"]) or "").strip() or spec["default"]
+    job_id = str(job.get("company_job_id") or "").strip() or str(
+        job.get("astral_job_id") or ""
+    ).replace("-", "")[: PAGE_TITLE_CONFIG["job_id_fallback_chars"]]
+    out = template.replace("{$FULL_NAME}", _cover_candidate_name(cd)).replace("{$JOB_ID}", job_id)
+    return " ".join(out.split())  # collapse the gaps an empty token leaves
+
+
+def _cover_candidate_name(cd: dict) -> str:
+    """Full name for the cover header: ``full`` column, else first + last."""
+    return (
+        cd.get("_full") or candidate_mod.recompute_full_name(cd.get("_first") or "", cd.get("_last") or "")
+    ).strip()
+
+
 def _candidate_for_cover_from_block(cd: dict) -> dict:
     """Shape coerced builder candidate blob for ``resolve_cover_from_block``."""
     out: Dict[str, Any] = {
@@ -745,8 +833,11 @@ def _emit_somerset_cover_html_document(
     *,
     signature_image_src: Optional[str] = None,
     document_title: Optional[str] = None,
+    candidate_name: str = "",
 ) -> str:
-    """Standalone SomersetCover DOM/CSS (session + job cover-only Print Cover Letter)."""
+    """Standalone SomersetCover DOM/CSS (session + job cover-only Print Cover Letter).
+
+    Header = ``candidate_name`` (resume-style name line, omitted when blank) + rule + From block."""
     style = BUILD_CONFIG["default_style"]
     fonts = style.get("fonts") or {}
     colors = style.get("colors") or {}
@@ -761,6 +852,19 @@ def _emit_somerset_cover_html_document(
     text_tertiary = colors.get("text_tertiary", "#666")
     border_light = colors.get("border_light", "#e0e0e0")
     border_medium = colors.get("border_medium", "#ccc")
+    layout = BUILD_CONFIG["cover_letter_layout"]
+    body_lh = layout["body_line_height"]
+    signoff_lh = layout["signoff_line_height"]
+    para_indent = layout["paragraph_indent_em"]
+    para_gap = layout["paragraph_gap_pt"]
+    list_indent = layout["list_indent_em"]
+    name_px = layout["name_font_size_px"]
+    name_ls = layout["name_letter_spacing_px"]
+    name_lh = layout["name_line_height"]
+    from_px = layout["from_font_size_px"]
+    from_lh = layout["from_line_height"]
+    name_gap = layout["name_rule_gap_px"]
+    from_gap = layout["from_gap_px"]
     doc_title = (
         document_title
         if document_title is not None
@@ -771,15 +875,17 @@ def _emit_somerset_cover_html_document(
     meta_tag = f'\n  <meta name="description" content="{html.escape(meta_content)}" />'
 
     from_lines = (fields.get("from_block") or "").replace("\r\n", "\n").split("\n")
-    from_html = "<br>\n        ".join(html.escape(line) for line in from_lines)
+    from_html = "<br>\n        ".join(_escape_link(line) for line in from_lines)
 
-    blocks: List[str] = [
-        f'      <div class="fromBlock">\n        {from_html}\n      </div>'
-    ]
+    # Header: name (resume-style) + rule, then the From block text. No name → From block only.
+    blocks: List[str] = []
+    if candidate_name.strip():
+        blocks.append(f'      <div class="coverName">{html.escape(candidate_name.strip())}</div>')
+    blocks.append(f'      <div class="fromBlock">\n        {from_html}\n      </div>')
     to_block = (fields.get("to_block") or "").strip()
     if to_block:
         to_lines = to_block.replace("\r\n", "\n").split("\n")
-        to_html = "<br>\n        ".join(html.escape(line) for line in to_lines)
+        to_html = "<br>\n        ".join(_escape_link(line) for line in to_lines)
         blocks.append(f'      <div class="toBlock">\n        {to_html}\n      </div>')
     blocks.append(
         f'      <div class="letterdate">{html.escape((fields.get("letter_date") or "").strip())}</div>'
@@ -789,10 +895,11 @@ def _emit_somerset_cover_html_document(
         blocks.append(
             f'      <div class="lettersubject">{html.escape(subject)}</div>'
         )
-    paras = _session_cover_letter_paragraphs(fields.get("letter") or "")
-    p_html = "\n".join(
-        f"        <p>{html.escape(p).replace(chr(10), '<br>')}</p>" for p in paras
-    )
+    salutation = (fields.get("salutation") or "").strip()
+    if salutation:
+        sal_html = html.escape(salutation).replace(chr(10), "<br>")
+        blocks.append(f'      <div class="lettersalutation">{sal_html}</div>')
+    p_html = _cover_letter_body_html(fields.get("letter") or "")
     blocks.append(f'      <div class="lettercontent">\n{p_html}\n      </div>')
 
     # AST-1126: image only where {$SIGNATURE_IMAGE} resolves — no auto-inject above name.
@@ -813,7 +920,9 @@ def _emit_somerset_cover_html_document(
         token_status=token_status,
         img_html=img_html,
     )
-    signoff_parts = [html.escape((fields.get("signoff_closing") or "").strip()), "<br>"]
+    # Blank closing (job letters) → no leading <br>, which rendered as an empty first line.
+    closing = (fields.get("signoff_closing") or "").strip()
+    signoff_parts = [html.escape(closing), "<br>"] if closing else []
     if sig_fragment:
         signoff_parts.append(sig_fragment)
     blocks.append(
@@ -843,7 +952,7 @@ body {{
   background: {page_bg};
   font-family: var(--body-font-family);
   color: var(--text-primary);
-  line-height: 1.65;
+  line-height: {body_lh};
   font-size: 15px;
 }}
 .cover-letter {{
@@ -853,18 +962,33 @@ body {{
   background: white;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   color: var(--text-primary);
-  line-height: 1.65;
+  line-height: {body_lh};
 }}
-.fromBlock {{
-  margin: 0 0 32px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid var(--accent-color);
-  font-size: 17px;
-  color: var(--accent-color);
-  text-align: left;
-  line-height: 1.5;
+/* Name = resume <h1> look (heading font, header color); rule sits under it. */
+.coverName {{
+  margin: 0;
+  padding-bottom: {name_gap}px;
+  border-bottom: 1px solid var(--header-color); /* same weight/color as resume h2 rules */
+  font-family: var(--header-font-family);
+  font-size: {name_px}px;
   font-weight: 700;
+  letter-spacing: {name_ls}px;
+  line-height: {name_lh};
+  color: var(--header-color);
+  text-align: center;
 }}
+/* From block = resume .contact line look (list font, secondary color). */
+.fromBlock {{
+  margin: {from_gap}px 0 0;
+  font-family: var(--list-font-family);
+  font-size: {from_px}px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: {from_lh};
+}}
+/* Links stay clickable in the PDF but keep the surrounding text look. */
+a {{ color: inherit; text-decoration: none; }}
 .toBlock {{
   margin: 16px 0 16px;
   font-size: 15px;
@@ -890,20 +1014,38 @@ body {{
   margin: 0 0 24px;
   text-align: left;
 }}
-.lettercontent p {{
-  margin: 0 0 16px;
+/* Salutation: own line above the letter, never indented. */
+.lettersalutation {{
+  margin: 0 0 {para_gap}pt;
+  text-indent: 0;
+  text-align: left;
   font-size: 15px;
-  line-height: 1.65;
+  line-height: {body_lh};
   color: var(--text-primary);
 }}
-.lettercontent p:last-child {{
-  margin-bottom: 0;
+/* Indent each paragraph's first line; small gap after each paragraph. */
+.lettercontent p {{
+  margin: 0 0 {para_gap}pt;
+  text-indent: {para_indent}em;
+  font-size: 15px;
+  line-height: {body_lh};
+  color: var(--text-primary);
+}}
+/* Bullets / numbered lists: no paragraph indent, nested a bit deeper than it. */
+.lettercontent ul, .lettercontent ol {{
+  margin: 0 0 {para_gap}pt;
+  padding-left: {list_indent}em;
+  font-size: 15px;
+  line-height: {body_lh};
+}}
+.lettercontent li {{
+  margin: 0;
 }}
 .letterSignoff {{
   margin: 24px 0 0;
   font-size: 15px;
   text-align: left;
-  line-height: 1.5;
+  line-height: {signoff_lh};
 }}
 .signature-img {{
   display: block;
@@ -998,11 +1140,15 @@ def _is_nonempty_resume_dict(val: Any) -> bool:
 
 def _cover_letter_fields_for_read(cl: dict) -> dict:
     """Map Subject/Letter or legacy re_line/body to emit-friendly re_line/body/signature."""
-    return {
+    out = {
         "re_line": str(cl.get("Subject") or cl.get("re_line") or ""),
         "body": str(cl.get("Letter") or cl.get("body") or ""),
         "signature": str(cl.get("signature") or ""),
     }
+    # Optional field: only present when set (missing key reads as "" in _job_cover_somerset_fields).
+    if str(cl.get("Salutation") or "").strip():
+        out["salutation"] = str(cl["Salutation"])
+    return out
 
 
 def _resolve_cover_letter(
@@ -1156,15 +1302,38 @@ def _glue_word_cloud_bullet_separators(text: str) -> str:
     return t
 
 
+# Bare URLs in free text: http(s)://… or www.… (not mid-word, not an email's domain).
+_URL_RE = re.compile(r"(?<![\w@])(?:https?://|www\.)[^\s<>\"]+", re.I)
+_URL_TRAIL = ".,;:!?)]}'"  # sentence punctuation that belongs to the prose, not the link
+
+
+def _escape_link(text: str) -> str:
+    """``html.escape`` plus an ``<a href>`` around each URL, so links survive print / Save as PDF."""
+    if not text:
+        return ""
+    out: List[str] = []
+    pos = 0
+    for m in _URL_RE.finditer(text):
+        url = m.group(0).rstrip(_URL_TRAIL)
+        if url.lower() in ("http://", "https://", "www."):
+            continue  # a bare scheme is not a link
+        href = url if url.lower().startswith("http") else f"https://{url}"
+        out.append(html.escape(text[pos:m.start()]))
+        out.append(f'<a href="{html.escape(href, quote=True)}">{html.escape(url)}</a>')
+        pos = m.start() + len(url)
+    out.append(html.escape(text[pos:]))
+    return "".join(out)
+
+
 def _emit_inline_emphasis_html(text: str) -> str:
-    """Escape HTML, then restore paired italic/bold tags from the config allowlist."""
+    """Escape HTML (URLs become links), then restore paired italic/bold tags from the config allowlist."""
     if not text:
         return ""
     parts: List[str] = []
     pos = 0
     open_counts: Dict[str, int] = {}
     for match in _EMPHASIS_TAG_RE.finditer(text):
-        parts.append(html.escape(text[pos:match.start()]))
+        parts.append(_escape_link(text[pos:match.start()]))
         raw = match.group(0)
         name = raw.strip("</>").lower()
         if raw.startswith("</"):
@@ -1177,7 +1346,7 @@ def _emit_inline_emphasis_html(text: str) -> str:
             open_counts[name] = open_counts.get(name, 0) + 1
             parts.append(f"<{name}>")
         pos = match.end()
-    parts.append(html.escape(text[pos:]))
+    parts.append(_escape_link(text[pos:]))
     return "".join(parts)
 
 
@@ -1228,6 +1397,7 @@ def _emit_html_document(
     body_section_ids: Optional[List[str]] = None,
     body_section_titles: Optional[Dict[str, str]] = None,
     resume_structure: Optional[dict] = None,
+    document_title: Optional[str] = None,
     debug: bool = False,
     debug_func: str = "",
 ) -> str:
@@ -1252,9 +1422,16 @@ def _emit_html_document(
     tagline_raw = str(render.get("candidate_tagline") or "").strip()
     name = html.escape(name_raw)
     title = html.escape(title_raw)
-    contact = html.escape(str(render.get("candidate_contact_detail") or ""))
+    contact = _escape_link(str(render.get("candidate_contact_detail") or ""))
 
-    if name and title:
+    # Header layout is stored on the contact sections' `format` (editor keeps all four in sync); candidate_name is the reader.
+    name_spec = ((resume_structure or {}).get("sections") or {}).get("candidate_name") or {}
+    two_line = name_spec.get("format") == "two_line"
+    title_line_html = ""
+    if name and title and two_line:
+        h1_inner = name  # title drops to its own line under the name
+        title_line_html = f'\n    <p class="title">{title}</p>'
+    elif name and title:
         h1_inner = f"{name}\u00a0• {title}"
     elif name:
         h1_inner = name
@@ -1358,18 +1535,26 @@ h1 {{
   letter-spacing: -0.5px;
   color: var(--header-color);
 }}
+/* Two-line header: the title line mirrors the h2 section-header look (header font, accent, uppercase). */
 .title {{
-  margin: 0;
+  margin: 2px 0 0;
+  font-family: var(--header-font-family);
   font-size: 17px;
   font-weight: 600;
-  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  line-height: 1.2;
+  color: var(--accent-color);
 }}
+.title + .contact {{ margin-top: 2px; }}
 .specialties {{
   margin: 0;
   font-size: 14px;
   color: var(--text-tertiary);
   font-weight: 500;
 }}
+/* Links stay clickable in the PDF but keep the surrounding text look. */
+a {{ color: inherit; text-decoration: none; }}
 .contact {{
   margin: 6px 0 0;
   font-size: 14px;
@@ -1515,7 +1700,8 @@ section li:last-child, .role li:last-child {{ margin-bottom: 0; }}
 }}
 """
     # AST-1021: `{name} Resume` (space, no em/en dash); empty name → `Resume`.
-    title_esc = html.escape(f"{name_raw} Resume" if name_raw else "Resume")
+    # Job builds pass the candidate-templated title; base/session resumes keep `{name} Resume`.
+    title_esc = html.escape(document_title or (f"{name_raw} Resume" if name_raw else "Resume"))
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -1528,7 +1714,7 @@ section li:last-child, .role li:last-child {{ margin-bottom: 0; }}
 </head>
 <body>
   <header class="header">
-    <h1>{h1_inner}</h1>
+    <h1>{h1_inner}</h1>{title_line_html}
     <div class="contact"><span>{contact}</span></div>
   </header>
   <main class="content">
@@ -1904,7 +2090,7 @@ def _html_with_signature_image_token(
 
     # AST-1165: authored newlines → <br> after escape (same as letter body).
     def _esc_br(segment: str) -> str:
-        return html.escape((segment or "").replace("\r\n", "\n")).replace(
+        return _escape_link((segment or "").replace("\r\n", "\n")).replace(
             chr(10), "<br>"
         )
 

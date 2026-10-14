@@ -4656,7 +4656,8 @@ class TestAst1147CoverFromBlockTokenTemplateConfig:
         assert block["default_template"] == (
             "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
         )
-        assert block["allowed_token_ids"] == (
+        # Original four stay first; the rest are the contact.* tokens (see sync test below).
+        assert block["allowed_token_ids"][:4] == (
             "FULL_NAME",
             "LOCATION",
             "CONTACT_EMAIL",
@@ -4686,6 +4687,77 @@ class TestAst1147CoverFromBlockTokenTemplateConfig:
             assert tid in cfg.TOKEN_SOURCES
 
 
+
+
+class TestPageTitleConfig:
+    """Printed-page <title> templates: config defaults, profile tabs, and {$ lookup lists stay in step."""
+
+    def test_defaults_contact_keys_and_profile_tabs(self) -> None:
+        pt = cfg.PAGE_TITLE_CONFIG
+        assert pt["resume"]["default"] == "{$FULL_NAME} Resume ({$JOB_ID})"
+        assert pt["cover"]["default"] == "{$FULL_NAME} Cover Letter {$JOB_ID}"
+        assert pt["job_id_fallback_chars"] == 6
+        for kind in ("resume", "cover"):
+            key = f"contact.{pt[kind]['contact_key']}"
+            assert pt[kind]["contact_key"] in cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"]
+            assert cfg.FIELD_TOKEN_LOOKUP[key] == pt["tokens"] == ("FULL_NAME", "JOB_ID")
+            # Each template is its own profile section (tabs read fields[0]) with the default as placeholder.
+            fields = [
+                f for sec in cfg.DATA_SHAPES["candidates"]["detail"]["profile"] for f in sec["fields"] if f["key"] == key
+            ]
+            assert len(fields) == 1 and fields[0]["placeholder"] == pt[kind]["default"]
+
+
+class TestCoverFromBlockAllowlistAndFieldTokenLookup:
+    """From-block allowlist = FULL_NAME + every candidate contact.* data-field token; per-field lookup lists."""
+
+    def test_allowlist_matches_token_sources_contact_tokens(self) -> None:
+        derived = {"FULL_NAME"} | {
+            name
+            for name, spec in cfg.TOKEN_SOURCES.items()
+            if spec.get("source") == "candidate"
+            and spec.get("source_type") == "data_field"
+            and str(spec.get("path", "")).startswith("contact.")
+        }
+        allowed = cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]
+        assert set(allowed) == derived
+        assert len(allowed) == len(set(allowed))
+        assert "LINKEDIN_URL" in allowed
+
+    def test_help_lists_every_allowed_token(self) -> None:
+        for tid in cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]:
+            assert "{$" + tid + "}" in cfg.COVER_FROM_BLOCK_CONFIG["authoring_help"]
+            assert "{$" + tid + "}" in cfg.COVER_FROM_BLOCK_CONFIG["session_authoring_help"]
+        assert "{$SIGNATURE_IMAGE}" in cfg.COVER_FROM_BLOCK_CONFIG["session_authoring_help"]
+
+    def test_field_token_lookup_contents(self) -> None:
+        lookup = cfg.FIELD_TOKEN_LOOKUP
+        from_ids = cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]
+        render_ids = tuple(cfg.BUILD_CONFIG["cover_letter_render_tokens"])
+        assert render_ids == ("SIGNATURE_IMAGE",)
+        assert lookup["contact.cover_letter_from_block"] == from_ids
+        assert lookup["session_cover_letter.from_block"] == from_ids
+        for key in (
+            "contact.cover_letter_signature",
+            "cover_letter.signature",
+            "session_cover_letter.signature",
+        ):
+            assert lookup[key] == render_ids
+
+    def test_lookup_keys_match_real_fields(self) -> None:
+        profile = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+        profile_keys = {f["key"] for s in profile for f in s["fields"]}
+        # ArtifactEditor derives "<shapes_key>.<field key>" for the job cover letter tabs.
+        cover_keys = {
+            "cover_letter." + f["key"]
+            for f in cfg.DATA_SHAPES["candidates"]["detail"]["cover_letter"]
+        }
+        valid = profile_keys | cover_keys | {
+            "session_cover_letter." + k
+            for k in cfg.BUILD_CONFIG["session_cover_letter"]["fields"]
+        }
+        for key in cfg.FIELD_TOKEN_LOOKUP:
+            assert key in valid, key
 
 
 class TestAst1149CoverFromBlockAuthoringHelpConfig:

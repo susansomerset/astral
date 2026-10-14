@@ -5594,8 +5594,8 @@ class TestAst515AdhocWorkbenchLedger:
                 )
         assert any(u[1].get("total_errors") == 1 for u in ledger_trackers["updates"])
         assert agent_mod.log_batch_id.get() is None
-        assert any("This test is recorded FAILED" in r.message for r in caplog.records)
-        assert any(r.exc_info is not None for r in caplog.records)
+        # error_exc: ERROR one-liner; the traceback rides DEBUG, not exc_info.
+        assert any(r.levelno == logging.ERROR and "This test is recorded FAILED" in r.message for r in caplog.records)
 
     # AST-1988: workbench batch stamps log_candidate_id beside log_batch_id; outer finally clears both.
     # Branches: run_adhoc returns → cleared; run_adhoc raises → still cleared.
@@ -9269,7 +9269,7 @@ class TestAst1274AgentStorySoftFail:
             MagicMock(side_effect=ValueError("ref target missing")),
         )
         exc_log = MagicMock()
-        monkeypatch.setattr(agent_mod.logger, "exception", exc_log)
+        monkeypatch.setattr(agent_mod.logger, "error_exc", exc_log)
         monkeypatch.setattr(agent_mod.logger, "warning", MagicMock())
         assert agent_mod.get_entity_agent_story({"astral_job_id": "job-1274"}) == []
         exc_log.assert_called()
@@ -9294,7 +9294,7 @@ class TestAst1274AgentStorySoftFail:
             MagicMock(side_effect=ValueError("ref cycle detected")),
         )
         exc_log = MagicMock()
-        monkeypatch.setattr(agent_mod.logger, "exception", exc_log)
+        monkeypatch.setattr(agent_mod.logger, "error_exc", exc_log)
         monkeypatch.setattr(agent_mod.logger, "warning", MagicMock())
         story = agent_mod.get_entity_agent_story({"astral_job_id": "job-1274"})
         assert len(story) == 1
@@ -9344,7 +9344,7 @@ class TestAst1354AgentStoryDanglingTaskSibling:
         warn = MagicMock()
         exc = MagicMock()
         monkeypatch.setattr(agent_mod.logger, "warning", warn)
-        monkeypatch.setattr(agent_mod.logger, "exception", exc)
+        monkeypatch.setattr(agent_mod.logger, "error_exc", exc)
 
         story = agent_mod.get_entity_agent_story({"astral_job_id": "job-1354"})
         assert len(story) == 2

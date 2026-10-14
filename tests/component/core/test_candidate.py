@@ -22,6 +22,7 @@ from src.utils.config import (
     RESUME_STRUCTURE_BODY_FORMAT_DETAILS,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    RESUME_STRUCTURE_HEADER_FORMAT_DETAILS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
     RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
@@ -4614,12 +4615,12 @@ class TestAst1148ExpandCoverFromBlock:
 
     def test_expand_leaves_unknown_and_brief_aliases(self) -> None:
         text = candidate_mod.expand_cover_from_block_text(
-            "{$FULL_NAME} | {$RESUME_LOCATION} | {$GITHUB}",
+            "{$FULL_NAME} | {$RESUME_LOCATION} | {$FIRST_NAME}",
             self._cand(),
             source="session",
         )
-        # RESUME_LOCATION / GITHUB not allowlisted → left as-is; empty segments not applicable.
-        assert text == "Ada Lovelace • {$RESUME_LOCATION} • {$GITHUB}"
+        # RESUME_LOCATION / FIRST_NAME not allowlisted → left as-is; empty segments not applicable.
+        assert text == "Ada Lovelace • {$RESUME_LOCATION} • {$FIRST_NAME}"
 
     def test_resolve_custom_tokens_and_pipe(self) -> None:
         out = candidate_mod.resolve_cover_from_block(
@@ -5366,15 +5367,24 @@ class TestAst1287ForceTransition:
 class TestAst1303ResumeStructureCatalog:
     """AST-1303: required catalog + open extras + closed format on normalize."""
 
-    def test_seven_only_fills_formats_and_strips_contact_format(self) -> None:
-        raw = _required_seven_structure()
-        raw["sections"]["candidate_name"]["format"] = "free_prose"
-        out = candidate_mod.normalize_resume_structure(raw)
+    def test_seven_only_fills_formats_and_header_format_is_optional(self) -> None:
+        out = candidate_mod.normalize_resume_structure(_required_seven_structure())
         assert set(out["sections"]) == set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
+        # Unset header layout stays omitted (reads as one_line).
         for sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
             assert "format" not in out["sections"][sid]
         for sid in ("professional_summary", "core_competencies", "highlights", "experience"):
             assert out["sections"][sid]["format"] == RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+
+    def test_header_format_is_kept_when_valid_and_rejected_otherwise(self) -> None:
+        raw = _required_seven_structure()
+        raw["sections"]["candidate_name"]["format"] = "two_line"
+        out = candidate_mod.normalize_resume_structure(raw)
+        assert out["sections"]["candidate_name"]["format"] == "two_line"
+        # A body format is not a header layout.
+        raw["sections"]["candidate_name"]["format"] = "free_prose"
+        with pytest.raises(ValueError, match="candidate_name format must be one of"):
+            candidate_mod.normalize_resume_structure(raw)
 
     def test_highlights_and_publications_persist_as_bullet_list(self) -> None:
         # highlights is required (AST-1332); publications remains an open extra.
@@ -7598,7 +7608,9 @@ class TestAst2081ResumeStructureEditorPayload:
         }
         assert rows["highlights"]["page_break_policy"] == RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
         assert rows["experience"]["format_locked"] is True and rows["experience"]["required"] is True
-        assert rows["candidate_name"]["format_locked"] is True
+        # Header rows carry the one/two-line layout (unset reads as one_line) and are not format-locked.
+        assert rows["candidate_name"]["format_locked"] is False
+        assert rows["candidate_name"]["format"] == "one_line"
         assert "volunteer" not in {s["id"] for s in out["sections"]}
 
     def test_catalog_carries_format_details_and_hidden_label(self) -> None:
@@ -7611,9 +7623,11 @@ class TestAst2081ResumeStructureEditorPayload:
         assert "line" in cat["body_formats"]
         assert cat["hidden_flow_label"] == "Hidden"
         fonts = BUILD_CONFIG["default_style"]["fonts"]
+        # Body formats plus the header layouts (header rows pick from header_formats).
+        assert cat["header_formats"] == ["one_line", "two_line"]
         assert cat["body_format_details"] == {
             fmt: {"label": d["label"], "description": d["description"], "font_family": fonts[d["font_stack"]]}
-            for fmt, d in RESUME_STRUCTURE_BODY_FORMAT_DETAILS.items()
+            for fmt, d in {**RESUME_STRUCTURE_BODY_FORMAT_DETAILS, **RESUME_STRUCTURE_HEADER_FORMAT_DETAILS}.items()
         }
         # Pre-AST-2081 catalog keys still present (response is a superset).
         assert {

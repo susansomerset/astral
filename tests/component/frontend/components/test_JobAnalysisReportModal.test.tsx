@@ -795,9 +795,12 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
     renderWithProviders(<JobAnalysisReportModal jobId={jobId} onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    const sectionList = await waitFor(() => document.querySelector(".recommended-report-section-list") as HTMLElement)
-    for (const b of within(sectionList).getAllByRole("button", { name: "Expand section" })) await userEvent.click(b)
-    return sectionList
+    // Side-by-side thumbnail row — no collapsible sections to expand.
+    return await waitFor(() => {
+      const row = document.querySelector(".recommended-report-artifact-thumbs") as HTMLElement
+      expect(row).toBeTruthy()
+      return row
+    })
   }
 
   const thumbs = () => [...document.querySelectorAll(".print-preview-thumb")] as HTMLElement[]
@@ -808,9 +811,14 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
     artifactJobMocks("j-pop", { job_resume: { professional_summary: "Draft text" }, cover_letter: { Letter: "Cover body" } })
     const sectionList = await openArtifactsExpanded("j-pop")
     expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
-    const headerLabels = [...sectionList.querySelectorAll(".collapsible-panel-label-wrap")].map(el => el.textContent?.trim())
-    expect(headerLabels).toEqual(["Job Resume", "Cover Letter"])
+    // Captions under the thumbnails; no collapsible chrome.
+    expect(sectionList.querySelector(".collapsible-panel")).toBeNull()
+    expect(within(sectionList).getByText("Job Resume")).toBeInTheDocument()
+    expect(within(sectionList).getByText("Cover Letter")).toBeInTheDocument()
     await waitFor(() => expect(thumbs().map(thumbHtml)).toEqual(["<html>resume print</html>", "<html>cover print</html>"]))
+    // Side by side: one flex row holding both.
+    expect(sectionList.style.display).toBe("flex")
+    expect(sectionList.querySelectorAll(".print-preview-thumb")).toHaveLength(2)
     expect(within(sectionList).getAllByRole("button", { name: "Edit" })).toHaveLength(1)
     // No inline editor bodies on the report.
     expect(screen.queryByDisplayValue("Draft text")).not.toBeInTheDocument()
@@ -821,10 +829,18 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
   it("AST-2084: only a generated artifact gets a thumbnail", async () => {
     artifactJobMocks("j-one", { job_resume: { professional_summary: "Draft text" } })
     const sectionList = await openArtifactsExpanded("j-one")
-    const headerLabels = [...sectionList.querySelectorAll(".collapsible-panel-label-wrap")].map(el => el.textContent?.trim())
-    expect(headerLabels).toEqual(["Job Resume"])
+    expect(within(sectionList).getByText("Job Resume")).toBeInTheDocument()
+    expect(within(sectionList).queryByText("Cover Letter")).not.toBeInTheDocument()
     await waitFor(() => expect(thumbs()).toHaveLength(1))
     expect(mockedApi.mock.calls.some(([u]) => u === "/candidate/cover/j-one")).toBe(false)
+  })
+
+  it("Application Questions content is not shown on the Artifacts pane (thumbnails only)", async () => {
+    artifactJobMocks("j-app", { job_resume: { professional_summary: "Draft text" }, proposed_answers: "Q1: A1" })
+    const row = await openArtifactsExpanded("j-app")
+    await waitFor(() => expect(thumbs()).toHaveLength(1))
+    expect(within(row).queryByText("Application Questions")).not.toBeInTheDocument()
+    expect(row.querySelector("textarea")).toBeNull()
   })
 
   it("AST-2084: resume thumbnail opens a stacked full-screen editor + live preview over the report; close reloads the report", async () => {
@@ -1186,13 +1202,10 @@ describe("JobAnalysisReportModal — AST-1599 no Source base resume on Artifacts
     expect(
       screen.queryByText("No pinned base resume for this build."),
     ).not.toBeInTheDocument()
-    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
-    expect(sectionList).toBeTruthy()
-    const headerLabels = [...sectionList.querySelectorAll(".collapsible-panel-label-wrap")].map(
-      el => el.textContent?.trim(),
-    )
-    expect(headerLabels).toContain("Job Resume")
-    expect(headerLabels).toContain("Cover Letter")
+    const thumbRow = document.querySelector(".recommended-report-artifact-thumbs") as HTMLElement
+    expect(thumbRow).toBeTruthy()
+    expect(within(thumbRow).getByText("Job Resume")).toBeInTheDocument()
+    expect(within(thumbRow).getByText("Cover Letter")).toBeInTheDocument()
     const operativeCalls = mockedApi.mock.calls.filter(([url]) =>
       String(url).includes("/operative/base_resume"),
     )
