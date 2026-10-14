@@ -4941,18 +4941,37 @@ def get_repo_admin_json_table_keys() -> tuple[str, ...]:
     """Apply order: agent personas before agent_task rows that reference agent_id."""
     return ("agent", "agent_task")
 
-# AST-1154: injected into multi-vector grades_encoded* payload_instructions (not vet / grades_json).
-_ENCODED_GRADE_SET_COMPLETENESS = (
-    "GRADE SET COMPLETENESS (AST-1154) — mandatory:\n"
-    "Emit exactly one grade segment for every rubric vector code listed in the grading "
-    "instructions for this run. Omitting a code is invalid.\n"
-    "When there is no signal for a vector, emit {code}X0 — never skip that segment.\n"
-    "Do not invent extra codes beyond the rubric. Do not invent letter grades to fill gaps — "
-    "use X with confidence 0 when the source is silent.\n"
-    # Example lines show a fixed code count; models copy that length unless told otherwise.
-    "Example lines are illustrative — their code count is not a template. Each line carries "
-    "exactly as many grade segments as the rubric has codes; check every line against the "
-    "rubric code list before moving on."
+# agent_performance rules shared by every call (AST-1839). prompt_prefix wraps them in the two-key envelope
+# sentence; structured-output calls (AST-2172) report agent_performance inside the tool input, so they get the
+# rules alone via prompt_prefix_structured.
+_PROMPT_PERFORMANCE_RULES = (
+    "agent_performance refers ONLY "
+    "to your ability to perform your task.  It has nothing to do with the payload at all, "
+    "just whether or not you were prevented for some reason to perform your task.  NEVER "
+    "use \"failed\" because everything in your payload did not pass for some reason, "
+    "the software will think your prompt is broken and we will wastefully replicate "
+    "the prompt to troubleshoot a non-existent issue.  If the status is truly \"failure\", use "
+    "\"failure_note\" to explain the legitimate issue."
+)
+
+# Confidence scale for rubric grader instructions (stat.agent.confidence-bounds): 1-5 with a letter, 0 only with X.
+_CONFIDENCE_SCALE_LINES = (
+    "    - 5: The source explicitly states it.\n"
+    "    - 4: The source strongly suggests it.\n"
+    "    - 3: The source hints about it.\n"
+    "    - 2: The source makes a vague reference.\n"
+    "    - 1: The source doesn't say it out loud, but it's possible.\n"
+)
+# Grade semantics shared by every multi-vector grader output type; the tool schema enforces the shape (AST-2172).
+_GRADE_SEMANTICS = (
+    "Report your grades through the provided tool. Each row in the content is identified by its index "
+    "(for example 024); report that row under its index, with one entry per rubric vector code.\n"
+    "  grade: one letter — A B C D F X. Each vector's rubric defines what A–F mean for that vector; "
+    "X means not applicable / no signal.\n"
+    "  confidence: an integer for that vector's grade:\n"
+    + _CONFIDENCE_SCALE_LINES +
+    "    - 0: Use only with grade X (not applicable / no signal).\n"
+    "When the source is silent on a vector, grade it X with confidence 0 — never leave a vector out."
 )
 
 # ---------------------------------------------------------------------------
@@ -5035,19 +5054,15 @@ ASTRAL_CONFIG = {
     "support_email": "runtime-dispatch-error-498a58685f26@intake.linear.app",
 
     # --- Prompt prefix (anthropic) ---
-    # Prepended to the user prompt on every API call. Tells agents the date/time
-    # and instructs them on the response envelope format.
+    # Prepended to the user prompt after the date/time line. prompt_prefix: the two-key envelope sentence around
+    # the agent_performance rules. prompt_prefix_structured: the rules alone, for structured-output (forced tool)
+    # calls that have no agent_payload (AST-2172).
     "prompt_prefix": (
         "Your JSON response must use the two-key envelope, one is the agent_performance, the "
-        "other is the agent_payload.  This is very important.  agent_performance refers ONLY "
-        "to your ability to perform your task.  It has nothing to do with the payload at all, "
-        "just whether or not you were prevented for some reason to perform your task.  NEVER "
-        "use \"failed\" because everything in your payload did not pass for some reason, "
-        "the software will think your prompt is broken and we will wastefully replicate "
-        "the prompt to troubleshoot a non-existent issue.  If the status is truly \"failure\", use "
-        "\"failure_note\" to explain the legitimate issue.\n\nThe agent_payload is the complete "
+        "other is the agent_payload.  This is very important.  " + _PROMPT_PERFORMANCE_RULES + "\n\nThe agent_payload is the complete "
         "response that the software can parse per the required output schema."
     ),
+    "prompt_prefix_structured": _PROMPT_PERFORMANCE_RULES,
 
     # --- Company state machine (gazer, database, roster) ---
     # State list lives in COMPANY_STATES; transitions here.
@@ -5159,10 +5174,12 @@ ASTRAL_CONFIG = {
     # Valid grade letters — used by agent.py to build the grade-segment regex and for UI display.
     "valid_grades": ["A", "B", "C", "D", "F", "X"],
 
-    # Output type registry — each entry drives {$OUTPUT_INSTRUCTIONS} token resolution and
-    # determines how agent.py handles the agent_payload after receiving the AI response.
-    # Entries with "_encoded" in their key are decoded by _decode_payload; "_meta" additionally
-    # accepts listing metadata after grade segments; "grades_encoded_notes" maps tail to job["notes"].
+    # Output type registry — each entry drives {$OUTPUT_INSTRUCTIONS} token resolution.
+    # "structured_output": True marks a rubric grader type: its calls carry a call-time forced-tool schema (AST-2172).
+    # This marker is the only grader-type signal; no module keeps its own list of grader types or task keys.
+    # "extra_fields": per-row fields beyond the rubric codes, as JSON Schema fragments; the schema builder makes
+    # each one required and nullable. "grade_letters" / "confidence_range" override the defaults
+    # (ASTRAL_CONFIG["valid_grades"] / (0, 5)) — vet only.
     "output_types": {
         # Standard JSON grades — reserved for future use when grade_do and similar tasks
         # adopt output_type-driven instructions. No task uses this key today.
@@ -5172,130 +5189,64 @@ ASTRAL_CONFIG = {
                 "This output is parsed by software — any deviation will cause a processing failure."
             ),
         },
-        # Compact encoded — grades only, no metadata fields after grade segments.
+        # Grades only, no extra per-row fields.
         "grades_encoded": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Put the multi-line encoded grading block inside \"agent_payload\" as a single string "
-                "(newlines separate jobs). Never respond with bare pipe-lines only; never put a JSON array "
-                'of jobs inside "agent_payload" — only the compact line format below.\n\n'
-                "Inside agent_payload — one line per item. Format: {pos}|{code}{grade}{conf}|{code}{grade}{conf}|...\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "\nExample:\n"
-                "000|ERF1|MEF2|PGX0|WAF1|MWF1|KOF1|QCF1\n"
-                "001|ERA3|MEF2|PGA4|WAA4|MWA5|KOA3|QCA1\n"
-                "002|ERA5|MEA3|PGA3|WAA1|MWX0|KOF2|QCF2"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
+            "structured_output": True,
+            "extra_fields": {},
+            "payload_instructions": _GRADE_SEMANTICS,
         },
-        # Same grade segments as grades_encoded; optional tail → job["notes"] (do/get/like), not listing meta.
+        # Grades plus an optional note → job["notes"] (do/get/like).
         "grades_encoded_notes": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\". "
-                "Place the newline-separated compact grading lines inside \"agent_payload\" as one string "
-                '(do/get/like use this shape; envelope is mandatory — not "lines only").\n'
-                "Format inside agent_payload — one line per item: "
-                "{pos}|{code}{grade}{conf}|{code}{grade}{conf}|...[|optional notes tail]\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "After all segments you may append one optional notes field (pipe-separated from the last segment).\n"
-                "Omit the tail entirely if you have nothing to add — that is valid.\n"
-                "\nExamples (value of agent_payload):\n"
-                "000|ERF1|MEF2|PGX0|WAF1|MWF1|KOF1|QCF1\n"
-                "000|ERA3|MEF2|PGA4|WAA4|MWA5|KOA3|QCA1|Short optional note for the job"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
-        },
-        # Compact encoded with optional metadata fields after grade segments.
-        "grades_encoded_meta": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Pack the newline-separated qualification lines inside \"agent_payload\" as one string "
-                '(outer envelope required — not bare lines).\n'
-                "Format per line inside agent_payload: "
-                "{pos}|{code}{grade}{conf}|{code}{grade}{conf}|...|{company_job_id}[|{job_title}|{job_link}[|{key}:{value}...]]\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "Metadata fields follow all grade segments when your instructions say to include them.\n"
-                "\nExample:\n"
-                "000|ERC3|MEC4|PGA5|WAX0|MWC3|KOB5|QCB3|2983982372|Mediocre Job Title|https://www.workheredummy.com/jobs/2983982372|location:Remote|salary_range:$140-160k\n"
-                "001|ERA2|MEA4|PGF5|WAA4|MWX0|KOA5|QCA2|8398237461\n"
-                "002|ERB3|MEB4|PGB5|WAB5|MWA4|KOA5|QCB1|9823975238|Fine Job Title|https://www.workheredummy.com/jobs/9823975238|location:Remote|salary_range:$140-160k"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
-        },
-        # Vet inflow discovery: one LT{grade}{conf} segment + required website meta (AST-880).
-        "grades_encoded_vet_meta": {
-            "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Put the newline-separated encoded vet lines inside \"agent_payload\" as a single string "
-                "(not a JSON results array). Never respond with bare pipe-lines only.\n\n"
-                "Inside agent_payload — one line per input hit. Format: {pos}|LT{grade}{conf}|{website}\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits (matches live-content 000/001/…)\n"
-                "  LT: fixed vector code for link-type Result Finding\n"
-                "  {grade}: exactly one letter — A B C D F\n"
-                "  {conf}: one digit 1–5 (use 5 when the page type is clear)\n"
-                "  {website}: absolute company homepage URL — required on every grade including F\n"
-                "Each grade segment is exactly 4 characters: LT{grade}{conf}.\n"
-                "\nExample:\n"
-                "000|LTA5|https://www.acme.com\n"
-                "001|LTF5|https://www.otherco.com"
+            "structured_output": True,
+            "extra_fields": {"notes": {"type": "string"}},
+            "payload_instructions": _GRADE_SEMANTICS + (
+                "\n  notes: one optional short note for the row; null when you have nothing to add."
             ),
         },
-        # Prefilter company: grades_encoded plus JOB:/CULT: link index tails (AST-603).
-        "grades_encoded_prefilter_links": {
+        # Grades plus listing metadata (qualify_job_listings).
+        "grades_encoded_meta": {
+            "structured_output": True,
+            "extra_fields": {
+                "company_job_id": {"type": "string"},
+                "job_title": {"type": "string"},
+                "job_link": {"type": "string"},
+                "job_data": {"type": "object", "additionalProperties": {"type": "string"}},
+            },
+            "payload_instructions": _GRADE_SEMANTICS + (
+                "\n  company_job_id: the listing's company job identifier; null when none is found.\n"
+                "  job_title, job_link: the listing's title and link as found; job_data: other key/value details "
+                "the listing states (e.g. location, salary_range). Fill these when your instructions say to include "
+                "them; otherwise null."
+            ),
+        },
+        # Vet inflow discovery: one LT grade per hit + website (AST-880).
+        "grades_encoded_vet_meta": {
+            "structured_output": True,
+            "extra_fields": {"website": {"type": "string"}},
+            "grade_letters": sorted(INFLOW_CONFIG["vet"]["pass_grades"] | INFLOW_CONFIG["vet"]["fail_grades"]),
+            "confidence_range": (1, 5),
             "payload_instructions": (
-                "Return one JSON object with top-level keys exactly: \"agent_performance\" and \"agent_payload\".\n"
-                "Put the multi-line encoded grading block inside \"agent_payload\" as a single string "
-                "(newlines separate jobs). Never respond with bare pipe-lines only; never put a JSON array "
-                'of jobs inside "agent_payload" — only the compact line format below.\n\n'
-                "Inside agent_payload — one line per item. Format: {pos}|{code}{grade}{conf}|{code}{grade}{conf}|...\n"
-                "  {pos}: 0-based input position, zero-padded to 3 digits\n"
-                "  {code}: 2-char rubric vector code from the grading instructions\n"
-                "  {grade}: one letter — A B C D F X\n"
-                "  {conf}: one digit — confidence for that vector's grade:\n"
-                "    - 5: The source explicitly states it.\n"
-                "    - 4: The source strongly suggests it.\n"
-                "    - 3: The source hints about it.\n"
-                "    - 2: The source makes a vague reference.\n"
-                "    - 1: The source doesn't say it out loud, but it's possible.\n"
-                "    - 0: Use only with grade X (not applicable / no signal).\n"
-                "Each grade segment is exactly 4 characters: {code}{grade}{conf}.\n"
-                "After all grade segments, append two optional link_set bracket fields (positional): "
-                "first tail → possible job page indices (1–5 ints from the enumerated nav list); "
-                "second tail → culture link indices (1–5 ints). "
-                "Alternate shapes: JOB:<indices> and CULT:<indices> prefixes, or JSON keys "
-                "possible_job_links / culture_links_to_explore. Software normalizes all listed shapes.\n"
-                "\nExamples:\n"
-                "000|ERC2|MEA3|PGA2|[13]|[3,6,19]\n"
-                "000|RCA3|MPB3|USA3|[59,60]|[51,46,53]\n"
-                "000|RCA3|MPB3|USA3|JOB:59,60|CULT:51,46,53"
-            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
+                "Report one result per hit through the provided tool. Each hit in the content is identified by its "
+                "index (for example 000); report that hit under its index, graded on the fixed link-type vector code "
+                f"{INFLOW_CONFIG['vet']['grade_vector_code']}.\n"
+                "  grade: exactly one of A B C D F, as defined in your instructions.\n"
+                "  confidence: an integer 1–5 for that grade (use 5 when the page type is clear):\n"
+                + _CONFIDENCE_SCALE_LINES +
+                "  website: absolute company homepage URL — required on every grade including F."
+            ),
+        },
+        # Prefilter company: grades plus job / culture link indices (AST-603).
+        "grades_encoded_prefilter_links": {
+            "structured_output": True,
+            "extra_fields": {
+                "possible_job_links": {"type": "array", "items": {"type": "integer"}},
+                "culture_links_to_explore": {"type": "array", "items": {"type": "integer"}},
+            },
+            "payload_instructions": _GRADE_SEMANTICS + (
+                "\n  possible_job_links: 1–5 integer indices from the enumerated nav list that may lead to job "
+                "pages; null when none.\n"
+                "  culture_links_to_explore: 1–5 integer indices from the same list for culture pages; null when none."
+            ),
         },
     },
     # --- Consult (consult): per-vector importance (1–10); multipliers for AST-358 scoring ---
@@ -8093,35 +8044,21 @@ CALLER_HOP_TOKEN_NAMES: tuple[str, ...] = tuple(
 
 def stringify_response_schema(task_key: str) -> str:
     """Return the response_schema as a nested envelope for prompt insertion.
-    For encoded output types, agent_payload is shown as a compact string example.
+    Structured-output (grader) types show agent_performance only — rows go through the forced tool (AST-2172).
     For all others: { agent_performance: {...}, agent_payload: {...task fields...} }"""
     task_cfg = TASK_CONFIG.get(task_key, {})
     schema = task_cfg.get("response_schema")
     if not schema:
         return ""
-    output_type = task_cfg.get("output_type", "")
-    if "_encoded" in output_type:
-        if output_type == "grades_encoded_notes":
-            example = "000|ERC3|MEA4|PGA4|optional notes after grades"
-        elif output_type == "grades_encoded_prefilter_links":
-            example = "000|ERC2|MEA3|PGA2|[13]|[3,6,19]"
-        elif "_meta" in output_type:
-            example = "000|ERC3|MEA4|PGA5|2983982372|Job Title|https://example.com/jobs/123"
-        else:
-            example = "000|ERC2|MEA3|PGA2"
-        payload: object = example
-    else:
-        payload = _schema_to_example(schema)
     # CHAT tasks use concern-capable performance schema; others keep BASE_SCHEMA.
     perf_schema = (
         CONVERSATIONAL_PERFORMANCE_SCHEMA
         if is_conversational_task(task_key)
         else BASE_SCHEMA
     )
-    envelope = {
-        "agent_performance": _schema_to_example(perf_schema),
-        "agent_payload": payload,
-    }
+    envelope = {"agent_performance": _schema_to_example(perf_schema)}
+    if not ASTRAL_CONFIG["output_types"].get(task_cfg.get("output_type", ""), {}).get("structured_output"):
+        envelope["agent_payload"] = _schema_to_example(schema)
     return json.dumps(envelope, indent=2)
 
 
