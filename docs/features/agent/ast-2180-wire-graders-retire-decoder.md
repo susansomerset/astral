@@ -424,3 +424,75 @@ Indented for `do_task`'s body (4 spaces).
             return _with_harvest({"success": False, "api_response": result.get("api_response"),
                     "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})})
 ```
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2180
+**Overall:** APPROVED
+**Corpus:** b7ab2203048ce0beb2869a12200ab7fa696c8066
+**Publish ref:** `origin/sub/AST-2172/AST-2180-wire-graders-retire-decoder` @ `5491d441c`
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| `patt.task.dispatch-retry` | B | | No-codes skip vs empty-tokens carve-out needs one routing read |
+| `stat.agent.grade-vector-validation` | A | | |
+| `stat.agent.confidence-bounds` | A | | |
+| `stat.logging.warning` | A | | |
+| `stat.logging.error` | A | | |
+
+## Traceability
+
+**5** → Stage 1 hydrate + existing consult `decode_failures` / `_consult_batch_fail_dest`; Stage 3 prefilter + vet reason routing. **6** → Stage 4 deletions + Stage 2/3; **literal** child AC conflicts with § AC 6 note (see discuss). **7** → `grade_forced_tool` / `structured_output` marker; Stage 4 `rg` on `src/core`, `src/external`, `src/ui/api`. **8** → Susan staging after epic (plan). Parent **AC 3** (forced tool on grader calls) closes in Stage 1 + Stage 2 ad-hoc. Parent AC 1–2, 4, 9–11 / 10a–10b N/A or other children.
+
+## Findings
+
+### discuss — Ada’s validate calls
+
+- **Location:** Stage 3 — delete vs trim `_normalize_rubric_task_response` cluster  
+  **Finding:** After Stage 1, normalize is only referenced from agent paths being removed (Finding 7). Forced-tool replies make encoded-line, letter-pipe, and free-JSON normalize branches dead.  
+  **Recommendation:** **Proceed with full delete** (plan default). Trim-only keeps a large callerless cluster and weaker AC 7 story; not worth the debt.
+
+- **Location:** Stage 1 — `vector_reviews` on `agent_performance` in `grade_forced_tool`  
+  **Finding:** Closed AST-2178 `_AGENT_PERFORMANCE_SCHEMA` would drop AST-860 reviews on enforcing hosts for 10/11 graders. Copy-on-write at call site preserves `grade_schema` constant; vet correctly omits.  
+  **Recommendation:** **Proceed in `agent.py`** for this Scope. Optional follow-up: move the 3-line extension into `build_grade_tool_schema` when a ticket owns `grade_schema.py` again.
+
+- **Location:** § AC 6 note — `duplicate vector code` in `candidate.py:1633`  
+  **Finding:** Child AC 6 `rg` pattern still matches rubric-save validation (unrelated to decoder). Stage 4 Done-when expects **exactly** that one remaining hit.  
+  **Recommendation:** Chuckles narrows AST-2180 AC 6 (plan suggests `in encoded line` or similar) **or** documents the known exception before Betty’s AC 6 gate. Plan is internally consistent; **Linear AC text is stale**.
+
+- **Location:** Stage 1 — no rubric codes before send  
+  **Finding:** Canon check routes no-codes with light-check failures through `_RETRY`. `patt.task.dispatch-retry` carves out **empty runtime tokens** (data fault → no retry). Plan equates severity to AST-2000 empty-token skip but also cites `_RETRY` for `success: False`.  
+  **Recommendation:** Ada/#5: confirm consult/roster treat this hop like **empty_tokens** (straight to error) or intentional retry; one-line comment if straight-to-error.
+
+### acceptable
+
+- **Location:** Scope-gate Option A — `api_admin.adhoc_test` only  
+  **Finding:** Forced tool via `run_adhoc_workbench_test` / `run_adhoc`, hydrate via `grade_schema`, drop `_decode_payload` import before AC 6 delete; company `company_id` entities for prefilter/vet ad-hoc.  
+  **Recommendation:** None.
+
+- **Location:** Stages 1–4 partition  
+  **Finding:** Matches amended Scope: `agent.py`, `consult.py`, `roster.py`, `formatting.py`, `api_admin` ad-hoc only; no config/transport/DB/#6 admin UI.
+
+- **Location:** Wiring  
+  **Finding:** `structured` → `getTimestampPrefix(structured=True)`; `forced_tool` on send; hydrate replaces coerce/strict-envelope/decode; AST-1839/2089 from tool `agent_performance`; vet skips generic JSON validation (`structured` gate); `post_rubric_decode` validation retained.
+
+- **Location:** `stat.agent.*` / logging  
+  **Finding:** Light-check → `decode_failures` + single router warning with hydrate reason; hydrate warns only unattachable row ids; transport parse stays in #4; hop hydrate errors use existing `warn_exc`.
+
+- **Location:** Verification  
+  **Finding:** No live provider calls; `$PY` venv; Betty test churn documented; sync `--ftr AST-2172-structured-output-graders`.
+
+### fix-now
+
+(none)
+
+## R6 (condensed)
+
+- Definition fidelity: parent child #5 slice + scope-gate ad-hoc exception; depends on #3/#4 on sub.  
+- AC 6 **ticket wording** vs plan Done-when: amend AC or accept documented exception before close — not a plan rewrite.  
+- Plan Discuss: **0** rounds; **Plan Ready**, assignee Joan.
+
+context_tokens≈105000
