@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Move existing company scrape text out of company_data into telescope_data (AST-2135).
+Move existing company scrape text out of company_data into web_data (AST-2135).
 
 Three modes, run separately:
   export — read every company's scraped keys; write a JSON file of telescope rows (pre-assigned
            uuids) and, per company, the id-shaped value each key should hold. No DB writes.
-  load   — insert the file's rows into telescope_data by uuid; a re-run adds nothing.
+  load   — insert the file's rows into web_data by uuid; a re-run adds nothing.
   clear  — swap each exported key in company_data to its row id(s). Keys changed since export
            are left as they are.
 
@@ -41,7 +41,7 @@ def _export(file_path: Path) -> int:
     from src.core.gazer import is_telescope_id
     from src.core.roster import _assemble_pjl_content, _rebuilt_pjl_nav_links
     from src.data.database import DB_PATH, _utc_now, list_companies
-    from src.utils.config import TELESCOPE_DATA_CONFIG
+    from src.utils.config import WEB_DATA_CONFIG
     from src.utils.logging import get_logger
 
     log = get_logger(__name__)
@@ -49,8 +49,8 @@ def _export(file_path: Path) -> int:
         # Never replace a file a load may already have used — its uuids are the stored ids.
         print(f"Refusing: {file_path} already exists")
         return 2
-    vt = TELESCOPE_DATA_CONFIG["data_types"]["VISIBLE_TEXT"]
-    pl = TELESCOPE_DATA_CONFIG["data_types"]["PAGE_LINKS"]
+    vt = WEB_DATA_CONFIG["data_types"]["VISIBLE_TEXT"]
+    pl = WEB_DATA_CONFIG["data_types"]["PAGE_LINKS"]
     created_at = _utc_now()
     rows: dict[str, dict[str, Any]] = {}
     companies: dict[str, dict[str, Any]] = {}
@@ -80,7 +80,7 @@ def _export(file_path: Path) -> int:
             return rid
 
         keys: dict[str, dict[str, Any]] = {}
-        for key in TELESCOPE_DATA_CONFIG["company_data_id_keys"]:
+        for key in WEB_DATA_CONFIG["company_data_id_keys"]:
             v = cd.get(key)
             if v is None:
                 continue
@@ -170,30 +170,30 @@ def _export(file_path: Path) -> int:
 def _load(file_path: Path) -> int:
     from src.data.database import (
         _compress_payload,
-        _ensure_telescope_data_schema,
+        _ensure_web_data_schema,
         _get_connection,
     )
     from src.utils.logging import get_logger
 
     log = get_logger(__name__)
     rows = json.loads(file_path.read_text())["rows"]
-    # Raw INSERT, not save_telescope_data: that mints its own uuid, and the file's ids must be the
+    # Raw INSERT, not save_web_data: that mints its own uuid, and the file's ids must be the
     # stored ids — that is what makes a re-run add nothing.
     conn = _get_connection()
     try:
-        _ensure_telescope_data_schema(conn)
-        log.debug("Calling INSERT OR IGNORE telescope_data: %s", list(rows))
+        _ensure_web_data_schema(conn)
+        log.debug("Calling INSERT OR IGNORE web_data: %s", list(rows))
         inserted = 0
         for rid, r in rows.items():
             cur = conn.execute(
-                "INSERT OR IGNORE INTO telescope_data"
-                " (telescope_data_id, candidate_id, url, data_type, content, created_at)"
+                "INSERT OR IGNORE INTO web_data"
+                " (web_data_id, candidate_id, url, data_type, content, created_at)"
                 " VALUES (?, ?, ?, ?, ?, ?)",
                 (rid, r["candidate_id"], r["url"], r["data_type"], _compress_payload(r["content"]), r["created_at"]),
             )
             inserted += cur.rowcount
         conn.commit()
-        log.debug("Response from INSERT OR IGNORE telescope_data: inserted=%d", inserted)
+        log.debug("Response from INSERT OR IGNORE web_data: inserted=%d", inserted)
     finally:
         conn.close()
     print(f"Rows in file: {len(rows)}  inserted: {inserted}  already present: {len(rows) - inserted}")
@@ -203,7 +203,7 @@ def _load(file_path: Path) -> int:
 def _clear(file_path: Path) -> int:
     from src.data.database import (
         get_company,
-        get_telescope_data_for_ids,
+        get_web_data_for_ids,
         update_company,
     )
     from src.utils.logging import get_logger
@@ -219,15 +219,15 @@ def _clear(file_path: Path) -> int:
 
     wanted = {sn: [i for e in c["keys"].values() for i in _ids(e["value"])] for sn, c in companies.items()}
     all_ids = sorted({i for ids in wanted.values() for i in ids})
-    log.debug("Calling get_telescope_data_for_ids: %s", all_ids)
-    present = get_telescope_data_for_ids(all_ids)
-    log.debug("Response from get_telescope_data_for_ids: %s", present)
+    log.debug("Calling get_web_data_for_ids: %s", all_ids)
+    present = get_web_data_for_ids(all_ids)
+    log.debug("Response from get_web_data_for_ids: %s", present)
     missing = {sn: [i for i in ids if i not in present] for sn, ids in wanted.items()}
     missing = {sn: ids for sn, ids in missing.items() if ids}
     if missing:
         # Refuse before any company write — a swapped key whose row is gone would lose its text.
         for sn, ids in missing.items():
-            log.warning("%s clear refused: telescope_data rows missing %s", sn, ids)
+            log.warning("%s clear refused: web_data rows missing %s", sn, ids)
         print(f"Refused: {sum(map(len, missing.values()))} rows missing for {len(missing)} companies — run load first")
         return 1
 
@@ -264,7 +264,7 @@ def _clear(file_path: Path) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Move company scrape text into telescope_data (AST-2135).")
+    parser = argparse.ArgumentParser(description="Move company scrape text into web_data (AST-2135).")
     parser.add_argument("mode", choices=("export", "load", "clear"))
     parser.add_argument("--file", required=True, help="Export JSON path (written by export, read by load/clear).")
     parser.add_argument("--db-dir", help="Folder holding astral.db; defaults to the app's ASTRAL_DB_DIR.")

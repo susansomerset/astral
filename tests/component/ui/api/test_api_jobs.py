@@ -1087,7 +1087,7 @@ class TestAst2133ComposedJdResponses:
 
     def _ref(self) -> str:
         from src.core import gazer
-        return gazer.keep_telescope_data(None, "https://jobs.example/1", "VISIBLE_TEXT", self._RAW)
+        return gazer.keep_web_data(None, "https://jobs.example/1", "VISIBLE_TEXT", self._RAW)
 
     def _wire_detail(self, monkeypatch: pytest.MonkeyPatch, job: dict) -> None:
         TestAst1453SkippedEditMetaAndPut()._detail_wire(monkeypatch, job=job, successors=[])
@@ -1095,7 +1095,7 @@ class TestAst2133ComposedJdResponses:
     def test_ac7_detail_composes_referenced_capture_without_writing_back(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        stored = {"job_description": "Email pre", "jd_telescope_data_id": self._ref(), "note": "n"}
+        stored = {"job_description": "Email pre", "jd_web_data_id": self._ref(), "note": "n"}
         job = {"astral_job_id": "job-2133", "state": "NEW", "job_title": "Engineer", "job_data": stored}
         self._wire_detail(monkeypatch, job)
         resp = jobs_client.get("/api/jobs/job-2133", headers=auth_headers)
@@ -1118,7 +1118,7 @@ class TestAst2133ComposedJdResponses:
     def test_ac7_list_rows_compose_referenced_capture(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch, view: str
     ) -> None:
-        rows = [{"astral_job_id": "j", "job_title": "Engineer", "job_data": {"jd_telescope_data_id": self._ref()}}]
+        rows = [{"astral_job_id": "j", "job_title": "Engineer", "job_data": {"jd_web_data_id": self._ref()}}]
         monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kw: [dict(r) for r in rows])
         resp = jobs_client.get(f"/api/jobs?view={view}", headers=auth_headers)
         assert resp.get_json()[0]["job_data"]["job_description"] == "Engineer\nBuild things."
@@ -1127,11 +1127,11 @@ class TestAst2133ComposedJdResponses:
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # PR #301 amendment: skipped rows (real and virtual) carry no job_data / state_history,
-        # so no composed JD and no telescope_data read; lifted grades and scores stay.
+        # so no composed JD and no web_data read; lifted grades and scores stay.
         real = {"astral_job_id": "r", "state": "CANDIDATE_SKIPPED", "state_history": [{"s": 1}],
-                "job_data": {"jd_telescope_data_id": "t-1", "jd_score": 4.2}}
+                "job_data": {"jd_web_data_id": "t-1", "jd_score": 4.2}}
         virt = {"astral_job_id": "v", "state": "NEW", "state_history": [],
-                "job_data": {"job_description": "pre", "jd_telescope_data_id": "t-2"}}
+                "job_data": {"job_description": "pre", "jd_web_data_id": "t-2"}}
         compose = MagicMock()
         monkeypatch.setattr(jobs_mod, "compose_job_description", compose)
         monkeypatch.setattr(jobs_mod, "list_jobs", lambda **kw: [dict(real)])

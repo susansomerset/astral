@@ -61,8 +61,8 @@ def _rows(db) -> dict[str, tuple]:
 def _tele_count(db) -> int:
     conn = db._get_connection()
     try:
-        db._ensure_telescope_data_schema(conn)
-        return conn.execute("SELECT COUNT(*) FROM telescope_data").fetchone()[0]
+        db._ensure_web_data_schema(conn)
+        return conn.execute("SELECT COUNT(*) FROM web_data").fetchone()[0]
     finally:
         conn.close()
 
@@ -101,7 +101,7 @@ def _seed(db) -> None:
         "pjl_nav_links": "1: https://beta.io/stale",
     })
     # Written after AST-2134: ids already — nothing to move
-    rid = gazer.keep_telescope_data("cand-1", "https://gamma.dev", "VISIBLE_TEXT", "Gamma home")
+    rid = gazer.keep_web_data("cand-1", "https://gamma.dev", "VISIBLE_TEXT", "Gamma home")
     db.save_company("gamma", "WATCH", company_website="https://gamma.dev", candidate_id="cand-1",
                     company_data={"homepage_text": rid, "website_content": [{"url": "https://gamma.dev/c", "id": rid}]})
     # Shapes no reader writes: left as they are, warned
@@ -207,9 +207,9 @@ class TestAst2135LoadClear:
         printed = capsys.readouterr().out
         assert f"inserted: 0  already present: {len(rows)}" in printed
         # Stored content round-trips through compression verbatim
-        assert db.get_telescope_data_for_ids(list(rows)) == {k: r["content"] for k, r in rows.items()}
+        assert db.get_web_data_for_ids(list(rows)) == {k: r["content"] for k, r in rows.items()}
 
-    def test_ac10_clear_refuses_on_empty_telescope_data(self, db, tmp_path: Path) -> None:
+    def test_ac10_clear_refuses_on_empty_web_data(self, db, tmp_path: Path) -> None:
         out = self._export(db, tmp_path)
         before = _rows(db)
         assert _mod._clear(out) == 1
@@ -221,7 +221,7 @@ class TestAst2135LoadClear:
         some_id = next(iter(json.loads(out.read_text())["rows"]))
         conn = db._get_connection()
         try:
-            conn.execute("DELETE FROM telescope_data WHERE telescope_data_id = ?", (some_id,))
+            conn.execute("DELETE FROM web_data WHERE web_data_id = ?", (some_id,))
             conn.commit()
         finally:
             conn.close()
@@ -334,4 +334,4 @@ class TestAst2135Cli:
         from src.core import gazer
         assert gazer.is_telescope_id(db.get_company("acme")["company_data"]["homepage_text"])
         assert not (decoy / "astral.db").exists() or sqlite3.connect(decoy / "astral.db").execute(
-            "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('company', 'telescope_data')").fetchone()[0] == 0
+            "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('company', 'web_data')").fetchone()[0] == 0

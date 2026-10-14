@@ -574,11 +574,11 @@ Test-data note: bot / closed signals must trail the body — `_prune_jd` trims t
 
 **Broken / obsolete:** none — additive function.
 
-### AST-2132 · AST-2130 (gazer owns telescope_data; gazer scrapes keep everything)
+### AST-2132 · AST-2130 (gazer owns web_data; gazer scrapes keep everything)
 
 **Parent:** [AST-2130](https://linear.app/astralcareermatch/issue/AST-2130). **Publish:** `origin/sub/AST-2130/AST-2132-gazer-telescope-owner`. Plan: `docs/features/foundation/ast-2132-gazer-owns-telescope-data-gazer-scrapes-keep-everything.md`. Table / data functions: [`../data/database/telescope_data.md`](../data/database/telescope_data.md) § AST-2131.
 
-Gazer API: `is_telescope_id`, `keep_telescope_data` (blank → `None`, nothing stored), `keep_page_scrape`, `scrape_visible_text_and_keep` / `scrape_page_links_and_keep`, `resolve_telescope_value` (id / `[{url, id}]` / legacy passthrough; missing rows → warning, dropped, all-missing → `None`). Writers keep every capture before routing: `fetch_website` stores `homepage_text` / `nav_links` as ids; `fetch_job_pages` keeps each page and writes `pjl_assembled_content` / `pjl_nav_links` as `None` (`pjl_scrape_pages` stays text rows until AST-2134); `fetch_jd` / `fetch_relative_jd` store `jd_telescope_data_id` (raw capture) on pass **and** classified — never `job_description`; culture caches resolve ids.
+Gazer API: `is_telescope_id`, `keep_web_data` (blank → `None`, nothing stored), `keep_page_scrape`, `scrape_visible_text_and_keep` / `scrape_page_links_and_keep`, `resolve_telescope_value` (id / `[{url, id}]` / legacy passthrough; missing rows → warning, dropped, all-missing → `None`). Writers keep every capture before routing: `fetch_website` stores `homepage_text` / `nav_links` as ids; `fetch_job_pages` keeps each page and writes `pjl_assembled_content` / `pjl_nav_links` as `None` (`pjl_scrape_pages` stays text rows until AST-2134); `fetch_jd` / `fetch_relative_jd` store `jd_web_data_id` (raw capture) on pass **and** classified — never `job_description`; culture caches resolve ids.
 
 | Area | Component tests |
 | --- | --- |
@@ -588,9 +588,9 @@ Gazer API: `is_telescope_id`, `keep_telescope_data` (blank → `None`, nothing s
 | AC3 bot walls still kept | **`TestAst2086GazerBotWallSplit::{test_fetch_website_bot_wall_is_bot_blocked_not_homepage,test_fetch_job_pages_all_walled_is_bot_blocked}`** (asserts added) |
 | AC5 ids not text; derived PJL fields `None` | revised website ×2 + **`TestAst882HomepageReadyWfrSkip::test_scrapes_wfr_even_when_homepage_text_present`**; PJL ×5 below |
 
-**Broken / obsolete (revised this pass):** `TestFetchWebsiteBatch` ×2 + AST-882 WFR (`homepage_text` text → id); `TestFetchJobPagesBatch::{test_success_transitions_pjl_ready_and_persists, test_ast1995_repro_rescrape_replaces_row_and_rebuilds_nav, test_ast1995_failed_rescrape_keeps_prior_row_and_carries_its_nav, test_ast1995_failed_scrape_without_prior_row_contributes_no_nav, test_ast1995_nav_written_empty_and_non_candidate_rows_kept}` (assembled / nav rebuild + carry-forward retired → `None`; names kept for node-id stability); `TestFetchJdBatch::test_routes_classified_failures_and_passes`, `TestAst2025FetchRelativeJdBatch::{test_ac4_outcomes, test_ac5_both_runners_call_shared_gate_helper}` (`get_visible_text` now `(text, final_url)`; `jd_telescope_data_id`; gate kwarg `telescope_data_id`). **Vacuous since the wrapper landed** (bare-string mocks failed on unpack, never reached the gates) — revised to tuple mocks + gate asserts: `test_fails_empty_and_short_job_descriptions`, `test_passes_with_existing_job_data`, `test_collapses_consecutive_blank_lines_before_save` (now: reference → raw capture), `TestFetchJdBatchDebugPaths::test_scrape_error_empty_short_and_classified_with_debug`, `TestFetchJdBatchDebugBranchCoverage::test_classified_failure_without_debug`.
+**Broken / obsolete (revised this pass):** `TestFetchWebsiteBatch` ×2 + AST-882 WFR (`homepage_text` text → id); `TestFetchJobPagesBatch::{test_success_transitions_pjl_ready_and_persists, test_ast1995_repro_rescrape_replaces_row_and_rebuilds_nav, test_ast1995_failed_rescrape_keeps_prior_row_and_carries_its_nav, test_ast1995_failed_scrape_without_prior_row_contributes_no_nav, test_ast1995_nav_written_empty_and_non_candidate_rows_kept}` (assembled / nav rebuild + carry-forward retired → `None`; names kept for node-id stability); `TestFetchJdBatch::test_routes_classified_failures_and_passes`, `TestAst2025FetchRelativeJdBatch::{test_ac4_outcomes, test_ac5_both_runners_call_shared_gate_helper}` (`get_visible_text` now `(text, final_url)`; `jd_web_data_id`; gate kwarg `web_data_id`). **Vacuous since the wrapper landed** (bare-string mocks failed on unpack, never reached the gates) — revised to tuple mocks + gate asserts: `test_fails_empty_and_short_job_descriptions`, `test_passes_with_existing_job_data`, `test_collapses_consecutive_blank_lines_before_save` (now: reference → raw capture), `TestFetchJdBatchDebugPaths::test_scrape_error_empty_short_and_classified_with_debug`, `TestFetchJdBatchDebugBranchCoverage::test_classified_failure_without_debug`.
 
-**Isolation (required):** `test_gazer.py` gains an autouse **`_telescope_tmp_db`** fixture (core `sqlite_in_memory`) and core `conftest.py` resets **`_telescope_data_schema_ensured`**. Without it unpatched keeps write to the default `ASTRAL_DB_DIR=data/` — in epic worktrees `data/astral.db` is a symlink to the live DB.
+**Isolation (required):** `test_gazer.py` gains an autouse **`_telescope_tmp_db`** fixture (core `sqlite_in_memory`) and core `conftest.py` resets **`_web_data_schema_ensured`**. Without it unpatched keeps write to the default `ASTRAL_DB_DIR=data/` — in epic worktrees `data/astral.db` is a symlink to the live DB.
 
 **Coverage:** every new / modified `gazer.py` line and branch is covered by `test_gazer.py`; missed set equals the ftr baseline (59 stmts / 25 partial, shifted by the insert).
 
@@ -603,8 +603,8 @@ Gazer API: `is_telescope_id`, `keep_telescope_data` (blank → `None`, nothing s
 1. `tests/component/core/test_gazer.py` — all green except the 3 pre-existing nodes above.
 2. `tests/component/data/database/test_telescope_data.py` — green (AST-2131 storage under the gazer API).
 3. No-regression: `tests/component/core` (`--continue-on-collection-errors`) failure set equals the ftr baseline, modulo the two env / flaky nodes above.
-4. AC4: `git grep -n -i "telescope_data" -- src/core src/ui ':!src/core/gazer.py'` shows no `database` telescope import / call; `git diff origin/dev...HEAD --stat -- src/external/telescope.py service/telescope` empty.
-5. Live DB untouched: `telescope_data` row count in `~/astral/data/astral.db` is the same before and after item 1.
+4. AC4: `git grep -n -i "web_data" -- src/core src/ui ':!src/core/gazer.py'` shows no `database` telescope import / call; `git diff origin/dev...HEAD --stat -- src/external/telescope.py service/telescope` empty.
+5. Live DB untouched: `web_data` row count in `~/astral/data/astral.db` is the same before and after item 1.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \

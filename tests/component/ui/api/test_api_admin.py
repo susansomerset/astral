@@ -4688,7 +4688,7 @@ class TestAst2134AdhocPreviewTelescope:
 
     def _keep(self, text: str, data_type: str = "VISIBLE_TEXT") -> str:
         from src.core import gazer
-        return gazer.keep_telescope_data(None, "https://acme.com/p", data_type, text)
+        return gazer.keep_web_data(None, "https://acme.com/p", data_type, text)
 
     def _company(self, monkeypatch: pytest.MonkeyPatch, cdata: dict) -> None:
         monkeypatch.setattr(admin_mod, "get_dispatch_task_by_key", lambda task_key: {"entity_type": "company"})
@@ -4728,7 +4728,7 @@ class TestAst2134AdhocPreviewTelescope:
         rid = self._keep("Culture")
         conn = sqlite_in_memory._get_connection()
         try:
-            conn.execute("DELETE FROM telescope_data WHERE telescope_data_id = ?", (rid,))
+            conn.execute("DELETE FROM web_data WHERE web_data_id = ?", (rid,))
             conn.commit()
         finally:
             conn.close()
@@ -4744,7 +4744,7 @@ class TestAst2134AdhocPreviewTelescope:
 
     def test_job_previews_read_composed_jd(self, monkeypatch: pytest.MonkeyPatch) -> None:
         ref = self._keep("Nav\n\nEngineer\nBuild things.\nApply for this job\nfooter")
-        self._jobs(monkeypatch, {"job_description": "Email pre", "jd_telescope_data_id": ref,
+        self._jobs(monkeypatch, {"job_description": "Email pre", "jd_web_data_id": ref,
                                  "raw_job_listing": "raw"})
         composed = "Email pre\n\nEngineer\nBuild things."
         assert admin_mod._build_adhoc_live_content("evaluate_jd", "j1").startswith(f"[astral_job_id=j1]\n{composed}")
