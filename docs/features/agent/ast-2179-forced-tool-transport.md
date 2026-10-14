@@ -299,3 +299,83 @@ Stage 1 (`c6a8c31fa`): `llm_external.extract_tool_input` + tool-input JSON fallb
 **§8 self-correction (`5c1dbdc08`, one line, not in plan):** `stat.logging.debug` requires the Calling/Response pair; Stage 2 added only `Calling messages.create` to `anthropic.py`, so `logger.debug("Response from messages.create: %s", response)` was added after the call — same pair `llm_compat` already emits.
 
 Sync note: built after `sync-child.sh … --ftr AST-2172-structured-output-graders` (the spawn's `--ftr AST-2172` skips the parent merge). Lint: `ruff --select F,E9` adds nothing new; 6 pre-existing findings in `anthropic.py` (unused imports, placeholder-less f-strings) left untouched.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-2179  
+**Publish ref:** `18dd61dec507d898e9ebf371be3635f8b2f91039` (`origin/sub/AST-2172/AST-2179-forced-tool-transport`)  
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066` (not DIRTY)  
+**Overall:** DISCUSS  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| stat.logging.error | A | | |
+| stat.logging.debug | C | 2 | `Calling messages.create` logs `api_kwargs` dicts; `get_logger().debug` JSON-serializes and truncates args >2k — large forced-tool schemas won’t appear in full |
+
+## Column diff vs plan stage
+
+| id | Joan | Radia | note |
+|----|------|-------|------|
+| stat.logging.debug | A | C | Joan plan acceptable block assumed full kwargs at debug with no truncation; shared `src/utils/logging.py` behavior matches AST-2178 discuss |
+
+(aligned on `stat.logging.error`.)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** `src/external/anthropic.py` / `src/external/llm_compat.py` — `logger.debug("Calling messages.create: …", api_kwargs)`  
+  **Finding:** Plan Canon check and `stat.logging.debug` expect full callee-in kwargs at debug. Forced-tool `api_kwargs` embed the full `input_schema`; serialized size exceeds the 2k `truncate_debug_string` threshold for realistic grader rubrics (same infrastructure issue as AST-2178 `grade_schema` schema log). Tests (`test_ac3_debug_logs_request_kwargs_and_response`) assert presence of `tool_choice` on a **small** fixture schema, not full-schema fidelity.  
+  **Recommendation:** @susan — treat as the same epic-wide logging decision as AST-2178 (optional resolve-child / logging fix), or accept truncated debug for transport until `logging.py` changes?  
+  **Default:** Proceed to UT; transport behavior and AC **3**/**4** mocks are correct; truncation is debug-only.
+
+- **Location:** Child AC **3** wording vs Boundaries  
+  **Finding:** Linear AC says “any **grader task**”; this child only adds optional `forced_tool` on send paths — task selection and schema build stay in AST-2180 / `grade_schema`. Committed tests prove kwargs when `forced_tool` is set and absence when `None` (anthropic + compat).  
+  **Recommendation:** Epic-level AC **3** closes when #5 wires graders; for **AST-2179** the Betty transport tests are the right gate (Joan plan discuss — aligned).
+
+### advisory
+
+- **Location:** `origin/dev...18dd61dec` three-dot diff  
+  **Finding:** Stack includes AST-2176–2178 (+2177 config/prompt) and `grade_schema.py`; this child’s transport delta is `llm_external.py`, `anthropic.py`, `llm_compat.py` (+ external/utils tests/bible).  
+  **Recommendation:** Expected sub/ftr carry; no cross-ticket product smuggle in 2179 commits.
+
+- **Location:** `_parse_json_response` — encoded-line coercion removed  
+  **Finding:** Bare encoded grader text no longer coerced in anthropic JSON parse until forced-tool path is live (#5). Plan documents ftr overlap.  
+  **Recommendation:** Keep build order (#5 before grader traffic on ftr).
+
+- **Location:** OpenRouter batch host + per-call `tools` / schemas (Joan discuss)  
+  **Finding:** Varying schemas may increase probes; AC **4** structural tests cover probe/real `require_parameters` parity; no `openrouter.py` change here.  
+  **Recommendation:** Ops/epic follow-up if probe volume matters.
+
+- **Location:** AST-2178 Radia **REVIEW** (debug truncation) still open on parent thread  
+  **Finding:** 2179 adds another high-volume debug dict log line; resolving truncation once benefits both modules.  
+  **Recommendation:** Single logging fix or policy call — downstream, not duplicate per child.
+
+## What's solid
+
+- **`llm_external`:** `extract_tool_input` (named `tool_use`, object input); `extract_api_response_text` prefers text, else last `tool_use` JSON (not `server_tool_use`).
+- **Anthropic:** `_forced_tool_body`; `forced_tool` on send (mutually exclusive with web search); `extract_tool_input` → `parsed_response`; max_tokens fail-closed when `forced_tool`; `getTimestampPrefix(structured=True)` → `prompt_prefix_structured`; Calling + Response debug pair after self-correction `5c1dbdc08`.
+- **Compat:** `require_parameters: True` only for `forced_tool` + OpenRouter routing, merged into `provider_obj` **before** probe; `_forced_tool_body` on wire kwargs; tests cover AC **4** probe/real parity, direct routes without `require_parameters`, non-forced OpenRouter unchanged.
+- **`stat.logging.error`:** Tool parse failures use existing `log_llm_batch_summary` + failure return — no new `logger.exception` on expected parse miss.
+- **Tests:** Filtered AST-2179 external/utils tests **36 passed** on tip; Betty manifest landed in `18dd61dec`.
+- **Boundaries:** No `agent.py`, schema build, or provider spike; estimate **3** fits.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append artifact, `docs(AST-2179): Radia review — discuss`, push sub, post slim upshot `--as radia`, **Review Posted** → datt **REVIEW** if Susan wants truncation closed before UT; else **PROCEED** per **Default** (same as AST-2178).
+- Engineer (optional resolve): align with AST-2178 logging discuss — chunk kwargs, narrow debug fields, or adjust `logging.py`.
+- AST-2180: wire `forced_tool` + `getTimestampPrefix(structured=True)` for grader tasks to close epic AC **3** end-to-end.
+
+context_tokens≈36000
