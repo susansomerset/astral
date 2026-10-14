@@ -467,3 +467,44 @@ The ticket's "Ships" line (show returns the current body, save inserts a sanitiz
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-2211
+**Overall:** APPROVED
+**Corpus:** 0d01e20d2b313a4e35cf3d07434b6cd69f615768
+**Publish ref:** `origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history` @ `7df33a15fdf7e7eaa86d47f7c3c4081e99c42b0d`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+
+## Traceability
+
+AC3→Stage 2 (3–5, grep in 6); AC4→Stage 1 (default `include_thread_replies=False`, snapshot caller untouched, off-path smoke + regression). Parent Slack AC 5–9 / 15 explicitly deferred to AST-2212; “Ships” line covered by Stage 1–2 smokes.
+
+## Findings
+
+### acceptable
+
+- **Location:** Plan § Contract with #1 / Stage 2 imports  
+  **Finding:** Handlers and lookup depend on `CONTACT_CONTEXT_COMMAND_CONFIG` from AST-2210; build assumes #1 is on the integration line before this sub lands.  
+  **Recommendation:** Merge/rebase #1 before Stage 2; no plan rewrite.
+
+- **Location:** Stage 2 save handler — identical no-op ack  
+  **Finding:** Same ack text after operative no-op and after a real insert.  
+  **Recommendation:** Matches parent “an ack” without requiring a distinguishable message; keep as decided.
+
+### discuss
+
+- **Location:** `get_candidate_id_for_slack_channel` ambiguous-channel warning  
+  **Finding:** Warning lead uses `hit_ids[0]` when multiple candidates share a channel — correct shape, slightly arbitrary “who” for a non-unique case.  
+  **Recommendation:** Fine for ops; optional future tweak only if Susan wants a neutral prefix.
+
+context_tokens≈52000
