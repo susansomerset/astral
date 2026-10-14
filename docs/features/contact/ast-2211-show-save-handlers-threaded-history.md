@@ -519,3 +519,72 @@ context_tokens≈52000
 - **Lint:** the ruff delta is exactly what the plan predicted. `slack.py` has 0 new findings. `candidate.py` has 8 (7 UP045 `Optional`, 1 UP006 `Dict`), which match the file's existing style.
 - **Tests:** no new failures vs the Stage 0 baseline across `test_slack.py`, `test_candidate.py`, and `test_config.py` (53 pre-existing FAILED/ERROR lines, unchanged). Run with `~/astral/.venv/bin/python`, since system `python3` lacks `nh3`.
 - **Coverage gaps for Betty (not added; test tree is hers):** `include_thread_replies=True` (parent echo dropped, replies merged in `ts` order, `conversations.replies` ok:false raises); `get_candidate_id_for_slack_channel` unique, ambiguous, unmapped, and deleted cases; show handler (saved body, empty line, unknown key); save handler (sanitized save, empty-after-sanitize gives the usage reply and no write, unknown key gives no write, identical re-save adds no version via `save_candidate_data`).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-2211
+**Publish ref:** `bc442b2bd6d96ffcad15e294a65bd1953842cc44` (`origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history`)
+**Corpus:** `0d01e20d2b313a4e35cf3d07434b6cd69f615768` (directives read from `canon/directives/active/` at publish tip; no `docs/canon-index.md`)
+**Overall:** CLEAN
+
+**Scoring scope:** Product and tests scored on AST-2211-owned paths only (`src/core/candidate.py`, `src/external/slack.py`, `tests/component/core/test_candidate.py`, `tests/component/external/test_slack.py`, and matching bible § AST-2211). AST-2210 config/catalog carry and AST-2209 `telescope_data`→`web_data` merge on the sub are noted as carry, not graded as #2 defects.
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.warning | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: all A; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `docs/features/contact/ast-2211-show-save-handlers-threaded-history.md` § Review — implementer “coverage gaps for Betty”  
+  **Finding:** Superseded on tip `bc442b2bd`: Betty landed `TestAst2211ContactContextHandlers` and `TestAst2211FullHistoryThreadReplies` covering lookup (unique/ambiguous/unmapped/blank/debug flag), show/save per context key, identical re-save no-op, empty-after-sanitize usage reply, default-off snapshot path, thread merge/sort, and `conversations.replies` hard-fail. No action on that bullet except strike from implementer notes when Chuckles appends this review.
+
+- **Location:** § Review — Hedy question: `get_candidate_id_for_slack_channel(..., debug=)` vs `stat.logging.debug` Resolution #4  
+  **Finding:** `debug=` mirrors existing `get_candidate_id_for_query` (`logger.set_debug_flag(True)` at entry). `contact_command_save_context` passes `debug=` through to `save_candidate_data` (operative path, not logging-only). `contact_command_show_context` accepts `debug=` for runner signature parity and does not use it in the body — harmless until #3 wires the runner. **Radia answer:** keep as shipped; not `resolve-child` canon work unless Susan opens an epic-wide “ContextVar-only, drop logging `debug=` on lookups” cleanup.
+
+- **Location:** § Review — Hedy question: `Response from list_candidates: %s` full list vs count  
+  **Finding:** Full serialized list matches `stat.logging.debug` (no truncation on callee out). Count still appears on begin/end loop lines. **Radia answer:** implementer self-correction is correct; no change required.
+
+- **Location:** Joan plan discuss — ambiguous-channel warning uses `hit_ids[0]` as lead identifier  
+  **Finding:** Warning shape satisfies `stat.logging.warning` (who + why + product next step); lead id is arbitrary when multiple map. Ops-only; optional neutral prefix is a future polish, not blocking #2.
+
+- **Location:** Branch ancestry  
+  **Finding:** **Sibling test/bible carry:** `docs/test-bible/utils/config.md`, `docs/test-bible/core/repo_admin_json.md`, `tests/component/utils/test_config.py`, `tests/component/core/test_repo_admin_json.py` changes belong to AST-2210 on this sub; expected after `after AST-2210` + ftr sync. Not cross-ticket product scope.
+
+## What's solid
+
+- **read-current / write-operative:** `contact_command_show_context` uses `get_candidate_current`; empty/miss uses label-templated line, not blobs. `contact_command_save_context` runs `sanitize_contact_text` then `save_candidate_data`; identical re-save adds no version (component test on `seeded_db`).
+- **AC 3:** No `(draft|save|show)-<suffix>` literals under `src/core/` on publish ref; save empty-after-sanitize resolves `usage_reply_text` via handler path + `artifact_key` scan.
+- **AC 4:** `include_thread_replies=False` default leaves the prior history path; admin snapshot caller untouched; tests prove default-off never calls `conversations.replies` and on-path merges/dedupes parent echo with ascending `ts` sort.
+- **Warnings:** Unknown `artifact_key`, empty-after-sanitize, and ambiguous channel each emit a single `logger.warning` with candidate/channel context before a safe no-op return.
+
+## Recommended actions (Chuckles — not Radia)
+
+1. Append this artifact to `docs/features/contact/ast-2211-show-save-handlers-threaded-history.md`, commit `docs(AST-2211): Radia review — clean`, push `origin/sub/AST-2206/AST-2211-show-save-handlers-threaded-history`.
+2. Post slim upshot via `linear_proxy.py --as radia save-comment`.
+3. **Review Posted** → datt **PROCEED** → **User Testing** (no `resolve-child` canon work expected; parent Slack AC 5–9 / 15 still wait on AST-2212).
+
+context_tokens≈38000
