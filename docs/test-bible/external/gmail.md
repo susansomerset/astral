@@ -139,3 +139,26 @@ Raw `to_address` on `list_inbox_messages` / `get_message_html` (empty string whe
 
 **Pass criterion:** pytest green on narrowed args; `[bug-repro]` test passes after make-fix lands `cache_discovery=False`.
 
+### AST-2213 · AST-2207
+
+**Parent:** [AST-2207 — Update error reporting from production](https://linear.app/astralcareermatch/issue/AST-2207). **Publish:** `origin/sub/AST-2207/AST-2213-gmail-plain-text-attachments`.
+
+`send_email(..., attachments: dict[str, str] | None = None)` — truthy dict (filename → text) builds `multipart/mixed`: `text/plain` body part, then one `text/plain` part per item with `Content-Disposition: attachment; filename="…"`. `None` / `{}` / omitted keeps the single-part `MIMEText(body, "plain")`. Bool never-raise contract and `require_controlled_external_io` gate unchanged (existing **`TestSendEmail`** / **`TestControlledExternalIo`**). Monitor consumer is sibling #2.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Multipart with one attachment (AC 5) | `src/external/gmail.py` | **`TestAst2213Attachments::test_attachment_builds_multipart_mixed`** |
+| No-attachment single part (omitted / `None` / `{}`) | `src/external/gmail.py` | **`TestAst2213Attachments::test_no_attachments_stays_single_text_plain`** |
+
+**Broken / obsolete:** `TestGetMessageHtml` exact-dict asserts (`test_extracts_nested_html_body`, `test_includes_subject_and_from_headers`, `test_top_level_html_and_empty_when_missing`) predate **AST-1537**'s `date` key on the get payload and were red on `origin/dev` — revised to expect `"date": ""`.
+
+**Integration:** none — no existing gmail/send scenario to revise.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_gmail.py \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args; `src/external/gmail.py` remains **LOCKED_AT_100** branch coverage.
+
