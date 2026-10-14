@@ -19,6 +19,7 @@ from src.utils.config import (
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_STAGE_DISPATCH,
     CANDIDATE_STATES,
+    CONTACT_CONTEXT_COMMAND_CONFIG,
     RESUME_STRUCTURE_BODY_FORMAT_DETAILS,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
@@ -7720,3 +7721,116 @@ class TestAst2091RubricDispatchError:
         calls = self._stub(monkeypatch, {})
         assert candidate_mod.rubric_dispatch_error(cid, "meteorite_grade_do") is None
         assert calls == []
+
+
+# Branches (AST-2211): get_candidate_id_for_slack_channel — blank channel (no list call), debug
+# flag, unique hit (blank-id rows ignored), ambiguous (warning) / unmapped → None, non-deleted only;
+# show/save handlers — blank candidate, unknown key (warning, no read/write), show miss vs saved
+# body, save sanitize → operative version, identical re-save no-op, empty-after-sanitize usage reply.
+class TestAst2211ContactContextHandlers:
+    CONTEXT_KEYS = tuple(m["artifact_key"] for m in CONTACT_CONTEXT_COMMAND_CONFIG.values())
+
+    @staticmethod
+    def _rows(*pairs: tuple[str, str]) -> list[dict[str, Any]]:
+        return [
+            {"astral_candidate_id": cid, "candidate_data": {"contact": {"slack_channel_id": ch}}}
+            for cid, ch in pairs
+        ]
+
+    def _stub_list(self, monkeypatch: pytest.MonkeyPatch, rows: list[dict[str, Any]]) -> list[Any]:
+        seen: list[Any] = []
+
+        def _list(include_deleted: bool = False) -> list[dict[str, Any]]:
+            seen.append(include_deleted)
+            return rows
+
+        monkeypatch.setattr(candidate_mod, "list_candidates", _list)
+        return seen
+
+    @staticmethod
+    def _versions(db: Any, key: str) -> list[dict[str, Any]]:
+        return db.list_artifacts("candidate", "cand-1", key.rsplit(".", 1)[1], current_only=False)
+
+    def test_lookup_unique_hit_non_deleted_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen = self._stub_list(monkeypatch, self._rows(("A", "C1"), ("", "C1"), ("B", "C2")))
+        assert candidate_mod.get_candidate_id_for_slack_channel(" C1 ") == "A"
+        assert seen == [False]
+
+    def test_lookup_ambiguous_warns_and_unmapped_is_quiet(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        self._stub_list(monkeypatch, self._rows(("B", "C2"), ("D", "C2"), ("A", "C1")))
+        caplog.set_level("WARNING")
+        assert candidate_mod.get_candidate_id_for_slack_channel("C2") is None
+        warns = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warns) == 1 and "C2" in warns[0] and "B, D" in warns[0]
+        caplog.clear()
+        assert candidate_mod.get_candidate_id_for_slack_channel("C9") is None
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+    def test_lookup_blank_channel_skips_list_and_debug_sets_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen = self._stub_list(monkeypatch, self._rows(("A", "C1")))
+        flag = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", flag)
+        assert candidate_mod.get_candidate_id_for_slack_channel("  ", debug=True) is None
+        flag.assert_called_once_with(True)
+        assert seen == []
+
+    @pytest.mark.parametrize("handler", ["contact_command_show_context", "contact_command_save_context"])
+    def test_blank_candidate_returns_no_candidate(self, handler: str) -> None:
+        out = getattr(candidate_mod, handler)("  ", "x", source_id="C1:1", artifact_key=self.CONTEXT_KEYS[0])
+        assert out == {"ok": False, "meteorite_id": None, "error": "no_candidate", "reply_text": None}
+
+    @pytest.mark.parametrize("handler", ["contact_command_show_context", "contact_command_save_context"])
+    @pytest.mark.parametrize("key", [None, "candidate.artifacts.base_resume"])
+    def test_unknown_key_warns_and_touches_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, handler: str, key: Any
+    ) -> None:
+        read, write = MagicMock(), MagicMock()
+        monkeypatch.setattr(candidate_mod, "get_candidate_current", read)
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", write)
+        caplog.set_level("WARNING")
+        out = getattr(candidate_mod, handler)("cand-1", "text", source_id="C1:1", artifact_key=key)
+        assert out == {"ok": False, "meteorite_id": None, "error": "unknown_artifact_key", "reply_text": None}
+        read.assert_not_called()
+        write.assert_not_called()
+        assert any("cand-1 |" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+
+    @pytest.mark.parametrize("ctx", list(CONTACT_CONTEXT_COMMAND_CONFIG.values()), ids=list(CONTACT_CONTEXT_COMMAND_CONFIG))
+    def test_show_save_round_trip_every_context(self, seeded_db, ctx: dict[str, Any]) -> None:
+        key, label = ctx["artifact_key"], ctx["label"]
+        show = candidate_mod.contact_command_show_context
+        save = candidate_mod.contact_command_save_context
+        assert show("cand-1", "", source_id="C1:1", artifact_key=key)["reply_text"] == (
+            f"No {label} saved yet for this candidate."
+        )
+        out = save("cand-1", "Steady <b>under</b> pressure.<script>x()</script>", source_id="C1:2", artifact_key=key)
+        assert out == {
+            "ok": True, "meteorite_id": None, "error": None,
+            "reply_text": f"Saved. That's now the current {label}.",
+        }
+        # nh3 sanitize: tags dropped, script content dropped; stored as a new current version.
+        assert show("cand-1", "ignored", source_id="C1:3", artifact_key=key)["reply_text"] == "Steady under pressure."
+        assert len(self._versions(seeded_db, key)) == 1
+
+    def test_identical_resave_adds_no_version(self, seeded_db) -> None:
+        key = self.CONTEXT_KEYS[0]
+        save = candidate_mod.contact_command_save_context
+        assert save("cand-1", "systems thinker", source_id="C1:1", artifact_key=key)["ok"]
+        assert save("cand-1", "<i>systems thinker</i>", source_id="C1:2", artifact_key=key)["ok"]
+        assert len(self._versions(seeded_db, key)) == 1
+        assert save("cand-1", "systems thinker, v2", source_id="C1:3", artifact_key=key)["ok"]
+        assert len(self._versions(seeded_db, key)) == 2
+
+    def test_empty_after_sanitize_posts_usage_and_writes_nothing(
+        self, seeded_db, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("WARNING")
+        key = "candidate.context.ideal_day"
+        out = candidate_mod.contact_command_save_context("cand-1", "<b> </b>", source_id="C1:1", artifact_key=key)
+        assert out == {
+            "ok": False, "meteorite_id": None, "error": "empty_after_sanitize",
+            "reply_text": "Usage: @Estelle /save-ideal-day <text>",
+        }
+        assert self._versions(seeded_db, key) == []
+        assert any("empty after sanitize" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
