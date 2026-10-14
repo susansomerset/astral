@@ -586,3 +586,73 @@ Not run here: the Stage 2 in-browser check (picker filter, 400 toast). There's n
 Seed decision (Finding 4): Susan hasn't said "drop them", so the default is built. `brain_setting`, `mode` and `provider_allow_fallbacks: 1` are untouched, and Revert to file for agents still fails as it does on dev. AC 10's Lucy `true` comes from the checkbox at UAT.
 
 For qa-child: expect the 3 contract updates from Finding 6: the exact `list_models` dict, and two seed fixtures missing `requires_structured_output`. Coverage for AC 10 / 10a can follow the plan's scratch smoke test: models capability, create and update gate (400, row unchanged), unknown model → 400, bool round-trip, and the seed keys.
+
+## Radia review
+
+
+**Ticket:** AST-2181  
+**Publish ref:** `8a35a745f606b427b52738051835460bafcc34a4` (`origin/sub/AST-2172/AST-2181-structured-output-setting-model-gate`)  
+**Corpus:** `b7ab2203048ce0beb2869a12200ab7fa696c8066` (not DIRTY)  
+**Overall:** CLEAN  
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| stat.logging.error | A | | |
+
+Gate failures return JSON **400** without throw; unknown model stays `ValueError` → **400**. No new `logger.exception` / log-and-re-raise on the happy-path gate; data layer unchanged for logging posture.
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `stat.logging.error` **A**; built API gate + UI filter match plan Canon check and Stage 1–2.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** AC **10** / seed vs Revert (Joan Finding 4; build **Review**)  
+  **Finding:** `data/admin/agent.json` carries **10a** (`requires_structured_output` on all rows; `true` only for `job_analyst_grace`, `job_filter_lucy`, `antagonist_kent` — verified on tip). Pre-existing `brain_setting` / `mode` / `provider_allow_fallbacks: 1` defects can still block **Revert to file** from loading DB seeds; Lucy **`GET …/job_filter_lucy` → `true`** may require UAT checkbox unless Susan normalizes seeds.  
+  **Recommendation:** @susan — (a) normalize legacy seed fields so Revert lands **10a** in DB, or (b) accept manual toggle for the three graders at UAT.  
+  **Default:** **(b)** — repo file and API/UI gate are correct; DB truth follows Manage Agents save.
+
+### advisory
+
+- **Location:** `origin/dev...8a35a745f` three-dot diff  
+  **Finding:** Full epic stack (2176–2180 + transport/schema) appears in the branch diff; **2181** product footprint is `config.py` (`REPO_ADMIN_JSON_CONFIG` agent column), `database.py`, `agent.json`, `api_admin.py` (models + create/update gate), `AdminAgentPrompts.tsx`, plus tests/bible.  
+  **Recommendation:** Rollup treats **2181** as admin slice only; `api_admin` ad-hoc forced-tool/hydrate lines on the composite diff are **AST-2180**, not this ticket’s scope.
+
+- **Location:** Stage 2 in-browser check (build **Review**)  
+  **Finding:** Picker filter + 400 toast not re-run in build environment (no browser session).  
+  **Recommendation:** Susan UAT spot-check; component tests cover checkbox → PUT body and `capable()` filter logic.
+
+- **Location:** AST-2177 capability registry  
+  **Finding:** Picker hides only `structured_output_capability == null`; most catalog slugs stay `null` until spiked — narrow list when checkbox on is expected epic behavior.  
+  **Recommendation:** Staging verification of provisional `advisory` slugs (Susan 2026-10-13 directive) — not a **2181** defect; no live provider calls on this host (sanctioned).
+
+- **Location:** Radia pytest  
+  **Finding:** `TestAst2181RequiresStructuredOutputSeed` **3 passed**; `test_agents.py` structured-setting tests **6 passed**; full `test_api_admin.py` collection failed on review host (`asyncpg` import) — not exercised here.  
+  **Recommendation:** Trust Betty **Tests Passed** on publish ref for `TestAst2181StructuredOutputModelGate`.
+
+## What's solid
+
+- **API AC 10:** `list_models` exposes `structured_output_capability` per model; `_structured_output_gate` rejects `requires_structured_output` + `get_structured_output_capability(model) is None` on create/update with row unchanged; `advisory` allowed.
+- **UI:** Checkbox + `capable()` filter; incapable current model shown as “— no structured output” but excluded from selectable alternatives (Joan decision).
+- **10a:** Seed keys on all 10 agents; three grader agents `true` on models with non-`None` capability (`qwen/…`, `gpt-oss-…` advisory).
+- **Plumbing:** `REPO_ADMIN_JSON_CONFIG` / `AGENT_SETTING_COLUMNS` / migration pattern mirrors `provider_allow_fallbacks`; `resolve_agent_settings` does not read the flag (gate-only — per plan).
+- **Build checks:** `stage1 ok`, `tsc -b`, no provider calls; estimate **3** fits.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append artifact, `docs(AST-2181): Radia review — clean`, push sub, post slim upshot `--as radia`, **Review Posted** → datt **PROCEED** toward **User Testing**.
+- Susan: UAT **10** picker + toast; choose seed/Revert path for **10a** DB if needed (discuss **Default**).
+
+context_tokens≈32000
